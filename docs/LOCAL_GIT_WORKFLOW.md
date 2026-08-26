@@ -176,6 +176,10 @@ separate backup policies.
 
 ## Deployment provenance
 
+Keep the Mac repository as the source of truth. Source synchronization to the
+Pi should exclude `.git/`; otherwise the deployment host receives a second,
+easy-to-diverge copy of the repository database.
+
 Before copying a release to the Pi, record the source commit:
 
 ```bash
@@ -185,4 +189,3 @@ git describe --tags --always --dirty
 
 Build logs and benchmark metadata should retain that identity. A binary called
 `v1` is not sufficient provenance if its source commit is unknown.
-

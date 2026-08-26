@@ -109,13 +109,15 @@ Open a second terminal on the Mac (not inside the Pi SSH session):
 
 ```bash
 cd /Users/vishaljha
-rsync -av --delete --exclude build/ aeron-raft-pi/ \
+rsync -av --delete --exclude build/ --exclude .git/ aeron-raft-pi/ \
   bhaikapi@vishalkapi.local:~/aeron-raft-pi/
 ```
 
 `rsync` transfers only differences on later runs. `--delete` makes the remote
 source tree mirror the Mac source tree; it is scoped to `~/aeron-raft-pi/` and
-does not touch the separate Podman WAL volumes.
+does not touch the separate Podman WAL volumes. Excluding `.git/` keeps the Mac
+as the version-control source of truth and avoids copying repository history to
+the deployment host.
 
 Back on the Pi:
 
