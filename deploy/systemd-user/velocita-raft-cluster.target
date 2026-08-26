@@ -1,0 +1,7 @@
+[Unit]
+Description=Velocita three-voter Raft cluster
+Wants=velocita-raft-1.service velocita-raft-2.service velocita-raft-3.service velocita-raft-metrics-exporter.service
+After=velocita-raft-1.service velocita-raft-2.service velocita-raft-3.service
+
+[Install]
+WantedBy=default.target

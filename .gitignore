@@ -1,0 +1,13 @@
+/build/
+.DS_Store
+*.log
+*.pem
+*.key
+*.p12
+*.pfx
+.env
+.env.*
+!.env.example
+/benchmark-results/
+/cmake-build-*/
+CMakeUserPresets.json

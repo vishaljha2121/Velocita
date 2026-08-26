@@ -1,0 +1,7 @@
+[Unit]
+Description=Durable WAL volume for Velocita Raft node 2
+
+[Volume]
+VolumeName=velocita-raft-node2-data
+Label=io.velocita.component=raft
+Label=io.velocita.node-id=2

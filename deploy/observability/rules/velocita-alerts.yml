@@ -1,0 +1,205 @@
+groups:
+  - name: velocita-availability
+    interval: 5s
+    rules:
+      - alert: VelocitaRaftExporterDown
+        expr: up{job="velocita-raft"} == 0
+        for: 15s
+        labels:
+          severity: critical
+          component: telemetry
+        annotations:
+          summary: "Velocita Raft metrics exporter is unreachable"
+          description: "Prometheus has not scraped the local Raft exporter for 15 seconds. Raft may still be healthy; verify the cluster independently before changing it."
+          runbook: "docs/PI_OPERATOR_RUNBOOK.md#observability-triage"
+
+      - alert: VelocitaMetricsPageUnavailable
+        expr: velocita_metrics_page_up == 0
+        for: 10s
+        labels:
+          severity: critical
+          component: raft
+        annotations:
+          summary: "Raft node {{ $labels.node_id }} metrics page is unavailable"
+          description: "The exporter cannot validate or read this node's shared-memory page. Check the node unit and metrics runtime directory."
+          runbook: "docs/PI_OPERATOR_RUNBOOK.md#observability-triage"
+
+      - alert: VelocitaRaftOwnerLoopStale
+        expr: velocita_metrics_writer_active == 0 or velocita_metrics_last_tick_age_seconds > 2
+        for: 5s
+        labels:
+          severity: critical
+          component: raft
+        annotations:
+          summary: "Raft node {{ $labels.node_id }} owner loop is stale"
+          description: "The shared-memory writer is inactive or raft_periodic has not completed for more than two seconds."
+          runbook: "docs/PI_OPERATOR_RUNBOOK.md#observability-triage"
+
+      - alert: VelocitaRaftLeaderCountInvalid
+        expr: velocita:raft_leader_count != 1
+        for: 5s
+        labels:
+          severity: critical
+          component: raft
+        annotations:
+          summary: "Raft cluster does not expose exactly one leader"
+          description: "Observed leader count is {{ $value }}. Preserve evidence and verify quorum before restarting voters."
+          runbook: "docs/PI_OPERATOR_RUNBOOK.md#observability-triage"
+
+      - alert: VelocitaRaftLeaderDisagreement
+        expr: count(count_values("leader_id", velocita_raft_leader_id)) > 1
+        for: 5s
+        labels:
+          severity: critical
+          component: raft
+        annotations:
+          summary: "Raft voters disagree about the current leader"
+          description: "The three metrics pages contain more than one leader ID. Inspect terms and indexes before taking action."
+          runbook: "docs/PI_OPERATOR_RUNBOOK.md#observability-triage"
+
+      - alert: VelocitaRaftTermDisagreement
+        expr: count(count_values("term", velocita_raft_term)) > 1
+        for: 5s
+        labels:
+          severity: critical
+          component: raft
+        annotations:
+          summary: "Raft voters disagree about the current term"
+          description: "The three metrics pages contain more than one current term. Inspect leader identity and replication progress before taking action."
+          runbook: "docs/PI_OPERATOR_RUNBOOK.md#observability-triage"
+
+  - name: velocita-progress-and-transport
+    interval: 5s
+    rules:
+      - alert: VelocitaRaftCommitLag
+        expr: velocita_raft_commit_lag_entries > 0
+        for: 15s
+        labels:
+          severity: warning
+          component: raft
+        annotations:
+          summary: "Raft node {{ $labels.node_id }} has sustained commit lag"
+          description: "The local log is {{ $value }} entries ahead of the committed index for 15 seconds."
+          runbook: "docs/PI_OPERATOR_RUNBOOK.md#observability-triage"
+
+      - alert: VelocitaRaftApplyLag
+        expr: velocita_raft_apply_lag_entries > 0
+        for: 10s
+        labels:
+          severity: critical
+          component: raft
+        annotations:
+          summary: "Raft node {{ $labels.node_id }} has sustained apply lag"
+          description: "Committed state has not reached the FSM for 10 seconds. Current lag is {{ $value }} entries."
+          runbook: "docs/PI_OPERATOR_RUNBOOK.md#observability-triage"
+
+      - alert: VelocitaAeronMessageDropped
+        expr: increase(velocita_aeron_dropped_peer_messages_total[1m]) > 0
+        labels:
+          severity: critical
+          component: aeron
+        annotations:
+          summary: "Raft node {{ $labels.node_id }} dropped an Aeron peer message"
+          description: "At least one bounded peer message could not be retained during the last minute. Inspect publication outcomes and queue depth."
+          runbook: "docs/PI_OPERATOR_RUNBOOK.md#observability-triage"
+
+      - alert: VelocitaAeronBackpressure
+        expr: sum by (node_id, channel) (rate(velocita_aeron_publication_offers_total{outcome="back_pressured"}[1m])) > 0
+        for: 15s
+        labels:
+          severity: warning
+          component: aeron
+        annotations:
+          summary: "Sustained Aeron backpressure on node {{ $labels.node_id }}"
+          description: "Publication channel {{ $labels.channel }} has returned back-pressure outcomes for 15 seconds."
+          runbook: "docs/PI_OPERATOR_RUNBOOK.md#observability-triage"
+
+  - name: velocita-host
+    interval: 15s
+    rules:
+      - alert: VelocitaNodeExporterDown
+        expr: up{job="node"} == 0
+        for: 30s
+        labels:
+          severity: warning
+          component: telemetry
+        annotations:
+          summary: "Raspberry Pi host metrics are unavailable"
+          description: "Node exporter has been unreachable for 30 seconds. This is telemetry loss, not proof that Raft is down."
+          runbook: "docs/PI_OPERATOR_RUNBOOK.md#observability-triage"
+
+      - alert: VelocitaProcessExporterDown
+        expr: up{job="process"} == 0
+        for: 30s
+        labels:
+          severity: warning
+          component: telemetry
+        annotations:
+          summary: "Velocita process metrics are unavailable"
+          description: "Process exporter has been unreachable for 30 seconds. Host and Raft metrics remain independent."
+          runbook: "docs/PI_OPERATOR_RUNBOOK.md#observability-triage"
+
+      - alert: VelocitaRaftProcessCountInvalid
+        expr: namedprocess_namegroup_num_procs{groupname=~"velocita-raft-[123]"} != 1
+        for: 15s
+        labels:
+          severity: critical
+          component: raft
+        annotations:
+          summary: "{{ $labels.groupname }} does not contain exactly one process"
+          description: "The stable logical process group contains {{ $value }} processes. Verify its systemd unit before changing cluster membership."
+          runbook: "docs/PI_OPERATOR_RUNBOOK.md#observability-triage"
+
+      - alert: VelocitaRaftMajorPageFault
+        expr: increase(namedprocess_namegroup_major_page_faults_total{groupname=~"velocita-raft-[123]"}[5m]) > 0
+        labels:
+          severity: warning
+          component: host
+        annotations:
+          summary: "{{ $labels.groupname }} incurred a major page fault"
+          description: "A hot Raft process required storage-backed fault handling during the last five minutes; treat nearby latency measurements as suspect."
+          runbook: "docs/PI_OPERATOR_RUNBOOK.md#observability-triage"
+
+      - alert: VelocitaPiTemperatureHigh
+        expr: node_thermal_zone_temp{type="cpu-thermal"} >= 75
+        for: 2m
+        labels:
+          severity: warning
+          component: host
+        annotations:
+          summary: "Raspberry Pi temperature is approaching throttling"
+          description: "CPU temperature is {{ $value }} degrees Celsius. Raspberry Pi begins thermal throttling near 80 degrees Celsius."
+          runbook: "docs/PI_OPERATOR_RUNBOOK.md#observability-triage"
+
+      - alert: VelocitaPiTemperatureCritical
+        expr: node_thermal_zone_temp{type="cpu-thermal"} >= 80
+        for: 30s
+        labels:
+          severity: critical
+          component: host
+        annotations:
+          summary: "Raspberry Pi has reached the thermal throttle region"
+          description: "CPU temperature is {{ $value }} degrees Celsius. Reduce load or restore cooling before interpreting latency measurements."
+          runbook: "docs/PI_OPERATOR_RUNBOOK.md#observability-triage"
+
+      - alert: VelocitaRootFilesystemHigh
+        expr: velocita:root_filesystem_used:ratio >= 0.70
+        for: 5m
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: "Raspberry Pi root filesystem is at least 70 percent full"
+          description: "Current used ratio is {{ $value | humanizePercentage }}. Review Prometheus retention and WAL growth before the disk reaches 80 percent."
+          runbook: "docs/PI_OPERATOR_RUNBOOK.md#observability-triage"
+
+      - alert: VelocitaMemoryPressure
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.10
+        for: 2m
+        labels:
+          severity: warning
+          component: host
+        annotations:
+          summary: "Raspberry Pi available memory is below 10 percent"
+          description: "Sustained low available memory can cause reclaim stalls and invalidate latency measurements."
+          runbook: "docs/PI_OPERATOR_RUNBOOK.md#observability-triage"

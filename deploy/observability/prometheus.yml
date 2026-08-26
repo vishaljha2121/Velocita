@@ -1,0 +1,56 @@
+global:
+  scrape_interval: 15s
+  scrape_timeout: 5s
+  evaluation_interval: 5s
+  external_labels:
+    cluster: velocita-pi-v1
+    environment: homelab
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  - job_name: prometheus
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["127.0.0.1:9090"]
+
+  - job_name: node
+    scrape_interval: 5s
+    scrape_timeout: 3s
+    sample_limit: 10000
+    label_limit: 30
+    static_configs:
+      - targets: ["127.0.0.1:9100"]
+        labels:
+          host: vishalkapi
+
+  - job_name: process
+    scrape_interval: 5s
+    scrape_timeout: 3s
+    sample_limit: 3000
+    label_limit: 20
+    static_configs:
+      - targets: ["127.0.0.1:9256"]
+        labels:
+          host: vishalkapi
+
+  - job_name: velocita-raft
+    scrape_interval: 1s
+    scrape_timeout: 500ms
+    sample_limit: 2000
+    label_limit: 20
+    static_configs:
+      - targets: ["127.0.0.1:9200"]
+        labels:
+          host: vishalkapi
+
+  - job_name: velocita-benchmark
+    scrape_interval: 5s
+    scrape_timeout: 2s
+    sample_limit: 1000
+    label_limit: 10
+    static_configs:
+      - targets: ["127.0.0.1:9300"]
+        labels:
+          host: vishalkapi

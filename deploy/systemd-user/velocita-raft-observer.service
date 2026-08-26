@@ -1,0 +1,10 @@
+[Unit]
+Description=Export Velocita Raft journal state as a Prometheus textfile
+After=velocita-raft-cluster.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/libexec/velocita/collect-raft-textfile.sh
+Environment=VELOCITA_TEXTFILE_DIR=%h/.local/share/velocita/textfile
+NoNewPrivileges=true
+PrivateTmp=true

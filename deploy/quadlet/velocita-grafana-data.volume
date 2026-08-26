@@ -1,0 +1,6 @@
+[Unit]
+Description=Persistent Grafana data volume for Velocita
+
+[Volume]
+VolumeName=velocita-grafana-data
+Label=io.velocita.component=grafana

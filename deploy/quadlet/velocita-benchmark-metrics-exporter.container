@@ -1,0 +1,31 @@
+[Unit]
+Description=Velocita completed-benchmark metrics exporter
+PartOf=velocita-observability.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Container]
+Image=localhost/velocita-raft:bench
+Pull=never
+ContainerName=velocita-benchmark-metrics-exporter
+Entrypoint=/usr/local/bin/benchmark-metrics-exporter
+Network=host
+Volume=%h/.local/share/velocita/benchmarks:/var/lib/velocita-benchmark:ro
+ReadOnly=true
+NoNewPrivileges=true
+DropCapability=all
+PidsLimit=32
+Memory=32m
+LogDriver=journald
+StopSignal=SIGTERM
+StopTimeout=10
+Exec=--listen-address 127.0.0.1 --port 9300 --metrics-file /var/lib/velocita-benchmark/latest.prom
+
+[Service]
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=30
+TimeoutStopSec=15
+
+[Install]
+WantedBy=velocita-observability.target

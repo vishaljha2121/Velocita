@@ -1,0 +1,6 @@
+[Unit]
+Description=Persistent Prometheus TSDB volume for Velocita
+
+[Volume]
+VolumeName=velocita-prometheus-data
+Label=io.velocita.component=prometheus

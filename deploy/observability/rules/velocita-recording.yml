@@ -1,0 +1,18 @@
+groups:
+  - name: velocita-recording
+    interval: 5s
+    rules:
+      - record: velocita:raft_node_alive
+        expr: (velocita_metrics_page_up == 0) or (velocita_metrics_page_up * velocita_metrics_writer_active * (velocita_metrics_last_tick_age_seconds < bool 2))
+
+      - record: velocita:raft_leader_count
+        expr: sum(velocita_raft_role{role="leader"} * on(node_id) velocita:raft_node_alive)
+
+      - record: velocita:host_cpu_utilization:ratio
+        expr: 1 - avg(rate(node_cpu_seconds_total{mode="idle"}[1m]))
+
+      - record: velocita:root_filesystem_used:ratio
+        expr: 1 - (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})
+
+      - record: velocita:aeron_unsuccessful_offers:rate1m
+        expr: sum by (node_id, channel, outcome) (rate(velocita_aeron_publication_offers_total{outcome!="success"}[1m]))

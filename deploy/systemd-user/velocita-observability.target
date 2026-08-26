@@ -1,0 +1,7 @@
+[Unit]
+Description=Velocita local observability stack
+Wants=velocita-prometheus.service velocita-grafana.service velocita-benchmark-metrics-exporter.service
+After=velocita-prometheus.service
+
+[Install]
+WantedBy=default.target

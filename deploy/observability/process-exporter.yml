@@ -1,0 +1,22 @@
+process_names:
+  - name: "velocita-raft-{{.Matches.NodeID}}"
+    comm:
+      - raft-node
+    cmdline:
+      - '--node-id\s+(?P<NodeID>[123])\s'
+
+  - name: velocita-raft-metrics-exporter
+    exe:
+      - raft-metrics-exporter
+
+  - name: velocita-benchmark-metrics-exporter
+    exe:
+      - benchmark-metrics-exporter
+
+  - name: velocita-prometheus
+    exe:
+      - prometheus
+
+  - name: velocita-grafana
+    exe:
+      - grafana

@@ -1,0 +1,34 @@
+[Unit]
+Description=Velocita Raft voter 2
+PartOf=velocita-raft-cluster.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+Image=localhost/velocita-raft:v1
+Pull=never
+ContainerName=velocita-raft-2
+Network=host
+ShmSize=192m
+Volume=velocita-raft-node2-data.volume:/var/lib/velocita-raft:U
+Volume=%t/velocita-raft-metrics/node2:/run/velocita-metrics:U
+ReadOnly=true
+NoNewPrivileges=true
+DropCapability=all
+PidsLimit=128
+LogDriver=journald
+StopSignal=SIGTERM
+StopTimeout=15
+Exec=--node-id 2 --members 1,2,3 --request-channel aeron:udp?endpoint=127.0.0.1:40112 --response-channel aeron:udp?endpoint=127.0.0.1:40101 --peer-channel aeron:udp?endpoint=127.0.0.1:40212 --peer-target 1=aeron:udp?endpoint=127.0.0.1:40211 --peer-target 3=aeron:udp?endpoint=127.0.0.1:40213 --metrics-file /run/velocita-metrics/raft.metrics
+
+[Service]
+ExecStartPre=/usr/bin/podman unshare install -d -m 0755 -o 1000 -g 1000 %t/velocita-raft-metrics/node2
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=60
+TimeoutStopSec=25
+LogRateLimitIntervalSec=30
+LogRateLimitBurst=100
+
+[Install]
+WantedBy=velocita-raft-cluster.target

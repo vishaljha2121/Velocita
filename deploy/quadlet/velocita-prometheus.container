@@ -1,0 +1,34 @@
+[Unit]
+Description=Velocita local Prometheus
+PartOf=velocita-observability.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Container]
+Image=docker.io/prom/prometheus:v3.13.2
+Pull=never
+ContainerName=velocita-prometheus
+Network=host
+Volume=velocita-prometheus-data.volume:/prometheus:U
+Volume=%h/.config/velocita/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+Volume=%h/.config/velocita/observability/prometheus/rules:/etc/prometheus/rules:ro
+ReadOnly=true
+NoNewPrivileges=true
+DropCapability=all
+PidsLimit=128
+Memory=512m
+LogDriver=journald
+StopSignal=SIGTERM
+StopTimeout=30
+Exec=--config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus --storage.tsdb.retention.time=7d --storage.tsdb.retention.size=1GB --web.listen-address=127.0.0.1:9090
+
+[Service]
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=90
+TimeoutStopSec=40
+LogRateLimitIntervalSec=30
+LogRateLimitBurst=50
+
+[Install]
+WantedBy=velocita-observability.target

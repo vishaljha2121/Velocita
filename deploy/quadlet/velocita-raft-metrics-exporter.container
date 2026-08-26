@@ -1,0 +1,36 @@
+[Unit]
+Description=Velocita shared-memory metrics exporter
+PartOf=velocita-raft-cluster.target
+After=velocita-raft-1.service velocita-raft-2.service velocita-raft-3.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+Image=localhost/velocita-raft:v1
+Pull=never
+ContainerName=velocita-raft-metrics-exporter
+Entrypoint=/usr/local/bin/raft-metrics-exporter
+Exec=--listen-address 127.0.0.1 --port 9200 --metrics-file 1=/run/velocita-metrics/node1/raft.metrics --metrics-file 2=/run/velocita-metrics/node2/raft.metrics --metrics-file 3=/run/velocita-metrics/node3/raft.metrics
+Network=host
+ShmSize=16m
+Volume=%t/velocita-raft-metrics/node1:/run/velocita-metrics/node1:ro
+Volume=%t/velocita-raft-metrics/node2:/run/velocita-metrics/node2:ro
+Volume=%t/velocita-raft-metrics/node3:/run/velocita-metrics/node3:ro
+ReadOnly=true
+NoNewPrivileges=true
+DropCapability=all
+PidsLimit=32
+LogDriver=journald
+StopSignal=SIGTERM
+StopTimeout=10
+
+[Service]
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=60
+TimeoutStopSec=20
+LogRateLimitIntervalSec=30
+LogRateLimitBurst=20
+
+[Install]
+WantedBy=velocita-raft-cluster.target
