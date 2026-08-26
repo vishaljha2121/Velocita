@@ -11,6 +11,9 @@ single voter or three logical voters connected through Aeron UDP. It uses:
 
 Release scope, validated strengths, measured failures, and the planned V1.1
 acceptance gates are maintained in [`CHANGELOG.md`](CHANGELOG.md).
+The detailed V1.1 objectives, design contracts, metrics, experiments, and
+phase-by-phase acceptance gates are defined in
+[`docs/V1_1_IMPLEMENTATION_AND_VALIDATION_PLAN.md`](docs/V1_1_IMPLEMENTATION_AND_VALIDATION_PLAN.md).
 The repository is intentionally maintained with local-only Git; branching,
 tagging, safe rollback, and offline backup are documented in
 [`docs/LOCAL_GIT_WORKFLOW.md`](docs/LOCAL_GIT_WORKFLOW.md).

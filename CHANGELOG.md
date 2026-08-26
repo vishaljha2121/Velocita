@@ -17,6 +17,13 @@ Status: planned. No item in this section is an implementation claim until it is
 moved under **Implemented changes** and supported by tests and benchmark
 evidence.
 
+The authoritative execution specification for this release is
+[`docs/V1_1_IMPLEMENTATION_AND_VALIDATION_PLAN.md`](docs/V1_1_IMPLEMENTATION_AND_VALIDATION_PLAN.md).
+It defines the phase objectives, wire/routing design, invariants, canonical
+retry-amplification metric, experiment scorecard, and pass/fail gates. This
+changelog remains the concise release record; the plan is the implementation
+contract.
+
 ### Objective
 
 Eliminate the leader-routing retry storm exposed by V1 benchmarking, protect
@@ -87,7 +94,7 @@ Representative V1 benchmark evidence showed:
 - Calculate retry amplification outside the hot path:
 
   ```text
-  retry_amplification = transport_attempts / logical_commands_sent
+  retry_amplification = transport_attempts / logical_commands_started
   ```
 
 - Add Grafana panels and alerts for amplification, leader knowledge, admission
@@ -100,7 +107,7 @@ Representative V1 benchmark evidence showed:
 
 The final names may change during schema review, but their meanings must not:
 
-- `velocita_client_logical_commands_sent_total`
+- `velocita_client_logical_commands_started_total`
 - `velocita_client_transport_attempts_total`
 - `velocita_client_retries_total`
 - `velocita_client_not_leader_responses_total`
@@ -352,4 +359,3 @@ validation.
 - [`docs/V1_FAILURE_DRILL_RESULTS.md`](docs/V1_FAILURE_DRILL_RESULTS.md)
 - [`docs/BENCHMARKING.md`](docs/BENCHMARKING.md)
 - [`docs/PI_OPERATOR_RUNBOOK.md`](docs/PI_OPERATOR_RUNBOOK.md)
-
