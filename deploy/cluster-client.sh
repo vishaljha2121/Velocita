@@ -32,7 +32,8 @@ podman run --rm --network host --shm-size 128m \
     --entrypoint /usr/local/bin/raft-client \
     "$image" "${client_command[@]}" \
     --request-id "$request_id" \
-    --request-channel "aeron:udp?endpoint=127.0.0.1:40111" \
-    --request-channel "aeron:udp?endpoint=127.0.0.1:40112" \
-    --request-channel "aeron:udp?endpoint=127.0.0.1:40113" \
+    --members 1,2,3 \
+    --request-target "1=aeron:udp?endpoint=127.0.0.1:40111" \
+    --request-target "2=aeron:udp?endpoint=127.0.0.1:40112" \
+    --request-target "3=aeron:udp?endpoint=127.0.0.1:40113" \
     --response-channel "aeron:udp?endpoint=127.0.0.1:40101"

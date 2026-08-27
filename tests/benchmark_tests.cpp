@@ -15,9 +15,9 @@ void require(const bool condition, const char* message) {
 void test_pending_table() {
     velocita::PendingRequestTable table(3);
     require(table.capacity() == 4, "pending capacity should round to a power of two");
-    require(table.insert({1, 10, 20, 30, 0, 0, velocita::BenchmarkPhase::steady}),
+    require(table.insert({1, 10, 20, 30, 0, 0, 0, velocita::BenchmarkPhase::steady}),
             "first pending insert failed");
-    require(table.insert({5, 11, 21, 31, 1, 0, velocita::BenchmarkPhase::steady}),
+    require(table.insert({5, 11, 21, 31, 1, 0, 0, velocita::BenchmarkPhase::steady}),
             "colliding pending insert failed");
     require(table.find(1) != nullptr && table.find(5) != nullptr,
             "pending lookup failed");

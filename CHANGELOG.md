@@ -144,13 +144,64 @@ They belong in bounded evidence files to avoid unbounded Prometheus cardinality.
 
 ### Implemented changes
 
-To be completed after implementation. Planned work above must not be copied
-here until its code, tests, and operational evidence exist.
+#### Stage 1 accepted - leader-aware routing
+
+- Added response wire version 3 with explicit extension flags, `leader_id`, and
+  term-aware routing information. The decoder continues to accept V1 production
+  and V2 benchmark responses and represents their absent leader as unknown.
+- Added validated `RequestTarget {node_id, channel}` configuration. Duplicate
+  IDs, duplicate channels, missing member mappings, and non-member mappings fail
+  before Aeron publications are created.
+- Added a pure C++ leader router that caches `(term, leader_id)`, ignores
+  older-term hints, rejects non-member hints, invalidates knowledge on a newer
+  unknown/invalid term, and redirects the same request ID to a valid leader.
+- Changed `raft-client` and `raft-bench` from anonymous `--request-channel`
+  lists to explicit `--members` plus repeatable `--request-target ID=URI`
+  mappings.
+- Changed the one-shot client from broadcasting every retry to all voters to
+  offering to one target and following the returned leader hint.
+- Added exact benchmark counters for admitted logical commands and all
+  transport attempts. Summary schema 2 and Prometheus evidence now report
+  retry amplification without adding work to the Raft node owner loop.
+
+Phase 1 passed its Raspberry Pi ARM64 acceptance gate on 2026-08-27.
 
 ### V1.1 validation results
 
-To be completed after the four stages are implemented and the target-hardware
-test matrix passes.
+Local development evidence on 2026-08-27:
+
+- production build: all three native test executables passed;
+- benchmark-instrumented build: all three native test executables passed;
+- three-node macOS loopback: an initial request found leader 3 in two attempts;
+- forced follower-first route: follower 1 redirected the same request ID to
+  leader 3 and the increment completed in exactly two attempts; and
+- five-second measured loopback benchmark: 25 logical commands started, 25
+  transport attempts, 25 completions, zero timeouts, zero invalid hints, and
+  retry amplification `1.00`. One discovery retry occurred during warm-up.
+
+These results validate the development implementation and test harness. They do
+not substitute for target-hardware validation.
+
+Raspberry Pi ARM64 acceptance evidence on 2026-08-27:
+
+- the production candidate image `e2b3cb3c5c10` and benchmark-instrumented
+  candidate image `53913e4eeec0` each built with all three tests passing;
+- a follower-first/leader-last rolling upgrade preserved quorum, caught both
+  followers up before leader replacement, and restored three active services;
+- the fully upgraded cluster elected node 3 in term 81 and all three voters
+  ran the production candidate image;
+- request ID `1787831360569930796` reached follower 1 and then leader 3 in two
+  attempts, incrementing the counter from 19 to 20 at log index 35;
+- repeating that exact request ID returned value 20 and index 35 in two
+  attempts, demonstrating at-most-once application and no duplicate log
+  admission; and
+- benchmark suite `20260827T115818Z` completed 75 of 75 measured commands with
+  75 transport attempts, zero timeouts, zero capacity rejections, zero invalid
+  leader hints, retry amplification `1.00`, p50 `46,016,965 ns`, and p99
+  `101,675,703 ns`.
+
+This closes the Phase 1 gate. It validates routing correctness and efficiency
+at the gate load; it is not a certified maximum-throughput claim.
 
 ## [V1] - 2026-08-25
 

@@ -15,6 +15,8 @@
 namespace velocita {
 
 inline constexpr std::uint16_t kWireVersion = 1;
+inline constexpr std::uint16_t kResponseWireVersion = 3;
+inline constexpr std::uint32_t kResponseBenchmarkTimingExtension = 1U << 0U;
 inline constexpr std::size_t kEncodedCommandSize = 24;
 
 enum class CommandType : std::uint16_t {
@@ -37,10 +39,12 @@ struct Command {
 
 struct Response {
     ResponseStatus status{};
+    std::int32_t leader_id{-1};
     std::uint64_t request_id{};
     std::int64_t value{};
     std::int64_t term{};
     std::int64_t index{};
+    std::uint16_t wire_version{kResponseWireVersion};
 #ifdef VELOCITA_BENCHMARK_INSTRUMENTATION
     BenchmarkTiming benchmark;
 #endif

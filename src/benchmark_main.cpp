@@ -38,7 +38,8 @@ struct Options {
     std::filesystem::path output_dir{"benchmark-results"};
     std::filesystem::path prometheus_file;
     std::string aeron_dir{"/dev/shm/aeron-raft-benchmark"};
-    std::vector<std::string> request_channels;
+    std::vector<velocita::RequestTarget> request_targets;
+    std::vector<std::int32_t> members;
     std::string response_channel{"aeron:udp?endpoint=0.0.0.0:40101"};
     velocita::CommandType command{velocita::CommandType::increment};
     std::int64_t amount{};
@@ -55,8 +56,14 @@ struct Counters {
     std::uint64_t steady_timed_out{};
     std::uint64_t capacity_rejected{};
     std::uint64_t steady_capacity_rejected{};
+    std::uint64_t logical_commands_started{};
+    std::uint64_t steady_logical_commands_started{};
+    std::uint64_t transport_attempts{};
+    std::uint64_t steady_transport_attempts{};
     std::uint64_t not_leader_responses{};
     std::uint64_t steady_not_leader_responses{};
+    std::uint64_t leader_hint_protocol_errors{};
+    std::uint64_t steady_leader_hint_protocol_errors{};
     std::uint64_t duplicate_or_late_responses{};
     std::uint64_t invalid_responses{};
     std::uint64_t internal_error_responses{};
@@ -102,12 +109,13 @@ std::uint64_t parse_positive_u64(const std::string& value, const std::string& na
 
 Options parse_options(int argc, char** argv) {
     Options options;
-    options.request_channels = {
-        "aeron:udp?endpoint=127.0.0.1:40111",
-        "aeron:udp?endpoint=127.0.0.1:40112",
-        "aeron:udp?endpoint=127.0.0.1:40113",
+    options.request_targets = {
+        {1, "aeron:udp?endpoint=127.0.0.1:40111"},
+        {2, "aeron:udp?endpoint=127.0.0.1:40112"},
+        {3, "aeron:udp?endpoint=127.0.0.1:40113"},
     };
-    bool custom_request_channels = false;
+    options.members = {1, 2, 3};
+    bool custom_request_targets = false;
     for (int i = 1; i < argc; ++i) {
         const std::string key = argv[i];
         if (key == "--help") {
@@ -115,7 +123,8 @@ Options parse_options(int argc, char** argv) {
                 << "raft-bench [--warmup-seconds N] [--duration-seconds N] [--rate N] "
                    "[--max-in-flight N] [--timeout-ms N] [--output-dir PATH] "
                    "[--prometheus-file PATH] "
-                   "[--aeron-dir PATH] [--request-channel URI]... [--response-channel URI] "
+                   "[--aeron-dir PATH] [--members ID,ID,...] "
+                   "[--request-target ID=URI]... [--response-channel URI] "
                    "[--operation get|increment] [--amount N] [--idle-strategy busy|yield|sleep] "
                    "[--run-mode baseline|stall]\n";
             std::exit(0);
@@ -132,12 +141,13 @@ Options parse_options(int argc, char** argv) {
         else if (key == "--output-dir") options.output_dir = value;
         else if (key == "--prometheus-file") options.prometheus_file = value;
         else if (key == "--aeron-dir") options.aeron_dir = value;
-        else if (key == "--request-channel") {
-            if (!custom_request_channels) {
-                options.request_channels.clear();
-                custom_request_channels = true;
+        else if (key == "--members") options.members = velocita::parse_member_ids(value);
+        else if (key == "--request-target") {
+            if (!custom_request_targets) {
+                options.request_targets.clear();
+                custom_request_targets = true;
             }
-            options.request_channels.push_back(value);
+            options.request_targets.push_back(velocita::parse_request_target(value));
         }
         else if (key == "--response-channel") options.response_channel = value;
         else if (key == "--operation") {
@@ -160,7 +170,7 @@ Options parse_options(int argc, char** argv) {
         }
         else throw std::runtime_error("unknown option: " + key);
     }
-    if (options.request_channels.empty()) throw std::runtime_error("at least one request channel is required");
+    velocita::validate_request_targets(options.request_targets, options.members);
     const long double planned =
         (options.warmup_seconds + options.duration_seconds) * options.rate_per_second;
     if (planned > 5'000'000.0L) {
@@ -335,6 +345,7 @@ void publish_prometheus(const std::filesystem::path& run_file,
         std::pair{"timeout", counters.steady_timed_out},
         std::pair{"capacity_rejected", counters.steady_capacity_rejected},
         std::pair{"not_leader", counters.steady_not_leader_responses},
+        std::pair{"leader_hint_protocol_error", counters.steady_leader_hint_protocol_errors},
         std::pair{"back_pressured", counters.steady_offer_back_pressured},
         std::pair{"not_connected", counters.steady_offer_not_connected},
         std::pair{"invalid_response", counters.invalid_responses},
@@ -349,6 +360,18 @@ void publish_prometheus(const std::filesystem::path& run_file,
            << static_cast<double>(counters.steady_scheduled) / options.duration_seconds << '\n'
            << "velocita_benchmark_throughput_per_second{kind=\"completed\"} "
            << static_cast<double>(counters.steady_completed_ok) / options.duration_seconds << '\n'
+           << "# HELP velocita_benchmark_retry_routing Latest measured logical-command and transport-attempt counts.\n"
+           << "# TYPE velocita_benchmark_retry_routing gauge\n"
+           << "velocita_benchmark_retry_routing{kind=\"logical_commands_started\"} "
+           << counters.steady_logical_commands_started << '\n'
+           << "velocita_benchmark_retry_routing{kind=\"transport_attempts\"} "
+           << counters.steady_transport_attempts << '\n'
+           << "# HELP velocita_benchmark_retry_amplification Transport attempts per admitted logical command.\n"
+           << "# TYPE velocita_benchmark_retry_amplification gauge\n"
+           << "velocita_benchmark_retry_amplification "
+           << (counters.steady_logical_commands_started == 0 ? 0.0 :
+               static_cast<double>(counters.steady_transport_attempts) /
+               static_cast<double>(counters.steady_logical_commands_started)) << '\n'
            << "# HELP velocita_benchmark_latency_seconds Latest latency quantiles by bounded stage.\n"
            << "# TYPE velocita_benchmark_latency_seconds gauge\n";
     for (const auto& [stage, summary] : summaries) prometheus_distribution(output, stage, summary);
@@ -397,14 +420,14 @@ int main(int argc, char** argv) {
         failures.reserve(planned_samples);
         std::size_t deadline_cursor = 0;
         Counters counters;
-        std::size_t preferred_channel = 0;
+        velocita::LeaderRouter router(options.request_targets, options.members);
         bool have_unsent_requests = false;
-        velocita::AeronClientSession* session_pointer = nullptr;
         std::function<void(velocita::PendingRequest&)> retry_request;
 
         velocita::ClientSessionOptions session_options;
         session_options.aeron_dir = options.aeron_dir;
-        session_options.request_channels = options.request_channels;
+        session_options.request_targets = options.request_targets;
+        session_options.required_members = options.members;
         session_options.response_channel = options.response_channel;
 
         velocita::AeronClientSession session(
@@ -419,9 +442,16 @@ int main(int argc, char** argv) {
                     if (request->phase == velocita::BenchmarkPhase::steady) {
                         ++counters.steady_not_leader_responses;
                     }
-                    preferred_channel = (request->channel_index + 1) % session_pointer->channel_count();
-                    request->channel_index = preferred_channel;
-                    ++request->retry_count;
+                    const auto hint = router.observe(response);
+                    if (hint == velocita::LeaderHintResult::invalid) {
+                        ++counters.leader_hint_protocol_errors;
+                        if (request->phase == velocita::BenchmarkPhase::steady) {
+                            ++counters.steady_leader_hint_protocol_errors;
+                        }
+                    }
+                    request->channel_index = router.leader_id()
+                        ? router.preferred_target()
+                        : router.next_discovery_target(request->channel_index);
                     retry_request(*request);
                     return;
                 }
@@ -435,6 +465,16 @@ int main(int argc, char** argv) {
                     }
                     failures.push_back({request->request_id, request->intended_send_ns,
                                         request->phase, outcome});
+                    (void)pending.erase(response.request_id);
+                    return;
+                }
+                if (router.observe(response) == velocita::LeaderHintResult::invalid) {
+                    ++counters.leader_hint_protocol_errors;
+                    if (request->phase == velocita::BenchmarkPhase::steady) {
+                        ++counters.steady_leader_hint_protocol_errors;
+                    }
+                    failures.push_back({request->request_id, request->intended_send_ns,
+                                        request->phase, "invalid_leader_hint"});
                     (void)pending.erase(response.request_id);
                     return;
                 }
@@ -465,11 +505,9 @@ int main(int argc, char** argv) {
                     (void)steady.record(sample);
                     ++counters.steady_completed_ok;
                 }
-                preferred_channel = request->channel_index;
                 ++counters.completed_ok;
                 (void)pending.erase(response.request_id);
             });
-        session_pointer = &session;
 
         auto count_offer = [&](const std::int64_t result, const velocita::BenchmarkPhase phase) {
             if (result >= 0) ++counters.offer_success;
@@ -491,14 +529,20 @@ int main(int argc, char** argv) {
         retry_request = [&](velocita::PendingRequest& request) {
             const velocita::Command command{options.command, request.request_id, options.amount};
             const auto offer_started_ns = now_ns();
+            if (request.transport_attempts != 0) ++request.retry_count;
+            ++request.transport_attempts;
+            ++counters.transport_attempts;
+            if (request.phase == velocita::BenchmarkPhase::steady) {
+                ++counters.steady_transport_attempts;
+            }
             const auto result = session.offer(request.channel_index, command);
             count_offer(result, request.phase);
             if (result >= 0) {
                 if (request.actual_send_ns == 0) request.actual_send_ns = offer_started_ns;
                 request.needs_offer_retry = false;
             } else if (result == aeron::NOT_CONNECTED || result == aeron::PUBLICATION_CLOSED) {
-                request.channel_index = (request.channel_index + 1) % session.channel_count();
-                preferred_channel = request.channel_index;
+                router.mark_target_unavailable(request.channel_index);
+                request.channel_index = router.preferred_target();
                 request.needs_offer_retry = true;
                 have_unsent_requests = true;
             } else {
@@ -591,7 +635,7 @@ int main(int argc, char** argv) {
                     request.request_id = request_id;
                     request.intended_send_ns = intended_ns;
                     request.deadline_ns = intended_ns + timeout_ns;
-                    request.channel_index = preferred_channel;
+                    request.channel_index = router.preferred_target();
                     request.phase = intended_ns < warmup_end_ns
                         ? velocita::BenchmarkPhase::warmup : velocita::BenchmarkPhase::steady;
                     if (!pending.insert(request)) {
@@ -600,6 +644,8 @@ int main(int argc, char** argv) {
                         continue;
                     }
                     deadline_order.push_back(request_id);
+                    ++counters.logical_commands_started;
+                    if (steady_phase) ++counters.steady_logical_commands_started;
                     auto* inserted = pending.find(request_id);
                     retry_request(*inserted);
                 }
@@ -650,7 +696,7 @@ int main(int argc, char** argv) {
 
         std::ofstream summary(options.output_dir / "summary.json");
         if (!summary) throw std::runtime_error("open summary file failed");
-        summary << "{\n  \"schema_version\":1,\n"
+        summary << "{\n  \"schema_version\":2,\n"
                 << "  \"benchmark_instrumentation\":"
 #ifdef VELOCITA_BENCHMARK_INSTRUMENTATION
                 << "true,\n"
@@ -674,8 +720,15 @@ int main(int argc, char** argv) {
                 << ",\"steady_timed_out\":" << counters.steady_timed_out
                 << ",\"capacity_rejected\":" << counters.capacity_rejected
                 << ",\"steady_capacity_rejected\":" << counters.steady_capacity_rejected
+                << ",\"logical_commands_started\":" << counters.logical_commands_started
+                << ",\"steady_logical_commands_started\":" << counters.steady_logical_commands_started
+                << ",\"transport_attempts\":" << counters.transport_attempts
+                << ",\"steady_transport_attempts\":" << counters.steady_transport_attempts
                 << ",\"not_leader_responses\":" << counters.not_leader_responses
                 << ",\"steady_not_leader_responses\":" << counters.steady_not_leader_responses
+                << ",\"leader_hint_protocol_errors\":" << counters.leader_hint_protocol_errors
+                << ",\"steady_leader_hint_protocol_errors\":"
+                << counters.steady_leader_hint_protocol_errors
                 << ",\"duplicate_or_late_responses\":" << counters.duplicate_or_late_responses
                 << ",\"invalid_responses\":" << counters.invalid_responses
                 << ",\"internal_error_responses\":" << counters.internal_error_responses
@@ -699,6 +752,10 @@ int main(int argc, char** argv) {
                 << static_cast<double>(counters.steady_scheduled) / options.duration_seconds
                 << ",\"completed_per_second\":"
                 << static_cast<double>(counters.steady_completed_ok) / options.duration_seconds
+                << ",\"retry_amplification\":"
+                << (counters.steady_logical_commands_started == 0 ? 0.0 :
+                    static_cast<double>(counters.steady_transport_attempts) /
+                    static_cast<double>(counters.steady_logical_commands_started))
                 << "},\n"
                 << "  \"clock_call_pair\":";
         write_distribution(summary, clock_summary);

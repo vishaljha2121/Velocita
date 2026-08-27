@@ -20,6 +20,19 @@ std::string_view role_name(raft_server_t* server) {
     }
 }
 
+Response make_response(const ResponseStatus status, const std::int32_t leader_id,
+                       const std::uint64_t request_id, const std::int64_t value,
+                       const std::int64_t term, const std::int64_t index) {
+    Response response;
+    response.status = status;
+    response.leader_id = leader_id;
+    response.request_id = request_id;
+    response.value = value;
+    response.term = term;
+    response.index = index;
+    return response;
+}
+
 }  // namespace
 
 RaftNode::RaftNode(std::int32_t node_id, std::filesystem::path data_dir,
@@ -130,12 +143,13 @@ std::optional<Response> RaftNode::propose(const Command& command, const std::uin
 #endif
     assert_owner();
     if (!is_leader()) {
-        return Response{ResponseStatus::not_leader, command.request_id, fsm_.value(),
-                        raft_get_current_term(server_), raft_get_current_idx(server_)};
+        return make_response(ResponseStatus::not_leader, raft_get_current_leader(server_),
+                             command.request_id, fsm_.value(),
+                             raft_get_current_term(server_), raft_get_current_idx(server_));
     }
     if (const auto prior = fsm_.result_for(command.request_id)) {
-        return Response{ResponseStatus::ok, command.request_id, *prior,
-                        raft_get_current_term(server_), raft_get_commit_idx(server_)};
+        return make_response(ResponseStatus::ok, node_id_, command.request_id, *prior,
+                             raft_get_current_term(server_), raft_get_commit_idx(server_));
     }
     if (!pending_requests_.insert(command.request_id).second) return std::nullopt;
 #ifdef VELOCITA_BENCHMARK_INSTRUMENTATION
@@ -153,8 +167,9 @@ std::optional<Response> RaftNode::propose(const Command& command, const std::uin
     const int result = raft_recv_entry(server_, &entry, &raft_response);
     if (result == RAFT_ERR_NOT_LEADER) {
         pending_requests_.erase(command.request_id);
-        return Response{ResponseStatus::not_leader, command.request_id, fsm_.value(),
-                        raft_get_current_term(server_), raft_get_current_idx(server_)};
+        return make_response(ResponseStatus::not_leader, raft_get_current_leader(server_),
+                             command.request_id, fsm_.value(),
+                             raft_get_current_term(server_), raft_get_current_idx(server_));
     }
     if (result != 0) {
         pending_requests_.erase(command.request_id);
@@ -335,7 +350,8 @@ int RaftNode::apply_log(raft_server_t*, void* user_data, raft_entry_t* entry, ra
         const auto command = decode_command(bytes);
         const auto value = self.fsm_.apply(command);
         if (!self.restoring_ && self.pending_requests_.erase(command.request_id) != 0) {
-            Response response{ResponseStatus::ok, command.request_id, value, entry->term, index};
+            Response response = make_response(ResponseStatus::ok, self.node_id_,
+                                              command.request_id, value, entry->term, index);
 #ifdef VELOCITA_BENCHMARK_INSTRUMENTATION
             if (const auto timing = self.benchmark_trace_->complete(
                     command.request_id, benchmark_monotonic_nanoseconds())) {

@@ -102,17 +102,19 @@ Command decode_command(std::span<const std::byte> bytes) {
 std::vector<std::byte> encode_response(const Response& response) {
     std::vector<std::byte> out;
 #ifdef VELOCITA_BENCHMARK_INSTRUMENTATION
-    out.reserve(88);
+    out.reserve(96);
 #else
-    out.reserve(40);
+    out.reserve(48);
 #endif
     append_le(out, kResponseMagic);
-#ifdef VELOCITA_BENCHMARK_INSTRUMENTATION
-    append_le<std::uint16_t>(out, 2);
-#else
-    append_le(out, kWireVersion);
-#endif
+    append_le(out, kResponseWireVersion);
     append_le(out, static_cast<std::uint16_t>(response.status));
+#ifdef VELOCITA_BENCHMARK_INSTRUMENTATION
+    append_le(out, kResponseBenchmarkTimingExtension);
+#else
+    append_le<std::uint32_t>(out, 0);
+#endif
+    append_le(out, response.leader_id);
     append_le(out, response.request_id);
     append_le(out, response.value);
     append_le(out, response.term);
@@ -134,29 +136,49 @@ Response decode_response(std::span<const std::byte> bytes) {
         throw std::runtime_error("invalid response magic");
     }
     const auto version = read_le<std::uint16_t>(bytes, offset);
-#ifdef VELOCITA_BENCHMARK_INSTRUMENTATION
-    if (version != kWireVersion && version != 2) {
-#else
-    if (version != kWireVersion) {
-#endif
+    if (version != 1 && version != 2 && version != kResponseWireVersion) {
         throw std::runtime_error("unsupported response version");
     }
     Response response;
+    response.wire_version = version;
     response.status = static_cast<ResponseStatus>(read_le<std::uint16_t>(bytes, offset));
+    if (response.status != ResponseStatus::ok &&
+        response.status != ResponseStatus::not_leader &&
+        response.status != ResponseStatus::invalid_request &&
+        response.status != ResponseStatus::internal_error) {
+        throw std::runtime_error("unknown response status");
+    }
+    std::uint32_t extensions = 0;
+    if (version == kResponseWireVersion) {
+        extensions = read_le<std::uint32_t>(bytes, offset);
+        if ((extensions & ~kResponseBenchmarkTimingExtension) != 0) {
+            throw std::runtime_error("unsupported response extension");
+        }
+        response.leader_id = read_le<std::int32_t>(bytes, offset);
+    }
     response.request_id = read_le<std::uint64_t>(bytes, offset);
     response.value = read_le<std::int64_t>(bytes, offset);
     response.term = read_le<std::int64_t>(bytes, offset);
     response.index = read_le<std::int64_t>(bytes, offset);
+    if (version == 2 || (extensions & kResponseBenchmarkTimingExtension) != 0) {
+        const auto flags = read_le<std::uint64_t>(bytes, offset);
+        const auto ingress_to_admission_ns = read_le<std::uint64_t>(bytes, offset);
+        const auto local_wal_append_ns = read_le<std::uint64_t>(bytes, offset);
+        const auto quorum_append_ns = read_le<std::uint64_t>(bytes, offset);
+        const auto admission_to_commit_ns = read_le<std::uint64_t>(bytes, offset);
+        const auto commit_to_apply_ns = read_le<std::uint64_t>(bytes, offset);
 #ifdef VELOCITA_BENCHMARK_INSTRUMENTATION
-    if (version == 2) {
-        response.benchmark.flags = read_le<std::uint64_t>(bytes, offset);
-        response.benchmark.ingress_to_admission_ns = read_le<std::uint64_t>(bytes, offset);
-        response.benchmark.local_wal_append_ns = read_le<std::uint64_t>(bytes, offset);
-        response.benchmark.quorum_append_ns = read_le<std::uint64_t>(bytes, offset);
-        response.benchmark.admission_to_commit_ns = read_le<std::uint64_t>(bytes, offset);
-        response.benchmark.commit_to_apply_ns = read_le<std::uint64_t>(bytes, offset);
-    }
+        response.benchmark = {flags, ingress_to_admission_ns, local_wal_append_ns,
+                              quorum_append_ns, admission_to_commit_ns, commit_to_apply_ns};
+#else
+        (void)flags;
+        (void)ingress_to_admission_ns;
+        (void)local_wal_append_ns;
+        (void)quorum_append_ns;
+        (void)admission_to_commit_ns;
+        (void)commit_to_apply_ns;
 #endif
+    }
     require_consumed(bytes, offset);
     return response;
 }
