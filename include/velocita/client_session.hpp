@@ -1,6 +1,6 @@
 #pragma once
 
-#include "velocita/wire.hpp"
+#include "velocita/client_routing.hpp"
 
 #include <chrono>
 #include <cstddef>
@@ -14,7 +14,8 @@ namespace velocita {
 
 struct ClientSessionOptions {
     std::string aeron_dir{"/dev/shm/aeron-raft-client"};
-    std::vector<std::string> request_channels;
+    std::vector<RequestTarget> request_targets;
+    std::vector<std::int32_t> required_members;
     std::string response_channel{"aeron:udp?endpoint=0.0.0.0:40101"};
     std::int32_t request_stream{1001};
     std::int32_t response_stream{1002};
@@ -34,6 +35,7 @@ public:
     [[nodiscard]] bool is_connected(std::size_t channel_index) const;
     [[nodiscard]] std::size_t channel_count() const noexcept;
     [[nodiscard]] const std::string& channel(std::size_t channel_index) const;
+    [[nodiscard]] std::int32_t node_id(std::size_t channel_index) const;
 
 private:
     struct Impl;

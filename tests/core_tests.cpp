@@ -1,20 +1,61 @@
+#include "velocita/client_routing.hpp"
 #include "velocita/raft_node.hpp"
 #include "velocita/storage.hpp"
 #include "velocita/wire.hpp"
 
 #include <chrono>
+#include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <iostream>
 #include <iterator>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 namespace {
 
 void require(bool condition, const std::string& message) {
     if (!condition) throw std::runtime_error(message);
+}
+
+template <typename Function>
+void require_throws(Function&& function, const std::string& message) {
+    try {
+        function();
+    } catch (const std::exception&) {
+        return;
+    }
+    throw std::runtime_error(message);
+}
+
+template <typename T>
+void append_test_le(std::vector<std::byte>& bytes, T value) {
+    using U = std::make_unsigned_t<T>;
+    const auto bits = static_cast<U>(value);
+    for (std::size_t index = 0; index < sizeof(T); ++index) {
+        bytes.push_back(static_cast<std::byte>((bits >> (index * 8U)) & 0xFFU));
+    }
+}
+
+std::vector<std::byte> legacy_response(const std::uint16_t version,
+                                       const velocita::ResponseStatus status) {
+    std::vector<std::byte> bytes;
+    append_test_le<std::uint32_t>(bytes, 0x31505352U);
+    append_test_le(bytes, version);
+    append_test_le(bytes, static_cast<std::uint16_t>(status));
+    append_test_le<std::uint64_t>(bytes, 42);
+    append_test_le<std::int64_t>(bytes, 9);
+    append_test_le<std::int64_t>(bytes, 3);
+    append_test_le<std::int64_t>(bytes, 8);
+    if (version == 2) {
+        for (std::uint64_t timing = 10; timing <= 60; timing += 10) {
+            append_test_le(bytes, timing);
+        }
+    }
+    return bytes;
 }
 
 void elect(velocita::RaftNode& node) {
@@ -32,14 +73,22 @@ void test_wire() {
                 decoded_fixed.amount == -7,
             "fixed command wire round trip failed");
 
-    velocita::Response response{velocita::ResponseStatus::ok, 42, 9, 3, 8};
+    velocita::Response response{velocita::ResponseStatus::ok, 2, 42, 9, 3, 8};
 #ifdef VELOCITA_BENCHMARK_INSTRUMENTATION
     response.benchmark = {velocita::kBenchmarkTimingValid, 10, 20, 30, 40, 50};
 #endif
     const auto decoded_response = velocita::decode_response(velocita::encode_response(response));
     require(decoded_response.status == response.status && decoded_response.value == 9 &&
+                decoded_response.leader_id == 2 && decoded_response.request_id == 42 &&
                 decoded_response.term == 3 && decoded_response.index == 8,
             "response wire round trip failed");
+    require(velocita::encode_response(response).size() ==
+#ifdef VELOCITA_BENCHMARK_INSTRUMENTATION
+                96,
+#else
+                48,
+#endif
+            "V3 response has an unexpected encoded size");
 #ifdef VELOCITA_BENCHMARK_INSTRUMENTATION
     require(decoded_response.benchmark.flags == velocita::kBenchmarkTimingValid &&
                 decoded_response.benchmark.ingress_to_admission_ns == 10 &&
@@ -50,6 +99,56 @@ void test_wire() {
             "benchmark response timing wire round trip failed");
 #endif
 
+    const auto decoded_v1 = velocita::decode_response(
+        legacy_response(1, velocita::ResponseStatus::not_leader));
+    require(decoded_v1.status == velocita::ResponseStatus::not_leader &&
+                decoded_v1.wire_version == 1 && decoded_v1.leader_id == -1 &&
+                decoded_v1.request_id == 42 &&
+                decoded_v1.value == 9 && decoded_v1.term == 3 && decoded_v1.index == 8,
+            "legacy V1 response compatibility failed");
+    const auto decoded_v2 = velocita::decode_response(
+        legacy_response(2, velocita::ResponseStatus::ok));
+    require(decoded_v2.status == velocita::ResponseStatus::ok &&
+                decoded_v2.wire_version == 2 && decoded_v2.leader_id == -1 &&
+                decoded_v2.request_id == 42,
+            "legacy V2 response compatibility failed");
+
+    for (const auto status : {velocita::ResponseStatus::ok,
+                              velocita::ResponseStatus::not_leader,
+                              velocita::ResponseStatus::invalid_request,
+                              velocita::ResponseStatus::internal_error}) {
+        response.status = status;
+        require(velocita::decode_response(velocita::encode_response(response)).status == status,
+                "V3 response status round trip failed");
+    }
+
+    auto malformed = velocita::encode_response(response);
+    malformed.pop_back();
+    require_throws([&] { (void)velocita::decode_response(malformed); },
+                   "truncated V3 response was accepted");
+    malformed = velocita::encode_response(response);
+    malformed[0] = std::byte{0};
+    require_throws([&] { (void)velocita::decode_response(malformed); },
+                   "bad response magic was accepted");
+    malformed = velocita::encode_response(response);
+    malformed[4] = std::byte{99};
+    malformed[5] = std::byte{0};
+    require_throws([&] { (void)velocita::decode_response(malformed); },
+                   "unsupported response version was accepted");
+    malformed = velocita::encode_response(response);
+    malformed[6] = std::byte{99};
+    malformed[7] = std::byte{0};
+    require_throws([&] { (void)velocita::decode_response(malformed); },
+                   "unknown response status was accepted");
+    malformed = velocita::encode_response(response);
+    malformed[11] = std::byte{0x80};
+    require_throws([&] { (void)velocita::decode_response(malformed); },
+                   "unknown response extension was accepted");
+    malformed = velocita::encode_response(response);
+    malformed.push_back(std::byte{0});
+    require_throws([&] { (void)velocita::decode_response(malformed); },
+                   "V3 response trailing data was accepted");
+
     velocita::PeerMessage peer{1, 2, velocita::AppendEntries{
         4, 7, 3, 6, {{4, 99, 0, velocita::encode_command(command)}}}};
     const auto decoded_peer = velocita::decode_peer_message(velocita::encode_peer_message(peer));
@@ -58,6 +157,89 @@ void test_wire() {
                 append.entries.size() == 1 &&
                 velocita::decode_command(append.entries.front().payload).request_id == 42,
             "peer wire round trip failed");
+}
+
+void test_client_routing() {
+    const auto parsed = velocita::parse_request_target(
+        "2=aeron:udp?endpoint=127.0.0.1:40112|term-length=65536");
+    require(parsed.node_id == 2 &&
+                parsed.channel == "aeron:udp?endpoint=127.0.0.1:40112|term-length=65536",
+            "request target parser damaged an Aeron URI containing equals signs");
+    require_throws([] { (void)velocita::parse_request_target("aeron:udp"); },
+                   "request target without node ID was accepted");
+    require_throws([] { (void)velocita::parse_request_target("0=aeron:udp"); },
+                   "non-positive request target node ID was accepted");
+    require_throws([] { (void)velocita::parse_member_ids("1,2,2"); },
+                   "duplicate Raft member was accepted");
+    require_throws([] { (void)velocita::parse_member_ids("1,2,"); },
+                   "trailing empty Raft member was accepted");
+
+    const std::vector<velocita::RequestTarget> targets{
+        {1, "node-1"}, {2, "node-2"}, {3, "node-3"}};
+    velocita::validate_request_targets(targets, std::vector<std::int32_t>{1, 2, 3});
+    require_throws([&] {
+        velocita::validate_request_targets(
+            std::vector<velocita::RequestTarget>{{1, "node-1"}, {1, "node-x"}});
+    }, "duplicate request target node ID was accepted");
+    require_throws([&] {
+        velocita::validate_request_targets(
+            std::vector<velocita::RequestTarget>{{1, "same"}, {2, "same"}});
+    }, "duplicate request target channel was accepted");
+    require_throws([&] {
+        velocita::validate_request_targets(
+            std::vector<velocita::RequestTarget>{{1, "node-1"}, {2, "node-2"}},
+            std::vector<std::int32_t>{1, 2, 3});
+    }, "missing member request target was accepted");
+    require_throws([&] {
+        velocita::validate_request_targets(targets, std::vector<std::int32_t>{1, 2});
+    }, "non-member request target was accepted");
+
+    velocita::LeaderRouter router(targets, {1, 2, 3});
+    require(router.preferred_target() == 0 && !router.leader_id(),
+            "router did not start in discovery mode");
+    require(router.observe({velocita::ResponseStatus::not_leader, 2, 10, 0, 5, 0}) ==
+                velocita::LeaderHintResult::updated &&
+                router.leader_id() == 2 && router.preferred_target() == 1,
+            "router did not accept a valid leader hint");
+    require(router.observe({velocita::ResponseStatus::not_leader, 3, 10, 0, 4, 0}) ==
+                velocita::LeaderHintResult::stale && router.leader_id() == 2,
+            "stale leader hint replaced newer routing knowledge");
+    require(router.observe({velocita::ResponseStatus::not_leader, 99, 10, 0, 5, 0}) ==
+                velocita::LeaderHintResult::invalid && router.leader_id() == 2,
+            "same-term non-member hint damaged valid routing knowledge");
+    require(router.observe({velocita::ResponseStatus::not_leader, 99, 10, 0, 6, 0}) ==
+                velocita::LeaderHintResult::invalid && !router.leader_id() &&
+                router.observed_term() == 6,
+            "new-term invalid hint did not invalidate stale leadership");
+    require(router.observe({velocita::ResponseStatus::ok, 3, 10, 0, 7, 0}) ==
+                velocita::LeaderHintResult::confirmed && router.leader_id() == 3,
+            "successful response did not confirm its leader");
+    router.mark_target_unavailable(router.preferred_target());
+    require(!router.leader_id() && router.preferred_target() == 0,
+            "unavailable leader target was not invalidated");
+    require(router.observe({velocita::ResponseStatus::not_leader, -1, 10, 0, 8, 0}) ==
+                velocita::LeaderHintResult::unknown && !router.leader_id(),
+            "unknown leader hint was not represented explicitly");
+    const auto legacy_ok = velocita::decode_response(
+        legacy_response(1, velocita::ResponseStatus::ok));
+    require(router.observe(legacy_ok) == velocita::LeaderHintResult::stale,
+            "legacy response with an older term was not treated as stale");
+    velocita::LeaderRouter legacy_router(targets, {1, 2, 3});
+    require(legacy_router.observe(legacy_ok) == velocita::LeaderHintResult::unknown,
+            "legacy successful response was rejected instead of accepted without a hint");
+    velocita::Response invalid_v3_ok{velocita::ResponseStatus::ok, -1, 11, 0, 9, 0};
+    require(legacy_router.observe(invalid_v3_ok) == velocita::LeaderHintResult::invalid,
+            "V3 successful response without a leader ID was accepted");
+    velocita::LeaderRouter zero_id_router(targets, {1, 2, 3});
+    require(zero_id_router.observe(
+                {velocita::ResponseStatus::not_leader, 2, 12, 0, 2, 0}) ==
+                velocita::LeaderHintResult::updated,
+            "zero-ID test router did not establish a baseline leader");
+    require(zero_id_router.observe(
+                {velocita::ResponseStatus::not_leader, 0, 12, 0, 3, 0}) ==
+                velocita::LeaderHintResult::invalid && !zero_id_router.leader_id() &&
+                zero_id_router.observed_term() == 3,
+            "newer term with an invalid zero leader retained stale leadership");
 }
 
 void route_messages(std::vector<std::unique_ptr<velocita::RaftNode>>& nodes) {
@@ -93,6 +275,19 @@ void test_three_node_cluster(const std::filesystem::path& root) {
         }
     }
     require(leader != nullptr, "three-node cluster did not elect a leader");
+    for (int round = 0; round < 20; ++round) {
+        for (auto& node : nodes) node->tick(10);
+        route_messages(nodes);
+    }
+    const auto leader_id = leader->status().node_id;
+    for (auto& node : nodes) {
+        if (node.get() == leader) continue;
+        const auto rejection = node->propose({velocita::CommandType::get, 8999, 0});
+        require(rejection && rejection->status == velocita::ResponseStatus::not_leader &&
+                    rejection->leader_id == leader_id,
+                "follower did not return the current leader ID");
+        break;
+    }
     require(!leader->propose({velocita::CommandType::increment, 9001, 11}),
             "new multi-node proposal completed before quorum acknowledgement");
 
@@ -108,6 +303,7 @@ void test_three_node_cluster(const std::filesystem::path& root) {
         if (converged) {
             const auto completions = leader->take_completed_responses();
             require(completions.size() == 1 && completions.front().request_id == 9001 &&
+                        completions.front().leader_id == leader_id &&
                         completions.front().value == 11,
                     "leader did not complete the client request after quorum commit");
             return;
@@ -147,6 +343,7 @@ void test_restart_and_dedup(const std::filesystem::path& data_dir) {
 int main() {
     try {
         test_wire();
+        test_client_routing();
         const auto unique = std::chrono::steady_clock::now().time_since_epoch().count();
         const auto data_dir = std::filesystem::temp_directory_path() /
                               ("velocita-raft-test-" + std::to_string(unique));

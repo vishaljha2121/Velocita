@@ -233,9 +233,10 @@ prepare_benchmark_cluster() {
         "$image" \
         get \
         --aeron-dir /dev/shm/aeron-benchmark-probe \
-        --request-channel "aeron:udp?endpoint=127.0.0.1:40111" \
-        --request-channel "aeron:udp?endpoint=127.0.0.1:40112" \
-        --request-channel "aeron:udp?endpoint=127.0.0.1:40113" \
+        --members 1,2,3 \
+        --request-target "1=aeron:udp?endpoint=127.0.0.1:40111" \
+        --request-target "2=aeron:udp?endpoint=127.0.0.1:40112" \
+        --request-target "3=aeron:udp?endpoint=127.0.0.1:40113" \
         --response-channel "aeron:udp?endpoint=0.0.0.0:40101" 2>&1)"
     probe_status=$?
     set -e

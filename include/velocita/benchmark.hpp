@@ -18,6 +18,7 @@ struct PendingRequest {
     std::uint64_t actual_send_ns{};
     std::uint64_t deadline_ns{};
     std::size_t channel_index{};
+    std::uint32_t transport_attempts{};
     std::uint32_t retry_count{};
     BenchmarkPhase phase{BenchmarkPhase::warmup};
     bool needs_offer_retry{};

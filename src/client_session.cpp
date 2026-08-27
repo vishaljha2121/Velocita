@@ -22,12 +22,10 @@ struct AeronClientSession::Impl {
               response_handler(decode_response(
                   std::span<const std::byte>(begin, static_cast<std::size_t>(length))));
           }) {
-        if (options.request_channels.empty()) {
-            throw std::invalid_argument("an Aeron client session needs at least one request channel");
-        }
-        requests.reserve(options.request_channels.size());
-        for (const auto& request_channel : options.request_channels) {
-            requests.push_back(aeron.add_publication(request_channel, options.request_stream));
+        validate_request_targets(options.request_targets, options.required_members);
+        requests.reserve(options.request_targets.size());
+        for (const auto& request_target : options.request_targets) {
+            requests.push_back(aeron.add_publication(request_target.channel, options.request_stream));
         }
     }
 
@@ -66,8 +64,13 @@ std::size_t AeronClientSession::channel_count() const noexcept {
 }
 
 const std::string& AeronClientSession::channel(const std::size_t channel_index) const {
-    if (channel_index >= impl_->options.request_channels.size()) throw std::out_of_range("request channel index");
-    return impl_->options.request_channels[channel_index];
+    if (channel_index >= impl_->options.request_targets.size()) throw std::out_of_range("request channel index");
+    return impl_->options.request_targets[channel_index].channel;
+}
+
+std::int32_t AeronClientSession::node_id(const std::size_t channel_index) const {
+    if (channel_index >= impl_->options.request_targets.size()) throw std::out_of_range("request channel index");
+    return impl_->options.request_targets[channel_index].node_id;
 }
 
 }  // namespace velocita

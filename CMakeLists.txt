@@ -58,6 +58,7 @@ target_include_directories(willemt_raft PUBLIC ${willemt_raft_SOURCE_DIR}/includ
 
 add_library(velocita_core
     src/benchmark_timing.cpp
+    src/client_routing.cpp
     src/counter_fsm.cpp
     src/raft_node.cpp
     src/storage.cpp

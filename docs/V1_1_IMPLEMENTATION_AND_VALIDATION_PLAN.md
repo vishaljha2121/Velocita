@@ -1,6 +1,7 @@
 # V1.1 implementation and validation plan
 
-Status: approved engineering plan; implementation has not started.
+Status: approved engineering plan; Phase 1 is implemented on its stage branch
+and awaits Raspberry Pi ARM64 validation before its phase gate is closed.
 
 Release branch: `release/v1.1`
 
@@ -255,6 +256,24 @@ suite ID, arbitrary error text, and channel URI are prohibited as Prometheus
 labels because they create unbounded cardinality.
 
 ## 7. Phase 1: versioned leader-aware routing
+
+Implementation checkpoint, 2026-08-27:
+
+- implemented the V3 leader-aware response and V1/V2 decoding compatibility;
+- implemented explicit member-to-Aeron-target validation and a term-aware
+  client router;
+- migrated the production client, benchmark driver, and deployment client
+  commands to explicit `ID=URI` request targets;
+- added exact logical-command, transport-attempt, and retry-amplification
+  benchmark evidence; and
+- passed production and benchmark-instrumented native tests plus a three-node
+  macOS loopback integration test.
+
+The loopback test reached a leader in two attempts from a deliberately selected
+follower, then completed all 25 measured benchmark commands with 25 transport
+attempts and retry amplification `1.00`. This is development evidence, not the
+Raspberry Pi phase-acceptance result. ARM64 image build, follower-first routing,
+same-ID behavior, and stable-leader measurement on the Pi remain required.
 
 ### 7.1 Objective
 
