@@ -1,7 +1,7 @@
 # V1.1 implementation and validation plan
 
-Status: approved engineering plan; Phase 1 is implemented on its stage branch
-and awaits Raspberry Pi ARM64 validation before its phase gate is closed.
+Status: approved engineering plan; Phase 1 was accepted on Raspberry Pi ARM64
+on 2026-08-27. Phase 2 has not started.
 
 Release branch: `release/v1.1`
 
@@ -257,7 +257,7 @@ labels because they create unbounded cardinality.
 
 ## 7. Phase 1: versioned leader-aware routing
 
-Implementation checkpoint, 2026-08-27:
+Acceptance checkpoint, 2026-08-27:
 
 - implemented the V3 leader-aware response and V1/V2 decoding compatibility;
 - implemented explicit member-to-Aeron-target validation and a term-aware
@@ -266,14 +266,24 @@ Implementation checkpoint, 2026-08-27:
   commands to explicit `ID=URI` request targets;
 - added exact logical-command, transport-attempt, and retry-amplification
   benchmark evidence; and
-- passed production and benchmark-instrumented native tests plus a three-node
-  macOS loopback integration test.
+- passed production and benchmark-instrumented native tests plus three-node
+  macOS and Raspberry Pi ARM64 integration tests.
 
 The loopback test reached a leader in two attempts from a deliberately selected
 follower, then completed all 25 measured benchmark commands with 25 transport
-attempts and retry amplification `1.00`. This is development evidence, not the
-Raspberry Pi phase-acceptance result. ARM64 image build, follower-first routing,
-same-ID behavior, and stable-leader measurement on the Pi remain required.
+attempts and retry amplification `1.00`.
+
+The Raspberry Pi gate rebuilt both production and benchmark-instrumented ARM64
+images with all three test executables passing. A follower-first increment
+reached leader 3 in two attempts. Repeating request ID
+`1787831360569930796` returned the same counter value `20` and log index `35`,
+proving that redirect and retry did not duplicate either application or log
+admission. The stable-leader measured window admitted 75 logical commands,
+made 75 transport attempts, completed all 75, recorded zero timeouts and zero
+leader-hint protocol errors, and produced retry amplification `1.00`. The
+rolling follower-first/leader-last deployment retained quorum and restored all
+three production services after the isolated benchmark run. The Phase 1 gate
+is closed.
 
 ### 7.1 Objective
 

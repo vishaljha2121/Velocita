@@ -144,7 +144,7 @@ They belong in bounded evidence files to avoid unbounded Prometheus cardinality.
 
 ### Implemented changes
 
-#### Stage 1 development checkpoint - leader-aware routing
+#### Stage 1 accepted - leader-aware routing
 
 - Added response wire version 3 with explicit extension flags, `leader_id`, and
   term-aware routing information. The decoder continues to accept V1 production
@@ -164,8 +164,7 @@ They belong in bounded evidence files to avoid unbounded Prometheus cardinality.
   transport attempts. Summary schema 2 and Prometheus evidence now report
   retry amplification without adding work to the Raft node owner loop.
 
-This is an implementation checkpoint, not a completed Phase 1 acceptance
-claim. Raspberry Pi ARM64 validation remains outstanding.
+Phase 1 passed its Raspberry Pi ARM64 acceptance gate on 2026-08-27.
 
 ### V1.1 validation results
 
@@ -181,8 +180,28 @@ Local development evidence on 2026-08-27:
   retry amplification `1.00`. One discovery retry occurred during warm-up.
 
 These results validate the development implementation and test harness. They do
-not close the Phase 1 gate until the rebuilt ARM64 image passes the corresponding
-tests on the Raspberry Pi.
+not substitute for target-hardware validation.
+
+Raspberry Pi ARM64 acceptance evidence on 2026-08-27:
+
+- the production candidate image `e2b3cb3c5c10` and benchmark-instrumented
+  candidate image `53913e4eeec0` each built with all three tests passing;
+- a follower-first/leader-last rolling upgrade preserved quorum, caught both
+  followers up before leader replacement, and restored three active services;
+- the fully upgraded cluster elected node 3 in term 81 and all three voters
+  ran the production candidate image;
+- request ID `1787831360569930796` reached follower 1 and then leader 3 in two
+  attempts, incrementing the counter from 19 to 20 at log index 35;
+- repeating that exact request ID returned value 20 and index 35 in two
+  attempts, demonstrating at-most-once application and no duplicate log
+  admission; and
+- benchmark suite `20260827T115818Z` completed 75 of 75 measured commands with
+  75 transport attempts, zero timeouts, zero capacity rejections, zero invalid
+  leader hints, retry amplification `1.00`, p50 `46,016,965 ns`, and p99
+  `101,675,703 ns`.
+
+This closes the Phase 1 gate. It validates routing correctness and efficiency
+at the gate load; it is not a certified maximum-throughput claim.
 
 ## [V1] - 2026-08-25
 
