@@ -98,13 +98,13 @@ all_nodes_converged() {
             return value
         }
         /^velocita_metrics_writer_active\{/ { active[node_id($0)] = $2 }
-        /^velocita_raft_log_current_index\{/ { log[node_id($0)] = $2 }
+        /^velocita_raft_log_current_index\{/ { current_index[node_id($0)] = $2 }
         /^velocita_raft_commit_index\{/ { commit[node_id($0)] = $2 }
         /^velocita_raft_applied_index\{/ { applied[node_id($0)] = $2 }
         END {
             for (id = 1; id <= 3; id++)
-                if (active[id] != 1 || !(id in log) || !(id in commit) || !(id in applied)) exit 1
-            if (log[1] != log[2] || log[2] != log[3]) exit 1
+                if (active[id] != 1 || !(id in current_index) || !(id in commit) || !(id in applied)) exit 1
+            if (current_index[1] != current_index[2] || current_index[2] != current_index[3]) exit 1
             if (commit[1] != commit[2] || commit[2] != commit[3]) exit 1
             if (applied[1] != applied[2] || applied[2] != applied[3]) exit 1
         }
