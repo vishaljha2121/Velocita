@@ -9,6 +9,10 @@ warmup_seconds=10
 duration_seconds=60
 max_in_flight=8192
 timeout_ms=3000
+retry_base_ms=5
+retry_cap_ms=250
+response_timeout_ms=250
+unconfirmed_admission_limit=1
 idle_strategy=yield
 cpu_placement=current
 stall_every=0
@@ -113,6 +117,10 @@ trap cleanup EXIT INT TERM
     echo "duration_seconds=${duration_seconds}"
     echo "max_in_flight=${max_in_flight}"
     echo "timeout_ms=${timeout_ms}"
+    echo "retry_base_ms=${retry_base_ms}"
+    echo "retry_cap_ms=${retry_cap_ms}"
+    echo "response_timeout_ms=${response_timeout_ms}"
+    echo "unconfirmed_admission_limit=${unconfirmed_admission_limit}"
     echo "idle_strategy=${idle_strategy}"
     echo "cpu_placement=${cpu_placement}"
     echo "run_mode=${run_mode}"
@@ -284,6 +292,10 @@ for rate in $rates; do
             --rate "$rate" \
             --max-in-flight "$max_in_flight" \
             --timeout-ms "$timeout_ms" \
+            --retry-base-ms "$retry_base_ms" \
+            --retry-cap-ms "$retry_cap_ms" \
+            --response-timeout-ms "$response_timeout_ms" \
+            --unconfirmed-admission-limit "$unconfirmed_admission_limit" \
             --idle-strategy "$idle_strategy" \
             --operation increment \
             --amount 0 \

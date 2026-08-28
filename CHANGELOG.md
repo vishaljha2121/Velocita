@@ -166,6 +166,42 @@ They belong in bounded evidence files to avoid unbounded Prometheus cardinality.
 
 Phase 1 passed its Raspberry Pi ARM64 acceptance gate on 2026-08-27.
 
+#### Stage 2 candidate - bounded recovery and admission control
+
+- Added explicit client leader-knowledge states: `unknown`, `suspect`, and
+  `known`. A valid redirect is suspect until an `ok` response confirms the
+  leader for the observed term.
+- Added a pure monotonic recovery policy with deterministic exponential jitter
+  between a positive 5 ms floor and a 250 ms cap. A retry never runs at or
+  after its command deadline.
+- Added a 250 ms response-silence deadline because successful local Aeron
+  publication does not prove remote receipt, quorum commit, or response. A
+  silent route becomes unknown and discovery resumes with the same request ID.
+- Added an unconfirmed-leadership admission limit of one command and a globally
+  paced discovery probe. Further open-loop demand is recorded as explicit
+  leader-unknown admission rejection rather than hidden by pausing the load
+  generator.
+- Extended pending-command state with last target and next retry time while
+  retaining the original request ID for every transport attempt.
+- Added benchmark summary schema 3 evidence for discovery, admission rejection,
+  retry counts, pending high-watermark, leader state, and exactly-one terminal
+  accounting. Failure rows now retain attempts, last target, and leader state.
+- Added a one-command Pi recovery runner covering leader failover under demand,
+  an explicit leaderless/quorum-loss window, bounded recovery, and same-ID
+  exactly-once resolution.
+
+The candidate passes production and benchmark-instrumented native tests and a
+15-command three-node macOS smoke run at retry amplification `1.00`. Stage 2 is
+not accepted until the Raspberry Pi recovery runner passes and its immutable
+evidence is recorded here.
+
+A local leader-removal diagnostic remained bounded—40 of 40 terminal outcomes,
+pending high-watermark 2, 58 attempts for 12 admitted commands—but the two
+remaining voters did not elect before the eight-second window ended. It
+therefore produced 28 explicit admission rejections, 3 timeouts, amplification
+`4.83`, and final leader state unknown. This is retained as failed recovery
+evidence, not presented as a pass or throughput result.
+
 ### V1.1 validation results
 
 Local development evidence on 2026-08-27:

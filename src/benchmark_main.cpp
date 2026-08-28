@@ -1,4 +1,5 @@
 #include "velocita/benchmark.hpp"
+#include "velocita/client_recovery.hpp"
 #include "velocita/client_session.hpp"
 #include "velocita/wire.hpp"
 
@@ -35,6 +36,10 @@ struct Options {
     std::uint64_t rate_per_second{100};
     std::size_t max_in_flight{4096};
     std::uint64_t timeout_ms{2000};
+    std::uint64_t retry_base_ms{5};
+    std::uint64_t retry_cap_ms{250};
+    std::uint64_t response_timeout_ms{250};
+    std::size_t unconfirmed_admission_limit{1};
     std::filesystem::path output_dir{"benchmark-results"};
     std::filesystem::path prometheus_file;
     std::string aeron_dir{"/dev/shm/aeron-raft-benchmark"};
@@ -56,17 +61,27 @@ struct Counters {
     std::uint64_t steady_timed_out{};
     std::uint64_t capacity_rejected{};
     std::uint64_t steady_capacity_rejected{};
+    std::uint64_t admission_rejected_leader_unknown{};
+    std::uint64_t steady_admission_rejected_leader_unknown{};
+    std::uint64_t discovery_probe_attempts{};
+    std::uint64_t steady_discovery_probe_attempts{};
     std::uint64_t logical_commands_started{};
     std::uint64_t steady_logical_commands_started{};
     std::uint64_t transport_attempts{};
     std::uint64_t steady_transport_attempts{};
+    std::uint64_t retries{};
+    std::uint64_t steady_retries{};
     std::uint64_t not_leader_responses{};
     std::uint64_t steady_not_leader_responses{};
     std::uint64_t leader_hint_protocol_errors{};
     std::uint64_t steady_leader_hint_protocol_errors{};
     std::uint64_t duplicate_or_late_responses{};
     std::uint64_t invalid_responses{};
+    std::uint64_t steady_invalid_responses{};
     std::uint64_t internal_error_responses{};
+    std::uint64_t steady_internal_error_responses{};
+    std::uint64_t terminal_protocol_errors{};
+    std::uint64_t steady_terminal_protocol_errors{};
     std::uint64_t offer_success{};
     std::uint64_t offer_not_connected{};
     std::uint64_t offer_back_pressured{};
@@ -81,6 +96,7 @@ struct Counters {
     std::uint64_t steady_offer_max_position{};
     std::uint64_t steady_offer_failed{};
     std::uint64_t internal_timing_samples{};
+    std::uint64_t pending_high_watermark{};
 };
 
 struct FailureRecord {
@@ -88,11 +104,49 @@ struct FailureRecord {
     std::uint64_t intended_send_ns{};
     velocita::BenchmarkPhase phase{};
     std::string_view outcome;
+    std::uint32_t transport_attempts{};
+    std::int32_t last_target_node_id{-1};
+    velocita::LeaderKnowledgeState leader_state{velocita::LeaderKnowledgeState::unknown};
 };
+
+std::uint64_t terminal_outcomes(const Counters& counters, const bool steady) noexcept {
+    if (steady) {
+        return counters.steady_completed_ok + counters.steady_timed_out +
+               counters.steady_capacity_rejected +
+               counters.steady_admission_rejected_leader_unknown +
+               counters.steady_invalid_responses + counters.steady_internal_error_responses +
+               counters.steady_terminal_protocol_errors;
+    }
+    return counters.completed_ok + counters.timed_out + counters.capacity_rejected +
+           counters.admission_rejected_leader_unknown + counters.invalid_responses +
+           counters.internal_error_responses + counters.terminal_protocol_errors;
+}
 
 std::uint64_t now_ns() noexcept {
     return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
         Clock::now().time_since_epoch()).count());
+}
+
+std::uint64_t milliseconds_to_ns(const std::uint64_t value, const std::string& name) {
+    constexpr std::uint64_t scale = 1'000'000ULL;
+    if (value > std::numeric_limits<std::uint64_t>::max() / scale) {
+        throw std::runtime_error(name + " is too large");
+    }
+    return value * scale;
+}
+
+std::uint64_t seconds_to_ns(const double value, const std::string& name) {
+    constexpr long double scale = 1'000'000'000.0L;
+    const auto result = static_cast<long double>(value) * scale;
+    if (result > static_cast<long double>(std::numeric_limits<std::uint64_t>::max())) {
+        throw std::runtime_error(name + " is too large");
+    }
+    return static_cast<std::uint64_t>(result);
+}
+
+std::uint64_t saturating_add(const std::uint64_t left, const std::uint64_t right) noexcept {
+    const auto maximum = std::numeric_limits<std::uint64_t>::max();
+    return right > maximum - left ? maximum : left + right;
 }
 
 double parse_positive_double(const std::string& value, const std::string& name) {
@@ -122,6 +176,9 @@ Options parse_options(int argc, char** argv) {
             std::cout
                 << "raft-bench [--warmup-seconds N] [--duration-seconds N] [--rate N] "
                    "[--max-in-flight N] [--timeout-ms N] [--output-dir PATH] "
+                   "[--retry-base-ms N] [--retry-cap-ms N] "
+                   "[--response-timeout-ms N] "
+                   "[--unconfirmed-admission-limit N] "
                    "[--prometheus-file PATH] "
                    "[--aeron-dir PATH] [--members ID,ID,...] "
                    "[--request-target ID=URI]... [--response-channel URI] "
@@ -138,6 +195,15 @@ Options parse_options(int argc, char** argv) {
             options.max_in_flight = static_cast<std::size_t>(parse_positive_u64(value, key));
         }
         else if (key == "--timeout-ms") options.timeout_ms = parse_positive_u64(value, key);
+        else if (key == "--retry-base-ms") options.retry_base_ms = parse_positive_u64(value, key);
+        else if (key == "--retry-cap-ms") options.retry_cap_ms = parse_positive_u64(value, key);
+        else if (key == "--response-timeout-ms") {
+            options.response_timeout_ms = parse_positive_u64(value, key);
+        }
+        else if (key == "--unconfirmed-admission-limit") {
+            options.unconfirmed_admission_limit =
+                static_cast<std::size_t>(parse_positive_u64(value, key));
+        }
         else if (key == "--output-dir") options.output_dir = value;
         else if (key == "--prometheus-file") options.prometheus_file = value;
         else if (key == "--aeron-dir") options.aeron_dir = value;
@@ -171,6 +237,9 @@ Options parse_options(int argc, char** argv) {
         else throw std::runtime_error("unknown option: " + key);
     }
     velocita::validate_request_targets(options.request_targets, options.members);
+    if (options.retry_cap_ms < options.retry_base_ms) {
+        throw std::runtime_error("--retry-cap-ms must be greater than or equal to --retry-base-ms");
+    }
     const long double planned =
         (options.warmup_seconds + options.duration_seconds) * options.rate_per_second;
     if (planned > 5'000'000.0L) {
@@ -240,11 +309,14 @@ void write_failures(const std::filesystem::path& path,
                     const std::span<const FailureRecord> failures) {
     std::ofstream output(path);
     if (!output) throw std::runtime_error("open failures file failed: " + path.string());
-    output << "request_id,intended_send_ns,phase,outcome\n";
+    output << "request_id,intended_send_ns,phase,outcome,transport_attempts,"
+              "last_target_node_id,leader_state\n";
     for (const auto& failure : failures) {
         output << failure.request_id << ',' << failure.intended_send_ns << ','
                << (failure.phase == velocita::BenchmarkPhase::steady ? "steady" : "warmup")
-               << ',' << failure.outcome << '\n';
+               << ',' << failure.outcome << ',' << failure.transport_attempts << ','
+               << failure.last_target_node_id << ','
+               << velocita::to_string(failure.leader_state) << '\n';
     }
 }
 
@@ -306,7 +378,7 @@ void prometheus_histogram(std::ostream& output, const std::string_view stage,
 void publish_prometheus(const std::filesystem::path& run_file,
                         const std::filesystem::path& latest_file,
                         const Options& options, const std::size_t effective_max_in_flight,
-                        const Counters& counters,
+                        const Counters& counters, const velocita::LeaderKnowledgeState leader_state,
                         const std::span<const velocita::LatencySample> samples,
                         const std::array<std::pair<std::string_view,
                             velocita::DistributionSummary>, 8>& summaries) {
@@ -337,6 +409,12 @@ void publish_prometheus(const std::filesystem::path& run_file,
            << "velocita_benchmark_config{parameter=\"rate_per_second\"} " << options.rate_per_second << '\n'
            << "velocita_benchmark_config{parameter=\"duration_seconds\"} " << options.duration_seconds << '\n'
            << "velocita_benchmark_config{parameter=\"max_in_flight\"} " << effective_max_in_flight << '\n'
+           << "velocita_benchmark_config{parameter=\"retry_base_ms\"} " << options.retry_base_ms << '\n'
+           << "velocita_benchmark_config{parameter=\"retry_cap_ms\"} " << options.retry_cap_ms << '\n'
+           << "velocita_benchmark_config{parameter=\"response_timeout_ms\"} "
+           << options.response_timeout_ms << '\n'
+           << "velocita_benchmark_config{parameter=\"unconfirmed_admission_limit\"} "
+           << options.unconfirmed_admission_limit << '\n'
            << "# HELP velocita_benchmark_outcome Latest measured-phase request and transport outcomes.\n"
            << "# TYPE velocita_benchmark_outcome gauge\n";
     const std::array outcomes{
@@ -344,12 +422,16 @@ void publish_prometheus(const std::filesystem::path& run_file,
         std::pair{"completed", counters.steady_completed_ok},
         std::pair{"timeout", counters.steady_timed_out},
         std::pair{"capacity_rejected", counters.steady_capacity_rejected},
+        std::pair{"admission_rejected_leader_unknown",
+                  counters.steady_admission_rejected_leader_unknown},
+        std::pair{"discovery_probe", counters.steady_discovery_probe_attempts},
+        std::pair{"retry", counters.steady_retries},
         std::pair{"not_leader", counters.steady_not_leader_responses},
         std::pair{"leader_hint_protocol_error", counters.steady_leader_hint_protocol_errors},
         std::pair{"back_pressured", counters.steady_offer_back_pressured},
         std::pair{"not_connected", counters.steady_offer_not_connected},
-        std::pair{"invalid_response", counters.invalid_responses},
-        std::pair{"internal_error", counters.internal_error_responses},
+        std::pair{"invalid_response", counters.steady_invalid_responses},
+        std::pair{"internal_error", counters.steady_internal_error_responses},
     };
     for (const auto& [outcome, value] : outcomes) {
         output << "velocita_benchmark_outcome{outcome=\"" << outcome << "\"} " << value << '\n';
@@ -372,7 +454,23 @@ void publish_prometheus(const std::filesystem::path& run_file,
            << (counters.steady_logical_commands_started == 0 ? 0.0 :
                static_cast<double>(counters.steady_transport_attempts) /
                static_cast<double>(counters.steady_logical_commands_started)) << '\n'
-           << "# HELP velocita_benchmark_latency_seconds Latest latency quantiles by bounded stage.\n"
+           << "# HELP velocita_benchmark_pending_commands_high_watermark Maximum admitted pending commands in the latest run.\n"
+           << "# TYPE velocita_benchmark_pending_commands_high_watermark gauge\n"
+           << "velocita_benchmark_pending_commands_high_watermark "
+           << counters.pending_high_watermark << '\n'
+           << "# HELP velocita_benchmark_terminal_accounting Whether every scheduled command has one terminal outcome.\n"
+           << "# TYPE velocita_benchmark_terminal_accounting gauge\n"
+           << "velocita_benchmark_terminal_accounting "
+           << (terminal_outcomes(counters, true) == counters.steady_scheduled ? 1 : 0) << '\n'
+           << "# HELP velocita_benchmark_leader_state Final client leader-knowledge state for the latest run.\n"
+           << "# TYPE velocita_benchmark_leader_state gauge\n";
+    for (const auto state : {velocita::LeaderKnowledgeState::unknown,
+                             velocita::LeaderKnowledgeState::suspect,
+                             velocita::LeaderKnowledgeState::known}) {
+        output << "velocita_benchmark_leader_state{state=\"" << velocita::to_string(state)
+               << "\"} " << (state == leader_state ? 1 : 0) << '\n';
+    }
+    output << "# HELP velocita_benchmark_latency_seconds Latest latency quantiles by bounded stage.\n"
            << "# TYPE velocita_benchmark_latency_seconds gauge\n";
     for (const auto& [stage, summary] : summaries) prometheus_distribution(output, stage, summary);
     output << "# HELP velocita_benchmark_latency_distribution_seconds Latest-run cumulative fixed-bucket latency distribution by bounded stage.\n"
@@ -421,7 +519,16 @@ int main(int argc, char** argv) {
         std::size_t deadline_cursor = 0;
         Counters counters;
         velocita::LeaderRouter router(options.request_targets, options.members);
-        bool have_unsent_requests = false;
+        velocita::ClientRecoveryPolicy recovery({
+            milliseconds_to_ns(options.retry_base_ms, "--retry-base-ms"),
+            milliseconds_to_ns(options.retry_cap_ms, "--retry-cap-ms"),
+            options.unconfirmed_admission_limit,
+            milliseconds_to_ns(options.response_timeout_ms, "--response-timeout-ms"),
+        });
+        auto next_retry_due_ns = std::numeric_limits<std::uint64_t>::max();
+        std::uint64_t next_discovery_probe_ns = 0;
+        std::uint32_t discovery_probe_ordinal = 0;
+        std::function<void(velocita::PendingRequest&, bool)> schedule_retry;
         std::function<void(velocita::PendingRequest&)> retry_request;
 
         velocita::ClientSessionOptions session_options;
@@ -445,14 +552,22 @@ int main(int argc, char** argv) {
                     const auto hint = router.observe(response);
                     if (hint == velocita::LeaderHintResult::invalid) {
                         ++counters.leader_hint_protocol_errors;
+                        ++counters.terminal_protocol_errors;
                         if (request->phase == velocita::BenchmarkPhase::steady) {
                             ++counters.steady_leader_hint_protocol_errors;
+                            ++counters.steady_terminal_protocol_errors;
                         }
+                        failures.push_back({request->request_id, request->intended_send_ns,
+                                            request->phase, "invalid_leader_hint",
+                                            request->transport_attempts,
+                                            request->last_target_node_id, router.state()});
+                        (void)pending.erase(response.request_id);
+                        return;
                     }
                     request->channel_index = router.leader_id()
                         ? router.preferred_target()
                         : router.next_discovery_target(request->channel_index);
-                    retry_request(*request);
+                    schedule_retry(*request, router.leader_id().has_value());
                     return;
                 }
                 if (response.status != velocita::ResponseStatus::ok) {
@@ -460,11 +575,18 @@ int main(int argc, char** argv) {
                         ? std::string_view{"invalid_request"} : std::string_view{"internal_error"};
                     if (response.status == velocita::ResponseStatus::invalid_request) {
                         ++counters.invalid_responses;
+                        if (request->phase == velocita::BenchmarkPhase::steady) {
+                            ++counters.steady_invalid_responses;
+                        }
                     } else {
                         ++counters.internal_error_responses;
+                        if (request->phase == velocita::BenchmarkPhase::steady) {
+                            ++counters.steady_internal_error_responses;
+                        }
                     }
                     failures.push_back({request->request_id, request->intended_send_ns,
-                                        request->phase, outcome});
+                                        request->phase, outcome, request->transport_attempts,
+                                        request->last_target_node_id, router.state()});
                     (void)pending.erase(response.request_id);
                     return;
                 }
@@ -472,9 +594,13 @@ int main(int argc, char** argv) {
                     ++counters.leader_hint_protocol_errors;
                     if (request->phase == velocita::BenchmarkPhase::steady) {
                         ++counters.steady_leader_hint_protocol_errors;
+                        ++counters.steady_terminal_protocol_errors;
                     }
+                    ++counters.terminal_protocol_errors;
                     failures.push_back({request->request_id, request->intended_send_ns,
-                                        request->phase, "invalid_leader_hint"});
+                                        request->phase, "invalid_leader_hint",
+                                        request->transport_attempts,
+                                        request->last_target_node_id, router.state()});
                     (void)pending.erase(response.request_id);
                     return;
                 }
@@ -526,28 +652,56 @@ int main(int argc, char** argv) {
             else ++counters.steady_offer_failed;
         };
 
+        schedule_retry = [&](velocita::PendingRequest& request, const bool immediate) {
+            const auto current_ns = now_ns();
+            request.needs_offer_retry = true;
+            request.awaiting_response = false;
+            request.next_retry_ns = immediate ? current_ns : recovery.next_retry_ns(
+                request.request_id, request.retry_count, current_ns, request.deadline_ns);
+            next_retry_due_ns = std::min(next_retry_due_ns, request.next_retry_ns);
+        };
+
         retry_request = [&](velocita::PendingRequest& request) {
             const velocita::Command command{options.command, request.request_id, options.amount};
             const auto offer_started_ns = now_ns();
-            if (request.transport_attempts != 0) ++request.retry_count;
+            const bool discovery_probe = router.state() == velocita::LeaderKnowledgeState::unknown;
+            if (request.transport_attempts != 0) {
+                ++request.retry_count;
+                ++counters.retries;
+                if (request.phase == velocita::BenchmarkPhase::steady) {
+                    ++counters.steady_retries;
+                }
+            }
             ++request.transport_attempts;
             ++counters.transport_attempts;
             if (request.phase == velocita::BenchmarkPhase::steady) {
                 ++counters.steady_transport_attempts;
             }
+            request.last_target_node_id = session.node_id(request.channel_index);
+            if (discovery_probe) {
+                ++counters.discovery_probe_attempts;
+                if (request.phase == velocita::BenchmarkPhase::steady) {
+                    ++counters.steady_discovery_probe_attempts;
+                }
+                next_discovery_probe_ns = recovery.next_retry_ns(
+                    request.request_id, discovery_probe_ordinal++,
+                    offer_started_ns, request.deadline_ns);
+            }
             const auto result = session.offer(request.channel_index, command);
             count_offer(result, request.phase);
             if (result >= 0) {
                 if (request.actual_send_ns == 0) request.actual_send_ns = offer_started_ns;
-                request.needs_offer_retry = false;
+                request.needs_offer_retry = true;
+                request.awaiting_response = true;
+                request.next_retry_ns = recovery.response_deadline_ns(
+                    offer_started_ns, request.deadline_ns);
+                next_retry_due_ns = std::min(next_retry_due_ns, request.next_retry_ns);
             } else if (result == aeron::NOT_CONNECTED || result == aeron::PUBLICATION_CLOSED) {
                 router.mark_target_unavailable(request.channel_index);
-                request.channel_index = router.preferred_target();
-                request.needs_offer_retry = true;
-                have_unsent_requests = true;
+                request.channel_index = router.next_discovery_target(request.channel_index);
+                schedule_retry(request, false);
             } else {
-                request.needs_offer_retry = true;
-                have_unsent_requests = true;
+                schedule_retry(request, false);
             }
         };
 
@@ -573,11 +727,12 @@ int main(int argc, char** argv) {
         const auto clock_summary = velocita::summarize_values(clock_costs);
 
         const auto run_start_ns = now_ns() + 100'000'000ULL;
-        const auto warmup_duration_ns = static_cast<std::uint64_t>(options.warmup_seconds * 1e9);
-        const auto measured_duration_ns = static_cast<std::uint64_t>(options.duration_seconds * 1e9);
-        const auto warmup_end_ns = run_start_ns + warmup_duration_ns;
-        const auto run_end_ns = warmup_end_ns + measured_duration_ns;
-        const auto timeout_ns = options.timeout_ms * 1'000'000ULL;
+        const auto warmup_duration_ns = seconds_to_ns(options.warmup_seconds, "--warmup-seconds");
+        const auto measured_duration_ns = seconds_to_ns(
+            options.duration_seconds, "--duration-seconds");
+        const auto warmup_end_ns = saturating_add(run_start_ns, warmup_duration_ns);
+        const auto run_end_ns = saturating_add(warmup_end_ns, measured_duration_ns);
+        const auto timeout_ns = milliseconds_to_ns(options.timeout_ms, "--timeout-ms");
         auto request_id = initial_request_id();
         std::uint64_t sequence = 0;
 
@@ -606,7 +761,8 @@ int main(int argc, char** argv) {
                 ++counters.timed_out;
                 if (request->phase == velocita::BenchmarkPhase::steady) ++counters.steady_timed_out;
                 failures.push_back({request->request_id, request->intended_send_ns,
-                                    request->phase, "timeout"});
+                                    request->phase, "timeout", request->transport_attempts,
+                                    request->last_target_node_id, router.state()});
                 (void)pending.erase(expiring_id);
                 ++deadline_cursor;
             }
@@ -622,27 +778,46 @@ int main(int argc, char** argv) {
                     if (steady_phase) ++counters.steady_scheduled;
                     ++request_id;
                     if (request_id == 0) ++request_id;
+                    if (!recovery.may_admit(router.state(), pending.size())) {
+                        ++counters.admission_rejected_leader_unknown;
+                        if (steady_phase) {
+                            ++counters.steady_admission_rejected_leader_unknown;
+                        }
+                        failures.push_back({request_id, intended_ns,
+                                            steady_phase ? velocita::BenchmarkPhase::steady
+                                                         : velocita::BenchmarkPhase::warmup,
+                                            "admission_rejected_leader_unknown", 0, -1,
+                                            router.state()});
+                        continue;
+                    }
                     if (pending.size() == pending.capacity()) {
                         ++counters.capacity_rejected;
                         if (steady_phase) ++counters.steady_capacity_rejected;
                         failures.push_back({request_id, intended_ns,
                                             steady_phase ? velocita::BenchmarkPhase::steady
                                                          : velocita::BenchmarkPhase::warmup,
-                                            "capacity_rejected"});
+                                            "capacity_rejected", 0, -1, router.state()});
                         continue;
                     }
                     velocita::PendingRequest request;
                     request.request_id = request_id;
                     request.intended_send_ns = intended_ns;
-                    request.deadline_ns = intended_ns + timeout_ns;
+                    request.deadline_ns = saturating_add(intended_ns, timeout_ns);
                     request.channel_index = router.preferred_target();
+                    request.next_retry_ns = intended_ns;
                     request.phase = intended_ns < warmup_end_ns
                         ? velocita::BenchmarkPhase::warmup : velocita::BenchmarkPhase::steady;
                     if (!pending.insert(request)) {
                         ++counters.capacity_rejected;
                         if (steady_phase) ++counters.steady_capacity_rejected;
+                        failures.push_back({request_id, intended_ns,
+                                            steady_phase ? velocita::BenchmarkPhase::steady
+                                                         : velocita::BenchmarkPhase::warmup,
+                                            "capacity_rejected", 0, -1, router.state()});
                         continue;
                     }
+                    counters.pending_high_watermark = std::max<std::uint64_t>(
+                        counters.pending_high_watermark, pending.size());
                     deadline_order.push_back(request_id);
                     ++counters.logical_commands_started;
                     if (steady_phase) ++counters.steady_logical_commands_started;
@@ -651,18 +826,45 @@ int main(int argc, char** argv) {
                 }
             }
 
-            if (have_unsent_requests) {
-                have_unsent_requests = false;
+            if (current_ns >= next_retry_due_ns) {
+                next_retry_due_ns = std::numeric_limits<std::uint64_t>::max();
                 for (auto& request : pending.slots()) {
                     if (request.request_id != 0 && request.needs_offer_retry &&
                         request.deadline_ns > current_ns) {
-                        retry_request(request);
+                        auto effective_retry_ns = request.next_retry_ns;
+                        if (router.state() == velocita::LeaderKnowledgeState::unknown) {
+                            effective_retry_ns = std::max(
+                                effective_retry_ns, next_discovery_probe_ns);
+                        }
+                        if (current_ns >= effective_retry_ns) {
+                            if (request.awaiting_response) {
+                                router.mark_target_unavailable(request.channel_index);
+                                request.channel_index = router.next_discovery_target(
+                                    request.channel_index);
+                                request.awaiting_response = false;
+                            }
+                            retry_request(request);
+                        }
+                        if (request.needs_offer_retry) {
+                            effective_retry_ns = request.next_retry_ns;
+                            if (router.state() == velocita::LeaderKnowledgeState::unknown) {
+                                effective_retry_ns = std::max(
+                                    effective_retry_ns, next_discovery_probe_ns);
+                            }
+                            next_retry_due_ns = std::min(
+                                next_retry_due_ns, effective_retry_ns);
+                        }
                     }
                 }
             }
 
             if (current_ns >= run_end_ns && pending.empty()) break;
             if (fragments == 0) idle(options.idle_strategy);
+        }
+
+        if (terminal_outcomes(counters, false) != counters.scheduled ||
+            terminal_outcomes(counters, true) != counters.steady_scheduled) {
+            throw std::logic_error("benchmark terminal accounting invariant failed");
         }
 
         write_samples(options.output_dir / "warmup-samples.csv", warmup.samples());
@@ -696,7 +898,7 @@ int main(int argc, char** argv) {
 
         std::ofstream summary(options.output_dir / "summary.json");
         if (!summary) throw std::runtime_error("open summary file failed");
-        summary << "{\n  \"schema_version\":2,\n"
+        summary << "{\n  \"schema_version\":3,\n"
                 << "  \"benchmark_instrumentation\":"
 #ifdef VELOCITA_BENCHMARK_INSTRUMENTATION
                 << "true,\n"
@@ -708,6 +910,11 @@ int main(int argc, char** argv) {
                 << ",\"rate_per_second\":" << options.rate_per_second
                 << ",\"max_in_flight\":" << pending.capacity()
                 << ",\"timeout_ms\":" << options.timeout_ms
+                << ",\"retry_base_ms\":" << options.retry_base_ms
+                << ",\"retry_cap_ms\":" << options.retry_cap_ms
+                << ",\"response_timeout_ms\":" << options.response_timeout_ms
+                << ",\"unconfirmed_admission_limit\":"
+                << options.unconfirmed_admission_limit
                 << ",\"operation\":\"" << operation_name(options.command) << "\""
                 << ",\"amount\":" << options.amount
                 << ",\"idle_strategy\":\"" << options.idle_strategy << "\""
@@ -720,10 +927,19 @@ int main(int argc, char** argv) {
                 << ",\"steady_timed_out\":" << counters.steady_timed_out
                 << ",\"capacity_rejected\":" << counters.capacity_rejected
                 << ",\"steady_capacity_rejected\":" << counters.steady_capacity_rejected
+                << ",\"admission_rejected_leader_unknown\":"
+                << counters.admission_rejected_leader_unknown
+                << ",\"steady_admission_rejected_leader_unknown\":"
+                << counters.steady_admission_rejected_leader_unknown
+                << ",\"discovery_probe_attempts\":" << counters.discovery_probe_attempts
+                << ",\"steady_discovery_probe_attempts\":"
+                << counters.steady_discovery_probe_attempts
                 << ",\"logical_commands_started\":" << counters.logical_commands_started
                 << ",\"steady_logical_commands_started\":" << counters.steady_logical_commands_started
                 << ",\"transport_attempts\":" << counters.transport_attempts
                 << ",\"steady_transport_attempts\":" << counters.steady_transport_attempts
+                << ",\"retries\":" << counters.retries
+                << ",\"steady_retries\":" << counters.steady_retries
                 << ",\"not_leader_responses\":" << counters.not_leader_responses
                 << ",\"steady_not_leader_responses\":" << counters.steady_not_leader_responses
                 << ",\"leader_hint_protocol_errors\":" << counters.leader_hint_protocol_errors
@@ -731,7 +947,13 @@ int main(int argc, char** argv) {
                 << counters.steady_leader_hint_protocol_errors
                 << ",\"duplicate_or_late_responses\":" << counters.duplicate_or_late_responses
                 << ",\"invalid_responses\":" << counters.invalid_responses
+                << ",\"steady_invalid_responses\":" << counters.steady_invalid_responses
                 << ",\"internal_error_responses\":" << counters.internal_error_responses
+                << ",\"steady_internal_error_responses\":"
+                << counters.steady_internal_error_responses
+                << ",\"terminal_protocol_errors\":" << counters.terminal_protocol_errors
+                << ",\"steady_terminal_protocol_errors\":"
+                << counters.steady_terminal_protocol_errors
                 << ",\"offer_success\":" << counters.offer_success
                 << ",\"offer_not_connected\":" << counters.offer_not_connected
                 << ",\"offer_back_pressured\":" << counters.offer_back_pressured
@@ -745,6 +967,9 @@ int main(int argc, char** argv) {
                 << ",\"steady_offer_closed\":" << counters.steady_offer_closed
                 << ",\"steady_offer_max_position\":" << counters.steady_offer_max_position
                 << ",\"steady_offer_failed\":" << counters.steady_offer_failed
+                << ",\"pending_high_watermark\":" << counters.pending_high_watermark
+                << ",\"terminal_outcomes\":" << terminal_outcomes(counters, false)
+                << ",\"steady_terminal_outcomes\":" << terminal_outcomes(counters, true)
                 << ",\"internal_timing_samples\":" << counters.internal_timing_samples
                 << ",\"warmup_recorder_dropped\":" << warmup.dropped_samples()
                 << ",\"steady_recorder_dropped\":" << steady.dropped_samples() << "},\n"
@@ -757,6 +982,8 @@ int main(int argc, char** argv) {
                     static_cast<double>(counters.steady_transport_attempts) /
                     static_cast<double>(counters.steady_logical_commands_started))
                 << "},\n"
+                << "  \"final_leader_state\":\"" << velocita::to_string(router.state())
+                << "\",\n"
                 << "  \"clock_call_pair\":";
         write_distribution(summary, clock_summary);
         summary << ",\n  \"scheduled_to_offer\":";
@@ -789,7 +1016,7 @@ int main(int argc, char** argv) {
             std::pair<std::string_view, velocita::DistributionSummary>{"commit_to_apply", apply},
         };
         publish_prometheus(options.output_dir / "metrics.prom", options.prometheus_file,
-                           options, pending.capacity(), counters, steady.samples(),
+                           options, pending.capacity(), counters, router.state(), steady.samples(),
                            prometheus_summaries);
 
         std::cout << "benchmark complete samples=" << total.count
@@ -800,8 +1027,17 @@ int main(int argc, char** argv) {
                   << " max_ns=" << total.maximum_ns
                   << " timeouts=" << counters.timed_out
                   << " capacity_rejected=" << counters.capacity_rejected
+                  << " admission_rejected_leader_unknown="
+                  << counters.admission_rejected_leader_unknown
+                  << " retry_amplification="
+                  << (counters.steady_logical_commands_started == 0 ? 0.0 :
+                      static_cast<double>(counters.steady_transport_attempts) /
+                      static_cast<double>(counters.steady_logical_commands_started))
                   << " output=" << options.output_dir << '\n';
         return counters.timed_out == 0 && counters.capacity_rejected == 0 &&
+                       counters.admission_rejected_leader_unknown == 0 &&
+                       counters.leader_hint_protocol_errors == 0 &&
+                       counters.terminal_protocol_errors == 0 &&
                        counters.invalid_responses == 0 && counters.internal_error_responses == 0 &&
                        steady.dropped_samples() == 0
             ? 0 : 2;

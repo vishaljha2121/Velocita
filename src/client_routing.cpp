@@ -110,7 +110,10 @@ std::size_t LeaderRouter::next_discovery_target(const std::size_t previous_targe
 
 void LeaderRouter::mark_target_unavailable(const std::size_t unavailable_target) {
     if (unavailable_target >= targets_.size()) throw std::out_of_range("request target index");
-    if (leader_index_ == unavailable_target) leader_index_.reset();
+    if (leader_index_ == unavailable_target) {
+        leader_index_.reset();
+        state_ = LeaderKnowledgeState::unknown;
+    }
     discovery_index_ = (unavailable_target + 1) % targets_.size();
 }
 
@@ -121,6 +124,7 @@ LeaderHintResult LeaderRouter::observe(const Response& response) {
     if (response.term > observed_term_) {
         observed_term_ = response.term;
         leader_index_.reset();
+        state_ = LeaderKnowledgeState::unknown;
     }
 
     if (response.leader_id < -1 || response.leader_id == 0) {
@@ -129,6 +133,7 @@ LeaderHintResult LeaderRouter::observe(const Response& response) {
 
     if (response.leader_id == -1) {
         leader_index_.reset();
+        state_ = LeaderKnowledgeState::unknown;
         const bool leader_required = response.status == ResponseStatus::ok &&
                                      response.wire_version >= kResponseWireVersion;
         return leader_required
@@ -139,8 +144,12 @@ LeaderHintResult LeaderRouter::observe(const Response& response) {
     if (!hinted_index) return LeaderHintResult::invalid;
     leader_index_ = *hinted_index;
     discovery_index_ = *hinted_index;
-    return response.status == ResponseStatus::ok
-        ? LeaderHintResult::confirmed : LeaderHintResult::updated;
+    if (response.status == ResponseStatus::ok) {
+        state_ = LeaderKnowledgeState::known;
+        return LeaderHintResult::confirmed;
+    }
+    state_ = LeaderKnowledgeState::suspect;
+    return LeaderHintResult::updated;
 }
 
 std::optional<std::int32_t> LeaderRouter::leader_id() const noexcept {
@@ -158,6 +167,15 @@ std::optional<std::size_t> LeaderRouter::target_index(const std::int32_t node_id
         if (targets_[index].node_id == node_id) return index;
     }
     return std::nullopt;
+}
+
+std::string_view to_string(const LeaderKnowledgeState state) noexcept {
+    switch (state) {
+        case LeaderKnowledgeState::unknown: return "unknown";
+        case LeaderKnowledgeState::suspect: return "suspect";
+        case LeaderKnowledgeState::known: return "known";
+    }
+    return "unknown";
 }
 
 }  // namespace velocita

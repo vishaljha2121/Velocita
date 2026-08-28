@@ -18,10 +18,13 @@ struct PendingRequest {
     std::uint64_t actual_send_ns{};
     std::uint64_t deadline_ns{};
     std::size_t channel_index{};
+    std::int32_t last_target_node_id{-1};
+    std::uint64_t next_retry_ns{};
     std::uint32_t transport_attempts{};
     std::uint32_t retry_count{};
     BenchmarkPhase phase{BenchmarkPhase::warmup};
     bool needs_offer_retry{};
+    bool awaiting_response{};
 };
 
 class PendingRequestTable {

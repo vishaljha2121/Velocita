@@ -22,15 +22,38 @@ prevents coordinated omission: a stalled cluster creates many late observations
 instead of one slow observation followed by an artificial pause in offered
 load.
 
-Every scheduled request becomes either:
+Every scheduled request becomes exactly one of:
 
 - an exact successful sample in `steady-samples.csv` or
   `warmup-samples.csv`; or
-- an explicit `timeout`, `capacity_rejected`, `invalid_request`, or
-  `internal_error` row in `failures.csv`.
+- an explicit `timeout`, `capacity_rejected`,
+  `admission_rejected_leader_unknown`, `invalid_request`, `internal_error`, or
+  protocol-error row in `failures.csv`.
 
 Aeron offer results and `not_leader` retries are also counted. Leader retries
 reuse the same request ID, which preserves the existing idempotency contract.
+Schema 3 also records attempts, last target, and client leader state on failure,
+and fails the run if scheduled commands do not equal exactly-one terminal
+outcomes.
+
+## Bounded recovery policy
+
+The benchmark keeps open-loop scheduling during elections and quorum loss.
+When leadership is unconfirmed, one command is admitted as a discovery probe;
+additional demand is rejected explicitly. Unknown-leader retries use
+deterministic exponential jitter with a positive 5 ms floor, a 250 ms cap, and
+the original command deadline. A successful local Aeron offer starts a separate
+250 ms response-silence timer because publication acceptance is not proof of a
+Raft commit. The thread continues polling Aeron while a retry is
+ineligible—backoff is a timestamp decision, not a blocking sleep.
+
+The key evidence is:
+
+- `retry_amplification = transport_attempts / logical_commands_started`;
+- leader-unknown admission rejections;
+- discovery-probe attempts;
+- pending-command high-watermark; and
+- terminal accounting equal to scheduled demand.
 
 ## Production and benchmark builds
 

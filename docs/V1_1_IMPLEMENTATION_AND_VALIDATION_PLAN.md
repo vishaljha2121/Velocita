@@ -1,7 +1,8 @@
 # V1.1 implementation and validation plan
 
 Status: approved engineering plan; Phase 1 was accepted on Raspberry Pi ARM64
-on 2026-08-27. Phase 2 has not started.
+on 2026-08-27. Phase 2 has a locally validated implementation candidate and
+awaits its Raspberry Pi ARM64 recovery gate.
 
 Release branch: `release/v1.1`
 
@@ -406,6 +407,30 @@ identity.
 - No duplicate application, invalid-member routing, or decoding ambiguity is
   observed.
 
+### 7.9 Phase 1 code-review route
+
+Read Phase 1 in dependency order rather than executable order:
+
+1. `include/velocita/wire.hpp` and `src/wire.cpp`: V3 response contract,
+   extension flags, legacy V1/V2 compatibility, and malformed-frame rejection.
+2. `include/velocita/client_routing.hpp` and `src/client_routing.cpp`: pure,
+   term-aware mapping from Raft node IDs to request publications.
+3. `src/raft_node.cpp`: the point where a follower exposes its current
+   `leader_id`, and where an `ok` response identifies the committing leader.
+4. `include/velocita/client_session.hpp` and `src/client_session.cpp`: Aeron
+   publications keyed by explicit node identity rather than anonymous order.
+5. `src/client_main.cpp`: one logical command, one stable request ID, and
+   follower-to-leader redirect.
+6. `include/velocita/benchmark.hpp` and `src/benchmark_main.cpp`: exact
+   logical-command and transport-attempt accounting.
+7. `tests/core_tests.cpp` and `tests/benchmark_tests.cpp`: executable protocol,
+   routing, deduplication, and evidence invariants.
+8. `deploy/cluster-client.sh`, `deploy/run-benchmark-suite.sh`, and
+   `docs/BENCHMARKING.md`: how the contract becomes a repeatable Pi experiment.
+
+This order follows the architecture: protocol first, policy second, transport
+third, executable orchestration fourth, and evidence last.
+
 ## 8. Phase 2: bounded recovery and admission control
 
 ### 8.1 Objective
@@ -438,12 +463,20 @@ Each pending command will carry at least:
 - next retry timestamp; and
 - current phase/state.
 
+An Aeron `offer()` success is not a Raft completion. It proves only that the
+local publication accepted the frame. Therefore an offered command also has a
+bounded response-silence deadline. The Phase 2 candidate starts at 250 ms,
+below the full command deadline but above the measured healthy low-load tail.
+If no matching response arrives, the route becomes unknown and the same
+request ID re-enters bounded discovery. This avoids waiting the entire command
+deadline after sending to a leader that has just died.
+
 When the leader is unknown, retry eligibility follows bounded exponential
-backoff with full jitter:
+backoff with deterministic positive-floor jitter:
 
 ```text
 upper_bound = min(cap, base * 2^attempt)
-delay       = deterministic_jitter(request_id, attempt, 0..upper_bound)
+delay       = deterministic_jitter(request_id, attempt, base..upper_bound)
 next_retry  = min(now + delay, command_deadline)
 ```
 
@@ -452,8 +485,10 @@ are hypotheses, not magic production constants. Tests validate the bounds;
 target-hardware failover measurements determine the final values.
 
 Deterministic jitter makes tests reproducible while preventing all pending
-commands from retrying simultaneously. No owner loop or benchmark thread sleeps
-to implement backoff; the scheduler simply skips work until `next_retry`.
+commands from retrying simultaneously. The lower bound is deliberately
+positive: textbook full jitter may choose zero and recreate an event-loop-speed
+retry. No owner loop or benchmark thread sleeps to implement backoff; the
+scheduler simply skips work until `next_retry`.
 
 ### 8.4 Admission control during leaderless intervals
 
@@ -469,6 +504,15 @@ When leadership is unknown:
 
 Backoff and admission control solve different problems. Backoff limits work
 already admitted. Admission control limits new work arriving during recovery.
+
+The Phase 2 candidate chooses an unconfirmed-admission limit of one. That one
+pending command is the bounded discovery probe. While state is `unknown` or
+`suspect`, further open-loop demand receives the explicit
+`admission_rejected_leader_unknown` terminal outcome. A valid leader hint sends
+the same request ID directly to that target; a successful response changes the
+state to `known` and normal admission resumes. The values 5 ms, 250 ms, and one
+probe are initial safety parameters to validate, not permanent market-system
+constants.
 
 ### 8.5 Required tests and experiments
 
@@ -495,6 +539,39 @@ already admitted. Admission control limits new work arriving during recovery.
 - Every offered logical command ends as completed, timed out, admission
   rejected, capacity rejected, or an explicit error.
 - Same-ID recovery still applies a mutation at most once.
+
+### 8.7 Implementation checkpoint
+
+The local candidate adds a pure `ClientRecoveryPolicy`, explicit
+`unknown`/`suspect`/`known` router state, monotonic retry deadlines, deterministic
+positive-floor jitter, a bounded 250 ms response-silence timer, a bounded
+unconfirmed-admission gate, and a globally paced discovery probe. Each pending
+benchmark command now carries its original
+request ID, intended-send time, command deadline, last target, attempt count,
+retry count, and next retry time.
+
+Benchmark summary schema 3 adds admission rejection, discovery probes, retry
+counts, pending high-watermark, final leader state, and terminal-accounting
+evidence. `failures.csv` records attempts, last target, and leader state for
+each failed command. The driver aborts if total or measured scheduled commands
+do not equal their exactly-one terminal outcomes.
+
+Both production and benchmark-instrumented macOS builds pass all three native
+test executables. A three-voter loopback smoke test completed 15 of 15 measured
+commands with 15 transport attempts, retry amplification `1.00`, zero timeout,
+terminal accounting 15 of 15, and final state `known`. These are development
+results only. `deploy/run-phase2-recovery-drills.sh --yes` is the bounded Pi
+gate for leader failover under demand, a leaderless quorum interval, recovery,
+and same-ID exactly-once resolution.
+
+A forced local leader-removal diagnostic then scheduled 40 measured commands,
+accounted for all 40, completed 9, timed out 3, rejected 28 while leadership
+was unknown, admitted at most two pending commands, and made 58 attempts for 12
+admitted commands (amplification `4.83`). The two remaining local voters did
+not elect within the eight-second measured window, so final state remained
+unknown. This is bounded failure behavior, not a Phase 2 recovery pass. It
+keeps the ARM64 leader-failover gate open and provides a concrete handoff to
+Phase 3 if the same control-plane starvation appears on the Pi.
 
 ## 9. Phase 3: owner-loop control-plane priority
 

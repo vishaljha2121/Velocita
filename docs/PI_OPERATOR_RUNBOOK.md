@@ -387,6 +387,22 @@ an exit trap to restore every service even when an assertion fails. Evidence is
 written outside the repository under
 `~/.local/share/velocita/failure-drills/<UTC_TIMESTAMP>/`.
 
+For the V1.1 Phase 2 recovery gate, run the dedicated bounded workload and
+same-ID proof:
+
+```bash
+cd ~/aeron-raft-pi
+./deploy/run-phase2-recovery-drills.sh --yes
+```
+
+This keeps the open-loop generator running while it removes the leader, then
+removes quorum long enough to force client state to leader unknown. Its exit
+trap restores all voters. Evidence is written under
+`~/.local/share/velocita/phase2-recovery/<UTC_TIMESTAMP>/`; a passing run must
+show exactly-one terminal accounting, bounded pending depth and discovery
+attempts, recovery to `known`, zero retries in the final successful samples,
+and one state mutation for the same-ID unknown-outcome drill.
+
 The suite never removes a container, volume, WAL, or metadata file. It also
 does not reboot the Pi: a process running on that Pi cannot independently
 verify the machine's disappearance and return. Keep the reboot/boot-recovery
