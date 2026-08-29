@@ -1,8 +1,8 @@
 # V1.1 implementation and validation plan
 
 Status: approved engineering plan; Phase 1 was accepted on Raspberry Pi ARM64
-on 2026-08-27. Phase 2 has a locally validated implementation candidate and
-awaits its Raspberry Pi ARM64 recovery gate.
+on 2026-08-27 and Phase 2 on 2026-08-28. Phase 3 is the next implementation
+stage.
 
 Release branch: `release/v1.1`
 
@@ -14,6 +14,26 @@ be collected, and what must pass before the release can be accepted. Future
 implementation work should refer to this document phase by phase. If code and
 this plan disagree, either the code must be corrected or the design change
 must be recorded here before the phase is accepted.
+
+### CTO learning contract
+
+Every implementation and experiment must be explained through these lenses:
+
+1. **Objective:** what outcome the change is intended to create.
+2. **Business reason:** why that outcome matters to availability, latency,
+   correctness, operability, cost, or delivery risk.
+3. **Mechanism:** how the code and runtime produce the outcome.
+4. **Invariant:** what must remain true even during failure or overload.
+5. **Failure mode:** how the design can fail and how that failure appears.
+6. **Measurement:** which raw metric or evidence distinguishes success from
+   opinion.
+7. **Rollback:** how to return to the last accepted state without losing
+   evidence or durable data.
+8. **Release decision:** which gate promotes the candidate and what claims the
+   evidence does—and does not—support.
+
+The goal is not only to execute commands but to build the judgment required to
+design, review, operate, and communicate a production system at CTO level.
 
 ## 1. Executive objective
 
@@ -570,8 +590,37 @@ was unknown, admitted at most two pending commands, and made 58 attempts for 12
 admitted commands (amplification `4.83`). The two remaining local voters did
 not elect within the eight-second measured window, so final state remained
 unknown. This is bounded failure behavior, not a Phase 2 recovery pass. It
-keeps the ARM64 leader-failover gate open and provides a concrete handoff to
-Phase 3 if the same control-plane starvation appears on the Pi.
+provided a concrete target-hardware question rather than acceptance evidence.
+
+### 8.8 Raspberry Pi acceptance evidence
+
+Phase 2 passed on Raspberry Pi ARM64 on 2026-08-28 using production image
+`015581814255` and benchmark-instrumented image `6cab4df1978b`. The rolling
+upgrade preserved quorum and converged three voters before the disruptive
+gate. Recovery suite `20260828T180907Z` then recorded:
+
+- leader failover: 75 scheduled, 70 completed, 5 leader-unknown admission
+  rejections, 86 attempts, 8 discovery probes, pending high-watermark 2,
+  amplification `1.229`, and zero retries in the stable tail;
+- quorum loss and restoration: 100 scheduled, 67 completed, 30
+  leader-unknown admission rejections, 117 attempts, 43 discovery probes,
+  pending high-watermark 2, amplification `1.671`, and zero retries in the
+  stable tail; and
+- same-ID unknown-outcome recovery: request ID `1787940625718131511` changed
+  the replicated counter exactly once from 20 to 21 after quorum returned,
+  while the commit index remained 208 during the no-quorum assertion.
+
+Every scenario passed terminal-accounting, bounded-pending, bounded-discovery,
+recovery-to-known, stable-tail, and exactly-once assertions. All three
+supervised voter services were active after cleanup. This closes the Phase 2
+gate; these recovery results are not a maximum-throughput claim.
+
+An earlier run, `20260828T180440Z`, reported `preflight: voters are not
+converged` because its AWK observer used `log[...]`, conflicting with AWK's
+built-in `log()` function. The parser exited before evaluating the metrics, so
+the harness converted an observer crash into a convergence false negative.
+The run is retained as invalid harness evidence. Commit `b5d530d` renamed the
+array to `current_index`, and the corrected suite passed immediately afterward.
 
 ## 9. Phase 3: owner-loop control-plane priority
 

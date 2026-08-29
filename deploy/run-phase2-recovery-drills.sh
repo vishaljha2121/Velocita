@@ -299,6 +299,6 @@ systemctl --user start "velocita-raft-${followers[1]}.service"
 wait_for_convergence 45 || die "same-id: final cluster did not converge"
 printf '%s\n' "$unknown_output" >"${run_dir}/same-id-unknown.txt"
 printf '%s\n' "$retry_output" >"${run_dir}/same-id-retry.txt"
-record same-id PASS "request_id=${request_id};counter=${before_value}->${retry_value};commit_without_quorum=${before_commit}"
+record same-id PASS "request_id=${request_id};counter=${before_value}->${retry_value};commit_index_held_at=${before_commit}"
 
 record run PASS "all Phase 2 recovery drills passed"
