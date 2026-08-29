@@ -301,6 +301,17 @@ Phase 3 therefore remains unaccepted pending an explicit ordered-persistence
 design and storage-isolation experiments; increasing retry deadlines alone is
 not an accepted fix.
 
+The resulting design checkpoint evaluates a fixed-capacity per-voter block
+arena based on the book's memory-mapped ring and double-buffered snapshot
+patterns. The accepted direction is bounded memory staging plus asynchronous
+ordered batch persistence, not memory-only acknowledgment. It requires an
+explicit durable-index completion path because the pinned `willemt/raft`
+callbacks require `log_offer`, term, and vote changes to be flushed before they
+return. Snapshot and compaction may recycle a WAL prefix only after a
+checksummed replacement snapshot is durable. The full proposal, rejected
+shortcuts, experiments, and release gates are recorded in
+`docs/V1_1_PHASE3_STORAGE_DESIGN_PIVOT.md`.
+
 ### V1.1 validation results
 
 Local development evidence on 2026-08-27:

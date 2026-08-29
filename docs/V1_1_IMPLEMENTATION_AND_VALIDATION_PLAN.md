@@ -820,6 +820,13 @@ would only hide the blocking interval. Phase 3 remains open until a storage
 isolation experiment and an ordered-persistence design remove or explicitly
 bound the owner-thread stall.
 
+The evaluated storage pivot and its safety gates are specified in
+[`V1_1_PHASE3_STORAGE_DESIGN_PIVOT.md`](V1_1_PHASE3_STORAGE_DESIGN_PIVOT.md).
+Its decision is to use fixed per-voter memory blocks as a bounded staging and
+group-commit layer, while retaining a quorum-durability fence before commit,
+apply, and successful client acknowledgment. A memory-only acknowledgment mode
+may be used for causal benchmarking but is not the default durability contract.
+
 ## 10. Phase 4: observability, experiments, and release proof
 
 ### 10.1 Objective
