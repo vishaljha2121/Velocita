@@ -30,6 +30,12 @@ enum class LeaderHintResult : std::uint8_t {
     invalid,
 };
 
+enum class LeaderKnowledgeState : std::uint8_t {
+    unknown,
+    suspect,
+    known,
+};
+
 class LeaderRouter {
 public:
     explicit LeaderRouter(std::vector<RequestTarget> targets,
@@ -41,6 +47,7 @@ public:
     [[nodiscard]] LeaderHintResult observe(const Response& response);
 
     [[nodiscard]] std::optional<std::int32_t> leader_id() const noexcept;
+    [[nodiscard]] LeaderKnowledgeState state() const noexcept { return state_; }
     [[nodiscard]] std::int64_t observed_term() const noexcept { return observed_term_; }
     [[nodiscard]] std::size_t target_count() const noexcept { return targets_.size(); }
     [[nodiscard]] const RequestTarget& target(std::size_t target_index) const;
@@ -51,6 +58,9 @@ private:
     std::size_t discovery_index_{};
     std::optional<std::size_t> leader_index_;
     std::int64_t observed_term_{-1};
+    LeaderKnowledgeState state_{LeaderKnowledgeState::unknown};
 };
+
+[[nodiscard]] std::string_view to_string(LeaderKnowledgeState state) noexcept;
 
 }  // namespace velocita

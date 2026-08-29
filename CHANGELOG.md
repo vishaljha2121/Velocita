@@ -13,8 +13,9 @@ release-engineering work.
 
 ## [V1.1] - Unreleased
 
-Status: planned. No item in this section is an implementation claim until it is
-moved under **Implemented changes** and supported by tests and benchmark
+Status: in progress. Stages 1 and 2 are accepted on Raspberry Pi ARM64; Stages
+3 and 4 remain pending. No planned item is an implementation claim until it is
+moved under **Implemented changes** and supported by tests and target-hardware
 evidence.
 
 The authoritative execution specification for this release is
@@ -165,6 +166,67 @@ They belong in bounded evidence files to avoid unbounded Prometheus cardinality.
   retry amplification without adding work to the Raft node owner loop.
 
 Phase 1 passed its Raspberry Pi ARM64 acceptance gate on 2026-08-27.
+
+#### Stage 2 accepted - bounded recovery and admission control
+
+- Added explicit client leader-knowledge states: `unknown`, `suspect`, and
+  `known`. A valid redirect is suspect until an `ok` response confirms the
+  leader for the observed term.
+- Added a pure monotonic recovery policy with deterministic exponential jitter
+  between a positive 5 ms floor and a 250 ms cap. A retry never runs at or
+  after its command deadline.
+- Added a 250 ms response-silence deadline because successful local Aeron
+  publication does not prove remote receipt, quorum commit, or response. A
+  silent route becomes unknown and discovery resumes with the same request ID.
+- Added an unconfirmed-leadership admission limit of one command and a globally
+  paced discovery probe. Further open-loop demand is recorded as explicit
+  leader-unknown admission rejection rather than hidden by pausing the load
+  generator.
+- Extended pending-command state with last target and next retry time while
+  retaining the original request ID for every transport attempt.
+- Added benchmark summary schema 3 evidence for discovery, admission rejection,
+  retry counts, pending high-watermark, leader state, and exactly-one terminal
+  accounting. Failure rows now retain attempts, last target, and leader state.
+- Added a one-command Pi recovery runner covering leader failover under demand,
+  an explicit leaderless/quorum-loss window, bounded recovery, and same-ID
+  exactly-once resolution.
+
+The candidate passed production and benchmark-instrumented native tests and a
+15-command three-node macOS smoke run at retry amplification `1.00`.
+
+A local leader-removal diagnostic remained bounded—40 of 40 terminal outcomes,
+pending high-watermark 2, 58 attempts for 12 admitted commands—but the two
+remaining voters did not elect before the eight-second window ended. It
+therefore produced 28 explicit admission rejections, 3 timeouts, amplification
+`4.83`, and final leader state unknown. This is retained as failed recovery
+evidence, not presented as a pass or throughput result.
+
+Phase 2 passed its Raspberry Pi ARM64 acceptance gate on 2026-08-28. The
+production image was `015581814255` with benchmark instrumentation disabled;
+the diagnostic image was `6cab4df1978b` with instrumentation enabled. A
+follower-first/leader-last rolling upgrade preserved quorum, moved leadership
+from node 3 in term 89 to node 2 in term 90, and converged all three voters at
+log, commit, and applied index 39 with counter value 20.
+
+Recovery suite `20260828T180907Z` produced the following immutable evidence:
+
+- leader failover under 5 commands/s scheduled 75 commands, completed 70,
+  rejected 5 during unknown leadership, used 86 transport attempts, bounded
+  pending depth at 2, recovered with zero retries in the stable tail, and
+  measured retry amplification `1.229`;
+- explicit quorum loss scheduled 100 commands, completed 67, rejected 30
+  during unknown leadership, used 117 transport attempts and 43 discovery
+  probes, bounded pending depth at 2, recovered with zero retries in the stable
+  tail, and measured retry amplification `1.671`; and
+- unknown-outcome recovery retried request ID `1787940625718131511` after
+  quorum restoration and changed the counter exactly once from 20 to 21 while
+  the commit index remained held at 208 during the no-quorum check.
+
+Suite `20260828T180440Z` is retained as a test-harness incident, not a product
+failure: Ubuntu AWK rejected the convergence observer's `log[...]` array name
+because `log()` is built in. The observer therefore returned a false negative
+before comparing voter state. Commit `b5d530d` renamed the array to
+`current_index`, after which the complete target-hardware gate passed.
 
 ### V1.1 validation results
 

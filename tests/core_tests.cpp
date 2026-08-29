@@ -1,8 +1,10 @@
+#include "velocita/client_recovery.hpp"
 #include "velocita/client_routing.hpp"
 #include "velocita/raft_node.hpp"
 #include "velocita/storage.hpp"
 #include "velocita/wire.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -195,11 +197,13 @@ void test_client_routing() {
     }, "non-member request target was accepted");
 
     velocita::LeaderRouter router(targets, {1, 2, 3});
-    require(router.preferred_target() == 0 && !router.leader_id(),
+    require(router.preferred_target() == 0 && !router.leader_id() &&
+                router.state() == velocita::LeaderKnowledgeState::unknown,
             "router did not start in discovery mode");
     require(router.observe({velocita::ResponseStatus::not_leader, 2, 10, 0, 5, 0}) ==
                 velocita::LeaderHintResult::updated &&
-                router.leader_id() == 2 && router.preferred_target() == 1,
+                router.leader_id() == 2 && router.preferred_target() == 1 &&
+                router.state() == velocita::LeaderKnowledgeState::suspect,
             "router did not accept a valid leader hint");
     require(router.observe({velocita::ResponseStatus::not_leader, 3, 10, 0, 4, 0}) ==
                 velocita::LeaderHintResult::stale && router.leader_id() == 2,
@@ -209,13 +213,16 @@ void test_client_routing() {
             "same-term non-member hint damaged valid routing knowledge");
     require(router.observe({velocita::ResponseStatus::not_leader, 99, 10, 0, 6, 0}) ==
                 velocita::LeaderHintResult::invalid && !router.leader_id() &&
-                router.observed_term() == 6,
+                router.observed_term() == 6 &&
+                router.state() == velocita::LeaderKnowledgeState::unknown,
             "new-term invalid hint did not invalidate stale leadership");
     require(router.observe({velocita::ResponseStatus::ok, 3, 10, 0, 7, 0}) ==
-                velocita::LeaderHintResult::confirmed && router.leader_id() == 3,
+                velocita::LeaderHintResult::confirmed && router.leader_id() == 3 &&
+                router.state() == velocita::LeaderKnowledgeState::known,
             "successful response did not confirm its leader");
     router.mark_target_unavailable(router.preferred_target());
-    require(!router.leader_id() && router.preferred_target() == 0,
+    require(!router.leader_id() && router.preferred_target() == 0 &&
+                router.state() == velocita::LeaderKnowledgeState::unknown,
             "unavailable leader target was not invalidated");
     require(router.observe({velocita::ResponseStatus::not_leader, -1, 10, 0, 8, 0}) ==
                 velocita::LeaderHintResult::unknown && !router.leader_id(),
@@ -240,6 +247,60 @@ void test_client_routing() {
                 velocita::LeaderHintResult::invalid && !zero_id_router.leader_id() &&
                 zero_id_router.observed_term() == 3,
             "newer term with an invalid zero leader retained stale leadership");
+}
+
+void test_client_recovery() {
+    require_throws([] {
+        (void)velocita::ClientRecoveryPolicy({0, 250, 1, 250});
+    }, "zero retry base was accepted");
+    require_throws([] {
+        (void)velocita::ClientRecoveryPolicy({10, 9, 1, 250});
+    }, "retry cap below base was accepted");
+    require_throws([] {
+        (void)velocita::ClientRecoveryPolicy({10, 250, 0, 250});
+    }, "zero unconfirmed admission limit was accepted");
+    require_throws([] {
+        (void)velocita::ClientRecoveryPolicy({10, 250, 1, 0});
+    }, "zero response timeout was accepted");
+
+    const velocita::ClientRecoveryPolicy recovery({10, 80, 1, 50});
+    require(recovery.retry_delay_ns(42, 0) == 10,
+            "first retry did not use the configured positive base");
+    for (std::uint32_t retry = 0; retry < 12; ++retry) {
+        const auto delay = recovery.retry_delay_ns(42, retry);
+        const auto repeated = recovery.retry_delay_ns(42, retry);
+        const auto exponential = retry >= 3 ? 80ULL : 10ULL << retry;
+        const auto upper = std::min<std::uint64_t>(80, exponential);
+        require(delay == repeated, "retry jitter was not deterministic");
+        require(delay >= 10 && delay <= upper,
+                "retry delay escaped its positive exponential bounds");
+    }
+
+    constexpr std::uint64_t now = 1'000;
+    constexpr std::uint64_t deadline = 2'000;
+    const auto next = recovery.next_retry_ns(99, 8, now, deadline);
+    require(next > now && next <= deadline,
+            "next retry escaped its current-time/deadline bounds");
+    require(!velocita::ClientRecoveryPolicy::retry_due(next - 1, next, deadline),
+            "retry became eligible before its monotonic deadline");
+    require(velocita::ClientRecoveryPolicy::retry_due(next, next, deadline),
+            "retry was not eligible at its monotonic deadline");
+    require(recovery.next_retry_ns(99, 8, now, 1'025) == 1'025,
+            "retry schedule was not clamped to the command deadline");
+    require(recovery.response_deadline_ns(now, deadline) == 1'050 &&
+                recovery.response_deadline_ns(now, 1'025) == 1'025,
+            "response-silence deadline was not bounded by the command deadline");
+    require(!velocita::ClientRecoveryPolicy::retry_due(deadline, next, deadline) &&
+                velocita::ClientRecoveryPolicy::deadline_reached(deadline, deadline),
+            "command deadline permitted another retry");
+
+    require(recovery.may_admit(velocita::LeaderKnowledgeState::unknown, 0),
+            "bounded discovery admission was rejected");
+    require(!recovery.may_admit(velocita::LeaderKnowledgeState::unknown, 1) &&
+                !recovery.may_admit(velocita::LeaderKnowledgeState::suspect, 1),
+            "unconfirmed leadership admitted beyond its configured bound");
+    require(recovery.may_admit(velocita::LeaderKnowledgeState::known, 100),
+            "known leadership was incorrectly constrained by the discovery bound");
 }
 
 void route_messages(std::vector<std::unique_ptr<velocita::RaftNode>>& nodes) {
@@ -344,6 +405,7 @@ int main() {
     try {
         test_wire();
         test_client_routing();
+        test_client_recovery();
         const auto unique = std::chrono::steady_clock::now().time_since_epoch().count();
         const auto data_dir = std::filesystem::temp_directory_path() /
                               ("velocita-raft-test-" + std::to_string(unique));

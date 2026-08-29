@@ -15,13 +15,35 @@ void require(const bool condition, const char* message) {
 void test_pending_table() {
     velocita::PendingRequestTable table(3);
     require(table.capacity() == 4, "pending capacity should round to a power of two");
-    require(table.insert({1, 10, 20, 30, 0, 0, 0, velocita::BenchmarkPhase::steady}),
+    velocita::PendingRequest first;
+    first.request_id = 1;
+    first.intended_send_ns = 10;
+    first.actual_send_ns = 20;
+    first.deadline_ns = 30;
+    first.phase = velocita::BenchmarkPhase::steady;
+    require(table.insert(first),
             "first pending insert failed");
-    require(table.insert({5, 11, 21, 31, 1, 0, 0, velocita::BenchmarkPhase::steady}),
+    auto collision = first;
+    collision.request_id = 5;
+    collision.intended_send_ns = 11;
+    collision.actual_send_ns = 21;
+    collision.deadline_ns = 31;
+    collision.channel_index = 1;
+    require(table.insert(collision),
             "colliding pending insert failed");
     require(table.find(1) != nullptr && table.find(5) != nullptr,
             "pending lookup failed");
     require(!table.insert({1}), "duplicate pending request was accepted");
+    velocita::PendingRequest third;
+    third.request_id = 2;
+    velocita::PendingRequest fourth;
+    fourth.request_id = 3;
+    velocita::PendingRequest overflow;
+    overflow.request_id = 4;
+    require(table.insert(third) && table.insert(fourth) && table.size() == table.capacity(),
+            "pending table did not reach its explicit capacity");
+    require(!table.insert(overflow) && table.size() == table.capacity(),
+            "pending table exceeded its configured capacity");
     require(table.erase(1) && table.find(1) == nullptr && table.find(5) != nullptr,
             "pending erase broke a colliding lookup");
 }
