@@ -35,6 +35,15 @@ Every implementation and experiment must be explained through these lenses:
 The goal is not only to execute commands but to build the judgment required to
 design, review, operate, and communicate a production system at CTO level.
 
+Technical education must go to implementation depth. For each material C++
+change, the review must cover the concrete types and interfaces, object
+ownership and lifetime, value/reference/pointer semantics, `const` and
+`noexcept` contracts, templates or compile-time behavior, error propagation,
+allocation and syscall behavior, iterator/reference invalidation, concurrency
+and memory-ordering assumptions, cache/locality implications, and the expected
+cost on the owner loop. Explanations must connect source-level constructs to
+the runtime behavior and evidence rather than stopping at syntax.
+
 ## 1. Executive objective
 
 V1 proved basic Raft correctness and operational recovery for three logical
