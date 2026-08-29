@@ -778,6 +778,48 @@ coverage now pass in both build modes. Phase 3 remains a candidate until
 sustained fairness, overload behavior, follower catch-up under load, and
 Raspberry Pi validation pass.
 
+### 9.9 Raspberry Pi storage-bound acceptance failure
+
+The first Pi comparison, `20260829T120112Z`, was diagnostically useful but not
+certifiable because the boot had already latched undervoltage and throttling.
+After correcting the power path, rebooting, verifying `throttled=0x0`, and
+selecting the `performance` governor, repeat `20260829T124828Z` still failed:
+
+| Rate | Scheduled | Completed | Admission rejected | Timed out | Amplification | p50 | p99 |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 5/s | 75 | 50 | 25 | 0 | 2.680 | 395.9 ms | 828.4 ms |
+| 20/s | 300 | 64 | 230 | 6 | 5.086 | 1,041.3 ms | 1,973.2 ms |
+
+At 5/s the voters remained converged in term 1. At 20/s, owner-loop maximum
+gaps reached 1.068--1.471 seconds and the voters ended without a leader in
+terms 7--9. The client then correctly bounded discovery and shed admission,
+but this is not healthy service.
+
+The host evidence isolates synchronous storage rather than CPU saturation:
+CPU pressure was `some avg10=0.02`, whereas I/O pressure was
+`full avg10=75.14` and `full avg300=57.25`. The state machine itself remained
+microsecond-scale. The current storage path performs one WAL `fsync` per log
+offer on every voter. Each commit-index advance also writes and `fsync`s an
+atomic-replacement metadata file, renames it, and `fsync`s its directory on
+every voter. With all voters on one SD card, a logical command can cause about
+nine serialized durability barriers.
+
+This result satisfies the condition in Section 9.4 that measurement must prove
+ordered persistence work unavoidable before it enters scope. The next design
+checkpoint must preserve these invariants:
+
+- a voter never acknowledges an entry as durable before its ordered WAL batch
+  is stable;
+- term and vote persistence remains synchronous with the Raft safety decision;
+- commit/apply and client success never overtake durable log persistence;
+- only the owner thread mutates Raft and the FSM; and
+- storage completions return to the owner in order through bounded queues.
+
+A longer response-silence timeout may reduce false recovery traffic, but it
+would only hide the blocking interval. Phase 3 remains open until a storage
+isolation experiment and an ordered-persistence design remove or explicitly
+bound the owner-thread stall.
+
 ## 10. Phase 4: observability, experiments, and release proof
 
 ### 10.1 Objective

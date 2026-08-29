@@ -271,6 +271,36 @@ ordering and configured-budget tests now pass in both build modes. Phase 3
 remains a candidate until sustained fairness, overload behavior, follower
 catch-up, and the Raspberry Pi acceptance matrix pass.
 
+Raspberry Pi run `20260829T120112Z` was retained as exploratory evidence only
+because `vcgencmd get_throttled` was already `0x50000` before measurement. A
+clean-boot repeat, `20260829T124828Z`, held `performance` governor and remained
+at `throttled=0x0`, but failed the Phase 3 acceptance gate:
+
+- at 5 commands/s, 75 measured schedules produced 50 completions and 25
+  leader-unknown admission rejections, with amplification `2.68`, p50
+  `395,937,951 ns`, and p99 `828,406,854 ns`;
+- at 20 commands/s, 300 schedules produced 64 completions, 230 admission
+  rejections, and 6 timeouts, with amplification `5.086`, p50
+  `1,041,311,701 ns`, and p99 `1,973,153,543 ns`;
+- the 5/s voters stayed converged in term 1, but the 20/s voters ended
+  leaderless in terms 7--9, with maximum owner-loop gaps between 1.068 and
+  1.471 seconds; and
+- post-run Linux pressure-stall information reported CPU `some avg10=0.02`
+  versus I/O `full avg10=75.14` and `full avg300=57.25`. Memory remained
+  available, no swap was configured, storage integrity checks passed, and the
+  kernel reported no current-boot undervoltage or filesystem I/O error.
+
+The state machine remained fast (`commit_to_apply` p99 below 12 us); the delay
+was before commit. Code inspection explains the physical amplification: every
+log offer opens, appends, `fsync`s, and closes the WAL, while every commit-index
+advance rewrites and `fsync`s a metadata temporary file, renames it, and
+`fsync`s the parent directory. Three logical voters share one SD card, so one
+logical command can impose approximately nine durability barriers. The
+control-plane-first scheduler cannot preempt a blocking durability syscall.
+Phase 3 therefore remains unaccepted pending an explicit ordered-persistence
+design and storage-isolation experiments; increasing retry deadlines alone is
+not an accepted fix.
+
 ### V1.1 validation results
 
 Local development evidence on 2026-08-27:
