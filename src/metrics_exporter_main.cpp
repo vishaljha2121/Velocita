@@ -97,7 +97,15 @@ std::string render_metrics(const Options& options) {
     help(output, "velocita_metrics_page_up", "Whether a valid shared-memory metrics page was readable.", "gauge");
     help(output, "velocita_metrics_writer_active", "Whether the node marked its shared-memory writer active.", "gauge");
     help(output, "velocita_metrics_last_tick_age_seconds", "Seconds since the node completed raft_periodic.", "gauge");
+    help(output, "velocita_raft_last_tick_age_seconds", "Seconds since the node completed raft_periodic.", "gauge");
     help(output, "velocita_process_start_time_seconds", "Node process start time since Unix epoch.", "gauge");
+    help(output, "velocita_raft_owner_loop_iterations_total", "Completed owner-loop iterations.", "counter");
+    help(output, "velocita_raft_owner_loop_max_gap_seconds", "Maximum observed time between scheduled Raft tick points.", "gauge");
+    help(output, "velocita_raft_client_fragments_processed_total", "Client fragments processed by the owner loop.", "counter");
+    help(output, "velocita_raft_peer_fragments_processed_total", "Peer fragments processed by the owner loop.", "counter");
+    help(output, "velocita_raft_client_budget_exhausted_total", "Owner-loop iterations whose client poll consumed its full fragment budget.", "counter");
+    help(output, "velocita_raft_peer_budget_exhausted_total", "Owner-loop iterations whose peer poll consumed its full fragment budget.", "counter");
+    help(output, "velocita_raft_client_poll_skipped_total", "Owner-loop iterations that skipped client ingress by bounded reason.", "counter");
     help(output, "velocita_raft_tick_total", "Completed raft_periodic calls.", "counter");
     help(output, "velocita_raft_role", "Current Raft role as a one-hot gauge.", "gauge");
     help(output, "velocita_raft_leader_id", "Current known Raft leader ID, or -1 when unknown.", "gauge");
@@ -135,8 +143,27 @@ std::string render_metrics(const Options& options) {
             ? static_cast<double>(now - value.last_tick_monotonic_nanoseconds) / 1'000'000'000.0
             : 0.0;
         node_metric(output, "velocita_metrics_last_tick_age_seconds", expected_node_id, tick_age);
+        node_metric(output, "velocita_raft_last_tick_age_seconds", expected_node_id, tick_age);
         node_metric(output, "velocita_process_start_time_seconds", expected_node_id,
                     value.header.process_start_time_seconds);
+        node_metric(output, "velocita_raft_owner_loop_iterations_total", expected_node_id,
+                    value.owner_loop_iterations_total);
+        node_metric(output, "velocita_raft_owner_loop_max_gap_seconds", expected_node_id,
+                    static_cast<double>(value.owner_loop_max_gap_nanoseconds) / 1'000'000'000.0);
+        node_metric(output, "velocita_raft_client_fragments_processed_total", expected_node_id,
+                    value.request_fragments_total);
+        node_metric(output, "velocita_raft_peer_fragments_processed_total", expected_node_id,
+                    value.peer_fragments_total);
+        node_metric(output, "velocita_raft_client_budget_exhausted_total", expected_node_id,
+                    value.client_budget_exhausted_total);
+        node_metric(output, "velocita_raft_peer_budget_exhausted_total", expected_node_id,
+                    value.peer_budget_exhausted_total);
+        output << "velocita_raft_client_poll_skipped_total{node_id=\"" << expected_node_id
+               << "\",reason=\"tick_slack\"} "
+               << value.client_poll_skipped_tick_slack_total << '\n'
+               << "velocita_raft_client_poll_skipped_total{node_id=\"" << expected_node_id
+               << "\",reason=\"response_backlog\"} "
+               << value.client_poll_skipped_response_backlog_total << '\n';
         node_metric(output, "velocita_raft_tick_total", expected_node_id, value.tick_total);
         for (const auto role : {velocita::MetricRole::none, velocita::MetricRole::follower,
                                 velocita::MetricRole::candidate, velocita::MetricRole::leader}) {

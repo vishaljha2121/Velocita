@@ -57,8 +57,8 @@ public:
 #endif
     [[nodiscard]] Response submit(const Command& command);
     void receive_peer(const PeerMessage& message);
-    [[nodiscard]] std::vector<PeerMessage> take_outbound_messages();
-    [[nodiscard]] std::vector<Response> take_completed_responses();
+    [[nodiscard]] std::optional<PeerMessage> take_outbound_message();
+    [[nodiscard]] std::optional<Response> take_completed_response();
     [[nodiscard]] NodeStatus status() const;
 
 private:

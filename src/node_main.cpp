@@ -1,10 +1,12 @@
 #include "velocita/aeron_runtime.hpp"
+#include "velocita/owner_loop_scheduler.hpp"
 #include "velocita/raft_node.hpp"
 #include "velocita/shared_metrics.hpp"
 #include "velocita/wire.hpp"
 
 #include "FragmentAssembler.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <csignal>
@@ -135,6 +137,11 @@ struct PeerQueueEntry {
 #endif
 };
 
+struct OfferWork {
+    std::size_t attempted{};
+    std::size_t progressed{};
+};
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -156,6 +163,7 @@ int main(int argc, char** argv) {
         std::deque<std::vector<std::byte>> response_queue;
         std::uint64_t response_queue_depth{};
         std::uint64_t peer_queue_depth{};
+        const velocita::OwnerLoopConfig owner_loop_config;
 #ifdef VELOCITA_BENCHMARK_INSTRUMENTATION
         std::uint64_t benchmark_request_count{};
 #endif
@@ -163,6 +171,7 @@ int main(int argc, char** argv) {
         std::shared_ptr<aeron::Subscription> peer_subscription;
         std::unordered_map<std::int32_t, std::shared_ptr<aeron::Publication>> peer_publications;
         std::unordered_map<std::int32_t, std::deque<PeerQueueEntry>> peer_queues;
+        std::vector<std::int32_t> peer_ids;
         if (options.members.size() > 1) {
             peer_subscription = aeron.add_subscription(options.peer_channel, 2001);
             for (const auto member : options.members) {
@@ -172,7 +181,10 @@ int main(int argc, char** argv) {
                     throw std::runtime_error("missing --peer-target for node " + std::to_string(member));
                 }
                 peer_publications.emplace(member, aeron.add_publication(target->second, 2001));
+                peer_queues.emplace(member, std::deque<PeerQueueEntry>{});
+                peer_ids.push_back(member);
             }
+            std::sort(peer_ids.begin(), peer_ids.end());
         }
 
         aeron::FragmentAssembler assembler(
@@ -198,6 +210,9 @@ int main(int argc, char** argv) {
                     auto immediate = node.propose(command);
 #endif
                     if (immediate) {
+                        if (response_queue.size() >= owner_loop_config.response_queue_capacity) {
+                            throw std::runtime_error("response queue capacity exhausted");
+                        }
                         response_queue.push_back(velocita::encode_response(*immediate));
                         ++response_queue_depth;
                         metrics.set_response_queue_depth(response_queue_depth);
@@ -224,58 +239,74 @@ int main(int argc, char** argv) {
             });
         auto peer_handler = peer_assembler.handler();
 
-        std::cout << "native C++ Raft node listening on " << options.request_channel << std::endl;
-        auto last_tick = std::chrono::steady_clock::now();
-        auto last_metrics_status = last_tick;
-        while (running.load()) {
-            const auto now = std::chrono::steady_clock::now();
-            const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_tick).count();
-            if (elapsed > 0) {
-                node.tick(static_cast<int>(elapsed));
-                last_tick = now;
-                metrics.record_tick(static_cast<std::uint64_t>(
-                    std::chrono::duration_cast<std::chrono::nanoseconds>(
-                        now.time_since_epoch()).count()));
-            }
-
-            const int fragments = requests->poll(handler, 10);
-            const int peer_fragments = peer_subscription ? peer_subscription->poll(peer_handler, 100) : 0;
-
-            for (auto& message : node.take_outbound_messages()) {
+        auto drain_raft_outputs = [&](std::size_t& remaining_peer,
+                                      std::size_t& remaining_responses) {
+            std::size_t drained{};
+            while (remaining_peer > 0) {
+                auto message = node.take_outbound_message();
+                if (!message) break;
+                --remaining_peer;
                 metrics.record_outbound_peer_message();
-                auto& queue = peer_queues[message.recipient_id];
-                if (queue.size() == 4096) {
+                const auto queue_position = peer_queues.find(message->recipient_id);
+                if (queue_position == peer_queues.end()) {
+                    throw std::runtime_error("outbound message targets unknown peer");
+                }
+                auto& queue = queue_position->second;
+                if (queue.size() == owner_loop_config.peer_queue_capacity) {
                     queue.pop_front();
                     metrics.record_dropped_peer_message();
                 } else {
                     ++peer_queue_depth;
                 }
-                PeerQueueEntry queued{velocita::encode_peer_message(message)};
+                PeerQueueEntry queued{velocita::encode_peer_message(*message)};
 #ifdef VELOCITA_BENCHMARK_INSTRUMENTATION
-                if (const auto* append = std::get_if<velocita::AppendEntries>(&message.payload);
+                if (const auto* append = std::get_if<velocita::AppendEntries>(&message->payload);
                     append != nullptr && !append->entries.empty()) {
                     queued.last_index = append->previous_log_index +
                         static_cast<std::int64_t>(append->entries.size());
                 }
 #endif
                 queue.push_back(std::move(queued));
-                metrics.set_peer_queue_depth(peer_queue_depth);
+                ++drained;
             }
-            for (const auto& response : node.take_completed_responses()) {
-                response_queue.push_back(velocita::encode_response(response));
+            metrics.set_peer_queue_depth(peer_queue_depth);
+
+            const auto available = owner_loop_config.response_queue_capacity -
+                response_queue.size();
+            const auto bounded_responses = std::min(remaining_responses, available);
+            for (std::size_t count = 0; count < bounded_responses; ++count) {
+                auto response = node.take_completed_response();
+                if (!response) break;
+                --remaining_responses;
+                response_queue.push_back(velocita::encode_response(*response));
                 ++response_queue_depth;
-                metrics.set_response_queue_depth(response_queue_depth);
                 metrics.record_completed_response();
+                ++drained;
             }
-            for (auto& [peer_id, queue] : peer_queues) {
+            metrics.set_response_queue_depth(response_queue_depth);
+            return drained;
+        };
+
+        std::size_t peer_offer_cursor{};
+        auto offer_peer_messages = [&](std::size_t& remaining) {
+            OfferWork work;
+            for (std::size_t visited = 0;
+                 visited < peer_ids.size() && remaining > 0; ++visited) {
+                const auto peer_id = peer_ids[peer_offer_cursor];
+                peer_offer_cursor = (peer_offer_cursor + 1) % peer_ids.size();
+                auto& queue = peer_queues.at(peer_id);
                 if (queue.empty()) continue;
                 const auto publication = peer_publications.find(peer_id);
-                if (publication == peer_publications.end()) throw std::runtime_error("outbound message targets unknown peer");
+                if (publication == peer_publications.end()) {
+                    throw std::runtime_error("outbound message targets unknown peer");
+                }
 #ifdef VELOCITA_BENCHMARK_INSTRUMENTATION
                 const auto offer_started_ns = velocita::benchmark_monotonic_nanoseconds();
 #endif
                 const auto result = velocita::AeronRuntime::offer(
                     *publication->second, queue.front().bytes);
+                --remaining;
+                ++work.attempted;
                 metrics.record_offer(velocita::OfferChannel::peer, offer_outcome(result));
 #ifdef VELOCITA_BENCHMARK_INSTRUMENTATION
                 if (result >= 0 && queue.front().last_index > 0) {
@@ -286,30 +317,117 @@ int main(int argc, char** argv) {
                 if (result >= 0 || result == aeron::NOT_CONNECTED) {
                     queue.pop_front();
                     --peer_queue_depth;
-                    metrics.set_peer_queue_depth(peer_queue_depth);
-                } else if (result == aeron::PUBLICATION_CLOSED || result == aeron::MAX_POSITION_EXCEEDED) {
+                    ++work.progressed;
+                } else if (result == aeron::PUBLICATION_CLOSED ||
+                           result == aeron::MAX_POSITION_EXCEEDED) {
                     throw std::runtime_error("Aeron peer publication became unusable");
                 }
             }
-            if (!response_queue.empty()) {
-                const auto result = velocita::AeronRuntime::offer(*responses, response_queue.front());
+            metrics.set_peer_queue_depth(peer_queue_depth);
+            return work;
+        };
+
+        auto offer_responses = [&](const std::size_t limit) {
+            OfferWork work;
+            while (work.attempted < limit && !response_queue.empty()) {
+                const auto result = velocita::AeronRuntime::offer(
+                    *responses, response_queue.front());
+                ++work.attempted;
                 metrics.record_offer(velocita::OfferChannel::response, offer_outcome(result));
                 if (result >= 0) {
                     response_queue.pop_front();
                     --response_queue_depth;
-                    metrics.set_response_queue_depth(response_queue_depth);
-                } else if (result == aeron::PUBLICATION_CLOSED || result == aeron::MAX_POSITION_EXCEEDED) {
+                    ++work.progressed;
+                } else if (result == aeron::PUBLICATION_CLOSED ||
+                           result == aeron::MAX_POSITION_EXCEEDED) {
                     throw std::runtime_error("Aeron response publication became unusable");
+                } else {
+                    break;
                 }
             }
+            metrics.set_response_queue_depth(response_queue_depth);
+            return work;
+        };
+
+        std::cout << "native C++ Raft node listening on " << options.request_channel << std::endl;
+        std::cout << "owner-loop tick_ms=" << owner_loop_config.tick_interval.count()
+                  << " client_margin_ns=" << owner_loop_config.client_safety_margin.count()
+                  << " peer_fragments=" << owner_loop_config.peer_fragment_limit
+                  << " client_fragments=" << owner_loop_config.client_fragment_limit
+                  << " raft_drain=" << owner_loop_config.raft_output_drain_limit
+                  << " completion_drain=" << owner_loop_config.completed_response_drain_limit
+                  << std::endl;
+        const auto started = velocita::OwnerLoopScheduler::Clock::now();
+        velocita::OwnerLoopScheduler scheduler(owner_loop_config, started);
+        std::uint64_t owner_loop_iterations{};
+        std::uint64_t client_budget_exhausted{};
+        std::uint64_t peer_budget_exhausted{};
+        std::uint64_t client_polls_skipped_tick_slack{};
+        std::uint64_t client_polls_skipped_response_backlog{};
+        auto last_metrics_status = started;
+        while (running.load()) {
+            const auto iteration = velocita::run_owner_loop_iteration(
+                scheduler,
+                [] { return velocita::OwnerLoopScheduler::Clock::now(); },
+                [&](const int elapsed) {
+                    node.tick(elapsed);
+                    const auto completed = velocita::OwnerLoopScheduler::Clock::now();
+                    metrics.record_tick(static_cast<std::uint64_t>(
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            completed.time_since_epoch()).count()));
+                },
+                [&](const int limit) {
+                    return peer_subscription ? peer_subscription->poll(peer_handler, limit) : 0;
+                },
+                drain_raft_outputs,
+                [&](std::size_t& remaining) {
+                    return offer_peer_messages(remaining).progressed;
+                },
+                [&] {
+                    return response_queue.size() < owner_loop_config.response_queue_capacity;
+                },
+                [&](const int limit) { return requests->poll(handler, limit); },
+                [&](const std::size_t limit) {
+                    return offer_responses(limit).progressed;
+                });
+            ++owner_loop_iterations;
+            if (iteration.client_fragments == owner_loop_config.client_fragment_limit) {
+                ++client_budget_exhausted;
+            }
+            if (iteration.peer_fragments == owner_loop_config.peer_fragment_limit) {
+                ++peer_budget_exhausted;
+            }
+
+            if (iteration.client_blocked_by ==
+                velocita::ClientPollBlockReason::tick_slack) {
+                ++client_polls_skipped_tick_slack;
+            } else if (iteration.client_blocked_by ==
+                       velocita::ClientPollBlockReason::response_backlog) {
+                ++client_polls_skipped_response_backlog;
+            }
+
+            const auto now = velocita::OwnerLoopScheduler::Clock::now();
             if (now - last_metrics_status >= std::chrono::milliseconds(100)) {
+                metrics.record_owner_loop(
+                    owner_loop_iterations,
+                    scheduler.maximum_tick_gap_nanoseconds(),
+                    client_budget_exhausted,
+                    peer_budget_exhausted,
+                    client_polls_skipped_tick_slack,
+                    client_polls_skipped_response_backlog);
                 metrics.record_status(node.status());
                 last_metrics_status = now;
             }
-            if (fragments == 0 && peer_fragments == 0 && response_queue.empty()) {
+            if (!iteration.ticked && iteration.client_fragments == 0 &&
+                iteration.peer_fragments == 0 && iteration.progressed == 0) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
         }
+        std::cout << "owner-loop-stats node=" << options.node_id
+                  << " max_tick_gap_ns=" << scheduler.maximum_tick_gap_nanoseconds()
+                  << " client_polls_skipped_tick_slack=" << client_polls_skipped_tick_slack
+                  << " client_polls_skipped_response_backlog="
+                  << client_polls_skipped_response_backlog << std::endl;
         print_status(node.status());
         return 0;
     } catch (const std::exception& error) {

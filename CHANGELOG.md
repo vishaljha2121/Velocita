@@ -228,6 +228,49 @@ because `log()` is built in. The observer therefore returned a false negative
 before comparing voter state. Commit `b5d530d` renamed the array to
 `current_index`, after which the complete target-hardware gate passed.
 
+#### Stage 3 candidate - owner-loop control-plane priority
+
+- Added an allocation-free `OwnerLoopScheduler` using
+  `std::chrono::steady_clock` time points, a one-millisecond Raft tick interval,
+  a 250-microsecond client safety margin, and named positive work/queue bounds.
+- Changed Raft outbound and completion transfer from whole-deque temporary
+  vectors to one-message `std::optional` moves so the owner loop, rather than
+  queue size, controls work per iteration without an additional drain-vector
+  allocation.
+- Reordered the node loop to service overdue ticks, bounded peer ingress, Raft
+  output, and peer publication before polling at most one client fragment when
+  sufficient tick slack remains. A second bounded peer flush follows client
+  admission before bounded response publication.
+- Shared pre/post-client drain and peer-offer budgets across the complete
+  iteration, preventing two service points from silently doubling the stated
+  limits.
+- Added a statically dispatched, template-based iteration coordinator and fake
+  clock/poller tests that prove tick/peer/client ordering, tick-slack
+  suppression, the one-client-fragment limit, and cumulative work budgets.
+- Added fixed peer and response queue capacities and stopped client polling
+  while the external response queue is full. The existing peer-drop behavior
+  remains visible through its counter; committed responses are retained until
+  bounded drain capacity is available.
+- Advanced the fixed shared-memory metrics page to version 2 and added
+  owner-loop iteration count, maximum tick gap, full client/peer poll-budget
+  counts, and client-poll skip reasons. Plain owner-thread counters are copied
+  every 100 ms; the external exporter performs text rendering and unit
+  conversion.
+
+Both normal and benchmark-instrumented builds pass all three native test
+executables. A three-process macOS loopback smoke run elected node 1, completed
+25 of 25 measured commands at 5 commands/s with 25 attempts, zero timeouts,
+retry amplification `1.00`, and p99 `11,719,084 ns`. These are development
+results only. A second 50 commands/s development run completed 250 of 250
+measured commands with 250 attempts, zero timeouts, amplification `1.00`, p99
+`11,921,000 ns`, stable term 1, and no response-backlog polling blocks. Maximum
+observed tick gaps were `2,978,375 ns`, `4,744,666 ns`, and `3,598,917 ns` for
+nodes 1--3. The processes were stopped immediately after measurement, so their
+final one-entry follower lag is not convergence evidence. Deterministic
+ordering and configured-budget tests now pass in both build modes. Phase 3
+remains a candidate until sustained fairness, overload behavior, follower
+catch-up, and the Raspberry Pi acceptance matrix pass.
+
 ### V1.1 validation results
 
 Local development evidence on 2026-08-27:

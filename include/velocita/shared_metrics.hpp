@@ -11,7 +11,7 @@
 namespace velocita {
 
 inline constexpr std::uint64_t kMetricsMagic = 0x56454C4D45545231ULL;
-inline constexpr std::uint32_t kMetricsVersion = 1;
+inline constexpr std::uint32_t kMetricsVersion = 2;
 
 enum class MetricRole : std::uint64_t {
     none = 0,
@@ -54,6 +54,12 @@ struct alignas(64) SharedMetricsPage {
     MetricCell active;
     MetricCell last_tick_monotonic_nanoseconds;
     MetricCell tick_total;
+    MetricCell owner_loop_iterations_total;
+    MetricCell owner_loop_max_gap_nanoseconds;
+    MetricCell client_budget_exhausted_total;
+    MetricCell peer_budget_exhausted_total;
+    MetricCell client_poll_skipped_tick_slack_total;
+    MetricCell client_poll_skipped_response_backlog_total;
     MetricCell status_sequence;
     MetricCell role;
     MetricCell leader_id;
@@ -101,6 +107,12 @@ struct MetricsSnapshot {
     bool active{};
     std::uint64_t last_tick_monotonic_nanoseconds{};
     std::uint64_t tick_total{};
+    std::uint64_t owner_loop_iterations_total{};
+    std::uint64_t owner_loop_max_gap_nanoseconds{};
+    std::uint64_t client_budget_exhausted_total{};
+    std::uint64_t peer_budget_exhausted_total{};
+    std::uint64_t client_poll_skipped_tick_slack_total{};
+    std::uint64_t client_poll_skipped_response_backlog_total{};
     MetricRole role{MetricRole::none};
     std::int64_t leader_id{-1};
     std::uint64_t term{};
@@ -144,6 +156,12 @@ public:
     SharedMetrics& operator=(const SharedMetrics&) = delete;
 
     void record_tick(std::uint64_t monotonic_nanoseconds) noexcept;
+    void record_owner_loop(std::uint64_t iterations,
+                           std::uint64_t maximum_gap_nanoseconds,
+                           std::uint64_t client_budget_exhausted,
+                           std::uint64_t peer_budget_exhausted,
+                           std::uint64_t client_skipped_tick_slack,
+                           std::uint64_t client_skipped_response_backlog) noexcept;
     void record_status(const NodeStatus& status) noexcept;
     void record_request(std::size_t bytes) noexcept;
     void record_rejected_request() noexcept;

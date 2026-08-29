@@ -23,6 +23,7 @@ int main() {
         {
             velocita::SharedMetrics metrics(2, path);
             metrics.record_tick(123456);
+            metrics.record_owner_loop(100, 2'500'000, 9, 4, 7, 3);
             metrics.record_status({2, 1, "follower", 7, 1, 12, 11, 10, 42});
             metrics.record_request(64);
             metrics.record_peer_fragment(128);
@@ -47,6 +48,13 @@ int main() {
                         snapshot->peer_fragments_total == 1 &&
                         snapshot->peer_bytes_total == 128,
                     "Aeron receive counters are wrong");
+            require(snapshot->owner_loop_iterations_total == 100 &&
+                        snapshot->owner_loop_max_gap_nanoseconds == 2'500'000 &&
+                        snapshot->client_budget_exhausted_total == 9 &&
+                        snapshot->peer_budget_exhausted_total == 4 &&
+                        snapshot->client_poll_skipped_tick_slack_total == 7 &&
+                        snapshot->client_poll_skipped_response_backlog_total == 3,
+                    "owner-loop snapshot counters are wrong");
             require(snapshot->peer_queue_depth == 1 &&
                         snapshot->peer_queue_high_watermark == 3,
                     "queue gauge or high-watermark is wrong");

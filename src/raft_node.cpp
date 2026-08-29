@@ -206,25 +206,19 @@ NodeStatus RaftNode::status() const {
             raft_get_last_applied_idx(server_), fsm_.value()};
 }
 
-std::vector<PeerMessage> RaftNode::take_outbound_messages() {
+std::optional<PeerMessage> RaftNode::take_outbound_message() {
     assert_owner();
-    std::vector<PeerMessage> result;
-    result.reserve(outbound_messages_.size());
-    while (!outbound_messages_.empty()) {
-        result.push_back(std::move(outbound_messages_.front()));
-        outbound_messages_.pop_front();
-    }
+    if (outbound_messages_.empty()) return std::nullopt;
+    auto result = std::move(outbound_messages_.front());
+    outbound_messages_.pop_front();
     return result;
 }
 
-std::vector<Response> RaftNode::take_completed_responses() {
+std::optional<Response> RaftNode::take_completed_response() {
     assert_owner();
-    std::vector<Response> result;
-    result.reserve(completed_responses_.size());
-    while (!completed_responses_.empty()) {
-        result.push_back(completed_responses_.front());
-        completed_responses_.pop_front();
-    }
+    if (completed_responses_.empty()) return std::nullopt;
+    auto result = completed_responses_.front();
+    completed_responses_.pop_front();
     return result;
 }
 

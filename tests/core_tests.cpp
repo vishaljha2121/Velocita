@@ -1,5 +1,6 @@
 #include "velocita/client_recovery.hpp"
 #include "velocita/client_routing.hpp"
+#include "velocita/owner_loop_scheduler.hpp"
 #include "velocita/raft_node.hpp"
 #include "velocita/storage.hpp"
 #include "velocita/wire.hpp"
@@ -303,12 +304,161 @@ void test_client_recovery() {
             "known leadership was incorrectly constrained by the discovery bound");
 }
 
+void test_owner_loop_scheduler() {
+    using namespace std::chrono_literals;
+    using Scheduler = velocita::OwnerLoopScheduler;
+
+    static_assert(std::is_trivially_destructible_v<Scheduler>);
+
+    velocita::OwnerLoopConfig config;
+    const Scheduler::TimePoint started{};
+    Scheduler scheduler(config, started);
+
+    require(scheduler.config().peer_fragment_limit == 64 &&
+                scheduler.config().client_fragment_limit == 1 &&
+                scheduler.config().raft_output_drain_limit == 128 &&
+                scheduler.config().completed_response_drain_limit == 64 &&
+                scheduler.config().peer_offer_limit == 64 &&
+                scheduler.config().response_offer_limit == 16 &&
+                scheduler.config().peer_queue_capacity == 4096 &&
+                scheduler.config().response_queue_capacity == 4096,
+            "owner-loop scheduler lost a configured work bound");
+    require(!scheduler.consume_due_tick(started + 999us),
+            "owner-loop tick became due before its deadline");
+    require(scheduler.client_poll_decision(started, true).fragment_limit == 1,
+            "owner-loop rejected client work with a full tick interval available");
+    require(scheduler.client_poll_decision(started + 749us, true).fragment_limit == 1 &&
+                scheduler.client_poll_decision(started + 750us, true).blocked_by ==
+                    velocita::ClientPollBlockReason::tick_slack,
+            "owner-loop client safety margin boundary is incorrect");
+    require(scheduler.client_poll_decision(started, false).blocked_by ==
+                velocita::ClientPollBlockReason::response_backlog,
+            "owner-loop did not distinguish response backlog from tick slack");
+
+    const auto first_tick = scheduler.consume_due_tick(started + 1ms);
+    require(first_tick && *first_tick == 1 &&
+                scheduler.next_tick_deadline() == started + 2ms &&
+                scheduler.maximum_tick_gap_nanoseconds() == 1'000'000,
+            "owner-loop did not consume its first one-millisecond tick");
+
+    const auto delayed_tick = scheduler.consume_due_tick(started + 3400us);
+    require(delayed_tick && *delayed_tick == 2 &&
+                scheduler.next_tick_deadline() == started + 4ms &&
+                scheduler.maximum_tick_gap_nanoseconds() == 2'400'000,
+            "owner-loop did not retain the sub-millisecond remainder after a delayed tick");
+    require(scheduler.client_poll_decision(started + 3400us, true).fragment_limit == 1 &&
+                scheduler.client_poll_decision(started + 3800us, true).fragment_limit == 0,
+            "owner-loop tick slack did not track the retained remainder");
+
+    auto invalid = config;
+    invalid.tick_interval = 0ms;
+    require_throws([&] { (void)Scheduler(invalid, started); },
+                   "zero owner-loop tick interval was accepted");
+    invalid = config;
+    invalid.client_safety_margin = 1ms;
+    require_throws([&] { (void)Scheduler(invalid, started); },
+                   "owner-loop safety margin covering the tick interval was accepted");
+    invalid = config;
+    invalid.client_fragment_limit = 0;
+    require_throws([&] { (void)Scheduler(invalid, started); },
+                   "zero owner-loop client budget was accepted");
+    invalid = config;
+    invalid.response_queue_capacity = 0;
+    require_throws([&] { (void)Scheduler(invalid, started); },
+                   "zero owner-loop response queue capacity was accepted");
+
+    config.raft_output_drain_limit = 4;
+    config.completed_response_drain_limit = 3;
+    config.peer_offer_limit = 2;
+    Scheduler ordered(config, started);
+    std::vector<std::string> calls;
+    auto fake_now = started + 1ms;
+    int drain_calls{};
+    const auto iteration = velocita::run_owner_loop_iteration(
+        ordered,
+        [&] { return fake_now; },
+        [&](const int elapsed) {
+            calls.emplace_back("tick");
+            require(elapsed == 1, "ordered iteration received the wrong tick duration");
+        },
+        [&](const int limit) {
+            calls.emplace_back("peer-poll");
+            require(limit == config.peer_fragment_limit,
+                    "ordered iteration lost the peer fragment bound");
+            return limit;
+        },
+        [&](std::size_t& peer_remaining, std::size_t& response_remaining) {
+            calls.emplace_back(drain_calls++ == 0 ? "drain-before" : "drain-after");
+            const auto peer_work = std::min<std::size_t>(3, peer_remaining);
+            const auto response_work = std::min<std::size_t>(2, response_remaining);
+            peer_remaining -= peer_work;
+            response_remaining -= response_work;
+            return peer_work + response_work;
+        },
+        [&](std::size_t& remaining) {
+            calls.emplace_back(remaining == 2 ? "peer-offer-before" : "peer-offer-after");
+            const auto work = std::min<std::size_t>(1, remaining);
+            remaining -= work;
+            return work;
+        },
+        [&] {
+            calls.emplace_back("response-capacity");
+            return true;
+        },
+        [&](const int limit) {
+            calls.emplace_back("client-poll");
+            require(limit == 1, "ordered iteration exceeded the client fragment bound");
+            return limit;
+        },
+        [&](const std::size_t limit) {
+            calls.emplace_back("response-offer");
+            require(limit == config.response_offer_limit,
+                    "ordered iteration lost the response offer bound");
+            return std::size_t{1};
+        });
+    const std::vector<std::string> expected{
+        "tick", "peer-poll", "drain-before", "peer-offer-before",
+        "response-capacity", "client-poll", "drain-after",
+        "peer-offer-after", "response-offer"};
+    require(calls == expected, "owner-loop control-plane ordering changed");
+    require(iteration.ticked && iteration.peer_fragments == config.peer_fragment_limit &&
+                iteration.client_fragments == 1 && iteration.progressed == 10 &&
+                iteration.remaining.raft_outputs_remaining == 0 &&
+                iteration.remaining.completed_responses_remaining == 0 &&
+                iteration.remaining.peer_offers_remaining == 0,
+            "owner-loop pre/post service points did not share one iteration budget");
+
+    Scheduler tick_slack(config, started);
+    fake_now = started + 800us;
+    bool client_polled{};
+    const auto slack_iteration = velocita::run_owner_loop_iteration(
+        tick_slack,
+        [&] { return fake_now; },
+        [](int) {},
+        [&](int) {
+            fake_now = started + 900us;
+            return 1;
+        },
+        [](std::size_t&, std::size_t&) { return std::size_t{}; },
+        [](std::size_t&) { return std::size_t{}; },
+        [] { return true; },
+        [&](int) {
+            client_polled = true;
+            return 1;
+        },
+        [](std::size_t) { return std::size_t{}; });
+    require(!client_polled && slack_iteration.peer_fragments == 1 &&
+                slack_iteration.client_blocked_by ==
+                    velocita::ClientPollBlockReason::tick_slack,
+            "peer work near a tick deadline did not suppress client admission");
+}
+
 void route_messages(std::vector<std::unique_ptr<velocita::RaftNode>>& nodes) {
     std::vector<velocita::PeerMessage> messages;
     for (auto& node : nodes) {
-        auto outbound = node->take_outbound_messages();
-        messages.insert(messages.end(), std::make_move_iterator(outbound.begin()),
-                        std::make_move_iterator(outbound.end()));
+        while (auto message = node->take_outbound_message()) {
+            messages.push_back(std::move(*message));
+        }
     }
     for (const auto& message : messages) {
         require(message.recipient_id >= 1 && message.recipient_id <= static_cast<int>(nodes.size()),
@@ -362,10 +512,10 @@ void test_three_node_cluster(const std::filesystem::path& root) {
                         status.counter_value == 11;
         }
         if (converged) {
-            const auto completions = leader->take_completed_responses();
-            require(completions.size() == 1 && completions.front().request_id == 9001 &&
-                        completions.front().leader_id == leader_id &&
-                        completions.front().value == 11,
+            const auto completion = leader->take_completed_response();
+            require(completion && completion->request_id == 9001 &&
+                        completion->leader_id == leader_id && completion->value == 11 &&
+                        !leader->take_completed_response(),
                     "leader did not complete the client request after quorum commit");
             return;
         }
@@ -406,6 +556,7 @@ int main() {
         test_wire();
         test_client_routing();
         test_client_recovery();
+        test_owner_loop_scheduler();
         const auto unique = std::chrono::steady_clock::now().time_since_epoch().count();
         const auto data_dir = std::filesystem::temp_directory_path() /
                               ("velocita-raft-test-" + std::to_string(unique));

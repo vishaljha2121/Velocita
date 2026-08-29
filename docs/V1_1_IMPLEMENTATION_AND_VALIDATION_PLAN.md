@@ -714,6 +714,70 @@ V1.1 scope unless measurements prove it unavoidable.
   it does not destabilize the Raft control plane.
 - Retry amplification remains in the stable band below capacity.
 
+### 9.8 Implementation checkpoint
+
+The initial candidate introduces a header-defined `OwnerLoopScheduler` whose
+only state is an `OwnerLoopConfig` value and the last consumed monotonic tick
+time. Construction validates all durations, work limits, and queue capacities
+once. Runtime tick consumption and client-admission decisions are inline and
+`noexcept`; they perform duration arithmetic and integer comparisons without
+allocation, locking, wall-clock access, or virtual dispatch.
+
+The initial policy values are hypotheses:
+
+| Policy | Initial value | Reason to start here |
+|---|---:|---|
+| Raft tick interval | 1 ms | Preserve the existing periodic granularity |
+| Client tick-safety margin | 250 us | Skip new client work near the next tick |
+| Peer ingress | 64 fragments/iteration | Prioritize a finite peer batch |
+| Client ingress | 1 fragment/iteration | Bound synchronous proposal/WAL exposure |
+| Raft output drain | 128 messages/iteration | Exceed expected three-node peer generation while finite |
+| Completion drain | 64 responses/iteration | Bound encoding and queue transfer |
+| Peer offers | 64 attempts/iteration | Bound publication work across configured peers |
+| Response offers | 16 attempts/iteration | Make client response progress without dominating peers |
+| Peer/response queue capacity | 4,096 each | Preserve the existing peer bound and add a response bound |
+
+The loop order is now tick, peer ingress, bounded Raft drain, peer offers,
+tick-slack-gated client ingress, a second drain/peer offer using the *remaining*
+per-iteration budget, then bounded response offers. Raft and the FSM remain
+owned by the original thread.
+
+The iteration coordinator is a function template whose clock and work
+operations are callable template parameters. Production lambdas therefore use
+compile-time static dispatch, while tests inject a fake monotonic clock and
+fake ready queues. The deterministic test asserts the exact phase sequence,
+the one-fragment client limit, the peer poll limit, tick-slack suppression, and
+that the two drain/offer service points share one cumulative budget.
+
+`RaftNode` now transfers one outbound message or completion at a time through
+`std::optional`. Moving a `PeerMessage` transfers ownership of variant/vector
+storage without creating the prior whole-deque temporary vector; the caller
+sets the exact bound. The external response queue stops new client polling at
+capacity and only drains as many completed responses as it can retain.
+
+Shared metrics page version 2 adds owner-loop iterations, maximum observed tick
+gap, full client/peer poll-budget counts, and client-poll skips split between
+tick slack and response backlog. The owner thread accumulates these as plain
+integers and copies them into lock-free fixed-size cells only at the existing
+100 ms status-publication point. The external exporter performs Prometheus
+formatting and unit conversion. During a rolling target upgrade the exporter
+must be restarted after all voters so it can read the new page version.
+
+Normal and instrumented builds pass all native tests. A three-process macOS
+loopback smoke run completed 25 of 25 measured commands at 5 commands/s with
+25 transport attempts, no timeout, retry amplification `1.00`, and p99
+`11,719,084 ns`. A second run at 50 commands/s completed 250 of 250 measured
+commands with amplification `1.00`, p99 `11,921,000 ns`, stable term 1, no
+response-backlog polling blocks, and maximum observed tick gaps of
+`2,978,375 ns`, `4,744,666 ns`, and `3,598,917 ns` for nodes 1--3. This confirms
+that the one-millisecond policy is a service target rather than a hard
+real-time guarantee. The processes were terminated immediately after the load
+window, leaving the followers one final commit behind; that shutdown snapshot
+is not convergence evidence. Deterministic ordering and configured-budget
+coverage now pass in both build modes. Phase 3 remains a candidate until
+sustained fairness, overload behavior, follower catch-up under load, and
+Raspberry Pi validation pass.
+
 ## 10. Phase 4: observability, experiments, and release proof
 
 ### 10.1 Objective

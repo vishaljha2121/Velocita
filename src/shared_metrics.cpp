@@ -114,6 +114,27 @@ void SharedMetrics::record_tick(const std::uint64_t monotonic_nanoseconds) noexc
     increment(page_->tick_total);
 }
 
+void SharedMetrics::record_owner_loop(
+    const std::uint64_t iterations,
+    const std::uint64_t maximum_gap_nanoseconds,
+    const std::uint64_t client_budget_exhausted,
+    const std::uint64_t peer_budget_exhausted,
+    const std::uint64_t client_skipped_tick_slack,
+    const std::uint64_t client_skipped_response_backlog) noexcept {
+    if (page_ == nullptr) return;
+    page_->owner_loop_iterations_total.value.store(iterations, std::memory_order_relaxed);
+    page_->owner_loop_max_gap_nanoseconds.value.store(
+        maximum_gap_nanoseconds, std::memory_order_relaxed);
+    page_->client_budget_exhausted_total.value.store(
+        client_budget_exhausted, std::memory_order_relaxed);
+    page_->peer_budget_exhausted_total.value.store(
+        peer_budget_exhausted, std::memory_order_relaxed);
+    page_->client_poll_skipped_tick_slack_total.value.store(
+        client_skipped_tick_slack, std::memory_order_relaxed);
+    page_->client_poll_skipped_response_backlog_total.value.store(
+        client_skipped_response_backlog, std::memory_order_relaxed);
+}
+
 void SharedMetrics::record_status(const NodeStatus& status) noexcept {
     if (page_ == nullptr) return;
     const auto role = metric_role(status.role);
@@ -224,6 +245,14 @@ std::optional<MetricsSnapshot> read_shared_metrics(const std::filesystem::path& 
     result.active = page->active.value.load(std::memory_order_acquire) != 0;
     result.last_tick_monotonic_nanoseconds = load(page->last_tick_monotonic_nanoseconds);
     result.tick_total = load(page->tick_total);
+    result.owner_loop_iterations_total = load(page->owner_loop_iterations_total);
+    result.owner_loop_max_gap_nanoseconds = load(page->owner_loop_max_gap_nanoseconds);
+    result.client_budget_exhausted_total = load(page->client_budget_exhausted_total);
+    result.peer_budget_exhausted_total = load(page->peer_budget_exhausted_total);
+    result.client_poll_skipped_tick_slack_total =
+        load(page->client_poll_skipped_tick_slack_total);
+    result.client_poll_skipped_response_backlog_total =
+        load(page->client_poll_skipped_response_backlog_total);
     bool status_read{};
     for (int attempt = 0; attempt < 100; ++attempt) {
         const auto before = page->status_sequence.value.load(std::memory_order_acquire);
