@@ -11,9 +11,13 @@
 - [`V2_TDD_IMPLEMENTATION_AND_VALIDATION_PLAN.md`](V2_TDD_IMPLEMENTATION_AND_VALIDATION_PLAN.md):
   red-green-refactor discipline, test architecture, phased build order,
   acceptance gates, evidence, and rollback.
+- [`V2 Phase 1 macOS candidate evidence`](evidence/V2_PHASE1_MACOS_CANDIDATE.md):
+  exact contract commit, tests, codec measurements, limits, and pending
+  Raspberry Pi gate.
 
-V2 is not yet implemented. These documents define the contract that future
-implementation must satisfy.
+V2 Phase 1 has a macOS candidate implementation. It is not accepted or tagged
+until the target-hardware gate passes, and no Decision/OMS trading behavior is
+implemented yet.
 
 ## V1.1 development and evidence
 

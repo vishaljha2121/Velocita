@@ -11,11 +11,14 @@ container tag `localhost/velocita-raft:v1`. `CMakeLists.txt` still declares the
 project version as `0.1.0`; artifact and semantic-version unification remains
 release-engineering work.
 
-## [V2] - Proposed
+## [V2] - In development
 
-Status: architecture and TDD planning only. No V2 trading behavior is
-implemented, no V2 release has been tagged, and no V1/V1.1 wire, storage,
-deployment, or evidence artifact has been deleted or superseded in place.
+Status: Phase 1 domain and byte-contract candidate implemented and validated on
+macOS ARM64; Raspberry Pi ARM64 acceptance remains pending. No deterministic
+Decision/OMS reducer, risk engine, outbox, execution gateway, or live trading
+behavior is implemented. No V2 release has been tagged, and no V1/V1.1 wire,
+storage, deployment, or evidence artifact has been deleted or superseded in
+place.
 
 The accepted architecture direction is recorded in
 [`ADR 0001`](docs/adr/0001-v2-replicated-decision-oms-and-execution-boundary.md).
@@ -65,6 +68,34 @@ V2 uses test-driven development: observe the contract test fail, implement the
 smallest bounded behavior that makes it pass, refactor with all tests green,
 and retain evidence. Every phase defines tests, metrics, failure drills,
 acceptance gates, and rollback boundaries before production code is added.
+
+### Phase 1 candidate - domain types and versioned contracts
+
+Commit `a6ee8df5870a` implements the macOS candidate:
+
+- zero-cost strong identity wrappers prevent implicit cross-domain ID use;
+- checked fixed-point price, quantity, money, fee, and feature types make scale,
+  overflow, and rounding policy explicit;
+- fixed-capacity policy, decision-frame, order-effect, and venue-observation
+  values have typed structural validation;
+- the V2 envelope uses explicit little-endian fields, a versioned initial
+  message-kind registry, bounded lengths, fail-closed flags, and CRC-32;
+- canonical payload codecs reject truncation, trailing bytes, excessive counts,
+  unknown schema/enums, missing identity/digests, and invalid domain values;
+- SHA-256 provides immutable artifact and corpus identity; and
+- a Release microbenchmark reports codec timing, encoded-size ceilings, and
+  code-audited allocation upper bounds without claiming system throughput.
+
+The exact 144-byte policy corpus has SHA-256
+`7cd115af41936eaaabbf53660d86e54d27c288c09f76f98efc1c2c75dd48ef30`.
+Debug, Release, legacy regression, AddressSanitizer, and UndefinedBehaviorSanitizer
+tests pass on macOS ARM64. Raw commands, measurements, limitations, and the
+remaining target gate are recorded in
+[`docs/evidence/V2_PHASE1_MACOS_CANDIDATE.md`](docs/evidence/V2_PHASE1_MACOS_CANDIDATE.md).
+
+Phase 1 is not accepted and will not be tagged until the same canonical bytes,
+fixed-point results, malformed-input behavior, and tests pass on Raspberry Pi
+ARM64.
 
 ### Version preservation
 
