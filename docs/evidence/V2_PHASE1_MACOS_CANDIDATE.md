@@ -145,6 +145,20 @@ prove:
 6. the target benchmark output and host power/thermal state are retained as
    evidence, without treating its timings as system throughput.
 
+After synchronizing the committed source tree to the Pi, the target gate is one
+command (run `sudo -v` first so voltage state is readable):
+
+```sh
+./deploy/run-v2-phase1-gate.sh --yes
+```
+
+The script does not stop, retag, or restart the running V1/V1.1 cluster. It
+stores timestamped target evidence under
+`~/.local/share/velocita/v2-phase1-gates/`. Because the normal deployment
+sync excludes `.git`, the script also rejects any V2 contract source tree whose
+content root differs from
+`6eafe3ffe4b78819682517e78846e8b997cc8e7adb4735cfd222397a99b52640`.
+
 ## Rollback
 
 V1 and V1.1 code paths are unchanged. Revert commit `a6ee8df5870a` or switch to
