@@ -97,6 +97,14 @@ target_include_directories(velocita_metrics PUBLIC include)
 target_link_libraries(velocita_metrics PUBLIC velocita_core)
 target_compile_options(velocita_metrics PRIVATE -Wall -Wextra -Wpedantic)
 
+add_library(velocita_v2_contracts
+    src/v2_digest.cpp
+    src/v2_wire.cpp
+    src/v2_payload.cpp
+)
+target_include_directories(velocita_v2_contracts PUBLIC include)
+target_compile_options(velocita_v2_contracts PRIVATE -Wall -Wextra -Wpedantic)
+
 add_executable(raft-node src/node_main.cpp)
 target_link_libraries(raft-node PRIVATE velocita_aeron velocita_metrics)
 
@@ -132,4 +140,23 @@ if(BUILD_TESTING)
     add_executable(benchmark-tests tests/benchmark_tests.cpp)
     target_link_libraries(benchmark-tests PRIVATE velocita_benchmark velocita_core)
     add_test(NAME benchmark-tests COMMAND benchmark-tests)
+
+    add_executable(v2-contract-tests tests/v2_contract_tests.cpp)
+    target_link_libraries(v2-contract-tests PRIVATE velocita_v2_contracts)
+    target_compile_options(v2-contract-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-contract-tests COMMAND v2-contract-tests)
+
+    add_executable(v2-value-contract-tests tests/v2_value_contract_tests.cpp)
+    target_link_libraries(v2-value-contract-tests PRIVATE velocita_v2_contracts)
+    target_compile_options(v2-value-contract-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-value-contract-tests COMMAND v2-value-contract-tests)
+
+    add_executable(v2-payload-codec-tests tests/v2_payload_codec_tests.cpp)
+    target_link_libraries(v2-payload-codec-tests PRIVATE velocita_v2_contracts)
+    target_compile_options(v2-payload-codec-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-payload-codec-tests COMMAND v2-payload-codec-tests)
+
+    add_executable(v2-contract-benchmark src/v2_contract_benchmark.cpp)
+    target_link_libraries(v2-contract-benchmark PRIVATE velocita_v2_contracts)
+    target_compile_options(v2-contract-benchmark PRIVATE -Wall -Wextra -Wpedantic)
 endif()
