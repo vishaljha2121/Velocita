@@ -19,6 +19,18 @@ main
 └── tag v1.0.0: accepted V1 code, operations, observability, and evidence
 ```
 
+V2 begins from the retained V1.1 storage-design checkpoint on a separate
+architecture branch:
+
+```text
+v1.1/stage-3-owner-loop-priority
+└── v2/architecture-contracts: ADR, contracts, and TDD plan only
+```
+
+This does not make V1.1 accepted or move `main`. V1/V1.1 branches and tags are
+rollback/reference points and must not be deleted or force-moved while V2 is
+developed.
+
 The planned V1.1 work should use one branch per stage:
 
 ```bash
@@ -53,6 +65,25 @@ git tag -a v1.1.0 -m "Velocita Raft V1.1 accepted on Raspberry Pi 5"
 An annotated tag is a signed release marker in local history: it records a tag
 name, message, creator, timestamp, and exact commit. It does not move when new
 commits are created.
+
+V2 uses the same test-first pattern with one branch per accepted phase. Create
+the next phase from the last reviewed V2 integration checkpoint, for example:
+
+```bash
+git switch v2/architecture-contracts
+git switch -c v2/phase-1-domain-contracts
+```
+
+Keep experiments separate:
+
+```bash
+git switch -c experiment/v2-wal-block-prototype
+```
+
+An experiment can retain valuable negative evidence without becoming release
+code. Merge it only after its contract, tests, data migration, and rollback
+plan satisfy the relevant V2 phase gate. V2 uses new wire/storage versions;
+never test a V2 storage writer against the only copy of a V1/V1.1 WAL volume.
 
 ## Daily inspection
 

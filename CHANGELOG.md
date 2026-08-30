@@ -6,10 +6,75 @@ than a commit log: implementation claims and experimental conclusions are kept
 separate, and a throughput number is not published until a repeatable benchmark
 meets its acceptance gates.
 
-The project currently uses milestone names (`V1`, `V1.1`) and the corresponding
+The project currently uses milestone names (`V1`, `V1.1`, `V2`) and the corresponding
 container tag `localhost/velocita-raft:v1`. `CMakeLists.txt` still declares the
 project version as `0.1.0`; artifact and semantic-version unification remains
 release-engineering work.
+
+## [V2] - Proposed
+
+Status: architecture and TDD planning only. No V2 trading behavior is
+implemented, no V2 release has been tagged, and no V1/V1.1 wire, storage,
+deployment, or evidence artifact has been deleted or superseded in place.
+
+The accepted architecture direction is recorded in
+[`ADR 0001`](docs/adr/0001-v2-replicated-decision-oms-and-execution-boundary.md).
+The authoritative domain, identity, message, order, risk, outbox, execution,
+reconciliation, persistence, threading, failure, and metric contracts are in
+[`docs/V2_ARCHITECTURE_CONTRACTS.md`](docs/V2_ARCHITECTURE_CONTRACTS.md).
+The test-first build order and phase acceptance gates are in
+[`docs/V2_TDD_IMPLEMENTATION_AND_VALIDATION_PLAN.md`](docs/V2_TDD_IMPLEMENTATION_AND_VALIDATION_PLAN.md).
+
+### Objective
+
+Evolve the counter laboratory into a deterministic trading Decision/OMS
+platform. A Raft cluster will own authoritative policy activation, decision
+evaluation, risk reservations, order intent, accepted venue evidence,
+positions, deduplication, and a transactional outbox. A logically single
+active execution gateway will deliver committed effects to a venue and return
+acknowledgement, fill, cancel, unknown-outcome, and reconciliation evidence
+through the cluster.
+
+### Accepted design decisions
+
+- A model or calibration service produces an immutable, versioned decision
+  policy artifact; publication does not silently activate it.
+- A market-data/feature edge proposes bounded canonical decision frames. The
+  Raft state machine performs the final authoritative evaluation.
+- An accepted decision atomically records the order, risk reservation,
+  deduplication receipt, and committed outbox effect.
+- Raft apply performs no external I/O. The executor delivers committed effects
+  at least once by stable identity and reconciles unknown outcomes before
+  retry.
+- The executor may refuse or defer an unsafe effect but may not originate or
+  economically modify an order.
+- One executor generation is active per venue/account. Automatic standby
+  promotion remains prohibited until the old sender can be externally fenced.
+- Normal new-risk traffic and emergency stop/cancel traffic use separate
+  bounded lanes and authority rules.
+- V2 retains the bounded asynchronous WAL direction: fixed-capacity staging
+  may move and amortize persistence work, but protocol success stays behind an
+  explicit quorum-durability fence.
+- Strategy economics are the final implementation phase, after identity,
+  deterministic replay, OMS/risk, outbox, simulation, storage, execution,
+  reconciliation, kill, and operational recovery are proven.
+
+### Development method
+
+V2 uses test-driven development: observe the contract test fail, implement the
+smallest bounded behavior that makes it pass, refactor with all tests green,
+and retain evidence. Every phase defines tests, metrics, failure drills,
+acceptance gates, and rollback boundaries before production code is added.
+
+### Version preservation
+
+- V1 remains recoverable at annotated tag `v1.0.0`.
+- Existing V1.1 branches and phase tags remain unchanged.
+- V2 begins on branch `v2/architecture-contracts` from the documented V1.1
+  storage-design checkpoint.
+- V2 will use new wire/storage versions and will never reinterpret V1/V1.1 WAL
+  data in place.
+- `v2.0.0` will be created only after the release-wide acceptance gates pass.
 
 ## [V1.1] - Unreleased
 

@@ -1,4 +1,4 @@
-# Velocita native Raft + Aeron v1
+# Velocita native Raft + Aeron
 
 An educational, native C++20 Raft service for a Raspberry Pi 5. It supports a
 single voter or three logical voters connected through Aeron UDP. It uses:
@@ -17,6 +17,19 @@ phase-by-phase acceptance gates are defined in
 The repository is intentionally maintained with local-only Git; branching,
 tagging, safe rollback, and offline backup are documented in
 [`docs/LOCAL_GIT_WORKFLOW.md`](docs/LOCAL_GIT_WORKFLOW.md).
+
+V2 is currently an architecture-and-tests proposal, not implemented trading
+behavior. It preserves V1/V1.1 and evolves the project toward a replicated
+Decision/OMS cluster plus a committed outbox and single active execution
+gateway. Start with:
+
+- [`ADR 0001: V2 decision and execution boundary`](docs/adr/0001-v2-replicated-decision-oms-and-execution-boundary.md);
+- [`V2 architecture contracts`](docs/V2_ARCHITECTURE_CONTRACTS.md); and
+- [`V2 TDD implementation and validation plan`](docs/V2_TDD_IMPLEMENTATION_AND_VALIDATION_PLAN.md).
+
+The current source remains the V1/V1.1 counter laboratory until individual V2
+phases are implemented and accepted. Documentation status is not a release
+claim.
 
 There is no Java runtime in the build or final image. The code in this repository is C++20; the two pinned upstream dependencies contain their native C/C++ implementations.
 
