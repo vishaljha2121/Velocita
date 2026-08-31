@@ -1,0 +1,36 @@
+FROM --platform=linux/arm64 ubuntu:26.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG AERON_COMMIT=5b62f21d917af027cdf5a3241aa5f355149b04fa
+ARG RAFT_COMMIT=e428eeb921a014192d1d703dd317f3f29f5916c5
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        cmake \
+        g++ \
+        git \
+        libbsd-dev \
+        ninja-build \
+        pkg-config \
+        uuid-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /opt/velocita-deps/aeron /opt/velocita-deps/willemt-raft \
+    && git -C /opt/velocita-deps/aeron init \
+    && git -C /opt/velocita-deps/aeron remote add origin https://github.com/aeron-io/aeron.git \
+    && git -C /opt/velocita-deps/aeron fetch --depth 1 origin "${AERON_COMMIT}" \
+    && git -C /opt/velocita-deps/aeron checkout --detach FETCH_HEAD \
+    && git -C /opt/velocita-deps/willemt-raft init \
+    && git -C /opt/velocita-deps/willemt-raft remote add origin https://github.com/willemt/raft.git \
+    && git -C /opt/velocita-deps/willemt-raft fetch --depth 1 origin "${RAFT_COMMIT}" \
+    && git -C /opt/velocita-deps/willemt-raft checkout --detach FETCH_HEAD \
+    && test "$(git -C /opt/velocita-deps/aeron rev-parse HEAD)" = "${AERON_COMMIT}" \
+    && test "$(git -C /opt/velocita-deps/willemt-raft rev-parse HEAD)" = "${RAFT_COMMIT}"
+
+COPY deploy/pi-container/run-gate-inside.sh /usr/local/bin/run-velocita-pi-container-gate
+RUN chmod 0755 /usr/local/bin/run-velocita-pi-container-gate \
+    && mkdir -p /src /work /evidence
+
+WORKDIR /src
+ENTRYPOINT ["/usr/local/bin/run-velocita-pi-container-gate"]
