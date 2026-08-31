@@ -14,11 +14,11 @@ release-engineering work.
 ## [V2] - In development
 
 Status: Phase 1 domain and byte-contract candidate implemented and validated on
-macOS ARM64; Raspberry Pi ARM64 acceptance remains pending. No deterministic
-Decision/OMS reducer, risk engine, outbox, execution gateway, or live trading
-behavior is implemented. No V2 release has been tagged, and no V1/V1.1 wire,
-storage, deployment, or evidence artifact has been deleted or superseded in
-place.
+macOS ARM64 and native ARM64 Ubuntu 26.04 in a constrained container;
+Raspberry Pi ARM64 acceptance remains pending. No deterministic Decision/OMS
+reducer, risk engine, outbox, execution gateway, or live trading behavior is
+implemented. No V2 release has been tagged, and no V1/V1.1 wire, storage,
+deployment, or evidence artifact has been deleted or superseded in place.
 
 The accepted architecture direction is recorded in
 [`ADR 0001`](docs/adr/0001-v2-replicated-decision-oms-and-execution-boundary.md).
@@ -89,9 +89,13 @@ Commit `a6ee8df5870a` implements the macOS candidate:
 The exact 144-byte policy corpus has SHA-256
 `7cd115af41936eaaabbf53660d86e54d27c288c09f76f98efc1c2c75dd48ef30`.
 Debug, Release, legacy regression, AddressSanitizer, and UndefinedBehaviorSanitizer
-tests pass on macOS ARM64. Raw commands, measurements, limitations, and the
-remaining target gate are recorded in
-[`docs/evidence/V2_PHASE1_MACOS_CANDIDATE.md`](docs/evidence/V2_PHASE1_MACOS_CANDIDATE.md).
+tests pass on macOS ARM64. The exact Phase 1 content root also passes Release,
+benchmark-instrumented, AddressSanitizer, and UndefinedBehaviorSanitizer tests
+under native ARM64 Ubuntu 26.04 with GCC 15.2. Raw commands, measurements,
+limitations, and the remaining target gate are recorded in
+[`docs/evidence/V2_PHASE1_MACOS_CANDIDATE.md`](docs/evidence/V2_PHASE1_MACOS_CANDIDATE.md)
+and
+[`docs/evidence/V2_PHASE1_ARM64_CONTAINER_CANDIDATE.md`](docs/evidence/V2_PHASE1_ARM64_CONTAINER_CANDIDATE.md).
 
 Phase 1 is not accepted and will not be tagged until the same canonical bytes,
 fixed-point results, malformed-input behavior, and tests pass on Raspberry Pi

@@ -14,10 +14,13 @@
 - [`V2 Phase 1 macOS candidate evidence`](evidence/V2_PHASE1_MACOS_CANDIDATE.md):
   exact contract commit, tests, codec measurements, limits, and pending
   Raspberry Pi gate.
+- [`V2 Phase 1 ARM64 Linux container candidate evidence`](evidence/V2_PHASE1_ARM64_CONTAINER_CANDIDATE.md):
+  native ARM64 Ubuntu/GCC compatibility and sanitizer evidence, with the
+  hardware claims it deliberately does not make.
 
-V2 Phase 1 has a macOS candidate implementation. It is not accepted or tagged
-until the target-hardware gate passes, and no Decision/OMS trading behavior is
-implemented yet.
+V2 Phase 1 has passed macOS and native ARM64 Ubuntu container candidate gates.
+It is not accepted or tagged until the Raspberry Pi target-hardware gate
+passes, and no Decision/OMS trading behavior is implemented yet.
 
 ## V1.1 development and evidence
 

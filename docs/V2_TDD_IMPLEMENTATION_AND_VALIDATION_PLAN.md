@@ -1,7 +1,7 @@
 # V2 TDD implementation and validation plan
 
-Status: approved execution baseline; Phase 1 macOS candidate implemented at
-commit `a6ee8df5870a`, with Raspberry Pi ARM64 acceptance pending.
+Status: approved execution baseline; Phase 1 macOS and native ARM64 Ubuntu
+container candidates implemented, with Raspberry Pi ARM64 acceptance pending.
 
 Architecture authority:
 [`ADR 0001`](adr/0001-v2-replicated-decision-oms-and-execution-boundary.md)
@@ -195,9 +195,11 @@ durability, and implementation order. No document calls a proposal implemented.
 
 ## 6. Phase 1: domain types and versioned contracts
 
-Implementation state: macOS ARM64 candidate complete; target-hardware gate
-pending. See
-[`V2 Phase 1 macOS candidate evidence`](evidence/V2_PHASE1_MACOS_CANDIDATE.md).
+Implementation state: macOS ARM64 and native ARM64 Ubuntu container candidates
+complete; Raspberry Pi target-hardware gate pending. See
+[`V2 Phase 1 macOS candidate evidence`](evidence/V2_PHASE1_MACOS_CANDIDATE.md)
+and
+[`V2 Phase 1 ARM64 Linux container candidate evidence`](evidence/V2_PHASE1_ARM64_CONTAINER_CANDIDATE.md).
 
 ### Objective
 

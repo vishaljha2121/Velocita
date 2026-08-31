@@ -6,7 +6,8 @@
 - Contract commit: `a6ee8df5870a`
 - Host: macOS 26.5 ARM64
 - Compiler: Apple Clang 21.0.0
-- Cross-platform gate: Raspberry Pi ARM64 pending
+- Cross-platform gates: native ARM64 Ubuntu container passed; Raspberry Pi
+  ARM64 pending
 
 ## Objective and business reason
 
