@@ -17,10 +17,17 @@
 - [`V2 Phase 1 ARM64 Linux container candidate evidence`](evidence/V2_PHASE1_ARM64_CONTAINER_CANDIDATE.md):
   native ARM64 Ubuntu/GCC compatibility and sanitizer evidence, with the
   hardware claims it deliberately does not make.
+- [`V2 Phase 2 policy-kernel experiment evidence`](evidence/V2_PHASE2_POLICY_KERNEL_EXPERIMENT.md):
+  first bounded reducer increment, TDD evidence, invariants, cross-compiler
+  matrix, and incomplete-phase limits.
 
 V2 Phase 1 has passed macOS and native ARM64 Ubuntu container candidate gates.
 It is not accepted or tagged until the Raspberry Pi target-hardware gate
 passes, and no Decision/OMS trading behavior is implemented yet.
+
+Phase 2 reducer development has started on an experiment branch while the
+Phase 1 Pi gate is pending. The experiment is not an accepted Phase 2 branch
+and cannot authorize trading or external effects.
 
 ## V1.1 development and evidence
 

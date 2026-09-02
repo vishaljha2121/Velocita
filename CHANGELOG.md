@@ -101,6 +101,29 @@ Phase 1 is not accepted and will not be tagged until the same canonical bytes,
 fixed-point results, malformed-input behavior, and tests pass on Raspberry Pi
 ARM64.
 
+### Phase 2 experimental increment - policy lifecycle and request dedup
+
+Experimental commits `7bc9e42` and `c783ab7` introduce the first pure reducer
+increment and its native ARM64 Ubuntu development gate. The increment provides
+a fixed-capacity policy catalog, retained request outcomes, exact/conflicting
+duplicate handling, immutable and monotonic policy identity, and bounded
+proposed/validated/active/superseded transitions. It performs no I/O, clock or
+random read, locking, heap growth, order creation, risk change, or external
+effect.
+
+Seven Release suites, four benchmark-instrumented V2 suites, and four
+ASan/UBSan V2 suites pass under ARM64 Ubuntu 26.04 with GCC 15.2 for source root
+`627b38f488aad60d3f0a65874a4bb132e196400c31c2e406f4b615e1095221d3`.
+Detailed RED/GREEN evidence, invariants, C++ design notes, and limitations are
+recorded in
+[`docs/evidence/V2_PHASE2_POLICY_KERNEL_EXPERIMENT.md`](docs/evidence/V2_PHASE2_POLICY_KERNEL_EXPERIMENT.md).
+
+This is not Phase 2 completion or acceptance. It remains on
+`experiment/v2-phase2-kernel` while Phase 1 awaits its Raspberry Pi gate. State
+digest/snapshot, strategy authority, orders, reservations, positions, outbox,
+reconciliation, model-based replay, reducer measurement, Raft/storage
+integration, and real Pi evidence remain pending.
+
 ### Version preservation
 
 - V1 remains recoverable at annotated tag `v1.0.0`.
