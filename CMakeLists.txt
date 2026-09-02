@@ -105,6 +105,13 @@ add_library(velocita_v2_contracts
 target_include_directories(velocita_v2_contracts PUBLIC include)
 target_compile_options(velocita_v2_contracts PRIVATE -Wall -Wextra -Wpedantic)
 
+add_library(velocita_v2_kernel
+    src/v2_kernel.cpp
+)
+target_include_directories(velocita_v2_kernel PUBLIC include)
+target_link_libraries(velocita_v2_kernel PUBLIC velocita_v2_contracts)
+target_compile_options(velocita_v2_kernel PRIVATE -Wall -Wextra -Wpedantic)
+
 add_executable(raft-node src/node_main.cpp)
 target_link_libraries(raft-node PRIVATE velocita_aeron velocita_metrics)
 
@@ -155,6 +162,11 @@ if(BUILD_TESTING)
     target_link_libraries(v2-payload-codec-tests PRIVATE velocita_v2_contracts)
     target_compile_options(v2-payload-codec-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-payload-codec-tests COMMAND v2-payload-codec-tests)
+
+    add_executable(v2-kernel-policy-tests tests/v2_kernel_policy_tests.cpp)
+    target_link_libraries(v2-kernel-policy-tests PRIVATE velocita_v2_kernel)
+    target_compile_options(v2-kernel-policy-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-kernel-policy-tests COMMAND v2-kernel-policy-tests)
 
     add_executable(v2-contract-benchmark src/v2_contract_benchmark.cpp)
     target_link_libraries(v2-contract-benchmark PRIVATE velocita_v2_contracts)
