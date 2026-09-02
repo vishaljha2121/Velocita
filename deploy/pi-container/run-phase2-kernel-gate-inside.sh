@@ -103,6 +103,7 @@ release_targets=(
     v2-value-contract-tests
     v2-payload-codec-tests
     v2-kernel-policy-tests
+    v2-kernel-control-tests
     v2-contract-benchmark
 )
 
@@ -128,6 +129,7 @@ failure_step=instrumented_build
 cmake --build "$instrumented_build" \
     --target v2-contract-tests v2-value-contract-tests \
              v2-payload-codec-tests v2-kernel-policy-tests \
+             v2-kernel-control-tests \
     --parallel "$build_jobs"
 
 failure_step=instrumented_tests
@@ -145,6 +147,7 @@ failure_step=sanitized_build
 cmake --build "$sanitized_build" \
     --target v2-contract-tests v2-value-contract-tests \
              v2-payload-codec-tests v2-kernel-policy-tests \
+             v2-kernel-control-tests \
     --parallel "$build_jobs"
 
 failure_step=sanitized_tests
