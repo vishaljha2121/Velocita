@@ -3,10 +3,12 @@
 - Date: 2026-09-02
 - Decision: retain as a green experimental increment; Phase 2 is incomplete
 - Branch: `experiment/v2-phase2-kernel`
-- Kernel commit: `7bc9e42`
-- ARM64 development-gate commit: `c783ab7`
+- Policy-kernel commit: `7bc9e42`
+- First ARM64 development-gate commit: `c783ab7`
+- Control-authority commit: `6de06ec`
+- Extended ARM64 development-gate commit: `2849a52`
 - ARM64 source root:
-  `627b38f488aad60d3f0a65874a4bb132e196400c31c2e406f4b615e1095221d3`
+  `8e4cba2743760eb71bb3ee7277d63183c2e706cc3bec5a6d449f0eec21291a72`
 - Raspberry Pi acceptance: not run
 
 ## Objective
@@ -21,6 +23,17 @@ Raft, storage, or venue I/O. It implements only:
 - one active policy per account/instrument scope;
 - monotonic policy versions and immutable policy identity; and
 - exact duplicate-result retention plus conflicting-duplicate rejection.
+
+The second increment adds replicated control authority:
+
+- fail-safe boot in `halted` mode;
+- compare-and-set strategy-mode commands fenced by the observed kill epoch and
+  executor generation;
+- strictly increasing kill epochs that atomically force `halted` mode;
+- strictly increasing executor generations that remove new-risk authority;
+- preservation of `halted` and `cancel_only` during executor promotion; and
+- retained, typed outcomes for stale, repeated, regressing, and malformed
+  identified control commands.
 
 ## TDD evidence
 
@@ -40,6 +53,12 @@ The smallest GREEN implementation introduced `velocita_v2_kernel`, the closed
 the no-I/O `apply` function. Boundary tests were then added for receipt
 exhaustion and state-version exhaustion.
 
+The control increment followed a second RED/GREEN cycle. The test target first
+failed because `TradingState`, `CommandBody`, and `ApplyCode` did not yet expose
+control state or commands. The GREEN implementation added only the three
+control commands and their reducer rules; the shared receipt machinery was
+reused unchanged.
+
 ## Core invariants proven by tests
 
 1. An exact duplicate returns the retained original `ApplyResult` and does not
@@ -56,6 +75,16 @@ exhaustion and state-version exhaustion.
 8. Receipt capacity is checked before business mutation; the reducer will not
    accept a policy whose idempotency result cannot be retained.
 9. State-version exhaustion fails closed rather than wrapping.
+10. Trading authority boots halted, with kill and executor generations at
+    zero.
+11. A strategy-mode command can change authority only when both expected
+    generations equal the replicated state.
+12. Kill and executor generations strictly increase; equal or regressing
+    values produce retained typed rejections.
+13. A kill-epoch advance and the forced halt are one reducer transition.
+14. Executor promotion cannot retain normal or reduce-only new-risk
+    authority; halted and cancel-only authority are preserved.
+15. Unknown strategy-mode enum values cannot enter replicated state.
 
 ## C++ design review
 
@@ -90,24 +119,39 @@ The state comment forbids retaining references across `apply`. `std::array`
 does not reallocate, but later replicated expiry may reuse a slot; stable
 addresses do not imply stable logical identity.
 
+`KillEpoch` and `ExecutorGeneration` are distinct `StrongId` instantiations.
+They have the same integer representation but are different C++ types, so the
+compiler rejects accidental cross-domain assignment or comparison. Their
+monotonicity is a replicated fencing mechanism, not a wall-clock ordering
+claim.
+
+`SetStrategyMode` is compare-and-set rather than a blind setter. Carrying both
+observed generations makes an operator or controller prove which authority
+state it evaluated. A delayed pre-kill or pre-promotion command therefore
+cannot reopen trading after failover.
+
+Every identified business rejection still advances the replicated state
+version once and stores an exact receipt. That makes retries history-stable:
+the same request identity cannot be reinterpreted after control state changes.
+
 ## Validation matrix
 
 macOS ARM64 with Apple Clang 21:
 
-- full Debug regression: 7/7 pass;
-- focused Release policy-kernel suite: pass; and
-- focused ASan/UBSan policy-kernel suite: pass.
+- full Debug regression: 8/8 pass;
+- focused Release policy and control suites: 2/2 pass; and
+- focused ASan/UBSan policy and control suites: 2/2 pass.
 
 Native ARM64 Ubuntu 26.04 with GCC 15.2, 4 CPUs, 4 GiB memory, and 256 MiB
 `/dev/shm`:
 
 | Configuration | Result |
 |---|---:|
-| Release, legacy + V2 | 7/7 pass |
-| benchmark-instrumented Release, V2 | 4/4 pass |
-| ASan + UBSan Debug, V2 | 4/4 pass |
+| Release, legacy + V2 | 8/8 pass |
+| benchmark-instrumented Release, V2 | 5/5 pass |
+| ASan + UBSan Debug, V2 | 5/5 pass |
 
-The retained committed-source run is `20260902T104922Z` under
+The latest retained committed-source run is `20260902T144010Z` under
 `~/.local/share/velocita/v2-phase2-container-gates/`.
 
 ## Limits and next tests
@@ -115,8 +159,9 @@ The retained committed-source run is `20260902T104922Z` under
 This increment is not Phase 2 acceptance and makes no throughput claim. It has
 not yet implemented or proven:
 
-- monotonic strategy mode, kill epoch, or executor generation;
 - deterministic state digest or canonical snapshot bytes;
+- reconciliation proof before restoring `normal` after a kill or executor
+  promotion;
 - receipt expiry and identity-retention horizon;
 - order, reservation, position, fill, outbox, or reconciliation state;
 - randomized reference-model comparison or replay corpus;

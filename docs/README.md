@@ -23,7 +23,8 @@
 
 V2 Phase 1 has passed macOS and native ARM64 Ubuntu container candidate gates.
 It is not accepted or tagged until the Raspberry Pi target-hardware gate
-passes, and no Decision/OMS trading behavior is implemented yet.
+passes. Phase 2 now implements policy lifecycle, deduplication, and replicated
+control fencing, but no order decision or external-effect authority.
 
 Phase 2 reducer development has started on an experiment branch while the
 Phase 1 Pi gate is pending. The experiment is not an accepted Phase 2 branch

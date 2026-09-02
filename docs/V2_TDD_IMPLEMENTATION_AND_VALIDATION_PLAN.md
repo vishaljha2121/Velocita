@@ -245,9 +245,10 @@ preserved V1/V1.1 branch.
 
 ## 7. Phase 2: pure deterministic Decision/OMS kernel
 
-Implementation state: first policy-lifecycle and request-dedup increment is
-green on macOS ARM64 and native ARM64 Ubuntu/GCC at commits `7bc9e42` and
-`c783ab7`. Phase 2 remains incomplete and stays on
+Implementation state: policy-lifecycle/request-dedup and monotonic
+control-authority increments are green on macOS ARM64 and native ARM64
+Ubuntu/GCC. Behavior commits are `7bc9e42` and `6de06ec`; the latest ARM64 gate
+commit is `2849a52`. Phase 2 remains incomplete and stays on
 `experiment/v2-phase2-kernel` until Phase 1 Raspberry Pi acceptance. See
 [`V2 Phase 2 policy-kernel experiment evidence`](evidence/V2_PHASE2_POLICY_KERNEL_EXPERIMENT.md).
 
