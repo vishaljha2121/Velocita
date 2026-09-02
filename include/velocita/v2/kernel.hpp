@@ -35,6 +35,9 @@ enum class ApplyCode : std::uint8_t {
     non_monotonic_policy_version,
     invalid_policy_transition,
     active_policy_scope_conflict,
+    stale_control_generation,
+    non_monotonic_kill_epoch,
+    non_monotonic_executor_generation,
     policy_capacity_exceeded,
     receipt_capacity_exceeded,
     state_version_exhausted,
@@ -67,10 +70,27 @@ struct SupersedePolicy {
     PolicyVersion policy_version{};
 };
 
+struct SetStrategyMode {
+    StrategyMode mode{StrategyMode::halted};
+    KillEpoch expected_kill_epoch{};
+    ExecutorGeneration expected_executor_generation{};
+};
+
+struct AdvanceKillEpoch {
+    KillEpoch new_kill_epoch{};
+};
+
+struct SetExecutorGeneration {
+    ExecutorGeneration new_generation{};
+};
+
 using CommandBody = std::variant<PublishPolicy,
                                  ValidatePolicy,
                                  ActivatePolicy,
-                                 SupersedePolicy>;
+                                 SupersedePolicy,
+                                 SetStrategyMode,
+                                 AdvanceKillEpoch,
+                                 SetExecutorGeneration>;
 
 struct Command {
     CommandIdentity identity{};
@@ -84,6 +104,9 @@ struct ApplyResult {
     PolicyVersion policy_version{};
     PolicyLifecycle policy_lifecycle{PolicyLifecycle::none};
     std::uint64_t state_version{};
+    StrategyMode strategy_mode{StrategyMode::halted};
+    KillEpoch kill_epoch{};
+    ExecutorGeneration executor_generation{};
 
     constexpr auto operator<=>(const ApplyResult&) const noexcept = default;
 };
@@ -103,6 +126,9 @@ struct RequestReceipt {
 // expiry even though std::array itself never reallocates.
 struct TradingState {
     std::uint64_t state_version{};
+    StrategyMode strategy_mode{StrategyMode::halted};
+    KillEpoch kill_epoch{};
+    ExecutorGeneration executor_generation{};
     std::size_t policy_count{};
     std::array<PolicyRecord, kMaxPolicies> policies{};
     std::size_t receipt_count{};

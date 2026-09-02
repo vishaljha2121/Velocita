@@ -168,6 +168,11 @@ if(BUILD_TESTING)
     target_compile_options(v2-kernel-policy-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-kernel-policy-tests COMMAND v2-kernel-policy-tests)
 
+    add_executable(v2-kernel-control-tests tests/v2_kernel_control_tests.cpp)
+    target_link_libraries(v2-kernel-control-tests PRIVATE velocita_v2_kernel)
+    target_compile_options(v2-kernel-control-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-kernel-control-tests COMMAND v2-kernel-control-tests)
+
     add_executable(v2-contract-benchmark src/v2_contract_benchmark.cpp)
     target_link_libraries(v2-contract-benchmark PRIVATE velocita_v2_contracts)
     target_compile_options(v2-contract-benchmark PRIVATE -Wall -Wextra -Wpedantic)
