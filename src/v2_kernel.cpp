@@ -40,6 +40,31 @@ namespace {
     return nullptr;
 }
 
+[[nodiscard]] SourceCursor* find_source_cursor_mutable(
+    TradingState& state, const SourceId source_id) noexcept {
+    for (std::size_t index = 0; index < state.source_count; ++index) {
+        if (state.sources[index].source_id == source_id) {
+            return &state.sources[index];
+        }
+    }
+    return nullptr;
+}
+
+[[nodiscard]] const SourceEventReceipt* find_source_event(
+    const TradingState& state,
+    const SourceId source_id,
+    const SourceGeneration generation,
+    const SourceSequence sequence) noexcept {
+    for (std::size_t index = 0; index < state.source_event_count; ++index) {
+        const auto& event = state.source_events[index];
+        if (event.source_id == source_id && event.generation == generation &&
+            event.sequence == sequence) {
+            return &event;
+        }
+    }
+    return nullptr;
+}
+
 [[nodiscard]] const RequestReceipt*
 find_receipt(const TradingState& state, const CommandIdentity& identity) noexcept {
     for (std::size_t index = 0; index < state.receipt_count; ++index) {
@@ -58,7 +83,10 @@ find_receipt(const TradingState& state, const CommandIdentity& identity) noexcep
                                  const PolicyId policy_id = {},
                                  const PolicyVersion policy_version = {},
                                  const PolicyLifecycle lifecycle = PolicyLifecycle::none,
-                                 const ContractError contract_error = ContractError::none) noexcept {
+                                 const ContractError contract_error = ContractError::none,
+                                 const SourceId source_id = {},
+                                 const SourceGeneration source_generation = {},
+                                 const SourceSequence source_sequence = {}) noexcept {
     return {code,
             contract_error,
             policy_id,
@@ -67,7 +95,10 @@ find_receipt(const TradingState& state, const CommandIdentity& identity) noexcep
             state_version,
             state.strategy_mode,
             state.kill_epoch,
-            state.executor_generation};
+            state.executor_generation,
+            source_id,
+            source_generation,
+            source_sequence};
 }
 
 [[nodiscard]] ApplyResult apply_publish(TradingState& state,
@@ -312,34 +343,145 @@ find_receipt(const TradingState& state, const CommandIdentity& identity) noexcep
     return result(state, ApplyCode::applied, next_version);
 }
 
+[[nodiscard]] ApplyResult source_result(
+    const TradingState& state,
+    const ApplyCode code,
+    const std::uint64_t next_version,
+    const RecordSourceEvent& command,
+    const ContractError contract_error = ContractError::none) noexcept {
+    return result(state,
+                  code,
+                  next_version,
+                  {},
+                  {},
+                  PolicyLifecycle::none,
+                  contract_error,
+                  command.source_id,
+                  command.source_generation,
+                  command.source_sequence);
+}
+
+[[nodiscard]] ApplyResult apply_record_source_event(
+    TradingState& state,
+    const RecordSourceEvent& command,
+    const std::uint64_t next_version) noexcept {
+    if (command.source_id.value() == 0 || command.source_generation.value() == 0 ||
+        command.source_sequence.value() == 0) {
+        return source_result(state,
+                             ApplyCode::invalid_command,
+                             next_version,
+                             command,
+                             ContractError::invalid_identity);
+    }
+    if (command.event_digest.is_zero()) {
+        return source_result(state,
+                             ApplyCode::invalid_command,
+                             next_version,
+                             command,
+                             ContractError::missing_digest);
+    }
+
+    if (const auto* existing = find_source_event(state,
+                                                 command.source_id,
+                                                 command.source_generation,
+                                                 command.source_sequence)) {
+        return source_result(state,
+                             existing->event_digest == command.event_digest
+                                 ? ApplyCode::already_applied
+                                 : ApplyCode::source_event_conflict,
+                             next_version,
+                             command);
+    }
+
+    auto* cursor = find_source_cursor_mutable(state, command.source_id);
+    if (cursor == nullptr) {
+        if (command.source_generation.value() != 1) {
+            return source_result(
+                state, ApplyCode::source_generation_gap, next_version, command);
+        }
+        if (command.source_sequence.value() != 1) {
+            return source_result(
+                state, ApplyCode::source_sequence_gap, next_version, command);
+        }
+    } else if (command.source_generation.value() < cursor->generation.value()) {
+        return source_result(
+            state, ApplyCode::source_generation_regression, next_version, command);
+    } else if (command.source_generation == cursor->generation) {
+        if (command.source_sequence.value() <= cursor->sequence.value()) {
+            return source_result(
+                state, ApplyCode::source_sequence_regression, next_version, command);
+        }
+        if (command.source_sequence.value() != cursor->sequence.value() + 1) {
+            return source_result(
+                state, ApplyCode::source_sequence_gap, next_version, command);
+        }
+    } else {
+        if (command.source_generation.value() != cursor->generation.value() + 1) {
+            return source_result(
+                state, ApplyCode::source_generation_gap, next_version, command);
+        }
+        if (command.source_sequence.value() != 1) {
+            return source_result(
+                state, ApplyCode::source_sequence_gap, next_version, command);
+        }
+    }
+
+    if (state.source_event_count == state.source_events.size()) {
+        return source_result(
+            state, ApplyCode::source_event_capacity_exceeded, next_version, command);
+    }
+    if (cursor == nullptr && state.source_count == state.sources.size()) {
+        return source_result(
+            state, ApplyCode::source_capacity_exceeded, next_version, command);
+    }
+
+    if (cursor == nullptr) {
+        state.sources[state.source_count] = SourceCursor{command.source_id,
+                                                        command.source_generation,
+                                                        command.source_sequence};
+        cursor = &state.sources[state.source_count];
+        ++state.source_count;
+    } else {
+        cursor->generation = command.source_generation;
+        cursor->sequence = command.source_sequence;
+    }
+    state.source_events[state.source_event_count] =
+        SourceEventReceipt{command.source_id,
+                           command.source_generation,
+                           command.source_sequence,
+                           command.event_digest};
+    ++state.source_event_count;
+    return source_result(state, ApplyCode::applied, next_version, command);
+}
+
 [[nodiscard]] ApplyResult apply_new_command(TradingState& state,
                                             const Command& command,
                                             const std::uint64_t next_version) noexcept {
-    switch (command.body.index()) {
-        case 0:
-            return apply_publish(state, *std::get_if<PublishPolicy>(&command.body), next_version);
-        case 1:
-            return apply_validate(state, *std::get_if<ValidatePolicy>(&command.body), next_version);
-        case 2:
-            return apply_activate(state, *std::get_if<ActivatePolicy>(&command.body), next_version);
-        case 3:
-            return apply_supersede(state,
-                                   *std::get_if<SupersedePolicy>(&command.body),
-                                   next_version);
-        case 4:
-            return apply_set_strategy_mode(
-                state, *std::get_if<SetStrategyMode>(&command.body), next_version);
-        case 5:
-            return apply_advance_kill_epoch(
-                state, *std::get_if<AdvanceKillEpoch>(&command.body), next_version);
-        case 6:
-            return apply_set_executor_generation(
-                state,
-                *std::get_if<SetExecutorGeneration>(&command.body),
-                next_version);
-        default:
-            return result(state, ApplyCode::invalid_command, next_version);
+    if (const auto* body = std::get_if<PublishPolicy>(&command.body)) {
+        return apply_publish(state, *body, next_version);
     }
+    if (const auto* body = std::get_if<ValidatePolicy>(&command.body)) {
+        return apply_validate(state, *body, next_version);
+    }
+    if (const auto* body = std::get_if<ActivatePolicy>(&command.body)) {
+        return apply_activate(state, *body, next_version);
+    }
+    if (const auto* body = std::get_if<SupersedePolicy>(&command.body)) {
+        return apply_supersede(state, *body, next_version);
+    }
+    if (const auto* body = std::get_if<SetStrategyMode>(&command.body)) {
+        return apply_set_strategy_mode(state, *body, next_version);
+    }
+    if (const auto* body = std::get_if<AdvanceKillEpoch>(&command.body)) {
+        return apply_advance_kill_epoch(state, *body, next_version);
+    }
+    if (const auto* body = std::get_if<SetExecutorGeneration>(&command.body)) {
+        return apply_set_executor_generation(state, *body, next_version);
+    }
+    if (const auto* body = std::get_if<RecordSourceEvent>(&command.body)) {
+        return apply_record_source_event(state, *body, next_version);
+    }
+    return result(state, ApplyCode::invalid_command, next_version);
 }
 
 }  // namespace
@@ -352,6 +494,16 @@ const PolicyRecord* find_policy(const TradingState& state,
         if (record.artifact.policy_id == policy_id &&
             record.artifact.policy_version == policy_version) {
             return &record;
+        }
+    }
+    return nullptr;
+}
+
+const SourceCursor* find_source_cursor(const TradingState& state,
+                                       const SourceId source_id) noexcept {
+    for (std::size_t index = 0; index < state.source_count; ++index) {
+        if (state.sources[index].source_id == source_id) {
+            return &state.sources[index];
         }
     }
     return nullptr;

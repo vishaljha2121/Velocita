@@ -12,8 +12,13 @@
 namespace velocita::v2 {
 
 inline constexpr std::size_t kMaxPolicies = 16;
+inline constexpr std::size_t kMaxSources = 16;
+inline constexpr std::size_t kMaxSourceEventReceipts = 128;
 inline constexpr std::size_t kMaxRequestReceipts = 256;
 static_assert(kMaxPolicies > 0);
+static_assert(kMaxSources > 0);
+static_assert(kMaxSourceEventReceipts > kMaxSources);
+static_assert(kMaxRequestReceipts > kMaxSourceEventReceipts);
 static_assert(kMaxRequestReceipts > kMaxPolicies);
 
 enum class PolicyLifecycle : std::uint8_t {
@@ -38,6 +43,13 @@ enum class ApplyCode : std::uint8_t {
     stale_control_generation,
     non_monotonic_kill_epoch,
     non_monotonic_executor_generation,
+    source_event_conflict,
+    source_generation_gap,
+    source_generation_regression,
+    source_sequence_gap,
+    source_sequence_regression,
+    source_capacity_exceeded,
+    source_event_capacity_exceeded,
     policy_capacity_exceeded,
     receipt_capacity_exceeded,
     state_version_exhausted,
@@ -84,13 +96,21 @@ struct SetExecutorGeneration {
     ExecutorGeneration new_generation{};
 };
 
+struct RecordSourceEvent {
+    SourceId source_id{};
+    SourceGeneration source_generation{};
+    SourceSequence source_sequence{};
+    Digest256 event_digest{};
+};
+
 using CommandBody = std::variant<PublishPolicy,
                                  ValidatePolicy,
                                  ActivatePolicy,
                                  SupersedePolicy,
                                  SetStrategyMode,
                                  AdvanceKillEpoch,
-                                 SetExecutorGeneration>;
+                                 SetExecutorGeneration,
+                                 RecordSourceEvent>;
 
 struct Command {
     CommandIdentity identity{};
@@ -107,6 +127,9 @@ struct ApplyResult {
     StrategyMode strategy_mode{StrategyMode::halted};
     KillEpoch kill_epoch{};
     ExecutorGeneration executor_generation{};
+    SourceId source_id{};
+    SourceGeneration source_generation{};
+    SourceSequence source_sequence{};
 
     constexpr auto operator<=>(const ApplyResult&) const noexcept = default;
 };
@@ -121,6 +144,19 @@ struct RequestReceipt {
     ApplyResult result{};
 };
 
+struct SourceCursor {
+    SourceId source_id{};
+    SourceGeneration generation{};
+    SourceSequence sequence{};
+};
+
+struct SourceEventReceipt {
+    SourceId source_id{};
+    SourceGeneration generation{};
+    SourceSequence sequence{};
+    Digest256 event_digest{};
+};
+
 // TradingState has one mutable owner. References into its arrays must not be
 // retained across apply(): later phases may reuse slots during replicated
 // expiry even though std::array itself never reallocates.
@@ -131,6 +167,10 @@ struct TradingState {
     ExecutorGeneration executor_generation{};
     std::size_t policy_count{};
     std::array<PolicyRecord, kMaxPolicies> policies{};
+    std::size_t source_count{};
+    std::array<SourceCursor, kMaxSources> sources{};
+    std::size_t source_event_count{};
+    std::array<SourceEventReceipt, kMaxSourceEventReceipts> source_events{};
     std::size_t receipt_count{};
     std::array<RequestReceipt, kMaxRequestReceipts> receipts{};
 };
@@ -147,6 +187,9 @@ struct ApplyScratch final {};
 [[nodiscard]] const PolicyRecord* find_policy(const TradingState& state,
                                               PolicyId policy_id,
                                               PolicyVersion policy_version) noexcept;
+
+[[nodiscard]] const SourceCursor* find_source_cursor(const TradingState& state,
+                                                     SourceId source_id) noexcept;
 
 static_assert(std::is_nothrow_copy_assignable_v<PolicyArtifact>);
 static_assert(std::is_nothrow_copy_assignable_v<CommandBody>);
