@@ -41,7 +41,7 @@ failure_step=environment_preflight
 }
 
 failure_step=source_identity
-source_head=$(git -C "$source_dir" rev-parse --verify HEAD)
+source_head=$(git -C "$source_dir" rev-parse --verify HEAD 2>/dev/null || printf unavailable)
 if [[ -n $expected_source_head && $source_head != "$expected_source_head" ]]; then
     printf 'Source commit mismatch: expected %s, got %s\n' \
         "$expected_source_head" "$source_head" >&2

@@ -143,6 +143,12 @@ boot. The source manifest—not the Pi's local Git metadata—is the acceptance
 identity because the established deployment excludes `.git`; Mac Git remains
 authoritative while the Pi receives exact committed source bytes.
 
+The inner gate therefore treats Git metadata as optional on the Pi and pins
+the canonical source root instead. It writes container results to
+`container-summary.tsv`; the outer hardware/power wrapper writes `summary.tsv`.
+This preserves the causal failure layer instead of allowing one summary to
+overwrite the other.
+
 The shell script is orchestration, not application implementation. CMake, GCC,
 and sanitizers live in the disposable test image, matching the project's
 containerized deployment boundary; the Pi contributes the real CPU, kernel,

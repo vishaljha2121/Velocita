@@ -139,7 +139,6 @@ podman run --rm \
 gate_status=$?
 set -e
 
-failure_step=host_postflight
 power_after=$(read_throttled)
 temperature_after=$(read_temperature)
 {
@@ -152,10 +151,16 @@ temperature_after=$(read_temperature)
     printf 'host_temperature_after_millicelsius=%s\n' "$temperature_after"
 } >>"$evidence_dir/metadata.txt"
 
+if [[ -f "$evidence_dir/summary.tsv" ]]; then
+    mv "$evidence_dir/summary.tsv" "$evidence_dir/container-summary.tsv"
+fi
+
 if [[ $gate_status -ne 0 ]]; then
     printf 'The containerized build/test gate exited with status %s.\n' "$gate_status" >&2
     exit "$gate_status"
 fi
+
+failure_step=host_postflight
 if [[ $power_after != throttled=0x0 ]]; then
     printf 'Power postflight failed: expected throttled=0x0, got %s\n' "$power_after" >&2
     exit 1
