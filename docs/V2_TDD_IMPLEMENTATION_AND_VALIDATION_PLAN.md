@@ -9,7 +9,7 @@ Architecture authority:
 Detailed contracts:
 [`V2 architecture contracts`](V2_ARCHITECTURE_CONTRACTS.md)
 
-Current development branch: `v2/phase-1-domain-contracts`
+Current development branch: `experiment/v2-phase2-kernel`
 
 Preserved baselines: annotated tag `v1.0.0`, V1.1 phase tags and branches, and
 all accepted/failing evidence already recorded in `CHANGELOG.md`.
@@ -254,10 +254,16 @@ ARM64 Ubuntu/GCC; its behavior commit is `33d27f6` and source root is
 `0282782ed53a1727a92acaf6c830f5a0651554e40cc70861d8eb15d7373f32b8`.
 Earlier behavior commits are `7bc9e42` and `6de06ec`. Phase 2 remains incomplete
 and stays on `experiment/v2-phase2-kernel` pending its remaining reducer work.
-The source-admission increment has also passed its physical Pi checkpoint. See
+The source-admission increment has also passed its physical Pi checkpoint. A
+canonical state-snapshot/state-digest increment is green on the host and pinned
+ARM64 Ubuntu/GCC at behavior commit `865ec08` and source root
+`17bf519d09f4b4e3f87fcf399d0fe18999b5358112736c38c2e7262be6afba75`;
+its physical Pi checkpoint is pending. See
 [`V2 Phase 2 policy-kernel experiment evidence`](evidence/V2_PHASE2_POLICY_KERNEL_EXPERIMENT.md)
 and
-[`V2 Phase 2 source-admission experiment evidence`](evidence/V2_PHASE2_SOURCE_ADMISSION_EXPERIMENT.md).
+[`V2 Phase 2 source-admission experiment evidence`](evidence/V2_PHASE2_SOURCE_ADMISSION_EXPERIMENT.md),
+and
+[`V2 Phase 2 state-snapshot experiment evidence`](evidence/V2_PHASE2_STATE_SNAPSHOT_EXPERIMENT.md).
 
 ### Objective
 

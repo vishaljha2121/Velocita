@@ -157,6 +157,27 @@ Pi checkpoint on 2026-09-03 with clean power state before and after the run.
 Detailed rationale, invariants, C++ mechanics, and limitations are recorded in
 [`docs/evidence/V2_PHASE2_SOURCE_ADMISSION_EXPERIMENT.md`](docs/evidence/V2_PHASE2_SOURCE_ADMISSION_EXPERIMENT.md).
 
+Experimental commit `865ec08` adds a bounded canonical `TradingState`
+snapshot codec and SHA-256 state digest. The format uses explicit little-endian
+logical fields and excludes C++ padding, inactive fixed-capacity slots,
+metrics, and scratch state. Decode is transactional: it validates into
+caller-owned candidate scratch and publishes to the destination only after the
+frame, schema, digest, capacities, enums, contracts, and state invariants pass.
+
+The exact commit passed 10/10 Release suites, 7/7 benchmark-instrumented V2
+suites, and 7/7 ASan/UBSan V2 suites under ARM64 Ubuntu 26.04 with GCC 15.2.
+Its canonical source root is
+`17bf519d09f4b4e3f87fcf399d0fe18999b5358112736c38c2e7262be6afba75`.
+The empty-state golden digest is
+`0e737df191c265e7d2a4825c229ffe5220a4fc0e9a9a679731ac475ea5e44eb8`,
+and the currently declared maximum snapshot is 45,595 bytes.
+
+This is not durable snapshot persistence or complete replay: file publication,
+durability fences, crash selection, Raft snapshot installation, randomized
+suffix replay, retention/expiry, target-Pi acceptance, and performance
+measurement remain pending. Detailed evidence is recorded in
+[`docs/evidence/V2_PHASE2_STATE_SNAPSHOT_EXPERIMENT.md`](docs/evidence/V2_PHASE2_STATE_SNAPSHOT_EXPERIMENT.md).
+
 ### Version preservation
 
 - V1 remains recoverable at annotated tag `v1.0.0`.
