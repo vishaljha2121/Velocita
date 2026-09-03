@@ -258,7 +258,8 @@ The source-admission increment has also passed its physical Pi checkpoint. A
 canonical state-snapshot/state-digest increment is green on the host and pinned
 ARM64 Ubuntu/GCC at behavior commit `865ec08` and source root
 `17bf519d09f4b4e3f87fcf399d0fe18999b5358112736c38c2e7262be6afba75`;
-its physical Pi checkpoint is pending. See
+the exact root also passed its physical Raspberry Pi checkpoint on 2026-09-03.
+See
 [`V2 Phase 2 policy-kernel experiment evidence`](evidence/V2_PHASE2_POLICY_KERNEL_EXPERIMENT.md)
 and
 [`V2 Phase 2 source-admission experiment evidence`](evidence/V2_PHASE2_SOURCE_ADMISSION_EXPERIMENT.md),

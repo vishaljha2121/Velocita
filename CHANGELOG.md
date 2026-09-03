@@ -174,8 +174,11 @@ and the currently declared maximum snapshot is 45,595 bytes.
 
 This is not durable snapshot persistence or complete replay: file publication,
 durability fences, crash selection, Raft snapshot installation, randomized
-suffix replay, retention/expiry, target-Pi acceptance, and performance
-measurement remain pending. Detailed evidence is recorded in
+suffix replay, retention/expiry, and performance measurement remain pending.
+The exact source root passed its physical Raspberry Pi checkpoint on
+2026-09-03: both wrapper and container gates passed, all three configurations
+passed, firmware reported `throttled=0x0` before and after, and temperature
+moved from 43.55 C to 48.50 C. Detailed evidence is recorded in
 [`docs/evidence/V2_PHASE2_STATE_SNAPSHOT_EXPERIMENT.md`](docs/evidence/V2_PHASE2_STATE_SNAPSHOT_EXPERIMENT.md).
 
 ### Version preservation

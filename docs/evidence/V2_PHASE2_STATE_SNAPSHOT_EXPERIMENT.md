@@ -8,7 +8,8 @@
 - ARM64 development-gate result: PASS
 - ARM64 source root:
   `17bf519d09f4b4e3f87fcf399d0fe18999b5358112736c38c2e7262be6afba75`
-- Raspberry Pi checkpoint: pending
+- Raspberry Pi checkpoint: PASS
+- Raspberry Pi evidence: `20260903T204111Z`
 
 ## Objective
 
@@ -101,6 +102,26 @@ The retained run is `20260903T202323Z` under
 `~/.local/share/velocita/v2-phase2-container-gates/`. It used GCC 15.2, four
 ARM64 CPUs, 4 GiB memory, 256 MiB `/dev/shm`, and two build jobs.
 
+The exact same source root then passed on the physical Raspberry Pi 5 through
+the pinned Ubuntu/GCC Podman gate:
+
+| Pi gate layer | Result |
+|---|---:|
+| Hardware/power wrapper | PASS |
+| Container build/test gate | PASS |
+| Release, legacy + V2 | 10/10 pass |
+| Benchmark-instrumented Release, V2 | 7/7 pass |
+| ASan + UBSan Debug, V2 | 7/7 pass |
+
+Raw Pi evidence is retained at
+`~/.local/share/velocita/v2-state-snapshot-pi-gates/20260903T204111Z`.
+Both summaries report exit status zero and no failure step. GCC 15.2 compiled
+source root
+`17bf519d09f4b4e3f87fcf399d0fe18999b5358112736c38c2e7262be6afba75`,
+exactly matching the pinned expected root. Firmware power state remained
+`throttled=0x0`; CPU temperature moved from 43.55 C before the gate to 48.50 C
+after it.
+
 Tests freeze and exercise:
 
 1. magic, length, schema, payload, and digest placement;
@@ -156,9 +177,9 @@ add a deterministic replay corpus and prove:
 apply full command stream == restore snapshot + apply suffix
 ```
 
-for canonical result bytes and final state digest. Physical Raspberry Pi
-acceptance remains required for this exact source root before the checkpoint
-is marked target-green.
+for canonical result bytes and final state digest. The codec checkpoint is now
+target-green on the physical Raspberry Pi, but Phase 2 remains experimental
+until its remaining reducer and replay gates pass.
 
 After syncing the committed repository to the Pi, run:
 
