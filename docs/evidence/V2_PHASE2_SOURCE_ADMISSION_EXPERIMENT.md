@@ -127,3 +127,15 @@ host and ARM64 container gates passed. It is not Phase 2 acceptance and it does
 not authorize trading. Production use additionally requires replicated
 expiry/checkpointing, reconciliation semantics, canonical snapshot/replay,
 Raft integration, and target-hardware evidence.
+
+Run the pinned Raspberry Pi checkpoint gate with:
+
+```bash
+sudo -v
+./deploy/run-v2-source-admission-pi-gate.sh --yes
+```
+
+The script checks the canonical source root before compiling, leaves the
+running V1/V1.1 cluster untouched, retains raw evidence outside the repository,
+and fails if Raspberry Pi firmware reports current or historical throttling
+during the boot.

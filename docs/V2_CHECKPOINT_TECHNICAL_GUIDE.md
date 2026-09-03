@@ -1644,7 +1644,7 @@ Before Pi validation:
 3. Document the increment and its limitations.
 4. Commit it locally.
 5. Sync that exact commit to the Pi.
-6. Run the Pi gate against that exact commit.
+6. Run `deploy/run-v2-source-admission-pi-gate.sh` against that exact commit.
 ```
 
 Target-hardware evidence should never be created from an uncommitted working
