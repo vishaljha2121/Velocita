@@ -90,12 +90,6 @@ failure_step=preflight
     exit 1
 }
 
-if [[ -n $(git -C "$root_dir" status --porcelain -- \
-    CMakeLists.txt include/velocita/v2 src/v2_\* tests/v2_\*) ]]; then
-    printf 'V2 source is dirty; run this gate against an exact Git checkpoint.\n' >&2
-    exit 65
-fi
-
 power_before=$(read_throttled)
 temperature_before=$(read_temperature)
 if [[ $power_before != throttled=0x0 ]]; then
@@ -106,8 +100,8 @@ fi
 
 {
     printf 'started_utc=%s\n' "$(date --iso-8601=seconds --utc)"
-    printf 'source_head=%s\n' "$(git -C "$root_dir" rev-parse --verify HEAD)"
-    printf 'source_branch=%s\n' "$(git -C "$root_dir" branch --show-current)"
+    printf 'source_head=%s\n' "$(git -C "$root_dir" rev-parse --verify HEAD 2>/dev/null || printf unavailable)"
+    printf 'source_branch=%s\n' "$(git -C "$root_dir" branch --show-current 2>/dev/null || printf unavailable)"
     printf 'kernel=%s\n' "$(uname -srvm)"
     printf 'architecture=%s\n' "$(uname -m)"
     printf 'compiler=%s\n' "$(c++ --version | head -1)"

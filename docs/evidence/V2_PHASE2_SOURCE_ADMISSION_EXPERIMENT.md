@@ -138,4 +138,6 @@ sudo -v
 The script checks the canonical source root before compiling, leaves the
 running V1/V1.1 cluster untouched, retains raw evidence outside the repository,
 and fails if Raspberry Pi firmware reports current or historical throttling
-during the boot.
+during the boot. The source manifest—not the Pi's local Git metadata—is the
+acceptance identity because the established deployment excludes `.git`; Mac
+Git remains authoritative while the Pi receives exact committed source bytes.
