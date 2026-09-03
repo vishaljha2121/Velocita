@@ -108,6 +108,7 @@ target_compile_options(velocita_v2_contracts PRIVATE -Wall -Wextra -Wpedantic)
 add_library(velocita_v2_kernel
     src/v2_kernel.cpp
     src/v2_kernel_codec.cpp
+    src/v2_replay.cpp
     src/v2_state_snapshot.cpp
 )
 target_include_directories(velocita_v2_kernel PUBLIC include)
@@ -189,6 +190,11 @@ if(BUILD_TESTING)
     target_link_libraries(v2-kernel-codec-tests PRIVATE velocita_v2_kernel)
     target_compile_options(v2-kernel-codec-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-kernel-codec-tests COMMAND v2-kernel-codec-tests)
+
+    add_executable(v2-replay-tests tests/v2_replay_tests.cpp)
+    target_link_libraries(v2-replay-tests PRIVATE velocita_v2_kernel)
+    target_compile_options(v2-replay-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-replay-tests COMMAND v2-replay-tests)
 
     add_executable(v2-contract-benchmark src/v2_contract_benchmark.cpp)
     target_link_libraries(v2-contract-benchmark PRIVATE velocita_v2_contracts)
