@@ -80,7 +80,7 @@ V2 domain and wire contracts       implemented; Pi acceptance pending
 Policy lifecycle kernel            implemented and committed
 Request idempotency                implemented and committed
 Control authority                  implemented and committed
-Source admission                   host-green experiment; commit/gates pending
+Source admission                   host and ARM64-container green; Pi pending
 Decision evaluation                not implemented
 Risk and reservations              not implemented
 Orders, fills, and positions       not implemented
@@ -95,7 +95,7 @@ Exchange execution                 not implemented
 | Policy lifecycle | Implemented and committed | Can record activation, but cannot evaluate a trade |
 | Request idempotency | Implemented and committed | Makes logical-command retries deterministic |
 | Control authority | Implemented and committed | Fences modes and generations; reopening is incomplete |
-| Source admission | Host-green; commit/gates pending | Tracks evidence identity; no economic side effect |
+| Source admission | Host and ARM64-container green; Pi pending | Tracks evidence identity; no economic side effect |
 | Decisions, risk, orders, outbox | Not implemented | No V2 order can be produced or executed |
 
 Nothing in V2 can currently place an order.
@@ -1578,9 +1578,9 @@ focused host test                     pass
 full host regression                  9/9 pass
 host Release kernel tests             3/3 pass
 host ASan/UBSan kernel tests          3/3 pass
-ARM64 Docker gate                     not yet run
-documentation                         complete; evidence result pending
-Git commit                            not created
+ARM64 Docker gate                     pass: 9/9, 6/6, 6/6
+documentation                         complete
+Git behavior commit                   33d27f6
 Pi gate                               not run
 ```
 

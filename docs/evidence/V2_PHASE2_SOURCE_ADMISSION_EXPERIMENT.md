@@ -3,8 +3,10 @@
 - Date: 2026-09-03
 - Decision: retain strict normalized sequencing as an experimental increment
 - Branch: `experiment/v2-phase2-kernel`
-- Behavior commit: pending
-- ARM64 development-gate result: pending
+- Behavior commit: `33d27f6`
+- ARM64 development-gate result: PASS
+- ARM64 source root:
+  `0282782ed53a1727a92acaf6c830f5a0651554e40cc70861d8eb15d7373f32b8`
 - Raspberry Pi acceptance: not run
 
 ## Objective
@@ -51,6 +53,20 @@ added the smallest bounded state and transition required by those tests.
 
 The host regression after implementation passes 9/9 test suites, including
 `v2-kernel-source-tests`.
+
+The committed source then passed the native ARM64 Ubuntu development gate:
+
+| Configuration | Result |
+|---|---:|
+| Release, legacy + V2 | 9/9 pass |
+| Benchmark-instrumented Release, V2 | 6/6 pass |
+| ASan + UBSan Debug, V2 | 6/6 pass |
+
+The retained run is `20260903T184710Z` under
+`~/.local/share/velocita/v2-phase2-container-gates/`. It used Ubuntu 26.04,
+GCC 15.2, four ARM64 CPUs, 4 GiB memory, 256 MiB `/dev/shm`, and two build
+jobs. The source commit recorded by the gate is
+`33d27f60e9baea75fd3b6321ee6399d239bbe11c`.
 
 ## Invariants exercised
 
@@ -106,8 +122,8 @@ position.
 
 ## Acceptance boundary
 
-This increment may be committed as experimental Phase 2 evidence after host
-tests and the ARM64 container gate pass. It is not Phase 2 acceptance and it
-does not authorize trading. Production use additionally requires replicated
+This increment is retained as green experimental Phase 2 evidence after its
+host and ARM64 container gates passed. It is not Phase 2 acceptance and it does
+not authorize trading. Production use additionally requires replicated
 expiry/checkpointing, reconciliation semantics, canonical snapshot/replay,
 Raft integration, and target-hardware evidence.

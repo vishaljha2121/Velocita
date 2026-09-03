@@ -133,18 +133,23 @@ reservations, positions, outbox,
 reconciliation, model-based replay, reducer measurement, Raft/storage
 integration, and real Pi evidence remain pending.
 
-The next reviewed experimental increment adds strict normalized source
-admission. A source is identified by source ID, generation, and sequence; the
+Experimental commit `33d27f6` adds strict normalized source admission. A
+source is identified by source ID, generation, and sequence; the
 accepted event bytes are represented by a canonical digest. Exact redelivery
 is a retained no-op, conflicting redelivery fails closed, and unseen gaps or
 regressions cannot advance authoritative source state. Fixed source and event
 receipt capacities are checked before mutation. Venue-specific reconnect,
 buffering, and snapshot recovery remain adapter responsibilities.
 
+The committed source passed 9/9 Release suites, 6/6 benchmark-instrumented V2
+suites, and 6/6 ASan/UBSan V2 suites under ARM64 Ubuntu 26.04 with GCC 15.2.
+Its canonical source root is
+`0282782ed53a1727a92acaf6c830f5a0651554e40cc70861d8eb15d7373f32b8`.
+
 This increment is not an indefinite-stream implementation: the experimental
 128-event receipt region has no replicated expiry yet and deliberately rejects
 when full. Reconciliation commands, snapshot/state-digest coverage, randomized
-replay, ARM64 container evidence, and Raspberry Pi evidence remain pending.
+replay and Raspberry Pi evidence remain pending.
 Detailed rationale, invariants, C++ mechanics, and limitations are recorded in
 [`docs/evidence/V2_PHASE2_SOURCE_ADMISSION_EXPERIMENT.md`](docs/evidence/V2_PHASE2_SOURCE_ADMISSION_EXPERIMENT.md).
 

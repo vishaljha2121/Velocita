@@ -247,9 +247,10 @@ preserved V1/V1.1 branch.
 
 Implementation state: policy-lifecycle/request-dedup and monotonic
 control-authority increments are green on macOS ARM64 and native ARM64
-Ubuntu/GCC. Strict normalized source admission is host-green and awaiting its
-committed ARM64 gate. Behavior commits are `7bc9e42` and `6de06ec`; the latest
-completed ARM64 gate commit is `2849a52`. Phase 2 remains incomplete and stays
+Ubuntu/GCC. Strict normalized source admission is green on the host and native
+ARM64 Ubuntu/GCC; its behavior commit is `33d27f6` and source root is
+`0282782ed53a1727a92acaf6c830f5a0651554e40cc70861d8eb15d7373f32b8`.
+Earlier behavior commits are `7bc9e42` and `6de06ec`. Phase 2 remains incomplete and stays
 on `experiment/v2-phase2-kernel` until Phase 1 Raspberry Pi acceptance. See
 [`V2 Phase 2 policy-kernel experiment evidence`](evidence/V2_PHASE2_POLICY_KERNEL_EXPERIMENT.md)
 and
