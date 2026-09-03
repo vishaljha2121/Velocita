@@ -13,9 +13,8 @@ release-engineering work.
 
 ## [V2] - In development
 
-Status: Phase 1 domain and byte-contract candidate implemented and validated on
-macOS ARM64 and native ARM64 Ubuntu 26.04 in a constrained container;
-Raspberry Pi ARM64 acceptance remains pending. No deterministic Decision/OMS
+Status: Phase 1 domain and byte contracts are accepted on macOS ARM64, native
+ARM64 Ubuntu 26.04, and physical Raspberry Pi 5 ARM64. No deterministic Decision/OMS
 reducer, risk engine, outbox, execution gateway, or live trading behavior is
 implemented. No V2 release has been tagged, and no V1/V1.1 wire, storage,
 deployment, or evidence artifact has been deleted or superseded in place.
@@ -97,9 +96,13 @@ limitations, and the remaining target gate are recorded in
 and
 [`docs/evidence/V2_PHASE1_ARM64_CONTAINER_CANDIDATE.md`](docs/evidence/V2_PHASE1_ARM64_CONTAINER_CANDIDATE.md).
 
-Phase 1 is not accepted and will not be tagged until the same canonical bytes,
-fixed-point results, malformed-input behavior, and tests pass on Raspberry Pi
-ARM64.
+Phase 1 passed its physical Raspberry Pi ARM64 gate on 2026-09-03 as the
+unchanged contract subset of source root
+`0282782ed53a1727a92acaf6c830f5a0651554e40cc70861d8eb15d7373f32b8`.
+The combined gate ran the unchanged Phase 1 suites in Release,
+benchmark-instrumented Release, and ASan/UBSan Debug configurations. Detailed
+target evidence is recorded in
+[`docs/evidence/V2_PHASE1_RASPBERRY_PI_ACCEPTANCE.md`](docs/evidence/V2_PHASE1_RASPBERRY_PI_ACCEPTANCE.md).
 
 ### Phase 2 experimental increments - policy lifecycle and control authority
 
@@ -127,11 +130,11 @@ root is
 V2 suites pass under ARM64 Ubuntu 26.04 with GCC 15.2.
 
 This is not Phase 2 completion or acceptance. It remains on
-`experiment/v2-phase2-kernel` while Phase 1 awaits its Raspberry Pi gate. State
+`experiment/v2-phase2-kernel` while the remaining reducer increments are built. State
 digest/snapshot, reconciliation-gated authority restoration, orders,
 reservations, positions, outbox,
 reconciliation, model-based replay, reducer measurement, Raft/storage
-integration, and real Pi evidence remain pending.
+integration remain pending.
 
 Experimental commit `33d27f6` adds strict normalized source admission. A
 source is identified by source ID, generation, and sequence; the
@@ -148,8 +151,9 @@ Its canonical source root is
 
 This increment is not an indefinite-stream implementation: the experimental
 128-event receipt region has no replicated expiry yet and deliberately rejects
-when full. Reconciliation commands, snapshot/state-digest coverage, randomized
-replay and Raspberry Pi evidence remain pending.
+when full. Reconciliation commands, snapshot/state-digest coverage, and
+randomized replay remain pending. The increment passed its physical Raspberry
+Pi checkpoint on 2026-09-03 with clean power state before and after the run.
 Detailed rationale, invariants, C++ mechanics, and limitations are recorded in
 [`docs/evidence/V2_PHASE2_SOURCE_ADMISSION_EXPERIMENT.md`](docs/evidence/V2_PHASE2_SOURCE_ADMISSION_EXPERIMENT.md).
 

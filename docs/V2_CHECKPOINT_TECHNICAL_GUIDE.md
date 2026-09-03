@@ -76,11 +76,11 @@ executor will deliver committed effects but will not invent trades.
 What exists today:
 
 ```text
-V2 domain and wire contracts       implemented; Pi acceptance pending
+V2 domain and wire contracts       implemented; Pi accepted
 Policy lifecycle kernel            implemented and committed
 Request idempotency                implemented and committed
 Control authority                  implemented and committed
-Source admission                   host and ARM64-container green; Pi pending
+Source admission                   host, ARM64-container, and Pi green
 Decision evaluation                not implemented
 Risk and reservations              not implemented
 Orders, fills, and positions       not implemented
@@ -91,11 +91,11 @@ Exchange execution                 not implemented
 
 | Capability | Current state | Authority implication |
 |---|---|---|
-| Domain and wire contracts | Implemented; Pi acceptance pending | Defines data, but cannot trade |
+| Domain and wire contracts | Implemented; Pi accepted | Defines data, but cannot trade |
 | Policy lifecycle | Implemented and committed | Can record activation, but cannot evaluate a trade |
 | Request idempotency | Implemented and committed | Makes logical-command retries deterministic |
 | Control authority | Implemented and committed | Fences modes and generations; reopening is incomplete |
-| Source admission | Host and ARM64-container green; Pi pending | Tracks evidence identity; no economic side effect |
+| Source admission | Host, ARM64-container, and Pi green | Tracks evidence identity; no economic side effect |
 | Decisions, risk, orders, outbox | Not implemented | No V2 order can be produced or executed |
 
 Nothing in V2 can currently place an order.
@@ -1511,8 +1511,8 @@ Current development branch:
 experiment/v2-phase2-kernel
 ```
 
-Phase 2 remains experimental because Phase 1 has not yet passed its Raspberry
-Pi gate.
+Phase 2 remains experimental because its deterministic reducer is incomplete;
+Phase 1 has now passed its Raspberry Pi gate.
 
 Important local commits include:
 
@@ -1537,8 +1537,10 @@ pushed to GitHub.
 
 ### 11.1 Phase 1
 
-Phase 1 contracts have passed macOS and native ARM64 Ubuntu container candidate
-gates. Raspberry Pi acceptance is still pending.
+Phase 1 contracts have passed macOS, native ARM64 Ubuntu container, and
+physical Raspberry Pi acceptance gates. The Pi result is the unchanged Phase 1
+subset of canonical source root
+`0282782ed53a1727a92acaf6c830f5a0651554e40cc70861d8eb15d7373f32b8`.
 
 ### 11.2 Committed Phase 2 policy/control kernel
 
@@ -1581,23 +1583,22 @@ host ASan/UBSan kernel tests          3/3 pass
 ARM64 Docker gate                     pass: 9/9, 6/6, 6/6
 documentation                         complete
 Git behavior commit                   33d27f6
-Pi gate                               not run
+Pi hardware/power wrapper             pass
+Pi container gate                     pass: 9/9, 6/6, 6/6
 ```
 
-Uncommitted implementation files currently include:
+The source-admission implementation is committed. Its primary behavior commit
+is:
 
 ```text
-CMakeLists.txt
-include/velocita/v2/kernel.hpp
-src/v2_kernel.cpp
-tests/v2_kernel_source_tests.cpp
+33d27f6  Implement deterministic V2 source admission
 ```
 
-## 12. What must be validated on the Pi
+## 12. Raspberry Pi validation status
 
 ### 12.1 Checkpoint A: Phase 1 contracts
 
-Run the existing Phase 1 Pi gate against an exact committed revision.
+Completed through the combined pinned-container Pi gate.
 
 Validate:
 
@@ -1608,11 +1609,11 @@ Validate:
 - compiler and architecture identity; and
 - clean test completion.
 
-Passing this permits Phase 1 to move from candidate to accepted.
+All checks passed, permitting Phase 1 to move from candidate to accepted.
 
 ### 12.2 Checkpoint B: committed policy/control kernel
 
-Run on the Pi:
+Completed on the Pi for the committed policy/control/source checkpoint:
 
 - full tests;
 - optimized Release tests;
@@ -1767,9 +1768,9 @@ Source admission
 The next engineering checkpoint is not exchange execution. It is:
 
 ```text
-review source-admission semantics
--> finish its ARM64 gate and Git checkpoint
--> validate Phase 1 and committed Phase 2 on the Pi
--> characterize the NUC
+freeze source-admission evidence
+-> approve canonical state identity and snapshot semantics
+-> implement digest/snapshot/replay via TDD
+-> characterize the NUC for cross-architecture replay
 -> continue Phase 2 state-machine increments
 ```

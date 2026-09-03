@@ -1,7 +1,7 @@
 # V2 TDD implementation and validation plan
 
-Status: approved execution baseline; Phase 1 macOS and native ARM64 Ubuntu
-container candidates implemented, with Raspberry Pi ARM64 acceptance pending.
+Status: approved execution baseline; Phase 1 accepted on macOS, native ARM64
+Ubuntu, and physical Raspberry Pi ARM64. Phase 2 remains experimental.
 
 Architecture authority:
 [`ADR 0001`](adr/0001-v2-replicated-decision-oms-and-execution-boundary.md)
@@ -195,11 +195,13 @@ durability, and implementation order. No document calls a proposal implemented.
 
 ## 6. Phase 1: domain types and versioned contracts
 
-Implementation state: macOS ARM64 and native ARM64 Ubuntu container candidates
-complete; Raspberry Pi target-hardware gate pending. See
+Implementation state: accepted on macOS ARM64, native ARM64 Ubuntu, and the
+physical Raspberry Pi 5 ARM64. See
 [`V2 Phase 1 macOS candidate evidence`](evidence/V2_PHASE1_MACOS_CANDIDATE.md)
 and
 [`V2 Phase 1 ARM64 Linux container candidate evidence`](evidence/V2_PHASE1_ARM64_CONTAINER_CANDIDATE.md).
+The target-hardware result is recorded in
+[`V2 Phase 1 Raspberry Pi acceptance evidence`](evidence/V2_PHASE1_RASPBERRY_PI_ACCEPTANCE.md).
 
 ### Objective
 
@@ -250,8 +252,9 @@ control-authority increments are green on macOS ARM64 and native ARM64
 Ubuntu/GCC. Strict normalized source admission is green on the host and native
 ARM64 Ubuntu/GCC; its behavior commit is `33d27f6` and source root is
 `0282782ed53a1727a92acaf6c830f5a0651554e40cc70861d8eb15d7373f32b8`.
-Earlier behavior commits are `7bc9e42` and `6de06ec`. Phase 2 remains incomplete and stays
-on `experiment/v2-phase2-kernel` until Phase 1 Raspberry Pi acceptance. See
+Earlier behavior commits are `7bc9e42` and `6de06ec`. Phase 2 remains incomplete
+and stays on `experiment/v2-phase2-kernel` pending its remaining reducer work.
+The source-admission increment has also passed its physical Pi checkpoint. See
 [`V2 Phase 2 policy-kernel experiment evidence`](evidence/V2_PHASE2_POLICY_KERNEL_EXPERIMENT.md)
 and
 [`V2 Phase 2 source-admission experiment evidence`](evidence/V2_PHASE2_SOURCE_ADMISSION_EXPERIMENT.md).

@@ -7,7 +7,8 @@
 - ARM64 development-gate result: PASS
 - ARM64 source root:
   `0282782ed53a1727a92acaf6c830f5a0651554e40cc70861d8eb15d7373f32b8`
-- Raspberry Pi acceptance: not run
+- Raspberry Pi checkpoint gate: PASS
+- Raspberry Pi evidence: `20260903T192942Z`
 
 ## Objective
 
@@ -68,6 +69,23 @@ GCC 15.2, four ARM64 CPUs, 4 GiB memory, 256 MiB `/dev/shm`, and two build
 jobs. The source commit recorded by the gate is
 `33d27f60e9baea75fd3b6321ee6399d239bbe11c`.
 
+The same source root then passed on the physical Raspberry Pi 5 through the
+pinned Ubuntu/GCC Podman gate:
+
+| Pi gate layer | Result |
+|---|---:|
+| Hardware/power wrapper | PASS |
+| Container build/test gate | PASS |
+| Release, legacy + V2 | 9/9 pass |
+| Benchmark-instrumented Release, V2 | 6/6 pass |
+| ASan + UBSan Debug, V2 | 6/6 pass |
+
+The Pi used the `ondemand` CPU governor and reported `throttled=0x0` before and
+after the gate. The raw evidence is retained at
+`~/.local/share/velocita/v2-source-admission-pi-gates/20260903T192942Z`.
+Both the outer `summary.tsv` and inner `container-summary.tsv` report PASS with
+exit status zero and no failure step.
+
 ## Invariants exercised
 
 1. A source starts only at generation 1, sequence 1.
@@ -115,16 +133,16 @@ position.
 - No reconciliation command yet proves how an adapter repairs a gap before
   resuming admission.
 - No canonical state digest or snapshot codec covers source state yet.
-- No randomized reference model, crash replay, Raft integration, or target Pi
-  evidence exists yet.
+- No randomized reference model, crash replay, or Raft integration exists yet.
 - A digest is carried by the command contract; canonical event normalization
   and cryptographic digest calculation belong to later adapter/codec work.
 
 ## Acceptance boundary
 
 This increment is retained as green experimental Phase 2 evidence after its
-host and ARM64 container gates passed. It is not Phase 2 acceptance and it does
-not authorize trading. Production use additionally requires replicated
+host, ARM64 container, and Raspberry Pi checkpoint gates passed. It is not
+complete Phase 2 acceptance and it does not authorize trading. Production use
+additionally requires replicated
 expiry/checkpointing, reconciliation semantics, canonical snapshot/replay,
 Raft integration, and target-hardware evidence.
 
