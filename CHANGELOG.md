@@ -181,6 +181,29 @@ passed, firmware reported `throttled=0x0` before and after, and temperature
 moved from 43.55 C to 48.50 C. Detailed evidence is recorded in
 [`docs/evidence/V2_PHASE2_STATE_SNAPSHOT_EXPERIMENT.md`](docs/evidence/V2_PHASE2_STATE_SNAPSHOT_EXPERIMENT.md).
 
+Experimental commits `a04094e` and `0a20e4f` add canonical versioned kernel
+command/result frames and a byte-level replay boundary. All eight current
+command alternatives use explicit stable kind values rather than
+`std::variant` indexes. Frames use explicit little-endian fields and SHA-256
+integrity; the command maximum is 608 bytes and the result frame is 110 bytes.
+Malformed input and insufficient result capacity fail before reducer mutation.
+
+A ten-record corpus now proves that continuous replay and midpoint snapshot
+restore plus suffix replay return byte-identical suffix results and converge to
+the same canonical snapshot. The reviewed final state digest is
+`596ec54fb24f55b91579330e08cefa63b3af8d39c1e277cd835c5af4e1b566c8`.
+The combined increment passed 12/12 Release suites, 9/9
+benchmark-instrumented V2 suites, and 9/9 ASan/UBSan V2 suites under ARM64
+Ubuntu 26.04/GCC 15.2. Its canonical source root is
+`810f8c4db00d6ae37061694ab3be6f775b3312f0b837c09b00c589903d5e04aa`.
+
+This remains experimental: physical Pi acceptance, generated/model-based
+replay, durable snapshot publication, Raft/WAL integration, receipt expiry,
+and compaction remain pending. Detailed evidence and C++ rationale are in
+[`docs/evidence/V2_PHASE2_CANONICAL_REPLAY_EXPERIMENT.md`](docs/evidence/V2_PHASE2_CANONICAL_REPLAY_EXPERIMENT.md)
+and
+[`docs/V2_CANONICAL_CODEC_REPLAY_GUIDE.md`](docs/V2_CANONICAL_CODEC_REPLAY_GUIDE.md).
+
 ### Version preservation
 
 - V1 remains recoverable at annotated tag `v1.0.0`.

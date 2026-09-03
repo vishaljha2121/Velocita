@@ -259,12 +259,21 @@ canonical state-snapshot/state-digest increment is green on the host and pinned
 ARM64 Ubuntu/GCC at behavior commit `865ec08` and source root
 `17bf519d09f4b4e3f87fcf399d0fe18999b5358112736c38c2e7262be6afba75`;
 the exact root also passed its physical Raspberry Pi checkpoint on 2026-09-03.
+Canonical kernel command/result frames and snapshot-plus-suffix replay are green
+on the host and pinned ARM64 Ubuntu/GCC at commits `a04094e` and `0a20e4f` and
+source root
+`810f8c4db00d6ae37061694ab3be6f775b3312f0b837c09b00c589903d5e04aa`.
+The exact-root physical Raspberry Pi checkpoint is pending.
 See
 [`V2 Phase 2 policy-kernel experiment evidence`](evidence/V2_PHASE2_POLICY_KERNEL_EXPERIMENT.md)
 and
 [`V2 Phase 2 source-admission experiment evidence`](evidence/V2_PHASE2_SOURCE_ADMISSION_EXPERIMENT.md),
 and
 [`V2 Phase 2 state-snapshot experiment evidence`](evidence/V2_PHASE2_STATE_SNAPSHOT_EXPERIMENT.md).
+Detailed codec/replay evidence and education are in
+[`V2 Phase 2 canonical replay experiment evidence`](evidence/V2_PHASE2_CANONICAL_REPLAY_EXPERIMENT.md)
+and
+[`V2 canonical codec and replay guide`](V2_CANONICAL_CODEC_REPLAY_GUIDE.md).
 
 ### Objective
 
