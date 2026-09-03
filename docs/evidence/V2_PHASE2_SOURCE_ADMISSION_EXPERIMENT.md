@@ -135,9 +135,16 @@ sudo -v
 ./deploy/run-v2-source-admission-pi-gate.sh --yes
 ```
 
-The script checks the canonical source root before compiling, leaves the
-running V1/V1.1 cluster untouched, retains raw evidence outside the repository,
-and fails if Raspberry Pi firmware reports current or historical throttling
-during the boot. The source manifest—not the Pi's local Git metadata—is the
-acceptance identity because the established deployment excludes `.git`; Mac
-Git remains authoritative while the Pi receives exact committed source bytes.
+The script builds and tests in a pinned Ubuntu/GCC Podman environment on the
+physical Pi. It checks the canonical source root, leaves the running V1/V1.1
+cluster untouched, retains raw evidence outside the repository, and fails if
+Raspberry Pi firmware reports current or historical throttling during the
+boot. The source manifest—not the Pi's local Git metadata—is the acceptance
+identity because the established deployment excludes `.git`; Mac Git remains
+authoritative while the Pi receives exact committed source bytes.
+
+The shell script is orchestration, not application implementation. CMake, GCC,
+and sanitizers live in the disposable test image, matching the project's
+containerized deployment boundary; the Pi contributes the real CPU, kernel,
+power, thermals, and resource contention. A host-native toolchain is optional
+portability evidence rather than a prerequisite for this acceptance gate.

@@ -6,6 +6,7 @@ work_root=/work
 evidence_dir=/evidence
 build_jobs=${BUILD_JOBS:-2}
 expected_source_head=${EXPECTED_SOURCE_HEAD:-}
+expected_source_root=${EXPECTED_SOURCE_ROOT:-}
 
 exec > >(tee "$evidence_dir/gate.log") 2>&1
 
@@ -61,6 +62,11 @@ source_root=$(
     } | sha256sum | awk '{print $1}'
 )
 printf '%s  phase2-kernel-source\n' "$source_root" >"$evidence_dir/source-root.sha256"
+if [[ -n $expected_source_root && $source_root != "$expected_source_root" ]]; then
+    printf 'Source root mismatch: expected %s, got %s\n' \
+        "$expected_source_root" "$source_root" >&2
+    exit 1
+fi
 
 build_root="$work_root/$source_root"
 release_build="$build_root/release"
@@ -83,6 +89,7 @@ sanitized_build="$build_root/sanitized"
     printf 'build_jobs=%s\n' "$build_jobs"
     printf 'source_head=%s\n' "$source_head"
     printf 'source_root=%s\n' "$source_root"
+    printf 'expected_source_root=%s\n' "${expected_source_root:-not-pinned}"
     printf 'aeron_commit=%s\n' "$(git -C /opt/velocita-deps/aeron rev-parse HEAD)"
     printf 'raft_commit=%s\n' "$(git -C /opt/velocita-deps/willemt-raft rev-parse HEAD)"
 } >"$evidence_dir/metadata.txt"
