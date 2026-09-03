@@ -12,6 +12,7 @@ not stopped or replaced.
 USAGE
 }
 
+gate_label=${VELOCITA_V2_PI_GATE_LABEL:-V2 source-admission}
 confirmed=0
 case "${1:-}" in
     --yes) confirmed=1 ;;
@@ -21,7 +22,7 @@ case "${1:-}" in
 esac
 
 if [[ $confirmed -ne 1 ]]; then
-    printf 'Run the containerized V2 source-admission Pi gate? [y/N] '
+    printf 'Run the containerized %s Pi gate? [y/N] ' "$gate_label"
     read -r answer
     [[ $answer == y || $answer == Y ]] || exit 1
 fi
@@ -33,7 +34,7 @@ evidence_dir="$evidence_root/$run_id"
 image=${VELOCITA_PI_CI_IMAGE:-localhost/velocita-pi-ci:v2-source-admission}
 cache_volume=${VELOCITA_V2_SOURCE_PI_CACHE_VOLUME:-velocita-v2-source-pi-ci-cache}
 build_jobs=${BUILD_JOBS:-2}
-expected_source_root=0282782ed53a1727a92acaf6c830f5a0651554e40cc70861d8eb15d7373f32b8
+expected_source_root=${VELOCITA_EXPECTED_SOURCE_ROOT:-0282782ed53a1727a92acaf6c830f5a0651554e40cc70861d8eb15d7373f32b8}
 
 mkdir -p "$evidence_dir"
 exec > >(tee "$evidence_dir/wrapper.log") 2>&1
@@ -49,8 +50,8 @@ finish() {
         printf 'environment\traspberry-pi-arm64-container\n'
         printf 'evidence_dir\t%s\n' "$evidence_dir"
     } >"$evidence_dir/summary.tsv"
-    printf 'V2 source-admission Raspberry Pi gate: %s\nEvidence: %s\n' \
-        "$result" "$evidence_dir"
+    printf '%s Raspberry Pi gate: %s\nEvidence: %s\n' \
+        "$gate_label" "$result" "$evidence_dir"
 }
 trap finish EXIT
 

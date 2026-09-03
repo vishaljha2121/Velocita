@@ -159,3 +159,14 @@ apply full command stream == restore snapshot + apply suffix
 for canonical result bytes and final state digest. Physical Raspberry Pi
 acceptance remains required for this exact source root before the checkpoint
 is marked target-green.
+
+After syncing the committed repository to the Pi, run:
+
+```bash
+sudo -v
+BUILD_JOBS=2 ./deploy/run-v2-state-snapshot-pi-gate.sh --yes
+```
+
+The wrapper pins the expected source root above and stores raw target evidence
+under `~/.local/share/velocita/v2-state-snapshot-pi-gates/`. It leaves the
+running V1/V1.1 services unchanged.
