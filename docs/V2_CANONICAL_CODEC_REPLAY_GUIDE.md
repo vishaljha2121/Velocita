@@ -301,7 +301,7 @@ The replay work followed RED, GREEN, REFACTOR/EVIDENCE:
 4. REGRESSION: run all old and new tests.
 5. SAFETY: run ASan/UBSan.
 6. PORTABILITY: run the pinned ARM64 Ubuntu/GCC gate.
-7. TARGET ACCEPTANCE: pending the exact-source physical Pi gate.
+7. TARGET ACCEPTANCE: the exact-source physical Pi gate passed on 2026-09-03.
 
 The RED failure matters. It demonstrates that the new test can detect absence
 of the capability rather than passing accidentally against old behavior.
@@ -341,8 +341,8 @@ engineering leadership discipline: a green codec test is not a production OMS.
 
 ## 9. Next recommended increment
 
-After the physical Pi checkpoint, add a bounded deterministic generated-command
-model. Compare the production reducer against an intentionally simpler
+The next increment is a bounded deterministic generated-command model. Compare
+the production reducer against an intentionally simpler
 reference model across many seeds, snapshot cut points, duplicates, conflicts,
 and typed rejections.
 

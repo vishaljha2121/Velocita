@@ -5,7 +5,7 @@ Date: 2026-09-03
 - Command codec commit: `a04094e`
 - Replay-equivalence commit: `0a20e4f`
 - Decision: retain as a green experimental increment; physical Pi acceptance
-  is pending
+  passed on 2026-09-03
 
 ## Scope
 
@@ -62,16 +62,23 @@ Results:
 This is compatibility evidence in a constrained ARM64 Linux container. It is
 not physical Pi, durability, or capacity evidence.
 
-## Physical Pi acceptance command
+## Physical Pi acceptance
 
-After syncing this committed source to the Pi:
+Evidence directory:
 
-```bash
-BUILD_JOBS=2 ./deploy/run-v2-canonical-replay-pi-gate.sh --yes
+```text
+~/.local/share/velocita/v2-canonical-replay-pi-gates/20260903T235904Z
 ```
 
-The wrapper rejects any source tree whose canonical root differs from
+The wrapper and inner ARM64 Linux gate both reported `PASS`. The tested source
+root exactly matched the expected root
 `810f8c4db00d6ae37061694ab3be6f775b3312f0b837c09b00c589903d5e04aa`.
+The Pi used Ubuntu 26.04/GCC 15.2. Firmware reported `throttled=0x0` before and
+after. CPU temperature moved from 43.55 C to 48.50 C.
+
+This proves compilation and the exercised behavior on the physical target
+without an observed power-throttling event. It remains functional evidence,
+not a throughput or storage-durability claim.
 
 ## Remaining risks
 

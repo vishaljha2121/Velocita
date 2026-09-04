@@ -197,9 +197,12 @@ benchmark-instrumented V2 suites, and 9/9 ASan/UBSan V2 suites under ARM64
 Ubuntu 26.04/GCC 15.2. Its canonical source root is
 `810f8c4db00d6ae37061694ab3be6f775b3312f0b837c09b00c589903d5e04aa`.
 
-This remains experimental: physical Pi acceptance, generated/model-based
-replay, durable snapshot publication, Raft/WAL integration, receipt expiry,
-and compaction remain pending. Detailed evidence and C++ rationale are in
+The exact source root passed its physical Raspberry Pi checkpoint on
+2026-09-03. Both wrapper and inner ARM64 gates passed; firmware reported
+`throttled=0x0` before and after, and temperature moved from 43.55 C to 48.50 C.
+Generated/model-based replay, durable snapshot publication, Raft/WAL
+integration, receipt expiry, and compaction remain pending. Detailed evidence
+and C++ rationale are in
 [`docs/evidence/V2_PHASE2_CANONICAL_REPLAY_EXPERIMENT.md`](docs/evidence/V2_PHASE2_CANONICAL_REPLAY_EXPERIMENT.md)
 and
 [`docs/V2_CANONICAL_CODEC_REPLAY_GUIDE.md`](docs/V2_CANONICAL_CODEC_REPLAY_GUIDE.md).
