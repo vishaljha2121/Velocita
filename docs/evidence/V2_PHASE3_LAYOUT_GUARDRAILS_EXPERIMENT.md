@@ -3,7 +3,9 @@
 Date: 2026-09-04
 
 - Behavior commit: `e650f31`
-- Decision: retain as a green host guardrail; Phase 3 remains unaccepted
+- Target evidence: Raspberry Pi 5 ARM64 gate passed for source root
+  `1d9e44e20c495ee935b58b0723351cd5282642d0cdc098c4c35eba25d29bb577`
+- Decision: accept the pre-3C layout guardrail; Phase 3 remains unaccepted
 
 ## Objective
 
@@ -29,6 +31,22 @@ GREEN host evidence:
 - focused Debug layout suite: 1/1 passed;
 - complete Release suite: 15/15 passed; and
 - complete V2 ASan/UBSan suite: 12/12 passed.
+
+Physical Raspberry Pi 5 ARM64 evidence:
+
+- pinned Ubuntu 26.04/GCC 15.2 container gate: passed;
+- instrumented and ASan/UBSan V2 suites: 12/12 passed;
+- compiled target cache line: 64 bytes;
+- runtime L1 data-cache line: 64 bytes;
+- source root matched the expected root exactly;
+- firmware power state remained `throttled=0x0` before and after; and
+- host temperature moved from 44.10 C to 49.05 C.
+
+Raw target evidence is retained on the Pi at:
+
+```text
+~/.local/share/velocita/v2-phase3-layout-pi-gates/20260904T195056Z
+```
 
 The machine-readable layout report for the declared 64-byte target is:
 
@@ -94,9 +112,10 @@ provenance, then report their sizes and access-oriented budgets.
 
 ## Limits and next gate
 
-This increment supplies guardrails; it does not yet implement a decision
-record, hot/cold retained storage, an allocator, authoritative evaluation,
-ARM64/Pi acceptance, Raft integration, persistence, risk, orders, or trading.
+This increment supplies accepted target-validated guardrails; it does not yet
+implement a decision record, hot/cold retained storage, an allocator,
+authoritative evaluation, Raft integration, persistence, risk, orders, or
+trading.
 
 Before Phase 3C turns green, its layout report must replace
 `pending_phase3c` with concrete hot/cold record sizes, strides, capacities, and

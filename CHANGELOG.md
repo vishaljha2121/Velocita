@@ -288,8 +288,14 @@ canonical, 432 bytes resident, and 448 bytes per rounded arena slot;
 `TradingState` is 57,152 bytes against a 65,536-byte ceiling. The complete
 Release suite passed 15/15 and the V2 ASan/UBSan suite passed 12/12 on the host.
 The hot/cold retained-decision layout remains intentionally pending Phase 3C;
-no cache-performance, ARM64/Pi, or capacity claim is made. Detailed evidence
-is in
+no cache-performance or capacity claim is made.
+
+The exact source root
+`1d9e44e20c495ee935b58b0723351cd5282642d0cdc098c4c35eba25d29bb577`
+passed its physical Raspberry Pi 5 ARM64 gate on 2026-09-04. The target's
+runtime L1 data-cache line matched the compiled 64-byte assumption, all 12 V2
+sanitizer suites passed, firmware power remained `throttled=0x0`, and host
+temperature moved from 44.10 C to 49.05 C. Detailed evidence is in
 [`docs/evidence/V2_PHASE3_LAYOUT_GUARDRAILS_EXPERIMENT.md`](docs/evidence/V2_PHASE3_LAYOUT_GUARDRAILS_EXPERIMENT.md).
 
 ### Version preservation
