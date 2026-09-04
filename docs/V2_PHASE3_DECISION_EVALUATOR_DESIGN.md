@@ -1,6 +1,7 @@
 # V2 Phase 3 authoritative decision-evaluator design
 
-Status: proposed contract for review; no Phase 3 behavior is implemented
+Status: decisions 1 through 5 approved; Phase 3A is green on the host but Phase
+3 remains unaccepted
 
 Branch: `v2/phase-3-policy-evaluator`
 
@@ -181,13 +182,14 @@ or executor configuration cannot upgrade a shadow decision.
 Objective: freeze reusable evaluation semantics without changing accepted wire
 or snapshot schemas.
 
-- [ ] RED tests cover every comparison operator and exact boundary;
-- [ ] RED tests prove first-match-wins, terminal `no_action`, and no-match;
-- [ ] invalid feature index and unknown enum fail closed;
-- [ ] implementation uses bounded indexed loops and checked integer values;
-- [ ] focused and full host tests pass under Release and sanitizers;
-- [ ] decision corpus bytes/digest are reviewed; and
-- [ ] C++ ownership, allocation, `constexpr`, and `noexcept` claims are audited.
+- [x] RED tests cover every comparison operator and exact boundary;
+- [x] RED tests prove first-match-wins, terminal `no_action`, and no-match;
+- [x] invalid feature index and unknown enum fail closed;
+- [x] implementation uses bounded indexed loops and checked integer values;
+- [x] focused and full host tests pass under Release and sanitizers;
+- [x] semantic fixtures and result fields are reviewed; canonical result bytes
+      and their digest correctly remain Phase 3C work; and
+- [x] C++ ownership, allocation, and `noexcept` claims are audited.
 
 This increment returns a non-authoritative evaluation value. It does not mutate
 `TradingState` and cannot create an economic effect.
@@ -290,7 +292,7 @@ wire kind. Variant order is a C++ implementation detail; the explicit
 
 ## 7. Review decisions required before behavior code
 
-Approve or amend these decisions:
+Approved decisions:
 
 1. ordered first-match-wins rules with no-match as `no_action`;
 2. control-mode dominance shown in Section 3.4;
@@ -301,3 +303,6 @@ Approve or amend these decisions:
 
 The economic action-template details in 3D receive their own review after 3A
 semantics are proven and before their schema is written.
+
+Phase 3A evidence is recorded in
+[`V2 Phase 3A ordered-rule evaluator evidence`](evidence/V2_PHASE3_RULE_EVALUATOR_EXPERIMENT.md).

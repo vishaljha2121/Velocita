@@ -249,6 +249,17 @@ economic action templates. This keeps accepted schema changes and risk-bearing
 order semantics out of an oversized commit. See
 [`docs/V2_PHASE3_DECISION_EVALUATOR_DESIGN.md`](docs/V2_PHASE3_DECISION_EVALUATOR_DESIGN.md).
 
+Experimental commit `6ee47b7` implements the Phase 3A pure ordered-rule
+evaluator after an observed missing-interface RED build. It validates the full
+bounded rule-to-frame feature-reference set before economic evaluation, then
+uses exact fixed-point comparisons and first-match array order. The result owns
+its directive, reason, matched index, and rules-visited count. The complete
+Release suite passed 14/14 and the V2 ASan/UBSan suite passed 11/11 on the host.
+It does not yet provide authoritative decisions, revised decision-frame bytes,
+retained decision identity, risk, orders, outbox, ARM64, Pi, or trading proof.
+Detailed evidence is in
+[`docs/evidence/V2_PHASE3_RULE_EVALUATOR_EXPERIMENT.md`](docs/evidence/V2_PHASE3_RULE_EVALUATOR_EXPERIMENT.md).
+
 ### Version preservation
 
 - V1 remains recoverable at annotated tag `v1.0.0`.
