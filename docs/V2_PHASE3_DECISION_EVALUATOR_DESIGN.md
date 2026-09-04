@@ -125,13 +125,17 @@ Evaluation checks conditions in a fixed order:
 1. command identity and structural frame validity;
 2. policy identity exists and is active;
 3. policy/frame account, instrument, and feature-schema scopes match;
-4. control-authority mode permits the candidate directive;
-5. source evidence is admitted and matches the retained digest;
-6. policy validity and market-data readiness are satisfied; and
-7. ordered predicates are evaluated.
+4. source evidence is admitted and matches the retained digest;
+5. policy validity and market-data readiness are satisfied;
+6. ordered predicates are evaluated; and
+7. replicated control authority permits or suppresses the candidate
+   directive.
 
 The precise order matters because one input may violate several conditions.
 A canonical result must report one stable reason on every architecture.
+`halted` is the categorical exception and may terminate before source and rule
+work because it permits no strategy directive. Other control modes require a
+candidate directive before their authority can be evaluated.
 
 ### 3.4 Control authority dominates economic policy
 
@@ -229,6 +233,49 @@ false audit data.
 
 Objective: apply evaluation through the Phase 2 reducer foundation.
 
+The approved deterministic rejection/evaluation precedence is:
+
+1. validate command identity and the decision-frame contract;
+2. resolve the exact active policy;
+3. verify account, instrument, and feature-schema scope;
+4. verify admitted source identity and evidence digest;
+5. verify policy event-time validity and market-data readiness;
+6. evaluate rules in canonical array order; and
+7. apply replicated control authority to permit or suppress the proposed
+   directive.
+
+`halted` is the categorical exception: it may terminate before source and rule
+work because no strategy directive is permitted. Other modes require the
+candidate directive before their authority can be evaluated.
+
+Before adding retained decisions, Phase 3C enforces these layout guardrails:
+
+- canonical payload size and in-memory object size have separate ceilings;
+- arena stride is rounded independently from canonical wire bytes;
+- the target cache-line assumption is a compiled ABI parameter and appears in
+  build evidence;
+- layout tests and reports expose `sizeof`, `alignof`, stride, and budget; and
+- the retained decision representation separates frequently read hot outcome
+  fields from cold audit provenance, subject to measured target behavior.
+
+The pre-3C layout gate is implemented in commit `e650f31`. On the development
+host with a declared 64-byte target line, it currently reports:
+
+```text
+DecisionFrame: canonical maximum 421 B, object 432 B, arena stride 448 B
+PolicyArtifact: canonical maximum 516 B, object 912 B
+TradingState: object 57,152 B with a 65,536 B review ceiling
+```
+
+These are different resource dimensions. Canonical bytes govern transport and
+durable encoding; `sizeof` governs resident C++ storage; arena stride governs
+address spacing and internal fragmentation. Changing one does not silently
+change either of the others. Compile-time ceilings deliberately make Phase 3C
+fail to build if retained decisions overflow the reviewed working-set budget.
+
+- [x] declare the target cache-line size as build metadata;
+- [x] separate canonical payload, object, and arena-stride budgets;
+- [x] add compile-time ceilings and a machine-readable layout report;
 - [ ] add explicit command-kind value, never a `std::variant` ordinal;
 - [ ] add typed result codes and a bounded `DecisionRecord` region;
 - [ ] prove policy/scope/source/validity/control rejection precedence;

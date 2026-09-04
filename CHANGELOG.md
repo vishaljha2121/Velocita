@@ -276,6 +276,22 @@ comparison, validity evaluation, retained decision identity, ARM64/Pi evidence,
 risk, orders, and outbox remain pending. Detailed evidence is in
 [`docs/evidence/V2_PHASE3_DECISION_FRAME_V2_EXPERIMENT.md`](docs/evidence/V2_PHASE3_DECISION_FRAME_V2_EXPERIMENT.md).
 
+Experimental commit `e650f31` adds the required pre-3C memory-layout
+guardrails. Canonical codec sizes, resident C++ object sizes, and cache-line
+rounded arena strides now have distinct reviewed budgets. The target cache-line
+size is an explicit compiled ABI parameter, and the ARM64 gate records a
+machine-readable layout report in its evidence metadata. Compile-time
+assertions stop payload or object growth that exceeds a reviewed ceiling.
+
+For a declared 64-byte target line, `DecisionFrame` is currently 421 bytes
+canonical, 432 bytes resident, and 448 bytes per rounded arena slot;
+`TradingState` is 57,152 bytes against a 65,536-byte ceiling. The complete
+Release suite passed 15/15 and the V2 ASan/UBSan suite passed 12/12 on the host.
+The hot/cold retained-decision layout remains intentionally pending Phase 3C;
+no cache-performance, ARM64/Pi, or capacity claim is made. Detailed evidence
+is in
+[`docs/evidence/V2_PHASE3_LAYOUT_GUARDRAILS_EXPERIMENT.md`](docs/evidence/V2_PHASE3_LAYOUT_GUARDRAILS_EXPERIMENT.md).
+
 ### Version preservation
 
 - V1 remains recoverable at annotated tag `v1.0.0`.
