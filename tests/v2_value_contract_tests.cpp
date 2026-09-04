@@ -48,7 +48,7 @@ velocita::v2::PolicyArtifact valid_policy() {
     PolicyArtifact policy;
     policy.policy_id = PolicyId{1};
     policy.policy_version = PolicyVersion{2};
-    policy.schema_version = kTradingContractSchemaVersion;
+    policy.schema_version = kPolicyArtifactSchemaVersion;
     policy.feature_schema_id = FeatureSchemaId{3};
     policy.instrument_id = InstrumentId{4};
     policy.account_id = AccountId{5};
@@ -112,6 +112,11 @@ velocita::v2::DecisionFrame valid_frame() {
     frame.venue_id = VenueId{4};
     frame.venue_session_id = VenueSessionId{5};
     frame.venue_sequence = VenueSequence{6};
+    frame.source_id = SourceId{11};
+    frame.source_generation = SourceGeneration{12};
+    frame.source_sequence = SourceSequence{13};
+    frame.event_time_ns = 1'000'000;
+    frame.receive_time_ns = 1'000'100;
     frame.instrument_id = InstrumentId{7};
     frame.account_id = AccountId{8};
     frame.feature_count = 2;
@@ -130,6 +135,35 @@ void test_decision_frame_contract() {
 
     auto frame = valid_frame();
     require(validate(frame) == ContractError::none, "valid decision frame was rejected");
+
+    frame.source_id = SourceId{};
+    require(validate(frame) == ContractError::invalid_identity,
+            "decision frame without source identity was accepted");
+
+    frame = valid_frame();
+    frame.source_generation = SourceGeneration{};
+    require(validate(frame) == ContractError::invalid_identity,
+            "decision frame without source generation was accepted");
+
+    frame = valid_frame();
+    frame.source_sequence = SourceSequence{};
+    require(validate(frame) == ContractError::invalid_identity,
+            "decision frame without source sequence was accepted");
+
+    frame = valid_frame();
+    frame.event_time_ns = 0;
+    require(validate(frame) == ContractError::invalid_time_range,
+            "decision frame without event time was accepted");
+
+    frame = valid_frame();
+    frame.receive_time_ns = 0;
+    require(validate(frame) == ContractError::invalid_time_range,
+            "decision frame without receive time was accepted");
+
+    frame = valid_frame();
+    frame.event_time_ns = frame.receive_time_ns + 1;
+    require(validate(frame) == ContractError::none,
+            "decision frame assumed event and receive timestamps share a clock domain");
 
     frame.feature_count = kMaxDecisionFeatures + 1;
     require(validate(frame) == ContractError::capacity_exceeded,

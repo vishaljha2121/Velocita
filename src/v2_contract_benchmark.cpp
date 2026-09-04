@@ -25,7 +25,7 @@ velocita::v2::PolicyArtifact maximum_policy() {
     PolicyArtifact policy;
     policy.policy_id = PolicyId{1};
     policy.policy_version = PolicyVersion{1};
-    policy.schema_version = kTradingContractSchemaVersion;
+    policy.schema_version = kPolicyArtifactSchemaVersion;
     policy.feature_schema_id = FeatureSchemaId{1};
     policy.instrument_id = InstrumentId{1};
     policy.account_id = AccountId{1};

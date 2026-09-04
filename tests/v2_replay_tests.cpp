@@ -30,7 +30,7 @@ velocita::v2::PolicyArtifact policy() {
     PolicyArtifact value;
     value.policy_id = PolicyId{17};
     value.policy_version = PolicyVersion{1};
-    value.schema_version = kTradingContractSchemaVersion;
+    value.schema_version = kPolicyArtifactSchemaVersion;
     value.feature_schema_id = FeatureSchemaId{3};
     value.instrument_id = InstrumentId{4};
     value.account_id = AccountId{5};

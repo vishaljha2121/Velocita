@@ -116,13 +116,18 @@ EncodePayloadResult encode_payload(const DecisionFrame& value) {
     EncodePayloadResult result;
     result.bytes.reserve(kDecisionFramePayloadFixedBytes +
                          value.feature_count * sizeof(std::int64_t));
-    append_le(result.bytes, kTradingContractSchemaVersion);
+    append_le(result.bytes, kDecisionFrameSchemaVersion);
     append_le(result.bytes, value.policy_id.value());
     append_le(result.bytes, value.policy_version.value());
     append_le(result.bytes, value.feature_schema_id.value());
     append_le(result.bytes, value.venue_id.value());
     append_le(result.bytes, value.venue_session_id.value());
     append_le(result.bytes, value.venue_sequence.value());
+    append_le(result.bytes, value.source_id.value());
+    append_le(result.bytes, value.source_generation.value());
+    append_le(result.bytes, value.source_sequence.value());
+    append_le(result.bytes, value.event_time_ns);
+    append_le(result.bytes, value.receive_time_ns);
     append_le(result.bytes, value.instrument_id.value());
     append_le(result.bytes, value.account_id.value());
     append_le(result.bytes, value.feature_count);
@@ -143,7 +148,7 @@ EncodePayloadResult encode_payload(const OrderEffect& value) {
 
     EncodePayloadResult result;
     result.bytes.reserve(kOrderEffectPayloadBytes);
-    append_le(result.bytes, kTradingContractSchemaVersion);
+    append_le(result.bytes, kOrderEffectSchemaVersion);
     append_le(result.bytes, value.effect_id.value());
     append_le(result.bytes, value.cluster_order_id.value());
     append_le(result.bytes, value.committed_directive_index);
@@ -173,7 +178,7 @@ EncodePayloadResult encode_payload(const VenueObservation& value) {
 
     EncodePayloadResult result;
     result.bytes.reserve(kVenueObservationPayloadBytes);
-    append_le(result.bytes, kTradingContractSchemaVersion);
+    append_le(result.bytes, kVenueObservationSchemaVersion);
     append_le(result.bytes, static_cast<std::uint8_t>(value.kind));
     append_le(result.bytes, value.venue_id.value());
     append_le(result.bytes, value.venue_session_id.value());
@@ -198,7 +203,7 @@ decode_policy_artifact(const std::span<const std::byte> bytes) {
     Reader reader(bytes);
     PolicyArtifact value;
     value.schema_version = reader.read<std::uint16_t>();
-    if (value.schema_version != kTradingContractSchemaVersion) {
+    if (value.schema_version != kPolicyArtifactSchemaVersion) {
         return {PayloadError::unsupported_schema, ContractError::unsupported_schema,
                 std::nullopt};
     }
@@ -232,13 +237,17 @@ decode_policy_artifact(const std::span<const std::byte> bytes) {
 
 DecodePayloadResult<DecisionFrame>
 decode_decision_frame(const std::span<const std::byte> bytes) {
-    if (bytes.size() < kDecisionFramePayloadFixedBytes) {
-        return size_error<DecisionFrame>(bytes.size(), kDecisionFramePayloadFixedBytes);
+    constexpr std::size_t schema_bytes = sizeof(std::uint16_t);
+    if (bytes.size() < schema_bytes) {
+        return size_error<DecisionFrame>(bytes.size(), schema_bytes);
     }
     Reader reader(bytes);
-    if (reader.read<std::uint16_t>() != kTradingContractSchemaVersion) {
+    if (reader.read<std::uint16_t>() != kDecisionFrameSchemaVersion) {
         return {PayloadError::unsupported_schema, ContractError::unsupported_schema,
                 std::nullopt};
+    }
+    if (bytes.size() < kDecisionFramePayloadFixedBytes) {
+        return size_error<DecisionFrame>(bytes.size(), kDecisionFramePayloadFixedBytes);
     }
     DecisionFrame value;
     value.policy_id = PolicyId{reader.read<std::uint64_t>()};
@@ -247,6 +256,11 @@ decode_decision_frame(const std::span<const std::byte> bytes) {
     value.venue_id = VenueId{reader.read<std::uint64_t>()};
     value.venue_session_id = VenueSessionId{reader.read<std::uint64_t>()};
     value.venue_sequence = VenueSequence{reader.read<std::uint64_t>()};
+    value.source_id = SourceId{reader.read<std::uint64_t>()};
+    value.source_generation = SourceGeneration{reader.read<std::uint64_t>()};
+    value.source_sequence = SourceSequence{reader.read<std::uint64_t>()};
+    value.event_time_ns = reader.read<std::int64_t>();
+    value.receive_time_ns = reader.read<std::int64_t>();
     value.instrument_id = InstrumentId{reader.read<std::uint64_t>()};
     value.account_id = AccountId{reader.read<std::uint64_t>()};
     value.feature_count = reader.read<std::uint16_t>();
@@ -274,7 +288,7 @@ decode_order_effect(const std::span<const std::byte> bytes) {
         return size_error<OrderEffect>(bytes.size(), kOrderEffectPayloadBytes);
     }
     Reader reader(bytes);
-    if (reader.read<std::uint16_t>() != kTradingContractSchemaVersion) {
+    if (reader.read<std::uint16_t>() != kOrderEffectSchemaVersion) {
         return {PayloadError::unsupported_schema, ContractError::unsupported_schema,
                 std::nullopt};
     }
@@ -308,7 +322,7 @@ decode_venue_observation(const std::span<const std::byte> bytes) {
         return size_error<VenueObservation>(bytes.size(), kVenueObservationPayloadBytes);
     }
     Reader reader(bytes);
-    if (reader.read<std::uint16_t>() != kTradingContractSchemaVersion) {
+    if (reader.read<std::uint16_t>() != kVenueObservationSchemaVersion) {
         return {PayloadError::unsupported_schema, ContractError::unsupported_schema,
                 std::nullopt};
     }

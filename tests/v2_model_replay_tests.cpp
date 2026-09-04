@@ -75,7 +75,7 @@ PolicyArtifact policy(const std::uint64_t id,
     PolicyArtifact value;
     value.policy_id = PolicyId{id};
     value.policy_version = PolicyVersion{version};
-    value.schema_version = kTradingContractSchemaVersion;
+    value.schema_version = kPolicyArtifactSchemaVersion;
     value.feature_schema_id = FeatureSchemaId{1 + variant % 3};
     value.instrument_id = InstrumentId{1 + variant % 2};
     value.account_id = AccountId{1 + (variant / 2) % 2};

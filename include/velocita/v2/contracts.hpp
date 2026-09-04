@@ -8,7 +8,10 @@
 
 namespace velocita::v2 {
 
-inline constexpr std::uint16_t kTradingContractSchemaVersion = 1;
+inline constexpr std::uint16_t kPolicyArtifactSchemaVersion = 1;
+inline constexpr std::uint16_t kDecisionFrameSchemaVersion = 2;
+inline constexpr std::uint16_t kOrderEffectSchemaVersion = 1;
+inline constexpr std::uint16_t kVenueObservationSchemaVersion = 1;
 inline constexpr std::size_t kDigestBytes = 32;
 inline constexpr std::size_t kMaxPolicyRules = 32;
 inline constexpr std::size_t kMaxDecisionFeatures = 32;
@@ -129,6 +132,11 @@ struct DecisionFrame {
     VenueId venue_id{};
     VenueSessionId venue_session_id{};
     VenueSequence venue_sequence{};
+    SourceId source_id{};
+    SourceGeneration source_generation{};
+    SourceSequence source_sequence{};
+    std::int64_t event_time_ns{};
+    std::int64_t receive_time_ns{};
     InstrumentId instrument_id{};
     AccountId account_id{};
     std::uint16_t feature_count{};
@@ -262,7 +270,7 @@ template <typename Id>
         !detail::present(policy.risk_policy_version)) {
         return ContractError::invalid_identity;
     }
-    if (policy.schema_version != kTradingContractSchemaVersion) {
+    if (policy.schema_version != kPolicyArtifactSchemaVersion) {
         return ContractError::unsupported_schema;
     }
     if (policy.model_digest.is_zero() || policy.artifact_digest.is_zero()) {
@@ -290,9 +298,15 @@ template <typename Id>
         !detail::present(frame.feature_schema_id) || !detail::present(frame.venue_id) ||
         !detail::present(frame.venue_session_id) ||
         !detail::present(frame.venue_sequence) ||
+        !detail::present(frame.source_id) ||
+        !detail::present(frame.source_generation) ||
+        !detail::present(frame.source_sequence) ||
         !detail::present(frame.instrument_id) || !detail::present(frame.account_id) ||
         !detail::present(frame.position_version) || !detail::present(frame.risk_version)) {
         return ContractError::invalid_identity;
+    }
+    if (frame.event_time_ns <= 0 || frame.receive_time_ns <= 0) {
+        return ContractError::invalid_time_range;
     }
     if (frame.feature_count > kMaxDecisionFeatures) return ContractError::capacity_exceeded;
     if (frame.feature_count == 0) return ContractError::empty_features;

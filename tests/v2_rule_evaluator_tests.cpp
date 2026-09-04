@@ -28,7 +28,7 @@ velocita::v2::PolicyArtifact policy_with_rule(
     PolicyArtifact policy;
     policy.policy_id = PolicyId{1};
     policy.policy_version = PolicyVersion{2};
-    policy.schema_version = kTradingContractSchemaVersion;
+    policy.schema_version = kPolicyArtifactSchemaVersion;
     policy.feature_schema_id = FeatureSchemaId{3};
     policy.instrument_id = InstrumentId{4};
     policy.account_id = AccountId{5};
@@ -54,6 +54,11 @@ velocita::v2::DecisionFrame frame_with_feature(const std::int64_t atoms) {
     frame.venue_id = VenueId{4};
     frame.venue_session_id = VenueSessionId{5};
     frame.venue_sequence = VenueSequence{6};
+    frame.source_id = SourceId{10};
+    frame.source_generation = SourceGeneration{11};
+    frame.source_sequence = SourceSequence{12};
+    frame.event_time_ns = 150;
+    frame.receive_time_ns = 160;
     frame.instrument_id = InstrumentId{4};
     frame.account_id = AccountId{5};
     frame.feature_count = 1;
