@@ -240,6 +240,15 @@ earlier checklist overlap without pulling later behavior forward.
 The closure record is
 [`docs/evidence/V2_PHASE2_DETERMINISTIC_KERNEL_ACCEPTANCE.md`](docs/evidence/V2_PHASE2_DETERMINISTIC_KERNEL_ACCEPTANCE.md).
 
+### Phase 3 planned - authoritative decision evaluation
+
+Phase 3 has a staged design checklist but no accepted behavior. The plan first
+freezes pure fixed-point predicate and ordered-rule semantics, then separately
+reviews causal source/event-time schema, authoritative retained decisions, and
+economic action templates. This keeps accepted schema changes and risk-bearing
+order semantics out of an oversized commit. See
+[`docs/V2_PHASE3_DECISION_EVALUATOR_DESIGN.md`](docs/V2_PHASE3_DECISION_EVALUATOR_DESIGN.md).
+
 ### Version preservation
 
 - V1 remains recoverable at annotated tag `v1.0.0`.

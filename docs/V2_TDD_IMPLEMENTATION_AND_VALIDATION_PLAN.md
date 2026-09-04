@@ -389,6 +389,9 @@ preserved V1/V1.1 branches and tags to leave V2 entirely.
 
 Implementation state: planned. No Phase 3 behavior is accepted yet.
 
+The reviewed execution checklist and pending schema decisions are maintained in
+[`V2 Phase 3 decision-evaluator design`](V2_PHASE3_DECISION_EVALUATOR_DESIGN.md).
+
 ### Objective
 
 Turn bounded market/model evidence into deterministic no-action, rejection,
