@@ -2,7 +2,8 @@
 
 Date: 2026-09-04
 
-Status: host candidate green; physical Raspberry Pi ARM64 gate pending
+Status: host and physical Raspberry Pi ARM64 correctness gates green; Phase 3
+measurement and economic-template work remain pending
 
 Behavior commit: `4958ea7` (`Add authoritative V2 decision evaluation`)
 
@@ -115,7 +116,8 @@ growth.
   retention. Replicated expiry/archive is required before production.
 - No duration, rules-visited, or high-watermark metrics exist yet.
 - No risk, order, effect, or executor authority exists in this increment.
-- Physical Pi validation is still required for this exact source root.
+- Snapshot encode/decode and hot-path receipt lookup latency are unmeasured;
+  their optimization is explicitly deferred to the V2.1 performance scope.
 - Phase 3D economic action-template decisions remain the next architecture
   review before Phase 4 effect creation.
 
@@ -130,3 +132,24 @@ BUILD_JOBS=2 ./deploy/run-v2-phase3c-decision-pi-gate.sh --yes
 The wrapper pins the canonical source root above and delegates to the common
 Ubuntu 26.04 ARM64 container gate. A source mismatch is a failed identity
 check, not a test failure; it means the Pi is not testing this candidate.
+
+## Physical Pi acceptance
+
+The exact pinned source root passed on a Raspberry Pi 5 on 2026-09-04. The
+gate reported:
+
+- all 13 V2 suites passed in 13.34 seconds;
+- `source_root` exactly equalled `expected_source_root`;
+- GCC 15.2.0 on Ubuntu 26.04 ARM64;
+- runtime L1 data-cache line size matched the compiled 64-byte target;
+- firmware power state remained `throttled=0x0` before and after; and
+- temperature moved from 45.75 C to 49.60 C.
+
+Evidence directory on the Pi:
+
+```text
+/home/bhaikapi/.local/share/velocita/v2-phase3c-decision-pi-gates/20260904T203008Z
+```
+
+This is a correctness, portability, layout, and environmental-integrity gate.
+It is not a snapshot-latency, decision-throughput, or Raft-throughput claim.

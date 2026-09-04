@@ -321,8 +321,18 @@ The current 64-byte-target report records a 69,832-byte `TradingState` under a
 reviewed 73,728-byte object ceiling, a 57,997-byte maximum canonical snapshot,
 a 608/640-byte maximum command, and a 126/128-byte result. Host functional,
 Release V2, and ASan/UBSan V2 suites pass 16/16, 13/13, and 13/13 respectively.
-Physical Pi evidence, measurement, and Phase 3 acceptance remain pending; no
-risk, order, effect, or venue authority is claimed. Detailed evidence is in
+The exact source root
+`d3a45742b260562abb987c31092d04bc2abe8b162f71e0008af14f3be4942b75`
+also passed all 13 V2 suites on the physical Raspberry Pi 5 on 2026-09-04.
+The target cache-line assumption matched at 64 bytes, firmware power remained
+`throttled=0x0`, and temperature moved from 45.75 C to 49.60 C.
+
+Phase 3-wide measurement and Phase 3D economic action-template work remain
+pending; no risk, order, effect, venue authority, snapshot-latency, or
+throughput claim is made. Snapshot-validator and per-command receipt-lookup
+performance concerns are explicitly deferred to the measured V2.1 scope in
+[`docs/V2_1_PERFORMANCE_OPTIMIZATION_SCOPE.md`](docs/V2_1_PERFORMANCE_OPTIMIZATION_SCOPE.md).
+Detailed Phase 3C evidence is in
 [`docs/evidence/V2_PHASE3C_AUTHORITATIVE_DECISION_EXPERIMENT.md`](docs/evidence/V2_PHASE3C_AUTHORITATIVE_DECISION_EXPERIMENT.md).
 
 ### Version preservation

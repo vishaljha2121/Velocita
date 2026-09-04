@@ -1,7 +1,8 @@
 # V2 Phase 3 authoritative decision-evaluator design
 
 Status: decisions 1 through 5 approved; Phase 3A, 3B, and the Phase 3C
-authoritative reducer are green on the host, but Phase 3 remains unaccepted
+authoritative reducer are green on the host and physical Pi, but Phase 3
+measurement and Phase 3D economic-template work remain unaccepted
 
 Branch: `v2/phase-3-policy-evaluator`
 
@@ -309,15 +310,18 @@ No Phase 4 order/effect work begins until this contract is accepted.
 
 ### 3E: replay, measurement, and promotion
 
-- [ ] handwritten golden corpus covers every result reason;
+- [x] handwritten golden corpus covers every result reason;
 - [x] generated reference model covers boundary and interaction sequences;
-- [ ] direct, canonical replay, and every snapshot cut agree;
+- [x] direct, canonical replay, and every snapshot cut agree;
 - [ ] evaluation duration, rules visited, and capacity high-watermarks are
       measured without claiming Raft throughput;
 - [x] host Release and sanitizer gates pass;
-- [ ] pinned ARM64 Linux gate passes from an exact source root;
-- [ ] physical Pi phase-closure gate passes; and
-- [ ] changelog/evidence state limitations and rollback precisely.
+- [x] pinned ARM64 Linux gate passes from an exact source root;
+- [x] physical Pi Phase 3C gate passes;
+- [x] changelog/evidence state Phase 3C limitations and rollback precisely;
+      and
+- [ ] complete the Phase 3D contract and Phase 3-wide measurement before
+      accepting Phase 3.
 
 ## 5. C++ design guidance
 
