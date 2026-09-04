@@ -4,6 +4,14 @@ Date: 2026-09-04
 
 Status: host candidate green; physical Raspberry Pi ARM64 gate pending
 
+Behavior commit: `4958ea7` (`Add authoritative V2 decision evaluation`)
+
+Pinned source root:
+
+```text
+d3a45742b260562abb987c31092d04bc2abe8b162f71e0008af14f3be4942b75
+```
+
 ## Objective
 
 Turn the pure ordered-rule evaluator into a bounded authoritative reducer
@@ -110,3 +118,15 @@ growth.
 - Physical Pi validation is still required for this exact source root.
 - Phase 3D economic action-template decisions remain the next architecture
   review before Phase 4 effect creation.
+
+## Physical Pi acceptance command
+
+After synchronizing the candidate to the Pi, run:
+
+```bash
+BUILD_JOBS=2 ./deploy/run-v2-phase3c-decision-pi-gate.sh --yes
+```
+
+The wrapper pins the canonical source root above and delegates to the common
+Ubuntu 26.04 ARM64 container gate. A source mismatch is a failed identity
+check, not a test failure; it means the Pi is not testing this candidate.
