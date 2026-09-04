@@ -335,6 +335,15 @@ performance concerns are explicitly deferred to the measured V2.1 scope in
 Detailed Phase 3C evidence is in
 [`docs/evidence/V2_PHASE3C_AUTHORITATIVE_DECISION_EXPERIMENT.md`](docs/evidence/V2_PHASE3C_AUTHORITATIVE_DECISION_EXPERIMENT.md).
 
+Phase 3D direction review approves bounded constant-or-feature value sources,
+logical order-slot targeting, explicit replace intent, immutable policy safety
+caps, and versioned venue capabilities. The proposed authority boundary keeps
+model output advisory, validates exact strategy intent against the deployed
+policy envelope, and leaves dynamic risk checking plus atomic reservation to
+Phase 4. Silent price/quantity clamping is not planned: a limit violation must
+produce a typed no-effect rejection unless a future policy explicitly defines
+adaptive sizing as strategy behavior.
+
 ### Version preservation
 
 - V1 remains recoverable at annotated tag `v1.0.0`.

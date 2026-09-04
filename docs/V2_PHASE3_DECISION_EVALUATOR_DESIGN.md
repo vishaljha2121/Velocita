@@ -293,20 +293,116 @@ fail to build if retained decisions overflow the reviewed working-set budget.
 
 Objective: define the deterministic economic proposal consumed by Phase 4.
 
-The recommended direction is a bounded action template selected by a rule. A
-template identifies directive class, side, time-in-force, and the canonical
-sources or constants for price and quantity. Cancel/replace must identify a
-deterministic target; they cannot mean “whichever order the executor finds.”
+The five direction decisions are approved:
 
-Before implementation, review:
+1. price and quantity use a bounded tagged source: an exact policy constant or
+   a decision-frame feature reference, with only a small reviewed transform
+   vocabulary such as checked tick offsets;
+2. cancel/replace selects a bounded logical order slot that Phase 4 must
+   resolve to one exact authoritative `ClusterOrderId`; no command may mean
+   “whichever order the executor finds”;
+3. the replicated economic intention may be replace, but Phase 4 produces an
+   explicit deterministic transition and a venue adapter may not silently
+   choose different economic semantics;
+4. immutable policy-level price, quantity, notional, freshness, side,
+   directive, and order-property caps are checked while constructing the
+   proposal; and
+5. economically significant venue capabilities are versioned authoritative
+   inputs, and the adapter may reject but never silently downgrade intent such
+   as post-only.
 
-- fixed values versus feature-index references for price/quantity;
-- one-live-order-per-side versus explicit target `ClusterOrderId`;
-- policy caps on price deviation and quantity;
-- venue capability constraints such as post-only; and
-- whether replace is native or canonicalized to cancel plus new submit.
+The template is selected by an ordered rule and identifies directive class,
+side, time-in-force, the canonical sources for price and quantity, an optional
+bounded tick offset, a deterministic logical order target, and its safety
+envelope. It is data interpreted by fixed reducer code, not an embedded general
+expression language.
 
-No Phase 4 order/effect work begins until this contract is accepted.
+#### 3D.1 Layered model, policy, and risk authority
+
+The model, strategy policy, and risk engine do not share equal authority and
+their limits are not averaged. Their admissible sets intersect:
+
+```text
+model desired action
+    -> immutable strategy-policy envelope
+    -> dynamic authoritative risk check and reservation
+    -> versioned venue-capability check
+    -> committed order intent + outbox effect
+```
+
+The model may consume position/risk features and may propose calibration-based
+bounds during offline artifact construction. Those outputs are advisory until
+an approved immutable `PolicyArtifact` binds the model digest, policy version,
+risk-policy version, rule, template, and hard strategy envelope. A model output
+can never raise or bypass an operator/risk-approved limit.
+
+Phase 3D resolves the selected template to exact requested economic values and
+checks the immutable strategy-policy envelope. It does not inspect mutable
+balances, aggregate exposure, concurrent reservations, or venue acknowledgments
+and it does not reserve risk. Those values can change between decisions and
+belong to the Phase 4 authoritative risk/order transaction.
+
+Phase 4 independently verifies the bound `RiskPolicyVersion`, current
+`RiskVersion`, positions, existing reservations, open and unknown orders,
+available balance or margin, and kill/control authority. An accepted
+risk-increasing decision must atomically reserve capacity, create one order
+intent, and create its outbox effect in the same replicated transition.
+
+The proposed default is **reject, never silently clamp**. If requested price,
+quantity, notional, offset, freshness, side, time-in-force, or capability lies
+outside the policy envelope, Phase 3D returns a typed no-effect rejection. If
+dynamic capacity is insufficient or stale, Phase 4 returns a typed no-effect
+rejection. Quietly reducing quantity or changing price/TIF could execute an
+economic action the model did not choose and would obscure whether the strategy
+or risk layer made the decision.
+
+Adaptive sizing remains possible, but it must be explicit strategy semantics:
+the policy can select a reviewed value source representing available-risk input
+and the frame must bind its `RiskVersion`. Phase 4 still rechecks and reserves
+against the current authoritative version. If it changed, the command fails
+closed rather than executing from stale capacity.
+
+#### 3D.2 Proposed policy safety envelope
+
+The first bounded schema should be capable of expressing:
+
+- allowed directive and side;
+- exact time-in-force and whether post-only is mandatory;
+- positive maximum quantity in lots;
+- positive maximum notional in quote atoms;
+- maximum absolute price deviation in ticks from a named frame reference;
+- maximum bounded tick offset applied to a price feature;
+- maximum market-data age for this action;
+- exact price/quantity feature indices or fixed values; and
+- a bounded logical order slot for cancel/replace.
+
+Multiplication, addition, subtraction, absolute difference, and unit conversion
+must use checked integer operations. Overflow, missing features, non-positive
+resolved values, stale inputs, unsupported capabilities, and cap violations are
+distinct deterministic rejection reasons.
+
+Policy limits constrain strategy behavior; they are not a substitute for
+portfolio/account risk. Conversely, the risk engine may refuse a policy-valid
+proposal but may not rewrite it into a different trade.
+
+#### 3D.3 TDD implementation sequence
+
+- [ ] freeze tagged price/quantity source, transform, logical-target, safety-cap,
+      and action-proposal value contracts;
+- [ ] observe RED tests for every invalid tag, index, unit, zero/negative value,
+      overflow, cap, target, and capability case;
+- [ ] add templates to a new explicit policy schema without reinterpreting V1;
+- [ ] freeze canonical payload sizes, golden bytes, and corpus digests;
+- [ ] resolve first-match rules to templates and exact economic proposals;
+- [ ] prove rejection precedence and reject-not-clamp semantics;
+- [ ] prove shadow/control-suppressed outcomes contain no effective action;
+- [ ] extend result, hot/cold record, snapshot, replay, and independent model;
+- [ ] re-run layout ceilings before accepting any payload growth; and
+- [ ] pass host Release/sanitizer, pinned ARM64, physical Pi, and phase evidence
+      gates.
+
+No Phase 4 order, reservation, or effect work begins until this contract and
+the reject-not-clamp boundary are accepted.
 
 ### 3E: replay, measurement, and promotion
 
@@ -375,8 +471,11 @@ Approved decisions:
 5. staged 3A through 3E implementation rather than one large schema/reducer
    change.
 
-The economic action-template details in 3D receive their own review after 3A
-semantics are proven and before their schema is written.
+The five economic action-template directions in 3D are approved. Before schema
+or behavior code, the remaining explicit approval is the layered authority
+boundary: model outputs are advisory, the immutable policy envelope is checked
+in Phase 3D, dynamic risk is independently checked and atomically reserved in
+Phase 4, and violations reject rather than silently clamp the proposed trade.
 
 Phase 3A evidence is recorded in
 [`V2 Phase 3A ordered-rule evaluator evidence`](evidence/V2_PHASE3_RULE_EVALUATOR_EXPERIMENT.md).
