@@ -196,6 +196,11 @@ if(BUILD_TESTING)
     target_compile_options(v2-replay-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-replay-tests COMMAND v2-replay-tests)
 
+    add_executable(v2-model-replay-tests tests/v2_model_replay_tests.cpp)
+    target_link_libraries(v2-model-replay-tests PRIVATE velocita_v2_kernel)
+    target_compile_options(v2-model-replay-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-model-replay-tests COMMAND v2-model-replay-tests)
+
     add_executable(v2-contract-benchmark src/v2_contract_benchmark.cpp)
     target_link_libraries(v2-contract-benchmark PRIVATE velocita_v2_contracts)
     target_compile_options(v2-contract-benchmark PRIVATE -Wall -Wextra -Wpedantic)

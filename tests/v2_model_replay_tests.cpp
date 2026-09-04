@@ -1,0 +1,722 @@
+#include "velocita/v2/digest.hpp"
+#include "velocita/v2/replay.hpp"
+#include "velocita/v2/state_snapshot.hpp"
+
+#include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <exception>
+#include <iostream>
+#include <span>
+#include <stdexcept>
+#include <string>
+#include <type_traits>
+#include <utility>
+#include <variant>
+#include <vector>
+
+namespace {
+
+using namespace velocita::v2;
+
+constexpr std::size_t kHistoryLength = 96;
+constexpr std::size_t kSeedCount = 32;
+
+void require(const bool condition, const std::string& message) {
+    if (!condition) throw std::runtime_error(message);
+}
+
+std::string location(const std::uint64_t seed,
+                     const std::size_t step,
+                     const std::string& message) {
+    return "seed=" + std::to_string(seed) + " step=" + std::to_string(step) +
+           ": " + message;
+}
+
+Digest256 digest(const std::uint64_t value) {
+    Digest256 result;
+    auto mixed = value + 0x9e3779b97f4a7c15ULL;
+    for (std::size_t index = 0; index < result.bytes.size(); ++index) {
+        mixed ^= mixed >> 30;
+        mixed *= 0xbf58476d1ce4e5b9ULL;
+        mixed ^= mixed >> 27;
+        mixed *= 0x94d049bb133111ebULL;
+        mixed ^= mixed >> 31;
+        result.bytes[index] = static_cast<std::byte>(mixed & 0xffU);
+        mixed += index + 1;
+    }
+    return result;
+}
+
+class Generator final {
+public:
+    explicit Generator(const std::uint64_t seed) noexcept : state_(seed) {}
+
+    std::uint64_t next() noexcept {
+        state_ += 0x9e3779b97f4a7c15ULL;
+        auto value = state_;
+        value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ULL;
+        value = (value ^ (value >> 27)) * 0x94d049bb133111ebULL;
+        return value ^ (value >> 31);
+    }
+
+    std::uint64_t bounded(const std::uint64_t upper_exclusive) noexcept {
+        return next() % upper_exclusive;
+    }
+
+private:
+    std::uint64_t state_;
+};
+
+PolicyArtifact policy(const std::uint64_t id,
+                      const std::uint64_t version,
+                      const std::uint64_t variant) {
+    PolicyArtifact value;
+    value.policy_id = PolicyId{id};
+    value.policy_version = PolicyVersion{version};
+    value.schema_version = kTradingContractSchemaVersion;
+    value.feature_schema_id = FeatureSchemaId{1 + variant % 3};
+    value.instrument_id = InstrumentId{1 + variant % 2};
+    value.account_id = AccountId{1 + (variant / 2) % 2};
+    value.model_digest = digest(0x1000 + variant);
+    value.artifact_digest = digest(0x2000 + id * 31 + version * 7 + variant);
+    value.valid_from_event_time_ns = 100;
+    value.valid_until_event_time_ns = 200;
+    value.risk_policy_version = RiskPolicyVersion{1};
+    value.rule_count = 1;
+    value.rules[0] = PolicyRule{0,
+                                PredicateOperator::greater_than,
+                                FeatureMicros::from_atoms(
+                                    static_cast<std::int64_t>(variant + 1)),
+                                Directive::place_limit};
+    return value;
+}
+
+Command new_command(const std::uint64_t sequence,
+                    const std::uint64_t marker,
+                    CommandBody body) {
+    return Command{CommandIdentity{CallerId{77}, RequestSequence{sequence},
+                                   digest(marker)},
+                   std::move(body)};
+}
+
+struct Record {
+    Command command{};
+    std::array<std::byte, kMaxKernelCommandBytes> bytes{};
+    std::size_t size{};
+};
+
+Record record(Command command) {
+    Record result;
+    result.command = std::move(command);
+    const auto encoded = encode_kernel_command(result.command, result.bytes);
+    require(encoded.error == KernelCodecError::none,
+            "generated command violated the codec contract");
+    result.size = encoded.bytes_written;
+    return result;
+}
+
+CommandBody random_body(Generator& rng) {
+    const auto kind = rng.bounded(8);
+    const auto id = 1 + rng.bounded(5);
+    const auto version = 1 + rng.bounded(4);
+    switch (kind) {
+        case 0:
+            return PublishPolicy{policy(id, version, rng.bounded(8))};
+        case 1:
+            return ValidatePolicy{PolicyId{id}, PolicyVersion{version}};
+        case 2:
+            return ActivatePolicy{PolicyId{id}, PolicyVersion{version}};
+        case 3:
+            return SupersedePolicy{PolicyId{id}, PolicyVersion{version}};
+        case 4:
+            return SetStrategyMode{
+                static_cast<StrategyMode>(1 + rng.bounded(5)),
+                KillEpoch{rng.bounded(5)},
+                ExecutorGeneration{rng.bounded(5)}};
+        case 5:
+            return AdvanceKillEpoch{KillEpoch{rng.bounded(7)}};
+        case 6:
+            return SetExecutorGeneration{ExecutorGeneration{rng.bounded(7)}};
+        default:
+            return RecordSourceEvent{SourceId{1 + rng.bounded(4)},
+                                     SourceGeneration{1 + rng.bounded(3)},
+                                     SourceSequence{1 + rng.bounded(8)},
+                                     digest(0x3000 + rng.next())};
+    }
+}
+
+std::vector<Record> history(const std::uint64_t seed) {
+    Generator rng(seed);
+    std::vector<Record> records;
+    records.reserve(kHistoryLength);
+
+    records.push_back(record(new_command(1, seed + 1,
+                                         PublishPolicy{policy(1, 1, 0)})));
+    records.push_back(record(new_command(
+        2, seed + 2, ValidatePolicy{PolicyId{1}, PolicyVersion{1}})));
+    records.push_back(record(new_command(
+        3, seed + 3, ActivatePolicy{PolicyId{1}, PolicyVersion{1}})));
+    records.push_back(record(new_command(
+        4, seed + 4, SetExecutorGeneration{ExecutorGeneration{1}})));
+    records.push_back(record(
+        new_command(5, seed + 5, AdvanceKillEpoch{KillEpoch{1}})));
+    records.push_back(record(new_command(
+        6, seed + 6,
+        RecordSourceEvent{SourceId{1}, SourceGeneration{1}, SourceSequence{1},
+                          digest(seed + 0x100)})));
+    records.push_back(record(new_command(
+        7, seed + 7,
+        RecordSourceEvent{SourceId{1}, SourceGeneration{1}, SourceSequence{2},
+                          digest(seed + 0x101)})));
+    records.push_back(record(new_command(
+        8, seed + 8,
+        SetStrategyMode{StrategyMode::normal, KillEpoch{1},
+                        ExecutorGeneration{1}})));
+
+    const auto append = [&](CommandBody body) {
+        const auto sequence = records.size() + 1;
+        records.push_back(record(new_command(sequence, seed + sequence,
+                                             std::move(body))));
+    };
+    append(RecordSourceEvent{SourceId{1}, SourceGeneration{1}, SourceSequence{1},
+                             digest(seed + 0xdead)});
+    append(RecordSourceEvent{SourceId{1}, SourceGeneration{1}, SourceSequence{4},
+                             digest(seed + 0x104)});
+    append(RecordSourceEvent{SourceId{1}, SourceGeneration{3}, SourceSequence{1},
+                             digest(seed + 0x301)});
+    append(RecordSourceEvent{SourceId{1}, SourceGeneration{2}, SourceSequence{1},
+                             digest(seed + 0x201)});
+    append(RecordSourceEvent{SourceId{1}, SourceGeneration{1}, SourceSequence{3},
+                             digest(seed + 0x103)});
+    append(PublishPolicy{policy(1, 1, 1)});
+    append(PublishPolicy{policy(2, 2, 2)});
+    append(PublishPolicy{policy(2, 1, 2)});
+    append(PublishPolicy{policy(3, 1, 3)});
+    append(ActivatePolicy{PolicyId{3}, PolicyVersion{1}});
+    append(ValidatePolicy{PolicyId{3}, PolicyVersion{1}});
+    append(PublishPolicy{policy(4, 1, 0)});
+    append(ValidatePolicy{PolicyId{4}, PolicyVersion{1}});
+    append(ActivatePolicy{PolicyId{4}, PolicyVersion{1}});
+    append(ValidatePolicy{PolicyId{5}, PolicyVersion{1}});
+    append(SetStrategyMode{StrategyMode::cancel_only, KillEpoch{0},
+                           ExecutorGeneration{0}});
+    append(AdvanceKillEpoch{KillEpoch{1}});
+    append(SetExecutorGeneration{ExecutorGeneration{1}});
+    records.push_back(records.front());
+    auto identity_conflict = records.front().command;
+    identity_conflict.identity.payload_digest = digest(seed + 0xbeef);
+    records.push_back(record(std::move(identity_conflict)));
+
+    for (std::size_t index = records.size(); index < kHistoryLength; ++index) {
+        const auto choice = rng.bounded(10);
+        if (choice == 0 && !records.empty()) {
+            records.push_back(records[rng.bounded(records.size())]);
+            continue;
+        }
+        if (choice == 1 && !records.empty()) {
+            auto conflict = records[rng.bounded(records.size())].command;
+            conflict.identity.payload_digest = digest(seed + 0x9000 + index);
+            records.push_back(record(std::move(conflict)));
+            continue;
+        }
+        records.push_back(record(new_command(index + 1,
+                                             seed + 0x10000 + index,
+                                             random_body(rng))));
+    }
+    return records;
+}
+
+struct ModelState {
+    std::uint64_t state_version{};
+    StrategyMode strategy_mode{StrategyMode::halted};
+    KillEpoch kill_epoch{};
+    ExecutorGeneration executor_generation{};
+    std::vector<PolicyRecord> policies;
+    std::vector<SourceCursor> sources;
+    std::vector<SourceEventReceipt> source_events;
+    std::vector<RequestReceipt> receipts;
+};
+
+ApplyResult model_result(const ModelState& state,
+                         const ApplyCode code,
+                         const std::uint64_t version,
+                         const PolicyId policy_id = {},
+                         const PolicyVersion policy_version = {},
+                         const PolicyLifecycle lifecycle = PolicyLifecycle::none,
+                         const ContractError error = ContractError::none,
+                         const SourceId source_id = {},
+                         const SourceGeneration generation = {},
+                         const SourceSequence sequence = {}) {
+    return {code, error, policy_id, policy_version, lifecycle, version,
+            state.strategy_mode, state.kill_epoch, state.executor_generation,
+            source_id, generation, sequence};
+}
+
+PolicyRecord* model_policy(ModelState& state,
+                          const PolicyId id,
+                          const PolicyVersion version) {
+    const auto found = std::find_if(
+        state.policies.begin(), state.policies.end(), [&](const auto& item) {
+            return item.artifact.policy_id == id &&
+                   item.artifact.policy_version == version;
+        });
+    return found == state.policies.end() ? nullptr : &*found;
+}
+
+SourceCursor* model_source(ModelState& state, const SourceId id) {
+    const auto found = std::find_if(
+        state.sources.begin(), state.sources.end(),
+        [&](const auto& item) { return item.source_id == id; });
+    return found == state.sources.end() ? nullptr : &*found;
+}
+
+ApplyResult model_publish(ModelState& state,
+                          const PublishPolicy& command,
+                          const std::uint64_t version) {
+    const auto error = validate(command.artifact);
+    if (error != ContractError::none) {
+        return model_result(state, ApplyCode::invalid_policy_contract, version,
+                            command.artifact.policy_id,
+                            command.artifact.policy_version,
+                            PolicyLifecycle::none, error);
+    }
+    if (const auto* existing = model_policy(state, command.artifact.policy_id,
+                                            command.artifact.policy_version)) {
+        return model_result(
+            state,
+            existing->artifact.artifact_digest == command.artifact.artifact_digest
+                ? ApplyCode::already_applied
+                : ApplyCode::immutable_policy_conflict,
+            version, command.artifact.policy_id, command.artifact.policy_version,
+            existing->lifecycle);
+    }
+    const auto non_monotonic = std::any_of(
+        state.policies.begin(), state.policies.end(), [&](const auto& item) {
+            return item.artifact.policy_id == command.artifact.policy_id &&
+                   item.artifact.policy_version.value() >=
+                       command.artifact.policy_version.value();
+        });
+    if (non_monotonic) {
+        return model_result(state, ApplyCode::non_monotonic_policy_version,
+                            version, command.artifact.policy_id,
+                            command.artifact.policy_version);
+    }
+    if (state.policies.size() == kMaxPolicies) {
+        return model_result(state, ApplyCode::policy_capacity_exceeded, version,
+                            command.artifact.policy_id,
+                            command.artifact.policy_version);
+    }
+    state.policies.push_back({command.artifact, PolicyLifecycle::proposed});
+    return model_result(state, ApplyCode::applied, version,
+                        command.artifact.policy_id,
+                        command.artifact.policy_version,
+                        PolicyLifecycle::proposed);
+}
+
+template <typename Transition>
+ApplyResult model_policy_transition(ModelState& state,
+                                    const PolicyId id,
+                                    const PolicyVersion policy_version,
+                                    const std::uint64_t version,
+                                    const PolicyLifecycle required,
+                                    const PolicyLifecycle destination,
+                                    Transition&& extra_valid) {
+    if (id.value() == 0 || policy_version.value() == 0) {
+        return model_result(state, ApplyCode::invalid_command, version, id,
+                            policy_version, PolicyLifecycle::none,
+                            ContractError::invalid_identity);
+    }
+    auto* item = model_policy(state, id, policy_version);
+    if (item == nullptr) {
+        return model_result(state, ApplyCode::policy_not_found, version, id,
+                            policy_version);
+    }
+    if (item->lifecycle == destination) {
+        return model_result(state, ApplyCode::already_applied, version, id,
+                            policy_version, item->lifecycle);
+    }
+    if (item->lifecycle != required) {
+        return model_result(state, ApplyCode::invalid_policy_transition, version,
+                            id, policy_version, item->lifecycle);
+    }
+    if (!extra_valid(*item)) {
+        return model_result(state, ApplyCode::active_policy_scope_conflict,
+                            version, id, policy_version, item->lifecycle);
+    }
+    item->lifecycle = destination;
+    return model_result(state, ApplyCode::applied, version, id, policy_version,
+                        destination);
+}
+
+ApplyResult model_source_event(ModelState& state,
+                               const RecordSourceEvent& command,
+                               const std::uint64_t version) {
+    const auto source_result = [&](const ApplyCode code) {
+        return model_result(state, code, version, {}, {}, PolicyLifecycle::none,
+                            ContractError::none, command.source_id,
+                            command.source_generation, command.source_sequence);
+    };
+    const auto existing = std::find_if(
+        state.source_events.begin(), state.source_events.end(),
+        [&](const auto& item) {
+            return item.source_id == command.source_id &&
+                   item.generation == command.source_generation &&
+                   item.sequence == command.source_sequence;
+        });
+    if (existing != state.source_events.end()) {
+        return source_result(existing->event_digest == command.event_digest
+                                 ? ApplyCode::already_applied
+                                 : ApplyCode::source_event_conflict);
+    }
+
+    auto* cursor = model_source(state, command.source_id);
+    if (cursor == nullptr) {
+        if (command.source_generation != SourceGeneration{1}) {
+            return source_result(ApplyCode::source_generation_gap);
+        }
+        if (command.source_sequence != SourceSequence{1}) {
+            return source_result(ApplyCode::source_sequence_gap);
+        }
+    } else if (command.source_generation.value() < cursor->generation.value()) {
+        return source_result(ApplyCode::source_generation_regression);
+    } else if (command.source_generation == cursor->generation) {
+        if (command.source_sequence.value() <= cursor->sequence.value()) {
+            return source_result(ApplyCode::source_sequence_regression);
+        }
+        if (command.source_sequence.value() != cursor->sequence.value() + 1) {
+            return source_result(ApplyCode::source_sequence_gap);
+        }
+    } else {
+        if (command.source_generation.value() != cursor->generation.value() + 1) {
+            return source_result(ApplyCode::source_generation_gap);
+        }
+        if (command.source_sequence != SourceSequence{1}) {
+            return source_result(ApplyCode::source_sequence_gap);
+        }
+    }
+
+    if (state.source_events.size() == kMaxSourceEventReceipts) {
+        return source_result(ApplyCode::source_event_capacity_exceeded);
+    }
+    if (cursor == nullptr && state.sources.size() == kMaxSources) {
+        return source_result(ApplyCode::source_capacity_exceeded);
+    }
+    if (cursor == nullptr) {
+        state.sources.push_back(
+            {command.source_id, command.source_generation, command.source_sequence});
+    } else {
+        cursor->generation = command.source_generation;
+        cursor->sequence = command.source_sequence;
+    }
+    state.source_events.push_back({command.source_id, command.source_generation,
+                                   command.source_sequence, command.event_digest});
+    return source_result(ApplyCode::applied);
+}
+
+ApplyResult model_new_command(ModelState& state,
+                              const CommandBody& body,
+                              const std::uint64_t version) {
+    return std::visit(
+        [&](const auto& command) -> ApplyResult {
+            using T = std::decay_t<decltype(command)>;
+            if constexpr (std::is_same_v<T, PublishPolicy>) {
+                return model_publish(state, command, version);
+            } else if constexpr (std::is_same_v<T, ValidatePolicy>) {
+                return model_policy_transition(
+                    state, command.policy_id, command.policy_version, version,
+                    PolicyLifecycle::proposed, PolicyLifecycle::validated,
+                    [](const auto&) { return true; });
+            } else if constexpr (std::is_same_v<T, ActivatePolicy>) {
+                return model_policy_transition(
+                    state, command.policy_id, command.policy_version, version,
+                    PolicyLifecycle::validated, PolicyLifecycle::active,
+                    [&](const auto& selected) {
+                        return std::none_of(
+                            state.policies.begin(), state.policies.end(),
+                            [&](const auto& candidate) {
+                                return candidate.lifecycle == PolicyLifecycle::active &&
+                                       candidate.artifact.account_id ==
+                                           selected.artifact.account_id &&
+                                       candidate.artifact.instrument_id ==
+                                           selected.artifact.instrument_id;
+                            });
+                    });
+            } else if constexpr (std::is_same_v<T, SupersedePolicy>) {
+                return model_policy_transition(
+                    state, command.policy_id, command.policy_version, version,
+                    PolicyLifecycle::active, PolicyLifecycle::superseded,
+                    [](const auto&) { return true; });
+            } else if constexpr (std::is_same_v<T, SetStrategyMode>) {
+                if (command.expected_kill_epoch != state.kill_epoch ||
+                    command.expected_executor_generation !=
+                        state.executor_generation) {
+                    return model_result(state, ApplyCode::stale_control_generation,
+                                        version);
+                }
+                if (command.mode == state.strategy_mode) {
+                    return model_result(state, ApplyCode::already_applied, version);
+                }
+                state.strategy_mode = command.mode;
+                return model_result(state, ApplyCode::applied, version);
+            } else if constexpr (std::is_same_v<T, AdvanceKillEpoch>) {
+                if (command.new_kill_epoch.value() <= state.kill_epoch.value()) {
+                    return model_result(state, ApplyCode::non_monotonic_kill_epoch,
+                                        version);
+                }
+                state.kill_epoch = command.new_kill_epoch;
+                state.strategy_mode = StrategyMode::halted;
+                return model_result(state, ApplyCode::applied, version);
+            } else if constexpr (std::is_same_v<T, SetExecutorGeneration>) {
+                if (command.new_generation.value() <=
+                    state.executor_generation.value()) {
+                    return model_result(
+                        state, ApplyCode::non_monotonic_executor_generation, version);
+                }
+                state.executor_generation = command.new_generation;
+                if (state.strategy_mode != StrategyMode::halted &&
+                    state.strategy_mode != StrategyMode::cancel_only) {
+                    state.strategy_mode = StrategyMode::no_new_risk;
+                }
+                return model_result(state, ApplyCode::applied, version);
+            } else {
+                return model_source_event(state, command, version);
+            }
+        },
+        body);
+}
+
+ApplyResult model_apply(ModelState& state, const Command& command) {
+    const auto receipt = std::find_if(
+        state.receipts.begin(), state.receipts.end(), [&](const auto& item) {
+            return item.identity.caller_id == command.identity.caller_id &&
+                   item.identity.request_sequence ==
+                       command.identity.request_sequence;
+        });
+    if (receipt != state.receipts.end()) {
+        if (receipt->identity.payload_digest == command.identity.payload_digest) {
+            return receipt->result;
+        }
+        return model_result(state, ApplyCode::duplicate_conflict,
+                            state.state_version);
+    }
+    require(state.receipts.size() < kMaxRequestReceipts,
+            "generated history exceeded the model receipt bound");
+    const auto next_version = state.state_version + 1;
+    const auto result = model_new_command(state, command.body, next_version);
+    state.state_version = next_version;
+    state.receipts.push_back({command.identity, result});
+    return result;
+}
+
+TradingState materialize(const ModelState& model) {
+    TradingState result;
+    result.state_version = model.state_version;
+    result.strategy_mode = model.strategy_mode;
+    result.kill_epoch = model.kill_epoch;
+    result.executor_generation = model.executor_generation;
+    result.policy_count = model.policies.size();
+    std::copy(model.policies.begin(), model.policies.end(), result.policies.begin());
+    result.source_count = model.sources.size();
+    std::copy(model.sources.begin(), model.sources.end(), result.sources.begin());
+    result.source_event_count = model.source_events.size();
+    std::copy(model.source_events.begin(), model.source_events.end(),
+              result.source_events.begin());
+    result.receipt_count = model.receipts.size();
+    std::copy(model.receipts.begin(), model.receipts.end(), result.receipts.begin());
+    return result;
+}
+
+struct ExpectedRun {
+    std::array<std::array<std::byte, kKernelResultBytes>, kHistoryLength> results{};
+    std::array<std::byte, kMaxStateSnapshotBytes> final_snapshot{};
+    std::size_t final_snapshot_size{};
+    Digest256 final_digest{};
+};
+
+struct Coverage {
+    static constexpr std::size_t size =
+        static_cast<std::size_t>(ApplyCode::state_version_exhausted) + 1;
+    std::array<std::size_t, size> outcomes{};
+
+    void observe(const ApplyCode code) noexcept {
+        ++outcomes[static_cast<std::size_t>(code)];
+    }
+
+    [[nodiscard]] std::size_t count(const ApplyCode code) const noexcept {
+        return outcomes[static_cast<std::size_t>(code)];
+    }
+};
+
+ExpectedRun compare_production_to_model(const std::uint64_t seed,
+                                        const std::vector<Record>& records,
+                                        Coverage& coverage) {
+    ExpectedRun expected;
+    TradingState production;
+    ModelState model;
+    ApplyScratch apply_scratch;
+    KernelCommandCodecScratch codec_scratch;
+
+    for (std::size_t step = 0; step < records.size(); ++step) {
+        const auto model_result = model_apply(model, records[step].command);
+        coverage.observe(model_result.code);
+        const auto replayed = apply_encoded_kernel_command(
+            production, {records[step].bytes.data(), records[step].size},
+            apply_scratch, codec_scratch, expected.results[step]);
+        require(replayed.error == ReplayError::none,
+                location(seed, step, "production replay rejected valid frame"));
+        require(replayed.apply_result == model_result,
+                location(seed, step, "production result diverged from model"));
+
+        std::array<std::byte, kKernelResultBytes> model_bytes{};
+        const auto encoded_model = encode_kernel_result(model_result, model_bytes);
+        require(encoded_model.error == KernelCodecError::none &&
+                    model_bytes == expected.results[step],
+                location(seed, step, "canonical result bytes diverged"));
+
+        const auto model_state = materialize(model);
+        std::array<std::byte, kMaxStateSnapshotBytes> production_bytes{};
+        std::array<std::byte, kMaxStateSnapshotBytes> model_state_bytes{};
+        const auto production_snapshot =
+            encode_state_snapshot(production, production_bytes);
+        const auto model_snapshot =
+            encode_state_snapshot(model_state, model_state_bytes);
+        require(production_snapshot.error == StateSnapshotError::none &&
+                    model_snapshot.error == StateSnapshotError::none &&
+                    production_snapshot.bytes_written ==
+                        model_snapshot.bytes_written &&
+                    std::equal(production_bytes.begin(),
+                               production_bytes.begin() +
+                                   static_cast<std::ptrdiff_t>(
+                                       production_snapshot.bytes_written),
+                               model_state_bytes.begin()),
+                location(seed, step, "canonical state diverged from model"));
+    }
+
+    const auto snapshot =
+        encode_state_snapshot(production, expected.final_snapshot);
+    require(snapshot.error == StateSnapshotError::none,
+            "final production state did not encode");
+    expected.final_snapshot_size = snapshot.bytes_written;
+    expected.final_digest = snapshot.state_digest;
+    return expected;
+}
+
+void compare_snapshot_suffixes(const std::uint64_t seed,
+                               const std::vector<Record>& records,
+                               const ExpectedRun& expected) {
+    constexpr std::array<std::size_t, 6> cuts{0, 1, 8, 32, 64, 95};
+    for (const auto cut : cuts) {
+        TradingState prefix;
+        ApplyScratch prefix_apply_scratch;
+        KernelCommandCodecScratch prefix_codec_scratch;
+        std::array<std::byte, kKernelResultBytes> ignored{};
+        for (std::size_t step = 0; step < cut; ++step) {
+            const auto applied = apply_encoded_kernel_command(
+                prefix, {records[step].bytes.data(), records[step].size},
+                prefix_apply_scratch, prefix_codec_scratch, ignored);
+            require(applied.error == ReplayError::none,
+                    location(seed, step, "prefix replay failed"));
+        }
+
+        std::array<std::byte, kMaxStateSnapshotBytes> snapshot_bytes{};
+        const auto snapshot = encode_state_snapshot(prefix, snapshot_bytes);
+        require(snapshot.error == StateSnapshotError::none,
+                "generated prefix did not snapshot");
+        TradingState restored;
+        StateSnapshotScratch snapshot_scratch;
+        const auto decoded = decode_state_snapshot(
+            {snapshot_bytes.data(), snapshot.bytes_written}, restored,
+            snapshot_scratch);
+        require(decoded.error == StateSnapshotError::none,
+                "generated prefix snapshot did not restore");
+
+        ApplyScratch suffix_apply_scratch;
+        KernelCommandCodecScratch suffix_codec_scratch;
+        for (std::size_t step = cut; step < records.size(); ++step) {
+            std::array<std::byte, kKernelResultBytes> actual{};
+            const auto applied = apply_encoded_kernel_command(
+                restored, {records[step].bytes.data(), records[step].size},
+                suffix_apply_scratch, suffix_codec_scratch, actual);
+            require(applied.error == ReplayError::none &&
+                        actual == expected.results[step],
+                    location(seed, step,
+                             "snapshot suffix result diverged at cut=" +
+                                 std::to_string(cut)));
+        }
+
+        std::array<std::byte, kMaxStateSnapshotBytes> final_bytes{};
+        const auto final_snapshot = encode_state_snapshot(restored, final_bytes);
+        require(final_snapshot.error == StateSnapshotError::none &&
+                    final_snapshot.bytes_written == expected.final_snapshot_size &&
+                    std::equal(final_bytes.begin(),
+                               final_bytes.begin() + static_cast<std::ptrdiff_t>(
+                                                         final_snapshot.bytes_written),
+                               expected.final_snapshot.begin()),
+                "seed=" + std::to_string(seed) +
+                    ": snapshot suffix final state diverged at cut=" +
+                    std::to_string(cut));
+    }
+}
+
+void test_generated_model_and_snapshot_replay() {
+    std::array<std::byte, kSeedCount * kDigestBytes> final_digests{};
+    Coverage coverage;
+    for (std::size_t seed_index = 0; seed_index < kSeedCount; ++seed_index) {
+        const auto seed = 0x5eed0000ULL + seed_index;
+        const auto records = history(seed);
+        const auto expected = compare_production_to_model(seed, records, coverage);
+        compare_snapshot_suffixes(seed, records, expected);
+        std::copy(expected.final_digest.bytes.begin(),
+                  expected.final_digest.bytes.end(),
+                  final_digests.begin() +
+                      static_cast<std::ptrdiff_t>(seed_index * kDigestBytes));
+    }
+
+    const auto corpus_digest = sha256_digest(final_digests);
+    const auto actual = to_hex(corpus_digest);
+    constexpr std::array required_outcomes{
+        ApplyCode::applied,
+        ApplyCode::already_applied,
+        ApplyCode::duplicate_conflict,
+        ApplyCode::policy_not_found,
+        ApplyCode::immutable_policy_conflict,
+        ApplyCode::non_monotonic_policy_version,
+        ApplyCode::invalid_policy_transition,
+        ApplyCode::active_policy_scope_conflict,
+        ApplyCode::stale_control_generation,
+        ApplyCode::non_monotonic_kill_epoch,
+        ApplyCode::non_monotonic_executor_generation,
+        ApplyCode::source_event_conflict,
+        ApplyCode::source_generation_gap,
+        ApplyCode::source_generation_regression,
+        ApplyCode::source_sequence_gap,
+    };
+    for (const auto outcome : required_outcomes) {
+        require(coverage.count(outcome) != 0,
+                "generated corpus missed required ApplyCode=" +
+                    std::to_string(static_cast<unsigned>(outcome)));
+    }
+    require(actual ==
+                "1eadcbdef0f9a244b935afdb3dd3be9c6e6f42fffe913509cc3baaea303357a0",
+            "generated replay corpus changed without review: " + actual);
+
+    std::cout << "generated histories=" << kSeedCount
+              << " commands_per_history=" << kHistoryLength
+              << " snapshot_cuts_per_history=6 corpus_digest=" << actual << '\n';
+}
+
+}  // namespace
+
+int main() {
+    try {
+        test_generated_model_and_snapshot_replay();
+        std::cout << "all V2 generated model/replay tests passed\n";
+        return 0;
+    } catch (const std::exception& error) {
+        std::cerr << "V2 generated model/replay test failed: " << error.what()
+                  << '\n';
+        return 1;
+    }
+}

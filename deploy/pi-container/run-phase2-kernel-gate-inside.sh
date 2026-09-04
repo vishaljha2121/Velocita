@@ -115,6 +115,7 @@ release_targets=(
     v2-state-snapshot-tests
     v2-kernel-codec-tests
     v2-replay-tests
+    v2-model-replay-tests
     v2-contract-benchmark
 )
 
@@ -142,6 +143,7 @@ cmake --build "$instrumented_build" \
              v2-payload-codec-tests v2-kernel-policy-tests \
              v2-kernel-control-tests v2-kernel-source-tests \
              v2-state-snapshot-tests v2-kernel-codec-tests v2-replay-tests \
+             v2-model-replay-tests \
     --parallel "$build_jobs"
 
 failure_step=instrumented_tests
@@ -161,6 +163,7 @@ cmake --build "$sanitized_build" \
              v2-payload-codec-tests v2-kernel-policy-tests \
              v2-kernel-control-tests v2-kernel-source-tests \
              v2-state-snapshot-tests v2-kernel-codec-tests v2-replay-tests \
+             v2-model-replay-tests \
     --parallel "$build_jobs"
 
 failure_step=sanitized_tests
