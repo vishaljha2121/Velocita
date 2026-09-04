@@ -115,6 +115,13 @@ target_include_directories(velocita_v2_kernel PUBLIC include)
 target_link_libraries(velocita_v2_kernel PUBLIC velocita_v2_contracts)
 target_compile_options(velocita_v2_kernel PRIVATE -Wall -Wextra -Wpedantic)
 
+add_library(velocita_v2_evaluator
+    src/v2_rule_evaluator.cpp
+)
+target_include_directories(velocita_v2_evaluator PUBLIC include)
+target_link_libraries(velocita_v2_evaluator PUBLIC velocita_v2_contracts)
+target_compile_options(velocita_v2_evaluator PRIVATE -Wall -Wextra -Wpedantic)
+
 add_executable(raft-node src/node_main.cpp)
 target_link_libraries(raft-node PRIVATE velocita_aeron velocita_metrics)
 
@@ -200,6 +207,11 @@ if(BUILD_TESTING)
     target_link_libraries(v2-model-replay-tests PRIVATE velocita_v2_kernel)
     target_compile_options(v2-model-replay-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-model-replay-tests COMMAND v2-model-replay-tests)
+
+    add_executable(v2-rule-evaluator-tests tests/v2_rule_evaluator_tests.cpp)
+    target_link_libraries(v2-rule-evaluator-tests PRIVATE velocita_v2_evaluator)
+    target_compile_options(v2-rule-evaluator-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-rule-evaluator-tests COMMAND v2-rule-evaluator-tests)
 
     add_executable(v2-contract-benchmark src/v2_contract_benchmark.cpp)
     target_link_libraries(v2-contract-benchmark PRIVATE velocita_v2_contracts)
