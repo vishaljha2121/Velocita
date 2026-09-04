@@ -1,4 +1,5 @@
 #include "velocita/v2/kernel.hpp"
+#include "velocita/v2/rule_evaluator.hpp"
 
 #include <limits>
 
@@ -25,6 +26,10 @@ namespace {
             return true;
     }
     return false;
+}
+
+[[nodiscard]] bool known(const EvaluationMode mode) noexcept {
+    return mode == EvaluationMode::authoritative || mode == EvaluationMode::shadow;
 }
 
 [[nodiscard]] PolicyRecord* find_policy_mutable(TradingState& state,
@@ -75,6 +80,14 @@ find_receipt(const TradingState& state, const CommandIdentity& identity) noexcep
         }
     }
     return nullptr;
+}
+
+[[nodiscard]] std::size_t find_decision_index(const TradingState& state,
+                                              const DecisionId decision_id) noexcept {
+    for (std::size_t index = 0; index < state.decision_count; ++index) {
+        if (state.decision_hot[index].decision_id == decision_id) return index;
+    }
+    return state.decision_count;
 }
 
 [[nodiscard]] ApplyResult result(const TradingState& state,
@@ -454,6 +467,152 @@ find_receipt(const TradingState& state, const CommandIdentity& identity) noexcep
     return source_result(state, ApplyCode::applied, next_version, command);
 }
 
+[[nodiscard]] ApplyResult decision_result(
+    const TradingState& state,
+    const ApplyCode apply_code,
+    const std::uint64_t next_version,
+    const EvaluateDecisionFrame& command,
+    const DecisionCode decision_code,
+    const ContractError contract_error,
+    const Directive proposed,
+    const Directive effective,
+    const std::uint16_t matched_rule_index,
+    const std::uint16_t rules_visited) noexcept {
+    auto value = result(state, apply_code, next_version,
+                        command.frame.policy_id, command.frame.policy_version,
+                        PolicyLifecycle::none, contract_error,
+                        command.frame.source_id, command.frame.source_generation,
+                        command.frame.source_sequence);
+    value.decision_id = command.decision_id;
+    value.decision_code = decision_code;
+    value.proposed_directive = proposed;
+    value.effective_directive = effective;
+    value.evaluation_mode = command.evaluation_mode;
+    value.matched_rule_index = matched_rule_index;
+    value.rules_visited = rules_visited;
+    return value;
+}
+
+[[nodiscard]] ApplyResult apply_evaluate_decision(
+    TradingState& state,
+    const CommandIdentity& identity,
+    const EvaluateDecisionFrame& command,
+    const std::uint64_t next_version) noexcept {
+    constexpr auto no_rule = std::numeric_limits<std::uint16_t>::max();
+    if (command.decision_id.value() == 0 || !known(command.evaluation_mode)) {
+        return decision_result(state, ApplyCode::invalid_command, next_version,
+                               command, DecisionCode::none,
+                               command.decision_id.value() == 0
+                                   ? ContractError::invalid_identity
+                                   : ContractError::invalid_enum,
+                               Directive::no_action, Directive::no_action,
+                               no_rule, 0);
+    }
+
+    const auto existing_index = find_decision_index(state, command.decision_id);
+    if (existing_index != state.decision_count) {
+        const auto& hot = state.decision_hot[existing_index];
+        if (state.decision_cold[existing_index].command_payload_digest !=
+            identity.payload_digest) {
+            return decision_result(state, ApplyCode::decision_id_conflict,
+                                   next_version, command, DecisionCode::none,
+                                   ContractError::none, Directive::no_action,
+                                   Directive::no_action, no_rule, 0);
+        }
+        return decision_result(state, ApplyCode::already_applied, next_version,
+                               command, hot.code, hot.contract_error,
+                               hot.proposed_directive, hot.effective_directive,
+                               hot.matched_rule_index, hot.rules_visited);
+    }
+    if (state.decision_count == state.decision_hot.size()) {
+        return decision_result(state, ApplyCode::decision_capacity_exceeded,
+                               next_version, command, DecisionCode::none,
+                               ContractError::none, Directive::no_action,
+                               Directive::no_action, no_rule, 0);
+    }
+
+    DecisionCode code = DecisionCode::none;
+    ContractError contract_error = validate(command.frame);
+    Directive proposed = Directive::no_action;
+    Directive effective = Directive::no_action;
+    std::uint16_t matched = no_rule;
+    std::uint16_t visited = 0;
+    const PolicyRecord* policy_record = nullptr;
+
+    if (contract_error != ContractError::none) {
+        code = DecisionCode::invalid_frame;
+    } else if ((policy_record = find_policy(state, command.frame.policy_id,
+                                             command.frame.policy_version)) == nullptr) {
+        code = DecisionCode::policy_not_found;
+    } else if (policy_record->lifecycle != PolicyLifecycle::active) {
+        code = DecisionCode::policy_not_active;
+    } else if (policy_record->artifact.account_id != command.frame.account_id) {
+        code = DecisionCode::account_scope_mismatch;
+    } else if (policy_record->artifact.instrument_id != command.frame.instrument_id) {
+        code = DecisionCode::instrument_scope_mismatch;
+    } else if (policy_record->artifact.feature_schema_id !=
+               command.frame.feature_schema_id) {
+        code = DecisionCode::feature_schema_mismatch;
+    } else if (state.strategy_mode == StrategyMode::halted) {
+        code = DecisionCode::control_halted;
+    } else {
+        const auto* source = find_source_event(state, command.frame.source_id,
+                                                command.frame.source_generation,
+                                                command.frame.source_sequence);
+        if (source == nullptr) {
+            code = DecisionCode::source_not_admitted;
+        } else if (source->event_digest != command.frame.raw_evidence_digest) {
+            code = DecisionCode::source_evidence_mismatch;
+        } else if (command.frame.event_time_ns <
+                   policy_record->artifact.valid_from_event_time_ns) {
+            code = DecisionCode::policy_not_yet_valid;
+        } else if (command.frame.event_time_ns >
+                   policy_record->artifact.valid_until_event_time_ns) {
+            code = DecisionCode::policy_expired;
+        } else if (command.frame.market_data_status != MarketDataStatus::ready) {
+            code = DecisionCode::market_data_not_ready;
+        } else {
+            const auto evaluation = evaluate_rules(policy_record->artifact, command.frame);
+            contract_error = evaluation.contract_error;
+            proposed = evaluation.directive;
+            matched = evaluation.matched_rule_index;
+            visited = evaluation.rules_visited;
+            if (evaluation.code == RuleEvaluationCode::feature_unavailable) {
+                code = DecisionCode::feature_unavailable;
+            } else if (evaluation.code == RuleEvaluationCode::no_rule_matched) {
+                code = DecisionCode::no_rule_matched;
+            } else if (evaluation.code != RuleEvaluationCode::matched) {
+                code = DecisionCode::invalid_frame;
+            } else if (command.evaluation_mode == EvaluationMode::shadow) {
+                code = DecisionCode::shadow_recorded;
+            } else if ((state.strategy_mode == StrategyMode::no_new_risk ||
+                        state.strategy_mode == StrategyMode::cancel_only ||
+                        state.strategy_mode == StrategyMode::reduce_only) &&
+                       proposed != Directive::cancel &&
+                       proposed != Directive::no_action) {
+                code = DecisionCode::control_suppressed;
+            } else {
+                code = DecisionCode::action;
+                effective = proposed;
+            }
+        }
+    }
+
+    const auto outcome = decision_result(state, ApplyCode::applied, next_version,
+                                         command, code, contract_error, proposed,
+                                         effective, matched, visited);
+    const auto index = state.decision_count;
+    state.decision_hot[index] = DecisionRecordHot{
+        command.decision_id, command.frame.policy_id, command.frame.policy_version,
+        next_version, state.kill_epoch, state.executor_generation, matched, visited,
+        code, contract_error, proposed, effective, command.evaluation_mode,
+        state.strategy_mode};
+    state.decision_cold[index] = DecisionRecordCold{
+        command.decision_id, identity.payload_digest, command.frame};
+    ++state.decision_count;
+    return outcome;
+}
+
 [[nodiscard]] ApplyResult apply_new_command(TradingState& state,
                                             const Command& command,
                                             const std::uint64_t next_version) noexcept {
@@ -480,6 +639,9 @@ find_receipt(const TradingState& state, const CommandIdentity& identity) noexcep
     }
     if (const auto* body = std::get_if<RecordSourceEvent>(&command.body)) {
         return apply_record_source_event(state, *body, next_version);
+    }
+    if (const auto* body = std::get_if<EvaluateDecisionFrame>(&command.body)) {
+        return apply_evaluate_decision(state, command.identity, *body, next_version);
     }
     return result(state, ApplyCode::invalid_command, next_version);
 }

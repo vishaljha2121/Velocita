@@ -66,6 +66,12 @@ top-level state budget would create invisible authoritative state and is
 therefore prohibited. Replicated expiry or durable audit archival is required
 before this bounded table can support an indefinite live stream.
 
+Follow-up: Phase 3C subsequently integrated both arrays with the reducer,
+canonical command/result codec, snapshot, replay corpus, and independent
+reference model. The original paragraph above records the deliberate boundary
+of this earlier layout-only checkpoint; it is not the current implementation
+status.
+
 ## C++ notes
 
 Both records are trivially copyable and compile-time size checked. They are not

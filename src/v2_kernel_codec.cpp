@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <limits>
 #include <type_traits>
 
 namespace velocita::v2 {
@@ -137,9 +138,11 @@ private:
         case ApplyCode::source_sequence_regression:
         case ApplyCode::source_capacity_exceeded:
         case ApplyCode::source_event_capacity_exceeded:
+        case ApplyCode::decision_capacity_exceeded:
         case ApplyCode::policy_capacity_exceeded:
         case ApplyCode::receipt_capacity_exceeded:
         case ApplyCode::state_version_exhausted:
+        case ApplyCode::decision_id_conflict:
             return true;
     }
     return false;
@@ -148,6 +151,27 @@ private:
 [[nodiscard]] constexpr bool known(const ContractError value) noexcept {
     return static_cast<std::uint8_t>(value) <=
            static_cast<std::uint8_t>(ContractError::non_positive_quantity);
+}
+
+[[nodiscard]] constexpr bool known(const EvaluationMode value) noexcept {
+    return value == EvaluationMode::authoritative ||
+           value == EvaluationMode::shadow;
+}
+
+[[nodiscard]] constexpr bool known(const DecisionCode value) noexcept {
+    return static_cast<std::uint8_t>(value) <=
+           static_cast<std::uint8_t>(DecisionCode::shadow_recorded);
+}
+
+[[nodiscard]] constexpr bool known(const Directive value) noexcept {
+    switch (value) {
+        case Directive::no_action:
+        case Directive::place_limit:
+        case Directive::cancel:
+        case Directive::replace:
+            return true;
+    }
+    return false;
 }
 
 [[nodiscard]] constexpr bool known(const KernelCommandKind value) noexcept {
@@ -160,6 +184,7 @@ private:
         case KernelCommandKind::advance_kill_epoch:
         case KernelCommandKind::set_executor_generation:
         case KernelCommandKind::record_source_event:
+        case KernelCommandKind::evaluate_decision_frame:
             return true;
     }
     return false;
@@ -198,12 +223,23 @@ private:
                body->source_sequence.value() != 0 &&
                !body->event_digest.is_zero();
     }
+    if (const auto* body = std::get_if<EvaluateDecisionFrame>(&command.body)) {
+        return body->decision_id.value() != 0 && known(body->evaluation_mode) &&
+               body->frame.feature_count <= kMaxDecisionFeatures;
+    }
     return false;
 }
 
 [[nodiscard]] bool valid_result(const ApplyResult& result) noexcept {
     return known(result.code) && known(result.contract_error) &&
-           known(result.policy_lifecycle) && known(result.strategy_mode);
+           known(result.policy_lifecycle) && known(result.strategy_mode) &&
+           known(result.decision_code) && known(result.proposed_directive) &&
+           known(result.effective_directive) && known(result.evaluation_mode) &&
+           (result.evaluation_mode != EvaluationMode::shadow ||
+            result.effective_directive == Directive::no_action) &&
+           result.rules_visited <= kMaxPolicyRules &&
+           (result.matched_rule_index == std::numeric_limits<std::uint16_t>::max() ||
+            result.matched_rule_index < kMaxPolicyRules);
 }
 
 [[nodiscard]] KernelCommandKind kind_of(const CommandBody& body) noexcept {
@@ -228,7 +264,10 @@ private:
     if (std::holds_alternative<SetExecutorGeneration>(body)) {
         return KernelCommandKind::set_executor_generation;
     }
-    return KernelCommandKind::record_source_event;
+    if (std::holds_alternative<RecordSourceEvent>(body)) {
+        return KernelCommandKind::record_source_event;
+    }
+    return KernelCommandKind::evaluate_decision_frame;
 }
 
 [[nodiscard]] std::size_t body_size(const CommandBody& body) noexcept {
@@ -246,7 +285,37 @@ private:
         std::holds_alternative<SetExecutorGeneration>(body)) {
         return 8;
     }
-    return 56;
+    if (std::holds_alternative<RecordSourceEvent>(body)) return 56;
+    const auto& value = std::get<EvaluateDecisionFrame>(body);
+    return sizeof(std::uint64_t) + sizeof(std::uint8_t) +
+           kDecisionFramePayloadFixedBytes +
+           value.frame.feature_count * sizeof(std::int64_t);
+}
+
+void write_decision_frame(Writer& writer, const DecisionFrame& value) noexcept {
+    writer.integral(kDecisionFrameSchemaVersion);
+    writer.integral(value.policy_id.value());
+    writer.integral(value.policy_version.value());
+    writer.integral(value.feature_schema_id.value());
+    writer.integral(value.venue_id.value());
+    writer.integral(value.venue_session_id.value());
+    writer.integral(value.venue_sequence.value());
+    writer.integral(value.source_id.value());
+    writer.integral(value.source_generation.value());
+    writer.integral(value.source_sequence.value());
+    writer.integral(value.event_time_ns);
+    writer.integral(value.receive_time_ns);
+    writer.integral(value.instrument_id.value());
+    writer.integral(value.account_id.value());
+    writer.integral(value.feature_count);
+    for (std::size_t index = 0; index < value.feature_count; ++index) {
+        writer.integral(value.features[index].atoms());
+    }
+    writer.integral(static_cast<std::uint8_t>(value.market_data_status));
+    writer.integral(value.market_data_age_ns);
+    writer.integral(value.position_version.value());
+    writer.integral(value.risk_version.value());
+    writer.digest(value.raw_evidence_digest);
 }
 
 void write_policy(Writer& writer, const PolicyArtifact& value) noexcept {
@@ -296,7 +365,44 @@ void write_body(Writer& writer, const CommandBody& body) noexcept {
         writer.integral(value->source_generation.value());
         writer.integral(value->source_sequence.value());
         writer.digest(value->event_digest);
+    } else if (const auto* value = std::get_if<EvaluateDecisionFrame>(&body)) {
+        writer.integral(value->decision_id.value());
+        writer.integral(static_cast<std::uint8_t>(value->evaluation_mode));
+        write_decision_frame(writer, value->frame);
     }
+}
+
+[[nodiscard]] bool read_decision_frame(Reader& reader,
+                                       DecisionFrame& value) noexcept {
+    if (reader.integral<std::uint16_t>() != kDecisionFrameSchemaVersion) {
+        return false;
+    }
+    value.policy_id = PolicyId{reader.integral<std::uint64_t>()};
+    value.policy_version = PolicyVersion{reader.integral<std::uint64_t>()};
+    value.feature_schema_id = FeatureSchemaId{reader.integral<std::uint64_t>()};
+    value.venue_id = VenueId{reader.integral<std::uint64_t>()};
+    value.venue_session_id = VenueSessionId{reader.integral<std::uint64_t>()};
+    value.venue_sequence = VenueSequence{reader.integral<std::uint64_t>()};
+    value.source_id = SourceId{reader.integral<std::uint64_t>()};
+    value.source_generation = SourceGeneration{reader.integral<std::uint64_t>()};
+    value.source_sequence = SourceSequence{reader.integral<std::uint64_t>()};
+    value.event_time_ns = reader.integral<std::int64_t>();
+    value.receive_time_ns = reader.integral<std::int64_t>();
+    value.instrument_id = InstrumentId{reader.integral<std::uint64_t>()};
+    value.account_id = AccountId{reader.integral<std::uint64_t>()};
+    value.feature_count = reader.integral<std::uint16_t>();
+    if (value.feature_count > kMaxDecisionFeatures) return false;
+    for (std::size_t index = 0; index < value.feature_count; ++index) {
+        value.features[index] =
+            FeatureMicros::from_atoms(reader.integral<std::int64_t>());
+    }
+    value.market_data_status =
+        static_cast<MarketDataStatus>(reader.integral<std::uint8_t>());
+    value.market_data_age_ns = reader.integral<std::int64_t>();
+    value.position_version = PositionVersion{reader.integral<std::uint64_t>()};
+    value.risk_version = RiskVersion{reader.integral<std::uint64_t>()};
+    value.raw_evidence_digest = reader.digest();
+    return true;
 }
 
 [[nodiscard]] bool read_policy(Reader& reader, PolicyArtifact& value) noexcept {
@@ -365,6 +471,15 @@ void write_body(Writer& writer, const CommandBody& body) noexcept {
                 SourceGeneration{reader.integral<std::uint64_t>()},
                 SourceSequence{reader.integral<std::uint64_t>()}, reader.digest()};
             return true;
+        case KernelCommandKind::evaluate_decision_frame: {
+            EvaluateDecisionFrame value;
+            value.decision_id = DecisionId{reader.integral<std::uint64_t>()};
+            value.evaluation_mode =
+                static_cast<EvaluationMode>(reader.integral<std::uint8_t>());
+            if (!read_decision_frame(reader, value.frame)) return false;
+            body = value;
+            return true;
+        }
     }
     return false;
 }
@@ -382,6 +497,13 @@ void write_result_payload(Writer& writer, const ApplyResult& value) noexcept {
     writer.integral(value.source_id.value());
     writer.integral(value.source_generation.value());
     writer.integral(value.source_sequence.value());
+    writer.integral(value.decision_id.value());
+    writer.integral(static_cast<std::uint8_t>(value.decision_code));
+    writer.integral(static_cast<std::uint8_t>(value.proposed_directive));
+    writer.integral(static_cast<std::uint8_t>(value.effective_directive));
+    writer.integral(static_cast<std::uint8_t>(value.evaluation_mode));
+    writer.integral(value.matched_rule_index);
+    writer.integral(value.rules_visited);
 }
 
 [[nodiscard]] ApplyResult read_result_payload(Reader& reader) noexcept {
@@ -403,6 +525,17 @@ void write_result_payload(Writer& writer, const ApplyResult& value) noexcept {
     value.source_generation =
         SourceGeneration{reader.integral<std::uint64_t>()};
     value.source_sequence = SourceSequence{reader.integral<std::uint64_t>()};
+    value.decision_id = DecisionId{reader.integral<std::uint64_t>()};
+    value.decision_code =
+        static_cast<DecisionCode>(reader.integral<std::uint8_t>());
+    value.proposed_directive =
+        static_cast<Directive>(reader.integral<std::uint8_t>());
+    value.effective_directive =
+        static_cast<Directive>(reader.integral<std::uint8_t>());
+    value.evaluation_mode =
+        static_cast<EvaluationMode>(reader.integral<std::uint8_t>());
+    value.matched_rule_index = reader.integral<std::uint16_t>();
+    value.rules_visited = reader.integral<std::uint16_t>();
     return value;
 }
 

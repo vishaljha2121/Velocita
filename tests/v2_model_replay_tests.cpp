@@ -1,5 +1,6 @@
 #include "velocita/v2/digest.hpp"
 #include "velocita/v2/replay.hpp"
+#include "velocita/v2/rule_evaluator.hpp"
 #include "velocita/v2/state_snapshot.hpp"
 
 #include <algorithm>
@@ -8,6 +9,7 @@
 #include <cstdint>
 #include <exception>
 #include <iostream>
+#include <limits>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -93,6 +95,33 @@ PolicyArtifact policy(const std::uint64_t id,
     return value;
 }
 
+DecisionFrame decision_frame(const std::uint64_t variant,
+                             const Digest256 evidence) {
+    DecisionFrame value;
+    value.policy_id = PolicyId{1 + variant % 5};
+    value.policy_version = PolicyVersion{1 + (variant / 5) % 4};
+    value.feature_schema_id = FeatureSchemaId{1 + variant % 3};
+    value.venue_id = VenueId{1};
+    value.venue_session_id = VenueSessionId{1};
+    value.venue_sequence = VenueSequence{1 + variant};
+    value.source_id = SourceId{1 + variant % 4};
+    value.source_generation = SourceGeneration{1};
+    value.source_sequence = SourceSequence{1};
+    value.event_time_ns = 100 + static_cast<std::int64_t>(variant % 101);
+    value.receive_time_ns = value.event_time_ns + 1;
+    value.instrument_id = InstrumentId{1 + variant % 2};
+    value.account_id = AccountId{1 + (variant / 2) % 2};
+    value.feature_count = 1;
+    value.features[0] =
+        FeatureMicros::from_atoms(static_cast<std::int64_t>(2 + variant % 8));
+    value.market_data_status = static_cast<MarketDataStatus>(1 + variant % 5);
+    value.market_data_age_ns = 1;
+    value.position_version = PositionVersion{1};
+    value.risk_version = RiskVersion{1};
+    value.raw_evidence_digest = evidence;
+    return value;
+}
+
 Command new_command(const std::uint64_t sequence,
                     const std::uint64_t marker,
                     CommandBody body) {
@@ -118,7 +147,7 @@ Record record(Command command) {
 }
 
 CommandBody random_body(Generator& rng) {
-    const auto kind = rng.bounded(8);
+    const auto kind = rng.bounded(9);
     const auto id = 1 + rng.bounded(5);
     const auto version = 1 + rng.bounded(4);
     switch (kind) {
@@ -139,11 +168,18 @@ CommandBody random_body(Generator& rng) {
             return AdvanceKillEpoch{KillEpoch{rng.bounded(7)}};
         case 6:
             return SetExecutorGeneration{ExecutorGeneration{rng.bounded(7)}};
-        default:
+        case 7:
             return RecordSourceEvent{SourceId{1 + rng.bounded(4)},
                                      SourceGeneration{1 + rng.bounded(3)},
                                      SourceSequence{1 + rng.bounded(8)},
                                      digest(0x3000 + rng.next())};
+        default: {
+            const auto variant = rng.bounded(40);
+            return EvaluateDecisionFrame{
+                DecisionId{1 + rng.next()},
+                static_cast<EvaluationMode>(1 + rng.bounded(2)),
+                decision_frame(variant, digest(0x4000 + rng.next()))};
+        }
     }
 }
 
@@ -180,6 +216,18 @@ std::vector<Record> history(const std::uint64_t seed) {
         records.push_back(record(new_command(sequence, seed + sequence,
                                              std::move(body))));
     };
+    auto admitted_frame = decision_frame(0, digest(seed + 0x100));
+    append(EvaluateDecisionFrame{DecisionId{seed + 1},
+                                 EvaluationMode::authoritative,
+                                 admitted_frame});
+    auto invalid_frame = admitted_frame;
+    invalid_frame.account_id = AccountId{};
+    append(EvaluateDecisionFrame{DecisionId{seed + 2},
+                                 EvaluationMode::authoritative,
+                                 invalid_frame});
+    append(EvaluateDecisionFrame{DecisionId{seed + 1},
+                                 EvaluationMode::authoritative,
+                                 admitted_frame});
     append(RecordSourceEvent{SourceId{1}, SourceGeneration{1}, SourceSequence{1},
                              digest(seed + 0xdead)});
     append(RecordSourceEvent{SourceId{1}, SourceGeneration{1}, SourceSequence{4},
@@ -237,6 +285,8 @@ struct ModelState {
     std::vector<SourceCursor> sources;
     std::vector<SourceEventReceipt> source_events;
     std::vector<RequestReceipt> receipts;
+    std::vector<DecisionRecordHot> decision_hot;
+    std::vector<DecisionRecordCold> decision_cold;
 };
 
 ApplyResult model_result(const ModelState& state,
@@ -415,7 +465,154 @@ ApplyResult model_source_event(ModelState& state,
     return source_result(ApplyCode::applied);
 }
 
+ApplyResult model_decision_result(
+    const ModelState& state,
+    const ApplyCode apply_code,
+    const std::uint64_t version,
+    const EvaluateDecisionFrame& command,
+    const DecisionCode decision_code,
+    const ContractError contract_error,
+    const Directive proposed,
+    const Directive effective,
+    const std::uint16_t matched_rule_index,
+    const std::uint16_t rules_visited) {
+    auto value = model_result(state, apply_code, version, command.frame.policy_id,
+                              command.frame.policy_version,
+                              PolicyLifecycle::none, contract_error,
+                              command.frame.source_id,
+                              command.frame.source_generation,
+                              command.frame.source_sequence);
+    value.decision_id = command.decision_id;
+    value.decision_code = decision_code;
+    value.proposed_directive = proposed;
+    value.effective_directive = effective;
+    value.evaluation_mode = command.evaluation_mode;
+    value.matched_rule_index = matched_rule_index;
+    value.rules_visited = rules_visited;
+    return value;
+}
+
+ApplyResult model_evaluate_decision(ModelState& state,
+                                    const CommandIdentity& identity,
+                                    const EvaluateDecisionFrame& command,
+                                    const std::uint64_t version) {
+    constexpr auto no_rule = std::numeric_limits<std::uint16_t>::max();
+    const auto existing = std::find_if(
+        state.decision_hot.begin(), state.decision_hot.end(),
+        [&](const auto& item) { return item.decision_id == command.decision_id; });
+    if (existing != state.decision_hot.end()) {
+        const auto index = static_cast<std::size_t>(
+            std::distance(state.decision_hot.begin(), existing));
+        if (state.decision_cold[index].command_payload_digest !=
+            identity.payload_digest) {
+            return model_decision_result(
+                state, ApplyCode::decision_id_conflict, version, command,
+                DecisionCode::none, ContractError::none, Directive::no_action,
+                Directive::no_action, no_rule, 0);
+        }
+        return model_decision_result(
+            state, ApplyCode::already_applied, version, command, existing->code,
+            existing->contract_error, existing->proposed_directive,
+            existing->effective_directive, existing->matched_rule_index,
+            existing->rules_visited);
+    }
+    if (state.decision_hot.size() == kMaxDecisionRecords) {
+        return model_decision_result(
+            state, ApplyCode::decision_capacity_exceeded, version, command,
+            DecisionCode::none, ContractError::none, Directive::no_action,
+            Directive::no_action, no_rule, 0);
+    }
+
+    DecisionCode code = DecisionCode::none;
+    auto contract_error = validate(command.frame);
+    Directive proposed = Directive::no_action;
+    Directive effective = Directive::no_action;
+    std::uint16_t matched = no_rule;
+    std::uint16_t visited = 0;
+    const PolicyRecord* selected = nullptr;
+
+    const auto found_policy = std::find_if(
+        state.policies.begin(), state.policies.end(), [&](const auto& item) {
+            return item.artifact.policy_id == command.frame.policy_id &&
+                   item.artifact.policy_version == command.frame.policy_version;
+        });
+    if (contract_error != ContractError::none) {
+        code = DecisionCode::invalid_frame;
+    } else if (found_policy == state.policies.end()) {
+        code = DecisionCode::policy_not_found;
+    } else if ((selected = &*found_policy)->lifecycle != PolicyLifecycle::active) {
+        code = DecisionCode::policy_not_active;
+    } else if (selected->artifact.account_id != command.frame.account_id) {
+        code = DecisionCode::account_scope_mismatch;
+    } else if (selected->artifact.instrument_id != command.frame.instrument_id) {
+        code = DecisionCode::instrument_scope_mismatch;
+    } else if (selected->artifact.feature_schema_id !=
+               command.frame.feature_schema_id) {
+        code = DecisionCode::feature_schema_mismatch;
+    } else if (state.strategy_mode == StrategyMode::halted) {
+        code = DecisionCode::control_halted;
+    } else {
+        const auto source = std::find_if(
+            state.source_events.begin(), state.source_events.end(),
+            [&](const auto& item) {
+                return item.source_id == command.frame.source_id &&
+                       item.generation == command.frame.source_generation &&
+                       item.sequence == command.frame.source_sequence;
+            });
+        if (source == state.source_events.end()) {
+            code = DecisionCode::source_not_admitted;
+        } else if (source->event_digest != command.frame.raw_evidence_digest) {
+            code = DecisionCode::source_evidence_mismatch;
+        } else if (command.frame.event_time_ns <
+                   selected->artifact.valid_from_event_time_ns) {
+            code = DecisionCode::policy_not_yet_valid;
+        } else if (command.frame.event_time_ns >
+                   selected->artifact.valid_until_event_time_ns) {
+            code = DecisionCode::policy_expired;
+        } else if (command.frame.market_data_status != MarketDataStatus::ready) {
+            code = DecisionCode::market_data_not_ready;
+        } else {
+            const auto evaluation = evaluate_rules(selected->artifact, command.frame);
+            contract_error = evaluation.contract_error;
+            proposed = evaluation.directive;
+            matched = evaluation.matched_rule_index;
+            visited = evaluation.rules_visited;
+            if (evaluation.code == RuleEvaluationCode::feature_unavailable) {
+                code = DecisionCode::feature_unavailable;
+            } else if (evaluation.code == RuleEvaluationCode::no_rule_matched) {
+                code = DecisionCode::no_rule_matched;
+            } else if (evaluation.code != RuleEvaluationCode::matched) {
+                code = DecisionCode::invalid_frame;
+            } else if (command.evaluation_mode == EvaluationMode::shadow) {
+                code = DecisionCode::shadow_recorded;
+            } else if ((state.strategy_mode == StrategyMode::no_new_risk ||
+                        state.strategy_mode == StrategyMode::cancel_only ||
+                        state.strategy_mode == StrategyMode::reduce_only) &&
+                       proposed != Directive::cancel &&
+                       proposed != Directive::no_action) {
+                code = DecisionCode::control_suppressed;
+            } else {
+                code = DecisionCode::action;
+                effective = proposed;
+            }
+        }
+    }
+
+    const auto outcome = model_decision_result(
+        state, ApplyCode::applied, version, command, code, contract_error,
+        proposed, effective, matched, visited);
+    state.decision_hot.push_back(DecisionRecordHot{
+        command.decision_id, command.frame.policy_id, command.frame.policy_version,
+        version, state.kill_epoch, state.executor_generation, matched, visited,
+        code, contract_error, proposed, effective, command.evaluation_mode,
+        state.strategy_mode});
+    state.decision_cold.push_back(DecisionRecordCold{
+        command.decision_id, identity.payload_digest, command.frame});
+    return outcome;
+}
+
 ApplyResult model_new_command(ModelState& state,
+                              const CommandIdentity& identity,
                               const CommandBody& body,
                               const std::uint64_t version) {
     return std::visit(
@@ -480,8 +677,10 @@ ApplyResult model_new_command(ModelState& state,
                     state.strategy_mode = StrategyMode::no_new_risk;
                 }
                 return model_result(state, ApplyCode::applied, version);
-            } else {
+            } else if constexpr (std::is_same_v<T, RecordSourceEvent>) {
                 return model_source_event(state, command, version);
+            } else {
+                return model_evaluate_decision(state, identity, command, version);
             }
         },
         body);
@@ -504,7 +703,8 @@ ApplyResult model_apply(ModelState& state, const Command& command) {
     require(state.receipts.size() < kMaxRequestReceipts,
             "generated history exceeded the model receipt bound");
     const auto next_version = state.state_version + 1;
-    const auto result = model_new_command(state, command.body, next_version);
+    const auto result =
+        model_new_command(state, command.identity, command.body, next_version);
     state.state_version = next_version;
     state.receipts.push_back({command.identity, result});
     return result;
@@ -525,6 +725,11 @@ TradingState materialize(const ModelState& model) {
               result.source_events.begin());
     result.receipt_count = model.receipts.size();
     std::copy(model.receipts.begin(), model.receipts.end(), result.receipts.begin());
+    result.decision_count = model.decision_hot.size();
+    std::copy(model.decision_hot.begin(), model.decision_hot.end(),
+              result.decision_hot.begin());
+    std::copy(model.decision_cold.begin(), model.decision_cold.end(),
+              result.decision_cold.begin());
     return result;
 }
 
@@ -537,15 +742,23 @@ struct ExpectedRun {
 
 struct Coverage {
     static constexpr std::size_t size =
-        static_cast<std::size_t>(ApplyCode::state_version_exhausted) + 1;
+        static_cast<std::size_t>(ApplyCode::decision_id_conflict) + 1;
     std::array<std::size_t, size> outcomes{};
+    static constexpr std::size_t decision_size =
+        static_cast<std::size_t>(DecisionCode::shadow_recorded) + 1;
+    std::array<std::size_t, decision_size> decisions{};
 
-    void observe(const ApplyCode code) noexcept {
-        ++outcomes[static_cast<std::size_t>(code)];
+    void observe(const ApplyResult& result) noexcept {
+        ++outcomes[static_cast<std::size_t>(result.code)];
+        ++decisions[static_cast<std::size_t>(result.decision_code)];
     }
 
     [[nodiscard]] std::size_t count(const ApplyCode code) const noexcept {
         return outcomes[static_cast<std::size_t>(code)];
+    }
+
+    [[nodiscard]] std::size_t count(const DecisionCode code) const noexcept {
+        return decisions[static_cast<std::size_t>(code)];
     }
 };
 
@@ -560,7 +773,7 @@ ExpectedRun compare_production_to_model(const std::uint64_t seed,
 
     for (std::size_t step = 0; step < records.size(); ++step) {
         const auto model_result = model_apply(model, records[step].command);
-        coverage.observe(model_result.code);
+        coverage.observe(model_result);
         const auto replayed = apply_encoded_kernel_command(
             production, {records[step].bytes.data(), records[step].size},
             apply_scratch, codec_scratch, expected.results[step]);
@@ -692,14 +905,21 @@ void test_generated_model_and_snapshot_replay() {
         ApplyCode::source_generation_gap,
         ApplyCode::source_generation_regression,
         ApplyCode::source_sequence_gap,
+        ApplyCode::decision_id_conflict,
     };
     for (const auto outcome : required_outcomes) {
         require(coverage.count(outcome) != 0,
                 "generated corpus missed required ApplyCode=" +
                     std::to_string(static_cast<unsigned>(outcome)));
     }
+    require(coverage.count(DecisionCode::action) != 0,
+            "generated corpus never produced an authoritative action");
+    require(coverage.count(DecisionCode::policy_not_found) != 0,
+            "generated corpus never exercised a rejected decision");
+    require(coverage.count(DecisionCode::invalid_frame) != 0,
+            "generated corpus never exercised invalid-frame precedence");
     require(actual ==
-                "1eadcbdef0f9a244b935afdb3dd3be9c6e6f42fffe913509cc3baaea303357a0",
+                "f1888ae93ad0b3e3bfdc55ea0d6b4119c8539d33e178ba30fbb99043a6b76df2",
             "generated replay corpus changed without review: " + actual);
 
     std::cout << "generated histories=" << kSeedCount

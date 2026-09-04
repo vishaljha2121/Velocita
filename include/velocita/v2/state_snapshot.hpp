@@ -8,7 +8,7 @@
 
 namespace velocita::v2 {
 
-inline constexpr std::uint16_t kStateSnapshotSchemaVersion = 1;
+inline constexpr std::uint16_t kStateSnapshotSchemaVersion = 2;
 inline constexpr std::size_t kStateSnapshotMagicBytes = 4;
 inline constexpr std::size_t kStateSnapshotLengthBytes = 4;
 inline constexpr std::size_t kStateSnapshotSchemaBytes = 2;
@@ -19,12 +19,14 @@ inline constexpr std::size_t kStateSnapshotDigestInputOffset =
 inline constexpr std::size_t kStateSnapshotPayloadOffset =
     kStateSnapshotSchemaOffset + kStateSnapshotSchemaBytes;
 
-inline constexpr std::size_t kStateSnapshotEmptyPayloadBytes = 33;
+inline constexpr std::size_t kStateSnapshotEmptyPayloadBytes = 35;
 inline constexpr std::size_t kStateSnapshotPolicyFixedBytes = 133;
 inline constexpr std::size_t kStateSnapshotPolicyRuleBytes = 12;
 inline constexpr std::size_t kStateSnapshotSourceBytes = 24;
 inline constexpr std::size_t kStateSnapshotSourceEventBytes = 56;
-inline constexpr std::size_t kStateSnapshotReceiptBytes = 116;
+inline constexpr std::size_t kStateSnapshotReceiptBytes = 132;
+inline constexpr std::size_t kStateSnapshotDecisionFixedBytes = 263;
+inline constexpr std::size_t kStateSnapshotDecisionFeatureBytes = 8;
 inline constexpr std::size_t kStateSnapshotFixedBytes =
     kStateSnapshotPayloadOffset + kStateSnapshotEmptyPayloadBytes + kDigestBytes;
 inline constexpr std::size_t kMaxStateSnapshotPayloadBytes =
@@ -34,7 +36,10 @@ inline constexpr std::size_t kMaxStateSnapshotPayloadBytes =
          kMaxPolicyRules * kStateSnapshotPolicyRuleBytes) +
     kMaxSources * kStateSnapshotSourceBytes +
     kMaxSourceEventReceipts * kStateSnapshotSourceEventBytes +
-    kMaxRequestReceipts * kStateSnapshotReceiptBytes;
+    kMaxRequestReceipts * kStateSnapshotReceiptBytes +
+    kMaxDecisionRecords *
+        (kStateSnapshotDecisionFixedBytes +
+         kMaxDecisionFeatures * kStateSnapshotDecisionFeatureBytes);
 inline constexpr std::size_t kMaxStateSnapshotBytes =
     kStateSnapshotPayloadOffset + kMaxStateSnapshotPayloadBytes + kDigestBytes;
 

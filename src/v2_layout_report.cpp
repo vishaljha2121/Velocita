@@ -1,6 +1,8 @@
 #include "velocita/v2/contracts.hpp"
 #include "velocita/v2/kernel.hpp"
+#include "velocita/v2/kernel_codec.hpp"
 #include "velocita/v2/rule_evaluator.hpp"
+#include "velocita/v2/state_snapshot.hpp"
 
 #include <iostream>
 
@@ -50,10 +52,16 @@ int main() {
                       kDecisionRecordColdArenaSlotStrideBytes)
               << '\n'
               << "kernel_command_budget_bytes=" << kKernelCommandBudgetBytes << '\n'
+              << "kernel_command_max_canonical_bytes="
+              << kMaxKernelCommandBytes << '\n'
               << "kernel_result_budget_bytes=" << kKernelResultBudgetBytes << '\n'
+              << "kernel_result_canonical_bytes=" << kKernelResultBytes << '\n'
+              << "state_snapshot_max_canonical_bytes="
+              << kMaxStateSnapshotBytes << '\n'
               << "trading_state_size_bytes=" << sizeof(TradingState) << '\n'
               << "trading_state_budget_bytes=" << kTradingStateObjectBudgetBytes
               << '\n'
-              << "decision_record_hot_cold_split_status=contract_ready_reducer_pending\n";
+              << "decision_record_hot_cold_split_status="
+                 "authoritative_reducer_snapshot_replay_ready\n";
     return 0;
 }

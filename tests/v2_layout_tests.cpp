@@ -4,6 +4,7 @@
 #include "velocita/v2/kernel.hpp"
 #include "velocita/v2/payload.hpp"
 #include "velocita/v2/rule_evaluator.hpp"
+#include "velocita/v2/state_snapshot.hpp"
 
 #include <cstddef>
 #include <iostream>
@@ -35,6 +36,7 @@ void test_current_object_and_slot_budgets() {
     static_assert(sizeof(PolicyArtifact) <= kPolicyArtifactObjectBudgetBytes);
     static_assert(sizeof(RuleEvaluation) <= kRuleEvaluationObjectBudgetBytes);
     static_assert(sizeof(TradingState) <= kTradingStateObjectBudgetBytes);
+    static_assert(kMaxStateSnapshotBytes < 64U * 1024U);
 
     require(kDecisionFrameArenaSlotStrideBytes >= sizeof(DecisionFrame),
             "decision-frame arena stride is smaller than its object");

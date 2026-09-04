@@ -45,6 +45,32 @@ velocita::v2::PolicyArtifact policy() {
     return value;
 }
 
+velocita::v2::DecisionFrame frame() {
+    using namespace velocita::v2;
+    DecisionFrame value;
+    value.policy_id = PolicyId{17};
+    value.policy_version = PolicyVersion{2};
+    value.feature_schema_id = FeatureSchemaId{3};
+    value.venue_id = VenueId{7};
+    value.venue_session_id = VenueSessionId{8};
+    value.venue_sequence = VenueSequence{9};
+    value.source_id = SourceId{10};
+    value.source_generation = SourceGeneration{2};
+    value.source_sequence = SourceSequence{3};
+    value.event_time_ns = 150;
+    value.receive_time_ns = 151;
+    value.instrument_id = InstrumentId{4};
+    value.account_id = AccountId{5};
+    value.feature_count = 1;
+    value.features[0] = FeatureMicros::from_atoms(42);
+    value.market_data_status = MarketDataStatus::ready;
+    value.market_data_age_ns = 1;
+    value.position_version = PositionVersion{11};
+    value.risk_version = RiskVersion{12};
+    value.raw_evidence_digest = digest(0x33);
+    return value;
+}
+
 velocita::v2::TradingState populated_state() {
     using namespace velocita::v2;
     TradingState state;
@@ -78,6 +104,15 @@ velocita::v2::TradingState populated_state() {
                     SourceId{10},
                     SourceGeneration{2},
                     SourceSequence{3}}};
+
+    state.decision_count = 1;
+    state.decision_hot[0] = DecisionRecordHot{
+        DecisionId{21}, PolicyId{17}, PolicyVersion{2}, 9, KillEpoch{4},
+        ExecutorGeneration{8}, 0, 1, DecisionCode::control_suppressed,
+        ContractError::none, Directive::place_limit, Directive::no_action,
+        EvaluationMode::authoritative, StrategyMode::reduce_only};
+    state.decision_cold[0] =
+        DecisionRecordCold{DecisionId{21}, digest(0x44), frame()};
     return state;
 }
 
@@ -110,8 +145,8 @@ void test_empty_snapshot_has_canonical_layout() {
 
     const std::array expected_prefix{
         std::byte{'V'}, std::byte{'2'}, std::byte{'S'}, std::byte{'T'},
-        std::byte{33}, std::byte{0}, std::byte{0}, std::byte{0},
-        std::byte{1}, std::byte{0},
+        std::byte{35}, std::byte{0}, std::byte{0}, std::byte{0},
+        std::byte{2}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{5}};
@@ -122,9 +157,10 @@ void test_empty_snapshot_has_canonical_layout() {
     require(std::equal(encoded.state_digest.bytes.begin(), encoded.state_digest.bytes.end(),
                        storage.begin() + static_cast<std::ptrdiff_t>(digest_offset)),
             "returned digest differs from framed digest");
-    require(to_hex(encoded.state_digest) ==
-                "0e737df191c265e7d2a4825c229ffe5220a4fc0e9a9a679731ac475ea5e44eb8",
-            "empty state golden digest changed without a schema migration");
+    const auto hash = to_hex(encoded.state_digest);
+    require(hash ==
+                "e25ee2cc248da6255b367e1a84a4bc6bca2b645764c14cede82fcd348f1b70ea",
+            "empty state golden digest changed: " + hash);
 }
 
 void test_round_trip_is_canonical_and_excludes_unused_capacity() {
@@ -135,6 +171,8 @@ void test_round_trip_is_canonical_and_excludes_unused_capacity() {
     same_logical_state.sources[9].source_id = SourceId{999};
     same_logical_state.source_events[31].event_digest = digest(0xee);
     same_logical_state.receipts[42].identity.payload_digest = digest(0xdd);
+    same_logical_state.decision_hot[7].decision_id = DecisionId{999};
+    same_logical_state.decision_cold[7].command_payload_digest = digest(0xcc);
 
     std::array<std::byte, kMaxStateSnapshotBytes> first{};
     std::array<std::byte, kMaxStateSnapshotBytes> second{};
@@ -229,7 +267,7 @@ void test_decode_is_transactional_for_corrupt_and_unknown_input() {
         {trailing.data(), encoded.bytes_written + 1}, "trailing bytes");
 
     auto unknown = storage;
-    write_u16(unknown, kStateSnapshotSchemaOffset, 2);
+    write_u16(unknown, kStateSnapshotSchemaOffset, 1);
     replace_integrity_digest({unknown.data(), encoded.bytes_written});
     assert_rejected_without_publish(
         StateSnapshotError::unsupported_schema,
@@ -318,6 +356,24 @@ void test_declared_maximum_is_exact_and_encodable() {
                         {},
                         {},
                         {}}};
+    }
+
+    state.decision_count = kMaxDecisionRecords;
+    for (std::size_t index = 0; index < state.decision_count; ++index) {
+        auto decision_frame = frame();
+        decision_frame.feature_count = kMaxDecisionFeatures;
+        for (std::size_t feature = 0; feature < kMaxDecisionFeatures; ++feature) {
+            decision_frame.features[feature] =
+                FeatureMicros::from_atoms(static_cast<std::int64_t>(feature));
+        }
+        const auto id = DecisionId{index + 1};
+        state.decision_hot[index] = DecisionRecordHot{
+            id, PolicyId{17}, PolicyVersion{2}, index + 1, {}, {}, 0, 1,
+            DecisionCode::action, ContractError::none, Directive::place_limit,
+            Directive::place_limit, EvaluationMode::authoritative,
+            StrategyMode::halted};
+        state.decision_cold[index] =
+            DecisionRecordCold{id, digest(0xbb), decision_frame};
     }
 
     std::array<std::byte, kMaxStateSnapshotBytes> storage{};

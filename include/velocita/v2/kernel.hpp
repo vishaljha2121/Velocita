@@ -6,6 +6,7 @@
 #include <compare>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <type_traits>
 #include <variant>
 
@@ -46,6 +47,7 @@ enum class DecisionCode : std::uint8_t {
     feature_unavailable = 14,
     control_halted = 15,
     control_suppressed = 16,
+    shadow_recorded = 17,
 };
 
 enum class PolicyLifecycle : std::uint8_t {
@@ -77,9 +79,11 @@ enum class ApplyCode : std::uint8_t {
     source_sequence_regression,
     source_capacity_exceeded,
     source_event_capacity_exceeded,
+    decision_capacity_exceeded,
     policy_capacity_exceeded,
     receipt_capacity_exceeded,
     state_version_exhausted,
+    decision_id_conflict,
 };
 
 struct CommandIdentity {
@@ -130,6 +134,12 @@ struct RecordSourceEvent {
     Digest256 event_digest{};
 };
 
+struct EvaluateDecisionFrame {
+    DecisionId decision_id{};
+    EvaluationMode evaluation_mode{EvaluationMode::authoritative};
+    DecisionFrame frame{};
+};
+
 using CommandBody = std::variant<PublishPolicy,
                                  ValidatePolicy,
                                  ActivatePolicy,
@@ -137,7 +147,8 @@ using CommandBody = std::variant<PublishPolicy,
                                  SetStrategyMode,
                                  AdvanceKillEpoch,
                                  SetExecutorGeneration,
-                                 RecordSourceEvent>;
+                                 RecordSourceEvent,
+                                 EvaluateDecisionFrame>;
 
 struct Command {
     CommandIdentity identity{};
@@ -157,6 +168,13 @@ struct ApplyResult {
     SourceId source_id{};
     SourceGeneration source_generation{};
     SourceSequence source_sequence{};
+    DecisionId decision_id{};
+    DecisionCode decision_code{DecisionCode::none};
+    Directive proposed_directive{Directive::no_action};
+    Directive effective_directive{Directive::no_action};
+    EvaluationMode evaluation_mode{EvaluationMode::authoritative};
+    std::uint16_t matched_rule_index{std::numeric_limits<std::uint16_t>::max()};
+    std::uint16_t rules_visited{};
 
     constexpr auto operator<=>(const ApplyResult&) const noexcept = default;
 };
@@ -194,7 +212,7 @@ struct DecisionRecordHot {
     std::uint64_t state_version{};
     KillEpoch kill_epoch{};
     ExecutorGeneration executor_generation{};
-    std::uint16_t matched_rule_index{};
+    std::uint16_t matched_rule_index{std::numeric_limits<std::uint16_t>::max()};
     std::uint16_t rules_visited{};
     DecisionCode code{DecisionCode::none};
     ContractError contract_error{ContractError::none};
@@ -242,6 +260,9 @@ struct TradingState {
     std::array<SourceEventReceipt, kMaxSourceEventReceipts> source_events{};
     std::size_t receipt_count{};
     std::array<RequestReceipt, kMaxRequestReceipts> receipts{};
+    std::size_t decision_count{};
+    std::array<DecisionRecordHot, kMaxDecisionRecords> decision_hot{};
+    std::array<DecisionRecordCold, kMaxDecisionRecords> decision_cold{};
 };
 
 // Reserved for bounded temporary indexes/encoding buffers in later reducer

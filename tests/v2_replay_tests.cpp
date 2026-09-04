@@ -46,6 +46,32 @@ velocita::v2::PolicyArtifact policy() {
     return value;
 }
 
+velocita::v2::DecisionFrame frame() {
+    using namespace velocita::v2;
+    DecisionFrame value;
+    value.policy_id = PolicyId{17};
+    value.policy_version = PolicyVersion{1};
+    value.feature_schema_id = FeatureSchemaId{3};
+    value.venue_id = VenueId{7};
+    value.venue_session_id = VenueSessionId{8};
+    value.venue_sequence = VenueSequence{9};
+    value.source_id = SourceId{9};
+    value.source_generation = SourceGeneration{1};
+    value.source_sequence = SourceSequence{1};
+    value.event_time_ns = 150;
+    value.receive_time_ns = 151;
+    value.instrument_id = InstrumentId{4};
+    value.account_id = AccountId{5};
+    value.feature_count = 1;
+    value.features[0] = FeatureMicros::from_atoms(8);
+    value.market_data_status = MarketDataStatus::ready;
+    value.market_data_age_ns = 1;
+    value.position_version = PositionVersion{10};
+    value.risk_version = RiskVersion{11};
+    value.raw_evidence_digest = digest(0x61);
+    return value;
+}
+
 velocita::v2::Command command(const std::uint64_t sequence,
                               const std::uint8_t marker,
                               velocita::v2::CommandBody body) {
@@ -71,7 +97,9 @@ EncodedCommand encoded(const velocita::v2::Command& command) {
 
 auto corpus() {
     using namespace velocita::v2;
-    std::array<EncodedCommand, 10> records{
+    auto invalid = frame();
+    invalid.account_id = AccountId{};
+    std::array<EncodedCommand, 12> records{
         encoded(command(1, 0x31, PublishPolicy{policy()})),
         encoded(command(2, 0x32, ValidatePolicy{PolicyId{17}, PolicyVersion{1}})),
         encoded(command(3, 0x33, ActivatePolicy{PolicyId{17}, PolicyVersion{1}})),
@@ -90,6 +118,14 @@ auto corpus() {
         encoded(command(9, 0x39,
                         SetStrategyMode{StrategyMode::normal, KillEpoch{1},
                                         ExecutorGeneration{1}})),
+        encoded(command(10, 0x3a,
+                        EvaluateDecisionFrame{DecisionId{20},
+                                              EvaluationMode::authoritative,
+                                              frame()})),
+        encoded(command(11, 0x3b,
+                        EvaluateDecisionFrame{DecisionId{21},
+                                              EvaluationMode::authoritative,
+                                              invalid})),
     };
     records[6] = records[5];  // Exact retry crosses the snapshot boundary.
     return records;
@@ -123,7 +159,7 @@ void test_snapshot_plus_suffix_equals_full_byte_replay() {
     TradingState full;
     ApplyScratch full_apply_scratch;
     KernelCommandCodecScratch full_codec_scratch;
-    std::array<EncodedResult, 10> full_results{};
+    std::array<EncodedResult, 12> full_results{};
     std::array<std::byte, kMaxStateSnapshotBytes> midpoint_bytes{};
     std::size_t midpoint_size{};
 
@@ -174,7 +210,7 @@ void test_snapshot_plus_suffix_equals_full_byte_replay() {
 
     const auto final_digest = to_hex(full_snapshot.state_digest);
     require(final_digest ==
-                "596ec54fb24f55b91579330e08cefa63b3af8d39c1e277cd835c5af4e1b566c8",
+                "595c90f7e8443dbb5af8e81d425e98da53e386846c040e8d4346c5b94c681eb9",
             "replay corpus final state changed without reviewed migration: " +
                 final_digest);
 }

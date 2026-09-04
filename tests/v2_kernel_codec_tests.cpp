@@ -46,6 +46,38 @@ velocita::v2::PolicyArtifact policy() {
     return value;
 }
 
+velocita::v2::DecisionFrame frame() {
+    using namespace velocita::v2;
+    DecisionFrame value;
+    value.policy_id = PolicyId{17};
+    value.policy_version = PolicyVersion{2};
+    value.feature_schema_id = FeatureSchemaId{3};
+    value.venue_id = VenueId{8};
+    value.venue_session_id = VenueSessionId{9};
+    value.venue_sequence = VenueSequence{10};
+    value.source_id = SourceId{10};
+    value.source_generation = SourceGeneration{2};
+    value.source_sequence = SourceSequence{3};
+    value.event_time_ns = 150;
+    value.receive_time_ns = 151;
+    value.instrument_id = InstrumentId{4};
+    value.account_id = AccountId{5};
+    value.feature_count = 1;
+    value.features[0] = FeatureMicros::from_atoms(9);
+    value.market_data_status = MarketDataStatus::ready;
+    value.market_data_age_ns = 1;
+    value.position_version = PositionVersion{11};
+    value.risk_version = RiskVersion{12};
+    value.raw_evidence_digest = digest(0x55);
+    return value;
+}
+
+velocita::v2::DecisionFrame invalid_frame() {
+    auto value = frame();
+    value.account_id = velocita::v2::AccountId{};
+    return value;
+}
+
 velocita::v2::Command command(const std::uint64_t sequence,
                               velocita::v2::CommandBody body) {
     using namespace velocita::v2;
@@ -82,6 +114,11 @@ void test_every_command_alternative_round_trips_canonically() {
         command(7, SetExecutorGeneration{ExecutorGeneration{9}}),
         command(8, RecordSourceEvent{SourceId{10}, SourceGeneration{2},
                                      SourceSequence{3}, digest(0x55)}),
+        command(9, EvaluateDecisionFrame{DecisionId{21},
+                                         EvaluationMode::shadow, frame()}),
+        command(10, EvaluateDecisionFrame{DecisionId{22},
+                                          EvaluationMode::authoritative,
+                                          invalid_frame()}),
     };
 
     for (const auto& original : commands) {
@@ -122,18 +159,22 @@ void test_command_identity_and_kind_are_explicit() {
     const std::array expected_prefix{
         std::byte{'V'}, std::byte{'2'}, std::byte{'K'}, std::byte{'C'},
         std::byte{104}, std::byte{0}, std::byte{0}, std::byte{0},
-        std::byte{1}, std::byte{0},
+        std::byte{2}, std::byte{0},
         std::byte{8}, std::byte{0},
         std::byte{12}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{42}};
     require(std::equal(expected_prefix.begin(), expected_prefix.end(), bytes.begin()),
             "command framing, kind, or identity order changed");
-    require(to_hex(encoded.frame_digest) ==
-                "ad06f4bf1ab44345dcd26e02c9dd6ba31217ba633cf0ec4bc859f76d856bb894" &&
-                to_hex(sha256_digest({bytes.data(), encoded.bytes_written})) ==
-                    "8d08b0a23e6918b4bc8ec6a373a7e6b8a7e9d1128b394254ee757fd94894a5db",
-            "source-command golden corpus changed without schema migration");
+    const auto frame_hash = to_hex(encoded.frame_digest);
+    const auto full_hash =
+        to_hex(sha256_digest({bytes.data(), encoded.bytes_written}));
+    require(frame_hash ==
+                "ea3df69ad796068459e87ce00afed4cb650597f8666392edc026a0e2688d70d3" &&
+                full_hash ==
+                    "2ff00f5d285bc581448b0c6bd907f3c8d1da74a7cc6bddc12e2dfe8cc1f4e571",
+            "source-command golden corpus changed: frame=" + frame_hash +
+                " full=" + full_hash);
 
     Command restored;
     KernelCommandCodecScratch scratch;
@@ -143,6 +184,21 @@ void test_command_identity_and_kind_are_explicit() {
                 restored.identity == original.identity &&
                 std::holds_alternative<RecordSourceEvent>(restored.body),
             "command identity or kind was not preserved");
+}
+
+void test_decision_kind_is_explicit_and_not_a_variant_ordinal() {
+    using namespace velocita::v2;
+    const auto original = command(
+        43, EvaluateDecisionFrame{DecisionId{21}, EvaluationMode::authoritative,
+                                  frame()});
+    std::array<std::byte, kMaxKernelCommandBytes> bytes{};
+    const auto encoded = encode_kernel_command(original, bytes);
+    require(encoded.error == KernelCodecError::none &&
+                static_cast<std::uint16_t>(KernelCommandKind::evaluate_decision_frame) ==
+                    9 &&
+                bytes[kKernelCommandKindOffset] == std::byte{9} &&
+                bytes[kKernelCommandKindOffset + 1] == std::byte{0},
+            "decision command kind is not the reviewed explicit value 9");
 }
 
 void test_result_round_trip_is_canonical() {
@@ -158,7 +214,14 @@ void test_result_round_trip_is_canonical() {
                                ExecutorGeneration{8},
                                SourceId{10},
                                SourceGeneration{2},
-                               SourceSequence{3}};
+                               SourceSequence{3},
+                               DecisionId{21},
+                               DecisionCode::control_suppressed,
+                               Directive::place_limit,
+                               Directive::no_action,
+                               EvaluationMode::authoritative,
+                               4,
+                               5};
     std::array<std::byte, kKernelResultBytes> bytes{};
     const auto encoded = encode_kernel_result(original, bytes);
     require(encoded.error == KernelCodecError::none &&
@@ -170,11 +233,14 @@ void test_result_round_trip_is_canonical() {
         {bytes.data(), encoded.bytes_written}, restored);
     require(decoded.error == KernelCodecError::none && restored == original,
             "canonical result did not round trip exactly");
-    require(to_hex(encoded.frame_digest) ==
-                "4d323608f11d183b48f5f202a55560194dd1d06735091243b1251b2920a01cab" &&
-                to_hex(sha256_digest(bytes)) ==
-                    "0d592606abcfb67db92426ffd8e661c6ffa83563aa27d1a9d9fd11968a2b9ff4",
-            "apply-result golden corpus changed without schema migration");
+    const auto frame_hash = to_hex(encoded.frame_digest);
+    const auto full_hash = to_hex(sha256_digest(bytes));
+    require(frame_hash ==
+                "44800bee9aa26f3b76513165e62c7bac68daa1da528afc0c58d41f6eea5ead89" &&
+                full_hash ==
+                    "7f6c780dd8f02371d3c42e10703d7157eb48cf656f1437ffe962e7712a4e4245",
+            "apply-result golden corpus changed: frame=" + frame_hash +
+                " full=" + full_hash);
 }
 
 void test_result_decode_is_transactional_and_fail_closed() {
@@ -221,6 +287,19 @@ void test_result_decode_is_transactional_and_fail_closed() {
               invalid_enum.begin() + static_cast<std::ptrdiff_t>(digest_offset));
     reject_without_publish(KernelCodecError::invalid_value, invalid_enum,
                            "unknown result enum");
+
+    auto old_schema = bytes;
+    write_u16(old_schema, kKernelResultSchemaOffset, 1);
+    const auto old_digest_offset = old_schema.size() - kDigestBytes;
+    const auto old_digest = sha256_digest(
+        std::span<const std::byte>{old_schema}.subspan(
+            kKernelResultDigestInputOffset,
+            old_digest_offset - kKernelResultDigestInputOffset));
+    std::copy(old_digest.bytes.begin(), old_digest.bytes.end(),
+              old_schema.begin() +
+                  static_cast<std::ptrdiff_t>(old_digest_offset));
+    reject_without_publish(KernelCodecError::unsupported_schema, old_schema,
+                           "old result schema");
 }
 
 void test_command_decode_is_transactional_and_fail_closed() {
@@ -265,7 +344,7 @@ void test_command_decode_is_transactional_and_fail_closed() {
                            "trailing byte");
 
     auto unknown_schema = bytes;
-    write_u16(unknown_schema, kKernelCommandSchemaOffset, 2);
+    write_u16(unknown_schema, kKernelCommandSchemaOffset, 1);
     replace_command_digest({unknown_schema.data(), encoded.bytes_written});
     reject_without_publish(KernelCodecError::unsupported_schema,
                            {unknown_schema.data(), encoded.bytes_written},
@@ -307,6 +386,7 @@ int main() {
     try {
         test_every_command_alternative_round_trips_canonically();
         test_command_identity_and_kind_are_explicit();
+        test_decision_kind_is_explicit_and_not_a_variant_ordinal();
         test_result_round_trip_is_canonical();
         test_result_decode_is_transactional_and_fail_closed();
         test_command_decode_is_transactional_and_fail_closed();

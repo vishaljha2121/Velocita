@@ -109,6 +109,13 @@ target_compile_definitions(velocita_v2_contracts PUBLIC
     VELOCITA_TARGET_CACHE_LINE_SIZE=${VELOCITA_TARGET_CACHE_LINE_SIZE})
 target_compile_options(velocita_v2_contracts PRIVATE -Wall -Wextra -Wpedantic)
 
+add_library(velocita_v2_evaluator
+    src/v2_rule_evaluator.cpp
+)
+target_include_directories(velocita_v2_evaluator PUBLIC include)
+target_link_libraries(velocita_v2_evaluator PUBLIC velocita_v2_contracts)
+target_compile_options(velocita_v2_evaluator PRIVATE -Wall -Wextra -Wpedantic)
+
 add_library(velocita_v2_kernel
     src/v2_kernel.cpp
     src/v2_kernel_codec.cpp
@@ -116,15 +123,9 @@ add_library(velocita_v2_kernel
     src/v2_state_snapshot.cpp
 )
 target_include_directories(velocita_v2_kernel PUBLIC include)
-target_link_libraries(velocita_v2_kernel PUBLIC velocita_v2_contracts)
+target_link_libraries(velocita_v2_kernel PUBLIC velocita_v2_contracts
+    PRIVATE velocita_v2_evaluator)
 target_compile_options(velocita_v2_kernel PRIVATE -Wall -Wextra -Wpedantic)
-
-add_library(velocita_v2_evaluator
-    src/v2_rule_evaluator.cpp
-)
-target_include_directories(velocita_v2_evaluator PUBLIC include)
-target_link_libraries(velocita_v2_evaluator PUBLIC velocita_v2_contracts)
-target_compile_options(velocita_v2_evaluator PRIVATE -Wall -Wextra -Wpedantic)
 
 add_executable(raft-node src/node_main.cpp)
 target_link_libraries(raft-node PRIVATE velocita_aeron velocita_metrics)
@@ -222,6 +223,12 @@ if(BUILD_TESTING)
         velocita_v2_contracts velocita_v2_kernel velocita_v2_evaluator)
     target_compile_options(v2-layout-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-layout-tests COMMAND v2-layout-tests)
+
+    add_executable(v2-decision-kernel-tests tests/v2_decision_kernel_tests.cpp)
+    target_link_libraries(v2-decision-kernel-tests PRIVATE
+        velocita_v2_kernel velocita_v2_evaluator)
+    target_compile_options(v2-decision-kernel-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-decision-kernel-tests COMMAND v2-decision-kernel-tests)
 
     add_executable(v2-layout-report src/v2_layout_report.cpp)
     target_link_libraries(v2-layout-report PRIVATE

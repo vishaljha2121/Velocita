@@ -26,7 +26,7 @@ round_up_to_cache_line(const std::size_t bytes) noexcept {
 inline constexpr std::size_t kDecisionFrameObjectBudgetBytes = 448;
 inline constexpr std::size_t kPolicyArtifactObjectBudgetBytes = 1024;
 inline constexpr std::size_t kRuleEvaluationObjectBudgetBytes = 16;
-inline constexpr std::size_t kTradingStateObjectBudgetBytes = 64U * 1024U;
+inline constexpr std::size_t kTradingStateObjectBudgetBytes = 72U * 1024U;
 inline constexpr std::size_t kDecisionRecordHotBudgetBytes = 64;
 inline constexpr std::size_t kDecisionRecordColdBudgetBytes = 512;
 inline constexpr std::size_t kDecisionFramePayloadBudgetBytes = 448;

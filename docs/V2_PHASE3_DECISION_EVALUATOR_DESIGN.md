@@ -1,7 +1,7 @@
 # V2 Phase 3 authoritative decision-evaluator design
 
-Status: decisions 1 through 5 approved; Phase 3A, 3B, and the pre-3C record
-layout contract are green on the host, but Phase 3 remains unaccepted
+Status: decisions 1 through 5 approved; Phase 3A, 3B, and the Phase 3C
+authoritative reducer are green on the host, but Phase 3 remains unaccepted
 
 Branch: `v2/phase-3-policy-evaluator`
 
@@ -278,13 +278,15 @@ fail to build if retained decisions overflow the reviewed working-set budget.
 - [x] add compile-time ceilings and a machine-readable layout report;
 - [x] define a 64-byte hot decision record and separately bounded cold audit
       record without adding either to authoritative state yet;
-- [ ] add explicit command-kind value, never a `std::variant` ordinal;
-- [ ] add typed result codes and a bounded `DecisionRecord` region;
-- [ ] prove policy/scope/source/validity/control rejection precedence;
-- [ ] prove exact retry and conflicting `DecisionId` behavior;
-- [ ] update command/result codec, snapshot, replay, and reference model;
-- [ ] prove shadow decisions cannot produce an outbox effect; and
-- [ ] prove capacity exhaustion causes no partial mutation.
+- [x] add explicit command-kind value 9, never a `std::variant` ordinal;
+- [x] add typed result codes and a bounded `DecisionRecord` region;
+- [x] prove policy/scope/source/validity/control rejection precedence;
+- [x] prove exact retry and typed conflicting `DecisionId` behavior;
+- [x] update command/result codec, snapshot, replay, and reference model;
+- [x] prove shadow decisions cannot produce an execution-authoritative
+      directive; Phase 4 must independently prohibit shadow outbox effects;
+      and
+- [x] prove capacity exhaustion causes no partial decision-region mutation.
 
 ### 3D: economic action-template schema
 
@@ -308,11 +310,11 @@ No Phase 4 order/effect work begins until this contract is accepted.
 ### 3E: replay, measurement, and promotion
 
 - [ ] handwritten golden corpus covers every result reason;
-- [ ] generated reference model covers boundary and interaction sequences;
+- [x] generated reference model covers boundary and interaction sequences;
 - [ ] direct, canonical replay, and every snapshot cut agree;
 - [ ] evaluation duration, rules visited, and capacity high-watermarks are
       measured without claiming Raft throughput;
-- [ ] host Release and sanitizer gates pass;
+- [x] host Release and sanitizer gates pass;
 - [ ] pinned ARM64 Linux gate passes from an exact source root;
 - [ ] physical Pi phase-closure gate passes; and
 - [ ] changelog/evidence state limitations and rollback precisely.

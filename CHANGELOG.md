@@ -309,6 +309,22 @@ increment. Host Release passed 15/15 and V2 ASan/UBSan passed 12/12. Detailed
 evidence is in
 [`docs/evidence/V2_PHASE3_DECISION_RECORD_LAYOUT_EXPERIMENT.md`](docs/evidence/V2_PHASE3_DECISION_RECORD_LAYOUT_EXPERIMENT.md).
 
+The Phase 3C host candidate integrates that layout into authoritative state.
+`EvaluateDecisionFrame` has explicit wire kind 9; kernel command/result and
+snapshot schemas advance to V2; and deterministic rejection, ordered
+evaluation, control suppression, shadow authority, retained identity, typed
+decision conflicts, and bounded capacity are covered. Hot lookup does not scan
+the cold frame. Canonical replay and an independent generated reference model
+retain decisions across every tested snapshot cut.
+
+The current 64-byte-target report records a 69,832-byte `TradingState` under a
+reviewed 73,728-byte object ceiling, a 57,997-byte maximum canonical snapshot,
+a 608/640-byte maximum command, and a 126/128-byte result. Host functional,
+Release V2, and ASan/UBSan V2 suites pass 16/16, 13/13, and 13/13 respectively.
+Physical Pi evidence, measurement, and Phase 3 acceptance remain pending; no
+risk, order, effect, or venue authority is claimed. Detailed evidence is in
+[`docs/evidence/V2_PHASE3C_AUTHORITATIVE_DECISION_EXPERIMENT.md`](docs/evidence/V2_PHASE3C_AUTHORITATIVE_DECISION_EXPERIMENT.md).
+
 ### Version preservation
 
 - V1 remains recoverable at annotated tag `v1.0.0`.

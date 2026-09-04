@@ -139,9 +139,11 @@ private:
         case ApplyCode::source_sequence_regression:
         case ApplyCode::source_capacity_exceeded:
         case ApplyCode::source_event_capacity_exceeded:
+        case ApplyCode::decision_capacity_exceeded:
         case ApplyCode::policy_capacity_exceeded:
         case ApplyCode::receipt_capacity_exceeded:
         case ApplyCode::state_version_exhausted:
+        case ApplyCode::decision_id_conflict:
             return true;
     }
     return false;
@@ -167,11 +169,34 @@ private:
     return false;
 }
 
+[[nodiscard]] constexpr bool known(const EvaluationMode value) noexcept {
+    return value == EvaluationMode::authoritative ||
+           value == EvaluationMode::shadow;
+}
+
+[[nodiscard]] constexpr bool known(const DecisionCode value) noexcept {
+    return static_cast<std::uint8_t>(value) <=
+           static_cast<std::uint8_t>(DecisionCode::shadow_recorded);
+}
+
+[[nodiscard]] constexpr bool known(const Directive value) noexcept {
+    switch (value) {
+        case Directive::no_action:
+        case Directive::place_limit:
+        case Directive::cancel:
+        case Directive::replace:
+            return true;
+    }
+    return false;
+}
+
 [[nodiscard]] bool valid_state(const TradingState& state) noexcept {
     if (!known(state.strategy_mode) || state.policy_count > state.policies.size() ||
         state.source_count > state.sources.size() ||
         state.source_event_count > state.source_events.size() ||
-        state.receipt_count > state.receipts.size()) {
+        state.receipt_count > state.receipts.size() ||
+        state.decision_count > state.decision_hot.size() ||
+        state.decision_count > state.decision_cold.size()) {
         return false;
     }
 
@@ -237,6 +262,16 @@ private:
             !known(receipt.result.code) || !known(receipt.result.contract_error) ||
             !known(receipt.result.policy_lifecycle, true) ||
             !known(receipt.result.strategy_mode) ||
+            !known(receipt.result.decision_code) ||
+            !known(receipt.result.proposed_directive) ||
+            !known(receipt.result.effective_directive) ||
+            !known(receipt.result.evaluation_mode) ||
+            (receipt.result.evaluation_mode == EvaluationMode::shadow &&
+             receipt.result.effective_directive != Directive::no_action) ||
+            receipt.result.rules_visited > kMaxPolicyRules ||
+            (receipt.result.matched_rule_index !=
+                 std::numeric_limits<std::uint16_t>::max() &&
+             receipt.result.matched_rule_index >= kMaxPolicyRules) ||
             receipt.result.state_version > state.state_version) {
             return false;
         }
@@ -246,6 +281,44 @@ private:
                     receipt.identity.request_sequence) {
                 return false;
             }
+        }
+    }
+
+    for (std::size_t index = 0; index < state.decision_count; ++index) {
+        const auto& hot = state.decision_hot[index];
+        const auto& cold = state.decision_cold[index];
+        const auto frame_error = validate(cold.frame);
+        if (hot.decision_id.value() == 0 || hot.decision_id != cold.decision_id ||
+            cold.command_payload_digest.is_zero() ||
+            cold.frame.feature_count > kMaxDecisionFeatures ||
+            (frame_error != ContractError::none &&
+             (hot.code != DecisionCode::invalid_frame ||
+              hot.contract_error != frame_error)) ||
+            (frame_error == ContractError::none &&
+             hot.code == DecisionCode::invalid_frame) ||
+            hot.policy_id != cold.frame.policy_id ||
+            hot.policy_version != cold.frame.policy_version ||
+            hot.state_version > state.state_version || !known(hot.code) ||
+            !known(hot.contract_error) || !known(hot.proposed_directive) ||
+            !known(hot.effective_directive) || !known(hot.evaluation_mode) ||
+            !known(hot.strategy_mode) || hot.rules_visited > kMaxPolicyRules ||
+            (hot.matched_rule_index != std::numeric_limits<std::uint16_t>::max() &&
+             hot.matched_rule_index >= kMaxPolicyRules) ||
+            (hot.evaluation_mode == EvaluationMode::shadow &&
+             hot.effective_directive != Directive::no_action) ||
+            (hot.evaluation_mode == EvaluationMode::authoritative &&
+             hot.code == DecisionCode::shadow_recorded) ||
+            (hot.code == DecisionCode::action &&
+             (hot.effective_directive == Directive::no_action ||
+              hot.effective_directive != hot.proposed_directive)) ||
+            ((hot.code == DecisionCode::control_suppressed ||
+              hot.code == DecisionCode::shadow_recorded) &&
+             hot.effective_directive != Directive::no_action) ||
+            hot.code == DecisionCode::none) {
+            return false;
+        }
+        for (std::size_t prior = 0; prior < index; ++prior) {
+            if (state.decision_hot[prior].decision_id == hot.decision_id) return false;
         }
     }
     return true;
@@ -261,7 +334,38 @@ private:
     size += state.source_count * kStateSnapshotSourceBytes;
     size += state.source_event_count * kStateSnapshotSourceEventBytes;
     size += state.receipt_count * kStateSnapshotReceiptBytes;
+    for (std::size_t index = 0; index < state.decision_count; ++index) {
+        size += kStateSnapshotDecisionFixedBytes +
+                state.decision_cold[index].frame.feature_count *
+                    kStateSnapshotDecisionFeatureBytes;
+    }
     return size;
+}
+
+void write_decision_frame(Writer& writer, const DecisionFrame& value) noexcept {
+    writer.integral(kDecisionFrameSchemaVersion);
+    writer.integral(value.policy_id.value());
+    writer.integral(value.policy_version.value());
+    writer.integral(value.feature_schema_id.value());
+    writer.integral(value.venue_id.value());
+    writer.integral(value.venue_session_id.value());
+    writer.integral(value.venue_sequence.value());
+    writer.integral(value.source_id.value());
+    writer.integral(value.source_generation.value());
+    writer.integral(value.source_sequence.value());
+    writer.integral(value.event_time_ns);
+    writer.integral(value.receive_time_ns);
+    writer.integral(value.instrument_id.value());
+    writer.integral(value.account_id.value());
+    writer.integral(value.feature_count);
+    for (std::size_t index = 0; index < value.feature_count; ++index) {
+        writer.integral(value.features[index].atoms());
+    }
+    writer.integral(static_cast<std::uint8_t>(value.market_data_status));
+    writer.integral(value.market_data_age_ns);
+    writer.integral(value.position_version.value());
+    writer.integral(value.risk_version.value());
+    writer.digest(value.raw_evidence_digest);
 }
 
 void write_policy(Writer& writer, const PolicyRecord& record) noexcept {
@@ -301,6 +405,13 @@ void write_result(Writer& writer, const ApplyResult& value) noexcept {
     writer.integral(value.source_id.value());
     writer.integral(value.source_generation.value());
     writer.integral(value.source_sequence.value());
+    writer.integral(value.decision_id.value());
+    writer.integral(static_cast<std::uint8_t>(value.decision_code));
+    writer.integral(static_cast<std::uint8_t>(value.proposed_directive));
+    writer.integral(static_cast<std::uint8_t>(value.effective_directive));
+    writer.integral(static_cast<std::uint8_t>(value.evaluation_mode));
+    writer.integral(value.matched_rule_index);
+    writer.integral(value.rules_visited);
 }
 
 void write_payload(Writer& writer, const TradingState& state) noexcept {
@@ -339,6 +450,29 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
         writer.digest(receipt.identity.payload_digest);
         write_result(writer, receipt.result);
     }
+
+    writer.integral(static_cast<std::uint16_t>(state.decision_count));
+    for (std::size_t index = 0; index < state.decision_count; ++index) {
+        const auto& hot = state.decision_hot[index];
+        const auto& cold = state.decision_cold[index];
+        writer.integral(hot.decision_id.value());
+        writer.integral(hot.policy_id.value());
+        writer.integral(hot.policy_version.value());
+        writer.integral(hot.state_version);
+        writer.integral(hot.kill_epoch.value());
+        writer.integral(hot.executor_generation.value());
+        writer.integral(hot.matched_rule_index);
+        writer.integral(hot.rules_visited);
+        writer.integral(static_cast<std::uint8_t>(hot.code));
+        writer.integral(static_cast<std::uint8_t>(hot.contract_error));
+        writer.integral(static_cast<std::uint8_t>(hot.proposed_directive));
+        writer.integral(static_cast<std::uint8_t>(hot.effective_directive));
+        writer.integral(static_cast<std::uint8_t>(hot.evaluation_mode));
+        writer.integral(static_cast<std::uint8_t>(hot.strategy_mode));
+        writer.integral(cold.decision_id.value());
+        writer.digest(cold.command_payload_digest);
+        write_decision_frame(writer, cold.frame);
+    }
 }
 
 [[nodiscard]] PolicyRecord read_policy(Reader& reader) noexcept {
@@ -370,6 +504,39 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
     return record;
 }
 
+[[nodiscard]] bool read_decision_frame(Reader& reader,
+                                       DecisionFrame& value) noexcept {
+    if (reader.integral<std::uint16_t>() != kDecisionFrameSchemaVersion) {
+        return false;
+    }
+    value.policy_id = PolicyId{reader.integral<std::uint64_t>()};
+    value.policy_version = PolicyVersion{reader.integral<std::uint64_t>()};
+    value.feature_schema_id = FeatureSchemaId{reader.integral<std::uint64_t>()};
+    value.venue_id = VenueId{reader.integral<std::uint64_t>()};
+    value.venue_session_id = VenueSessionId{reader.integral<std::uint64_t>()};
+    value.venue_sequence = VenueSequence{reader.integral<std::uint64_t>()};
+    value.source_id = SourceId{reader.integral<std::uint64_t>()};
+    value.source_generation = SourceGeneration{reader.integral<std::uint64_t>()};
+    value.source_sequence = SourceSequence{reader.integral<std::uint64_t>()};
+    value.event_time_ns = reader.integral<std::int64_t>();
+    value.receive_time_ns = reader.integral<std::int64_t>();
+    value.instrument_id = InstrumentId{reader.integral<std::uint64_t>()};
+    value.account_id = AccountId{reader.integral<std::uint64_t>()};
+    value.feature_count = reader.integral<std::uint16_t>();
+    if (value.feature_count > kMaxDecisionFeatures) return false;
+    for (std::size_t index = 0; index < value.feature_count; ++index) {
+        value.features[index] =
+            FeatureMicros::from_atoms(reader.integral<std::int64_t>());
+    }
+    value.market_data_status =
+        static_cast<MarketDataStatus>(reader.integral<std::uint8_t>());
+    value.market_data_age_ns = reader.integral<std::int64_t>();
+    value.position_version = PositionVersion{reader.integral<std::uint64_t>()};
+    value.risk_version = RiskVersion{reader.integral<std::uint64_t>()};
+    value.raw_evidence_digest = reader.digest();
+    return true;
+}
+
 [[nodiscard]] ApplyResult read_result(Reader& reader) noexcept {
     ApplyResult value;
     value.code = static_cast<ApplyCode>(reader.integral<std::uint8_t>());
@@ -389,6 +556,17 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
     value.source_generation =
         SourceGeneration{reader.integral<std::uint64_t>()};
     value.source_sequence = SourceSequence{reader.integral<std::uint64_t>()};
+    value.decision_id = DecisionId{reader.integral<std::uint64_t>()};
+    value.decision_code =
+        static_cast<DecisionCode>(reader.integral<std::uint8_t>());
+    value.proposed_directive =
+        static_cast<Directive>(reader.integral<std::uint8_t>());
+    value.effective_directive =
+        static_cast<Directive>(reader.integral<std::uint8_t>());
+    value.evaluation_mode =
+        static_cast<EvaluationMode>(reader.integral<std::uint8_t>());
+    value.matched_rule_index = reader.integral<std::uint16_t>();
+    value.rules_visited = reader.integral<std::uint16_t>();
     return value;
 }
 
@@ -438,6 +616,39 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
                                                reader.integral<std::uint64_t>()},
                                            reader.digest()},
                            read_result(reader)};
+    }
+
+    state.decision_count = reader.integral<std::uint16_t>();
+    if (state.decision_count > state.decision_hot.size() ||
+        state.decision_count > state.decision_cold.size()) {
+        return false;
+    }
+    for (std::size_t index = 0; index < state.decision_count; ++index) {
+        auto& hot = state.decision_hot[index];
+        auto& cold = state.decision_cold[index];
+        hot.decision_id = DecisionId{reader.integral<std::uint64_t>()};
+        hot.policy_id = PolicyId{reader.integral<std::uint64_t>()};
+        hot.policy_version = PolicyVersion{reader.integral<std::uint64_t>()};
+        hot.state_version = reader.integral<std::uint64_t>();
+        hot.kill_epoch = KillEpoch{reader.integral<std::uint64_t>()};
+        hot.executor_generation =
+            ExecutorGeneration{reader.integral<std::uint64_t>()};
+        hot.matched_rule_index = reader.integral<std::uint16_t>();
+        hot.rules_visited = reader.integral<std::uint16_t>();
+        hot.code = static_cast<DecisionCode>(reader.integral<std::uint8_t>());
+        hot.contract_error =
+            static_cast<ContractError>(reader.integral<std::uint8_t>());
+        hot.proposed_directive =
+            static_cast<Directive>(reader.integral<std::uint8_t>());
+        hot.effective_directive =
+            static_cast<Directive>(reader.integral<std::uint8_t>());
+        hot.evaluation_mode =
+            static_cast<EvaluationMode>(reader.integral<std::uint8_t>());
+        hot.strategy_mode =
+            static_cast<StrategyMode>(reader.integral<std::uint8_t>());
+        cold.decision_id = DecisionId{reader.integral<std::uint64_t>()};
+        cold.command_payload_digest = reader.digest();
+        if (!read_decision_frame(reader, cold.frame)) return false;
     }
     return reader.finished() && valid_state(state);
 }
