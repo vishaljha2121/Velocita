@@ -1,7 +1,7 @@
 # V2 Phase 3 authoritative decision-evaluator design
 
-Status: decisions 1 through 5 approved; Phase 3A and 3B are green on the host,
-but Phase 3 remains unaccepted
+Status: decisions 1 through 5 approved; Phase 3A, 3B, and the pre-3C record
+layout contract are green on the host, but Phase 3 remains unaccepted
 
 Branch: `v2/phase-3-policy-evaluator`
 
@@ -276,6 +276,8 @@ fail to build if retained decisions overflow the reviewed working-set budget.
 - [x] declare the target cache-line size as build metadata;
 - [x] separate canonical payload, object, and arena-stride budgets;
 - [x] add compile-time ceilings and a machine-readable layout report;
+- [x] define a 64-byte hot decision record and separately bounded cold audit
+      record without adding either to authoritative state yet;
 - [ ] add explicit command-kind value, never a `std::variant` ordinal;
 - [ ] add typed result codes and a bounded `DecisionRecord` region;
 - [ ] prove policy/scope/source/validity/control rejection precedence;

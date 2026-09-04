@@ -298,6 +298,17 @@ sanitizer suites passed, firmware power remained `throttled=0x0`, and host
 temperature moved from 44.10 C to 49.05 C. Detailed evidence is in
 [`docs/evidence/V2_PHASE3_LAYOUT_GUARDRAILS_EXPERIMENT.md`](docs/evidence/V2_PHASE3_LAYOUT_GUARDRAILS_EXPERIMENT.md).
 
+Experimental commit `c4283f6` defines the pre-reducer Phase 3C retained
+decision layout. A 64-byte hot record holds lookup, outcome, and control fields;
+a 472-byte cold record retains the command digest and complete decision frame.
+Their arena strides are independently rounded to 64 and 512 bytes. Sixteen
+records would consume 8,576 packed object bytes or 9,216 rounded arena bytes.
+The records are deliberately not yet members of `TradingState`: snapshot,
+digest, replay, and atomic capacity behavior must change in the same reducer
+increment. Host Release passed 15/15 and V2 ASan/UBSan passed 12/12. Detailed
+evidence is in
+[`docs/evidence/V2_PHASE3_DECISION_RECORD_LAYOUT_EXPERIMENT.md`](docs/evidence/V2_PHASE3_DECISION_RECORD_LAYOUT_EXPERIMENT.md).
+
 ### Version preservation
 
 - V1 remains recoverable at annotated tag `v1.0.0`.
