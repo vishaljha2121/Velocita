@@ -310,7 +310,7 @@ of the capability rather than passing accidentally against old behavior.
 
 This checkpoint does not yet provide:
 
-- randomized/model-based command generation;
+- exhaustive or long-horizon model checking beyond the bounded generated corpus;
 - a real Raft log carrying V2 command frames;
 - durable snapshot file publication or crash selection;
 - snapshot installation into a follower;
@@ -341,13 +341,15 @@ engineering leadership discipline: a green codec test is not a production OMS.
 
 ## 9. Next recommended increment
 
-The next increment is a bounded deterministic generated-command model. Compare
-the production reducer against an intentionally simpler
-reference model across many seeds, snapshot cut points, duplicates, conflicts,
-and typed rejections.
+The bounded deterministic generated-command model is now implemented at commit
+`26f0853`. It compares the production reducer against an intentionally simpler
+reference model across 32 seeds, 3,072 original commands, six snapshot cut
+points per seed, duplicates, conflicts, and typed rejections. Its reviewed
+aggregate digest is
+`1eadcbdef0f9a244b935afdb3dd3be9c6e6f42fffe913509cc3baaea303357a0`.
 
-That catches interaction bugs beyond the ten-record golden corpus. The design
-decision to review is the model's scope: keep it limited to current Phase 2
-policy/control/source semantics, or first add reconciliation-gated authority
-restoration and model that larger state machine. The lower-risk sequence is to
-model current semantics first, then extend the model alongside each new command.
+That catches interaction bugs beyond the ten-record golden corpus. The model
+is limited to current Phase 2 semantics and will be extended beside each new
+command. The next authority decision is reconciliation-gated recovery: define
+the evidence that must be committed before a restarted or newly promoted
+executor may regain anything beyond fail-safe authority.

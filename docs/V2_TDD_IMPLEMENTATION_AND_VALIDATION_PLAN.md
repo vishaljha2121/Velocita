@@ -264,6 +264,10 @@ on the host and pinned ARM64 Ubuntu/GCC at commits `a04094e` and `0a20e4f` and
 source root
 `810f8c4db00d6ae37061694ab3be6f775b3312f0b837c09b00c589903d5e04aa`.
 The exact root passed its physical Raspberry Pi checkpoint on 2026-09-03.
+Generated differential replay is green on the host and pinned ARM64
+Ubuntu/GCC at commit `26f0853` and source root
+`d6eb59adecac3a486c2eee83151df02d66e7425865dd5076ad34ac0beeb96668`.
+Its exact-root physical Raspberry Pi checkpoint is pending.
 See
 [`V2 Phase 2 policy-kernel experiment evidence`](evidence/V2_PHASE2_POLICY_KERNEL_EXPERIMENT.md)
 and
@@ -274,6 +278,8 @@ Detailed codec/replay evidence and education are in
 [`V2 Phase 2 canonical replay experiment evidence`](evidence/V2_PHASE2_CANONICAL_REPLAY_EXPERIMENT.md)
 and
 [`V2 canonical codec and replay guide`](V2_CANONICAL_CODEC_REPLAY_GUIDE.md).
+Generated-model evidence is in
+[`V2 Phase 2 model replay experiment evidence`](evidence/V2_PHASE2_MODEL_REPLAY_EXPERIMENT.md).
 
 ### Objective
 

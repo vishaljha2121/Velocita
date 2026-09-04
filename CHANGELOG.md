@@ -207,6 +207,24 @@ and C++ rationale are in
 and
 [`docs/V2_CANONICAL_CODEC_REPLAY_GUIDE.md`](docs/V2_CANONICAL_CODEC_REPLAY_GUIDE.md).
 
+Experimental commit `26f0853` adds deterministic differential replay against
+a structurally independent reference model. Thirty-two fixed seeds generate 96
+commands each. The production byte path and model agree after every command on
+typed results, canonical result bytes, and canonical state. Six snapshot cuts
+per history reproduce every suffix result and final snapshot. Required coverage
+includes policy lifecycle conflicts, control-fence rejection, source ordering,
+exact retries, and request-identity conflicts. The aggregate corpus digest is
+`1eadcbdef0f9a244b935afdb3dd3be9c6e6f42fffe913509cc3baaea303357a0`.
+
+The increment passed 13/13 Release suites and 10/10 instrumented and
+ASan/UBSan V2 suites under ARM64 Ubuntu 26.04/GCC 15.2. Its canonical source
+root is
+`d6eb59adecac3a486c2eee83151df02d66e7425865dd5076ad34ac0beeb96668`.
+Physical Pi acceptance remains pending. This expands semantic/replay evidence;
+it does not establish real-Raft integration, durability, capacity, or trading
+authority. Detailed evidence is in
+[`docs/evidence/V2_PHASE2_MODEL_REPLAY_EXPERIMENT.md`](docs/evidence/V2_PHASE2_MODEL_REPLAY_EXPERIMENT.md).
+
 ### Version preservation
 
 - V1 remains recoverable at annotated tag `v1.0.0`.
