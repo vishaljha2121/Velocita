@@ -20,6 +20,11 @@ inline constexpr std::size_t kMaxDecisionFramePayloadBytes =
 inline constexpr std::size_t kOrderEffectPayloadBytes = 165;
 inline constexpr std::size_t kVenueObservationPayloadBytes = 116;
 
+static_assert(kMaxDecisionFramePayloadBytes <= kDecisionFramePayloadBudgetBytes,
+              "DecisionFrame exceeded its reviewed canonical payload budget");
+static_assert(kMaxPolicyPayloadBytes <= kPolicyArtifactPayloadBudgetBytes,
+              "PolicyArtifact exceeded its reviewed canonical payload budget");
+
 enum class PayloadError : std::uint8_t {
     none = 0,
     truncated,

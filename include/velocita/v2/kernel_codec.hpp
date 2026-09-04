@@ -88,7 +88,9 @@ encode_kernel_result(const ApplyResult& result,
 decode_kernel_result(std::span<const std::byte> bytes,
                      ApplyResult& destination) noexcept;
 
-static_assert(kMaxKernelCommandBytes < 1024);
-static_assert(kKernelResultBytes < 256);
+static_assert(kMaxKernelCommandBytes <= kKernelCommandBudgetBytes,
+              "kernel command exceeded its reviewed canonical byte budget");
+static_assert(kKernelResultBytes <= kKernelResultBudgetBytes,
+              "kernel result exceeded its reviewed canonical byte budget");
 
 }  // namespace velocita::v2

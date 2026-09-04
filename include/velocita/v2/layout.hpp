@@ -1,0 +1,38 @@
+#pragma once
+
+#include <cstddef>
+
+#ifndef VELOCITA_TARGET_CACHE_LINE_SIZE
+#error "VELOCITA_TARGET_CACHE_LINE_SIZE must describe the deployment target"
+#endif
+
+namespace velocita::v2 {
+
+inline constexpr std::size_t kTargetCacheLineBytes =
+    VELOCITA_TARGET_CACHE_LINE_SIZE;
+
+[[nodiscard]] constexpr bool is_power_of_two(const std::size_t value) noexcept {
+    return value != 0 && (value & (value - 1)) == 0;
+}
+
+[[nodiscard]] constexpr std::size_t
+round_up_to_cache_line(const std::size_t bytes) noexcept {
+    if (bytes == 0) return 0;
+    return ((bytes - 1) / kTargetCacheLineBytes + 1) * kTargetCacheLineBytes;
+}
+
+// Object ceilings are review gates, not serialized sizes. Raising one requires
+// an explicit working-set, arena-capacity, and snapshot-impact review.
+inline constexpr std::size_t kDecisionFrameObjectBudgetBytes = 448;
+inline constexpr std::size_t kPolicyArtifactObjectBudgetBytes = 1024;
+inline constexpr std::size_t kRuleEvaluationObjectBudgetBytes = 16;
+inline constexpr std::size_t kTradingStateObjectBudgetBytes = 64U * 1024U;
+inline constexpr std::size_t kDecisionFramePayloadBudgetBytes = 448;
+inline constexpr std::size_t kPolicyArtifactPayloadBudgetBytes = 576;
+inline constexpr std::size_t kKernelCommandBudgetBytes = 640;
+inline constexpr std::size_t kKernelResultBudgetBytes = 128;
+
+static_assert(kTargetCacheLineBytes >= alignof(std::max_align_t));
+static_assert(is_power_of_two(kTargetCacheLineBytes));
+
+}  // namespace velocita::v2

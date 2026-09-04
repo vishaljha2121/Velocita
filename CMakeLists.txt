@@ -4,6 +4,8 @@ project(velocita_raft VERSION 0.1.0 LANGUAGES C CXX)
 
 option(VELOCITA_BENCHMARK_INSTRUMENTATION
        "Compile benchmark-only Raft stage timestamps into the node and response wire format" OFF)
+set(VELOCITA_TARGET_CACHE_LINE_SIZE "64" CACHE STRING
+    "Target CPU cache-line size in bytes; part of the V2 arena-layout ABI")
 
 # willemt/raft is source-only and has no CMakeLists.txt; populate it so this
 # project can define the target and keep the upstream commit pinned.
@@ -103,6 +105,8 @@ add_library(velocita_v2_contracts
     src/v2_payload.cpp
 )
 target_include_directories(velocita_v2_contracts PUBLIC include)
+target_compile_definitions(velocita_v2_contracts PUBLIC
+    VELOCITA_TARGET_CACHE_LINE_SIZE=${VELOCITA_TARGET_CACHE_LINE_SIZE})
 target_compile_options(velocita_v2_contracts PRIVATE -Wall -Wextra -Wpedantic)
 
 add_library(velocita_v2_kernel
@@ -212,6 +216,17 @@ if(BUILD_TESTING)
     target_link_libraries(v2-rule-evaluator-tests PRIVATE velocita_v2_evaluator)
     target_compile_options(v2-rule-evaluator-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-rule-evaluator-tests COMMAND v2-rule-evaluator-tests)
+
+    add_executable(v2-layout-tests tests/v2_layout_tests.cpp)
+    target_link_libraries(v2-layout-tests PRIVATE
+        velocita_v2_contracts velocita_v2_kernel velocita_v2_evaluator)
+    target_compile_options(v2-layout-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-layout-tests COMMAND v2-layout-tests)
+
+    add_executable(v2-layout-report src/v2_layout_report.cpp)
+    target_link_libraries(v2-layout-report PRIVATE
+        velocita_v2_contracts velocita_v2_kernel velocita_v2_evaluator)
+    target_compile_options(v2-layout-report PRIVATE -Wall -Wextra -Wpedantic)
 
     add_executable(v2-contract-benchmark src/v2_contract_benchmark.cpp)
     target_link_libraries(v2-contract-benchmark PRIVATE velocita_v2_contracts)

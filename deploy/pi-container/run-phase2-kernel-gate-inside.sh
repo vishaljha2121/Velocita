@@ -97,6 +97,7 @@ sanitized_build="$build_root/sanitized"
 common_cmake_args=(
     -G Ninja
     -DAERON_HIDE_DEPRECATION_MESSAGE=ON
+    -DVELOCITA_TARGET_CACHE_LINE_SIZE=64
     -DFETCHCONTENT_SOURCE_DIR_AERON=/opt/velocita-deps/aeron
     -DFETCHCONTENT_SOURCE_DIR_WILLEMT_RAFT=/opt/velocita-deps/willemt-raft
     -DFETCHCONTENT_FULLY_DISCONNECTED=ON
@@ -116,7 +117,10 @@ release_targets=(
     v2-kernel-codec-tests
     v2-replay-tests
     v2-model-replay-tests
+    v2-rule-evaluator-tests
+    v2-layout-tests
     v2-contract-benchmark
+    v2-layout-report
 )
 
 failure_step=release_configure
@@ -143,7 +147,7 @@ cmake --build "$instrumented_build" \
              v2-payload-codec-tests v2-kernel-policy-tests \
              v2-kernel-control-tests v2-kernel-source-tests \
              v2-state-snapshot-tests v2-kernel-codec-tests v2-replay-tests \
-             v2-model-replay-tests \
+             v2-model-replay-tests v2-rule-evaluator-tests v2-layout-tests \
     --parallel "$build_jobs"
 
 failure_step=instrumented_tests
@@ -163,7 +167,7 @@ cmake --build "$sanitized_build" \
              v2-payload-codec-tests v2-kernel-policy-tests \
              v2-kernel-control-tests v2-kernel-source-tests \
              v2-state-snapshot-tests v2-kernel-codec-tests v2-replay-tests \
-             v2-model-replay-tests \
+             v2-model-replay-tests v2-rule-evaluator-tests v2-layout-tests \
     --parallel "$build_jobs"
 
 failure_step=sanitized_tests
@@ -172,6 +176,10 @@ ctest --test-dir "$sanitized_build" -R '^v2-.*-tests$' --output-on-failure |
 
 failure_step=codec_benchmark
 "$release_build/v2-contract-benchmark" | tee "$evidence_dir/codec-benchmark.txt"
+
+failure_step=layout_report
+"$release_build/v2-layout-report" | tee "$evidence_dir/layout-report.txt"
+cat "$evidence_dir/layout-report.txt" >>"$evidence_dir/metadata.txt"
 
 {
     printf 'finished_utc=%s\n' "$(date --iso-8601=seconds --utc)"

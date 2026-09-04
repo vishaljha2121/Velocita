@@ -194,5 +194,7 @@ struct ApplyScratch final {};
 static_assert(std::is_nothrow_copy_assignable_v<PolicyArtifact>);
 static_assert(std::is_nothrow_copy_assignable_v<CommandBody>);
 static_assert(std::is_nothrow_copy_assignable_v<ApplyResult>);
+static_assert(sizeof(TradingState) <= kTradingStateObjectBudgetBytes,
+              "TradingState exceeded its reviewed in-memory object budget");
 
 }  // namespace velocita::v2

@@ -1,10 +1,12 @@
 #pragma once
 
 #include "velocita/v2/domain.hpp"
+#include "velocita/v2/layout.hpp"
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
 namespace velocita::v2 {
 
@@ -147,6 +149,15 @@ struct DecisionFrame {
     RiskVersion risk_version{};
     Digest256 raw_evidence_digest{};
 };
+
+inline constexpr std::size_t kDecisionFrameArenaSlotStrideBytes =
+    round_up_to_cache_line(sizeof(DecisionFrame));
+
+static_assert(std::is_trivially_copyable_v<DecisionFrame>);
+static_assert(sizeof(DecisionFrame) <= kDecisionFrameObjectBudgetBytes,
+              "DecisionFrame exceeded its reviewed in-memory object budget");
+static_assert(sizeof(PolicyArtifact) <= kPolicyArtifactObjectBudgetBytes,
+              "PolicyArtifact exceeded its reviewed in-memory object budget");
 
 struct OrderEffect {
     EffectId effect_id{};

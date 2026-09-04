@@ -36,5 +36,7 @@ evaluate_rules(const PolicyArtifact& policy,
                const DecisionFrame& frame) noexcept;
 
 static_assert(std::is_trivially_copyable_v<RuleEvaluation>);
+static_assert(sizeof(RuleEvaluation) <= kRuleEvaluationObjectBudgetBytes,
+              "RuleEvaluation exceeded its reviewed hot-result budget");
 
 }  // namespace velocita::v2
