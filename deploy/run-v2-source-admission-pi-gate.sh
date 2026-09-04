@@ -134,6 +134,7 @@ podman run --rm \
     --volume "$evidence_dir:/evidence" \
     --volume "$root_dir/deploy/pi-container/run-phase2-kernel-gate-inside.sh:/usr/local/bin/run-v2-phase2-kernel-gate:ro" \
     --env "BUILD_JOBS=$build_jobs" \
+    --env "GATE_LABEL=$gate_label" \
     --env "EXPECTED_SOURCE_ROOT=$expected_source_root" \
     --entrypoint /usr/local/bin/run-v2-phase2-kernel-gate \
     "$image"

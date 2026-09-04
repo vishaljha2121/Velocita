@@ -7,6 +7,7 @@ evidence_dir=/evidence
 build_jobs=${BUILD_JOBS:-2}
 expected_source_head=${EXPECTED_SOURCE_HEAD:-}
 expected_source_root=${EXPECTED_SOURCE_ROOT:-}
+gate_label=${GATE_LABEL:-V2 deterministic-kernel}
 
 exec > >(tee "$evidence_dir/gate.log") 2>&1
 
@@ -21,7 +22,7 @@ finish() {
         printf 'environment\tarm64-linux-container\n'
         printf 'evidence_dir\t%s\n' "$evidence_dir"
     } >"$evidence_dir/summary.tsv"
-    printf 'V2 Phase 2 ARM64 development gate: %s\n' "$result"
+    printf '%s ARM64 development gate: %s\n' "$gate_label" "$result"
 }
 trap finish EXIT
 
@@ -37,6 +38,12 @@ failure_step=environment_preflight
 . /etc/os-release
 [[ ${VERSION_ID:-} == 26.04 ]] || {
     printf 'Expected Ubuntu 26.04, got %s %s\n' "${ID:-unknown}" "${VERSION_ID:-unknown}" >&2
+    exit 1
+}
+runtime_l1d_cache_line_bytes=$(getconf LEVEL1_DCACHE_LINESIZE 2>/dev/null || printf unavailable)
+[[ $runtime_l1d_cache_line_bytes == 64 ]] || {
+    printf 'Expected a 64-byte L1 data-cache line, got %s\n' \
+        "$runtime_l1d_cache_line_bytes" >&2
     exit 1
 }
 
@@ -75,6 +82,7 @@ sanitized_build="$build_root/sanitized"
 
 {
     printf 'started_utc=%s\n' "$(date --iso-8601=seconds --utc)"
+    printf 'gate_label=%s\n' "$gate_label"
     printf 'environment=arm64-linux-container\n'
     printf 'kernel=%s\n' "$(uname -srvm)"
     printf 'machine=%s\n' "$(uname -m)"
@@ -83,6 +91,8 @@ sanitized_build="$build_root/sanitized"
     printf 'compiler=%s\n' "$(c++ --version | head -1)"
     printf 'cmake=%s\n' "$(cmake --version | head -1)"
     printf 'cpu_count=%s\n' "$(getconf _NPROCESSORS_ONLN)"
+    printf 'target_cache_line_bytes=64\n'
+    printf 'runtime_l1d_cache_line_bytes=%s\n' "$runtime_l1d_cache_line_bytes"
     printf 'memory_limit_bytes=%s\n' \
         "$(cat /sys/fs/cgroup/memory.max 2>/dev/null || printf unavailable)"
     printf 'shm_bytes=%s\n' "$(df -B1 --output=size /dev/shm | tail -1 | tr -d ' ')"
