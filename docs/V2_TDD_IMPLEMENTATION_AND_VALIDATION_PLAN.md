@@ -267,7 +267,10 @@ The exact root passed its physical Raspberry Pi checkpoint on 2026-09-03.
 Generated differential replay is green on the host and pinned ARM64
 Ubuntu/GCC at commit `26f0853` and source root
 `d6eb59adecac3a486c2eee83151df02d66e7425865dd5076ad34ac0beeb96668`.
-Its exact-root physical Raspberry Pi checkpoint is pending.
+Its exact-root physical Raspberry Pi checkpoint passed on 2026-09-04: all
+10 sanitized V2 suites passed, the observed and expected source roots matched,
+firmware reported `throttled=0x0` before and after, and temperature moved from
+43.55 C to 48.50 C.
 See
 [`V2 Phase 2 policy-kernel experiment evidence`](evidence/V2_PHASE2_POLICY_KERNEL_EXPERIMENT.md)
 and

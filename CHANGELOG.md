@@ -220,9 +220,12 @@ The increment passed 13/13 Release suites and 10/10 instrumented and
 ASan/UBSan V2 suites under ARM64 Ubuntu 26.04/GCC 15.2. Its canonical source
 root is
 `d6eb59adecac3a486c2eee83151df02d66e7425865dd5076ad34ac0beeb96668`.
-Physical Pi acceptance remains pending. This expands semantic/replay evidence;
-it does not establish real-Raft integration, durability, capacity, or trading
-authority. Detailed evidence is in
+The exact root passed its physical Raspberry Pi checkpoint on 2026-09-04. The
+wrapper and inner ARM64 gates passed all 10 sanitized V2 suites; firmware
+reported `throttled=0x0` before and after, and temperature moved from 43.55 C
+to 48.50 C. This expands semantic/replay evidence; it does not establish
+real-Raft integration, durability, capacity, or trading authority. Detailed
+evidence is in
 [`docs/evidence/V2_PHASE2_MODEL_REPLAY_EXPERIMENT.md`](docs/evidence/V2_PHASE2_MODEL_REPLAY_EXPERIMENT.md).
 
 ### Version preservation

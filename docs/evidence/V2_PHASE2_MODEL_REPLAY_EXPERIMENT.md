@@ -3,8 +3,8 @@
 Date: 2026-09-03
 
 - Behavior commit: `26f0853`
-- Decision: retain as a green experimental increment; physical Pi acceptance
-  is pending
+- Decision: retain as a green experimental increment; exact-root physical Pi
+  acceptance passed on 2026-09-04
 
 ## Objective
 
@@ -100,3 +100,25 @@ BUILD_JOBS=2 ./deploy/run-v2-model-replay-pi-gate.sh --yes
 ```
 
 The wrapper requires the exact source root recorded above.
+
+Accepted physical Raspberry Pi 5 ARM64 evidence:
+
+```text
+~/.local/share/velocita/v2-model-replay-pi-gates/20260904T123522Z
+```
+
+- wrapper result: PASS;
+- inner ARM64 container result: PASS;
+- ASan/UBSan V2 suites: 10/10 passed;
+- compiler: Ubuntu GCC 15.2.0;
+- observed source root:
+  `d6eb59adecac3a486c2eee83151df02d66e7425865dd5076ad34ac0beeb96668`;
+- expected source root:
+  `d6eb59adecac3a486c2eee83151df02d66e7425865dd5076ad34ac0beeb96668`;
+- firmware power state before and after: `throttled=0x0`; and
+- temperature: 43.55 C before, 48.50 C after.
+
+The matching roots prove that the accepted hardware result exercised the exact
+reviewed source tree rather than a stale rsync copy. The power and temperature
+observations rule out detected throttling during this gate; they do not certify
+the machine for sustained benchmark load.
