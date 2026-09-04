@@ -57,6 +57,54 @@ Why: array order is canonical, bounded, cheap, and deterministic. “Most
 specific rule wins” would require a second precedence language and create
 ambiguous policy reviews.
 
+This aligns with the Velocita book's design principles, with one qualification:
+the book does not mandate first-match-wins for every strategy language. It does
+mandate that order-sensitive replicated evaluation use a declared deterministic
+order, warns that unordered-container iteration can make first-match behavior
+replica- or build-dependent, criticizes an existing CMC gate whose first reject
+is determined by hash-table iteration, and recommends an explicit ordered array
+for a new risk design. First-match-wins is the Phase 3 policy-language choice we
+make on top of those principles.
+
+Relevant book sections are:
+
+- `chapters/03-replicated-state-machines.tex`, Rule 3: unordered-container
+  iteration must not determine first-match or serialization outcomes;
+- `chapters/17-cmc-client-management.tex`, “The eight automatic checks”: an
+  emergent hash iteration order is deterministic only accidentally and does not
+  constitute a declared priority contract; and
+- `chapters/49-risk-engine-margin.tex`, “Ordered evaluation”: check order is
+  part of the safety/latency contract and a new design should use an explicit
+  ordered array.
+
+#### Alternatives considered
+
+| Alternative | Benefit | Why it is not the Phase 3 default |
+|---|---|---|
+| Hash/unordered-container iteration | convenient lookup and plugin registration | order is emergent from buckets, insertion, library, and capacity; unacceptable for replicated first-match semantics |
+| Last matching rule wins | later entries act like overrides | every rule must run, shadowing is less obvious, and an unrelated appended rule may silently replace an earlier action |
+| Evaluate all, then rank directive severity | result independent of physical order | requires a second precedence contract; `cancel`, `replace`, and `place` do not have one universally correct economic ordering |
+| Explicit numeric priority plus sorting | priority can differ from storage order | adds tie rules, duplicate-priority validation, sorting/canonicalization, and another field without adding value while the artifact is already an ordered array |
+| Most-specific predicate wins | resembles firewall or routing selection | “specificity” is undefined for mixed numeric predicates and overlapping ranges; ties still need deterministic precedence |
+| Reject whenever multiple rules match | exposes overlap instead of choosing | safe but makes deliberate fallback/override bands impossible and requires evaluating the full array; useful as an optional policy-lint mode |
+| Compose every matching rule | expressive for multi-condition strategies | the current rule emits a complete directive, so merging conflicting actions has no defined algebra; conjunctions need an explicit grouped-expression schema |
+| Compiled decision tree/DAG | can reduce comparisons for large policies | substantially larger verifier, codec, and replay surface; unjustified for the current maximum of 32 rules |
+
+#### Accepted costs and safeguards
+
+First-match-wins makes array position economically meaningful. Moving one rule
+can change behavior even if every individual predicate is unchanged. Therefore:
+
+- artifact order is covered by the artifact digest and canonical bytes;
+- any reorder requires a new immutable policy version;
+- tests cover overlaps, exact boundaries, terminal `no_action`, and no-match;
+- evaluation returns the matched rule index and rules visited;
+- activation tooling should warn about unreachable or fully shadowed rules;
+- future grouped predicates or action composition require a new schema rather
+  than changing first-match semantics in place; and
+- the evaluator never stores rules in or derives precedence from an unordered
+  container.
+
 ### 3.2 Predicate behavior
 
 Each rule compares one `FeatureMicros` value with one threshold using the
