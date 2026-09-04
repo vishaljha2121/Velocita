@@ -260,6 +260,22 @@ retained decision identity, risk, orders, outbox, ARM64, Pi, or trading proof.
 Detailed evidence is in
 [`docs/evidence/V2_PHASE3_RULE_EVALUATOR_EXPERIMENT.md`](docs/evidence/V2_PHASE3_RULE_EVALUATOR_EXPERIMENT.md).
 
+Experimental commit `3f65187` implements the Phase 3B decision-frame schema
+revision. Payload families now carry independent schema versions; only the
+decision frame advances to V2. Its canonical input adds source ID, source
+generation, source sequence, event time, and receive time. The authoritative
+decoder rejects the frozen V1 corpus with typed `unsupported_schema` rather
+than reinterpreting absent provenance or misclassifying the shorter record as
+truncated V2.
+
+The two-feature V2 golden frame is 181 bytes with SHA-256
+`9bdc490425ee07a28b4a0fd624d25ea5b167180dc01bae2080d54c0e4c05dcc3`;
+the bounded maximum decision frame is now 421 bytes. The complete Release suite
+passed 14/14 and the V2 ASan/UBSan suite passed 11/11 on the host. Source-state
+comparison, validity evaluation, retained decision identity, ARM64/Pi evidence,
+risk, orders, and outbox remain pending. Detailed evidence is in
+[`docs/evidence/V2_PHASE3_DECISION_FRAME_V2_EXPERIMENT.md`](docs/evidence/V2_PHASE3_DECISION_FRAME_V2_EXPERIMENT.md).
+
 ### Version preservation
 
 - V1 remains recoverable at annotated tag `v1.0.0`.

@@ -1,7 +1,7 @@
 # V2 Phase 3 authoritative decision-evaluator design
 
-Status: decisions 1 through 5 approved; Phase 3A is green on the host but Phase
-3 remains unaccepted
+Status: decisions 1 through 5 approved; Phase 3A and 3B are green on the host,
+but Phase 3 remains unaccepted
 
 Branch: `v2/phase-3-policy-evaluator`
 
@@ -33,18 +33,20 @@ Phase 1 already defines bounded `PolicyArtifact`, `PolicyRule`, and
 `DecisionFrame` values. Phase 2 can store an active policy, admit ordered source
 evidence, deduplicate a command, and replay canonical state.
 
-Two gaps are intentionally not hidden:
+Phase 3 began with two intentionally visible gaps:
 
-1. `DecisionFrame` has venue session/sequence and an evidence digest, but lacks
-   explicit `SourceId`, `SourceGeneration`, `SourceSequence`, and event time.
-   Therefore it cannot yet prove that the exact decision evidence was admitted
-   by the replicated source cursor or apply the artifact's validity interval.
+1. `DecisionFrame` lacked explicit `SourceId`, `SourceGeneration`,
+   `SourceSequence`, event time, and receive time. Phase 3B resolves the value
+   and byte-contract portion of this gap with decision-frame schema V2.
+   Authoritative comparison against replicated source state remains Phase 3C.
 2. `PolicyRule` selects only a directive class. It cannot fully describe the
    side, price, quantity, time-in-force, or target order required by an
    executable action.
 
 Changing either accepted Phase 1 byte contract requires an explicit schema
 revision, new golden corpus, backward-compatibility decision, and replay tests.
+Phase 3B applies that discipline only to `DecisionFrame`; policy artifacts,
+order effects, and venue observations remain independently versioned at V1.
 
 ## 3. Recommended semantic decisions
 
@@ -198,13 +200,30 @@ This increment returns a non-authoritative evaluation value. It does not mutate
 
 Objective: make causal evidence and event-time validity explicit.
 
-- [ ] add source ID/generation/sequence and event time to the canonical input;
-- [ ] decide whether V1 V2-contract frames remain decodable or fail with a
+- [x] add source ID/generation/sequence, event time, and receive time to the
+      canonical input;
+- [x] decide whether V1 V2-contract frames remain decodable or fail with a
       typed unsupported-schema result;
-- [ ] bump the relevant schema version rather than reinterpret old bytes;
-- [ ] update payload size constants and malformed/truncation tests;
-- [ ] create and review new golden bytes/digest; and
-- [ ] prove old bytes receive the documented compatibility outcome.
+- [x] bump only the decision-frame schema rather than reinterpret old bytes;
+- [x] update payload size constants and malformed/truncation tests;
+- [x] create and review new golden bytes/digest; and
+- [x] prove old bytes receive the documented compatibility outcome.
+
+The accepted compatibility policy is intentionally narrow:
+
+- policy artifact V1, decision frame V2, order effect V1, and venue
+  observation V1 have independent version constants;
+- the authoritative decision-frame decoder accepts only V2;
+- the frozen legacy V1 corpus returns typed `unsupported_schema` before V2
+  length interpretation;
+- missing source identity or timestamp provenance fails closed; and
+- event and receive timestamps must be present and positive, but are not
+  ordered against one another because no shared clock-domain contract has yet
+  been declared.
+
+No V1-to-V2 migration tool is included because no production V2 decision-frame
+records exist. Inventing the absent provenance would produce plausible but
+false audit data.
 
 ### 3C: authoritative evaluation command and records
 
