@@ -27,11 +27,33 @@ int main() {
               << kRuleEvaluationObjectBudgetBytes << '\n'
               << "apply_result_size_bytes=" << sizeof(ApplyResult) << '\n'
               << "request_receipt_size_bytes=" << sizeof(RequestReceipt) << '\n'
+              << "decision_record_capacity=" << kMaxDecisionRecords << '\n'
+              << "decision_record_hot_size_bytes="
+              << sizeof(DecisionRecordHot) << '\n'
+              << "decision_record_hot_budget_bytes="
+              << kDecisionRecordHotBudgetBytes << '\n'
+              << "decision_record_hot_arena_slot_stride_bytes="
+              << kDecisionRecordHotArenaSlotStrideBytes << '\n'
+              << "decision_record_cold_size_bytes="
+              << sizeof(DecisionRecordCold) << '\n'
+              << "decision_record_cold_budget_bytes="
+              << kDecisionRecordColdBudgetBytes << '\n'
+              << "decision_record_cold_arena_slot_stride_bytes="
+              << kDecisionRecordColdArenaSlotStrideBytes << '\n'
+              << "decision_record_packed_object_footprint_bytes="
+              << kMaxDecisionRecords *
+                     (sizeof(DecisionRecordHot) + sizeof(DecisionRecordCold))
+              << '\n'
+              << "decision_record_arena_footprint_bytes="
+              << kMaxDecisionRecords *
+                     (kDecisionRecordHotArenaSlotStrideBytes +
+                      kDecisionRecordColdArenaSlotStrideBytes)
+              << '\n'
               << "kernel_command_budget_bytes=" << kKernelCommandBudgetBytes << '\n'
               << "kernel_result_budget_bytes=" << kKernelResultBudgetBytes << '\n'
               << "trading_state_size_bytes=" << sizeof(TradingState) << '\n'
               << "trading_state_budget_bytes=" << kTradingStateObjectBudgetBytes
               << '\n'
-              << "decision_record_hot_cold_split_status=pending_phase3c\n";
+              << "decision_record_hot_cold_split_status=contract_ready_reducer_pending\n";
     return 0;
 }

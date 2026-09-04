@@ -15,11 +15,38 @@ inline constexpr std::size_t kMaxPolicies = 16;
 inline constexpr std::size_t kMaxSources = 16;
 inline constexpr std::size_t kMaxSourceEventReceipts = 128;
 inline constexpr std::size_t kMaxRequestReceipts = 256;
+inline constexpr std::size_t kMaxDecisionRecords = 16;
 static_assert(kMaxPolicies > 0);
 static_assert(kMaxSources > 0);
 static_assert(kMaxSourceEventReceipts > kMaxSources);
 static_assert(kMaxRequestReceipts > kMaxSourceEventReceipts);
 static_assert(kMaxRequestReceipts > kMaxPolicies);
+static_assert(kMaxDecisionRecords > 0);
+
+enum class EvaluationMode : std::uint8_t {
+    authoritative = 1,
+    shadow = 2,
+};
+
+enum class DecisionCode : std::uint8_t {
+    none = 0,
+    action = 1,
+    no_rule_matched = 2,
+    invalid_frame = 3,
+    policy_not_found = 4,
+    policy_not_active = 5,
+    account_scope_mismatch = 6,
+    instrument_scope_mismatch = 7,
+    feature_schema_mismatch = 8,
+    source_not_admitted = 9,
+    source_evidence_mismatch = 10,
+    policy_not_yet_valid = 11,
+    policy_expired = 12,
+    market_data_not_ready = 13,
+    feature_unavailable = 14,
+    control_halted = 15,
+    control_suppressed = 16,
+};
 
 enum class PolicyLifecycle : std::uint8_t {
     none = 0,
@@ -156,6 +183,48 @@ struct SourceEventReceipt {
     SourceSequence sequence{};
     Digest256 event_digest{};
 };
+
+// The hot record contains only fields used to find a decision and consume its
+// authoritative outcome. Its independently retained cold partner contains the
+// full input needed for audit and deterministic re-evaluation.
+struct DecisionRecordHot {
+    DecisionId decision_id{};
+    PolicyId policy_id{};
+    PolicyVersion policy_version{};
+    std::uint64_t state_version{};
+    KillEpoch kill_epoch{};
+    ExecutorGeneration executor_generation{};
+    std::uint16_t matched_rule_index{};
+    std::uint16_t rules_visited{};
+    DecisionCode code{DecisionCode::none};
+    ContractError contract_error{ContractError::none};
+    Directive proposed_directive{Directive::no_action};
+    Directive effective_directive{Directive::no_action};
+    EvaluationMode evaluation_mode{EvaluationMode::authoritative};
+    StrategyMode strategy_mode{StrategyMode::halted};
+
+    constexpr auto operator<=>(const DecisionRecordHot&) const noexcept = default;
+};
+
+struct DecisionRecordCold {
+    DecisionId decision_id{};
+    Digest256 command_payload_digest{};
+    DecisionFrame frame{};
+};
+
+inline constexpr std::size_t kDecisionRecordHotArenaSlotStrideBytes =
+    round_up_to_cache_line(sizeof(DecisionRecordHot));
+inline constexpr std::size_t kDecisionRecordColdArenaSlotStrideBytes =
+    round_up_to_cache_line(sizeof(DecisionRecordCold));
+
+static_assert(std::is_trivially_copyable_v<DecisionRecordHot>);
+static_assert(std::is_trivially_copyable_v<DecisionRecordCold>);
+static_assert(sizeof(DecisionRecordHot) <= kDecisionRecordHotBudgetBytes,
+              "hot decision record exceeded its reviewed object budget");
+static_assert(sizeof(DecisionRecordCold) <= kDecisionRecordColdBudgetBytes,
+              "cold decision record exceeded its reviewed object budget");
+static_assert(kDecisionRecordHotArenaSlotStrideBytes == kTargetCacheLineBytes,
+              "hot decision record no longer fits one target cache-line slot");
 
 // TradingState has one mutable owner. References into its arrays must not be
 // retained across apply(): later phases may reuse slots during replicated

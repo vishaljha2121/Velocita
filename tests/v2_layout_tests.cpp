@@ -2,6 +2,7 @@
 
 #include "velocita/v2/contracts.hpp"
 #include "velocita/v2/kernel.hpp"
+#include "velocita/v2/payload.hpp"
 #include "velocita/v2/rule_evaluator.hpp"
 
 #include <cstddef>
@@ -41,12 +42,34 @@ void test_current_object_and_slot_budgets() {
             "decision-frame arena stride is not cache-line rounded");
 }
 
+void test_decision_records_have_separate_hot_and_cold_layouts() {
+    using namespace velocita::v2;
+    static_assert(kMaxDecisionRecords == 16);
+    static_assert(std::is_trivially_copyable_v<DecisionRecordHot>);
+    static_assert(std::is_trivially_copyable_v<DecisionRecordCold>);
+    static_assert(sizeof(DecisionRecordHot) <= kDecisionRecordHotBudgetBytes);
+    static_assert(sizeof(DecisionRecordCold) <= kDecisionRecordColdBudgetBytes);
+
+    require(kDecisionRecordHotArenaSlotStrideBytes == kTargetCacheLineBytes,
+            "hot decision record does not fit one cache-line slot");
+    require(kDecisionRecordColdArenaSlotStrideBytes >=
+                sizeof(DecisionRecordCold),
+            "cold decision-record stride is smaller than its object");
+    require((kDecisionRecordColdArenaSlotStrideBytes %
+             kTargetCacheLineBytes) == 0,
+            "cold decision-record stride is not cache-line rounded");
+    require(kDecisionRecordColdArenaSlotStrideBytes !=
+                kMaxDecisionFramePayloadBytes,
+            "cold arena stride was coupled to canonical frame bytes");
+}
+
 }  // namespace
 
 int main() {
     try {
         test_target_cache_line_contract();
         test_current_object_and_slot_budgets();
+        test_decision_records_have_separate_hot_and_cold_layouts();
         std::cout << "all V2 layout tests passed\n";
         return 0;
     } catch (const std::exception& error) {
