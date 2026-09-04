@@ -1,7 +1,8 @@
 # V2 TDD implementation and validation plan
 
-Status: approved execution baseline; Phase 1 accepted on macOS, native ARM64
-Ubuntu, and physical Raspberry Pi ARM64. Phase 2 remains experimental.
+Status: approved execution baseline; Phases 1 and 2 are accepted on macOS,
+native ARM64 Ubuntu, and physical Raspberry Pi ARM64. Phase 3 is planned and
+has not begun.
 
 Architecture authority:
 [`ADR 0001`](adr/0001-v2-replicated-decision-oms-and-execution-boundary.md)
@@ -9,7 +10,7 @@ Architecture authority:
 Detailed contracts:
 [`V2 architecture contracts`](V2_ARCHITECTURE_CONTRACTS.md)
 
-Current development branch: `experiment/v2-phase2-kernel`
+Accepted Phase 2 branch: `v2/phase-2-deterministic-kernel`
 
 Preserved baselines: annotated tag `v1.0.0`, V1.1 phase tags and branches, and
 all accepted/failing evidence already recorded in `CHANGELOG.md`.
@@ -60,6 +61,46 @@ Rules:
    measured envelope, retained raw evidence, and a correctness oracle.
 7. Fault tests name the exact cut point: before commit, after commit, before
    send, after send, before acknowledgement, during snapshot, and so on.
+
+### 2.1 Phase execution control
+
+The phase sequence is a dependency graph, not a suggestion. Work advances only
+when the current phase has an accepted closure record.
+
+For every phase:
+
+- [ ] the objective and non-goals are explicit;
+- [ ] command, result, state, identity, and failure contracts are reviewed;
+- [ ] the smallest next behavior is observed RED for the intended reason;
+- [ ] focused tests pass after the minimal GREEN implementation;
+- [ ] relevant host regressions and sanitizers pass;
+- [ ] canonical bytes/digests change only through explicit schema review;
+- [ ] the pinned ARM64 container gate passes from an identified source root;
+- [ ] a physical Pi gate runs at the phase closure or when hardware behavior is
+      part of the claim;
+- [ ] evidence records commands, commits, source roots, raw results, limits,
+      and rollback; and
+- [ ] the changelog says exactly what is and is not accepted.
+
+No later-phase behavior is pulled forward for demonstration convenience. A
+failed gate stops promotion but does not erase useful experimental evidence.
+Documentation corrections and focused host tests may proceed while hardware is
+unavailable; hardware-dependent claims may not.
+
+The controlled critical path is:
+
+```text
+Phase 2 deterministic foundation                 ACCEPTED
+  -> Phase 3 authoritative decision evaluation   NEXT
+  -> Phase 4 risk + orders + transactional outbox
+  -> Phase 5 simulator + execution gateway
+  -> Phase 6 Raft integration
+  -> Phase 7 durable storage
+  -> Phase 8 execution fencing
+  -> Phase 9 venue adapter
+  -> Phase 10 operational release proof
+  -> Phase 11 strategy/model
+```
 
 ## 3. CTO review template for every phase
 
@@ -245,15 +286,14 @@ fixed-point results match on macOS and ARM64.
 No V1 wire or storage writer changes. Revert the Phase 1 commit or switch to a
 preserved V1/V1.1 branch.
 
-## 7. Phase 2: pure deterministic Decision/OMS kernel
+## 7. Phase 2: pure deterministic kernel foundation
 
-Implementation state: policy-lifecycle/request-dedup and monotonic
+Implementation state: accepted. Policy-lifecycle/request-dedup and monotonic
 control-authority increments are green on macOS ARM64 and native ARM64
 Ubuntu/GCC. Strict normalized source admission is green on the host and native
 ARM64 Ubuntu/GCC; its behavior commit is `33d27f6` and source root is
 `0282782ed53a1727a92acaf6c830f5a0651554e40cc70861d8eb15d7373f32b8`.
-Earlier behavior commits are `7bc9e42` and `6de06ec`. Phase 2 remains incomplete
-and stays on `experiment/v2-phase2-kernel` pending its remaining reducer work.
+Earlier behavior commits are `7bc9e42` and `6de06ec`.
 The source-admission increment has also passed its physical Pi checkpoint. A
 canonical state-snapshot/state-digest increment is green on the host and pinned
 ARM64 Ubuntu/GCC at behavior commit `865ec08` and source root
@@ -286,7 +326,12 @@ Generated-model evidence is in
 
 ### Objective
 
-Build the authority as a transport-free, storage-free reducer library.
+Build the bounded, transport-free, storage-free reducer foundation that later
+phases extend with decision, risk, order, and outbox semantics.
+
+Non-goals for this phase are decision evaluation, risk accounting, order
+lifecycle, outbox creation, venue I/O, Raft integration, and durable storage.
+Those capabilities belong exclusively to Phases 3 through 7.
 
 ### Tests first
 
@@ -294,20 +339,18 @@ Build the authority as a transport-free, storage-free reducer library.
 - strategy modes and monotonic kill/executor generations;
 - request dedup returns the byte-equivalent retained result;
 - accepted and conflicting duplicate source events;
-- order lifecycle including partial fill, cancel/fill race, replace, unknown,
-  and reconciliation;
-- reservation conservation and no double release;
-- position changes only for accepted unique fill/correction evidence;
 - snapshot encode/decode returns the same state digest; and
-- random bounded command sequences match a simple reference model.
+- random bounded command sequences and snapshot suffixes match a structurally
+  independent reference model.
 
 ### Implementation scope
 
-- `TradingState` partitioned into bounded policy, strategy, order, reservation,
-  position, receipt, outbox, and reconciliation regions;
+- `TradingState` partitioned into bounded policy, strategy-control, source,
+  source-event-receipt, and request-receipt regions;
 - immutable `Command` alternatives and typed `ApplyResult`;
 - deterministic state digest;
 - snapshot schema independent of object memory;
+- canonical command and result frames independent of object memory;
 - preallocated apply scratch; and
 - no external side effects.
 
@@ -323,16 +366,28 @@ Build the authority as a transport-free, storage-free reducer library.
 ### Metrics/evidence
 
 - apply duration by bounded command kind;
-- state/outbox sizes and capacity high-watermarks;
+- encoded command/result/snapshot sizes and bounded state capacities;
 - allocation count after startup; and
 - corpus replay digest.
 
 ### Gate
 
-Live and replay reducers produce byte-equivalent result, state digest, and
-outbox for the full corpus and generated sequences.
+Direct apply, canonical-byte replay, and snapshot-plus-suffix replay produce
+byte-equivalent results and final state snapshots for the handwritten and
+generated model corpora on macOS, pinned ARM64 Linux, and the physical Pi.
+
+The acceptance record is
+[`V2 Phase 2 deterministic-kernel acceptance`](evidence/V2_PHASE2_DETERMINISTIC_KERNEL_ACCEPTANCE.md).
+
+### Rollback
+
+Phase 2 does not alter V1/V1.1 wire or storage formats. Return to
+`v2/phase-1-domain-contracts` to remove the reducer foundation, or to the
+preserved V1/V1.1 branches and tags to leave V2 entirely.
 
 ## 8. Phase 3: policy artifacts and authoritative decision evaluation
+
+Implementation state: planned. No Phase 3 behavior is accepted yet.
 
 ### Objective
 

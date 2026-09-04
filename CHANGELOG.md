@@ -13,10 +13,11 @@ release-engineering work.
 
 ## [V2] - In development
 
-Status: Phase 1 domain and byte contracts are accepted on macOS ARM64, native
-ARM64 Ubuntu 26.04, and physical Raspberry Pi 5 ARM64. No deterministic Decision/OMS
-reducer, risk engine, outbox, execution gateway, or live trading behavior is
-implemented. No V2 release has been tagged, and no V1/V1.1 wire, storage,
+Status: Phase 1 domain/byte contracts and the Phase 2 deterministic-kernel
+foundation are accepted on macOS ARM64, native ARM64 Ubuntu 26.04, and physical
+Raspberry Pi 5 ARM64. Decision evaluation, risk, orders, outbox, execution
+gateway, Raft integration, durable V2 storage, and live trading behavior are
+not implemented. No V2 release has been tagged, and no V1/V1.1 wire, storage,
 deployment, or evidence artifact has been deleted or superseded in place.
 
 The accepted architecture direction is recorded in
@@ -227,6 +228,17 @@ to 48.50 C. This expands semantic/replay evidence; it does not establish
 real-Raft integration, durability, capacity, or trading authority. Detailed
 evidence is in
 [`docs/evidence/V2_PHASE2_MODEL_REPLAY_EXPERIMENT.md`](docs/evidence/V2_PHASE2_MODEL_REPLAY_EXPERIMENT.md).
+
+### Phase 2 accepted - deterministic kernel foundation
+
+Phase 2 is accepted at its corrected architectural boundary: bounded policy,
+control, source-admission, receipt, canonical-codec, snapshot, digest, and
+model-replay mechanics. Decision evaluation begins in Phase 3; risk, orders,
+and the transactional outbox remain exclusively Phase 4 work. This removes the
+earlier checklist overlap without pulling later behavior forward.
+
+The closure record is
+[`docs/evidence/V2_PHASE2_DETERMINISTIC_KERNEL_ACCEPTANCE.md`](docs/evidence/V2_PHASE2_DETERMINISTIC_KERNEL_ACCEPTANCE.md).
 
 ### Version preservation
 
