@@ -363,6 +363,15 @@ object ceiling; the venue capability record exactly meets its 32-byte ceiling.
 No canonical payload or reducer state changes yet. Functional tests remain
 17/17 green, with focused Release and ASan/UBSan action/layout gates passing.
 
+The standalone Phase 3D pure resolver now converts fixed-or-feature templates
+to exact economic proposals using explicit signed rounding and checked integer
+arithmetic. It enforces scope/version binding, venue semantics, freshness,
+instrument bounds, and immutable offset/deviation/quantity/notional caps with
+typed reject-not-clamp outcomes. Cancellation remains available during stale
+market data. Functional tests pass 18/18; focused Release and ASan/UBSan
+resolver/layout gates pass 2/2. Policy-schema/reducer integration and target
+evidence remain pending, so this is not yet an order-authoritative path.
+
 ### Version preservation
 
 - V1 remains recoverable at annotated tag `v1.0.0`.

@@ -40,6 +40,7 @@ inline constexpr std::size_t kActionTemplateObjectBudgetBytes = 160;
 inline constexpr std::size_t kEconomicActionProposalObjectBudgetBytes = 128;
 inline constexpr std::size_t kInstrumentExecutionProfileObjectBudgetBytes = 80;
 inline constexpr std::size_t kVenueCapabilitiesObjectBudgetBytes = 32;
+inline constexpr std::size_t kActionResolutionObjectBudgetBytes = 128;
 
 static_assert(kTargetCacheLineBytes >= alignof(std::max_align_t));
 static_assert(is_power_of_two(kTargetCacheLineBytes));

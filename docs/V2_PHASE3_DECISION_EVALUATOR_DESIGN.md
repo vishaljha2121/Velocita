@@ -2,8 +2,9 @@
 
 Status: decisions 1 through 5 approved; Phase 3A, 3B, and the Phase 3C
 authoritative reducer are green on the host and physical Pi; the first Phase
-3D action-contract slice is host-green, but Phase 3D resolution, Phase 3
-measurement, and Phase 3 acceptance remain pending
+3D action contracts, authoritative execution inputs, and standalone pure
+resolver are host-green, but policy-schema/reducer integration, Phase 3
+measurement, ARM64/Pi evidence, and Phase 3 acceptance remain pending
 
 Branch: `v2/phase-3-policy-evaluator`
 
@@ -408,16 +409,46 @@ slice. Detailed evidence is in
 - [ ] add templates to a new explicit policy schema without reinterpreting V1;
 - [ ] freeze canonical payload sizes, golden bytes, and corpus digests;
 - [ ] resolve first-match rules to templates and exact economic proposals;
-- [ ] prove rejection precedence and reject-not-clamp semantics;
+      the standalone exact-proposal resolver is green, while rule/template
+      schema binding remains pending;
+- [x] prove standalone resolver rejection precedence and reject-not-clamp
+      semantics;
 - [ ] prove shadow/control-suppressed outcomes contain no effective action;
 - [ ] extend result, hot/cold record, snapshot, replay, and independent model;
 - [ ] re-run layout ceilings before accepting any payload growth; and
 - [ ] pass host Release/sanitizer, pinned ARM64, physical Pi, and phase evidence
       gates.
 
-The next slice is the pure action resolver. Policy schema integration follows
-only after its checked arithmetic and reject precedence are independently
-green.
+The standalone pure action resolver is now green. It has no I/O, clock access,
+allocation, mutable global state, or input mutation. It uses checked integer
+addition and multiplication, explicit signed rounding, canonical empty
+proposals on rejection, and an independently bounded 120-byte result object.
+
+Its accepted rejection order is:
+
+1. decision identity, then policy, frame, template, instrument-profile, and
+   venue-capability structural contracts;
+2. policy/frame scope, instrument and venue scope, then bound instrument and
+   capability versions;
+3. policy event-time validity;
+4. exact venue directive support;
+5. for price-bearing actions, exact TIF and post-only support;
+6. market-data readiness and template freshness;
+7. offset cap, feature availability, checked conversion, positive values, and
+   inclusive instrument bounds;
+8. reference-price deviation, quantity cap, checked notional, and notional cap;
+   and
+9. exact proposal emission.
+
+Cancel deliberately exits after directive support and exact provenance are
+established. It does not depend on market-data readiness, price/quantity
+features, or notional arithmetic; stale market data must not prevent a bounded
+logical-slot cancellation.
+
+Policy schema integration follows next. Before the standalone resolver may
+become authoritative, the feature-unit conversion factors used by its value
+sources must be bound to a versioned feature-schema contract rather than merely
+accepted from template data.
 
 No Phase 4 order, reservation, or effect work begins until this contract and
 the reject-not-clamp boundary are accepted.

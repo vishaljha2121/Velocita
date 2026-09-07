@@ -2,9 +2,9 @@
 
 Date: 2026-09-06
 
-Status: action and authoritative-input contract slices host-green; canonical
-policy integration, resolution, reducer, replay, ARM64, and physical Pi gates
-pending
+Status: action contracts, authoritative inputs, and standalone pure resolver
+host-green; canonical policy integration, reducer, replay, ARM64, and physical
+Pi gates pending
 
 ## Objective
 
@@ -63,6 +63,7 @@ ActionTemplate:         152 B / 160 B budget
 EconomicActionProposal: 112 B / 128 B budget
 InstrumentExecutionProfile: 72 B / 80 B budget
 VenueCapabilities:          32 B / 32 B budget
+ActionResolution:          120 B / 128 B budget
 ```
 
 These are resident C++ object sizes. No canonical policy, kernel, or snapshot
@@ -122,7 +123,34 @@ one-cache-line layout. Arena stride remains a separate future decision.
 The complete functional suite remains green at 17/17. Focused optimized Release
 and ASan/UBSan action/layout gates also pass.
 
-The next TDD slice implements a pure resolver against these authoritative
-inputs before changing the policy wire schema. It must calculate conversions
-and notional with checked arithmetic, enforce every envelope/capability limit,
-and return typed reject-not-clamp outcomes.
+## Pure resolver follow-up
+
+The resolver test was written before its interface. The observed RED build
+failed because `velocita/v2/action_resolver.hpp` did not exist. GREEN adds a
+standalone `resolve_action` function whose six inputs are borrowed by `const&`
+except for the small `DecisionId`, and whose result is returned by value.
+
+The full functional suite passes 18/18. Focused optimized Release and
+ASan/UBSan resolver/layout gates pass 2/2. Directed tests prove:
+
+- fixed and feature-derived values resolve to exact integer ticks/lots;
+- signed half ties round away from zero when explicitly requested;
+- checked tick addition and notional multiplication reject overflow;
+- policy/frame/profile/venue scopes and versions fail with stable typed codes;
+- directive, TIF, and post-only requirements cannot be silently downgraded;
+- market readiness and freshness are required for price-bearing actions;
+- missing features, non-positive values, instrument ranges, offset, deviation,
+  quantity, and notional caps reject without clamping;
+- cap equality and inclusive instrument boundaries remain valid; and
+- cancellation remains available with stale market data while retaining exact
+  decision, policy, venue, instrument, and logical-slot provenance.
+
+Every rejection carries a canonical zero proposal. A successful proposal binds
+the policy and risk-policy versions plus the instrument/capability versions;
+Phase 4 must still recompute notional, check current dynamic risk, and reserve
+atomically.
+
+The next slice adds templates to a new explicit policy schema and binds feature
+conversion metadata to a versioned feature schema. Until that integration is
+complete, the standalone resolver is tested code but not an authoritative
+order-producing path.

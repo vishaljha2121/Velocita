@@ -1,6 +1,7 @@
 #include "velocita/v2/layout.hpp"
 
 #include "velocita/v2/action_template.hpp"
+#include "velocita/v2/action_resolver.hpp"
 #include "velocita/v2/contracts.hpp"
 #include "velocita/v2/kernel.hpp"
 #include "velocita/v2/payload.hpp"
@@ -46,6 +47,8 @@ void test_current_object_and_slot_budgets() {
                   kInstrumentExecutionProfileObjectBudgetBytes);
     static_assert(sizeof(VenueCapabilities) <=
                   kVenueCapabilitiesObjectBudgetBytes);
+    static_assert(sizeof(ActionResolution) <=
+                  kActionResolutionObjectBudgetBytes);
     static_assert(sizeof(TradingState) <= kTradingStateObjectBudgetBytes);
     static_assert(kMaxStateSnapshotBytes < 64U * 1024U);
 

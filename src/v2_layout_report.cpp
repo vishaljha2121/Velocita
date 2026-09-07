@@ -1,4 +1,5 @@
 #include "velocita/v2/action_template.hpp"
+#include "velocita/v2/action_resolver.hpp"
 #include "velocita/v2/contracts.hpp"
 #include "velocita/v2/kernel.hpp"
 #include "velocita/v2/kernel_codec.hpp"
@@ -55,6 +56,10 @@ int main() {
               << '\n'
               << "venue_capabilities_budget_bytes="
               << kVenueCapabilitiesObjectBudgetBytes << '\n'
+              << "action_resolution_size_bytes=" << sizeof(ActionResolution)
+              << '\n'
+              << "action_resolution_budget_bytes="
+              << kActionResolutionObjectBudgetBytes << '\n'
               << "apply_result_size_bytes=" << sizeof(ApplyResult) << '\n'
               << "request_receipt_size_bytes=" << sizeof(RequestReceipt) << '\n'
               << "decision_record_capacity=" << kMaxDecisionRecords << '\n'

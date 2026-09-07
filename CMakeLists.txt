@@ -111,6 +111,7 @@ target_compile_options(velocita_v2_contracts PRIVATE -Wall -Wextra -Wpedantic)
 
 add_library(velocita_v2_evaluator
     src/v2_rule_evaluator.cpp
+    src/v2_action_resolver.cpp
 )
 target_include_directories(velocita_v2_evaluator PUBLIC include)
 target_link_libraries(velocita_v2_evaluator PUBLIC velocita_v2_contracts)
@@ -238,6 +239,12 @@ if(BUILD_TESTING)
         -Wall -Wextra -Wpedantic)
     add_test(NAME v2-action-template-contract-tests
         COMMAND v2-action-template-contract-tests)
+
+    add_executable(v2-action-resolver-tests tests/v2_action_resolver_tests.cpp)
+    target_link_libraries(v2-action-resolver-tests PRIVATE velocita_v2_evaluator)
+    target_compile_options(v2-action-resolver-tests PRIVATE
+        -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-action-resolver-tests COMMAND v2-action-resolver-tests)
 
     add_executable(v2-layout-report src/v2_layout_report.cpp)
     target_link_libraries(v2-layout-report PRIVATE
