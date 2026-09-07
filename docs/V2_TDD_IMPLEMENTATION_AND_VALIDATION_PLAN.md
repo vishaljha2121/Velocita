@@ -387,10 +387,13 @@ preserved V1/V1.1 branches and tags to leave V2 entirely.
 
 ## 8. Phase 3: policy artifacts and authoritative decision evaluation
 
-Implementation state: Phase 3A ordered-rule evaluation is green on the host at
-behavior commit `6ee47b7`; Phase 3 is not accepted. Schema evolution,
-authoritative reducer integration, retained decision records, canonical replay,
-ARM64, and physical Pi gates remain pending.
+Implementation state: Phase 3A ordered-rule evaluation, Phase 3B decision-frame
+schema V2, and Phase 3C authoritative reducer/records/replay are accepted on the
+host and physical Pi. Phase 3D typed action contracts, versioned instrument and
+venue inputs, and the standalone pure resolver are host-green through commit
+`946d3e3`. Executable-policy schema integration, canonical action bytes,
+authoritative reducer/replay integration, measurement, ARM64/Pi Phase 3D gates,
+and overall Phase 3 acceptance remain pending.
 
 The reviewed execution checklist and pending schema decisions are maintained in
 [`V2 Phase 3 decision-evaluator design`](V2_PHASE3_DECISION_EVALUATOR_DESIGN.md).
