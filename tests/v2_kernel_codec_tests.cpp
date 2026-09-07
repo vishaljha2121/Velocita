@@ -78,6 +78,59 @@ velocita::v2::DecisionFrame invalid_frame() {
     return value;
 }
 
+velocita::v2::StageExecutablePolicy staged_policy() {
+    using namespace velocita::v2;
+    StageExecutablePolicy value;
+    value.feature_schema.schema_version = kFeatureSchemaArtifactSchemaVersion;
+    value.feature_schema.feature_schema_id = FeatureSchemaId{3};
+    value.feature_schema.feature_count = 8;
+    for (std::size_t index = 0; index < 8; ++index) {
+        value.feature_schema.features[index] =
+            {FeatureEconomicKind::price, 1};
+    }
+    value.feature_schema.artifact_digest =
+        compute_artifact_digest(value.feature_schema).digest;
+
+    auto& executable = value.executable_policy;
+    executable.schema_version = kExecutablePolicyArtifactSchemaVersion;
+    executable.policy_id = PolicyId{17};
+    executable.policy_version = PolicyVersion{2};
+    executable.policy_artifact_digest = policy().artifact_digest;
+    executable.feature_schema_id = FeatureSchemaId{3};
+    executable.feature_schema_digest = value.feature_schema.artifact_digest;
+    executable.template_count = 1;
+    auto& action = executable.templates[0];
+    action.schema_version = kActionTemplateSchemaVersion;
+    action.directive = Directive::place_limit;
+    action.side = Side::buy;
+    action.time_in_force = TimeInForce::good_til_cancel;
+    action.post_only = PostOnlyMode::required;
+    action.order_slot = LogicalOrderSlot{1};
+    action.instrument_spec_version = InstrumentSpecVersion{6};
+    action.venue_capabilities_version = VenueCapabilitiesVersion{7};
+    action.price_source = {EconomicValueSourceKind::feature, 7,
+                           RoundingMode::toward_zero, {}, 1, {}};
+    action.quantity_source = {EconomicValueSourceKind::fixed, 0,
+                              RoundingMode::toward_zero,
+                              QuantityLots::from_atoms(1), 0};
+    action.safety_caps = {QuantityLots::from_atoms(2),
+                          MoneyMicros::from_atoms(1000),
+                          PriceTicks::from_atoms(2), PriceTicks::from_atoms(1),
+                          100, action.price_source};
+    executable.rule_binding_count = 1;
+    executable.rule_template_slots[0] = ActionTemplateSlot{1};
+    executable.artifact_digest = compute_artifact_digest(executable).digest;
+    value.instrument = {kInstrumentExecutionProfileSchemaVersion, VenueId{8},
+                        InstrumentId{4}, InstrumentSpecVersion{6},
+                        MoneyMicros::from_atoms(10), PriceTicks::from_atoms(1),
+                        PriceTicks::from_atoms(100), QuantityLots::from_atoms(1),
+                        QuantityLots::from_atoms(10)};
+    value.venue = {kVenueCapabilitiesSchemaVersion, VenueId{8},
+                   VenueCapabilitiesVersion{7}, kVenueDirectivePlaceLimit,
+                   kVenueTifGtc, 1};
+    return value;
+}
+
 velocita::v2::Command command(const std::uint64_t sequence,
                               velocita::v2::CommandBody body) {
     using namespace velocita::v2;
@@ -119,8 +172,13 @@ void test_every_command_alternative_round_trips_canonically() {
         command(10, EvaluateDecisionFrame{DecisionId{22},
                                           EvaluationMode::authoritative,
                                           invalid_frame()}),
+        command(11, staged_policy()),
+        command(12, ActivateExecutablePolicy{
+                        PolicyId{17}, PolicyVersion{2},
+                        staged_policy().executable_policy.artifact_digest}),
     };
 
+    std::size_t command_index{};
     for (const auto& original : commands) {
         std::array<std::byte, kMaxKernelCommandBytes> bytes{};
         const auto encoded = encode_kernel_command(original, bytes);
@@ -132,7 +190,8 @@ void test_every_command_alternative_round_trips_canonically() {
         const auto decoded = decode_kernel_command(
             {bytes.data(), encoded.bytes_written}, restored, scratch);
         require(decoded.error == KernelCodecError::none,
-                "canonical command did not decode");
+                "canonical command did not decode at index " +
+                    std::to_string(command_index));
 
         std::array<std::byte, kMaxKernelCommandBytes> round_trip{};
         const auto reencoded = encode_kernel_command(restored, round_trip);
@@ -143,6 +202,7 @@ void test_every_command_alternative_round_trips_canonically() {
                                                    encoded.bytes_written),
                                round_trip.begin()),
                 "command round trip changed canonical bytes");
+        ++command_index;
     }
 }
 
@@ -159,7 +219,7 @@ void test_command_identity_and_kind_are_explicit() {
     const std::array expected_prefix{
         std::byte{'V'}, std::byte{'2'}, std::byte{'K'}, std::byte{'C'},
         std::byte{104}, std::byte{0}, std::byte{0}, std::byte{0},
-        std::byte{2}, std::byte{0},
+        std::byte{3}, std::byte{0},
         std::byte{8}, std::byte{0},
         std::byte{12}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
@@ -170,9 +230,9 @@ void test_command_identity_and_kind_are_explicit() {
     const auto full_hash =
         to_hex(sha256_digest({bytes.data(), encoded.bytes_written}));
     require(frame_hash ==
-                "ea3df69ad796068459e87ce00afed4cb650597f8666392edc026a0e2688d70d3" &&
+                "2357118cb0f0790c3b24c967b1256406ba789bfcf2e0ca7e6caacae666d1b4f6" &&
                 full_hash ==
-                    "2ff00f5d285bc581448b0c6bd907f3c8d1da74a7cc6bddc12e2dfe8cc1f4e571",
+                    "050e042b897099999e111de5ff032f67010744c8a55137b74591bde2d22dd38f",
             "source-command golden corpus changed: frame=" + frame_hash +
                 " full=" + full_hash);
 
@@ -236,9 +296,9 @@ void test_result_round_trip_is_canonical() {
     const auto frame_hash = to_hex(encoded.frame_digest);
     const auto full_hash = to_hex(sha256_digest(bytes));
     require(frame_hash ==
-                "44800bee9aa26f3b76513165e62c7bac68daa1da528afc0c58d41f6eea5ead89" &&
+                "bf4fa072530c18389d54d844dc571768cd11c6c617242f60543d6f4b8a54f2ec" &&
                 full_hash ==
-                    "7f6c780dd8f02371d3c42e10703d7157eb48cf656f1437ffe962e7712a4e4245",
+                    "23240d0e66b19b73b6801050b5e3c490c61168e6a9ac78dbd420a437f2cd5363",
             "apply-result golden corpus changed: frame=" + frame_hash +
                 " full=" + full_hash);
 }

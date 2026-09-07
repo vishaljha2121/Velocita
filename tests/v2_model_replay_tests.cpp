@@ -1,3 +1,4 @@
+#include "velocita/v2/action_resolver.hpp"
 #include "velocita/v2/digest.hpp"
 #include "velocita/v2/replay.hpp"
 #include "velocita/v2/rule_evaluator.hpp"
@@ -122,6 +123,54 @@ DecisionFrame decision_frame(const std::uint64_t variant,
     return value;
 }
 
+StageExecutablePolicy executable_bundle_command(const PolicyArtifact& base) {
+    StageExecutablePolicy value;
+    value.feature_schema.schema_version = kFeatureSchemaArtifactSchemaVersion;
+    value.feature_schema.feature_schema_id = base.feature_schema_id;
+    value.feature_schema.feature_count = 1;
+    value.feature_schema.features[0] = {FeatureEconomicKind::price, 1};
+    value.feature_schema.artifact_digest =
+        compute_artifact_digest(value.feature_schema).digest;
+    auto& executable = value.executable_policy;
+    executable.schema_version = kExecutablePolicyArtifactSchemaVersion;
+    executable.policy_id = base.policy_id;
+    executable.policy_version = base.policy_version;
+    executable.policy_artifact_digest = base.artifact_digest;
+    executable.feature_schema_id = base.feature_schema_id;
+    executable.feature_schema_digest = value.feature_schema.artifact_digest;
+    executable.template_count = 1;
+    auto& action = executable.templates[0];
+    action.schema_version = kActionTemplateSchemaVersion;
+    action.directive = Directive::place_limit;
+    action.side = Side::buy;
+    action.time_in_force = TimeInForce::good_til_cancel;
+    action.post_only = PostOnlyMode::required;
+    action.order_slot = LogicalOrderSlot{1};
+    action.instrument_spec_version = InstrumentSpecVersion{1};
+    action.venue_capabilities_version = VenueCapabilitiesVersion{1};
+    action.price_source = {EconomicValueSourceKind::feature, 0,
+                           RoundingMode::toward_zero, {}, 1, {}};
+    action.quantity_source = {EconomicValueSourceKind::fixed, 0,
+                              RoundingMode::toward_zero,
+                              QuantityLots::from_atoms(1), 0};
+    action.safety_caps = {QuantityLots::from_atoms(2),
+                          MoneyMicros::from_atoms(1'000),
+                          PriceTicks::from_atoms(2), PriceTicks::from_atoms(1),
+                          100, action.price_source};
+    executable.rule_binding_count = base.rule_count;
+    executable.rule_template_slots[0] = ActionTemplateSlot{1};
+    executable.artifact_digest = compute_artifact_digest(executable).digest;
+    value.instrument = {kInstrumentExecutionProfileSchemaVersion, VenueId{1},
+                        base.instrument_id, InstrumentSpecVersion{1},
+                        MoneyMicros::from_atoms(10), PriceTicks::from_atoms(1),
+                        PriceTicks::from_atoms(100), QuantityLots::from_atoms(1),
+                        QuantityLots::from_atoms(10)};
+    value.venue = {kVenueCapabilitiesSchemaVersion, VenueId{1},
+                   VenueCapabilitiesVersion{1}, kVenueDirectivePlaceLimit,
+                   kVenueTifGtc, 1};
+    return value;
+}
+
 Command new_command(const std::uint64_t sequence,
                     const std::uint64_t marker,
                     CommandBody body) {
@@ -192,22 +241,26 @@ std::vector<Record> history(const std::uint64_t seed) {
                                          PublishPolicy{policy(1, 1, 0)})));
     records.push_back(record(new_command(
         2, seed + 2, ValidatePolicy{PolicyId{1}, PolicyVersion{1}})));
+    const auto initial_bundle = executable_bundle_command(policy(1, 1, 0));
+    records.push_back(record(new_command(3, seed + 3, initial_bundle)));
     records.push_back(record(new_command(
-        3, seed + 3, ActivatePolicy{PolicyId{1}, PolicyVersion{1}})));
+        4, seed + 4,
+        ActivateExecutablePolicy{PolicyId{1}, PolicyVersion{1},
+                                 initial_bundle.executable_policy.artifact_digest})));
     records.push_back(record(new_command(
-        4, seed + 4, SetExecutorGeneration{ExecutorGeneration{1}})));
+        5, seed + 5, SetExecutorGeneration{ExecutorGeneration{1}})));
     records.push_back(record(
-        new_command(5, seed + 5, AdvanceKillEpoch{KillEpoch{1}})));
+        new_command(6, seed + 6, AdvanceKillEpoch{KillEpoch{1}})));
     records.push_back(record(new_command(
-        6, seed + 6,
+        7, seed + 7,
         RecordSourceEvent{SourceId{1}, SourceGeneration{1}, SourceSequence{1},
                           digest(seed + 0x100)})));
     records.push_back(record(new_command(
-        7, seed + 7,
+        8, seed + 8,
         RecordSourceEvent{SourceId{1}, SourceGeneration{1}, SourceSequence{2},
                           digest(seed + 0x101)})));
     records.push_back(record(new_command(
-        8, seed + 8,
+        9, seed + 9,
         SetStrategyMode{StrategyMode::normal, KillEpoch{1},
                         ExecutorGeneration{1}})));
 
@@ -282,6 +335,8 @@ struct ModelState {
     KillEpoch kill_epoch{};
     ExecutorGeneration executor_generation{};
     std::vector<PolicyRecord> policies;
+    ExecutablePolicyBundle active_executable_policy{};
+    ExecutablePolicyBundle staged_executable_policy{};
     std::vector<SourceCursor> sources;
     std::vector<SourceEventReceipt> source_events;
     std::vector<RequestReceipt> receipts;
@@ -395,6 +450,20 @@ ApplyResult model_policy_transition(ModelState& state,
         return model_result(state, ApplyCode::active_policy_scope_conflict,
                             version, id, policy_version, item->lifecycle);
     }
+    if (destination == PolicyLifecycle::superseded &&
+        state.active_executable_policy.present &&
+        state.active_executable_policy.executable_policy.policy_id == id &&
+        state.active_executable_policy.executable_policy.policy_version ==
+            policy_version) {
+        state.active_executable_policy = {};
+    }
+    if (destination == PolicyLifecycle::superseded &&
+        state.staged_executable_policy.present &&
+        state.staged_executable_policy.executable_policy.policy_id == id &&
+        state.staged_executable_policy.executable_policy.policy_version ==
+            policy_version) {
+        state.staged_executable_policy = {};
+    }
     item->lifecycle = destination;
     return model_result(state, ApplyCode::applied, version, id, policy_version,
                         destination);
@@ -465,6 +534,179 @@ ApplyResult model_source_event(ModelState& state,
     return source_result(ApplyCode::applied);
 }
 
+bool same_bundle_identity(const ExecutablePolicyBundle& bundle,
+                          const PolicyId id,
+                          const PolicyVersion version,
+                          const Digest256& digest_value) {
+    return bundle.present && bundle.executable_policy.policy_id == id &&
+           bundle.executable_policy.policy_version == version &&
+           bundle.executable_policy.artifact_digest == digest_value;
+}
+
+bool same_bundle_contents(const ExecutablePolicyBundle& bundle,
+                          const StageExecutablePolicy& command) {
+    return bundle.present && bundle.feature_schema == command.feature_schema &&
+           bundle.executable_policy == command.executable_policy &&
+           bundle.instrument == command.instrument && bundle.venue == command.venue;
+}
+
+ApplyResult model_stage_executable(ModelState& state,
+                                   const StageExecutablePolicy& command,
+                                   const std::uint64_t version) {
+    const auto id = command.executable_policy.policy_id;
+    const auto policy_version = command.executable_policy.policy_version;
+    const auto schema_digest = verify_artifact_digest(command.feature_schema);
+    if (schema_digest.error != ArtifactDigestError::none) {
+        return model_result(
+            state,
+            schema_digest.error == ArtifactDigestError::digest_mismatch
+                ? ApplyCode::artifact_digest_mismatch
+                : ApplyCode::invalid_feature_schema_contract,
+            version, id, policy_version, PolicyLifecycle::none,
+            schema_digest.contract_error);
+    }
+    const auto executable_digest =
+        verify_artifact_digest(command.executable_policy);
+    if (executable_digest.error != ArtifactDigestError::none) {
+        return model_result(
+            state,
+            executable_digest.error == ArtifactDigestError::digest_mismatch
+                ? ApplyCode::artifact_digest_mismatch
+                : ApplyCode::invalid_executable_policy_contract,
+            version, id, policy_version, PolicyLifecycle::none,
+            executable_digest.contract_error);
+    }
+    if (const auto error = validate(command.instrument);
+        error != ContractError::none) {
+        return model_result(state, ApplyCode::invalid_instrument_profile_contract,
+                            version, id, policy_version, PolicyLifecycle::none,
+                            error);
+    }
+    if (const auto error = validate(command.venue);
+        error != ContractError::none) {
+        return model_result(state, ApplyCode::invalid_venue_capabilities_contract,
+                            version, id, policy_version, PolicyLifecycle::none,
+                            error);
+    }
+    auto* selected = model_policy(state, id, policy_version);
+    if (selected == nullptr) {
+        return model_result(state, ApplyCode::policy_not_found, version, id,
+                            policy_version);
+    }
+    if (selected->lifecycle != PolicyLifecycle::validated &&
+        selected->lifecycle != PolicyLifecycle::active) {
+        return model_result(state, ApplyCode::invalid_policy_transition, version,
+                            id, policy_version, selected->lifecycle);
+    }
+    auto bound = bind_executable_policy(selected->artifact, command.feature_schema,
+                                        command.executable_policy) ==
+                 ExecutablePolicyBindingCode::bound;
+    bound = bound && command.instrument.instrument_id ==
+                         selected->artifact.instrument_id &&
+            command.instrument.venue_id == command.venue.venue_id;
+    for (std::size_t index = 0;
+         bound && index < command.executable_policy.template_count; ++index) {
+        const auto& action = command.executable_policy.templates[index];
+        bound = action.instrument_spec_version ==
+                    command.instrument.instrument_spec_version &&
+                action.venue_capabilities_version ==
+                    command.venue.venue_capabilities_version;
+    }
+    if (!bound) {
+        return model_result(state, ApplyCode::executable_policy_binding_failed,
+                            version, id, policy_version, selected->lifecycle);
+    }
+    if (same_bundle_contents(state.active_executable_policy, command) ||
+        same_bundle_contents(state.staged_executable_policy, command)) {
+        return model_result(state, ApplyCode::already_applied, version, id,
+                            policy_version, selected->lifecycle);
+    }
+    if (same_bundle_identity(state.active_executable_policy, id, policy_version,
+                             command.executable_policy.artifact_digest) ||
+        same_bundle_identity(state.staged_executable_policy, id, policy_version,
+                             command.executable_policy.artifact_digest) ||
+        (state.staged_executable_policy.present &&
+         state.staged_executable_policy.executable_policy.policy_id == id &&
+         state.staged_executable_policy.executable_policy.policy_version ==
+             policy_version)) {
+        return model_result(state, ApplyCode::executable_policy_identity_conflict,
+                            version, id, policy_version, selected->lifecycle);
+    }
+    if (state.active_executable_policy.present) {
+        auto* active = model_policy(
+            state, state.active_executable_policy.executable_policy.policy_id,
+            state.active_executable_policy.executable_policy.policy_version);
+        if (active != nullptr &&
+            (active->artifact.account_id != selected->artifact.account_id ||
+             active->artifact.instrument_id != selected->artifact.instrument_id)) {
+            return model_result(state, ApplyCode::active_policy_scope_conflict,
+                                version, id, policy_version, selected->lifecycle);
+        }
+        if (active != nullptr && active->artifact.policy_id == id &&
+            active->artifact.policy_version.value() >= policy_version.value()) {
+            return model_result(state, ApplyCode::non_monotonic_policy_version,
+                                version, id, policy_version, selected->lifecycle);
+        }
+    }
+    state.staged_executable_policy =
+        {true, command.feature_schema, command.executable_policy,
+         command.instrument, command.venue, version, 0};
+    return model_result(state, ApplyCode::applied, version, id, policy_version,
+                        selected->lifecycle);
+}
+
+ApplyResult model_activate_executable(ModelState& state,
+                                      const ActivateExecutablePolicy& command,
+                                      const std::uint64_t version) {
+    if (command.policy_id.value() == 0 || command.policy_version.value() == 0 ||
+        command.executable_policy_digest.is_zero()) {
+        return model_result(
+            state, ApplyCode::invalid_command, version, command.policy_id,
+            command.policy_version, PolicyLifecycle::none,
+            command.executable_policy_digest.is_zero()
+                ? ContractError::missing_digest
+                : ContractError::invalid_identity);
+    }
+    if (same_bundle_identity(state.active_executable_policy, command.policy_id,
+                             command.policy_version,
+                             command.executable_policy_digest)) {
+        return model_result(state, ApplyCode::already_applied, version,
+                            command.policy_id, command.policy_version,
+                            PolicyLifecycle::active);
+    }
+    if (!same_bundle_identity(state.staged_executable_policy, command.policy_id,
+                              command.policy_version,
+                              command.executable_policy_digest)) {
+        return model_result(state, ApplyCode::executable_policy_not_staged,
+                            version, command.policy_id, command.policy_version);
+    }
+    auto* selected = model_policy(state, command.policy_id, command.policy_version);
+    if (selected == nullptr) {
+        return model_result(state, ApplyCode::policy_not_found, version,
+                            command.policy_id, command.policy_version);
+    }
+    if (selected->lifecycle != PolicyLifecycle::validated &&
+        selected->lifecycle != PolicyLifecycle::active) {
+        return model_result(state, ApplyCode::invalid_policy_transition, version,
+                            command.policy_id, command.policy_version,
+                            selected->lifecycle);
+    }
+    if (state.active_executable_policy.present) {
+        auto* old = model_policy(
+            state, state.active_executable_policy.executable_policy.policy_id,
+            state.active_executable_policy.executable_policy.policy_version);
+        if (old != nullptr && old != selected) {
+            old->lifecycle = PolicyLifecycle::superseded;
+        }
+    }
+    selected->lifecycle = PolicyLifecycle::active;
+    state.active_executable_policy = state.staged_executable_policy;
+    state.active_executable_policy.activated_state_version = version;
+    state.staged_executable_policy = {};
+    return model_result(state, ApplyCode::applied, version, command.policy_id,
+                        command.policy_version, PolicyLifecycle::active);
+}
+
 ApplyResult model_decision_result(
     const ModelState& state,
     const ApplyCode apply_code,
@@ -475,7 +717,9 @@ ApplyResult model_decision_result(
     const Directive proposed,
     const Directive effective,
     const std::uint16_t matched_rule_index,
-    const std::uint16_t rules_visited) {
+    const std::uint16_t rules_visited,
+    const ActionResolutionCode resolution_code =
+        ActionResolutionCode::none) {
     auto value = model_result(state, apply_code, version, command.frame.policy_id,
                               command.frame.policy_version,
                               PolicyLifecycle::none, contract_error,
@@ -489,6 +733,7 @@ ApplyResult model_decision_result(
     value.evaluation_mode = command.evaluation_mode;
     value.matched_rule_index = matched_rule_index;
     value.rules_visited = rules_visited;
+    value.action_resolution_code = resolution_code;
     return value;
 }
 
@@ -514,7 +759,7 @@ ApplyResult model_evaluate_decision(ModelState& state,
             state, ApplyCode::already_applied, version, command, existing->code,
             existing->contract_error, existing->proposed_directive,
             existing->effective_directive, existing->matched_rule_index,
-            existing->rules_visited);
+            existing->rules_visited, existing->action_resolution_code);
     }
     if (state.decision_hot.size() == kMaxDecisionRecords) {
         return model_decision_result(
@@ -529,7 +774,10 @@ ApplyResult model_evaluate_decision(ModelState& state,
     Directive effective = Directive::no_action;
     std::uint16_t matched = no_rule;
     std::uint16_t visited = 0;
+    ActionResolutionCode resolution_code = ActionResolutionCode::none;
+    EconomicActionProposal proposal{};
     const PolicyRecord* selected = nullptr;
+    const ExecutablePolicyBundle* executable = nullptr;
 
     const auto found_policy = std::find_if(
         state.policies.begin(), state.policies.end(), [&](const auto& item) {
@@ -542,6 +790,15 @@ ApplyResult model_evaluate_decision(ModelState& state,
         code = DecisionCode::policy_not_found;
     } else if ((selected = &*found_policy)->lifecycle != PolicyLifecycle::active) {
         code = DecisionCode::policy_not_active;
+    } else if (!state.active_executable_policy.present ||
+               state.active_executable_policy.executable_policy.policy_id !=
+                   command.frame.policy_id ||
+               state.active_executable_policy.executable_policy.policy_version !=
+                   command.frame.policy_version ||
+               state.active_executable_policy.executable_policy
+                       .policy_artifact_digest !=
+                   selected->artifact.artifact_digest) {
+        code = DecisionCode::executable_policy_not_active;
     } else if (selected->artifact.account_id != command.frame.account_id) {
         code = DecisionCode::account_scope_mismatch;
     } else if (selected->artifact.instrument_id != command.frame.instrument_id) {
@@ -572,6 +829,7 @@ ApplyResult model_evaluate_decision(ModelState& state,
         } else if (command.frame.market_data_status != MarketDataStatus::ready) {
             code = DecisionCode::market_data_not_ready;
         } else {
+            executable = &state.active_executable_policy;
             const auto evaluation = evaluate_rules(selected->artifact, command.frame);
             contract_error = evaluation.contract_error;
             proposed = evaluation.directive;
@@ -583,31 +841,53 @@ ApplyResult model_evaluate_decision(ModelState& state,
                 code = DecisionCode::no_rule_matched;
             } else if (evaluation.code != RuleEvaluationCode::matched) {
                 code = DecisionCode::invalid_frame;
-            } else if (command.evaluation_mode == EvaluationMode::shadow) {
-                code = DecisionCode::shadow_recorded;
-            } else if ((state.strategy_mode == StrategyMode::no_new_risk ||
-                        state.strategy_mode == StrategyMode::cancel_only ||
-                        state.strategy_mode == StrategyMode::reduce_only) &&
-                       proposed != Directive::cancel &&
-                       proposed != Directive::no_action) {
-                code = DecisionCode::control_suppressed;
             } else {
-                code = DecisionCode::action;
-                effective = proposed;
+                const auto slot = executable->executable_policy
+                                      .rule_template_slots[matched]
+                                      .value();
+                if (slot != 0) {
+                    const auto resolution = resolve_action(
+                        command.decision_id, selected->artifact, command.frame,
+                        executable->executable_policy.templates[slot - 1],
+                        executable->instrument, executable->venue);
+                    resolution_code = resolution.code;
+                    contract_error = resolution.contract_error;
+                    proposal = resolution.proposal;
+                    if (resolution.code != ActionResolutionCode::proposed) {
+                        code = DecisionCode::action_resolution_rejected;
+                    }
+                }
+                if (code == DecisionCode::none) {
+                    if (command.evaluation_mode == EvaluationMode::shadow) {
+                        code = DecisionCode::shadow_recorded;
+                    } else if ((state.strategy_mode ==
+                                    StrategyMode::no_new_risk ||
+                                state.strategy_mode ==
+                                    StrategyMode::cancel_only ||
+                                state.strategy_mode ==
+                                    StrategyMode::reduce_only) &&
+                               proposed != Directive::cancel &&
+                               proposed != Directive::no_action) {
+                        code = DecisionCode::control_suppressed;
+                    } else {
+                        code = DecisionCode::action;
+                        effective = proposed;
+                    }
+                }
             }
         }
     }
 
     const auto outcome = model_decision_result(
         state, ApplyCode::applied, version, command, code, contract_error,
-        proposed, effective, matched, visited);
+        proposed, effective, matched, visited, resolution_code);
     state.decision_hot.push_back(DecisionRecordHot{
         command.decision_id, command.frame.policy_id, command.frame.policy_version,
         version, state.kill_epoch, state.executor_generation, matched, visited,
         code, contract_error, proposed, effective, command.evaluation_mode,
-        state.strategy_mode});
+        state.strategy_mode, resolution_code});
     state.decision_cold.push_back(DecisionRecordCold{
-        command.decision_id, identity.payload_digest, command.frame});
+        command.decision_id, identity.payload_digest, command.frame, proposal});
     return outcome;
 }
 
@@ -679,8 +959,13 @@ ApplyResult model_new_command(ModelState& state,
                 return model_result(state, ApplyCode::applied, version);
             } else if constexpr (std::is_same_v<T, RecordSourceEvent>) {
                 return model_source_event(state, command, version);
-            } else {
+            } else if constexpr (std::is_same_v<T, EvaluateDecisionFrame>) {
                 return model_evaluate_decision(state, identity, command, version);
+            } else if constexpr (std::is_same_v<T, StageExecutablePolicy>) {
+                return model_stage_executable(state, command, version);
+            } else {
+                static_assert(std::is_same_v<T, ActivateExecutablePolicy>);
+                return model_activate_executable(state, command, version);
             }
         },
         body);
@@ -718,6 +1003,8 @@ TradingState materialize(const ModelState& model) {
     result.executor_generation = model.executor_generation;
     result.policy_count = model.policies.size();
     std::copy(model.policies.begin(), model.policies.end(), result.policies.begin());
+    result.active_executable_policy = model.active_executable_policy;
+    result.staged_executable_policy = model.staged_executable_policy;
     result.source_count = model.sources.size();
     std::copy(model.sources.begin(), model.sources.end(), result.sources.begin());
     result.source_event_count = model.source_events.size();
@@ -742,10 +1029,11 @@ struct ExpectedRun {
 
 struct Coverage {
     static constexpr std::size_t size =
-        static_cast<std::size_t>(ApplyCode::decision_id_conflict) + 1;
+        static_cast<std::size_t>(ApplyCode::executable_policy_identity_conflict) +
+        1;
     std::array<std::size_t, size> outcomes{};
     static constexpr std::size_t decision_size =
-        static_cast<std::size_t>(DecisionCode::shadow_recorded) + 1;
+        static_cast<std::size_t>(DecisionCode::action_resolution_rejected) + 1;
     std::array<std::size_t, decision_size> decisions{};
 
     void observe(const ApplyResult& result) noexcept {
@@ -919,7 +1207,7 @@ void test_generated_model_and_snapshot_replay() {
     require(coverage.count(DecisionCode::invalid_frame) != 0,
             "generated corpus never exercised invalid-frame precedence");
     require(actual ==
-                "f1888ae93ad0b3e3bfdc55ea0d6b4119c8539d33e178ba30fbb99043a6b76df2",
+                "ef2ad774e8e13f57ac65a3884f903603e9e6fe439f0aa48da98d776d51e247df",
             "generated replay corpus changed without review: " + actual);
 
     std::cout << "generated histories=" << kSeedCount

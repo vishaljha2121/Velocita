@@ -8,6 +8,7 @@
 namespace velocita::v2 {
 
 enum class ActionResolutionCode : std::uint8_t {
+    none = 0,
     proposed = 1,
     invalid_decision_id,
     invalid_policy,

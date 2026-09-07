@@ -1,6 +1,7 @@
 #pragma once
 
 #include "velocita/v2/kernel.hpp"
+#include "velocita/v2/payload.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -8,7 +9,7 @@
 
 namespace velocita::v2 {
 
-inline constexpr std::uint16_t kStateSnapshotSchemaVersion = 2;
+inline constexpr std::uint16_t kStateSnapshotSchemaVersion = 3;
 inline constexpr std::size_t kStateSnapshotMagicBytes = 4;
 inline constexpr std::size_t kStateSnapshotLengthBytes = 4;
 inline constexpr std::size_t kStateSnapshotSchemaBytes = 2;
@@ -19,14 +20,22 @@ inline constexpr std::size_t kStateSnapshotDigestInputOffset =
 inline constexpr std::size_t kStateSnapshotPayloadOffset =
     kStateSnapshotSchemaOffset + kStateSnapshotSchemaBytes;
 
-inline constexpr std::size_t kStateSnapshotEmptyPayloadBytes = 35;
+inline constexpr std::size_t kStateSnapshotEmptyPayloadBytes = 37;
 inline constexpr std::size_t kStateSnapshotPolicyFixedBytes = 133;
 inline constexpr std::size_t kStateSnapshotPolicyRuleBytes = 12;
 inline constexpr std::size_t kStateSnapshotSourceBytes = 24;
 inline constexpr std::size_t kStateSnapshotSourceEventBytes = 56;
-inline constexpr std::size_t kStateSnapshotReceiptBytes = 132;
-inline constexpr std::size_t kStateSnapshotDecisionFixedBytes = 263;
+inline constexpr std::size_t kStateSnapshotReceiptBytes = 133;
+inline constexpr std::size_t kStateSnapshotEconomicProposalBytes = 104;
+inline constexpr std::size_t kStateSnapshotDecisionFixedBytes = 368;
 inline constexpr std::size_t kStateSnapshotDecisionFeatureBytes = 8;
+inline constexpr std::size_t kStateSnapshotInstrumentBytes = 66;
+inline constexpr std::size_t kStateSnapshotVenueBytes = 21;
+inline constexpr std::size_t kStateSnapshotExecutableBundleMetadataBytes = 16;
+inline constexpr std::size_t kMaxStateSnapshotExecutableBundleBytes =
+    kMaxFeatureSchemaPayloadBytes + kMaxExecutablePolicyPayloadBytes +
+    kStateSnapshotInstrumentBytes + kStateSnapshotVenueBytes +
+    kStateSnapshotExecutableBundleMetadataBytes;
 inline constexpr std::size_t kStateSnapshotFixedBytes =
     kStateSnapshotPayloadOffset + kStateSnapshotEmptyPayloadBytes + kDigestBytes;
 inline constexpr std::size_t kMaxStateSnapshotPayloadBytes =
@@ -34,6 +43,7 @@ inline constexpr std::size_t kMaxStateSnapshotPayloadBytes =
     kMaxPolicies *
         (kStateSnapshotPolicyFixedBytes +
          kMaxPolicyRules * kStateSnapshotPolicyRuleBytes) +
+    kMaxExecutablePolicyArtifacts * kMaxStateSnapshotExecutableBundleBytes +
     kMaxSources * kStateSnapshotSourceBytes +
     kMaxSourceEventReceipts * kStateSnapshotSourceEventBytes +
     kMaxRequestReceipts * kStateSnapshotReceiptBytes +

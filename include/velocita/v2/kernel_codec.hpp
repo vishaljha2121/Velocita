@@ -1,6 +1,7 @@
 #pragma once
 
 #include "velocita/v2/kernel.hpp"
+#include "velocita/v2/payload.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -8,7 +9,7 @@
 
 namespace velocita::v2 {
 
-inline constexpr std::uint16_t kKernelCodecSchemaVersion = 2;
+inline constexpr std::uint16_t kKernelCodecSchemaVersion = 3;
 inline constexpr std::size_t kKernelCommandMagicBytes = 4;
 inline constexpr std::size_t kKernelCommandLengthBytes = 4;
 inline constexpr std::size_t kKernelCommandSchemaBytes = 2;
@@ -19,7 +20,11 @@ inline constexpr std::size_t kKernelCommandPayloadOffset = 12;
 inline constexpr std::size_t kKernelCommandDigestInputOffset =
     kKernelCommandSchemaOffset;
 inline constexpr std::size_t kKernelCommandIdentityBytes = 48;
-inline constexpr std::size_t kMaxKernelCommandBodyBytes = 516;
+inline constexpr std::size_t kInstrumentExecutionProfileEncodedBytes = 66;
+inline constexpr std::size_t kVenueCapabilitiesEncodedBytes = 21;
+inline constexpr std::size_t kMaxKernelCommandBodyBytes =
+    kMaxFeatureSchemaPayloadBytes + kMaxExecutablePolicyPayloadBytes +
+    kInstrumentExecutionProfileEncodedBytes + kVenueCapabilitiesEncodedBytes;
 inline constexpr std::size_t kMaxKernelCommandPayloadBytes =
     kKernelCommandIdentityBytes + kMaxKernelCommandBodyBytes;
 inline constexpr std::size_t kMaxKernelCommandBytes =
@@ -29,7 +34,7 @@ inline constexpr std::size_t kKernelResultSchemaOffset = 8;
 inline constexpr std::size_t kKernelResultPayloadOffset = 10;
 inline constexpr std::size_t kKernelResultDigestInputOffset =
     kKernelResultSchemaOffset;
-inline constexpr std::size_t kKernelResultPayloadBytes = 84;
+inline constexpr std::size_t kKernelResultPayloadBytes = 85;
 inline constexpr std::size_t kKernelResultBytes =
     kKernelResultPayloadOffset + kKernelResultPayloadBytes + kDigestBytes;
 
@@ -43,6 +48,8 @@ enum class KernelCommandKind : std::uint16_t {
     set_executor_generation = 7,
     record_source_event = 8,
     evaluate_decision_frame = 9,
+    stage_executable_policy = 10,
+    activate_executable_policy = 11,
 };
 
 enum class KernelCodecError : std::uint8_t {

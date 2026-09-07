@@ -1,5 +1,7 @@
 #pragma once
 
+#include "velocita/v2/action_resolver.hpp"
+#include "velocita/v2/artifact_digest.hpp"
 #include "velocita/v2/contracts.hpp"
 
 #include <array>
@@ -48,6 +50,8 @@ enum class DecisionCode : std::uint8_t {
     control_halted = 15,
     control_suppressed = 16,
     shadow_recorded = 17,
+    executable_policy_not_active = 18,
+    action_resolution_rejected = 19,
 };
 
 enum class PolicyLifecycle : std::uint8_t {
@@ -84,6 +88,14 @@ enum class ApplyCode : std::uint8_t {
     receipt_capacity_exceeded,
     state_version_exhausted,
     decision_id_conflict,
+    invalid_feature_schema_contract,
+    invalid_executable_policy_contract,
+    artifact_digest_mismatch,
+    executable_policy_binding_failed,
+    invalid_instrument_profile_contract,
+    invalid_venue_capabilities_contract,
+    executable_policy_not_staged,
+    executable_policy_identity_conflict,
 };
 
 struct CommandIdentity {
@@ -140,6 +152,21 @@ struct EvaluateDecisionFrame {
     DecisionFrame frame{};
 };
 
+// Staging is deliberately atomic: no replica can observe rules from one
+// revision with units or venue economics from another revision.
+struct StageExecutablePolicy {
+    FeatureSchemaArtifact feature_schema{};
+    ExecutablePolicyArtifact executable_policy{};
+    InstrumentExecutionProfile instrument{};
+    VenueCapabilities venue{};
+};
+
+struct ActivateExecutablePolicy {
+    PolicyId policy_id{};
+    PolicyVersion policy_version{};
+    Digest256 executable_policy_digest{};
+};
+
 using CommandBody = std::variant<PublishPolicy,
                                  ValidatePolicy,
                                  ActivatePolicy,
@@ -148,7 +175,9 @@ using CommandBody = std::variant<PublishPolicy,
                                  AdvanceKillEpoch,
                                  SetExecutorGeneration,
                                  RecordSourceEvent,
-                                 EvaluateDecisionFrame>;
+                                 EvaluateDecisionFrame,
+                                 StageExecutablePolicy,
+                                 ActivateExecutablePolicy>;
 
 struct Command {
     CommandIdentity identity{};
@@ -175,6 +204,7 @@ struct ApplyResult {
     EvaluationMode evaluation_mode{EvaluationMode::authoritative};
     std::uint16_t matched_rule_index{std::numeric_limits<std::uint16_t>::max()};
     std::uint16_t rules_visited{};
+    ActionResolutionCode action_resolution_code{ActionResolutionCode::none};
 
     constexpr auto operator<=>(const ApplyResult&) const noexcept = default;
 };
@@ -202,6 +232,18 @@ struct SourceEventReceipt {
     Digest256 event_digest{};
 };
 
+struct ExecutablePolicyBundle {
+    bool present{};
+    FeatureSchemaArtifact feature_schema{};
+    ExecutablePolicyArtifact executable_policy{};
+    InstrumentExecutionProfile instrument{};
+    VenueCapabilities venue{};
+    std::uint64_t staged_state_version{};
+    std::uint64_t activated_state_version{};
+
+    constexpr auto operator<=>(const ExecutablePolicyBundle&) const noexcept = default;
+};
+
 // The hot record contains only fields used to find a decision and consume its
 // authoritative outcome. Its independently retained cold partner contains the
 // full input needed for audit and deterministic re-evaluation.
@@ -220,6 +262,7 @@ struct DecisionRecordHot {
     Directive effective_directive{Directive::no_action};
     EvaluationMode evaluation_mode{EvaluationMode::authoritative};
     StrategyMode strategy_mode{StrategyMode::halted};
+    ActionResolutionCode action_resolution_code{ActionResolutionCode::none};
 
     constexpr auto operator<=>(const DecisionRecordHot&) const noexcept = default;
 };
@@ -228,6 +271,7 @@ struct DecisionRecordCold {
     DecisionId decision_id{};
     Digest256 command_payload_digest{};
     DecisionFrame frame{};
+    EconomicActionProposal proposal{};
 };
 
 inline constexpr std::size_t kDecisionRecordHotArenaSlotStrideBytes =
@@ -254,6 +298,8 @@ struct TradingState {
     ExecutorGeneration executor_generation{};
     std::size_t policy_count{};
     std::array<PolicyRecord, kMaxPolicies> policies{};
+    ExecutablePolicyBundle active_executable_policy{};
+    ExecutablePolicyBundle staged_executable_policy{};
     std::size_t source_count{};
     std::array<SourceCursor, kMaxSources> sources{};
     std::size_t source_event_count{};

@@ -273,6 +273,15 @@ if(BUILD_TESTING)
         -Wall -Wextra -Wpedantic)
     add_test(NAME v2-artifact-digest-tests COMMAND v2-artifact-digest-tests)
 
+    add_executable(v2-executable-policy-kernel-tests
+        tests/v2_executable_policy_kernel_tests.cpp)
+    target_link_libraries(v2-executable-policy-kernel-tests PRIVATE
+        velocita_v2_kernel)
+    target_compile_options(v2-executable-policy-kernel-tests PRIVATE
+        -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-executable-policy-kernel-tests
+        COMMAND v2-executable-policy-kernel-tests)
+
     add_executable(v2-layout-report src/v2_layout_report.cpp)
     target_link_libraries(v2-layout-report PRIVATE
         velocita_v2_contracts velocita_v2_kernel velocita_v2_evaluator)
@@ -281,4 +290,8 @@ if(BUILD_TESTING)
     add_executable(v2-contract-benchmark src/v2_contract_benchmark.cpp)
     target_link_libraries(v2-contract-benchmark PRIVATE velocita_v2_contracts)
     target_compile_options(v2-contract-benchmark PRIVATE -Wall -Wextra -Wpedantic)
+
+    add_executable(v2-phase3-benchmark src/v2_phase3_benchmark.cpp)
+    target_link_libraries(v2-phase3-benchmark PRIVATE velocita_v2_kernel)
+    target_compile_options(v2-phase3-benchmark PRIVATE -Wall -Wextra -Wpedantic)
 endif()

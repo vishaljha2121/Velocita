@@ -86,10 +86,10 @@ int main() {
               << kMaxExecutablePolicyArtifacts << '\n'
               << "candidate_executable_action_template_count="
               << kMaxExecutableActionTemplates << '\n'
-              << "candidate_active_staged_resident_bytes="
-              << kMaxExecutablePolicyArtifacts *
-                     (sizeof(ExecutablePolicyArtifact) +
-                      sizeof(FeatureSchemaArtifact))
+              << "executable_policy_bundle_size_bytes="
+              << sizeof(ExecutablePolicyBundle) << '\n'
+              << "integrated_active_staged_resident_bytes="
+              << kMaxExecutablePolicyArtifacts * sizeof(ExecutablePolicyBundle)
               << '\n'
               << "candidate_active_staged_max_canonical_bytes="
               << kMaxExecutablePolicyArtifacts *
@@ -98,14 +98,8 @@ int main() {
               << '\n'
               << "current_trading_state_headroom_bytes="
               << kTradingStateObjectBudgetBytes - sizeof(TradingState) << '\n'
-              << "candidate_projected_trading_state_bytes="
-              << sizeof(TradingState) +
-                     kMaxExecutablePolicyArtifacts *
-                         (sizeof(ExecutablePolicyArtifact) +
-                          sizeof(FeatureSchemaArtifact))
-              << '\n'
-              << "candidate_trading_state_test_ceiling_bytes="
-              << 80U * 1024U << '\n'
+              << "integrated_trading_state_ceiling_bytes="
+              << kTradingStateObjectBudgetBytes << '\n'
               << "apply_result_size_bytes=" << sizeof(ApplyResult) << '\n'
               << "request_receipt_size_bytes=" << sizeof(RequestReceipt) << '\n'
               << "decision_record_capacity=" << kMaxDecisionRecords << '\n'
@@ -141,6 +135,6 @@ int main() {
               << "trading_state_budget_bytes=" << kTradingStateObjectBudgetBytes
               << '\n'
               << "decision_record_hot_cold_split_status="
-                 "authoritative_reducer_snapshot_replay_ready\n";
+                 "executable_policy_lifecycle_and_resolution_ready\n";
     return 0;
 }

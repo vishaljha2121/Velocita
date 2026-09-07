@@ -1,10 +1,10 @@
 # V2 Phase 3 authoritative decision-evaluator design
 
-Status: decisions 1 through 5 approved; Phase 3A, 3B, and the Phase 3C
-authoritative reducer are green on the host and physical Pi; the first Phase
-3D action contracts, authoritative execution inputs, and standalone pure
-resolver are host-green, but policy-schema/reducer integration, Phase 3
-measurement, ARM64/Pi evidence, and Phase 3 acceptance remain pending
+Status: decisions 1 through 5 approved; Phase 3A through 3C are accepted on the
+host and physical Pi. Phase 3D/3E executable-policy lifecycle, exact proposal
+resolution, snapshot/replay integration, layout guardrails, and measurement are
+host-green. The exact final source root still requires its physical Pi gate;
+NUC capacity promotion remains deferred until the nine-phase build completes.
 
 Branch: `v2/phase-3-policy-evaluator`
 
@@ -406,21 +406,16 @@ slice. Detailed evidence is in
       and action-proposal value contracts;
 - [x] observe RED tests for every invalid tag, index, unit, zero/negative value,
       overflow, cap, target, and capability case;
-- [ ] add templates to a new explicit policy schema without reinterpreting V1;
-      the bounded standalone companion/feature-schema contracts are green,
-      while canonical bytes and replicated lifecycle integration remain
-      pending;
-- [ ] freeze canonical payload sizes, golden bytes, and corpus digests;
-- [ ] resolve first-match rules to templates and exact economic proposals;
-      the standalone exact-proposal resolver is green, while rule/template
-      schema binding remains pending;
+- [x] add templates to a new explicit policy schema without reinterpreting V1;
+- [x] freeze canonical payload sizes, golden bytes, and corpus digests;
+- [x] resolve first-match rules to templates and exact economic proposals;
 - [x] prove standalone resolver rejection precedence and reject-not-clamp
       semantics;
-- [ ] prove shadow/control-suppressed outcomes contain no effective action;
-- [ ] extend result, hot/cold record, snapshot, replay, and independent model;
-- [ ] re-run layout ceilings before accepting any payload growth; and
+- [x] prove shadow/control-suppressed outcomes contain no effective action;
+- [x] extend result, hot/cold record, snapshot, replay, and independent model;
+- [x] re-run layout ceilings before accepting any payload growth; and
 - [ ] pass host Release/sanitizer, pinned ARM64, physical Pi, and phase evidence
-      gates.
+      gates. Host Release/sanitizer are green; the final Pi root is pending.
 
 The standalone pure action resolver is now green. It has no I/O, clock access,
 allocation, mutable global state, or input mutation. It uses checked integer
@@ -461,12 +456,13 @@ existing rules, and 32 feature descriptors. These values are identical across
 replicas but remain candidates until canonical-size, ARM64, Pi, and NUC gates
 accept them.
 
-The host object-layout experiment reports 3,920 bytes for active plus staged
-executable and feature-schema artifacts versus 3,896 bytes of headroom under
-the old state ceiling. The old 72-KiB ceiling therefore cannot be reused. The
-candidate projected state is 73,752 bytes before lifecycle metadata and fits a
-provisional 80-KiB test ceiling. This is not yet an accepted state-budget or
-snapshot-format change. Detailed evidence is in
+The integrated object-layout report now measures each complete executable
+bundle at 2,088 bytes and active plus staged at 4,176 bytes. `TradingState` is
+77,848 bytes with 4,072 bytes of remaining headroom under the provisional
+80-KiB ceiling. The largest canonical snapshot is exactly 63,361 bytes and
+remains below 64 KiB. The hot decision record remains exactly one 64-byte cache
+line; the 112-byte exact proposal lives only in the cold record. Detailed
+evidence is in
 [`V2 Phase 3D executable-policy contract experiment`](evidence/V2_PHASE3D_EXECUTABLE_POLICY_CONTRACT_EXPERIMENT.md).
 
 The companion codecs now establish exact maxima of 332 bytes for a 32-feature
@@ -491,8 +487,24 @@ artifact's own digest. The executable-policy preimage transitively binds the
 base-policy and feature-schema digests. Structural invalidity is reported
 before digest mismatch, and no raw C++ object memory is hashed. The next source
 root passed its repeat physical Pi gate with clean power and a worst-case
-executable artifact digest p99 of 16,592 ns. Lifecycle integration proceeds
-next; NUC promotion remains deferred until the nine-phase build is complete.
+executable artifact digest p99 of 16,592 ns.
+
+Lifecycle integration now stores one active and one staged atomic bundle. A
+bundle contains the feature schema, executable policy, instrument economics,
+and venue capabilities, so replicas cannot observe mixed revisions. Staging
+validates every digest and cross-binding; activation swaps the complete staged
+bundle and supersedes the previous base policy in one reducer application.
+Reusing an executable identity with different instrument or venue facts is an
+explicit conflict. Superseding a base policy also revokes its matching
+executable authority atomically, so stale templates fail closed. NUC promotion
+remains deferred until the nine-phase build is complete.
+
+An authoritative decision requires the exact active executable identity. The
+selected rule maps to a one-based template slot; slot zero means no action.
+Resolution produces an exact bounded `EconomicActionProposal`, retained only
+in the cold audit record, plus a compact `ActionResolutionCode` in the hot
+record and result. Phase 3 still creates no reservation, order, outbox effect,
+or venue I/O.
 
 No Phase 4 order, reservation, or effect work begins until this contract and
 the reject-not-clamp boundary are accepted.
@@ -503,14 +515,14 @@ the reject-not-clamp boundary are accepted.
 - [x] generated reference model covers boundary and interaction sequences;
 - [x] direct, canonical replay, and every snapshot cut agree;
 - [ ] evaluation duration, rules visited, and capacity high-watermarks are
-      measured without claiming Raft throughput;
+      measured without claiming Raft throughput. The host benchmark is green;
+      the physical Pi measurement is pending;
 - [x] host Release and sanitizer gates pass;
-- [x] pinned ARM64 Linux gate passes from an exact source root;
+- [ ] pinned ARM64 Linux gate passes from the final exact source root;
 - [x] physical Pi Phase 3C gate passes;
 - [x] changelog/evidence state Phase 3C limitations and rollback precisely;
       and
-- [ ] complete the Phase 3D contract and Phase 3-wide measurement before
-      accepting Phase 3.
+- [ ] pass the final exact-root Pi gate and record Phase 3 acceptance.
 
 ## 5. C++ design guidance
 

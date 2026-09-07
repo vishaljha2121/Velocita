@@ -140,7 +140,9 @@ release_targets=(
     v2-executable-policy-contract-tests
     v2-executable-policy-codec-tests
     v2-artifact-digest-tests
+    v2-executable-policy-kernel-tests
     v2-contract-benchmark
+    v2-phase3-benchmark
     v2-layout-report
 )
 
@@ -173,7 +175,7 @@ cmake --build "$instrumented_build" \
              v2-action-resolver-tests \
              v2-executable-policy-contract-tests \
              v2-executable-policy-codec-tests \
-             v2-artifact-digest-tests \
+             v2-artifact-digest-tests v2-executable-policy-kernel-tests \
     --parallel "$build_jobs"
 
 failure_step=instrumented_tests
@@ -198,7 +200,7 @@ cmake --build "$sanitized_build" \
              v2-action-resolver-tests \
              v2-executable-policy-contract-tests \
              v2-executable-policy-codec-tests \
-             v2-artifact-digest-tests \
+             v2-artifact-digest-tests v2-executable-policy-kernel-tests \
     --parallel "$build_jobs"
 
 failure_step=sanitized_tests
@@ -207,6 +209,9 @@ ctest --test-dir "$sanitized_build" -R '^v2-.*-tests$' --output-on-failure |
 
 failure_step=codec_benchmark
 "$release_build/v2-contract-benchmark" | tee "$evidence_dir/codec-benchmark.txt"
+
+failure_step=phase3_benchmark
+"$release_build/v2-phase3-benchmark" | tee "$evidence_dir/phase3-benchmark.txt"
 
 failure_step=layout_report
 "$release_build/v2-layout-report" | tee "$evidence_dir/layout-report.txt"

@@ -65,20 +65,17 @@ void test_current_object_and_slot_budgets() {
             "decision-frame arena stride is not cache-line rounded");
 }
 
-void test_candidate_executable_policy_capacity_is_visible() {
+void test_integrated_executable_policy_capacity_is_bounded() {
     using namespace velocita::v2;
-    constexpr auto candidate_artifacts =
-        kMaxExecutablePolicyArtifacts *
-        (sizeof(ExecutablePolicyArtifact) + sizeof(FeatureSchemaArtifact));
-    constexpr auto current_state_headroom =
-        kTradingStateObjectBudgetBytes - sizeof(TradingState);
-
-    require(candidate_artifacts > current_state_headroom,
-            "candidate executable-policy state unexpectedly fits the old "
-            "budget; review and update the recorded layout decision");
-    require(sizeof(TradingState) + candidate_artifacts <= 80U * 1024U,
-            "candidate executable-policy state exceeded the provisional "
-            "80-KiB hardware-test ceiling");
+    static_assert(kMaxExecutablePolicyArtifacts == 2);
+    static_assert(sizeof(ExecutablePolicyBundle) *
+                      kMaxExecutablePolicyArtifacts <=
+                  5U * 1024U);
+    require(sizeof(TradingState) <= kTradingStateObjectBudgetBytes,
+            "integrated active/staged policy state exceeded its reviewed "
+            "provisional ceiling");
+    require(kTradingStateObjectBudgetBytes - sizeof(TradingState) >= 4U * 1024U - 32,
+            "integrated trading state lost its reviewed headroom");
     static_assert(kMaxFeatureSchemaPayloadBytes <=
                   kFeatureSchemaArtifactPayloadBudgetBytes);
     static_assert(kMaxExecutablePolicyPayloadBytes <=
@@ -116,7 +113,7 @@ int main() {
     try {
         test_target_cache_line_contract();
         test_current_object_and_slot_budgets();
-        test_candidate_executable_policy_capacity_is_visible();
+        test_integrated_executable_policy_capacity_is_bounded();
         test_decision_records_have_separate_hot_and_cold_layouts();
         std::cout << "all V2 layout tests passed\n";
         return 0;

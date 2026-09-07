@@ -26,12 +26,17 @@ round_up_to_cache_line(const std::size_t bytes) noexcept {
 inline constexpr std::size_t kDecisionFrameObjectBudgetBytes = 448;
 inline constexpr std::size_t kPolicyArtifactObjectBudgetBytes = 1024;
 inline constexpr std::size_t kRuleEvaluationObjectBudgetBytes = 16;
-inline constexpr std::size_t kTradingStateObjectBudgetBytes = 72U * 1024U;
+// Phase 3D adds one active and one staged executable-policy bundle plus exact
+// proposals in cold decision records. The 80-KiB ceiling remains provisional
+// until the deferred NUC gate confirms the same capacity on both targets.
+inline constexpr std::size_t kTradingStateObjectBudgetBytes = 80U * 1024U;
 inline constexpr std::size_t kDecisionRecordHotBudgetBytes = 64;
-inline constexpr std::size_t kDecisionRecordColdBudgetBytes = 512;
+inline constexpr std::size_t kDecisionRecordColdBudgetBytes = 640;
 inline constexpr std::size_t kDecisionFramePayloadBudgetBytes = 448;
 inline constexpr std::size_t kPolicyArtifactPayloadBudgetBytes = 576;
-inline constexpr std::size_t kKernelCommandBudgetBytes = 640;
+// An atomic StageExecutablePolicy command carries every immutable fact needed
+// to resolve an action identically on every replica.
+inline constexpr std::size_t kKernelCommandBudgetBytes = 1920;
 inline constexpr std::size_t kKernelResultBudgetBytes = 128;
 inline constexpr std::size_t kPriceSourceObjectBudgetBytes = 32;
 inline constexpr std::size_t kQuantitySourceObjectBudgetBytes = 24;

@@ -144,6 +144,14 @@ private:
         case ApplyCode::receipt_capacity_exceeded:
         case ApplyCode::state_version_exhausted:
         case ApplyCode::decision_id_conflict:
+        case ApplyCode::invalid_feature_schema_contract:
+        case ApplyCode::invalid_executable_policy_contract:
+        case ApplyCode::artifact_digest_mismatch:
+        case ApplyCode::executable_policy_binding_failed:
+        case ApplyCode::invalid_instrument_profile_contract:
+        case ApplyCode::invalid_venue_capabilities_contract:
+        case ApplyCode::executable_policy_not_staged:
+        case ApplyCode::executable_policy_identity_conflict:
             return true;
     }
     return false;
@@ -183,7 +191,12 @@ private:
 
 [[nodiscard]] constexpr bool known(const DecisionCode value) noexcept {
     return static_cast<std::uint8_t>(value) <=
-           static_cast<std::uint8_t>(DecisionCode::shadow_recorded);
+           static_cast<std::uint8_t>(DecisionCode::action_resolution_rejected);
+}
+
+[[nodiscard]] constexpr bool known(const ActionResolutionCode value) noexcept {
+    return static_cast<std::uint8_t>(value) <=
+           static_cast<std::uint8_t>(ActionResolutionCode::notional_cap_exceeded);
 }
 
 [[nodiscard]] constexpr bool known(const Directive value) noexcept {
@@ -205,6 +218,68 @@ private:
         state.decision_count > state.decision_hot.size() ||
         state.decision_count > state.decision_cold.size()) {
         return false;
+    }
+
+    const auto valid_bundle = [&](const ExecutablePolicyBundle& bundle,
+                                  const bool active) noexcept {
+        if (!bundle.present) return bundle == ExecutablePolicyBundle{};
+        if (validate(bundle.feature_schema) != ContractError::none ||
+            validate(bundle.executable_policy) != ContractError::none ||
+            validate(bundle.instrument) != ContractError::none ||
+            validate(bundle.venue) != ContractError::none ||
+            verify_artifact_digest(bundle.feature_schema).error !=
+                ArtifactDigestError::none ||
+            verify_artifact_digest(bundle.executable_policy).error !=
+                ArtifactDigestError::none ||
+            bundle.staged_state_version == 0 ||
+            bundle.staged_state_version > state.state_version ||
+            (active && (bundle.activated_state_version == 0 ||
+                        bundle.activated_state_version > state.state_version)) ||
+            (!active && bundle.activated_state_version != 0)) {
+            return false;
+        }
+        const auto* policy = find_policy(state, bundle.executable_policy.policy_id,
+                                         bundle.executable_policy.policy_version);
+        if (policy == nullptr ||
+            bind_executable_policy(policy->artifact, bundle.feature_schema,
+                                   bundle.executable_policy) !=
+                ExecutablePolicyBindingCode::bound ||
+            bundle.instrument.instrument_id != policy->artifact.instrument_id ||
+            bundle.instrument.venue_id != bundle.venue.venue_id ||
+            (active && policy->lifecycle != PolicyLifecycle::active) ||
+            (!active && policy->lifecycle != PolicyLifecycle::validated &&
+             policy->lifecycle != PolicyLifecycle::active)) {
+            return false;
+        }
+        for (std::size_t index = 0;
+             index < bundle.executable_policy.template_count; ++index) {
+            const auto& action = bundle.executable_policy.templates[index];
+            if (action.instrument_spec_version !=
+                    bundle.instrument.instrument_spec_version ||
+                action.venue_capabilities_version !=
+                    bundle.venue.venue_capabilities_version) {
+                return false;
+            }
+        }
+        return true;
+    };
+    if (!valid_bundle(state.active_executable_policy, true) ||
+        !valid_bundle(state.staged_executable_policy, false)) {
+        return false;
+    }
+    if (state.active_executable_policy.present &&
+        state.staged_executable_policy.present) {
+        const auto* active = find_policy(
+            state, state.active_executable_policy.executable_policy.policy_id,
+            state.active_executable_policy.executable_policy.policy_version);
+        const auto* staged = find_policy(
+            state, state.staged_executable_policy.executable_policy.policy_id,
+            state.staged_executable_policy.executable_policy.policy_version);
+        if (active == nullptr || staged == nullptr ||
+            active->artifact.account_id != staged->artifact.account_id ||
+            active->artifact.instrument_id != staged->artifact.instrument_id) {
+            return false;
+        }
     }
 
     for (std::size_t index = 0; index < state.policy_count; ++index) {
@@ -273,6 +348,7 @@ private:
             !known(receipt.result.proposed_directive) ||
             !known(receipt.result.effective_directive) ||
             !known(receipt.result.evaluation_mode) ||
+            !known(receipt.result.action_resolution_code) ||
             (receipt.result.evaluation_mode == EvaluationMode::shadow &&
              receipt.result.effective_directive != Directive::no_action) ||
             receipt.result.rules_visited > kMaxPolicyRules ||
@@ -308,7 +384,8 @@ private:
             hot.state_version > state.state_version || !known(hot.code) ||
             !known(hot.contract_error) || !known(hot.proposed_directive) ||
             !known(hot.effective_directive) || !known(hot.evaluation_mode) ||
-            !known(hot.strategy_mode) || hot.rules_visited > kMaxPolicyRules ||
+            !known(hot.strategy_mode) || !known(hot.action_resolution_code) ||
+            hot.rules_visited > kMaxPolicyRules ||
             (hot.matched_rule_index != std::numeric_limits<std::uint16_t>::max() &&
              hot.matched_rule_index >= kMaxPolicyRules) ||
             (hot.evaluation_mode == EvaluationMode::shadow &&
@@ -316,12 +393,27 @@ private:
             (hot.evaluation_mode == EvaluationMode::authoritative &&
              hot.code == DecisionCode::shadow_recorded) ||
             (hot.code == DecisionCode::action &&
-             (hot.effective_directive == Directive::no_action ||
-              hot.effective_directive != hot.proposed_directive)) ||
+             hot.effective_directive != hot.proposed_directive) ||
             ((hot.code == DecisionCode::control_suppressed ||
               hot.code == DecisionCode::shadow_recorded) &&
              hot.effective_directive != Directive::no_action) ||
             hot.code == DecisionCode::none) {
+            return false;
+        }
+        if ((hot.action_resolution_code == ActionResolutionCode::proposed &&
+             (validate(cold.proposal) != ContractError::none ||
+              cold.proposal.decision_id != hot.decision_id ||
+              cold.proposal.policy_id != hot.policy_id ||
+              cold.proposal.policy_version != hot.policy_version ||
+              cold.proposal.account_id != cold.frame.account_id ||
+              cold.proposal.instrument_id != cold.frame.instrument_id ||
+              cold.proposal.venue_id != cold.frame.venue_id ||
+              cold.proposal.directive != hot.proposed_directive)) ||
+            (hot.action_resolution_code != ActionResolutionCode::proposed &&
+             cold.proposal != EconomicActionProposal{}) ||
+            (hot.code == DecisionCode::action &&
+             hot.proposed_directive != Directive::no_action &&
+             hot.action_resolution_code != ActionResolutionCode::proposed)) {
             return false;
         }
         for (std::size_t prior = 0; prior < index; ++prior) {
@@ -338,6 +430,21 @@ private:
                 state.policies[index].artifact.rule_count *
                     kStateSnapshotPolicyRuleBytes;
     }
+    const auto bundle_size = [](const ExecutablePolicyBundle& bundle) noexcept {
+        if (!bundle.present) return std::size_t{0};
+        return kFeatureSchemaPayloadPrefixBytes +
+                   bundle.feature_schema.feature_count *
+                       kFeatureDescriptorEncodedBytes +
+               kExecutablePolicyPayloadPrefixBytes +
+                   bundle.executable_policy.template_count *
+                       kActionTemplateEncodedBytes +
+                   sizeof(std::uint16_t) +
+                   bundle.executable_policy.rule_binding_count +
+               kStateSnapshotInstrumentBytes + kStateSnapshotVenueBytes +
+               kStateSnapshotExecutableBundleMetadataBytes;
+    };
+    size += bundle_size(state.active_executable_policy);
+    size += bundle_size(state.staged_executable_policy);
     size += state.source_count * kStateSnapshotSourceBytes;
     size += state.source_event_count * kStateSnapshotSourceEventBytes;
     size += state.receipt_count * kStateSnapshotReceiptBytes;
@@ -373,6 +480,128 @@ void write_decision_frame(Writer& writer, const DecisionFrame& value) noexcept {
     writer.integral(value.position_version.value());
     writer.integral(value.risk_version.value());
     writer.digest(value.raw_evidence_digest);
+}
+
+void write_price_source(Writer& writer, const PriceSource& value) noexcept {
+    writer.integral(static_cast<std::uint8_t>(value.kind));
+    writer.integral(value.feature_index);
+    writer.integral(static_cast<std::uint8_t>(value.rounding));
+    writer.integral(value.fixed_value.atoms());
+    writer.integral(value.feature_atoms_per_tick);
+    writer.integral(value.tick_offset.atoms());
+}
+
+void write_quantity_source(Writer& writer, const QuantitySource& value) noexcept {
+    writer.integral(static_cast<std::uint8_t>(value.kind));
+    writer.integral(value.feature_index);
+    writer.integral(static_cast<std::uint8_t>(value.rounding));
+    writer.integral(value.fixed_value.atoms());
+    writer.integral(value.feature_atoms_per_lot);
+}
+
+void write_action_template(Writer& writer, const ActionTemplate& value) noexcept {
+    writer.integral(value.schema_version);
+    writer.integral(static_cast<std::uint8_t>(value.directive));
+    writer.integral(static_cast<std::uint8_t>(value.side));
+    writer.integral(static_cast<std::uint8_t>(value.time_in_force));
+    writer.integral(static_cast<std::uint8_t>(value.post_only));
+    writer.integral(value.order_slot.value());
+    writer.integral(value.instrument_spec_version.value());
+    writer.integral(value.venue_capabilities_version.value());
+    write_price_source(writer, value.price_source);
+    write_quantity_source(writer, value.quantity_source);
+    writer.integral(value.safety_caps.max_quantity.atoms());
+    writer.integral(value.safety_caps.max_notional.atoms());
+    writer.integral(value.safety_caps.max_abs_price_deviation.atoms());
+    writer.integral(value.safety_caps.max_abs_tick_offset.atoms());
+    writer.integral(value.safety_caps.max_market_data_age_ns);
+    write_price_source(writer, value.safety_caps.reference_price);
+}
+
+void write_feature_schema(Writer& writer,
+                          const FeatureSchemaArtifact& value) noexcept {
+    writer.integral(value.schema_version);
+    writer.integral(value.feature_schema_id.value());
+    writer.digest(value.artifact_digest);
+    writer.integral(value.feature_count);
+    for (std::size_t index = 0; index < value.feature_count; ++index) {
+        writer.integral(static_cast<std::uint8_t>(value.features[index].kind));
+        writer.integral(value.features[index].atoms_per_output_unit);
+    }
+}
+
+void write_executable_policy(Writer& writer,
+                             const ExecutablePolicyArtifact& value) noexcept {
+    writer.integral(value.schema_version);
+    writer.integral(value.policy_id.value());
+    writer.integral(value.policy_version.value());
+    writer.digest(value.policy_artifact_digest);
+    writer.integral(value.feature_schema_id.value());
+    writer.digest(value.feature_schema_digest);
+    writer.digest(value.artifact_digest);
+    writer.integral(value.template_count);
+    for (std::size_t index = 0; index < value.template_count; ++index) {
+        write_action_template(writer, value.templates[index]);
+    }
+    writer.integral(value.rule_binding_count);
+    for (std::size_t index = 0; index < value.rule_binding_count; ++index) {
+        writer.integral(value.rule_template_slots[index].value());
+    }
+}
+
+void write_instrument(Writer& writer,
+                      const InstrumentExecutionProfile& value) noexcept {
+    writer.integral(value.schema_version);
+    writer.integral(value.venue_id.value());
+    writer.integral(value.instrument_id.value());
+    writer.integral(value.instrument_spec_version.value());
+    writer.integral(value.quote_micros_per_tick_lot.atoms());
+    writer.integral(value.minimum_price.atoms());
+    writer.integral(value.maximum_price.atoms());
+    writer.integral(value.minimum_quantity.atoms());
+    writer.integral(value.maximum_quantity.atoms());
+}
+
+void write_venue(Writer& writer, const VenueCapabilities& value) noexcept {
+    writer.integral(value.schema_version);
+    writer.integral(value.venue_id.value());
+    writer.integral(value.venue_capabilities_version.value());
+    writer.integral(value.directive_mask);
+    writer.integral(value.time_in_force_mask);
+    writer.integral(value.supports_post_only);
+}
+
+void write_bundle(Writer& writer, const ExecutablePolicyBundle& value) noexcept {
+    writer.integral(static_cast<std::uint8_t>(value.present));
+    if (!value.present) return;
+    write_feature_schema(writer, value.feature_schema);
+    write_executable_policy(writer, value.executable_policy);
+    write_instrument(writer, value.instrument);
+    write_venue(writer, value.venue);
+    writer.integral(value.staged_state_version);
+    writer.integral(value.activated_state_version);
+}
+
+void write_proposal(Writer& writer,
+                    const EconomicActionProposal& value) noexcept {
+    writer.integral(value.schema_version);
+    writer.integral(value.decision_id.value());
+    writer.integral(value.policy_id.value());
+    writer.integral(value.policy_version.value());
+    writer.integral(value.risk_policy_version.value());
+    writer.integral(value.instrument_spec_version.value());
+    writer.integral(value.venue_capabilities_version.value());
+    writer.integral(value.account_id.value());
+    writer.integral(value.instrument_id.value());
+    writer.integral(value.venue_id.value());
+    writer.integral(value.order_slot.value());
+    writer.integral(static_cast<std::uint8_t>(value.directive));
+    writer.integral(static_cast<std::uint8_t>(value.side));
+    writer.integral(static_cast<std::uint8_t>(value.time_in_force));
+    writer.integral(static_cast<std::uint8_t>(value.post_only));
+    writer.integral(value.price.atoms());
+    writer.integral(value.quantity.atoms());
+    writer.integral(value.notional.atoms());
 }
 
 void write_policy(Writer& writer, const PolicyRecord& record) noexcept {
@@ -419,6 +648,7 @@ void write_result(Writer& writer, const ApplyResult& value) noexcept {
     writer.integral(static_cast<std::uint8_t>(value.evaluation_mode));
     writer.integral(value.matched_rule_index);
     writer.integral(value.rules_visited);
+    writer.integral(static_cast<std::uint8_t>(value.action_resolution_code));
 }
 
 void write_payload(Writer& writer, const TradingState& state) noexcept {
@@ -431,6 +661,9 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
     for (std::size_t index = 0; index < state.policy_count; ++index) {
         write_policy(writer, state.policies[index]);
     }
+
+    write_bundle(writer, state.active_executable_policy);
+    write_bundle(writer, state.staged_executable_policy);
 
     writer.integral(static_cast<std::uint16_t>(state.source_count));
     for (std::size_t index = 0; index < state.source_count; ++index) {
@@ -476,9 +709,11 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
         writer.integral(static_cast<std::uint8_t>(hot.effective_directive));
         writer.integral(static_cast<std::uint8_t>(hot.evaluation_mode));
         writer.integral(static_cast<std::uint8_t>(hot.strategy_mode));
+        writer.integral(static_cast<std::uint8_t>(hot.action_resolution_code));
         writer.integral(cold.decision_id.value());
         writer.digest(cold.command_payload_digest);
         write_decision_frame(writer, cold.frame);
+        write_proposal(writer, cold.proposal);
     }
 }
 
@@ -544,6 +779,166 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
     return true;
 }
 
+[[nodiscard]] PriceSource read_price_source(Reader& reader) noexcept {
+    PriceSource value;
+    value.kind = static_cast<EconomicValueSourceKind>(reader.integral<std::uint8_t>());
+    value.feature_index = reader.integral<std::uint16_t>();
+    value.rounding = static_cast<RoundingMode>(reader.integral<std::uint8_t>());
+    value.fixed_value = PriceTicks::from_atoms(reader.integral<std::int64_t>());
+    value.feature_atoms_per_tick = reader.integral<std::int64_t>();
+    value.tick_offset = PriceTicks::from_atoms(reader.integral<std::int64_t>());
+    return value;
+}
+
+[[nodiscard]] QuantitySource read_quantity_source(Reader& reader) noexcept {
+    QuantitySource value;
+    value.kind = static_cast<EconomicValueSourceKind>(reader.integral<std::uint8_t>());
+    value.feature_index = reader.integral<std::uint16_t>();
+    value.rounding = static_cast<RoundingMode>(reader.integral<std::uint8_t>());
+    value.fixed_value = QuantityLots::from_atoms(reader.integral<std::int64_t>());
+    value.feature_atoms_per_lot = reader.integral<std::int64_t>();
+    return value;
+}
+
+[[nodiscard]] ActionTemplate read_action_template(Reader& reader) noexcept {
+    ActionTemplate value;
+    value.schema_version = reader.integral<std::uint16_t>();
+    value.directive = static_cast<Directive>(reader.integral<std::uint8_t>());
+    value.side = static_cast<Side>(reader.integral<std::uint8_t>());
+    value.time_in_force = static_cast<TimeInForce>(reader.integral<std::uint8_t>());
+    value.post_only = static_cast<PostOnlyMode>(reader.integral<std::uint8_t>());
+    value.order_slot = LogicalOrderSlot{reader.integral<std::uint16_t>()};
+    value.instrument_spec_version =
+        InstrumentSpecVersion{reader.integral<std::uint64_t>()};
+    value.venue_capabilities_version =
+        VenueCapabilitiesVersion{reader.integral<std::uint64_t>()};
+    value.price_source = read_price_source(reader);
+    value.quantity_source = read_quantity_source(reader);
+    value.safety_caps.max_quantity =
+        QuantityLots::from_atoms(reader.integral<std::int64_t>());
+    value.safety_caps.max_notional =
+        MoneyMicros::from_atoms(reader.integral<std::int64_t>());
+    value.safety_caps.max_abs_price_deviation =
+        PriceTicks::from_atoms(reader.integral<std::int64_t>());
+    value.safety_caps.max_abs_tick_offset =
+        PriceTicks::from_atoms(reader.integral<std::int64_t>());
+    value.safety_caps.max_market_data_age_ns = reader.integral<std::int64_t>();
+    value.safety_caps.reference_price = read_price_source(reader);
+    return value;
+}
+
+[[nodiscard]] bool read_feature_schema(Reader& reader,
+                                       FeatureSchemaArtifact& value) noexcept {
+    value.schema_version = reader.integral<std::uint16_t>();
+    value.feature_schema_id = FeatureSchemaId{reader.integral<std::uint64_t>()};
+    value.artifact_digest = reader.digest();
+    value.feature_count = reader.integral<std::uint16_t>();
+    if (value.feature_count > kMaxDecisionFeatures) return false;
+    for (std::size_t index = 0; index < value.feature_count; ++index) {
+        value.features[index].kind =
+            static_cast<FeatureEconomicKind>(reader.integral<std::uint8_t>());
+        value.features[index].atoms_per_output_unit =
+            reader.integral<std::int64_t>();
+    }
+    return true;
+}
+
+[[nodiscard]] bool read_executable_policy(
+    Reader& reader, ExecutablePolicyArtifact& value) noexcept {
+    value.schema_version = reader.integral<std::uint16_t>();
+    value.policy_id = PolicyId{reader.integral<std::uint64_t>()};
+    value.policy_version = PolicyVersion{reader.integral<std::uint64_t>()};
+    value.policy_artifact_digest = reader.digest();
+    value.feature_schema_id = FeatureSchemaId{reader.integral<std::uint64_t>()};
+    value.feature_schema_digest = reader.digest();
+    value.artifact_digest = reader.digest();
+    value.template_count = reader.integral<std::uint16_t>();
+    if (value.template_count > kMaxExecutableActionTemplates) return false;
+    for (std::size_t index = 0; index < value.template_count; ++index) {
+        value.templates[index] = read_action_template(reader);
+    }
+    value.rule_binding_count = reader.integral<std::uint16_t>();
+    if (value.rule_binding_count > kMaxPolicyRules) return false;
+    for (std::size_t index = 0; index < value.rule_binding_count; ++index) {
+        value.rule_template_slots[index] =
+            ActionTemplateSlot{reader.integral<std::uint8_t>()};
+    }
+    return true;
+}
+
+[[nodiscard]] InstrumentExecutionProfile read_instrument(Reader& reader) noexcept {
+    InstrumentExecutionProfile value;
+    value.schema_version = reader.integral<std::uint16_t>();
+    value.venue_id = VenueId{reader.integral<std::uint64_t>()};
+    value.instrument_id = InstrumentId{reader.integral<std::uint64_t>()};
+    value.instrument_spec_version =
+        InstrumentSpecVersion{reader.integral<std::uint64_t>()};
+    value.quote_micros_per_tick_lot =
+        MoneyMicros::from_atoms(reader.integral<std::int64_t>());
+    value.minimum_price = PriceTicks::from_atoms(reader.integral<std::int64_t>());
+    value.maximum_price = PriceTicks::from_atoms(reader.integral<std::int64_t>());
+    value.minimum_quantity =
+        QuantityLots::from_atoms(reader.integral<std::int64_t>());
+    value.maximum_quantity =
+        QuantityLots::from_atoms(reader.integral<std::int64_t>());
+    return value;
+}
+
+[[nodiscard]] VenueCapabilities read_venue(Reader& reader) noexcept {
+    VenueCapabilities value;
+    value.schema_version = reader.integral<std::uint16_t>();
+    value.venue_id = VenueId{reader.integral<std::uint64_t>()};
+    value.venue_capabilities_version =
+        VenueCapabilitiesVersion{reader.integral<std::uint64_t>()};
+    value.directive_mask = reader.integral<std::uint8_t>();
+    value.time_in_force_mask = reader.integral<std::uint8_t>();
+    value.supports_post_only = reader.integral<std::uint8_t>();
+    return value;
+}
+
+[[nodiscard]] bool read_bundle(Reader& reader,
+                               ExecutablePolicyBundle& value) noexcept {
+    const auto present = reader.integral<std::uint8_t>();
+    if (present > 1) return false;
+    value.present = present == 1;
+    if (!value.present) return true;
+    if (!read_feature_schema(reader, value.feature_schema) ||
+        !read_executable_policy(reader, value.executable_policy)) {
+        return false;
+    }
+    value.instrument = read_instrument(reader);
+    value.venue = read_venue(reader);
+    value.staged_state_version = reader.integral<std::uint64_t>();
+    value.activated_state_version = reader.integral<std::uint64_t>();
+    return true;
+}
+
+[[nodiscard]] EconomicActionProposal read_proposal(Reader& reader) noexcept {
+    EconomicActionProposal value;
+    value.schema_version = reader.integral<std::uint16_t>();
+    value.decision_id = DecisionId{reader.integral<std::uint64_t>()};
+    value.policy_id = PolicyId{reader.integral<std::uint64_t>()};
+    value.policy_version = PolicyVersion{reader.integral<std::uint64_t>()};
+    value.risk_policy_version =
+        RiskPolicyVersion{reader.integral<std::uint64_t>()};
+    value.instrument_spec_version =
+        InstrumentSpecVersion{reader.integral<std::uint64_t>()};
+    value.venue_capabilities_version =
+        VenueCapabilitiesVersion{reader.integral<std::uint64_t>()};
+    value.account_id = AccountId{reader.integral<std::uint64_t>()};
+    value.instrument_id = InstrumentId{reader.integral<std::uint64_t>()};
+    value.venue_id = VenueId{reader.integral<std::uint64_t>()};
+    value.order_slot = LogicalOrderSlot{reader.integral<std::uint16_t>()};
+    value.directive = static_cast<Directive>(reader.integral<std::uint8_t>());
+    value.side = static_cast<Side>(reader.integral<std::uint8_t>());
+    value.time_in_force = static_cast<TimeInForce>(reader.integral<std::uint8_t>());
+    value.post_only = static_cast<PostOnlyMode>(reader.integral<std::uint8_t>());
+    value.price = PriceTicks::from_atoms(reader.integral<std::int64_t>());
+    value.quantity = QuantityLots::from_atoms(reader.integral<std::int64_t>());
+    value.notional = MoneyMicros::from_atoms(reader.integral<std::int64_t>());
+    return value;
+}
+
 [[nodiscard]] ApplyResult read_result(Reader& reader) noexcept {
     ApplyResult value;
     value.code = static_cast<ApplyCode>(reader.integral<std::uint8_t>());
@@ -574,6 +969,8 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
         static_cast<EvaluationMode>(reader.integral<std::uint8_t>());
     value.matched_rule_index = reader.integral<std::uint16_t>();
     value.rules_visited = reader.integral<std::uint16_t>();
+    value.action_resolution_code =
+        static_cast<ActionResolutionCode>(reader.integral<std::uint8_t>());
     return value;
 }
 
@@ -593,6 +990,11 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
     for (std::size_t index = 0; index < state.policy_count; ++index) {
         state.policies[index] = read_policy(reader);
         if (state.policies[index].artifact.rule_count > kMaxPolicyRules) return false;
+    }
+
+    if (!read_bundle(reader, state.active_executable_policy) ||
+        !read_bundle(reader, state.staged_executable_policy)) {
+        return false;
     }
 
     state.source_count = reader.integral<std::uint16_t>();
@@ -653,9 +1055,12 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
             static_cast<EvaluationMode>(reader.integral<std::uint8_t>());
         hot.strategy_mode =
             static_cast<StrategyMode>(reader.integral<std::uint8_t>());
+        hot.action_resolution_code =
+            static_cast<ActionResolutionCode>(reader.integral<std::uint8_t>());
         cold.decision_id = DecisionId{reader.integral<std::uint64_t>()};
         cold.command_payload_digest = reader.digest();
         if (!read_decision_frame(reader, cold.frame)) return false;
+        cold.proposal = read_proposal(reader);
     }
     return reader.finished() && valid_state(state);
 }

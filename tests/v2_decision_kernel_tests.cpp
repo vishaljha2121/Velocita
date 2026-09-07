@@ -66,12 +66,88 @@ velocita::v2::DecisionFrame frame() {
     return value;
 }
 
+velocita::v2::FeatureSchemaArtifact feature_schema() {
+    using namespace velocita::v2;
+    FeatureSchemaArtifact value;
+    value.schema_version = kFeatureSchemaArtifactSchemaVersion;
+    value.feature_schema_id = FeatureSchemaId{3};
+    value.feature_count = 1;
+    value.features[0] = {FeatureEconomicKind::price, 1};
+    value.artifact_digest = compute_artifact_digest(value).digest;
+    return value;
+}
+
+velocita::v2::ActionTemplate action_template() {
+    using namespace velocita::v2;
+    ActionTemplate value;
+    value.schema_version = kActionTemplateSchemaVersion;
+    value.directive = Directive::place_limit;
+    value.side = Side::buy;
+    value.time_in_force = TimeInForce::good_til_cancel;
+    value.post_only = PostOnlyMode::required;
+    value.order_slot = LogicalOrderSlot{1};
+    value.instrument_spec_version = InstrumentSpecVersion{1};
+    value.venue_capabilities_version = VenueCapabilitiesVersion{1};
+    value.price_source = {EconomicValueSourceKind::feature, 0,
+                          RoundingMode::toward_zero, {}, 1, {}};
+    value.quantity_source = {EconomicValueSourceKind::fixed, 0,
+                             RoundingMode::toward_zero,
+                             QuantityLots::from_atoms(1), 0};
+    value.safety_caps.max_quantity = QuantityLots::from_atoms(2);
+    value.safety_caps.max_notional = MoneyMicros::from_atoms(10'000);
+    value.safety_caps.max_abs_price_deviation = PriceTicks::from_atoms(1);
+    value.safety_caps.max_abs_tick_offset = PriceTicks::from_atoms(1);
+    value.safety_caps.max_market_data_age_ns = 100;
+    value.safety_caps.reference_price = value.price_source;
+    return value;
+}
+
+velocita::v2::ExecutablePolicyArtifact executable_policy(
+    const velocita::v2::FeatureSchemaArtifact& schema) {
+    using namespace velocita::v2;
+    ExecutablePolicyArtifact value;
+    value.schema_version = kExecutablePolicyArtifactSchemaVersion;
+    value.policy_id = PolicyId{10};
+    value.policy_version = PolicyVersion{2};
+    value.policy_artifact_digest = policy().artifact_digest;
+    value.feature_schema_id = schema.feature_schema_id;
+    value.feature_schema_digest = schema.artifact_digest;
+    value.template_count = 1;
+    value.templates[0] = action_template();
+    value.rule_binding_count = 1;
+    value.rule_template_slots[0] = ActionTemplateSlot{1};
+    value.artifact_digest = compute_artifact_digest(value).digest;
+    return value;
+}
+
+velocita::v2::InstrumentExecutionProfile instrument_profile() {
+    using namespace velocita::v2;
+    return {kInstrumentExecutionProfileSchemaVersion, VenueId{7}, InstrumentId{4},
+            InstrumentSpecVersion{1}, MoneyMicros::from_atoms(100),
+            PriceTicks::from_atoms(1), PriceTicks::from_atoms(100),
+            QuantityLots::from_atoms(1), QuantityLots::from_atoms(10)};
+}
+
+velocita::v2::VenueCapabilities venue_capabilities() {
+    using namespace velocita::v2;
+    return {kVenueCapabilitiesSchemaVersion, VenueId{7},
+            VenueCapabilitiesVersion{1},
+            static_cast<std::uint8_t>(kVenueDirectivePlaceLimit |
+                                      kVenueDirectiveCancel |
+                                      kVenueDirectiveReplace),
+            kVenueTifGtc, 1};
+}
+
 velocita::v2::TradingState ready_state() {
     using namespace velocita::v2;
     TradingState state;
     state.strategy_mode = StrategyMode::normal;
     state.policy_count = 1;
     state.policies[0] = PolicyRecord{policy(), PolicyLifecycle::active};
+    const auto schema = feature_schema();
+    state.active_executable_policy =
+        ExecutablePolicyBundle{true, schema, executable_policy(schema),
+                               instrument_profile(), venue_capabilities(), 1, 2};
     state.source_count = 1;
     state.sources[0] = SourceCursor{SourceId{11}, SourceGeneration{1}, SourceSequence{1}};
     state.source_event_count = 1;
@@ -100,12 +176,19 @@ void test_success_is_retained_hot_and_cold() {
 
     require(outcome.code == ApplyCode::applied &&
                 outcome.decision_code == DecisionCode::action &&
-                outcome.effective_directive == Directive::place_limit,
+                outcome.effective_directive == Directive::place_limit &&
+                outcome.action_resolution_code == ActionResolutionCode::proposed,
             "valid frame did not produce an authoritative action");
     require(state.decision_count == 1 &&
                 state.decision_hot[0].decision_id == DecisionId{100} &&
                 state.decision_cold[0].command_payload_digest == digest(std::byte{0x31}),
             "decision was not retained across hot and cold stores");
+    require(state.decision_cold[0].proposal.price == PriceTicks::from_atoms(11) &&
+                state.decision_cold[0].proposal.quantity ==
+                    QuantityLots::from_atoms(1) &&
+                state.decision_cold[0].proposal.notional ==
+                    MoneyMicros::from_atoms(1'100),
+            "exact economic proposal was not retained in the cold record");
     require(apply(state, command, scratch) == outcome && state.decision_count == 1,
             "exact command retry did not return the retained decision");
 }

@@ -116,6 +116,68 @@ velocita::v2::TradingState populated_state() {
     return state;
 }
 
+velocita::v2::ExecutablePolicyBundle maximum_bundle(
+    const velocita::v2::PolicyArtifact& policy_value,
+    const bool active) {
+    using namespace velocita::v2;
+    FeatureSchemaArtifact schema;
+    schema.schema_version = kFeatureSchemaArtifactSchemaVersion;
+    schema.feature_schema_id = policy_value.feature_schema_id;
+    schema.feature_count = kMaxDecisionFeatures;
+    for (std::size_t index = 0; index < schema.feature_count; ++index) {
+        schema.features[index] = {FeatureEconomicKind::price, 1};
+    }
+    schema.artifact_digest = compute_artifact_digest(schema).digest;
+
+    ExecutablePolicyArtifact executable;
+    executable.schema_version = kExecutablePolicyArtifactSchemaVersion;
+    executable.policy_id = policy_value.policy_id;
+    executable.policy_version = policy_value.policy_version;
+    executable.policy_artifact_digest = policy_value.artifact_digest;
+    executable.feature_schema_id = schema.feature_schema_id;
+    executable.feature_schema_digest = schema.artifact_digest;
+    executable.template_count = kMaxExecutableActionTemplates;
+    for (std::size_t index = 0; index < executable.template_count; ++index) {
+        auto& action = executable.templates[index];
+        action.schema_version = kActionTemplateSchemaVersion;
+        action.directive = Directive::place_limit;
+        action.side = Side::buy;
+        action.time_in_force = TimeInForce::good_til_cancel;
+        action.post_only = PostOnlyMode::required;
+        action.order_slot = LogicalOrderSlot{
+            static_cast<std::uint16_t>(index + 1)};
+        action.instrument_spec_version = InstrumentSpecVersion{1};
+        action.venue_capabilities_version = VenueCapabilitiesVersion{1};
+        action.price_source = {EconomicValueSourceKind::feature, 0,
+                               RoundingMode::toward_zero, {}, 1, {}};
+        action.quantity_source = {EconomicValueSourceKind::fixed, 0,
+                                  RoundingMode::toward_zero,
+                                  QuantityLots::from_atoms(1), 0};
+        action.safety_caps = {QuantityLots::from_atoms(1),
+                              MoneyMicros::from_atoms(1'000),
+                              PriceTicks::from_atoms(1),
+                              PriceTicks::from_atoms(1), 100,
+                              action.price_source};
+    }
+    executable.rule_binding_count = kMaxPolicyRules;
+    for (std::size_t index = 0; index < executable.rule_binding_count; ++index) {
+        executable.rule_template_slots[index] = ActionTemplateSlot{
+            static_cast<std::uint8_t>(index % executable.template_count + 1)};
+    }
+    executable.artifact_digest = compute_artifact_digest(executable).digest;
+
+    const InstrumentExecutionProfile instrument{
+        kInstrumentExecutionProfileSchemaVersion, VenueId{7},
+        policy_value.instrument_id, InstrumentSpecVersion{1},
+        MoneyMicros::from_atoms(1), PriceTicks::from_atoms(1),
+        PriceTicks::from_atoms(100), QuantityLots::from_atoms(1),
+        QuantityLots::from_atoms(10)};
+    const VenueCapabilities venue{
+        kVenueCapabilitiesSchemaVersion, VenueId{7}, VenueCapabilitiesVersion{1},
+        kVenueDirectivePlaceLimit, kVenueTifGtc, 1};
+    return {true, schema, executable, instrument, venue, 1, active ? 2U : 0U};
+}
+
 void write_u16(std::span<std::byte> bytes, const std::size_t offset,
                const std::uint16_t value) {
     bytes[offset] = static_cast<std::byte>(value & 0xffU);
@@ -145,8 +207,8 @@ void test_empty_snapshot_has_canonical_layout() {
 
     const std::array expected_prefix{
         std::byte{'V'}, std::byte{'2'}, std::byte{'S'}, std::byte{'T'},
-        std::byte{35}, std::byte{0}, std::byte{0}, std::byte{0},
-        std::byte{2}, std::byte{0},
+        std::byte{37}, std::byte{0}, std::byte{0}, std::byte{0},
+        std::byte{3}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{5}};
@@ -159,7 +221,7 @@ void test_empty_snapshot_has_canonical_layout() {
             "returned digest differs from framed digest");
     const auto hash = to_hex(encoded.state_digest);
     require(hash ==
-                "e25ee2cc248da6255b367e1a84a4bc6bca2b645764c14cede82fcd348f1b70ea",
+                "17ccb5bcb9db553e18c70d394493cbf84560ce059892ab3dc9381abcca71bdbb",
             "empty state golden digest changed: " + hash);
 }
 
@@ -311,19 +373,23 @@ void test_declared_maximum_is_exact_and_encodable() {
     for (std::size_t index = 0; index < state.policy_count; ++index) {
         auto artifact = policy();
         artifact.policy_id = PolicyId{index + 1};
-        artifact.account_id = AccountId{index + 1};
-        artifact.instrument_id = InstrumentId{index + 1};
+        artifact.account_id = AccountId{index < 2 ? 1 : index + 1};
+        artifact.instrument_id = InstrumentId{index < 2 ? 1 : index + 1};
         artifact.rule_count = kMaxPolicyRules;
         for (std::size_t rule = 0; rule < artifact.rule_count; ++rule) {
             artifact.rules[rule] =
                 PolicyRule{static_cast<std::uint16_t>(rule),
                            PredicateOperator::equal,
                            FeatureMicros::from_atoms(static_cast<std::int64_t>(rule)),
-                           Directive::no_action};
+                           Directive::place_limit};
         }
-        state.policies[index] =
-            PolicyRecord{artifact, PolicyLifecycle::proposed};
+        state.policies[index] = PolicyRecord{
+            artifact, index == 0 ? PolicyLifecycle::active
+                                 : (index == 1 ? PolicyLifecycle::validated
+                                               : PolicyLifecycle::proposed)};
     }
+    state.active_executable_policy = maximum_bundle(state.policies[0].artifact, true);
+    state.staged_executable_policy = maximum_bundle(state.policies[1].artifact, false);
 
     state.source_count = kMaxSources;
     for (std::size_t index = 0; index < state.source_count; ++index) {
@@ -369,8 +435,9 @@ void test_declared_maximum_is_exact_and_encodable() {
         const auto id = DecisionId{index + 1};
         state.decision_hot[index] = DecisionRecordHot{
             id, PolicyId{17}, PolicyVersion{2}, index + 1, {}, {}, 0, 1,
-            DecisionCode::action, ContractError::none, Directive::place_limit,
-            Directive::place_limit, EvaluationMode::authoritative,
+            DecisionCode::control_suppressed, ContractError::none,
+            Directive::place_limit, Directive::no_action,
+            EvaluationMode::authoritative,
             StrategyMode::halted};
         state.decision_cold[index] =
             DecisionRecordCold{id, digest(0xbb), decision_frame};

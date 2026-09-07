@@ -143,6 +143,14 @@ private:
         case ApplyCode::receipt_capacity_exceeded:
         case ApplyCode::state_version_exhausted:
         case ApplyCode::decision_id_conflict:
+        case ApplyCode::invalid_feature_schema_contract:
+        case ApplyCode::invalid_executable_policy_contract:
+        case ApplyCode::artifact_digest_mismatch:
+        case ApplyCode::executable_policy_binding_failed:
+        case ApplyCode::invalid_instrument_profile_contract:
+        case ApplyCode::invalid_venue_capabilities_contract:
+        case ApplyCode::executable_policy_not_staged:
+        case ApplyCode::executable_policy_identity_conflict:
             return true;
     }
     return false;
@@ -160,7 +168,12 @@ private:
 
 [[nodiscard]] constexpr bool known(const DecisionCode value) noexcept {
     return static_cast<std::uint8_t>(value) <=
-           static_cast<std::uint8_t>(DecisionCode::shadow_recorded);
+           static_cast<std::uint8_t>(DecisionCode::action_resolution_rejected);
+}
+
+[[nodiscard]] constexpr bool known(const ActionResolutionCode value) noexcept {
+    return static_cast<std::uint8_t>(value) <=
+           static_cast<std::uint8_t>(ActionResolutionCode::notional_cap_exceeded);
 }
 
 [[nodiscard]] constexpr bool known(const Directive value) noexcept {
@@ -185,6 +198,8 @@ private:
         case KernelCommandKind::set_executor_generation:
         case KernelCommandKind::record_source_event:
         case KernelCommandKind::evaluate_decision_frame:
+        case KernelCommandKind::stage_executable_policy:
+        case KernelCommandKind::activate_executable_policy:
             return true;
     }
     return false;
@@ -227,6 +242,17 @@ private:
         return body->decision_id.value() != 0 && known(body->evaluation_mode) &&
                body->frame.feature_count <= kMaxDecisionFeatures;
     }
+    if (const auto* body = std::get_if<StageExecutablePolicy>(&command.body)) {
+        return validate(body->feature_schema) == ContractError::none &&
+               validate(body->executable_policy) == ContractError::none &&
+               validate(body->instrument) == ContractError::none &&
+               validate(body->venue) == ContractError::none;
+    }
+    if (const auto* body = std::get_if<ActivateExecutablePolicy>(&command.body)) {
+        return body->policy_id.value() != 0 &&
+               body->policy_version.value() != 0 &&
+               !body->executable_policy_digest.is_zero();
+    }
     return false;
 }
 
@@ -235,6 +261,7 @@ private:
            known(result.policy_lifecycle) && known(result.strategy_mode) &&
            known(result.decision_code) && known(result.proposed_directive) &&
            known(result.effective_directive) && known(result.evaluation_mode) &&
+           known(result.action_resolution_code) &&
            (result.evaluation_mode != EvaluationMode::shadow ||
             result.effective_directive == Directive::no_action) &&
            result.rules_visited <= kMaxPolicyRules &&
@@ -267,7 +294,13 @@ private:
     if (std::holds_alternative<RecordSourceEvent>(body)) {
         return KernelCommandKind::record_source_event;
     }
-    return KernelCommandKind::evaluate_decision_frame;
+    if (std::holds_alternative<EvaluateDecisionFrame>(body)) {
+        return KernelCommandKind::evaluate_decision_frame;
+    }
+    if (std::holds_alternative<StageExecutablePolicy>(body)) {
+        return KernelCommandKind::stage_executable_policy;
+    }
+    return KernelCommandKind::activate_executable_policy;
 }
 
 [[nodiscard]] std::size_t body_size(const CommandBody& body) noexcept {
@@ -286,6 +319,19 @@ private:
         return 8;
     }
     if (std::holds_alternative<RecordSourceEvent>(body)) return 56;
+    if (const auto* value = std::get_if<StageExecutablePolicy>(&body)) {
+        return kFeatureSchemaPayloadPrefixBytes +
+                   value->feature_schema.feature_count *
+                       kFeatureDescriptorEncodedBytes +
+               kExecutablePolicyPayloadPrefixBytes +
+                   value->executable_policy.template_count *
+                       kActionTemplateEncodedBytes +
+                   sizeof(std::uint16_t) +
+                   value->executable_policy.rule_binding_count +
+               kInstrumentExecutionProfileEncodedBytes +
+               kVenueCapabilitiesEncodedBytes;
+    }
+    if (std::holds_alternative<ActivateExecutablePolicy>(body)) return 48;
     const auto& value = std::get<EvaluateDecisionFrame>(body);
     return sizeof(std::uint64_t) + sizeof(std::uint8_t) +
            kDecisionFramePayloadFixedBytes +
@@ -340,6 +386,95 @@ void write_policy(Writer& writer, const PolicyArtifact& value) noexcept {
     }
 }
 
+void write_price_source(Writer& writer, const PriceSource& value) noexcept {
+    writer.integral(static_cast<std::uint8_t>(value.kind));
+    writer.integral(value.feature_index);
+    writer.integral(static_cast<std::uint8_t>(value.rounding));
+    writer.integral(value.fixed_value.atoms());
+    writer.integral(value.feature_atoms_per_tick);
+    writer.integral(value.tick_offset.atoms());
+}
+
+void write_quantity_source(Writer& writer, const QuantitySource& value) noexcept {
+    writer.integral(static_cast<std::uint8_t>(value.kind));
+    writer.integral(value.feature_index);
+    writer.integral(static_cast<std::uint8_t>(value.rounding));
+    writer.integral(value.fixed_value.atoms());
+    writer.integral(value.feature_atoms_per_lot);
+}
+
+void write_action_template(Writer& writer, const ActionTemplate& value) noexcept {
+    writer.integral(value.schema_version);
+    writer.integral(static_cast<std::uint8_t>(value.directive));
+    writer.integral(static_cast<std::uint8_t>(value.side));
+    writer.integral(static_cast<std::uint8_t>(value.time_in_force));
+    writer.integral(static_cast<std::uint8_t>(value.post_only));
+    writer.integral(value.order_slot.value());
+    writer.integral(value.instrument_spec_version.value());
+    writer.integral(value.venue_capabilities_version.value());
+    write_price_source(writer, value.price_source);
+    write_quantity_source(writer, value.quantity_source);
+    writer.integral(value.safety_caps.max_quantity.atoms());
+    writer.integral(value.safety_caps.max_notional.atoms());
+    writer.integral(value.safety_caps.max_abs_price_deviation.atoms());
+    writer.integral(value.safety_caps.max_abs_tick_offset.atoms());
+    writer.integral(value.safety_caps.max_market_data_age_ns);
+    write_price_source(writer, value.safety_caps.reference_price);
+}
+
+void write_feature_schema(Writer& writer,
+                          const FeatureSchemaArtifact& value) noexcept {
+    writer.integral(value.schema_version);
+    writer.integral(value.feature_schema_id.value());
+    writer.digest(value.artifact_digest);
+    writer.integral(value.feature_count);
+    for (std::size_t index = 0; index < value.feature_count; ++index) {
+        writer.integral(static_cast<std::uint8_t>(value.features[index].kind));
+        writer.integral(value.features[index].atoms_per_output_unit);
+    }
+}
+
+void write_executable_policy(Writer& writer,
+                             const ExecutablePolicyArtifact& value) noexcept {
+    writer.integral(value.schema_version);
+    writer.integral(value.policy_id.value());
+    writer.integral(value.policy_version.value());
+    writer.digest(value.policy_artifact_digest);
+    writer.integral(value.feature_schema_id.value());
+    writer.digest(value.feature_schema_digest);
+    writer.digest(value.artifact_digest);
+    writer.integral(value.template_count);
+    for (std::size_t index = 0; index < value.template_count; ++index) {
+        write_action_template(writer, value.templates[index]);
+    }
+    writer.integral(value.rule_binding_count);
+    for (std::size_t index = 0; index < value.rule_binding_count; ++index) {
+        writer.integral(value.rule_template_slots[index].value());
+    }
+}
+
+void write_instrument(Writer& writer,
+                      const InstrumentExecutionProfile& value) noexcept {
+    writer.integral(value.schema_version);
+    writer.integral(value.venue_id.value());
+    writer.integral(value.instrument_id.value());
+    writer.integral(value.instrument_spec_version.value());
+    writer.integral(value.quote_micros_per_tick_lot.atoms());
+    writer.integral(value.minimum_price.atoms());
+    writer.integral(value.maximum_price.atoms());
+    writer.integral(value.minimum_quantity.atoms());
+    writer.integral(value.maximum_quantity.atoms());
+}
+
+void write_venue(Writer& writer, const VenueCapabilities& value) noexcept {
+    writer.integral(value.schema_version);
+    writer.integral(value.venue_id.value());
+    writer.integral(value.venue_capabilities_version.value());
+    writer.integral(value.directive_mask);
+    writer.integral(value.time_in_force_mask);
+    writer.integral(value.supports_post_only);
+}
+
 void write_body(Writer& writer, const CommandBody& body) noexcept {
     if (const auto* value = std::get_if<PublishPolicy>(&body)) {
         write_policy(writer, value->artifact);
@@ -369,6 +504,16 @@ void write_body(Writer& writer, const CommandBody& body) noexcept {
         writer.integral(value->decision_id.value());
         writer.integral(static_cast<std::uint8_t>(value->evaluation_mode));
         write_decision_frame(writer, value->frame);
+    } else if (const auto* value = std::get_if<StageExecutablePolicy>(&body)) {
+        write_feature_schema(writer, value->feature_schema);
+        write_executable_policy(writer, value->executable_policy);
+        write_instrument(writer, value->instrument);
+        write_venue(writer, value->venue);
+    } else if (const auto* value =
+                   std::get_if<ActivateExecutablePolicy>(&body)) {
+        writer.integral(value->policy_id.value());
+        writer.integral(value->policy_version.value());
+        writer.digest(value->executable_policy_digest);
     }
 }
 
@@ -430,6 +575,123 @@ void write_body(Writer& writer, const CommandBody& body) noexcept {
     return validate(value) == ContractError::none;
 }
 
+[[nodiscard]] PriceSource read_price_source(Reader& reader) noexcept {
+    PriceSource value;
+    value.kind = static_cast<EconomicValueSourceKind>(reader.integral<std::uint8_t>());
+    value.feature_index = reader.integral<std::uint16_t>();
+    value.rounding = static_cast<RoundingMode>(reader.integral<std::uint8_t>());
+    value.fixed_value = PriceTicks::from_atoms(reader.integral<std::int64_t>());
+    value.feature_atoms_per_tick = reader.integral<std::int64_t>();
+    value.tick_offset = PriceTicks::from_atoms(reader.integral<std::int64_t>());
+    return value;
+}
+
+[[nodiscard]] QuantitySource read_quantity_source(Reader& reader) noexcept {
+    QuantitySource value;
+    value.kind = static_cast<EconomicValueSourceKind>(reader.integral<std::uint8_t>());
+    value.feature_index = reader.integral<std::uint16_t>();
+    value.rounding = static_cast<RoundingMode>(reader.integral<std::uint8_t>());
+    value.fixed_value = QuantityLots::from_atoms(reader.integral<std::int64_t>());
+    value.feature_atoms_per_lot = reader.integral<std::int64_t>();
+    return value;
+}
+
+[[nodiscard]] ActionTemplate read_action_template(Reader& reader) noexcept {
+    ActionTemplate value;
+    value.schema_version = reader.integral<std::uint16_t>();
+    value.directive = static_cast<Directive>(reader.integral<std::uint8_t>());
+    value.side = static_cast<Side>(reader.integral<std::uint8_t>());
+    value.time_in_force = static_cast<TimeInForce>(reader.integral<std::uint8_t>());
+    value.post_only = static_cast<PostOnlyMode>(reader.integral<std::uint8_t>());
+    value.order_slot = LogicalOrderSlot{reader.integral<std::uint16_t>()};
+    value.instrument_spec_version =
+        InstrumentSpecVersion{reader.integral<std::uint64_t>()};
+    value.venue_capabilities_version =
+        VenueCapabilitiesVersion{reader.integral<std::uint64_t>()};
+    value.price_source = read_price_source(reader);
+    value.quantity_source = read_quantity_source(reader);
+    value.safety_caps.max_quantity =
+        QuantityLots::from_atoms(reader.integral<std::int64_t>());
+    value.safety_caps.max_notional =
+        MoneyMicros::from_atoms(reader.integral<std::int64_t>());
+    value.safety_caps.max_abs_price_deviation =
+        PriceTicks::from_atoms(reader.integral<std::int64_t>());
+    value.safety_caps.max_abs_tick_offset =
+        PriceTicks::from_atoms(reader.integral<std::int64_t>());
+    value.safety_caps.max_market_data_age_ns = reader.integral<std::int64_t>();
+    value.safety_caps.reference_price = read_price_source(reader);
+    return value;
+}
+
+[[nodiscard]] bool read_feature_schema(Reader& reader,
+                                       FeatureSchemaArtifact& value) noexcept {
+    value.schema_version = reader.integral<std::uint16_t>();
+    value.feature_schema_id = FeatureSchemaId{reader.integral<std::uint64_t>()};
+    value.artifact_digest = reader.digest();
+    value.feature_count = reader.integral<std::uint16_t>();
+    if (value.feature_count > kMaxDecisionFeatures) return false;
+    for (std::size_t index = 0; index < value.feature_count; ++index) {
+        value.features[index].kind =
+            static_cast<FeatureEconomicKind>(reader.integral<std::uint8_t>());
+        value.features[index].atoms_per_output_unit =
+            reader.integral<std::int64_t>();
+    }
+    return validate(value) == ContractError::none;
+}
+
+[[nodiscard]] bool read_executable_policy(
+    Reader& reader, ExecutablePolicyArtifact& value) noexcept {
+    value.schema_version = reader.integral<std::uint16_t>();
+    value.policy_id = PolicyId{reader.integral<std::uint64_t>()};
+    value.policy_version = PolicyVersion{reader.integral<std::uint64_t>()};
+    value.policy_artifact_digest = reader.digest();
+    value.feature_schema_id = FeatureSchemaId{reader.integral<std::uint64_t>()};
+    value.feature_schema_digest = reader.digest();
+    value.artifact_digest = reader.digest();
+    value.template_count = reader.integral<std::uint16_t>();
+    if (value.template_count > kMaxExecutableActionTemplates) return false;
+    for (std::size_t index = 0; index < value.template_count; ++index) {
+        value.templates[index] = read_action_template(reader);
+    }
+    value.rule_binding_count = reader.integral<std::uint16_t>();
+    if (value.rule_binding_count > kMaxPolicyRules) return false;
+    for (std::size_t index = 0; index < value.rule_binding_count; ++index) {
+        value.rule_template_slots[index] =
+            ActionTemplateSlot{reader.integral<std::uint8_t>()};
+    }
+    return validate(value) == ContractError::none;
+}
+
+[[nodiscard]] InstrumentExecutionProfile read_instrument(Reader& reader) noexcept {
+    InstrumentExecutionProfile value;
+    value.schema_version = reader.integral<std::uint16_t>();
+    value.venue_id = VenueId{reader.integral<std::uint64_t>()};
+    value.instrument_id = InstrumentId{reader.integral<std::uint64_t>()};
+    value.instrument_spec_version =
+        InstrumentSpecVersion{reader.integral<std::uint64_t>()};
+    value.quote_micros_per_tick_lot =
+        MoneyMicros::from_atoms(reader.integral<std::int64_t>());
+    value.minimum_price = PriceTicks::from_atoms(reader.integral<std::int64_t>());
+    value.maximum_price = PriceTicks::from_atoms(reader.integral<std::int64_t>());
+    value.minimum_quantity =
+        QuantityLots::from_atoms(reader.integral<std::int64_t>());
+    value.maximum_quantity =
+        QuantityLots::from_atoms(reader.integral<std::int64_t>());
+    return value;
+}
+
+[[nodiscard]] VenueCapabilities read_venue(Reader& reader) noexcept {
+    VenueCapabilities value;
+    value.schema_version = reader.integral<std::uint16_t>();
+    value.venue_id = VenueId{reader.integral<std::uint64_t>()};
+    value.venue_capabilities_version =
+        VenueCapabilitiesVersion{reader.integral<std::uint64_t>()};
+    value.directive_mask = reader.integral<std::uint8_t>();
+    value.time_in_force_mask = reader.integral<std::uint8_t>();
+    value.supports_post_only = reader.integral<std::uint8_t>();
+    return value;
+}
+
 [[nodiscard]] bool read_body(Reader& reader,
                              const KernelCommandKind kind,
                              CommandBody& body) noexcept {
@@ -480,6 +742,26 @@ void write_body(Writer& writer, const CommandBody& body) noexcept {
             body = value;
             return true;
         }
+        case KernelCommandKind::stage_executable_policy: {
+            StageExecutablePolicy value;
+            if (!read_feature_schema(reader, value.feature_schema) ||
+                !read_executable_policy(reader, value.executable_policy)) {
+                return false;
+            }
+            value.instrument = read_instrument(reader);
+            value.venue = read_venue(reader);
+            if (validate(value.instrument) != ContractError::none ||
+                validate(value.venue) != ContractError::none) {
+                return false;
+            }
+            body = value;
+            return true;
+        }
+        case KernelCommandKind::activate_executable_policy:
+            body = ActivateExecutablePolicy{
+                PolicyId{reader.integral<std::uint64_t>()},
+                PolicyVersion{reader.integral<std::uint64_t>()}, reader.digest()};
+            return true;
     }
     return false;
 }
@@ -504,6 +786,7 @@ void write_result_payload(Writer& writer, const ApplyResult& value) noexcept {
     writer.integral(static_cast<std::uint8_t>(value.evaluation_mode));
     writer.integral(value.matched_rule_index);
     writer.integral(value.rules_visited);
+    writer.integral(static_cast<std::uint8_t>(value.action_resolution_code));
 }
 
 [[nodiscard]] ApplyResult read_result_payload(Reader& reader) noexcept {
@@ -536,6 +819,8 @@ void write_result_payload(Writer& writer, const ApplyResult& value) noexcept {
         static_cast<EvaluationMode>(reader.integral<std::uint8_t>());
     value.matched_rule_index = reader.integral<std::uint16_t>();
     value.rules_visited = reader.integral<std::uint16_t>();
+    value.action_resolution_code =
+        static_cast<ActionResolutionCode>(reader.integral<std::uint8_t>());
     return value;
 }
 
@@ -571,7 +856,6 @@ void write_result_payload(Writer& writer, const ApplyResult& value) noexcept {
 
 EncodeKernelValueResult encode_kernel_command(
     const Command& command, const std::span<std::byte> output) noexcept {
-    static_assert(kMaxKernelCommandBodyBytes == kMaxPolicyPayloadBytes);
     if (!valid_command(command)) return {KernelCodecError::invalid_value, 0, {}};
 
     const auto payload_bytes = kKernelCommandIdentityBytes + body_size(command.body);

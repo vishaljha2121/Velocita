@@ -389,11 +389,12 @@ preserved V1/V1.1 branches and tags to leave V2 entirely.
 
 Implementation state: Phase 3A ordered-rule evaluation, Phase 3B decision-frame
 schema V2, and Phase 3C authoritative reducer/records/replay are accepted on the
-host and physical Pi. Phase 3D typed action contracts, versioned instrument and
-venue inputs, and the standalone pure resolver are host-green through commit
-`946d3e3`. Executable-policy schema integration, canonical action bytes,
-authoritative reducer/replay integration, measurement, ARM64/Pi Phase 3D gates,
-and overall Phase 3 acceptance remain pending.
+host and physical Pi. Phase 3D/3E now integrates an atomic active/staged
+executable bundle, exact economic proposal resolution, schema-v3 kernel bytes,
+schema-v3 snapshots, independent model replay, cache/layout ceilings, and an
+in-memory Phase 3 benchmark. Release and sanitizer gates are host-green. The
+final exact source root still needs its pinned ARM64 physical Pi gate before
+Phase 3 can be accepted; NUC capacity promotion remains deferred.
 
 The reviewed execution checklist and pending schema decisions are maintained in
 [`V2 Phase 3 decision-evaluator design`](V2_PHASE3_DECISION_EVALUATOR_DESIGN.md).
