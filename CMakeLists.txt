@@ -246,6 +246,15 @@ if(BUILD_TESTING)
         -Wall -Wextra -Wpedantic)
     add_test(NAME v2-action-resolver-tests COMMAND v2-action-resolver-tests)
 
+    add_executable(v2-executable-policy-contract-tests
+        tests/v2_executable_policy_contract_tests.cpp)
+    target_link_libraries(v2-executable-policy-contract-tests PRIVATE
+        velocita_v2_contracts)
+    target_compile_options(v2-executable-policy-contract-tests PRIVATE
+        -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-executable-policy-contract-tests
+        COMMAND v2-executable-policy-contract-tests)
+
     add_executable(v2-layout-report src/v2_layout_report.cpp)
     target_link_libraries(v2-layout-report PRIVATE
         velocita_v2_contracts velocita_v2_kernel velocita_v2_evaluator)

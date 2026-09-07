@@ -132,6 +132,7 @@ release_targets=(
     v2-decision-kernel-tests
     v2-action-template-contract-tests
     v2-action-resolver-tests
+    v2-executable-policy-contract-tests
     v2-contract-benchmark
     v2-layout-report
 )
@@ -163,6 +164,7 @@ cmake --build "$instrumented_build" \
              v2-model-replay-tests v2-rule-evaluator-tests v2-layout-tests \
              v2-decision-kernel-tests v2-action-template-contract-tests \
              v2-action-resolver-tests \
+             v2-executable-policy-contract-tests \
     --parallel "$build_jobs"
 
 failure_step=instrumented_tests
@@ -185,6 +187,7 @@ cmake --build "$sanitized_build" \
              v2-model-replay-tests v2-rule-evaluator-tests v2-layout-tests \
              v2-decision-kernel-tests v2-action-template-contract-tests \
              v2-action-resolver-tests \
+             v2-executable-policy-contract-tests \
     --parallel "$build_jobs"
 
 failure_step=sanitized_tests

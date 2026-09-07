@@ -372,6 +372,15 @@ market data. Functional tests pass 18/18; focused Release and ASan/UBSan
 resolver/layout gates pass 2/2. Policy-schema/reducer integration and target
 evidence remain pending, so this is not yet an order-authoritative path.
 
+A candidate bounded executable-policy companion now maps the existing 32
+ordered rules to at most eight deduplicated templates; slot zero is canonical
+no-action. A separate 32-entry feature-schema artifact owns price/quantity unit
+conversions. Structural and cross-artifact tests are host-green, including
+Release and sanitizers. The active-plus-staged resident projection exceeds the
+old state ceiling by 24 bytes before lifecycle metadata, correctly blocking
+silent integration. Canonical size and Pi/NUC evidence must determine the final
+state/snapshot budget before these candidate bounds are accepted.
+
 ### Version preservation
 
 - V1 remains recoverable at annotated tag `v1.0.0`.

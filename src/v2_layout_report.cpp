@@ -1,6 +1,7 @@
 #include "velocita/v2/action_template.hpp"
 #include "velocita/v2/action_resolver.hpp"
 #include "velocita/v2/contracts.hpp"
+#include "velocita/v2/executable_policy.hpp"
 #include "velocita/v2/kernel.hpp"
 #include "velocita/v2/kernel_codec.hpp"
 #include "velocita/v2/rule_evaluator.hpp"
@@ -60,6 +61,37 @@ int main() {
               << '\n'
               << "action_resolution_budget_bytes="
               << kActionResolutionObjectBudgetBytes << '\n'
+              << "feature_descriptor_size_bytes="
+              << sizeof(FeatureDescriptor) << '\n'
+              << "feature_descriptor_budget_bytes="
+              << kFeatureDescriptorObjectBudgetBytes << '\n'
+              << "feature_schema_artifact_size_bytes="
+              << sizeof(FeatureSchemaArtifact) << '\n'
+              << "feature_schema_artifact_budget_bytes="
+              << kFeatureSchemaArtifactObjectBudgetBytes << '\n'
+              << "executable_policy_artifact_size_bytes="
+              << sizeof(ExecutablePolicyArtifact) << '\n'
+              << "executable_policy_artifact_budget_bytes="
+              << kExecutablePolicyArtifactObjectBudgetBytes << '\n'
+              << "candidate_executable_policy_artifact_count="
+              << kMaxExecutablePolicyArtifacts << '\n'
+              << "candidate_executable_action_template_count="
+              << kMaxExecutableActionTemplates << '\n'
+              << "candidate_active_staged_resident_bytes="
+              << kMaxExecutablePolicyArtifacts *
+                     (sizeof(ExecutablePolicyArtifact) +
+                      sizeof(FeatureSchemaArtifact))
+              << '\n'
+              << "current_trading_state_headroom_bytes="
+              << kTradingStateObjectBudgetBytes - sizeof(TradingState) << '\n'
+              << "candidate_projected_trading_state_bytes="
+              << sizeof(TradingState) +
+                     kMaxExecutablePolicyArtifacts *
+                         (sizeof(ExecutablePolicyArtifact) +
+                          sizeof(FeatureSchemaArtifact))
+              << '\n'
+              << "candidate_trading_state_test_ceiling_bytes="
+              << 80U * 1024U << '\n'
               << "apply_result_size_bytes=" << sizeof(ApplyResult) << '\n'
               << "request_receipt_size_bytes=" << sizeof(RequestReceipt) << '\n'
               << "decision_record_capacity=" << kMaxDecisionRecords << '\n'

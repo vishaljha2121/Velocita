@@ -404,9 +404,12 @@ slice. Detailed evidence is in
 
 - [x] freeze tagged price/quantity source, transform, logical-target, safety-cap,
       and action-proposal value contracts;
-- [ ] observe RED tests for every invalid tag, index, unit, zero/negative value,
+- [x] observe RED tests for every invalid tag, index, unit, zero/negative value,
       overflow, cap, target, and capability case;
 - [ ] add templates to a new explicit policy schema without reinterpreting V1;
+      the bounded standalone companion/feature-schema contracts are green,
+      while canonical bytes and replicated lifecycle integration remain
+      pending;
 - [ ] freeze canonical payload sizes, golden bytes, and corpus digests;
 - [ ] resolve first-match rules to templates and exact economic proposals;
       the standalone exact-proposal resolver is green, while rule/template
@@ -449,6 +452,22 @@ Policy schema integration follows next. Before the standalone resolver may
 become authoritative, the feature-unit conversion factors used by its value
 sources must be bound to a versioned feature-schema contract rather than merely
 accepted from template data.
+
+The approved companion-schema direction reuses the existing policy predicates
+and binds each rule index to a deduplicated template. Slot zero means no-action;
+nonzero slots are one-based. Candidate capacities are two complete executable
+artifacts for active/staged replacement, eight templates per artifact, 32
+existing rules, and 32 feature descriptors. These values are identical across
+replicas but remain candidates until canonical-size, ARM64, Pi, and NUC gates
+accept them.
+
+The host object-layout experiment reports 3,920 bytes for active plus staged
+executable and feature-schema artifacts versus 3,896 bytes of headroom under
+the old state ceiling. The old 72-KiB ceiling therefore cannot be reused. The
+candidate projected state is 73,752 bytes before lifecycle metadata and fits a
+provisional 80-KiB test ceiling. This is not yet an accepted state-budget or
+snapshot-format change. Detailed evidence is in
+[`V2 Phase 3D executable-policy contract experiment`](evidence/V2_PHASE3D_EXECUTABLE_POLICY_CONTRACT_EXPERIMENT.md).
 
 No Phase 4 order, reservation, or effect work begins until this contract and
 the reject-not-clamp boundary are accepted.

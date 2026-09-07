@@ -3,6 +3,7 @@
 #include "velocita/v2/action_template.hpp"
 #include "velocita/v2/action_resolver.hpp"
 #include "velocita/v2/contracts.hpp"
+#include "velocita/v2/executable_policy.hpp"
 #include "velocita/v2/kernel.hpp"
 #include "velocita/v2/payload.hpp"
 #include "velocita/v2/rule_evaluator.hpp"
@@ -49,6 +50,12 @@ void test_current_object_and_slot_budgets() {
                   kVenueCapabilitiesObjectBudgetBytes);
     static_assert(sizeof(ActionResolution) <=
                   kActionResolutionObjectBudgetBytes);
+    static_assert(sizeof(FeatureDescriptor) <=
+                  kFeatureDescriptorObjectBudgetBytes);
+    static_assert(sizeof(FeatureSchemaArtifact) <=
+                  kFeatureSchemaArtifactObjectBudgetBytes);
+    static_assert(sizeof(ExecutablePolicyArtifact) <=
+                  kExecutablePolicyArtifactObjectBudgetBytes);
     static_assert(sizeof(TradingState) <= kTradingStateObjectBudgetBytes);
     static_assert(kMaxStateSnapshotBytes < 64U * 1024U);
 
@@ -56,6 +63,22 @@ void test_current_object_and_slot_budgets() {
             "decision-frame arena stride is smaller than its object");
     require((kDecisionFrameArenaSlotStrideBytes % kTargetCacheLineBytes) == 0,
             "decision-frame arena stride is not cache-line rounded");
+}
+
+void test_candidate_executable_policy_capacity_is_visible() {
+    using namespace velocita::v2;
+    constexpr auto candidate_artifacts =
+        kMaxExecutablePolicyArtifacts *
+        (sizeof(ExecutablePolicyArtifact) + sizeof(FeatureSchemaArtifact));
+    constexpr auto current_state_headroom =
+        kTradingStateObjectBudgetBytes - sizeof(TradingState);
+
+    require(candidate_artifacts > current_state_headroom,
+            "candidate executable-policy state unexpectedly fits the old "
+            "budget; review and update the recorded layout decision");
+    require(sizeof(TradingState) + candidate_artifacts <= 80U * 1024U,
+            "candidate executable-policy state exceeded the provisional "
+            "80-KiB hardware-test ceiling");
 }
 
 void test_decision_records_have_separate_hot_and_cold_layouts() {
@@ -85,6 +108,7 @@ int main() {
     try {
         test_target_cache_line_contract();
         test_current_object_and_slot_budgets();
+        test_candidate_executable_policy_capacity_is_visible();
         test_decision_records_have_separate_hot_and_cold_layouts();
         std::cout << "all V2 layout tests passed\n";
         return 0;
