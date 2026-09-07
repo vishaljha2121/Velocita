@@ -139,6 +139,7 @@ release_targets=(
     v2-action-resolver-tests
     v2-executable-policy-contract-tests
     v2-executable-policy-codec-tests
+    v2-artifact-digest-tests
     v2-contract-benchmark
     v2-layout-report
 )
@@ -172,6 +173,7 @@ cmake --build "$instrumented_build" \
              v2-action-resolver-tests \
              v2-executable-policy-contract-tests \
              v2-executable-policy-codec-tests \
+             v2-artifact-digest-tests \
     --parallel "$build_jobs"
 
 failure_step=instrumented_tests
@@ -196,6 +198,7 @@ cmake --build "$sanitized_build" \
              v2-action-resolver-tests \
              v2-executable-policy-contract-tests \
              v2-executable-policy-codec-tests \
+             v2-artifact-digest-tests \
     --parallel "$build_jobs"
 
 failure_step=sanitized_tests

@@ -485,6 +485,13 @@ clean `throttled=0x0` power state, and maximum executable-policy codec p99 of
 is deferred until the nine-phase build is complete, so the cross-platform
 capacity ceiling remains provisional.
 
+Artifact identity is now defined as SHA-256 over a type-specific domain
+separator followed by canonical authoritative fields, excluding only the
+artifact's own digest. The executable-policy preimage transitively binds the
+base-policy and feature-schema digests. Structural invalidity is reported
+before digest mismatch, and no raw C++ object memory is hashed. The next source
+root is pinned for a repeat Pi gate before lifecycle integration proceeds.
+
 No Phase 4 order, reservation, or effect work begins until this contract and
 the reject-not-clamp boundary are accepted.
 

@@ -1,3 +1,4 @@
+#include "velocita/v2/artifact_digest.hpp"
 #include "velocita/v2/digest.hpp"
 #include "velocita/v2/payload.hpp"
 #include "velocita/v2/wire.hpp"
@@ -182,6 +183,16 @@ int main() {
         const auto decoded = decode_executable_policy_artifact(
             canonical_executable_policy.bytes);
         return decoded.value ? decoded.value->policy_id.value() : 0U;
+    });
+    measure("feature_schema_artifact_digest", iterations, [&] {
+        const auto calculated = compute_artifact_digest(feature_schema);
+        return static_cast<std::uint64_t>(
+            std::to_integer<std::uint8_t>(calculated.digest.bytes[0]));
+    });
+    measure("executable_policy_artifact_digest", iterations, [&] {
+        const auto calculated = compute_artifact_digest(executable_policy);
+        return static_cast<std::uint64_t>(
+            std::to_integer<std::uint8_t>(calculated.digest.bytes[0]));
     });
 
     std::cout << "max_policy_payload_bytes=" << kMaxPolicyPayloadBytes << '\n'

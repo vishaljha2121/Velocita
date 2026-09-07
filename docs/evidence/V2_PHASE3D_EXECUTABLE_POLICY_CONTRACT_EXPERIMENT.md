@@ -179,3 +179,50 @@ Next, define the artifact digest preimages, then implement the active/staged
 reducer lifecycle and its snapshot/replay representation. That work will expose
 the exact lifecycle overhead needed to replace the old state and snapshot
 ceilings without guessing.
+
+## Artifact digest preimage decision
+
+The approved digest rule is:
+
+```text
+SHA-256(type-specific domain separator || canonical authoritative fields)
+```
+
+The artifact's own digest field is the only omitted field. A feature schema
+uses domain `velocita.feature-schema.v1`; an executable policy uses domain
+`velocita.executable-policy.v1`. The executable preimage includes the bound
+base-policy digest and feature-schema digest, all active templates, and every
+active rule binding.
+
+Implementation hashes canonical serialized fields rather than `sizeof(T)` raw
+memory. That avoids compiler padding, byte-order, and ABI differences between
+ARM64 and x86-64. Computation temporarily supplies a nonzero self digest only
+to reuse structural encoding, then removes those exact 32 bytes from the
+preimage. All other validation, including both bound digests, remains active.
+
+Verification distinguishes two failures:
+
+- `invalid_contract`: malformed or non-canonical content never reaches digest
+  comparison; and
+- `digest_mismatch`: structurally valid authoritative content differs from the
+  claimed digest.
+
+The digest golden corpora are:
+
+```text
+feature schema      95f7c0a99a1098eccff3652c9ce66404220fd5768f6b6febbc3bf4191a9bb690
+executable policy   497298b19ad71de9519835f249fe1e68e3c386f87c36c774998805b2e4885dd6
+```
+
+The TDD RED build failed on the absent `artifact_digest.hpp`. GREEN is 21/21
+for the full host suite and 3/3 for focused ASan/UBSan tests. Tests prove that
+changing the claimed self digest leaves the recomputed value unchanged, while
+valid changes to feature conversions, bound policy digests, safety caps, or
+rule bindings produce a mismatch. Invalid bindings remain contract failures.
+
+The new target source root is
+`fcba3fbd3ece8f67ea75d0fac0bf97354f66c47e09afc1d61cdce1a4e9d8a1fe`.
+It supersedes the earlier codec-only root for subsequent Pi/NUC gates. On the
+macOS development host, maximum executable-artifact digest construction was
+3,459 ns p50 and 4,750 ns p99. This remains control-plane evidence, not a
+market-data hot-path or throughput claim.

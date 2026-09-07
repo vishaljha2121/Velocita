@@ -4,7 +4,7 @@ set -Eeuo pipefail
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 export VELOCITA_V2_PI_GATE_LABEL='V2 Phase 3D executable-policy codec'
-export VELOCITA_EXPECTED_SOURCE_ROOT=5525e2002b564416dfca0405d91e8b1080b6dbba394ad9be7cf2c14afaf9fce1
+export VELOCITA_EXPECTED_SOURCE_ROOT=fcba3fbd3ece8f67ea75d0fac0bf97354f66c47e09afc1d61cdce1a4e9d8a1fe
 export VELOCITA_EXPECTED_HOST_MACHINE=x86_64
 export VELOCITA_EXPECTED_CONTAINER_ARCH=amd64
 export VELOCITA_V2_HOST_ENVIRONMENT=nuc-x86_64-linux-container

@@ -100,6 +100,7 @@ target_link_libraries(velocita_metrics PUBLIC velocita_core)
 target_compile_options(velocita_metrics PRIVATE -Wall -Wextra -Wpedantic)
 
 add_library(velocita_v2_contracts
+    src/v2_artifact_digest.cpp
     src/v2_digest.cpp
     src/v2_wire.cpp
     src/v2_payload.cpp
@@ -263,6 +264,14 @@ if(BUILD_TESTING)
         -Wall -Wextra -Wpedantic)
     add_test(NAME v2-executable-policy-codec-tests
         COMMAND v2-executable-policy-codec-tests)
+
+    add_executable(v2-artifact-digest-tests
+        tests/v2_artifact_digest_tests.cpp)
+    target_link_libraries(v2-artifact-digest-tests PRIVATE
+        velocita_v2_contracts)
+    target_compile_options(v2-artifact-digest-tests PRIVATE
+        -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-artifact-digest-tests COMMAND v2-artifact-digest-tests)
 
     add_executable(v2-layout-report src/v2_layout_report.cpp)
     target_link_libraries(v2-layout-report PRIVATE
