@@ -490,7 +490,9 @@ separator followed by canonical authoritative fields, excluding only the
 artifact's own digest. The executable-policy preimage transitively binds the
 base-policy and feature-schema digests. Structural invalidity is reported
 before digest mismatch, and no raw C++ object memory is hashed. The next source
-root is pinned for a repeat Pi gate before lifecycle integration proceeds.
+root passed its repeat physical Pi gate with clean power and a worst-case
+executable artifact digest p99 of 16,592 ns. Lifecycle integration proceeds
+next; NUC promotion remains deferred until the nine-phase build is complete.
 
 No Phase 4 order, reservation, or effect work begins until this contract and
 the reject-not-clamp boundary are accepted.

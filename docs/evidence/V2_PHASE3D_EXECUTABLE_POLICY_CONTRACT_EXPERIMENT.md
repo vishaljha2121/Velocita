@@ -147,8 +147,8 @@ the nine-phase implementation completes. Until that identical-source gate, the
 counts and replacement state/snapshot ceilings remain provisional rather than
 cross-platform accepted constants.
 
-Both target wrappers pin source root
-`5525e2002b564416dfca0405d91e8b1080b6dbba394ad9be7cf2c14afaf9fce1`:
+Both target wrappers now pin digest-aware source root
+`fcba3fbd3ece8f67ea75d0fac0bf97354f66c47e09afc1d61cdce1a4e9d8a1fe`:
 
 ```bash
 # Raspberry Pi 5
@@ -168,17 +168,16 @@ does not exist on the NUC and is not fabricated there.
 
 - Neither artifact is in `TradingState`.
 - There is no propose/validate/activate/supersede command for the companion.
-- Canonical codecs exist, but artifact self-digest verification is deliberately
-  deferred to lifecycle admission, where the digest preimage rule and
-  cross-artifact binding can be enforced atomically.
+- Canonical codecs and self-digest verification exist, but the reducer does not
+  yet invoke them. Lifecycle admission must enforce digest and cross-artifact
+  binding atomically before staging.
 - Rule evaluation does not yet select a template.
 - The action resolver is not invoked by the authoritative reducer.
 - No order, reservation, effect, adapter, or live-trading authority exists.
 
-Next, define the artifact digest preimages, then implement the active/staged
-reducer lifecycle and its snapshot/replay representation. That work will expose
-the exact lifecycle overhead needed to replace the old state and snapshot
-ceilings without guessing.
+Next, implement the active/staged reducer lifecycle and its snapshot/replay
+representation. That work will expose the exact lifecycle overhead needed to
+replace the old state and snapshot ceilings without guessing.
 
 ## Artifact digest preimage decision
 
@@ -226,3 +225,21 @@ It supersedes the earlier codec-only root for subsequent Pi/NUC gates. On the
 macOS development host, maximum executable-artifact digest construction was
 3,459 ns p50 and 4,750 ns p99. This remains control-plane evidence, not a
 market-data hot-path or throughput claim.
+
+The digest-aware Raspberry Pi gate passed that exact source root on 2026-09-07.
+Expected and observed roots matched; compiled and runtime cache-line values
+were 64 bytes; power remained `throttled=0x0`; and temperature rose from
+44.65 C to 50.7 C. The 100,000-iteration worst-case measurements were:
+
+```text
+feature schema encode p50/p99                 296 ns /    297 ns
+feature schema decode p50/p99                 240 ns /    241 ns
+executable policy encode p50/p99            1,834 ns /  2,000 ns
+executable policy decode p50/p99              889 ns /    908 ns
+feature schema artifact digest p50/p99      3,852 ns /  3,907 ns
+executable policy artifact digest p50/p99  14,204 ns / 16,592 ns
+```
+
+This accepts the complete Phase 3D contract/codec/digest slice on Raspberry Pi
+ARM64. It does not promote the provisional cross-platform capacities or state
+ceiling before the deferred NUC gate and exact lifecycle snapshot layout.
