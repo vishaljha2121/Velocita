@@ -8,6 +8,9 @@ build_jobs=${BUILD_JOBS:-2}
 expected_source_head=${EXPECTED_SOURCE_HEAD:-}
 expected_source_root=${EXPECTED_SOURCE_ROOT:-}
 gate_label=${GATE_LABEL:-V2 deterministic-kernel}
+expected_machine=${EXPECTED_MACHINE:-aarch64}
+expected_dpkg_arch=${EXPECTED_DPKG_ARCH:-arm64}
+gate_environment=${GATE_ENVIRONMENT:-arm64-linux-container}
 
 exec > >(tee "$evidence_dir/gate.log") 2>&1
 
@@ -19,20 +22,22 @@ finish() {
         printf 'result\t%s\n' "$result"
         printf 'exit_status\t%s\n' "$exit_status"
         printf 'failure_step\t%s\n' "$failure_step"
-        printf 'environment\tarm64-linux-container\n'
+        printf 'environment\t%s\n' "$gate_environment"
         printf 'evidence_dir\t%s\n' "$evidence_dir"
     } >"$evidence_dir/summary.tsv"
-    printf '%s ARM64 development gate: %s\n' "$gate_label" "$result"
+    printf '%s native development gate: %s\n' "$gate_label" "$result"
 }
 trap finish EXIT
 
 failure_step=environment_preflight
-[[ $(uname -m) == aarch64 ]] || {
-    printf 'Expected native aarch64 kernel, got %s\n' "$(uname -m)" >&2
+[[ $(uname -m) == "$expected_machine" ]] || {
+    printf 'Expected native %s kernel, got %s\n' \
+        "$expected_machine" "$(uname -m)" >&2
     exit 1
 }
-[[ $(dpkg --print-architecture) == arm64 ]] || {
-    printf 'Expected arm64 user space, got %s\n' "$(dpkg --print-architecture)" >&2
+[[ $(dpkg --print-architecture) == "$expected_dpkg_arch" ]] || {
+    printf 'Expected %s user space, got %s\n' \
+        "$expected_dpkg_arch" "$(dpkg --print-architecture)" >&2
     exit 1
 }
 . /etc/os-release
@@ -83,7 +88,7 @@ sanitized_build="$build_root/sanitized"
 {
     printf 'started_utc=%s\n' "$(date --iso-8601=seconds --utc)"
     printf 'gate_label=%s\n' "$gate_label"
-    printf 'environment=arm64-linux-container\n'
+    printf 'environment=%s\n' "$gate_environment"
     printf 'kernel=%s\n' "$(uname -srvm)"
     printf 'machine=%s\n' "$(uname -m)"
     printf 'distribution=%s\n' "$PRETTY_NAME"
@@ -133,6 +138,7 @@ release_targets=(
     v2-action-template-contract-tests
     v2-action-resolver-tests
     v2-executable-policy-contract-tests
+    v2-executable-policy-codec-tests
     v2-contract-benchmark
     v2-layout-report
 )
@@ -165,6 +171,7 @@ cmake --build "$instrumented_build" \
              v2-decision-kernel-tests v2-action-template-contract-tests \
              v2-action-resolver-tests \
              v2-executable-policy-contract-tests \
+             v2-executable-policy-codec-tests \
     --parallel "$build_jobs"
 
 failure_step=instrumented_tests
@@ -188,6 +195,7 @@ cmake --build "$sanitized_build" \
              v2-decision-kernel-tests v2-action-template-contract-tests \
              v2-action-resolver-tests \
              v2-executable-policy-contract-tests \
+             v2-executable-policy-codec-tests \
     --parallel "$build_jobs"
 
 failure_step=sanitized_tests
@@ -203,7 +211,7 @@ cat "$evidence_dir/layout-report.txt" >>"$evidence_dir/metadata.txt"
 
 {
     printf 'finished_utc=%s\n' "$(date --iso-8601=seconds --utc)"
-    printf 'container_note=development compatibility evidence; not Raspberry Pi acceptance or capacity evidence\n'
+    printf 'container_note=native target compatibility and candidate-capacity evidence; promotion requires reviewed Pi and NUC results\n'
 } >>"$evidence_dir/metadata.txt"
 
 failure_step=none

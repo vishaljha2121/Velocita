@@ -5,10 +5,10 @@ usage() {
     cat <<'USAGE'
 Usage: run-v2-source-admission-pi-gate.sh [--yes]
 
-Build and validate the committed V2 source-admission checkpoint in a pinned
-Ubuntu/GCC container on Raspberry Pi ARM64. Run `sudo -v` first so firmware
-power state can be captured non-interactively. The running V1/V1.1 cluster is
-not stopped or replaced.
+Build and validate a pinned V2 source checkpoint in a native Ubuntu/GCC
+container. Raspberry Pi callers should run `sudo -v` first so firmware power
+state can be captured non-interactively. The running V1/V1.1 cluster is not
+stopped or replaced.
 USAGE
 }
 
@@ -35,6 +35,10 @@ image=${VELOCITA_PI_CI_IMAGE:-localhost/velocita-pi-ci:v2-source-admission}
 cache_volume=${VELOCITA_V2_SOURCE_PI_CACHE_VOLUME:-velocita-v2-source-pi-ci-cache}
 build_jobs=${BUILD_JOBS:-2}
 expected_source_root=${VELOCITA_EXPECTED_SOURCE_ROOT:-0282782ed53a1727a92acaf6c830f5a0651554e40cc70861d8eb15d7373f32b8}
+expected_host_machine=${VELOCITA_EXPECTED_HOST_MACHINE:-aarch64}
+expected_container_arch=${VELOCITA_EXPECTED_CONTAINER_ARCH:-arm64}
+host_environment=${VELOCITA_V2_HOST_ENVIRONMENT:-raspberry-pi-arm64-container}
+require_clean_pi_power=${VELOCITA_REQUIRE_CLEAN_PI_POWER:-1}
 
 mkdir -p "$evidence_dir"
 exec > >(tee "$evidence_dir/wrapper.log") 2>&1
@@ -47,10 +51,10 @@ finish() {
         printf 'result\t%s\n' "$result"
         printf 'exit_status\t%s\n' "$exit_status"
         printf 'failure_step\t%s\n' "$failure_step"
-        printf 'environment\traspberry-pi-arm64-container\n'
+        printf 'environment\t%s\n' "$host_environment"
         printf 'evidence_dir\t%s\n' "$evidence_dir"
     } >"$evidence_dir/summary.tsv"
-    printf '%s Raspberry Pi gate: %s\nEvidence: %s\n' \
+    printf '%s target gate: %s\nEvidence: %s\n' \
         "$gate_label" "$result" "$evidence_dir"
 }
 trap finish EXIT
@@ -88,8 +92,9 @@ read_governor() {
 }
 
 failure_step=host_preflight
-[[ $(uname -m) == aarch64 ]] || {
-    printf 'Expected Raspberry Pi aarch64, got %s\n' "$(uname -m)" >&2
+[[ $(uname -m) == "$expected_host_machine" ]] || {
+    printf 'Expected host machine %s, got %s\n' \
+        "$expected_host_machine" "$(uname -m)" >&2
     exit 1
 }
 
@@ -97,7 +102,7 @@ podman info >/dev/null
 power_before=$(read_throttled)
 temperature_before=$(read_temperature)
 governor_before=$(read_governor)
-if [[ $power_before != throttled=0x0 ]]; then
+if [[ $require_clean_pi_power -eq 1 && $power_before != throttled=0x0 ]]; then
     printf 'Power preflight failed: expected throttled=0x0, got %s\n' "$power_before" >&2
     printf 'Run sudo -v first; fix power and reboot if the value is nonzero.\n' >&2
     exit 1
@@ -136,6 +141,9 @@ podman run --rm \
     --env "BUILD_JOBS=$build_jobs" \
     --env "GATE_LABEL=$gate_label" \
     --env "EXPECTED_SOURCE_ROOT=$expected_source_root" \
+    --env "EXPECTED_MACHINE=$expected_host_machine" \
+    --env "EXPECTED_DPKG_ARCH=$expected_container_arch" \
+    --env "GATE_ENVIRONMENT=$host_environment" \
     --entrypoint /usr/local/bin/run-v2-phase2-kernel-gate \
     "$image"
 gate_status=$?
@@ -144,7 +152,7 @@ set -e
 power_after=$(read_throttled)
 temperature_after=$(read_temperature)
 {
-    printf 'target_environment=raspberry-pi-arm64-container\n'
+    printf 'target_environment=%s\n' "$host_environment"
     printf 'host_kernel=%s\n' "$(uname -srvm)"
     printf 'host_governor_before=%s\n' "$governor_before"
     printf 'host_power_before=%s\n' "$power_before"
@@ -163,7 +171,7 @@ if [[ $gate_status -ne 0 ]]; then
 fi
 
 failure_step=host_postflight
-if [[ $power_after != throttled=0x0 ]]; then
+if [[ $require_clean_pi_power -eq 1 && $power_after != throttled=0x0 ]]; then
     printf 'Power postflight failed: expected throttled=0x0, got %s\n' "$power_after" >&2
     exit 1
 fi

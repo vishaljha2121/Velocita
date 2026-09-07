@@ -46,6 +46,68 @@ velocita::v2::PolicyArtifact maximum_policy() {
     return policy;
 }
 
+velocita::v2::FeatureSchemaArtifact maximum_feature_schema() {
+    using namespace velocita::v2;
+    FeatureSchemaArtifact schema;
+    schema.schema_version = kFeatureSchemaArtifactSchemaVersion;
+    schema.feature_schema_id = FeatureSchemaId{1};
+    schema.artifact_digest = nonzero_digest(std::byte{3});
+    schema.feature_count = static_cast<std::uint16_t>(kMaxDecisionFeatures);
+    for (std::size_t index = 0; index < schema.feature_count; ++index) {
+        schema.features[index] = {FeatureEconomicKind::price, 1'000'000};
+    }
+    return schema;
+}
+
+velocita::v2::ActionTemplate action_template(const std::uint16_t slot) {
+    using namespace velocita::v2;
+    ActionTemplate action;
+    action.schema_version = kActionTemplateSchemaVersion;
+    action.directive = Directive::place_limit;
+    action.side = Side::buy;
+    action.time_in_force = TimeInForce::good_til_cancel;
+    action.post_only = PostOnlyMode::required;
+    action.order_slot = LogicalOrderSlot{slot};
+    action.instrument_spec_version = InstrumentSpecVersion{1};
+    action.venue_capabilities_version = VenueCapabilitiesVersion{1};
+    action.price_source = {EconomicValueSourceKind::feature, 0,
+                           RoundingMode::toward_zero, {}, 1'000'000, {}};
+    action.quantity_source = {EconomicValueSourceKind::fixed, 0,
+                              RoundingMode::toward_zero,
+                              QuantityLots::from_atoms(1), 0};
+    action.safety_caps.max_quantity = QuantityLots::from_atoms(1);
+    action.safety_caps.max_notional = MoneyMicros::from_atoms(1'000'000);
+    action.safety_caps.max_abs_price_deviation = PriceTicks::from_atoms(1);
+    action.safety_caps.max_abs_tick_offset = PriceTicks::from_atoms(1);
+    action.safety_caps.max_market_data_age_ns = 1'000'000;
+    action.safety_caps.reference_price = action.price_source;
+    return action;
+}
+
+velocita::v2::ExecutablePolicyArtifact maximum_executable_policy() {
+    using namespace velocita::v2;
+    ExecutablePolicyArtifact executable;
+    executable.schema_version = kExecutablePolicyArtifactSchemaVersion;
+    executable.policy_id = PolicyId{1};
+    executable.policy_version = PolicyVersion{1};
+    executable.policy_artifact_digest = nonzero_digest(std::byte{2});
+    executable.feature_schema_id = FeatureSchemaId{1};
+    executable.feature_schema_digest = nonzero_digest(std::byte{3});
+    executable.artifact_digest = nonzero_digest(std::byte{4});
+    executable.template_count =
+        static_cast<std::uint16_t>(kMaxExecutableActionTemplates);
+    for (std::size_t index = 0; index < executable.template_count; ++index) {
+        executable.templates[index] =
+            action_template(static_cast<std::uint16_t>(index + 1));
+    }
+    executable.rule_binding_count = static_cast<std::uint16_t>(kMaxPolicyRules);
+    for (std::size_t index = 0; index < executable.rule_binding_count; ++index) {
+        executable.rule_template_slots[index] = ActionTemplateSlot{
+            static_cast<std::uint8_t>(index % executable.template_count + 1)};
+    }
+    return executable;
+}
+
 template <typename Operation>
 void measure(const std::string_view name, const std::size_t iterations,
              Operation&& operation) {
@@ -77,9 +139,18 @@ int main() {
     constexpr std::size_t iterations = 100'000;
     const auto policy = maximum_policy();
     const auto canonical = encode_payload(policy);
+    const auto feature_schema = maximum_feature_schema();
+    const auto canonical_feature_schema = encode_payload(feature_schema);
+    const auto executable_policy = maximum_executable_policy();
+    const auto canonical_executable_policy = encode_payload(executable_policy);
     if (canonical.error != PayloadError::none ||
-        canonical.bytes.size() != kMaxPolicyPayloadBytes) {
-        std::cerr << "could not create maximum policy benchmark fixture\n";
+        canonical.bytes.size() != kMaxPolicyPayloadBytes ||
+        canonical_feature_schema.error != PayloadError::none ||
+        canonical_feature_schema.bytes.size() != kMaxFeatureSchemaPayloadBytes ||
+        canonical_executable_policy.error != PayloadError::none ||
+        canonical_executable_policy.bytes.size() !=
+            kMaxExecutablePolicyPayloadBytes) {
+        std::cerr << "could not create maximum contract benchmark fixtures\n";
         return 1;
     }
 
@@ -95,10 +166,31 @@ int main() {
         return static_cast<std::uint64_t>(
             std::to_integer<std::uint8_t>(sha256_digest(canonical.bytes).bytes[0]));
     });
+    measure("feature_schema_encode", iterations, [&] {
+        return static_cast<std::uint64_t>(encode_payload(feature_schema).bytes.size());
+    });
+    measure("feature_schema_decode", iterations, [&] {
+        const auto decoded =
+            decode_feature_schema_artifact(canonical_feature_schema.bytes);
+        return decoded.value ? decoded.value->feature_schema_id.value() : 0U;
+    });
+    measure("executable_policy_encode", iterations, [&] {
+        return static_cast<std::uint64_t>(
+            encode_payload(executable_policy).bytes.size());
+    });
+    measure("executable_policy_decode", iterations, [&] {
+        const auto decoded = decode_executable_policy_artifact(
+            canonical_executable_policy.bytes);
+        return decoded.value ? decoded.value->policy_id.value() : 0U;
+    });
 
     std::cout << "max_policy_payload_bytes=" << kMaxPolicyPayloadBytes << '\n'
               << "max_decision_frame_payload_bytes=" << kMaxDecisionFramePayloadBytes
               << '\n'
+              << "max_feature_schema_payload_bytes="
+              << kMaxFeatureSchemaPayloadBytes << '\n'
+              << "max_executable_policy_payload_bytes="
+              << kMaxExecutablePolicyPayloadBytes << '\n'
               << "order_effect_payload_bytes=" << kOrderEffectPayloadBytes << '\n'
               << "venue_observation_payload_bytes=" << kVenueObservationPayloadBytes
               << '\n'

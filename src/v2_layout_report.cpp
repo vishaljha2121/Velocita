@@ -4,6 +4,7 @@
 #include "velocita/v2/executable_policy.hpp"
 #include "velocita/v2/kernel.hpp"
 #include "velocita/v2/kernel_codec.hpp"
+#include "velocita/v2/payload.hpp"
 #include "velocita/v2/rule_evaluator.hpp"
 #include "velocita/v2/state_snapshot.hpp"
 
@@ -69,10 +70,18 @@ int main() {
               << sizeof(FeatureSchemaArtifact) << '\n'
               << "feature_schema_artifact_budget_bytes="
               << kFeatureSchemaArtifactObjectBudgetBytes << '\n'
+              << "feature_schema_artifact_max_canonical_bytes="
+              << kMaxFeatureSchemaPayloadBytes << '\n'
+              << "feature_schema_artifact_payload_budget_bytes="
+              << kFeatureSchemaArtifactPayloadBudgetBytes << '\n'
               << "executable_policy_artifact_size_bytes="
               << sizeof(ExecutablePolicyArtifact) << '\n'
               << "executable_policy_artifact_budget_bytes="
               << kExecutablePolicyArtifactObjectBudgetBytes << '\n'
+              << "executable_policy_artifact_max_canonical_bytes="
+              << kMaxExecutablePolicyPayloadBytes << '\n'
+              << "executable_policy_artifact_payload_budget_bytes="
+              << kExecutablePolicyArtifactPayloadBudgetBytes << '\n'
               << "candidate_executable_policy_artifact_count="
               << kMaxExecutablePolicyArtifacts << '\n'
               << "candidate_executable_action_template_count="
@@ -81,6 +90,11 @@ int main() {
               << kMaxExecutablePolicyArtifacts *
                      (sizeof(ExecutablePolicyArtifact) +
                       sizeof(FeatureSchemaArtifact))
+              << '\n'
+              << "candidate_active_staged_max_canonical_bytes="
+              << kMaxExecutablePolicyArtifacts *
+                     (kMaxExecutablePolicyPayloadBytes +
+                      kMaxFeatureSchemaPayloadBytes)
               << '\n'
               << "current_trading_state_headroom_bytes="
               << kTradingStateObjectBudgetBytes - sizeof(TradingState) << '\n'

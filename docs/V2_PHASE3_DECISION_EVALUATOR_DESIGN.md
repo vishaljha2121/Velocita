@@ -469,6 +469,15 @@ provisional 80-KiB test ceiling. This is not yet an accepted state-budget or
 snapshot-format change. Detailed evidence is in
 [`V2 Phase 3D executable-policy contract experiment`](evidence/V2_PHASE3D_EXECUTABLE_POLICY_CONTRACT_EXPERIMENT.md).
 
+The companion codecs now establish exact maxima of 332 bytes for a 32-feature
+schema and 1,278 bytes for an executable artifact with eight templates and 32
+rule slots. Active plus staged canonical content is therefore at most 3,220
+bytes before lifecycle/framing fields. The codecs use explicit little-endian
+field writes, encode only active array prefixes, reject capacity before reading
+variable data, require an exact computed length, and re-run structural
+validation after decode. The limits remain candidates until identical-source
+Pi and NUC gates complete; host timings do not promote capacity.
+
 No Phase 4 order, reservation, or effect work begins until this contract and
 the reject-not-clamp boundary are accepted.
 

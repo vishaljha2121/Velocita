@@ -88,15 +88,70 @@ old budget cannot be silently reused. The accepted replacement ceiling is not
 yet chosen.
 
 Canonical footprint and snapshot headroom are not inferred from `sizeof`.
-Padding is not wire data. The next codec slice must calculate exact maximum
-bytes and prove the complete snapshot remains under its declared envelope or
-trigger an explicit envelope/schema decision.
+Padding is not wire data. The canonical-codec slice now proves:
+
+```text
+maximum FeatureSchemaArtifact payload       332 B / 384 B candidate ceiling
+maximum ExecutablePolicyArtifact payload  1,278 B / 1,344 B candidate ceiling
+active + staged maximum canonical content 3,220 B
+```
+
+The 3,220-byte figure is not yet the next snapshot size. It excludes presence,
+lifecycle, activation-index, and framing fields that do not exist until reducer
+integration. It is the exact maximum content contribution against which that
+next snapshot schema will be designed.
+
+Canonical arrays encode only their declared active prefix. Fixed `std::array`
+storage remains useful for bounded in-memory ownership, while the wire does not
+pay for unused feature, template, or rule-binding slots. Every decoder first
+checks the fixed prefix, then declared capacity, then exact computed length,
+and only then reads variable data and invokes the structural contract.
+
+The executable-policy fixture hashes to
+`4930933b06c80157af8eafa00c4734bc4cd1df506a25edcbde63be4e6bcf09e4`;
+the feature-schema fixture hashes to
+`fdffdaf4820545ad8ab58b7e07e42bf83441e573f2cc5b6466b09d1a49575d27`.
+These corpus hashes detect accidental byte-order, field-order, or width changes.
+
+The codec TDD RED build failed because the new constants and overloads did not
+exist. GREEN is 20/20 for the full host suite and 3/3 for the focused
+ASan/UBSan contract, codec, and layout suite. Maximum-capacity encode/decode
+fixtures pass rather than relying only on small examples.
+
+The macOS Release benchmark is development evidence, not capacity acceptance:
+
+```text
+maximum executable encode p50/p99   625 ns / 834 ns
+maximum executable decode p50/p99   166 ns / 209 ns
+```
+
+Pi ARM64 and NUC x86-64 must run the same exact source root before the candidate
+counts or replacement state/snapshot ceilings are accepted.
+
+Both target wrappers pin source root
+`5525e2002b564416dfca0405d91e8b1080b6dbba394ad9be7cf2c14afaf9fce1`:
+
+```bash
+# Raspberry Pi 5
+sudo -v
+BUILD_JOBS=2 ./deploy/run-v2-executable-policy-pi-gate.sh --yes
+
+# x86-64 NUC
+BUILD_JOBS=2 ./deploy/run-v2-executable-policy-nuc-gate.sh --yes
+```
+
+They run the same Release, benchmark-instrumented, and ASan/UBSan suites and
+the same worst-case codec benchmark. The Pi wrapper additionally rejects any
+run whose firmware power state is not `throttled=0x0`; that firmware interface
+does not exist on the NUC and is not fabricated there.
 
 ## Limitations and next gate
 
 - Neither artifact is in `TradingState`.
 - There is no propose/validate/activate/supersede command for the companion.
-- No canonical codec or golden digest corpus exists for these schemas.
+- Canonical codecs exist, but artifact self-digest verification is deliberately
+  deferred to lifecycle admission, where the digest preimage rule and
+  cross-artifact binding can be enforced atomically.
 - Rule evaluation does not yet select a template.
 - The action resolver is not invoked by the authoritative reducer.
 - No order, reservation, effect, adapter, or live-trading authority exists.

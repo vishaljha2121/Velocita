@@ -79,6 +79,14 @@ void test_candidate_executable_policy_capacity_is_visible() {
     require(sizeof(TradingState) + candidate_artifacts <= 80U * 1024U,
             "candidate executable-policy state exceeded the provisional "
             "80-KiB hardware-test ceiling");
+    static_assert(kMaxFeatureSchemaPayloadBytes <=
+                  kFeatureSchemaArtifactPayloadBudgetBytes);
+    static_assert(kMaxExecutablePolicyPayloadBytes <=
+                  kExecutablePolicyArtifactPayloadBudgetBytes);
+    static_assert(kMaxExecutablePolicyArtifacts *
+                      (kMaxFeatureSchemaPayloadBytes +
+                       kMaxExecutablePolicyPayloadBytes) ==
+                  3220);
 }
 
 void test_decision_records_have_separate_hot_and_cold_layouts() {

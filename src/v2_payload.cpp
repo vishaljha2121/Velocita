@@ -83,6 +83,92 @@ void append_policy_identity(std::vector<std::byte>& bytes, const PolicyArtifact&
     append_le(bytes, value.account_id.value());
 }
 
+void append_price_source(std::vector<std::byte>& bytes, const PriceSource& value) {
+    append_le(bytes, static_cast<std::uint8_t>(value.kind));
+    append_le(bytes, value.feature_index);
+    append_le(bytes, static_cast<std::uint8_t>(value.rounding));
+    append_le(bytes, value.fixed_value.atoms());
+    append_le(bytes, value.feature_atoms_per_tick);
+    append_le(bytes, value.tick_offset.atoms());
+}
+
+void append_quantity_source(std::vector<std::byte>& bytes,
+                            const QuantitySource& value) {
+    append_le(bytes, static_cast<std::uint8_t>(value.kind));
+    append_le(bytes, value.feature_index);
+    append_le(bytes, static_cast<std::uint8_t>(value.rounding));
+    append_le(bytes, value.fixed_value.atoms());
+    append_le(bytes, value.feature_atoms_per_lot);
+}
+
+void append_action_template(std::vector<std::byte>& bytes,
+                            const ActionTemplate& value) {
+    append_le(bytes, value.schema_version);
+    append_le(bytes, static_cast<std::uint8_t>(value.directive));
+    append_le(bytes, static_cast<std::uint8_t>(value.side));
+    append_le(bytes, static_cast<std::uint8_t>(value.time_in_force));
+    append_le(bytes, static_cast<std::uint8_t>(value.post_only));
+    append_le(bytes, value.order_slot.value());
+    append_le(bytes, value.instrument_spec_version.value());
+    append_le(bytes, value.venue_capabilities_version.value());
+    append_price_source(bytes, value.price_source);
+    append_quantity_source(bytes, value.quantity_source);
+    append_le(bytes, value.safety_caps.max_quantity.atoms());
+    append_le(bytes, value.safety_caps.max_notional.atoms());
+    append_le(bytes, value.safety_caps.max_abs_price_deviation.atoms());
+    append_le(bytes, value.safety_caps.max_abs_tick_offset.atoms());
+    append_le(bytes, value.safety_caps.max_market_data_age_ns);
+    append_price_source(bytes, value.safety_caps.reference_price);
+}
+
+PriceSource read_price_source(Reader& reader) noexcept {
+    PriceSource value;
+    value.kind = static_cast<EconomicValueSourceKind>(reader.read<std::uint8_t>());
+    value.feature_index = reader.read<std::uint16_t>();
+    value.rounding = static_cast<RoundingMode>(reader.read<std::uint8_t>());
+    value.fixed_value = PriceTicks::from_atoms(reader.read<std::int64_t>());
+    value.feature_atoms_per_tick = reader.read<std::int64_t>();
+    value.tick_offset = PriceTicks::from_atoms(reader.read<std::int64_t>());
+    return value;
+}
+
+QuantitySource read_quantity_source(Reader& reader) noexcept {
+    QuantitySource value;
+    value.kind = static_cast<EconomicValueSourceKind>(reader.read<std::uint8_t>());
+    value.feature_index = reader.read<std::uint16_t>();
+    value.rounding = static_cast<RoundingMode>(reader.read<std::uint8_t>());
+    value.fixed_value = QuantityLots::from_atoms(reader.read<std::int64_t>());
+    value.feature_atoms_per_lot = reader.read<std::int64_t>();
+    return value;
+}
+
+ActionTemplate read_action_template(Reader& reader) noexcept {
+    ActionTemplate value;
+    value.schema_version = reader.read<std::uint16_t>();
+    value.directive = static_cast<Directive>(reader.read<std::uint8_t>());
+    value.side = static_cast<Side>(reader.read<std::uint8_t>());
+    value.time_in_force = static_cast<TimeInForce>(reader.read<std::uint8_t>());
+    value.post_only = static_cast<PostOnlyMode>(reader.read<std::uint8_t>());
+    value.order_slot = LogicalOrderSlot{reader.read<std::uint16_t>()};
+    value.instrument_spec_version =
+        InstrumentSpecVersion{reader.read<std::uint64_t>()};
+    value.venue_capabilities_version =
+        VenueCapabilitiesVersion{reader.read<std::uint64_t>()};
+    value.price_source = read_price_source(reader);
+    value.quantity_source = read_quantity_source(reader);
+    value.safety_caps.max_quantity =
+        QuantityLots::from_atoms(reader.read<std::int64_t>());
+    value.safety_caps.max_notional =
+        MoneyMicros::from_atoms(reader.read<std::int64_t>());
+    value.safety_caps.max_abs_price_deviation =
+        PriceTicks::from_atoms(reader.read<std::int64_t>());
+    value.safety_caps.max_abs_tick_offset =
+        PriceTicks::from_atoms(reader.read<std::int64_t>());
+    value.safety_caps.max_market_data_age_ns = reader.read<std::int64_t>();
+    value.safety_caps.reference_price = read_price_source(reader);
+    return value;
+}
+
 }  // namespace
 
 EncodePayloadResult encode_payload(const PolicyArtifact& value) {
@@ -192,6 +278,50 @@ EncodePayloadResult encode_payload(const VenueObservation& value) {
     append_le(result.bytes, value.quantity.atoms());
     append_le(result.bytes, value.fee.atoms());
     append_digest(result.bytes, value.evidence_digest);
+    return result;
+}
+
+EncodePayloadResult encode_payload(const FeatureSchemaArtifact& value) {
+    const auto contract_error = validate(value);
+    if (contract_error != ContractError::none) return invalid_encode(contract_error);
+
+    EncodePayloadResult result;
+    result.bytes.reserve(kFeatureSchemaPayloadPrefixBytes +
+                         value.feature_count * kFeatureDescriptorEncodedBytes);
+    append_le(result.bytes, value.schema_version);
+    append_le(result.bytes, value.feature_schema_id.value());
+    append_digest(result.bytes, value.artifact_digest);
+    append_le(result.bytes, value.feature_count);
+    for (std::size_t index = 0; index < value.feature_count; ++index) {
+        append_le(result.bytes, static_cast<std::uint8_t>(value.features[index].kind));
+        append_le(result.bytes, value.features[index].atoms_per_output_unit);
+    }
+    return result;
+}
+
+EncodePayloadResult encode_payload(const ExecutablePolicyArtifact& value) {
+    const auto contract_error = validate(value);
+    if (contract_error != ContractError::none) return invalid_encode(contract_error);
+
+    EncodePayloadResult result;
+    result.bytes.reserve(kExecutablePolicyPayloadPrefixBytes +
+                         value.template_count * kActionTemplateEncodedBytes +
+                         sizeof(value.rule_binding_count) + value.rule_binding_count);
+    append_le(result.bytes, value.schema_version);
+    append_le(result.bytes, value.policy_id.value());
+    append_le(result.bytes, value.policy_version.value());
+    append_digest(result.bytes, value.policy_artifact_digest);
+    append_le(result.bytes, value.feature_schema_id.value());
+    append_digest(result.bytes, value.feature_schema_digest);
+    append_digest(result.bytes, value.artifact_digest);
+    append_le(result.bytes, value.template_count);
+    for (std::size_t index = 0; index < value.template_count; ++index) {
+        append_action_template(result.bytes, value.templates[index]);
+    }
+    append_le(result.bytes, value.rule_binding_count);
+    for (std::size_t index = 0; index < value.rule_binding_count; ++index) {
+        append_le(result.bytes, value.rule_template_slots[index].value());
+    }
     return result;
 }
 
@@ -340,6 +470,89 @@ decode_venue_observation(const std::span<const std::byte> bytes) {
     value.quantity = QuantityLots::from_atoms(reader.read<std::int64_t>());
     value.fee = FeeMicros::from_atoms(reader.read<std::int64_t>());
     value.evidence_digest = reader.read_digest();
+    return finish_decode(std::move(value));
+}
+
+DecodePayloadResult<FeatureSchemaArtifact>
+decode_feature_schema_artifact(const std::span<const std::byte> bytes) {
+    if (bytes.size() < kFeatureSchemaPayloadPrefixBytes) {
+        return size_error<FeatureSchemaArtifact>(bytes.size(),
+                                                 kFeatureSchemaPayloadPrefixBytes);
+    }
+    Reader reader(bytes);
+    FeatureSchemaArtifact value;
+    value.schema_version = reader.read<std::uint16_t>();
+    if (value.schema_version != kFeatureSchemaArtifactSchemaVersion) {
+        return {PayloadError::unsupported_schema, ContractError::unsupported_schema,
+                std::nullopt};
+    }
+    value.feature_schema_id = FeatureSchemaId{reader.read<std::uint64_t>()};
+    value.artifact_digest = reader.read_digest();
+    value.feature_count = reader.read<std::uint16_t>();
+    if (value.feature_count > kMaxDecisionFeatures) {
+        return {PayloadError::capacity_exceeded, ContractError::capacity_exceeded,
+                std::nullopt};
+    }
+    const auto expected = kFeatureSchemaPayloadPrefixBytes +
+                          value.feature_count * kFeatureDescriptorEncodedBytes;
+    if (bytes.size() != expected) {
+        return size_error<FeatureSchemaArtifact>(bytes.size(), expected);
+    }
+    for (std::size_t index = 0; index < value.feature_count; ++index) {
+        value.features[index].kind =
+            static_cast<FeatureEconomicKind>(reader.read<std::uint8_t>());
+        value.features[index].atoms_per_output_unit = reader.read<std::int64_t>();
+    }
+    return finish_decode(std::move(value));
+}
+
+DecodePayloadResult<ExecutablePolicyArtifact>
+decode_executable_policy_artifact(const std::span<const std::byte> bytes) {
+    if (bytes.size() < kExecutablePolicyPayloadPrefixBytes) {
+        return size_error<ExecutablePolicyArtifact>(
+            bytes.size(), kExecutablePolicyPayloadPrefixBytes);
+    }
+    Reader reader(bytes);
+    ExecutablePolicyArtifact value;
+    value.schema_version = reader.read<std::uint16_t>();
+    if (value.schema_version != kExecutablePolicyArtifactSchemaVersion) {
+        return {PayloadError::unsupported_schema, ContractError::unsupported_schema,
+                std::nullopt};
+    }
+    value.policy_id = PolicyId{reader.read<std::uint64_t>()};
+    value.policy_version = PolicyVersion{reader.read<std::uint64_t>()};
+    value.policy_artifact_digest = reader.read_digest();
+    value.feature_schema_id = FeatureSchemaId{reader.read<std::uint64_t>()};
+    value.feature_schema_digest = reader.read_digest();
+    value.artifact_digest = reader.read_digest();
+    value.template_count = reader.read<std::uint16_t>();
+    if (value.template_count > kMaxExecutableActionTemplates) {
+        return {PayloadError::capacity_exceeded, ContractError::capacity_exceeded,
+                std::nullopt};
+    }
+    const auto rule_count_offset = kExecutablePolicyPayloadPrefixBytes +
+                                   value.template_count *
+                                       kActionTemplateEncodedBytes;
+    const auto minimum = rule_count_offset + sizeof(std::uint16_t);
+    if (bytes.size() < minimum) {
+        return size_error<ExecutablePolicyArtifact>(bytes.size(), minimum);
+    }
+    for (std::size_t index = 0; index < value.template_count; ++index) {
+        value.templates[index] = read_action_template(reader);
+    }
+    value.rule_binding_count = reader.read<std::uint16_t>();
+    if (value.rule_binding_count > kMaxPolicyRules) {
+        return {PayloadError::capacity_exceeded, ContractError::capacity_exceeded,
+                std::nullopt};
+    }
+    const auto expected = minimum + value.rule_binding_count;
+    if (bytes.size() != expected) {
+        return size_error<ExecutablePolicyArtifact>(bytes.size(), expected);
+    }
+    for (std::size_t index = 0; index < value.rule_binding_count; ++index) {
+        value.rule_template_slots[index] =
+            ActionTemplateSlot{reader.read<std::uint8_t>()};
+    }
     return finish_decode(std::move(value));
 }
 

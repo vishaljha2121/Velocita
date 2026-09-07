@@ -44,6 +44,10 @@ inline constexpr std::size_t kActionResolutionObjectBudgetBytes = 128;
 inline constexpr std::size_t kFeatureDescriptorObjectBudgetBytes = 16;
 inline constexpr std::size_t kFeatureSchemaArtifactObjectBudgetBytes = 576;
 inline constexpr std::size_t kExecutablePolicyArtifactObjectBudgetBytes = 1408;
+// Candidate wire ceilings for Phase 3D hardware validation. These are distinct
+// from object budgets because canonical payloads omit padding and unused slots.
+inline constexpr std::size_t kFeatureSchemaArtifactPayloadBudgetBytes = 384;
+inline constexpr std::size_t kExecutablePolicyArtifactPayloadBudgetBytes = 1344;
 
 static_assert(kTargetCacheLineBytes >= alignof(std::max_align_t));
 static_assert(is_power_of_two(kTargetCacheLineBytes));

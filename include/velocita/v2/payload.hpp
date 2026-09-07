@@ -1,6 +1,7 @@
 #pragma once
 
 #include "velocita/v2/contracts.hpp"
+#include "velocita/v2/executable_policy.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -19,11 +20,36 @@ inline constexpr std::size_t kMaxDecisionFramePayloadBytes =
     kDecisionFramePayloadFixedBytes + kMaxDecisionFeatures * sizeof(std::int64_t);
 inline constexpr std::size_t kOrderEffectPayloadBytes = 165;
 inline constexpr std::size_t kVenueObservationPayloadBytes = 116;
+inline constexpr std::size_t kFeatureDescriptorEncodedBytes = 9;
+inline constexpr std::size_t kFeatureSchemaPayloadPrefixBytes = 44;
+inline constexpr std::size_t kMaxFeatureSchemaPayloadBytes =
+    kFeatureSchemaPayloadPrefixBytes +
+    kMaxDecisionFeatures * kFeatureDescriptorEncodedBytes;
+inline constexpr std::size_t kPriceSourceEncodedBytes = 28;
+inline constexpr std::size_t kQuantitySourceEncodedBytes = 20;
+inline constexpr std::size_t kActionSafetyCapsEncodedBytes =
+    5 * sizeof(std::int64_t) + kPriceSourceEncodedBytes;
+inline constexpr std::size_t kActionTemplateEncodedBytes = 140;
+inline constexpr std::size_t kExecutablePolicyPayloadPrefixBytes = 124;
+inline constexpr std::size_t kMaxExecutablePolicyPayloadBytes =
+    kExecutablePolicyPayloadPrefixBytes +
+    kMaxExecutableActionTemplates * kActionTemplateEncodedBytes +
+    sizeof(std::uint16_t) + kMaxPolicyRules * sizeof(std::uint8_t);
 
 static_assert(kMaxDecisionFramePayloadBytes <= kDecisionFramePayloadBudgetBytes,
               "DecisionFrame exceeded its reviewed canonical payload budget");
 static_assert(kMaxPolicyPayloadBytes <= kPolicyArtifactPayloadBudgetBytes,
               "PolicyArtifact exceeded its reviewed canonical payload budget");
+static_assert(kActionSafetyCapsEncodedBytes == 68);
+static_assert(kActionTemplateEncodedBytes ==
+              2 + 4 + 2 + 8 + 8 + kPriceSourceEncodedBytes +
+                  kQuantitySourceEncodedBytes + kActionSafetyCapsEncodedBytes);
+static_assert(kMaxFeatureSchemaPayloadBytes <=
+              kFeatureSchemaArtifactPayloadBudgetBytes,
+              "FeatureSchemaArtifact exceeded its candidate payload budget");
+static_assert(kMaxExecutablePolicyPayloadBytes <=
+              kExecutablePolicyArtifactPayloadBudgetBytes,
+              "ExecutablePolicyArtifact exceeded its candidate payload budget");
 
 enum class PayloadError : std::uint8_t {
     none = 0,
@@ -51,6 +77,8 @@ struct DecodePayloadResult {
 [[nodiscard]] EncodePayloadResult encode_payload(const DecisionFrame& value);
 [[nodiscard]] EncodePayloadResult encode_payload(const OrderEffect& value);
 [[nodiscard]] EncodePayloadResult encode_payload(const VenueObservation& value);
+[[nodiscard]] EncodePayloadResult encode_payload(const FeatureSchemaArtifact& value);
+[[nodiscard]] EncodePayloadResult encode_payload(const ExecutablePolicyArtifact& value);
 
 [[nodiscard]] DecodePayloadResult<PolicyArtifact>
 decode_policy_artifact(std::span<const std::byte> bytes);
@@ -60,5 +88,9 @@ decode_decision_frame(std::span<const std::byte> bytes);
 decode_order_effect(std::span<const std::byte> bytes);
 [[nodiscard]] DecodePayloadResult<VenueObservation>
 decode_venue_observation(std::span<const std::byte> bytes);
+[[nodiscard]] DecodePayloadResult<FeatureSchemaArtifact>
+decode_feature_schema_artifact(std::span<const std::byte> bytes);
+[[nodiscard]] DecodePayloadResult<ExecutablePolicyArtifact>
+decode_executable_policy_artifact(std::span<const std::byte> bytes);
 
 }  // namespace velocita::v2
