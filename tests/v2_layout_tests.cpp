@@ -1,5 +1,6 @@
 #include "velocita/v2/layout.hpp"
 
+#include "velocita/v2/action_template.hpp"
 #include "velocita/v2/contracts.hpp"
 #include "velocita/v2/kernel.hpp"
 #include "velocita/v2/payload.hpp"
@@ -35,6 +36,12 @@ void test_current_object_and_slot_budgets() {
     static_assert(sizeof(DecisionFrame) <= kDecisionFrameObjectBudgetBytes);
     static_assert(sizeof(PolicyArtifact) <= kPolicyArtifactObjectBudgetBytes);
     static_assert(sizeof(RuleEvaluation) <= kRuleEvaluationObjectBudgetBytes);
+    static_assert(sizeof(PriceSource) <= kPriceSourceObjectBudgetBytes);
+    static_assert(sizeof(QuantitySource) <= kQuantitySourceObjectBudgetBytes);
+    static_assert(sizeof(ActionSafetyCaps) <= kActionSafetyCapsObjectBudgetBytes);
+    static_assert(sizeof(ActionTemplate) <= kActionTemplateObjectBudgetBytes);
+    static_assert(sizeof(EconomicActionProposal) <=
+                  kEconomicActionProposalObjectBudgetBytes);
     static_assert(sizeof(TradingState) <= kTradingStateObjectBudgetBytes);
     static_assert(kMaxStateSnapshotBytes < 64U * 1024U);
 

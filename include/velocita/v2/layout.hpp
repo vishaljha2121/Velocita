@@ -33,6 +33,11 @@ inline constexpr std::size_t kDecisionFramePayloadBudgetBytes = 448;
 inline constexpr std::size_t kPolicyArtifactPayloadBudgetBytes = 576;
 inline constexpr std::size_t kKernelCommandBudgetBytes = 640;
 inline constexpr std::size_t kKernelResultBudgetBytes = 128;
+inline constexpr std::size_t kPriceSourceObjectBudgetBytes = 32;
+inline constexpr std::size_t kQuantitySourceObjectBudgetBytes = 24;
+inline constexpr std::size_t kActionSafetyCapsObjectBudgetBytes = 80;
+inline constexpr std::size_t kActionTemplateObjectBudgetBytes = 160;
+inline constexpr std::size_t kEconomicActionProposalObjectBudgetBytes = 128;
 
 static_assert(kTargetCacheLineBytes >= alignof(std::max_align_t));
 static_assert(is_power_of_two(kTargetCacheLineBytes));

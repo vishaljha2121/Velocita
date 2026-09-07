@@ -164,6 +164,12 @@ private:
         case ContractError::invalid_enum:
         case ContractError::non_positive_price:
         case ContractError::non_positive_quantity:
+        case ContractError::non_positive_notional:
+        case ContractError::invalid_value_source:
+        case ContractError::non_canonical_value:
+        case ContractError::invalid_safety_cap:
+        case ContractError::invalid_order_target:
+        case ContractError::invalid_action_template:
             return true;
     }
     return false;

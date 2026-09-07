@@ -344,6 +344,17 @@ Phase 4. Silent price/quantity clamping is not planned: a limit violation must
 produce a typed no-effect rejection unless a future policy explicitly defines
 adaptive sizing as strategy behavior.
 
+The first Phase 3D TDD slice adds standalone typed action contracts without
+changing policy, command, result, snapshot, or replay schemas. Separate
+`PriceSource` and `QuantitySource` types, canonical inactive fields, strict
+safety-cap validation, logical order slots, instrument/capability versions, and
+exact economic proposals are host-green. New Phase 3D semantics separate
+post-only from GTC/IOC/FOK and prohibit executor discretion. Full contract
+tests pass 17/17; optimized Release and ASan/UBSan V2 suites pass 14/14. Pure
+resolution, authoritative instrument/capability inputs, codecs, reducer
+integration, ARM64, and Pi evidence remain pending. Detailed evidence is in
+[`docs/evidence/V2_PHASE3D_ACTION_CONTRACT_EXPERIMENT.md`](docs/evidence/V2_PHASE3D_ACTION_CONTRACT_EXPERIMENT.md).
+
 ### Version preservation
 
 - V1 remains recoverable at annotated tag `v1.0.0`.

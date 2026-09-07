@@ -49,6 +49,9 @@ struct VenueOrderIdTag;
 struct ExecutionIdTag;
 struct ExecutorGenerationTag;
 struct KillEpochTag;
+struct LogicalOrderSlotTag;
+struct InstrumentSpecVersionTag;
+struct VenueCapabilitiesVersionTag;
 
 using CallerId = StrongId<CallerIdTag>;
 using RequestSequence = StrongId<RequestSequenceTag>;
@@ -74,6 +77,9 @@ using VenueOrderId = StrongId<VenueOrderIdTag>;
 using ExecutionId = StrongId<ExecutionIdTag>;
 using ExecutorGeneration = StrongId<ExecutorGenerationTag>;
 using KillEpoch = StrongId<KillEpochTag>;
+using LogicalOrderSlot = StrongId<LogicalOrderSlotTag, std::uint16_t>;
+using InstrumentSpecVersion = StrongId<InstrumentSpecVersionTag>;
+using VenueCapabilitiesVersion = StrongId<VenueCapabilitiesVersionTag>;
 
 enum class RoundingMode : std::uint8_t {
     toward_zero = 0,

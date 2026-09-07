@@ -230,6 +230,15 @@ if(BUILD_TESTING)
     target_compile_options(v2-decision-kernel-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-decision-kernel-tests COMMAND v2-decision-kernel-tests)
 
+    add_executable(v2-action-template-contract-tests
+        tests/v2_action_template_contract_tests.cpp)
+    target_link_libraries(v2-action-template-contract-tests PRIVATE
+        velocita_v2_contracts)
+    target_compile_options(v2-action-template-contract-tests PRIVATE
+        -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-action-template-contract-tests
+        COMMAND v2-action-template-contract-tests)
+
     add_executable(v2-layout-report src/v2_layout_report.cpp)
     target_link_libraries(v2-layout-report PRIVATE
         velocita_v2_contracts velocita_v2_kernel velocita_v2_evaluator)

@@ -1,8 +1,9 @@
 # V2 Phase 3 authoritative decision-evaluator design
 
 Status: decisions 1 through 5 approved; Phase 3A, 3B, and the Phase 3C
-authoritative reducer are green on the host and physical Pi, but Phase 3
-measurement and Phase 3D economic-template work remain unaccepted
+authoritative reducer are green on the host and physical Pi; the first Phase
+3D action-contract slice is host-green, but Phase 3D resolution, Phase 3
+measurement, and Phase 3 acceptance remain pending
 
 Branch: `v2/phase-3-policy-evaluator`
 
@@ -385,9 +386,21 @@ Policy limits constrain strategy behavior; they are not a substitute for
 portfolio/account risk. Conversely, the risk engine may refuse a policy-valid
 proposal but may not rewrite it into a different trade.
 
-#### 3D.3 TDD implementation sequence
+#### 3D.3 Implemented contract slice
 
-- [ ] freeze tagged price/quantity source, transform, logical-target, safety-cap,
+The first TDD slice defines typed fixed-or-feature price and quantity sources,
+an immutable safety envelope, directive-specific action templates, and an exact
+economic proposal. It also introduces strong logical-order-slot,
+instrument-spec-version, and venue-capability-version identities.
+
+Resident sizes are independently bounded and reported. No `PolicyArtifact`,
+canonical payload, kernel result, snapshot, or replay bytes change in this
+slice. Detailed evidence is in
+[`V2 Phase 3D action-contract experiment`](evidence/V2_PHASE3D_ACTION_CONTRACT_EXPERIMENT.md).
+
+#### 3D.4 TDD implementation sequence
+
+- [x] freeze tagged price/quantity source, transform, logical-target, safety-cap,
       and action-proposal value contracts;
 - [ ] observe RED tests for every invalid tag, index, unit, zero/negative value,
       overflow, cap, target, and capability case;

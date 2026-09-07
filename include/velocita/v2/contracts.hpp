@@ -45,6 +45,12 @@ enum class ContractError : std::uint8_t {
     invalid_enum,
     non_positive_price,
     non_positive_quantity,
+    non_positive_notional,
+    invalid_value_source,
+    non_canonical_value,
+    invalid_safety_cap,
+    invalid_order_target,
+    invalid_action_template,
 };
 
 enum class PredicateOperator : std::uint8_t {

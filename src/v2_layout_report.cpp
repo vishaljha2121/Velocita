@@ -1,3 +1,4 @@
+#include "velocita/v2/action_template.hpp"
 #include "velocita/v2/contracts.hpp"
 #include "velocita/v2/kernel.hpp"
 #include "velocita/v2/kernel_codec.hpp"
@@ -27,6 +28,25 @@ int main() {
               << "rule_evaluation_size_bytes=" << sizeof(RuleEvaluation) << '\n'
               << "rule_evaluation_budget_bytes="
               << kRuleEvaluationObjectBudgetBytes << '\n'
+              << "price_source_size_bytes=" << sizeof(PriceSource) << '\n'
+              << "price_source_budget_bytes="
+              << kPriceSourceObjectBudgetBytes << '\n'
+              << "quantity_source_size_bytes=" << sizeof(QuantitySource) << '\n'
+              << "quantity_source_budget_bytes="
+              << kQuantitySourceObjectBudgetBytes << '\n'
+              << "action_safety_caps_size_bytes=" << sizeof(ActionSafetyCaps)
+              << '\n'
+              << "action_safety_caps_budget_bytes="
+              << kActionSafetyCapsObjectBudgetBytes << '\n'
+              << "action_template_size_bytes=" << sizeof(ActionTemplate) << '\n'
+              << "action_template_alignment_bytes=" << alignof(ActionTemplate)
+              << '\n'
+              << "action_template_budget_bytes="
+              << kActionTemplateObjectBudgetBytes << '\n'
+              << "economic_action_proposal_size_bytes="
+              << sizeof(EconomicActionProposal) << '\n'
+              << "economic_action_proposal_budget_bytes="
+              << kEconomicActionProposalObjectBudgetBytes << '\n'
               << "apply_result_size_bytes=" << sizeof(ApplyResult) << '\n'
               << "request_receipt_size_bytes=" << sizeof(RequestReceipt) << '\n'
               << "decision_record_capacity=" << kMaxDecisionRecords << '\n'
