@@ -1,7 +1,6 @@
 # V2 Phase 3D/3E executable-policy and measurement evidence
 
-Status: host Release and sanitizer gates pass; final exact-root Raspberry Pi
-gate pending
+Status: accepted on host and physical Raspberry Pi 5
 
 ## Objective
 
@@ -78,19 +77,30 @@ provisional until the deferred NUC validation after the nine-phase build.
 - observed decision and receipt high-watermarks; and
 - an explicit scope marker: `in_memory_no_raft_no_wal_no_network`.
 
-The host measurement is a development signal only. It is not a Raft throughput
-claim and must not be compared to end-to-end order latency. The physical Pi
-gate records the target measurement under clean power and target cache-line
-preconditions.
+The measurement is a kernel development signal only. It is not a Raft
+throughput claim and must not be compared to end-to-end order latency.
 
-## Acceptance remaining
+## Physical Pi acceptance
 
-1. Sync the exact source tree to the Pi.
-2. Pass Release, instrumented, and sanitizer suites in the pinned Ubuntu 26.04
-   ARM64 container.
-3. Capture the Phase 3 benchmark and layout report with `throttled=0x0` before
-   and after.
-4. Record the exact source root and create the local Git acceptance checkpoint.
+The gate completed on 2026-09-07 with evidence at
+`~/.local/share/velocita/v2-phase3-acceptance-pi-gates/20260907T212930Z`.
 
-Until those steps pass, Phase 3 is host-green but not accepted, and Phase 4 is
-not authorized.
+- wrapper and container result: PASS;
+- compiler: GCC 15.2.0 on Ubuntu 26.04 ARM64;
+- target and runtime L1 data-cache line: 64 bytes;
+- exact and expected source root:
+  `f2d350757c9f2f71f0eab4e2600af982bea44d56027082fafc70764c77073f5b`;
+- power before and after: `throttled=0x0`;
+- temperature: 43.55 C before and 49.60 C after;
+- worst-case 32-rule evaluation: p50 222 ns, p99 241 ns;
+- exact action resolution: p50 185 ns, p99 204 ns; and
+- full in-memory authoritative reducer: p50 740 ns, p99 778 ns.
+
+Both decision and receipt workload high-watermarks reached 16. The benchmark
+explicitly excluded Raft, WAL, and network work.
+
+## Decision
+
+Accept Phase 3 and allow Phase 4 TDD planning to begin. This acceptance does
+not authorize a live venue adapter, real-money trading, or any external effect.
+The 80-KiB state ceiling remains provisional until the deferred NUC gate.

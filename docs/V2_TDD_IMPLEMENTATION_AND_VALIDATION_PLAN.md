@@ -91,8 +91,8 @@ The controlled critical path is:
 
 ```text
 Phase 2 deterministic foundation                 ACCEPTED
-  -> Phase 3 authoritative decision evaluation   NEXT
-  -> Phase 4 risk + orders + transactional outbox
+  -> Phase 3 authoritative decision evaluation   ACCEPTED
+  -> Phase 4 risk + orders + transactional outbox NEXT
   -> Phase 5 simulator + execution gateway
   -> Phase 6 Raft integration
   -> Phase 7 durable storage
@@ -392,9 +392,10 @@ schema V2, and Phase 3C authoritative reducer/records/replay are accepted on the
 host and physical Pi. Phase 3D/3E now integrates an atomic active/staged
 executable bundle, exact economic proposal resolution, schema-v3 kernel bytes,
 schema-v3 snapshots, independent model replay, cache/layout ceilings, and an
-in-memory Phase 3 benchmark. Release and sanitizer gates are host-green. The
-final exact source root still needs its pinned ARM64 physical Pi gate before
-Phase 3 can be accepted; NUC capacity promotion remains deferred.
+in-memory Phase 3 benchmark. Release, instrumented, sanitizer, replay, layout,
+and measurement gates pass on the host and physical Pi at exact source root
+`f2d350757c9f2f71f0eab4e2600af982bea44d56027082fafc70764c77073f5b`.
+Phase 3 is accepted; NUC capacity promotion remains deferred.
 
 The reviewed execution checklist and pending schema decisions are maintained in
 [`V2 Phase 3 decision-evaluator design`](V2_PHASE3_DECISION_EVALUATOR_DESIGN.md).

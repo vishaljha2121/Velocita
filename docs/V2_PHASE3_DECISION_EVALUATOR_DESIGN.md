@@ -1,10 +1,9 @@
 # V2 Phase 3 authoritative decision-evaluator design
 
-Status: decisions 1 through 5 approved; Phase 3A through 3C are accepted on the
-host and physical Pi. Phase 3D/3E executable-policy lifecycle, exact proposal
-resolution, snapshot/replay integration, layout guardrails, and measurement are
-host-green. The exact final source root still requires its physical Pi gate;
-NUC capacity promotion remains deferred until the nine-phase build completes.
+Status: Phase 3 accepted on the host and physical Raspberry Pi 5. The final
+exact source root passed Release, instrumented, sanitizer, layout, replay, and
+in-memory measurement gates with clean power. NUC capacity promotion remains
+deferred until the nine-phase build completes.
 
 Branch: `v2/phase-3-policy-evaluator`
 
@@ -514,15 +513,14 @@ the reject-not-clamp boundary are accepted.
 - [x] handwritten golden corpus covers every result reason;
 - [x] generated reference model covers boundary and interaction sequences;
 - [x] direct, canonical replay, and every snapshot cut agree;
-- [ ] evaluation duration, rules visited, and capacity high-watermarks are
-      measured without claiming Raft throughput. The host benchmark is green;
-      the physical Pi measurement is pending;
+- [x] evaluation duration, rules visited, and capacity high-watermarks are
+      measured without claiming Raft throughput;
 - [x] host Release and sanitizer gates pass;
-- [ ] pinned ARM64 Linux gate passes from the final exact source root;
+- [x] pinned ARM64 Linux gate passes from the final exact source root;
 - [x] physical Pi Phase 3C gate passes;
 - [x] changelog/evidence state Phase 3C limitations and rollback precisely;
       and
-- [ ] pass the final exact-root Pi gate and record Phase 3 acceptance.
+- [x] pass the final exact-root Pi gate and record Phase 3 acceptance.
 
 ## 5. C++ design guidance
 
