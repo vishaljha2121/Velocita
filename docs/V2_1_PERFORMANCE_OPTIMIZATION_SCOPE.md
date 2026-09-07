@@ -1,4 +1,4 @@
-# V2.1 performance optimization scope
+# V2.1 optimization and portfolio-execution scope
 
 Status: deferred backlog; execute only after V2 functional completion and
 release-wide correctness acceptance
@@ -7,7 +7,9 @@ release-wide correctness acceptance
 
 V2 prioritizes correct deterministic economic state, canonical replay, bounded
 memory, and fail-closed behavior. V2.1 will optimize measured CPU, cache, and
-owner-loop costs without changing those semantics.
+owner-loop costs without changing those semantics. V2.1 is also the earliest
+release allowed to introduce reviewed multi-strategy portfolio netting; that is
+an economic feature, not an assumed performance optimization.
 
 This document prevents two opposite mistakes:
 
@@ -143,6 +145,78 @@ Incremental invariants maintained by `apply` may allow a trusted live state to
 use a cheaper encode precondition check, but they do not replace full semantic
 validation of restored bytes. Any trusted-encode fast path requires tests that
 prove all reducer transitions preserve the invariants assumed by that path.
+
+### 5.5 Multi-strategy portfolio netting and intent classes
+
+V2 deliberately resolves exact per-policy economic proposals and does not
+silently net them. V2.1 may add a bounded portfolio coordinator for multiple
+strategies operating one account, but only through a separately reviewed schema
+and reducer transition.
+
+The motivating target-position example is:
+
+```text
+strategy A target = +3 lots
+strategy B target = -2 lots
+portfolio target  = +1 lot
+
+execution delta = portfolio target
+                - confirmed position
+                - conservatively valued committed/pending effects
+```
+
+If confirmed and pending exposure are zero, the externally executed delta is
+`+1`, not independent `buy 3` and `sell 2` orders. This may reduce gross
+turnover, spread crossings, fees, slippage, and venue messages. It may also
+reduce externally reported volume, forgo maker economics, introduce aggregation
+latency, and complicate strategy attribution. It is therefore never enabled as
+an executor-side heuristic.
+
+The design must distinguish at least two intent classes:
+
+- `TargetPositionIntent`: a signed target exposure that may be netted with
+  compatible target intents for the same account, instrument, valuation epoch,
+  and policy authority; and
+- `QuoteIntent`: exact bid/ask slot intentions used by market making, which may
+  not be cancelled out merely because their current signed net is zero.
+
+The replicated OMS/risk transaction owns aggregation. The executor receives
+one exact committed effect and has no authority to combine, resize, reprice, or
+reinterpret strategy intents.
+
+The first reviewed capacity proposal is four strategy lanes, 32 total ordered
+rules, 16 deduplicated action templates, one active portfolio bundle, and one
+staged bundle. These are backlog candidates rather than accepted constants;
+layout and snapshot experiments must prove them before they become contracts.
+
+Risk must cap both dimensions:
+
+```text
+net target   = abs(sum(signed strategy targets))
+gross target = sum(abs(strategy target))
+```
+
+Net exposure alone is insufficient because removing one offsetting strategy can
+reveal the larger underlying position. Required controls include per-strategy,
+per-instrument, account-wide gross/net, pending-effect, and unknown-effect
+limits with checked arithmetic and typed capacity failure.
+
+Before implementation, V2.1 must decide and test:
+
+1. target-versus-delta semantics and compatibility keys;
+2. the deterministic aggregation boundary, using replicated sequence/index
+   semantics rather than an unreplicated wall-clock window;
+3. treatment of pending, rejected, late, duplicate, and unknown effects;
+4. fill and P&L attribution, including whether an internal offset creates only
+   counterfactual strategy accounting or an explicit virtual transfer;
+5. interaction with cancel-only, reduce-only, halt, and dynamic risk authority;
+6. gross and net safety limits and arithmetic overflow;
+7. exact replay and snapshot representation; and
+8. evidence that reduced external turnover improves the selected economic
+   objective rather than merely reducing leaderboard volume.
+
+This feature is parked for V2.1. It must not delay or alter the current V2
+policy-schema, resolver, reducer, and replay completion path.
 
 ## 6. TDD and acceptance gates
 
