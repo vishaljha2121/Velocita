@@ -2,8 +2,9 @@
 
 Date: 2026-09-06
 
-Status: first host contract slice green; canonical policy integration,
-resolution, reducer, replay, ARM64, and physical Pi gates pending
+Status: action and authoritative-input contract slices host-green; canonical
+policy integration, resolution, reducer, replay, ARM64, and physical Pi gates
+pending
 
 ## Objective
 
@@ -60,6 +61,8 @@ QuantitySource:          24 B /  24 B budget
 ActionSafetyCaps:        72 B /  80 B budget
 ActionTemplate:         152 B / 160 B budget
 EconomicActionProposal: 112 B / 128 B budget
+InstrumentExecutionProfile: 72 B / 80 B budget
+VenueCapabilities:          32 B / 32 B budget
 ```
 
 These are resident C++ object sizes. No canonical policy, kernel, or snapshot
@@ -100,6 +103,26 @@ is no “permitted” state that delegates the economic choice to the executor.
   reject-not-clamp enforcement are not implemented yet.
 - No risk is checked or reserved in Phase 3D.
 
-The next TDD slice defines the versioned instrument/capability input needed to
-calculate notional and validate order properties, then implements a pure
-resolver before changing the policy wire schema.
+## Authoritative-input contract follow-up
+
+A second RED test required absent `InstrumentExecutionProfile` and
+`VenueCapabilities` types. GREEN adds:
+
+- versioned venue/instrument identity;
+- a positive authoritative quote-micros-per-tick-lot conversion;
+- inclusive positive instrument price and quantity boundaries;
+- closed directive and time-in-force capability bitmasks; and
+- a canonical zero-or-one post-only capability.
+
+The initial 64-byte instrument-profile budget correctly failed at compile time:
+the typed object is 72 bytes. Because this is cold versioned configuration, the
+reviewed object ceiling is 80 bytes rather than weakening identities to force a
+one-cache-line layout. Arena stride remains a separate future decision.
+
+The complete functional suite remains green at 17/17. Focused optimized Release
+and ASan/UBSan action/layout gates also pass.
+
+The next TDD slice implements a pure resolver against these authoritative
+inputs before changing the policy wire schema. It must calculate conversions
+and notional with checked arithmetic, enforce every envelope/capability limit,
+and return typed reject-not-clamp outcomes.

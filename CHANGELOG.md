@@ -355,6 +355,14 @@ resolution, authoritative instrument/capability inputs, codecs, reducer
 integration, ARM64, and Pi evidence remain pending. Detailed evidence is in
 [`docs/evidence/V2_PHASE3D_ACTION_CONTRACT_EXPERIMENT.md`](docs/evidence/V2_PHASE3D_ACTION_CONTRACT_EXPERIMENT.md).
 
+A follow-up contract slice adds authoritative `InstrumentExecutionProfile` and
+`VenueCapabilities` inputs. They bind monetary tick-lot conversion, inclusive
+instrument bounds, supported directives/TIFs, and post-only capability to
+explicit versions. The 72-byte cold instrument profile uses a reviewed 80-byte
+object ceiling; the venue capability record exactly meets its 32-byte ceiling.
+No canonical payload or reducer state changes yet. Functional tests remain
+17/17 green, with focused Release and ASan/UBSan action/layout gates passing.
+
 ### Version preservation
 
 - V1 remains recoverable at annotated tag `v1.0.0`.

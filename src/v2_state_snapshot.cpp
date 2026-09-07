@@ -170,6 +170,7 @@ private:
         case ContractError::invalid_safety_cap:
         case ContractError::invalid_order_target:
         case ContractError::invalid_action_template:
+        case ContractError::invalid_capability:
             return true;
     }
     return false;

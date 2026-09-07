@@ -42,6 +42,10 @@ void test_current_object_and_slot_budgets() {
     static_assert(sizeof(ActionTemplate) <= kActionTemplateObjectBudgetBytes);
     static_assert(sizeof(EconomicActionProposal) <=
                   kEconomicActionProposalObjectBudgetBytes);
+    static_assert(sizeof(InstrumentExecutionProfile) <=
+                  kInstrumentExecutionProfileObjectBudgetBytes);
+    static_assert(sizeof(VenueCapabilities) <=
+                  kVenueCapabilitiesObjectBudgetBytes);
     static_assert(sizeof(TradingState) <= kTradingStateObjectBudgetBytes);
     static_assert(kMaxStateSnapshotBytes < 64U * 1024U);
 

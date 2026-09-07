@@ -47,6 +47,14 @@ int main() {
               << sizeof(EconomicActionProposal) << '\n'
               << "economic_action_proposal_budget_bytes="
               << kEconomicActionProposalObjectBudgetBytes << '\n'
+              << "instrument_execution_profile_size_bytes="
+              << sizeof(InstrumentExecutionProfile) << '\n'
+              << "instrument_execution_profile_budget_bytes="
+              << kInstrumentExecutionProfileObjectBudgetBytes << '\n'
+              << "venue_capabilities_size_bytes=" << sizeof(VenueCapabilities)
+              << '\n'
+              << "venue_capabilities_budget_bytes="
+              << kVenueCapabilitiesObjectBudgetBytes << '\n'
               << "apply_result_size_bytes=" << sizeof(ApplyResult) << '\n'
               << "request_receipt_size_bytes=" << sizeof(RequestReceipt) << '\n'
               << "decision_record_capacity=" << kMaxDecisionRecords << '\n'

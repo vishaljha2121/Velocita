@@ -81,6 +81,32 @@ velocita::v2::EconomicActionProposal valid_proposal() {
             MoneyMicros::from_atoms(2'000'000)};
 }
 
+velocita::v2::InstrumentExecutionProfile valid_instrument_profile() {
+    using namespace velocita::v2;
+    return {kInstrumentExecutionProfileSchemaVersion,
+            VenueId{1},
+            InstrumentId{2},
+            InstrumentSpecVersion{3},
+            MoneyMicros::from_atoms(10'000),
+            PriceTicks::from_atoms(1),
+            PriceTicks::from_atoms(1'000'000),
+            QuantityLots::from_atoms(1),
+            QuantityLots::from_atoms(10'000)};
+}
+
+velocita::v2::VenueCapabilities valid_venue_capabilities() {
+    using namespace velocita::v2;
+    return {kVenueCapabilitiesSchemaVersion,
+            VenueId{1},
+            VenueCapabilitiesVersion{2},
+            static_cast<std::uint8_t>(kVenueDirectivePlaceLimit |
+                                      kVenueDirectiveCancel |
+                                      kVenueDirectiveReplace),
+            static_cast<std::uint8_t>(kVenueTifGtc | kVenueTifIoc |
+                                      kVenueTifFok),
+            1};
+}
+
 void test_typed_bounded_layout() {
     using namespace velocita::v2;
     static_assert(std::is_trivially_copyable_v<PriceSource>);
@@ -88,8 +114,63 @@ void test_typed_bounded_layout() {
     static_assert(std::is_trivially_copyable_v<ActionSafetyCaps>);
     static_assert(std::is_trivially_copyable_v<ActionTemplate>);
     static_assert(std::is_trivially_copyable_v<EconomicActionProposal>);
+    static_assert(std::is_trivially_copyable_v<InstrumentExecutionProfile>);
+    static_assert(std::is_trivially_copyable_v<VenueCapabilities>);
     static_assert(!std::is_constructible_v<LogicalOrderSlot,
                                            InstrumentSpecVersion>);
+}
+
+void test_authoritative_instrument_economics() {
+    using namespace velocita::v2;
+    auto profile = valid_instrument_profile();
+    require(validate(profile) == ContractError::none,
+            "valid instrument profile was rejected");
+
+    profile.instrument_spec_version = {};
+    require(validate(profile) == ContractError::invalid_identity,
+            "unversioned instrument profile was accepted");
+
+    profile = valid_instrument_profile();
+    profile.quote_micros_per_tick_lot = MoneyMicros::from_atoms(0);
+    require(validate(profile) == ContractError::non_positive_notional,
+            "zero tick-lot monetary value was accepted");
+
+    profile = valid_instrument_profile();
+    profile.minimum_price = PriceTicks::from_atoms(2);
+    profile.maximum_price = PriceTicks::from_atoms(1);
+    require(validate(profile) == ContractError::invalid_safety_cap,
+            "reversed instrument price range was accepted");
+
+    profile = valid_instrument_profile();
+    profile.maximum_quantity = QuantityLots::from_atoms(0);
+    require(validate(profile) == ContractError::non_positive_quantity,
+            "non-positive instrument quantity boundary was accepted");
+}
+
+void test_versioned_venue_capabilities() {
+    using namespace velocita::v2;
+    auto capabilities = valid_venue_capabilities();
+    require(validate(capabilities) == ContractError::none,
+            "valid venue capabilities were rejected");
+
+    capabilities.venue_capabilities_version = {};
+    require(validate(capabilities) == ContractError::invalid_identity,
+            "unversioned venue capabilities were accepted");
+
+    capabilities = valid_venue_capabilities();
+    capabilities.directive_mask = 0x80;
+    require(validate(capabilities) == ContractError::invalid_capability,
+            "unknown directive capability bit was accepted");
+
+    capabilities = valid_venue_capabilities();
+    capabilities.time_in_force_mask = 0x80;
+    require(validate(capabilities) == ContractError::invalid_capability,
+            "unknown TIF capability bit was accepted");
+
+    capabilities = valid_venue_capabilities();
+    capabilities.supports_post_only = 2;
+    require(validate(capabilities) == ContractError::non_canonical_value,
+            "non-boolean post-only capability was accepted");
 }
 
 void test_value_source_canonical_forms() {
@@ -235,6 +316,8 @@ void test_proposal_is_exact_and_never_implicitly_clamped() {
 int main() {
     try {
         test_typed_bounded_layout();
+        test_authoritative_instrument_economics();
+        test_versioned_venue_capabilities();
         test_value_source_canonical_forms();
         test_safety_caps_are_strict_and_bounded();
         test_action_template_directive_specific_shapes();

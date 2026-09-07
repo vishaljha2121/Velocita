@@ -10,6 +10,20 @@ namespace velocita::v2 {
 
 inline constexpr std::uint16_t kActionTemplateSchemaVersion = 1;
 inline constexpr std::uint16_t kEconomicActionProposalSchemaVersion = 1;
+inline constexpr std::uint16_t kInstrumentExecutionProfileSchemaVersion = 1;
+inline constexpr std::uint16_t kVenueCapabilitiesSchemaVersion = 1;
+
+inline constexpr std::uint8_t kVenueDirectivePlaceLimit = 1U << 0U;
+inline constexpr std::uint8_t kVenueDirectiveCancel = 1U << 1U;
+inline constexpr std::uint8_t kVenueDirectiveReplace = 1U << 2U;
+inline constexpr std::uint8_t kKnownVenueDirectiveMask =
+    kVenueDirectivePlaceLimit | kVenueDirectiveCancel | kVenueDirectiveReplace;
+
+inline constexpr std::uint8_t kVenueTifGtc = 1U << 0U;
+inline constexpr std::uint8_t kVenueTifIoc = 1U << 1U;
+inline constexpr std::uint8_t kVenueTifFok = 1U << 2U;
+inline constexpr std::uint8_t kKnownVenueTifMask =
+    kVenueTifGtc | kVenueTifIoc | kVenueTifFok;
 
 enum class EconomicValueSourceKind : std::uint8_t {
     none = 0,
@@ -20,6 +34,34 @@ enum class EconomicValueSourceKind : std::uint8_t {
 enum class PostOnlyMode : std::uint8_t {
     prohibited = 1,
     required = 2,
+};
+
+// Monetary conversion and venue limits are authoritative instrument facts.
+// Strategy policy binds their version but does not get to redefine them.
+struct InstrumentExecutionProfile {
+    std::uint16_t schema_version{};
+    VenueId venue_id{};
+    InstrumentId instrument_id{};
+    InstrumentSpecVersion instrument_spec_version{};
+    MoneyMicros quote_micros_per_tick_lot{};
+    PriceTicks minimum_price{};
+    PriceTicks maximum_price{};
+    QuantityLots minimum_quantity{};
+    QuantityLots maximum_quantity{};
+
+    constexpr auto operator<=>(
+        const InstrumentExecutionProfile&) const noexcept = default;
+};
+
+struct VenueCapabilities {
+    std::uint16_t schema_version{};
+    VenueId venue_id{};
+    VenueCapabilitiesVersion venue_capabilities_version{};
+    std::uint8_t directive_mask{};
+    std::uint8_t time_in_force_mask{};
+    std::uint8_t supports_post_only{};
+
+    constexpr auto operator<=>(const VenueCapabilities&) const noexcept = default;
 };
 
 // A feature value is converted to ticks by dividing its FeatureMicros atoms by
@@ -180,6 +222,63 @@ namespace action_detail {
 }
 
 [[nodiscard]] constexpr ContractError
+validate(const InstrumentExecutionProfile& profile) noexcept {
+    if (profile.venue_id.value() == 0 || profile.instrument_id.value() == 0 ||
+        profile.instrument_spec_version.value() == 0) {
+        return ContractError::invalid_identity;
+    }
+    if (profile.schema_version != kInstrumentExecutionProfileSchemaVersion) {
+        return ContractError::unsupported_schema;
+    }
+    if (profile.quote_micros_per_tick_lot.atoms() <= 0) {
+        return ContractError::non_positive_notional;
+    }
+    if (profile.minimum_price.atoms() <= 0 ||
+        profile.maximum_price.atoms() <= 0) {
+        return ContractError::non_positive_price;
+    }
+    if (profile.minimum_quantity.atoms() <= 0 ||
+        profile.maximum_quantity.atoms() <= 0) {
+        return ContractError::non_positive_quantity;
+    }
+    if (profile.maximum_price < profile.minimum_price ||
+        profile.maximum_quantity < profile.minimum_quantity) {
+        return ContractError::invalid_safety_cap;
+    }
+    return ContractError::none;
+}
+
+[[nodiscard]] constexpr ContractError
+validate(const VenueCapabilities& capabilities) noexcept {
+    if (capabilities.venue_id.value() == 0 ||
+        capabilities.venue_capabilities_version.value() == 0) {
+        return ContractError::invalid_identity;
+    }
+    if (capabilities.schema_version != kVenueCapabilitiesSchemaVersion) {
+        return ContractError::unsupported_schema;
+    }
+    if ((capabilities.directive_mask & ~kKnownVenueDirectiveMask) != 0 ||
+        capabilities.directive_mask == 0 ||
+        (capabilities.time_in_force_mask & ~kKnownVenueTifMask) != 0) {
+        return ContractError::invalid_capability;
+    }
+    const auto price_action_mask = static_cast<std::uint8_t>(
+        kVenueDirectivePlaceLimit | kVenueDirectiveReplace);
+    if ((capabilities.directive_mask & price_action_mask) != 0 &&
+        capabilities.time_in_force_mask == 0) {
+        return ContractError::invalid_capability;
+    }
+    if (capabilities.supports_post_only > 1) {
+        return ContractError::non_canonical_value;
+    }
+    if (capabilities.supports_post_only != 0 &&
+        (capabilities.directive_mask & price_action_mask) == 0) {
+        return ContractError::invalid_capability;
+    }
+    return ContractError::none;
+}
+
+[[nodiscard]] constexpr ContractError
 validate(const QuantitySource& source) noexcept {
     switch (source.kind) {
         case EconomicValueSourceKind::none:
@@ -337,11 +436,16 @@ static_assert(std::is_trivially_copyable_v<QuantitySource>);
 static_assert(std::is_trivially_copyable_v<ActionSafetyCaps>);
 static_assert(std::is_trivially_copyable_v<ActionTemplate>);
 static_assert(std::is_trivially_copyable_v<EconomicActionProposal>);
+static_assert(std::is_trivially_copyable_v<InstrumentExecutionProfile>);
+static_assert(std::is_trivially_copyable_v<VenueCapabilities>);
 static_assert(sizeof(PriceSource) <= kPriceSourceObjectBudgetBytes);
 static_assert(sizeof(QuantitySource) <= kQuantitySourceObjectBudgetBytes);
 static_assert(sizeof(ActionSafetyCaps) <= kActionSafetyCapsObjectBudgetBytes);
 static_assert(sizeof(ActionTemplate) <= kActionTemplateObjectBudgetBytes);
 static_assert(sizeof(EconomicActionProposal) <=
               kEconomicActionProposalObjectBudgetBytes);
+static_assert(sizeof(InstrumentExecutionProfile) <=
+              kInstrumentExecutionProfileObjectBudgetBytes);
+static_assert(sizeof(VenueCapabilities) <= kVenueCapabilitiesObjectBudgetBytes);
 
 }  // namespace velocita::v2

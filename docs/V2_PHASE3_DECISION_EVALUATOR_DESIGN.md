@@ -388,10 +388,11 @@ proposal but may not rewrite it into a different trade.
 
 #### 3D.3 Implemented contract slice
 
-The first TDD slice defines typed fixed-or-feature price and quantity sources,
-an immutable safety envelope, directive-specific action templates, and an exact
-economic proposal. It also introduces strong logical-order-slot,
-instrument-spec-version, and venue-capability-version identities.
+The first TDD slices define typed fixed-or-feature price and quantity sources,
+an immutable safety envelope, directive-specific action templates, an exact
+economic proposal, and authoritative instrument-economics/venue-capability
+inputs. They also introduce strong logical-order-slot, instrument-spec-version,
+and venue-capability-version identities.
 
 Resident sizes are independently bounded and reported. No `PolicyArtifact`,
 canonical payload, kernel result, snapshot, or replay bytes change in this
@@ -413,6 +414,10 @@ slice. Detailed evidence is in
 - [ ] re-run layout ceilings before accepting any payload growth; and
 - [ ] pass host Release/sanitizer, pinned ARM64, physical Pi, and phase evidence
       gates.
+
+The next slice is the pure action resolver. Policy schema integration follows
+only after its checked arithmetic and reject precedence are independently
+green.
 
 No Phase 4 order, reservation, or effect work begins until this contract and
 the reject-not-clamp boundary are accepted.
