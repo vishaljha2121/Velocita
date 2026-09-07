@@ -478,6 +478,13 @@ variable data, require an exact computed length, and re-run structural
 validation after decode. The limits remain candidates until identical-source
 Pi and NUC gates complete; host timings do not promote capacity.
 
+The physical Raspberry Pi 5 gate passed the exact pinned source root with all
+Release, instrumented, and sanitizer tests green, a 64-byte runtime cache line,
+clean `throttled=0x0` power state, and maximum executable-policy codec p99 of
+1,945 ns encode and 908 ns decode. This accepts ARM64 feasibility. NUC evidence
+is deferred until the nine-phase build is complete, so the cross-platform
+capacity ceiling remains provisional.
+
 No Phase 4 order, reservation, or effect work begins until this contract and
 the reject-not-clamp boundary are accepted.
 

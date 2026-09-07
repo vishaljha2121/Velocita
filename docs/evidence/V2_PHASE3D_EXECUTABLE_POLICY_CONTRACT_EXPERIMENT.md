@@ -125,8 +125,27 @@ maximum executable encode p50/p99   625 ns / 834 ns
 maximum executable decode p50/p99   166 ns / 209 ns
 ```
 
-Pi ARM64 and NUC x86-64 must run the same exact source root before the candidate
-counts or replacement state/snapshot ceilings are accepted.
+The Raspberry Pi 5 ARM64 gate passed source root
+`5525e2002b564416dfca0405d91e8b1080b6dbba394ad9be7cf2c14afaf9fce1`
+on 2026-09-07. The expected and observed roots matched, the compiled and
+runtime cache-line values were both 64 bytes, power was `throttled=0x0` before
+and after, and temperature rose from 44.1 C to 49.05 C.
+
+Worst-case Pi Release codec measurements were:
+
+```text
+feature schema encode p50/p99       296 ns / 297 ns
+feature schema decode p50/p99       240 ns / 241 ns
+executable policy encode p50/p99  1,870 ns / 1,945 ns
+executable policy decode p50/p99    889 ns / 908 ns
+```
+
+These establish ARM64 feasibility with substantial margin because artifact
+encoding and decoding occur on bounded control-plane admission/recovery paths,
+not once per market-data decision. NUC x86-64 is intentionally deferred until
+the nine-phase implementation completes. Until that identical-source gate, the
+counts and replacement state/snapshot ceilings remain provisional rather than
+cross-platform accepted constants.
 
 Both target wrappers pin source root
 `5525e2002b564416dfca0405d91e8b1080b6dbba394ad9be7cf2c14afaf9fce1`:
@@ -156,6 +175,7 @@ does not exist on the NUC and is not fabricated there.
 - The action resolver is not invoked by the authoritative reducer.
 - No order, reservation, effect, adapter, or live-trading authority exists.
 
-Next, freeze canonical bytes and exact maximum payload sizes. Only then can the
-active/staged state layout be reviewed on ARM64, Pi, and NUC before reducer
-integration.
+Next, define the artifact digest preimages, then implement the active/staged
+reducer lifecycle and its snapshot/replay representation. That work will expose
+the exact lifecycle overhead needed to replace the old state and snapshot
+ceilings without guessing.
