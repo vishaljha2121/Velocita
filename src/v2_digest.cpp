@@ -158,4 +158,32 @@ std::optional<Digest256> parse_digest256(const std::string_view hex) noexcept {
     return digest;
 }
 
+Digest256 observation_fingerprint(const VenueObservation& value) noexcept {
+    constexpr std::string_view domain = "velocita/venue-observation/v2";
+    // Canonical V2 observation: schema(2), kind(1), seven IDs(56), side(1),
+    // price/quantity/fee(24), evidence digest(32). Never hash object padding.
+    std::array<std::byte, domain.size() + 116> bytes{};
+    std::size_t offset = 0;
+    for (const char c : domain) bytes[offset++] = static_cast<std::byte>(c);
+    const auto append = [&](const std::uint64_t word, const std::size_t width) {
+        for (std::size_t i = 0; i < width; ++i)
+            bytes[offset++] = static_cast<std::byte>((word >> (8U * i)) & 0xffU);
+    };
+    append(kVenueObservationSchemaVersion, 2);
+    append(static_cast<std::uint8_t>(value.kind), 1);
+    append(value.venue_id.value(), 8);
+    append(value.venue_session_id.value(), 8);
+    append(value.venue_sequence.value(), 8);
+    append(value.cluster_order_id.value(), 8);
+    append(value.effect_id.value(), 8);
+    append(value.venue_order_id.value(), 8);
+    append(value.execution_id.value(), 8);
+    append(static_cast<std::uint8_t>(value.side), 1);
+    append(static_cast<std::uint64_t>(value.price.atoms()), 8);
+    append(static_cast<std::uint64_t>(value.quantity.atoms()), 8);
+    append(static_cast<std::uint64_t>(value.fee.atoms()), 8);
+    for (const auto byte : value.evidence_digest.bytes) bytes[offset++] = byte;
+    return sha256_digest(bytes);
+}
+
 }  // namespace velocita::v2

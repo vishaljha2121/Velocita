@@ -219,7 +219,7 @@ void test_command_identity_and_kind_are_explicit() {
     const std::array expected_prefix{
         std::byte{'V'}, std::byte{'2'}, std::byte{'K'}, std::byte{'C'},
         std::byte{104}, std::byte{0}, std::byte{0}, std::byte{0},
-        std::byte{3}, std::byte{0},
+        std::byte{4}, std::byte{0},
         std::byte{8}, std::byte{0},
         std::byte{12}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
@@ -230,9 +230,9 @@ void test_command_identity_and_kind_are_explicit() {
     const auto full_hash =
         to_hex(sha256_digest({bytes.data(), encoded.bytes_written}));
     require(frame_hash ==
-                "2357118cb0f0790c3b24c967b1256406ba789bfcf2e0ca7e6caacae666d1b4f6" &&
+                "157b765dd7ee8fb791f6ac67ecbf3c10d6c2f531026b3758c6b94e0de2eae11b" &&
                 full_hash ==
-                    "050e042b897099999e111de5ff032f67010744c8a55137b74591bde2d22dd38f",
+                    "3d7c201012a0547d1ae27db4ade97703c3b63f2859281a452f2c40759a62a918",
             "source-command golden corpus changed: frame=" + frame_hash +
                 " full=" + full_hash);
 
@@ -261,27 +261,73 @@ void test_decision_kind_is_explicit_and_not_a_variant_ordinal() {
             "decision command kind is not the reviewed explicit value 9");
 }
 
+void test_phase4_authorization_command_and_result_are_canonical_v4() {
+    using namespace velocita::v2;
+    require(kKernelCodecSchemaVersion == 4,
+            "Phase 4 command/result bytes did not move to schema V4");
+
+    const auto original = command(44, AuthorizeDecision{DecisionId{21}});
+    std::array<std::byte, kMaxKernelCommandBytes> command_bytes{};
+    const auto encoded = encode_kernel_command(original, command_bytes);
+    require(encoded.error == KernelCodecError::none &&
+                static_cast<std::uint16_t>(KernelCommandKind::authorize_decision) ==
+                    12 &&
+                command_bytes[kKernelCommandKindOffset] == std::byte{12} &&
+                command_bytes[kKernelCommandKindOffset + 1] == std::byte{0},
+            "AuthorizeDecision lacks explicit canonical command kind 12");
+    Command restored;
+    KernelCommandCodecScratch scratch;
+    require(decode_kernel_command(
+                {command_bytes.data(), encoded.bytes_written}, restored, scratch)
+                    .error == KernelCodecError::none &&
+                restored.identity == original.identity &&
+                std::holds_alternative<AuthorizeDecision>(restored.body) &&
+                std::get<AuthorizeDecision>(restored.body).decision_id ==
+                    DecisionId{21},
+            "AuthorizeDecision did not round trip canonically");
+
+    ApplyResult authorization;
+    authorization.code = ApplyCode::applied;
+    authorization.state_version = 99;
+    authorization.strategy_mode = StrategyMode::normal;
+    authorization.kill_epoch = KillEpoch{4};
+    authorization.executor_generation = ExecutorGeneration{8};
+    authorization.decision_id = DecisionId{21};
+    authorization.detail = ApplyResultDetail::authorization(
+        ClusterOrderId{31}, EffectId{41}, MoneyMicros::from_atoms(2'206));
+    authorization.detail_kind = ApplyResultDetailKind::authorization;
+
+    std::array<std::byte, kKernelResultBytes> result_bytes{};
+    const auto encoded_result = encode_kernel_result(authorization, result_bytes);
+    ApplyResult restored_result;
+    require(encoded_result.error == KernelCodecError::none &&
+                encoded_result.bytes_written == 128 &&
+                decode_kernel_result(result_bytes, restored_result).error ==
+                    KernelCodecError::none &&
+                restored_result == authorization,
+            "authorization result detail did not round trip in fixed V4 bytes");
+}
+
 void test_result_round_trip_is_canonical() {
     using namespace velocita::v2;
-    const ApplyResult original{ApplyCode::source_sequence_gap,
-                               ContractError::none,
-                               PolicyId{17},
-                               PolicyVersion{2},
-                               PolicyLifecycle::active,
-                               99,
-                               StrategyMode::reduce_only,
-                               KillEpoch{4},
-                               ExecutorGeneration{8},
-                               SourceId{10},
-                               SourceGeneration{2},
-                               SourceSequence{3},
-                               DecisionId{21},
-                               DecisionCode::control_suppressed,
-                               Directive::place_limit,
-                               Directive::no_action,
-                               EvaluationMode::authoritative,
-                               4,
-                               5};
+    ApplyResult original;
+    original.code = ApplyCode::source_sequence_gap;
+    original.metadata_words = {17, 2};
+    original.policy_lifecycle = PolicyLifecycle::active;
+    original.state_version = 99;
+    original.strategy_mode = StrategyMode::reduce_only;
+    original.kill_epoch = KillEpoch{4};
+    original.executor_generation = ExecutorGeneration{8};
+    original.detail = ApplyResultDetail::source(
+        SourceId{10}, SourceGeneration{2}, SourceSequence{3});
+    original.detail_kind = ApplyResultDetailKind::source;
+    original.decision_id = DecisionId{21};
+    original.decision_code = DecisionCode::control_suppressed;
+    original.proposed_directive = Directive::place_limit;
+    original.effective_directive = Directive::no_action;
+    original.evaluation_mode = EvaluationMode::authoritative;
+    original.matched_rule_index = 4;
+    original.rules_visited = 5;
     std::array<std::byte, kKernelResultBytes> bytes{};
     const auto encoded = encode_kernel_result(original, bytes);
     require(encoded.error == KernelCodecError::none &&
@@ -296,29 +342,190 @@ void test_result_round_trip_is_canonical() {
     const auto frame_hash = to_hex(encoded.frame_digest);
     const auto full_hash = to_hex(sha256_digest(bytes));
     require(frame_hash ==
-                "bf4fa072530c18389d54d844dc571768cd11c6c617242f60543d6f4b8a54f2ec" &&
+                "2c2aa35d40598f7d411a9e42e2a571181083a6f8b0aaa679d3922b0dcfa24780" &&
                 full_hash ==
-                    "23240d0e66b19b73b6801050b5e3c490c61168e6a9ac78dbd420a437f2cd5363",
+                    "d671c3cfc0f9ba1483d34161a86f104381363ecc7cde1c9502f580a081b04a2f",
             "apply-result golden corpus changed: frame=" + frame_hash +
                 " full=" + full_hash);
 }
 
+void test_fill_command_and_result_are_canonical_v4() {
+    using namespace velocita::v2;
+    require(static_cast<std::uint16_t>(KernelCommandKind::observe_fill) == 13,
+            "ObserveFill command kind changed");
+    VenueObservation observation;
+    observation.kind = VenueObservationKind::fill;
+    observation.venue_id = VenueId{9};
+    observation.venue_session_id = VenueSessionId{2};
+    observation.venue_sequence = VenueSequence{3};
+    observation.cluster_order_id = ClusterOrderId{31};
+    observation.effect_id = EffectId{41};
+    observation.venue_order_id = VenueOrderId{51};
+    observation.execution_id = ExecutionId{61};
+    observation.side = Side::buy;
+    observation.price = PriceTicks::from_atoms(11);
+    observation.quantity = QuantityLots::from_atoms(1);
+    observation.fee = FeeMicros::from_atoms(3);
+    observation.evidence_digest = digest(0x66);
+    const auto original = command(15, ObserveFill{observation});
+
+    std::array<std::byte, kMaxKernelCommandBytes> bytes{};
+    const auto encoded = encode_kernel_command(original, bytes);
+    Command restored;
+    KernelCommandCodecScratch scratch;
+    const auto decoded = decode_kernel_command(
+        {bytes.data(), encoded.bytes_written}, restored, scratch);
+    require(encoded.error == KernelCodecError::none &&
+                decoded.error == KernelCodecError::none &&
+                restored.identity == original.identity &&
+                std::holds_alternative<ObserveFill>(restored.body),
+            "ObserveFill did not round trip canonically");
+    const auto& actual = std::get<ObserveFill>(restored.body).observation;
+    require(actual.kind == observation.kind &&
+                actual.venue_id == observation.venue_id &&
+                actual.venue_session_id == observation.venue_session_id &&
+                actual.venue_sequence == observation.venue_sequence &&
+                actual.cluster_order_id == observation.cluster_order_id &&
+                actual.effect_id == observation.effect_id &&
+                actual.venue_order_id == observation.venue_order_id &&
+                actual.execution_id == observation.execution_id &&
+                actual.side == observation.side && actual.price == observation.price &&
+                actual.quantity == observation.quantity &&
+                actual.fee == observation.fee &&
+                actual.evidence_digest == observation.evidence_digest,
+            "ObserveFill canonical body lost venue evidence");
+
+    ApplyResult fill;
+    fill.code = ApplyCode::applied;
+    fill.state_version = 16;
+    fill.strategy_mode = StrategyMode::normal;
+    fill.detail = ApplyResultDetail::fill(
+        VenueId{9}, ExecutionId{61}, QuantityLots::from_atoms(1));
+    fill.detail_kind = ApplyResultDetailKind::fill;
+    fill.metadata_words = {2, 60};
+    std::array<std::byte, kKernelResultBytes> result_bytes{};
+    ApplyResult restored_result;
+    require(encode_kernel_result(fill, result_bytes).error ==
+                    KernelCodecError::none &&
+                decode_kernel_result(result_bytes, restored_result).error ==
+                    KernelCodecError::none &&
+                restored_result == fill,
+            "fill result identity did not round trip in fixed V4 bytes");
+    require(restored_result.fill_session_id() == VenueSessionId{2} &&
+                restored_result.fill_sequence() == VenueSequence{60} &&
+                restored_result.policy_id() == PolicyId{} &&
+                restored_result.policy_version() == PolicyVersion{},
+            "fill metadata was exposed as policy identity");
+    fill.metadata_words = {};
+    require(encode_kernel_result(fill, result_bytes).error != KernelCodecError::none,
+            "successful fill result omitted stream identity");
+}
+
+void test_cancel_and_order_event_commands_are_canonical_v4() {
+    using namespace velocita::v2;
+    require(static_cast<std::uint16_t>(KernelCommandKind::request_cancel) == 14 &&
+                static_cast<std::uint16_t>(
+                    KernelCommandKind::observe_order_event) == 15,
+            "cancel/order-event command kinds changed");
+
+    std::array<std::byte, kMaxKernelCommandBytes> bytes{};
+    const auto cancel = command(16, RequestCancel{ClusterOrderId{31}});
+    const auto encoded_cancel = encode_kernel_command(cancel, bytes);
+    Command restored;
+    KernelCommandCodecScratch scratch;
+    require(encoded_cancel.error == KernelCodecError::none &&
+                decode_kernel_command(
+                    {bytes.data(), encoded_cancel.bytes_written}, restored, scratch)
+                        .error == KernelCodecError::none &&
+                std::holds_alternative<RequestCancel>(restored.body) &&
+                std::get<RequestCancel>(restored.body).cluster_order_id ==
+                    ClusterOrderId{31},
+            "RequestCancel did not round trip canonically");
+
+    VenueObservation observation;
+    observation.kind = VenueObservationKind::effect_unknown;
+    observation.venue_id = VenueId{9};
+    observation.venue_session_id = VenueSessionId{2};
+    observation.venue_sequence = VenueSequence{71};
+    observation.cluster_order_id = ClusterOrderId{31};
+    observation.effect_id = EffectId{41};
+    observation.evidence_digest = digest(0x71);
+    const auto event = command(17, ObserveOrderEvent{observation});
+    const auto encoded_event = encode_kernel_command(event, bytes);
+    require(encoded_event.error == KernelCodecError::none &&
+                decode_kernel_command(
+                    {bytes.data(), encoded_event.bytes_written}, restored, scratch)
+                        .error == KernelCodecError::none &&
+                std::holds_alternative<ObserveOrderEvent>(restored.body),
+            "ObserveOrderEvent did not round trip canonically");
+    const auto& actual =
+        std::get<ObserveOrderEvent>(restored.body).observation;
+    require(actual.kind == observation.kind &&
+                actual.venue_id == observation.venue_id &&
+                actual.venue_session_id == observation.venue_session_id &&
+                actual.venue_sequence == observation.venue_sequence &&
+                actual.cluster_order_id == observation.cluster_order_id &&
+                actual.effect_id == observation.effect_id &&
+                actual.evidence_digest == observation.evidence_digest,
+            "order-event canonical body lost evidence identity");
+
+    ApplyResult result;
+    result.code = ApplyCode::applied;
+    result.state_version = 17;
+    result.strategy_mode = StrategyMode::normal;
+    result.detail = ApplyResultDetail::venue_event(
+        VenueId{9}, VenueSessionId{2}, VenueSequence{71});
+    result.detail_kind = ApplyResultDetailKind::venue_event;
+    std::array<std::byte, kKernelResultBytes> result_bytes{};
+    ApplyResult restored_result;
+    require(encode_kernel_result(result, result_bytes).error ==
+                    KernelCodecError::none &&
+                decode_kernel_result(result_bytes, restored_result).error ==
+                    KernelCodecError::none &&
+                restored_result == result,
+            "venue-event result identity did not round trip in V4 bytes");
+}
+
+void test_replacement_command_is_canonical_v4() {
+    using namespace velocita::v2;
+    require(static_cast<std::uint16_t>(KernelCommandKind::request_replace) == 16,
+            "RequestReplace command kind changed");
+    const auto original = command(
+        18, RequestReplace{ClusterOrderId{31}, DecisionId{21}});
+    std::array<std::byte, kMaxKernelCommandBytes> bytes{};
+    const auto encoded = encode_kernel_command(original, bytes);
+    Command restored;
+    KernelCommandCodecScratch scratch;
+    const auto decoded = decode_kernel_command(
+        {bytes.data(), encoded.bytes_written}, restored, scratch);
+    require(encoded.error == KernelCodecError::none &&
+                decoded.error == KernelCodecError::none &&
+                restored.identity == original.identity &&
+                std::holds_alternative<RequestReplace>(restored.body) &&
+                std::get<RequestReplace>(restored.body).cluster_order_id ==
+                    ClusterOrderId{31} &&
+                std::get<RequestReplace>(restored.body).replacement_decision_id ==
+                    DecisionId{21},
+            "RequestReplace did not round trip canonically");
+}
+
 void test_result_decode_is_transactional_and_fail_closed() {
     using namespace velocita::v2;
-    const ApplyResult original{ApplyCode::applied,
-                               ContractError::none,
-                               {}, {}, PolicyLifecycle::none, 7,
-                               StrategyMode::halted, {}, {}, {}, {}, {}};
+    ApplyResult original;
+    original.code = ApplyCode::applied;
+    original.state_version = 7;
+    original.strategy_mode = StrategyMode::halted;
     std::array<std::byte, kKernelResultBytes> bytes{};
     const auto encoded = encode_kernel_result(original, bytes);
     require(encoded.error == KernelCodecError::none, "result fixture did not encode");
 
-    const ApplyResult sentinel{ApplyCode::policy_not_found,
-                               ContractError::none,
-                               PolicyId{99}, PolicyVersion{3},
-                               PolicyLifecycle::none, 8,
-                               StrategyMode::cancel_only, KillEpoch{2},
-                               ExecutorGeneration{4}, {}, {}, {}};
+    ApplyResult sentinel;
+    sentinel.code = ApplyCode::policy_not_found;
+    sentinel.metadata_words = {99, 3};
+    sentinel.state_version = 8;
+    sentinel.strategy_mode = StrategyMode::cancel_only;
+    sentinel.kill_epoch = KillEpoch{2};
+    sentinel.executor_generation = ExecutorGeneration{4};
 
     auto reject_without_publish = [&](const KernelCodecError expected,
                                        std::span<const std::byte> candidate,
@@ -447,6 +654,10 @@ int main() {
         test_every_command_alternative_round_trips_canonically();
         test_command_identity_and_kind_are_explicit();
         test_decision_kind_is_explicit_and_not_a_variant_ordinal();
+        test_phase4_authorization_command_and_result_are_canonical_v4();
+        test_fill_command_and_result_are_canonical_v4();
+        test_cancel_and_order_event_commands_are_canonical_v4();
+        test_replacement_command_is_canonical_v4();
         test_result_round_trip_is_canonical();
         test_result_decode_is_transactional_and_fail_closed();
         test_command_decode_is_transactional_and_fail_closed();

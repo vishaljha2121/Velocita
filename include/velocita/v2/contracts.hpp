@@ -12,8 +12,8 @@ namespace velocita::v2 {
 
 inline constexpr std::uint16_t kPolicyArtifactSchemaVersion = 1;
 inline constexpr std::uint16_t kDecisionFrameSchemaVersion = 2;
-inline constexpr std::uint16_t kOrderEffectSchemaVersion = 1;
-inline constexpr std::uint16_t kVenueObservationSchemaVersion = 1;
+inline constexpr std::uint16_t kOrderEffectSchemaVersion = 2;
+inline constexpr std::uint16_t kVenueObservationSchemaVersion = 2;
 inline constexpr std::size_t kDigestBytes = 32;
 inline constexpr std::size_t kMaxPolicyRules = 32;
 inline constexpr std::size_t kMaxDecisionFeatures = 32;
@@ -109,6 +109,9 @@ enum class VenueObservationKind : std::uint8_t {
     fill = 3,
     cancelled = 4,
     effect_unknown = 5,
+    // Terminal venue evidence: quantity is final cumulative filled quantity,
+    // not an incremental fill. Only accepted fills may change position.
+    cancel_reconciled = 6,
 };
 
 struct PolicyRule {
@@ -166,6 +169,11 @@ static_assert(sizeof(DecisionFrame) <= kDecisionFrameObjectBudgetBytes,
 static_assert(sizeof(PolicyArtifact) <= kPolicyArtifactObjectBudgetBytes,
               "PolicyArtifact exceeded its reviewed in-memory object budget");
 
+enum class PostOnlyMode : std::uint8_t {
+    prohibited = 1,
+    required = 2,
+};
+
 struct OrderEffect {
     EffectId effect_id{};
     ClusterOrderId cluster_order_id{};
@@ -180,6 +188,7 @@ struct OrderEffect {
     PriceTicks price{};
     QuantityLots quantity{};
     TimeInForce time_in_force{};
+    PostOnlyMode post_only{PostOnlyMode::prohibited};
     PolicyId policy_id{};
     PolicyVersion policy_version{};
     DecisionId decision_id{};
@@ -274,6 +283,7 @@ template <typename Id>
         case VenueObservationKind::fill:
         case VenueObservationKind::cancelled:
         case VenueObservationKind::effect_unknown:
+        case VenueObservationKind::cancel_reconciled:
             return true;
     }
     return false;
@@ -335,6 +345,14 @@ template <typename Id>
 }
 
 [[nodiscard]] constexpr ContractError validate(const OrderEffect& effect) noexcept {
+    if (effect.operation == EffectOperation::cancel &&
+        (effect.price.atoms() != 0 || effect.quantity.atoms() != 0))
+        return ContractError::invalid_action_template;
+    if (effect.post_only != PostOnlyMode::prohibited &&
+        effect.post_only != PostOnlyMode::required) return ContractError::invalid_enum;
+    if (effect.post_only == PostOnlyMode::required &&
+        effect.time_in_force != TimeInForce::good_til_cancel)
+        return ContractError::invalid_action_template;
     if (!detail::present(effect.effect_id) ||
         !detail::present(effect.cluster_order_id) || effect.committed_directive_index == 0 ||
         !detail::present(effect.executor_generation) || !detail::present(effect.kill_epoch) ||
@@ -372,6 +390,13 @@ template <typename Id>
     if (observation.evidence_digest.is_zero()) return ContractError::missing_digest;
 
     switch (observation.kind) {
+        case VenueObservationKind::cancel_reconciled:
+            if (!detail::present(observation.venue_order_id))
+                return ContractError::invalid_identity;
+            if (observation.quantity.atoms() < 0 || observation.price.atoms() != 0 ||
+                observation.fee.atoms() != 0 || observation.execution_id.value() != 0)
+                return ContractError::non_canonical_value;
+            return ContractError::none;
         case VenueObservationKind::order_acknowledged:
         case VenueObservationKind::cancelled:
             if (!detail::present(observation.venue_order_id)) {

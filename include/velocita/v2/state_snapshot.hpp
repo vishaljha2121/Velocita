@@ -9,7 +9,7 @@
 
 namespace velocita::v2 {
 
-inline constexpr std::uint16_t kStateSnapshotSchemaVersion = 3;
+inline constexpr std::uint16_t kStateSnapshotSchemaVersion = 4;
 inline constexpr std::size_t kStateSnapshotMagicBytes = 4;
 inline constexpr std::size_t kStateSnapshotLengthBytes = 4;
 inline constexpr std::size_t kStateSnapshotSchemaBytes = 2;
@@ -20,15 +20,23 @@ inline constexpr std::size_t kStateSnapshotDigestInputOffset =
 inline constexpr std::size_t kStateSnapshotPayloadOffset =
     kStateSnapshotSchemaOffset + kStateSnapshotSchemaBytes;
 
-inline constexpr std::size_t kStateSnapshotEmptyPayloadBytes = 37;
+inline constexpr std::size_t kStateSnapshotEmptyPayloadBytes = 45;
 inline constexpr std::size_t kStateSnapshotPolicyFixedBytes = 133;
 inline constexpr std::size_t kStateSnapshotPolicyRuleBytes = 12;
 inline constexpr std::size_t kStateSnapshotSourceBytes = 24;
 inline constexpr std::size_t kStateSnapshotSourceEventBytes = 56;
 inline constexpr std::size_t kStateSnapshotReceiptBytes = 133;
 inline constexpr std::size_t kStateSnapshotEconomicProposalBytes = 104;
-inline constexpr std::size_t kStateSnapshotDecisionFixedBytes = 368;
+// V4 decision records do not repeat identities already carried by the frame.
+// The fixed region includes a one-byte proposal-presence tag; a present
+// proposal contributes only its non-derivable economic fields.
+inline constexpr std::size_t kStateSnapshotDecisionFixedBytes = 241;
+inline constexpr std::size_t kStateSnapshotDecisionProposalBytes = 54;
 inline constexpr std::size_t kStateSnapshotDecisionFeatureBytes = 8;
+inline constexpr std::size_t kStateSnapshotRiskAccountBytes = 112;
+inline constexpr std::size_t kStateSnapshotRiskReservationBytes = 57;
+inline constexpr std::size_t kStateSnapshotClusterOrderBytes = 35;
+inline constexpr std::size_t kStateSnapshotOutboxEffectBytes = 62;
 inline constexpr std::size_t kStateSnapshotInstrumentBytes = 66;
 inline constexpr std::size_t kStateSnapshotVenueBytes = 21;
 inline constexpr std::size_t kStateSnapshotExecutableBundleMetadataBytes = 16;
@@ -49,7 +57,13 @@ inline constexpr std::size_t kMaxStateSnapshotPayloadBytes =
     kMaxRequestReceipts * kStateSnapshotReceiptBytes +
     kMaxDecisionRecords *
         (kStateSnapshotDecisionFixedBytes +
-         kMaxDecisionFeatures * kStateSnapshotDecisionFeatureBytes);
+         kStateSnapshotDecisionProposalBytes +
+         kMaxDecisionFeatures * kStateSnapshotDecisionFeatureBytes) +
+    kMaxRiskAccounts * kStateSnapshotRiskAccountBytes +
+    kMaxRiskReservations * kStateSnapshotRiskReservationBytes +
+    kMaxClusterOrders * kStateSnapshotClusterOrderBytes +
+    kMaxOutboxEffects * kStateSnapshotOutboxEffectBytes;
+
 inline constexpr std::size_t kMaxStateSnapshotBytes =
     kStateSnapshotPayloadOffset + kMaxStateSnapshotPayloadBytes + kDigestBytes;
 

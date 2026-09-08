@@ -31,11 +31,6 @@ enum class EconomicValueSourceKind : std::uint8_t {
     feature = 2,
 };
 
-enum class PostOnlyMode : std::uint8_t {
-    prohibited = 1,
-    required = 2,
-};
-
 // Monetary conversion and venue limits are authoritative instrument facts.
 // Strategy policy binds their version but does not get to redefine them.
 struct InstrumentExecutionProfile {

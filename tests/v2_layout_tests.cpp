@@ -74,8 +74,11 @@ void test_integrated_executable_policy_capacity_is_bounded() {
     require(sizeof(TradingState) <= kTradingStateObjectBudgetBytes,
             "integrated active/staged policy state exceeded its reviewed "
             "provisional ceiling");
-    require(kTradingStateObjectBudgetBytes - sizeof(TradingState) >= 4U * 1024U - 32,
-            "integrated trading state lost its reviewed headroom");
+    // Phase 4 deliberately consumes the Phase 3 reserve without raising the
+    // provisional 80-KiB ceiling. Keep enough explicit slack to make padding
+    // or an accidental field addition visible before canonical integration.
+    require(kTradingStateObjectBudgetBytes - sizeof(TradingState) >= 512,
+            "Phase 4 in-memory authorization exhausted state headroom");
     static_assert(kMaxFeatureSchemaPayloadBytes <=
                   kFeatureSchemaArtifactPayloadBudgetBytes);
     static_assert(kMaxExecutablePolicyPayloadBytes <=
@@ -84,6 +87,26 @@ void test_integrated_executable_policy_capacity_is_bounded() {
                       (kMaxFeatureSchemaPayloadBytes +
                        kMaxExecutablePolicyPayloadBytes) ==
                   3220);
+}
+
+void test_phase4_authorization_regions_are_bounded() {
+    using namespace velocita::v2;
+    static_assert(kMaxRiskAccounts == 4);
+    static_assert(kMaxRiskReservations == 16);
+    static_assert(kMaxClusterOrders == 16);
+    static_assert(kMaxOutboxEffects == 16);
+    static_assert(sizeof(ApplyResult) == 112);
+    static_assert(sizeof(RequestReceipt) == 160);
+    static_assert(sizeof(RiskAccount) <= kRiskAccountObjectBudgetBytes);
+    static_assert(sizeof(RiskReservation) <=
+                  kRiskReservationObjectBudgetBytes);
+    static_assert(sizeof(ClusterOrder) <= kClusterOrderObjectBudgetBytes);
+    static_assert(sizeof(OutboxEffectRecord) <=
+                  kOutboxEffectRecordObjectBudgetBytes);
+    require(sizeof(RiskReservation) == kTargetCacheLineBytes,
+            "reservation no longer fits its one-line MVP record");
+    require(sizeof(OutboxEffectRecord) == kTargetCacheLineBytes,
+            "outbox identity record no longer fits its one-line MVP record");
 }
 
 void test_decision_records_have_separate_hot_and_cold_layouts() {
@@ -115,6 +138,7 @@ int main() {
         test_current_object_and_slot_budgets();
         test_integrated_executable_policy_capacity_is_bounded();
         test_decision_records_have_separate_hot_and_cold_layouts();
+        test_phase4_authorization_regions_are_bounded();
         std::cout << "all V2 layout tests passed\n";
         return 0;
     } catch (const std::exception& error) {

@@ -1,7 +1,13 @@
 #include "velocita/v2/kernel.hpp"
+#include "velocita/v2/digest.hpp"
 #include "velocita/v2/rule_evaluator.hpp"
 
+#include <algorithm>
+#include <array>
 #include <limits>
+#include <optional>
+#include <span>
+#include <string_view>
 
 namespace velocita::v2 {
 namespace {
@@ -114,6 +120,170 @@ find_receipt(const TradingState& state, const CommandIdentity& identity) noexcep
     return state.decision_count;
 }
 
+[[nodiscard]] RiskAccount* find_risk_account(
+    TradingState& state,
+    const AccountId account_id,
+    const InstrumentId instrument_id) noexcept {
+    for (std::size_t index = 0; index < state.risk_account_count; ++index) {
+        auto& account = state.risk_accounts[index];
+        if (account.account_id == account_id &&
+            account.instrument_id == instrument_id) {
+            return &account;
+        }
+    }
+    return nullptr;
+}
+
+[[nodiscard]] std::size_t find_order_by_decision(
+    const TradingState& state, const DecisionId decision_id) noexcept {
+    for (std::size_t index = 0; index < state.order_count; ++index) {
+        if (state.orders[index].decision_id == decision_id) return index;
+    }
+    return state.order_count;
+}
+
+[[nodiscard]] std::size_t find_order_by_effect(
+    const TradingState& state,
+    const ClusterOrderId cluster_order_id,
+    const EffectId effect_id) noexcept {
+    bool effect_found = false;
+    for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
+        effect_found = effect_found ||
+                       (state.outbox_effects[index].cluster_order_id ==
+                            cluster_order_id &&
+                        state.outbox_effects[index].effect_id == effect_id);
+    }
+    if (!effect_found) return state.order_count;
+    for (std::size_t index = 0; index < state.order_count; ++index) {
+        if (state.orders[index].cluster_order_id == cluster_order_id) return index;
+    }
+    return state.order_count;
+}
+
+[[nodiscard]] const RequestReceipt* find_applied_venue_event(
+    const TradingState& state,
+    const VenueId venue_id,
+    const VenueSessionId session_id,
+    const VenueSequence sequence) noexcept {
+    for (std::size_t index = 0; index < state.receipt_count; ++index) {
+        const auto& receipt = state.receipts[index];
+        const auto& outcome = receipt.result;
+        const bool event_matches = outcome.detail_kind == ApplyResultDetailKind::venue_event &&
+            outcome.event_venue_id() == venue_id &&
+            outcome.event_session_id() == session_id && outcome.event_sequence() == sequence;
+        const bool fill_matches = outcome.detail_kind == ApplyResultDetailKind::fill &&
+            outcome.fill_venue_id() == venue_id &&
+            outcome.fill_session_id() == session_id && outcome.fill_sequence() == sequence;
+        if (outcome.code == ApplyCode::applied && (event_matches || fill_matches)) {
+            return &receipt;
+        }
+    }
+    return nullptr;
+}
+
+[[nodiscard]] const RequestReceipt* find_applied_fill(
+    const TradingState& state,
+    const VenueId venue_id,
+    const ExecutionId execution_id) noexcept {
+    for (std::size_t index = 0; index < state.receipt_count; ++index) {
+        const auto& receipt = state.receipts[index];
+        if (receipt.result.code == ApplyCode::applied &&
+            receipt.result.detail_kind == ApplyResultDetailKind::fill &&
+            receipt.result.fill_venue_id() == venue_id &&
+            receipt.result.execution_id() == execution_id) {
+            return &receipt;
+        }
+    }
+    return nullptr;
+}
+
+[[nodiscard]] std::size_t accepted_venue_event_count(
+    const TradingState& state) noexcept {
+    std::size_t count = 0;
+    for (std::size_t index = 0; index < state.receipt_count; ++index) {
+        const auto& result = state.receipts[index].result;
+        count += result.code == ApplyCode::applied &&
+                 (result.detail_kind == ApplyResultDetailKind::fill ||
+                  result.detail_kind == ApplyResultDetailKind::venue_event);
+    }
+    return count;
+}
+
+[[nodiscard]] std::optional<MoneyMicros> ceil_rate_hold(
+    const MoneyMicros notional, const std::uint32_t rate_ppm) noexcept {
+    constexpr std::int64_t scale = 1'000'000;
+    if (notional.atoms() <= 0) return std::nullopt;
+    const auto whole = MoneyMicros::from_atoms(notional.atoms() / scale)
+                           .checked_multiply(static_cast<std::int64_t>(rate_ppm));
+    if (!whole) return std::nullopt;
+    const auto remainder = notional.atoms() % scale;
+    const auto remainder_product =
+        MoneyMicros::from_atoms(remainder).checked_multiply(
+            static_cast<std::int64_t>(rate_ppm));
+    if (!remainder_product) return std::nullopt;
+    const auto rounded_remainder = MoneyMicros::from_atoms(
+        remainder_product->atoms() == 0
+            ? 0
+            : 1 + (remainder_product->atoms() - 1) / scale);
+    return whole->checked_add(rounded_remainder);
+}
+
+[[nodiscard]] std::optional<MoneyMicros> proportional_remaining_hold(
+    const MoneyMicros current,
+    const QuantityLots next_remaining,
+    const QuantityLots current_remaining) noexcept {
+    if (current.atoms() < 0 || next_remaining.atoms() < 0 ||
+        current_remaining.atoms() <= 0 ||
+        next_remaining > current_remaining) {
+        return std::nullopt;
+    }
+    if (next_remaining.atoms() == 0 || current.atoms() == 0) {
+        return MoneyMicros{};
+    }
+    const auto denominator = current_remaining.atoms();
+    const auto numerator = next_remaining.atoms();
+    const auto whole = MoneyMicros::from_atoms(current.atoms() / denominator)
+                           .checked_multiply(numerator);
+    const auto remainder = current.atoms() % denominator;
+    const auto remainder_product =
+        MoneyMicros::from_atoms(remainder).checked_multiply(numerator);
+    if (!whole || !remainder_product) return std::nullopt;
+    const auto rounded_remainder = MoneyMicros::from_atoms(
+        remainder_product->atoms() == 0
+            ? 0
+            : 1 + (remainder_product->atoms() - 1) / denominator);
+    return whole->checked_add(rounded_remainder);
+}
+
+template <std::size_t WordCount>
+[[nodiscard]] Digest256 domain_digest(
+    const std::string_view domain,
+    const std::array<std::uint64_t, WordCount>& words) noexcept {
+    std::array<std::byte, 192> preimage{};
+    if (domain.size() + WordCount * sizeof(std::uint64_t) > preimage.size()) {
+        return {};
+    }
+    std::size_t offset = 0;
+    for (const char value : domain) {
+        preimage[offset++] = static_cast<std::byte>(value);
+    }
+    for (const auto word : words) {
+        for (std::size_t byte = 0; byte < sizeof(word); ++byte) {
+            preimage[offset++] = static_cast<std::byte>(
+                (word >> (byte * 8U)) & std::uint64_t{0xff});
+        }
+    }
+    return sha256_digest(std::span<const std::byte>{preimage}.first(offset));
+}
+
+[[nodiscard]] std::uint64_t low_u64(const Digest256& digest) noexcept {
+    std::uint64_t value = 0;
+    for (std::size_t index = 0; index < sizeof(value); ++index) {
+        value |= static_cast<std::uint64_t>(digest.bytes[index]) << (index * 8U);
+    }
+    return value;
+}
+
 [[nodiscard]] ApplyResult result(const TradingState& state,
                                  const ApplyCode code,
                                  const std::uint64_t state_version,
@@ -124,18 +294,22 @@ find_receipt(const TradingState& state, const CommandIdentity& identity) noexcep
                                  const SourceId source_id = {},
                                  const SourceGeneration source_generation = {},
                                  const SourceSequence source_sequence = {}) noexcept {
-    return {code,
-            contract_error,
-            policy_id,
-            policy_version,
-            lifecycle,
-            state_version,
-            state.strategy_mode,
-            state.kill_epoch,
-            state.executor_generation,
-            source_id,
-            source_generation,
-            source_sequence};
+    ApplyResult value;
+    value.code = code;
+    value.contract_error = contract_error;
+    value.metadata_words = {policy_id.value(), policy_version.value()};
+    value.policy_lifecycle = lifecycle;
+    value.state_version = state_version;
+    value.strategy_mode = state.strategy_mode;
+    value.kill_epoch = state.kill_epoch;
+    value.executor_generation = state.executor_generation;
+    if (source_id.value() != 0 || source_generation.value() != 0 ||
+        source_sequence.value() != 0) {
+        value.detail = ApplyResultDetail::source(
+            source_id, source_generation, source_sequence);
+        value.detail_kind = ApplyResultDetailKind::source;
+    }
+    return value;
 }
 
 [[nodiscard]] ApplyResult apply_publish(TradingState& state,
@@ -860,6 +1034,835 @@ find_receipt(const TradingState& state, const CommandIdentity& identity) noexcep
     return outcome;
 }
 
+[[nodiscard]] ApplyResult authorization_result(
+    const TradingState& state,
+    const ApplyCode code,
+    const std::uint64_t next_version,
+    const DecisionId decision_id,
+    const ClusterOrderId cluster_order_id = {},
+    const EffectId effect_id = {},
+    const MoneyMicros reserved_exposure = {}) noexcept {
+    auto value = result(state, code, next_version);
+    value.decision_id = decision_id;
+    if (cluster_order_id.value() != 0 || effect_id.value() != 0 ||
+        reserved_exposure.atoms() != 0) {
+        value.detail = ApplyResultDetail::authorization(
+            cluster_order_id, effect_id, reserved_exposure);
+        value.detail_kind = ApplyResultDetailKind::authorization;
+    }
+    return value;
+}
+
+[[nodiscard]] ApplyResult fill_result(
+    const TradingState& state,
+    const ApplyCode code,
+    const std::uint64_t next_version,
+    const VenueObservation& observation,
+    const QuantityLots filled_quantity = {},
+    const ContractError contract_error = ContractError::none) noexcept {
+    auto value = result(state, code, next_version, {}, {}, PolicyLifecycle::none,
+                        contract_error);
+    if (observation.venue_id.value() != 0 ||
+        observation.execution_id.value() != 0 || filled_quantity.atoms() != 0) {
+        value.detail = ApplyResultDetail::fill(
+            observation.venue_id, observation.execution_id, filled_quantity);
+        value.detail_kind = ApplyResultDetailKind::fill;
+        value.metadata_words = {observation.venue_session_id.value(),
+                                observation.venue_sequence.value()};
+    }
+    return value;
+}
+
+[[nodiscard]] ApplyResult apply_authorize_decision(
+    TradingState& state,
+    const AuthorizeDecision& command,
+    const std::uint64_t next_version) noexcept {
+    if (command.decision_id.value() == 0) {
+        return authorization_result(state, ApplyCode::invalid_command,
+                                    next_version, command.decision_id);
+    }
+
+    // Authorization outcomes outlive mutable order/reservation state. Reuse
+    // the original submit receipt even after fills or later replacements.
+    for (std::size_t index = 0; index < state.receipt_count; ++index) {
+        const auto& retained = state.receipts[index].result;
+        if (retained.code != ApplyCode::applied ||
+            retained.detail_kind != ApplyResultDetailKind::authorization ||
+            retained.decision_id != command.decision_id) continue;
+        for (std::size_t effect = 0; effect < state.outbox_effect_count; ++effect) {
+            if (state.outbox_effects[effect].effect_id == retained.effect_id() &&
+                state.outbox_effects[effect].operation == EffectOperation::submit) {
+                auto replay = retained;
+                replay.code = ApplyCode::already_applied;
+                replay.state_version = next_version;
+                return replay;
+            }
+        }
+    }
+
+    const auto decision_index = find_decision_index(state, command.decision_id);
+    if (decision_index == state.decision_count) {
+        return authorization_result(state, ApplyCode::decision_not_authorizable,
+                                    next_version, command.decision_id);
+    }
+    const auto& decision = state.decision_hot[decision_index];
+    const auto& cold = state.decision_cold[decision_index];
+    if (decision.evaluation_mode != EvaluationMode::authoritative ||
+        decision.code != DecisionCode::action ||
+        decision.effective_directive != Directive::place_limit ||
+        decision.action_resolution_code != ActionResolutionCode::proposed ||
+        validate(cold.proposal) != ContractError::none ||
+        cold.proposal.decision_id != command.decision_id) {
+        return authorization_result(state, ApplyCode::decision_not_authorizable,
+                                    next_version, command.decision_id);
+    }
+
+    const auto existing_order_index =
+        find_order_by_decision(state, command.decision_id);
+    if (existing_order_index != state.order_count) {
+        const auto& order = state.orders[existing_order_index];
+        const auto& reservation = state.reservations[order.reservation_index];
+        const auto exposure = reservation.margin_hold.checked_add(
+            reservation.fee_hold);
+        if (!exposure) {
+            return authorization_result(state,
+                                        ApplyCode::risk_arithmetic_overflow,
+                                        next_version, command.decision_id);
+        }
+        return authorization_result(state, ApplyCode::already_applied,
+                                    next_version, command.decision_id,
+                                    order.cluster_order_id, order.effect_id,
+                                    *exposure);
+    }
+
+    if (state.strategy_mode != StrategyMode::normal ||
+        decision.kill_epoch != state.kill_epoch ||
+        decision.executor_generation != state.executor_generation) {
+        return authorization_result(state, ApplyCode::stale_control_generation,
+                                    next_version, command.decision_id);
+    }
+
+    auto* risk = find_risk_account(state, cold.proposal.account_id,
+                                   cold.proposal.instrument_id);
+    if (risk == nullptr) {
+        return authorization_result(state, ApplyCode::risk_account_not_found,
+                                    next_version, command.decision_id);
+    }
+    if (risk->risk_policy_version != cold.proposal.risk_policy_version ||
+        risk->risk_version != cold.frame.risk_version ||
+        risk->position_version != cold.frame.position_version) {
+        return authorization_result(state, ApplyCode::stale_risk_state,
+                                    next_version, command.decision_id);
+    }
+    if (risk->initial_margin_ppm == 0 ||
+        risk->max_order_quantity.atoms() <= 0 ||
+        risk->max_reserved_quantity.atoms() <= 0 ||
+        risk->max_order_notional.atoms() <= 0 ||
+        risk->max_reserved_notional.atoms() <= 0 ||
+        risk->reserved_quantity.atoms() < 0 ||
+        risk->reserved_margin.atoms() < 0 || risk->reserved_fee.atoms() < 0) {
+        return authorization_result(state, ApplyCode::invalid_command,
+                                    next_version, command.decision_id);
+    }
+
+    const auto margin = ceil_rate_hold(cold.proposal.notional,
+                                       risk->initial_margin_ppm);
+    const auto fee = ceil_rate_hold(cold.proposal.notional,
+                                    risk->maximum_fee_ppm);
+    if (!margin || !fee) {
+        return authorization_result(state, ApplyCode::risk_arithmetic_overflow,
+                                    next_version, command.decision_id);
+    }
+    const auto exposure = margin->checked_add(*fee);
+    const auto next_quantity = risk->reserved_quantity.checked_add(
+        cold.proposal.quantity);
+    const auto next_margin = risk->reserved_margin.checked_add(*margin);
+    const auto next_fee = risk->reserved_fee.checked_add(*fee);
+    if (!exposure || !next_quantity || !next_margin || !next_fee) {
+        return authorization_result(state, ApplyCode::risk_arithmetic_overflow,
+                                    next_version, command.decision_id);
+    }
+    const auto next_total_exposure = next_margin->checked_add(*next_fee);
+    if (!next_total_exposure) {
+        return authorization_result(state, ApplyCode::risk_arithmetic_overflow,
+                                    next_version, command.decision_id);
+    }
+    if (cold.proposal.quantity > risk->max_order_quantity ||
+        *next_quantity > risk->max_reserved_quantity ||
+        cold.proposal.notional > risk->max_order_notional ||
+        *next_total_exposure > risk->max_reserved_notional) {
+        return authorization_result(state, ApplyCode::insufficient_risk_capacity,
+                                    next_version, command.decision_id);
+    }
+
+    // Slot exclusivity. This is how G-018 is satisfied: rather than computing a
+    // clever hold that covers two coexisting orders, the kernel refuses to let a
+    // second order exist on the slot at all.
+    //
+    // It is load-bearing even though direct replacement is refused, because
+    // ClusterOrderId is derived from the varying DecisionId and therefore never
+    // collides. Without this, cancel-then-authorize reaches exactly the
+    // double-reserved state that deferring replacement was meant to prevent:
+    // the cancel-pending order keeps its hold (G-016) while the new order takes
+    // a second one.
+    //
+    // Occupancy is defined by retained risk, not by order state, because risk is
+    // what G-018 constrains. A reservation that has been released has nothing
+    // left to double-reserve, whatever lifecycle state its order records.
+    for (std::size_t index = 0; index < state.order_count; ++index) {
+        const auto& existing = state.orders[index];
+        if (existing.reservation_index >= state.reservation_count) continue;
+        if (state.reservations[existing.reservation_index].state ==
+            ReservationState::released) continue;
+        const auto existing_decision = find_decision_index(state,
+                                                           existing.decision_id);
+        if (existing_decision == state.decision_count) continue;
+        const auto& occupant = state.decision_cold[existing_decision].proposal;
+        if (occupant.account_id == cold.proposal.account_id &&
+            occupant.instrument_id == cold.proposal.instrument_id &&
+            occupant.venue_id == cold.proposal.venue_id &&
+            occupant.order_slot == cold.proposal.order_slot) {
+            return authorization_result(state, ApplyCode::order_slot_occupied,
+                                        next_version, command.decision_id);
+        }
+    }
+
+    if (state.reservation_count == state.reservations.size()) {
+        return authorization_result(state, ApplyCode::reservation_capacity_exceeded,
+                                    next_version, command.decision_id);
+    }
+    if (state.order_count == state.orders.size()) {
+        return authorization_result(state, ApplyCode::order_capacity_exceeded,
+                                    next_version, command.decision_id);
+    }
+    if (state.outbox_effect_count == state.outbox_effects.size()) {
+        return authorization_result(state, ApplyCode::outbox_capacity_exceeded,
+                                    next_version, command.decision_id);
+    }
+
+    const auto order_digest = domain_digest(
+        "velocita/cluster-order/v1",
+        std::array<std::uint64_t, 4>{
+            command.decision_id.value(), cold.proposal.account_id.value(),
+            cold.proposal.instrument_id.value(), cold.proposal.order_slot.value()});
+    const ClusterOrderId cluster_order_id{low_u64(order_digest)};
+    const auto effect_identity_digest = domain_digest(
+        "velocita/order-effect/v1",
+        std::array<std::uint64_t, 3>{
+            cluster_order_id.value(), 1,
+            static_cast<std::uint64_t>(EffectOperation::submit)});
+    const EffectId effect_id{low_u64(effect_identity_digest)};
+    if (cluster_order_id.value() == 0 || effect_id.value() == 0) {
+        return authorization_result(state, ApplyCode::derived_identity_collision,
+                                    next_version, command.decision_id);
+    }
+    for (std::size_t index = 0; index < state.order_count; ++index) {
+        if (state.orders[index].cluster_order_id == cluster_order_id) {
+            return authorization_result(state,
+                                        ApplyCode::derived_identity_collision,
+                                        next_version, command.decision_id);
+        }
+    }
+    for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
+        if (state.outbox_effects[index].effect_id == effect_id) {
+            return authorization_result(state,
+                                        ApplyCode::derived_identity_collision,
+                                        next_version, command.decision_id);
+        }
+    }
+
+    const auto payload_digest = domain_digest(
+        "velocita/order-effect-payload/v1",
+        std::array<std::uint64_t, 20>{
+            effect_id.value(), cluster_order_id.value(), next_version,
+            state.executor_generation.value(), state.kill_epoch.value(),
+            cold.proposal.venue_id.value(), cold.proposal.account_id.value(),
+            cold.proposal.instrument_id.value(),
+            static_cast<std::uint64_t>(EffectOperation::submit),
+            static_cast<std::uint64_t>(cold.proposal.side),
+            static_cast<std::uint64_t>(cold.proposal.price.atoms()),
+            static_cast<std::uint64_t>(cold.proposal.quantity.atoms()),
+            static_cast<std::uint64_t>(cold.proposal.time_in_force),
+            cold.proposal.policy_id.value(), cold.proposal.policy_version.value(),
+            command.decision_id.value(), cold.frame.risk_version.value(),
+            cold.frame.source_generation.value(), cold.frame.source_sequence.value(),
+            static_cast<std::uint64_t>(cold.proposal.post_only)});
+
+    const auto reservation_index = state.reservation_count;
+    const RiskReservation reservation{
+        cluster_order_id,
+        cold.proposal.quantity,
+        {},
+        cold.proposal.quantity,
+        cold.proposal.notional,
+        *margin,
+        *fee,
+        ReservationState::held};
+    const ClusterOrder order{cluster_order_id,
+                             effect_id,
+                             command.decision_id,
+                             next_version,
+                             static_cast<std::uint16_t>(reservation_index),
+                             ClusterOrderState::dispatch_authorized};
+    const OutboxEffectRecord effect{effect_id,
+                                    cluster_order_id,
+                                    command.decision_id,
+                                    payload_digest,
+                                    1,
+                                    OutboxState::pending};
+
+    // Commit section: all validation, arithmetic, capacity, identity, and
+    // candidate construction above is complete. These assignments cannot fail.
+    risk->reserved_quantity = *next_quantity;
+    risk->reserved_margin = *next_margin;
+    risk->reserved_fee = *next_fee;
+    state.reservations[state.reservation_count++] = reservation;
+    state.orders[state.order_count++] = order;
+    state.outbox_effects[state.outbox_effect_count++] = effect;
+
+    return authorization_result(state, ApplyCode::applied, next_version,
+                                command.decision_id, cluster_order_id, effect_id,
+                                *exposure);
+}
+
+[[nodiscard]] ApplyResult apply_observe_fill(
+    TradingState& state,
+    const CommandIdentity& identity,
+    const ObserveFill& command,
+    const std::uint64_t next_version) noexcept {
+    const auto& observation = command.observation;
+    const auto contract_error = validate(observation);
+    if (contract_error != ContractError::none) {
+        return fill_result(state, ApplyCode::invalid_command, next_version,
+                           observation, observation.quantity, contract_error);
+    }
+    if (observation.kind != VenueObservationKind::fill) {
+        return fill_result(state, ApplyCode::venue_observation_not_applicable,
+                           next_version, observation, observation.quantity);
+    }
+
+    if (const auto* existing = find_applied_venue_event(state, observation.venue_id,
+                                observation.venue_session_id, observation.venue_sequence)) {
+        if (existing->result.detail_kind != ApplyResultDetailKind::fill ||
+            existing->result.execution_id() != observation.execution_id) {
+            return fill_result(state, ApplyCode::venue_event_identity_conflict,
+                               next_version, observation, observation.quantity);
+        }
+    }
+    if (const auto* existing = find_applied_fill(
+            state, observation.venue_id, observation.execution_id)) {
+        return fill_result(
+            state,
+            existing->identity.payload_digest == identity.payload_digest
+                ? ApplyCode::already_applied
+                : ApplyCode::fill_identity_conflict,
+            next_version, observation, existing->result.filled_quantity());
+    }
+    if (accepted_venue_event_count(state) == kMaxVenueEventReceipts) {
+        return fill_result(state, ApplyCode::fill_capacity_exceeded,
+                           next_version, observation, observation.quantity);
+    }
+
+    const auto order_index = find_order_by_effect(
+        state, observation.cluster_order_id, observation.effect_id);
+    if (order_index == state.order_count) {
+        return fill_result(state, ApplyCode::venue_observation_not_applicable,
+                           next_version, observation, observation.quantity);
+    }
+    auto& order = state.orders[order_index];
+    if (order.reservation_index >= state.reservation_count) {
+        return fill_result(state, ApplyCode::venue_observation_not_applicable,
+                           next_version, observation, observation.quantity);
+    }
+    auto& reservation = state.reservations[order.reservation_index];
+    const auto decision_index = find_decision_index(state, order.decision_id);
+    if (decision_index == state.decision_count) {
+        return fill_result(state, ApplyCode::venue_observation_not_applicable,
+                           next_version, observation, observation.quantity);
+    }
+    const auto& proposal = state.decision_cold[decision_index].proposal;
+    if (proposal.venue_id != observation.venue_id ||
+        proposal.side != observation.side) {
+        return fill_result(state, ApplyCode::venue_observation_not_applicable,
+                           next_version, observation, observation.quantity);
+    }
+    // A pending amend or historical fill after its acknowledgement cannot be
+    // charged to the currently active terms. Preserve the existing hold and
+    // refuse ordinary accounting until explicit replacement reconciliation.
+    for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
+        auto& current = state.outbox_effects[index];
+        if (current.effect_id == order.effect_id &&
+            current.operation == EffectOperation::replace &&
+            (observation.effect_id != current.effect_id ||
+             order.state == ClusterOrderState::replace_pending ||
+             order.state == ClusterOrderState::submission_unknown ||
+             order.state == ClusterOrderState::reconciling)) {
+            current.state = OutboxState::reconciling;
+            order.state = ClusterOrderState::reconciling;
+            return fill_result(state, ApplyCode::fill_quantity_conflict,
+                               next_version, observation, observation.quantity);
+        }
+    }
+    auto* risk = find_risk_account(state, proposal.account_id,
+                                   proposal.instrument_id);
+    if (risk == nullptr) {
+        return fill_result(state, ApplyCode::risk_account_not_found,
+                           next_version, observation, observation.quantity);
+    }
+    if (reservation.state == ReservationState::released ||
+        observation.quantity > reservation.remaining_quantity) {
+        return fill_result(state, ApplyCode::fill_quantity_conflict,
+                           next_version, observation, observation.quantity);
+    }
+
+    const auto next_remaining = reservation.remaining_quantity.checked_sub(
+        observation.quantity);
+    const auto next_filled = reservation.filled_quantity.checked_add(
+        observation.quantity);
+    if (!next_remaining || !next_filled || next_remaining->atoms() < 0 ||
+        *next_filled > reservation.original_quantity) {
+        return fill_result(state, ApplyCode::fill_quantity_conflict,
+                           next_version, observation, observation.quantity);
+    }
+    const auto next_notional = proportional_remaining_hold(
+        reservation.remaining_notional, *next_remaining,
+        reservation.remaining_quantity);
+    const auto next_margin = proportional_remaining_hold(
+        reservation.margin_hold, *next_remaining,
+        reservation.remaining_quantity);
+    const auto next_fee = proportional_remaining_hold(
+        reservation.fee_hold, *next_remaining,
+        reservation.remaining_quantity);
+    if (!next_notional || !next_margin || !next_fee) {
+        return fill_result(state, ApplyCode::risk_arithmetic_overflow,
+                           next_version, observation, observation.quantity);
+    }
+    const auto released_margin = reservation.margin_hold.checked_sub(*next_margin);
+    const auto released_fee = reservation.fee_hold.checked_sub(*next_fee);
+    if (!released_margin || !released_fee) {
+        return fill_result(state, ApplyCode::risk_arithmetic_overflow,
+                           next_version, observation, observation.quantity);
+    }
+    const auto next_reserved_quantity = risk->reserved_quantity.checked_sub(
+        observation.quantity);
+    const auto next_reserved_margin = risk->reserved_margin.checked_sub(
+        *released_margin);
+    const auto next_reserved_fee = risk->reserved_fee.checked_sub(*released_fee);
+    const auto signed_fill = proposal.side == Side::buy
+                                 ? observation.quantity
+                                 : QuantityLots::from_atoms(
+                                       -observation.quantity.atoms());
+    const auto next_position = risk->position_quantity.checked_add(signed_fill);
+    if (!next_reserved_quantity || !next_reserved_margin || !next_reserved_fee ||
+        !next_position || next_reserved_quantity->atoms() < 0 ||
+        next_reserved_margin->atoms() < 0 || next_reserved_fee->atoms() < 0) {
+        return fill_result(state, ApplyCode::position_arithmetic_overflow,
+                           next_version, observation, observation.quantity);
+    }
+    if (risk->position_version.value() ==
+        std::numeric_limits<std::uint64_t>::max()) {
+        return fill_result(state, ApplyCode::position_arithmetic_overflow,
+                           next_version, observation, observation.quantity);
+    }
+
+    OutboxEffectRecord* outbox = nullptr;
+    for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
+        if (state.outbox_effects[index].effect_id == observation.effect_id) {
+            outbox = &state.outbox_effects[index];
+            break;
+        }
+    }
+    if (outbox == nullptr) {
+        return fill_result(state, ApplyCode::venue_observation_not_applicable,
+                           next_version, observation, observation.quantity);
+    }
+
+    // Commit section: the accepted fill, position move, reservation release,
+    // order transition, and delivery acknowledgement become visible together.
+    risk->position_quantity = *next_position;
+    risk->position_version = PositionVersion{risk->position_version.value() + 1};
+    risk->reserved_quantity = *next_reserved_quantity;
+    risk->reserved_margin = *next_reserved_margin;
+    risk->reserved_fee = *next_reserved_fee;
+    reservation.filled_quantity = *next_filled;
+    reservation.remaining_quantity = *next_remaining;
+    reservation.remaining_notional = *next_notional;
+    reservation.margin_hold = *next_margin;
+    reservation.fee_hold = *next_fee;
+    reservation.state = next_remaining->atoms() == 0
+                            ? ReservationState::released
+                            : ReservationState::partially_consumed;
+    if (next_remaining->atoms() == 0) {
+        order.state = ClusterOrderState::filled;
+    } else if (order.state != ClusterOrderState::cancel_pending &&
+               order.state != ClusterOrderState::submission_unknown &&
+               order.state != ClusterOrderState::reconciling) {
+        order.state = ClusterOrderState::partially_filled;
+    }
+    outbox->state = OutboxState::acknowledged;
+    return fill_result(state, ApplyCode::applied, next_version, observation,
+                       observation.quantity);
+}
+
+[[nodiscard]] ApplyResult venue_event_result(
+    const TradingState& state,
+    const ApplyCode code,
+    const std::uint64_t next_version,
+    const VenueObservation& observation,
+    const ContractError contract_error = ContractError::none) noexcept {
+    auto value = result(state, code, next_version, {}, {}, PolicyLifecycle::none,
+                        contract_error);
+    if (observation.venue_id.value() != 0 ||
+        observation.venue_session_id.value() != 0 ||
+        observation.venue_sequence.value() != 0) {
+        value.detail = ApplyResultDetail::venue_event(
+            observation.venue_id, observation.venue_session_id,
+            observation.venue_sequence);
+        value.detail_kind = ApplyResultDetailKind::venue_event;
+    }
+    return value;
+}
+
+[[nodiscard]] ApplyResult apply_request_cancel(
+    TradingState& state,
+    const RequestCancel& command,
+    const std::uint64_t next_version) noexcept {
+    std::size_t order_index = state.order_count;
+    for (std::size_t index = 0; index < state.order_count; ++index) {
+        if (state.orders[index].cluster_order_id == command.cluster_order_id) {
+            order_index = index;
+            break;
+        }
+    }
+    if (command.cluster_order_id.value() == 0 || order_index == state.order_count) {
+        return authorization_result(state, ApplyCode::order_not_found,
+                                    next_version, {});
+    }
+    auto& order = state.orders[order_index];
+    if (order.reservation_index >= state.reservation_count) {
+        return authorization_result(state, ApplyCode::order_not_cancellable,
+                                    next_version, order.decision_id);
+    }
+    auto& reservation = state.reservations[order.reservation_index];
+
+    const OutboxEffectRecord* current_effect = nullptr;
+    for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
+        if (state.outbox_effects[index].effect_id == order.effect_id) {
+            current_effect = &state.outbox_effects[index];
+            break;
+        }
+    }
+    const auto exposure = reservation.margin_hold.checked_add(reservation.fee_hold);
+    if (!exposure) {
+        return authorization_result(state, ApplyCode::risk_arithmetic_overflow,
+                                    next_version, order.decision_id);
+    }
+    if ((order.state == ClusterOrderState::cancel_pending ||
+         order.state == ClusterOrderState::submission_unknown) &&
+        current_effect != nullptr &&
+        current_effect->operation == EffectOperation::cancel) {
+        return authorization_result(state, ApplyCode::already_applied,
+                                    next_version, order.decision_id,
+                                    order.cluster_order_id, order.effect_id,
+                                    *exposure);
+    }
+    const auto cancellable =
+        order.state == ClusterOrderState::dispatch_authorized ||
+        order.state == ClusterOrderState::acknowledged ||
+        order.state == ClusterOrderState::live ||
+        order.state == ClusterOrderState::partially_filled;
+    if (!cancellable || reservation.state == ReservationState::released) {
+        return authorization_result(state, ApplyCode::order_not_cancellable,
+                                    next_version, order.decision_id);
+    }
+    if (state.outbox_effect_count == state.outbox_effects.size()) {
+        return authorization_result(state, ApplyCode::outbox_capacity_exceeded,
+                                    next_version, order.decision_id);
+    }
+
+    std::uint64_t generation = 1;
+    for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
+        if (state.outbox_effects[index].cluster_order_id == order.cluster_order_id) {
+            generation = std::max<std::uint64_t>(
+                generation, state.outbox_effects[index].effect_generation);
+        }
+    }
+    if (generation == std::numeric_limits<std::uint32_t>::max()) {
+        return authorization_result(state, ApplyCode::derived_identity_collision,
+                                    next_version, order.decision_id);
+    }
+    ++generation;
+    const auto identity_digest = domain_digest(
+        "velocita/order-effect/v1",
+        std::array<std::uint64_t, 3>{
+            order.cluster_order_id.value(), generation,
+            static_cast<std::uint64_t>(EffectOperation::cancel)});
+    const EffectId effect_id{low_u64(identity_digest)};
+    if (effect_id.value() == 0) {
+        return authorization_result(state, ApplyCode::derived_identity_collision,
+                                    next_version, order.decision_id);
+    }
+    for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
+        if (state.outbox_effects[index].effect_id == effect_id) {
+            return authorization_result(state,
+                                        ApplyCode::derived_identity_collision,
+                                        next_version, order.decision_id);
+        }
+    }
+    const auto decision_index = find_decision_index(state, order.decision_id);
+    if (decision_index == state.decision_count ||
+        validate(state.decision_cold[decision_index].proposal) != ContractError::none) {
+        return authorization_result(state, ApplyCode::order_not_cancellable,
+                                    next_version, order.decision_id);
+    }
+    const auto& cold = state.decision_cold[decision_index];
+    const auto& proposal = cold.proposal;
+    const auto payload_digest = domain_digest(
+        "velocita/order-effect-payload/v1",
+        std::array<std::uint64_t, 20>{
+            effect_id.value(), order.cluster_order_id.value(), next_version,
+            state.executor_generation.value(), state.kill_epoch.value(),
+            proposal.venue_id.value(), proposal.account_id.value(),
+            proposal.instrument_id.value(),
+            static_cast<std::uint64_t>(EffectOperation::cancel),
+            static_cast<std::uint64_t>(proposal.side), 0, 0,
+            static_cast<std::uint64_t>(proposal.time_in_force),
+            proposal.policy_id.value(), proposal.policy_version.value(),
+            order.decision_id.value(), cold.frame.risk_version.value(),
+            cold.frame.source_generation.value(), cold.frame.source_sequence.value(),
+            static_cast<std::uint64_t>(proposal.post_only)});
+    const OutboxEffectRecord effect{
+        effect_id, order.cluster_order_id, order.decision_id, payload_digest,
+        static_cast<std::uint32_t>(generation), OutboxState::pending,
+        EffectOperation::cancel};
+
+    order.effect_id = effect_id;
+    order.state = ClusterOrderState::cancel_pending;
+    state.outbox_effects[state.outbox_effect_count++] = effect;
+    return authorization_result(state, ApplyCode::applied, next_version,
+                                order.decision_id, order.cluster_order_id,
+                                effect_id, *exposure);
+}
+
+[[nodiscard]] ApplyResult apply_observe_order_event(
+    TradingState& state,
+    const CommandIdentity& identity,
+    const ObserveOrderEvent& command,
+    const std::uint64_t next_version) noexcept {
+    const auto& observation = command.observation;
+    const auto contract_error = validate(observation);
+    if (contract_error != ContractError::none) {
+        return venue_event_result(state, ApplyCode::invalid_command,
+                                  next_version, observation, contract_error);
+    }
+    if (observation.kind == VenueObservationKind::fill) {
+        return venue_event_result(state,
+                                  ApplyCode::venue_observation_not_applicable,
+                                  next_version, observation);
+    }
+    if (const auto* existing = find_applied_venue_event(
+            state, observation.venue_id, observation.venue_session_id,
+            observation.venue_sequence)) {
+        return venue_event_result(
+            state,
+            existing->identity.payload_digest == identity.payload_digest
+                ? ApplyCode::already_applied
+                : ApplyCode::venue_event_identity_conflict,
+            next_version, observation);
+    }
+    if (accepted_venue_event_count(state) == kMaxVenueEventReceipts) {
+        return venue_event_result(state, ApplyCode::venue_event_capacity_exceeded,
+                                  next_version, observation);
+    }
+
+    OutboxEffectRecord* effect = nullptr;
+    for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
+        auto& candidate = state.outbox_effects[index];
+        if (candidate.effect_id == observation.effect_id &&
+            candidate.cluster_order_id == observation.cluster_order_id) {
+            effect = &candidate;
+            break;
+        }
+    }
+    if (effect == nullptr) {
+        return venue_event_result(state,
+                                  ApplyCode::venue_observation_not_applicable,
+                                  next_version, observation);
+    }
+    std::size_t order_index = state.order_count;
+    for (std::size_t index = 0; index < state.order_count; ++index) {
+        if (state.orders[index].cluster_order_id == observation.cluster_order_id) {
+            order_index = index;
+            break;
+        }
+    }
+    if (order_index == state.order_count) {
+        return venue_event_result(state,
+                                  ApplyCode::venue_observation_not_applicable,
+                                  next_version, observation);
+    }
+    auto& order = state.orders[order_index];
+    if (order.reservation_index >= state.reservation_count) {
+        return venue_event_result(state,
+                                  ApplyCode::venue_observation_not_applicable,
+                                  next_version, observation);
+    }
+    auto& reservation = state.reservations[order.reservation_index];
+    const auto decision_index = find_decision_index(state, order.decision_id);
+    if (decision_index == state.decision_count ||
+        state.decision_cold[decision_index].proposal.venue_id !=
+            observation.venue_id) {
+        return venue_event_result(state,
+                                  ApplyCode::venue_observation_not_applicable,
+                                  next_version, observation);
+    }
+
+    // Transport observations cannot erase established execution knowledge.
+    // A late cancel completion after a full fill can acknowledge its own effect,
+    // but cannot change the filled order or release its reservation again.
+    const bool terminal = order.state == ClusterOrderState::filled ||
+                          order.state == ClusterOrderState::cancelled ||
+                          order.state == ClusterOrderState::rejected;
+    const bool late_cancel_completion =
+        order.state == ClusterOrderState::filled &&
+        (observation.kind == VenueObservationKind::cancelled ||
+         (observation.kind == VenueObservationKind::cancel_reconciled &&
+          observation.quantity == reservation.filled_quantity)) &&
+        effect->operation == EffectOperation::cancel;
+    const bool reconciliation = observation.kind == VenueObservationKind::cancel_reconciled &&
+        effect->operation == EffectOperation::cancel &&
+        effect->effect_id == order.effect_id &&
+        effect->state == OutboxState::reconciling &&
+        order.state == ClusterOrderState::reconciling &&
+        observation.quantity == reservation.filled_quantity;
+    if (observation.kind == VenueObservationKind::cancel_reconciled &&
+        !reconciliation && !late_cancel_completion) {
+        return venue_event_result(state, ApplyCode::venue_observation_not_applicable,
+                                  next_version, observation);
+    }
+    const bool effect_resolved = effect->state == OutboxState::acknowledged ||
+                                 effect->state == OutboxState::rejected;
+    if ((terminal && !late_cancel_completion) ||
+        order.state == ClusterOrderState::conflict ||
+        (order.state == ClusterOrderState::reconciling && !reconciliation) ||
+        (effect_resolved && !late_cancel_completion) ||
+        (effect->effect_id != order.effect_id && !late_cancel_completion)) {
+        return venue_event_result(state,
+                                  ApplyCode::venue_observation_not_applicable,
+                                  next_version, observation);
+    }
+
+    // The replace acknowledgement/rejection branch that lived here is gone with
+    // direct replacement itself. No effect can carry EffectOperation::replace, so
+    // there is no acknowledged-terms transition to resolve and no need to
+    // reconstruct an old residual from a filled-quantity baseline.
+
+    const bool releases =
+        reconciliation ||
+        (observation.kind == VenueObservationKind::order_rejected &&
+         effect->operation == EffectOperation::submit);
+    RiskAccount* risk = nullptr;
+    std::optional<QuantityLots> next_reserved_quantity;
+    std::optional<MoneyMicros> next_reserved_margin;
+    std::optional<MoneyMicros> next_reserved_fee;
+    if (releases && reservation.state != ReservationState::released) {
+        const auto& proposal = state.decision_cold[decision_index].proposal;
+        risk = find_risk_account(state, proposal.account_id,
+                                 proposal.instrument_id);
+        if (risk == nullptr) {
+            return venue_event_result(state, ApplyCode::risk_account_not_found,
+                                      next_version, observation);
+        }
+        next_reserved_quantity = risk->reserved_quantity.checked_sub(
+            reservation.remaining_quantity);
+        next_reserved_margin = risk->reserved_margin.checked_sub(
+            reservation.margin_hold);
+        next_reserved_fee = risk->reserved_fee.checked_sub(reservation.fee_hold);
+        if (!next_reserved_quantity || !next_reserved_margin || !next_reserved_fee ||
+            next_reserved_quantity->atoms() < 0 ||
+            next_reserved_margin->atoms() < 0 || next_reserved_fee->atoms() < 0) {
+            return venue_event_result(state, ApplyCode::risk_arithmetic_overflow,
+                                      next_version, observation);
+        }
+    }
+
+    switch (observation.kind) {
+        case VenueObservationKind::effect_unknown:
+            effect->state = OutboxState::unknown;
+            order.state = ClusterOrderState::submission_unknown;
+            break;
+        case VenueObservationKind::order_acknowledged:
+            effect->state = OutboxState::acknowledged;
+            if (effect->operation == EffectOperation::submit) {
+                order.state = ClusterOrderState::live;
+            }
+            break;
+        case VenueObservationKind::order_rejected:
+            effect->state = OutboxState::rejected;
+            order.state = effect->operation == EffectOperation::submit
+                              ? ClusterOrderState::rejected
+                              : ClusterOrderState::live;
+            break;
+        case VenueObservationKind::cancelled:
+            if (effect->operation != EffectOperation::cancel) {
+                return venue_event_result(
+                    state, ApplyCode::venue_observation_not_applicable,
+                    next_version, observation);
+            }
+            effect->state = order.state == ClusterOrderState::filled
+                                ? OutboxState::acknowledged : OutboxState::reconciling;
+            if (order.state != ClusterOrderState::filled) {
+                order.state = ClusterOrderState::reconciling;
+            }
+            break;
+        case VenueObservationKind::cancel_reconciled:
+            effect->state = OutboxState::acknowledged;
+            if (order.state != ClusterOrderState::filled)
+                order.state = ClusterOrderState::cancelled;
+            break;
+        case VenueObservationKind::fill:
+            return venue_event_result(
+                state, ApplyCode::venue_observation_not_applicable,
+                next_version, observation);
+    }
+    if (releases && reservation.state != ReservationState::released) {
+        risk->reserved_quantity = *next_reserved_quantity;
+        risk->reserved_margin = *next_reserved_margin;
+        risk->reserved_fee = *next_reserved_fee;
+        reservation.remaining_quantity = {};
+        reservation.remaining_notional = {};
+        reservation.margin_hold = {};
+        reservation.fee_hold = {};
+        reservation.state = ReservationState::released;
+    }
+    return venue_event_result(state, ApplyCode::applied, next_version,
+                              observation);
+}
+
+// Direct amend/replace is not offered.
+//
+// G-018 requires that an amend never temporarily or permanently double-reserve
+// risk. Whenever the old and new orders can both be live at the venue, the only
+// reservation that satisfies G-011 is old + new, which is exactly what G-018
+// forbids. Holding max(old, new) instead satisfies G-018 but under-reserves the
+// concurrent case, and no venue this system targets has documented that its
+// replace atomically excludes the old order.
+//
+// Those two guarantees are therefore unsatisfiable together while concurrency is
+// possible, and the only escape is to make concurrency impossible: at most one
+// unresolved cluster order per logical slot, enforced in apply_authorize_decision.
+// Requoting is cancel -> final reconciliation -> fresh authoritative decision.
+//
+// The command kind stays allocated so reintroducing replacement later needs no
+// wire renumbering. It decodes, and it refuses before touching any economics.
+[[nodiscard]] ApplyResult apply_request_replace(
+    TradingState& state,
+    const RequestReplace& command,
+    const std::uint64_t next_version) noexcept {
+    return authorization_result(state, ApplyCode::replacement_not_supported,
+                                next_version, command.replacement_decision_id);
+}
+
 [[nodiscard]] ApplyResult apply_new_command(TradingState& state,
                                             const Command& command,
                                             const std::uint64_t next_version) noexcept {
@@ -896,10 +1899,102 @@ find_receipt(const TradingState& state, const CommandIdentity& identity) noexcep
     if (const auto* body = std::get_if<ActivateExecutablePolicy>(&command.body)) {
         return apply_activate_executable_policy(state, *body, next_version);
     }
+    if (const auto* body = std::get_if<AuthorizeDecision>(&command.body)) {
+        return apply_authorize_decision(state, *body, next_version);
+    }
+    if (const auto* body = std::get_if<ObserveFill>(&command.body)) {
+        return apply_observe_fill(state, command.identity, *body, next_version);
+    }
+    if (const auto* body = std::get_if<RequestCancel>(&command.body)) {
+        return apply_request_cancel(state, *body, next_version);
+    }
+    if (const auto* body = std::get_if<ObserveOrderEvent>(&command.body)) {
+        return apply_observe_order_event(state, command.identity, *body,
+                                         next_version);
+    }
+    if (const auto* body = std::get_if<RequestReplace>(&command.body)) {
+        return apply_request_replace(state, *body, next_version);
+    }
     return result(state, ApplyCode::invalid_command, next_version);
 }
 
 }  // namespace
+
+std::optional<OrderEffect> materialize_order_effect(
+    const TradingState& state, const EffectId effect_id) noexcept {
+    if (state.outbox_effect_count > state.outbox_effects.size() ||
+        state.receipt_count > state.receipts.size() ||
+        state.decision_count > state.decision_hot.size()) return std::nullopt;
+    const OutboxEffectRecord* record = nullptr;
+    for (std::size_t i = 0; i < state.outbox_effect_count; ++i) {
+        if (state.outbox_effects[i].effect_id == effect_id) {
+            if (record != nullptr) return std::nullopt;
+            record = &state.outbox_effects[i];
+        }
+    }
+    if (record == nullptr ||
+        (record->operation != EffectOperation::submit &&
+         record->operation != EffectOperation::replace &&
+         record->operation != EffectOperation::cancel)) return std::nullopt;
+    const ApplyResult* authorization = nullptr;
+    for (std::size_t i = 0; i < state.receipt_count; ++i) {
+        const auto& receipt = state.receipts[i].result;
+        if (receipt.code == ApplyCode::applied &&
+            receipt.detail_kind == ApplyResultDetailKind::authorization &&
+            receipt.effect_id() == effect_id &&
+            receipt.cluster_order_id() == record->cluster_order_id &&
+            receipt.decision_id == record->decision_id) {
+            if (authorization != nullptr) return std::nullopt;
+            authorization = &receipt;
+        }
+    }
+    const auto index = find_decision_index(state, record->decision_id);
+    if (authorization == nullptr || index == state.decision_count) return std::nullopt;
+    const auto& cold = state.decision_cold[index];
+    const auto& proposal = cold.proposal;
+    if (validate(proposal) != ContractError::none ||
+        proposal.decision_id != record->decision_id ||
+        (record->operation != EffectOperation::cancel &&
+         proposal.directive != (record->operation == EffectOperation::submit
+            ? Directive::place_limit : Directive::replace))) return std::nullopt;
+    OrderEffect value;
+    value.effect_id = effect_id;
+    value.cluster_order_id = record->cluster_order_id;
+    value.committed_directive_index = authorization->state_version;
+    value.executor_generation = authorization->executor_generation;
+    value.kill_epoch = authorization->kill_epoch;
+    value.venue_id = proposal.venue_id;
+    value.account_id = proposal.account_id;
+    value.instrument_id = proposal.instrument_id;
+    value.operation = record->operation;
+    value.side = proposal.side;
+    value.price = record->operation == EffectOperation::cancel ? PriceTicks{} : proposal.price;
+    value.quantity = record->operation == EffectOperation::cancel ? QuantityLots{} : proposal.quantity;
+    value.time_in_force = proposal.time_in_force;
+    value.post_only = proposal.post_only;
+    value.policy_id = proposal.policy_id;
+    value.policy_version = proposal.policy_version;
+    value.decision_id = record->decision_id;
+    value.risk_version = cold.frame.risk_version;
+    value.source_generation = cold.frame.source_generation;
+    value.source_sequence = cold.frame.source_sequence;
+    value.payload_digest = domain_digest("velocita/order-effect-payload/v1",
+        std::array<std::uint64_t, 20>{
+            value.effect_id.value(), value.cluster_order_id.value(),
+            value.committed_directive_index, value.executor_generation.value(),
+            value.kill_epoch.value(), value.venue_id.value(), value.account_id.value(),
+            value.instrument_id.value(), static_cast<std::uint64_t>(value.operation),
+            static_cast<std::uint64_t>(value.side),
+            static_cast<std::uint64_t>(value.price.atoms()),
+            static_cast<std::uint64_t>(value.quantity.atoms()),
+            static_cast<std::uint64_t>(value.time_in_force), value.policy_id.value(),
+            value.policy_version.value(), value.decision_id.value(),
+            value.risk_version.value(), value.source_generation.value(),
+            value.source_sequence.value(), static_cast<std::uint64_t>(value.post_only)});
+    if (value.payload_digest != record->payload_digest ||
+        validate(value) != ContractError::none) return std::nullopt;
+    return value;
+}
 
 const PolicyRecord* find_policy(const TradingState& state,
                                 const PolicyId policy_id,
@@ -937,6 +2032,24 @@ ApplyResult apply(TradingState& state,
                               command.identity.request_sequence.value() == 0
                           ? ContractError::invalid_identity
                           : ContractError::missing_digest);
+    }
+
+    // Verify actual observation bytes before either request or economic-event
+    // deduplication. A copied digest must never hide changed evidence.
+    const VenueObservation* observation = nullptr;
+    if (const auto* fill = std::get_if<ObserveFill>(&command.body)) {
+        if (fill->observation.kind != VenueObservationKind::fill)
+            return result(state, ApplyCode::invalid_command, state.state_version);
+        observation = &fill->observation;
+    }
+    if (const auto* event = std::get_if<ObserveOrderEvent>(&command.body)) {
+        if (event->observation.kind == VenueObservationKind::fill)
+            return result(state, ApplyCode::invalid_command, state.state_version);
+        observation = &event->observation;
+    }
+    if (observation != nullptr &&
+        observation_fingerprint(*observation) != command.identity.payload_digest) {
+        return result(state, ApplyCode::invalid_command, state.state_version);
     }
 
     if (const auto* receipt = find_receipt(state, command.identity)) {

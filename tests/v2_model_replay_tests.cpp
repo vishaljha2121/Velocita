@@ -354,9 +354,21 @@ ApplyResult model_result(const ModelState& state,
                          const SourceId source_id = {},
                          const SourceGeneration generation = {},
                          const SourceSequence sequence = {}) {
-    return {code, error, policy_id, policy_version, lifecycle, version,
-            state.strategy_mode, state.kill_epoch, state.executor_generation,
-            source_id, generation, sequence};
+    ApplyResult value;
+    value.code = code;
+    value.contract_error = error;
+    value.metadata_words = {policy_id.value(), policy_version.value()};
+    value.policy_lifecycle = lifecycle;
+    value.state_version = version;
+    value.strategy_mode = state.strategy_mode;
+    value.kill_epoch = state.kill_epoch;
+    value.executor_generation = state.executor_generation;
+    if (source_id.value() != 0 || generation.value() != 0 ||
+        sequence.value() != 0) {
+        value.detail = ApplyResultDetail::source(source_id, generation, sequence);
+        value.detail_kind = ApplyResultDetailKind::source;
+    }
+    return value;
 }
 
 PolicyRecord* model_policy(ModelState& state,
@@ -963,9 +975,16 @@ ApplyResult model_new_command(ModelState& state,
                 return model_evaluate_decision(state, identity, command, version);
             } else if constexpr (std::is_same_v<T, StageExecutablePolicy>) {
                 return model_stage_executable(state, command, version);
-            } else {
-                static_assert(std::is_same_v<T, ActivateExecutablePolicy>);
+            } else if constexpr (std::is_same_v<T, ActivateExecutablePolicy>) {
                 return model_activate_executable(state, command, version);
+            } else if constexpr (std::is_same_v<T, AuthorizeDecision> ||
+                                 std::is_same_v<T, ObserveFill> ||
+                                 std::is_same_v<T, RequestCancel> ||
+                                 std::is_same_v<T, ObserveOrderEvent> ||
+                                 std::is_same_v<T, RequestReplace>) {
+                // Phase 4 alternatives are generated and modeled by the
+                // dedicated Phase 4 corpus, not this accepted Phase 1-3 model.
+                return model_result(state, ApplyCode::invalid_command, version);
             }
         },
         body);
@@ -1207,7 +1226,7 @@ void test_generated_model_and_snapshot_replay() {
     require(coverage.count(DecisionCode::invalid_frame) != 0,
             "generated corpus never exercised invalid-frame precedence");
     require(actual ==
-                "ef2ad774e8e13f57ac65a3884f903603e9e6fe439f0aa48da98d776d51e247df",
+                "f6bc67f9044e5078cbd3a0a52492d89d5a497905e3a4a17e093e32604bddbcfe",
             "generated replay corpus changed without review: " + actual);
 
     std::cout << "generated histories=" << kSeedCount

@@ -9,7 +9,7 @@
 
 namespace velocita::v2 {
 
-inline constexpr std::uint16_t kKernelCodecSchemaVersion = 3;
+inline constexpr std::uint16_t kKernelCodecSchemaVersion = 4;
 inline constexpr std::size_t kKernelCommandMagicBytes = 4;
 inline constexpr std::size_t kKernelCommandLengthBytes = 4;
 inline constexpr std::size_t kKernelCommandSchemaBytes = 2;
@@ -34,7 +34,7 @@ inline constexpr std::size_t kKernelResultSchemaOffset = 8;
 inline constexpr std::size_t kKernelResultPayloadOffset = 10;
 inline constexpr std::size_t kKernelResultDigestInputOffset =
     kKernelResultSchemaOffset;
-inline constexpr std::size_t kKernelResultPayloadBytes = 85;
+inline constexpr std::size_t kKernelResultPayloadBytes = 86;
 inline constexpr std::size_t kKernelResultBytes =
     kKernelResultPayloadOffset + kKernelResultPayloadBytes + kDigestBytes;
 
@@ -50,6 +50,11 @@ enum class KernelCommandKind : std::uint16_t {
     evaluate_decision_frame = 9,
     stage_executable_policy = 10,
     activate_executable_policy = 11,
+    authorize_decision = 12,
+    observe_fill = 13,
+    request_cancel = 14,
+    observe_order_event = 15,
+    request_replace = 16,
 };
 
 enum class KernelCodecError : std::uint8_t {

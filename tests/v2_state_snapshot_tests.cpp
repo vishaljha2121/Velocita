@@ -90,20 +90,20 @@ velocita::v2::TradingState populated_state() {
         SourceId{10}, SourceGeneration{2}, SourceSequence{3}, digest(0x33)};
 
     state.receipt_count = 1;
+    ApplyResult retained_result;
+    retained_result.code = ApplyCode::applied;
+    retained_result.metadata_words = {17, 2};
+    retained_result.policy_lifecycle = PolicyLifecycle::active;
+    retained_result.state_version = 9;
+    retained_result.strategy_mode = StrategyMode::reduce_only;
+    retained_result.kill_epoch = KillEpoch{4};
+    retained_result.executor_generation = ExecutorGeneration{8};
+    retained_result.detail = ApplyResultDetail::source(
+        SourceId{10}, SourceGeneration{2}, SourceSequence{3});
+    retained_result.detail_kind = ApplyResultDetailKind::source;
     state.receipts[0] = RequestReceipt{
         CommandIdentity{CallerId{12}, RequestSequence{13}, digest(0x44)},
-        ApplyResult{ApplyCode::applied,
-                    ContractError::none,
-                    PolicyId{17},
-                    PolicyVersion{2},
-                    PolicyLifecycle::active,
-                    9,
-                    StrategyMode::reduce_only,
-                    KillEpoch{4},
-                    ExecutorGeneration{8},
-                    SourceId{10},
-                    SourceGeneration{2},
-                    SourceSequence{3}}};
+        retained_result};
 
     state.decision_count = 1;
     state.decision_hot[0] = DecisionRecordHot{
@@ -113,6 +113,61 @@ velocita::v2::TradingState populated_state() {
         EvaluationMode::authoritative, StrategyMode::reduce_only};
     state.decision_cold[0] =
         DecisionRecordCold{DecisionId{21}, digest(0x44), frame()};
+    return state;
+}
+
+velocita::v2::TradingState phase4_state() {
+    using namespace velocita::v2;
+    auto state = populated_state();
+    state.state_version = 10;
+    state.strategy_mode = StrategyMode::normal;
+    state.decision_hot[0].code = DecisionCode::action;
+    state.decision_hot[0].proposed_directive = Directive::place_limit;
+    state.decision_hot[0].effective_directive = Directive::place_limit;
+    state.decision_hot[0].strategy_mode = StrategyMode::normal;
+    state.decision_hot[0].action_resolution_code = ActionResolutionCode::proposed;
+    state.decision_cold[0].proposal = {
+        kEconomicActionProposalSchemaVersion,
+        DecisionId{21}, PolicyId{17}, PolicyVersion{2}, RiskPolicyVersion{6},
+        InstrumentSpecVersion{1}, VenueCapabilitiesVersion{1}, AccountId{5},
+        InstrumentId{4}, VenueId{7}, LogicalOrderSlot{1},
+        Directive::place_limit, Side::buy, TimeInForce::good_til_cancel,
+        PostOnlyMode::required, PriceTicks::from_atoms(42),
+        QuantityLots::from_atoms(2), MoneyMicros::from_atoms(8'400)};
+
+    state.risk_account_count = 1;
+    state.risk_accounts[0] = {
+        AccountId{5}, InstrumentId{4}, RiskPolicyVersion{6}, RiskVersion{12},
+        PositionVersion{11}, QuantityLots::from_atoms(4),
+        QuantityLots::from_atoms(8), QuantityLots::from_atoms(2),
+        MoneyMicros::from_atoms(10'000), MoneyMicros::from_atoms(20'000),
+        MoneyMicros::from_atoms(8'400), MoneyMicros::from_atoms(21),
+        1'000'000, 2'500};
+    state.reservation_count = 1;
+    state.reservations[0] = {
+        ClusterOrderId{31}, QuantityLots::from_atoms(2), {},
+        QuantityLots::from_atoms(2), MoneyMicros::from_atoms(8'400),
+        MoneyMicros::from_atoms(8'400), MoneyMicros::from_atoms(21),
+        ReservationState::held};
+    state.order_count = 1;
+    state.orders[0] = {ClusterOrderId{31}, EffectId{41}, DecisionId{21}, 10, 0,
+                       ClusterOrderState::dispatch_authorized};
+    state.outbox_effect_count = 1;
+    state.outbox_effects[0] = {EffectId{41}, ClusterOrderId{31}, DecisionId{21},
+                               digest(0x77), 1, OutboxState::pending};
+
+    ApplyResult authorization;
+    authorization.code = ApplyCode::applied;
+    authorization.state_version = 10;
+    authorization.strategy_mode = StrategyMode::normal;
+    authorization.kill_epoch = state.kill_epoch;
+    authorization.executor_generation = state.executor_generation;
+    authorization.decision_id = DecisionId{21};
+    authorization.detail = ApplyResultDetail::authorization(
+        ClusterOrderId{31}, EffectId{41}, MoneyMicros::from_atoms(8'421));
+    authorization.detail_kind = ApplyResultDetailKind::authorization;
+    state.receipts[state.receipt_count++] = {
+        {CallerId{12}, RequestSequence{14}, digest(0x55)}, authorization};
     return state;
 }
 
@@ -207,8 +262,8 @@ void test_empty_snapshot_has_canonical_layout() {
 
     const std::array expected_prefix{
         std::byte{'V'}, std::byte{'2'}, std::byte{'S'}, std::byte{'T'},
-        std::byte{37}, std::byte{0}, std::byte{0}, std::byte{0},
-        std::byte{3}, std::byte{0},
+        std::byte{45}, std::byte{0}, std::byte{0}, std::byte{0},
+        std::byte{4}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{5}};
@@ -221,7 +276,7 @@ void test_empty_snapshot_has_canonical_layout() {
             "returned digest differs from framed digest");
     const auto hash = to_hex(encoded.state_digest);
     require(hash ==
-                "17ccb5bcb9db553e18c70d394493cbf84560ce059892ab3dc9381abcca71bdbb",
+                "b3e1c1c6d11cfc8fa2fe5029b2838ff7aa075701835bdc63d087dcf8adb8b242",
             "empty state golden digest changed: " + hash);
 }
 
@@ -267,6 +322,45 @@ void test_round_trip_is_canonical_and_excludes_unused_capacity() {
                            first.begin() + static_cast<std::ptrdiff_t>(encoded.bytes_written),
                            replayed.begin()),
             "decode followed by encode changed canonical state bytes");
+}
+
+void test_phase4_state_survives_canonical_snapshot() {
+    using namespace velocita::v2;
+    require(kStateSnapshotSchemaVersion == 4,
+            "Phase 4 authoritative state did not move snapshots to V4");
+    const auto original = phase4_state();
+    std::array<std::byte, kMaxStateSnapshotBytes> storage{};
+    const auto encoded = encode_state_snapshot(original, storage);
+    require(encoded.error == StateSnapshotError::none,
+            "valid Phase 4 state did not encode");
+
+    TradingState restored;
+    StateSnapshotScratch scratch;
+    const auto decoded = decode_state_snapshot(
+        {storage.data(), encoded.bytes_written}, restored, scratch);
+    require(decoded.error == StateSnapshotError::none &&
+                restored.risk_account_count == 1 &&
+                restored.risk_accounts[0] == original.risk_accounts[0] &&
+                restored.reservation_count == 1 &&
+                restored.reservations[0] == original.reservations[0] &&
+                restored.order_count == 1 &&
+                restored.orders[0] == original.orders[0] &&
+                restored.outbox_effect_count == 1 &&
+                restored.outbox_effects[0] == original.outbox_effects[0] &&
+                restored.receipts[1].identity == original.receipts[1].identity &&
+                restored.receipts[1].result == original.receipts[1].result,
+            "snapshot lost Phase 4 economics, identity, or retained result");
+
+    std::array<std::byte, kMaxStateSnapshotBytes> replayed{};
+    const auto reencoded = encode_state_snapshot(restored, replayed);
+    require(reencoded.error == StateSnapshotError::none &&
+                reencoded.state_digest == encoded.state_digest &&
+                reencoded.bytes_written == encoded.bytes_written &&
+                std::equal(storage.begin(),
+                           storage.begin() +
+                               static_cast<std::ptrdiff_t>(encoded.bytes_written),
+                           replayed.begin()),
+            "restored Phase 4 state did not reproduce byte-identical snapshot");
 }
 
 void test_decode_is_transactional_for_corrupt_and_unknown_input() {
@@ -408,20 +502,13 @@ void test_declared_maximum_is_exact_and_encodable() {
 
     state.receipt_count = kMaxRequestReceipts;
     for (std::size_t index = 0; index < state.receipt_count; ++index) {
+        ApplyResult retained;
+        retained.code = ApplyCode::applied;
+        retained.state_version = index + 1;
+        retained.strategy_mode = StrategyMode::halted;
         state.receipts[index] = RequestReceipt{
             CommandIdentity{CallerId{1}, RequestSequence{index + 1}, digest(0xaa)},
-            ApplyResult{ApplyCode::applied,
-                        ContractError::none,
-                        {},
-                        {},
-                        PolicyLifecycle::none,
-                        index + 1,
-                        StrategyMode::halted,
-                        {},
-                        {},
-                        {},
-                        {},
-                        {}}};
+            retained};
     }
 
     state.decision_count = kMaxDecisionRecords;
@@ -438,9 +525,61 @@ void test_declared_maximum_is_exact_and_encodable() {
             DecisionCode::control_suppressed, ContractError::none,
             Directive::place_limit, Directive::no_action,
             EvaluationMode::authoritative,
-            StrategyMode::halted};
+            StrategyMode::halted, ActionResolutionCode::proposed};
         state.decision_cold[index] =
             DecisionRecordCold{id, digest(0xbb), decision_frame};
+        state.decision_cold[index].proposal = {
+            kEconomicActionProposalSchemaVersion,
+            id,
+            decision_frame.policy_id,
+            decision_frame.policy_version,
+            RiskPolicyVersion{6},
+            InstrumentSpecVersion{1},
+            VenueCapabilitiesVersion{1},
+            decision_frame.account_id,
+            decision_frame.instrument_id,
+            decision_frame.venue_id,
+            LogicalOrderSlot{static_cast<std::uint16_t>(index + 1)},
+            Directive::place_limit,
+            Side::buy,
+            TimeInForce::good_til_cancel,
+            PostOnlyMode::required,
+            PriceTicks::from_atoms(10),
+            QuantityLots::from_atoms(1),
+            MoneyMicros::from_atoms(100)};
+    }
+
+    state.risk_account_count = kMaxRiskAccounts;
+    for (std::size_t index = 0; index < state.risk_account_count; ++index) {
+        state.risk_accounts[index] = {
+            AccountId{index + 5}, InstrumentId{index + 4}, RiskPolicyVersion{6},
+            RiskVersion{12}, PositionVersion{11}, QuantityLots::from_atoms(10),
+            QuantityLots::from_atoms(100), QuantityLots::from_atoms(4),
+            MoneyMicros::from_atoms(1'000), MoneyMicros::from_atoms(10'000),
+            MoneyMicros::from_atoms(40), MoneyMicros::from_atoms(4),
+            100'000, 10'000};
+    }
+
+    state.reservation_count = kMaxRiskReservations;
+    state.order_count = kMaxClusterOrders;
+    state.outbox_effect_count = kMaxOutboxEffects;
+    for (std::size_t index = 0; index < kMaxClusterOrders; ++index) {
+        const auto order_id = ClusterOrderId{index + 101};
+        const auto effect_id = EffectId{index + 201};
+        const auto decision_id = DecisionId{index + 1};
+        state.reservations[index] = {
+            order_id, QuantityLots::from_atoms(1), {},
+            QuantityLots::from_atoms(1), MoneyMicros::from_atoms(100),
+            MoneyMicros::from_atoms(10), MoneyMicros::from_atoms(1),
+            ReservationState::held};
+        state.orders[index] = {
+            order_id, effect_id, decision_id, index + 1,
+            static_cast<std::uint16_t>(index),
+            ClusterOrderState::dispatch_authorized};
+        state.outbox_effects[index] = {
+            effect_id, order_id, decision_id,
+            digest(static_cast<std::uint8_t>(index + 0x40)), 1,
+            OutboxState::pending};
     }
 
     std::array<std::byte, kMaxStateSnapshotBytes> storage{};
@@ -456,6 +595,7 @@ int main() {
     try {
         test_empty_snapshot_has_canonical_layout();
         test_round_trip_is_canonical_and_excludes_unused_capacity();
+        test_phase4_state_survives_canonical_snapshot();
         test_decode_is_transactional_for_corrupt_and_unknown_input();
         test_bounds_and_invalid_source_state_fail_closed();
         test_declared_maximum_is_exact_and_encodable();

@@ -18,7 +18,7 @@ inline constexpr std::size_t kMaxPolicyPayloadBytes =
 inline constexpr std::size_t kDecisionFramePayloadFixedBytes = 165;
 inline constexpr std::size_t kMaxDecisionFramePayloadBytes =
     kDecisionFramePayloadFixedBytes + kMaxDecisionFeatures * sizeof(std::int64_t);
-inline constexpr std::size_t kOrderEffectPayloadBytes = 165;
+inline constexpr std::size_t kOrderEffectPayloadBytes = 166;
 inline constexpr std::size_t kVenueObservationPayloadBytes = 116;
 inline constexpr std::size_t kFeatureDescriptorEncodedBytes = 9;
 inline constexpr std::size_t kFeatureSchemaPayloadPrefixBytes = 44;

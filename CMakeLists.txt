@@ -282,6 +282,15 @@ if(BUILD_TESTING)
     add_test(NAME v2-executable-policy-kernel-tests
         COMMAND v2-executable-policy-kernel-tests)
 
+    add_executable(v2-risk-order-outbox-tests
+        tests/v2_risk_order_outbox_tests.cpp)
+    target_link_libraries(v2-risk-order-outbox-tests PRIVATE
+        velocita_v2_kernel)
+    target_compile_options(v2-risk-order-outbox-tests PRIVATE
+        -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-risk-order-outbox-tests
+        COMMAND v2-risk-order-outbox-tests)
+
     add_executable(v2-layout-report src/v2_layout_report.cpp)
     target_link_libraries(v2-layout-report PRIVATE
         velocita_v2_contracts velocita_v2_kernel velocita_v2_evaluator)

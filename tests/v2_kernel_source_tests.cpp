@@ -42,9 +42,9 @@ void test_contiguous_events_and_exact_event_duplicates() {
     ApplyScratch scratch;
 
     const auto first = apply(state, source_command(1, 0x11, 7, 1, 1, 0xa1), scratch);
-    require(first.code == ApplyCode::applied && first.source_id == SourceId{7} &&
-                first.source_generation == SourceGeneration{1} &&
-                first.source_sequence == SourceSequence{1},
+    require(first.code == ApplyCode::applied && first.source_id() == SourceId{7} &&
+                first.source_generation() == SourceGeneration{1} &&
+                first.source_sequence() == SourceSequence{1},
             "first source event was not accepted");
 
     const auto duplicate =

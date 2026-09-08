@@ -84,10 +84,26 @@ Phase 11 strategy/model validation and controlled canary
   an acknowledgement or local send does not count as a fill.
 - [ ] **G-016 — Cancel remains risk-bearing.** Cancel-pending quantity retains
   risk until accepted cancel/fill evidence or reconciliation closes it.
+  *Known operational gap (see G-074a).* Because a cancelled order enters
+  `reconciling` and holds its reservation until `cancel_reconciled` final
+  evidence arrives, an order whose final evidence never arrives holds its logical
+  order slot indefinitely and that slot silently stops quoting. This is correct
+  fail-closed behavior — unresolved risk must not be added to — but Phase 4
+  provides no timeout, no escalation, and no operator override.
 - [ ] **G-017 — Unknown retains risk.** An ambiguously submitted order retains
   its reservation and blocks conflicting risk until authoritative reconciliation.
 - [ ] **G-018 — Safe replacement.** Amend/cancel-replace transitions cannot
   temporarily or permanently double-reserve risk.
+  *Satisfied by slot exclusivity, not by a hold formula.* Whenever old and new
+  orders can both be live, the only reservation satisfying G-011 is `old + new`,
+  which is what this guarantee forbids; holding `max(old, new)` instead satisfies
+  G-018 but under-reserves the concurrent case. The two are unsatisfiable
+  together while concurrency is possible, so V2 removes the possibility: direct
+  amend/replace returns `replacement_not_supported`, and at most one unresolved
+  cluster order may exist per `(account, instrument, venue, logical order slot)`.
+  Requoting is cancel → final reconciliation → fresh authoritative decision.
+  Do not reintroduce a `max(old, new)` hold without first proving, per venue,
+  that old and new executions are mutually exclusive.
 - [ ] **G-019 — Capacity fails closed.** Full order, reservation, receipt, fill,
   or outbox capacity produces a typed refusal and no partial economic mutation.
 - [ ] **G-020 — Snapshot/replay completeness.** Orders, risk, fills, dedup
@@ -240,6 +256,30 @@ Phase 11 strategy/model validation and controlled canary
 - [ ] **G-074 — Actionable operating controls.** An operator can identify
   authority, stop new risk, kill/cancel, reconcile, replay, restore, and roll back
   using documented and tested procedures.
+- [ ] **G-074a — Stuck reconciliation is escalatable.** A logical order slot held
+  by an order stuck in `reconciling` — venue silence, a dropped terminal event, or
+  an on-chain cancellation that never settles — must be visible, alertable, and
+  resolvable by a documented operator procedure.
+
+  Required, and none of it exists today:
+
+  - a metric for oldest `reconciling` order age and oldest unresolved slot age,
+    so a strategy that has quietly stopped quoting is distinguishable from a
+    quiet market (Phase 4 metrics, item C4);
+  - an alert threshold and a runbook entry describing diagnosis and the venue
+    queries that establish final cumulative filled quantity;
+  - an authenticated, replicated operator command that resolves a stuck slot by
+    supplying or overriding terminal evidence, retained as attributable evidence
+    and never as history mutation; and
+  - an explicit statement of what the operator must verify at the venue before
+    invoking it, because releasing a hold without proof of final filled quantity
+    is exactly the G-011 violation the reconciliation contract exists to prevent.
+
+  This is deliberately NOT a Phase 4 timeout. A wall-clock eviction in the
+  reducer would break determinism, and an automatic release without venue
+  evidence would fabricate the very fact reconciliation demands. The resolution
+  path is an operator-driven replicated transition, and it belongs with the
+  kill/emergency work in Phase 8 and the runbook work in Phase 10.
 - [ ] **G-075 — Tested alerts.** Critical alerts have drills proving both firing
   and recovery behavior, with bounded detection expectations.
 - [ ] **G-076 — Immutable acceptance evidence.** Release evidence identifies

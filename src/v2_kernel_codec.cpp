@@ -151,6 +151,28 @@ private:
         case ApplyCode::invalid_venue_capabilities_contract:
         case ApplyCode::executable_policy_not_staged:
         case ApplyCode::executable_policy_identity_conflict:
+        case ApplyCode::decision_not_authorizable:
+        case ApplyCode::risk_account_not_found:
+        case ApplyCode::stale_risk_state:
+        case ApplyCode::risk_arithmetic_overflow:
+        case ApplyCode::insufficient_risk_capacity:
+        case ApplyCode::reservation_capacity_exceeded:
+        case ApplyCode::order_capacity_exceeded:
+        case ApplyCode::outbox_capacity_exceeded:
+        case ApplyCode::derived_identity_collision:
+        case ApplyCode::venue_observation_not_applicable:
+        case ApplyCode::fill_identity_conflict:
+        case ApplyCode::fill_capacity_exceeded:
+        case ApplyCode::fill_quantity_conflict:
+        case ApplyCode::position_arithmetic_overflow:
+        case ApplyCode::order_not_found:
+        case ApplyCode::order_not_cancellable:
+        case ApplyCode::venue_event_identity_conflict:
+        case ApplyCode::venue_event_capacity_exceeded:
+        case ApplyCode::replacement_not_authorizable:
+        case ApplyCode::order_not_replaceable:
+        case ApplyCode::replacement_not_supported:
+        case ApplyCode::order_slot_occupied:
             return true;
     }
     return false;
@@ -158,7 +180,7 @@ private:
 
 [[nodiscard]] constexpr bool known(const ContractError value) noexcept {
     return static_cast<std::uint8_t>(value) <=
-           static_cast<std::uint8_t>(ContractError::non_positive_quantity);
+           static_cast<std::uint8_t>(ContractError::invalid_capability);
 }
 
 [[nodiscard]] constexpr bool known(const EvaluationMode value) noexcept {
@@ -200,6 +222,11 @@ private:
         case KernelCommandKind::evaluate_decision_frame:
         case KernelCommandKind::stage_executable_policy:
         case KernelCommandKind::activate_executable_policy:
+        case KernelCommandKind::authorize_decision:
+        case KernelCommandKind::observe_fill:
+        case KernelCommandKind::request_cancel:
+        case KernelCommandKind::observe_order_event:
+        case KernelCommandKind::request_replace:
             return true;
     }
     return false;
@@ -253,11 +280,65 @@ private:
                body->policy_version.value() != 0 &&
                !body->executable_policy_digest.is_zero();
     }
+    if (const auto* body = std::get_if<AuthorizeDecision>(&command.body)) {
+        return body->decision_id.value() != 0;
+    }
+    if (const auto* body = std::get_if<ObserveFill>(&command.body)) {
+        return body->observation.kind == VenueObservationKind::fill &&
+               validate(body->observation) == ContractError::none;
+    }
+    if (const auto* body = std::get_if<RequestCancel>(&command.body)) {
+        return body->cluster_order_id.value() != 0;
+    }
+    if (const auto* body = std::get_if<ObserveOrderEvent>(&command.body)) {
+        return body->observation.kind != VenueObservationKind::fill &&
+               validate(body->observation) == ContractError::none;
+    }
+    if (const auto* body = std::get_if<RequestReplace>(&command.body)) {
+        return body->cluster_order_id.value() != 0 &&
+               body->replacement_decision_id.value() != 0;
+    }
     return false;
+}
+
+[[nodiscard]] constexpr bool known(const ApplyResultDetailKind value) noexcept {
+    return value == ApplyResultDetailKind::none ||
+           value == ApplyResultDetailKind::source ||
+           value == ApplyResultDetailKind::authorization ||
+           value == ApplyResultDetailKind::fill ||
+           value == ApplyResultDetailKind::venue_event;
+}
+
+[[nodiscard]] bool valid_detail(const ApplyResult& result) noexcept {
+    if (!known(result.detail_kind)) return false;
+    if (result.detail_kind == ApplyResultDetailKind::none) {
+        return result.detail == ApplyResultDetail{};
+    }
+    if (result.detail_kind == ApplyResultDetailKind::source) {
+        return result.detail != ApplyResultDetail{};
+    }
+    if (result.detail_kind == ApplyResultDetailKind::authorization) {
+        return result.cluster_order_id().value() != 0 &&
+               result.effect_id().value() != 0 &&
+               result.reserved_exposure().atoms() > 0 &&
+               result.decision_id.value() != 0;
+    }
+    if (result.detail_kind == ApplyResultDetailKind::fill) {
+        if ((result.code == ApplyCode::applied || result.code == ApplyCode::already_applied) &&
+            (result.fill_session_id().value() == 0 || result.fill_sequence().value() == 0))
+            return false;
+        return result.fill_venue_id().value() != 0 &&
+               result.execution_id().value() != 0 &&
+               result.filled_quantity().atoms() > 0;
+    }
+    return result.event_venue_id().value() != 0 &&
+           result.event_session_id().value() != 0 &&
+           result.event_sequence().value() != 0;
 }
 
 [[nodiscard]] bool valid_result(const ApplyResult& result) noexcept {
     return known(result.code) && known(result.contract_error) &&
+           valid_detail(result) &&
            known(result.policy_lifecycle) && known(result.strategy_mode) &&
            known(result.decision_code) && known(result.proposed_directive) &&
            known(result.effective_directive) && known(result.evaluation_mode) &&
@@ -300,7 +381,22 @@ private:
     if (std::holds_alternative<StageExecutablePolicy>(body)) {
         return KernelCommandKind::stage_executable_policy;
     }
-    return KernelCommandKind::activate_executable_policy;
+    if (std::holds_alternative<ActivateExecutablePolicy>(body)) {
+        return KernelCommandKind::activate_executable_policy;
+    }
+    if (std::holds_alternative<AuthorizeDecision>(body)) {
+        return KernelCommandKind::authorize_decision;
+    }
+    if (std::holds_alternative<ObserveFill>(body)) {
+        return KernelCommandKind::observe_fill;
+    }
+    if (std::holds_alternative<RequestCancel>(body)) {
+        return KernelCommandKind::request_cancel;
+    }
+    if (std::holds_alternative<ObserveOrderEvent>(body)) {
+        return KernelCommandKind::observe_order_event;
+    }
+    return KernelCommandKind::request_replace;
 }
 
 [[nodiscard]] std::size_t body_size(const CommandBody& body) noexcept {
@@ -332,6 +428,15 @@ private:
                kVenueCapabilitiesEncodedBytes;
     }
     if (std::holds_alternative<ActivateExecutablePolicy>(body)) return 48;
+    if (std::holds_alternative<AuthorizeDecision>(body)) return 8;
+    if (std::holds_alternative<ObserveFill>(body)) {
+        return kVenueObservationPayloadBytes;
+    }
+    if (std::holds_alternative<RequestCancel>(body)) return 8;
+    if (std::holds_alternative<ObserveOrderEvent>(body)) {
+        return kVenueObservationPayloadBytes;
+    }
+    if (std::holds_alternative<RequestReplace>(body)) return 16;
     const auto& value = std::get<EvaluateDecisionFrame>(body);
     return sizeof(std::uint64_t) + sizeof(std::uint8_t) +
            kDecisionFramePayloadFixedBytes +
@@ -475,6 +580,24 @@ void write_venue(Writer& writer, const VenueCapabilities& value) noexcept {
     writer.integral(value.supports_post_only);
 }
 
+void write_observation(Writer& writer,
+                       const VenueObservation& value) noexcept {
+    writer.integral(kVenueObservationSchemaVersion);
+    writer.integral(static_cast<std::uint8_t>(value.kind));
+    writer.integral(value.venue_id.value());
+    writer.integral(value.venue_session_id.value());
+    writer.integral(value.venue_sequence.value());
+    writer.integral(value.cluster_order_id.value());
+    writer.integral(value.effect_id.value());
+    writer.integral(value.venue_order_id.value());
+    writer.integral(value.execution_id.value());
+    writer.integral(static_cast<std::uint8_t>(value.side));
+    writer.integral(value.price.atoms());
+    writer.integral(value.quantity.atoms());
+    writer.integral(value.fee.atoms());
+    writer.digest(value.evidence_digest);
+}
+
 void write_body(Writer& writer, const CommandBody& body) noexcept {
     if (const auto* value = std::get_if<PublishPolicy>(&body)) {
         write_policy(writer, value->artifact);
@@ -514,7 +637,40 @@ void write_body(Writer& writer, const CommandBody& body) noexcept {
         writer.integral(value->policy_id.value());
         writer.integral(value->policy_version.value());
         writer.digest(value->executable_policy_digest);
+    } else if (const auto* value = std::get_if<AuthorizeDecision>(&body)) {
+        writer.integral(value->decision_id.value());
+    } else if (const auto* value = std::get_if<ObserveFill>(&body)) {
+        write_observation(writer, value->observation);
+    } else if (const auto* value = std::get_if<RequestCancel>(&body)) {
+        writer.integral(value->cluster_order_id.value());
+    } else if (const auto* value = std::get_if<ObserveOrderEvent>(&body)) {
+        write_observation(writer, value->observation);
+    } else if (const auto* value = std::get_if<RequestReplace>(&body)) {
+        writer.integral(value->cluster_order_id.value());
+        writer.integral(value->replacement_decision_id.value());
     }
+}
+
+[[nodiscard]] bool read_observation(Reader& reader,
+                                    VenueObservation& value) noexcept {
+    if (reader.integral<std::uint16_t>() != kVenueObservationSchemaVersion) {
+        return false;
+    }
+    value.kind =
+        static_cast<VenueObservationKind>(reader.integral<std::uint8_t>());
+    value.venue_id = VenueId{reader.integral<std::uint64_t>()};
+    value.venue_session_id = VenueSessionId{reader.integral<std::uint64_t>()};
+    value.venue_sequence = VenueSequence{reader.integral<std::uint64_t>()};
+    value.cluster_order_id = ClusterOrderId{reader.integral<std::uint64_t>()};
+    value.effect_id = EffectId{reader.integral<std::uint64_t>()};
+    value.venue_order_id = VenueOrderId{reader.integral<std::uint64_t>()};
+    value.execution_id = ExecutionId{reader.integral<std::uint64_t>()};
+    value.side = static_cast<Side>(reader.integral<std::uint8_t>());
+    value.price = PriceTicks::from_atoms(reader.integral<std::int64_t>());
+    value.quantity = QuantityLots::from_atoms(reader.integral<std::int64_t>());
+    value.fee = FeeMicros::from_atoms(reader.integral<std::int64_t>());
+    value.evidence_digest = reader.digest();
+    return validate(value) == ContractError::none;
 }
 
 [[nodiscard]] bool read_decision_frame(Reader& reader,
@@ -762,6 +918,37 @@ void write_body(Writer& writer, const CommandBody& body) noexcept {
                 PolicyId{reader.integral<std::uint64_t>()},
                 PolicyVersion{reader.integral<std::uint64_t>()}, reader.digest()};
             return true;
+        case KernelCommandKind::authorize_decision:
+            body = AuthorizeDecision{
+                DecisionId{reader.integral<std::uint64_t>()}};
+            return true;
+        case KernelCommandKind::observe_fill: {
+            ObserveFill value;
+            if (!read_observation(reader, value.observation) ||
+                value.observation.kind != VenueObservationKind::fill) {
+                return false;
+            }
+            body = value;
+            return true;
+        }
+        case KernelCommandKind::request_cancel:
+            body = RequestCancel{
+                ClusterOrderId{reader.integral<std::uint64_t>()}};
+            return true;
+        case KernelCommandKind::observe_order_event: {
+            ObserveOrderEvent value;
+            if (!read_observation(reader, value.observation) ||
+                value.observation.kind == VenueObservationKind::fill) {
+                return false;
+            }
+            body = value;
+            return true;
+        }
+        case KernelCommandKind::request_replace:
+            body = RequestReplace{
+                ClusterOrderId{reader.integral<std::uint64_t>()},
+                DecisionId{reader.integral<std::uint64_t>()}};
+            return true;
     }
     return false;
 }
@@ -769,16 +956,17 @@ void write_body(Writer& writer, const CommandBody& body) noexcept {
 void write_result_payload(Writer& writer, const ApplyResult& value) noexcept {
     writer.integral(static_cast<std::uint8_t>(value.code));
     writer.integral(static_cast<std::uint8_t>(value.contract_error));
-    writer.integral(value.policy_id.value());
-    writer.integral(value.policy_version.value());
+    writer.integral(value.metadata_words[0]);
+    writer.integral(value.metadata_words[1]);
     writer.integral(static_cast<std::uint8_t>(value.policy_lifecycle));
     writer.integral(value.state_version);
     writer.integral(static_cast<std::uint8_t>(value.strategy_mode));
     writer.integral(value.kill_epoch.value());
     writer.integral(value.executor_generation.value());
-    writer.integral(value.source_id.value());
-    writer.integral(value.source_generation.value());
-    writer.integral(value.source_sequence.value());
+    writer.integral(static_cast<std::uint8_t>(value.detail_kind));
+    writer.integral(value.detail.words[0]);
+    writer.integral(value.detail.words[1]);
+    writer.integral(value.detail.words[2]);
     writer.integral(value.decision_id.value());
     writer.integral(static_cast<std::uint8_t>(value.decision_code));
     writer.integral(static_cast<std::uint8_t>(value.proposed_directive));
@@ -794,8 +982,8 @@ void write_result_payload(Writer& writer, const ApplyResult& value) noexcept {
     value.code = static_cast<ApplyCode>(reader.integral<std::uint8_t>());
     value.contract_error =
         static_cast<ContractError>(reader.integral<std::uint8_t>());
-    value.policy_id = PolicyId{reader.integral<std::uint64_t>()};
-    value.policy_version = PolicyVersion{reader.integral<std::uint64_t>()};
+    value.metadata_words[0] = reader.integral<std::uint64_t>();
+    value.metadata_words[1] = reader.integral<std::uint64_t>();
     value.policy_lifecycle =
         static_cast<PolicyLifecycle>(reader.integral<std::uint8_t>());
     value.state_version = reader.integral<std::uint64_t>();
@@ -804,10 +992,11 @@ void write_result_payload(Writer& writer, const ApplyResult& value) noexcept {
     value.kill_epoch = KillEpoch{reader.integral<std::uint64_t>()};
     value.executor_generation =
         ExecutorGeneration{reader.integral<std::uint64_t>()};
-    value.source_id = SourceId{reader.integral<std::uint64_t>()};
-    value.source_generation =
-        SourceGeneration{reader.integral<std::uint64_t>()};
-    value.source_sequence = SourceSequence{reader.integral<std::uint64_t>()};
+    value.detail_kind =
+        static_cast<ApplyResultDetailKind>(reader.integral<std::uint8_t>());
+    value.detail.words[0] = reader.integral<std::uint64_t>();
+    value.detail.words[1] = reader.integral<std::uint64_t>();
+    value.detail.words[2] = reader.integral<std::uint64_t>();
     value.decision_id = DecisionId{reader.integral<std::uint64_t>()};
     value.decision_code =
         static_cast<DecisionCode>(reader.integral<std::uint8_t>());

@@ -1,5 +1,6 @@
 #include "velocita/v2/payload.hpp"
 #include "velocita/v2/digest.hpp"
+#include "velocita/v2/action_template.hpp"
 
 #include <cstddef>
 #include <iostream>
@@ -261,9 +262,9 @@ void test_payload_schema_versions_are_independent() {
             "policy artifact schema unexpectedly changed");
     require(frame[0] == std::byte{0x02} && frame[1] == std::byte{0x00},
             "decision frame did not encode schema V2");
-    require(effect[0] == std::byte{0x01} && effect[1] == std::byte{0x00},
+    require(effect[0] == std::byte{0x02} && effect[1] == std::byte{0x00},
             "order effect schema unexpectedly changed");
-    require(observation[0] == std::byte{0x01} && observation[1] == std::byte{0x00},
+    require(observation[0] == std::byte{0x02} && observation[1] == std::byte{0x00},
             "venue observation schema unexpectedly changed");
 }
 
@@ -302,8 +303,45 @@ void test_payloads_fail_closed() {
 
 }  // namespace
 
+void test_order_effect_preserves_post_only_independently_of_time_in_force() {
+    using namespace velocita::v2;
+    auto effect = effect_fixture();
+    effect.time_in_force = TimeInForce::good_til_cancel;
+    effect.post_only = PostOnlyMode::required;
+    const auto encoded = encode_payload(effect);
+    require(encoded.error == PayloadError::none, "post-only effect did not encode");
+    require(encoded.bytes.size() == 166 && encoded.bytes.back() == std::byte{2},
+            "V2 effect must append the explicit post-only byte at offset 165");
+    const auto decoded = decode_order_effect(encoded.bytes);
+    require(decoded.error == PayloadError::none && decoded.value.has_value() &&
+                decoded.value->time_in_force == effect.time_in_force &&
+                decoded.value->post_only == PostOnlyMode::required,
+            "OrderEffect round trip lost the independent post-only instruction");
+    auto invalid = encoded.bytes;
+    invalid[0] = std::byte{1};
+    require(decode_order_effect(invalid).error == PayloadError::unsupported_schema,
+            "V1 header was reinterpreted as V2");
+    invalid.pop_back();
+    require(!decode_order_effect(invalid).value.has_value(),
+            "original 165-byte V1 payload was accepted");
+    invalid = encoded.bytes;
+    invalid.back() = std::byte{0};
+    require(decode_order_effect(invalid).error == PayloadError::invalid_contract,
+            "invalid post-only enum was accepted");
+}
+
 int main() {
     try {
+        const auto observation = fill_fixture();
+        const auto payload = velocita::v2::encode_payload(observation);
+        const std::string domain = "velocita/venue-observation/v2";
+        std::vector<std::byte> preimage;
+        for (const char c : domain) preimage.push_back(static_cast<std::byte>(c));
+        preimage.insert(preimage.end(), payload.bytes.begin(), payload.bytes.end());
+        require(velocita::v2::observation_fingerprint(observation) ==
+                    velocita::v2::sha256_digest(preimage),
+                "observation fingerprint diverged from domain plus canonical payload");
+        test_order_effect_preserves_post_only_independently_of_time_in_force();
         test_policy_golden_and_round_trip();
         test_other_value_round_trips();
         test_decision_frame_v2_golden_bytes();

@@ -255,6 +255,7 @@ EncodePayloadResult encode_payload(const OrderEffect& value) {
     append_le(result.bytes, value.source_generation.value());
     append_le(result.bytes, value.source_sequence.value());
     append_digest(result.bytes, value.payload_digest);
+    append_le(result.bytes, static_cast<std::uint8_t>(value.post_only));
     return result;
 }
 
@@ -443,6 +444,7 @@ decode_order_effect(const std::span<const std::byte> bytes) {
     value.source_generation = SourceGeneration{reader.read<std::uint64_t>()};
     value.source_sequence = SourceSequence{reader.read<std::uint64_t>()};
     value.payload_digest = reader.read_digest();
+    value.post_only = static_cast<PostOnlyMode>(reader.read<std::uint8_t>());
     return finish_decode(std::move(value));
 }
 

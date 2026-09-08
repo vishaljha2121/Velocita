@@ -53,6 +53,12 @@ inline constexpr std::size_t kExecutablePolicyArtifactObjectBudgetBytes = 1408;
 // from object budgets because canonical payloads omit padding and unused slots.
 inline constexpr std::size_t kFeatureSchemaArtifactPayloadBudgetBytes = 384;
 inline constexpr std::size_t kExecutablePolicyArtifactPayloadBudgetBytes = 1344;
+// Phase 4 in-memory authorization slice. These are resident object ceilings;
+// canonical snapshot budgets are reviewed separately in the codec increment.
+inline constexpr std::size_t kRiskAccountObjectBudgetBytes = 128;
+inline constexpr std::size_t kRiskReservationObjectBudgetBytes = 64;
+inline constexpr std::size_t kClusterOrderObjectBudgetBytes = 64;
+inline constexpr std::size_t kOutboxEffectRecordObjectBudgetBytes = 64;
 
 static_assert(kTargetCacheLineBytes >= alignof(std::max_align_t));
 static_assert(is_power_of_two(kTargetCacheLineBytes));

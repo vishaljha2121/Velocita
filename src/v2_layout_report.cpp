@@ -102,6 +102,16 @@ int main() {
               << kTradingStateObjectBudgetBytes << '\n'
               << "apply_result_size_bytes=" << sizeof(ApplyResult) << '\n'
               << "request_receipt_size_bytes=" << sizeof(RequestReceipt) << '\n'
+              << "risk_account_capacity=" << kMaxRiskAccounts << '\n'
+              << "risk_account_size_bytes=" << sizeof(RiskAccount) << '\n'
+              << "risk_reservation_capacity=" << kMaxRiskReservations << '\n'
+              << "risk_reservation_size_bytes=" << sizeof(RiskReservation)
+              << '\n'
+              << "cluster_order_capacity=" << kMaxClusterOrders << '\n'
+              << "cluster_order_size_bytes=" << sizeof(ClusterOrder) << '\n'
+              << "outbox_effect_capacity=" << kMaxOutboxEffects << '\n'
+              << "outbox_effect_record_size_bytes="
+              << sizeof(OutboxEffectRecord) << '\n'
               << "decision_record_capacity=" << kMaxDecisionRecords << '\n'
               << "decision_record_hot_size_bytes="
               << sizeof(DecisionRecordHot) << '\n'
@@ -135,6 +145,6 @@ int main() {
               << "trading_state_budget_bytes=" << kTradingStateObjectBudgetBytes
               << '\n'
               << "decision_record_hot_cold_split_status="
-                 "executable_policy_lifecycle_and_resolution_ready\n";
+                 "phase4_authorization_in_memory_ready\n";
     return 0;
 }
