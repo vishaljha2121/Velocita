@@ -276,7 +276,74 @@ final evidence releases the residual.
 This is unaccepted host development evidence. No sanitizer, ARM64, or physical
 Pi gate has been run for it, and no Phase 4 evidence document exists yet.
 
-Exact next RED: B2, terminal tombstone compaction and replicated expiry. The
+B2 contract decisions approved on 2026-09-08:
+
+1. reclamation unit is an order and its reservation as a PAIR, using dense
+   compaction with one index-fixup pass, not a free list. `ClusterOrder`
+   references its reservation by ARRAY INDEX, so compacting reservations
+   independently would silently repoint orders at another order's risk. The
+   existing `static_assert(kMaxRiskReservations == kMaxClusterOrders)` already
+   encodes the 1:1 relationship;
+2. reclaimable requires terminal AND unreferenced. Terminality alone is never
+   sufficient;
+3. the reference check is a bounded graph traversal evaluated across all arenas
+   BEFORE anything is reclaimed, never reclaim-then-check. An order,
+   reservation, or decision may not be reclaimed while any outbox effect in
+   `pending`, `claimed`, `attempted`, `unknown`, or `reconciling` still needs it
+   for `materialize_order_effect`;
+4. the trigger is an implicit sweep on admission, only when the target arena is
+   full, failing closed with the existing typed capacity code if the sweep frees
+   nothing. Deterministic: no clock, no randomness, no allocation, one bounded
+   pass;
+5. the reclaimed count is reported in `ApplyResult` and exposed as a metric, so
+   a sweep is an observable event rather than a silent state-digest change;
+6. the horizon is REFERENCE-based, not time-based. The arena being full is the
+   trigger and "nothing can reference this" is the safety condition, so no time
+   horizon is required. An optional state-version guard exists as a configured
+   parameter defaulting to unrestricted. It is measured in state versions, never
+   seconds, because the reducer may not read a clock. REVISIT IN PHASE 5: a
+   defensible bound cannot be derived today because the gateway retry horizon
+   and the venue reconciliation window are both unknown until the venue
+   simulator exists; and
+7. scope is orders, reservations, decisions, and outbox effects. Request
+   receipts (256) and venue-event receipts (64) keep their existing horizons and
+   are a separate question.
+
+Open question before the RED: whether B2 lands before or after the Phase 7 WAL.
+Compaction removes records from the bounded working set, not from history - but
+Phase 7 does not exist yet, so today there is no durable log behind the working
+set and reclamation genuinely loses data. Audit and analysis are served by the
+WAL plus Phase 10 projections, never by `TradingState`, which is deliberately
+bounded and is not the archive.
+
+B2 is GREEN on the host (23/23 CTest suites). `sweep_resolved_order_groups`
+reclaims fully resolved order groups at both admission points, and
+`TradingState::reclaimed_group_count` records how many have ever been swept.
+
+One defect was found by the B2 REDs and fixed: `apply_authorize_decision`
+borrowed a reference into `decision_cold` before the capacity check, so running
+compaction there left the reference in bounds while naming a different, cleared
+slot, and the order reserved from a zeroed proposal. Silent - no crash, no
+sanitizer report. Both sweep call sites now run before any index is resolved or
+any arena reference is borrowed. Preserve that ordering: adding a lookup above
+the sweep reintroduces the hazard.
+
+Still open in B2 scope: decisions that are never authorized (no-action and
+rejected evaluations) are retained, because they might still be authorized. In a
+live market maker most frames produce no-action, so the decision arena can fill
+with records no order will ever reference. Reclaiming them needs the DecisionId
+conflict-detection horizon settled, which is the Phase 5 revisit above.
+
+Layout after B2: `TradingState` 81,024 bytes (896 headroom), maximum canonical
+snapshot 65,121 bytes (415 headroom).
+
+Exact next RED: B1, canonical configuration commands for risk limits.
+`RiskAccount` declares `max_order_quantity`, `max_reserved_quantity`,
+`max_order_notional`, `max_reserved_notional`, `initial_margin_ppm`, and
+`maximum_fee_ppm`, and no command kind sets any of them; limits are currently
+fixture-injected, so there is no replicated path to configure risk. Needs a new
+command kind, codec coverage, snapshot coverage, a monotonic `RiskVersion`
+advance, and validation. The
 16-slot order/reservation/outbox arrays bound retained lifetime records, not
 reclaimed live orders, so the kernel currently fails closed after 16 lifetime
 orders on a slot. Slot exclusivity makes this reachable sooner, because a

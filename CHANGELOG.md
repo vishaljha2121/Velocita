@@ -381,6 +381,238 @@ old state ceiling by 24 bytes before lifecycle metadata, correctly blocking
 silent integration. Canonical size and Pi/NUC evidence must determine the final
 state/snapshot budget before these candidate bounds are accepted.
 
+### Phase 4 in development - risk reservation, orders, and transactional outbox
+
+Commit `401c861` introduces the first Phase 4 development checkpoint. It is not
+a Phase 4 acceptance claim: no sanitizer, pinned ARM64, or physical Raspberry Pi
+gate has been run against it, and no Phase 4 evidence document exists.
+
+#### Added
+
+- `AuthorizeDecision`, `ObserveFill`, `RequestCancel`, `ObserveOrderEvent`, and
+  `RequestReplace` as explicit kernel command kinds 12 through 16; kernel
+  command/result and snapshot schemas advance to development V4 without
+  reinterpreting accepted V3 bytes.
+- An atomic authorization transition: one accepted authoritative `place_limit`
+  decision creates its risk reservation, cluster order, retained receipt, and
+  pending outbox effect, or creates none.
+- Risk accounts, reservations, cluster orders, and normalized outbox records in
+  `TradingState`, at 112, 64, 40, and 64 bytes respectively.
+- Domain-separated SHA-256 derivation of `ClusterOrderId` and `EffectId`, with
+  zero and collision cases failing closed.
+- Partial-fill accounting that moves signed quantity into position and
+  proportionally reduces margin, fee, and notional holds.
+- `VenueObservation` schema V2 (166-byte `OrderEffect` with explicit
+  `PostOnlyMode`; V1 rejected, not reinterpreted) and observation kind
+  `cancel_reconciled`, whose quantity is the final cumulative filled quantity.
+- `observation_fingerprint`: SHA-256 over an ASCII domain tag plus the canonical
+  observation bytes, verified before receipt lookup or economic deduplication so
+  a copied digest cannot hide changed evidence.
+- Cross-kind venue event identity conflicts: a fill and an order event may not
+  reuse one venue/session/sequence in either direction.
+- `materialize_order_effect`, reconstructing an effect's exact historical
+  outbound bytes from retained outbox, receipt, and decision state.
+- `ApplyCode::replacement_not_supported` and `ApplyCode::order_slot_occupied`.
+- Two tests proving the above two refusals leave economics byte-unchanged and
+  hold across snapshot restore.
+
+#### Removed
+
+- The `max(old, new)` reservation hold in `apply_request_replace` (276 lines).
+  Justification: `max(old, new)` is the correct worst-case hold only if the
+  venue guarantees old and new orders can never both execute. Where they can
+  coexist, true exposure is `old + new` and `max` under-reserves, violating
+  G-011. No venue this system targets documents that exclusivity, and proving it
+  requires the Phase 5 venue simulator, so the assumption could not be settled
+  inside Phase 4.
+- The replace acknowledgement/rejection branch in the venue-observation handler
+  (140 lines). Justification: unreachable once no effect can carry
+  `EffectOperation::replace`.
+- `ClusterOrder::active_filled_baseline`, and its snapshot validation, encode,
+  and decode. Justification: its only readers lived in the deleted branch. It
+  existed to reconstruct an old order's residual after a rejected replacement
+  without retaining a second reservation object; with replacement deferred there
+  is no such reconstruction. `ClusterOrder` falls from 48 to 40 bytes and
+  `kStateSnapshotClusterOrderBytes` from 43 to 35.
+- Five replacement-economics tests. Justification: they asserted behaviour that
+  no longer exists. The outbox materialization test was converted to a
+  submit/cancel effect pair, preserving its actual subject - that every retained
+  effect reconstructs exact historical bytes across lifecycle and snapshot
+  restore. The replacement control-recheck assertion became an unconditional
+  refusal assertion, which is strictly stronger: previously a stale executor
+  generation blocked replacement, now no control state permits it at all.
+
+#### Decided
+
+Direct amend/replace is deferred, and requoting is cancel, final
+reconciliation, then a fresh authoritative decision. G-018 forbids holding old
+and new terms at once while G-011 forbids under-reserving; where a venue can
+leave both orders live the two are unsatisfiable together, so V2 removes the
+concurrency instead of choosing a hold formula. Verification against official
+True Markets documentation on 2026-09-08 found no cancel, amend, or replace
+endpoint published on either the CeFi or DeFi path. Wire kind 16 remains
+allocated so reintroducing replacement needs no renumbering.
+
+Deferring replacement was not sufficient on its own. `ClusterOrderId` derives
+from the varying `DecisionId`, so cancel-then-authorize created a second order
+and a second reservation on one logical slot, reaching the double-reserved state
+directly. `AuthorizeDecision` now enforces at most one unresolved cluster order
+per account, instrument, venue, and logical order slot, keyed on the reservation
+not being released, because retained risk is what G-018 constrains. The RED for
+`test_fresh_submit_cannot_bypass_unresolved_cancelled_slot` observed exactly
+that defect before the fix.
+
+#### Measured
+
+```text
+ClusterOrder                    48 -> 40 bytes
+TradingState                81,144 -> 81,016 bytes (headroom 776 -> 904)
+maximum canonical snapshot  65,241 -> 65,113 bytes (headroom 295 -> 423)
+```
+
+Host Release and all 23 CTest suites pass. The reclaimed snapshot headroom is
+reserved for Phase 4 compaction metadata and must not be spent on new capacity.
+
+#### Added - bounded arena reclamation (B2)
+
+- `sweep_resolved_order_groups`: reclaims fully resolved order groups - order,
+  reservation, its outbox effects, and its decision record - from the bounded
+  16-slot arenas. Without it the kernel stops authorizing after 16 lifetime
+  requote cycles on a slot, which slot exclusivity makes arrive one requote at a
+  time. Deterministic: no clock, no random source, no allocation, fixed passes
+  over arenas of 16.
+- `TradingState::reclaimed_group_count`, a monotonic counter carried in the
+  canonical snapshot after the control prefix. Justification: it gives the
+  dashboard an auditable "how much has ever been swept" signal without growing
+  the 128-byte canonical result or regenerating every existing golden result,
+  and it turns an otherwise silent state-digest change into an observable event.
+- Four tests covering continuous requoting past every arena bound, retention of
+  records an unsettled effect still needs, refusal to reclaim a conflicted
+  order, and preservation of order/reservation index pairing across compaction.
+
+#### Reclamation contract
+
+Reclaimable requires TERMINAL AND RESOLVED, which are different properties.
+`filled`, `cancelled`, and `rejected` resolve their risk. `conflict` is terminal
+but unresolved - internal state and venue evidence disagree, so the exposure is
+of unknown size - and `reconciling` still awaits final venue evidence. Neither is
+reclaimable: dropping one would free capacity against exposure that may still
+exist, and would destroy the retained proposal and effect bytes an operator needs
+to resolve the disagreement.
+
+A group is also retained while any of its effects is unsettled, because
+`materialize_order_effect` rebuilds an effect's exact historical bytes from the
+retained decision and receipt. Reclaiming those inputs would strand a pending
+external effect whose payload can never be reproduced, breaking G-020.
+
+Reservations and orders are reclaimed as a PAIR under dense compaction with one
+index-fixup pass. `ClusterOrder` addresses its reservation by array index, so
+compacting reservations independently would silently repoint an order at another
+order's risk with no compile error and no validation failure.
+
+The horizon is reference-based rather than time-based: the arena being full is
+the trigger and "nothing can reference this" is the safety condition, so no time
+horizon is required. To revisit in Phase 5, when the gateway retry horizon and
+the venue reconciliation window become measurable. One accepted consequence: once
+a decision record is reclaimed, reusing its `DecisionId` from a different request
+with different provenance is no longer detectable as a typed conflict. Exact
+command replay is unaffected, because request-receipt deduplication runs before
+decision lookup.
+
+#### Fixed during implementation
+
+A stale-reference defect found by the B2 REDs. `apply_authorize_decision`
+borrowed `const auto& cold = state.decision_cold[decision_index]` before the
+capacity check; running compaction there left the reference in bounds but naming
+a different, cleared slot, so an order was reserved from a zeroed proposal with
+zero quantity. The failure was silent - no crash and no sanitizer report. Both
+sweep call sites now run before any index is resolved or any arena reference is
+borrowed, which makes the hazard structurally impossible rather than a rule a
+future author must remember.
+
+#### Measured after B2
+
+```text
+TradingState                81,016 -> 81,024 bytes (headroom 904 -> 896)
+maximum canonical snapshot  65,113 -> 65,121 bytes (headroom 423 -> 415)
+```
+
+Empty-state, replay, and generated-model golden digests were regenerated because
+the canonical snapshot gained the counter. Development V4 is unaccepted, both
+replay paths still converge byte-for-byte, and no accepted V3 bytes were
+reinterpreted.
+
+#### Known limitations
+
+Direct replacement, canonical risk-limit configuration commands, terminal
+tombstone compaction and replicated expiry, complete reconciliation and ordered
+venue evidence, position/margin/fee accounting beyond filled quantity and open
+holds, Phase 4 metrics, and a Phase 4 model/property/replay corpus are all
+unimplemented. The 16-slot arrays bound retained lifetime records rather than
+reclaimed live orders, so the kernel fails closed after 16 lifetime orders on a
+slot; slot exclusivity makes that arrive sooner because every requote cycle now
+consumes a fresh slot.
+
+A logical order slot held by an order stuck in `reconciling` has no timeout, no
+escalation, and no operator override. It silently stops quoting and is
+indistinguishable from a quiet market until Phase 4 metrics exist. Recorded as
+G-074a in `docs/V2_END_STATE_GUARANTEE_CHECKLIST.md` and owned by Phases 8
+and 10. It must not be "fixed" with a wall-clock timeout in the reducer: that
+breaks determinism, and releasing a hold without venue evidence of final
+cumulative filled quantity is the G-011 violation reconciliation exists to
+prevent.
+
+### Model and market-data edge - initial contract layer
+
+A passive market-data research and shadow-quoting package is added under
+`model/`. It implements the market-data/feature edge and offline calibration
+service described in ADR 0001, and it adds no C++ and changes no accepted
+contract.
+
+The plug-in point is a byte contract, not an API. `model/` reimplements the
+canonical `DecisionFrame` (schema V2) and `PolicyArtifact` (schema V1) encoders
+in Python and asserts byte-for-byte parity against the exact C++ golden corpora:
+the 181-byte decision frame hashing to
+`9bdc490425ee07a28b4a0fd624d25ea5b167180dc01bae2080d54c0e4c05dcc3` and the
+144-byte policy corpus hashing to
+`7cd115af41936eaaabbf53660d86e54d27c288c09f76f98efc1c2c75dd48ef30`. A schema
+revision on either side fails that test before anything else.
+
+`FeatureSchemaId` is derived from the SHA-256 of the schema's canonical
+description, so editing a feature's unit or index changes the identity and the
+cluster rejects the scope mismatch rather than evaluating an old rule against a
+new meaning.
+
+`simulation/rule_evaluator.py` mirrors `src/v2_rule_evaluator.cpp`: ordered
+first-match evaluation, the whole-set feature-availability pre-pass, visit
+counting, and the section 3.4 control-mode dominance table including the
+`halted` short-circuit. The parity tests pin the written contract; they do not
+execute the C++ evaluator. A differential harness over one generated corpus,
+equivalent to `v2_model_replay_tests.cpp`, remains the required gate before any
+policy authored by this package is activated.
+
+The package is passive structurally rather than by configuration: it implements
+no `OrderEffect` encoder, its HTTP transport refuses any non-GET request and any
+state-changing path before opening a socket, a static AST audit rejects
+wallet/signing imports and order-management definitions across the tree, and the
+config loader refuses credential-shaped keys. 109 host tests pass.
+
+Venue verification on 2026-09-04 confirmed the True Markets API base, ES256 JWT
+auth, `GET /v1/conductor/assets`, `POST /v1/conductor/quotes`, and
+`POST /v1/conductor/orders` (market orders). The documented retail DeFi path is
+RFQ-shaped rather than a resting-quote order book, while maker rebates and FIX
+order management are advertised on the KYC'd CeFi firm path. If that reading
+holds, a passive market-making strategy is not expressible on the venue surface
+this account can reach, and the adapter therefore reports a venue-level NO-GO
+rather than per-pair scorecards.
+
+This is not a collection, data, strategy, or profitability claim. No data has
+been collected, no pair has been studied, no policy rules have been fitted, and
+live collection is blocked pending the confirmations listed in
+[`docs/MUST_CONFIRM_BEFORE_ADAPTER_CONNECT.md`](docs/MUST_CONFIRM_BEFORE_ADAPTER_CONNECT.md).
+Detailed design is in
+[`docs/V2_MODEL_AND_MARKET_DATA_EDGE_DESIGN.md`](docs/V2_MODEL_AND_MARKET_DATA_EDGE_DESIGN.md).
+
 ### Version preservation
 
 - V1 remains recoverable at annotated tag `v1.0.0`.

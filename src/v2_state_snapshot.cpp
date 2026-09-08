@@ -861,6 +861,9 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
     writer.integral(static_cast<std::uint8_t>(state.strategy_mode));
     writer.integral(state.kill_epoch.value());
     writer.integral(state.executor_generation.value());
+    // Appended after the control prefix rather than inserted after
+    // state_version, so the existing header layout stays byte-stable.
+    writer.integral(state.reclaimed_group_count);
 
     writer.integral(static_cast<std::uint16_t>(state.policy_count));
     for (std::size_t index = 0; index < state.policy_count; ++index) {
@@ -1253,6 +1256,7 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
     state.kill_epoch = KillEpoch{reader.integral<std::uint64_t>()};
     state.executor_generation =
         ExecutorGeneration{reader.integral<std::uint64_t>()};
+    state.reclaimed_group_count = reader.integral<std::uint64_t>();
 
     state.policy_count = reader.integral<std::uint16_t>();
     if (state.policy_count > state.policies.size()) return false;

@@ -280,6 +280,37 @@ void append_replacement_decision(
          MoneyMicros::from_atoms(price * quantity * 100)}};
 }
 
+// Drive one decision through the REAL admission path: record the source event,
+// then evaluate the frame. Writing decision records directly would bypass the
+// capacity checks where reclamation lives, so a harness shortcut there would
+// test nothing.
+velocita::v2::ApplyResult evaluate_new_decision(
+    velocita::v2::TradingState& state,
+    velocita::v2::ApplyScratch& scratch,
+    const velocita::v2::DecisionId decision_id,
+    const std::uint64_t source_sequence,
+    const std::uint64_t request) {
+    using namespace velocita::v2;
+    const auto evidence = digest(static_cast<std::uint8_t>(0x40 + (source_sequence % 0x30)));
+    const Command record{{CallerId{7}, RequestSequence{request}, digest(0x21)},
+                         RecordSourceEvent{SourceId{12}, SourceGeneration{1},
+                                           SourceSequence{source_sequence}, evidence}};
+    require(apply(state, record, scratch).code == ApplyCode::applied,
+            "source event admission failed");
+
+    auto value = frame();
+    value.venue_sequence = VenueSequence{source_sequence};
+    value.source_sequence = SourceSequence{source_sequence};
+    value.raw_evidence_digest = evidence;
+    value.position_version = state.risk_accounts[0].position_version;
+    value.risk_version = state.risk_accounts[0].risk_version;
+    const Command evaluate{{CallerId{8}, RequestSequence{request},
+                            digest(static_cast<std::uint8_t>(decision_id.value()))},
+                           EvaluateDecisionFrame{decision_id,
+                                                 EvaluationMode::authoritative, value}};
+    return apply(state, evaluate, scratch);
+}
+
 velocita::v2::Command authorize_decision(const std::uint64_t request,
                                          const std::uint8_t marker,
                                          const velocita::v2::DecisionId decision_id) {
@@ -294,8 +325,15 @@ velocita::v2::Command authorize_decision(const std::uint64_t request,
 void append_submit_decision(velocita::v2::TradingState& state,
                             const velocita::v2::DecisionId decision_id,
                             const std::int64_t price,
-                            const std::int64_t quantity) {
+                            const std::int64_t quantity,
+                            const velocita::v2::LogicalOrderSlot slot =
+                                velocita::v2::LogicalOrderSlot{1}) {
     using namespace velocita::v2;
+    // Bounds-check in the harness itself: without reclamation the decision arena
+    // fills at the same rate as orders, and an unchecked append would write past
+    // the array and make the failure undefined rather than diagnosable.
+    require(state.decision_count < kMaxDecisionRecords,
+            "decision arena is full: retained decisions were not reclaimed");
     const auto index = state.decision_count++;
     auto submit_frame = state.decision_cold[0].frame;
     submit_frame.position_version = state.risk_accounts[0].position_version;
@@ -319,7 +357,7 @@ void append_submit_decision(velocita::v2::TradingState& state,
          submit_frame.account_id,
          submit_frame.instrument_id,
          submit_frame.venue_id,
-         LogicalOrderSlot{1},
+         slot,
          Directive::place_limit,
          Side::buy,
          TimeInForce::good_til_cancel,
@@ -1488,8 +1526,225 @@ void test_fresh_submit_cannot_bypass_unresolved_cancelled_slot() {
             "slot was not reusable after its residual risk was resolved");
 }
 
+// ---------------------------------------------------------------------------
+// B2: bounded arenas must survive continuous requoting.
+//
+// Every completed requote cycle consumes one decision record, one cluster order,
+// one reservation, and one outbox effect. All four arenas hold 16. Without
+// reclamation the kernel therefore stops authorizing after 16 lifetime cycles on
+// a slot, whatever the market is doing - and slot exclusivity guarantees each
+// requote consumes a fresh set.
+//
+// A cycle here is the real one: authorize, fill completely, reservation released,
+// slot free. Nothing is left referenced afterwards, so nothing in these records
+// can be needed again.
+// ---------------------------------------------------------------------------
+void test_completed_requote_cycles_do_not_exhaust_bounded_arenas() {
+    using namespace velocita::v2;
+    auto state = ready_state();
+    ApplyScratch scratch;
+
+    std::uint64_t request = 2;
+    std::uint64_t execution = 3'000;
+    // The Phase 3 fixture already retained DecisionId{20}; drive that one first,
+    // then keep requoting well past every arena bound.
+    for (std::uint64_t cycle = 0; cycle < 20; ++cycle) {
+        const DecisionId decision{20 + cycle};
+        if (cycle > 0) {
+            require(evaluate_new_decision(state, scratch, decision, cycle + 1,
+                                          request++)
+                            .code == ApplyCode::applied,
+                    "requote cycle could not retain a decision: "
+                    "bounded decision arena was not reclaimed");
+        }
+        const auto submit = apply(
+            state, authorize_decision(request++, 0xb0, decision), scratch);
+        require(submit.code == ApplyCode::applied,
+                "requote cycle could not authorize: bounded arena was not reclaimed");
+        const auto fill = apply(
+            state,
+            observe_fill(request++, 0xb1, submit.cluster_order_id(),
+                         submit.effect_id(), ExecutionId{execution++}, 2),
+            scratch);
+        require(fill.code == ApplyCode::applied, "requote cycle fill failed");
+        require(state.reservations[state.reservation_count - 1].state ==
+                    ReservationState::released,
+                "full fill did not release the reservation");
+    }
+
+    std::array<std::byte, kMaxStateSnapshotBytes> snapshot{};
+    require(encode_state_snapshot(state, snapshot).error == StateSnapshotError::none,
+            "state after arena reclamation failed snapshot invariants");
+}
+
+// The ordering hazard. A terminal order whose effect is still unresolved must
+// survive the sweep, because materialize_order_effect needs its decision record
+// and authorization receipt to reproduce the exact bytes already sent.
+// Reclaiming it would leave a pending external effect whose payload can never be
+// reconstructed, breaking G-020 and stranding the gateway.
+void test_sweep_preserves_records_an_unresolved_effect_still_needs() {
+    using namespace velocita::v2;
+    auto state = ready_state();
+    ApplyScratch scratch;
+
+    // The realistic shape: a cancel is in flight when the fill lands. The ORDER
+    // resolves - filled, reservation released, slot free - while its CANCEL
+    // effect is still pending, so the gateway must remain able to reproduce the
+    // exact bytes it sent for that cancel.
+    //
+    // Note a fill cannot leave a SUBMIT effect unknown: being filled is proof the
+    // order existed at the venue, and the kernel correctly resolves it.
+    const auto stranded = apply(state, authorize_decision(2, 0xc0, DecisionId{20}),
+                                scratch);
+    require(stranded.code == ApplyCode::applied, "stranded fixture failed");
+    require(apply(state,
+                  observe_order_event(1, 0xc1,
+                                      VenueObservationKind::order_acknowledged,
+                                      stranded.cluster_order_id(),
+                                      stranded.effect_id(), 1500),
+                  scratch)
+                    .code == ApplyCode::applied,
+            "stranded fixture acknowledgement failed");
+    const auto stranded_cancel = apply(
+        state, request_cancel(1, 0xc2, stranded.cluster_order_id()), scratch);
+    require(stranded_cancel.code == ApplyCode::applied, "stranded cancel failed");
+    require(apply(state,
+                  observe_fill(3, 0xc3, stranded.cluster_order_id(),
+                               stranded.effect_id(), ExecutionId{4'900}, 2),
+                  scratch)
+                    .code == ApplyCode::applied,
+            "stranded fixture fill failed");
+    require(state.orders[0].state == ClusterOrderState::filled &&
+                state.reservations[0].state == ReservationState::released &&
+                state.outbox_effects[1].state == OutboxState::pending,
+            "stranded fixture did not reach a filled order with a pending cancel");
+    const auto stranded_bytes =
+        encode_payload(*materialize_order_effect(state, stranded_cancel.effect_id()))
+            .bytes;
+
+    // The slot is free because the reservation released, so requoting continues
+    // on it and drives every arena past its bound.
+    std::uint64_t request = 4;
+    std::uint64_t execution = 5'000;
+    for (std::uint64_t cycle = 1; cycle < 20; ++cycle) {
+        const DecisionId decision{20 + cycle};
+        require(evaluate_new_decision(state, scratch, decision, cycle + 1, request++)
+                        .code == ApplyCode::applied,
+                "requote around a stranded effect could not retain a decision");
+        const auto submit = apply(
+            state, authorize_decision(request++, 0xc3, decision), scratch);
+        require(submit.code == ApplyCode::applied,
+                "requote around a stranded effect could not authorize");
+        for (std::size_t index = 0; index < state.order_count; ++index) {
+            const auto& order = state.orders[index];
+            require(order.reservation_index < state.reservation_count &&
+                        state.reservations[order.reservation_index].cluster_order_id ==
+                            order.cluster_order_id,
+                    "compaction broke order/reservation pairing mid-cycle");
+        }
+        require(apply(state,
+                      observe_fill(request++, 0xc4, submit.cluster_order_id(),
+                                   submit.effect_id(), ExecutionId{execution++}, 2),
+                      scratch)
+                        .code == ApplyCode::applied,
+                "requote around a stranded effect failed to fill");
+    }
+
+    const auto survivor = materialize_order_effect(state, stranded_cancel.effect_id());
+    require(survivor.has_value() && encode_payload(*survivor).bytes == stranded_bytes,
+            "sweep reclaimed records an unresolved effect still needed");
+}
+
+// conflict is terminal but NOT resolved: internal state and venue evidence
+// disagree, so the exposure is of unknown size and its hold must stand. Nothing
+// sets this state yet - B4 reconciliation will - so it is constructed directly
+// to pin the sweep invariant before its producer exists.
+//
+// A conflicted order keeps its reservation, so its slot stays occupied and no
+// further orders can be created on it. The decision arena is therefore filled
+// instead, which is enough to trigger a sweep and prove it declines to sacrifice
+// the conflict for capacity.
+void test_conflicted_orders_are_never_swept() {
+    using namespace velocita::v2;
+    auto state = ready_state();
+    ApplyScratch scratch;
+
+    const auto conflicted = apply(state, authorize_decision(2, 0xd0, DecisionId{20}),
+                                  scratch);
+    require(conflicted.code == ApplyCode::applied, "conflict fixture failed");
+    state.orders[0].state = ClusterOrderState::conflict;
+    const auto held_quantity = state.risk_accounts[0].reserved_quantity;
+    const auto held_margin = state.risk_accounts[0].reserved_margin;
+    const auto effect_bytes =
+        encode_payload(*materialize_order_effect(state, conflicted.effect_id())).bytes;
+
+    bool refused = false;
+    std::uint64_t request = 3;
+    for (std::uint64_t cycle = 1; cycle < 40 && !refused; ++cycle) {
+        const auto evaluated = evaluate_new_decision(
+            state, scratch, DecisionId{20 + cycle}, cycle + 1, request++);
+        if (evaluated.code == ApplyCode::decision_capacity_exceeded) refused = true;
+    }
+    require(refused,
+            "decision arena never refused, so no sweep was triggered around the conflict");
+
+    require(state.order_count >= 1 &&
+                state.orders[0].cluster_order_id == conflicted.cluster_order_id() &&
+                state.orders[0].state == ClusterOrderState::conflict,
+            "a conflicted order was reclaimed by the sweep");
+    require(state.risk_accounts[0].reserved_quantity == held_quantity &&
+                state.risk_accounts[0].reserved_margin == held_margin,
+            "reclaiming released risk still held by a conflicted order");
+    const auto retained = materialize_order_effect(state, conflicted.effect_id());
+    require(retained.has_value() && encode_payload(*retained).bytes == effect_bytes,
+            "conflicted order lost the bytes an operator needs to resolve it");
+}
+
+// Reservations are addressed by ARRAY INDEX from ClusterOrder. Dense compaction
+// that moves reservations without repairing those indices would silently point
+// an order at another order's risk - no compile error, no validation failure.
+void test_sweep_preserves_reservation_index_pairing() {
+    using namespace velocita::v2;
+    auto state = ready_state();
+    ApplyScratch scratch;
+
+    std::uint64_t request = 2;
+    std::uint64_t execution = 6'000;
+    for (std::uint64_t cycle = 0; cycle < 20; ++cycle) {
+        const DecisionId decision{20 + cycle};
+        if (cycle > 0) {
+            require(evaluate_new_decision(state, scratch, decision, cycle + 1,
+                                          request++)
+                            .code == ApplyCode::applied,
+                    "pairing fixture could not retain a decision");
+        }
+        const auto submit = apply(
+            state, authorize_decision(request++, 0xe0, decision), scratch);
+        require(submit.code == ApplyCode::applied, "pairing fixture authorize failed");
+        require(apply(state,
+                      observe_fill(request++, 0xe1, submit.cluster_order_id(),
+                                   submit.effect_id(), ExecutionId{execution++}, 2),
+                      scratch)
+                        .code == ApplyCode::applied,
+                "pairing fixture fill failed");
+    }
+
+    for (std::size_t index = 0; index < state.order_count; ++index) {
+        const auto& order = state.orders[index];
+        require(order.reservation_index < state.reservation_count,
+                "compaction left an order pointing outside the reservation arena");
+        require(state.reservations[order.reservation_index].cluster_order_id ==
+                    order.cluster_order_id,
+                "compaction repointed an order at another order's reservation");
+    }
+}
+
 int main() {
     try {
+        test_completed_requote_cycles_do_not_exhaust_bounded_arenas();
+        test_sweep_preserves_records_an_unresolved_effect_still_needs();
+        test_conflicted_orders_are_never_swept();
+        test_sweep_preserves_reservation_index_pairing();
         test_request_replace_fails_closed_without_economics();
         test_fresh_submit_cannot_bypass_unresolved_cancelled_slot();
         test_cancel_fill_final_evidence_permutations();

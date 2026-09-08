@@ -275,6 +275,36 @@ Phase 11 strategy/model validation and controlled canary
     invoking it, because releasing a hold without proof of final filled quantity
     is exactly the G-011 violation the reconciliation contract exists to prevent.
 
+  The same escalation path is required for a cluster order in `conflict`, and
+  for the same reason. `conflict` is terminal but NOT resolved: it means internal
+  state and venue evidence disagree and the reducer cannot determine which is
+  true, so the order's risk stays reserved and its slot stays occupied. Unlike
+  `filled`, `cancelled`, and `rejected` - where terminality and resolution
+  coincide - a conflicted order holds exposure of unknown size indefinitely.
+
+  Conflicted records must never be reclaimed by compaction. Reclaiming one frees
+  reserved capacity against exposure that may still exist (a G-011 violation by
+  a second route), discards the retained proposal that records what was actually
+  authorized, and destroys the inputs `materialize_order_effect` needs to
+  reproduce the exact bytes sent to the venue. Those three artifacts - what we
+  intended, what we sent, and how much risk we still carry - are precisely what
+  an operator needs to resolve the disagreement, and with no durable log before
+  Phase 7 there is nothing to recover them from.
+
+  The general rule, preferred over enumerating states: a record may be reclaimed
+  only when its risk is RESOLVED, not merely when its state machine has stopped.
+  Any future terminal-but-unresolved state then inherits the correct behavior
+  without being added to a list.
+
+  Escalation after bounded retries is permitted and is NOT a clock. A saturating
+  replicated attempt counter on the order is deterministic and replays
+  identically, unlike a wall-clock deadline. After a configured number of failed
+  reconciliation attempts the order must be marked as requiring operator
+  attention and surfaced through metrics and alerting. That escalation changes
+  visibility only: it must not release a hold, infer a position, or take any
+  risk-reducing action automatically, because the missing input is venue truth
+  and no amount of retrying manufactures it.
+
   This is deliberately NOT a Phase 4 timeout. A wall-clock eviction in the
   reducer would break determinism, and an automatic release without venue
   evidence would fabricate the very fact reconciliation demands. The resolution

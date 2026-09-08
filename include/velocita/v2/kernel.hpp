@@ -595,6 +595,11 @@ struct TradingState {
     std::array<ClusterOrder, kMaxClusterOrders> orders{};
     std::size_t outbox_effect_count{};
     std::array<OutboxEffectRecord, kMaxOutboxEffects> outbox_effects{};
+    // Monotonic count of fully resolved order groups reclaimed from the bounded
+    // arenas. Deliberately in state rather than in ApplyResult: it gives the
+    // dashboard the "how much has ever been swept" signal without growing the
+    // 128-byte canonical result or regenerating every existing golden result.
+    std::uint64_t reclaimed_group_count{};
 };
 
 // Reserved for bounded temporary indexes/encoding buffers in later reducer

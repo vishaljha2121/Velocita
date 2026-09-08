@@ -878,6 +878,184 @@ template <std::size_t WordCount>
     return value;
 }
 
+// Reclaim fully resolved order groups from the bounded arenas.
+//
+// Every completed requote cycle consumes one decision record, one cluster order,
+// one reservation, and one outbox effect, and all four arenas hold 16. Without
+// reclamation the kernel stops authorizing after 16 lifetime cycles on a slot,
+// which slot exclusivity makes arrive one requote at a time.
+//
+// Three properties make this safe in a deterministic reducer:
+//
+//   * it reads no clock and draws no random value, so the same state and command
+//     always produce the same sweep and the same result bytes;
+//   * it is bounded and allocation-free: a fixed number of passes over arenas of
+//     16, using caller-independent stack masks; and
+//   * it is economically inert. Only reservations already in the released state
+//     are dropped, and a released reservation holds nothing, so no risk-account
+//     total changes. A nonzero hold on a supposedly released reservation is
+//     treated as not reclaimable rather than trusted.
+//
+// Reclaimable requires TERMINAL AND RESOLVED, which are not the same property.
+// `filled`, `cancelled`, and `rejected` resolve their risk. `conflict` is
+// terminal but unresolved - internal state and venue evidence disagree, so the
+// exposure is of unknown size - and `reconciling` still awaits final venue
+// evidence. Neither may be reclaimed: doing so would free capacity against
+// exposure that may still exist, and would destroy the retained proposal and
+// effect bytes an operator needs to resolve the disagreement.
+//
+// An order group is also retained while any of its effects is unsettled, because
+// materialize_order_effect rebuilds an effect's exact historical bytes from the
+// retained decision and receipt. Reclaiming those inputs would strand a pending
+// external effect whose payload can never be reproduced, breaking G-020.
+//
+// Decisions are reclaimed only as part of a resolved group. A decision that was
+// never authorized is retained, because it may still be authorized later.
+// Consequence to revisit with the retention horizon in Phase 5: once a decision
+// record is reclaimed, reusing its DecisionId from a different request with
+// different provenance is no longer detectable as a typed conflict. Exact
+// command replay is unaffected, because request-receipt deduplication runs
+// before decision lookup.
+[[nodiscard]] std::size_t sweep_resolved_order_groups(TradingState& state) noexcept {
+    constexpr std::uint16_t kDroppedIndex = std::numeric_limits<std::uint16_t>::max();
+
+    std::array<bool, kMaxClusterOrders> drop_order{};
+    std::array<bool, kMaxRiskReservations> drop_reservation{};
+    std::array<bool, kMaxOutboxEffects> drop_effect{};
+    std::array<bool, kMaxDecisionRecords> drop_decision{};
+
+    std::size_t reclaimed = 0;
+    for (std::size_t index = 0; index < state.order_count; ++index) {
+        const auto& order = state.orders[index];
+        const bool terminal_and_resolved =
+            order.state == ClusterOrderState::filled ||
+            order.state == ClusterOrderState::cancelled ||
+            order.state == ClusterOrderState::rejected;
+        if (!terminal_and_resolved) continue;
+        if (order.reservation_index >= state.reservation_count) continue;
+
+        const auto& reservation = state.reservations[order.reservation_index];
+        if (reservation.state != ReservationState::released) continue;
+        if (reservation.remaining_quantity.atoms() != 0 ||
+            reservation.remaining_notional.atoms() != 0 ||
+            reservation.margin_hold.atoms() != 0 ||
+            reservation.fee_hold.atoms() != 0) {
+            continue;
+        }
+
+        bool effects_settled = true;
+        for (std::size_t effect = 0; effect < state.outbox_effect_count; ++effect) {
+            const auto& record = state.outbox_effects[effect];
+            if (record.cluster_order_id != order.cluster_order_id) continue;
+            if (record.state != OutboxState::acknowledged &&
+                record.state != OutboxState::rejected) {
+                effects_settled = false;
+                break;
+            }
+        }
+        if (!effects_settled) continue;
+
+        drop_order[index] = true;
+        drop_reservation[order.reservation_index] = true;
+        ++reclaimed;
+    }
+    if (reclaimed == 0) return 0;
+
+    for (std::size_t effect = 0; effect < state.outbox_effect_count; ++effect) {
+        const auto& record = state.outbox_effects[effect];
+        for (std::size_t index = 0; index < state.order_count; ++index) {
+            if (drop_order[index] &&
+                state.orders[index].cluster_order_id == record.cluster_order_id) {
+                drop_effect[effect] = true;
+                break;
+            }
+        }
+    }
+
+    // Candidate decisions come from dropped orders and their dropped effects,
+    // then any decision a surviving order or effect still names is un-marked.
+    for (std::size_t index = 0; index < state.order_count; ++index) {
+        if (!drop_order[index]) continue;
+        for (std::size_t slot = 0; slot < state.decision_count; ++slot) {
+            if (state.decision_hot[slot].decision_id == state.orders[index].decision_id) {
+                drop_decision[slot] = true;
+            }
+        }
+    }
+    for (std::size_t slot = 0; slot < state.decision_count; ++slot) {
+        if (!drop_decision[slot]) continue;
+        const auto decision_id = state.decision_hot[slot].decision_id;
+        for (std::size_t index = 0; index < state.order_count; ++index) {
+            if (!drop_order[index] && state.orders[index].decision_id == decision_id) {
+                drop_decision[slot] = false;
+            }
+        }
+        for (std::size_t effect = 0; effect < state.outbox_effect_count; ++effect) {
+            if (!drop_effect[effect] &&
+                state.outbox_effects[effect].decision_id == decision_id) {
+                drop_decision[slot] = false;
+            }
+        }
+    }
+
+    // Reservations compact first so orders can be repointed in one pass.
+    // ClusterOrder addresses its reservation by ARRAY INDEX, so moving a
+    // reservation without repairing that index would silently point an order at
+    // another order's risk: no compile error, no validation failure.
+    std::array<std::uint16_t, kMaxRiskReservations> reservation_remap{};
+    std::size_t kept_reservations = 0;
+    for (std::size_t index = 0; index < state.reservation_count; ++index) {
+        if (drop_reservation[index]) {
+            reservation_remap[index] = kDroppedIndex;
+            continue;
+        }
+        reservation_remap[index] = static_cast<std::uint16_t>(kept_reservations);
+        state.reservations[kept_reservations++] = state.reservations[index];
+    }
+    for (std::size_t index = kept_reservations; index < state.reservation_count; ++index) {
+        state.reservations[index] = {};
+    }
+    state.reservation_count = kept_reservations;
+
+    std::size_t kept_orders = 0;
+    for (std::size_t index = 0; index < state.order_count; ++index) {
+        if (drop_order[index]) continue;
+        auto order = state.orders[index];
+        order.reservation_index = reservation_remap[order.reservation_index];
+        state.orders[kept_orders++] = order;
+    }
+    for (std::size_t index = kept_orders; index < state.order_count; ++index) {
+        state.orders[index] = {};
+    }
+    state.order_count = kept_orders;
+
+    std::size_t kept_effects = 0;
+    for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
+        if (drop_effect[index]) continue;
+        state.outbox_effects[kept_effects++] = state.outbox_effects[index];
+    }
+    for (std::size_t index = kept_effects; index < state.outbox_effect_count; ++index) {
+        state.outbox_effects[index] = {};
+    }
+    state.outbox_effect_count = kept_effects;
+
+    std::size_t kept_decisions = 0;
+    for (std::size_t index = 0; index < state.decision_count; ++index) {
+        if (drop_decision[index]) continue;
+        state.decision_hot[kept_decisions] = state.decision_hot[index];
+        state.decision_cold[kept_decisions] = state.decision_cold[index];
+        ++kept_decisions;
+    }
+    for (std::size_t index = kept_decisions; index < state.decision_count; ++index) {
+        state.decision_hot[index] = {};
+        state.decision_cold[index] = {};
+    }
+    state.decision_count = kept_decisions;
+
+    state.reclaimed_group_count += reclaimed;
+    return reclaimed;
+}
+
 [[nodiscard]] ApplyResult apply_evaluate_decision(
     TradingState& state,
     const CommandIdentity& identity,
@@ -892,6 +1070,15 @@ template <std::size_t WordCount>
                                    : ContractError::invalid_enum,
                                Directive::no_action, Directive::no_action,
                                no_rule, 0);
+    }
+
+    // Sweep before `existing_index` is resolved, for the same reason as in
+    // apply_authorize_decision: compaction moves records, so any index or
+    // reference taken first would silently name a different slot afterwards.
+    // The decision arena fills first in a requote loop, so this is the admission
+    // point a continuously quoting strategy actually reaches.
+    if (state.decision_count == state.decision_hot.size()) {
+        (void)sweep_resolved_order_groups(state);
     }
 
     const auto existing_index = find_decision_index(state, command.decision_id);
@@ -1080,6 +1267,21 @@ template <std::size_t WordCount>
     if (command.decision_id.value() == 0) {
         return authorization_result(state, ApplyCode::invalid_command,
                                     next_version, command.decision_id);
+    }
+
+    // Sweep BEFORE anything resolves an index or borrows a reference into the
+    // arenas. Compaction moves records, so a decision index or a `const auto&`
+    // taken earlier would still be in bounds afterwards while naming a
+    // different - possibly cleared - slot. That failure is silent: no crash, no
+    // sanitizer report, just an order reserved from a zeroed proposal. Sweeping
+    // first makes the hazard structurally impossible rather than a rule someone
+    // has to remember when adding a lookup.
+    if (state.reservation_count == state.reservations.size() ||
+        state.order_count == state.orders.size() ||
+        state.outbox_effect_count == state.outbox_effects.size()) {
+        // If this frees nothing, the typed capacity refusals below still fire,
+        // so the path stays fail-closed.
+        (void)sweep_resolved_order_groups(state);
     }
 
     // Authorization outcomes outlive mutable order/reservation state. Reuse

@@ -262,7 +262,7 @@ void test_empty_snapshot_has_canonical_layout() {
 
     const std::array expected_prefix{
         std::byte{'V'}, std::byte{'2'}, std::byte{'S'}, std::byte{'T'},
-        std::byte{45}, std::byte{0}, std::byte{0}, std::byte{0},
+        std::byte{53}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{4}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
@@ -276,7 +276,7 @@ void test_empty_snapshot_has_canonical_layout() {
             "returned digest differs from framed digest");
     const auto hash = to_hex(encoded.state_digest);
     require(hash ==
-                "b3e1c1c6d11cfc8fa2fe5029b2838ff7aa075701835bdc63d087dcf8adb8b242",
+                "787226e9176c9eaad636a63e7104391bc55513c6180bfc542f6b0e37e1a9685e",
             "empty state golden digest changed: " + hash);
 }
 
