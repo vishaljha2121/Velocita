@@ -8,15 +8,19 @@ against Git before acting; do not reconstruct the project from chat history.
 ## Current branch and HEAD
 
 - Branch: `v2/phase-4-risk-orders-outbox`
-- Verified development HEAD: `330cfe1b8f63699a22b0ad4ca4ea3de302a0c65e`
-  (same commit as the peeled handoff-start tag; Phase 4 changes remain uncommitted).
+- Verified development HEAD: `04915841d35122e0f8614b2529aed276290a4079`
+  (`Reclaim resolved order groups from bounded arenas`)
+- Phase 4 development commits, in order:
+  - `401c861` Add V2 Phase 4 risk reservation, orders, and outbox
+  - `0491584` Reclaim resolved order groups from bounded arenas
 - Phase 4 base commit: `c25c45fe0d05978b9855685622b39fccc1481b84`
-- Handoff checkpoint: annotated tag `v2-phase4-handoff-start`
+- Handoff checkpoint: annotated tag `v2-phase4-handoff-start` (`330cfe1`),
+  now an ancestor rather than the tip
 - Accepted Phase 3 checkpoint: annotated tag `v2-phase3-accepted`, commit
   `8438d0d`
 
-Run `git rev-parse HEAD` and `git show --no-patch --decorate HEAD`. At handoff,
-the branch tip must be the commit named by `v2-phase4-handoff-start`.
+Run `git rev-parse HEAD` and `git show --no-patch --decorate HEAD` before
+acting. Rollback point for all Phase 4 work is `330cfe1`.
 
 ## Dirty-worktree status
 
@@ -25,13 +29,16 @@ preserved. It belongs to passive model/market-data research and the proposed
 Pi/NUC topology, not to Phase 4:
 
 ```text
- M CHANGELOG.md
  M docs/README.md
 ?? docs/MUST_CONFIRM_BEFORE_ADAPTER_CONNECT.md
 ?? docs/V2_MODEL_AND_MARKET_DATA_EDGE_DESIGN.md
 ?? docs/adr/0002-two-machine-pi-nuc-deployment-topology.md
 ?? model/
 ```
+
+`CHANGELOG.md` is no longer in this list: it now carries the Phase 4 entries and
+is committed. Its earlier model/market-data section rode along and is correct
+where it stands.
 
 Do not delete, reset, stage, or include these paths in Phase 4 commits. Inspect
 `git status --short` at the start and before every commit. Commit Phase 4 files
@@ -105,9 +112,20 @@ Already available as inputs/foundations:
 - canonical kernel command/result/snapshot encoding and deterministic replay;
 - compile-time object/payload ceilings and target cache-line reporting.
 
-Phase 4 authorization, canonical V4 state, fill accounting, and the first
-cancel/unknown lifecycle slice are GREEN on the host. This remains an
-uncommitted development checkpoint, not a completed Phase 4 acceptance claim:
+Phase 4 authorization, canonical V4 state, fill accounting, the cancel/unknown
+lifecycle, slot exclusivity, and bounded arena reclamation are GREEN on the host
+and COMMITTED (`401c861`, `0491584`). This is a development checkpoint, not a
+completed Phase 4 acceptance claim - no sanitizer, ARM64, or physical Pi gate has
+been run and no Phase 4 evidence document exists:
+
+- direct amend/replace is refused with `replacement_not_supported`; wire kind 16
+  stays allocated. Requoting is cancel, final reconciliation, fresh decision;
+- `AuthorizeDecision` enforces at most one unresolved cluster order per account,
+  instrument, venue, and logical order slot, keyed on the reservation not being
+  released;
+- `sweep_resolved_order_groups` reclaims fully resolved order groups at both
+  admission points, and `TradingState::reclaimed_group_count` records how many
+  have ever been swept;
 
 - `AuthorizeDecision` accepts only a retained authoritative Phase 3
   `place_limit` action with an exact valid proposal;
@@ -182,7 +200,10 @@ Not implemented yet:
 - canonical configuration commands for risk limits;
 - final review of the normalized `OrderEffect` boundary produced from retained
   outbox/decision state;
-- terminal tombstone compaction and replicated expiry;
+- reclamation of decisions that were never authorized (no-action and rejected
+  evaluations retain a record no order will ever reference; in a live market
+  maker most frames are no-action, so the decision arena can still fill). Needs
+  the `DecisionId` conflict-detection horizon settled in Phase 5;
 - safe replacement and its lifecycle/economic transitions (DEFERRED by the
   2026-09-08 scope decision; not Phase 4 work);
 - ordered venue evidence across fills/order events and complete reconciliation;
@@ -193,6 +214,25 @@ Not implemented yet:
 
 An existing `OrderEffect` value/codec is not evidence that an effect can yet be
 created authoritatively. It is only a validated boundary contract.
+
+## Standing invariants added during Phase 4
+
+Break either of these and the failure is silent.
+
+1. **Sweep before you borrow.** `sweep_resolved_order_groups` compacts the
+   decision, order, reservation, and outbox arenas. Any index resolved or
+   reference borrowed BEFORE it runs stays in bounds afterwards while naming a
+   different, possibly cleared, slot. Both call sites therefore sweep before any
+   arena lookup, and a new lookup must not be inserted above them. This was a
+   real defect: `apply_authorize_decision` borrowed
+   `const auto& cold = state.decision_cold[decision_index]` before the capacity
+   check, and an order reserved from a zeroed proposal. No crash, no sanitizer
+   report; it surfaced fifteen requote cycles later as `fill_quantity_conflict`.
+2. **Terminal is not resolved.** Reclamation and any future cleanup must test
+   whether a record's RISK is resolved, not whether its state machine stopped.
+   `conflict` and `reconciling` are terminal-or-stuck but hold exposure of
+   unknown size. Prefer that formulation over enumerating states, so future
+   terminal-but-unresolved states inherit the correct behavior.
 
 ## Decisions that must be reviewed before broad implementation
 

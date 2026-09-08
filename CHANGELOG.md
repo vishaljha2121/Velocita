@@ -542,6 +542,16 @@ the canonical snapshot gained the counter. Development V4 is unaccepted, both
 replay paths still converge byte-for-byte, and no accepted V3 bytes were
 reinterpreted.
 
+#### Standing invariants for later phases
+
+Two rules were established here whose violation fails silently. First, the sweep
+compacts arenas, so any index or reference taken before it runs stays in bounds
+while naming a different slot; both call sites sweep before any arena lookup and
+new lookups must not be inserted above them. Second, reclamation tests whether a
+record's risk is RESOLVED rather than whether its state machine has stopped, so
+future terminal-but-unresolved states inherit the correct behaviour without being
+added to a list.
+
 #### Known limitations
 
 Direct replacement, canonical risk-limit configuration commands, terminal
