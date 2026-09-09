@@ -352,6 +352,53 @@ rejected by executor-generation and kill-epoch fencing plus stable `EffectId`
 idempotency rather than by retaining bytes. That hardening is a Phase 8
 acceptance requirement; see G-057a.
 
+### 8.3 V5 snapshot header growth (2026-09-09, for review)
+
+Recorded explicitly because it falsifies a property a previous increment pinned
+on purpose, and a reviewer should be able to judge the trade rather than discover
+it as a broken assertion.
+
+**What changed.** The canonical snapshot header gained
+`settled_incomplete_effect_count`, a u64 appended after the existing control
+prefix. `kStateSnapshotEmptyPayloadBytes` moves 53 -> 61; maximum canonical
+snapshot 65,121 -> 65,129 bytes; resident `TradingState` 81,024 -> 81,032.
+Headroom becomes 407 snapshot bytes and 888 resident bytes, both still inside
+their reviewed ceilings. No per-record layout, capacity, or `OrderEffect` byte
+changed.
+
+**Property invalidated.** A guard asserted that V5's empty payload was
+byte-identical to V4's apart from the schema byte, which documented that B1 added
+no header field. That is now deliberately false. The guard was re-purposed to pin
+the empty-payload SIZE rather than re-hash the payload, because hashing it again
+would only restate the empty-state golden digest immediately above it and would
+not independently detect anything.
+
+**Why a header field rather than the alternatives.**
+
+- A live gauge over effects currently in `incomplete` was rejected: settlement
+  exists precisely so those records become reclaimable, so under the arena
+  pressure that makes the signal interesting the gauge trends to zero while
+  incompletes churn through it. It would read healthiest exactly when it matters
+  most.
+- A volatile, non-replicated counter was rejected because it would not survive
+  snapshot restore and could differ between replicas, which makes it useless as
+  evidence in a phase whose whole discipline is byte-identical replay.
+- Deriving it from the WAL was rejected as circular: Phase 7 does not exist, and
+  the counter's purpose is to be readable now.
+
+**Why the cost is acceptable.** Eight bytes against 415 bytes of snapshot
+headroom. The signal it carries - the gateway is losing effect outcomes even
+though reclamation stays healthy - is not otherwise observable, and its absence
+was the failure mode that wedged the arenas in the first place. The alternative
+to spending these bytes is an operational blind spot on the exact condition Phase
+4 just learned it must watch.
+
+**What a reviewer should check.** That the counter is monotonic and never
+decremented; that it is written and read at the same header position on both
+codec sides; that it participates in the state digest so replay divergence is
+detectable; and that no per-account or per-record structure grew, since those
+multiply by capacity while a header field does not.
+
 ## 9. Outbox and execution contract
 
 Outbox lifecycle:

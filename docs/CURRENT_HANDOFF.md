@@ -157,8 +157,60 @@ unreconstructable, so a late gateway send against a closed order must be stopped
 by executor-generation and kill-epoch fencing plus stable `EffectId` idempotency.
 Phase 4 relies on that and it is a Phase 8 acceptance requirement.
 
-Remaining in the serial-replacement matrix: configuration interaction with
-`conflict` and `submission_unknown` orders, and multi-slot serial requoting.
+### Serial-replacement matrix completed — 2026-09-09 (Claude)
+
+`test_risk_configuration_respects_every_unresolved_order_state` pins the §8.1
+rule against all four unresolved states: `cancel_pending`, `submission_unknown`,
+`reconciling`, and `conflict`. For each it proves a rate change and a bare
+policy-version bump are refused with `risk_reconfiguration_blocked` and mutate
+nothing, a prospective per-order cap change is accepted without revaluing the
+live hold, and an aggregate cap below the retained hold is refused rather than
+clamped. It then proves rates become configurable once the hold is released,
+without disturbing the filled position. `submission_unknown` is driven by a real
+`effect_unknown` observation; `conflict` still has no producer and is constructed
+directly, so the rule is pinned before B4 supplies one.
+
+Why this needed pinning even though the behavior was already correct: the
+implementing predicate keys on the reservation not being released, which is the
+right axis because risk is what the rule protects, but it means the states §8.1
+names are only covered transitively. A future refactor to a lifecycle-state list
+would silently drop whichever state it forgot.
+
+`test_two_sided_slots_requote_independently` is the first fixture in the suite
+that quotes two sides. `two_sided_policy` and `two_sided_executable_policy` add a
+second ordered rule bound to a second template on slot 2 with the sell side, so
+first-match steers a rich feature to the buy template on slot 1 and anything
+above the floor to the sell template on slot 2. Prices are kept small
+deliberately: the shared instrument profile caps price at 100 ticks and per-order
+gross notional at 4,000, and notional is price * quantity * 100.
+
+It proves the two slots never contend, each slot's exclusivity is enforced
+independently, both holds are summed rather than netted, cancelling and
+reconciling one side leaves the other's state, pairing and effect bytes
+untouched, only the reconciled side's risk is released, the freed slot requotes
+while the other still rests, and the whole interleaving survives snapshot
+restore. It also separates the two idempotency paths: a same-identity retry
+returns the original result verbatim through receipt deduplication, while a
+different request re-authorizing a consumed decision returns `already_applied`
+with the retained order and effect identities.
+
+Fixture trap recorded in code: `two_sided_state()` swaps the policy AFTER
+`ready_state()` has already evaluated `DecisionId{20}`, so that decision resolves
+against the single-rule policy and targets slot 1 whatever the two-sided bindings
+say. Callers must evaluate their own decisions after the swap; `evaluate_at_feature`
+exists for that. The first draft of this test authorized the inherited decision
+and both quotes collided on slot 1, which looked exactly like a slot-exclusivity
+defect and was not.
+
+Both tests are acceptance coverage: no kernel defect was found by either.
+Release 23/23; focused host Debug ASan+UBSan 5/5.
+
+The approved serial-replacement acceptance matrix is now complete. Remaining
+Phase 4 work is unchanged: unauthorized-decision retention, finite request and
+venue-event horizons, broader accounting and reconciliation evidence, metrics and
+age/latency evidence, an independent Phase 4 model/property corpus, the complete
+sanitizer gate, pinned ARM64 and physical Pi gates, and a Phase 4 acceptance
+evidence document.
 
 Next bounded work: finish the approved serial-replacement acceptance matrix.
 Start with a cancel/reconcile cycle containing a risk-limit update: reject a

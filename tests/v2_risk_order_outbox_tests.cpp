@@ -176,6 +176,97 @@ velocita::v2::TradingState ready_state(
     return state;
 }
 
+
+// A genuinely two-sided fixture: a bid on logical slot 1 and an ask on slot 2.
+//
+// Slot exclusivity only earns its keep if the two sides never contend, and every
+// other fixture here quotes a single slot, so that has never actually been shown.
+// Two ordered rules select two templates: first-match sends a rich feature to the
+// buy template and anything above the floor to the sell template, which is the
+// simplest arrangement that exercises both slots from one policy without a second
+// policy artifact.
+//
+// Prices are kept small deliberately. The shared instrument profile caps price at
+// 100 ticks and per-order gross notional at 4,000, and notional is price * qty *
+// 100, so a two-lot order above 20 ticks would be refused for reasons unrelated
+// to slotting.
+velocita::v2::PolicyArtifact two_sided_policy() {
+    using namespace velocita::v2;
+    auto value = policy();
+    value.rule_count = 2;
+    value.rules[0] = {0, PredicateOperator::greater_than_or_equal,
+                      FeatureMicros::from_atoms(15), Directive::place_limit};
+    value.rules[1] = {0, PredicateOperator::greater_than,
+                      FeatureMicros::from_atoms(5), Directive::place_limit};
+    value.artifact_digest = digest(0x12);
+    return value;
+}
+
+velocita::v2::ExecutablePolicyArtifact two_sided_executable_policy(
+    const velocita::v2::FeatureSchemaArtifact& schema) {
+    using namespace velocita::v2;
+    auto value = executable_policy(schema);
+    value.policy_artifact_digest = two_sided_policy().artifact_digest;
+    value.template_count = 2;
+    value.templates[0] = action_template();
+    value.templates[1] = action_template();
+    value.templates[1].side = Side::sell;
+    value.templates[1].order_slot = LogicalOrderSlot{2};
+    value.rule_binding_count = 2;
+    value.rule_template_slots[0] = ActionTemplateSlot{1};
+    value.rule_template_slots[1] = ActionTemplateSlot{2};
+    value.artifact_digest = compute_artifact_digest(value).digest;
+    return value;
+}
+
+velocita::v2::TradingState two_sided_state() {
+    using namespace velocita::v2;
+    auto state = ready_state();
+    state.policies[0] = {two_sided_policy(), PolicyLifecycle::active};
+    const auto schema = feature_schema();
+    state.active_executable_policy.executable_policy =
+        two_sided_executable_policy(schema);
+    // ready_state() evaluates DecisionId{20} before this swap, so that decision
+    // was resolved against the single-rule policy and its proposal targets slot 1
+    // regardless of the two-sided bindings. It is deliberately left unused: a
+    // caller must evaluate its own decisions AFTER this function returns, or it
+    // will authorize a proposal that predates the policy it thinks it is testing.
+    return state;
+}
+
+// Evaluate a decision at an explicit feature value, so a caller can steer
+// first-match rule selection and therefore which slot the proposal targets.
+velocita::v2::ApplyResult evaluate_at_feature(
+    velocita::v2::TradingState& state,
+    velocita::v2::ApplyScratch& scratch,
+    const velocita::v2::DecisionId decision_id,
+    const std::int64_t feature_atoms,
+    const std::uint64_t source_sequence,
+    const std::uint64_t request) {
+    using namespace velocita::v2;
+    const auto evidence = digest(static_cast<std::uint8_t>(0x40 + (source_sequence % 0x30)));
+    require(apply(state,
+                  {{CallerId{7}, RequestSequence{request}, digest(0x21)},
+                   RecordSourceEvent{SourceId{12}, SourceGeneration{1},
+                                     SourceSequence{source_sequence}, evidence}},
+                  scratch)
+                    .code == ApplyCode::applied,
+            "source event admission failed");
+    auto value = frame();
+    value.venue_sequence = VenueSequence{source_sequence};
+    value.source_sequence = SourceSequence{source_sequence};
+    value.raw_evidence_digest = evidence;
+    value.features[0] = FeatureMicros::from_atoms(feature_atoms);
+    value.position_version = state.risk_accounts[0].position_version;
+    value.risk_version = state.risk_accounts[0].risk_version;
+    return apply(state,
+                 {{CallerId{8}, RequestSequence{request},
+                   digest(static_cast<std::uint8_t>(decision_id.value()))},
+                  EvaluateDecisionFrame{decision_id, EvaluationMode::authoritative,
+                                        value}},
+                 scratch);
+}
+
 velocita::v2::Command authorize(const std::uint64_t request,
                                 const std::uint8_t marker) {
     using namespace velocita::v2;
@@ -2393,6 +2484,299 @@ void test_reclamation_during_cancellation_preserves_the_recovery_path() {
             "recovered state failed snapshot invariants");
 }
 
+// ---------------------------------------------------------------------------
+// Risk configuration against every unresolved order state.
+//
+// Architecture section 8.1 requires that a rate or policy-version change be
+// refused while ANY unresolved reservation exists for the account and
+// instrument, naming unknown, reconciling and conflict explicitly. The
+// implementing predicate keys on the reservation not being released rather than
+// on the order's lifecycle state, which is the right axis - risk is what the
+// rule protects - but it means the named states are only covered transitively.
+// Pin each one, because a future refactor that switches the predicate to a state
+// list would silently drop whichever state it forgot.
+//
+// The economic reason: re-rating an account with live exposure would revalue a
+// hold taken under different terms. Caps are prospective and may move; rates are
+// retroactive in effect and may not.
+// ---------------------------------------------------------------------------
+void test_risk_configuration_respects_every_unresolved_order_state() {
+    using namespace velocita::v2;
+    ApplyScratch scratch;
+
+    const auto blocked_in = [&](const char* what, auto&& reach_state) {
+        auto state = ready_state();
+        const auto submit = apply(state, authorize(2, 0x91), scratch);
+        require(submit.code == ApplyCode::applied, "unresolved-state fixture failed");
+        reach_state(state, submit);
+        require(state.reservations[0].state != ReservationState::released,
+                std::string{what} + ": fixture did not leave risk unresolved");
+        const auto before = state;
+
+        auto rates = configure_risk(state, 1);
+        auto& body = std::get<ConfigureRiskLimits>(rates.body);
+        body.risk_policy_version = RiskPolicyVersion{7};
+        body.initial_margin_ppm = 500'000;
+        require(apply(state, rates, scratch).code ==
+                    ApplyCode::risk_reconfiguration_blocked,
+                std::string{what} + ": rate change was admitted over unresolved risk");
+        require(state.risk_accounts == before.risk_accounts &&
+                    state.reservations == before.reservations &&
+                    state.orders == before.orders &&
+                    state.outbox_effects == before.outbox_effects,
+                std::string{what} + ": blocked rate change mutated economics");
+
+        // A policy-version bump alone is equally blocked: it is the version that
+        // gates which rates may later apply, so letting it move would strand the
+        // hold on a version its own policy no longer describes.
+        auto policy_only = configure_risk(state, 2);
+        std::get<ConfigureRiskLimits>(policy_only.body).risk_policy_version =
+            RiskPolicyVersion{7};
+        require(apply(state, policy_only, scratch).code ==
+                    ApplyCode::risk_reconfiguration_blocked,
+                std::string{what} + ": policy-version bump was admitted");
+
+        // Prospective per-order caps remain configurable: they bind future
+        // authorizations and never revalue an existing hold.
+        auto caps = configure_risk(state, 3);
+        std::get<ConfigureRiskLimits>(caps.body).max_order_quantity =
+            QuantityLots::from_atoms(3);
+        require(apply(state, caps, scratch).code == ApplyCode::applied,
+                std::string{what} + ": prospective cap change was refused");
+        require(state.risk_accounts[0].reserved_margin ==
+                        before.risk_accounts[0].reserved_margin &&
+                    state.risk_accounts[0].reserved_fee ==
+                        before.risk_accounts[0].reserved_fee &&
+                    state.reservations == before.reservations,
+                std::string{what} + ": cap change rewrote a live hold");
+
+        // An aggregate cap that would not cover the retained hold is refused
+        // rather than clamped, in every unresolved state.
+        auto shrink = configure_risk(state, 4);
+        std::get<ConfigureRiskLimits>(shrink.body).max_reserved_exposure =
+            MoneyMicros::from_atoms(1);
+        require(apply(state, shrink, scratch).code ==
+                    ApplyCode::insufficient_risk_capacity,
+                std::string{what} + ": aggregate cap below the hold was admitted");
+        return state;
+    };
+
+    blocked_in("cancel_pending", [&](TradingState& state, const ApplyResult& submit) {
+        require(apply(state, request_cancel(1, 0x92, submit.cluster_order_id()),
+                      scratch)
+                        .code == ApplyCode::applied,
+                "cancel_pending fixture failed");
+    });
+
+    blocked_in("submission_unknown", [&](TradingState& state,
+                                         const ApplyResult& submit) {
+        require(apply(state,
+                      observe_order_event(1, 0x93,
+                                          VenueObservationKind::effect_unknown,
+                                          submit.cluster_order_id(),
+                                          submit.effect_id(), 4100),
+                      scratch)
+                        .code == ApplyCode::applied &&
+                    state.orders[0].state == ClusterOrderState::submission_unknown,
+                "submission_unknown fixture failed");
+    });
+
+    blocked_in("reconciling", [&](TradingState& state, const ApplyResult& submit) {
+        const auto cancel = apply(
+            state, request_cancel(1, 0x94, submit.cluster_order_id()), scratch);
+        require(cancel.code == ApplyCode::applied &&
+                    apply(state,
+                          observe_order_event(1, 0x95,
+                                              VenueObservationKind::cancelled,
+                                              submit.cluster_order_id(),
+                                              cancel.effect_id(), 4200),
+                          scratch)
+                            .code == ApplyCode::applied &&
+                    state.orders[0].state == ClusterOrderState::reconciling,
+                "reconciling fixture failed");
+    });
+
+    // `conflict` has no producer yet - B4 reconciliation will add one - so it is
+    // constructed directly to pin the rule before its producer exists.
+    blocked_in("conflict", [](TradingState& state, const ApplyResult&) {
+        state.orders[0].state = ClusterOrderState::conflict;
+    });
+
+    // Once the risk is genuinely resolved, rates become configurable again.
+    auto resolved = ready_state();
+    const auto submit = apply(resolved, authorize(2, 0x96), scratch);
+    require(apply(resolved,
+                  observe_fill(1, 0x97, submit.cluster_order_id(),
+                               submit.effect_id(), ExecutionId{4'300}, 2),
+                  scratch)
+                    .code == ApplyCode::applied &&
+                resolved.reservations[0].state == ReservationState::released,
+            "resolution fixture did not release the hold");
+    auto rates = configure_risk(resolved, 1);
+    auto& body = std::get<ConfigureRiskLimits>(rates.body);
+    body.risk_policy_version = RiskPolicyVersion{7};
+    body.initial_margin_ppm = 500'000;
+    require(apply(resolved, rates, scratch).code == ApplyCode::applied,
+            "rate change was refused after the hold was released");
+    require(resolved.risk_accounts[0].position_quantity ==
+                QuantityLots::from_atoms(2),
+            "rate change disturbed the filled position");
+}
+
+// ---------------------------------------------------------------------------
+// Multi-slot serial requoting: a bid and an ask cycling independently.
+//
+// This is what slot exclusivity was actually built for. A single-slot maker
+// stops quoting entirely while a cancel reconciles; a two-sided maker must keep
+// the other side live throughout, because the alternative - one stuck side
+// silencing the book - is the failure that makes the whole G-018 trade
+// unacceptable in practice.
+//
+// The properties that must hold:
+//   * the two slots do not contend: occupying one never blocks the other;
+//   * each slot's exclusivity is enforced independently;
+//   * both orders' risk is held simultaneously and summed, not netted;
+//   * reclamation of one side never disturbs the other's pairing or bytes; and
+//   * the whole interleaving survives snapshot restore.
+// ---------------------------------------------------------------------------
+void test_two_sided_slots_requote_independently() {
+    using namespace velocita::v2;
+    auto state = two_sided_state();
+    ApplyScratch scratch;
+
+    // Both decisions are evaluated AFTER the two-sided policy is installed.
+    // Feature 11 falls below rule 0's threshold of 15, so first-match falls
+    // through to rule 1 and its sell template on slot 2. Feature 16 matches rule
+    // 0 and its buy template on slot 1.
+    require(evaluate_at_feature(state, scratch, DecisionId{30}, 11, 2, 3).code ==
+                ApplyCode::applied,
+            "ask decision was not retained");
+    require(evaluate_at_feature(state, scratch, DecisionId{31}, 16, 3, 4).code ==
+                ApplyCode::applied,
+            "bid decision was not retained");
+
+    const auto ask = apply(state, authorize_decision(5, 0xa1, DecisionId{30}),
+                           scratch);
+    require(ask.code == ApplyCode::applied, "ask slot did not authorize");
+    const auto bid = apply(state, authorize_decision(6, 0xa2, DecisionId{31}),
+                           scratch);
+    require(bid.code == ApplyCode::applied,
+            "bid slot was blocked by the occupied ask slot");
+
+    const auto ask_bytes =
+        encode_payload(*materialize_order_effect(state, ask.effect_id())).bytes;
+    require(bid.cluster_order_id() != ask.cluster_order_id() &&
+                state.order_count == 2 && state.reservation_count == 2,
+            "two-sided quoting did not create two independent orders");
+    // The premise the rest of the test rests on: first-match really did select
+    // two different templates, so these are opposite sides on distinct slots and
+    // not two copies of one quote.
+    {
+        const auto& first = state.decision_cold[1].proposal;
+        const auto& second = state.decision_cold[2].proposal;
+        require(first.order_slot != second.order_slot && first.side != second.side,
+                "the two decisions did not resolve to distinct slots and sides");
+    }
+
+    // Both sides hold risk at once. Exposure sums; it is not netted across
+    // sides, because two resting orders can both fill.
+    require(state.risk_accounts[0].reserved_quantity ==
+                QuantityLots::from_atoms(4),
+            "two-sided reserved quantity was netted instead of summed");
+
+    // Each slot is exclusive on its own. Re-authorizing either side is refused
+    // for slot occupancy, and the other side is untouched.
+    {
+        const auto before = state;
+        // Same request identity: receipt deduplication returns the original
+        // result verbatim, before authorization logic is reached at all.
+        require(apply(state, authorize_decision(5, 0xa1, DecisionId{30}), scratch) ==
+                    ask,
+                "ask request retry did not return its retained result");
+        // Different request identity, same decision: authorization recognises the
+        // decision was already consumed and replays its identities rather than
+        // creating a second order on the slot.
+        const auto replayed =
+            apply(state, authorize_decision(9, 0xa3, DecisionId{30}), scratch);
+        require(replayed.code == ApplyCode::already_applied &&
+                    replayed.cluster_order_id() == ask.cluster_order_id() &&
+                    replayed.effect_id() == ask.effect_id(),
+                "re-authorizing a consumed decision did not replay its identities");
+        require(state.orders == before.orders &&
+                    state.reservations == before.reservations,
+                "retry mutated economics");
+    }
+
+    // Cancel and reconcile the ask while the bid keeps quoting.
+    const auto cancel = apply(
+        state, request_cancel(1, 0xa4, ask.cluster_order_id()), scratch);
+    require(cancel.code == ApplyCode::applied, "ask cancel failed");
+    require(apply(state,
+                  observe_order_event(1, 0xa5, VenueObservationKind::cancelled,
+                                      ask.cluster_order_id(), cancel.effect_id(),
+                                      5100),
+                  scratch)
+                    .code == ApplyCode::applied,
+            "ask cancellation failed");
+
+    // The bid is entirely unaffected by the ask's reconciliation.
+    const auto bid_index = state.orders[0].cluster_order_id == bid.cluster_order_id()
+                               ? 0u : 1u;
+    require(state.orders[bid_index].state == ClusterOrderState::dispatch_authorized &&
+                state.reservations[state.orders[bid_index].reservation_index]
+                        .cluster_order_id == bid.cluster_order_id(),
+            "reconciling the ask disturbed the bid");
+
+    auto proof = observe_order_event(2, 0xa6,
+                                     VenueObservationKind::cancel_reconciled,
+                                     ask.cluster_order_id(), cancel.effect_id(),
+                                     5101);
+    auto& evidence = std::get<ObserveOrderEvent>(proof.body).observation;
+    evidence.venue_order_id = VenueOrderId{70};
+    evidence.quantity = QuantityLots{};
+    proof.identity.payload_digest = observation_fingerprint(evidence);
+    require(apply(state, proof, scratch).code == ApplyCode::applied,
+            "ask reconciliation failed while the bid was live");
+
+    // Only the ask's risk was released; the bid's hold is untouched.
+    require(state.risk_accounts[0].reserved_quantity ==
+                QuantityLots::from_atoms(2),
+            "reconciling one side released the other side's risk");
+    require(materialize_order_effect(state, bid.effect_id()).has_value(),
+            "bid effect became unreconstructable while the ask reconciled");
+    require(encode_payload(*materialize_order_effect(state, ask.effect_id()))
+                    .bytes == ask_bytes,
+            "reconciling the ask changed its historical effect bytes");
+
+    // The ask slot is now free and requotes while the bid still rests.
+    require(evaluate_at_feature(state, scratch, DecisionId{32}, 11, 4, 7).code ==
+                ApplyCode::applied,
+            "ask requote decision was not retained");
+    const auto requote = apply(state, authorize_decision(8, 0xa7, DecisionId{32}),
+                               scratch);
+    require(requote.code == ApplyCode::applied &&
+                requote.cluster_order_id() != ask.cluster_order_id(),
+            "ask slot did not requote after reconciliation");
+    require(state.risk_accounts[0].reserved_quantity ==
+                QuantityLots::from_atoms(4),
+            "two-sided exposure did not return after the ask requoted");
+
+    std::array<std::byte, kMaxStateSnapshotBytes> snapshot{};
+    const auto encoded = encode_state_snapshot(state, snapshot);
+    require(encoded.error == StateSnapshotError::none,
+            "two-sided state failed snapshot invariants");
+    TradingState restored;
+    StateSnapshotScratch snapshot_scratch;
+    require(decode_state_snapshot({snapshot.data(), encoded.bytes_written}, restored,
+                                  snapshot_scratch)
+                    .error == StateSnapshotError::none,
+            "two-sided snapshot did not decode");
+    require(restored.orders == state.orders &&
+                restored.reservations == state.reservations &&
+                restored.risk_accounts == state.risk_accounts,
+            "snapshot restore changed two-sided economics");
+}
+
 int main() {
     try {
         {
@@ -2419,6 +2803,8 @@ int main() {
         test_risk_configuration_admission_and_capacity();
         test_serial_replacement_across_a_risk_limit_update();
         test_reclamation_during_cancellation_preserves_the_recovery_path();
+        test_risk_configuration_respects_every_unresolved_order_state();
+        test_two_sided_slots_requote_independently();
         test_reclaimed_decision_retains_identity_and_authorization();
         test_completed_requote_cycles_do_not_exhaust_bounded_arenas();
         test_sweep_preserves_records_an_unresolved_effect_still_needs();

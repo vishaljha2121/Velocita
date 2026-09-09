@@ -694,6 +694,36 @@ for development V5.
 
 `TradingState` is 81,032 bytes and the maximum canonical snapshot 65,129.
 
+#### Added - serial replacement matrix completed
+
+`test_risk_configuration_respects_every_unresolved_order_state` pins the
+architecture section 8.1 rule against all four unresolved states: cancel_pending,
+submission_unknown, reconciling and conflict. Rate changes and bare
+policy-version bumps are refused and mutate nothing; prospective per-order caps
+are accepted without revaluing the live hold; aggregate caps below the retained
+hold are refused rather than clamped; and rates become configurable once the hold
+is released, without disturbing the filled position. The behaviour was already
+correct, but the implementing predicate keys on the reservation not being
+released rather than on a lifecycle-state list, so the states section 8.1 names
+were only covered transitively and a future refactor could silently drop one.
+
+`test_two_sided_slots_requote_independently` adds the suite's first two-sided
+fixture. A second ordered rule bound to a second template places a sell quote on
+logical slot 2 while a buy rests on slot 1, so first-match selection steers each
+side to its own slot. It proves the slots never contend, exclusivity is enforced
+per slot, holds are summed rather than netted, reconciling one side leaves the
+other's state, pairing and effect bytes untouched, the freed slot requotes while
+the other still rests, and the interleaving survives snapshot restore. It also
+separates same-identity retry, which returns the original result through receipt
+deduplication, from a different request re-authorizing a consumed decision, which
+returns already_applied with the retained identities.
+
+Both are acceptance coverage; neither found a kernel defect. A fixture trap is
+recorded in code: two_sided_state swaps the policy after ready_state has already
+evaluated its fixture decision, so that decision targets slot 1 whatever the
+two-sided bindings say, and authorizing it makes both quotes collide in a way
+that mimics a slot-exclusivity defect.
+
 #### Standing invariants for later phases
 
 Two rules were established here whose violation fails silently. First, the sweep
