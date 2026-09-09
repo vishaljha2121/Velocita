@@ -911,11 +911,10 @@ template <std::size_t WordCount>
 //
 // Decisions are reclaimed only as part of a resolved group. A decision that was
 // never authorized is retained, because it may still be authorized later.
-// Consequence to revisit with the retention horizon in Phase 5: once a decision
-// record is reclaimed, reusing its DecisionId from a different request with
-// different provenance is no longer detectable as a typed conflict. Exact
-// command replay is unaffected, because request-receipt deduplication runs
-// before decision lookup.
+// Applied evaluation and authorization receipts remain identity tombstones after
+// payload reclamation. Admission consults them even for new request IDs. Any
+// future receipt reclamation must preserve that guarantee through its declared
+// retry/conflict horizon; freeing payload storage does not grant identity reuse.
 [[nodiscard]] std::size_t sweep_resolved_order_groups(TradingState& state) noexcept {
     constexpr std::uint16_t kDroppedIndex = std::numeric_limits<std::uint16_t>::max();
 
@@ -1096,6 +1095,25 @@ template <std::size_t WordCount>
                                hot.proposed_directive, hot.effective_directive,
                                hot.matched_rule_index, hot.rules_visited,
                                hot.action_resolution_code);
+    }
+    // Sweeping payload records must not erase logical identity. Applied
+    // evaluation receipts outlive the decision arena and retain its digest and
+    // original outcome. A replay never recreates a swept proposal.
+    for (std::size_t index = 0; index < state.receipt_count; ++index) {
+        const auto& receipt = state.receipts[index];
+        if (receipt.result.code != ApplyCode::applied ||
+            receipt.result.decision_id != command.decision_id ||
+            receipt.result.decision_code == DecisionCode::none) continue;
+        if (receipt.identity.payload_digest != identity.payload_digest) {
+            return decision_result(state, ApplyCode::decision_id_conflict,
+                                   next_version, command, DecisionCode::none,
+                                   ContractError::none, Directive::no_action,
+                                   Directive::no_action, no_rule, 0);
+        }
+        auto replay = receipt.result;
+        replay.code = ApplyCode::already_applied;
+        replay.state_version = next_version;
+        return replay;
     }
     if (state.decision_count == state.decision_hot.size()) {
         return decision_result(state, ApplyCode::decision_capacity_exceeded,
@@ -1284,21 +1302,23 @@ template <std::size_t WordCount>
         (void)sweep_resolved_order_groups(state);
     }
 
-    // Authorization outcomes outlive mutable order/reservation state. Reuse
-    // the original submit receipt even after fills or later replacements.
+    // Authorization receipts outlive reclaimed payload records. Recognize a
+    // submit from its existing domain-separated generation-1 identity, not an
+    // outbox lookup: cancel receipts share the authorization result tag.
     for (std::size_t index = 0; index < state.receipt_count; ++index) {
         const auto& retained = state.receipts[index].result;
         if (retained.code != ApplyCode::applied ||
             retained.detail_kind != ApplyResultDetailKind::authorization ||
             retained.decision_id != command.decision_id) continue;
-        for (std::size_t effect = 0; effect < state.outbox_effect_count; ++effect) {
-            if (state.outbox_effects[effect].effect_id == retained.effect_id() &&
-                state.outbox_effects[effect].operation == EffectOperation::submit) {
-                auto replay = retained;
-                replay.code = ApplyCode::already_applied;
-                replay.state_version = next_version;
-                return replay;
-            }
+        const EffectId submit_id{low_u64(domain_digest(
+            "velocita/order-effect/v1",
+            std::array<std::uint64_t, 3>{retained.cluster_order_id().value(), 1,
+                static_cast<std::uint64_t>(EffectOperation::submit)}))};
+        if (retained.effect_id() == submit_id) {
+            auto replay = retained;
+            replay.code = ApplyCode::already_applied;
+            replay.state_version = next_version;
+            return replay;
         }
     }
 
@@ -1359,8 +1379,8 @@ template <std::size_t WordCount>
     if (risk->initial_margin_ppm == 0 ||
         risk->max_order_quantity.atoms() <= 0 ||
         risk->max_reserved_quantity.atoms() <= 0 ||
-        risk->max_order_notional.atoms() <= 0 ||
-        risk->max_reserved_notional.atoms() <= 0 ||
+        risk->max_order_gross_notional.atoms() <= 0 ||
+        risk->max_reserved_exposure.atoms() <= 0 ||
         risk->reserved_quantity.atoms() < 0 ||
         risk->reserved_margin.atoms() < 0 || risk->reserved_fee.atoms() < 0) {
         return authorization_result(state, ApplyCode::invalid_command,
@@ -1391,8 +1411,8 @@ template <std::size_t WordCount>
     }
     if (cold.proposal.quantity > risk->max_order_quantity ||
         *next_quantity > risk->max_reserved_quantity ||
-        cold.proposal.notional > risk->max_order_notional ||
-        *next_total_exposure > risk->max_reserved_notional) {
+        cold.proposal.notional > risk->max_order_gross_notional ||
+        *next_total_exposure > risk->max_reserved_exposure) {
         return authorization_result(state, ApplyCode::insufficient_risk_capacity,
                                     next_version, command.decision_id);
     }
@@ -2065,6 +2085,71 @@ template <std::size_t WordCount>
                                 next_version, command.replacement_decision_id);
 }
 
+[[nodiscard]] ApplyResult apply_configure_risk_limits(
+    TradingState& state, const ConfigureRiskLimits& command,
+    const std::uint64_t next_version) noexcept {
+    if (!valid_risk_limits(command)) return result(state, ApplyCode::invalid_command, next_version);
+    if (command.expected_kill_epoch != state.kill_epoch ||
+        command.expected_executor_generation != state.executor_generation)
+        return result(state, ApplyCode::stale_control_generation, next_version);
+    auto* existing = find_risk_account(state, command.account_id, command.instrument_id);
+    if ((existing == nullptr && command.expected_risk_version.value() != 0) ||
+        (existing != nullptr && command.expected_risk_version != existing->risk_version))
+        return result(state, ApplyCode::stale_risk_state, next_version);
+    if (existing == nullptr && state.risk_account_count == state.risk_accounts.size())
+        return result(state, ApplyCode::risk_account_capacity_exceeded, next_version);
+    RiskAccount configured;
+    if (existing != nullptr) {
+        if (existing->risk_version.value() == std::numeric_limits<std::uint64_t>::max())
+            return result(state, ApplyCode::risk_version_exhausted, next_version);
+        const bool rates_changed = command.initial_margin_ppm != existing->initial_margin_ppm ||
+                                   command.maximum_fee_ppm != existing->maximum_fee_ppm;
+        if (command.risk_policy_version < existing->risk_policy_version ||
+            (rates_changed && command.risk_policy_version == existing->risk_policy_version))
+            return result(state, ApplyCode::invalid_command, next_version);
+        if (rates_changed || command.risk_policy_version != existing->risk_policy_version) {
+            for (std::size_t i = 0; i < state.order_count; ++i) {
+                const auto& order = state.orders[i];
+                if (order.reservation_index >= state.reservation_count)
+                    return result(state, ApplyCode::risk_reconfiguration_blocked, next_version);
+                if (state.reservations[order.reservation_index].state == ReservationState::released) continue;
+                const auto decision = find_decision_index(state, order.decision_id);
+                if (decision == state.decision_count)
+                    return result(state, ApplyCode::risk_reconfiguration_blocked, next_version);
+                const auto& proposal = state.decision_cold[decision].proposal;
+                if (proposal.account_id == command.account_id && proposal.instrument_id == command.instrument_id)
+                    return result(state, ApplyCode::risk_reconfiguration_blocked, next_version);
+            }
+        }
+        const auto held = existing->reserved_margin.checked_add(existing->reserved_fee);
+        if (!held) return result(state, ApplyCode::risk_arithmetic_overflow, next_version);
+        if (command.max_reserved_quantity < existing->reserved_quantity || command.max_reserved_exposure < *held)
+            return result(state, ApplyCode::insufficient_risk_capacity, next_version);
+        configured = *existing;  // Preserve every economic balance and PositionVersion.
+        configured.risk_version = RiskVersion{existing->risk_version.value() + 1};
+    } else {
+        configured.account_id = command.account_id;
+        configured.instrument_id = command.instrument_id;
+        configured.risk_version = RiskVersion{1};
+        configured.position_version = PositionVersion{1};
+    }
+    configured.risk_policy_version = command.risk_policy_version;
+    configured.max_order_quantity = command.max_order_quantity;
+    configured.max_reserved_quantity = command.max_reserved_quantity;
+    configured.max_order_gross_notional = command.max_order_gross_notional;
+    configured.max_reserved_exposure = command.max_reserved_exposure;
+    configured.initial_margin_ppm = command.initial_margin_ppm;
+    configured.maximum_fee_ppm = command.maximum_fee_ppm;
+    // All possible refusals precede this non-throwing commit. apply() has already
+    // reserved receipt capacity; the single owner publishes the result afterward.
+    if (existing != nullptr) *existing = configured;
+    else state.risk_accounts[state.risk_account_count++] = configured;
+    auto outcome = result(state, ApplyCode::applied, next_version);
+    outcome.detail_kind = ApplyResultDetailKind::risk_configuration;
+    outcome.detail.words = {command.account_id.value(), command.instrument_id.value(), configured.risk_version.value()};
+    return outcome;
+}
+
 [[nodiscard]] ApplyResult apply_new_command(TradingState& state,
                                             const Command& command,
                                             const std::uint64_t next_version) noexcept {
@@ -2116,6 +2201,9 @@ template <std::size_t WordCount>
     }
     if (const auto* body = std::get_if<RequestReplace>(&command.body)) {
         return apply_request_replace(state, *body, next_version);
+    }
+    if (const auto* body = std::get_if<ConfigureRiskLimits>(&command.body)) {
+        return apply_configure_risk_limits(state, *body, next_version);
     }
     return result(state, ApplyCode::invalid_command, next_version);
 }

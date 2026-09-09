@@ -249,6 +249,112 @@ void replace_integrity_digest(std::span<std::byte> frame) {
               frame.begin() + static_cast<std::ptrdiff_t>(digest_offset));
 }
 
+void test_snapshot_rejects_unbacked_risk_aggregates() {
+    using namespace velocita::v2;
+    const auto original = phase4_state();
+    std::array<std::byte, kMaxStateSnapshotBytes> storage{};
+    const auto encoded = encode_state_snapshot(original, storage);
+    require(encoded.error == StateSnapshotError::none, "risk fixture did not encode");
+    // These fixed-width arenas are the snapshot suffix. Locate risk fields from
+    // their canonical layout, not C++ object offsets or a byte-pattern search.
+    const auto risk_offset = encoded.bytes_written - kDigestBytes -
+        (2 + original.outbox_effect_count * kStateSnapshotOutboxEffectBytes) -
+        (2 + original.order_count * kStateSnapshotClusterOrderBytes) -
+        (2 + original.reservation_count * kStateSnapshotRiskReservationBytes) -
+        original.risk_account_count * kStateSnapshotRiskAccountBytes;
+    for (const auto offset : {56U, 80U, 88U}) {
+        auto corrupt = storage;
+        std::fill_n(corrupt.begin() + static_cast<std::ptrdiff_t>(risk_offset + offset),
+                    8, std::byte{});
+        replace_integrity_digest({corrupt.data(), encoded.bytes_written});
+        auto destination = populated_state();
+        std::array<std::byte, kMaxStateSnapshotBytes> before{}, after{};
+        const auto before_encoded = encode_state_snapshot(destination, before);
+        StateSnapshotScratch scratch;
+        require(decode_state_snapshot({corrupt.data(), encoded.bytes_written},
+                    destination, scratch).error == StateSnapshotError::invalid_state,
+                "snapshot accepted an aggregate hold inconsistent with live reservations");
+        const auto after_encoded = encode_state_snapshot(destination, after);
+        require(before_encoded.error == StateSnapshotError::none &&
+                    after_encoded.error == StateSnapshotError::none && before == after,
+                "rejected risk snapshot changed destination state");
+        auto invalid = original;
+        if (offset == 56) invalid.risk_accounts[0].reserved_quantity = {};
+        if (offset == 80) invalid.risk_accounts[0].reserved_margin = {};
+        if (offset == 88) invalid.risk_accounts[0].reserved_fee = {};
+        require(encode_state_snapshot(invalid, after).error == StateSnapshotError::invalid_state,
+                "snapshot encoder accepted an unbacked aggregate hold");
+    }
+}
+
+void test_snapshot_reservation_ownership_and_sum_overflow() {
+    using namespace velocita::v2;
+    auto state = phase4_state();
+    // Two orders and two risk accounts. Keeping the global total correct must
+    // not hide assigning a hold to the wrong account.
+    state.risk_account_count = 2;
+    state.risk_accounts[1] = state.risk_accounts[0];
+    state.risk_accounts[1].account_id = AccountId{6};
+    state.decision_count = 2;
+    state.decision_hot[1] = state.decision_hot[0];
+    state.decision_hot[1].decision_id = DecisionId{22};
+    state.decision_cold[1] = state.decision_cold[0];
+    state.decision_cold[1].decision_id = DecisionId{22};
+    state.decision_cold[1].frame.account_id = AccountId{6};
+    state.decision_cold[1].proposal.decision_id = DecisionId{22};
+    state.decision_cold[1].proposal.account_id = AccountId{6};
+    state.reservation_count = state.order_count = state.outbox_effect_count = 2;
+    state.reservations[1] = state.reservations[0];
+    state.reservations[1].cluster_order_id = ClusterOrderId{32};
+    state.orders[1] = {ClusterOrderId{32}, EffectId{42}, DecisionId{22}, 10, 1,
+                       ClusterOrderState::dispatch_authorized};
+    state.outbox_effects[1] = {EffectId{42}, ClusterOrderId{32}, DecisionId{22},
+                              digest(0x78), 1, OutboxState::pending};
+    std::array<std::byte, kMaxStateSnapshotBytes> bytes{};
+    require(encode_state_snapshot(state, bytes).error == StateSnapshotError::none,
+            "valid multi-account holds failed validation");
+    auto misplaced = state;
+    misplaced.risk_accounts[0].reserved_quantity = QuantityLots::from_atoms(1);
+    misplaced.risk_accounts[1].reserved_quantity = QuantityLots::from_atoms(3);
+    require(encode_state_snapshot(misplaced, bytes).error == StateSnapshotError::invalid_state,
+            "global totals hid incorrect per-account ownership");
+    auto missing = state;
+    missing.risk_accounts[1].account_id = AccountId{7};
+    require(encode_state_snapshot(missing, bytes).error == StateSnapshotError::invalid_state,
+            "snapshot accepted a reservation with no risk account");
+    auto orphan = state;
+    orphan.reservations[orphan.reservation_count++] = {
+        ClusterOrderId{99}, QuantityLots::from_atoms(1), {}, QuantityLots::from_atoms(1),
+        MoneyMicros::from_atoms(1), MoneyMicros::from_atoms(1), {}, ReservationState::held};
+    require(encode_state_snapshot(orphan, bytes).error == StateSnapshotError::invalid_state,
+            "snapshot accepted an orphan reservation");
+    // Put both orders under account zero, then overflow each checked accumulator.
+    state.decision_cold[1].frame.account_id = AccountId{5};
+    state.decision_cold[1].proposal.account_id = AccountId{5};
+    state.risk_accounts[0].reserved_quantity = QuantityLots::from_atoms(4);
+    state.risk_accounts[0].reserved_margin = MoneyMicros::from_atoms(16'800);
+    state.risk_accounts[0].reserved_fee = MoneyMicros::from_atoms(42);
+    state.risk_accounts[1].reserved_quantity = {};
+    state.risk_accounts[1].reserved_margin = {};
+    state.risk_accounts[1].reserved_fee = {};
+    require(encode_state_snapshot(state, bytes).error == StateSnapshotError::none,
+            "valid two-order aggregate failed validation");
+    for (int field = 0; field < 3; ++field) {
+        auto overflow = state;
+        constexpr auto maximum = std::numeric_limits<std::int64_t>::max();
+        if (field == 0) {
+            overflow.reservations[0].original_quantity = QuantityLots::from_atoms(maximum);
+            overflow.reservations[0].remaining_quantity = QuantityLots::from_atoms(maximum);
+        } else if (field == 1) {
+            overflow.reservations[0].margin_hold = MoneyMicros::from_atoms(maximum);
+        } else {
+            overflow.reservations[0].fee_hold = MoneyMicros::from_atoms(maximum);
+        }
+        require(encode_state_snapshot(overflow, bytes).error == StateSnapshotError::invalid_state,
+                "snapshot accepted overflowing reservation totals");
+    }
+}
+
 void test_empty_snapshot_has_canonical_layout() {
     using namespace velocita::v2;
     TradingState state;
@@ -263,7 +369,7 @@ void test_empty_snapshot_has_canonical_layout() {
     const std::array expected_prefix{
         std::byte{'V'}, std::byte{'2'}, std::byte{'S'}, std::byte{'T'},
         std::byte{53}, std::byte{0}, std::byte{0}, std::byte{0},
-        std::byte{4}, std::byte{0},
+        std::byte{5}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{5}};
@@ -276,8 +382,14 @@ void test_empty_snapshot_has_canonical_layout() {
             "returned digest differs from framed digest");
     const auto hash = to_hex(encoded.state_digest);
     require(hash ==
-                "787226e9176c9eaad636a63e7104391bc55513c6180bfc542f6b0e37e1a9685e",
+                "de50590173ab88b59a838939614a15716c5f109ddb423f15f6b1d440c5abadbd",
             "empty state golden digest changed: " + hash);
+    auto legacy = storage;
+    legacy[8] = std::byte{4};
+    require(to_hex(sha256_digest(std::span<const std::byte>{legacy.data() + 8,
+                digest_offset - 8})) ==
+                "787226e9176c9eaad636a63e7104391bc55513c6180bfc542f6b0e37e1a9685e",
+            "V5 migration changed empty snapshot payload bytes");
 }
 
 void test_round_trip_is_canonical_and_excludes_unused_capacity() {
@@ -326,8 +438,8 @@ void test_round_trip_is_canonical_and_excludes_unused_capacity() {
 
 void test_phase4_state_survives_canonical_snapshot() {
     using namespace velocita::v2;
-    require(kStateSnapshotSchemaVersion == 4,
-            "Phase 4 authoritative state did not move snapshots to V4");
+    require(kStateSnapshotSchemaVersion == 5,
+            "risk configuration receipts did not move snapshots to V5");
     const auto original = phase4_state();
     std::array<std::byte, kMaxStateSnapshotBytes> storage{};
     const auto encoded = encode_state_snapshot(original, storage);
@@ -554,9 +666,11 @@ void test_declared_maximum_is_exact_and_encodable() {
         state.risk_accounts[index] = {
             AccountId{index + 5}, InstrumentId{index + 4}, RiskPolicyVersion{6},
             RiskVersion{12}, PositionVersion{11}, QuantityLots::from_atoms(10),
-            QuantityLots::from_atoms(100), QuantityLots::from_atoms(4),
+            QuantityLots::from_atoms(100),
+            QuantityLots::from_atoms(index == 0 ? kMaxClusterOrders : 0),
             MoneyMicros::from_atoms(1'000), MoneyMicros::from_atoms(10'000),
-            MoneyMicros::from_atoms(40), MoneyMicros::from_atoms(4),
+            MoneyMicros::from_atoms(index == 0 ? 10 * kMaxClusterOrders : 0),
+            MoneyMicros::from_atoms(index == 0 ? kMaxClusterOrders : 0),
             100'000, 10'000};
     }
 
@@ -593,6 +707,8 @@ void test_declared_maximum_is_exact_and_encodable() {
 
 int main() {
     try {
+        test_snapshot_rejects_unbacked_risk_aggregates();
+        test_snapshot_reservation_ownership_and_sum_overflow();
         test_empty_snapshot_has_canonical_layout();
         test_round_trip_is_canonical_and_excludes_unused_capacity();
         test_phase4_state_survives_canonical_snapshot();

@@ -174,6 +174,9 @@ private:
         case ApplyCode::order_not_replaceable:
         case ApplyCode::replacement_not_supported:
         case ApplyCode::order_slot_occupied:
+        case ApplyCode::risk_account_capacity_exceeded:
+        case ApplyCode::risk_version_exhausted:
+        case ApplyCode::risk_reconfiguration_blocked:
             return true;
     }
     return false;
@@ -237,7 +240,8 @@ private:
            value == ApplyResultDetailKind::source ||
            value == ApplyResultDetailKind::authorization ||
            value == ApplyResultDetailKind::fill ||
-           value == ApplyResultDetailKind::venue_event;
+           value == ApplyResultDetailKind::venue_event ||
+           value == ApplyResultDetailKind::risk_configuration;
 }
 
 [[nodiscard]] constexpr bool known(const ReservationState value) noexcept {
@@ -269,6 +273,10 @@ private:
     if (!known(value.detail_kind)) return false;
     if (value.detail_kind == ApplyResultDetailKind::none) {
         return value.detail == ApplyResultDetail{};
+    }
+    if (value.detail_kind == ApplyResultDetailKind::risk_configuration) {
+        return value.detail.words[0] != 0 && value.detail.words[1] != 0 &&
+               value.detail.words[2] != 0;
     }
     if (value.detail_kind == ApplyResultDetailKind::source) {
         return value.source_id().value() != 0 &&
@@ -516,9 +524,10 @@ private:
             risk.position_version.value() == 0 ||
             risk.max_order_quantity.atoms() <= 0 ||
             risk.max_reserved_quantity.atoms() <= 0 ||
+            risk.max_order_quantity > risk.max_reserved_quantity ||
             risk.reserved_quantity.atoms() < 0 ||
-            risk.max_order_notional.atoms() <= 0 ||
-            risk.max_reserved_notional.atoms() <= 0 ||
+            risk.max_order_gross_notional.atoms() <= 0 ||
+            risk.max_reserved_exposure.atoms() <= 0 ||
             risk.reserved_margin.atoms() < 0 || risk.reserved_fee.atoms() < 0 ||
             risk.initial_margin_ppm == 0 || risk.initial_margin_ppm > 1'000'000 ||
             risk.maximum_fee_ppm > 1'000'000) {
@@ -561,6 +570,15 @@ private:
         }
     }
 
+    // Each reservation has exactly one owning order. The existing unique IDs
+    // and forward-link checks plus equal counts also rule out orphan holds.
+    if (state.order_count != state.reservation_count) return false;
+    struct ReservedTotals {
+        QuantityLots quantity{};
+        MoneyMicros margin{};
+        MoneyMicros fee{};
+    };
+    std::array<ReservedTotals, kMaxRiskAccounts> totals{};
     for (std::size_t index = 0; index < state.order_count; ++index) {
         const auto& order = state.orders[index];
         if (order.cluster_order_id.value() == 0 || order.effect_id.value() == 0 ||
@@ -571,10 +589,12 @@ private:
                 order.cluster_order_id) {
             return false;
         }
-        bool decision_found = false;
+        const EconomicActionProposal* proposal = nullptr;
         for (std::size_t decision = 0; decision < state.decision_count; ++decision) {
-            decision_found = decision_found ||
-                             state.decision_hot[decision].decision_id == order.decision_id;
+            if (state.decision_hot[decision].decision_id == order.decision_id) {
+                proposal = &state.decision_cold[decision].proposal;
+                break;
+            }
         }
         bool current_effect_found = false;
         for (std::size_t effect = 0; effect < state.outbox_effect_count; ++effect) {
@@ -584,7 +604,21 @@ private:
                                     state.outbox_effects[effect].cluster_order_id ==
                                         order.cluster_order_id);
         }
-        if (!decision_found || !current_effect_found) return false;
+        if (proposal == nullptr || !current_effect_found) return false;
+        // Ownership is immutable proposal identity, not array position or the
+        // currently active policy. Account aggregates must equal their holds.
+        if (validate(*proposal) != ContractError::none) return false;
+        std::size_t account = 0;
+        while (account < state.risk_account_count &&
+               (state.risk_accounts[account].account_id != proposal->account_id ||
+                state.risk_accounts[account].instrument_id != proposal->instrument_id)) ++account;
+        if (account == state.risk_account_count) return false;
+        const auto& reservation = state.reservations[order.reservation_index];
+        const auto quantity = totals[account].quantity.checked_add(reservation.remaining_quantity);
+        const auto margin = totals[account].margin.checked_add(reservation.margin_hold);
+        const auto fee = totals[account].fee.checked_add(reservation.fee_hold);
+        if (!quantity || !margin || !fee) return false;
+        totals[account] = {*quantity, *margin, *fee};
         for (std::size_t prior = 0; prior < index; ++prior) {
             if (state.orders[prior].cluster_order_id == order.cluster_order_id ||
                 state.orders[prior].effect_id == order.effect_id ||
@@ -592,6 +626,12 @@ private:
                 return false;
             }
         }
+    }
+
+    for (std::size_t account = 0; account < state.risk_account_count; ++account) {
+        if (totals[account].quantity != state.risk_accounts[account].reserved_quantity ||
+            totals[account].margin != state.risk_accounts[account].reserved_margin ||
+            totals[account].fee != state.risk_accounts[account].reserved_fee) return false;
     }
 
     for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
@@ -932,8 +972,8 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
         writer.integral(risk.max_order_quantity.atoms());
         writer.integral(risk.max_reserved_quantity.atoms());
         writer.integral(risk.reserved_quantity.atoms());
-        writer.integral(risk.max_order_notional.atoms());
-        writer.integral(risk.max_reserved_notional.atoms());
+        writer.integral(risk.max_order_gross_notional.atoms());
+        writer.integral(risk.max_reserved_exposure.atoms());
         writer.integral(risk.reserved_margin.atoms());
         writer.integral(risk.reserved_fee.atoms());
         writer.integral(risk.initial_margin_ppm);
@@ -1354,9 +1394,9 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
             QuantityLots::from_atoms(reader.integral<std::int64_t>());
         risk.reserved_quantity =
             QuantityLots::from_atoms(reader.integral<std::int64_t>());
-        risk.max_order_notional =
+        risk.max_order_gross_notional =
             MoneyMicros::from_atoms(reader.integral<std::int64_t>());
-        risk.max_reserved_notional =
+        risk.max_reserved_exposure =
             MoneyMicros::from_atoms(reader.integral<std::int64_t>());
         risk.reserved_margin =
             MoneyMicros::from_atoms(reader.integral<std::int64_t>());

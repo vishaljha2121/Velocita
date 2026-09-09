@@ -11,6 +11,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -289,7 +290,8 @@ velocita::v2::ApplyResult evaluate_new_decision(
     velocita::v2::ApplyScratch& scratch,
     const velocita::v2::DecisionId decision_id,
     const std::uint64_t source_sequence,
-    const std::uint64_t request) {
+    const std::uint64_t request,
+    std::vector<velocita::v2::Command>* history = nullptr) {
     using namespace velocita::v2;
     const auto evidence = digest(static_cast<std::uint8_t>(0x40 + (source_sequence % 0x30)));
     const Command record{{CallerId{7}, RequestSequence{request}, digest(0x21)},
@@ -297,6 +299,7 @@ velocita::v2::ApplyResult evaluate_new_decision(
                                            SourceSequence{source_sequence}, evidence}};
     require(apply(state, record, scratch).code == ApplyCode::applied,
             "source event admission failed");
+    if (history != nullptr) history->push_back(record);
 
     auto value = frame();
     value.venue_sequence = VenueSequence{source_sequence};
@@ -308,6 +311,7 @@ velocita::v2::ApplyResult evaluate_new_decision(
                             digest(static_cast<std::uint8_t>(decision_id.value()))},
                            EvaluateDecisionFrame{decision_id,
                                                  EvaluationMode::authoritative, value}};
+    if (history != nullptr) history->push_back(evaluate);
     return apply(state, evaluate, scratch);
 }
 
@@ -447,7 +451,7 @@ void test_risk_and_capacity_fail_before_economic_mutation() {
     ApplyScratch scratch;
 
     auto insufficient = ready_state();
-    insufficient.risk_accounts[0].max_reserved_notional =
+    insufficient.risk_accounts[0].max_reserved_exposure =
         MoneyMicros::from_atoms(2'205);
     const auto insufficient_before = insufficient;
     require(apply(insufficient, authorize(2, 0x61), scratch).code ==
@@ -1536,8 +1540,8 @@ void test_fresh_submit_cannot_bypass_unresolved_cancelled_slot() {
 // requote consumes a fresh set.
 //
 // A cycle here is the real one: authorize, fill completely, reservation released,
-// slot free. Nothing is left referenced afterwards, so nothing in these records
-// can be needed again.
+// slot free. Payload records can be reclaimed, but retained receipts must still
+// prevent a historical decision from authorizing another economic mutation.
 // ---------------------------------------------------------------------------
 void test_completed_requote_cycles_do_not_exhaust_bounded_arenas() {
     using namespace velocita::v2;
@@ -1739,8 +1743,563 @@ void test_sweep_preserves_reservation_index_pairing() {
     }
 }
 
+void test_reclaimed_decision_retains_identity_and_authorization() {
+    using namespace velocita::v2;
+    auto state = ready_state();
+    ApplyScratch scratch;
+    ApplyResult original;
+    std::uint64_t request = 2;
+    for (std::uint64_t cycle = 0; cycle < 20; ++cycle) {
+        const DecisionId decision{20 + cycle};
+        if (cycle != 0) {
+            require(evaluate_new_decision(state, scratch, decision, cycle + 1,
+                                         request++).code == ApplyCode::applied,
+                    "identity fixture evaluation failed");
+        }
+        const auto submit = apply(state, authorize_decision(request++, 0xb0, decision), scratch);
+        require(submit.code == ApplyCode::applied, "identity fixture authorization failed");
+        if (cycle == 0) original = submit;
+        require(apply(state, observe_fill(request++, 0xb1, submit.cluster_order_id(),
+                    submit.effect_id(), ExecutionId{3000 + cycle}, 2), scratch).code ==
+                    ApplyCode::applied, "identity fixture fill failed");
+    }
+    require(state.reclaimed_group_count >= 16 &&
+                !materialize_order_effect(state, original.effect_id()).has_value(),
+            "identity fixture did not reclaim the original effect");
+    std::array<std::byte, kMaxStateSnapshotBytes> bytes{};
+    const auto encoded = encode_state_snapshot(state, bytes);
+    require(encoded.error == StateSnapshotError::none, "identity fixture snapshot failed");
+    TradingState restored;
+    StateSnapshotScratch snapshot_scratch;
+    require(decode_state_snapshot({bytes.data(), encoded.bytes_written}, restored,
+                snapshot_scratch).error == StateSnapshotError::none,
+            "identity fixture restore failed");
+    for (auto* candidate : {&state, &restored}) {
+        const auto risk = candidate->risk_accounts[0];
+        const auto orders = candidate->order_count;
+        const auto decisions = candidate->decision_count;
+        const auto effects = candidate->outbox_effect_count;
+        const auto retry = apply(*candidate, authorize_decision(request, 0xb0, DecisionId{20}), scratch);
+        auto expected = original;
+        expected.code = ApplyCode::already_applied;
+        expected.state_version = retry.state_version;
+        require(retry == expected,
+                "reclaimed decision retry lost its original authorization receipt");
+        const Command same{{CallerId{8}, RequestSequence{request + 1}, digest(0x51)},
+            EvaluateDecisionFrame{DecisionId{20}, EvaluationMode::authoritative, frame()}};
+        require(apply(*candidate, same, scratch).code == ApplyCode::already_applied,
+                "reclaimed decision evaluation was admitted a second time");
+        require(evaluate_new_decision(*candidate, scratch, DecisionId{20}, 21,
+                    request + 2).code == ApplyCode::decision_id_conflict,
+                "reclaimed DecisionId accepted different evaluation content");
+        require(candidate->risk_accounts[0] == risk && candidate->order_count == orders &&
+                    candidate->decision_count == decisions && candidate->outbox_effect_count == effects,
+                "reclaimed identity retry mutated economics or recreated payload records");
+        // A genuinely fresh identity still works and has exactly one materializable effect.
+        require(evaluate_new_decision(*candidate, scratch, DecisionId{40}, 22,
+                    request + 3).code == ApplyCode::applied, "fresh decision was blocked");
+        const auto fresh = apply(*candidate,
+            authorize_decision(request + 4, 0xb2, DecisionId{40}), scratch);
+        require(fresh.code == ApplyCode::applied && fresh.effect_id() != original.effect_id() &&
+                    materialize_order_effect(*candidate, fresh.effect_id()).has_value(),
+                "fresh authorization aliased a reclaimed effect or cannot reconstruct");
+    }
+    const auto fresh_id = state.outbox_effects[state.outbox_effect_count - 1].effect_id;
+    const auto direct_effect = materialize_order_effect(state, fresh_id);
+    const auto restored_effect = materialize_order_effect(restored, fresh_id);
+    require(direct_effect && restored_effect &&
+                encode_payload(*direct_effect).bytes == encode_payload(*restored_effect).bytes,
+            "post-reclamation authorization changed full effect bytes across restore");
+    std::array<std::byte, kMaxStateSnapshotBytes> direct_bytes{}, restored_bytes{};
+    require(encode_state_snapshot(state, direct_bytes).error == StateSnapshotError::none &&
+                encode_state_snapshot(restored, restored_bytes).error == StateSnapshotError::none &&
+                direct_bytes == restored_bytes,
+            "identical post-reclamation commands diverged after snapshot restore");
+}
+
+velocita::v2::Command configure_risk(const velocita::v2::TradingState& state,
+                                    const std::uint64_t request) {
+    using namespace velocita::v2;
+    const auto& risk = state.risk_accounts[0];
+    return {{CallerId{19}, RequestSequence{request}, digest(0xe2)},
+        ConfigureRiskLimits{risk.account_id, risk.instrument_id, risk.risk_policy_version,
+            risk.risk_version, state.kill_epoch, state.executor_generation,
+            risk.max_order_quantity, risk.max_reserved_quantity,
+            risk.max_order_gross_notional, risk.max_reserved_exposure,
+            risk.initial_margin_ppm, risk.maximum_fee_ppm}};
+}
+
+void test_risk_configuration_codec_and_restore() {
+    using namespace velocita::v2;
+    auto state = ready_state();
+    auto command = configure_risk(state, 1);
+    std::array<std::byte, kMaxKernelCommandBytes> bytes{}, again{};
+    const auto encoded = encode_kernel_command(command, bytes);
+    require(encoded.error == KernelCodecError::none && encoded.bytes_written == 180,
+            "risk configuration lacks its canonical 88-byte body");
+    require(bytes[8] == std::byte{5} && bytes[10] == std::byte{17},
+            "risk configuration schema/kind is not V5/17");
+    std::vector<std::byte> expected;
+    for (const std::uint64_t value : {5ULL, 4ULL, 6ULL, 1ULL, 2ULL, 3ULL, 4ULL, 8ULL, 4000ULL, 8000ULL})
+        for (unsigned shift = 0; shift < 64; shift += 8)
+            expected.push_back(static_cast<std::byte>((value >> shift) & 0xff));
+    for (const std::uint32_t value : {1'000'000U, 2'500U})
+        for (unsigned shift = 0; shift < 32; shift += 8)
+            expected.push_back(static_cast<std::byte>((value >> shift) & 0xff));
+    require(std::equal(expected.begin(), expected.end(), bytes.begin() + 60),
+            "risk configuration canonical field order or integer widths changed");
+    Command decoded;
+    KernelCommandCodecScratch codec_scratch;
+    require(decode_kernel_command({bytes.data(), encoded.bytes_written}, decoded, codec_scratch).error ==
+                KernelCodecError::none && encode_kernel_command(decoded, again).error == KernelCodecError::none &&
+                bytes == again, "configuration command round trip changed bytes");
+    for (std::size_t cut = 0; cut < encoded.bytes_written; ++cut) {
+        require(decode_kernel_command({bytes.data(), cut}, decoded, codec_scratch).error !=
+                    KernelCodecError::none, "truncated configuration was accepted");
+    }
+    auto malformed = bytes;
+    std::fill_n(malformed.begin() + 60 + 48, 8, std::byte{}); // zero max_order_quantity
+    const auto integrity = sha256_digest(std::span<const std::byte>{malformed.data() + 8,
+        encoded.bytes_written - kDigestBytes - 8});
+    std::copy(integrity.bytes.begin(), integrity.bytes.end(),
+        malformed.begin() + static_cast<std::ptrdiff_t>(encoded.bytes_written - kDigestBytes));
+    require(decode_kernel_command({malformed.data(), encoded.bytes_written}, decoded, codec_scratch).error ==
+                KernelCodecError::invalid_value && encode_kernel_command(decoded, again).error ==
+                KernelCodecError::none && again == bytes,
+            "malformed configuration passed semantic validation or changed decode destination");
+    auto old = bytes;
+    old[8] = std::byte{4};
+    require(decode_kernel_command({old.data(), encoded.bytes_written}, decoded, codec_scratch).error ==
+                KernelCodecError::unsupported_schema, "V4 command was reinterpreted");
+    ApplyScratch scratch;
+    const auto configured = apply(state, command, scratch);
+    std::array<std::byte, kKernelResultBytes> result_bytes{};
+    ApplyResult restored_result;
+    const auto result_encoded = encode_kernel_result(configured, result_bytes);
+    require(result_encoded.error == KernelCodecError::none &&
+                decode_kernel_result({result_bytes.data(), result_encoded.bytes_written}, restored_result).error ==
+                    KernelCodecError::none && restored_result == configured &&
+                configured.detail_kind == ApplyResultDetailKind::risk_configuration &&
+                configured.detail.words == std::array<std::uint64_t, 3>{5, 4, 2},
+            "configuration result lost scope or resulting version");
+    std::array<std::byte, kMaxStateSnapshotBytes> snapshot{};
+    const auto saved = encode_state_snapshot(state, snapshot);
+    TradingState restored;
+    StateSnapshotScratch snapshot_scratch;
+    require(saved.error == StateSnapshotError::none && snapshot[8] == std::byte{5} &&
+                decode_state_snapshot({snapshot.data(), saved.bytes_written}, restored, snapshot_scratch).error ==
+                    StateSnapshotError::none && apply(restored, command, scratch) == configured &&
+                restored.risk_accounts == state.risk_accounts,
+            "configuration snapshot lost ledger or idempotent outcome");
+    snapshot[8] = std::byte{4};
+    require(decode_state_snapshot({snapshot.data(), saved.bytes_written}, restored, snapshot_scratch).error ==
+                StateSnapshotError::unsupported_schema, "V4 snapshot was reinterpreted as V5");
+}
+
+void test_risk_configuration_updates_preserve_economics() {
+    using namespace velocita::v2;
+    auto state = ready_state();
+    ApplyScratch scratch;
+    const auto submit = apply(state, authorize(2, 0x91), scratch);
+    require(submit.code == ApplyCode::applied, "configuration live-order fixture failed");
+    const auto old = state.risk_accounts[0];
+    const auto effect_before = encode_payload(*materialize_order_effect(state, submit.effect_id())).bytes;
+    auto update = configure_risk(state, 1);
+    auto& body = std::get<ConfigureRiskLimits>(update.body);
+    body.max_order_quantity = QuantityLots::from_atoms(1);
+    body.max_order_gross_notional = MoneyMicros::from_atoms(1);
+    const auto changed = apply(state, update, scratch);
+    require(changed.code == ApplyCode::applied && state.risk_accounts[0].risk_version == RiskVersion{2},
+            "risk configuration update did not advance exactly one version");
+    require(state.risk_accounts[0].max_order_quantity == body.max_order_quantity &&
+                state.risk_accounts[0].max_order_gross_notional == body.max_order_gross_notional,
+            "prospective per-order cap update was ignored");
+    require(state.risk_accounts[0].reserved_quantity == old.reserved_quantity &&
+                state.risk_accounts[0].reserved_margin == old.reserved_margin &&
+                state.risk_accounts[0].reserved_fee == old.reserved_fee &&
+                state.risk_accounts[0].position_quantity == old.position_quantity &&
+                state.risk_accounts[0].position_version == old.position_version &&
+                state.order_count == 1 && state.outbox_effect_count == 1 &&
+                encode_payload(*materialize_order_effect(state, submit.effect_id())).bytes == effect_before,
+            "configuration rewrote balances or a historical effect");
+    require(apply(state, update, scratch) == changed &&
+                state.risk_accounts[0].risk_version == RiskVersion{2},
+            "same-request retry advanced risk version twice");
+    update.identity.request_sequence = RequestSequence{2};
+    require(apply(state, update, scratch).code == ApplyCode::stale_risk_state,
+            "fresh stale update overwrote a newer version");
+    const auto refuse = [&](auto change, const ApplyCode expected) {
+        auto candidate = state;
+        auto command = configure_risk(candidate, 3);
+        change(std::get<ConfigureRiskLimits>(command.body));
+        require(apply(candidate, command, scratch).code == expected &&
+                    candidate.risk_accounts == state.risk_accounts &&
+                    candidate.orders == state.orders && candidate.reservations == state.reservations &&
+                    candidate.outbox_effects == state.outbox_effects,
+                "configuration refusal changed economics or returned the wrong code");
+    };
+    refuse([](auto& c) { c.max_reserved_quantity = QuantityLots::from_atoms(1); }, ApplyCode::insufficient_risk_capacity);
+    refuse([](auto& c) { c.max_reserved_exposure = MoneyMicros::from_atoms(1); }, ApplyCode::insufficient_risk_capacity);
+    refuse([](auto& c) { c.initial_margin_ppm = 500'000; c.risk_policy_version = RiskPolicyVersion{7}; }, ApplyCode::risk_reconfiguration_blocked);
+    refuse([](auto& c) { c.risk_policy_version = RiskPolicyVersion{7}; }, ApplyCode::risk_reconfiguration_blocked);
+    refuse([](auto& c) { c.risk_policy_version = RiskPolicyVersion{5}; }, ApplyCode::invalid_command);
+    refuse([](auto& c) { c.initial_margin_ppm = 500'000; }, ApplyCode::invalid_command);
+    refuse([](auto& c) { c.max_order_quantity = QuantityLots{}; }, ApplyCode::invalid_command);
+    refuse([](auto& c) { c.max_order_quantity = QuantityLots::from_atoms(9); }, ApplyCode::invalid_command);
+    refuse([](auto& c) { c.max_order_gross_notional = MoneyMicros{}; }, ApplyCode::invalid_command);
+    refuse([](auto& c) { c.initial_margin_ppm = 0; }, ApplyCode::invalid_command);
+    refuse([](auto& c) { c.maximum_fee_ppm = 1'000'001; }, ApplyCode::invalid_command);
+    refuse([](auto& c) { c.initial_margin_ppm = 1'000'001; }, ApplyCode::invalid_command);
+    refuse([](auto& c) { c.account_id = AccountId{}; }, ApplyCode::invalid_command);
+    refuse([](auto& c) { c.instrument_id = InstrumentId{}; }, ApplyCode::invalid_command);
+    refuse([](auto& c) { c.expected_risk_version = RiskVersion{99}; }, ApplyCode::stale_risk_state);
+    refuse([](auto& c) { c.expected_kill_epoch = KillEpoch{99}; }, ApplyCode::stale_control_generation);
+    refuse([](auto& c) { c.expected_executor_generation = ExecutorGeneration{99}; }, ApplyCode::stale_control_generation);
+    auto exhausted = state;
+    exhausted.risk_accounts[0].risk_version = RiskVersion{std::numeric_limits<std::uint64_t>::max()};
+    require(apply(exhausted, configure_risk(exhausted, 3), scratch).code == ApplyCode::risk_version_exhausted,
+            "configuration risk version wrapped");
+    auto quiet = ready_state();
+    quiet.risk_accounts[0].position_quantity = QuantityLots::from_atoms(3);
+    auto rates = configure_risk(quiet, 1);
+    auto& new_rates = std::get<ConfigureRiskLimits>(rates.body);
+    new_rates.risk_policy_version = RiskPolicyVersion{7};
+    new_rates.initial_margin_ppm = 100'000;
+    new_rates.maximum_fee_ppm = 0;
+    new_rates.max_reserved_exposure = MoneyMicros::from_atoms(500);
+    require(apply(quiet, rates, scratch).code == ApplyCode::applied &&
+                quiet.risk_accounts[0].position_quantity == QuantityLots::from_atoms(3) &&
+                quiet.risk_accounts[0].initial_margin_ppm == 100'000 &&
+                quiet.risk_accounts[0].maximum_fee_ppm == 0 &&
+                quiet.risk_accounts[0].risk_policy_version == RiskPolicyVersion{7} &&
+                quiet.risk_accounts[0].max_reserved_exposure == MoneyMicros::from_atoms(500),
+            "quiescent rate update failed or overwrote position");
+}
+
+void test_risk_configuration_admission_and_capacity() {
+    using namespace velocita::v2;
+    ApplyScratch scratch;
+    auto state = ready_state();
+    auto configuration = configure_risk(state, 1);
+    auto& c = std::get<ConfigureRiskLimits>(configuration.body);
+    c.expected_risk_version = RiskVersion{};
+    // Configure below full notional, but above margin+fee: notional and holds
+    // are intentionally distinct limits. No fixture-injected risk survives.
+    c.initial_margin_ppm = 100'000;
+    c.max_reserved_exposure = MoneyMicros::from_atoms(300);
+    state.risk_accounts = {};
+    state.risk_account_count = 0;
+    auto replayed = state;
+    std::array<std::byte, kMaxKernelCommandBytes> command_bytes{};
+    std::array<std::byte, kKernelResultBytes> result_bytes{};
+    KernelCommandCodecScratch codec_scratch;
+    const auto encoded = encode_kernel_command(configuration, command_bytes);
+    require(encoded.error == KernelCodecError::none, "configuration admission encode failed");
+    const auto configured = apply(state, configuration, scratch);
+    require(configured.code == ApplyCode::applied &&
+                apply_encoded_kernel_command(replayed, {command_bytes.data(), encoded.bytes_written},
+                    scratch, codec_scratch, result_bytes).apply_result == configured &&
+                replayed.risk_accounts == state.risk_accounts,
+            "encoded configuration replay diverged from direct admission");
+    const auto update = configure_risk(state, 2);
+    require(apply(state, update, scratch).code == ApplyCode::applied &&
+                state.risk_accounts[0].risk_version == RiskVersion{2},
+            "fresh no-op configuration did not advance exactly one version");
+    require(apply(state, authorize(2, 0xf1), scratch).code == ApplyCode::stale_risk_state,
+            "configuration failed to invalidate an old decision's risk version");
+    require(evaluate_new_decision(state, scratch, DecisionId{21}, 2, 3).code == ApplyCode::applied &&
+                apply(state, authorize_decision(4, 0xf2, DecisionId{21}), scratch).code == ApplyCode::applied,
+            "fresh authorization did not use command-configured risk limits");
+    require(state.risk_accounts[0].reserved_margin.atoms() > 0 &&
+                state.risk_accounts[0].reserved_margin.atoms() <
+                    state.reservations[0].remaining_notional.atoms(),
+            "hold budget was treated as gross notional");
+    auto duplicate = configuration;
+    duplicate.identity.payload_digest = digest(0xff);
+    require(apply(state, duplicate, scratch).code == ApplyCode::duplicate_conflict,
+            "configuration request accepted a conflicting payload digest");
+    for (std::uint64_t i = 1; i < kMaxRiskAccounts; ++i) {
+        auto create = configuration;
+        create.identity.request_sequence = RequestSequence{10 + i};
+        std::get<ConfigureRiskLimits>(create.body).account_id = AccountId{5 + i};
+        require(apply(state, create, scratch).code == ApplyCode::applied,
+                "risk account capacity filled prematurely");
+    }
+    auto full = configuration;
+    full.identity.request_sequence = RequestSequence{20};
+    std::get<ConfigureRiskLimits>(full.body).account_id = AccountId{99};
+    const auto accounts = state.risk_accounts;
+    require(apply(state, full, scratch).code == ApplyCode::risk_account_capacity_exceeded &&
+                state.risk_accounts == accounts, "full risk arena mutated on refused creation");
+    auto receipts_full = state;
+    receipts_full.receipt_count = kMaxRequestReceipts;
+    require(apply(receipts_full, configure_risk(receipts_full, 21), scratch).code ==
+                ApplyCode::receipt_capacity_exceeded && receipts_full.risk_accounts == accounts,
+            "configuration committed without room for its receipt");
+}
+
+// ---------------------------------------------------------------------------
+// Serial replacement acceptance: the full requote lifecycle with a risk-limit
+// update landing inside the cancel/reconcile window.
+//
+// Refusing native amend does not by itself satisfy G-018. G-018 constrains the
+// amend/cancel-replace TRANSITION, and with native amend disabled the serial
+// cancel -> reconcile -> fresh-authorize path IS that transition. It therefore
+// has to be proven, not assumed, and proven while replicated risk configuration
+// is changing underneath it - the case an operator actually creates when
+// retuning limits on a live book.
+//
+// The matrix, in order:
+//   1. a rate/policy change is refused while the cancelled order still holds risk;
+//   2. an aggregate cap that would not cover the retained hold is refused;
+//   3. a prospective per-order cap change is accepted and rewrites no balance,
+//      no historical effect, and no position version;
+//   4. a successor evaluated before the bump is refused as stale, not admitted
+//      and not silently re-based onto the new version;
+//   5. only final reconciliation releases the residual and frees the slot;
+//   6. a freshly evaluated successor authorizes against the new configuration; and
+//   7. every historical and current effect still reconstructs byte-for-byte
+//      across snapshot restore and canonical command replay.
+// ---------------------------------------------------------------------------
+void test_serial_replacement_across_a_risk_limit_update() {
+    using namespace velocita::v2;
+    auto state = ready_state();
+    ApplyScratch scratch;
+
+    // Canonical replay leg. EVERY command that reaches apply is recorded,
+    // including refused ones: an admitted refusal retains a receipt and advances
+    // the global StateVersion, and `committed_directive_index` in an effect's
+    // canonical bytes is exactly that StateVersion at authorization time. A
+    // replay that skips refusals therefore reproduces different effect bytes,
+    // which is a fidelity bug in the replay rather than in the kernel.
+    //
+    // Snapshot restore proves the state can be rebuilt; replay proves it can be
+    // re-derived from the commands that produced it, which is the stronger
+    // property and the one the outbox depends on.
+    std::vector<Command> history;
+    const auto admitted = [&](const Command& command) {
+        const auto outcome = apply(state, command, scratch);
+        history.push_back(command);
+        return outcome;
+    };
+
+    const auto submit = admitted(authorize(2, 0x71));
+    require(submit.code == ApplyCode::applied, "serial replacement submit failed");
+    const auto submit_bytes =
+        encode_payload(*materialize_order_effect(state, submit.effect_id())).bytes;
+
+    // A successor evaluated NOW binds RiskVersion 1. The configuration update
+    // below makes it stale, and it must never be quietly re-based.
+    require(evaluate_new_decision(state, scratch, DecisionId{21}, 2, 3, &history)
+                    .code == ApplyCode::applied,
+            "successor decision was not retained");
+
+    const auto cancel = admitted(request_cancel(1, 0x72, submit.cluster_order_id()));
+    require(cancel.code == ApplyCode::applied &&
+                state.orders[0].state == ClusterOrderState::cancel_pending &&
+                state.reservations[0].state != ReservationState::released,
+            "cancel did not leave a risk-bearing cancel-pending order");
+    const auto cancel_bytes =
+        encode_payload(*materialize_order_effect(state, cancel.effect_id())).bytes;
+
+    const auto economics_unchanged = [&](const TradingState& before,
+                                         const TradingState& after,
+                                         const std::string& what) {
+        require(before.risk_accounts == after.risk_accounts &&
+                    before.reservations == after.reservations &&
+                    before.orders == after.orders &&
+                    before.outbox_effects == after.outbox_effects,
+                what);
+    };
+
+    // 1. Rates and policy version cannot move while the reservation is unresolved.
+    //    A cancel-pending order still owns real exposure, and re-rating it would
+    //    revalue a hold taken under different terms.
+    {
+        const auto before = state;
+        auto rates = configure_risk(state, 1);
+        auto& body = std::get<ConfigureRiskLimits>(rates.body);
+        body.risk_policy_version = RiskPolicyVersion{7};
+        body.initial_margin_ppm = 500'000;
+        require(admitted(rates).code == ApplyCode::risk_reconfiguration_blocked,
+                "rate change was admitted while a cancelled order still held risk");
+        economics_unchanged(before, state, "blocked rate change mutated economics");
+    }
+
+    // 2. An aggregate cap below the retained hold is refused, not clamped.
+    {
+        const auto before = state;
+        auto tighten = configure_risk(state, 2);
+        std::get<ConfigureRiskLimits>(tighten.body).max_reserved_exposure =
+            MoneyMicros::from_atoms(1);
+        require(admitted(tighten).code == ApplyCode::insufficient_risk_capacity,
+                "aggregate cap below the retained hold was admitted");
+        economics_unchanged(before, state, "refused cap change mutated economics");
+    }
+
+    // 3. A prospective per-order cap change is accepted mid-cancellation.
+    const auto before_update = state;
+    auto update = configure_risk(state, 3);
+    std::get<ConfigureRiskLimits>(update.body).max_order_quantity =
+        QuantityLots::from_atoms(3);
+    require(admitted(update).code == ApplyCode::applied &&
+                state.risk_accounts[0].risk_version == RiskVersion{2},
+            "prospective cap change during cancellation was refused");
+    require(state.risk_accounts[0].reserved_quantity ==
+                    before_update.risk_accounts[0].reserved_quantity &&
+                state.risk_accounts[0].reserved_margin ==
+                    before_update.risk_accounts[0].reserved_margin &&
+                state.risk_accounts[0].reserved_fee ==
+                    before_update.risk_accounts[0].reserved_fee &&
+                state.risk_accounts[0].position_version ==
+                    before_update.risk_accounts[0].position_version &&
+                state.reservations == before_update.reservations &&
+                state.orders == before_update.orders,
+            "configuration rewrote balances or order state mid-cancellation");
+    require(encode_payload(*materialize_order_effect(state, submit.effect_id()))
+                        .bytes == submit_bytes &&
+                encode_payload(*materialize_order_effect(state, cancel.effect_id()))
+                        .bytes == cancel_bytes,
+            "configuration rewrote a historical effect's bytes");
+
+    // 4. The successor bound RiskVersion 1 and must be refused as stale. This
+    //    precedes the slot check on purpose: the specific economic reason is
+    //    more useful than "the slot is busy", and the precedence is fixed so the
+    //    reported reason is stable on every replica.
+    {
+        const auto before = state;
+        require(admitted(authorize_decision(4, 0x73, DecisionId{21})).code ==
+                    ApplyCode::stale_risk_state,
+                "a successor bound to the old risk version was not refused");
+        economics_unchanged(before, state, "stale successor mutated economics");
+    }
+
+    // 5. Only final reconciliation releases the residual.
+    require(admitted(observe_order_event(1, 0x74, VenueObservationKind::cancelled,
+                                         submit.cluster_order_id(),
+                                         cancel.effect_id(), 2100))
+                    .code == ApplyCode::applied &&
+                state.orders[0].state == ClusterOrderState::reconciling &&
+                state.reservations[0].state != ReservationState::released,
+            "venue cancellation released risk before final evidence");
+    {
+        const auto before = state;
+        require(admitted(authorize_decision(5, 0x75, DecisionId{21})).code ==
+                    ApplyCode::stale_risk_state,
+                "successor was admitted while reconciliation was outstanding");
+        economics_unchanged(before, state, "successor attempt mutated economics");
+    }
+
+    auto proof = observe_order_event(2, 0x76,
+                                     VenueObservationKind::cancel_reconciled,
+                                     submit.cluster_order_id(), cancel.effect_id(),
+                                     2101);
+    auto& evidence = std::get<ObserveOrderEvent>(proof.body).observation;
+    evidence.venue_order_id = VenueOrderId{70};
+    evidence.quantity = state.reservations[0].filled_quantity;
+    proof.identity.payload_digest = observation_fingerprint(evidence);
+    require(admitted(proof).code == ApplyCode::applied &&
+                state.reservations[0].state == ReservationState::released,
+            "final reconciliation did not release the residual hold");
+
+    // 6. A freshly evaluated successor authorizes against the new configuration.
+    require(evaluate_new_decision(state, scratch, DecisionId{22}, 3, 6, &history)
+                    .code == ApplyCode::applied,
+            "fresh successor decision was not retained");
+    const auto successor = admitted(authorize_decision(7, 0x77, DecisionId{22}));
+    require(successor.code == ApplyCode::applied &&
+                successor.cluster_order_id() != submit.cluster_order_id(),
+            "fresh successor did not authorize after reconciliation");
+    const auto successor_bytes =
+        encode_payload(*materialize_order_effect(state, successor.effect_id())).bytes;
+
+    // 7. Every effect in the lifecycle survives snapshot restore byte-for-byte.
+    std::array<std::byte, kMaxStateSnapshotBytes> snapshot{};
+    const auto encoded = encode_state_snapshot(state, snapshot);
+    require(encoded.error == StateSnapshotError::none,
+            "serial replacement state failed snapshot invariants");
+    TradingState restored;
+    StateSnapshotScratch snapshot_scratch;
+    require(decode_state_snapshot({snapshot.data(), encoded.bytes_written}, restored,
+                                  snapshot_scratch)
+                    .error == StateSnapshotError::none,
+            "serial replacement snapshot did not decode");
+    require(encode_payload(*materialize_order_effect(restored, submit.effect_id()))
+                        .bytes == submit_bytes &&
+                encode_payload(*materialize_order_effect(restored, cancel.effect_id()))
+                        .bytes == cancel_bytes &&
+                encode_payload(*materialize_order_effect(restored,
+                                                         successor.effect_id()))
+                        .bytes == successor_bytes,
+            "snapshot restore changed effect bytes across the serial lifecycle");
+    require(restored.risk_accounts == state.risk_accounts &&
+                restored.reservations == state.reservations &&
+                restored.orders == state.orders,
+            "snapshot restore changed serial-lifecycle economics");
+
+    // 8. Canonical replay. Re-drive the recorded lifecycle through the encoded
+    //    command path from an identical starting state, then require the same
+    //    historical effect bytes AND the same canonical snapshot.
+    auto replayed = ready_state();
+    ApplyScratch replay_scratch;
+    KernelCommandCodecScratch codec_scratch;
+    std::array<std::byte, kMaxKernelCommandBytes> command_bytes{};
+    std::array<std::byte, kKernelResultBytes> result_bytes{};
+    for (const auto& command : history) {
+        const auto encoded_command = encode_kernel_command(command, command_bytes);
+        require(encoded_command.error == KernelCodecError::none,
+                "serial lifecycle command did not encode canonically");
+        require(apply_encoded_kernel_command(
+                    replayed, {command_bytes.data(), encoded_command.bytes_written},
+                    replay_scratch, codec_scratch, result_bytes)
+                        .error == ReplayError::none,
+                "serial lifecycle command failed canonical replay");
+    }
+    require(encode_payload(*materialize_order_effect(replayed, submit.effect_id()))
+                    .bytes == submit_bytes &&
+                encode_payload(*materialize_order_effect(replayed, cancel.effect_id()))
+                        .bytes == cancel_bytes &&
+                encode_payload(*materialize_order_effect(replayed,
+                                                         successor.effect_id()))
+                        .bytes == successor_bytes,
+            "canonical replay changed historical effect bytes");
+    std::array<std::byte, kMaxStateSnapshotBytes> replay_snapshot{};
+    const auto replay_encoded = encode_state_snapshot(replayed, replay_snapshot);
+    require(replay_encoded.error == StateSnapshotError::none &&
+                replay_encoded.bytes_written == encoded.bytes_written &&
+                std::equal(replay_snapshot.begin(),
+                           replay_snapshot.begin() +
+                               static_cast<std::ptrdiff_t>(replay_encoded.bytes_written),
+                           snapshot.begin()),
+            "canonical replay did not converge to the direct snapshot");
+}
+
 int main() {
     try {
+        {
+            using namespace velocita::v2;
+            TradingState state;
+            ApplyScratch scratch;
+            const Command configure{{CallerId{1}, RequestSequence{1}, digest(0xe1)},
+                ConfigureRiskLimits{AccountId{5}, InstrumentId{4}, RiskPolicyVersion{6},
+                    RiskVersion{}, KillEpoch{}, ExecutorGeneration{},
+                    QuantityLots::from_atoms(4), QuantityLots::from_atoms(8),
+                    MoneyMicros::from_atoms(4'000), MoneyMicros::from_atoms(8'000),
+                    1'000'000, 2'500}};
+            const auto configured = apply(state, configure, scratch);
+            require(configured.code == ApplyCode::applied && state.risk_account_count == 1 &&
+                        state.risk_accounts[0].risk_version == RiskVersion{1} &&
+                        state.risk_accounts[0].position_version == PositionVersion{1} &&
+                        state.risk_accounts[0].reserved_quantity == QuantityLots{} &&
+                        state.receipt_count == 1 && state.order_count == 0 &&
+                        state.reservation_count == 0 && state.outbox_effect_count == 0,
+                    "replicated risk configuration did not atomically initialize an empty ledger");
+        }
+        test_risk_configuration_updates_preserve_economics();
+        test_risk_configuration_codec_and_restore();
+        test_risk_configuration_admission_and_capacity();
+        test_serial_replacement_across_a_risk_limit_update();
+        test_reclaimed_decision_retains_identity_and_authorization();
         test_completed_requote_cycles_do_not_exhaust_bounded_arenas();
         test_sweep_preserves_records_an_unresolved_effect_still_needs();
         test_conflicted_orders_are_never_swept();

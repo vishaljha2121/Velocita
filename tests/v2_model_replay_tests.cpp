@@ -981,9 +981,10 @@ ApplyResult model_new_command(ModelState& state,
                                  std::is_same_v<T, ObserveFill> ||
                                  std::is_same_v<T, RequestCancel> ||
                                  std::is_same_v<T, ObserveOrderEvent> ||
-                                 std::is_same_v<T, RequestReplace>) {
-                // Phase 4 alternatives are generated and modeled by the
-                // dedicated Phase 4 corpus, not this accepted Phase 1-3 model.
+                                 std::is_same_v<T, RequestReplace> ||
+                                 std::is_same_v<T, ConfigureRiskLimits>) {
+                // This generator covers Phase 1-3 only. A complete independent
+                // Phase 4 model remains an acceptance requirement.
                 return model_result(state, ApplyCode::invalid_command, version);
             }
         },
@@ -1226,7 +1227,7 @@ void test_generated_model_and_snapshot_replay() {
     require(coverage.count(DecisionCode::invalid_frame) != 0,
             "generated corpus never exercised invalid-frame precedence");
     require(actual ==
-                "5e6eb4448b832512a1c8b96ec1780781283e61646949a27330d2652a932e2c5c",
+                "2aa3335bfa5de4e9dc0003b8eb72317b2f05ba9120b8516f22a5a1ebc33b06c1",
             "generated replay corpus changed without review: " + actual);
 
     std::cout << "generated histories=" << kSeedCount

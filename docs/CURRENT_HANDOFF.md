@@ -1,15 +1,155 @@
 # Current development handoff
 
-Updated: 2026-09-08
+Updated: 2026-09-09
 
 Purpose: compact working memory for the next agent session. Verify this file
 against Git before acting; do not reconstruct the project from chat history.
 
+## Claude takeover checkpoint — 2026-09-09 (read this first)
+
+This section and architecture contract §8.1 supersede older next-task/scope/schema
+statements later in this file. Later dated sections retain development history;
+do not restart B1 or restore the removed native-replacement implementation.
+
+The CURRENT WORKING TREE, not HEAD alone, is the development checkpoint.
+HEAD remains `aedd658ee0a7fe4e30a2338d2f953fc659306e29` on
+`v2/phase-4-risk-orders-outbox`. No takeover commit/tag was created. Preserve and
+inspect the existing diff; resetting to HEAD would lose the completed increments.
+
+Completed after HEAD, all uncommitted:
+
+1. Approved scope correction: safe SERIAL replacement is a Phase 4 acceptance
+   requirement. Native amend and overlapping replacement remain disabled. Refusal
+   alone does not satisfy G-018; the full cancel/reconcile/fresh-authorize lifecycle
+   needs proof. Covering two real exposures is not erroneous double-counting.
+2. Reclamation identity fix: retained evaluation/authorization receipts prevent
+   decision reuse and recover the original submit result after payload compaction.
+3. Snapshot accounting fix: checked per-account sums, reservation ownership and
+   transactional rejection of inconsistent snapshots; permanent regressions.
+4. Approved names: `max_order_gross_notional` (single-order gross notional) and
+   `max_reserved_exposure` (aggregate margin + fee hold budget).
+5. B1 implemented: full `ConfigureRiskLimits`, command kind 17, 88-byte body,
+   strict expected RiskVersion and kernel-selected +1, matching kill/executor
+   generations, no economic-balance overwrite, prospective caps, existing-hold
+   coverage and quiescent rate/policy updates. See architecture §8.1 for the
+   complete approved contract and future user-doc reference.
+6. Approved kernel command/result and snapshot schemas V5; V4 rejected, no
+   implicit migration. Result detail tag 5 retains scope and resulting RiskVersion.
+   OrderEffect unchanged; state 81,024 bytes, max snapshot 65,121 bytes.
+
+Phase 4 paths with existing uncommitted work (preserve all; distinguish from the
+unrelated protected list below):
+
+```text
+CHANGELOG.md
+docs/CURRENT_HANDOFF.md
+docs/V2_ARCHITECTURE_CONTRACTS.md
+docs/V2_END_STATE_GUARANTEE_CHECKLIST.md
+include/velocita/v2/kernel.hpp
+include/velocita/v2/kernel_codec.hpp
+include/velocita/v2/state_snapshot.hpp
+src/v2_kernel.cpp
+src/v2_kernel_codec.cpp
+src/v2_state_snapshot.cpp
+tests/v2_kernel_codec_tests.cpp
+tests/v2_model_replay_tests.cpp
+tests/v2_replay_tests.cpp
+tests/v2_risk_order_outbox_tests.cpp
+tests/v2_state_snapshot_tests.cpp
+```
+
+Last verified after final source/test edits: Release 23/23; focused host Debug
+ASan+UBSan 5/5; `git diff --check` clean. Subsequent takeover edits are docs-only.
+Reproduce with:
+
+```sh
+cmake -S . -B build-phase4 -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+cmake --build build-phase4 -j2
+ctest --test-dir build-phase4 --output-on-failure
+cmake --build build-phase4-review-sanitized --target v2-risk-order-outbox-tests v2-state-snapshot-tests v2-kernel-codec-tests v2-replay-tests v2-model-replay-tests -j2
+ctest --test-dir build-phase4-review-sanitized -R 'v2-(risk-order-outbox|state-snapshot|kernel-codec|replay|model-replay)-tests' --output-on-failure
+```
+
+The existing sanitizer build is Debug with `-fsanitize=address,undefined
+-fno-omit-frame-pointer` in CXX flags and `-fsanitize=address,undefined` in linker
+flags. It reuses `build-phase4/_deps/aeron-src` and
+`build-phase4/_deps/willemt_raft-src` through CMake FetchContent source overrides.
+These are focused host checks, NOT full Phase 4 acceptance or pinned ARM64/Pi.
+
+### Serial-replacement acceptance progress — 2026-09-09 (Claude)
+
+`test_serial_replacement_across_a_risk_limit_update` implements the first
+approved slice of the serial-replacement acceptance matrix, in eight legs:
+rate/policy change refused while the cancelled order still holds risk; aggregate
+cap below the retained hold refused; prospective per-order cap accepted
+mid-cancellation without rewriting balances, position version, order state, or
+historical effect bytes; stale-version successor refused; venue cancellation not
+releasing risk; final reconciliation releasing the residual; freshly evaluated
+successor authorizing against the new configuration; and every effect in the
+lifecycle reconstructing byte-for-byte across BOTH snapshot restore and canonical
+command replay, with the replayed snapshot byte-identical to the direct one.
+
+Legs 1-7 passed on first run. They are acceptance coverage for behavior already
+implemented correctly, not bug fixes, and are reported as such rather than as
+fabricated RED.
+
+Leg 8 produced a GENUINE RED: `canonical replay changed historical effect bytes`.
+The cause is a replay-fidelity property worth stating explicitly, because it will
+recur in the Phase 4 model corpus and in any future replay harness:
+
+  `materialize_order_effect` sets `committed_directive_index` from the retained
+  authorization receipt's `state_version`. Per architecture §8.1 an admitted
+  REFUSAL also retains a receipt and advances the global StateVersion. A replay
+  that omits refused commands therefore reaches authorization at a different
+  StateVersion and reproduces different canonical effect bytes.
+
+  Consequence: a faithful replay must re-drive every admitted command, refusals
+  included. Refusals are part of history, not filler between the interesting
+  commands. The original defect was in the test harness, not the kernel, but a
+  Phase 4 model corpus that replays only successful commands would report a false
+  divergence - or worse, mask a real one.
+
+`evaluate_new_decision` now takes an optional command sink so a caller can
+replay a lifecycle faithfully; it previously applied two commands invisibly.
+
+Verified after this increment: Release 23/23; focused host Debug ASan+UBSan 5/5.
+
+Remaining in the serial-replacement matrix: coverage under arena pressure (a
+sweep landing inside the cancel/reconcile window), configuration interaction with
+`conflict` and `submission_unknown` orders, and multi-slot serial requoting.
+
+Next bounded work: finish the approved serial-replacement acceptance matrix.
+Start with a cancel/reconcile cycle containing a risk-limit update: reject a
+stale-version successor proposal; freshly evaluate and authorize; verify full
+effect bytes and economic/identity invariants across snapshot restore/replay.
+Audit existing coverage first. Add a genuinely failing test for any uncovered
+defect before fixing it; do not fabricate RED for behavior already implemented.
+Continue the remaining accounting/capacity, metrics and independent Phase 4
+model/property corpus work afterward, within the agreed phase ownership.
+
+Standing invariants: sweep BEFORE every arena lookup/borrow; terminal is not
+necessarily risk-resolved; payload reclamation must not erase retry/conflict
+identity; configuration is validated before its non-throwing commit and cannot
+rewrite balances. No wall-clock risk release or blind retry of unknown exposure.
+
+Still open: unauthorized-decision retention, finite request/venue-event horizons,
+broader accounting and reconciliation evidence, serial-replacement completion,
+metrics/age/latency evidence, independent Phase 4 model, complete sanitizer gate,
+pinned ARM64 and physical Pi gates, and a Phase 4 acceptance evidence document.
+The Phase 1-3 generated model does not cover B1/Phase 4. No new decisions are
+awaiting approval for the implemented B1 contract; review any NEW material byte
+or economic contract before encoding. Keep educating the user at CTO/expert-C++
+level, and do not pull gateway, Raft, WAL, venue adapter, strategy, netting or
+optional V2.2 work forward. No live-trading readiness claim.
+
 ## Current branch and HEAD
 
 - Branch: `v2/phase-4-risk-orders-outbox`
-- Verified development HEAD: `04915841d35122e0f8614b2529aed276290a4079`
-  (`Reclaim resolved order groups from bounded arenas`)
+- Verified development HEAD: `aedd658ee0a7fe4e30a2338d2f953fc659306e29`
+  (`Update Phase 4 handoff and changelog for takeover`)
+- Working-tree increments after HEAD: approved serial-replacement contract,
+  reclamation-identity/snapshot-accounting corrections, and B1 V5 configuration;
+  see the takeover checkpoint above for the full uncommitted file inventory.
 - Phase 4 development commits, in order:
   - `401c861` Add V2 Phase 4 risk reservation, orders, and outbox
   - `0491584` Reclaim resolved order groups from bounded arenas
@@ -36,9 +176,9 @@ Pi/NUC topology, not to Phase 4:
 ?? model/
 ```
 
-`CHANGELOG.md` is no longer in this list: it now carries the Phase 4 entries and
-is committed. Its earlier model/market-data section rode along and is correct
-where it stands.
+`CHANGELOG.md` is no longer in this protected list: it carries committed Phase 4
+entries plus current Phase 4 working-tree updates. Preserve its earlier
+model/market-data section, which rode along in the committed handoff.
 
 Do not delete, reset, stage, or include these paths in Phase 4 commits. Inspect
 `git status --short` at the start and before every commit. Commit Phase 4 files
@@ -119,7 +259,10 @@ completed Phase 4 acceptance claim - no sanitizer, ARM64, or physical Pi gate ha
 been run and no Phase 4 evidence document exists:
 
 - direct amend/replace is refused with `replacement_not_supported`; wire kind 16
-  stays allocated. Requoting is cancel, final reconciliation, fresh decision;
+  stays allocated. Native amend and overlapping replacement remain disabled.
+  Safe serial replacement is a REQUIRED Phase 4 acceptance item: cancel, final
+  reconciliation, fresh authoritative decision, fresh authorization. Refusal
+  alone does not satisfy it; see the approved scope and acceptance matrix below;
 - `AuthorizeDecision` enforces at most one unresolved cluster order per account,
   instrument, venue, and logical order slot, keyed on the reservation not being
   released;
@@ -146,7 +289,7 @@ been run and no Phase 4 evidence document exists:
 - snapshot schema V4 retains risk accounts, reservations, orders, outbox
   operation/state, position quantity, and fill/venue-event result identities;
 - snapshot decision records omit only identities proven equal to the retained
-  frame/hot record, keeping the current worst case at 65,241 bytes under 64 KiB;
+  frame/hot record, keeping the current worst case at 65,121 bytes under 64 KiB;
 - accepted partial fills atomically move signed quantity into position,
   proportionally and conservatively reduce the remaining margin/fee/notional
   holds, and increment `PositionVersion`;
@@ -164,13 +307,15 @@ The focused target is `v2-risk-order-outbox-tests`. Intended compile/runtime
 REDs were observed for authorization, V4 codec/snapshot state, fill contracts,
 cancel/unknown contracts, and cancelled-quantity snapshot conservation. The
 focused suites and all 23 Release tests pass. Current host layout is
-81,144-byte `TradingState` under the unchanged 81,920-byte ceiling, with
-112-byte risk accounts, 64-byte reservations, 48-byte orders, 64-byte
-normalized outbox records, and 776 bytes of remaining provisional headroom.
+81,024-byte `TradingState` under the unchanged 81,920-byte ceiling, with
+112-byte risk accounts, 64-byte reservations, 40-byte orders, 64-byte
+normalized outbox records, and 896 bytes of remaining provisional headroom.
 `ApplyResult` remains 112 bytes, canonical results remain 128 bytes, and the
 command ceiling remains 1,920 bytes.
 
-Review corrections implemented through explicit runtime RED/GREEN on 2026-09-08:
+Historical review corrections before `401c861` on 2026-09-08 (replacement
+branches described below were subsequently removed; these are not current
+replacement capabilities):
 
 - New submit/replace authorization rechecks current strategy mode, kill epoch,
   and executor generation. Historical retries still return historical outcomes.
@@ -191,21 +336,24 @@ Review corrections implemented through explicit runtime RED/GREEN on 2026-09-08:
 
 Latest host validation: full `build-phase4` Release build and 23/23 CTest suites
 pass. This is development evidence, not Phase 4 acceptance. Existing generated
-model coverage is Phase 1–3, not a Phase 4 reference model. The 16-slot arrays
-currently bound retained lifetime records, not automatically reclaimed live
-orders. Snapshot headroom is only 295 bytes; do not silently expand capacity.
+model coverage is Phase 1–3, not a Phase 4 reference model. Resolved order groups
+are reclaimed from the 16-slot arenas; unauthorized decisions and the separate
+receipt capacities still bound continued admission. Snapshot headroom is only
+415 bytes; do not silently expand capacity.
 
 Not implemented yet:
 
-- canonical configuration commands for risk limits;
+- complete Phase 4 acceptance evidence for command-configured risk limits (B1
+  reducer/codec implementation is now present; see the checkpoint below);
 - final review of the normalized `OrderEffect` boundary produced from retained
   outbox/decision state;
 - reclamation of decisions that were never authorized (no-action and rejected
   evaluations retain a record no order will ever reference; in a live market
   maker most frames are no-action, so the decision arena can still fill). Needs
   the `DecisionId` conflict-detection horizon settled in Phase 5;
-- safe replacement and its lifecycle/economic transitions (DEFERRED by the
-  2026-09-08 scope decision; not Phase 4 work);
+- complete safe serial replacement lifecycle/economic acceptance evidence
+  (REQUIRED by the revised 2026-09-08 user approval; native amend and overlapping
+  replacement remain disabled);
 - ordered venue evidence across fills/order events and complete reconciliation;
 - position/margin/fee accounting beyond signed filled position quantity and
   remaining open-order holds;
@@ -257,16 +405,41 @@ silently clamp an unsafe proposal into an accepted order; return a typed reason.
 
 ## Exact next RED test
 
-MVP replacement scope RESOLVED on 2026-09-08: direct amend/replace is DEFERRED.
+MVP replacement scope REVISED AND APPROVED by the user on 2026-09-08:
+native amend and overlapping replacement remain disabled, but safe SERIAL
+replacement remains a Phase 4 acceptance requirement. This supersedes the
+earlier blanket deferral and the claim that refusal alone satisfies G-018.
 
-Rationale, recorded so it is not relitigated: G-018 forbids holding old and new
-terms at once; G-011 forbids under-reserving. Whenever the venue can leave both
-orders live, `old + new` is the only hold satisfying G-011 and it violates G-018,
-while `max(old, new)` satisfies G-018 and under-reserves. The two guarantees are
-unsatisfiable together while concurrency is possible, and the proof that a given
-venue's replace is atomic is a Phase 5 venue-simulator observable, not a reducer
-property. Venue check on 2026-09-08 found no cancel/amend/replace endpoint
-published for True Markets on either the CeFi or DeFi path.
+Rationale: if old and new orders can both execute, covering both exposures is
+legitimate risk coverage, not erroneous double-counting. `max(old, new)` can
+under-reserve that case. G-011 and safe replacement are not inherently
+incompatible. This MVP chooses serialization to avoid overlap and dependence on
+native-amend semantics; this decision does not rely on an unverified venue API
+claim. No gateway, venue adapter, or external execution is pulled into Phase 4.
+
+Required serial-replacement acceptance matrix (coverage to be audited and
+completed by TDD, NOT claimed GREEN by this documentation change):
+
+1. Cancel-pending, unknown, reconciling, and conflict states retain unresolved
+   risk and block a fresh authorization on the same logical slot.
+2. Late/partial fills update position exactly once. Accepted final reconciliation
+   resolves the old exposure before its remaining reservation is released;
+   missing or contradictory evidence never causes a timeout-based release.
+3. Only after resolution may a fresh authoritative decision create a new order,
+   reservation, receipt, and submit effect atomically. Recheck current policy,
+   strategy mode, kill epoch, executor generation, risk and position versions,
+   and available limits. Do not auto-submit a proposal queued before the wait.
+4. Exercise fill/cancel/final-evidence permutations and duplicates under fresh
+   request IDs. Assert conservation and identity continuity, not only return codes.
+5. Repeat across compaction and snapshot restore/replay. Compare complete
+   canonical bytes for every retained pending/unknown effect against independently
+   constructed expected payloads; a historical DecisionId must not gain a second
+   authorization or alias a new order/effect after reclamation.
+6. Keep direct `RequestReplace` refusal tests: no economic mutation or effect.
+   These are negative capability tests, not proof of the serial lifecycle.
+
+Execution uses successive reducer transitions, never a blocking wait inside
+`apply`. No new canonical command or schema is approved by this scope decision.
 
 Implemented (host GREEN, all 23 CTest suites pass):
 
@@ -279,8 +452,8 @@ Implemented (host GREEN, all 23 CTest suites pass):
   reservation that is not `released`, because retained risk is what G-018
   constrains. This closes a real defect: `ClusterOrderId` is derived from the
   varying `DecisionId`, so cancel-then-authorize previously created a second
-  order and a second reservation on the same slot - reaching the double-reserved
-  state that deferring replacement was meant to prevent. The RED for
+  order and a second reservation on the same slot - violating the chosen
+  no-overlap policy. The RED for
   `test_fresh_submit_cannot_bypass_unresolved_cancelled_slot` observed exactly
   that.
 - Deleted: the `max(old, new)` hold in `apply_request_replace` (276 lines) and
@@ -292,8 +465,8 @@ Implemented (host GREEN, all 23 CTest suites pass):
   and decode; `kStateSnapshotClusterOrderBytes` 43 -> 35.
 - Removed five replacement-economics tests; converted the outbox materialization
   test to a submit/cancel effect pair, and the replacement control-recheck
-  assertion to an unconditional-refusal assertion (strictly stronger: no control
-  state permits a replacement).
+  assertion to an unconditional-refusal assertion. This proves the disabled
+  capability, not safe serial replacement or its control rechecks.
 
 Measured layout after the increment:
 
@@ -377,20 +550,106 @@ conflict-detection horizon settled, which is the Phase 5 revisit above.
 Layout after B2: `TradingState` 81,024 bytes (896 headroom), maximum canonical
 snapshot 65,121 bytes (415 headroom).
 
-Exact next RED: B1, canonical configuration commands for risk limits.
-`RiskAccount` declares `max_order_quantity`, `max_reserved_quantity`,
-`max_order_notional`, `max_reserved_notional`, `initial_margin_ppm`, and
-`maximum_fee_ppm`, and no command kind sets any of them; limits are currently
-fixture-injected, so there is no replicated path to configure risk. Needs a new
-command kind, codec coverage, snapshot coverage, a monotonic `RiskVersion`
-advance, and validation. The
-16-slot order/reservation/outbox arrays bound retained lifetime records, not
-reclaimed live orders, so the kernel currently fails closed after 16 lifetime
-orders on a slot. Slot exclusivity makes this reachable sooner, because a
-requote cycle now always consumes a fresh order slot. Define terminal states,
-add a replicated expiry transition (never a wall-clock eviction), and prove no
-receipt or decision is reclaimed while an effect still needs it for
-`materialize_order_effect`.
+### Review corrections: reclamation identity and snapshot accounting
+
+Implemented in the working tree on 2026-09-08; not a Phase 4 acceptance claim.
+Both permanent regressions were run RED before production edits:
+
+- `test_reclaimed_decision_retains_identity_and_authorization` failed with
+  "reclaimed decision retry lost its original authorization receipt" after 20
+  real evaluation/authorization/fill cycles forced reclamation.
+- `test_snapshot_rejects_unbacked_risk_aggregates` failed with
+  "snapshot accepted an aggregate hold inconsistent with live reservations".
+  The test repairs the altered snapshot's integrity digest, so rejection must
+  come from economic validation rather than checksum failure.
+
+GREEN corrections:
+
+- Applied evaluation receipts retain the decision digest and outcome after its
+  hot/cold records are swept. New-request retries return `already_applied` without
+  recreating a proposal; different retained digests return `decision_id_conflict`.
+- Authorization retries recognize the original submit receipt using the existing
+  generation-1 submit EffectId derivation, independently of reclaimed outbox
+  records. Cancel receipts share the result tag but are not submit outcomes.
+- Snapshot validation joins reservation → order → immutable decision proposal →
+  account/instrument. Every reservation must have one owner, and checked sums of
+  remaining quantity, margin and fee must exactly match each risk account.
+  Missing accounts, orphan reservations, mismatched totals and overflow fail
+  `invalid_state`; rejected decoding leaves destination state unchanged.
+- Tests cover both direct and restored identity retries, conflicting evaluation,
+  fresh authorization with a distinct materializable effect, full canonical effect
+  and final snapshot byte equality across restore, all three aggregate fields,
+  per-account ownership, orphan holds, and all three accumulator overflows.
+- Corrected the maximum-size snapshot fixture's accounting: its orders all belong
+  to account zero, so its holds do too. No capacity or encoded size was reduced.
+
+Validation: full Release 23/23; focused Release 2/2; focused host Debug ASan+UBSan
+2/2 using `build-phase4-review-sanitized`, `-fsanitize=address,undefined` and
+`-fno-omit-frame-pointer`. This is NOT the complete Phase 4 sanitizer acceptance
+gate; pinned ARM64, physical Pi, and Phase 4 evidence remain outstanding.
+
+No canonical schema, field, ID derivation, or resident capacity changed.
+Evaluation/authorization receipt scans are bounded O(request receipts); snapshot
+ownership joins are bounded O(orders * (decisions + risk accounts)), in addition
+to existing uniqueness/link checks. Four temporary totals use 96 stack bytes.
+State remains 81,024 bytes; maximum snapshot remains 65,121 bytes.
+Identity safety still depends on retaining receipts: future receipt reclamation
+must preserve the declared duplicate/conflict horizon. No receipt expiry or
+indefinite-operation claim was introduced. Sweep-before-borrow remains mandatory.
+
+### B1 checkpoint: replicated risk-limit configuration (2026-09-09)
+
+The eight B1 choices were approved, including full-config replacement after
+explaining that masked patches can also be atomic but add unnecessary partial-
+update semantics. Authoritative operator/user-doc reference:
+`docs/V2_ARCHITECTURE_CONTRACTS.md`, section 8.1. Do not reconstruct those rules
+from this handoff's historical text.
+
+Implemented: `ConfigureRiskLimits`, kind 17, 88-byte body/180-byte framed command;
+kernel command/result and snapshot schemas V5, with risk-configuration receipt
+tag 5 and unchanged resident sizes. Creation, strict compare-and-set updates,
+kernel-selected next RiskVersion, control-generation checks, preservation of
+balances, prospective per-order caps, aggregate hold coverage, quiescent rate/
+policy changes, checked overflow and bounded refusal behavior are implemented.
+No native amend, overlapping replacement, gateway, Raft or operator authentication
+was added. V4 input is rejected rather than migrated; OrderEffect is unchanged.
+
+Observed REDs, in order: undeclared ConfigureRiskLimits; runtime update failed
+to advance exactly one version; runtime command lacked its 88-byte canonical
+body. Each was followed by GREEN. Additional coverage checks stale decision
+authorization, fresh authorization using command-created risk (not injected
+balances), encoded replay, full-body byte expectations, result/snapshot receipt
+round trips, old-schema refusal, malformed/truncated input, duplicate conflicts,
+account/receipt capacity and invalid-rate/control/version boundaries.
+
+V5 intentionally changes command/result/snapshot framing digests and the replay
+goldens derived from them. Legacy source-command and empty-snapshot payload
+projections retain their V4 golden checks. The Phase 1-3 generated model explicitly
+does not model B1; the independent full Phase 4 model remains outstanding.
+
+Next work after B1 validation: complete the approved safe serial-replacement
+acceptance matrix. Start with a cancel/reconcile cycle containing a risk-limit
+update, prove an old-version proposal cannot authorize the successor, then
+evaluate/authorize freshly and compare full effect bytes through restore/replay.
+Audit existing GREEN coverage before selecting the next genuinely failing case;
+do not claim an already-passing test was observed RED. Capacity horizons, complete
+accounting, metrics/model corpus and Phase 4 target gates remain open.
+
+B1 validation: full Release 23/23; focused host ASan+UBSan 5/5 (risk/outbox,
+snapshot, command/result codec, replay, and the Phase 1-3 generated model).
+Builds: `build-phase4`, `build-phase4-review-sanitized`. This is not the complete
+Phase 4 acceptance gate. TradingState remains 81,024 bytes; maximum snapshot
+65,121 bytes; command and result ceilings unchanged. Reducer work is bounded by
+four account entries and at most sixteen orders/decision lookups, plus existing
+request-receipt handling. No allocation or new resident balances are introduced.
+
+B1 naming/semantics decision approved and implemented on 2026-09-08:
+`max_order_notional` is renamed `max_order_gross_notional` (one order's gross
+notional ceiling); `max_reserved_notional` is renamed `max_reserved_exposure`
+(aggregate reserved margin plus reserved fee budget). This is a behavior-preserving
+source rename, not a new aggregate gross-notional limit. Member types/order,
+snapshot field widths/order, schemas and risk comparisons remain unchanged.
+The later B1 command/schema implementation above preserves these limit meanings.
 
 Reconciliation contract approved and implemented. The runtime RED
 `test_cancel_before_earlier_fill_does_not_lose_fill_evidence` failed with
@@ -544,19 +803,19 @@ The eight contract decisions were reviewed and approved on 2026-09-07.
 User authorized continued development and corrective review. Earlier replacement
 wording claiming old-plus-new exposure must never be held was too strong:
 coexistence may require both holds. Do not freeze that assumption into canonical
-contracts. The exact next RED extends `v2-risk-order-outbox-tests`:
+contracts. Historical replacement fork below is now resolved by the approved
+serial-replacement scope above; it is not a separate next-RED instruction:
 
 ```text
-After the MVP scope decision above: if direct replacement is deferred, prove
-RequestReplace fails closed without economics/effects, and that a fresh decision
-cannot bypass unresolved risk for the cancelled order's slot. If retained, first
-specify old/new execution attribution and reconciliation evidence before adding
-canonical fields, then test delayed old fills without consuming new terms.
+Keep RequestReplace fail-closed and unresolved-slot refusal tests. Complete the
+serial-replacement acceptance matrix above using cancel/reconciliation and fresh
+authorization; do not restore native amend or overlapping replacement branches.
 ```
 
 Fingerprint, cross-kind identity, and first delayed-cancel reconciliation REDs
 above are GREEN. Fill receipts retain session/sequence and execution identity.
-Terminal evidence permutations are GREEN; next resolve the replacement scope choice;
+Tested terminal evidence permutations are GREEN; replacement scope is resolved,
+but the full serial-replacement acceptance matrix is not yet proven;
 no extra state-capacity budget is approved.
 Review any material
 new byte-contract choice with the user before freezing it. Then prioritize
@@ -573,8 +832,10 @@ The phase cannot close until retained evidence proves:
 - insufficient or stale risk creates no order/effect;
 - reservation/filled/remaining quantities conserve under partial fills;
 - unknown submission and cancel-pending remain risk-bearing;
-- replacement never double-reserves or under-reserves (satisfied by refusing
-  direct replacement and enforcing one unresolved order per logical slot);
+- safe serial replacement meets the approved acceptance matrix above: retain old
+  risk through cancellation, book late fills exactly once, reconcile, then freshly
+  decide and authorize under current controls; native amend and overlap remain
+  disabled. Refusal and slot exclusivity alone are insufficient evidence;
 - replay reconstructs byte-identical pending/unknown effects;
 - snapshot retains receipts/effects through the declared retry horizon;
 - bounded full policies fail atomically; and

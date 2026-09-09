@@ -240,6 +240,67 @@ Rules:
 The minimum reservation record retains original, filled, remaining, fee/margin
 hold, account, instrument, order, command, policy, and position versions.
 
+### 8.1 Replicated risk-limit configuration (B1, approved 2026-09-09)
+
+This is the authoritative reference for later operator/user documentation.
+`ConfigureRiskLimits` replaces all six settings for one `(AccountId, InstrumentId)`
+in one reducer transition. It does not configure a venue account, authenticate an
+operator, import external positions, or send an external effect.
+
+- `max_order_quantity`: per-order quantity ceiling, positive and no larger than
+  `max_reserved_quantity`, the positive aggregate reserved-quantity ceiling.
+- `max_order_gross_notional`: positive per-order gross notional ceiling.
+- `max_reserved_exposure`: positive aggregate `reserved_margin + reserved_fee`
+  hold budget, NOT aggregate gross order notional. There is deliberately no
+  comparison requiring per-order gross notional to be below this hold budget.
+- `initial_margin_ppm`: 1 through 1,000,000; `maximum_fee_ppm`: 0 through 1,000,000.
+  All arithmetic is checked; invalid settings are refused, never clamped.
+
+Creation requires an absent key and `expected_risk_version = 0`; it initializes
+RiskVersion and PositionVersion to 1 and all economic balances to zero. This is
+an empty kernel ledger, not evidence that a real trading account has no position.
+Update requires exact expected/current RiskVersion equality; the kernel advances
+by exactly one, including fresh-request no-op updates. Overflow refuses rather
+than wrapping. There is no delete/reset command and no caller-chosen next version.
+Expected kill epoch and executor generation must match current state; configuration
+is allowed while halted. Matching generations do not replace operator authentication.
+
+Updates preserve position, reserved quantity, reserved margin/fees, and
+PositionVersion. Caps are prospective: changing per-order caps neither cancels
+old orders nor rewrites their effects. Aggregate caps must still cover current
+holds. Changing either rate requires a strictly newer RiskPolicyVersion; policy
+versions cannot regress. Rate or policy-version changes require no unresolved
+reservation for that account/instrument, including unknown/reconciling/conflict
+orders. Released reservations and nonzero filled position alone do not block
+configuration; B1 does not revalue position margin. A policy-version change may
+require a matching policy deployment before new authorization can resume.
+
+The single reducer owner validates a complete local candidate before assigning
+it to TradingState; receipt capacity is checked before this commit. Other threads
+must not read mutable TradingState concurrently. This is transaction atomicity,
+not an 88-byte CPU atomic store or a durability claim. A mask/patch could also be
+atomic, but full replacement avoids partial-update semantics on an infrequent
+control path. The configuration cannot carry balance fields at all.
+
+Exact request retries return the original result without another mutation.
+Same-request/different-digest retries conflict; fresh stale updates refuse.
+Admitted refusals can retain receipts and advance global StateVersion without
+changing risk configuration or economics. Account/receipt capacity exhaustion
+fails closed. New typed outcomes append `risk_account_capacity_exceeded`,
+`risk_version_exhausted`, and `risk_reconfiguration_blocked`; existing outcomes
+cover invalid settings, stale control/risk state, arithmetic overflow and
+insufficient capacity.
+
+Canonical kernel schema V5 command kind 17 has an 88-byte little-endian body:
+account ID, instrument ID, risk-policy version, expected risk version, expected
+kill epoch, expected executor generation (six u64); two quantities and two money
+limits (four i64, in the order listed above); margin ppm and fee ppm (two u32).
+With existing identity/framing/digest this is 180 bytes. Result detail tag 5 uses
+the existing three u64 words for account ID, instrument ID and resulting risk
+version. Snapshot schema V5 retains this new receipt variant; V4 is not silently
+reinterpreted and no migration is supplied. OrderEffect bytes and schema remain
+unchanged. No risk-account capacity or resident-state layout increase is required.
+
 ## 9. Outbox and execution contract
 
 Outbox lifecycle:

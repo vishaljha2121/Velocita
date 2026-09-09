@@ -125,17 +125,16 @@ enum class ApplyCode : std::uint8_t {
     venue_event_capacity_exceeded,
     replacement_not_authorizable,
     order_not_replaceable,
-    // Direct amend/replace is not offered. G-018 forbids holding old and new
-    // terms at once, and holding max(old, new) instead is only sound if the
-    // venue guarantees the two can never both execute - which no venue this
-    // system targets has documented. Requoting goes cancel -> final
-    // reconciliation -> fresh authorization instead.
+    // Native amend and overlapping replacement are disabled. Safe serial
+    // replacement remains required: cancel -> reconcile -> freshly authorize.
     replacement_not_supported,
     // At most one unresolved cluster order per (account, instrument, venue,
-    // logical order slot). Without this, cancel-then-submit reaches the same
-    // double-reserved state that deferring replacement was meant to prevent,
-    // because ClusterOrderId is derived from the varying DecisionId.
+    // logical order slot), enforcing the selected no-overlap policy even when
+    // a fresh DecisionId would derive a different ClusterOrderId.
     order_slot_occupied,
+    risk_account_capacity_exceeded,
+    risk_version_exhausted,
+    risk_reconfiguration_blocked,
 };
 
 struct CommandIdentity {
@@ -228,6 +227,30 @@ struct RequestReplace {
     DecisionId replacement_decision_id{};
 };
 
+struct ConfigureRiskLimits {
+    AccountId account_id{};
+    InstrumentId instrument_id{};
+    RiskPolicyVersion risk_policy_version{};
+    RiskVersion expected_risk_version{};
+    KillEpoch expected_kill_epoch{};
+    ExecutorGeneration expected_executor_generation{};
+    QuantityLots max_order_quantity{};
+    QuantityLots max_reserved_quantity{};
+    MoneyMicros max_order_gross_notional{};
+    MoneyMicros max_reserved_exposure{};
+    std::uint32_t initial_margin_ppm{};
+    std::uint32_t maximum_fee_ppm{};
+};
+
+[[nodiscard]] constexpr bool valid_risk_limits(const ConfigureRiskLimits& value) noexcept {
+    return value.account_id.value() != 0 && value.instrument_id.value() != 0 &&
+           value.risk_policy_version.value() != 0 && value.max_order_quantity.atoms() > 0 &&
+           value.max_reserved_quantity >= value.max_order_quantity &&
+           value.max_order_gross_notional.atoms() > 0 && value.max_reserved_exposure.atoms() > 0 &&
+           value.initial_margin_ppm > 0 && value.initial_margin_ppm <= 1'000'000 &&
+           value.maximum_fee_ppm <= 1'000'000;
+}
+
 using CommandBody = std::variant<PublishPolicy,
                                  ValidatePolicy,
                                  ActivatePolicy,
@@ -243,7 +266,8 @@ using CommandBody = std::variant<PublishPolicy,
                                  ObserveFill,
                                  RequestCancel,
                                  ObserveOrderEvent,
-                                 RequestReplace>;
+                                 RequestReplace,
+                                 ConfigureRiskLimits>;
 
 struct Command {
     CommandIdentity identity{};
@@ -256,6 +280,7 @@ enum class ApplyResultDetailKind : std::uint8_t {
     authorization = 2,
     fill = 3,
     venue_event = 4,
+    risk_configuration = 5,
 };
 
 // Three canonical 64-bit words are interpreted only through the explicit tag.
@@ -502,8 +527,10 @@ struct RiskAccount {
     QuantityLots max_order_quantity{};
     QuantityLots max_reserved_quantity{};
     QuantityLots reserved_quantity{};
-    MoneyMicros max_order_notional{};
-    MoneyMicros max_reserved_notional{};
+    // Gross notional ceiling for one proposed order.
+    MoneyMicros max_order_gross_notional{};
+    // Aggregate margin_hold + fee_hold budget, NOT gross open-order notional.
+    MoneyMicros max_reserved_exposure{};
     MoneyMicros reserved_margin{};
     MoneyMicros reserved_fee{};
     std::uint32_t initial_margin_ppm{};

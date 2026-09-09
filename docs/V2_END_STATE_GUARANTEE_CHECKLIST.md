@@ -92,18 +92,22 @@ Phase 11 strategy/model validation and controlled canary
   provides no timeout, no escalation, and no operator override.
 - [ ] **G-017 — Unknown retains risk.** An ambiguously submitted order retains
   its reservation and blocks conflicting risk until authoritative reconciliation.
-- [ ] **G-018 — Safe replacement.** Amend/cancel-replace transitions cannot
-  temporarily or permanently double-reserve risk.
-  *Satisfied by slot exclusivity, not by a hold formula.* Whenever old and new
-  orders can both be live, the only reservation satisfying G-011 is `old + new`,
-  which is what this guarantee forbids; holding `max(old, new)` instead satisfies
-  G-018 but under-reserves the concurrent case. The two are unsatisfiable
-  together while concurrency is possible, so V2 removes the possibility: direct
-  amend/replace returns `replacement_not_supported`, and at most one unresolved
-  cluster order may exist per `(account, instrument, venue, logical order slot)`.
-  Requoting is cancel → final reconciliation → fresh authoritative decision.
-  Do not reintroduce a `max(old, new)` hold without first proving, per venue,
-  that old and new executions are mutually exclusive.
+- [ ] **G-018 — Safe serial replacement.** Phase 4 must prove cancel → final
+  reconciliation → fresh authoritative decision → fresh authorization, not
+  merely refusal of direct replacement. Native amend and overlapping replacement
+  remain disabled (`RequestReplace` returns `replacement_not_supported`).
+  At most one unresolved cluster order may exist per
+  `(account, instrument, venue, logical order slot)`. Cancellation retains risk;
+  late fills change position exactly once; accepted final reconciliation must
+  resolve the old exposure before the slot can be reused. The new decision must
+  pass current policy, control, risk, and position checks; a stale queued proposal
+  must not be automatically submitted. Duplicate/reordered evidence, compaction,
+  snapshot restore, and replay must preserve these rules and exact effect bytes.
+  Missing final evidence keeps the slot blocked (G-074a); no timeout release.
+  Reservation must neither under-cover executable exposure nor count the same
+  exposure twice. If two orders could execute, covering both would be legitimate
+  risk coverage, not erroneous double-counting; this MVP disables that overlap.
+  A `max(old, new)` hold must not be assumed safe without proven mutual exclusion.
 - [ ] **G-019 — Capacity fails closed.** Full order, reservation, receipt, fill,
   or outbox capacity produces a typed refusal and no partial economic mutation.
 - [ ] **G-020 — Snapshot/replay completeness.** Orders, risk, fills, dedup

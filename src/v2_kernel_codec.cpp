@@ -173,6 +173,9 @@ private:
         case ApplyCode::order_not_replaceable:
         case ApplyCode::replacement_not_supported:
         case ApplyCode::order_slot_occupied:
+        case ApplyCode::risk_account_capacity_exceeded:
+        case ApplyCode::risk_version_exhausted:
+        case ApplyCode::risk_reconfiguration_blocked:
             return true;
     }
     return false;
@@ -227,6 +230,7 @@ private:
         case KernelCommandKind::request_cancel:
         case KernelCommandKind::observe_order_event:
         case KernelCommandKind::request_replace:
+        case KernelCommandKind::configure_risk_limits:
             return true;
     }
     return false;
@@ -298,6 +302,9 @@ private:
         return body->cluster_order_id.value() != 0 &&
                body->replacement_decision_id.value() != 0;
     }
+    if (const auto* body = std::get_if<ConfigureRiskLimits>(&command.body)) {
+        return valid_risk_limits(*body);
+    }
     return false;
 }
 
@@ -306,13 +313,18 @@ private:
            value == ApplyResultDetailKind::source ||
            value == ApplyResultDetailKind::authorization ||
            value == ApplyResultDetailKind::fill ||
-           value == ApplyResultDetailKind::venue_event;
+           value == ApplyResultDetailKind::venue_event ||
+           value == ApplyResultDetailKind::risk_configuration;
 }
 
 [[nodiscard]] bool valid_detail(const ApplyResult& result) noexcept {
     if (!known(result.detail_kind)) return false;
     if (result.detail_kind == ApplyResultDetailKind::none) {
         return result.detail == ApplyResultDetail{};
+    }
+    if (result.detail_kind == ApplyResultDetailKind::risk_configuration) {
+        return result.detail.words[0] != 0 && result.detail.words[1] != 0 &&
+               result.detail.words[2] != 0;
     }
     if (result.detail_kind == ApplyResultDetailKind::source) {
         return result.detail != ApplyResultDetail{};
@@ -396,7 +408,8 @@ private:
     if (std::holds_alternative<ObserveOrderEvent>(body)) {
         return KernelCommandKind::observe_order_event;
     }
-    return KernelCommandKind::request_replace;
+    if (std::holds_alternative<RequestReplace>(body)) return KernelCommandKind::request_replace;
+    return KernelCommandKind::configure_risk_limits;
 }
 
 [[nodiscard]] std::size_t body_size(const CommandBody& body) noexcept {
@@ -437,6 +450,7 @@ private:
         return kVenueObservationPayloadBytes;
     }
     if (std::holds_alternative<RequestReplace>(body)) return 16;
+    if (std::holds_alternative<ConfigureRiskLimits>(body)) return 88;
     const auto& value = std::get<EvaluateDecisionFrame>(body);
     return sizeof(std::uint64_t) + sizeof(std::uint8_t) +
            kDecisionFramePayloadFixedBytes +
@@ -648,6 +662,19 @@ void write_body(Writer& writer, const CommandBody& body) noexcept {
     } else if (const auto* value = std::get_if<RequestReplace>(&body)) {
         writer.integral(value->cluster_order_id.value());
         writer.integral(value->replacement_decision_id.value());
+    } else if (const auto* value = std::get_if<ConfigureRiskLimits>(&body)) {
+        writer.integral(value->account_id.value());
+        writer.integral(value->instrument_id.value());
+        writer.integral(value->risk_policy_version.value());
+        writer.integral(value->expected_risk_version.value());
+        writer.integral(value->expected_kill_epoch.value());
+        writer.integral(value->expected_executor_generation.value());
+        writer.integral(value->max_order_quantity.atoms());
+        writer.integral(value->max_reserved_quantity.atoms());
+        writer.integral(value->max_order_gross_notional.atoms());
+        writer.integral(value->max_reserved_exposure.atoms());
+        writer.integral(value->initial_margin_ppm);
+        writer.integral(value->maximum_fee_ppm);
     }
 }
 
@@ -948,6 +975,20 @@ void write_body(Writer& writer, const CommandBody& body) noexcept {
             body = RequestReplace{
                 ClusterOrderId{reader.integral<std::uint64_t>()},
                 DecisionId{reader.integral<std::uint64_t>()}};
+            return true;
+        case KernelCommandKind::configure_risk_limits:
+            body = ConfigureRiskLimits{
+                AccountId{reader.integral<std::uint64_t>()},
+                InstrumentId{reader.integral<std::uint64_t>()},
+                RiskPolicyVersion{reader.integral<std::uint64_t>()},
+                RiskVersion{reader.integral<std::uint64_t>()},
+                KillEpoch{reader.integral<std::uint64_t>()},
+                ExecutorGeneration{reader.integral<std::uint64_t>()},
+                QuantityLots::from_atoms(reader.integral<std::int64_t>()),
+                QuantityLots::from_atoms(reader.integral<std::int64_t>()),
+                MoneyMicros::from_atoms(reader.integral<std::int64_t>()),
+                MoneyMicros::from_atoms(reader.integral<std::int64_t>()),
+                reader.integral<std::uint32_t>(), reader.integral<std::uint32_t>()};
             return true;
     }
     return false;

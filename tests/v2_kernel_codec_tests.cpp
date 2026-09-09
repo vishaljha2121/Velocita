@@ -219,7 +219,7 @@ void test_command_identity_and_kind_are_explicit() {
     const std::array expected_prefix{
         std::byte{'V'}, std::byte{'2'}, std::byte{'K'}, std::byte{'C'},
         std::byte{104}, std::byte{0}, std::byte{0}, std::byte{0},
-        std::byte{4}, std::byte{0},
+        std::byte{5}, std::byte{0},
         std::byte{8}, std::byte{0},
         std::byte{12}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
@@ -230,11 +230,18 @@ void test_command_identity_and_kind_are_explicit() {
     const auto full_hash =
         to_hex(sha256_digest({bytes.data(), encoded.bytes_written}));
     require(frame_hash ==
-                "157b765dd7ee8fb791f6ac67ecbf3c10d6c2f531026b3758c6b94e0de2eae11b" &&
+                "a8e53d4b54e57bfcc2fad0b1f614b9f51ea7b708fcfdc9dcb83bbd5a554b1a64" &&
                 full_hash ==
-                    "3d7c201012a0547d1ae27db4ade97703c3b63f2859281a452f2c40759a62a918",
+                    "678b88f5c041b65f16adee892f23fafa8667b54421e8f055304e30d82fed21b0",
             "source-command golden corpus changed: frame=" + frame_hash +
                 " full=" + full_hash);
+    // Approved V5 migration changes only schema/digests for this old command.
+    auto legacy = bytes;
+    legacy[8] = std::byte{4};
+    replace_command_digest({legacy.data(), encoded.bytes_written});
+    require(to_hex(sha256_digest({legacy.data(), encoded.bytes_written})) ==
+                "3d7c201012a0547d1ae27db4ade97703c3b63f2859281a452f2c40759a62a918",
+            "V5 migration changed the legacy source-command payload");
 
     Command restored;
     KernelCommandCodecScratch scratch;
@@ -263,8 +270,8 @@ void test_decision_kind_is_explicit_and_not_a_variant_ordinal() {
 
 void test_phase4_authorization_command_and_result_are_canonical_v4() {
     using namespace velocita::v2;
-    require(kKernelCodecSchemaVersion == 4,
-            "Phase 4 command/result bytes did not move to schema V4");
+    require(kKernelCodecSchemaVersion == 5,
+            "risk configuration command/result bytes did not move to schema V5");
 
     const auto original = command(44, AuthorizeDecision{DecisionId{21}});
     std::array<std::byte, kMaxKernelCommandBytes> command_bytes{};
@@ -342,9 +349,9 @@ void test_result_round_trip_is_canonical() {
     const auto frame_hash = to_hex(encoded.frame_digest);
     const auto full_hash = to_hex(sha256_digest(bytes));
     require(frame_hash ==
-                "2c2aa35d40598f7d411a9e42e2a571181083a6f8b0aaa679d3922b0dcfa24780" &&
+                "37e53433eb6d062a2395c9b1822c6acb66573417993e3b72b6903d14609e9254" &&
                 full_hash ==
-                    "d671c3cfc0f9ba1483d34161a86f104381363ecc7cde1c9502f580a081b04a2f",
+                    "3e0cd39ed581784096696a75156cc0db3c97adfdca1c7bddaa439f9b54fd5232",
             "apply-result golden corpus changed: frame=" + frame_hash +
                 " full=" + full_hash);
 }

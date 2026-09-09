@@ -381,6 +381,73 @@ old state ceiling by 24 bytes before lifecycle metadata, correctly blocking
 silent integration. Canonical size and Pi/NUC evidence must determine the final
 state/snapshot budget before these candidate bounds are accepted.
 
+### Phase 4 B1 - replicated risk-limit configuration (2026-09-09)
+
+- Added approved full-config `ConfigureRiskLimits` command kind 17 and risk-result
+  detail tag 5. Justification: risk limits must be configured by deterministic
+  commands, not only fixtures. No balance/reset fields or external effects.
+- Added strict expected-version updates, kernel-selected next RiskVersion,
+  epoch/executor checks, positive/range validation, prospective per-order caps,
+  current aggregate hold coverage and quiescent rate/policy changes. Existing
+  balances and PositionVersion are preserved. Added typed capacity, exhausted-
+  version and blocked-reconfiguration refusals; no existing enum values removed.
+- Advanced kernel command/result and snapshot schemas to approved V5; kind 17's
+  body is 88 bytes and full command 180 bytes. Receipt detail reuses three words.
+  No resident capacity increase or OrderEffect change. Older schemas are rejected,
+  not migrated or reinterpreted.
+- Added creation/update/codec RED-to-GREEN tests, command-configured authorization,
+  version staleness, economic preservation, replay/restore, full canonical body,
+  malformed/truncated input, capacity, and version/rate/control boundary coverage.
+- Updated five schema-dependent golden digest expectations (source command,
+  apply result, empty snapshot, replay state and generated corpus); retained V4
+  source/empty-state payload projection checks. No tests removed. The existing
+  Phase 1-3 reference model still excludes Phase 4; corrected its misleading
+  claim that a complete Phase 4 model already exists.
+- Added architecture contract section 8.1 as the reference for later operator
+  documentation; corrected stale replacement comments to the approved serial-only
+  scope. Full Phase 4 acceptance remains outstanding.
+- Validation: Release 23/23 and focused host ASan+UBSan 5/5 (risk, snapshot,
+  codec, replay and Phase 1-3 model). Layout unchanged at 81,024-byte state and
+  65,121-byte maximum snapshot. No physical Pi or pinned ARM64 gate claimed.
+
+### Phase 4 review corrections - reclamation identity and snapshot accounting
+
+Working-tree increment, 2026-09-08. No Phase 4 acceptance claim.
+
+- Approved B1 terminology refactor: renamed `RiskAccount::max_order_notional`
+  to `max_order_gross_notional`, and `max_reserved_notional` to
+  `max_reserved_exposure`. Added comments distinguishing one order's gross
+  notional from the aggregate margin-plus-fee hold budget. Updated reducer,
+  snapshot codec/validation, test references and handoff; removed misleading
+  source identifiers. No behavior, member layout, canonical field order or
+  schema change; no aggregate gross-notional cap or configuration command added.
+
+- Added permanent RED regressions for authorization identity after 20 completed
+  cycles and for checksummed snapshots with unbacked account aggregates. Both
+  failed for the intended reason before implementation changes.
+- Changed evaluation and authorization retries to consult retained receipts after
+  payload reclamation. Justification: freeing arena slots must not allow reuse of
+  a DecisionId, a second economic authorization, or aliased/unmaterializable effects.
+  Submit receipts use the existing generation-1 EffectId derivation; cancel
+  receipts cannot substitute for them. No new identity or canonical fields.
+- Added snapshot ownership and checked per-account quantity/margin/fee sums.
+  Justification: individually valid records are insufficient if aggregate risk
+  disagrees with live reservations. Missing owners, orphan holds, mismatches and
+  overflow fail closed; rejected restore preserves its destination.
+- Added tests for fresh-request retries/conflicts across sweep and restore,
+  distinct fresh effects, full effect/snapshot bytes, account attribution and
+  accumulator overflow. Corrected the maximum-size fixture's previously
+  inconsistent account totals without reducing its encoded size or capacities.
+- Removed the stale claim that DecisionId conflict detection must be lost after
+  sweeping, and superseded the handoff's 16-lifetime-order limitation. Retained
+  receipts already provide identity tombstones; their eventual exhaustion and
+  unauthorized-decision retention remain separate limitations. No tests removed.
+- Validation: Release 23/23; focused Release 2/2; focused host Debug ASan+UBSan
+  2/2 (`build-phase4-review-sanitized`). Full Phase 4 sanitizer acceptance,
+  pinned ARM64, physical Pi and the Phase 4 evidence document remain outstanding.
+- Layout unchanged: `TradingState` 81,024 bytes; maximum canonical snapshot
+  65,121 bytes. Snapshot validation adds only 96 bytes of temporary totals.
+
 ### Phase 4 in development - risk reservation, orders, and transactional outbox
 
 Commit `401c861` introduces the first Phase 4 development checkpoint. It is not
@@ -439,24 +506,37 @@ gate has been run against it, and no Phase 4 evidence document exists.
   submit/cancel effect pair, preserving its actual subject - that every retained
   effect reconstructs exact historical bytes across lifecycle and snapshot
   restore. The replacement control-recheck assertion became an unconditional
-  refusal assertion, which is strictly stronger: previously a stale executor
-  generation blocked replacement, now no control state permits it at all.
+  refusal assertion: no control state permits direct replacement. This proves a
+  disabled capability, not a stronger implementation of safe serial replacement;
+  the serial lifecycle still needs current-control recheck evidence.
 
-#### Decided
+#### Decided (revised user approval, 2026-09-08)
 
-Direct amend/replace is deferred, and requoting is cancel, final
-reconciliation, then a fresh authoritative decision. G-018 forbids holding old
-and new terms at once while G-011 forbids under-reserving; where a venue can
-leave both orders live the two are unsatisfiable together, so V2 removes the
-concurrency instead of choosing a hold formula. Verification against official
-True Markets documentation on 2026-09-08 found no cancel, amend, or replace
-endpoint published on either the CeFi or DeFi path. Wire kind 16 remains
-allocated so reintroducing replacement needs no renumbering.
+Native amend and overlapping replacement remain disabled. Safe SERIAL
+replacement remains a Phase 4 acceptance requirement: cancel, final
+reconciliation, fresh authoritative decision, fresh authorization under current
+controls and risk. A typed refusal alone does not implement this capability.
+Wire kind 16 remains allocated; this decision changes no canonical bytes or code.
+
+- Added: an explicit serial-replacement acceptance matrix in CURRENT_HANDOFF and
+  corrected G-018. Justification: prove late-fill accounting, risk retention,
+  fresh authorization, identities and full effect bytes through evidence
+  permutations, compaction, snapshot restore and replay before closing Phase 4.
+- Removed: the blanket replacement deferral and the rationale that covering two
+  executable orders inherently violates safe reservation. Justification: covering
+  both exposures is legitimate; double-counting one exposure is the error.
+  `max(old, new)` remains unsafe without proven mutual exclusion. The selected
+  MVP avoids overlap, rather than asserting that all safe replacement is impossible.
+- Removed: dependence on the earlier venue-endpoint availability claim for this
+  scope decision. Justification: reducer safety must not assume unverified venue
+  semantics. No gateway, venue adapter, or native-amend implementation is added.
+- No implementation or test was added or removed in this documentation revision;
+  the serial acceptance matrix remains unproven, and no new gate pass is claimed.
 
 Deferring replacement was not sufficient on its own. `ClusterOrderId` derives
 from the varying `DecisionId`, so cancel-then-authorize created a second order
-and a second reservation on one logical slot, reaching the double-reserved state
-directly. `AuthorizeDecision` now enforces at most one unresolved cluster order
+and a second reservation on one logical slot, violating the selected no-overlap
+policy. `AuthorizeDecision` now enforces at most one unresolved cluster order
 per account, instrument, venue, and logical order slot, keyed on the reservation
 not being released, because retained risk is what G-018 constrains. The RED for
 `test_fresh_submit_cannot_bypass_unresolved_cancelled_slot` observed exactly
@@ -541,6 +621,39 @@ Empty-state, replay, and generated-model golden digests were regenerated because
 the canonical snapshot gained the counter. Development V4 is unaccepted, both
 replay paths still converge byte-for-byte, and no accepted V3 bytes were
 reinterpreted.
+
+#### Added - serial replacement acceptance, first slice
+
+`test_serial_replacement_across_a_risk_limit_update` proves the cancel,
+reconcile, fresh-authorize lifecycle while replicated risk configuration changes
+underneath it. Refusing native amend does not by itself satisfy G-018: the
+guarantee constrains the amend/cancel-replace transition, and with native amend
+disabled the serial path is that transition, so it must be proven rather than
+assumed.
+
+Eight legs: rate or policy change refused while the cancelled order still holds
+risk; aggregate cap below the retained hold refused; prospective per-order cap
+accepted mid-cancellation without rewriting balances, position version, order
+state, or historical effect bytes; stale-version successor refused; venue
+cancellation not releasing risk; final reconciliation releasing the residual;
+fresh successor authorizing against the new configuration; and every effect
+reconstructing byte-for-byte across snapshot restore and canonical replay, with
+the replayed snapshot byte-identical to the direct one.
+
+Legs 1-7 passed on first run and are recorded as acceptance coverage for
+behaviour already implemented correctly, not as fixes.
+
+#### Fixed - replay fidelity
+
+Leg 8 failed genuinely with `canonical replay changed historical effect bytes`.
+`materialize_order_effect` takes `committed_directive_index` from the retained
+authorization receipt's `state_version`, and an admitted refusal also retains a
+receipt and advances the global StateVersion. A replay omitting refused commands
+therefore authorizes at a different StateVersion and produces different canonical
+effect bytes. The defect was in the test harness rather than the kernel, but the
+property is general: a faithful replay must re-drive every admitted command,
+refusals included. `evaluate_new_decision` gained an optional command sink,
+having previously applied two commands invisibly.
 
 #### Standing invariants for later phases
 
