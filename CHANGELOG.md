@@ -724,6 +724,39 @@ evaluated its fixture decision, so that decision targets slot 1 whatever the
 two-sided bindings say, and authorizing it makes both quotes collide in a way
 that mimics a slot-exclusivity defect.
 
+#### Added - independent Phase 4 property corpus
+
+`tests/v2_phase4_property_tests.cpp` drives 24 seeds of 220 randomized but
+well-formed command steps and checks contract-derived properties after every
+command: no outbox effect outliving its cluster order, reservation arithmetic
+that cannot go negative or exceed the original, released reservations holding
+nothing, byte-identical snapshot round trips, monotonic reclamation and orphan
+counters, reclamation being economically inert, and byte-identical canonical
+replay of the whole history including refusals.
+
+The Phase 4 gate is stated as a property rather than as agreement with a second
+implementation, so the corpus derives its checks from the contracts. That makes
+it independent evidence in a different way from the Phase 1-3 mirror model, which
+remains the reference for the mirror style; a Phase 4 mirror is still worth
+adding and is not superseded.
+
+Phase 4 state is created only through commands - the risk account via B1
+creation, decisions via real source admission and evaluation - so the corpus
+cannot hand-seed states the kernel would never produce. Coverage is asserted
+rather than assumed: the run fails unless authorization, partial and full fills,
+cancel, reconciliation, unknown submission, configuration, reclamation, orphan
+settlement and refusals were all exercised, and a vacuity guard requires at least
+a third of commands to be admitted.
+
+No kernel defect was found. Three corpus-side defects were, each a hazard for any
+future hand-built state: a zero source-cursor sequence is invalid; an
+executable-policy bundle's staged and activated StateVersions must both be at or
+below the current version; and asserting a specific replacement refusal code is
+wrong once the receipt arena fills, since admission refuses on capacity before
+dispatch reaches the handler.
+
+Release 24/24 and focused host Debug ASan+UBSan 6/6.
+
 #### Standing invariants for later phases
 
 Two rules were established here whose violation fails silently. First, the sweep

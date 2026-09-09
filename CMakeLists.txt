@@ -215,6 +215,11 @@ if(BUILD_TESTING)
     target_compile_options(v2-model-replay-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-model-replay-tests COMMAND v2-model-replay-tests)
 
+    add_executable(v2-phase4-property-tests tests/v2_phase4_property_tests.cpp)
+    target_link_libraries(v2-phase4-property-tests PRIVATE velocita_v2_kernel)
+    target_compile_options(v2-phase4-property-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-phase4-property-tests COMMAND v2-phase4-property-tests)
+
     add_executable(v2-rule-evaluator-tests tests/v2_rule_evaluator_tests.cpp)
     target_link_libraries(v2-rule-evaluator-tests PRIVATE velocita_v2_evaluator)
     target_compile_options(v2-rule-evaluator-tests PRIVATE -Wall -Wextra -Wpedantic)

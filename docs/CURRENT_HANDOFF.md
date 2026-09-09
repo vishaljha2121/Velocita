@@ -194,23 +194,113 @@ returns the original result verbatim through receipt deduplication, while a
 different request re-authorizing a consumed decision returns `already_applied`
 with the retained order and effect identities.
 
-Fixture trap recorded in code: `two_sided_state()` swaps the policy AFTER
-`ready_state()` has already evaluated `DecisionId{20}`, so that decision resolves
-against the single-rule policy and targets slot 1 whatever the two-sided bindings
-say. Callers must evaluate their own decisions after the swap; `evaluate_at_feature`
-exists for that. The first draft of this test authorized the inherited decision
-and both quotes collided on slot 1, which looked exactly like a slot-exclusivity
-defect and was not.
+#### Fixture hazard for review: a retained decision outlives its policy
+
+Flagged for Codex review because it produced a convincing false positive and the
+general shape will recur.
+
+`ready_state()` EVALUATES `DecisionId{20}` as part of building the fixture. Any
+helper that layers a different policy on top of `ready_state()` - as
+`two_sided_state()` does - leaves that decision resolved against the OLD policy.
+Its retained proposal is frozen at evaluation time, so it keeps the old policy's
+side, slot, price and quantity no matter what the new bindings say.
+
+What it cost here: the first draft of `test_two_sided_slots_requote_independently`
+authorized the inherited `DecisionId{20}` as its "ask". That decision had been
+resolved against the single-rule policy and targeted slot 1 buy, so both quotes
+landed on slot 1 and the second was refused `order_slot_occupied`. The failure
+was indistinguishable from a genuine slot-exclusivity defect - two orders that
+should occupy different slots contending for one - and the obvious next step
+would have been to "fix" the exclusivity predicate. There was nothing wrong with
+it. Printing the resolved `order_slot` and `side` of both proposals is what
+settled it: both read slot 1, side buy.
+
+What it could cost elsewhere, and why this is not merely a test-hygiene note:
+
+- a test that swaps policy mid-fixture is exercising YESTERDAY's policy while
+  reading today's, so it can report a pass for behavior that was never executed,
+  which is the more dangerous direction;
+- the same shape appears in any future fixture that stages or activates a policy
+  after `ready_state()`, including executable-policy rebinding tests; and
+- a generated model corpus that mixes policy activation with decision evaluation
+  must order them deliberately, or the model and the kernel will disagree about
+  which policy a decision was resolved under and the divergence will be blamed on
+  the reducer.
+
+This is correct kernel behavior, not a bug: a decision record must retain the
+proposal it was evaluated with, because that is what makes decisions replayable
+and attributable. The hazard is entirely in fixture construction.
+
+Mitigations in place: `two_sided_state()` documents the constraint at its return
+point, and `evaluate_at_feature()` exists so a caller can evaluate its own
+decisions after the swap at a chosen feature value. A stronger guard - having
+`ready_state()` not evaluate a decision at all, or having policy-swapping helpers
+assert `decision_count == 0` - was NOT implemented, because changing
+`ready_state()` touches every test in the suite. Worth considering when the Phase
+4 model corpus lands, since that is the next place the ordering will matter.
 
 Both tests are acceptance coverage: no kernel defect was found by either.
 Release 23/23; focused host Debug ASan+UBSan 5/5.
 
-The approved serial-replacement acceptance matrix is now complete. Remaining
-Phase 4 work is unchanged: unauthorized-decision retention, finite request and
+### Independent Phase 4 property corpus — 2026-09-09 (Claude)
+
+`tests/v2_phase4_property_tests.cpp`, target `v2-phase4-property-tests`. 24
+seeds, 220 steps each, currently 2,312 of 5,264 generated commands admitted.
+
+Approach and why. The Phase 4 gate is stated as a PROPERTY - fault/property tests
+must not be able to produce an unreserved effect, a duplicate economic mutation,
+a negative reservation, or a replay mismatch - so this corpus checks properties
+derived from the CONTRACTS after every command rather than agreeing with a second
+implementation. A hand-written mirror catches wrong-but-self-consistent behavior
+that invariants miss, which is real, but it is also the approach most at risk of
+transcribing the reducer including its bugs. The Phase 1-3 mirror in
+`v2_model_replay_tests.cpp` remains the reference for that style; this file
+deliberately takes the other side so the two fail differently. A Phase 4 mirror
+model is still worth adding later and is NOT superseded by this.
+
+Leverage worth knowing: `encode_state_snapshot` runs the full structural
+validator, which already enforces per-account conservation - reserved totals must
+equal the sum over that account's reservations - plus reservation ownership,
+non-negativity and index bounds. Snapshotting after every command is therefore
+itself a dense invariant check. The corpus adds what the validator cannot see:
+no effect outliving its cluster order, per-record reservation arithmetic,
+cross-command monotonicity of both accounting counters, reclamation being
+economically inert, and byte-identical canonical replay of the entire history.
+
+Phase 4 state is created only by commands - the risk account through B1
+`ConfigureRiskLimits` creation, decisions through real source admission and
+evaluation - so the corpus cannot hand-seed a state the kernel would never
+produce. Only Phase 1-3 scaffolding is built directly.
+
+Coverage is asserted, not hoped for: the run fails unless it exercised
+authorization, partial fill, full fill, cancel, reconciliation, unknown
+submission, configuration, reclamation, orphan settlement and refusals. A vacuity
+guard additionally requires at least a third of commands to be admitted, so a
+future change that exhausts an arena early cannot silently turn later steps into
+no-ops. The threshold is deliberately loose rather than tuned to the current
+ratio, which would make it a change detector instead of a vacuity guard. A high
+refusal rate is wanted: the generator aims commands at stale decisions, released
+reservations, occupied slots and closed orders on purpose.
+
+Three fixture defects were found and fixed while building it, all in the corpus
+rather than the kernel, and each is a hazard for any future hand-built state: a
+source cursor with a zero sequence is invalid, so the corpus lets the first
+`RecordSourceEvent` establish it; an executable-policy bundle records the
+StateVersions at which it was staged and activated and both must be at or below
+the current version, so a bootstrap sitting at version zero describes a history
+that never happened; and asserting `replacement_not_supported` specifically is
+wrong once the 256-receipt arena fills, because admission then refuses on
+capacity before dispatch reaches the replacement handler - the property is that
+replacement never succeeds, not that it always fails the same way.
+
+No kernel defect was found by the corpus. Release 24/24; focused host Debug
+ASan+UBSan 6/6, the sanitized build reconfigured to include the new target.
+
+Remaining Phase 4 work: unauthorized-decision retention, finite request and
 venue-event horizons, broader accounting and reconciliation evidence, metrics and
-age/latency evidence, an independent Phase 4 model/property corpus, the complete
-sanitizer gate, pinned ARM64 and physical Pi gates, and a Phase 4 acceptance
-evidence document.
+age/latency evidence, an optional Phase 4 mirror model to complement this corpus,
+the complete sanitizer gate, pinned ARM64 and physical Pi gates, and a Phase 4
+acceptance evidence document.
 
 Next bounded work: finish the approved serial-replacement acceptance matrix.
 Start with a cancel/reconcile cycle containing a risk-limit update: reject a
