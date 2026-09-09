@@ -2274,6 +2274,125 @@ void test_serial_replacement_across_a_risk_limit_update() {
             "canonical replay did not converge to the direct snapshot");
 }
 
+// ---------------------------------------------------------------------------
+// Reclamation landing inside the cancel/reconcile window.
+//
+// The production shape: a cancel is outstanding at a slow venue while the edge
+// keeps producing frames, so the arenas fill mid-cancellation. Compaction and
+// the cancel lifecycle have only been tested apart; here they interact.
+//
+// The question that matters is not whether the cancelled order survives the
+// sweep - it is unresolved, so it must - but whether a stuck slot can still be
+// RECOVERED once the arenas are full. If the reconciliation that releases the
+// residual itself needed the capacity that is exhausted, one slow venue response
+// would wedge the kernel instead of degrading it, and the operator path in
+// G-074a would become mandatory rather than a safety net.
+// ---------------------------------------------------------------------------
+void test_reclamation_during_cancellation_preserves_the_recovery_path() {
+    using namespace velocita::v2;
+    auto state = ready_state();
+    ApplyScratch scratch;
+
+    const auto submit = apply(state, authorize(2, 0x81), scratch);
+    require(submit.code == ApplyCode::applied, "stuck-slot fixture failed");
+    const auto submit_bytes =
+        encode_payload(*materialize_order_effect(state, submit.effect_id())).bytes;
+    const auto cancel = apply(
+        state, request_cancel(1, 0x82, submit.cluster_order_id()), scratch);
+    require(cancel.code == ApplyCode::applied, "stuck-slot cancel failed");
+    const auto cancel_bytes =
+        encode_payload(*materialize_order_effect(state, cancel.effect_id())).bytes;
+    require(apply(state,
+                  observe_order_event(1, 0x83, VenueObservationKind::cancelled,
+                                      submit.cluster_order_id(), cancel.effect_id(),
+                                      3100),
+                  scratch)
+                    .code == ApplyCode::applied &&
+                state.orders[0].state == ClusterOrderState::reconciling,
+            "stuck-slot fixture did not reach reconciling");
+    const auto held = state.risk_accounts[0];
+
+    // The edge keeps evaluating because market data does not stop. Nothing here
+    // can be reclaimed: the only order is unresolved, so the sweep has no
+    // resolved group to free and evaluation must eventually fail closed.
+    bool evaluation_halted = false;
+    std::uint64_t request = 3;
+    std::uint64_t sequence = 2;
+    for (std::uint64_t cycle = 1; cycle < 40 && !evaluation_halted; ++cycle) {
+        if (evaluate_new_decision(state, scratch, DecisionId{40 + cycle}, sequence++,
+                                  request++)
+                .code == ApplyCode::decision_capacity_exceeded) {
+            evaluation_halted = true;
+        }
+    }
+    require(evaluation_halted,
+            "decision arena never failed closed around an unresolved order");
+
+    // The reconciling order is untouched by compaction pressure.
+    require(state.order_count >= 1 &&
+                state.orders[0].cluster_order_id == submit.cluster_order_id() &&
+                state.orders[0].state == ClusterOrderState::reconciling &&
+                state.reservations[0].state != ReservationState::released &&
+                state.risk_accounts[0].reserved_quantity == held.reserved_quantity &&
+                state.risk_accounts[0].reserved_margin == held.reserved_margin &&
+                state.risk_accounts[0].reserved_fee == held.reserved_fee,
+            "reclamation pressure disturbed a reconciling order's risk");
+    require(state.orders[0].reservation_index < state.reservation_count &&
+                state.reservations[state.orders[0].reservation_index]
+                        .cluster_order_id == state.orders[0].cluster_order_id,
+            "reclamation pressure broke the reconciling order's reservation pairing");
+    require(encode_payload(*materialize_order_effect(state, submit.effect_id()))
+                        .bytes == submit_bytes &&
+                encode_payload(*materialize_order_effect(state, cancel.effect_id()))
+                        .bytes == cancel_bytes,
+            "reclamation pressure changed a reconciling order's effect bytes");
+
+    // THE PROPERTY UNDER TEST: recovery does not depend on the arena that filled.
+    // Final reconciliation consumes a request receipt and a venue-event receipt,
+    // neither of which is the decision arena, so a stuck slot stays recoverable
+    // while evaluation is failing closed.
+    auto proof = observe_order_event(2, 0x84,
+                                     VenueObservationKind::cancel_reconciled,
+                                     submit.cluster_order_id(), cancel.effect_id(),
+                                     3101);
+    auto& evidence = std::get<ObserveOrderEvent>(proof.body).observation;
+    evidence.venue_order_id = VenueOrderId{70};
+    evidence.quantity = state.reservations[0].filled_quantity;
+    proof.identity.payload_digest = observation_fingerprint(evidence);
+    require(apply(state, proof, scratch).code == ApplyCode::applied &&
+                state.reservations[0].state == ReservationState::released,
+            "a stuck slot could not be reconciled while the arenas were full");
+    // The orphaned submit effect is recorded as `incomplete` - outcome never
+    // established - and must NOT be recorded as `acknowledged`, which would
+    // claim evidence the venue never gave us. Checked before reclamation
+    // removes the record.
+    {
+        bool saw_incomplete = false;
+        for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
+            const auto& effect = state.outbox_effects[index];
+            if (effect.effect_id != submit.effect_id()) continue;
+            saw_incomplete = effect.state == OutboxState::incomplete;
+        }
+        require(saw_incomplete,
+                "orphaned effect was not settled honestly as incomplete");
+    }
+
+    // And once the residual is released the group becomes reclaimable, so the
+    // next evaluation sweeps and the edge resumes. Degraded, not wedged.
+    require(evaluate_new_decision(state, scratch, DecisionId{99}, sequence++,
+                                  request++)
+                    .code == ApplyCode::applied,
+            "evaluation did not resume after the stuck slot was reconciled");
+    require(state.reclaimed_group_count > 0,
+            "recovery did not reclaim the resolved group");
+    require(state.settled_incomplete_effect_count == 1,
+            "final reconciliation did not settle exactly the one orphaned effect");
+
+    std::array<std::byte, kMaxStateSnapshotBytes> snapshot{};
+    require(encode_state_snapshot(state, snapshot).error == StateSnapshotError::none,
+            "recovered state failed snapshot invariants");
+}
+
 int main() {
     try {
         {
@@ -2299,6 +2418,7 @@ int main() {
         test_risk_configuration_codec_and_restore();
         test_risk_configuration_admission_and_capacity();
         test_serial_replacement_across_a_risk_limit_update();
+        test_reclamation_during_cancellation_preserves_the_recovery_path();
         test_reclaimed_decision_retains_identity_and_authorization();
         test_completed_requote_cycles_do_not_exhaust_bounded_arenas();
         test_sweep_preserves_records_an_unresolved_effect_still_needs();

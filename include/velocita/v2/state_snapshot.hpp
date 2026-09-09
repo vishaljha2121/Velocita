@@ -20,7 +20,7 @@ inline constexpr std::size_t kStateSnapshotDigestInputOffset =
 inline constexpr std::size_t kStateSnapshotPayloadOffset =
     kStateSnapshotSchemaOffset + kStateSnapshotSchemaBytes;
 
-inline constexpr std::size_t kStateSnapshotEmptyPayloadBytes = 53;
+inline constexpr std::size_t kStateSnapshotEmptyPayloadBytes = 61;
 inline constexpr std::size_t kStateSnapshotPolicyFixedBytes = 133;
 inline constexpr std::size_t kStateSnapshotPolicyRuleBytes = 12;
 inline constexpr std::size_t kStateSnapshotSourceBytes = 24;

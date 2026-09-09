@@ -301,6 +301,57 @@ version. Snapshot schema V5 retains this new receipt variant; V4 is not silently
 reinterpreted and no migration is supplied. OrderEffect bytes and schema remain
 unchanged. No risk-account capacity or resident-state layout increase is required.
 
+### 8.2 Resolved versus acknowledged (approved 2026-09-09)
+
+These are different properties and the difference decides what may be reclaimed.
+
+- **Acknowledged** is evidence about ONE instruction: the venue told us how a
+  specific effect ended.
+- **Resolved** is a property of an ORDER's risk: its reservation is released and
+  its exposure is fully accounted for.
+
+They usually coincide and must not be assumed to. `conflict` is terminal but
+never resolved - internal state and venue evidence disagree, so exposure is of
+unknown size. `reconciling` is likewise unresolved while final evidence is
+outstanding. Reclamation and cleanup therefore test whether RISK is resolved, not
+whether a state machine stopped; any future terminal-but-unresolved state then
+inherits the correct behaviour without being added to a list.
+
+The converse also occurs: an order can be resolved while one of its own effects
+was never acknowledged. Once the order is closed, no future observation can be
+meaningfully scoped to that effect, so it is ORPHANED. It is settled to
+`OutboxState::incomplete`, which records that the outcome was never established.
+It is deliberately not recorded as `acknowledged`, which would claim evidence the
+venue never gave.
+
+`pending` does not mean "never sent". `pending`, `claimed`, and `attempted` are
+gateway-side bookkeeping the cluster learns about asynchronously, so a venue
+response can legitimately arrive before the cluster is told the effect was
+attempted. Venue evidence for a pending effect is therefore valid and must stay
+accepted.
+
+Orphan settlement runs only on DEFINITIVE evidence: final cancel reconciliation,
+or a rejected submit the venue never accepted. A full fill is excluded even
+though it is terminal, because a cancel that was in flight when the fill landed
+is still owed a response ("too late, already filled"). That effect is awaiting
+evidence, not orphaned, and auto-settling it would discard a response we have
+every reason to expect. If that response never arrives it is the G-074a operator
+situation, not something to heal automatically.
+
+Without this, an order whose sibling effect never received evidence stays
+permanently unreclaimable, and enough such groups wedge the bounded arenas:
+evaluation fails closed and cannot recover even after the order reconciles.
+
+`TradingState::settled_incomplete_effect_count` is a monotonic count of orphan
+settlements. A rising count means the gateway is losing effect outcomes even
+though reclamation remains healthy.
+
+**Phase 8 dependency.** Reclaiming an `incomplete` effect makes its canonical
+bytes unreconstructable, so a late gateway send against a closed order must be
+rejected by executor-generation and kill-epoch fencing plus stable `EffectId`
+idempotency rather than by retaining bytes. That hardening is a Phase 8
+acceptance requirement; see G-057a.
+
 ## 9. Outbox and execution contract
 
 Outbox lifecycle:

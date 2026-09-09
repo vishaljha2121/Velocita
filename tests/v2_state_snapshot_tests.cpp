@@ -368,7 +368,7 @@ void test_empty_snapshot_has_canonical_layout() {
 
     const std::array expected_prefix{
         std::byte{'V'}, std::byte{'2'}, std::byte{'S'}, std::byte{'T'},
-        std::byte{53}, std::byte{0}, std::byte{0}, std::byte{0},
+        std::byte{61}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{5}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
@@ -382,14 +382,24 @@ void test_empty_snapshot_has_canonical_layout() {
             "returned digest differs from framed digest");
     const auto hash = to_hex(encoded.state_digest);
     require(hash ==
-                "de50590173ab88b59a838939614a15716c5f109ddb423f15f6b1d440c5abadbd",
+                "bd5216cdeb5887282ec5061a18f2b1c43abedbab070971a3c8ecb5a1621006d0",
             "empty state golden digest changed: " + hash);
-    auto legacy = storage;
-    legacy[8] = std::byte{4};
-    require(to_hex(sha256_digest(std::span<const std::byte>{legacy.data() + 8,
-                digest_offset - 8})) ==
-                "787226e9176c9eaad636a63e7104391bc55513c6180bfc542f6b0e37e1a9685e",
-            "V5 migration changed empty snapshot payload bytes");
+    // V5 empty-payload size guard.
+    //
+    // This previously asserted V5's empty payload was byte-identical to V4's
+    // apart from the schema byte, i.e. that B1 added no header field. That is
+    // now deliberately false: orphan-settlement accounting appends
+    // `settled_incomplete_effect_count`, so the empty payload grew by eight
+    // bytes. Hashing the payload again would only restate the golden digest
+    // above, so the guard keeps its real job in a form that cannot duplicate it -
+    // pinning the empty-payload SIZE, which is what unreviewed header growth
+    // actually moves.
+    require(encoded.bytes_written ==
+                kStateSnapshotPayloadOffset + kStateSnapshotEmptyPayloadBytes +
+                    kDigestBytes,
+            "empty snapshot length does not match the declared empty payload");
+    require(kStateSnapshotEmptyPayloadBytes == 61,
+            "V5 empty snapshot header grew without review");
 }
 
 void test_round_trip_is_canonical_and_excludes_unused_capacity() {

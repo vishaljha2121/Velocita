@@ -915,6 +915,71 @@ template <std::size_t WordCount>
 // payload reclamation. Admission consults them even for new request IDs. Any
 // future receipt reclamation must preserve that guarantee through its declared
 // retry/conflict horizon; freeing payload storage does not grant identity reuse.
+// An outbox effect is SETTLED once no further evidence can change it.
+// `incomplete` counts: it records that the outcome was never established, which
+// is a final answer even though it is not a satisfying one.
+[[nodiscard]] constexpr bool effect_is_settled(const OutboxState state) noexcept {
+    return state == OutboxState::acknowledged || state == OutboxState::rejected ||
+           state == OutboxState::conflict || state == OutboxState::incomplete;
+}
+
+// TERMINAL AND RISK-RESOLVED. These are different properties and the difference
+// is the whole safety argument for reclamation: `conflict` and `reconciling` are
+// terminal-or-stuck while still holding exposure of unknown size, so they are
+// never resolved. Factored out so reclamation and orphan settlement cannot drift
+// apart - they must agree on what "resolved" means or one will free capacity the
+// other still considers live.
+[[nodiscard]] bool order_is_risk_resolved(const TradingState& state,
+                                          const ClusterOrder& order) noexcept {
+    const bool terminal = order.state == ClusterOrderState::filled ||
+                          order.state == ClusterOrderState::cancelled ||
+                          order.state == ClusterOrderState::rejected;
+    if (!terminal) return false;
+    if (order.reservation_index >= state.reservation_count) return false;
+    const auto& reservation = state.reservations[order.reservation_index];
+    return reservation.state == ReservationState::released &&
+           reservation.remaining_quantity.atoms() == 0 &&
+           reservation.remaining_notional.atoms() == 0 &&
+           reservation.margin_hold.atoms() == 0 && reservation.fee_hold.atoms() == 0;
+}
+
+// Settle effects orphaned by terminal resolution.
+//
+// Once an order is closed, no future observation can be meaningfully scoped to
+// an effect of that order which never received evidence: the venue has nothing
+// left to say about it. Leaving such an effect `pending` forever makes its whole
+// group permanently unreclaimable, and enough of those wedge the bounded arenas -
+// evaluation fails closed and cannot recover even after the order reconciles.
+//
+// Note `pending` does NOT mean "never sent". pending/claimed/attempted are
+// gateway-side bookkeeping the cluster learns about asynchronously, so a venue
+// response can legitimately arrive before the cluster is told the effect was
+// attempted. The problem is not that the effect was unsent; it is that all later
+// evidence was scoped to a sibling effect and this one was never spoken about.
+//
+// `incomplete` is the honest record - outcome never established - rather than
+// `acknowledged`, which would claim evidence we never received.
+//
+// This is safe only because the group's RISK is already resolved: the residual
+// was released against final venue evidence, so there is no exposure left to
+// under-reserve. `conflict` is deliberately excluded by order_is_risk_resolved.
+// A late gateway send against a closed order remains a real hazard; it is
+// answered by executor-generation and kill-epoch fencing plus stable EffectId
+// idempotency in Phase 8, not by retaining these bytes forever.
+std::size_t settle_orphaned_effects(TradingState& state,
+                                    const ClusterOrderId cluster_order_id) noexcept {
+    std::size_t settled = 0;
+    for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
+        auto& effect = state.outbox_effects[index];
+        if (effect.cluster_order_id != cluster_order_id) continue;
+        if (effect_is_settled(effect.state)) continue;
+        effect.state = OutboxState::incomplete;
+        ++settled;
+    }
+    state.settled_incomplete_effect_count += settled;
+    return settled;
+}
+
 [[nodiscard]] std::size_t sweep_resolved_order_groups(TradingState& state) noexcept {
     constexpr std::uint16_t kDroppedIndex = std::numeric_limits<std::uint16_t>::max();
 
@@ -926,28 +991,13 @@ template <std::size_t WordCount>
     std::size_t reclaimed = 0;
     for (std::size_t index = 0; index < state.order_count; ++index) {
         const auto& order = state.orders[index];
-        const bool terminal_and_resolved =
-            order.state == ClusterOrderState::filled ||
-            order.state == ClusterOrderState::cancelled ||
-            order.state == ClusterOrderState::rejected;
-        if (!terminal_and_resolved) continue;
-        if (order.reservation_index >= state.reservation_count) continue;
-
-        const auto& reservation = state.reservations[order.reservation_index];
-        if (reservation.state != ReservationState::released) continue;
-        if (reservation.remaining_quantity.atoms() != 0 ||
-            reservation.remaining_notional.atoms() != 0 ||
-            reservation.margin_hold.atoms() != 0 ||
-            reservation.fee_hold.atoms() != 0) {
-            continue;
-        }
+        if (!order_is_risk_resolved(state, order)) continue;
 
         bool effects_settled = true;
         for (std::size_t effect = 0; effect < state.outbox_effect_count; ++effect) {
             const auto& record = state.outbox_effects[effect];
             if (record.cluster_order_id != order.cluster_order_id) continue;
-            if (record.state != OutboxState::acknowledged &&
-                record.state != OutboxState::rejected) {
+            if (!effect_is_settled(record.state)) {
                 effects_settled = false;
                 break;
             }
@@ -2056,6 +2106,19 @@ template <std::size_t WordCount>
         reservation.margin_hold = {};
         reservation.fee_hold = {};
         reservation.state = ReservationState::released;
+    }
+    // Settle orphans only on DEFINITIVE evidence, which `releases` already
+    // identifies: final cancel reconciliation, or a rejected submit the venue
+    // never accepted. Those are the two cases where nothing further is owed.
+    //
+    // A full fill is deliberately excluded even though it is terminal. If a
+    // cancel was in flight when the fill landed, the venue still owes a response
+    // to that cancel ("too late, already filled"), so the effect is awaiting
+    // evidence rather than orphaned. Auto-settling it would discard a response
+    // we have every reason to expect. If that response never arrives, it is the
+    // G-074a operator situation, not something to heal automatically.
+    if (releases && order_is_risk_resolved(state, order)) {
+        (void)settle_orphaned_effects(state, order.cluster_order_id);
     }
     return venue_event_result(state, ApplyCode::applied, next_version,
                               observation);

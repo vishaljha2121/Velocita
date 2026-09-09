@@ -627,6 +627,11 @@ struct TradingState {
     // dashboard the "how much has ever been swept" signal without growing the
     // 128-byte canonical result or regenerating every existing golden result.
     std::uint64_t reclaimed_group_count{};
+    // Monotonic count of effects settled to `incomplete` because their order
+    // resolved before they ever received evidence. Operationally this is the
+    // signal that the gateway is losing effect outcomes: reclamation stays
+    // healthy, but a rising count means delivery bookkeeping is incomplete.
+    std::uint64_t settled_incomplete_effect_count{};
 };
 
 // Reserved for bounded temporary indexes/encoding buffers in later reducer

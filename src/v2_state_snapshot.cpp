@@ -904,6 +904,7 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
     // Appended after the control prefix rather than inserted after
     // state_version, so the existing header layout stays byte-stable.
     writer.integral(state.reclaimed_group_count);
+    writer.integral(state.settled_incomplete_effect_count);
 
     writer.integral(static_cast<std::uint16_t>(state.policy_count));
     for (std::size_t index = 0; index < state.policy_count; ++index) {
@@ -1297,6 +1298,7 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
     state.executor_generation =
         ExecutorGeneration{reader.integral<std::uint64_t>()};
     state.reclaimed_group_count = reader.integral<std::uint64_t>();
+    state.settled_incomplete_effect_count = reader.integral<std::uint64_t>();
 
     state.policy_count = reader.integral<std::uint16_t>();
     if (state.policy_count > state.policies.size()) return false;

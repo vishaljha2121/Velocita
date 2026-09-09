@@ -114,8 +114,50 @@ replay a lifecycle faithfully; it previously applied two commands invisibly.
 
 Verified after this increment: Release 23/23; focused host Debug ASan+UBSan 5/5.
 
-Remaining in the serial-replacement matrix: coverage under arena pressure (a
-sweep landing inside the cancel/reconcile window), configuration interaction with
+### Reclamation inside the cancel/reconcile window — 2026-09-09 (Claude)
+
+`test_reclamation_during_cancellation_preserves_the_recovery_path` produced a
+GENUINE RED and exposed an availability defect, now fixed.
+
+An order can be terminal AND risk-resolved while one of its own effects never
+received evidence. Observed state: order `cancelled`, reservation `released`,
+cancel effect `acknowledged`, submit effect still `pending`. Once the order is
+closed no future observation can be scoped to that submit effect, so it was
+ORPHANED - yet reclamation required every effect settled, making the group
+permanently unreclaimable. With the decision arena full of unauthorized
+decisions, evaluation failed closed and could not recover even after the stuck
+slot reconciled. Wedged, not degraded.
+
+Fix, approved as option A and specified in architecture §8.2: on DEFINITIVE
+evidence only, orphaned effects settle to `OutboxState::incomplete`, an enum
+value that already existed and was never set. `incomplete` counts as settled for
+reclamation. It is deliberately not `acknowledged`, which would claim evidence
+the venue never gave.
+
+Deliberately excluded: the full-fill path. A cancel in flight when a fill lands
+is still owed a venue response, so that effect is awaiting evidence rather than
+orphaned. Settlement runs only where `releases` is already true - final cancel
+reconciliation, or a rejected submit the venue never accepted.
+
+`effect_is_settled` and `order_is_risk_resolved` are now shared helpers, because
+reclamation and settlement must agree on what "resolved" means or one will free
+capacity the other still considers live.
+
+`TradingState::settled_incomplete_effect_count` is a new monotonic counter in the
+snapshot header. It grew the V5 empty payload by eight bytes, which falsified the
+guard asserting V5's empty payload matched V4's; that guard is re-purposed to pin
+the empty-payload SIZE, which is what unreviewed header growth actually moves.
+Empty-state, replay and generated-model goldens were re-pinned for development V5.
+
+Layout: `TradingState` 81,032 bytes (888 headroom), maximum canonical snapshot
+65,129 bytes (407 headroom). Release 23/23; focused host Debug ASan+UBSan 5/5.
+
+Phase 8 now carries G-057a: reclaiming an `incomplete` effect makes its bytes
+unreconstructable, so a late gateway send against a closed order must be stopped
+by executor-generation and kill-epoch fencing plus stable `EffectId` idempotency.
+Phase 4 relies on that and it is a Phase 8 acceptance requirement.
+
+Remaining in the serial-replacement matrix: configuration interaction with
 `conflict` and `submission_unknown` orders, and multi-slot serial requoting.
 
 Next bounded work: finish the approved serial-replacement acceptance matrix.

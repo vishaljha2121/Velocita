@@ -211,6 +211,20 @@ Phase 11 strategy/model validation and controlled canary
   external lease/fence stops new sends within the accepted lease bound.
 - [ ] **G-056 — Independent kill path.** Authenticated kill and stop-new-risk do
   not depend on normal strategy traffic, dashboards, or normal-lane queue space.
+- [ ] **G-057a — Late effects against closed orders are fenced.** A reclaimed
+  `incomplete` effect - one orphaned when its order resolved before the effect
+  ever received evidence - can no longer reproduce its canonical bytes. A gateway
+  that later sends it must therefore be stopped by executor-generation and
+  kill-epoch fencing plus stable `EffectId` idempotency, never by the cluster
+  retaining those bytes indefinitely.
+
+  Phase 4 deliberately relies on this. Orphan settlement (architecture §8.2) is
+  what stops one lost effect outcome from wedging the bounded arenas, and it
+  trades that availability against this fencing requirement. Acceptance must
+  prove that a stale-generation or stale-kill-epoch send for a closed order is
+  refused at the last pre-send boundary, and that a duplicate arriving by stable
+  `EffectId` is a deterministic no-op rather than a second external effect.
+
 - [ ] **G-057 — Emergency actions only reduce risk.** The emergency lane may
   stop, cancel, mass-cancel, or reconcile; it cannot open, enlarge, or improve
   an order.

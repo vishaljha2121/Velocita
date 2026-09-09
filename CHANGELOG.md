@@ -655,6 +655,45 @@ property is general: a faithful replay must re-drive every admitted command,
 refusals included. `evaluate_new_decision` gained an optional command sink,
 having previously applied two commands invisibly.
 
+#### Fixed - orphaned effects wedged the bounded arenas
+
+`test_reclamation_during_cancellation_preserves_the_recovery_path` found that an
+order could be terminal and risk-resolved while one of its own effects had never
+received evidence: order `cancelled`, reservation `released`, cancel effect
+`acknowledged`, submit effect still `pending`. Once the order closed, no future
+observation could be scoped to that submit effect, but reclamation required every
+effect settled - so the group was permanently unreclaimable. With the decision
+arena full, evaluation failed closed and could not recover even after the stuck
+slot reconciled. Wedged rather than degraded.
+
+Orphaned effects now settle to `OutboxState::incomplete`, an enum value that
+already existed and was never set, and `incomplete` counts as settled for
+reclamation. It is deliberately not `acknowledged`, which would claim evidence
+the venue never gave. Settlement runs only on definitive evidence - final cancel
+reconciliation or a rejected submit the venue never accepted - and specifically
+NOT on a full fill, because a cancel in flight when the fill lands is still owed
+a venue response and is awaiting evidence rather than orphaned.
+
+Justification for auto-healing here but never for `conflict`: this group's RISK
+is resolved, so there is no exposure left to under-reserve. `conflict` is
+terminal but unresolved and must never be settled automatically. The distinction
+is specified in architecture contracts section 8.2.
+
+`effect_is_settled` and `order_is_risk_resolved` were factored into shared
+helpers so reclamation and settlement cannot drift apart on what "resolved" means.
+
+#### Added - orphan settlement accounting
+
+`TradingState::settled_incomplete_effect_count`, a monotonic counter in the
+snapshot header. A rising count means the gateway is losing effect outcomes even
+while reclamation stays healthy. It grew the V5 empty payload by eight bytes,
+which falsified the guard asserting V5's empty payload matched V4's; that guard
+now pins the empty-payload size instead, which is what unreviewed header growth
+actually moves. Empty-state, replay and generated-model goldens were re-pinned
+for development V5.
+
+`TradingState` is 81,032 bytes and the maximum canonical snapshot 65,129.
+
 #### Standing invariants for later phases
 
 Two rules were established here whose violation fails silently. First, the sweep
