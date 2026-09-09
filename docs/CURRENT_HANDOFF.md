@@ -348,6 +348,42 @@ No schema or layout change was required: `TradingState` remains 81,032 bytes and
 the maximum canonical snapshot 65,129. Release 24/24; focused host Debug
 ASan+UBSan 6/6.
 
+### Phase 4 metrics — 2026-09-09 (Claude)
+
+`include/velocita/v2/metrics.hpp`, `src/v2_metrics.cpp`, target
+`v2-metrics-tests`. Specified in architecture §8.5.
+
+`collect_metrics` is a pure function of `TradingState`: no new field, no digest
+participation, no clock. Ages are STATE-VERSION distances, not durations, because
+apply may not read a clock; the exporter converts to wall-clock on its own clock,
+outside the authority boundary. `OutcomeCounters` is separate and deliberately
+not in state, because duplicate and refusal counts describe command outcomes
+rather than retained records - a duplicate leaves no trace in state, which is
+what makes it a duplicate - and putting them in state would drag an observability
+counter into the state digest and therefore into consensus.
+
+G-074a now has its signal: `oldest_reconciling_order_age` plus
+`oldest_conflicted_order_age` and `unresolved_orders`. A stuck slot is no longer
+indistinguishable from a quiet market.
+
+REGRESSION FOUND, AND A PROCESS LESSON. Building only the target under test and
+then running `ctest` gives a false pass: `ctest` does not build, so untouched
+suites keep running STALE binaries. `v2-decision-kernel-tests` had been passing
+against a binary predating the unauthorized-decision reclamation. A full
+`cmake --build build-phase4` exposed it immediately. Always build ALL targets
+before trusting a regression run.
+
+The regression itself was a premise change, not a defect: that test filled the
+decision arena with sixteen same-slot proposals, which supersession now sweeps
+down to one so the arena never reaches its bound. The capacity-atomicity
+invariant it protects is still worth testing, so the fixture now assigns each
+retained proposal a distinct logical slot, making the arena genuinely full and
+genuinely unsweepable. That is the third test whose premise this phase's
+reclamation work invalidated while leaving its intent intact.
+
+Release 25/25; focused host Debug ASan+UBSan 8/8, the sanitized build
+reconfigured to include the metrics and decision-kernel targets.
+
 Remaining Phase 4 work: finite request and venue-event horizons, broader accounting and reconciliation evidence, metrics and
 age/latency evidence, an optional Phase 4 mirror model to complement this corpus,
 the complete sanitizer gate, pinned ARM64 and physical Pi gates, and a Phase 4

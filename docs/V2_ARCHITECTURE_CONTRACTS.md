@@ -457,6 +457,55 @@ the venue reconciliation window are both unknown until Phase 5 supplies a venue
 simulator. Revisit it there, alongside the reference-horizon question already
 deferred from the reclamation contract.
 
+### 8.5 Phase 4 metrics (approved 2026-09-09)
+
+Two constraints from ADR 0001 decide the whole shape.
+
+**Metrics are disposable projections and never trading authority.**
+`collect_metrics` is therefore a PURE FUNCTION of `TradingState`. It adds no
+field, participates in no digest, and cannot be read back by the reducer.
+Anything a metric would need that state does not already carry is a signal to
+question the metric, not to grow authoritative state.
+
+**Apply reads no clock.** Section 15 asks for "oldest pending age" and
+"decision-to-effect latency", which are durations, and a duration needs a clock
+apply is forbidden to have. Every age is therefore measured in STATE VERSIONS -
+a monotonic count of applied commands - so the quantity is exact, deterministic,
+and identical on every replica. Converting to wall-clock time is the exporter's
+job, on the exporter's clock, outside the authority boundary.
+
+That is arguably the better operational measure and not merely a workaround.
+State-version age answers "how many decisions has the cluster made while this sat
+unresolved", which is load-relative: a stuck slot looks equally stuck in a fast
+market and a quiet one, and the number cannot drift or jump when a host's clock
+is corrected. A wall-clock age would do both.
+
+Reported: arena occupancy against compile-time capacities; orders, effects and
+reservations by state, indexed by raw enum value; counts and oldest ages for
+unresolved orders, unsettled effects, reconciling orders (G-074a) and conflicted
+orders; the maximum decision-to-authorization distance; the retained reclamation
+and orphan-settlement counters; control state; and per risk account the reserved
+exposure, position, versions, and headroom against the aggregate ceilings.
+
+`unresolved` keys on RETAINED RISK, not on lifecycle state, matching the
+reclamation rule. A metric counting "not terminal" would omit a conflicted order,
+which is terminal and simultaneously the most important record on the dashboard.
+
+An age for a record authorized at or after the current state version reports
+zero rather than wrapping. The subtraction is unsigned, so a future-dated record
+would otherwise appear maximally stale and turn a corrupt input into a page.
+
+An effect record carries no version of its own, so its age is that of the order
+that authorized it. That is the correct provenance: the effect has existed since
+its order was authorized.
+
+**`OutcomeCounters` is separate and deliberately not in state.** Duplicate and
+refusal counts describe COMMAND OUTCOMES rather than retained records - a
+duplicate that returned its retained result leaves no trace in state, which is
+precisely what makes it a duplicate. They are accumulated by an observer as
+results flow past. Putting them in `TradingState` would make an observability
+counter part of the state digest and therefore of consensus.
+
 ## 9. Outbox and execution contract
 
 Outbox lifecycle:

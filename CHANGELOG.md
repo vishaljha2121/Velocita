@@ -807,6 +807,50 @@ observe_fill gained side and price parameters, because a fill whose side
 disagrees with the resolved proposal is correctly refused as not applicable but
 reads as a mysterious fixture failure on a two-sided book.
 
+#### Added - Phase 4 metrics
+
+`collect_metrics` is a pure function of `TradingState`, adding no field,
+participating in no digest, and reading no clock. Section 15 asks for ages and
+latencies, which are durations, and apply may not read a clock, so every age is a
+STATE-VERSION distance instead. That is exact, deterministic, identical on every
+replica, and arguably the better operational measure: it is load-relative, so a
+stuck slot looks equally stuck in a fast market and a quiet one, and it cannot
+drift or jump when a host's clock is corrected. Converting to wall-clock is the
+exporter's job, outside the authority boundary.
+
+Reported: arena occupancy against compile-time capacities; orders, effects and
+reservations by state; counts and oldest ages for unresolved orders, unsettled
+effects, reconciling orders and conflicted orders; maximum
+decision-to-authorization distance; the retained reclamation and
+orphan-settlement counters; control state; and per risk account the reserved
+exposure, position, versions and headroom against aggregate ceilings.
+
+`unresolved` keys on retained risk rather than lifecycle state, matching the
+reclamation rule: a metric counting "not terminal" would omit a conflicted order,
+which is terminal and simultaneously the most important record on the dashboard.
+An age for a record authorized at or after the current state version reports zero
+rather than wrapping, so a corrupt input cannot masquerade as maximal staleness.
+
+`OutcomeCounters` is separate and deliberately not in state. Duplicate and
+refusal counts describe command outcomes rather than retained records - a
+duplicate leaves no trace in state, which is what makes it a duplicate - so they
+are accumulated by an observer. Placing them in `TradingState` would make an
+observability counter part of the state digest and therefore of consensus.
+
+G-074a now has its signal: a slot stuck in reconciling is no longer
+indistinguishable from a quiet market.
+
+#### Fixed - a stale-binary false pass
+
+`ctest` does not build, so building only the target under test left untouched
+suites running stale binaries. `v2-decision-kernel-tests` had been passing
+against a binary predating unauthorized-decision reclamation; a full build
+exposed it. The failure was a premise change rather than a defect: that test
+filled the decision arena with sixteen same-slot proposals, which supersession
+now sweeps down to one. The capacity-atomicity invariant is still worth testing,
+so the fixture assigns each retained proposal a distinct logical slot, making the
+arena genuinely full and unsweepable.
+
 #### Standing invariants for later phases
 
 Two rules were established here whose violation fails silently. First, the sweep
