@@ -280,7 +280,9 @@ velocita::v2::Command observe_fill(
     const velocita::v2::ClusterOrderId order_id,
     const velocita::v2::EffectId effect_id,
     const velocita::v2::ExecutionId execution_id,
-    const std::int64_t quantity = 1) {
+    const std::int64_t quantity = 1,
+    const velocita::v2::Side side = velocita::v2::Side::buy,
+    const std::int64_t price = 11) {
     using namespace velocita::v2;
     VenueObservation observation;
     observation.kind = VenueObservationKind::fill;
@@ -291,8 +293,11 @@ velocita::v2::Command observe_fill(
     observation.effect_id = effect_id;
     observation.venue_order_id = VenueOrderId{70};
     observation.execution_id = execution_id;
-    observation.side = Side::buy;
-    observation.price = PriceTicks::from_atoms(11);
+    // Side and price must match the resolved proposal: a fill whose side
+    // disagrees is refused as not applicable, which is correct but reads as a
+    // mysterious fixture failure on a two-sided book.
+    observation.side = side;
+    observation.price = PriceTicks::from_atoms(price);
     observation.quantity = QuantityLots::from_atoms(quantity);
     observation.fee = FeeMicros::from_atoms(3);
     observation.evidence_digest = digest(marker);
@@ -1761,10 +1766,18 @@ void test_sweep_preserves_records_an_unresolved_effect_still_needs() {
 // the conflict for capacity.
 void test_conflicted_orders_are_never_swept() {
     using namespace velocita::v2;
-    auto state = ready_state();
+    auto state = two_sided_state();
     ApplyScratch scratch;
 
-    const auto conflicted = apply(state, authorize_decision(2, 0xd0, DecisionId{20}),
+    // A conflicted order on slot 1. Once superseded proposals became
+    // reclaimable, the decision arena can no longer be filled to force a sweep,
+    // so pressure now comes from the ORDER arena instead - which is the more
+    // realistic source anyway. That needs a second slot to cycle on, hence the
+    // two-sided fixture.
+    require(evaluate_at_feature(state, scratch, DecisionId{30}, 16, 2, 3).code ==
+                ApplyCode::applied,
+            "conflict fixture decision failed");
+    const auto conflicted = apply(state, authorize_decision(4, 0xd0, DecisionId{30}),
                                   scratch);
     require(conflicted.code == ApplyCode::applied, "conflict fixture failed");
     state.orders[0].state = ClusterOrderState::conflict;
@@ -1773,25 +1786,42 @@ void test_conflicted_orders_are_never_swept() {
     const auto effect_bytes =
         encode_payload(*materialize_order_effect(state, conflicted.effect_id())).bytes;
 
-    bool refused = false;
-    std::uint64_t request = 3;
-    for (std::uint64_t cycle = 1; cycle < 40 && !refused; ++cycle) {
-        const auto evaluated = evaluate_new_decision(
-            state, scratch, DecisionId{20 + cycle}, cycle + 1, request++);
-        if (evaluated.code == ApplyCode::decision_capacity_exceeded) refused = true;
+    std::uint64_t request = 5;
+    std::uint64_t sequence = 3;
+    std::uint64_t execution = 5'000;
+    for (std::uint64_t cycle = 1; cycle < 24; ++cycle) {
+        const DecisionId decision{40 + cycle};
+        require(evaluate_at_feature(state, scratch, decision, 11, sequence++,
+                                    request++)
+                        .code == ApplyCode::applied,
+                "slot-2 requote decision was not retained");
+        const auto submit = apply(
+            state, authorize_decision(request++, 0xd1, decision), scratch);
+        require(submit.code == ApplyCode::applied,
+                "slot-2 requote could not authorize beside a conflicted order");
+        require(apply(state,
+                      observe_fill(request++, 0xd2, submit.cluster_order_id(),
+                                   submit.effect_id(), ExecutionId{execution++}, 2,
+                                   Side::sell, 11),
+                      scratch)
+                        .code == ApplyCode::applied,
+                "slot-2 requote fill failed");
     }
-    require(refused,
-            "decision arena never refused, so no sweep was triggered around the conflict");
+    require(state.reclaimed_group_count > 0,
+            "order-arena pressure never triggered a sweep");
 
-    require(state.order_count >= 1 &&
-                state.orders[0].cluster_order_id == conflicted.cluster_order_id() &&
-                state.orders[0].state == ClusterOrderState::conflict,
-            "a conflicted order was reclaimed by the sweep");
+    bool retained = false;
+    for (std::size_t index = 0; index < state.order_count; ++index) {
+        if (state.orders[index].cluster_order_id == conflicted.cluster_order_id()) {
+            retained = state.orders[index].state == ClusterOrderState::conflict;
+        }
+    }
+    require(retained, "a conflicted order was reclaimed by the sweep");
     require(state.risk_accounts[0].reserved_quantity == held_quantity &&
                 state.risk_accounts[0].reserved_margin == held_margin,
             "reclaiming released risk still held by a conflicted order");
-    const auto retained = materialize_order_effect(state, conflicted.effect_id());
-    require(retained.has_value() && encode_payload(*retained).bytes == effect_bytes,
+    const auto survivor = materialize_order_effect(state, conflicted.effect_id());
+    require(survivor.has_value() && encode_payload(*survivor).bytes == effect_bytes,
             "conflicted order lost the bytes an operator needs to resolve it");
 }
 
@@ -2403,21 +2433,21 @@ void test_reclamation_during_cancellation_preserves_the_recovery_path() {
             "stuck-slot fixture did not reach reconciling");
     const auto held = state.risk_accounts[0];
 
-    // The edge keeps evaluating because market data does not stop. Nothing here
-    // can be reclaimed: the only order is unresolved, so the sweep has no
-    // resolved group to free and evaluation must eventually fail closed.
-    bool evaluation_halted = false;
+    // The edge keeps evaluating because market data does not stop. Once
+    // unauthorized decisions became reclaimable this stopped being able to
+    // exhaust the arena at all: each new actionable proposal for the occupied
+    // slot supersedes the previous one, so at most the newest survives. The
+    // property is now the stronger one - a stuck order cannot wedge evaluation -
+    // rather than the earlier "evaluation halts but can still recover".
     std::uint64_t request = 3;
     std::uint64_t sequence = 2;
-    for (std::uint64_t cycle = 1; cycle < 40 && !evaluation_halted; ++cycle) {
-        if (evaluate_new_decision(state, scratch, DecisionId{40 + cycle}, sequence++,
-                                  request++)
-                .code == ApplyCode::decision_capacity_exceeded) {
-            evaluation_halted = true;
-        }
+    for (std::uint64_t cycle = 1; cycle < 40; ++cycle) {
+        require(evaluate_new_decision(state, scratch, DecisionId{40 + cycle},
+                                      sequence++, request++)
+                        .code == ApplyCode::applied,
+                "a stuck order wedged evaluation: superseded proposals for its "
+                "occupied slot were not reclaimed");
     }
-    require(evaluation_halted,
-            "decision arena never failed closed around an unresolved order");
 
     // The reconciling order is untouched by compaction pressure.
     require(state.order_count >= 1 &&
@@ -2468,14 +2498,20 @@ void test_reclamation_during_cancellation_preserves_the_recovery_path() {
                 "orphaned effect was not settled honestly as incomplete");
     }
 
-    // And once the residual is released the group becomes reclaimable, so the
-    // next evaluation sweeps and the edge resumes. Degraded, not wedged.
+    // Once the residual is released the group becomes reclaimable, and the slot
+    // is free for a fresh quote.
     require(evaluate_new_decision(state, scratch, DecisionId{99}, sequence++,
                                   request++)
                     .code == ApplyCode::applied,
-            "evaluation did not resume after the stuck slot was reconciled");
-    require(state.reclaimed_group_count > 0,
-            "recovery did not reclaim the resolved group");
+            "evaluation did not continue after the stuck slot was reconciled");
+    // Reclamation is on-demand: it runs only when an arena is full, and now that
+    // superseded proposals are reclaimed the arena no longer fills here. So the
+    // assertion is that the group is RECLAIMABLE - terminal, released, and with
+    // every effect settled - not that a sweep happened to run. On-demand
+    // reclamation itself is covered by the requote-cycle test.
+    require(state.orders[0].state == ClusterOrderState::cancelled &&
+                state.reservations[0].state == ReservationState::released,
+            "the stuck slot did not become reclaimable after reconciliation");
     require(state.settled_incomplete_effect_count == 1,
             "final reconciliation did not settle exactly the one orphaned effect");
 
@@ -2777,6 +2813,99 @@ void test_two_sided_slots_requote_independently() {
             "snapshot restore changed two-sided economics");
 }
 
+// ---------------------------------------------------------------------------
+// Unauthorized-decision retention.
+//
+// A live maker evaluates continuously and most frames produce no_action, so the
+// decision arena fills with records no order will ever reference. Reclaiming
+// order groups does not help: there may be no resolved group to free.
+//
+// Two distinct cases, with different justifications:
+//
+//   * STRUCTURALLY NON-AUTHORIZABLE. Every condition in the authorizability
+//     predicate is an immutable property of the retained record - evaluation
+//     mode, decision code, effective directive, resolution code, proposal
+//     validity and self-consistent identity. A record failing any of them can
+//     never become authorizable, whatever happens later, so it is safe to
+//     reclaim with no horizon and no clock.
+//
+//   * SUPERSEDED. An actionable decision never authorized, for a slot where a
+//     NEWER actionable decision exists. A maker only ever wants the latest quote
+//     for a slot; resurrecting an older proposal would rest a price computed
+//     from older market data, the same objection that already justifies refusing
+//     a stale RiskVersion.
+//
+// Identity survives either way: applied evaluation receipts outlive the decision
+// arena and retain the DecisionId, payload digest and original outcome, so
+// conflict detection and exact replay still work after reclamation.
+// ---------------------------------------------------------------------------
+void test_unauthorizable_decisions_do_not_fill_the_arena() {
+    using namespace velocita::v2;
+    // Feature 5 is below the single rule's threshold of 10, so no rule matches
+    // and every evaluation retains a no_action decision.
+    auto state = ready_state(EvaluationMode::authoritative,
+                             FeatureMicros::from_atoms(5));
+    ApplyScratch scratch;
+    require(state.decision_hot[0].effective_directive == Directive::no_action,
+            "fixture did not produce a non-authorizable decision");
+
+    std::uint64_t request = 2;
+    for (std::uint64_t cycle = 1; cycle < 40; ++cycle) {
+        require(evaluate_at_feature(state, scratch, DecisionId{100 + cycle}, 5,
+                                    cycle + 1, request++)
+                        .code == ApplyCode::applied,
+                "no_action evaluation was refused: the decision arena filled with "
+                "records no order can ever reference");
+    }
+    require(state.order_count == 0 && state.outbox_effect_count == 0,
+            "no_action evaluations created economics");
+
+    // Identity survives reclamation: re-presenting a reclaimed DecisionId with a
+    // different payload must still conflict rather than read as fresh.
+    auto altered = frame();
+    altered.source_sequence = SourceSequence{1};
+    altered.venue_sequence = VenueSequence{1};
+    altered.raw_evidence_digest = digest(0x44);
+    const auto conflicting = apply(
+        state,
+        {{CallerId{8}, RequestSequence{900}, digest(0xEE)},
+         EvaluateDecisionFrame{DecisionId{101}, EvaluationMode::authoritative,
+                               altered}},
+        scratch);
+    require(conflicting.code == ApplyCode::decision_id_conflict,
+            "a reclaimed DecisionId lost its conflict detection");
+}
+
+void test_superseded_slot_decisions_are_reclaimed() {
+    using namespace velocita::v2;
+    auto state = ready_state();
+    ApplyScratch scratch;
+
+    // Occupy slot 1 so no later actionable decision for it can be authorized.
+    const auto submit = apply(state, authorize(2, 0x51), scratch);
+    require(submit.code == ApplyCode::applied, "supersession fixture failed");
+
+    // Each of these is authorizable in shape and targets the occupied slot, so
+    // each is retained and none can ever be consumed.
+    std::uint64_t request = 3;
+    for (std::uint64_t cycle = 1; cycle < 40; ++cycle) {
+        require(evaluate_at_feature(state, scratch, DecisionId{200 + cycle}, 11,
+                                    cycle + 1, request++)
+                        .code == ApplyCode::applied,
+                "actionable evaluation was refused: superseded proposals for an "
+                "occupied slot were never reclaimed");
+    }
+
+    // The live order and its decision are untouched: a referenced decision is
+    // never superseded.
+    require(state.order_count == 1 &&
+                state.orders[0].cluster_order_id == submit.cluster_order_id() &&
+                materialize_order_effect(state, submit.effect_id()).has_value(),
+            "supersession reclaimed a decision a live order still needs");
+    require(state.decision_count > 0,
+            "supersession reclaimed every decision including the newest");
+}
+
 int main() {
     try {
         {
@@ -2805,6 +2934,8 @@ int main() {
         test_reclamation_during_cancellation_preserves_the_recovery_path();
         test_risk_configuration_respects_every_unresolved_order_state();
         test_two_sided_slots_requote_independently();
+        test_unauthorizable_decisions_do_not_fill_the_arena();
+        test_superseded_slot_decisions_are_reclaimed();
         test_reclaimed_decision_retains_identity_and_authorization();
         test_completed_requote_cycles_do_not_exhaust_bounded_arenas();
         test_sweep_preserves_records_an_unresolved_effect_still_needs();

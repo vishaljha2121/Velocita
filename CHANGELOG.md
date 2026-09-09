@@ -757,6 +757,56 @@ dispatch reaches the handler.
 
 Release 24/24 and focused host Debug ASan+UBSan 6/6.
 
+#### Added - unauthorized-decision reclamation
+
+A live maker evaluates continuously and most frames produce no_action, so the
+decision arena filled with records no order would ever reference, and reclaiming
+order groups did not help because there was no resolved group to free. Two rules
+now make retained decisions reclaimable.
+
+Structurally non-authorizable records are reclaimed with no horizon and no clock.
+Every condition in the authorization predicate is an immutable property of the
+retained record, so a record failing any of them can never become authorizable
+however the world changes. This covers no_action, shadow, control-suppressed and
+rejected evaluations, which is the dominant volume.
+
+Superseded records are reclaimed when a newer actionable proposal exists for the
+same account, instrument, venue and logical order slot. A maker only ever wants
+the latest quote for a slot, and resurrecting an older proposal would rest a
+price computed from older market data - the same objection that already justifies
+refusing a stale RiskVersion. Ordering is by array position, never DecisionId,
+because position is arrival order and is canonical under stable compaction.
+
+Identity is preserved without new machinery: applied evaluation receipts outlive
+the decision arena and retain the DecisionId, payload digest and original
+outcome, so a reclaimed DecisionId re-presented with a different payload still
+conflicts and an exact replay still returns its retained result. The concern
+recorded in an earlier session was already resolved by the reclamation-identity
+fix.
+
+The sweep previously returned early when no order group was reclaimable, which is
+precisely the case that matters here; decisions are now assessed independently.
+No schema or layout change was required.
+
+Recorded as a strategy assumption in architecture section 8.4: supersession means
+a decision must be authorized promptly, before the edge produces a newer proposal
+for that slot. That is correct for level-triggered market making and wrong for a
+strategy that deliberately queues intents. A state-version horizon, which would
+be strictly more general, is deferred to a later version because N cannot be
+justified until Phase 5 supplies a venue simulator.
+
+#### Changed - two test premises became unreachable
+
+The decision arena can no longer be filled by unauthorized decisions, since at
+most one survives per slot plus those referenced by live orders. The wedge
+scenario in test_reclamation_during_cancellation_preserves_the_recovery_path is
+now structurally unreachable, so that test asserts the stronger property that a
+stuck order cannot wedge evaluation at all. test_conflicted_orders_are_never_swept
+now takes sweep pressure from the order arena using the two-sided fixture.
+observe_fill gained side and price parameters, because a fill whose side
+disagrees with the resolved proposal is correctly refused as not applicable but
+reads as a mysterious fixture failure on a two-sided book.
+
 #### Standing invariants for later phases
 
 Two rules were established here whose violation fails silently. First, the sweep

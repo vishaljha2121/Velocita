@@ -399,6 +399,64 @@ codec sides; that it participates in the state digest so replay divergence is
 detectable; and that no per-account or per-record structure grew, since those
 multiply by capacity while a header field does not.
 
+### 8.4 Unauthorized-decision retention (approved 2026-09-09)
+
+A live maker evaluates continuously and most frames produce `no_action`, so the
+decision arena fills with records no order will ever reference. Reclaiming order
+groups does not help, because in that situation there is no resolved group to
+free. Two rules make retained decisions reclaimable, with different
+justifications.
+
+**Structurally non-authorizable.** Every condition in the authorization
+predicate - evaluation mode, decision code, effective directive, action
+resolution code, proposal validity, and self-consistent proposal identity - is an
+immutable property of the retained record. None depends on mutable state, so a
+record failing any of them can never become authorizable however the world
+changes. Reclaiming it needs no horizon and no clock. This covers `no_action`,
+shadow, control-suppressed, and rejected evaluations, which is the dominant
+volume.
+
+**Superseded.** An actionable decision that was never authorized, for a slot
+where a NEWER actionable decision exists, is reclaimable. A maker only ever wants
+the latest quote for a slot; resurrecting an older proposal would rest a price
+computed from older market data, which is the same objection that already
+justifies refusing a stale `RiskVersion`.
+
+Ordering is by ARRAY POSITION, not `DecisionId`. Decisions are appended and
+compaction is stable, so a higher index is unambiguously later on every replica.
+`DecisionId` is caller-chosen and must never be used for ordering.
+
+**Strategy assumption, stated explicitly.** Supersession means the only way to
+authorize a decision is promptly, before the edge produces a newer proposal for
+that slot. That is correct for a market maker driven by continuous market data
+and level-triggered quoting. It would be WRONG for a venue or strategy that
+deliberately queues intents for later execution. A strategy of that shape needs a
+different rule, not a tuned horizon.
+
+**Identity is not lost.** Applied evaluation receipts outlive the decision arena
+and retain the `DecisionId`, the payload digest, and the original outcome, so
+re-presenting a reclaimed `DecisionId` with a different payload still returns
+`decision_id_conflict` and an exact replay still returns the retained result.
+Receipts hold 256 slots against the decision arena's 16.
+
+**A referenced decision is never reclaimed** under either rule: the existing
+reference pass un-marks any decision a surviving order or outbox effect still
+names, so `materialize_order_effect` can always reproduce historical bytes.
+
+**Implementation hazard.** `decision_is_authorizable` mirrors the predicate in
+`apply_authorize_decision`. If that gains a condition and the mirror does not,
+the sweep will reclaim records the authorizer would still have accepted. The two
+must change together; there is no compiler check for this.
+
+**Deferred to a later version: a state-version horizon.** Reclaiming any
+unreferenced decision older than N state versions was considered and deferred.
+It is deterministic - state versions, never wall-clock - and would bound
+retention even for strategies that do not fit the supersession assumption. It was
+not adopted because N cannot be justified today: the gateway retry horizon and
+the venue reconciliation window are both unknown until Phase 5 supplies a venue
+simulator. Revisit it there, alongside the reference-horizon question already
+deferred from the reclamation contract.
+
 ## 9. Outbox and execution contract
 
 Outbox lifecycle:

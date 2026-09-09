@@ -980,6 +980,56 @@ std::size_t settle_orphaned_effects(TradingState& state,
     return settled;
 }
 
+// Can this retained decision EVER be authorized?
+//
+// Every condition mirrored here is an immutable property of the record itself -
+// evaluation mode, decision code, effective directive, resolution code, proposal
+// validity, and self-consistent identity. None depends on mutable state, so a
+// record failing any of them can never become authorizable however the world
+// changes. That is what makes reclaiming it safe with no horizon and no clock.
+//
+// This mirrors apply_authorize_decision's predicate deliberately. If that gains a
+// condition and this does not, the sweep will reclaim records the authorizer
+// would still have accepted; the two must be changed together.
+[[nodiscard]] bool decision_is_authorizable(
+    const DecisionRecordHot& hot, const DecisionRecordCold& cold) noexcept {
+    return hot.evaluation_mode == EvaluationMode::authoritative &&
+           hot.code == DecisionCode::action &&
+           hot.effective_directive == Directive::place_limit &&
+           hot.action_resolution_code == ActionResolutionCode::proposed &&
+           validate(cold.proposal) == ContractError::none &&
+           cold.proposal.decision_id == hot.decision_id;
+}
+
+// Does a NEWER actionable proposal exist for the same logical order slot?
+//
+// A maker only ever wants the latest quote for a slot, so an older unauthorized
+// proposal is stale by construction: authorizing it would rest a price computed
+// from older market data, which is the same objection that already justifies
+// refusing a stale RiskVersion.
+//
+// Array position is arrival order and is canonical - decisions are appended and
+// compaction is stable, so a higher index is unambiguously later on every
+// replica. DecisionId is caller-chosen and deliberately not used for ordering.
+[[nodiscard]] bool decision_is_superseded(const TradingState& state,
+                                          const std::size_t index) noexcept {
+    const auto& proposal = state.decision_cold[index].proposal;
+    for (std::size_t later = index + 1; later < state.decision_count; ++later) {
+        if (!decision_is_authorizable(state.decision_hot[later],
+                                      state.decision_cold[later])) {
+            continue;
+        }
+        const auto& candidate = state.decision_cold[later].proposal;
+        if (candidate.account_id == proposal.account_id &&
+            candidate.instrument_id == proposal.instrument_id &&
+            candidate.venue_id == proposal.venue_id &&
+            candidate.order_slot == proposal.order_slot) {
+            return true;
+        }
+    }
+    return false;
+}
+
 [[nodiscard]] std::size_t sweep_resolved_order_groups(TradingState& state) noexcept {
     constexpr std::uint16_t kDroppedIndex = std::numeric_limits<std::uint16_t>::max();
 
@@ -1008,8 +1058,9 @@ std::size_t settle_orphaned_effects(TradingState& state,
         drop_reservation[order.reservation_index] = true;
         ++reclaimed;
     }
-    if (reclaimed == 0) return 0;
-
+    // No early return on `reclaimed == 0`. Decisions are reclaimable in their
+    // own right, and the case that matters most - an arena full of no_action
+    // records with no order to free - has exactly zero reclaimable order groups.
     for (std::size_t effect = 0; effect < state.outbox_effect_count; ++effect) {
         const auto& record = state.outbox_effects[effect];
         for (std::size_t index = 0; index < state.order_count; ++index) {
@@ -1031,6 +1082,24 @@ std::size_t settle_orphaned_effects(TradingState& state,
             }
         }
     }
+    // Decisions no order will ever consume are reclaimable independently of
+    // whether any order group was dropped. A live maker produces mostly
+    // no_action, so without this the decision arena fills with records that are
+    // structurally incapable of ever becoming an order.
+    //
+    // Identity is not lost: applied evaluation receipts outlive the decision
+    // arena and retain the DecisionId, payload digest and original outcome, so
+    // conflict detection and exact replay still work afterwards.
+    for (std::size_t index = 0; index < state.decision_count; ++index) {
+        if (drop_decision[index]) continue;
+        if (decision_is_authorizable(state.decision_hot[index],
+                                     state.decision_cold[index]) &&
+            !decision_is_superseded(state, index)) {
+            continue;
+        }
+        drop_decision[index] = true;
+    }
+
     for (std::size_t slot = 0; slot < state.decision_count; ++slot) {
         if (!drop_decision[slot]) continue;
         const auto decision_id = state.decision_hot[slot].decision_id;
@@ -1046,6 +1115,14 @@ std::size_t settle_orphaned_effects(TradingState& state,
             }
         }
     }
+
+    const bool any_drop =
+        reclaimed > 0 ||
+        std::any_of(drop_decision.begin(),
+                    drop_decision.begin() +
+                        static_cast<std::ptrdiff_t>(state.decision_count),
+                    [](const bool value) { return value; });
+    if (!any_drop) return 0;
 
     // Reservations compact first so orders can be repointed in one pass.
     // ClusterOrder addresses its reservation by ARRAY INDEX, so moving a

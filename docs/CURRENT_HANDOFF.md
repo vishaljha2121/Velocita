@@ -296,8 +296,59 @@ replacement never succeeds, not that it always fails the same way.
 No kernel defect was found by the corpus. Release 24/24; focused host Debug
 ASan+UBSan 6/6, the sanitized build reconfigured to include the new target.
 
-Remaining Phase 4 work: unauthorized-decision retention, finite request and
-venue-event horizons, broader accounting and reconciliation evidence, metrics and
+### Unauthorized-decision retention — 2026-09-09 (Claude)
+
+Implemented per architecture §8.4. Two rules now make retained decisions
+reclaimable: structurally non-authorizable records, whose authorizability is
+decidable from immutable fields alone and therefore needs no horizon; and
+superseded records, where a newer actionable proposal exists for the same
+account, instrument, venue and logical order slot. Ordering is by array position,
+never `DecisionId`, because position is arrival order and is canonical under
+stable compaction.
+
+The blocker recorded in an earlier session - that reclaiming a decision would
+narrow `DecisionId` conflict detection - was ALREADY SOLVED by the
+reclamation-identity fix: `apply_evaluate_decision` falls back to scanning
+applied evaluation receipts, which outlive the decision arena and retain the
+DecisionId, digest and outcome. No new contract was needed for it.
+
+A structural change to the sweep was: it previously returned early when no order
+GROUP was reclaimable, which is exactly the case that matters here - an arena
+full of no_action records has zero reclaimable groups. Decisions are now assessed
+independently of order-group reclamation.
+
+Knock-on effect worth understanding, because it invalidated two existing tests'
+premises rather than their intent: the decision arena can no longer be filled by
+unauthorized decisions at all, since at most one survives per slot plus those
+referenced by live orders. The wedge scenario that
+`test_reclamation_during_cancellation_preserves_the_recovery_path` was built to
+exercise is now structurally unreachable. That test was rewritten to assert the
+STRONGER property - a stuck order cannot wedge evaluation - rather than the
+earlier "evaluation halts but can still recover".
+`test_conflicted_orders_are_never_swept` was rebuilt to take sweep pressure from
+the ORDER arena using the two-sided fixture, which is the more realistic source
+anyway.
+
+`observe_fill` gained side and price parameters. A fill whose side disagrees with
+the resolved proposal is refused as not applicable, which is correct but reads as
+a mysterious fixture failure on a two-sided book.
+
+Implementation hazard for review: `decision_is_authorizable` mirrors the
+predicate in `apply_authorize_decision`. If that gains a condition and the mirror
+does not, the sweep will reclaim records the authorizer would still have
+accepted. There is no compiler check; they must change together.
+
+Deferred to a later version and recorded in §8.4: a state-version horizon for any
+unreferenced decision. Deterministic and strictly more general than supersession,
+but N cannot be justified until Phase 5 supplies a venue simulator and the
+gateway retry horizon becomes measurable. Revisit alongside the reference-horizon
+question already deferred from the reclamation contract.
+
+No schema or layout change was required: `TradingState` remains 81,032 bytes and
+the maximum canonical snapshot 65,129. Release 24/24; focused host Debug
+ASan+UBSan 6/6.
+
+Remaining Phase 4 work: finite request and venue-event horizons, broader accounting and reconciliation evidence, metrics and
 age/latency evidence, an optional Phase 4 mirror model to complement this corpus,
 the complete sanitizer gate, pinned ARM64 and physical Pi gates, and a Phase 4
 acceptance evidence document.
