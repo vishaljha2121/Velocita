@@ -13,6 +13,35 @@ release-engineering work.
 
 ## [V2] - In development
 
+### Phase 5 in development - venue simulator and execution gateway
+
+Phase 5 opened with a contract review rather than code, because sections 9
+through 15 - the primary gateway contract - had never passed an approval gate
+while sections 8.1 through 8.7 had. The review found thirteen contradictions or
+gaps; five blocked implementation and are resolved in architecture section 9.1.
+
+Resolved: "committed" collapses to "applied" until Raft arrives in Phase 6;
+`claimed` and `attempted` are gateway-local rather than consensus state,
+resolving a direct contradiction between sections 9 and 8.2; expiry is defined as
+control-generation staleness, deleting a phantom field the contract required the
+guard to check but `OrderEffect` never had; lowering is representation only and
+never economics, closing the largest under-specified permission in the contract;
+and the gateway is a separate process in deployment, tested in-process with the
+transport interface as the seam, because credential isolation under G-066 is not
+achievable inside the reducer's process.
+
+Also recorded: an open obligation inherited from Phase 4, where section 3 demands
+retention exceed horizons that section 8.4 says are unknown until Phase 5, so
+Phase 4's retention policy cannot yet be shown to satisfy it; and a trap, where
+`wire.hpp` carries an unwired Phase 1 message vocabulary that does not correspond
+to `KernelCommandKind` and is not a transport.
+
+First increment delivers the final pre-send guard of G-029 as a pure function
+that reads no clock, mutates nothing, and returns a decision carrying the exact
+canonical bytes when permitted and nothing at all when refused, so a refused
+effect cannot be sent by construction. Release 26/26 and full host Debug
+ASan+UBSan 26/26.
+
 Status: Phases 1-4 are accepted on the required host, ARM64 Ubuntu, and physical
 Raspberry Pi 5 gates. Deterministic policy evaluation, risk reservation, cluster
 orders, accepted venue-evidence accounting, and the transactional outbox are

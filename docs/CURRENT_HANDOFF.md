@@ -96,6 +96,85 @@ Preserve the same protected unrelated paths listed near the end of this file:
 `docs/V2_MODEL_AND_MARKET_DATA_EDGE_DESIGN.md`,
 `docs/adr/0002-two-machine-pi-nuc-deployment-topology.md`, and `model/`.
 
+## Phase 5 started — 2026-09-10 (read after the Phase 4 sections)
+
+Phase 4 is accepted (`v2-phase4-accepted`). Phase 5 is venue simulator and
+execution gateway.
+
+### Contracts were reviewed BEFORE code, and that was necessary
+
+Sections 9 through 15 are the primary gateway contract and, unlike 8.1 to 8.7,
+had never passed an approval gate - the document header still reads "proposed".
+A review found thirteen contradictions or gaps in them. Five blocked the first
+line of code and are now resolved and recorded in architecture §9.1, with
+reasoning:
+
+1. §9.1.1 "committed" collapses to "applied" until Phase 6, because Raft
+   integration is Phase 6 and the phrase had no referent in the interim.
+2. §9.1.2 `claimed` and `attempted` are gateway-local, resolving a direct
+   contradiction between §9's lifecycle diagram and §8.2. No command writes them;
+   putting them in consensus would add a quorum round trip to every send.
+3. §9.1.3 expiry IS control-generation staleness. §9 and G-029 required checking
+   an "expiry" that `OrderEffect` has no field for. Defining it this way deletes
+   a phantom field rather than adding a real one, and keeps wall-clock out of the
+   authority path.
+4. §9.1.4 lowering is representation only, never economics. This was the largest
+   under-specified permission in the contract: nothing distinguished permitted
+   "lowering" from the forbidden "economically modify". Rounding, TIF
+   substitution, and post-only downgrades are now explicitly forbidden; a venue
+   that cannot represent exact intent gets a refusal, not an approximation.
+5. §9.1.5 the gateway is a separate process in deployment, tested in-process with
+   the transport interface as the seam, because G-066 credential isolation is not
+   achievable inside a process that also runs the reducer and its fixtures.
+
+§9.1.6 records the shaping decisions that did not block: emergency lane built but
+unclaimed until Phase 8, authority-lease deferred to Phase 8, send-then-reconcile
+rather than record-before-send, crash scoped to GATEWAY crash since nothing is
+durable until Phase 7, simulator test-only, virtual time everywhere, and the five
+parked retention horizons not blocking Phase 5.
+
+§9.1.7 records an open obligation inherited from Phase 4: §3 requires retention
+to exceed the retry and reconciliation horizons, §8.6/§8.7 made retention finite,
+and §8.4 says those horizons are unknown until Phase 5. Phase 4 was accepted with
+a retention policy that cannot yet be SHOWN to satisfy §3. Discharge it by
+measuring what the simulator produces; if the numbers do not fit, the capacities
+move, not the invariant.
+
+§9.1.8 records a trap: `include/velocita/v2/wire.hpp` has a `VLT2` envelope with
+`MessageKind::order_effect`, `observe_fill`, `apply_reconciliation` and friends.
+Nothing maps them onto `KernelCommandKind`, the numbering does not correspond,
+and the only callers are Phase 1 tests and a benchmark. It is not a transport.
+
+### First increment: the pre-send guard (G-029), complete
+
+`include/velocita/v2/gateway.hpp`, `src/v2_gateway.cpp`, target
+`v2-gateway-tests`. Release 26/26 and full host Debug ASan+UBSan 26/26.
+
+`evaluate_pre_send` is a PURE FUNCTION: reads no clock, performs no I/O, mutates
+nothing, and is deterministic on repeated calls. This follows
+`OwnerLoopScheduler` from V1.1, which already takes `now` as a parameter rather
+than reading a clock - that precedent is the whole reason Phase 5 can keep the
+project's testing discipline while owning a clock and a transport.
+
+A permitted decision CARRIES the materialized effect; a refused one carries
+nothing. A caller therefore cannot send a refused effect: the payload is simply
+absent rather than present-but-forbidden.
+
+Refusal ordering is fixed and the reasons are documented in `v2_gateway.cpp`:
+identity and deliverability, then payload reconstruction, then control authority
+(generation before kill epoch), then venue capability, then quota. Control
+precedes capability so a stale effect reports as stale even on a venue that could
+not have taken it. Quota is last because it is the only "not yet" refusal; every
+other one means "never".
+
+Only `pending` is deliverable. `unknown` and `reconciling` are deliberately NOT,
+because ADR 0001 requires reconciliation before resending an ambiguous effect and
+delivering one straight from this guard would be the blind retry G-026 forbids.
+
+Next: the venue simulator's deterministic core - virtual clock, seeded fault
+model covering the nine G-033 classes, and the crash cut points TDD §4.5 names.
+Then the delivery loop shell, then reconciliation.
+
 ## Claude takeover checkpoint — 2026-09-09 (historical)
 
 This section and architecture contract §8.1 supersede older next-task/scope/schema

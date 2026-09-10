@@ -119,6 +119,7 @@ target_link_libraries(velocita_v2_evaluator PUBLIC velocita_v2_contracts)
 target_compile_options(velocita_v2_evaluator PRIVATE -Wall -Wextra -Wpedantic)
 
 add_library(velocita_v2_kernel
+    src/v2_gateway.cpp
     src/v2_kernel.cpp
     src/v2_kernel_codec.cpp
     src/v2_metrics.cpp
@@ -215,6 +216,11 @@ if(BUILD_TESTING)
     target_link_libraries(v2-model-replay-tests PRIVATE velocita_v2_kernel)
     target_compile_options(v2-model-replay-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-model-replay-tests COMMAND v2-model-replay-tests)
+
+    add_executable(v2-gateway-tests tests/v2_gateway_tests.cpp)
+    target_link_libraries(v2-gateway-tests PRIVATE velocita_v2_kernel)
+    target_compile_options(v2-gateway-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-gateway-tests COMMAND v2-gateway-tests)
 
     add_executable(v2-metrics-tests tests/v2_metrics_tests.cpp)
     target_link_libraries(v2-metrics-tests PRIVATE velocita_v2_kernel)

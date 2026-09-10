@@ -749,6 +749,174 @@ The executor:
 An effect is not considered delivered merely because a local socket write
 succeeded. Delivery and venue state are separate facts.
 
+### 9.1 Phase 5 gateway contract decisions (approved 2026-09-10)
+
+Sections 9 through 15 are the primary gateway contract and, unlike 8.1 through
+8.7, had never passed an approval gate: the document header still reads
+"proposed". A review before Phase 5 code found thirteen contradictions or gaps
+inside them. The five that blocked the first line of code are resolved here. The
+reasoning is recorded so each can be re-argued rather than rediscovered.
+
+#### 9.1.1 "Committed" collapses to "applied" until Phase 6
+
+G-027 requires delivery only from "committed and applied" outbox state, and ADR
+0001 says the gateway "consumes committed outbox effects after apply". Raft
+integration is Phase 6, so during Phase 5 there is no commit index and the phrase
+has no referent.
+
+For Phase 5, committed means APPLIED: the gateway reads a post-apply
+`TradingState` by direct in-process call. Phase 6 re-tightens this to genuine
+quorum commitment and must re-run the Phase 5 delivery gates against the stricter
+definition.
+
+Justification: the alternative is to invent a commit abstraction in Phase 5 that
+Phase 6 would immediately replace, and to test delivery against a fiction. Naming
+the interim honestly costs one paragraph; a placeholder abstraction would cost a
+migration.
+
+#### 9.1.2 `claimed` and `attempted` are gateway-local, not consensus state
+
+Section 9 draws the lifecycle as `PENDING -> CLAIMED -> ATTEMPTED -> ...` as
+though all four were cluster states. Section 8.2 says the opposite - that
+"`pending`, `claimed`, and `attempted` are gateway-side bookkeeping the cluster
+learns about asynchronously". The two sections contradicted each other, and no
+command exists to write either value.
+
+Section 8.2 wins. Delivery bookkeeping is gateway-local. The cluster learns only
+terminal outcomes plus `unknown`, all of which already have observation kinds.
+
+Justification: recording a claim or an attempt in replicated state puts a quorum
+round trip on the critical send path, and buys visibility the metrics projection
+can supply without it. ADR 0001 already separates these concerns: "An effect is
+not considered delivered merely because a local socket write succeeded. Delivery
+and venue state are separate facts."
+
+The enum values are RETAINED rather than renumbered, because renumbering is a
+schema change for no behavioural gain and would leave a gap in the contiguous
+`known()` range. Instead snapshot validation must REJECT `claimed` and
+`attempted`, since the reducer can never legitimately produce either. That is a
+tightening of an existing check, not a schema change. `conflict` is equally
+unreachable today and is retained for the reconciliation work that will produce
+it.
+
+Consequence to accept deliberately: replicated state cannot distinguish an unsent
+effect from an in-flight one. That distinction lives in the gateway, and is
+recovered after a gateway restart by reconciliation rather than by reading it out
+of the cluster.
+
+#### 9.1.3 Expiry means control-generation staleness, not a deadline
+
+Section 9 and G-029 both require the pre-send guard to validate "expiry". The
+effect field list in the same section contains no expiry, deadline, or validity
+field, and `OrderEffect` has none.
+
+Expiry is DEFINED as control-generation staleness: an effect is expired when the
+`executor_generation` or `kill_epoch` recorded at its authorization no longer
+match current replicated control state. No wall-clock deadline exists and none is
+added.
+
+Justification: adding a deadline field would put a clock in the authority path,
+which every other part of this design refuses, and would grow a boundary value
+that Phase 4 already showed is byte-constrained. The staleness check is one the
+guard performs anyway under G-029 and G-054, so this removes a phantom field
+rather than adding a real one. A venue-side time-in-force remains an economic
+property of the order, carried in `time_in_force`, and is unrelated.
+
+#### 9.1.4 Lowering is representation only, never economics
+
+G-028 permits the gateway to "lower" an effect. No document defines the boundary
+between permitted lowering and the forbidden "expand or economically change the
+effect". This was the largest under-specified permission in the contract and the
+most dangerous, because rounding a price reads as lowering to one implementer and
+as an economic change to another.
+
+Permitted lowering is REPRESENTATION ONLY:
+
+- encoding the effect into a venue's wire format;
+- mapping `ClusterOrderId`/`EffectId` onto a venue client-order identifier; and
+- transport framing, authentication, and session mechanics.
+
+Forbidden, without exception:
+
+- rounding or adjusting price or quantity;
+- substituting or weakening time-in-force;
+- downgrading or dropping post-only;
+- splitting one effect into several venue orders, or combining several into one.
+
+If a venue cannot represent the exact economic intent, the gateway REFUSES the
+effect and reports it. It never sends an approximation.
+
+Justification: this is reject-not-clamp, already settled in Phase 3D for the
+policy envelope and restated in 8.7 for adapters, which say an adapter "may
+reject but never silently downgrade intent such as post-only". Extending the same
+rule to the gateway keeps one principle instead of two, and it is the only
+version that preserves ADR 0001's invariant that the executor never economically
+modifies an order.
+
+#### 9.1.5 Process boundary, tested in-process
+
+Section 13 lists "the gateway event loop" alongside the Raft and persistence
+owners as though intra-process. ADR 0002 co-locates the gateway with voter 1 on
+the NUC. G-066 requires credentials never to enter logs, test fixtures, or
+evidence bundles. The thread-versus-process choice was never made, and it decides
+whether G-066 is achievable at all.
+
+The gateway is a SEPARATE PROCESS in deployment. Phase 5 exercises it in-process
+for determinism, with the transport interface as the seam, and that seam is
+designed so a process boundary can be introduced without reshaping the core.
+
+Justification: credentials and session material cannot be isolated inside a
+process that also runs the reducer and its test fixtures. Deciding the boundary
+now and testing across the seam avoids discovering in Phase 9 that G-066 requires
+an architectural change.
+
+#### 9.1.6 Decisions that shape the work but do not block it
+
+- EMERGENCY LANE. TDD Phase 5 requires it; G-057 and G-058 assign emergency
+  semantics to Phase 8. Phase 5 builds the bounded lane required by G-034 and
+  claims no emergency guarantee.
+- AUTHORITY LEASE. Section 11 requires stopping new risk "before its authority
+  lease expires" and section 15 wants a lease-freshness metric, but no document
+  defines the mechanism, duration, or issuer. Phase 5 treats authority as
+  "control generation matches at pre-send"; the lease is Phase 8.
+- CRASH-CUT. Send, then reconcile before resending; not record before send. This
+  is what G-032 and ADR 0001 already mandate, and it is why the plan gives the
+  simulator a query API. Recording intent before sending would collapse into
+  9.1.2 and pay the same quorum latency.
+- CRASH SCOPE. Nothing is durable until Phase 7, so a whole-cluster crash cannot
+  be tested meaningfully. G-031 is scoped to GATEWAY crash with cluster state
+  intact, which is the realistic case given the process boundary in 9.1.5.
+- SIMULATOR. Test-only for now. Promoting a test double to a product is easier
+  than the reverse, and G-084's ladder places the simulator well before any
+  paper venue.
+- VIRTUAL TIME. Every timeout and rate-limit test is driven by an injected
+  virtual clock. No test sleeps. This follows `OwnerLoopScheduler`, which already
+  takes `now` as a parameter rather than reading a clock.
+- PARKED HORIZONS. The five deferred retention questions become answerable once
+  the simulator can supply retry and reconciliation numbers. Phase 5 is not
+  blocked on answering them.
+
+#### 9.1.7 Open obligation inherited from Phase 4
+
+Section 3 requires that "identity retention must exceed the maximum retry,
+recovery, snapshot restore, and reconciliation horizon". Sections 8.6 and 8.7
+made retention finite and capacity-driven, while 8.4 records that the retry and
+reconciliation horizons are unknown until Phase 5. Phase 4 was therefore accepted
+with a retention policy that cannot yet be SHOWN to satisfy section 3.
+
+This is an open obligation, not a defect: every arena fails closed rather than
+silently dropping evidence. Phase 5 should discharge it by measuring the actual
+horizons its simulator produces and comparing them against the accepted
+capacities. If they do not fit, the capacities move, not the invariant.
+
+#### 9.1.8 A trap in the tree
+
+`include/velocita/v2/wire.hpp` defines a `VLT2` envelope with a `MessageKind`
+enumeration including `order_effect`, `observe_fill`, and `apply_reconciliation`.
+Nothing maps those onto `KernelCommandKind`, the numbering does not correspond,
+and the only callers are Phase 1 contract tests and a benchmark. It is an
+unwired Phase 1 vocabulary, not a transport. Phase 5 must not assume it is one.
+
 ## 10. Reconciliation contract
 
 Reconciliation compares:
