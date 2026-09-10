@@ -118,6 +118,13 @@ target_include_directories(velocita_v2_evaluator PUBLIC include)
 target_link_libraries(velocita_v2_evaluator PUBLIC velocita_v2_contracts)
 target_compile_options(velocita_v2_evaluator PRIVATE -Wall -Wextra -Wpedantic)
 
+# Test-only by construction: no production target links this, so a venue
+# simulator cannot reach a shipping binary by accident (architecture 9.1.6).
+add_library(velocita_v2_venue_simulator src/v2_venue_simulator.cpp)
+target_include_directories(velocita_v2_venue_simulator PUBLIC include)
+target_link_libraries(velocita_v2_venue_simulator PUBLIC velocita_v2_contracts)
+target_compile_options(velocita_v2_venue_simulator PRIVATE -Wall -Wextra -Wpedantic)
+
 add_library(velocita_v2_kernel
     src/v2_gateway.cpp
     src/v2_kernel.cpp
@@ -216,6 +223,12 @@ if(BUILD_TESTING)
     target_link_libraries(v2-model-replay-tests PRIVATE velocita_v2_kernel)
     target_compile_options(v2-model-replay-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-model-replay-tests COMMAND v2-model-replay-tests)
+
+    add_executable(v2-venue-simulator-tests tests/v2_venue_simulator_tests.cpp)
+    target_link_libraries(v2-venue-simulator-tests PRIVATE
+        velocita_v2_venue_simulator)
+    target_compile_options(v2-venue-simulator-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-venue-simulator-tests COMMAND v2-venue-simulator-tests)
 
     add_executable(v2-gateway-tests tests/v2_gateway_tests.cpp)
     target_link_libraries(v2-gateway-tests PRIVATE velocita_v2_kernel)
