@@ -226,7 +226,7 @@ cat "$evidence_dir/layout-report.txt" >>"$evidence_dir/metadata.txt"
 
 {
     printf 'finished_utc=%s\n' "$(date --iso-8601=seconds --utc)"
-    printf 'container_note=native target compatibility and candidate-capacity evidence; promotion requires reviewed Pi and NUC results\n'
+    printf 'container_note=native target compatibility and candidate-capacity evidence; promotion follows the phase-specific reviewed target gates\n'
 } >>"$evidence_dir/metadata.txt"
 
 failure_step=none
