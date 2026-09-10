@@ -42,6 +42,47 @@ canonical bytes when permitted and nothing at all when refused, so a refused
 effect cannot be sent by construction. Release 26/26 and full host Debug
 ASan+UBSan 26/26.
 
+Second increment adds the deterministic adversarial venue simulator, test-only by
+construction: it lives in its own CMake library that no production target links,
+so the property is a build fact rather than a comment somebody has to honour. It
+never reads a clock - every deadline is a caller-supplied tick, so a timeout test
+is exact rather than slow, and a fault matrix replays identically on a loaded CI
+box and an idle laptop. Every adversarial choice comes from a splitmix64 stream
+keyed by the seed and the operation ordinal, and every roll consumes a draw even
+at zero probability, so enabling one fault cannot reshuffle the others. All nine
+G-033 fault classes are reachable, the five G-030 send outcomes stay distinct, and
+a query's `not_found` stays distinct from `unavailable`. Release 27/27 and full
+host Debug ASan+UBSan 27/27.
+
+Third increment adds the delivery loop and the Phase 5 gate. `plan_delivery`
+decides ambiguity BEFORE sends, so a tick can never both declare an outcome
+unknown and blindly retry it. Two contract decisions were forced by writing the
+tests and are recorded in architecture section 9.2. A resend now requires PROOF
+that nothing reached the venue: `pre_send_failure` and `rate_limited` are the only
+outcomes that permit one, asserted explicitly by `record_unsent`, and every other
+transition leaves the effect unresendable because the venue may hold an order. The
+first planner refused every resend, which was safe but wedged a logical slot on a
+transient rate limit and would have sent reconciliation to query a venue that had
+never heard of the order. Provably-unsent retries are bounded at three attempts;
+on exhaustion the effect stays pending and visibly unsettled rather than being
+called unknown, since nothing ever left the process.
+
+`v2-gateway-delivery-tests` drives the real kernel, the real guard and planner, and
+the adversarial venue through the fault matrix over thirty-two seeds, asserting the
+gate's three absolutes: no duplicate venue order, no lost accepted fill, and no
+unresolved state presented as healthy. Slot exclusivity is asserted directly - at
+most one order on the fixture's single logical slot may ever hold unresolved risk.
+The matrix asserts its own non-vacuity, so it cannot keep passing after it stops
+reaching its hard paths.
+
+Removed by that work: nothing. Added to the simulator: the `duplication` fault now
+duplicates fills, not only acknowledgements. A duplicated fill is the economically
+dangerous case, because booking it twice doubles the position and no downstream
+reservation arithmetic can undo it; duplicating only the acknowledgement tested the
+identity check on the case that does not matter. Twelve of thirty-two seeds now
+exercise duplicate-fill suppression. Release 28/28 and full host Debug ASan+UBSan
+28/28.
+
 Status: Phases 1-4 are accepted on the required host, ARM64 Ubuntu, and physical
 Raspberry Pi 5 gates. Deterministic policy evaluation, risk reservation, cluster
 orders, accepted venue-evidence accounting, and the transactional outbox are

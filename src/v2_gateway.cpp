@@ -123,3 +123,130 @@ PreSendDecision evaluate_pre_send(const TradingState& state,
 }
 
 }  // namespace velocita::v2
+
+namespace velocita::v2 {
+
+const DeliveryAttempt* find_attempt(const GatewayDeliveryState& delivery,
+                                    const EffectId effect_id) noexcept {
+    for (std::size_t index = 0; index < delivery.attempt_count; ++index) {
+        if (delivery.attempts[index].effect_id == effect_id) {
+            return &delivery.attempts[index];
+        }
+    }
+    return nullptr;
+}
+
+bool record_send(GatewayDeliveryState& delivery, const EffectId effect_id,
+                 const Tick now) noexcept {
+    for (std::size_t index = 0; index < delivery.attempt_count; ++index) {
+        auto& attempt = delivery.attempts[index];
+        if (attempt.effect_id != effect_id) continue;
+        // A resend keeps the same identity and increments the attempt count.
+        // G-025: delivery is at least once by STABLE EffectId, so a retry must
+        // never mint a new identity - that is what lets the venue deduplicate.
+        attempt.sent_at = now;
+        attempt.awaiting_response = true;
+        // A send in flight is never provably unsent. Clearing this here means no
+        // caller can leave a stale permission behind for the next tick to act on.
+        attempt.resend_permitted = false;
+        ++attempt.attempts;
+        return true;
+    }
+    if (delivery.attempt_count == delivery.attempts.size()) return false;
+    delivery.attempts[delivery.attempt_count++] = {effect_id, now, 1, true, false};
+    return true;
+}
+
+bool record_response(GatewayDeliveryState& delivery,
+                     const EffectId effect_id) noexcept {
+    for (std::size_t index = 0; index < delivery.attempt_count; ++index) {
+        if (delivery.attempts[index].effect_id != effect_id) continue;
+        delivery.attempts[index].awaiting_response = false;
+        // Deliberately leaves `resend_permitted` false. The venue answered, so
+        // something may be resting there; a further send is reconciliation's
+        // decision to authorise, not this planner's.
+        return true;
+    }
+    return false;
+}
+
+bool record_unsent(GatewayDeliveryState& delivery,
+                   const EffectId effect_id) noexcept {
+    for (std::size_t index = 0; index < delivery.attempt_count; ++index) {
+        auto& attempt = delivery.attempts[index];
+        if (attempt.effect_id != effect_id) continue;
+        attempt.awaiting_response = false;
+        attempt.resend_permitted = true;
+        return true;
+    }
+    return false;
+}
+
+DeliveryPlan plan_delivery(const TradingState& state,
+                           const GatewayDeliveryState& delivery,
+                           const GatewayControlView& control,
+                           const VenueCapabilityView& venue,
+                           const SendQuotaView& quota,
+                           const GatewayTimeouts& timeouts,
+                           const Tick now) noexcept {
+    DeliveryPlan plan;
+
+    // 1. Ambiguity first. An effect whose deadline has passed must be reported
+    //    unknown before anything else considers sending it, so a timed-out
+    //    effect can never also appear in this tick's send list. Doing this
+    //    second would let one tick both declare an outcome unknown and blindly
+    //    retry it, which is exactly what G-026 forbids.
+    for (std::size_t index = 0; index < delivery.attempt_count; ++index) {
+        const auto& attempt = delivery.attempts[index];
+        if (!attempt.awaiting_response) continue;
+        if (now < attempt.sent_at + timeouts.response_deadline) continue;
+        if (plan.ambiguous_count == plan.now_ambiguous.size()) break;
+        plan.now_ambiguous[plan.ambiguous_count++] = attempt.effect_id;
+    }
+
+    // 2. Sends, limited by the remaining normal-lane quota. Effects are
+    //    considered in arena order, which is authorization order, so delivery
+    //    does not reorder economic intent.
+    std::uint32_t budget = quota.normal_lane_remaining;
+    for (std::size_t index = 0; index < state.outbox_effect_count && budget != 0;
+         ++index) {
+        const auto effect_id = state.outbox_effects[index].effect_id;
+
+        // Never send while a previous attempt is still outstanding, and never
+        // send one this tick just declared ambiguous. An ambiguous effect
+        // requires reconciliation before any resend (ADR 0001), which is not
+        // this planner's job to perform.
+        const auto* attempt = find_attempt(delivery, effect_id);
+        if (attempt != nullptr && attempt->awaiting_response) continue;
+        bool just_ambiguous = false;
+        for (std::size_t pending = 0; pending < plan.ambiguous_count; ++pending) {
+            if (plan.now_ambiguous[pending] == effect_id) just_ambiguous = true;
+        }
+        if (just_ambiguous) continue;
+
+        // A completed attempt is re-sent only when the last one provably never
+        // reached the venue. Any other completed attempt may have left an order
+        // resting there, so redelivering it is the gateway's own duplicate - the
+        // exact failure G-025 and the Phase 5 gate exist to exclude.
+        if (attempt != nullptr && !attempt->resend_permitted) continue;
+        // Retries are bounded. A venue that refuses for pacing forever would
+        // otherwise be retried forever; stopping leaves the effect pending and
+        // visibly unsettled, which is the fail-closed outcome.
+        if (attempt != nullptr && attempt->attempts >= timeouts.max_send_attempts) {
+            continue;
+        }
+
+        // The guard is the single authority on whether an effect may leave.
+        // Consulting it here rather than duplicating its rules keeps one place
+        // to change when a rule changes.
+        const auto decision = evaluate_pre_send(state, effect_id, control, venue,
+                                                SendQuotaView{budget});
+        if (!decision.permitted()) continue;
+
+        plan.to_send[plan.send_count++] = effect_id;
+        --budget;
+    }
+    return plan;
+}
+
+}  // namespace velocita::v2

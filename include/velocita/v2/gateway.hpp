@@ -2,6 +2,7 @@
 
 #include "velocita/v2/kernel.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -104,6 +105,117 @@ struct PreSendDecision {
     const VenueCapabilityView& venue,
     const SendQuotaView& quota) noexcept;
 
+// --- delivery planning -----------------------------------------------------
+//
+// The second half of the same discipline. `evaluate_pre_send` answers "may this
+// one effect go?"; `plan_delivery` answers "what should the gateway do right
+// now?" - and answers it as a pure function of replicated state, gateway-local
+// bookkeeping, and an injected tick.
+//
+// The shell that surrounds it reads the clock, calls the transport, and drains
+// responses. It contains no decisions, which is what keeps the fault matrix
+// deterministic while the gateway itself owns time and I/O.
+
+using Tick = std::uint64_t;
+
+// Gateway-local delivery bookkeeping. Architecture 9.1.2: this is exactly the
+// state that does NOT enter consensus, which is why `claimed` and `attempted`
+// are gateway-local enum values the reducer never writes.
+//
+// It is deliberately reconstructible rather than durable. A gateway restart
+// discards it and rebuilds by reconciliation (G-032), which is why the design
+// can defer durability to Phase 7 without leaving a gap.
+struct DeliveryAttempt {
+    EffectId effect_id{};
+    Tick sent_at{};
+    std::uint32_t attempts{};
+    // True once a send left the process and no terminal response has arrived.
+    // While true the effect is AMBIGUOUS, never assumed delivered or rejected.
+    bool awaiting_response{};
+    // True ONLY when the last attempt provably never reached the venue - the
+    // transport refused it for pacing, or it failed before leaving the process.
+    // Nothing is resting at the venue, so the next send is a first send rather
+    // than a duplicate, and no reconciliation has to precede it.
+    //
+    // The default is false and every transition except the two provably-unsent
+    // ones leaves it false. That asymmetry is deliberate: a gateway that guesses
+    // wrong in this direction places a second real order, so the strong claim
+    // has to be asserted explicitly by a caller that saw the evidence.
+    bool resend_permitted{};
+
+    constexpr auto operator<=>(const DeliveryAttempt&) const noexcept = default;
+};
+
+inline constexpr std::size_t kMaxDeliveryAttempts = kMaxOutboxEffects;
+
+struct GatewayDeliveryState {
+    std::size_t attempt_count{};
+    std::array<DeliveryAttempt, kMaxDeliveryAttempts> attempts{};
+
+    constexpr auto operator<=>(const GatewayDeliveryState&) const noexcept = default;
+};
+
+struct GatewayTimeouts {
+    // Ticks after a send beyond which the outcome is treated as ambiguous. Not a
+    // rejection: G-026 forbids reading a timeout as proof an order does not
+    // exist, so this only ever produces `effect_unknown`.
+    Tick response_deadline{10};
+    // Bound on provably-unsent retries for one effect. Without it a venue that
+    // rate-limits indefinitely turns into an unbounded retry loop, which is a
+    // livelock rather than a safety failure but is no more acceptable for it.
+    // On exhaustion the effect simply stops being scheduled: it stays pending
+    // and unsettled, so it is visible in metrics and blocks its slot, which is
+    // the fail-closed outcome rather than a silent drop.
+    std::uint32_t max_send_attempts{3};
+};
+
+// One tick's worth of work, bounded by the outbox arena so a plan can never
+// outgrow the state that produced it.
+struct DeliveryPlan {
+    std::size_t send_count{};
+    std::array<EffectId, kMaxDeliveryAttempts> to_send{};
+    // Effects whose response deadline passed. The shell reports each to the
+    // cluster as `effect_unknown` and must NOT resend without reconciling first.
+    std::size_t ambiguous_count{};
+    std::array<EffectId, kMaxDeliveryAttempts> now_ambiguous{};
+
+    constexpr auto operator<=>(const DeliveryPlan&) const noexcept = default;
+};
+
+// Pure and bounded. Reads no clock: `now` is supplied.
+//
+// Ambiguity is decided BEFORE sending, so an effect that has just timed out is
+// never also selected to send in the same tick. That ordering is what stops the
+// planner producing the blind retry G-026 forbids.
+[[nodiscard]] DeliveryPlan plan_delivery(const TradingState& state,
+                                         const GatewayDeliveryState& delivery,
+                                         const GatewayControlView& control,
+                                         const VenueCapabilityView& venue,
+                                         const SendQuotaView& quota,
+                                         const GatewayTimeouts& timeouts,
+                                         Tick now) noexcept;
+
+// Bookkeeping transitions, kept beside the planner so the two cannot disagree
+// about what an attempt means. Each returns false when the arena is full or the
+// attempt is unknown, and fails closed rather than silently dropping work.
+[[nodiscard]] bool record_send(GatewayDeliveryState& delivery, EffectId effect_id,
+                               Tick now) noexcept;
+// The venue answered. The attempt is complete but NOT retryable: something may
+// be resting at the venue, so any further send has to be preceded by
+// reconciliation rather than by this planner.
+[[nodiscard]] bool record_response(GatewayDeliveryState& delivery,
+                                   EffectId effect_id) noexcept;
+// The send provably never reached the venue. This is the only transition that
+// makes an effect retryable without reconciliation, and callers must reserve it
+// for transport outcomes that carry that proof - `rate_limited` and
+// `pre_send_failure`, never `ambiguous`, `accepted`, or a business rejection.
+[[nodiscard]] bool record_unsent(GatewayDeliveryState& delivery,
+                                 EffectId effect_id) noexcept;
+[[nodiscard]] const DeliveryAttempt* find_attempt(
+    const GatewayDeliveryState& delivery, EffectId effect_id) noexcept;
+
+static_assert(std::is_trivially_copyable_v<GatewayDeliveryState>);
+static_assert(std::is_trivially_copyable_v<DeliveryPlan>);
 static_assert(std::is_trivially_copyable_v<VenueCapabilityView>);
 static_assert(std::is_trivially_copyable_v<GatewayControlView>);
 static_assert(std::is_trivially_copyable_v<SendQuotaView>);

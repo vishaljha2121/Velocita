@@ -194,7 +194,11 @@ SendOutcome SimulatedVenue::send(const OrderEffect& effect, const Tick now) {
         fill.side = resting.side;
         fill.price = resting.price;
         fill.quantity = resting.original;
-        schedule(fill, now + latency(fault) + 1, false, false);
+        // A duplicated FILL is the economically dangerous duplicate: booking it
+        // twice doubles the position, which no reservation arithmetic downstream
+        // can undo. Duplicating only the acknowledgement would have exercised the
+        // identity check on the harmless case and left this one untested.
+        schedule(fill, now + latency(fault) + 1, fault == Fault::duplication, false);
         resting.filled = resting.original;
     }
     return SendOutcome::accepted;

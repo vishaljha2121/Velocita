@@ -235,6 +235,15 @@ if(BUILD_TESTING)
     target_compile_options(v2-gateway-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-gateway-tests COMMAND v2-gateway-tests)
 
+    # The Phase 5 gate: the real kernel, the real guard and planner, and the
+    # adversarial venue, driven together through the G-033 fault matrix.
+    add_executable(v2-gateway-delivery-tests tests/v2_gateway_delivery_tests.cpp)
+    target_link_libraries(v2-gateway-delivery-tests PRIVATE velocita_v2_kernel
+        velocita_v2_venue_simulator)
+    target_compile_options(v2-gateway-delivery-tests PRIVATE
+        -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-gateway-delivery-tests COMMAND v2-gateway-delivery-tests)
+
     add_executable(v2-metrics-tests tests/v2_metrics_tests.cpp)
     target_link_libraries(v2-metrics-tests PRIVATE velocita_v2_kernel)
     target_compile_options(v2-metrics-tests PRIVATE -Wall -Wextra -Wpedantic)

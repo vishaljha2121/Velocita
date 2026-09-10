@@ -917,6 +917,95 @@ Nothing maps those onto `KernelCommandKind`, the numbering does not correspond,
 and the only callers are Phase 1 contract tests and a benchmark. It is an
 unwired Phase 1 vocabulary, not a transport. Phase 5 must not assume it is one.
 
+### 9.2 Delivery-loop contract decisions (approved 2026-09-10)
+
+Two decisions were forced by writing the delivery loop's tests rather than by
+reviewing the document. Both are recorded here because both change what the
+gateway is permitted to do, and neither is obvious from the guarantee list.
+
+#### 9.2.1 A resend requires PROOF that nothing reached the venue
+
+The first delivery planner refused to reschedule any effect that had ever been
+attempted. That is safe and wrong. It conflates two situations the transport
+already reports separately:
+
+- the send never left us - `pre_send_failure`, or `rate_limited`, where the venue
+  refused to accept for pacing before reading anything. Nothing is resting there.
+  The next send is a FIRST send, not a duplicate, and needs no reconciliation.
+- the send may have arrived - `accepted`, `ambiguous`, `venue_duplicate`, or a
+  business rejection. Something may be resting at the venue. A resend here is the
+  gateway's own duplicate, which is precisely what G-025 and the Phase 5 gate
+  exist to exclude.
+
+Collapsing these means one transient rate limit wedges the logical order slot
+until reconciliation - and reconciliation would then query a venue that has never
+heard of the order, which is the worst possible way to discover the truth.
+
+`DeliveryAttempt` therefore carries `resend_permitted`, false by default. Only
+`record_unsent` sets it, and callers must reserve that call for the two outcomes
+that carry the proof. `record_response` deliberately leaves it false: the venue
+answered, so whether to send again is reconciliation's judgement, not the
+planner's. `record_send` clears it, so no stale permission can survive into the
+next tick.
+
+Justification: the default has to be the safe answer, because the failure modes
+are not symmetric. Guessing "resend permitted" wrongly places a second real
+order. Guessing "resend forbidden" wrongly blocks a slot, which is visible in
+metrics and recoverable. The asymmetry is why the strong claim must be asserted
+by a caller that saw the evidence rather than inferred by the planner.
+
+#### 9.2.2 Provably-unsent retries are bounded
+
+`GatewayTimeouts::max_send_attempts` (3) bounds how many times one effect may be
+re-sent under 9.2.1. Without it, a venue that rate-limits indefinitely becomes an
+unbounded retry loop.
+
+On exhaustion the planner simply stops scheduling the effect. It is NOT marked
+ambiguous - nothing ever left the process, so calling the outcome unknown would
+be a lie that reconciliation would then have to chase. The effect stays `pending`
+and unsettled, so it appears in `unsettled_effects` with a rising
+`oldest_unsettled_effect_age`, and its slot stays blocked. That is the same
+fail-closed, operator-visible shape as G-074a's stuck reconciliation, and it is
+deliberately the same shape: one escalation path, not two.
+
+Open: the bound is a guess. Section 9.1.7's obligation applies here too - the
+simulator can measure how often three attempts is too few, and the number should
+move on evidence rather than on taste.
+
+### 9.3 What the Phase 5 delivery gate actually asserts
+
+The gate is stated in the TDD plan as three absolutes. `v2-gateway-delivery-tests`
+drives the real kernel, the real guard and planner, and the adversarial venue
+through the fault matrix, and makes each one checkable:
+
+- NO DUPLICATE VENUE ORDER. The simulator creates a resting order only for a
+  cluster order identity it has never seen and answers a repeat with
+  `venue_duplicate`. So the count of orders it created must equal the number of
+  DISTINCT identities that were accepted. A retry that mutated its identity makes
+  this strictly larger. The harness separately asserts that one cluster order
+  identity is never sent under two different effect identities.
+- NO LOST ACCEPTED FILL. Every distinct execution the venue reported is booked
+  exactly once, or refused with a code that loses nothing - idempotent
+  suppression, or a sweep of a group that had already fully resolved. Any other
+  refusal fails the gate, including a capacity refusal: that would be fail-closed
+  but is still a sizing problem worth failing on.
+- NO UNRESOLVED STATE PRESENTED AS HEALTHY. The projection's `unresolved_orders`
+  must equal what a direct walk of the reservation arena finds, and anything
+  unresolved must carry a nonzero age so it cannot look permanently fresh. Slot
+  exclusivity is asserted directly: the fixture trades one logical slot, so at
+  most one order there may ever hold unresolved risk.
+
+The matrix also asserts its own non-vacuity - that it sent, placed, timed out,
+stranded a slot, and suppressed a duplicate fill at least once - because a fault
+matrix that silently stopped reaching its hard paths would keep passing.
+
+One coverage gap was found and closed while writing this: the `duplication` fault
+duplicated only acknowledgements, never fills. A duplicated fill is the
+economically dangerous case, since booking it twice doubles the position and no
+downstream reservation arithmetic can undo it. Duplicating only the harmless
+observation would have tested the identity check on the case that does not
+matter.
+
 ## 10. Reconciliation contract
 
 Reconciliation compares:
