@@ -1,7 +1,6 @@
 # V2 Phase 4 risk, orders, and outbox acceptance evidence
 
-Status: candidate; host and ARM64 container gates pass, physical Raspberry Pi
-gate pending
+Status: accepted on host, ARM64 Ubuntu container, and physical Raspberry Pi 5
 
 ## Objective and promotion rule
 
@@ -29,7 +28,7 @@ The source root covers `CMakeLists.txt` and the bounded V2 headers, sources, and
 tests selected by the gate manifest. Gate scripts and this narrative are reviewed
 separately and do not alter that content root.
 
-## Canonical contracts frozen in the candidate
+## Canonical contracts frozen in the accepted checkpoint
 
 - kernel command/result and state snapshot schema V5; older schemas are rejected;
 - `ConfigureRiskLimits` command kind 17 with an 88-byte body, strict expected
@@ -115,8 +114,46 @@ Physical Pi command, after explicit source synchronization and `sudo -v`:
 BUILD_JOBS=2 ./deploy/run-v2-phase4-pi-gate.sh --yes
 ```
 
-Result: pending. Acceptance requires `throttled=0x0` before and after, with
-temperature and CPU-governor evidence retained by the wrapper.
+Result: PASS on 2026-09-10. Evidence on the Pi and copied to the development
+host:
+`~/.local/share/velocita/v2-phase4-acceptance-pi-gates/20260910T152924Z`.
+
+- tested checkout: `9f61247645140a544a4db6bba1ba1d62dcacb080`;
+- expected and observed source root matched exactly;
+- Raspberry Pi kernel 7.0.0-1016-raspi, AArch64 host and ARM64 Ubuntu 26.04.1;
+- GCC 15.2.0, 64-byte target and runtime L1D cache line;
+- 4 CPUs, 2 GiB container memory, and 256 MiB `/dev/shm` limits;
+- Release: 25/25 suites in 3.24 seconds;
+- benchmark-instrumented Release: 22/22 V2 suites in 3.19 seconds;
+- Debug ASan+UBSan: 22/22 V2 suites in 69.26 seconds;
+- CPU governor: `ondemand`;
+- firmware power before and after: `throttled=0x0`; and
+- temperature: 44.10 C before, 50.15 C after.
+
+## Guarantee adjudication
+
+Phase 4 closes G-010 through G-024: atomic authorization, no unreserved effect,
+layered caps, checked arithmetic, conservation, fill authority, retained
+cancel/unknown risk, safe serial replacement, bounded failure, complete replay,
+and stable at-most-once identities/outcomes within the declared retention
+contract.
+
+G-025 and G-026 remain open for Phase 5. Stable EffectId and explicit unknown
+state exist, but no gateway currently performs external delivery or experiences
+a post-send timeout. G-074a also remains open by design: missing final venue
+evidence blocks the slot and is visible in metrics, but operator escalation and
+recovery belong to Phases 8 and 10.
+
+## Acceptance decision
+
+Accept Phase 4 for source root
+`a84609b54b2efe408f34151b91bbd10a217d8cdadbd7b18aba6a54c6183ac853`.
+The physical target reproduced the same canonical source and bounded layout and
+passed every required suite without sanitizer failure, undervoltage, or
+throttling. The annotated checkpoint is `v2-phase4-accepted`.
+
+This decision authorizes Phase 5 simulator/gateway TDD planning. It does not
+authorize venue connectivity, paper/live delivery, or real-money trading.
 
 ## Limitations and deferred work
 

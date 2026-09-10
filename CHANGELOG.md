@@ -13,12 +13,13 @@ release-engineering work.
 
 ## [V2] - In development
 
-Status: Phase 1 domain/byte contracts and the Phase 2 deterministic-kernel
-foundation are accepted on macOS ARM64, native ARM64 Ubuntu 26.04, and physical
-Raspberry Pi 5 ARM64. Decision evaluation, risk, orders, outbox, execution
-gateway, Raft integration, durable V2 storage, and live trading behavior are
-not implemented. No V2 release has been tagged, and no V1/V1.1 wire, storage,
-deployment, or evidence artifact has been deleted or superseded in place.
+Status: Phases 1-4 are accepted on the required host, ARM64 Ubuntu, and physical
+Raspberry Pi 5 gates. Deterministic policy evaluation, risk reservation, cluster
+orders, accepted venue-evidence accounting, and the transactional outbox are
+implemented. The execution gateway, generic V2 Raft integration, durable V2
+storage, and live trading behavior are not implemented. No V2 release has been
+tagged, and no V1/V1.1 wire, storage, deployment, or evidence artifact has been
+deleted or superseded in place.
 
 The accepted architecture direction is recorded in
 [`ADR 0001`](docs/adr/0001-v2-replicated-decision-oms-and-execution-boundary.md).
@@ -915,7 +916,23 @@ observation results whose `DecisionId` is zero are intentionally unsupported.
   status. ARM64 and Pi success will be recorded only after those gates run.
 - The pinned ARM64 Ubuntu 26.04/GCC 15.2 gate passed on 2026-09-10 for the exact
   expected source root: Release 25/25, instrumented V2 22/22, and Debug
-  ASan+UBSan V2 22/22. Physical Pi evidence remains outstanding.
+  ASan+UBSan V2 22/22. The subsequent physical Pi result is recorded below.
+
+#### Accepted - Phase 4 risk, orders, and transactional outbox (2026-09-10)
+
+The physical Raspberry Pi 5 reproduced source root
+`a84609b54b2efe408f34151b91bbd10a217d8cdadbd7b18aba6a54c6183ac853`
+and passed Release 25/25, instrumented V2 22/22, and Debug ASan+UBSan V2 22/22.
+Power remained `throttled=0x0`; temperature moved from 44.10 C to 50.15 C.
+Evidence is retained at
+`~/.local/share/velocita/v2-phase4-acceptance-pi-gates/20260910T152924Z`
+and summarized in
+`docs/evidence/V2_PHASE4_RISK_ORDERS_OUTBOX_ACCEPTANCE.md`.
+
+G-010 through G-024 are closed. G-025/G-026 remain open for the Phase 5
+transport implementation, and G-074a remains the documented fail-closed
+operator-recovery gap. The annotated checkpoint is `v2-phase4-accepted`. This
+acceptance starts no gateway and authorizes no venue or real-money connectivity.
 
 #### Standing invariants for later phases
 
@@ -927,25 +944,23 @@ record's risk is RESOLVED rather than whether its state machine has stopped, so
 future terminal-but-unresolved states inherit the correct behaviour without being
 added to a list.
 
-#### Known limitations
+#### Historical limitations at the initial Phase 4 increment
 
-Direct replacement, canonical risk-limit configuration commands, terminal
-tombstone compaction and replicated expiry, complete reconciliation and ordered
-venue evidence, position/margin/fee accounting beyond filled quantity and open
-holds, Phase 4 metrics, and a Phase 4 model/property/replay corpus are all
-unimplemented. The 16-slot arrays bound retained lifetime records rather than
-reclaimed live orders, so the kernel fails closed after 16 lifetime orders on a
-slot; slot exclusivity makes that arrive sooner because every requote cycle now
-consumes a fresh slot.
+At the initial Phase 4 increment, direct replacement, canonical risk-limit
+configuration commands, terminal tombstone compaction and replicated expiry,
+complete reconciliation and ordered venue evidence, position/margin/fee
+accounting beyond filled quantity and open holds, Phase 4 metrics, and a Phase 4
+model/property/replay corpus were all unimplemented. The 16-slot arrays bounded
+retained lifetime records rather than reclaimed live orders, so the kernel would
+fail closed after 16 lifetime orders on a slot; slot exclusivity made that arrive
+sooner because every requote cycle consumed a fresh slot.
 
-A logical order slot held by an order stuck in `reconciling` has no timeout, no
-escalation, and no operator override. It silently stops quoting and is
-indistinguishable from a quiet market until Phase 4 metrics exist. Recorded as
-G-074a in `docs/V2_END_STATE_GUARANTEE_CHECKLIST.md` and owned by Phases 8
-and 10. It must not be "fixed" with a wall-clock timeout in the reducer: that
-breaks determinism, and releasing a hold without venue evidence of final
-cumulative filled quantity is the G-011 violation reconciliation exists to
-prevent.
+A logical order slot held by an order stuck in `reconciling` still has no
+timeout, escalation, or operator override. Phase 4 metrics now expose its age,
+but alerting and recovery remain G-074a work owned by Phases 8 and 10. It must
+not be "fixed" with a wall-clock timeout in the reducer: that breaks determinism,
+and releasing a hold without venue evidence of final cumulative filled quantity
+is the G-011 violation reconciliation exists to prevent.
 
 ### Model and market-data edge - initial contract layer
 

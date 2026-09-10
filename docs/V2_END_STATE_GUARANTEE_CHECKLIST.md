@@ -66,23 +66,23 @@ Phase 11 strategy/model validation and controlled canary
 
 ## 3. Risk, accounting, orders, and transactional outbox — Phase 4
 
-- [ ] **G-010 — Atomic authorization transaction.** An accepted economic
+- [x] **G-010 — Atomic authorization transaction.** An accepted economic
   decision creates its risk reservation, deduplication receipt, order entity,
   and outbound effect in one committed reducer transition—or creates none.
-- [ ] **G-011 — No unreserved effect.** No risk-increasing effect can exist
+- [x] **G-011 — No unreserved effect.** No risk-increasing effect can exist
   without sufficient committed reservation and a corresponding order intent.
-- [ ] **G-012 — Layered safety caps.** Strategy/model intent is constrained by
+- [x] **G-012 — Layered safety caps.** Strategy/model intent is constrained by
   immutable executable-policy caps and authoritative dynamic risk/account state;
   the stricter effective constraint wins.
-- [ ] **G-013 — Checked economic arithmetic.** Price, quantity, notional, fees,
+- [x] **G-013 — Checked economic arithmetic.** Price, quantity, notional, fees,
   position, and reservation arithmetic uses explicit units, scales, rounding,
   and checked overflow behavior.
-- [ ] **G-014 — Conservation.** Reserved, released, filled, cancelled, and open
+- [x] **G-014 — Conservation.** Reserved, released, filled, cancelled, and open
   quantities cannot become negative, release twice, or exceed reconciled order
   quantity without a typed conflict.
-- [ ] **G-015 — Fill authority.** Only accepted fill evidence changes position;
+- [x] **G-015 — Fill authority.** Only accepted fill evidence changes position;
   an acknowledgement or local send does not count as a fill.
-- [ ] **G-016 — Cancel remains risk-bearing.** Cancel-pending quantity retains
+- [x] **G-016 — Cancel remains risk-bearing.** Cancel-pending quantity retains
   risk until accepted cancel/fill evidence or reconciliation closes it.
   *Known operational gap (see G-074a).* Because a cancelled order enters
   `reconciling` and holds its reservation until `cancel_reconciled` final
@@ -90,9 +90,9 @@ Phase 11 strategy/model validation and controlled canary
   order slot indefinitely and that slot silently stops quoting. This is correct
   fail-closed behavior — unresolved risk must not be added to — but Phase 4
   provides no timeout, no escalation, and no operator override.
-- [ ] **G-017 — Unknown retains risk.** An ambiguously submitted order retains
+- [x] **G-017 — Unknown retains risk.** An ambiguously submitted order retains
   its reservation and blocks conflicting risk until authoritative reconciliation.
-- [ ] **G-018 — Safe serial replacement.** Phase 4 must prove cancel → final
+- [x] **G-018 — Safe serial replacement.** Phase 4 must prove cancel → final
   reconciliation → fresh authoritative decision → fresh authorization, not
   merely refusal of direct replacement. Native amend and overlapping replacement
   remain disabled (`RequestReplace` returns `replacement_not_supported`).
@@ -108,18 +108,18 @@ Phase 11 strategy/model validation and controlled canary
   exposure twice. If two orders could execute, covering both would be legitimate
   risk coverage, not erroneous double-counting; this MVP disables that overlap.
   A `max(old, new)` hold must not be assumed safe without proven mutual exclusion.
-- [ ] **G-019 — Capacity fails closed.** Full order, reservation, receipt, fill,
+- [x] **G-019 — Capacity fails closed.** Full order, reservation, receipt, fill,
   or outbox capacity produces a typed refusal and no partial economic mutation.
-- [ ] **G-020 — Snapshot/replay completeness.** Orders, risk, fills, dedup
+- [x] **G-020 — Snapshot/replay completeness.** Orders, risk, fills, dedup
   receipts, outbox state, and their exact identities survive snapshot and replay.
 
 ## 4. Identity, idempotency, and outcome semantics — Phases 4–6
 
-- [ ] **G-021 — Stable identity chain.** Request, decision, order, effect, fill,
+- [x] **G-021 — Stable identity chain.** Request, decision, order, effect, fill,
   and venue-event IDs are explicit strong types and remain traceable end to end.
-- [ ] **G-022 — At-most-once economic mutation.** Replaying the same request,
+- [x] **G-022 — At-most-once economic mutation.** Replaying the same request,
   effect result, fill, or venue event changes authoritative economics at most once.
-- [ ] **G-023 — Stable duplicate response.** A duplicate accepted request returns
+- [x] **G-023 — Stable duplicate response.** A duplicate accepted request returns
   its retained result and EffectId without creating a second order or effect,
   *within the retention window*. Amended 2026-09-09 (architecture §8.6): request
   receipts are finite, so outside the window a duplicate returns the typed
@@ -132,13 +132,21 @@ Phase 11 strategy/model validation and controlled canary
   an `expected_risk_version`, or an order's own lifecycle state. Retaining every
   receipt forever was not a stronger guarantee; it was an unbounded arena that
   stopped the kernel permanently once full.
-- [ ] **G-024 — One terminal command outcome.** Every admitted logical command
+- [x] **G-024 — One terminal command outcome.** Every admitted logical command
   eventually has exactly one retained typed terminal outcome.
 - [ ] **G-025 — Delivery is not falsely called exactly-once.** External delivery
   is at least once by stable EffectId; safety comes from deduplication and
   reconciliation, not from assuming the network is transactional.
 - [ ] **G-026 — Timeout means unknown.** A post-send timeout is never treated as
   proof of rejection and is never followed by a blind risk-increasing retry.
+
+  Phase 4 acceptance closes G-010 through G-024 for the deterministic reducer.
+  G-024 retention is within the declared bounded request horizon; below its
+  conservative caller prefix the only outcome is the non-mutating
+  `request_expired` refusal. G-025 and G-026 remain open because no execution
+  gateway or post-send timeout exists before Phase 5. Phase 4 supplies their
+  stable effect identity and explicit unknown state, but does not claim transport
+  behavior it cannot execute.
 
 ## 5. Execution gateway and venue simulator — Phase 5
 
@@ -290,17 +298,17 @@ Phase 11 strategy/model validation and controlled canary
   an on-chain cancellation that never settles — must be visible, alertable, and
   resolvable by a documented operator procedure.
 
-  Required, and none of it exists today:
+  Required; Phase 4 supplies visibility, while the operational controls remain:
 
-  - a metric for oldest `reconciling` order age and oldest unresolved slot age,
-    so a strategy that has quietly stopped quoting is distinguishable from a
-    quiet market (Phase 4 metrics, item C4);
-  - an alert threshold and a runbook entry describing diagnosis and the venue
+  - [x] metrics for `oldest_reconciling_order_age_since_authorization` and
+    unresolved-slot age, so a strategy that has quietly stopped quoting is
+    distinguishable from a quiet market (Phase 4 metrics, item C4);
+  - [ ] an alert threshold and a runbook entry describing diagnosis and the venue
     queries that establish final cumulative filled quantity;
-  - an authenticated, replicated operator command that resolves a stuck slot by
+  - [ ] an authenticated, replicated operator command that resolves a stuck slot by
     supplying or overriding terminal evidence, retained as attributable evidence
     and never as history mutation; and
-  - an explicit statement of what the operator must verify at the venue before
+  - [ ] an explicit statement of what the operator must verify at the venue before
     invoking it, because releasing a hold without proof of final filled quantity
     is exactly the G-011 violation the reconciliation contract exists to prevent.
 

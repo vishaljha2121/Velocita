@@ -5,6 +5,27 @@ Updated: 2026-09-10
 Purpose: compact working memory for the next agent session. Verify this file
 against Git before acting; do not reconstruct the project from chat history.
 
+## Phase 4 accepted checkpoint — 2026-09-10 (authoritative)
+
+Phase 4 is accepted. The annotated checkpoint is `v2-phase4-accepted`; the
+tested checkout was `9f61247645140a544a4db6bba1ba1d62dcacb080`, and the
+accepted source root is
+`a84609b54b2efe408f34151b91bbd10a217d8cdadbd7b18aba6a54c6183ac853`.
+The acceptance record is
+`docs/evidence/V2_PHASE4_RISK_ORDERS_OUTBOX_ACCEPTANCE.md`.
+
+Host Release and full ASan+UBSan passed 25/25. ARM64 Ubuntu passed Release 25/25
+and both V2 matrices 22/22. The physical Pi gate passed the same matrices with
+the exact source root, `throttled=0x0` before and after, and 44.10 C to 50.15 C
+temperature evidence at
+`~/.local/share/velocita/v2-phase4-acceptance-pi-gates/20260910T152924Z`.
+
+G-010 through G-024 are closed. G-025/G-026 remain Phase 5 transport work, and
+G-074a remains the explicitly accepted fail-closed operational gap owned by
+Phases 8 and 10. No Phase 5 implementation has started. Before Phase 5 code,
+review its simulator/gateway command, delivery, retry, reconciliation, fencing,
+and emergency-lane contracts; do not infer them from Phase 4.
+
 ## Codex acceptance-correction checkpoint — 2026-09-10 (read this first)
 
 This section and architecture §§8.4-8.7 supersede the earlier §8.7 review pause
@@ -38,7 +59,7 @@ Implemented by permanent RED-to-GREEN tests:
    admitted invalid fill is now result-encodable and snapshotable;
 8. metrics use the exact effect authorization receipt for age, explicitly name
    reconciliation age as since authorization, expose venue/caller identity
-   headroom, and classify derived/fill-quantity collisions as conflicts; and
+   headroom, and classify derived/fill-quantity collisions as conflicts;
 9. the Phase 4 property corpus now executes sell accounting, same- and
    cross-request duplicates, conflicting observation identities, seed/step
    diagnostics, and a minimal independent signed-position ledger; and
@@ -63,10 +84,12 @@ contract without claiming pending target results. The ARM64 container gate is
 now PASS at
 `~/.local/share/velocita/v2-phase4-container-gates/20260910T151843Z`:
 Release 25/25, instrumented V2 22/22, and Debug ASan+UBSan V2 22/22 on Ubuntu
-26.04 ARM64/GCC 15.2 with the expected source root. Next synchronize the same
-source to the Pi, run its pinned gate, then attach the result and adjudicate the
-Phase 4 checklist. The physical Pi gate is the only remaining execution gate.
-No Phase 4 acceptance claim exists yet.
+26.04 ARM64/GCC 15.2 with the expected source root. The physical Pi gate also
+passed at
+`~/.local/share/velocita/v2-phase4-acceptance-pi-gates/20260910T152924Z`:
+Release 25/25, instrumented V2 22/22, Debug ASan+UBSan V2 22/22, exact source
+root, and `throttled=0x0` before/after. The authoritative accepted checkpoint
+above supersedes this development checkpoint.
 
 Preserve the same protected unrelated paths listed near the end of this file:
 `docs/README.md`, `docs/MUST_CONFIRM_BEFORE_ADAPTER_CONNECT.md`,
