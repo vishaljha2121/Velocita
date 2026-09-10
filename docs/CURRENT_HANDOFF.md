@@ -1,11 +1,65 @@
 # Current development handoff
 
-Updated: 2026-09-09
+Updated: 2026-09-10
 
 Purpose: compact working memory for the next agent session. Verify this file
 against Git before acting; do not reconstruct the project from chat history.
 
-## Claude takeover checkpoint — 2026-09-09 (read this first)
+## Codex acceptance-correction checkpoint — 2026-09-10 (read this first)
+
+This section and architecture §§8.4-8.7 supersede the earlier §8.7 review pause
+and older next-task text below. The user approved all ten audit corrections. The
+working parent was `365b570` on `v2/phase-4-risk-orders-outbox`; verify current
+HEAD and status because this checkpoint may be committed after it is written.
+
+Implemented by permanent RED-to-GREEN tests:
+
+1. authorization requires the current active policy/executable/instrument/venue
+   contract and rejects an older same-slot proposal once a newer actionable
+   decision exists;
+2. cancel effects refuse submit-only `order_acknowledged`, and a repeated
+   semantic `effect_unknown` is a non-mutating `already_applied` result;
+3. applied fill/event results populate the existing candidate-V5 `DecisionId`.
+   This zero-byte owner link makes their receipts reclaimable with a resolved
+   order group; 119 completed cycles cross the old 64-event lifetime ceiling;
+4. authorization reserves worst finite observation capacity as remaining
+   one-atom fills plus state-sensitive submit/cancel/reconciliation transitions.
+   It also reserves one cancel outbox slot per unresolved order, limiting the
+   current 16-effect arena to at most eight newly live orders;
+5. a definitively rejected cancel record can be reused at a strictly increasing
+   effect generation. Pending/unknown/reconciling/conflict/incomplete records are
+   never overwritten;
+6. caller cursors register atomically on first admission with a zero expired
+   prefix. Snapshot validation bounds the arena and rejects zero/duplicate caller
+   IDs. The contract now states the real conservative-prefix semantics and the
+   monotonic per-stable-caller requirement;
+7. successful observation results require complete owner/stream identity, while
+   malformed typed refusals may retain partial non-empty diagnostic detail. An
+   admitted invalid fill is now result-encodable and snapshotable;
+8. metrics use the exact effect authorization receipt for age, explicitly name
+   reconciliation age as since authorization, expose venue/caller identity
+   headroom, and classify derived/fill-quantity collisions as conflicts; and
+9. the Phase 4 property corpus now executes sell accounting, same- and
+   cross-request duplicates, conflicting observation identities, seed/step
+   diagnostics, and a minimal independent signed-position ledger.
+
+Candidate V5 bytes did not grow. Canonical VALUES changed because caller cursors
+are present from first admission and applied observation results now carry their
+owning DecisionId. Old unaccepted development V5 snapshots that omitted that
+owner are unsupported. Reviewed replay goldens were updated only after direct,
+snapshot-suffix, and independent-model bytes agreed.
+
+Current host evidence: full Release build and 25/25 CTest suites pass;
+`git diff --check` passes. The complete host ASan+UBSan gate must be rerun against
+this exact source next, followed by the Phase 4 gate/evidence scripts, pinned
+ARM64, and physical Pi gates. No Phase 4 acceptance claim exists yet.
+
+Preserve the same protected unrelated paths listed near the end of this file:
+`docs/README.md`, `docs/MUST_CONFIRM_BEFORE_ADAPTER_CONNECT.md`,
+`docs/V2_MODEL_AND_MARKET_DATA_EDGE_DESIGN.md`,
+`docs/adr/0002-two-machine-pi-nuc-deployment-topology.md`, and `model/`.
+
+## Claude takeover checkpoint — 2026-09-09 (historical)
 
 This section and architecture contract §8.1 supersede older next-task/scope/schema
 statements later in this file. Later dated sections retain development history;
@@ -480,10 +534,11 @@ And `digest(static_cast<std::uint8_t>(decision_id))` makes every 256th DecisionI
 hash to the all-zero digest, which `apply` correctly refuses as a missing digest -
 it surfaced 120 cycles into a loop and looked like an arena bound.
 
-### PAUSED HERE — awaiting review of §8.7 (2026-09-09)
+### Historical pause — §8.7 resolved on 2026-09-10
 
-Work stopped deliberately at a byte-contract decision rather than taking it
-unilaterally. Nothing is half-implemented; the tree is green.
+Work stopped here on 2026-09-09 rather than taking the then-open decision
+unilaterally. The resolution and implementation are recorded in the first
+checkpoint and architecture §8.7; the analysis below is retained as history.
 
 The open question: `apply_observe_fill` refuses at `kMaxVenueEventReceipts`, and
 that bound fails in the WRONG DIRECTION. Every other bounded arena stops NEW work

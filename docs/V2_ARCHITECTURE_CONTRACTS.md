@@ -433,6 +433,12 @@ and level-triggered quoting. It would be WRONG for a venue or strategy that
 deliberately queues intents for later execution. A strategy of that shape needs a
 different rule, not a tuned horizon.
 
+Authorization enforces the same rule, not only reclamation: the chosen decision
+must still match the currently active policy and executable bundle, instrument
+specification, venue-capability version, and scope, and no newer structurally
+authorizable proposal may exist for its logical slot. Immutable proposal bytes
+prove provenance; they do not preserve authority after policy rotation.
+
 **Identity is not lost.** Applied evaluation receipts outlive the decision arena
 and retain the `DecisionId`, the payload digest, and the original outcome, so
 re-presenting a reclaimed `DecisionId` with a different payload still returns
@@ -471,8 +477,9 @@ question the metric, not to grow authoritative state.
 "decision-to-effect latency", which are durations, and a duration needs a clock
 apply is forbidden to have. Every age is therefore measured in STATE VERSIONS -
 a monotonic count of applied commands - so the quantity is exact, deterministic,
-and identical on every replica. Converting to wall-clock time is the exporter's
-job, on the exporter's clock, outside the authority boundary.
+and identical on every replica. A single StateVersion sample cannot be converted
+to wall-clock time. An exporter that needs durations must retain its own
+timestamped StateVersion observation timeline outside the authority boundary.
 
 That is arguably the better operational measure and not merely a workaround.
 State-version age answers "how many decisions has the cluster made while this sat
@@ -480,7 +487,8 @@ unresolved", which is load-relative: a stuck slot looks equally stuck in a fast
 market and a quiet one, and the number cannot drift or jump when a host's clock
 is corrected. A wall-clock age would do both.
 
-Reported: arena occupancy against compile-time capacities; orders, effects and
+Reported: arena occupancy and headroom against compile-time capacities, including
+accepted venue-event identities and caller cursors; orders, effects and
 reservations by state, indexed by raw enum value; counts and oldest ages for
 unresolved orders, unsettled effects, reconciling orders (G-074a) and conflicted
 orders; the maximum decision-to-authorization distance; the retained reclamation
@@ -495,9 +503,12 @@ An age for a record authorized at or after the current state version reports
 zero rather than wrapping. The subtraction is unsigned, so a future-dated record
 would otherwise appear maximally stale and turn a corrupt input into a page.
 
-An effect record carries no version of its own, so its age is that of the order
-that authorized it. That is the correct provenance: the effect has existed since
-its order was authorized.
+An effect record carries no version of its own, but its pinned authorization
+receipt does. Unsettled-effect age is derived from the receipt naming the exact
+`EffectId`, so a later cancel is not falsely aged from its parent order's older
+authorization. `oldest_reconciling_order_age_since_authorization` is explicitly
+an upper bound: Phase 4 does not add a transition timestamp to authoritative
+state merely to improve a metric.
 
 **`OutcomeCounters` is separate and deliberately not in state.** Duplicate and
 refusal counts describe COMMAND OUTCOMES rather than retained records - a
@@ -529,18 +540,17 @@ tell "expired" apart from "never seen".
 
 #### Request receipts: per-caller watermark
 
-Each caller has a retained cursor holding the highest `RequestSequence` whose
-receipt has actually been RECLAIMED for that caller - deliberately not its
-highest observed sequence.
-Receipts may be forgotten freely. A request at or below its caller's watermark
-with no retained receipt returns the typed refusal `request_expired` and mutates
-nothing. A request above the watermark is fresh and executes normally.
+Each caller has a retained conservative PREFIX watermark. `expired_below = N`
+means the cluster no longer promises an individual answer for any sequence at or
+below N. A retained exact receipt still wins; otherwise a request in the prefix
+returns `request_expired` and mutates nothing. This necessarily classifies an
+unseen lower number as expired too, which is why `RequestSequence` is required to
+be monotonic per stable caller rather than freely permuted.
 
-Refusing on a highest-observed watermark was implemented first and rejected: it
-refuses a low sequence the cluster never held, which enforces per-caller
-monotonicity as a side effect of expiry. That is a stricter and different
-contract, and it broke fixtures that had every right to number their requests
-freely. The kernel must refuse only what it actually forgot.
+The cursor is registered atomically on the caller's first admitted request with
+`expired_below = 0`. The ninth distinct caller is refused before StateVersion,
+receipt, or cursor mutation. Snapshot validation bounds the cursor count, rejects
+zero/duplicate caller identities, and accepts zero only for the watermark value.
 
 A fourth arena needed the same treatment. Source-event receipts already have
 their watermark in `SourceCursor`, and admission independently refuses a
@@ -550,13 +560,13 @@ on the same fail-closed pattern.
 
 Receipts are pinned in two families. AUTHORIZATION receipts are the provenance
 `materialize_order_effect` uses to rebuild an effect's historical bytes, so
-dropping one while its effect lives would strand a pending external effect and
-break G-020; they become reclaimable once their order group is gone. FILL and
-VENUE-EVENT receipts are pinned unconditionally for now, because a redelivered
-PARTIAL fill would book twice and reservation arithmetic does not catch that -
-filled plus remaining stays within the original, so the double booking looks
-legitimate. Everything else, including every refusal, is reclaimable, and in a
-live maker those are the overwhelming majority.
+dropping one while that exact effect lives would strand a pending external effect
+and break G-020. A definitively rejected cancel record may be reused for its next
+generation; the superseded authorization receipt then becomes reclaimable.
+FILL and VENUE-EVENT receipts are pinned while their owning order exists, because
+a redelivered PARTIAL fill would otherwise book twice. Everything else, including
+every refusal, is reclaimable, and in a live maker those are the overwhelming
+majority.
 
 This needs no clock and no horizon constant. Rejected alternatives: a
 state-version horizon requires an N that cannot be justified until Phase 5
@@ -592,6 +602,12 @@ longer say what happened, and the answer is in state - rather than a loss of
 economic protection. The economic protection was never the receipt; it was the
 state.
 
+Typed refusals are themselves canonical state. Successful observation results
+require complete stream, execution, and owning-decision identity; a refused
+malformed observation may echo a partial non-empty detail so the diagnostic can
+be encoded. The result codec and snapshot validator apply the same rule, ensuring
+that an admitted `invalid_command` can never make the next snapshot invalid.
+
 #### Venue-event identities: reclaimed with their order
 
 A fill or venue-event identity is reclaimable EXACTLY when its cluster order
@@ -603,24 +619,26 @@ order is gone fails to resolve an order at all and returns
 THE ORDER IS ITSELF THE DEDUPLICATION. No amount of redelivery can book against a
 record that no longer exists.
 
-NOT YET IMPLEMENTED, and pinned by a failing-loud test. A fill receipt carries
-`{venue_id, execution_id, filled_quantity}` in its detail and
-`{session_id, venue_sequence}` in its metadata - all five slots used, none naming
-the cluster order. Tying expiry to order-group reclamation therefore requires the
-canonical result to carry a cluster order id, and the result is currently 126 of
-its 128 bytes. That is a byte-contract change awaiting review, so the
-`kMaxVenueEventReceipts` bound still stops fills being accepted and still strands
-existing risk. `test_venue_event_horizon_still_bounds_order_completion` asserts
-the bound so the limitation is visible rather than silently absent, and instructs
-its own deletion once the bound is lifted.
+Implemented without growing the 128-byte result. Candidate schema V5 already
+contains a `DecisionId` field outside the five tagged detail/metadata words.
+Applied fill and venue-event results now populate it; the order's retained
+`DecisionId` is therefore the ownership edge. Applied observation results require
+that owner in codec and snapshot validation. Old unaccepted development V5
+snapshots whose applied observation results left it zero are unsupported.
+
+When event capacity is under pressure, the reducer first reclaims risk-resolved
+order groups, then sweeps the now-unpinned receipts, before resolving any arena
+index or borrowing a reference. `test_resolved_orders_release_venue_identity_capacity`
+drives 119 complete orders through the 64-entry horizon and proves both sustained
+completion and the retained ownership identity.
 
 An earlier proposal to pin fill identities against expiry indefinitely was
 withdrawn: it preserved the same safety at strictly greater cost and left the
 `kMaxVenueEventReceipts` wedge in place, whereas tying expiry to order-group
 reclamation removes that wedge using machinery already proven economically inert.
 
-The 64-entry venue-event horizon is a reviewed capacity, not a derived one. No
-derivation is claimed for it.
+The 64-entry venue-event horizon remains a reviewed capacity. Admission derives
+whether a proposed order fits inside it; no average fill size is assumed.
 
 #### Deferred
 
@@ -630,104 +648,61 @@ the party that would retry declares it is finished, but it cannot be the only
 mechanism because an uncooperative or crashed caller would leave the wedge. It
 belongs alongside the gateway that would send it.
 
-### 8.7 Venue-event horizon: proposal awaiting review (2026-09-09)
+### 8.7 Venue-event and cancel headroom (approved and implemented 2026-09-10)
 
-Raised for Codex review. Nothing here is implemented and no byte contract has
-changed. The recommendation deliberately costs zero bytes; the alternatives that
-cost bytes were considered and rejected, and the reasoning is recorded so the
-choice can be re-argued rather than rediscovered.
+The reviewed direction is fail-closed at NEW RISK, never at completion. The old
+rule admitted orders until 64 observation identities already existed, then
+refused fills for those live orders. The bound therefore failed in the wrong
+direction: it stranded existing exposure instead of stopping new quoting.
 
-#### The situation
+`AuthorizeDecision` now proves the following conservative capacity inequality
+before creating any economics:
 
-`apply_observe_fill` refuses with `fill_capacity_exceeded` once
-`accepted_venue_event_count` reaches `kMaxVenueEventReceipts` (64). Fill and
-venue-event receipts are pinned unconditionally by §8.6, because a redelivered
-PARTIAL fill would book twice and reservation arithmetic does not catch it:
-filled plus remaining stays within the original quantity, so the double booking
-looks legitimate. Nothing reclaims them.
+```text
+accepted observation identities
++ maximum future one-atom fills for every unresolved order
++ bounded remaining submit/cancel/reconciliation transitions
++ the same budget for the proposed order
+<= kMaxVenueEventReceipts (64)
+```
 
-The bound is not dangerous because it exists. It is dangerous because it fails in
-the WRONG DIRECTION. Every other bounded arena stops NEW work when full; this one
-stops EXISTING orders from completing, so live risk is stranded with no path to
-resolution. That is the one failure mode this phase has consistently treated as
-unacceptable.
+Maximum future fills is `remaining_quantity.atoms()`, not an average or one
+terminal fill per order. A two-event rule was rejected as only a lower bound: a
+Q-atom order may legally complete as Q distinct one-atom fills. A newly
+authorized order receives five control slots: submit unknown, submit ack, cancel
+unknown, cancellation, and final reconciliation. As its state advances, the
+remaining control allowance decreases. Overflow or a disabled legacy replace
+state fails closed as unbudgetable.
 
-`test_venue_event_horizon_still_bounds_order_completion` pins the bound so it
-stays visible, and instructs its own deletion once lifted.
+This deliberately converts pressure into `venue_event_capacity_exceeded` at
+authorization. Observation handlers still sweep resolved groups and their
+receipts before refusing at the hard horizon. The result is no new resident
+state and no result growth.
 
-#### Why the approved §8.6 rule is unimplementable as written
+The outbox has the same directional rule. Every unresolved order needs its
+retained submit effect plus one cancel slot. New authorization is refused unless
+both remain representable, which currently bounds simultaneous unresolved orders
+to eight even though the order arena holds sixteen. A definitively REJECTED
+cancel record may be overwritten by the next cancel generation in the same slot:
+the old effect is settled and no longer deliverable, while the new EffectId is
+derived from a strictly increasing generation. Pending, unknown, reconciling,
+conflicting, and incomplete effects are never overwritten. This prevents venue
+cancel rejections from consuming the outbox for the lifetime of the process.
 
-§8.6 approved reclaiming a fill identity exactly when its order group is
-reclaimed. A fill receipt cannot be traced to its order. Its detail words hold
-`{venue_id, execution_id, filled_quantity}` and its metadata words hold
-`{session_id, venue_sequence}` - five slots, all used, none naming the cluster
-order. The canonical result is at 126 of its 128 bytes, so carrying a cluster
-order id means growing the result.
+`order_acknowledged` is submit-only. Applying it to a cancel effect previously
+resolved the effect while leaving the order cancel-pending, which made later
+valid cancellation evidence inapplicable. The mismatch is now refused before
+mutation. A semantically repeated `effect_unknown` returns `already_applied` and
+does not consume another accepted venue transition.
 
-Repurposing a slot was examined and rejected:
+#### Rejected alternatives and deferred work
 
-- `filled_quantity` is returned to the caller and is genuinely needed;
-- `session_id` and `venue_sequence` are load-bearing for the cross-kind venue
-  event identity conflict check; and
-- `venue_id` looks redundant because `VenueSessionId` implies a venue, but
-  swapping the deduplication key from `(VenueId, ExecutionId)` to
-  `(SessionId, ExecutionId)` is a SAFETY REGRESSION. A redelivery arriving after
-  a gateway reconnect carries a NEW session id, so a session-scoped key would
-  fail to catch precisely the duplicate that matters most.
-
-#### Recommendation: reserve completion capacity, do not reclaim
-
-Keep the 64-entry horizon. Move the pressure from fills to AUTHORIZATION:
-
-> Refuse a new `AuthorizeDecision` when remaining venue-event capacity would not
-> cover completing the orders already live. Fills for existing orders are always
-> admitted.
-
-The failure mode becomes "the maker stops quoting" instead of "the maker cannot
-get out", which is the trade every other arena already makes and the one an
-operator can survive.
-
-This is not a new idea in the design. §11 already reserves bounded capacity for
-the operations that reduce risk: normal and emergency traffic have separate
-bounded quota lanes, and emergency behaviour is limited to pre-authorized
-stop/cancel/reconcile actions. Reserving completion capacity applies the same
-principle one layer down.
-
-Cost: one predicate in `apply_authorize_decision`. No schema change, no new
-arena, no canonical result growth, no additional resident bytes.
-
-Pair it with one free self-heal: a fill receipt is reclaimable once NO reservation
-is unreleased. With every reservation released no fill can book - a redelivery
-meets `fill_quantity_conflict` on a released reservation - so the receipts protect
-nothing. Coarse, but free, safe, and it drains the arena whenever a maker goes
-momentarily flat between requotes.
-
-#### Deferred alternative: a venue-session watermark
-
-If true per-order reclamation is wanted later, the clean route is the same
-pattern as the caller cursor in §8.6: track per `(venue, session)` the highest
-`venue_sequence` whose fill receipt was reclaimed, and refuse an at-or-below
-arrival that has no retained receipt. Both fields already sit in the result's
-metadata words, so this needs no result change - only a small arena, roughly 96
-bytes at four sessions against 277 bytes of snapshot headroom.
-
-It is deferred because it depends on whether the venue actually supplies
-monotonic per-session sequences, which is unknown until a venue exists to ask.
-Review it in Phase 5 alongside the three horizon questions already parked there:
-caller-driven `ExpireIdentity` (§8.6), the state-version horizon for unreferenced
-decisions (§8.4), and the reference horizon deferred from the reclamation
-contract. All four are the same question asked about different arenas.
-
-#### What a reviewer should decide
-
-1. Whether converting a risk-stranding failure into a stop-quoting failure is the
-   right trade, or whether the venue-event horizon should instead be raised or
-   reclaimed properly now.
-2. How much completion capacity to reserve. A defensible starting rule is two
-   venue events per live order, since a submit acknowledgement plus one terminal
-   event is the minimum an order needs to close.
-3. Whether the flat-state reclaim is worth having given how rarely a continuously
-   quoting maker is genuinely flat.
+Repurposing `venue_id` to make fill deduplication session-scoped remains rejected:
+a redelivery after reconnect has a new session and would escape the identity key.
+Raising capacities merely moves the wedge. A per-venue-session sequence watermark
+is deferred to Phase 5 because it depends on a real venue providing monotonic
+session sequences. Caller-driven expiry and a general decision/reference horizon
+remain parked with it; none gets an invented wall-clock timeout in Phase 4.
 
 ## 9. Outbox and execution contract
 

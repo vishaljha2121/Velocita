@@ -210,7 +210,7 @@ void test_snapshot_plus_suffix_equals_full_byte_replay() {
 
     const auto final_digest = to_hex(full_snapshot.state_digest);
     require(final_digest ==
-                "d80abbf31b67515ba5a78794252777155bdad84ccfedd827eed1f06c80f9b888",
+                "99a249f1d8e04e01ea89bb88d878a20e500c9c2747d11737770c476039e9ddc3",
             "replay corpus final state changed without reviewed migration: " +
                 final_digest);
 }

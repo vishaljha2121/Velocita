@@ -24,8 +24,8 @@ namespace velocita::v2 {
 // clock the reducer is forbidden to have. Every age here is therefore measured
 // in STATE VERSIONS, not nanoseconds. A state version is a monotonic count of
 // applied commands, so the quantity is exact, deterministic, and identical on
-// every replica; converting it to wall-clock time is the exporter's job, on the
-// exporter's clock, outside the authority boundary.
+// every replica. It CANNOT be converted to wall-clock time from a single sample;
+// an external observer needs its own timestamped StateVersion timeline.
 //
 // That trade is worth understanding rather than working around. State-version
 // age answers "how many decisions has the cluster made while this sat unresolved"
@@ -77,6 +77,10 @@ struct TradingMetrics {
     std::uint16_t receipt_count{};
     std::uint16_t risk_account_count{};
     std::uint16_t source_event_count{};
+    std::uint16_t accepted_venue_event_count{};
+    std::uint16_t venue_event_headroom{};
+    std::uint16_t caller_cursor_count{};
+    std::uint16_t caller_cursor_headroom{};
 
     std::array<std::uint16_t, kClusterOrderStateSlots> orders_by_state{};
     std::array<std::uint16_t, kOutboxStateSlots> effects_by_state{};
@@ -95,7 +99,10 @@ struct TradingMetrics {
     // G-074a: a slot held by an order stuck in reconciling has no timeout and no
     // automatic escalation, so this is the only way it becomes visible before an
     // operator notices the book has gone quiet.
-    std::uint64_t oldest_reconciling_order_age{};
+    // This is an upper bound measured since authorization, not time spent in
+    // reconciling: the transition version is intentionally not authoritative
+    // state in Phase 4.
+    std::uint64_t oldest_reconciling_order_age_since_authorization{};
     std::uint64_t oldest_conflicted_order_age{};
 
     // Decision-to-authorization distance in state versions, the closest exact

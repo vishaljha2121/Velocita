@@ -578,6 +578,34 @@ void test_bounds_and_invalid_source_state_fail_closed() {
     require(rejected.error == StateSnapshotError::invalid_state &&
                 rejected.bytes_written == 0,
             "invalid in-memory state was serialized");
+
+    invalid = state;
+    invalid.caller_cursor_count = kMaxCallerCursors + 1;
+    require(encode_state_snapshot(invalid, storage).error ==
+                StateSnapshotError::invalid_state,
+            "caller cursor count escaped its fixed-capacity bound");
+
+    invalid = state;
+    invalid.caller_cursor_count = 1;
+    invalid.caller_cursors[0] = {CallerId{}, RequestSequence{}};
+    require(encode_state_snapshot(invalid, storage).error ==
+                StateSnapshotError::invalid_state,
+            "snapshot accepted a caller cursor with no stable identity");
+
+    invalid = state;
+    invalid.caller_cursor_count = 2;
+    invalid.caller_cursors[0] = {CallerId{91}, RequestSequence{}};
+    invalid.caller_cursors[1] = {CallerId{91}, RequestSequence{7}};
+    require(encode_state_snapshot(invalid, storage).error ==
+                StateSnapshotError::invalid_state,
+            "snapshot accepted duplicate caller cursor identities");
+
+    auto first_admission = state;
+    first_admission.caller_cursor_count = 1;
+    first_admission.caller_cursors[0] = {CallerId{91}, RequestSequence{}};
+    require(encode_state_snapshot(first_admission, storage).error ==
+                StateSnapshotError::none,
+            "a registered caller with no expired prefix was not canonical");
 }
 
 void test_declared_maximum_is_exact_and_encodable() {

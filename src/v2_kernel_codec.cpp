@@ -327,8 +327,14 @@ private:
         return result.detail.words[0] != 0 && result.detail.words[1] != 0 &&
                result.detail.words[2] != 0;
     }
+    const bool accepted = result.code == ApplyCode::applied ||
+                          result.code == ApplyCode::already_applied;
     if (result.detail_kind == ApplyResultDetailKind::source) {
-        return result.detail != ApplyResultDetail{};
+        return accepted
+                   ? result.source_id().value() != 0 &&
+                         result.source_generation().value() != 0 &&
+                         result.source_sequence().value() != 0
+                   : result.detail != ApplyResultDetail{};
     }
     if (result.detail_kind == ApplyResultDetailKind::authorization) {
         return result.cluster_order_id().value() != 0 &&
@@ -337,16 +343,21 @@ private:
                result.decision_id.value() != 0;
     }
     if (result.detail_kind == ApplyResultDetailKind::fill) {
-        if ((result.code == ApplyCode::applied || result.code == ApplyCode::already_applied) &&
-            (result.fill_session_id().value() == 0 || result.fill_sequence().value() == 0))
-            return false;
-        return result.fill_venue_id().value() != 0 &&
-               result.execution_id().value() != 0 &&
-               result.filled_quantity().atoms() > 0;
+        return accepted
+                   ? result.fill_session_id().value() != 0 &&
+                         result.fill_sequence().value() != 0 &&
+                         result.fill_venue_id().value() != 0 &&
+                         result.execution_id().value() != 0 &&
+                         result.filled_quantity().atoms() > 0 &&
+                         result.decision_id.value() != 0
+                   : result.detail != ApplyResultDetail{};
     }
-    return result.event_venue_id().value() != 0 &&
-           result.event_session_id().value() != 0 &&
-           result.event_sequence().value() != 0;
+    return accepted
+               ? result.event_venue_id().value() != 0 &&
+                     result.event_session_id().value() != 0 &&
+                     result.event_sequence().value() != 0 &&
+                     result.decision_id.value() != 0
+               : result.detail != ApplyResultDetail{};
 }
 
 [[nodiscard]] bool valid_result(const ApplyResult& result) noexcept {

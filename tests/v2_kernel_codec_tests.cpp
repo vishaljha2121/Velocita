@@ -410,6 +410,7 @@ void test_fill_command_and_result_are_canonical_v4() {
         VenueId{9}, ExecutionId{61}, QuantityLots::from_atoms(1));
     fill.detail_kind = ApplyResultDetailKind::fill;
     fill.metadata_words = {2, 60};
+    fill.decision_id = DecisionId{21};
     std::array<std::byte, kKernelResultBytes> result_bytes{};
     ApplyResult restored_result;
     require(encode_kernel_result(fill, result_bytes).error ==
@@ -483,6 +484,7 @@ void test_cancel_and_order_event_commands_are_canonical_v4() {
     result.detail = ApplyResultDetail::venue_event(
         VenueId{9}, VenueSessionId{2}, VenueSequence{71});
     result.detail_kind = ApplyResultDetailKind::venue_event;
+    result.decision_id = DecisionId{21};
     std::array<std::byte, kKernelResultBytes> result_bytes{};
     ApplyResult restored_result;
     require(encode_kernel_result(result, result_bytes).error ==

@@ -339,6 +339,7 @@ struct ModelState {
     ExecutablePolicyBundle staged_executable_policy{};
     std::vector<SourceCursor> sources;
     std::vector<SourceEventReceipt> source_events;
+    std::vector<CallerCursor> caller_cursors;
     std::vector<RequestReceipt> receipts;
     std::vector<DecisionRecordHot> decision_hot;
     std::vector<DecisionRecordCold> decision_cold;
@@ -1007,6 +1008,17 @@ ApplyResult model_apply(ModelState& state, const Command& command) {
     }
     require(state.receipts.size() < kMaxRequestReceipts,
             "generated history exceeded the model receipt bound");
+    const auto caller = std::find_if(
+        state.caller_cursors.begin(), state.caller_cursors.end(),
+        [&](const auto& item) {
+            return item.caller_id == command.identity.caller_id;
+        });
+    if (caller == state.caller_cursors.end()) {
+        require(state.caller_cursors.size() < kMaxCallerCursors,
+                "generated history exceeded the model caller bound");
+        state.caller_cursors.push_back(
+            CallerCursor{command.identity.caller_id, RequestSequence{}});
+    }
     const auto next_version = state.state_version + 1;
     const auto result =
         model_new_command(state, command.identity, command.body, next_version);
@@ -1030,6 +1042,9 @@ TradingState materialize(const ModelState& model) {
     result.source_event_count = model.source_events.size();
     std::copy(model.source_events.begin(), model.source_events.end(),
               result.source_events.begin());
+    result.caller_cursor_count = model.caller_cursors.size();
+    std::copy(model.caller_cursors.begin(), model.caller_cursors.end(),
+              result.caller_cursors.begin());
     result.receipt_count = model.receipts.size();
     std::copy(model.receipts.begin(), model.receipts.end(), result.receipts.begin());
     result.decision_count = model.decision_hot.size();
@@ -1227,7 +1242,7 @@ void test_generated_model_and_snapshot_replay() {
     require(coverage.count(DecisionCode::invalid_frame) != 0,
             "generated corpus never exercised invalid-frame precedence");
     require(actual ==
-                "90dfb5aa1e6e351d5e5a1737911d7737dc18d1c788f6b94264cc05c67da2de60",
+                "4c0a3ab3aa9a4e0578bbfbd787fc65314134a5d0ae01b83317401e175f301677",
             "generated replay corpus changed without review: " + actual);
 
     std::cout << "generated histories=" << kSeedCount

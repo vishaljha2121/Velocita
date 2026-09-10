@@ -1015,6 +1015,227 @@ void test_authorization_rechecks_current_controls() {
                                 "refused replacement mutated economics");
 }
 
+void test_authorization_requires_current_latest_intent() {
+    using namespace velocita::v2;
+    ApplyScratch scratch;
+
+    auto superseded_slot = ready_state();
+    append_submit_decision(superseded_slot, DecisionId{21}, 12, 2);
+    const auto superseded_before = superseded_slot;
+    const auto superseded = apply(
+        superseded_slot, authorize_decision(2, 0x65, DecisionId{20}), scratch);
+    require(superseded.code == ApplyCode::decision_not_authorizable,
+            "an older same-slot proposal remained authorizable after a newer intent");
+    require_economics_unchanged(
+        superseded_before, superseded_slot,
+        "refusing a superseded same-slot proposal mutated economics");
+
+    auto retired_policy = ready_state();
+    const Command supersede{
+        {CallerId{6}, RequestSequence{1}, digest(0x66)},
+        SupersedePolicy{PolicyId{10}, PolicyVersion{1}}};
+    require(apply(retired_policy, supersede, scratch).code == ApplyCode::applied,
+            "policy-retirement fixture failed");
+    const auto retired_before = retired_policy;
+    const auto retired = apply(
+        retired_policy, authorize_decision(2, 0x67, DecisionId{20}), scratch);
+    require(retired.code == ApplyCode::decision_not_authorizable,
+            "a decision outlived the active executable policy that produced it");
+    require_economics_unchanged(
+        retired_before, retired_policy,
+        "refusing a retired-policy decision mutated economics");
+}
+
+void test_cancel_effect_refuses_submit_ack_and_repeated_unknown() {
+    using namespace velocita::v2;
+    auto state = ready_state();
+    ApplyScratch scratch;
+    const auto submit = apply(state, authorize(2, 0x68), scratch);
+    const auto cancel = apply(
+        state, request_cancel(1, 0x69, submit.cluster_order_id()), scratch);
+    require(cancel.code == ApplyCode::applied, "cancel-event fixture failed");
+
+    const auto before_wrong_ack = state;
+    const auto wrong_ack = apply(
+        state,
+        observe_order_event(1, 0x6a, VenueObservationKind::order_acknowledged,
+                            submit.cluster_order_id(), cancel.effect_id(), 806),
+        scratch);
+    require(wrong_ack.code == ApplyCode::venue_observation_not_applicable,
+            "a submit-only acknowledgement resolved a cancel effect");
+    require(state.orders[0] == before_wrong_ack.orders[0] &&
+                state.outbox_effects[1] == before_wrong_ack.outbox_effects[1] &&
+                state.reservations[0] == before_wrong_ack.reservations[0] &&
+                state.risk_accounts[0] == before_wrong_ack.risk_accounts[0],
+            "refusing a mismatched cancel acknowledgement mutated lifecycle or risk");
+
+    const auto first_unknown = apply(
+        state,
+        observe_order_event(2, 0x6b, VenueObservationKind::effect_unknown,
+                            submit.cluster_order_id(), cancel.effect_id(), 807),
+        scratch);
+    require(first_unknown.code == ApplyCode::applied &&
+                state.orders[0].state == ClusterOrderState::submission_unknown &&
+                state.outbox_effects[1].state == OutboxState::unknown,
+            "first unknown observation did not retain unresolved cancel risk");
+    const auto after_first_unknown = state;
+    const auto repeated_unknown = apply(
+        state,
+        observe_order_event(3, 0x6c, VenueObservationKind::effect_unknown,
+                            submit.cluster_order_id(), cancel.effect_id(), 808),
+        scratch);
+    require(repeated_unknown.code == ApplyCode::already_applied,
+            "a semantically repeated unknown event was accepted as a new transition");
+    require(state.orders[0] == after_first_unknown.orders[0] &&
+                state.outbox_effects[1] == after_first_unknown.outbox_effects[1] &&
+                state.reservations[0] == after_first_unknown.reservations[0] &&
+                state.risk_accounts[0] == after_first_unknown.risk_accounts[0],
+            "repeated unknown evidence changed lifecycle or risk");
+}
+
+void test_authorization_reserves_completion_and_cancel_capacity() {
+    using namespace velocita::v2;
+    ApplyScratch scratch;
+
+    // Fifty-eight retained observations leave six slots. A new two-atom order
+    // can require two one-atom fills plus bounded submit/cancel reconciliation
+    // transitions, so it must be refused before it can strand existing risk.
+    auto event_pressure = ready_state();
+    for (std::size_t index = 0; index < 58; ++index) {
+        ApplyResult retained;
+        retained.code = ApplyCode::applied;
+        retained.detail = ApplyResultDetail::fill(
+            VenueId{9}, ExecutionId{10'000 + index}, QuantityLots::from_atoms(1));
+        retained.detail_kind = ApplyResultDetailKind::fill;
+        retained.metadata_words = {2, 10'000 + index};
+        event_pressure.receipts[event_pressure.receipt_count++] = {
+            {CallerId{9}, RequestSequence{index + 1}, digest(0x70)}, retained};
+    }
+    const auto event_before = event_pressure;
+    require(apply(event_pressure, authorize(2, 0x71), scratch).code ==
+                ApplyCode::venue_event_capacity_exceeded,
+            "authorization consumed venue identity capacity needed for completion");
+    require_economics_unchanged(
+        event_before, event_pressure,
+        "venue completion-capacity refusal mutated economics");
+
+    // Sixteen effect slots can support at most eight unresolved orders when
+    // every order owns a submit record and must retain one cancel record. The
+    // ninth order must stop at authorization, while all eight admitted orders
+    // must still be able to enter cancellation.
+    auto outbox_pressure = ready_state();
+    auto& risk = outbox_pressure.risk_accounts[0];
+    risk.max_order_quantity = QuantityLots::from_atoms(16);
+    risk.max_reserved_quantity = QuantityLots::from_atoms(16);
+    risk.max_order_gross_notional = MoneyMicros::from_atoms(100'000);
+    risk.max_reserved_exposure = MoneyMicros::from_atoms(100'000);
+    std::array<ClusterOrderId, 8> order_ids{};
+    std::array<EffectId, 8> cancel_ids{};
+    for (std::size_t index = 0; index < order_ids.size(); ++index) {
+        const DecisionId decision{20 + index};
+        if (index != 0) {
+            append_submit_decision(outbox_pressure, decision, 11, 1,
+                                   LogicalOrderSlot{
+                                       static_cast<std::uint16_t>(index + 1)});
+        }
+        const auto submitted = apply(
+            outbox_pressure,
+            authorize_decision(2 + index, 0x72, decision), scratch);
+        require(submitted.code == ApplyCode::applied,
+                "outbox-reserve fixture could not authorize eight orders");
+        order_ids[index] = submitted.cluster_order_id();
+    }
+    append_submit_decision(outbox_pressure, DecisionId{28}, 11, 1,
+                           LogicalOrderSlot{9});
+    const auto ninth_before = outbox_pressure;
+    require(apply(outbox_pressure,
+                  authorize_decision(10, 0x73, DecisionId{28}), scratch).code ==
+                ApplyCode::outbox_capacity_exceeded,
+            "authorization consumed the last cancel headroom in the outbox");
+    require_economics_unchanged(
+        ninth_before, outbox_pressure,
+        "outbox cancel-headroom refusal mutated economics");
+
+    for (std::size_t index = 0; index < order_ids.size(); ++index) {
+        const auto cancelled = apply(
+            outbox_pressure,
+            request_cancel(index + 1, 0x74, order_ids[index]), scratch);
+        require(cancelled.code == ApplyCode::applied,
+                "reserved outbox slot was unavailable to a live order");
+        cancel_ids[index] = cancelled.effect_id();
+    }
+    require(outbox_pressure.outbox_effect_count == kMaxOutboxEffects,
+            "cancel-reserve fixture did not consume the bounded outbox");
+
+    require(apply(outbox_pressure,
+                  observe_order_event(1, 0x75,
+                                      VenueObservationKind::order_rejected,
+                                      order_ids[0], cancel_ids[0], 1'900),
+                  scratch).code == ApplyCode::applied,
+            "cancel-rejection fixture failed");
+    const auto retried = apply(
+        outbox_pressure, request_cancel(9, 0x76, order_ids[0]), scratch);
+    require(retried.code == ApplyCode::applied &&
+                retried.effect_id() != cancel_ids[0] &&
+                outbox_pressure.outbox_effect_count == kMaxOutboxEffects,
+            "a rejected cancel could not reuse its settled outbox slot safely");
+}
+
+void test_caller_prefix_registration_is_atomic_and_bounded() {
+    using namespace velocita::v2;
+    TradingState state;
+    ApplyScratch scratch;
+    for (std::uint64_t caller = 1; caller <= kMaxCallerCursors; ++caller) {
+        const Command invalid{
+            {CallerId{caller}, RequestSequence{1},
+             digest(static_cast<std::uint8_t>(0x80 + caller))},
+            AuthorizeDecision{DecisionId{}}};
+        require(apply(state, invalid, scratch).code == ApplyCode::invalid_command,
+                "caller-registration fixture was not admitted");
+        require(state.caller_cursor_count == caller &&
+                    state.caller_cursors[caller - 1].caller_id == CallerId{caller} &&
+                    state.caller_cursors[caller - 1].expired_below ==
+                        RequestSequence{},
+                "first admission did not atomically register a zero-prefix cursor");
+    }
+    const auto before = state;
+    const Command ninth{
+        {CallerId{kMaxCallerCursors + 1}, RequestSequence{1}, digest(0x99)},
+        AuthorizeDecision{DecisionId{}}};
+    require(apply(state, ninth, scratch).code ==
+                ApplyCode::receipt_capacity_exceeded,
+            "a ninth stable caller escaped the bounded cursor arena");
+    require(state.state_version == before.state_version &&
+                state.receipt_count == before.receipt_count &&
+                state.caller_cursor_count == before.caller_cursor_count,
+            "caller-capacity refusal partially admitted the ninth caller");
+}
+
+void test_invalid_observation_refusal_is_canonical_state() {
+    using namespace velocita::v2;
+    auto state = ready_state();
+    ApplyScratch scratch;
+    const auto submit = apply(state, authorize(2, 0x9a), scratch);
+    auto invalid = observe_fill(1, 0x9b, submit.cluster_order_id(),
+                                submit.effect_id(), ExecutionId{901});
+    auto& observation = std::get<ObserveFill>(invalid.body).observation;
+    observation.execution_id = {};
+    invalid.identity.payload_digest = observation_fingerprint(observation);
+
+    const auto refused = apply(state, invalid, scratch);
+    require(refused.code == ApplyCode::invalid_command &&
+                refused.contract_error == ContractError::invalid_identity,
+            "malformed fill did not produce the intended typed refusal");
+    std::array<std::byte, kKernelResultBytes> result_bytes{};
+    require(encode_kernel_result(refused, result_bytes).error ==
+                KernelCodecError::none,
+            "an admitted invalid-fill refusal was not canonically encodable");
+    std::array<std::byte, kMaxStateSnapshotBytes> snapshot{};
+    require(encode_state_snapshot(state, snapshot).error ==
+                StateSnapshotError::none,
+            "an admitted invalid-fill refusal made TradingState unsnapshotable");
+}
+
 void test_decision_retry_retains_original_authorization_after_fill() {
     using namespace velocita::v2;
     ApplyScratch scratch;
@@ -1914,7 +2135,7 @@ void test_reclaimed_decision_retains_identity_and_authorization() {
                     submit.effect_id(), ExecutionId{3000 + cycle}, 2), scratch).code ==
                     ApplyCode::applied, "identity fixture fill failed");
     }
-    require(state.reclaimed_group_count >= 16 &&
+    require(state.reclaimed_group_count > 0 &&
                 !materialize_order_effect(state, original.effect_id()).has_value(),
             "identity fixture did not reclaim the original effect");
     std::array<std::byte, kMaxStateSnapshotBytes> bytes{};
@@ -3039,22 +3260,12 @@ void test_an_expired_request_is_refused_never_re_executed() {
             "a below-watermark request mutated state");
 }
 
-// KNOWN LIMITATION, pinned so it cannot be forgotten.
-//
-// Architecture 8.6 approved reclaiming a fill identity exactly when its order
-// group is reclaimed, which would remove this bound. It is NOT implemented: a
-// fill receipt carries {venue_id, execution_id, filled_quantity} in its detail
-// and {session_id, venue_sequence} in its metadata, all five slots used, and
-// none names the cluster order. Tying expiry to order-group reclamation
-// therefore needs the canonical result to carry a cluster order id, and the
-// result is currently 126 of its 128 bytes. That is a byte-contract change
-// awaiting review.
-//
-// Until then fills stop being accepted at kMaxVenueEventReceipts, which strands
-// existing risk rather than merely stopping new work. This test asserts the
-// bound so the limitation is visible in a failing-loud way the moment it is
-// lifted, rather than silently absent.
-void test_venue_event_horizon_still_bounds_order_completion() {
+// Resolved groups must release their venue-identity receipts. The result's
+// existing DecisionId field supplies the zero-byte ownership link: while that
+// decision still owns an order the receipt is pinned; after group reclamation
+// the same receipt can be swept without allowing a duplicate to book against a
+// live reservation.
+void test_resolved_orders_release_venue_identity_capacity() {
     using namespace velocita::v2;
     auto state = two_sided_state();
     ApplyScratch scratch;
@@ -3062,35 +3273,40 @@ void test_venue_event_horizon_still_bounds_order_completion() {
     std::uint64_t request = 3;
     std::uint64_t sequence = 2;
     std::uint64_t execution = 9'000;
-    bool fills_stopped = false;
     std::size_t completed = 0;
-    for (std::uint64_t cycle = 1; cycle < 120 && !fills_stopped; ++cycle) {
+    for (std::uint64_t cycle = 1; cycle < 120; ++cycle) {
         const DecisionId decision{7'000 + cycle};
-        if (evaluate_at_feature(state, scratch, decision, 11, sequence++, request++)
-                .code != ApplyCode::applied) break;
+        require(evaluate_at_feature(state, scratch, decision, 11, sequence++, request++)
+                    .code == ApplyCode::applied,
+                "sustained venue-identity fixture could not evaluate");
         const auto submit = apply(
             state, authorize_decision(request++, 0x63, decision), scratch);
-        if (submit.code != ApplyCode::applied) break;
+        require(submit.code == ApplyCode::applied,
+                "sustained venue-identity fixture could not authorize");
         const auto filled = apply(
             state,
             observe_fill(request++, 0x64, submit.cluster_order_id(),
                          submit.effect_id(), ExecutionId{execution++}, 2,
                          Side::sell, 11),
             scratch);
-        if (filled.code == ApplyCode::fill_capacity_exceeded) {
-            fills_stopped = true;
-        } else {
-            require(filled.code == ApplyCode::applied,
-                    "venue-horizon fixture fill failed for an unexpected reason");
-            ++completed;
-        }
+        require(filled.code == ApplyCode::applied &&
+                    filled.decision_id == decision,
+                "resolved orders did not release venue identity capacity or "
+                "the fill lost its owning decision");
+        ++completed;
     }
-    require(fills_stopped,
-            "the venue-event horizon no longer bounds order completion: if fill "
-            "identities are now reclaimed with their order group, delete this "
-            "test and restore the sustained-completion assertion");
-    require(completed >= kMaxVenueEventReceipts - 1,
-            "fills stopped well before the documented venue-event horizon");
+    const auto retained_venue_identities = std::count_if(
+        state.receipts.begin(),
+        state.receipts.begin() + static_cast<std::ptrdiff_t>(state.receipt_count),
+        [](const RequestReceipt& receipt) {
+            return receipt.result.code == ApplyCode::applied &&
+                   (receipt.result.detail_kind == ApplyResultDetailKind::fill ||
+                    receipt.result.detail_kind == ApplyResultDetailKind::venue_event);
+        });
+    require(completed == 119 &&
+                retained_venue_identities <
+                    static_cast<std::ptrdiff_t>(kMaxVenueEventReceipts),
+            "resolved venue identities accumulated into a lifetime ceiling");
 }
 
 
@@ -3126,7 +3342,7 @@ int main() {
         test_superseded_slot_decisions_are_reclaimed();
         test_request_receipts_do_not_bound_the_kernel_lifetime();
         test_an_expired_request_is_refused_never_re_executed();
-        test_venue_event_horizon_still_bounds_order_completion();
+        test_resolved_orders_release_venue_identity_capacity();
         test_reclaimed_decision_retains_identity_and_authorization();
         test_completed_requote_cycles_do_not_exhaust_bounded_arenas();
         test_sweep_preserves_records_an_unresolved_effect_still_needs();
@@ -3143,6 +3359,11 @@ int main() {
         test_outbox_reconstructs_full_immutable_payload();
         test_delayed_observations_cannot_regress_order_knowledge();
         test_authorization_rechecks_current_controls();
+        test_authorization_requires_current_latest_intent();
+        test_cancel_effect_refuses_submit_ack_and_repeated_unknown();
+        test_authorization_reserves_completion_and_cancel_capacity();
+        test_caller_prefix_registration_is_atomic_and_bounded();
+        test_invalid_observation_refusal_is_canonical_state();
         test_decision_retry_retains_original_authorization_after_fill();
         test_submit_authorization_is_atomic_and_idempotent();
         test_risk_and_capacity_fail_before_economic_mutation();

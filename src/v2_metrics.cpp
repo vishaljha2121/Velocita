@@ -46,6 +46,11 @@ TradingMetrics collect_metrics(const TradingState& state) noexcept {
         static_cast<std::uint16_t>(state.risk_account_count);
     metrics.source_event_count =
         static_cast<std::uint16_t>(state.source_event_count);
+    metrics.caller_cursor_count =
+        static_cast<std::uint16_t>(state.caller_cursor_count);
+    metrics.caller_cursor_headroom = static_cast<std::uint16_t>(
+        kMaxCallerCursors - std::min(state.caller_cursor_count,
+                                     kMaxCallerCursors));
     metrics.reclaimed_group_count = state.reclaimed_group_count;
     metrics.settled_incomplete_effect_count = state.settled_incomplete_effect_count;
     metrics.strategy_mode = state.strategy_mode;
@@ -65,8 +70,10 @@ TradingMetrics collect_metrics(const TradingState& state) noexcept {
                 std::max(metrics.oldest_unresolved_order_age, age);
         }
         if (order.state == ClusterOrderState::reconciling) {
-            metrics.oldest_reconciling_order_age =
-                std::max(metrics.oldest_reconciling_order_age, age);
+            metrics.oldest_reconciling_order_age_since_authorization =
+                std::max(
+                    metrics.oldest_reconciling_order_age_since_authorization,
+                    age);
         }
         if (order.state == ClusterOrderState::conflict) {
             metrics.oldest_conflicted_order_age =
@@ -94,20 +101,35 @@ TradingMetrics collect_metrics(const TradingState& state) noexcept {
         if (slot < metrics.effects_by_state.size()) ++metrics.effects_by_state[slot];
         if (!effect_is_unsettled(effect.state)) continue;
         ++metrics.unsettled_effects;
-        // An effect record carries no version of its own, so its age is that of
-        // the order that authorized it. That is the correct provenance anyway:
-        // the effect has existed since its order was authorized.
-        for (std::size_t order = 0; order < state.order_count; ++order) {
-            if (state.orders[order].cluster_order_id != effect.cluster_order_id) {
+        // The effect's own authorization receipt pins the state version at
+        // which this generation was created. A cancel may be much younger than
+        // its parent order, so using order authorization would overstate age.
+        for (std::size_t receipt = 0; receipt < state.receipt_count; ++receipt) {
+            const auto& result = state.receipts[receipt].result;
+            if (result.code != ApplyCode::applied ||
+                result.detail_kind != ApplyResultDetailKind::authorization ||
+                result.effect_id() != effect.effect_id) {
                 continue;
             }
             metrics.oldest_unsettled_effect_age =
                 std::max(metrics.oldest_unsettled_effect_age,
-                         age_in_versions(
-                             state.state_version,
-                             state.orders[order].authorization_state_version));
+                         age_in_versions(state.state_version,
+                                         result.state_version));
+            break;
         }
     }
+
+    for (std::size_t index = 0; index < state.receipt_count; ++index) {
+        const auto& result = state.receipts[index].result;
+        metrics.accepted_venue_event_count +=
+            result.code == ApplyCode::applied &&
+            (result.detail_kind == ApplyResultDetailKind::fill ||
+             result.detail_kind == ApplyResultDetailKind::venue_event);
+    }
+    metrics.venue_event_headroom = static_cast<std::uint16_t>(
+        kMaxVenueEventReceipts -
+        std::min<std::size_t>(metrics.accepted_venue_event_count,
+                              kMaxVenueEventReceipts));
 
     for (std::size_t index = 0; index < state.reservation_count; ++index) {
         const auto slot = static_cast<std::size_t>(state.reservations[index].state);
@@ -161,6 +183,8 @@ void observe_outcome(OutcomeCounters& counters, const ApplyResult& result) noexc
         case ApplyCode::source_event_conflict:
         case ApplyCode::active_policy_scope_conflict:
         case ApplyCode::executable_policy_identity_conflict:
+        case ApplyCode::derived_identity_collision:
+        case ApplyCode::fill_quantity_conflict:
             ++counters.conflicts;
             return;
         case ApplyCode::decision_capacity_exceeded:

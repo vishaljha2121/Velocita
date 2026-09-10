@@ -6,14 +6,13 @@
 // mismatch. This corpus drives randomized but well-formed command histories and
 // checks those properties after every single command.
 //
-// Independence argument. Properties here are derived from the CONTRACTS, not
-// from the reducer's code, which is what makes them independent evidence. A
-// hand-written mirror model is the other classic approach and catches
-// wrong-but-self-consistent behavior that invariants miss; it is also the
-// approach most at risk of quietly transcribing the implementation, including
-// its bugs. The existing Phase 1-3 mirror in v2_model_replay_tests.cpp remains
-// the reference for that style. This file deliberately takes the other side, so
-// the two disagree in different ways.
+// Independence argument. Most checks are contract-derived invariants rather
+// than a transcription of reducer branches. A deliberately tiny execution
+// ledger adds the one independent model Phase 4 needs most: accepted buys add
+// position, accepted sells subtract it, and duplicate identities add nothing.
+// It does not model order states, holds, reclamation, or return-code selection,
+// so it can fail differently from the implementation without becoming a second
+// copy of it. The Phase 1-3 mirror remains in v2_model_replay_tests.cpp.
 //
 // Leverage worth knowing about: encode_state_snapshot runs the full structural
 // validator, which already enforces per-account conservation - reserved totals
@@ -312,12 +311,18 @@ struct Coverage {
     bool reclaimed{};
     bool settled_incomplete{};
     bool refused{};
+    bool sell_fill{};
+    bool same_request_duplicate{};
+    bool cross_request_duplicate{};
+    bool observation_identity_conflict{};
     std::size_t applied{};
     std::size_t total{};
 
     [[nodiscard]] bool sufficient() const noexcept {
         return authorized && partial_fill && full_fill && cancelled && reconciled &&
-               unknown && configured && reclaimed && settled_incomplete && refused;
+               unknown && configured && reclaimed && settled_incomplete && refused &&
+               sell_fill && same_request_duplicate && cross_request_duplicate &&
+               observation_identity_conflict;
     }
 };
 
@@ -336,6 +341,9 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
     std::uint64_t execution_id = 1'000;
     std::uint64_t venue_sequence = 5'000;
     std::vector<DecisionId> unauthorized;
+    std::vector<Command> applied_observations;
+    std::int64_t model_position = 0;
+    std::uint64_t trace_step = 0;
 
     const auto admit = [&](const Command& command, const std::string& where) {
         // Every command is recorded, refusals included: an admitted refusal
@@ -351,11 +359,11 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
             outcome.code != ApplyCode::already_applied) {
             coverage.refused = true;
         }
-        const auto previous_reclaimed = state.reclaimed_group_count;
-        require_no_unreserved_effect(state, where);
-        require_reservation_arithmetic(state, where);
-        require_snapshot_round_trip(state, where);
-        (void)previous_reclaimed;
+        const auto location = where + " seed=" + std::to_string(seed) +
+                              " step=" + std::to_string(trace_step);
+        require_no_unreserved_effect(state, location);
+        require_reservation_arithmetic(state, location);
+        require_snapshot_round_trip(state, location);
         return outcome;
     };
 
@@ -376,11 +384,12 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
     }
 
     for (std::uint64_t step = 0; step < 220; ++step) {
+        trace_step = step + 1;
         const auto previous_reclaimed = state.reclaimed_group_count;
         const auto previous_settled = state.settled_incomplete_effect_count;
         const auto totals_before = state.risk_accounts[0];
 
-        switch (generator.bounded(8)) {
+        switch (generator.bounded(10)) {
             case 0:
             case 1: {  // evaluate a decision, steering the slot by feature value
                 ++sequence;
@@ -426,6 +435,25 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
                 const auto remaining =
                     state.reservations[order.reservation_index].remaining_quantity;
                 if (remaining.atoms() <= 0) break;
+                const EconomicActionProposal* proposal = nullptr;
+                for (std::size_t index = 0; index < state.decision_count; ++index) {
+                    if (state.decision_hot[index].decision_id == order.decision_id) {
+                        proposal = &state.decision_cold[index].proposal;
+                        break;
+                    }
+                }
+                if (proposal == nullptr) break;
+                EffectId submit_effect{};
+                for (std::size_t index = 0; index < state.outbox_effect_count;
+                     ++index) {
+                    const auto& effect = state.outbox_effects[index];
+                    if (effect.cluster_order_id == order.cluster_order_id &&
+                        effect.operation == EffectOperation::submit) {
+                        submit_effect = effect.effect_id;
+                        break;
+                    }
+                }
+                if (submit_effect.value() == 0) break;
                 const std::int64_t quantity =
                     (remaining.atoms() > 1 && generator.bounded(2) == 0)
                         ? 1
@@ -436,20 +464,27 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
                 fill.venue_session_id = VenueSessionId{2};
                 fill.venue_sequence = VenueSequence{venue_sequence++};
                 fill.cluster_order_id = order.cluster_order_id;
-                fill.effect_id = order.effect_id;
+                fill.effect_id = submit_effect;
                 fill.venue_order_id = VenueOrderId{70};
                 fill.execution_id = ExecutionId{execution_id++};
-                fill.side = Side::buy;
-                fill.price = PriceTicks::from_atoms(11);
+                fill.side = proposal->side;
+                fill.price = proposal->price;
                 fill.quantity = QuantityLots::from_atoms(quantity);
                 fill.fee = FeeMicros::from_atoms(3);
                 fill.evidence_digest = digest(0xA00 + fill.execution_id.value());
-                const auto outcome = admit(
-                    {{CallerId{2}, RequestSequence{request++},
-                      observation_fingerprint(fill)},
-                     ObserveFill{fill}},
-                    "fill");
+                const Command fill_command{
+                    {CallerId{2}, RequestSequence{request++},
+                     observation_fingerprint(fill)},
+                    ObserveFill{fill}};
+                const auto outcome = admit(fill_command, "fill");
                 if (outcome.code == ApplyCode::applied) {
+                    applied_observations.push_back(fill_command);
+                    if (fill.side == Side::sell) {
+                        coverage.sell_fill = true;
+                        model_position -= quantity;
+                    } else {
+                        model_position += quantity;
+                    }
                     if (quantity < remaining.atoms()) coverage.partial_fill = true;
                     else coverage.full_fill = true;
                 }
@@ -501,12 +536,13 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
                     }
                 }
                 event.evidence_digest = digest(0xC00 + event.venue_sequence.value());
-                const auto outcome = admit(
-                    {{CallerId{4}, RequestSequence{request++},
-                      observation_fingerprint(event)},
-                     ObserveOrderEvent{event}},
-                    "venue order event");
+                const Command event_command{
+                    {CallerId{4}, RequestSequence{request++},
+                     observation_fingerprint(event)},
+                    ObserveOrderEvent{event}};
+                const auto outcome = admit(event_command, "venue order event");
                 if (outcome.code == ApplyCode::applied) {
+                    applied_observations.push_back(event_command);
                     if (kind == VenueObservationKind::effect_unknown) {
                         coverage.unknown = true;
                     }
@@ -514,6 +550,71 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
                         coverage.reconciled = true;
                     }
                 }
+                break;
+            }
+            case 7: {  // duplicate and conflicting observation identities
+                if (applied_observations.empty()) break;
+                auto command = applied_observations[
+                    generator.bounded(applied_observations.size())];
+                const auto retained = std::find_if(
+                    state.receipts.begin(),
+                    state.receipts.begin() +
+                        static_cast<std::ptrdiff_t>(state.receipt_count),
+                    [&](const RequestReceipt& receipt) {
+                        return receipt.identity.caller_id ==
+                                   command.identity.caller_id &&
+                               receipt.identity.request_sequence ==
+                                   command.identity.request_sequence &&
+                               receipt.result.code == ApplyCode::applied;
+                    });
+                if (retained == state.receipts.begin() +
+                                    static_cast<std::ptrdiff_t>(state.receipt_count)) {
+                    break;
+                }
+                const auto risk_before = state.risk_accounts[0];
+                const auto duplicate_kind = generator.bounded(3);
+                ApplyCode expected = ApplyCode::applied;
+                if (duplicate_kind == 1) {
+                    command.identity.request_sequence = RequestSequence{request++};
+                    expected = ApplyCode::already_applied;
+                } else if (duplicate_kind == 2) {
+                    command.identity.request_sequence = RequestSequence{request++};
+                    if (auto* fill = std::get_if<ObserveFill>(&command.body)) {
+                        fill->observation.evidence_digest =
+                            digest(0xF00 + request);
+                        command.identity.payload_digest =
+                            observation_fingerprint(fill->observation);
+                        expected = ApplyCode::fill_identity_conflict;
+                    } else if (auto* event =
+                                   std::get_if<ObserveOrderEvent>(&command.body)) {
+                        event->observation.evidence_digest =
+                            digest(0xF00 + request);
+                        command.identity.payload_digest =
+                            observation_fingerprint(event->observation);
+                        expected = ApplyCode::venue_event_identity_conflict;
+                    }
+                }
+                const auto outcome = admit(command, "duplicate observation");
+                require(outcome.code == expected,
+                        "duplicate observation returned the wrong code seed=" +
+                            std::to_string(seed) + " step=" +
+                            std::to_string(trace_step));
+                if (duplicate_kind == 0) coverage.same_request_duplicate = true;
+                if (duplicate_kind == 1) coverage.cross_request_duplicate = true;
+                if (duplicate_kind == 2) {
+                    coverage.observation_identity_conflict = true;
+                }
+                require(state.risk_accounts[0].reserved_quantity ==
+                                risk_before.reserved_quantity &&
+                            state.risk_accounts[0].reserved_margin ==
+                                risk_before.reserved_margin &&
+                            state.risk_accounts[0].reserved_fee ==
+                                risk_before.reserved_fee &&
+                            state.risk_accounts[0].position_quantity ==
+                                risk_before.position_quantity,
+                        "duplicate observation changed economics seed=" +
+                            std::to_string(seed) + " step=" +
+                            std::to_string(trace_step));
                 break;
             }
             default: {  // refusals and control traffic
@@ -549,6 +650,11 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
                 break;
             }
         }
+
+        require(state.risk_accounts[0].position_quantity.atoms() == model_position,
+                "independent execution ledger diverged seed=" +
+                    std::to_string(seed) + " step=" +
+                    std::to_string(trace_step));
 
         // Monotonic accounting: neither counter may ever decrease.
         require(state.reclaimed_group_count >= previous_reclaimed &&
@@ -621,7 +727,7 @@ void test_generated_phase4_properties() {
     // set at a third rather than tuned to the current ratio, which would make it
     // a change detector instead of a vacuity guard.
     require(coverage.applied * 3 > coverage.total,
-            "fewer than half the corpus commands were admitted: " +
+            "fewer than one third of corpus commands were admitted: " +
                 std::to_string(coverage.applied) + "/" +
                 std::to_string(coverage.total));
     std::cout << "phase 4 property corpus: 24 seeds, 220 steps each, "

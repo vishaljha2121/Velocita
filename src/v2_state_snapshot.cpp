@@ -279,10 +279,14 @@ private:
         return value.detail.words[0] != 0 && value.detail.words[1] != 0 &&
                value.detail.words[2] != 0;
     }
+    const bool accepted = value.code == ApplyCode::applied ||
+                          value.code == ApplyCode::already_applied;
     if (value.detail_kind == ApplyResultDetailKind::source) {
-        return value.source_id().value() != 0 &&
-               value.source_generation().value() != 0 &&
-               value.source_sequence().value() != 0;
+        return accepted
+                   ? value.source_id().value() != 0 &&
+                         value.source_generation().value() != 0 &&
+                         value.source_sequence().value() != 0
+                   : value.detail != ApplyResultDetail{};
     }
     if (value.detail_kind == ApplyResultDetailKind::authorization) {
         return value.cluster_order_id().value() != 0 &&
@@ -290,16 +294,21 @@ private:
                value.reserved_exposure().atoms() > 0;
     }
     if (value.detail_kind == ApplyResultDetailKind::fill) {
-        if ((value.code == ApplyCode::applied || value.code == ApplyCode::already_applied) &&
-            (value.fill_session_id().value() == 0 || value.fill_sequence().value() == 0))
-            return false;
-        return value.fill_venue_id().value() != 0 &&
-               value.execution_id().value() != 0 &&
-               value.filled_quantity().atoms() > 0;
+        return accepted
+                   ? value.fill_session_id().value() != 0 &&
+                         value.fill_sequence().value() != 0 &&
+                         value.fill_venue_id().value() != 0 &&
+                         value.execution_id().value() != 0 &&
+                         value.filled_quantity().atoms() > 0 &&
+                         value.decision_id.value() != 0
+                   : value.detail != ApplyResultDetail{};
     }
-    return value.event_venue_id().value() != 0 &&
-           value.event_session_id().value() != 0 &&
-           value.event_sequence().value() != 0;
+    return accepted
+               ? value.event_venue_id().value() != 0 &&
+                     value.event_session_id().value() != 0 &&
+                     value.event_sequence().value() != 0 &&
+                     value.decision_id.value() != 0
+               : value.detail != ApplyResultDetail{};
 }
 
 [[nodiscard]] bool valid_state(const TradingState& state) noexcept {
@@ -312,7 +321,8 @@ private:
         state.risk_account_count > state.risk_accounts.size() ||
         state.reservation_count > state.reservations.size() ||
         state.order_count > state.orders.size() ||
-        state.outbox_effect_count > state.outbox_effects.size()) {
+        state.outbox_effect_count > state.outbox_effects.size() ||
+        state.caller_cursor_count > state.caller_cursors.size()) {
         return false;
     }
 
@@ -427,6 +437,18 @@ private:
             if (previous.source_id == event.source_id &&
                 previous.generation == event.generation &&
                 previous.sequence == event.sequence) {
+                return false;
+            }
+        }
+    }
+
+    for (std::size_t index = 0; index < state.caller_cursor_count; ++index) {
+        const auto& cursor = state.caller_cursors[index];
+        // expired_below == 0 is the canonical first-admission state: the caller
+        // is registered, but no receipt prefix has been reclaimed yet.
+        if (cursor.caller_id.value() == 0) return false;
+        for (std::size_t prior = 0; prior < index; ++prior) {
+            if (state.caller_cursors[prior].caller_id == cursor.caller_id) {
                 return false;
             }
         }

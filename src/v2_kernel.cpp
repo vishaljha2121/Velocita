@@ -954,6 +954,131 @@ template <std::size_t WordCount>
            reservation.margin_hold.atoms() == 0 && reservation.fee_hold.atoms() == 0;
 }
 
+// Maximum future accepted observations for one unresolved order under the
+// Phase-4 serial lifecycle. Fill fragmentation is bounded by the remaining
+// quantity in minimum lot atoms. The control allowance is state-sensitive:
+// submit may report unknown then acknowledge; cancel may report unknown, then
+// cancelled, then final reconciliation. No probabilistic fill-size assumption
+// is allowed in a safety capacity check.
+[[nodiscard]] std::size_t future_venue_events_for_order(
+    const TradingState& state, const ClusterOrder& order) noexcept {
+    if (order.reservation_index >= state.reservation_count) {
+        return kMaxVenueEventReceipts + 1;
+    }
+    const auto& reservation = state.reservations[order.reservation_index];
+    if (reservation.state == ReservationState::released) return 0;
+    if (reservation.remaining_quantity.atoms() < 0 ||
+        static_cast<std::uint64_t>(reservation.remaining_quantity.atoms()) >
+            kMaxVenueEventReceipts) {
+        return kMaxVenueEventReceipts + 1;
+    }
+
+    const OutboxEffectRecord* current_effect = nullptr;
+    for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
+        if (state.outbox_effects[index].effect_id == order.effect_id) {
+            current_effect = &state.outbox_effects[index];
+            break;
+        }
+    }
+
+    std::size_t control_events = 0;
+    switch (order.state) {
+        case ClusterOrderState::dispatch_authorized:
+            control_events = 5;  // submit unknown+ack, cancel unknown+cancel+reconcile
+            break;
+        case ClusterOrderState::acknowledged:
+        case ClusterOrderState::live:
+        case ClusterOrderState::partially_filled:
+            control_events = 3;  // cancel unknown+cancelled+reconciled
+            break;
+        case ClusterOrderState::cancel_pending:
+            control_events = 3;
+            break;
+        case ClusterOrderState::submission_unknown:
+            control_events = current_effect != nullptr &&
+                                     current_effect->operation ==
+                                         EffectOperation::submit
+                                 ? 4  // submit ack, then the cancel path
+                                 : 2; // cancelled, then reconciliation
+            break;
+        case ClusterOrderState::reconciling:
+        case ClusterOrderState::conflict:
+            control_events = 1;
+            break;
+        case ClusterOrderState::replace_pending:
+            // Native replacement is disabled. Treat any retained legacy state
+            // as unbudgetable rather than inventing completion semantics.
+            return kMaxVenueEventReceipts + 1;
+        case ClusterOrderState::filled:
+        case ClusterOrderState::cancelled:
+        case ClusterOrderState::rejected:
+            control_events = 0;
+            break;
+    }
+    const auto fills = static_cast<std::size_t>(
+        reservation.remaining_quantity.atoms());
+    if (fills > kMaxVenueEventReceipts -
+                    std::min(control_events, kMaxVenueEventReceipts)) {
+        return kMaxVenueEventReceipts + 1;
+    }
+    return fills + control_events;
+}
+
+[[nodiscard]] bool venue_completion_capacity_available(
+    const TradingState& state, const QuantityLots new_order_quantity) noexcept {
+    if (new_order_quantity.atoms() <= 0 ||
+        static_cast<std::uint64_t>(new_order_quantity.atoms()) >
+            kMaxVenueEventReceipts) {
+        return false;
+    }
+    std::size_t required = accepted_venue_event_count(state);
+    const auto add = [&](const std::size_t amount) noexcept {
+        if (required > kMaxVenueEventReceipts ||
+            amount > kMaxVenueEventReceipts - required) {
+            required = kMaxVenueEventReceipts + 1;
+        } else {
+            required += amount;
+        }
+    };
+    for (std::size_t index = 0; index < state.order_count; ++index) {
+        add(future_venue_events_for_order(state, state.orders[index]));
+    }
+    add(static_cast<std::size_t>(new_order_quantity.atoms()));
+    add(5);  // the new order begins at dispatch_authorized
+    return required <= kMaxVenueEventReceipts;
+}
+
+[[nodiscard]] bool outbox_cancel_capacity_available_for_new_order(
+    const TradingState& state) noexcept {
+    std::size_t orders_needing_cancel_slot = 0;
+    for (std::size_t order_index = 0; order_index < state.order_count;
+         ++order_index) {
+        const auto& order = state.orders[order_index];
+        if (order.reservation_index >= state.reservation_count ||
+            state.reservations[order.reservation_index].state ==
+                ReservationState::released) {
+            continue;
+        }
+        bool has_cancel_slot = false;
+        for (std::size_t effect_index = 0;
+             effect_index < state.outbox_effect_count; ++effect_index) {
+            const auto& effect = state.outbox_effects[effect_index];
+            if (effect.cluster_order_id == order.cluster_order_id &&
+                effect.operation == EffectOperation::cancel) {
+                has_cancel_slot = true;
+                break;
+            }
+        }
+        orders_needing_cancel_slot += !has_cancel_slot;
+    }
+
+    // One submit record and one future cancel slot belong to the new order.
+    return state.outbox_effect_count <= kMaxOutboxEffects &&
+           orders_needing_cancel_slot <= kMaxOutboxEffects &&
+           state.outbox_effect_count + orders_needing_cancel_slot + 2 <=
+               kMaxOutboxEffects;
+}
+
 // Settle effects orphaned by terminal resolution.
 //
 // Once an order is closed, no future observation can be meaningfully scoped to
@@ -1024,21 +1149,24 @@ std::size_t settle_orphaned_effects(TradingState& state,
         case ApplyResultDetailKind::authorization: {
             for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
                 if (state.outbox_effects[index].cluster_order_id ==
-                    result.cluster_order_id()) return true;
-            }
-            for (std::size_t index = 0; index < state.order_count; ++index) {
-                if (state.orders[index].cluster_order_id ==
-                    result.cluster_order_id()) return true;
+                        result.cluster_order_id() &&
+                    state.outbox_effects[index].effect_id == result.effect_id()) {
+                    return true;
+                }
             }
             return false;
         }
         case ApplyResultDetailKind::fill:
-        case ApplyResultDetailKind::venue_event:
-            // Pinned unconditionally for now. Tying these to their order group,
-            // as architecture 8.6 specifies, needs the canonical result to name
-            // the cluster order and it currently has no free slot; see the
-            // handoff for the deferred byte-contract decision.
-            return true;
+        case ApplyResultDetailKind::venue_event: {
+            // Candidate schema V5 already carries DecisionId outside the tagged
+            // detail words. Applied observations populate that existing field,
+            // giving reclamation a zero-byte ownership edge to the order group.
+            // A zero id is retained fail-closed for old development fixtures and
+            // snapshots rather than guessed into an owner.
+            if (result.decision_id.value() == 0) return true;
+            return find_order_by_decision(state, result.decision_id) !=
+                   state.order_count;
+        }
         default:
             return false;
     }
@@ -1124,6 +1252,35 @@ std::size_t settle_orphaned_effects(TradingState& state,
            hot.action_resolution_code == ActionResolutionCode::proposed &&
            validate(cold.proposal) == ContractError::none &&
            cold.proposal.decision_id == hot.decision_id;
+}
+
+// A proposal is immutable, but its authority is not. Authorization must bind to
+// the executable policy that is active NOW, not merely prove that the proposal
+// was valid when evaluated. Otherwise a delayed command can resurrect an order
+// after policy rotation while carrying perfectly self-consistent old bytes.
+[[nodiscard]] bool decision_matches_current_execution_contract(
+    const TradingState& state,
+    const DecisionRecordHot& hot,
+    const DecisionRecordCold& cold) noexcept {
+    const auto* policy = find_policy(state, hot.policy_id, hot.policy_version);
+    const auto& bundle = state.active_executable_policy;
+    return policy != nullptr && policy->lifecycle == PolicyLifecycle::active &&
+           bundle.present &&
+           bundle.executable_policy.policy_id == hot.policy_id &&
+           bundle.executable_policy.policy_version == hot.policy_version &&
+           bundle.executable_policy.policy_artifact_digest ==
+               policy->artifact.artifact_digest &&
+           policy->artifact.account_id == cold.proposal.account_id &&
+           policy->artifact.instrument_id == cold.proposal.instrument_id &&
+           policy->artifact.feature_schema_id == cold.frame.feature_schema_id &&
+           bundle.feature_schema.feature_schema_id == cold.frame.feature_schema_id &&
+           bundle.instrument.venue_id == cold.proposal.venue_id &&
+           bundle.instrument.instrument_id == cold.proposal.instrument_id &&
+           bundle.instrument.instrument_spec_version ==
+               cold.proposal.instrument_spec_version &&
+           bundle.venue.venue_id == cold.proposal.venue_id &&
+           bundle.venue.venue_capabilities_version ==
+               cold.proposal.venue_capabilities_version;
 }
 
 // Does a NEWER actionable proposal exist for the same logical order slot?
@@ -1219,6 +1376,8 @@ std::size_t settle_orphaned_effects(TradingState& state,
         if (drop_decision[index]) continue;
         if (decision_is_authorizable(state.decision_hot[index],
                                      state.decision_cold[index]) &&
+            decision_matches_current_execution_contract(
+                state, state.decision_hot[index], state.decision_cold[index]) &&
             !decision_is_superseded(state, index)) {
             continue;
         }
@@ -1516,7 +1675,8 @@ std::size_t settle_orphaned_effects(TradingState& state,
     const std::uint64_t next_version,
     const VenueObservation& observation,
     const QuantityLots filled_quantity = {},
-    const ContractError contract_error = ContractError::none) noexcept {
+    const ContractError contract_error = ContractError::none,
+    const DecisionId decision_id = {}) noexcept {
     auto value = result(state, code, next_version, {}, {}, PolicyLifecycle::none,
                         contract_error);
     if (observation.venue_id.value() != 0 ||
@@ -1527,6 +1687,7 @@ std::size_t settle_orphaned_effects(TradingState& state,
         value.metadata_words = {observation.venue_session_id.value(),
                                 observation.venue_sequence.value()};
     }
+    value.decision_id = decision_id;
     return value;
 }
 
@@ -1546,12 +1707,27 @@ std::size_t settle_orphaned_effects(TradingState& state,
     // sanitizer report, just an order reserved from a zeroed proposal. Sweeping
     // first makes the hazard structurally impossible rather than a rule someone
     // has to remember when adding a lookup.
+    std::int64_t largest_configured_order = 0;
+    for (std::size_t index = 0; index < state.risk_account_count; ++index) {
+        largest_configured_order = std::max(
+            largest_configured_order,
+            state.risk_accounts[index].max_order_quantity.atoms());
+    }
+    const bool venue_capacity_pressure =
+        accepted_venue_event_count(state) != 0 &&
+        largest_configured_order > 0 &&
+        !venue_completion_capacity_available(
+            state, QuantityLots::from_atoms(largest_configured_order));
+    const bool outbox_capacity_pressure =
+        !outbox_cancel_capacity_available_for_new_order(state);
     if (state.reservation_count == state.reservations.size() ||
         state.order_count == state.orders.size() ||
-        state.outbox_effect_count == state.outbox_effects.size()) {
+        state.outbox_effect_count == state.outbox_effects.size() ||
+        venue_capacity_pressure || outbox_capacity_pressure) {
         // If this frees nothing, the typed capacity refusals below still fire,
         // so the path stays fail-closed.
         (void)sweep_resolved_order_groups(state);
+        if (venue_capacity_pressure) (void)sweep_expired_receipts(state);
     }
 
     // Authorization receipts outlive reclaimed payload records. Recognize a
@@ -1581,12 +1757,9 @@ std::size_t settle_orphaned_effects(TradingState& state,
     }
     const auto& decision = state.decision_hot[decision_index];
     const auto& cold = state.decision_cold[decision_index];
-    if (decision.evaluation_mode != EvaluationMode::authoritative ||
-        decision.code != DecisionCode::action ||
-        decision.effective_directive != Directive::place_limit ||
-        decision.action_resolution_code != ActionResolutionCode::proposed ||
-        validate(cold.proposal) != ContractError::none ||
-        cold.proposal.decision_id != command.decision_id) {
+    if (!decision_is_authorizable(decision, cold) ||
+        !decision_matches_current_execution_contract(state, decision, cold) ||
+        decision_is_superseded(state, decision_index)) {
         return authorization_result(state, ApplyCode::decision_not_authorizable,
                                     next_version, command.decision_id);
     }
@@ -1669,6 +1842,12 @@ std::size_t settle_orphaned_effects(TradingState& state,
                                     next_version, command.decision_id);
     }
 
+    if (!venue_completion_capacity_available(state, cold.proposal.quantity)) {
+        return authorization_result(state,
+                                    ApplyCode::venue_event_capacity_exceeded,
+                                    next_version, command.decision_id);
+    }
+
     // Slot exclusivity. This is how G-018 is satisfied: rather than computing a
     // clever hold that covers two coexisting orders, the kernel refuses to let a
     // second order exist on the slot at all.
@@ -1709,7 +1888,7 @@ std::size_t settle_orphaned_effects(TradingState& state,
         return authorization_result(state, ApplyCode::order_capacity_exceeded,
                                     next_version, command.decision_id);
     }
-    if (state.outbox_effect_count == state.outbox_effects.size()) {
+    if (!outbox_cancel_capacity_available_for_new_order(state)) {
         return authorization_result(state, ApplyCode::outbox_capacity_exceeded,
                                     next_version, command.decision_id);
     }
@@ -1830,7 +2009,15 @@ std::size_t settle_orphaned_effects(TradingState& state,
             existing->identity.payload_digest == identity.payload_digest
                 ? ApplyCode::already_applied
                 : ApplyCode::fill_identity_conflict,
-            next_version, observation, existing->result.filled_quantity());
+            next_version, observation, existing->result.filled_quantity(),
+            ContractError::none, existing->result.decision_id);
+    }
+    if (accepted_venue_event_count(state) == kMaxVenueEventReceipts) {
+        // Sweep before resolving any state index or borrowing an arena
+        // reference. Resolved groups release the observation receipts they own;
+        // unresolved orders keep every identity that can still affect them.
+        (void)sweep_resolved_order_groups(state);
+        (void)sweep_expired_receipts(state);
     }
     if (accepted_venue_event_count(state) == kMaxVenueEventReceipts) {
         return fill_result(state, ApplyCode::fill_capacity_exceeded,
@@ -1975,7 +2162,8 @@ std::size_t settle_orphaned_effects(TradingState& state,
     }
     outbox->state = OutboxState::acknowledged;
     return fill_result(state, ApplyCode::applied, next_version, observation,
-                       observation.quantity);
+                       observation.quantity, ContractError::none,
+                       order.decision_id);
 }
 
 [[nodiscard]] ApplyResult venue_event_result(
@@ -1983,7 +2171,8 @@ std::size_t settle_orphaned_effects(TradingState& state,
     const ApplyCode code,
     const std::uint64_t next_version,
     const VenueObservation& observation,
-    const ContractError contract_error = ContractError::none) noexcept {
+    const ContractError contract_error = ContractError::none,
+    const DecisionId decision_id = {}) noexcept {
     auto value = result(state, code, next_version, {}, {}, PolicyLifecycle::none,
                         contract_error);
     if (observation.venue_id.value() != 0 ||
@@ -1994,6 +2183,7 @@ std::size_t settle_orphaned_effects(TradingState& state,
             observation.venue_sequence);
         value.detail_kind = ApplyResultDetailKind::venue_event;
     }
+    value.decision_id = decision_id;
     return value;
 }
 
@@ -2020,9 +2210,11 @@ std::size_t settle_orphaned_effects(TradingState& state,
     auto& reservation = state.reservations[order.reservation_index];
 
     const OutboxEffectRecord* current_effect = nullptr;
+    std::size_t current_effect_index = state.outbox_effect_count;
     for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
         if (state.outbox_effects[index].effect_id == order.effect_id) {
             current_effect = &state.outbox_effects[index];
+            current_effect_index = index;
             break;
         }
     }
@@ -2049,7 +2241,17 @@ std::size_t settle_orphaned_effects(TradingState& state,
         return authorization_result(state, ApplyCode::order_not_cancellable,
                                     next_version, order.decision_id);
     }
-    if (state.outbox_effect_count == state.outbox_effects.size()) {
+    // A definitively rejected cancel is no longer deliverable and cannot change
+    // economics. Reuse that one record for the next generation so repeated
+    // venue rejections do not consume the bounded arena forever. Pending,
+    // unknown, reconciling, and conflicting effects are never overwritten.
+    const bool reuse_rejected_cancel =
+        current_effect != nullptr &&
+        current_effect->operation == EffectOperation::cancel &&
+        current_effect->state == OutboxState::rejected &&
+        current_effect_index < state.outbox_effect_count;
+    if (state.outbox_effect_count == state.outbox_effects.size() &&
+        !reuse_rejected_cancel) {
         return authorization_result(state, ApplyCode::outbox_capacity_exceeded,
                                     next_version, order.decision_id);
     }
@@ -2112,7 +2314,11 @@ std::size_t settle_orphaned_effects(TradingState& state,
 
     order.effect_id = effect_id;
     order.state = ClusterOrderState::cancel_pending;
-    state.outbox_effects[state.outbox_effect_count++] = effect;
+    if (reuse_rejected_cancel) {
+        state.outbox_effects[current_effect_index] = effect;
+    } else {
+        state.outbox_effects[state.outbox_effect_count++] = effect;
+    }
     return authorization_result(state, ApplyCode::applied, next_version,
                                 order.decision_id, order.cluster_order_id,
                                 effect_id, *exposure);
@@ -2137,12 +2343,18 @@ std::size_t settle_orphaned_effects(TradingState& state,
     if (const auto* existing = find_applied_venue_event(
             state, observation.venue_id, observation.venue_session_id,
             observation.venue_sequence)) {
+        const auto exact =
+            existing->identity.payload_digest == identity.payload_digest;
         return venue_event_result(
             state,
-            existing->identity.payload_digest == identity.payload_digest
-                ? ApplyCode::already_applied
-                : ApplyCode::venue_event_identity_conflict,
-            next_version, observation);
+            exact ? ApplyCode::already_applied
+                  : ApplyCode::venue_event_identity_conflict,
+            next_version, observation, ContractError::none,
+            exact ? existing->result.decision_id : DecisionId{});
+    }
+    if (accepted_venue_event_count(state) == kMaxVenueEventReceipts) {
+        (void)sweep_resolved_order_groups(state);
+        (void)sweep_expired_receipts(state);
     }
     if (accepted_venue_event_count(state) == kMaxVenueEventReceipts) {
         return venue_event_result(state, ApplyCode::venue_event_capacity_exceeded,
@@ -2189,6 +2401,29 @@ std::size_t settle_orphaned_effects(TradingState& state,
         return venue_event_result(state,
                                   ApplyCode::venue_observation_not_applicable,
                                   next_version, observation);
+    }
+
+    // Event names are not interchangeable acknowledgements. In particular,
+    // `order_acknowledged` proves a submit reached the venue; applying it to a
+    // cancel would resolve the cancel effect while leaving the order
+    // cancel-pending, permanently excluding the later cancellation evidence.
+    if (observation.kind == VenueObservationKind::order_acknowledged &&
+        effect->operation != EffectOperation::submit) {
+        return venue_event_result(state,
+                                  ApplyCode::venue_observation_not_applicable,
+                                  next_version, observation);
+    }
+
+    // A new transport observation can repeat the same semantic uncertainty.
+    // Retain its request receipt, but do not count it as another applied venue
+    // transition or pretend that the state became "more unknown".
+    if (observation.kind == VenueObservationKind::effect_unknown &&
+        effect->effect_id == order.effect_id &&
+        effect->state == OutboxState::unknown &&
+        order.state == ClusterOrderState::submission_unknown) {
+        return venue_event_result(state, ApplyCode::already_applied,
+                                  next_version, observation,
+                                  ContractError::none, order.decision_id);
     }
 
     // Transport observations cannot erase established execution knowledge.
@@ -2323,7 +2558,8 @@ std::size_t settle_orphaned_effects(TradingState& state,
         (void)settle_orphaned_effects(state, order.cluster_order_id);
     }
     return venue_event_result(state, ApplyCode::applied, next_version,
-                              observation);
+                              observation, ContractError::none,
+                              order.decision_id);
 }
 
 // Direct amend/replace is not offered.
@@ -2641,6 +2877,10 @@ ApplyResult apply(TradingState& state,
         return result(state, ApplyCode::state_version_exhausted, state.state_version);
     }
 
+    if (find_caller_cursor(state, command.identity.caller_id) == nullptr) {
+        state.caller_cursors[state.caller_cursor_count++] =
+            CallerCursor{command.identity.caller_id, RequestSequence{}};
+    }
     const auto next_version = state.state_version + 1;
     const auto outcome = apply_new_command(state, command, next_version);
 

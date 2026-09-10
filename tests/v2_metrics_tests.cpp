@@ -67,6 +67,38 @@ TradingState state_with_orders() {
     state.outbox_effects[1] = {EffectId{42}, ClusterOrderId{32}, DecisionId{22},
                                Digest256{}, 1, OutboxState::acknowledged};
 
+    // The cancel effect was created well after its parent order. Its own
+    // authorization receipt is the canonical creation-version provenance.
+    ApplyResult cancel_authorization;
+    cancel_authorization.code = ApplyCode::applied;
+    cancel_authorization.state_version = 80;
+    cancel_authorization.decision_id = DecisionId{21};
+    cancel_authorization.detail = ApplyResultDetail::authorization(
+        ClusterOrderId{31}, EffectId{41}, MoneyMicros::from_atoms(3'020));
+    cancel_authorization.detail_kind = ApplyResultDetailKind::authorization;
+    state.receipts[state.receipt_count++] = {
+        {CallerId{1}, RequestSequence{1}, Digest256{}}, cancel_authorization};
+
+    ApplyResult fill;
+    fill.code = ApplyCode::applied;
+    fill.decision_id = DecisionId{21};
+    fill.detail = ApplyResultDetail::fill(
+        VenueId{7}, ExecutionId{51}, QuantityLots::from_atoms(1));
+    fill.detail_kind = ApplyResultDetailKind::fill;
+    fill.metadata_words = {8, 9};
+    state.receipts[state.receipt_count++] = {
+        {CallerId{2}, RequestSequence{1}, Digest256{}}, fill};
+
+    ApplyResult event;
+    event.code = ApplyCode::applied;
+    event.decision_id = DecisionId{22};
+    event.detail = ApplyResultDetail::venue_event(
+        VenueId{7}, VenueSessionId{8}, VenueSequence{10});
+    event.detail_kind = ApplyResultDetailKind::venue_event;
+    state.receipts[state.receipt_count++] = {
+        {CallerId{3}, RequestSequence{1}, Digest256{}}, event};
+    state.caller_cursor_count = 3;
+
     state.reclaimed_group_count = 7;
     state.settled_incomplete_effect_count = 3;
     return state;
@@ -80,10 +112,10 @@ void test_ages_are_state_version_distances_not_durations() {
     // been unresolved across 60 applied commands. No clock was consulted.
     require(metrics.oldest_unresolved_order_age == 60,
             "unresolved age was not the state-version distance");
-    require(metrics.oldest_reconciling_order_age == 60,
-            "reconciling age was not reported for G-074a");
-    require(metrics.oldest_unsettled_effect_age == 60,
-            "unsettled effect age did not inherit its order's authorization");
+    require(metrics.oldest_reconciling_order_age_since_authorization == 60,
+            "reconciling upper-bound age was not reported for G-074a");
+    require(metrics.oldest_unsettled_effect_age == 20,
+            "unsettled effect age ignored the effect's own creation receipt");
 
     // Advancing the cluster advances every age by exactly the same amount, which
     // a wall-clock measure could not guarantee under a clock correction.
@@ -92,6 +124,15 @@ void test_ages_are_state_version_distances_not_durations() {
     require(later.oldest_unresolved_order_age ==
                 metrics.oldest_unresolved_order_age + 30,
             "age did not advance with the state version");
+}
+
+void test_identity_arena_headroom_is_visible() {
+    const auto metrics = collect_metrics(state_with_orders());
+    require(metrics.accepted_venue_event_count == 2 &&
+                metrics.venue_event_headroom == kMaxVenueEventReceipts - 2 &&
+                metrics.caller_cursor_count == 3 &&
+                metrics.caller_cursor_headroom == kMaxCallerCursors - 3,
+            "identity-retention pressure was invisible to operators");
 }
 
 void test_a_future_dated_record_reports_zero_rather_than_wrapping() {
@@ -160,12 +201,14 @@ void test_outcome_counters_classify_refusals() {
     observe(ApplyCode::applied);
     observe(ApplyCode::already_applied);
     observe(ApplyCode::decision_id_conflict);
+    observe(ApplyCode::derived_identity_collision);
+    observe(ApplyCode::fill_quantity_conflict);
     observe(ApplyCode::order_capacity_exceeded);
     observe(ApplyCode::stale_risk_state);
     observe(ApplyCode::stale_control_generation);
     observe(ApplyCode::invalid_command);
     require(counters.applied == 1 && counters.duplicates == 1 &&
-                counters.conflicts == 1 && counters.capacity_refusals == 1 &&
+                counters.conflicts == 3 && counters.capacity_refusals == 1 &&
                 counters.risk_refusals == 1 && counters.control_refusals == 1 &&
                 counters.other_refusals == 1,
             "outcome classification did not separate the refusal families");
@@ -177,6 +220,7 @@ int main() {
     try {
         test_ages_are_state_version_distances_not_durations();
         test_a_future_dated_record_reports_zero_rather_than_wrapping();
+        test_identity_arena_headroom_is_visible();
         test_unresolved_counts_key_on_risk_not_lifecycle_state();
         test_collection_is_a_pure_projection();
         test_headroom_and_exposure_are_reported_per_account();

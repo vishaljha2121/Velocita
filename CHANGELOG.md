@@ -815,15 +815,23 @@ latencies, which are durations, and apply may not read a clock, so every age is 
 STATE-VERSION distance instead. That is exact, deterministic, identical on every
 replica, and arguably the better operational measure: it is load-relative, so a
 stuck slot looks equally stuck in a fast market and a quiet one, and it cannot
-drift or jump when a host's clock is corrected. Converting to wall-clock is the
-exporter's job, outside the authority boundary.
+drift or jump when a host's clock is corrected. It is not convertible to wall
+clock from one sample; an exporter needs its own timestamped StateVersion
+timeline outside the authority boundary.
 
 Reported: arena occupancy against compile-time capacities; orders, effects and
 reservations by state; counts and oldest ages for unresolved orders, unsettled
 effects, reconciling orders and conflicted orders; maximum
 decision-to-authorization distance; the retained reclamation and
 orphan-settlement counters; control state; and per risk account the reserved
-exposure, position, versions and headroom against aggregate ceilings.
+exposure, position, versions and headroom against aggregate ceilings. Venue-event
+identity count/headroom and caller-cursor count/headroom now expose the two
+retention pressures that can stop admission.
+
+Unsettled-effect age now uses the authorization receipt for the exact `EffectId`,
+so a later cancel is not aged from its parent order. Reconciling age is named
+`oldest_reconciling_order_age_since_authorization` because Phase 4 does not retain
+a transition timestamp; it is an upper bound, not duration in the state.
 
 `unresolved` keys on retained risk rather than lifecycle state, matching the
 reclamation rule: a metric counting "not terminal" would omit a conflicted order,
@@ -851,28 +859,44 @@ now sweeps down to one. The capacity-atomicity invariant is still worth testing,
 so the fixture assigns each retained proposal a distinct logical slot, making the
 arena genuinely full and unsweepable.
 
-#### Open for review - venue-event horizon
+#### Fixed - Phase 4 acceptance review corrections (2026-09-10)
 
-Recorded in architecture section 8.7 and not implemented. Fills are refused once
-the venue-event horizon is reached, and that bound fails in the wrong direction:
-every other bounded arena stops new work, while this one stops existing orders
-completing and strands live risk.
+- Authorization now requires the decision to match the current active policy,
+  executable bundle, instrument/venue versions and scope, with no newer same-slot
+  actionable proposal. Old bytes retain provenance but no longer resurrect old
+  authority after policy rotation or supersession.
+- `order_acknowledged` is submit-only; a cancel mismatch is refused before it can
+  resolve the effect and wedge the still-pending order. Repeated semantic
+  `effect_unknown` observations return `already_applied` without another applied
+  venue transition.
+- Applied fill and order-event results populate the existing `DecisionId` field.
+  This zero-byte owner link pins identity receipts while their order exists and
+  lets resolved groups release them. A sustained 119-order test crosses the old
+  64-event lifetime ceiling.
+- Authorization reserves venue completion capacity using remaining quantity
+  atoms plus bounded submit/cancel/reconciliation transitions; two events per
+  order was rejected because Q one-atom fills are legal. Pressure now refuses new
+  risk, not evidence for admitted exposure.
+- Every unresolved order retains one cancel-effect slot in addition to its submit
+  effect. A definitively rejected cancel can reuse its own slot at a strictly
+  higher generation; unresolved effects are never overwritten.
+- Caller cursors are registered at first admission with a zero expired prefix.
+  Snapshot validation now bounds the arena and rejects zero/duplicate caller
+  identities. The watermark is documented honestly as a conservative prefix,
+  requiring monotonic sequences per stable caller.
+- Successful observation results require complete owner/identity fields, while
+  typed malformed-observation refusals may retain partial non-empty diagnostics.
+  Thus every admitted refusal remains encodable and snapshotable.
+- Phase 4 metrics now use exact effect-creation receipts, honest reconciliation
+  naming, identity-arena headroom, and conflict classification for derived
+  identity/fill-quantity collisions.
+- The randomized Phase 4 corpus now generates correct sell fills, exact- and
+  cross-request duplicates, conflicting observation identities, seed/step
+  diagnostics, and an independent signed-position ledger.
 
-The approved rule of section 8.6 - reclaim a fill identity with its order group -
-proved unimplementable without growing the canonical result. A fill receipt uses
-all five of its slots and none names the cluster order, and the result is at 126
-of 128 bytes. Making the deduplication key session-scoped to free a slot was
-rejected as a safety regression, since a redelivery after a gateway reconnect
-carries a new session id and would escape it.
-
-The recommendation costs zero bytes: keep the horizon but move the pressure to
-authorization, refusing new orders when remaining capacity would not cover
-completing the orders already live, so the failure becomes stopping quoting
-rather than being unable to exit. Section 11 already reserves bounded capacity
-for risk-reducing operations; this applies the same principle one layer down. A
-per-venue-session watermark on venue sequence is the deferred alternative and
-also needs no result change, but depends on whether a venue supplies monotonic
-sequences.
+These changes add no `TradingState` field and do not grow the canonical V5 result
+or maximum snapshot. Old unaccepted development V5 snapshots with applied
+observation results whose `DecisionId` is zero are intentionally unsupported.
 
 #### Standing invariants for later phases
 
