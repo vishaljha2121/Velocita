@@ -902,6 +902,18 @@ These changes add no `TradingState` field and do not grow the canonical V5 resul
 or maximum snapshot. Old unaccepted development V5 snapshots with applied
 observation results whose `DecisionId` is zero are intentionally unsupported.
 
+#### Added - Phase 4 acceptance gate contract (2026-09-10)
+
+- Added Phase 4 ARM64-container and physical-Pi wrappers pinned to source root
+  `a84609b54b2efe408f34151b91bbd10a217d8cdadbd7b18aba6a54c6183ac853`.
+- Extended the shared native ARM64 gate to build and execute the Phase 4 metrics,
+  property, and risk/order/outbox suites in Release, instrumented Release, and
+  Debug ASan+UBSan configurations. Without these targets, an older gate could
+  report green while never executing the Phase 4 acceptance corpus.
+- Added the Phase 4 evidence document with candidate identity, byte contracts,
+  host results, target commands, layout, limitations, and an explicit pending
+  status. ARM64 and Pi success will be recorded only after those gates run.
+
 #### Standing invariants for later phases
 
 Two rules were established here whose violation fails silently. First, the sweep

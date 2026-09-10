@@ -5,8 +5,9 @@ usage() {
     cat <<'USAGE'
 Usage: run-v2-phase2-container-gate.sh [--yes]
 
-Build the pinned ARM64 Ubuntu 26.04 development image and test the committed V2
-Phase 2 kernel source under 4 CPU, 4 GiB memory, and 256 MiB /dev/shm limits.
+Build the pinned ARM64 Ubuntu 26.04 development image and test committed V2
+source under 4 CPU, 4 GiB memory, and 256 MiB /dev/shm limits. Environment
+variables may specialize the label, evidence path, source root, image, and cache.
 This is compatibility evidence, not Raspberry Pi acceptance or benchmarking.
 USAGE
 }
@@ -45,6 +46,9 @@ evidence_dir="$evidence_root/$run_id"
 image=${VELOCITA_PI_CI_IMAGE:-localhost/velocita-pi-ci:v2-phase2-dev}
 cache_volume=${VELOCITA_V2_PHASE2_CI_CACHE_VOLUME:-velocita-v2-phase2-ci-cache}
 build_jobs=${BUILD_JOBS:-2}
+expected_source_root=${VELOCITA_EXPECTED_SOURCE_ROOT:-}
+gate_label=${VELOCITA_V2_CONTAINER_GATE_LABEL:-V2 Phase 2 development}
+gate_environment=${VELOCITA_V2_CONTAINER_ENVIRONMENT:-arm64-linux-container}
 
 aeron_commit=$(sed -n 's/^set(AERON_COMMIT "\([0-9a-f]*\)".*/\1/p' "$root_dir/CMakeLists.txt")
 raft_commit=$(sed -n 's/^set(RAFT_COMMIT "\([0-9a-f]*\)".*/\1/p' "$root_dir/CMakeLists.txt")
@@ -79,7 +83,10 @@ docker run --rm \
     --volume "$root_dir/deploy/pi-container/run-phase2-kernel-gate-inside.sh:/usr/local/bin/run-v2-phase2-kernel-gate:ro" \
     --env "BUILD_JOBS=$build_jobs" \
     --env "EXPECTED_SOURCE_HEAD=$source_head" \
+    --env "EXPECTED_SOURCE_ROOT=$expected_source_root" \
+    --env "GATE_LABEL=$gate_label" \
+    --env "GATE_ENVIRONMENT=$gate_environment" \
     --entrypoint /usr/local/bin/run-v2-phase2-kernel-gate \
     "$image"
 
-printf 'Phase 2 container evidence: %s\n' "$evidence_dir"
+printf '%s container evidence: %s\n' "$gate_label" "$evidence_dir"

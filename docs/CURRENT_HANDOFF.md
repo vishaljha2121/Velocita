@@ -52,10 +52,17 @@ owning DecisionId. Old unaccepted development V5 snapshots that omitted that
 owner are unsupported. Reviewed replay goldens were updated only after direct,
 snapshot-suffix, and independent-model bytes agreed.
 
-Current host evidence: full Release build and 25/25 CTest suites pass;
-`git diff --check` passes. The complete host ASan+UBSan gate must be rerun against
-this exact source next, followed by the Phase 4 gate/evidence scripts, pinned
-ARM64, and physical Pi gates. No Phase 4 acceptance claim exists yet.
+Candidate source commit `db13a9c19caf7d5ac67ce1117b78f6302b6bcd3e`
+has Phase 4 source root
+`a84609b54b2efe408f34151b91bbd10a217d8cdadbd7b18aba6a54c6183ac853`.
+Its full Release build and 25/25 CTest suites pass; its full Debug ASan+UBSan
+build and 25/25 suites also pass; `git diff --check` passes. Reviewed Phase 4
+ARM64-container and physical-Pi wrappers now pin that root, and
+`docs/evidence/V2_PHASE4_RISK_ORDERS_OUTBOX_ACCEPTANCE.md` records the promotion
+contract without claiming pending target results. Next run the pinned ARM64
+container gate, synchronize the same source to the Pi, run its gate, then attach
+both evidence results and adjudicate the Phase 4 checklist. No Phase 4 acceptance
+claim exists yet.
 
 Preserve the same protected unrelated paths listed near the end of this file:
 `docs/README.md`, `docs/MUST_CONFIRM_BEFORE_ADAPTER_CONNECT.md`,
