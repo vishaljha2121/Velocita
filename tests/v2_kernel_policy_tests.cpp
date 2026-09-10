@@ -261,6 +261,25 @@ void test_receipt_and_version_exhaustion_precede_business_mutation() {
     require(state.receipt_count == kMaxRequestReceipts && state.policy_count == 0,
             "receipt table setup mutated policy state");
 
+    // Receipts are reclaimable now (architecture 8.6), and rejections are
+    // unpinned, so the table above would simply be swept and capacity would
+    // never be exceeded. Overwrite it with PINNED receipts - applied fill
+    // results, which are the deduplication for a venue execution identity and
+    // are never forgotten - so this stays a test of the capacity path rather
+    // than of the sweep.
+    for (std::size_t index = 0; index < kMaxRequestReceipts; ++index) {
+        ApplyResult pinned;
+        pinned.code = ApplyCode::applied;
+        pinned.detail = ApplyResultDetail::fill(VenueId{9},
+                                                ExecutionId{30'000 + index},
+                                                QuantityLots::from_atoms(1));
+        pinned.detail_kind = ApplyResultDetailKind::fill;
+        pinned.metadata_words = {2, 30'000 + index};
+        state.receipts[index] = {
+            {CallerId{60}, RequestSequence{index + 1}, digest(std::byte{0x5A})},
+            pinned};
+    }
+
     const auto full = apply(
         state,
         command(kMaxRequestReceipts + 1,

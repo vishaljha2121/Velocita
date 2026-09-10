@@ -197,6 +197,12 @@ find_receipt(const TradingState& state, const CommandIdentity& identity) noexcep
     return nullptr;
 }
 
+// Defined below, near the other reclamation sweeps; declared here because source
+// admission is the first call site in file order.
+[[nodiscard]] std::size_t sweep_admitted_source_events(TradingState& state) noexcept;
+[[nodiscard]] CallerCursor* find_caller_cursor(TradingState& state,
+                                               CallerId caller_id) noexcept;
+
 [[nodiscard]] std::size_t accepted_venue_event_count(
     const TradingState& state) noexcept {
     std::size_t count = 0;
@@ -822,6 +828,11 @@ template <std::size_t WordCount>
     }
 
     if (state.source_event_count == state.source_events.size()) {
+        // Sweep before refusing: an admitted-and-covered receipt is no longer
+        // load-bearing, because the source cursor already refuses a regression.
+        (void)sweep_admitted_source_events(state);
+    }
+    if (state.source_event_count == state.source_events.size()) {
         return source_result(
             state, ApplyCode::source_event_capacity_exceeded, next_version, command);
     }
@@ -991,6 +1002,120 @@ std::size_t settle_orphaned_effects(TradingState& state,
 // This mirrors apply_authorize_decision's predicate deliberately. If that gains a
 // condition and this does not, the sweep will reclaim records the authorizer
 // would still have accepted; the two must be changed together.
+// A receipt may be forgotten only if nothing still depends on it.
+//
+// Two families are pinned. AUTHORIZATION receipts are the provenance
+// materialize_order_effect uses to rebuild an effect's exact historical bytes, so
+// dropping one while its effect lives would strand a pending external effect and
+// break G-020. FILL and VENUE-EVENT receipts are the deduplication for
+// (VenueId, ExecutionId): dropping one while its order can still accept quantity
+// would let a redelivered PARTIAL fill book twice, and reservation arithmetic
+// does not catch that - filled plus remaining stays within the original, so the
+// double booking looks legitimate.
+//
+// Everything else - evaluations, source events, configuration, cancel requests,
+// and every refusal - is reclaimable. In a live maker those are the overwhelming
+// majority, because each no_action evaluation retains one.
+[[nodiscard]] bool receipt_is_pinned(const TradingState& state,
+                                     const RequestReceipt& receipt) noexcept {
+    const auto& result = receipt.result;
+    if (result.code != ApplyCode::applied) return false;
+    switch (result.detail_kind) {
+        case ApplyResultDetailKind::authorization: {
+            for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
+                if (state.outbox_effects[index].cluster_order_id ==
+                    result.cluster_order_id()) return true;
+            }
+            for (std::size_t index = 0; index < state.order_count; ++index) {
+                if (state.orders[index].cluster_order_id ==
+                    result.cluster_order_id()) return true;
+            }
+            return false;
+        }
+        case ApplyResultDetailKind::fill:
+        case ApplyResultDetailKind::venue_event:
+            // Pinned unconditionally for now. Tying these to their order group,
+            // as architecture 8.6 specifies, needs the canonical result to name
+            // the cluster order and it currently has no free slot; see the
+            // handoff for the deferred byte-contract decision.
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Forget the oldest unpinned receipts. Order is preserved so "oldest" stays
+// meaningful, and the caller watermarks that make expiry detectable are advanced
+// on admission rather than here, so a forgotten receipt is always already
+// covered by its caller's cursor.
+[[nodiscard]] std::size_t sweep_expired_receipts(TradingState& state) noexcept {
+    std::size_t kept = 0;
+    std::size_t dropped = 0;
+    for (std::size_t index = 0; index < state.receipt_count; ++index) {
+        if (!receipt_is_pinned(state, state.receipts[index])) {
+            // Record what is being forgotten, per caller, so a later retry of
+            // exactly this identity is refused rather than re-executed.
+            const auto& identity = state.receipts[index].identity;
+            auto* cursor = find_caller_cursor(state, identity.caller_id);
+            if (cursor == nullptr &&
+                state.caller_cursor_count < state.caller_cursors.size()) {
+                cursor = &state.caller_cursors[state.caller_cursor_count++];
+                *cursor = CallerCursor{identity.caller_id, RequestSequence{}};
+            }
+            if (cursor != nullptr && cursor->expired_below < identity.request_sequence) {
+                cursor->expired_below = identity.request_sequence;
+            }
+            ++dropped;
+            continue;
+        }
+        state.receipts[kept++] = state.receipts[index];
+    }
+    for (std::size_t index = kept; index < state.receipt_count; ++index) {
+        state.receipts[index] = {};
+    }
+    state.receipt_count = kept;
+    return dropped;
+}
+
+// Source-event receipts have their own watermark already: SourceCursor holds the
+// highest admitted sequence per source, and admission independently refuses a
+// regression. The receipt only distinguishes an exact redelivery (retained
+// no-op) from a conflicting one (fail closed), so once the sequence is at or
+// below the cursor the receipt is no longer load-bearing for safety - a
+// redelivery is refused as a regression rather than re-admitted.
+[[nodiscard]] std::size_t sweep_admitted_source_events(TradingState& state) noexcept {
+    std::size_t kept = 0;
+    for (std::size_t index = 0; index < state.source_event_count; ++index) {
+        const auto& event = state.source_events[index];
+        bool covered = false;
+        for (std::size_t cursor = 0; cursor < state.source_count; ++cursor) {
+            const auto& source = state.sources[cursor];
+            if (source.source_id != event.source_id) continue;
+            covered = source.generation > event.generation ||
+                      (source.generation == event.generation &&
+                       source.sequence >= event.sequence);
+        }
+        if (covered) continue;
+        state.source_events[kept++] = state.source_events[index];
+    }
+    const auto dropped = state.source_event_count - kept;
+    for (std::size_t index = kept; index < state.source_event_count; ++index) {
+        state.source_events[index] = {};
+    }
+    state.source_event_count = kept;
+    return dropped;
+}
+
+[[nodiscard]] CallerCursor* find_caller_cursor(TradingState& state,
+                                               const CallerId caller_id) noexcept {
+    for (std::size_t index = 0; index < state.caller_cursor_count; ++index) {
+        if (state.caller_cursors[index].caller_id == caller_id) {
+            return &state.caller_cursors[index];
+        }
+    }
+    return nullptr;
+}
+
 [[nodiscard]] bool decision_is_authorizable(
     const DecisionRecordHot& hot, const DecisionRecordCold& cold) noexcept {
     return hot.evaluation_mode == EvaluationMode::authoritative &&
@@ -2489,7 +2614,27 @@ ApplyResult apply(TradingState& state,
         return result(state, ApplyCode::duplicate_conflict, state.state_version);
     }
 
+    // Not retained. If it sits at or below its caller's watermark it WAS seen and
+    // its receipt has since been forgotten, so the kernel can no longer say what
+    // happened. Refuse rather than re-execute: re-execution would be a second
+    // economic mutation, and the caller's real protection lives in state anyway.
+    if (const auto* cursor = find_caller_cursor(state, command.identity.caller_id);
+        cursor != nullptr &&
+        command.identity.request_sequence <= cursor->expired_below) {
+        return result(state, ApplyCode::request_expired, state.state_version);
+    }
+
     if (state.receipt_count == state.receipts.size()) {
+        (void)sweep_expired_receipts(state);
+    }
+    if (state.receipt_count == state.receipts.size()) {
+        return result(state, ApplyCode::receipt_capacity_exceeded, state.state_version);
+    }
+    // A caller the cluster has never seen needs a cursor before its first command
+    // can be admitted, because without one an expired request would later read as
+    // fresh. Refusing here keeps that impossible rather than merely unlikely.
+    if (find_caller_cursor(state, command.identity.caller_id) == nullptr &&
+        state.caller_cursor_count == state.caller_cursors.size()) {
         return result(state, ApplyCode::receipt_capacity_exceeded, state.state_version);
     }
     if (state.state_version == std::numeric_limits<std::uint64_t>::max()) {

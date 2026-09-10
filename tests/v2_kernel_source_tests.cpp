@@ -170,6 +170,17 @@ void test_source_capacities_fail_before_cursor_mutation() {
                       scratch).code == ApplyCode::applied,
                 "source-event receipt setup failed");
     }
+    // Source-event receipts are reclaimable once their source cursor has advanced
+    // past them (architecture 8.6), so the events admitted above would all be
+    // swept and the arena would never overflow. Replace them with events for a
+    // source that has NO cursor: nothing can vouch for those, so they are never
+    // reclaimed and this stays a test of the capacity path, not of the sweep.
+    for (std::size_t index = 0; index < kMaxSourceEventReceipts; ++index) {
+        event_full.source_events[index] = {
+            SourceId{999}, SourceGeneration{1}, SourceSequence{index + 1},
+            digest(static_cast<std::uint8_t>((index % 250U) + 1U))};
+    }
+
     const auto event_overflow =
         apply(event_full,
               source_command(kMaxSourceEventReceipts + 1,

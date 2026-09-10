@@ -25,6 +25,12 @@ inline constexpr std::size_t kMaxRiskReservations = 16;
 inline constexpr std::size_t kMaxClusterOrders = 16;
 inline constexpr std::size_t kMaxOutboxEffects = 16;
 inline constexpr std::size_t kMaxVenueEventReceipts = 64;
+// Distinct logical clients of the cluster: the market-data edge, the authorizer,
+// the execution gateway, and the operator console. CallerId must be a STABLE
+// identity assigned by configuration - a caller returning from a restart with a
+// fresh id would fill this arena with dead entries and rebuild the lifetime
+// wedge one level up. See architecture 8.6.
+inline constexpr std::size_t kMaxCallerCursors = 8;
 static_assert(kMaxPolicies > 0);
 static_assert(kMaxSources > 0);
 static_assert(kMaxSourceEventReceipts > kMaxSources);
@@ -135,6 +141,30 @@ enum class ApplyCode : std::uint8_t {
     risk_account_capacity_exceeded,
     risk_version_exhausted,
     risk_reconfiguration_blocked,
+    // Architecture 8.6. The request identity is at or below its caller's
+    // watermark but its receipt has been reclaimed, so the kernel can no longer
+    // say what happened. It refuses rather than re-executing, because
+    // re-execution would be a second economic mutation; the caller reconciles
+    // against state, where almost every command's real protection already lives.
+    request_expired,
+};
+
+// The highest RequestSequence whose receipt this caller has had RECLAIMED.
+//
+// Deliberately not "highest ever admitted". The kernel must refuse only what it
+// actually forgot, so a caller sending a low sequence the cluster never held is
+// treated as fresh rather than refused. Refusing on the high-water mark instead
+// would enforce monotonicity as a side effect of expiry, which is a different
+// contract and a stricter one than architecture 8.6 requires.
+//
+// This cursor cannot itself be forgotten: it is the only thing distinguishing an
+// EXPIRED request from one never seen, and without it expiry would silently
+// permit re-execution - a second economic mutation.
+struct CallerCursor {
+    CallerId caller_id{};
+    RequestSequence expired_below{};
+
+    constexpr auto operator<=>(const CallerCursor&) const noexcept = default;
 };
 
 struct CommandIdentity {
@@ -632,6 +662,8 @@ struct TradingState {
     // signal that the gateway is losing effect outcomes: reclamation stays
     // healthy, but a rising count means delivery bookkeeping is incomplete.
     std::uint64_t settled_incomplete_effect_count{};
+    std::size_t caller_cursor_count{};
+    std::array<CallerCursor, kMaxCallerCursors> caller_cursors{};
 };
 
 // Reserved for bounded temporary indexes/encoding buffers in later reducer

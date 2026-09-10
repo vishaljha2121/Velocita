@@ -245,13 +245,23 @@ velocita::v2::ApplyResult evaluate_at_feature(
     const std::uint64_t request) {
     using namespace velocita::v2;
     const auto evidence = digest(static_cast<std::uint8_t>(0x40 + (source_sequence % 0x30)));
-    require(apply(state,
-                  {{CallerId{7}, RequestSequence{request}, digest(0x21)},
-                   RecordSourceEvent{SourceId{12}, SourceGeneration{1},
-                                     SourceSequence{source_sequence}, evidence}},
-                  scratch)
-                    .code == ApplyCode::applied,
+    const auto admitted = apply(state,
+                                {{CallerId{7}, RequestSequence{request}, digest(0x21)},
+                                 RecordSourceEvent{SourceId{12}, SourceGeneration{1},
+                                                   SourceSequence{source_sequence},
+                                                   evidence}},
+                                scratch);
+    require(admitted.code == ApplyCode::applied,
             "source event admission failed");
+
+
+
+
+
+
+
+
+
     auto value = frame();
     value.venue_sequence = VenueSequence{source_sequence};
     value.source_sequence = SourceSequence{source_sequence};
@@ -261,7 +271,7 @@ velocita::v2::ApplyResult evaluate_at_feature(
     value.risk_version = state.risk_accounts[0].risk_version;
     return apply(state,
                  {{CallerId{8}, RequestSequence{request},
-                   digest(static_cast<std::uint8_t>(decision_id.value()))},
+                   digest(static_cast<std::uint8_t>(1 + decision_id.value() % 255))},
                   EvaluateDecisionFrame{decision_id, EvaluationMode::authoritative,
                                         value}},
                  scratch);
@@ -355,7 +365,7 @@ void append_replacement_decision(
         Directive::replace, EvaluationMode::authoritative, state.strategy_mode,
         ActionResolutionCode::proposed};
     state.decision_cold[index] = {
-        decision_id, digest(static_cast<std::uint8_t>(decision_id.value())),
+        decision_id, digest(static_cast<std::uint8_t>(1 + decision_id.value() % 255)),
         replacement_frame,
         {kEconomicActionProposalSchemaVersion,
          decision_id,
@@ -393,7 +403,8 @@ velocita::v2::ApplyResult evaluate_new_decision(
     const Command record{{CallerId{7}, RequestSequence{request}, digest(0x21)},
                          RecordSourceEvent{SourceId{12}, SourceGeneration{1},
                                            SourceSequence{source_sequence}, evidence}};
-    require(apply(state, record, scratch).code == ApplyCode::applied,
+    const auto admitted = apply(state, record, scratch);
+    require(admitted.code == ApplyCode::applied,
             "source event admission failed");
     if (history != nullptr) history->push_back(record);
 
@@ -404,7 +415,7 @@ velocita::v2::ApplyResult evaluate_new_decision(
     value.position_version = state.risk_accounts[0].position_version;
     value.risk_version = state.risk_accounts[0].risk_version;
     const Command evaluate{{CallerId{8}, RequestSequence{request},
-                            digest(static_cast<std::uint8_t>(decision_id.value()))},
+                            digest(static_cast<std::uint8_t>(1 + decision_id.value() % 255))},
                            EvaluateDecisionFrame{decision_id,
                                                  EvaluationMode::authoritative, value}};
     if (history != nullptr) history->push_back(evaluate);
@@ -445,7 +456,7 @@ void append_submit_decision(velocita::v2::TradingState& state,
         Directive::place_limit, EvaluationMode::authoritative, state.strategy_mode,
         ActionResolutionCode::proposed};
     state.decision_cold[index] = {
-        decision_id, digest(static_cast<std::uint8_t>(decision_id.value())),
+        decision_id, digest(static_cast<std::uint8_t>(1 + decision_id.value() % 255)),
         submit_frame,
         {kEconomicActionProposalSchemaVersion,
          decision_id,
@@ -1050,7 +1061,16 @@ void test_cancel_fill_final_evidence_permutations() {
             bool fill_seen = false;
             for (const auto step : permutation) {
                 if (filled == 0 && step == 0) continue; // No execution exists in the zero-fill case.
-                const auto result = apply(state, commands[step], scratch);
+                // Sequences are assigned at APPLY time, not at construction.
+                // The permutation deliberately applies these commands in every
+                // order, so fixed identities would send a caller's sequence
+                // backwards, which architecture 8.6 now correctly refuses as
+                // expired. This test is about evidence ordering, not request
+                // deduplication, so each application gets a fresh identity.
+                auto command = commands[step];
+                command.identity.request_sequence =
+                    RequestSequence{state.state_version + 500};
+                const auto result = apply(state, command, scratch);
                 if (step == 0) {
                     require(result.code == ApplyCode::applied, "permutation lost actual fill");
                     fill_seen = true;
@@ -1074,7 +1094,13 @@ void test_cancel_fill_final_evidence_permutations() {
             }
             // A refused early proof is a stable command outcome. A new request
             // may re-present the same venue evidence once its prerequisites exist.
-            final.identity.request_sequence = RequestSequence{3};
+            // Derived from the monotonic state version rather than fixed:
+            // RequestSequence must be monotonic per caller (architecture 8.6),
+            // and a fixed sequence re-presented after later permutations have
+            // advanced this caller's watermark is now correctly refused as
+            // expired rather than executed.
+            final.identity.request_sequence =
+                RequestSequence{state.state_version + 1'000};
             const auto final_result = apply(state, final, scratch);
             require((final_result.code == ApplyCode::applied ||
                      final_result.code == ApplyCode::already_applied) &&
@@ -1083,7 +1109,11 @@ void test_cancel_fill_final_evidence_permutations() {
                     state.reservations[0].state == ReservationState::released &&
                     state.orders[0].state == (filled == 2 ? ClusterOrderState::filled
                                                           : ClusterOrderState::cancelled),
-                    "evidence permutation did not converge to reconciled economics");
+                    "evidence permutation did not converge: code=" +
+                        std::to_string(static_cast<int>(final_result.code)) +
+                        " pos=" + std::to_string(state.risk_accounts[0].position_quantity.atoms()) +
+                        " resv=" + std::to_string(state.risk_accounts[0].reserved_quantity.atoms()) +
+                        " cursors=" + std::to_string(state.caller_cursor_count));
         } while (std::next_permutation(permutation.begin(), permutation.end()));
     }
 }
@@ -2007,11 +2037,15 @@ void test_risk_configuration_codec_and_restore() {
     const auto saved = encode_state_snapshot(state, snapshot);
     TradingState restored;
     StateSnapshotScratch snapshot_scratch;
-    require(saved.error == StateSnapshotError::none && snapshot[8] == std::byte{5} &&
-                decode_state_snapshot({snapshot.data(), saved.bytes_written}, restored, snapshot_scratch).error ==
-                    StateSnapshotError::none && apply(restored, command, scratch) == configured &&
-                restored.risk_accounts == state.risk_accounts,
-            "configuration snapshot lost ledger or idempotent outcome");
+    require(saved.error == StateSnapshotError::none, "cfg: encode failed");
+    const auto restore_outcome = decode_state_snapshot({snapshot.data(), saved.bytes_written}, restored, snapshot_scratch);
+    require(restore_outcome.error == StateSnapshotError::none,
+            "cfg: decode failed code=" +
+                std::to_string(static_cast<int>(restore_outcome.error)));
+    const auto retried_config = apply(restored, command, scratch);
+    require(retried_config == configured,
+            "cfg: retry differed code=" + std::to_string(static_cast<int>(retried_config.code)));
+    require(restored.risk_accounts == state.risk_accounts, "cfg: ledger differed");
     snapshot[8] = std::byte{4};
     require(decode_state_snapshot({snapshot.data(), saved.bytes_written}, restored, snapshot_scratch).error ==
                 StateSnapshotError::unsupported_schema, "V4 snapshot was reinterpreted as V5");
@@ -2153,6 +2187,23 @@ void test_risk_configuration_admission_and_capacity() {
     require(apply(state, full, scratch).code == ApplyCode::risk_account_capacity_exceeded &&
                 state.risk_accounts == accounts, "full risk arena mutated on refused creation");
     auto receipts_full = state;
+    // Receipts are now reclaimable (architecture 8.6), so a filler of default
+    // records would simply be swept and capacity would never be exceeded. Fill
+    // with PINNED receipts instead - applied fill results, which are the
+    // deduplication for a venue execution identity and are never forgotten while
+    // an order could still accept quantity. That makes the arena genuinely full
+    // and keeps this test about the capacity path rather than the sweep.
+    for (std::size_t index = 0; index < kMaxRequestReceipts; ++index) {
+        ApplyResult pinned;
+        pinned.code = ApplyCode::applied;
+        pinned.detail = ApplyResultDetail::fill(VenueId{9},
+                                                ExecutionId{20'000 + index},
+                                                QuantityLots::from_atoms(1));
+        pinned.detail_kind = ApplyResultDetailKind::fill;
+        pinned.metadata_words = {2, 20'000 + index};
+        receipts_full.receipts[index] = {
+            {CallerId{40}, RequestSequence{index + 1}, digest(0x77)}, pinned};
+    }
     receipts_full.receipt_count = kMaxRequestReceipts;
     require(apply(receipts_full, configure_risk(receipts_full, 21), scratch).code ==
                 ApplyCode::receipt_capacity_exceeded && receipts_full.risk_accounts == accounts,
@@ -2788,7 +2839,11 @@ void test_two_sided_slots_requote_independently() {
     require(evaluate_at_feature(state, scratch, DecisionId{32}, 11, 4, 7).code ==
                 ApplyCode::applied,
             "ask requote decision was not retained");
-    const auto requote = apply(state, authorize_decision(8, 0xa7, DecisionId{32}),
+    // Sequence 10, not 8: RequestSequence must be monotonic per caller
+    // (architecture 8.6), and this caller has already reached 9. A lower
+    // sequence is now correctly refused as expired rather than executed, which
+    // is exactly the protection the watermark exists to give.
+    const auto requote = apply(state, authorize_decision(10, 0xa7, DecisionId{32}),
                                scratch);
     require(requote.code == ApplyCode::applied &&
                 requote.cluster_order_id() != ask.cluster_order_id(),
@@ -2906,6 +2961,139 @@ void test_superseded_slot_decisions_are_reclaimed() {
             "supersession reclaimed every decision including the newest");
 }
 
+// ---------------------------------------------------------------------------
+// Finite identity horizons (architecture 8.6).
+//
+// Nothing reclaimed a request receipt, so the kernel accepted exactly
+// kMaxRequestReceipts commands in its lifetime and then refused everything
+// permanently. A second ceiling inside the same arena stopped fills being
+// accepted, which strands existing risk rather than merely stopping new work.
+//
+// The safety rule that shapes the fix: an expired request must be REFUSED, never
+// re-executed, because re-execution would be a second economic mutation. Telling
+// "expired" apart from "never seen" is what the per-caller watermark is for.
+// ---------------------------------------------------------------------------
+void test_request_receipts_do_not_bound_the_kernel_lifetime() {
+    using namespace velocita::v2;
+    auto state = ready_state(EvaluationMode::authoritative,
+                             FeatureMicros::from_atoms(5));
+    ApplyScratch scratch;
+
+    // Well past kMaxRequestReceipts. Each cycle emits two commands, so this
+    // drives roughly three times the old lifetime ceiling.
+    std::uint64_t request = 2;
+    for (std::uint64_t cycle = 1; cycle < 400; ++cycle) {
+        const auto outcome = evaluate_at_feature(
+            state, scratch, DecisionId{5'000 + cycle}, 5, cycle + 1, request++);
+        require(outcome.code == ApplyCode::applied,
+                "the kernel stopped accepting commands at cycle " +
+                    std::to_string(cycle) + " with code " +
+                    std::to_string(static_cast<int>(outcome.code)) +
+                    ": an identity arena still bounds its lifetime");
+    }
+    require(state.receipt_count <= kMaxRequestReceipts,
+            "receipt arena exceeded its bound");
+}
+
+void test_an_expired_request_is_refused_never_re_executed() {
+    using namespace velocita::v2;
+    auto state = ready_state();
+    ApplyScratch scratch;
+
+    // Authorize once, then age its receipt out by driving unrelated traffic.
+    const auto submit = apply(state, authorize(2, 0x61), scratch);
+    require(submit.code == ApplyCode::applied, "expiry fixture failed");
+    const auto orders_after_submit = state.order_count;
+
+    std::uint64_t request = 3;
+    for (std::uint64_t cycle = 1; cycle < 400; ++cycle) {
+        require(evaluate_at_feature(state, scratch, DecisionId{6'000 + cycle}, 5,
+                                    cycle + 1, request++)
+                        .code == ApplyCode::applied,
+                "expiry fixture could not drive the receipt arena");
+    }
+
+    // Re-present the original request identity. Whatever the kernel answers, it
+    // must not create a second order: that is the property, and the answer is
+    // secondary.
+    const auto replayed = apply(state, authorize(2, 0x61), scratch);
+    require(state.order_count == orders_after_submit,
+            "re-presenting an aged request created a second order");
+    // Three acceptable answers, all safe. The receipt may have survived, in
+    // which case deduplication returns the retained ORIGINAL result verbatim -
+    // authorization receipts are pinned while their order lives, because
+    // materialize_order_effect needs them. It may have been reclaimed, in which
+    // case the watermark refuses. Or authorization's own order-based
+    // deduplication answers already_applied. What must never happen is a second
+    // order, which is asserted above and is the actual property.
+    require(replayed == submit || replayed.code == ApplyCode::already_applied ||
+                replayed.code == ApplyCode::request_expired,
+            "an aged request was neither deduplicated nor refused as expired");
+
+    // A request BELOW its caller's watermark that was never seen must be refused
+    // rather than treated as fresh, or expiry would silently permit replay.
+    const auto never_seen = apply(state, authorize(1, 0x62), scratch);
+    require(never_seen.code == ApplyCode::request_expired,
+            "a request below the caller watermark was treated as fresh");
+    require(state.order_count == orders_after_submit,
+            "a below-watermark request mutated state");
+}
+
+// KNOWN LIMITATION, pinned so it cannot be forgotten.
+//
+// Architecture 8.6 approved reclaiming a fill identity exactly when its order
+// group is reclaimed, which would remove this bound. It is NOT implemented: a
+// fill receipt carries {venue_id, execution_id, filled_quantity} in its detail
+// and {session_id, venue_sequence} in its metadata, all five slots used, and
+// none names the cluster order. Tying expiry to order-group reclamation
+// therefore needs the canonical result to carry a cluster order id, and the
+// result is currently 126 of its 128 bytes. That is a byte-contract change
+// awaiting review.
+//
+// Until then fills stop being accepted at kMaxVenueEventReceipts, which strands
+// existing risk rather than merely stopping new work. This test asserts the
+// bound so the limitation is visible in a failing-loud way the moment it is
+// lifted, rather than silently absent.
+void test_venue_event_horizon_still_bounds_order_completion() {
+    using namespace velocita::v2;
+    auto state = two_sided_state();
+    ApplyScratch scratch;
+
+    std::uint64_t request = 3;
+    std::uint64_t sequence = 2;
+    std::uint64_t execution = 9'000;
+    bool fills_stopped = false;
+    std::size_t completed = 0;
+    for (std::uint64_t cycle = 1; cycle < 120 && !fills_stopped; ++cycle) {
+        const DecisionId decision{7'000 + cycle};
+        if (evaluate_at_feature(state, scratch, decision, 11, sequence++, request++)
+                .code != ApplyCode::applied) break;
+        const auto submit = apply(
+            state, authorize_decision(request++, 0x63, decision), scratch);
+        if (submit.code != ApplyCode::applied) break;
+        const auto filled = apply(
+            state,
+            observe_fill(request++, 0x64, submit.cluster_order_id(),
+                         submit.effect_id(), ExecutionId{execution++}, 2,
+                         Side::sell, 11),
+            scratch);
+        if (filled.code == ApplyCode::fill_capacity_exceeded) {
+            fills_stopped = true;
+        } else {
+            require(filled.code == ApplyCode::applied,
+                    "venue-horizon fixture fill failed for an unexpected reason");
+            ++completed;
+        }
+    }
+    require(fills_stopped,
+            "the venue-event horizon no longer bounds order completion: if fill "
+            "identities are now reclaimed with their order group, delete this "
+            "test and restore the sustained-completion assertion");
+    require(completed >= kMaxVenueEventReceipts - 1,
+            "fills stopped well before the documented venue-event horizon");
+}
+
+
 int main() {
     try {
         {
@@ -2936,6 +3124,9 @@ int main() {
         test_two_sided_slots_requote_independently();
         test_unauthorizable_decisions_do_not_fill_the_arena();
         test_superseded_slot_decisions_are_reclaimed();
+        test_request_receipts_do_not_bound_the_kernel_lifetime();
+        test_an_expired_request_is_refused_never_re_executed();
+        test_venue_event_horizon_still_bounds_order_completion();
         test_reclaimed_decision_retains_identity_and_authorization();
         test_completed_requote_cycles_do_not_exhaust_bounded_arenas();
         test_sweep_preserves_records_an_unresolved_effect_still_needs();

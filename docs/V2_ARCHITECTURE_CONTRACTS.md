@@ -529,10 +529,34 @@ tell "expired" apart from "never seen".
 
 #### Request receipts: per-caller watermark
 
-Each caller has a retained cursor holding its highest observed `RequestSequence`.
+Each caller has a retained cursor holding the highest `RequestSequence` whose
+receipt has actually been RECLAIMED for that caller - deliberately not its
+highest observed sequence.
 Receipts may be forgotten freely. A request at or below its caller's watermark
 with no retained receipt returns the typed refusal `request_expired` and mutates
 nothing. A request above the watermark is fresh and executes normally.
+
+Refusing on a highest-observed watermark was implemented first and rejected: it
+refuses a low sequence the cluster never held, which enforces per-caller
+monotonicity as a side effect of expiry. That is a stricter and different
+contract, and it broke fixtures that had every right to number their requests
+freely. The kernel must refuse only what it actually forgot.
+
+A fourth arena needed the same treatment. Source-event receipts already have
+their watermark in `SourceCursor`, and admission independently refuses a
+regression, so a receipt at or below its cursor is no longer load-bearing: a
+redelivery is refused as a regression rather than re-admitted. They are reclaimed
+on the same fail-closed pattern.
+
+Receipts are pinned in two families. AUTHORIZATION receipts are the provenance
+`materialize_order_effect` uses to rebuild an effect's historical bytes, so
+dropping one while its effect lives would strand a pending external effect and
+break G-020; they become reclaimable once their order group is gone. FILL and
+VENUE-EVENT receipts are pinned unconditionally for now, because a redelivered
+PARTIAL fill would book twice and reservation arithmetic does not catch that -
+filled plus remaining stays within the original, so the double booking looks
+legitimate. Everything else, including every refusal, is reclaimable, and in a
+live maker those are the overwhelming majority.
 
 This needs no clock and no horizon constant. Rejected alternatives: a
 state-version horizon requires an N that cannot be justified until Phase 5
@@ -578,6 +602,17 @@ order is gone fails to resolve an order at all and returns
 `venue_observation_not_applicable` before touching economics, so the ABSENCE OF
 THE ORDER IS ITSELF THE DEDUPLICATION. No amount of redelivery can book against a
 record that no longer exists.
+
+NOT YET IMPLEMENTED, and pinned by a failing-loud test. A fill receipt carries
+`{venue_id, execution_id, filled_quantity}` in its detail and
+`{session_id, venue_sequence}` in its metadata - all five slots used, none naming
+the cluster order. Tying expiry to order-group reclamation therefore requires the
+canonical result to carry a cluster order id, and the result is currently 126 of
+its 128 bytes. That is a byte-contract change awaiting review, so the
+`kMaxVenueEventReceipts` bound still stops fills being accepted and still strands
+existing risk. `test_venue_event_horizon_still_bounds_order_completion` asserts
+the bound so the limitation is visible rather than silently absent, and instructs
+its own deletion once the bound is lifted.
 
 An earlier proposal to pin fill identities against expiry indefinitely was
 withdrawn: it preserved the same safety at strictly greater cost and left the

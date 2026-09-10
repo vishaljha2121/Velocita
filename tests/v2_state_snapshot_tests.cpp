@@ -368,7 +368,7 @@ void test_empty_snapshot_has_canonical_layout() {
 
     const std::array expected_prefix{
         std::byte{'V'}, std::byte{'2'}, std::byte{'S'}, std::byte{'T'},
-        std::byte{61}, std::byte{0}, std::byte{0}, std::byte{0},
+        std::byte{63}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{5}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
@@ -382,7 +382,7 @@ void test_empty_snapshot_has_canonical_layout() {
             "returned digest differs from framed digest");
     const auto hash = to_hex(encoded.state_digest);
     require(hash ==
-                "bd5216cdeb5887282ec5061a18f2b1c43abedbab070971a3c8ecb5a1621006d0",
+                "a7c2a852eb7358b7472c9fdd78896be40898999396f8bfacd77eb94f2492816a",
             "empty state golden digest changed: " + hash);
     // V5 empty-payload size guard.
     //
@@ -398,7 +398,7 @@ void test_empty_snapshot_has_canonical_layout() {
                 kStateSnapshotPayloadOffset + kStateSnapshotEmptyPayloadBytes +
                     kDigestBytes,
             "empty snapshot length does not match the declared empty payload");
-    require(kStateSnapshotEmptyPayloadBytes == 61,
+    require(kStateSnapshotEmptyPayloadBytes == 63,
             "V5 empty snapshot header grew without review");
 }
 
@@ -704,6 +704,14 @@ void test_declared_maximum_is_exact_and_encodable() {
             effect_id, order_id, decision_id,
             digest(static_cast<std::uint8_t>(index + 0x40)), 1,
             OutboxState::pending};
+    }
+
+    // Caller cursors are part of the maximum too: the declared bound is only
+    // honest if the largest VALID state fills every arena, including this one.
+    state.caller_cursor_count = kMaxCallerCursors;
+    for (std::size_t index = 0; index < kMaxCallerCursors; ++index) {
+        state.caller_cursors[index] = {CallerId{500 + index},
+                                       RequestSequence{index + 1}};
     }
 
     std::array<std::byte, kMaxStateSnapshotBytes> storage{};

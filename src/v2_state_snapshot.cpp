@@ -177,6 +177,7 @@ private:
         case ApplyCode::risk_account_capacity_exceeded:
         case ApplyCode::risk_version_exhausted:
         case ApplyCode::risk_reconfiguration_blocked:
+        case ApplyCode::request_expired:
             return true;
     }
     return false;
@@ -699,6 +700,7 @@ private:
     size += state.reservation_count * kStateSnapshotRiskReservationBytes;
     size += state.order_count * kStateSnapshotClusterOrderBytes;
     size += state.outbox_effect_count * kStateSnapshotOutboxEffectBytes;
+    size += state.caller_cursor_count * kStateSnapshotCallerCursorBytes;
     return size;
 }
 
@@ -905,6 +907,11 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
     // state_version, so the existing header layout stays byte-stable.
     writer.integral(state.reclaimed_group_count);
     writer.integral(state.settled_incomplete_effect_count);
+    writer.integral(static_cast<std::uint16_t>(state.caller_cursor_count));
+    for (std::size_t index = 0; index < state.caller_cursor_count; ++index) {
+        writer.integral(state.caller_cursors[index].caller_id.value());
+        writer.integral(state.caller_cursors[index].expired_below.value());
+    }
 
     writer.integral(static_cast<std::uint16_t>(state.policy_count));
     for (std::size_t index = 0; index < state.policy_count; ++index) {
@@ -1299,6 +1306,14 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
         ExecutorGeneration{reader.integral<std::uint64_t>()};
     state.reclaimed_group_count = reader.integral<std::uint64_t>();
     state.settled_incomplete_effect_count = reader.integral<std::uint64_t>();
+    state.caller_cursor_count = reader.integral<std::uint16_t>();
+    if (state.caller_cursor_count > state.caller_cursors.size()) return false;
+    for (std::size_t index = 0; index < state.caller_cursor_count; ++index) {
+        state.caller_cursors[index].caller_id =
+            CallerId{reader.integral<std::uint64_t>()};
+        state.caller_cursors[index].expired_below =
+            RequestSequence{reader.integral<std::uint64_t>()};
+    }
 
     state.policy_count = reader.integral<std::uint16_t>();
     if (state.policy_count > state.policies.size()) return false;

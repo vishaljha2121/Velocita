@@ -176,6 +176,7 @@ private:
         case ApplyCode::risk_account_capacity_exceeded:
         case ApplyCode::risk_version_exhausted:
         case ApplyCode::risk_reconfiguration_blocked:
+        case ApplyCode::request_expired:
             return true;
     }
     return false;

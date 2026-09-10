@@ -431,7 +431,56 @@ numbers derivable.
 The 64-entry venue-event horizon is a reviewed capacity, not a derived one. No
 derivation is claimed, and none should be implied in later evidence.
 
-Remaining Phase 4 work: implement the approved finite horizons, broader accounting and reconciliation evidence, metrics and
+### Finite identity horizons implemented — 2026-09-09 (Claude)
+
+Implements §8.6. Release 25/25 and the FULL host Debug ASan+UBSan suite 25/25,
+not the focused subset. `TradingState` 81,168 bytes (752 headroom), maximum
+canonical snapshot 65,259 bytes (277 headroom).
+
+`CallerCursor` records the highest `RequestSequence` whose receipt was actually
+RECLAIMED for that caller. The first implementation used highest-observed and was
+rejected during the work: it refuses a low sequence the cluster never held, which
+enforces per-caller monotonicity as a side effect of expiry - a stricter and
+different contract than approved, and it broke fixtures with every right to
+number their requests freely. The kernel must refuse only what it actually forgot.
+
+Source-event receipts turned out to be a FOURTH arena with the same defect, found
+only because the lifetime test drove past 128. `SourceCursor` already holds the
+watermark and admission independently refuses a regression, so they are reclaimed
+on the same pattern with no new state.
+
+Receipt pinning: authorization receipts while their order group lives, since
+`materialize_order_effect` needs them; fill and venue-event receipts
+unconditionally, since a redelivered PARTIAL fill would book twice and
+reservation arithmetic does not catch it. Everything else, including every
+refusal, is reclaimable.
+
+DECISION 4 IS NOT IMPLEMENTED and is pinned by a failing-loud test. A fill
+receipt has all five of its slots used and none names the cluster order, so
+tying its expiry to order-group reclamation needs the canonical result to carry a
+cluster order id - and the result is at 126 of 128 bytes. That is a byte-contract
+change awaiting review. Until then fills still stop at `kMaxVenueEventReceipts`
+and still strand existing risk.
+`test_venue_event_horizon_still_bounds_order_completion` asserts the bound and
+instructs its own deletion once lifted.
+
+Suite-wide impact worth expecting again. Five suites needed fixture repair, in
+two recurring shapes: fixtures that filled an arena with records that are now
+reclaimable, which needed PINNED fillers to keep testing the capacity path rather
+than the sweep; and fixtures that reused request identities in permuted or
+descending order, which the watermark correctly refuses. Both are premise changes
+rather than defects, and this is now the fifth and sixth time reclamation work
+has invalidated an arena-filling fixture. A shared `unsweepable_full_arena()`
+helper is overdue.
+
+Two self-inflicted test bugs are worth recording because both read exactly like
+kernel defects. A diagnostic message that re-ran the command under test corrupted
+the run it was measuring, because `require` builds its message argument EAGERLY.
+And `digest(static_cast<std::uint8_t>(decision_id))` makes every 256th DecisionId
+hash to the all-zero digest, which `apply` correctly refuses as a missing digest -
+it surfaced 120 cycles into a loop and looked like an arena bound.
+
+Remaining Phase 4 work: broader accounting and reconciliation evidence, metrics and
 age/latency evidence, an optional Phase 4 mirror model to complement this corpus,
 the complete sanitizer gate, pinned ARM64 and physical Pi gates, and a Phase 4
 acceptance evidence document.
