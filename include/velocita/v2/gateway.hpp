@@ -167,6 +167,13 @@ struct GatewayTimeouts {
     // and unsettled, so it is visible in metrics and blocks its slot, which is
     // the fail-closed outcome rather than a silent drop.
     std::uint32_t max_send_attempts{3};
+    // Ticks between reconciliation queries for one order. A query is cheap but
+    // not free, and a venue that is refusing to answer will keep refusing.
+    Tick query_interval{6};
+    // Bound on reconciliation queries for one order, for the same reason
+    // `max_send_attempts` exists. On exhaustion the gateway stops asking and the
+    // order stays visibly unresolved rather than being resolved by guess.
+    std::uint32_t max_query_attempts{4};
 };
 
 // One tick's worth of work, bounded by the outbox arena so a plan can never
@@ -214,10 +221,167 @@ struct DeliveryPlan {
 [[nodiscard]] const DeliveryAttempt* find_attempt(
     const GatewayDeliveryState& delivery, EffectId effect_id) noexcept;
 
+// --- reconciliation planning -----------------------------------------------
+//
+// Architecture 10 lists five typed outcomes as though they were one enum. Two of
+// them are not facts about the ORDER at all - `Incomplete` and `Unavailable`
+// describe the QUERY. The reducer cannot observe either, because it performs no
+// I/O and never sees a query, so neither may enter consensus.
+//
+// That splits reconciliation cleanly in two, and the split is enforced by the
+// type system rather than by a comment:
+//
+//   THE GATEWAY decides whether it holds a trustworthy answer. That is the whole
+//   of its authority here, and `QueryDisposition` has no way to spell "adopt".
+//   A gateway that could classify economics would be originating them, which
+//   ADR 0001 forbids it to do.
+//
+//   THE REDUCER decides what a trustworthy answer MEANS - match, adopt, or
+//   conflict - from evidence submitted as raw venue observation. This is not a
+//   new pattern: `cancel_reconciled` already works exactly this way, carrying
+//   final cumulative quantity for apply to adjudicate.
+
+// A venue's answer about one order, reduced to what the gateway may act on. The
+// simulator's own `QueryResult` is deliberately not this type: keeping a test
+// double out of the production header is the same seam discipline that keeps
+// `VenueCapabilityView` free of a venue client.
+enum class VenueQueryStatus : std::uint8_t {
+    // The venue answered about this order.
+    known = 1,
+    // The venue answered that it has NO such order. This is the single most
+    // valuable answer reconciliation can get: nothing was ever placed, so a
+    // submission_unknown can be resolved and its reservation released. Keeping it
+    // distinct from `unavailable` is the difference between a fact and a silence.
+    not_found,
+    // The venue would not answer. Nothing may be concluded.
+    unavailable,
+};
+
+struct VenueQueryView {
+    VenueQueryStatus status{VenueQueryStatus::unavailable};
+    VenueSessionId venue_session_id{};
+    VenueOrderId venue_order_id{};
+    QuantityLots filled_quantity{};
+    QuantityLots remaining_quantity{};
+    bool cancelled{};
+    // Whether the venue says this answer covers the whole window it was asked
+    // about. Architecture 10 asks for "query window, cursor, session, and venue
+    // watermark"; in Phase 5 those collapse to this one honest boolean, and the
+    // rest is deferred rather than faked.
+    bool authoritative{};
+
+    constexpr auto operator<=>(const VenueQueryView&) const noexcept = default;
+};
+
+// What the gateway may do with an answer. Note what is absent: there is no
+// `adopt` and no `conflict`, because those are economic judgements the reducer
+// owns.
+enum class QueryDisposition : std::uint8_t {
+    // A trustworthy answer. Hand the raw evidence to the cluster and let apply
+    // classify it.
+    submit = 1,
+    // The venue answered, but not for the whole window. Ask again.
+    incomplete,
+    // No trustworthy answer. Conclude nothing and ask again.
+    unavailable,
+    // Attempts are spent. The gateway stops asking; the order stays unresolved
+    // and its slot stays blocked, which is the G-074a operator situation rather
+    // than something to heal by guessing.
+    exhausted,
+};
+
+// Why an order needs reconciling. Both are cases where the cluster holds risk it
+// cannot resolve from evidence it has already received.
+enum class ReconciliationNeed : std::uint8_t {
+    none = 0,
+    // A submit whose outcome the venue never reported.
+    submission_unknown,
+    // A cancel the venue acknowledged but never finally reconciled.
+    cancel_unconfirmed,
+    // Delivery attempts are spent (9.2.2) and the effect never reached the
+    // venue. The cluster holds a reservation for an order that may not exist
+    // anywhere, and only a query can say which. Without this the retry bound
+    // would trade an unbounded retry loop for a permanently wedged slot, which
+    // is a worse deal than it first looks.
+    delivery_exhausted,
+};
+
+struct ReconciliationTarget {
+    ClusterOrderId cluster_order_id{};
+    EffectId effect_id{};
+    ReconciliationNeed need{ReconciliationNeed::none};
+
+    constexpr auto operator<=>(const ReconciliationTarget&) const noexcept = default;
+};
+
+// Gateway-local, like `GatewayDeliveryState` and for the same reason: a restart
+// discards it and rebuilds by querying again.
+struct ReconciliationAttempt {
+    ClusterOrderId cluster_order_id{};
+    Tick last_query_at{};
+    std::uint32_t attempts{};
+    bool awaiting_answer{};
+
+    constexpr auto operator<=>(const ReconciliationAttempt&) const noexcept = default;
+};
+
+inline constexpr std::size_t kMaxReconciliationAttempts = kMaxClusterOrders;
+
+struct GatewayReconciliationState {
+    std::size_t attempt_count{};
+    std::array<ReconciliationAttempt, kMaxReconciliationAttempts> attempts{};
+
+    constexpr auto operator<=>(const GatewayReconciliationState&) const noexcept =
+        default;
+};
+
+struct ReconciliationPlan {
+    std::size_t query_count{};
+    std::array<ReconciliationTarget, kMaxReconciliationAttempts> to_query{};
+
+    constexpr auto operator<=>(const ReconciliationPlan&) const noexcept = default;
+};
+
+// Pure and bounded. Reads no clock: `now` is supplied.
+//
+// Reconciliation is deliberately permitted while the cluster refuses new risk.
+// It originates no exposure - it only resolves exposure that already exists -
+// and a halted cluster with a blocked slot is exactly when resolving it matters
+// most. Only `executor_generation` fences it, because a superseded gateway must
+// not be writing venue evidence into consensus at all.
+// `delivery` is read because one of the three needs is gateway-local: whether an
+// effect's send attempts are spent is not a fact the cluster holds, and cannot
+// be, since 9.1.2 keeps attempt bookkeeping out of consensus.
+[[nodiscard]] ReconciliationPlan plan_reconciliation(
+    const TradingState& state,
+    const GatewayReconciliationState& reconciliation,
+    const GatewayDeliveryState& delivery,
+    const GatewayControlView& control,
+    const VenueCapabilityView& venue,
+    const GatewayTimeouts& timeouts,
+    Tick now) noexcept;
+
+// Pure classification of one answer. Never economic: see `QueryDisposition`.
+[[nodiscard]] QueryDisposition classify_query(
+    const VenueQueryView& answer,
+    const ReconciliationAttempt* attempt,
+    const GatewayTimeouts& timeouts) noexcept;
+
+[[nodiscard]] bool record_query(GatewayReconciliationState& reconciliation,
+                                ClusterOrderId cluster_order_id, Tick now) noexcept;
+[[nodiscard]] bool record_answer(GatewayReconciliationState& reconciliation,
+                                 ClusterOrderId cluster_order_id) noexcept;
+[[nodiscard]] const ReconciliationAttempt* find_reconciliation(
+    const GatewayReconciliationState& reconciliation,
+    ClusterOrderId cluster_order_id) noexcept;
+
 static_assert(std::is_trivially_copyable_v<GatewayDeliveryState>);
 static_assert(std::is_trivially_copyable_v<DeliveryPlan>);
 static_assert(std::is_trivially_copyable_v<VenueCapabilityView>);
 static_assert(std::is_trivially_copyable_v<GatewayControlView>);
 static_assert(std::is_trivially_copyable_v<SendQuotaView>);
+static_assert(std::is_trivially_copyable_v<GatewayReconciliationState>);
+static_assert(std::is_trivially_copyable_v<ReconciliationPlan>);
+static_assert(std::is_trivially_copyable_v<VenueQueryView>);
 
 }  // namespace velocita::v2

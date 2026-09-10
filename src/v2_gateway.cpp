@@ -250,3 +250,159 @@ DeliveryPlan plan_delivery(const TradingState& state,
 }
 
 }  // namespace velocita::v2
+
+// --- reconciliation --------------------------------------------------------
+
+namespace velocita::v2 {
+namespace {
+
+// Which orders hold exposure the cluster cannot resolve from evidence it already
+// has. This is deliberately narrower than "not terminal": an order that is merely
+// live and unfilled is waiting for the market, not for reconciliation, and
+// querying it would be noise that hides the cases that matter.
+[[nodiscard]] ReconciliationNeed need_of(const ClusterOrder& order,
+                                        const GatewayDeliveryState& delivery,
+                                        const GatewayTimeouts& timeouts) noexcept {
+    switch (order.state) {
+        case ClusterOrderState::submission_unknown:
+            return ReconciliationNeed::submission_unknown;
+        case ClusterOrderState::reconciling:
+            return ReconciliationNeed::cancel_unconfirmed;
+        case ClusterOrderState::dispatch_authorized: {
+            // Authorized but never delivered. This is a target only once the
+            // send attempts are SPENT: an order still waiting its turn to be
+            // sent must not be queried, or the query races the send and the
+            // venue is asked about an order the gateway is about to place.
+            const auto* attempt = find_attempt(delivery, order.effect_id);
+            return attempt != nullptr &&
+                           attempt->attempts >= timeouts.max_send_attempts
+                       ? ReconciliationNeed::delivery_exhausted
+                       : ReconciliationNeed::none;
+        }
+        default:
+            // A `live` order with no fill is deliberately NOT a target. Without a
+            // clock there is no way to tell "its fill was lost" from "it has not
+            // traded yet", so querying every resting order would be continuous
+            // noise. A resting order is reconciled when it is cancelled, or at
+            // session recovery under G-032, which is a different trigger.
+            return ReconciliationNeed::none;
+    }
+}
+
+}  // namespace
+
+const ReconciliationAttempt* find_reconciliation(
+    const GatewayReconciliationState& reconciliation,
+    const ClusterOrderId cluster_order_id) noexcept {
+    for (std::size_t index = 0; index < reconciliation.attempt_count; ++index) {
+        if (reconciliation.attempts[index].cluster_order_id == cluster_order_id) {
+            return &reconciliation.attempts[index];
+        }
+    }
+    return nullptr;
+}
+
+bool record_query(GatewayReconciliationState& reconciliation,
+                  const ClusterOrderId cluster_order_id, const Tick now) noexcept {
+    for (std::size_t index = 0; index < reconciliation.attempt_count; ++index) {
+        auto& attempt = reconciliation.attempts[index];
+        if (attempt.cluster_order_id != cluster_order_id) continue;
+        attempt.last_query_at = now;
+        attempt.awaiting_answer = true;
+        ++attempt.attempts;
+        return true;
+    }
+    if (reconciliation.attempt_count == reconciliation.attempts.size()) return false;
+    reconciliation.attempts[reconciliation.attempt_count++] = {cluster_order_id, now,
+                                                               1, true};
+    return true;
+}
+
+bool record_answer(GatewayReconciliationState& reconciliation,
+                   const ClusterOrderId cluster_order_id) noexcept {
+    for (std::size_t index = 0; index < reconciliation.attempt_count; ++index) {
+        auto& attempt = reconciliation.attempts[index];
+        if (attempt.cluster_order_id != cluster_order_id) continue;
+        attempt.awaiting_answer = false;
+        return true;
+    }
+    return false;
+}
+
+QueryDisposition classify_query(const VenueQueryView& answer,
+                                const ReconciliationAttempt* const attempt,
+                                const GatewayTimeouts& timeouts) noexcept {
+    // Exhaustion is checked first and applies even to an answer that arrived,
+    // because the alternative is to keep querying forever whenever the venue
+    // keeps giving partial answers.
+    const bool exhausted =
+        attempt != nullptr && attempt->attempts >= timeouts.max_query_attempts;
+
+    switch (answer.status) {
+        case VenueQueryStatus::unavailable:
+            // Silence. Nothing may be concluded from it - in particular NOT that
+            // the order does not exist, which is the inference that turns a
+            // network problem into a duplicate order.
+            return exhausted ? QueryDisposition::exhausted
+                             : QueryDisposition::unavailable;
+        case VenueQueryStatus::not_found:
+        case VenueQueryStatus::known:
+            // An answer that does not cover its window is a partial view, and a
+            // partial view of a fill history is indistinguishable from a short
+            // one. Submitting it would let the cluster book "the venue says two
+            // filled" when the venue only meant "two so far, in this page".
+            if (!answer.authoritative) {
+                return exhausted ? QueryDisposition::exhausted
+                                 : QueryDisposition::incomplete;
+            }
+            return QueryDisposition::submit;
+    }
+    return QueryDisposition::unavailable;
+}
+
+ReconciliationPlan plan_reconciliation(const TradingState& state,
+                                       const GatewayReconciliationState& reconciliation,
+                                       const GatewayDeliveryState& delivery,
+                                       const GatewayControlView& control,
+                                       const VenueCapabilityView& venue,
+                                       const GatewayTimeouts& timeouts,
+                                       const Tick now) noexcept {
+    ReconciliationPlan plan;
+
+    // A superseded gateway must not write venue evidence into consensus, so
+    // generation staleness stops reconciliation outright. Kill epoch and strategy
+    // mode deliberately do NOT: reconciliation originates no risk, and a halted
+    // cluster holding a blocked slot is precisely when resolving it matters most.
+    if (control.executor_generation != state.executor_generation) return plan;
+    // No `supports_query` capability flag, deliberately. A venue that cannot be
+    // queried answers `unavailable`, which `classify_query` already handles
+    // correctly and which ends in `exhausted` rather than in a guess. A flag here
+    // would duplicate a fact the transport reports anyway, and promoting it into
+    // the canonical `VenueCapabilities` artifact would be a byte-contract change
+    // bought for nothing.
+    (void)venue;
+
+    for (std::size_t index = 0; index < state.order_count; ++index) {
+        const auto& order = state.orders[index];
+        const auto need = need_of(order, delivery, timeouts);
+        if (need == ReconciliationNeed::none) continue;
+
+        const auto* attempt = find_reconciliation(reconciliation,
+                                                  order.cluster_order_id);
+        if (attempt != nullptr) {
+            // One outstanding query at a time. A second query for the same order
+            // could answer out of order and let a stale view overwrite a fresh
+            // one, which is a conflict the cluster would have to adjudicate for
+            // no reason.
+            if (attempt->awaiting_answer) continue;
+            if (attempt->attempts >= timeouts.max_query_attempts) continue;
+            if (now < attempt->last_query_at + timeouts.query_interval) continue;
+        }
+        if (plan.query_count == plan.to_query.size()) break;
+        plan.to_query[plan.query_count++] = {order.cluster_order_id, order.effect_id,
+                                             need};
+    }
+    return plan;
+}
+
+}  // namespace velocita::v2

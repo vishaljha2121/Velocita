@@ -83,6 +83,45 @@ identity check on the case that does not matter. Twelve of thirty-two seeds now
 exercise duplicate-fill suppression. Release 28/28 and full host Debug ASan+UBSan
 28/28.
 
+Fourth increment reviews section 10 - the reconciliation contract, in the same
+never-approved block as section 9 - and builds the gateway-side half. Six
+findings, recorded in architecture section 10.1.
+
+Half the compare list does not exist: balances, settlement state, and currency
+appear nowhere in state or in any contract, and are deferred rather than invented
+so a comparison can be written against them. The gateway may not classify and the
+reducer may not query, so the two are split along the line that already exists -
+the gateway decides only whether it holds a trustworthy answer, the reducer
+decides what a trustworthy answer means, and `QueryDisposition` has no way to
+spell "adopt" so the split is enforced by the type system. `Incomplete` and
+`Unavailable` are facts about the QUERY, not the order, so they are gateway-local
+and never enter consensus. "Policy-approved Adopt" is derived from the existing
+reservation fit rather than given new machinery, since two statements of the same
+economics eventually disagree. Section 10 would let one bad order halt the whole
+cluster, which contradicts Phase 4's accepted per-order conflict; the accepted
+artifact wins and the contradiction is flagged.
+
+Held for approval: a query answer has no venue event identity, and giving it one
+is a material byte-contract choice. The recommendation is one new
+`VenueObservationKind` carrying final cumulative quantity - zero new bytes, and
+safety resting on cumulative-by-value idempotency rather than on identity, which
+is the pattern `cancel_reconciled` already established. No code encodes it, so the
+cluster-side half is not built.
+
+Built and tested: `plan_reconciliation`, `classify_query`, and the query
+bookkeeping. Three reconciliation needs, one of which - `delivery_exhausted` -
+closes a hole the third increment's own retry bound opened, where bounding retries
+would have traded an unbounded loop for a permanently wedged slot. A `live` order
+with no fill is deliberately not a target: without a clock, "its fill was lost" and
+"it has not traded yet" are the same observation. Reconciliation is fenced by
+executor generation but not by a halt, because it originates no risk and a halted
+cluster with a blocked slot is when resolving it matters most.
+
+Sixteen of thirty-two matrix seeds end with a stranded slot, every one in
+`submission_unknown`, and the planner engages on all sixteen. The matrix asserts
+that bridge, so an order stranded in a shape the planner does not recognise fails
+the build. Release 28/28 and full host Debug ASan+UBSan 28/28.
+
 Status: Phases 1-4 are accepted on the required host, ARM64 Ubuntu, and physical
 Raspberry Pi 5 gates. Deterministic policy evaluation, risk reservation, cluster
 orders, accepted venue-evidence accounting, and the transactional outbox are

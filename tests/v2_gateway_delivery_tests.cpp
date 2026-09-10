@@ -19,6 +19,7 @@
 
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <map>
 #include <set>
@@ -358,6 +359,241 @@ void test_the_planner_only_schedules_what_the_guard_permits() {
     }
 }
 
+// --- reconciliation planner tests ------------------------------------------
+
+// Drive the fixture's one order into submission_unknown the way the loop does:
+// a send whose deadline passed, reported to the cluster as unknown.
+Fixture stranded_submit() {
+    auto fixture = one_authorized_submit();
+    ApplyScratch scratch;
+    ClusterOrderId order{};
+    for (std::size_t index = 0; index < fixture.state.outbox_effect_count; ++index) {
+        if (fixture.state.outbox_effects[index].effect_id == fixture.effect_id) {
+            order = fixture.state.outbox_effects[index].cluster_order_id;
+        }
+    }
+    require(order.value() != 0, "the stranded fixture has no cluster order");
+    VenueObservation unknown;
+    unknown.kind = VenueObservationKind::effect_unknown;
+    unknown.venue_id = VenueId{9};
+    unknown.venue_session_id = VenueSessionId{1};
+    unknown.venue_sequence = VenueSequence{5'000};
+    unknown.cluster_order_id = order;
+    unknown.effect_id = fixture.effect_id;
+    unknown.evidence_digest = digest(0x7E);
+    const Command report{{CallerId{1}, RequestSequence{3},
+                          observation_fingerprint(unknown)},
+                         ObserveOrderEvent{unknown}};
+    require(apply(fixture.state, report, scratch).code == ApplyCode::applied,
+            "the stranded fixture could not report an unknown outcome");
+    return fixture;
+}
+
+ClusterOrderId only_order(const TradingState& state) {
+    require(state.order_count == 1, "fixture does not hold exactly one order");
+    return state.orders[0].cluster_order_id;
+}
+
+// No send has been attempted in the reconciliation unit tests, so the delivery
+// arena is empty. `delivery_exhausted` gets its own test below.
+const GatewayDeliveryState no_attempts;
+
+constexpr VenueQueryView authoritative_answer(const VenueQueryStatus status) {
+    VenueQueryView answer;
+    answer.status = status;
+    answer.venue_session_id = VenueSessionId{1};
+    answer.authoritative = true;
+    return answer;
+}
+
+void test_reconciliation_targets_only_unresolvable_exposure() {
+    // A live, unfilled order is waiting for the market, not for reconciliation.
+    // Querying it would be noise that hides the cases that matter.
+    const auto live = one_authorized_submit();
+    const GatewayReconciliationState fresh;
+    require(plan_reconciliation(live.state, fresh, no_attempts,
+                                control_of(live.state),
+                                capable_venue(), GatewayTimeouts{}, 0)
+                    .query_count == 0,
+            "reconciliation was planned for an order that needs none");
+
+    const auto stranded = stranded_submit();
+    const auto plan = plan_reconciliation(stranded.state, fresh, no_attempts,
+                                          control_of(stranded.state), capable_venue(),
+                                          GatewayTimeouts{}, 0);
+    require(plan.query_count == 1, "a stranded order was not scheduled for query");
+    require(plan.to_query[0].cluster_order_id == only_order(stranded.state) &&
+                plan.to_query[0].effect_id == stranded.effect_id &&
+                plan.to_query[0].need == ReconciliationNeed::submission_unknown,
+            "the reconciliation target does not name the stranded order");
+}
+
+void test_one_outstanding_query_at_a_time() {
+    // Two queries in flight can answer out of order, letting a stale view
+    // overwrite a fresh one - a conflict the cluster would adjudicate for no
+    // reason at all.
+    const auto stranded = stranded_submit();
+    GatewayReconciliationState reconciliation;
+    require(record_query(reconciliation, only_order(stranded.state), 0),
+            "record_query failed");
+    require(plan_reconciliation(stranded.state, reconciliation, no_attempts,
+                                control_of(stranded.state), capable_venue(),
+                                GatewayTimeouts{}, 50)
+                    .query_count == 0,
+            "a second query was planned while the first was outstanding");
+}
+
+void test_the_query_interval_is_respected() {
+    const auto stranded = stranded_submit();
+    const GatewayTimeouts timeouts;
+    GatewayReconciliationState reconciliation;
+    require(record_query(reconciliation, only_order(stranded.state), 0),
+            "record_query failed");
+    require(record_answer(reconciliation, only_order(stranded.state)),
+            "record_answer failed");
+    require(plan_reconciliation(stranded.state, reconciliation, no_attempts,
+                                control_of(stranded.state), capable_venue(), timeouts,
+                                timeouts.query_interval - 1)
+                    .query_count == 0,
+            "a query was planned before its interval elapsed");
+    require(plan_reconciliation(stranded.state, reconciliation, no_attempts,
+                                control_of(stranded.state), capable_venue(), timeouts,
+                                timeouts.query_interval)
+                    .query_count == 1,
+            "a query was not planned once its interval elapsed");
+}
+
+void test_reconciliation_queries_are_bounded() {
+    const auto stranded = stranded_submit();
+    const GatewayTimeouts timeouts;
+    GatewayReconciliationState reconciliation;
+    const auto order = only_order(stranded.state);
+    Tick now = 0;
+    for (std::uint32_t round = 0; round < timeouts.max_query_attempts; ++round) {
+        require(plan_reconciliation(stranded.state, reconciliation, no_attempts,
+                                    control_of(stranded.state), capable_venue(),
+                                    timeouts, now)
+                        .query_count == 1,
+                "a query below the attempt bound was not planned");
+        require(record_query(reconciliation, order, now), "record_query failed");
+        require(record_answer(reconciliation, order), "record_answer failed");
+        now += timeouts.query_interval;
+    }
+    require(plan_reconciliation(stranded.state, reconciliation, no_attempts,
+                                control_of(stranded.state), capable_venue(), timeouts,
+                                now)
+                    .query_count == 0,
+            "the query bound did not stop reconciliation");
+    // Exhaustion means the gateway stops asking, NOT that anything was concluded.
+    // The order stays unresolved and visible, which is the G-074a situation.
+    require(collect_metrics(stranded.state).unresolved_orders == 1,
+            "an exhausted reconciliation stopped reporting its unresolved order");
+}
+
+void test_reconciliation_is_fenced_by_generation_but_not_by_halt() {
+    const auto stranded = stranded_submit();
+    const GatewayReconciliationState fresh;
+
+    // A superseded gateway must not write venue evidence into consensus at all.
+    GatewayControlView stale = control_of(stranded.state);
+    stale.executor_generation =
+        ExecutorGeneration{stranded.state.executor_generation.value() - 1};
+    require(plan_reconciliation(stranded.state, fresh, no_attempts, stale,
+                                capable_venue(), GatewayTimeouts{}, 0)
+                    .query_count == 0,
+            "a superseded gateway planned to write venue evidence");
+
+    // A halt stops NEW risk. Reconciliation originates none - it only resolves
+    // exposure that already exists - and a halted cluster holding a blocked slot
+    // is exactly when resolving it matters most.
+    auto halted = stranded.state;
+    halted.strategy_mode = StrategyMode::halted;
+    require(plan_reconciliation(halted, fresh, no_attempts, control_of(halted),
+                                capable_venue(), GatewayTimeouts{}, 0)
+                    .query_count == 1,
+            "a halted cluster refused to resolve exposure it already holds");
+}
+
+void test_only_a_trustworthy_answer_may_be_submitted() {
+    const GatewayTimeouts timeouts;
+
+    // Silence proves nothing. In particular it does NOT prove the order is
+    // absent, which is the inference that turns a network problem into a
+    // duplicate order.
+    require(classify_query(authoritative_answer(VenueQueryStatus::unavailable),
+                           nullptr, timeouts) == QueryDisposition::unavailable,
+            "an unavailable query was treated as an answer");
+
+    // A partial view of a fill history is indistinguishable from a short one.
+    auto partial = authoritative_answer(VenueQueryStatus::known);
+    partial.authoritative = false;
+    require(classify_query(partial, nullptr, timeouts) == QueryDisposition::incomplete,
+            "a non-authoritative answer was treated as complete");
+
+    require(classify_query(authoritative_answer(VenueQueryStatus::known), nullptr,
+                           timeouts) == QueryDisposition::submit,
+            "a complete answer was not submitted");
+
+    // The most valuable answer reconciliation can get: nothing was ever placed,
+    // so the reservation can be released rather than held forever.
+    require(classify_query(authoritative_answer(VenueQueryStatus::not_found), nullptr,
+                           timeouts) == QueryDisposition::submit,
+            "a definitive not-found was not submitted");
+
+    ReconciliationAttempt spent;
+    spent.attempts = timeouts.max_query_attempts;
+    require(classify_query(authoritative_answer(VenueQueryStatus::unavailable), &spent,
+                           timeouts) == QueryDisposition::exhausted,
+            "a spent reconciliation kept reporting as merely unavailable");
+}
+
+void test_a_delivery_exhausted_order_is_reconciled_not_abandoned() {
+    // The retry bound of 9.2.2 stops an unbounded loop, but on its own it would
+    // trade that for a permanently wedged slot. A query is what breaks the tie:
+    // the venue can say it never had the order, and the reservation is released.
+    const auto fixture = one_authorized_submit();
+    const GatewayTimeouts timeouts;
+    const GatewayReconciliationState fresh;
+
+    // Not yet spent: an order still waiting its turn must not be queried, or the
+    // query races the send.
+    GatewayDeliveryState delivery;
+    require(record_send(delivery, fixture.effect_id, 0), "record_send failed");
+    require(record_unsent(delivery, fixture.effect_id), "record_unsent failed");
+    require(plan_reconciliation(fixture.state, fresh, delivery,
+                                control_of(fixture.state), capable_venue(), timeouts,
+                                100)
+                    .query_count == 0,
+            "an order still eligible to be sent was queried");
+
+    while (find_attempt(delivery, fixture.effect_id)->attempts <
+           timeouts.max_send_attempts) {
+        require(record_send(delivery, fixture.effect_id, 1), "record_send failed");
+        require(record_unsent(delivery, fixture.effect_id), "record_unsent failed");
+    }
+    const auto plan = plan_reconciliation(fixture.state, fresh, delivery,
+                                          control_of(fixture.state), capable_venue(),
+                                          timeouts, 100);
+    require(plan.query_count == 1 &&
+                plan.to_query[0].need == ReconciliationNeed::delivery_exhausted,
+            "a delivery-exhausted order was abandoned rather than reconciled");
+}
+
+void test_the_reconciliation_planner_reads_no_clock_and_mutates_nothing() {
+    const auto stranded = stranded_submit();
+    auto probe = stranded.state;
+    const GatewayReconciliationState fresh;
+    const auto first = plan_reconciliation(probe, fresh, no_attempts,
+                                           control_of(probe), capable_venue(),
+                                           GatewayTimeouts{}, 3);
+    require(std::memcmp(&probe, &stranded.state, sizeof(TradingState)) == 0,
+            "the reconciliation planner mutated authoritative state");
+    const auto second = plan_reconciliation(probe, fresh, no_attempts,
+                                            control_of(probe), capable_venue(),
+                                            GatewayTimeouts{}, 3);
+    require(first == second, "the reconciliation planner is not a function");
+}
+
 // --- the fault-matrix harness ----------------------------------------------
 
 struct RunOutcome {
@@ -380,6 +616,10 @@ struct RunOutcome {
     std::size_t sends{};
     std::size_t ambiguous_declared{};
     std::size_t authorizations{};
+
+    // What the loop leaves behind, and whether reconciliation would engage on it.
+    std::map<ClusterOrderState, std::size_t> unresolved_states;
+    std::size_t reconciliation_targets{};
 };
 
 // Refusals that lose no economic information: the cluster already holds the
@@ -561,9 +801,17 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
             order.reservation_index >= state.reservation_count ||
             state.reservations[order.reservation_index].state !=
                 ReservationState::released;
-        if (unresolved) ++outcome.observed_unresolved;
+        if (unresolved) {
+            ++outcome.observed_unresolved;
+            ++outcome.unresolved_states[order.state];
+        }
     }
     outcome.metrics = collect_metrics(state);
+    const GatewayReconciliationState fresh;
+    outcome.reconciliation_targets =
+        plan_reconciliation(state, fresh, delivery, control_of(state),
+                            capable_venue(), timeouts, now)
+            .query_count;
     return outcome;
 }
 
@@ -629,6 +877,16 @@ void check_gates(const RunOutcome& outcome, const std::string& where) {
         require(outcome.metrics.oldest_unsettled_effect_age > 0,
                 "an unsettled effect reported zero age" + where);
     }
+    // Visibility is necessary but not sufficient: something has to be able to ACT
+    // on what is visible. Every stranded slot the loop produces must be one the
+    // reconciliation planner would engage. A failure here means the matrix found
+    // a way to strand an order in a shape `need_of` does not recognise, which is
+    // exactly the discovery worth failing a build over.
+    if (outcome.observed_unresolved > 0) {
+        require(outcome.reconciliation_targets > 0,
+                "an order was stranded in a state reconciliation would never "
+                "query" + where);
+    }
 }
 
 void test_a_clean_venue_delivers_and_resolves() {
@@ -678,6 +936,11 @@ void test_the_fault_matrix_holds_the_gate() {
                       << outcome.fill_refusals.size() << " event-refusals ";
             for (const auto& [code, count] : outcome.event_refusals) {
                 std::cout << static_cast<int>(code) << "x" << count << " ";
+            }
+            std::cout << "recon-targets " << outcome.reconciliation_targets
+                      << " states ";
+            for (const auto& [order_state, count] : outcome.unresolved_states) {
+                std::cout << static_cast<int>(order_state) << "x" << count << " ";
             }
             std::cout << '\n';
         }
@@ -742,6 +1005,14 @@ int main() {
         test_quota_bounds_the_plan();
         test_a_halted_cluster_plans_no_sends();
         test_the_planner_only_schedules_what_the_guard_permits();
+        test_reconciliation_targets_only_unresolvable_exposure();
+        test_one_outstanding_query_at_a_time();
+        test_the_query_interval_is_respected();
+        test_reconciliation_queries_are_bounded();
+        test_reconciliation_is_fenced_by_generation_but_not_by_halt();
+        test_only_a_trustworthy_answer_may_be_submitted();
+        test_a_delivery_exhausted_order_is_reconciled_not_abandoned();
+        test_the_reconciliation_planner_reads_no_clock_and_mutates_nothing();
         test_a_clean_venue_delivers_and_resolves();
         test_the_fault_matrix_holds_the_gate();
         test_the_matrix_is_reproducible();

@@ -1028,6 +1028,172 @@ Typed outcomes:
 Only `Match` and policy-approved `Adopt` clear a recovery gate. Other outcomes
 force a bounded mode such as no-new-risk, cancel-only, reduce-only, or halted.
 
+### 10.1 Phase 5 reconciliation contract review (2026-09-10)
+
+Section 10 is in the same never-approved block as section 9 and was reviewed the
+same way before any code. Six findings. Five are resolved here with reasoning;
+one is a material byte-contract choice and is held for explicit approval, so the
+gateway-side half was built and the cluster-side half was not.
+
+#### 10.1.1 Half the compare list does not exist
+
+Section 10 requires reconciliation to compare "positions, balances, and
+settlement state" and "currency". Positions exist as
+`RiskAccount::position_quantity`. Balances, settlement state, and currency exist
+NOWHERE - not in `TradingState`, not in `OrderEffect`, not in
+`VenueObservation`, and `FeeMicros` carries no currency tag. Phase 4 explicitly
+accepted `ConfigureRiskLimits` with no balance overwrite.
+
+Resolved: Phase 5 compares what exists - cluster and venue order identity, side,
+price, original/filled/remaining quantity, order state, execution identity,
+quantity, and fee. Balances, settlement state, and currency are deferred, and
+this paragraph is the record that they were dropped deliberately rather than
+overlooked.
+
+Justification: the alternative is to grow the byte contract in Phase 5 to carry
+fields nothing produces and nothing consumes, so that a comparison can be written
+against them. That is cost with no evidence behind it. When a venue integration
+actually supplies settlement state, the comparison can be added with a real
+counterparty to test it against.
+
+#### 10.1.2 The gateway may not classify; the reducer may not query
+
+Section 10 lists five typed outcomes without saying who computes them. Both
+obvious answers are wrong.
+
+If the GATEWAY computes `Adopt` and the cluster believes it, the gateway has
+become an economic authority, which ADR 0001 forbids: it "may refuse or defer an
+unsafe effect but may not originate or economically modify an order". If the
+REDUCER computes everything, it needs the query - and apply performs no I/O.
+
+Resolved by splitting along the line that already exists. The gateway decides
+only whether it holds a TRUSTWORTHY ANSWER; the reducer decides what a
+trustworthy answer MEANS. This is not a new pattern: `cancel_reconciled` already
+works exactly this way, arriving as raw observation carrying final cumulative
+quantity for apply to adjudicate.
+
+The split is enforced by the type system rather than by a comment.
+`QueryDisposition` - the gateway's output - has no way to spell `adopt` or
+`conflict`. A gateway that wanted to classify economics could not express it.
+
+#### 10.1.3 Two of the five outcomes are not cluster facts
+
+`Incomplete` and `Unavailable` do not describe the order. They describe the
+QUERY: its window was not authoritative, or it could not be completed. The
+reducer cannot observe either, because it never sees a query, and storing them
+would put a fact about the gateway's network into replicated economic state.
+
+Resolved: `Match`, `Adopt`, and `Conflict` are reducer classifications.
+`Incomplete` and `Unavailable` are gateway-local and mean "submit nothing, ask
+again". A fourth gateway-local value, `exhausted`, is added for the case where
+attempts are spent - the gateway stops asking and the order stays visibly
+unresolved, which is the G-074a operator situation rather than something to heal
+by guessing.
+
+`not_found` stays distinct from `unavailable` throughout, and this is the whole
+reason reconciliation is worth building. "The venue answered that it has no such
+order" resolves a `submission_unknown` and releases its reservation. "The venue
+would not answer" concludes nothing. Treating silence as absence is precisely how
+a gateway places a second real order.
+
+#### 10.1.4 "Policy-approved Adopt" names a policy that does not exist
+
+Resolved by derivation rather than by new machinery. An adopt is safe exactly
+when the venue's evidence fits INSIDE the existing reservation: filled quantity
+within the reserved original, price within the authorized terms, side matching
+the proposal. Anything outside is `Conflict`. Every one of those checks already
+exists in Phase 4's fill path.
+
+Justification: a separate adopt policy artifact would be a second place for the
+economics to be stated, and two statements of the same rule eventually disagree.
+
+#### 10.1.5 Section 10 would let one bad order halt the cluster
+
+Section 10 says non-`Match` outcomes "force a bounded mode such as no-new-risk,
+cancel-only, reduce-only, or halted". Phase 4, which IS accepted, made `conflict`
+a per-order terminal state that holds its risk and blocks its logical slot while
+the cluster keeps trading every other slot; slot exclusivity is scoped to
+(account, instrument, venue, order slot).
+
+These contradict. The accepted artifact wins: a conflict blocks its own slot. A
+cluster-wide mode change stays an operator action under G-074a, owned by Phases 8
+and 10.
+
+Justification: the section 10 reading means one venue disagreeing about one order
+stops all trading on every instrument. That is a larger blast radius than the
+evidence supports, and it converts a contained fault into an outage. Phase 4's
+scoping already fails closed on the thing that actually holds risk.
+
+Flagged for review: this is the one place where the review overrules the written
+contract using an accepted phase rather than an argument from first principles.
+If the intent really was cluster-wide, section 10 should say so and Phase 4's
+acceptance needs revisiting.
+
+#### 10.1.6 HELD FOR APPROVAL: a query answer has no event identity
+
+`ObserveFill` and `ObserveOrderEvent` deduplicate on venue event identity -
+`(venue_id, venue_session_id, venue_sequence)`. A query answer is a SNAPSHOT, not
+an event: it has no venue sequence. Worse, session-scoped identity is unsafe
+across reconnects, and a disconnect is exactly when reconciliation runs.
+
+Two options, and the choice is a material byte-contract decision:
+
+- ONE NEW `VenueObservationKind`, say `order_reconciled`, inside the existing
+  `VenueObservation`. Zero new bytes and no new command kind - one enum value.
+  Safety does not rest on identity at all: like `cancel_reconciled`, the evidence
+  carries FINAL CUMULATIVE filled quantity rather than an increment, so applying
+  the same answer twice is a no-op BY VALUE. Identity deduplication becomes an
+  optimisation instead of a correctness requirement. It still changes what
+  decoders must accept and invalidates existing goldens.
+- A NEW COMMAND KIND with content-addressed idempotency. Explicit, but costs a
+  command kind plus a body in the snapshot and receipt paths, to buy a property
+  cumulative-by-value evidence already has.
+
+Recommendation: the first. It reuses a pattern this project already accepted for
+exactly this problem, and its cost is one enum value.
+
+Because this is a material byte/economic contract choice, no code encodes it.
+The gateway-side half - `plan_reconciliation`, `classify_query`, and the query
+bookkeeping - is built and tested, and stops at the seam where evidence would be
+submitted.
+
+### 10.2 What the reconciliation planner decides
+
+`plan_reconciliation` targets exactly the orders holding exposure the cluster
+cannot resolve from evidence it already has. Three needs:
+
+- `submission_unknown` - a submit the venue never answered;
+- `cancel_unconfirmed` - a cancel acknowledged but never finally reconciled; and
+- `delivery_exhausted` - send attempts spent under 9.2.2 with nothing having
+  reached the venue.
+
+The third exists because the retry bound alone would trade an unbounded retry
+loop for a permanently wedged slot. A query breaks the tie: the venue can say it
+never had the order, and the reservation is released. It is a target ONLY once
+attempts are spent - an order still eligible to be sent must not be queried, or
+the query races the send and the venue is asked about an order the gateway is
+about to place. Whether attempts are spent is gateway-local by 9.1.2, which is
+why the planner reads `GatewayDeliveryState` as well as `TradingState`.
+
+A `live` order with no fill is deliberately not a target. Without a clock there
+is no way to distinguish "its fill was lost" from "it has not traded yet", so
+querying every resting order would be continuous noise. A resting order is
+reconciled when it is cancelled, or at session recovery under G-032.
+
+One outstanding query per order. Two in flight can answer out of order and let a
+stale view overwrite a fresh one, which is a conflict the cluster would then have
+to adjudicate for no reason.
+
+Reconciliation is fenced by `executor_generation` but NOT by kill epoch or
+strategy mode. A superseded gateway must not write venue evidence into consensus
+at all. A halt stops new risk; reconciliation originates none, and a halted
+cluster holding a blocked slot is precisely when resolving it matters most.
+
+Measured against the current fault matrix: sixteen of thirty-two seeds end with a
+stranded slot, every one of them in `submission_unknown`, and the planner engages
+on all sixteen. The matrix now asserts that bridge - any stranded order in a shape
+`need_of` does not recognise fails the build.
+
 ## 11. Execution authority and kill contract
 
 Every sender tracks a committed `ExecutorGeneration` and `KillEpoch`. It rejects
