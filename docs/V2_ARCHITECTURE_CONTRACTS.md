@@ -695,6 +695,16 @@ valid cancellation evidence inapplicable. The mismatch is now refused before
 mutation. A semantically repeated `effect_unknown` returns `already_applied` and
 does not consume another accepted venue transition.
 
+Fill evidence is likewise submit-scoped. A fill whose `EffectId` names a cancel
+is refused before economic mutation even when it names the correct cluster order.
+A partial fill naming a submit proves that submit reached the venue, so it changes
+`submission_unknown` to `partially_filled` and acknowledges the submit effect. If
+the current unknown effect is a later cancel, the same historical-submit fill is
+booked exactly once but the order remains `submission_unknown` and the cancel
+effect remains `unknown`; execution evidence does not invent cancel-delivery
+evidence. A terminal fill may still make the order `filled`, but any outstanding
+cancel remains unsettled until its own venue evidence arrives.
+
 #### Rejected alternatives and deferred work
 
 Repurposing `venue_id` to make fill deduplication session-scoped remains rejected:

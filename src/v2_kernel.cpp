@@ -2031,6 +2031,20 @@ std::size_t settle_orphaned_effects(TradingState& state,
                            next_version, observation, observation.quantity);
     }
     auto& order = state.orders[order_index];
+    OutboxEffectRecord* outbox = nullptr;
+    for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
+        if (state.outbox_effects[index].effect_id == observation.effect_id) {
+            outbox = &state.outbox_effects[index];
+            break;
+        }
+    }
+    // Fill identity is scoped to the order's submit effect. A cancel effect may
+    // name the same cluster order, but execution evidence cannot acknowledge or
+    // otherwise resolve cancel delivery.
+    if (outbox == nullptr || outbox->operation != EffectOperation::submit) {
+        return fill_result(state, ApplyCode::venue_observation_not_applicable,
+                           next_version, observation, observation.quantity);
+    }
     if (order.reservation_index >= state.reservation_count) {
         return fill_result(state, ApplyCode::venue_observation_not_applicable,
                            next_version, observation, observation.quantity);
@@ -2126,18 +2140,6 @@ std::size_t settle_orphaned_effects(TradingState& state,
                            next_version, observation, observation.quantity);
     }
 
-    OutboxEffectRecord* outbox = nullptr;
-    for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
-        if (state.outbox_effects[index].effect_id == observation.effect_id) {
-            outbox = &state.outbox_effects[index];
-            break;
-        }
-    }
-    if (outbox == nullptr) {
-        return fill_result(state, ApplyCode::venue_observation_not_applicable,
-                           next_version, observation, observation.quantity);
-    }
-
     // Commit section: the accepted fill, position move, reservation release,
     // order transition, and delivery acknowledgement become visible together.
     risk->position_quantity = *next_position;
@@ -2156,8 +2158,9 @@ std::size_t settle_orphaned_effects(TradingState& state,
     if (next_remaining->atoms() == 0) {
         order.state = ClusterOrderState::filled;
     } else if (order.state != ClusterOrderState::cancel_pending &&
-               order.state != ClusterOrderState::submission_unknown &&
-               order.state != ClusterOrderState::reconciling) {
+               order.state != ClusterOrderState::reconciling &&
+               (order.state != ClusterOrderState::submission_unknown ||
+                order.effect_id == observation.effect_id)) {
         order.state = ClusterOrderState::partially_filled;
     }
     outbox->state = OutboxState::acknowledged;

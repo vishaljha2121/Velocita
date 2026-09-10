@@ -869,6 +869,10 @@ arena genuinely full and unsweepable.
   resolve the effect and wedge the still-pending order. Repeated semantic
   `effect_unknown` observations return `already_applied` without another applied
   venue transition.
+- Fill evidence is submit-only at the effect boundary. A fill cannot acknowledge
+  a cancel effect; a partial fill resolves an unknown submit, while a fill against
+  the historical submit books execution without erasing an independently unknown
+  cancel. The mismatched-operation path refuses before economic mutation.
 - Applied fill and order-event results populate the existing `DecisionId` field.
   This zero-byte owner link pins identity receipts while their order exists and
   lets resolved groups release them. A sustained 119-order test crosses the old

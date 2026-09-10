@@ -41,7 +41,10 @@ Implemented by permanent RED-to-GREEN tests:
    headroom, and classify derived/fill-quantity collisions as conflicts; and
 9. the Phase 4 property corpus now executes sell accounting, same- and
    cross-request duplicates, conflicting observation identities, seed/step
-   diagnostics, and a minimal independent signed-position ledger.
+   diagnostics, and a minimal independent signed-position ledger; and
+10. fill evidence is scoped to a submit effect. A partial fill resolves an
+    unknown submit, but a historical-submit fill does not erase an unknown
+    cancel; a fill that names a cancel effect is refused before economics move.
 
 Candidate V5 bytes did not grow. Canonical VALUES changed because caller cursors
 are present from first admission and applied observation results now carry their

@@ -1093,6 +1093,87 @@ void test_cancel_effect_refuses_submit_ack_and_repeated_unknown() {
             "repeated unknown evidence changed lifecycle or risk");
 }
 
+void test_fill_proves_only_the_submit_effect_it_names() {
+    using namespace velocita::v2;
+    ApplyScratch scratch;
+
+    // A fill is positive evidence that the submit reached the venue. If the
+    // submit outcome was previously unknown, a partial fill must therefore
+    // advance the order to partially_filled and acknowledge that submit.
+    auto unknown_submit = ready_state();
+    const auto submit = apply(unknown_submit, authorize(2, 0x6d), scratch);
+    require(apply(unknown_submit,
+                  observe_order_event(1, 0x6e,
+                                      VenueObservationKind::effect_unknown,
+                                      submit.cluster_order_id(),
+                                      submit.effect_id(), 809),
+                  scratch)
+                    .code == ApplyCode::applied &&
+                unknown_submit.orders[0].state ==
+                    ClusterOrderState::submission_unknown &&
+                unknown_submit.outbox_effects[0].state == OutboxState::unknown,
+            "submit-unknown fixture failed");
+    require(apply(unknown_submit,
+                  observe_fill(1, 0x6f, submit.cluster_order_id(),
+                               submit.effect_id(), ExecutionId{810}),
+                  scratch)
+                    .code == ApplyCode::applied &&
+                unknown_submit.orders[0].state ==
+                    ClusterOrderState::partially_filled &&
+                unknown_submit.outbox_effects[0].state ==
+                    OutboxState::acknowledged,
+            "a partial fill did not resolve the submit uncertainty it proved");
+
+    // Once cancel is the current effect, a fill naming that cancel must be
+    // refused: it cannot turn cancel delivery into execution evidence. A fill
+    // naming the historical submit remains valid, but it must leave the cancel
+    // unknown until cancel-specific evidence arrives.
+    auto unknown_cancel = ready_state();
+    const auto cancel_submit = apply(unknown_cancel, authorize(2, 0x70), scratch);
+    const auto cancel = apply(
+        unknown_cancel,
+        request_cancel(1, 0x71, cancel_submit.cluster_order_id()), scratch);
+    require(apply(unknown_cancel,
+                  observe_order_event(1, 0x72,
+                                      VenueObservationKind::effect_unknown,
+                                      cancel_submit.cluster_order_id(),
+                                      cancel.effect_id(), 811),
+                  scratch)
+                    .code == ApplyCode::applied &&
+                unknown_cancel.orders[0].state ==
+                    ClusterOrderState::submission_unknown &&
+                unknown_cancel.outbox_effects[1].state == OutboxState::unknown,
+            "cancel-unknown fixture failed");
+
+    const auto before_wrong_effect = unknown_cancel;
+    require(apply(unknown_cancel,
+                  observe_fill(1, 0x73, cancel_submit.cluster_order_id(),
+                               cancel.effect_id(), ExecutionId{812}),
+                  scratch)
+                    .code == ApplyCode::venue_observation_not_applicable,
+            "a fill incorrectly treated a cancel effect as its submit identity");
+    require_economics_unchanged(before_wrong_effect, unknown_cancel,
+                                "a fill scoped to cancel mutated economics");
+    require(unknown_cancel.orders[0] == before_wrong_effect.orders[0] &&
+                unknown_cancel.outbox_effects[0] ==
+                    before_wrong_effect.outbox_effects[0] &&
+                unknown_cancel.outbox_effects[1] ==
+                    before_wrong_effect.outbox_effects[1],
+            "refusing a fill scoped to cancel changed lifecycle state");
+
+    require(apply(unknown_cancel,
+                  observe_fill(2, 0x74, cancel_submit.cluster_order_id(),
+                               cancel_submit.effect_id(), ExecutionId{813}),
+                  scratch)
+                    .code == ApplyCode::applied &&
+                unknown_cancel.orders[0].state ==
+                    ClusterOrderState::submission_unknown &&
+                unknown_cancel.outbox_effects[0].state ==
+                    OutboxState::acknowledged &&
+                unknown_cancel.outbox_effects[1].state == OutboxState::unknown,
+            "a fill erased the still-unknown cancel outcome");
+}
+
 void test_authorization_reserves_completion_and_cancel_capacity() {
     using namespace velocita::v2;
     ApplyScratch scratch;
@@ -3361,6 +3442,7 @@ int main() {
         test_authorization_rechecks_current_controls();
         test_authorization_requires_current_latest_intent();
         test_cancel_effect_refuses_submit_ack_and_repeated_unknown();
+        test_fill_proves_only_the_submit_effect_it_names();
         test_authorization_reserves_completion_and_cancel_capacity();
         test_caller_prefix_registration_is_atomic_and_bounded();
         test_invalid_observation_refusal_is_canonical_state();
