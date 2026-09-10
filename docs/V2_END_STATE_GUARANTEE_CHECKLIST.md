@@ -120,7 +120,18 @@ Phase 11 strategy/model validation and controlled canary
 - [ ] **G-022 — At-most-once economic mutation.** Replaying the same request,
   effect result, fill, or venue event changes authoritative economics at most once.
 - [ ] **G-023 — Stable duplicate response.** A duplicate accepted request returns
-  its retained result and EffectId without creating a second order or effect.
+  its retained result and EffectId without creating a second order or effect,
+  *within the retention window*. Amended 2026-09-09 (architecture §8.6): request
+  receipts are finite, so outside the window a duplicate returns the typed
+  refusal `request_expired` and the caller reconciles against state instead.
+
+  The amendment weakens the ANSWER, never the SAFETY. G-022 is preserved because
+  an expired request is refused rather than re-executed, and because almost every
+  command carries a second, state-based deduplication that survives receipt loss -
+  an existing order for a `DecisionId`, a `(VenueId, ExecutionId)` fill identity,
+  an `expected_risk_version`, or an order's own lifecycle state. Retaining every
+  receipt forever was not a stronger guarantee; it was an unbounded arena that
+  stopped the kernel permanently once full.
 - [ ] **G-024 — One terminal command outcome.** Every admitted logical command
   eventually has exactly one retained typed terminal outcome.
 - [ ] **G-025 — Delivery is not falsely called exactly-once.** External delivery

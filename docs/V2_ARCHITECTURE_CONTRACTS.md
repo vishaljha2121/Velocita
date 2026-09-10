@@ -506,6 +506,95 @@ precisely what makes it a duplicate. They are accumulated by an observer as
 results flow past. Putting them in `TradingState` would make an observability
 counter part of the state digest and therefore of consensus.
 
+### 8.6 Finite identity horizons (approved 2026-09-09)
+
+Before this, nothing ever reclaimed a request receipt. Every command retains one,
+refusals included, so the kernel accepted exactly `kMaxRequestReceipts` commands
+in its lifetime and then refused everything permanently with no recovery path. A
+second ceiling sat inside the same arena: at `kMaxVenueEventReceipts` accepted
+venue events, fills stopped being accepted, which strands existing risk rather
+than merely stopping new work. Both are availability defects, not tuning
+questions.
+
+#### The safety tension
+
+G-023 requires a duplicate accepted request to return its retained result and
+EffectId. G-022 requires at-most-once economic mutation. Forgetting a receipt
+breaks G-023 as literally written. Whether it breaks G-022 depends entirely on
+what a retry then does: re-executing would be a second economic mutation and is
+unacceptable, while a typed refusal preserves G-022 and merely loses the original
+answer. Any expiry design must therefore guarantee REFUSAL, never re-execution,
+which means forgetting individual receipts while remembering enough per caller to
+tell "expired" apart from "never seen".
+
+#### Request receipts: per-caller watermark
+
+Each caller has a retained cursor holding its highest observed `RequestSequence`.
+Receipts may be forgotten freely. A request at or below its caller's watermark
+with no retained receipt returns the typed refusal `request_expired` and mutates
+nothing. A request above the watermark is fresh and executes normally.
+
+This needs no clock and no horizon constant. Rejected alternatives: a
+state-version horizon requires an N that cannot be justified until Phase 5
+supplies a venue simulator, and here a wrong N fails in the UNSAFE direction by
+permitting re-execution; caller-driven expiry alone leaves the wedge in place
+whenever the caller does not cooperate.
+
+**`CallerId` must be a stable logical identity assigned by configuration, and
+`RequestSequence` must be monotonic per caller and must not regress across
+restarts.** A caller that returns from a restart with a fresh `CallerId` would
+fill the cursor arena with dead entries and rebuild the same wedge one level up.
+This is a deployment requirement, not an implementation detail; the alternative
+is caller eviction, which would need its own horizon and reintroduces the problem
+it was meant to solve.
+
+#### What a caller does with `request_expired`
+
+Reconcile against state; never retry blindly. In practice the loss is small,
+because almost every command already carries a second, state-based deduplication
+that survives receipt expiry entirely:
+
+| Command | Survives receipt loss via |
+|---|---|
+| `AuthorizeDecision` | the existing order for that `DecisionId`, returning `already_applied` with its retained identities |
+| `ObserveFill` | `(VenueId, ExecutionId)` identity, then the order's own existence |
+| `ObserveOrderEvent` | venue-event identity and effect scoping |
+| `ConfigureRiskLimits` | `expected_risk_version`, so a stale retry refuses |
+| `RequestCancel` | order state, so cancelling a cancelled order refuses |
+| `EvaluateDecisionFrame` | the decision record, or its retained evaluation receipt |
+
+`request_expired` is therefore mainly an honesty signal - the cluster can no
+longer say what happened, and the answer is in state - rather than a loss of
+economic protection. The economic protection was never the receipt; it was the
+state.
+
+#### Venue-event identities: reclaimed with their order
+
+A fill or venue-event identity is reclaimable EXACTLY when its cluster order
+group is reclaimed, and is pinned for as long as that order exists.
+
+This is safe by construction rather than by bookkeeping. A duplicate fill whose
+order is gone fails to resolve an order at all and returns
+`venue_observation_not_applicable` before touching economics, so the ABSENCE OF
+THE ORDER IS ITSELF THE DEDUPLICATION. No amount of redelivery can book against a
+record that no longer exists.
+
+An earlier proposal to pin fill identities against expiry indefinitely was
+withdrawn: it preserved the same safety at strictly greater cost and left the
+`kMaxVenueEventReceipts` wedge in place, whereas tying expiry to order-group
+reclamation removes that wedge using machinery already proven economically inert.
+
+The 64-entry venue-event horizon is a reviewed capacity, not a derived one. No
+derivation is claimed for it.
+
+#### Deferred
+
+Caller-driven `ExpireIdentity`, already named in the section 7 candidate command
+family, is deferred to Phase 5 review. It is the safest possible expiry, since
+the party that would retry declares it is finished, but it cannot be the only
+mechanism because an uncooperative or crashed caller would leave the wedge. It
+belongs alongside the gateway that would send it.
+
 ## 9. Outbox and execution contract
 
 Outbox lifecycle:

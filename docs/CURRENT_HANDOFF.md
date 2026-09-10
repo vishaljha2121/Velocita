@@ -384,7 +384,54 @@ reclamation work invalidated while leaving its intent intact.
 Release 25/25; focused host Debug ASan+UBSan 8/8, the sanitized build
 reconfigured to include the metrics and decision-kernel targets.
 
-Remaining Phase 4 work: finite request and venue-event horizons, broader accounting and reconciliation evidence, metrics and
+### Finite identity horizons — decisions approved 2026-09-09 (Claude)
+
+Specified in architecture §8.6; G-023 amended in the guarantee checklist.
+Decisions recorded BEFORE implementation so the contract is reviewable
+independently of the code that follows.
+
+The defect being fixed: nothing ever reclaimed a request receipt, so the kernel
+accepted exactly `kMaxRequestReceipts` commands in its lifetime and then refused
+everything permanently. A second ceiling inside the same arena stopped fills
+being accepted at `kMaxVenueEventReceipts`, which strands existing risk rather
+than merely stopping new work. Both are availability defects.
+
+Approved:
+
+1. G-023 weakened to "within the retention window". Outside it a duplicate
+   returns the typed refusal `request_expired`. The ANSWER is weakened, never the
+   safety: G-022 holds because an expired request is refused rather than
+   re-executed.
+2. A new bounded `CallerCursor` arena plus `ApplyCode::request_expired`. Receipts
+   may be forgotten freely; a request at or below its caller's watermark with no
+   retained receipt is refused.
+3. Caller capacity 8, WITH a new deployment requirement: `CallerId` must be a
+   stable logical identity assigned by configuration, and `RequestSequence`
+   monotonic per caller and non-regressing across restarts. A caller returning
+   from a restart with a fresh `CallerId` would fill the cursor arena with dead
+   entries and rebuild the wedge one level up. The alternative, caller eviction,
+   needs its own horizon and reintroduces the problem it was meant to solve.
+4. REVISED from the original proposal. Venue-event identities are reclaimed with
+   their order group rather than pinned against expiry. A duplicate fill whose
+   order is gone fails to resolve an order and is refused before touching
+   economics, so the absence of the order IS the deduplication. This preserves
+   the same safety at strictly lower cost AND removes the venue-event wedge,
+   which pinning would have left in place.
+
+Parked for Phase 5 review: caller-driven `ExpireIdentity`, already named in the
+§7 candidate command family. It is the safest possible expiry because the party
+that would retry declares it is finished, but it cannot be the only mechanism
+since an uncooperative or crashed caller would leave the wedge. It belongs
+alongside the gateway that would send it, and should be reviewed together with
+the state-version horizon deferred from §8.4 and the reference horizon deferred
+from the reclamation contract - all three are the same question asked about
+different arenas, and Phase 5 is where the venue simulator finally makes the
+numbers derivable.
+
+The 64-entry venue-event horizon is a reviewed capacity, not a derived one. No
+derivation is claimed, and none should be implied in later evidence.
+
+Remaining Phase 4 work: implement the approved finite horizons, broader accounting and reconciliation evidence, metrics and
 age/latency evidence, an optional Phase 4 mirror model to complement this corpus,
 the complete sanitizer gate, pinned ARM64 and physical Pi gates, and a Phase 4
 acceptance evidence document.
