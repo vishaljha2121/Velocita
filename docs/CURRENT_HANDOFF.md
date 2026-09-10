@@ -59,10 +59,14 @@ Its full Release build and 25/25 CTest suites pass; its full Debug ASan+UBSan
 build and 25/25 suites also pass; `git diff --check` passes. Reviewed Phase 4
 ARM64-container and physical-Pi wrappers now pin that root, and
 `docs/evidence/V2_PHASE4_RISK_ORDERS_OUTBOX_ACCEPTANCE.md` records the promotion
-contract without claiming pending target results. Next run the pinned ARM64
-container gate, synchronize the same source to the Pi, run its gate, then attach
-both evidence results and adjudicate the Phase 4 checklist. No Phase 4 acceptance
-claim exists yet.
+contract without claiming pending target results. The ARM64 container gate is
+now PASS at
+`~/.local/share/velocita/v2-phase4-container-gates/20260910T151843Z`:
+Release 25/25, instrumented V2 22/22, and Debug ASan+UBSan V2 22/22 on Ubuntu
+26.04 ARM64/GCC 15.2 with the expected source root. Next synchronize the same
+source to the Pi, run its pinned gate, then attach the result and adjudicate the
+Phase 4 checklist. The physical Pi gate is the only remaining execution gate.
+No Phase 4 acceptance claim exists yet.
 
 Preserve the same protected unrelated paths listed near the end of this file:
 `docs/README.md`, `docs/MUST_CONFIRM_BEFORE_ADAPTER_CONNECT.md`,

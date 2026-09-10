@@ -1,7 +1,7 @@
 # V2 Phase 4 risk, orders, and outbox acceptance evidence
 
-Status: candidate; host gates pass, ARM64 container and physical Raspberry Pi
-gates pending
+Status: candidate; host and ARM64 container gates pass, physical Raspberry Pi
+gate pending
 
 ## Objective and promotion rule
 
@@ -17,6 +17,7 @@ This document must record all three before its status can become accepted.
 ## Candidate identity and rollback
 
 - source commit: `db13a9c19caf7d5ac67ce1117b78f6302b6bcd3e`
+- gate runner commit: `eca184c8fe9f8aa9d03ddb27c1ec4cf9bc957a98`
 - Phase 4 source root:
   `a84609b54b2efe408f34151b91bbd10a217d8cdadbd7b18aba6a54c6183ac853`
 - branch: `v2/phase-4-risk-orders-outbox`
@@ -98,7 +99,15 @@ ARM64 container command:
 BUILD_JOBS=2 ./deploy/run-v2-phase4-container-gate.sh --yes
 ```
 
-Result: pending.
+Result: PASS on 2026-09-10. Evidence:
+`~/.local/share/velocita/v2-phase4-container-gates/20260910T151843Z`.
+
+- Ubuntu 26.04 ARM64, GCC 15.2.0, 64-byte runtime L1D cache line;
+- 4 CPUs, 4 GiB memory, and 256 MiB `/dev/shm` limits;
+- expected and observed source root matched exactly;
+- Release: 25/25 suites;
+- benchmark-instrumented Release: 22/22 V2 suites; and
+- Debug ASan+UBSan: 22/22 V2 suites.
 
 Physical Pi command, after explicit source synchronization and `sudo -v`:
 

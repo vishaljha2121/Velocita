@@ -913,6 +913,9 @@ observation results whose `DecisionId` is zero are intentionally unsupported.
 - Added the Phase 4 evidence document with candidate identity, byte contracts,
   host results, target commands, layout, limitations, and an explicit pending
   status. ARM64 and Pi success will be recorded only after those gates run.
+- The pinned ARM64 Ubuntu 26.04/GCC 15.2 gate passed on 2026-09-10 for the exact
+  expected source root: Release 25/25, instrumented V2 22/22, and Debug
+  ASan+UBSan V2 22/22. Physical Pi evidence remains outstanding.
 
 #### Standing invariants for later phases
 
