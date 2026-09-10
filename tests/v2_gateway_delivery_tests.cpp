@@ -720,19 +720,35 @@ void test_agreement_resolves_the_effect_without_moving_position() {
             "agreement moved the position");
 }
 
-void test_a_fill_the_cluster_never_saw_is_a_conflict_not_an_adopt() {
-    // The venue reports more filled than the cluster has booked. A snapshot
-    // carries no execution identity, no price, and no fee - exactly the fields a
-    // fill requires - so the cluster refuses to manufacture one from a total.
+void test_a_fill_the_cluster_never_saw_is_missing_evidence_not_a_conflict() {
+    // The two directions of disagreement are NOT symmetric, and an earlier
+    // version of this treated them as if they were.
+    //
+    // The venue reporting MORE than the cluster booked is missing evidence:
+    // fills that close the gap may still be in flight, and under a reordering
+    // transport they routinely are. Freezing the order terminal here would burn
+    // a recoverable state on evidence that might be one tick away - and Phase 4
+    // already depends on the opposite, since its cancel/fill/final permutation
+    // test requires all six orderings to converge.
     auto fixture = stranded_submit();
+    const auto before = fixture.state;
     const auto applied = submit_answer(
         fixture.state, reconciled(fixture.state, fixture.effect_id, 77, 2), 20);
-    require(applied.code == ApplyCode::applied,
-            "a divergent answer was not recorded");
-    require(sole_order(fixture.state).state == ClusterOrderState::conflict,
-            "an unseen fill was not treated as a conflict");
-    require(!risk_released(fixture.state),
-            "a conflicted order released its reservation");
+    require(applied.code == ApplyCode::venue_observation_not_applicable,
+            "an answer ahead of the cluster's evidence was not refused");
+    require(sole_order(fixture.state).state == ClusterOrderState::submission_unknown,
+            "a refused answer still moved the order");
+    require(std::memcmp(&fixture.state.reservations, &before.reservations,
+                        sizeof(before.reservations)) == 0,
+            "a refused answer moved economics");
+    // Still queryable, so reconciliation keeps asking rather than giving up.
+    const GatewayReconciliationState fresh;
+    const GatewayDeliveryState idle;
+    require(plan_reconciliation(fixture.state, fresh, idle,
+                                control_of(fixture.state), capable_venue(),
+                                GatewayTimeouts{}, 0)
+                    .query_count == 1,
+            "a refused answer left the order unqueryable");
 }
 
 void test_a_venue_that_lost_a_fill_is_a_conflict() {
@@ -807,8 +823,8 @@ void test_the_verdict_is_a_function_of_the_total_not_of_history() {
             "agreement at zero was not agreement");
     require(verdict_for(1, 1) == ClusterOrderState::partially_filled,
             "agreement at one was not agreement");
-    require(verdict_for(0, 1) == ClusterOrderState::conflict,
-            "an unseen fill was not a conflict");
+    require(verdict_for(0, 1) == ClusterOrderState::submission_unknown,
+            "an answer ahead of the cluster's evidence was not left recoverable");
     require(verdict_for(1, 0) == ClusterOrderState::conflict,
             "a lost fill was not a conflict");
 }
@@ -855,6 +871,185 @@ void test_a_reconciliation_answer_is_refused_where_it_cannot_apply() {
             "a resolved order accepted a second, contradicting answer");
 }
 
+// --- the cancel path -------------------------------------------------------
+
+// An acknowledged order with a cancel authorized and pending delivery. Built
+// through real commands, because the cancel lifecycle is where hand-built state
+// is most likely to be quietly impossible.
+Fixture pending_cancel() {
+    auto fixture = one_authorized_submit();
+    ClusterOrderId order{};
+    for (std::size_t index = 0; index < fixture.state.outbox_effect_count; ++index) {
+        if (fixture.state.outbox_effects[index].effect_id == fixture.effect_id) {
+            order = fixture.state.outbox_effects[index].cluster_order_id;
+        }
+    }
+    VenueObservation ack;
+    ack.kind = VenueObservationKind::order_acknowledged;
+    ack.venue_id = VenueId{9};
+    ack.venue_session_id = VenueSessionId{1};
+    ack.venue_sequence = VenueSequence{7'100};
+    ack.cluster_order_id = order;
+    ack.effect_id = fixture.effect_id;
+    ack.venue_order_id = VenueOrderId{88};
+    ack.evidence_digest = digest(0x71);
+    require(submit_answer(fixture.state, ack, 10).code == ApplyCode::applied,
+            "the cancel fixture could not acknowledge its order");
+
+    ApplyScratch scratch;
+    const Command cancel{{CallerId{1}, RequestSequence{11}, digest(0x72)},
+                         RequestCancel{order}};
+    const auto requested = apply(fixture.state, cancel, scratch);
+    require(requested.code == ApplyCode::applied,
+            "the cancel fixture could not authorize its cancel");
+    require(sole_order(fixture.state).state == ClusterOrderState::cancel_pending,
+            "the cancel fixture is not cancel-pending");
+    return {fixture.state, requested.effect_id()};
+}
+
+void test_a_cancel_is_deliverable_in_every_strategy_mode() {
+    // The mode gate asks "does control permit NEW RISK", and then applies the
+    // answer to every effect. A cancel creates no risk - it can only reduce or
+    // not change exposure - so gating it on that question is a category error,
+    // and `cancel_only` is a mode whose own guard refuses the only thing it
+    // exists to allow. Halted is the same case with higher stakes: it means
+    // originate nothing new, not abandon the orders already working.
+    const auto fixture = pending_cancel();
+    for (const auto mode : {StrategyMode::normal, StrategyMode::no_new_risk,
+                            StrategyMode::cancel_only, StrategyMode::reduce_only,
+                            StrategyMode::halted}) {
+        auto state = fixture.state;
+        state.strategy_mode = mode;
+        const auto decision = evaluate_pre_send(state, fixture.effect_id,
+                                                control_of(state), capable_venue(),
+                                                SendQuotaView{4});
+        require(decision.permitted(),
+                "a cancel was refused in strategy mode " +
+                    std::to_string(static_cast<int>(mode)));
+    }
+}
+
+// A cancel whose response never arrived: the effect timed out and the gateway
+// reported it unknown. Note the order state is `submission_unknown` even though
+// the SUBMIT is not in doubt - the reducer overloads that state to mean "the
+// current effect's outcome is unknown", and the current effect here is a cancel.
+Fixture silent_cancel() {
+    auto fixture = pending_cancel();
+    VenueObservation unknown;
+    unknown.kind = VenueObservationKind::effect_unknown;
+    unknown.venue_id = VenueId{9};
+    unknown.venue_session_id = VenueSessionId{1};
+    unknown.venue_sequence = VenueSequence{7'200};
+    unknown.cluster_order_id = sole_order(fixture.state).cluster_order_id;
+    unknown.effect_id = fixture.effect_id;
+    unknown.evidence_digest = digest(0x73);
+    require(submit_answer(fixture.state, unknown, 12).code == ApplyCode::applied,
+            "the silent-cancel fixture could not go unknown");
+    require(sole_order(fixture.state).state ==
+                ClusterOrderState::submission_unknown,
+            "the silent-cancel fixture is not unknown");
+    return fixture;
+}
+
+VenueObservation cancel_final(const TradingState& state, EffectId effect_id,
+                              const std::int64_t cumulative_filled,
+                              const std::uint64_t sequence = 7'300) {
+    VenueObservation final;
+    final.kind = VenueObservationKind::cancel_reconciled;
+    final.venue_id = VenueId{9};
+    final.venue_session_id = VenueSessionId{1};
+    final.venue_sequence = VenueSequence{sequence};
+    final.cluster_order_id = sole_order(state).cluster_order_id;
+    final.effect_id = effect_id;
+    final.venue_order_id = VenueOrderId{88};
+    final.quantity = QuantityLots::from_atoms(cumulative_filled);
+    final.evidence_digest = digest(0x74);
+    return final;
+}
+
+void test_a_silent_cancel_is_reconciled_as_a_cancel_not_a_submission() {
+    // `submission_unknown` names the order but describes its current effect. If
+    // the planner read the order state alone it would go and reconcile a
+    // submission that was never in doubt, submit an `order_reconciled` the
+    // reducer correctly refuses, and burn its query budget while the cancel
+    // stayed stuck.
+    const auto fixture = silent_cancel();
+    const GatewayReconciliationState fresh;
+    const GatewayDeliveryState idle;
+    const auto plan = plan_reconciliation(fixture.state, fresh, idle,
+                                          control_of(fixture.state), capable_venue(),
+                                          GatewayTimeouts{}, 0);
+    require(plan.query_count == 1, "a silent cancel was not scheduled for query");
+    require(plan.to_query[0].need == ReconciliationNeed::cancel_unconfirmed,
+            "a silent cancel was mistaken for a silent submission");
+}
+
+void test_a_silent_cancel_can_be_finally_reconciled() {
+    // The gate used to require `reconciling`, which is only reachable after a
+    // `cancelled` observation. A cancel that simply went silent never gets one,
+    // so the only way out of the state was closed - the order held its risk and
+    // its slot with nothing able to resolve it.
+    auto fixture = silent_cancel();
+    const auto applied = submit_answer(
+        fixture.state, cancel_final(fixture.state, fixture.effect_id, 0), 20);
+    require(applied.code == ApplyCode::applied,
+            "a silent cancel could not be finally reconciled");
+    require(sole_order(fixture.state).state == ClusterOrderState::cancelled,
+            "final cancel evidence did not resolve the order");
+    require(risk_released(fixture.state), "a cancelled order kept its reservation");
+}
+
+void test_a_cancel_final_below_booked_is_a_conflict() {
+    // The venue's final word reports less filled than the cluster booked. No
+    // future evidence reduces a booked fill, so this gap can never close.
+    auto fixture = silent_cancel();
+    fixture.state.reservations[sole_order(fixture.state).reservation_index]
+        .filled_quantity = QuantityLots::from_atoms(1);
+    const auto applied = submit_answer(
+        fixture.state, cancel_final(fixture.state, fixture.effect_id, 0), 20);
+    require(applied.code == ApplyCode::applied,
+            "a contradicting cancel final was not recorded");
+    require(sole_order(fixture.state).state == ClusterOrderState::conflict,
+            "a venue denying a booked fill in its final word was not a conflict");
+    require(!risk_released(fixture.state),
+            "a conflicted cancel released its reservation");
+}
+
+void test_a_cancel_final_above_booked_waits_rather_than_conflicting() {
+    // The other direction, and the one Phase 4 already depends on. The fill that
+    // closes this gap may still be in flight - the cancel/fill/final permutation
+    // test applies these three in every order and requires all six to converge -
+    // so this must refuse and let the evidence settle, not freeze terminal.
+    auto fixture = silent_cancel();
+    const auto before = fixture.state;
+    const auto applied = submit_answer(
+        fixture.state, cancel_final(fixture.state, fixture.effect_id, 1), 20);
+    require(applied.code == ApplyCode::venue_observation_not_applicable,
+            "final evidence ahead of the cluster was not refused");
+    require(sole_order(fixture.state).state ==
+                ClusterOrderState::submission_unknown,
+            "a refused cancel final still moved the order");
+    require(std::memcmp(&fixture.state.reservations, &before.reservations,
+                        sizeof(before.reservations)) == 0,
+            "a refused cancel final moved economics");
+}
+
+void test_new_risk_is_still_refused_outside_normal() {
+    // The other half of the same rule, which must not be lost while fixing it.
+    const auto fixture = one_authorized_submit();
+    for (const auto mode : {StrategyMode::no_new_risk, StrategyMode::cancel_only,
+                            StrategyMode::reduce_only, StrategyMode::halted}) {
+        auto state = fixture.state;
+        state.strategy_mode = mode;
+        const auto decision = evaluate_pre_send(state, fixture.effect_id,
+                                                control_of(state), capable_venue(),
+                                                SendQuotaView{4});
+        require(decision.refusal == PreSendRefusal::control_forbids_new_risk,
+                "a submit was permitted in strategy mode " +
+                    std::to_string(static_cast<int>(mode)));
+    }
+}
+
 // --- the fault-matrix harness ----------------------------------------------
 
 struct RunOutcome {
@@ -880,10 +1075,16 @@ struct RunOutcome {
 
     // What the loop leaves behind, and what reconciliation did about it.
     std::map<ClusterOrderState, std::size_t> unresolved_states;
+    std::map<std::uint64_t, ClusterOrderState> unresolved_orders_by_id;
     std::size_t reconciliation_targets{};
     std::size_t queries{};
     std::size_t reconciled{};
     std::map<QueryDisposition, std::size_t> dispositions;
+    // Why an order could not be resolved, recorded as it happens. An order left
+    // unresolved must have one of these against its name - "stuck for no reason"
+    // is the outcome the gate exists to exclude.
+    std::set<std::uint64_t> answered_ahead;   // venue reported fills we never got
+    std::set<std::uint64_t> never_answered;   // no trustworthy answer was obtained
 };
 
 // Refusals that lose no economic information: the cluster already holds the
@@ -1077,9 +1278,15 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
                     view.filled_quantity = raw.filled_quantity;
                     view.remaining_quantity = raw.remaining_quantity;
                     view.cancelled = raw.cancelled;
-                    // A deliberately corrupted answer is not authoritative. The
-                    // gateway must not launder it into consensus as truth.
-                    view.authoritative = !raw.inconsistent;
+                    // Authoritative means the VENUE says this answer covers the
+                    // window it was asked about. It deliberately does NOT consult
+                    // `raw.inconsistent`: that flag is the simulator telling the
+                    // test what it did, and wiring it in here would hand the
+                    // gateway ground truth no real gateway can have. A corrupted
+                    // answer must reach the reducer and be caught by the
+                    // reducer's own refusal to guess - which is the entire reason
+                    // that logic exists.
+                    view.authoritative = true;
                     break;
                 case QueryOutcome::not_found:
                     view.status = VenueQueryStatus::not_found;
@@ -1094,7 +1301,11 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
                 find_reconciliation(reconciliation, target.cluster_order_id);
             const auto disposition = classify_query(view, attempt, timeouts);
             ++outcome.dispositions[disposition];
-            if (disposition != QueryDisposition::submit) continue;
+            if (disposition != QueryDisposition::submit) {
+                outcome.never_answered.insert(target.cluster_order_id.value());
+                continue;
+            }
+            outcome.never_answered.erase(target.cluster_order_id.value());
 
             VenueObservation answer;
             answer.kind = VenueObservationKind::order_reconciled;
@@ -1110,8 +1321,16 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
             const Command command{{CallerId{1}, RequestSequence{counter},
                                    observation_fingerprint(answer)},
                                   ObserveOrderEvent{answer}};
-            if (apply(state, command, scratch).code == ApplyCode::applied) {
+            const auto adjudicated = apply(state, command, scratch);
+            if (adjudicated.code == ApplyCode::applied) {
                 ++outcome.reconciled;
+            } else if (adjudicated.code ==
+                       ApplyCode::venue_observation_not_applicable) {
+                // The only refusal a trustworthy answer can draw here is the
+                // venue reporting fills the cluster never received: real evidence
+                // the cluster is missing, not a conflict, because a fill still in
+                // flight would close the gap.
+                outcome.answered_ahead.insert(target.cluster_order_id.value());
             }
         }
 
@@ -1133,6 +1352,8 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
         if (unresolved) {
             ++outcome.observed_unresolved;
             ++outcome.unresolved_states[order.state];
+            outcome.unresolved_orders_by_id[order.cluster_order_id.value()] =
+                order.state;
         }
     }
     outcome.metrics = collect_metrics(state);
@@ -1228,14 +1449,19 @@ void check_gates(const RunOutcome& outcome, const std::string& where) {
                 "an order holds exposure in a state nothing can act on: " +
                     std::to_string(static_cast<int>(order_state)) + where);
     }
-    // The sharp claim, and the whole point of the increment: after reconciliation
-    // has run to quiescence, NO order may still be in submission_unknown. The
-    // cluster is allowed to hold exposure - a resting order at the venue, or a
-    // conflict an operator must settle - but it is not allowed to still be
-    // wondering whether its order exists.
-    require(outcome.unresolved_states.count(ClusterOrderState::submission_unknown) == 0,
-            "an order was still in submission_unknown after reconciliation "
-            "quiesced" + where);
+    // The claim, in its honest form. After reconciliation quiesces, an order may
+    // still be in submission_unknown - but only for a NAMED reason: either no
+    // trustworthy answer was ever obtained, or the answer reported fills the
+    // cluster has never received, which is missing evidence rather than a
+    // conflict and stays recoverable. What is excluded is an order stuck for no
+    // reason at all, which is what the gate is really for.
+    for (const auto& order : outcome.unresolved_orders_by_id) {
+        if (order.second != ClusterOrderState::submission_unknown) continue;
+        require(outcome.answered_ahead.count(order.first) != 0 ||
+                    outcome.never_answered.count(order.first) != 0,
+                "an order was stuck in submission_unknown with no cause on "
+                "record" + where);
+    }
 }
 
 void test_a_clean_venue_delivers_and_resolves() {
@@ -1263,6 +1489,7 @@ void test_the_fault_matrix_holds_the_gate() {
     faults.partial_fill_permille = 180;
     faults.disconnect_permille = 60;
     faults.rate_limit_permille = 90;
+    faults.inconsistent_query_permille = 220;
 
     std::size_t total_sends = 0;
     std::size_t total_ambiguous = 0;
@@ -1272,7 +1499,6 @@ void test_the_fault_matrix_holds_the_gate() {
     std::size_t total_queries = 0;
     std::size_t total_reconciled = 0;
     std::size_t total_unavailable = 0;
-    std::size_t total_conflicts = 0;
     for (std::uint64_t seed = 1; seed <= 32; ++seed) {
         const auto outcome = run_seed(seed, faults, 12);
         // Printed BEFORE the gates so a failing seed's numbers are visible, and
@@ -1309,9 +1535,6 @@ void test_the_fault_matrix_holds_the_gate() {
         if (outcome.dispositions.count(QueryDisposition::unavailable) != 0) {
             total_unavailable += outcome.dispositions.at(QueryDisposition::unavailable);
         }
-        if (outcome.unresolved_states.count(ClusterOrderState::conflict) != 0) {
-            total_conflicts += outcome.unresolved_states.at(ClusterOrderState::conflict);
-        }
         total_sends += outcome.sends;
         total_ambiguous += outcome.ambiguous_declared;
         total_orders += outcome.venue_orders_created;
@@ -1336,9 +1559,16 @@ void test_the_fault_matrix_holds_the_gate() {
     require(total_unavailable > 0,
             "the matrix never lost a query, so the classifier's silence branch "
             "was never exercised");
-    require(total_conflicts > 0,
-            "the matrix never produced a reconciliation conflict, so the refusal "
-            "to guess was never exercised");
+    // Deliberately NOT asserted here: that the matrix produced a reconciliation
+    // conflict. A conflict needs an order that went unknown while already holding
+    // booked fills, and this fault model cannot produce that - one fault applies
+    // per operation, so a partial fill and a lost response never combine, and the
+    // loop's drain granularity means fills either all beat the deadline or all
+    // miss it. Requiring it here would be a false requirement. The branch is
+    // covered directly and precisely by test_a_venue_that_lost_a_fill_is_a_conflict
+    // and test_a_denied_order_that_already_filled_is_a_conflict. Closing the gap
+    // properly means letting faults compose, which is a simulator change worth
+    // making on its own rather than smuggling in here.
 }
 
 void test_the_matrix_is_reproducible() {
@@ -1386,10 +1616,16 @@ int main() {
         test_only_a_trustworthy_answer_may_be_submitted();
         test_a_delivery_exhausted_order_is_reconciled_not_abandoned();
         test_the_reconciliation_planner_reads_no_clock_and_mutates_nothing();
+        test_a_cancel_is_deliverable_in_every_strategy_mode();
+        test_new_risk_is_still_refused_outside_normal();
+        test_a_silent_cancel_is_reconciled_as_a_cancel_not_a_submission();
+        test_a_silent_cancel_can_be_finally_reconciled();
+        test_a_cancel_final_below_booked_is_a_conflict();
+        test_a_cancel_final_above_booked_waits_rather_than_conflicting();
         test_a_denied_order_releases_its_reservation_and_frees_the_slot();
         test_a_denied_order_that_already_filled_is_a_conflict();
         test_agreement_resolves_the_effect_without_moving_position();
-        test_a_fill_the_cluster_never_saw_is_a_conflict_not_an_adopt();
+        test_a_fill_the_cluster_never_saw_is_missing_evidence_not_a_conflict();
         test_a_venue_that_lost_a_fill_is_a_conflict();
         test_replaying_the_same_answer_changes_nothing();
         test_the_verdict_is_a_function_of_the_total_not_of_history();

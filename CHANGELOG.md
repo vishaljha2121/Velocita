@@ -164,6 +164,60 @@ that every order still holding exposure sits in a state something can act on, an
 that the matrix itself reaches the silence and conflict branches at least once.
 Release 28/28, full host Debug ASan+UBSan 28/28, and the model corpus 109/109.
 
+Sixth increment takes the cancel path through reconciliation. Four findings, all
+inside existing contracts, no byte change. Recorded in architecture section 10.3.
+
+The gateway refused to cancel in every mode that matters. `evaluate_pre_send`
+gated every effect on "does control permit new risk", which is true only in
+`normal`, so cancels were refused in `no_new_risk`, `cancel_only`, `reduce_only`,
+and `halted` - making `cancel_only` a mode whose own guard refused the only thing
+it exists to allow, and `halted` a mode that abandoned the orders already working.
+The predicate now takes the effect; a cancel is permitted in every mode, while
+executor generation and kill epoch remain the real fences.
+
+`submission_unknown` names the order but describes its current effect, which for a
+cancel-pending order is the cancel. The reducer overloads the state deliberately,
+but the gateway's `need_of` could not tell a stuck cancel from a stuck submit by
+order state alone, so it would reconcile a submission that was never in doubt and
+burn its query budget while the cancel stayed stuck. It now reads the current
+effect's operation.
+
+Final cancel evidence was only reachable from `reconciling`, which requires a
+`cancelled` observation. A cancel that simply went silent never gets one, so the
+only path out of the state was closed. The gate now also accepts a cancel effect
+in `unknown` with its order in `submission_unknown`.
+
+The fourth was got wrong first and caught by an accepted Phase 4 test, and is the
+most transferable lesson here. Making any quantity disagreement a conflict broke
+the cancel/fill/final permutation test, which applies three pieces of evidence in
+all six orders and requires every one to converge. The directions are not
+symmetric: a venue reporting MORE than the cluster booked is missing evidence -
+fills may still be in flight, so refuse and let it settle - while reporting LESS
+is a genuine conflict, because no future evidence reduces a booked fill. That rule
+now governs both the cancel and submit paths, correcting the previous increment's
+claim that both directions of `order_reconciled` divergence were conflicts. The
+cost is that an order whose fills were genuinely lost stays unresolved rather than
+conflicted, which is the better trade: unresolved is recoverable and visible,
+conflict is terminal.
+
+Two test-integrity defects fixed, recorded in section 10.4 because both are the
+kind that make a green suite worthless. The harness was cheating - it set the
+gateway's `authoritative` flag from the simulator's own `inconsistent` ground
+truth, so a corrupted answer never reached the reducer and the reducer's refusal
+to guess was never exercised. And `inconsistent_query` corrupted upward, the
+recoverable direction, while its comment claimed it tested the opposite; it now
+denies a fill it has already made.
+
+The matrix's gate is restated honestly. It previously required that no order
+remain in `submission_unknown`; an order legitimately can, when the venue reports
+fills the cluster never received. It now requires that every stuck order have a
+NAMED cause on record - no trustworthy answer obtained, or an answer ahead of the
+cluster's evidence - so "stuck for no reason" is what fails. One coverage boundary
+is stated rather than papered over: the matrix cannot produce a reconciliation
+conflict, because that needs an order which went unknown while already holding
+booked fills and the fault model applies one fault per operation. Direct unit
+tests cover the branch. Release 28/28 and full host Debug ASan+UBSan 28/28.
+
 Status: Phases 1-4 are accepted on the required host, ARM64 Ubuntu, and physical
 Raspberry Pi 5 gates. Deterministic policy evaluation, risk reservation, cluster
 orders, accepted venue-evidence accounting, and the transactional outbox are

@@ -1270,6 +1270,115 @@ one simulator fix - a query now runs over the same session a send does and is
 subject to the same disconnect, without which `QueryOutcome::unavailable` was
 unreachable and the classifier's most safety-critical branch was never exercised.
 
+### 10.3 The cancel path through reconciliation (2026-09-10)
+
+Four findings, all inside existing contracts. No byte change.
+
+#### 10.3.1 The gateway refused to cancel in every mode that matters
+
+`evaluate_pre_send` gated every effect on `control_permits_new_risk(mode)`, which
+returns true only for `normal`. A cancel is an effect, so a cancel was refused in
+`no_new_risk`, `cancel_only`, `reduce_only`, and `halted`.
+
+`cancel_only` is a mode whose own guard refused the only thing it exists to
+allow. `halted` means originate nothing new, not abandon the orders already
+working. The gateway declined to get out of a position in exactly the modes an
+operator reaches for in order to get out of one.
+
+The defect is a shape worth naming, because it is easy to reproduce elsewhere: a
+predicate named for a QUESTION ("does control permit new risk") applied to a
+SUBJECT it does not describe (every effect, risk-increasing or not). The name was
+accurate and the usage was not, and no test caught it because Phase 5 had only
+ever delivered submits.
+
+Resolved: the predicate takes the effect. A cancel is permitted in every strategy
+mode; everything else still requires `normal`. `executor_generation` and
+`kill_epoch` remain the real fences and are still checked first, so a cancel
+authorized under a superseded epoch is still refused.
+
+#### 10.3.2 `submission_unknown` names the order but describes its effect
+
+When a cancel effect times out, `effect_unknown` moves the ORDER to
+`submission_unknown` - even though the submission is not in doubt. The overload is
+deliberate and `apply_request_cancel` reads the state the same way, so this is a
+naming problem rather than a logic bug. But it has teeth: `need_of` could not tell
+a stuck cancel from a stuck submit by order state alone, so the planner would
+reconcile a submission that was never in doubt, submit an `order_reconciled` the
+reducer correctly refuses, and burn its query budget while the cancel stayed
+stuck.
+
+Resolved: `need_of` reads the CURRENT EFFECT's operation, which is the only place
+the truth actually lives.
+
+#### 10.3.3 Final cancel evidence was only reachable from `reconciling`
+
+The `cancel_reconciled` gate required `effect->state == reconciling` and
+`order.state == reconciling`, which is reachable only after a `cancelled`
+observation has arrived. A cancel that simply went silent never gets one, so the
+only path out of the state was closed and the order held its risk and its slot
+with nothing able to resolve it.
+
+Resolved: the gate also accepts a cancel effect in `unknown` with its order in
+`submission_unknown`, which is exactly the shape 10.3.2 produces.
+
+#### 10.3.4 Disagreement is not symmetric, and treating it as such freezes
+recoverable orders
+
+This one was got wrong first, caught by an accepted Phase 4 test, and is the most
+transferable lesson in the increment.
+
+The first attempt made any quantity disagreement a `Conflict`, mirroring what
+10.1.7 had done for the submit path. That broke
+`test_cancel_fill_final_evidence_permutations`, which applies a fill, a
+cancellation, and final reconciliation in all six orders and requires every one to
+converge. Under a reordering transport, final evidence routinely arrives before
+the fill it accounts for.
+
+The two directions have different causes and must have different answers:
+
+- the venue reporting MORE than the cluster booked is MISSING EVIDENCE. Fills that
+  close the gap may still be in flight. Refuse, change nothing, let it settle and
+  be re-presented. The order stays queryable and recoverable.
+- the venue reporting LESS is a genuine CONFLICT. No future evidence reduces a
+  fill the cluster has already booked, so the gap can never close and waiting for
+  it to is a lie.
+
+This rule now governs BOTH the cancel path and the submit path. 10.1.7's statement
+that both directions of `order_reconciled` divergence are conflicts was wrong in
+the "above" direction and is corrected here rather than left standing.
+
+The cost is real and worth stating: an order whose fills were genuinely lost stays
+unresolved rather than becoming a conflict. That is the better trade. Unresolved is
+recoverable if the evidence does arrive and stays visible with a rising age;
+`conflict` is terminal and cannot be recovered automatically. Do not spend a
+recoverable state on evidence that might have been one tick away.
+
+### 10.4 Two test-integrity defects found while doing this
+
+Recorded because both are the kind of thing that makes a green suite worthless.
+
+THE HARNESS WAS CHEATING. It set `VenueQueryView::authoritative` from the
+simulator's `inconsistent` flag - which is the simulator telling the TEST what it
+did, not something any real gateway could know. The gateway was being handed
+ground truth, so a corrupted answer never reached the reducer and the reducer's
+refusal to guess was never exercised. `authoritative` now models only what a venue
+says about its own query window, and a corrupted answer reaches the reducer to be
+caught there.
+
+THE FAULT CORRUPTED IN THE HARMLESS DIRECTION. `inconsistent_query` reported
+`original + 1` - above what the cluster booked, which 10.3.4 establishes is the
+recoverable direction. Its own comment claimed it tested that reconciliation
+"never overwrites conflicting evidence to make a dashboard green". It now denies a
+fill it has already made, which is the unclosable direction and the one that
+claim is about.
+
+Known coverage boundary, stated rather than papered over: the matrix cannot
+produce a reconciliation conflict. That needs an order which went unknown while
+already holding booked fills, and the fault model applies one fault per operation
+so a partial fill and a lost response never combine. The branch is covered by
+direct unit tests instead. Closing it properly means letting faults compose, which
+is a simulator change worth making on its own.
+
 ## 11. Execution authority and kill contract
 
 Every sender tracks a committed `ExecutorGeneration` and `KillEpoch`. It rejects

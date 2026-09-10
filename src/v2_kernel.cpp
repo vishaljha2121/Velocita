@@ -2442,16 +2442,30 @@ std::size_t settle_orphaned_effects(TradingState& state,
     // the cluster has already booked - never addition. That is what makes a
     // repeated answer a no-op by value rather than by identity.
     //
-    // Both directions of disagreement are conflicts, for different reasons.
-    // Below what is booked, the venue has lost fills the cluster accepted, and a
-    // fill is never un-booked. Above it, the venue reports fills the cluster has
-    // never seen - and a snapshot carries no execution identity, no price, and no
-    // fee, which are precisely the fields a fill requires. The cluster refuses to
-    // invent them rather than manufacture a position movement from a total.
+    // The two directions of disagreement are NOT symmetric, and treating them as
+    // if they were is how a recoverable order gets frozen terminal.
+    //
+    // BELOW what the cluster booked - including the venue denying the order while
+    // the cluster holds fills - is a genuine conflict. No future evidence reduces
+    // a booked fill, so the gap can never close.
+    //
+    // ABOVE it is missing evidence, not conflict: fills the cluster has not seen
+    // may still be in flight, and under a reordering transport they routinely
+    // are. The answer is refused so the order stays queryable and recoverable
+    // rather than terminal. If the gap never closes the order remains visibly
+    // unresolved with a rising age, which is the G-074a operator signal - and
+    // that is strictly better than burning a recoverable state on evidence that
+    // might have been one tick away.
     const bool reconciled_conflict =
         reconciled_submit &&
         (venue_denies_order ? reservation.filled_quantity.atoms() != 0
-                            : observation.quantity != reservation.filled_quantity);
+                            : observation.quantity < reservation.filled_quantity);
+    if (reconciled_submit && !venue_denies_order &&
+        observation.quantity > reservation.filled_quantity) {
+        return venue_event_result(state,
+                                  ApplyCode::venue_observation_not_applicable,
+                                  next_version, observation);
+    }
 
     // A new transport observation can repeat the same semantic uncertainty.
     // Retain its request receipt, but do not count it as another applied venue
@@ -2477,14 +2491,44 @@ std::size_t settle_orphaned_effects(TradingState& state,
          (observation.kind == VenueObservationKind::cancel_reconciled &&
           observation.quantity == reservation.filled_quantity)) &&
         effect->operation == EffectOperation::cancel;
-    const bool reconciliation = observation.kind == VenueObservationKind::cancel_reconciled &&
+    // Applicability is about WHERE the order is, never about whether the venue
+    // agrees. Folding the quantity comparison into applicability meant a venue
+    // that disagreed produced a bare refusal - no transition, nothing recorded,
+    // and an order stuck in `reconciling` forever. The submit path's conflict
+    // branches had no counterpart here, and this separates the two questions so
+    // they can have different answers.
+    const bool cancel_reconcilable =
+        observation.kind == VenueObservationKind::cancel_reconciled &&
         effect->operation == EffectOperation::cancel &&
         effect->effect_id == order.effect_id &&
-        effect->state == OutboxState::reconciling &&
-        order.state == ClusterOrderState::reconciling &&
-        observation.quantity == reservation.filled_quantity;
+        ((effect->state == OutboxState::reconciling &&
+          order.state == ClusterOrderState::reconciling) ||
+         // A cancel that simply went silent never produced a `cancelled`
+         // observation, so it never reached `reconciling`. Reconciliation is
+         // precisely how such a cancel should become resolvable, and requiring
+         // `reconciling` closed the only way out of the state.
+         (effect->state == OutboxState::unknown &&
+          order.state == ClusterOrderState::submission_unknown));
+    // A disagreement has two very different causes, and collapsing them is how a
+    // recoverable order gets frozen terminal.
+    //
+    // The venue reporting MORE than the cluster booked is not a conflict. It is
+    // MISSING EVIDENCE: fills that close the gap may still be in flight, and
+    // under a reordering transport they routinely are. Phase 4 already relies on
+    // this - `test_cancel_fill_final_evidence_permutations` applies fill,
+    // cancellation, and final reconciliation in every order and requires all six
+    // to converge. Refusing lets the evidence settle and be re-presented.
+    //
+    // The venue reporting LESS is a genuine conflict, because no future evidence
+    // can reduce a fill the cluster has already booked. That gap can never close,
+    // so waiting for it to is a lie.
+    const bool cancel_agrees = observation.quantity == reservation.filled_quantity;
+    const bool cancel_contradicts =
+        observation.quantity < reservation.filled_quantity;
+    const bool reconciliation = cancel_reconcilable && cancel_agrees;
     if (observation.kind == VenueObservationKind::cancel_reconciled &&
-        !reconciliation && !late_cancel_completion) {
+        !late_cancel_completion &&
+        (!cancel_reconcilable || (!cancel_agrees && !cancel_contradicts))) {
         return venue_event_result(state, ApplyCode::venue_observation_not_applicable,
                                   next_version, observation);
     }
@@ -2492,7 +2536,8 @@ std::size_t settle_orphaned_effects(TradingState& state,
                                  effect->state == OutboxState::rejected;
     if ((terminal && !late_cancel_completion) ||
         order.state == ClusterOrderState::conflict ||
-        (order.state == ClusterOrderState::reconciling && !reconciliation) ||
+        (order.state == ClusterOrderState::reconciling &&
+         !(cancel_reconcilable && (cancel_agrees || cancel_contradicts))) ||
         (effect_resolved && !late_cancel_completion) ||
         (effect->effect_id != order.effect_id && !late_cancel_completion)) {
         return venue_event_result(state,
@@ -2569,6 +2614,16 @@ std::size_t settle_orphaned_effects(TradingState& state,
             }
             break;
         case VenueObservationKind::cancel_reconciled:
+            if (cancel_contradicts) {
+                // The venue reports less filled than the cluster booked, and no
+                // future evidence reduces a booked fill. Terminal but NOT
+                // risk-resolved: the reservation is retained and this slot alone
+                // stays blocked, matching the submit path rather than leaving the
+                // order silently stuck.
+                effect->state = OutboxState::conflict;
+                order.state = ClusterOrderState::conflict;
+                break;
+            }
             effect->state = OutboxState::acknowledged;
             if (order.state != ClusterOrderState::filled)
                 order.state = ClusterOrderState::cancelled;

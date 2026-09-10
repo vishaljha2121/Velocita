@@ -23,11 +23,23 @@ namespace {
 // effect says. This mirrors the reducer's own control-authority dominance: the
 // policy proposes, control disposes, and the last chance to honour that is here.
 //
-// Every non-normal mode refuses. Phase 5 delivers only `submit` effects, all of
-// which are risk-increasing, so no mode short of `normal` permits one. When the
-// emergency lane arrives in Phase 8 it will carry its own authority and will not
-// route through this predicate.
-[[nodiscard]] bool control_permits_new_risk(const StrategyMode mode) noexcept {
+// The question control actually answers is about the EFFECT, not the mode alone.
+//
+// The earlier form asked only "does this mode permit new risk" and then applied
+// that answer to every effect. That is a category error with teeth: a cancel
+// creates no risk - it can only reduce exposure or leave it unchanged - so the
+// predicate refused cancels in `cancel_only`, a mode whose entire purpose is
+// cancelling, and in `halted`, which means originate nothing new rather than
+// abandon the orders already working. The gateway refused to get out of a
+// position in exactly the modes an operator reaches for to get out of one.
+//
+// `kill_epoch` and `executor_generation` remain the real fences and are checked
+// before this. A cancel authorized under a superseded epoch is still refused;
+// what changes here is only that strategy mode stops standing in for risk
+// direction.
+[[nodiscard]] bool control_permits(const OrderEffect& effect,
+                                   const StrategyMode mode) noexcept {
+    if (effect.operation == EffectOperation::cancel) return true;
     return mode == StrategyMode::normal;
 }
 
@@ -101,7 +113,7 @@ PreSendDecision evaluate_pre_send(const TradingState& state,
     if (effect->kill_epoch != control.kill_epoch) {
         return refuse(PreSendRefusal::stale_kill_epoch);
     }
-    if (!control_permits_new_risk(control.strategy_mode)) {
+    if (!control_permits(*effect, control.strategy_mode)) {
         return refuse(PreSendRefusal::control_forbids_new_risk);
     }
 
@@ -260,12 +272,31 @@ namespace {
 // has. This is deliberately narrower than "not terminal": an order that is merely
 // live and unfilled is waiting for the market, not for reconciliation, and
 // querying it would be noise that hides the cases that matter.
-[[nodiscard]] ReconciliationNeed need_of(const ClusterOrder& order,
+// `submission_unknown` names the ORDER but describes its CURRENT EFFECT, and for
+// a cancel-pending order that effect is the cancel. The reducer overloads the
+// state deliberately - `apply_request_cancel` reads it that way too - so the only
+// honest way to tell a stuck submit from a stuck cancel is to look at what the
+// current effect actually is. Reading the order state alone sent the gateway off
+// to reconcile a submission that was never in doubt.
+[[nodiscard]] EffectOperation current_operation(const TradingState& state,
+                                                const ClusterOrder& order) noexcept {
+    for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
+        if (state.outbox_effects[index].effect_id == order.effect_id) {
+            return state.outbox_effects[index].operation;
+        }
+    }
+    return EffectOperation::submit;
+}
+
+[[nodiscard]] ReconciliationNeed need_of(const TradingState& state,
+                                        const ClusterOrder& order,
                                         const GatewayDeliveryState& delivery,
                                         const GatewayTimeouts& timeouts) noexcept {
     switch (order.state) {
         case ClusterOrderState::submission_unknown:
-            return ReconciliationNeed::submission_unknown;
+            return current_operation(state, order) == EffectOperation::cancel
+                       ? ReconciliationNeed::cancel_unconfirmed
+                       : ReconciliationNeed::submission_unknown;
         case ClusterOrderState::reconciling:
             return ReconciliationNeed::cancel_unconfirmed;
         case ClusterOrderState::dispatch_authorized: {
@@ -384,7 +415,7 @@ ReconciliationPlan plan_reconciliation(const TradingState& state,
 
     for (std::size_t index = 0; index < state.order_count; ++index) {
         const auto& order = state.orders[index];
-        const auto need = need_of(order, delivery, timeouts);
+        const auto need = need_of(state, order, delivery, timeouts);
         if (need == ReconciliationNeed::none) continue;
 
         const auto* attempt = find_reconciliation(reconciliation,

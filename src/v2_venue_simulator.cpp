@@ -258,13 +258,17 @@ QueryResult SimulatedVenue::query(const ClusterOrderId order, const Tick) {
     result.cancelled = resting->cancelled;
 
     if (fault == Fault::inconsistent_query) {
-        // The venue contradicts what it already reported. This must surface as a
-        // conflict rather than silently overwriting local accounting: ADR 0001
+        // The venue contradicts what it already reported, in the direction that
+        // actually matters: DOWNWARD. It denies fills it has already sent.
+        //
+        // Corrupting upward would be the benign direction - the cluster reads a
+        // total ahead of its own evidence as fills still in flight, which is
+        // usually true and is recoverable. Denying a fill is unclosable: no
+        // future evidence reduces what the cluster has already booked. ADR 0001
         // is explicit that reconciliation "never overwrites conflicting evidence
-        // to make a dashboard green."
-        result.filled_quantity =
-            QuantityLots::from_atoms(resting->original.atoms() + 1);
-        result.remaining_quantity = QuantityLots{};
+        // to make a dashboard green", and this is the case that tests it.
+        result.filled_quantity = QuantityLots{};
+        result.remaining_quantity = resting->original;
         result.inconsistent = true;
     }
     return result;

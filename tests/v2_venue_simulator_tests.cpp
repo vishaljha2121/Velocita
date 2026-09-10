@@ -246,8 +246,13 @@ void test_an_inconsistent_query_is_flagged_rather_than_silently_wrong() {
     const auto answer = venue.query(effect.cluster_order_id, 1);
     require(answer.outcome == QueryOutcome::known && answer.inconsistent,
             "a corrupted query answer was not flagged as inconsistent");
-    require(answer.filled_quantity.atoms() > effect.quantity.atoms(),
-            "the inconsistent answer was not actually contradictory");
+    // Downward is the direction that matters. A total ahead of the cluster's own
+    // evidence reads as fills still in flight and stays recoverable; a total
+    // BELOW what the cluster booked can never be closed by later evidence, which
+    // is what makes it a conflict rather than a gap.
+    require(answer.filled_quantity.atoms() == 0 &&
+                answer.remaining_quantity == effect.quantity,
+            "the inconsistent answer did not deny a fill it had already made");
 }
 
 void test_an_unknown_order_is_not_found_rather_than_unavailable() {
