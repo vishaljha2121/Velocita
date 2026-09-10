@@ -851,6 +851,29 @@ now sweeps down to one. The capacity-atomicity invariant is still worth testing,
 so the fixture assigns each retained proposal a distinct logical slot, making the
 arena genuinely full and unsweepable.
 
+#### Open for review - venue-event horizon
+
+Recorded in architecture section 8.7 and not implemented. Fills are refused once
+the venue-event horizon is reached, and that bound fails in the wrong direction:
+every other bounded arena stops new work, while this one stops existing orders
+completing and strands live risk.
+
+The approved rule of section 8.6 - reclaim a fill identity with its order group -
+proved unimplementable without growing the canonical result. A fill receipt uses
+all five of its slots and none names the cluster order, and the result is at 126
+of 128 bytes. Making the deduplication key session-scoped to free a slot was
+rejected as a safety regression, since a redelivery after a gateway reconnect
+carries a new session id and would escape it.
+
+The recommendation costs zero bytes: keep the horizon but move the pressure to
+authorization, refusing new orders when remaining capacity would not cover
+completing the orders already live, so the failure becomes stopping quoting
+rather than being unable to exit. Section 11 already reserves bounded capacity
+for risk-reducing operations; this applies the same principle one layer down. A
+per-venue-session watermark on venue sequence is the deferred alternative and
+also needs no result change, but depends on whether a venue supplies monotonic
+sequences.
+
 #### Standing invariants for later phases
 
 Two rules were established here whose violation fails silently. First, the sweep

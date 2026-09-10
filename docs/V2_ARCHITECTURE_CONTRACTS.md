@@ -630,6 +630,105 @@ the party that would retry declares it is finished, but it cannot be the only
 mechanism because an uncooperative or crashed caller would leave the wedge. It
 belongs alongside the gateway that would send it.
 
+### 8.7 Venue-event horizon: proposal awaiting review (2026-09-09)
+
+Raised for Codex review. Nothing here is implemented and no byte contract has
+changed. The recommendation deliberately costs zero bytes; the alternatives that
+cost bytes were considered and rejected, and the reasoning is recorded so the
+choice can be re-argued rather than rediscovered.
+
+#### The situation
+
+`apply_observe_fill` refuses with `fill_capacity_exceeded` once
+`accepted_venue_event_count` reaches `kMaxVenueEventReceipts` (64). Fill and
+venue-event receipts are pinned unconditionally by §8.6, because a redelivered
+PARTIAL fill would book twice and reservation arithmetic does not catch it:
+filled plus remaining stays within the original quantity, so the double booking
+looks legitimate. Nothing reclaims them.
+
+The bound is not dangerous because it exists. It is dangerous because it fails in
+the WRONG DIRECTION. Every other bounded arena stops NEW work when full; this one
+stops EXISTING orders from completing, so live risk is stranded with no path to
+resolution. That is the one failure mode this phase has consistently treated as
+unacceptable.
+
+`test_venue_event_horizon_still_bounds_order_completion` pins the bound so it
+stays visible, and instructs its own deletion once lifted.
+
+#### Why the approved §8.6 rule is unimplementable as written
+
+§8.6 approved reclaiming a fill identity exactly when its order group is
+reclaimed. A fill receipt cannot be traced to its order. Its detail words hold
+`{venue_id, execution_id, filled_quantity}` and its metadata words hold
+`{session_id, venue_sequence}` - five slots, all used, none naming the cluster
+order. The canonical result is at 126 of its 128 bytes, so carrying a cluster
+order id means growing the result.
+
+Repurposing a slot was examined and rejected:
+
+- `filled_quantity` is returned to the caller and is genuinely needed;
+- `session_id` and `venue_sequence` are load-bearing for the cross-kind venue
+  event identity conflict check; and
+- `venue_id` looks redundant because `VenueSessionId` implies a venue, but
+  swapping the deduplication key from `(VenueId, ExecutionId)` to
+  `(SessionId, ExecutionId)` is a SAFETY REGRESSION. A redelivery arriving after
+  a gateway reconnect carries a NEW session id, so a session-scoped key would
+  fail to catch precisely the duplicate that matters most.
+
+#### Recommendation: reserve completion capacity, do not reclaim
+
+Keep the 64-entry horizon. Move the pressure from fills to AUTHORIZATION:
+
+> Refuse a new `AuthorizeDecision` when remaining venue-event capacity would not
+> cover completing the orders already live. Fills for existing orders are always
+> admitted.
+
+The failure mode becomes "the maker stops quoting" instead of "the maker cannot
+get out", which is the trade every other arena already makes and the one an
+operator can survive.
+
+This is not a new idea in the design. §11 already reserves bounded capacity for
+the operations that reduce risk: normal and emergency traffic have separate
+bounded quota lanes, and emergency behaviour is limited to pre-authorized
+stop/cancel/reconcile actions. Reserving completion capacity applies the same
+principle one layer down.
+
+Cost: one predicate in `apply_authorize_decision`. No schema change, no new
+arena, no canonical result growth, no additional resident bytes.
+
+Pair it with one free self-heal: a fill receipt is reclaimable once NO reservation
+is unreleased. With every reservation released no fill can book - a redelivery
+meets `fill_quantity_conflict` on a released reservation - so the receipts protect
+nothing. Coarse, but free, safe, and it drains the arena whenever a maker goes
+momentarily flat between requotes.
+
+#### Deferred alternative: a venue-session watermark
+
+If true per-order reclamation is wanted later, the clean route is the same
+pattern as the caller cursor in §8.6: track per `(venue, session)` the highest
+`venue_sequence` whose fill receipt was reclaimed, and refuse an at-or-below
+arrival that has no retained receipt. Both fields already sit in the result's
+metadata words, so this needs no result change - only a small arena, roughly 96
+bytes at four sessions against 277 bytes of snapshot headroom.
+
+It is deferred because it depends on whether the venue actually supplies
+monotonic per-session sequences, which is unknown until a venue exists to ask.
+Review it in Phase 5 alongside the three horizon questions already parked there:
+caller-driven `ExpireIdentity` (§8.6), the state-version horizon for unreferenced
+decisions (§8.4), and the reference horizon deferred from the reclamation
+contract. All four are the same question asked about different arenas.
+
+#### What a reviewer should decide
+
+1. Whether converting a risk-stranding failure into a stop-quoting failure is the
+   right trade, or whether the venue-event horizon should instead be raised or
+   reclaimed properly now.
+2. How much completion capacity to reserve. A defensible starting rule is two
+   venue events per live order, since a submit acknowledgement plus one terminal
+   event is the minimum an order needs to close.
+3. Whether the flat-state reclaim is worth having given how rarely a continuously
+   quoting maker is genuinely flat.
+
 ## 9. Outbox and execution contract
 
 Outbox lifecycle:

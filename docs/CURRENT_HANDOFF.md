@@ -480,6 +480,48 @@ And `digest(static_cast<std::uint8_t>(decision_id))` makes every 256th DecisionI
 hash to the all-zero digest, which `apply` correctly refuses as a missing digest -
 it surfaced 120 cycles into a loop and looked like an arena bound.
 
+### PAUSED HERE — awaiting review of §8.7 (2026-09-09)
+
+Work stopped deliberately at a byte-contract decision rather than taking it
+unilaterally. Nothing is half-implemented; the tree is green.
+
+The open question: `apply_observe_fill` refuses at `kMaxVenueEventReceipts`, and
+that bound fails in the WRONG DIRECTION. Every other bounded arena stops NEW work
+when full; this one stops EXISTING orders completing, stranding live risk with no
+resolution path.
+
+The §8.6-approved fix - reclaim a fill identity when its order group is reclaimed
+- turned out to be unimplementable as written. A fill receipt cannot be traced to
+its order: five slots, all used, none naming the cluster order, and the canonical
+result is at 126 of 128 bytes. Repurposing `venue_id` by making the dedup key
+session-scoped was examined and rejected as a SAFETY REGRESSION, because a
+redelivery after a gateway reconnect carries a new session id and would escape a
+session-scoped key.
+
+Recommendation in §8.7, costing zero bytes: keep the horizon but move the
+pressure from fills to AUTHORIZATION, refusing new orders when remaining
+venue-event capacity would not cover completing the orders already live. The
+failure becomes "stops quoting" rather than "cannot get out". This is not a new
+idea - §11 already reserves bounded capacity for risk-reducing operations, and
+this applies the same principle one layer down. Pair it with a free self-heal:
+fill receipts are reclaimable once no reservation is unreleased, because with
+everything released a redelivery meets `fill_quantity_conflict` anyway.
+
+Deferred alternative, also costing no result change: a per-`(venue, session)`
+watermark on `venue_sequence`, the same pattern as the caller cursor. It needs a
+small arena and depends on whether the venue supplies monotonic sequences, which
+is unknown until a venue exists to ask. Phase 5, alongside the three horizon
+questions already parked there.
+
+A reviewer should decide three things, listed at the end of §8.7: whether the
+stop-quoting trade is right, how much completion capacity to reserve (two venue
+events per live order is a defensible start), and whether the flat-state reclaim
+earns its place given how rarely a quoting maker is genuinely flat.
+
+State at the pause: Release 25/25, full host Debug ASan+UBSan 25/25,
+`git diff --check` clean, HEAD `8e8f661`. `TradingState` 81,168 bytes (752
+headroom), maximum canonical snapshot 65,259 bytes (277 headroom).
+
 Remaining Phase 4 work: broader accounting and reconciliation evidence, metrics and
 age/latency evidence, an optional Phase 4 mirror model to complement this corpus,
 the complete sanitizer gate, pinned ARM64 and physical Pi gates, and a Phase 4
