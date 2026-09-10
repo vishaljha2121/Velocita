@@ -122,6 +122,48 @@ Sixteen of thirty-two matrix seeds end with a stranded slot, every one in
 that bridge, so an order stranded in a shape the planner does not recognise fails
 the build. Release 28/28 and full host Debug ASan+UBSan 28/28.
 
+Fifth increment encodes the approved byte-contract decision and closes the
+reconciliation loop. One new `VenueObservationKind`, `order_reconciled = 7`,
+inside the existing `VenueObservation`: zero new bytes, no new command kind, no
+new struct, no new lifecycle state, no new `ApplyCode`, and the frame stays 116
+bytes. Purely additive - no existing golden changes and no existing kind is
+touched. The model package needs no change and must not receive one: it
+deliberately implements no `VenueObservation` and its safety interlock fails the
+build if the name appears.
+
+The safety argument is stronger than replay protection, and the documentation now
+says so precisely. Because the answer is a TOTAL compared for equality against
+what the cluster has booked, the verdict is a pure function of the answer and the
+currently booked quantity - independent of how many answers preceded it, in what
+order, or whether any were seen twice. The adjudication needs no history, which is
+why it needs no reliable identity. An incremental encoding would have to know
+whether this message had already been counted, which is unanswerable without
+exactly the identity a snapshot cannot carry.
+
+Implementing it settled a question the review had left open: there is no `Adopt`
+in Phase 5, and that is correct rather than a shortfall. A venue reporting more
+filled than the cluster booked would require creating a position movement, but a
+snapshot carries no execution identity, price, or fee - the three fields a fill
+requires and Phase 4's fill path checks. Adopting would mean inventing all three,
+so divergence in either direction is a `Conflict`: below what is booked a fill
+would have to be un-booked, above it the cluster refuses to manufacture a position
+from a total. `Adopt` returns when reconciliation can obtain per-execution
+evidence, which is a venue-integration question.
+
+Also fixed in the simulator: a query now runs over the same session a send does
+and is subject to the same disconnect. Without it `QueryOutcome::unavailable` was
+unreachable, and the classifier's most safety-critical branch - the one that
+refuses to read silence as absence - was never exercised by the matrix.
+
+Measured before and after across thirty-two seeds. Before: sixteen ended with a
+stranded slot, every one in `submission_unknown`. After: none do. Eleven end with
+the venue confirming a resting unfilled order, one ends in a genuine conflict for
+an operator, and the rest resolve completely. The matrix asserts the sharp form -
+no order may remain in `submission_unknown` after reconciliation quiesces - plus
+that every order still holding exposure sits in a state something can act on, and
+that the matrix itself reaches the silence and conflict branches at least once.
+Release 28/28, full host Debug ASan+UBSan 28/28, and the model corpus 109/109.
+
 Status: Phases 1-4 are accepted on the required host, ARM64 Ubuntu, and physical
 Raspberry Pi 5 gates. Deterministic policy evaluation, risk reservation, cluster
 orders, accepted venue-evidence accounting, and the transactional outbox are

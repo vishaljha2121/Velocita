@@ -112,6 +112,22 @@ enum class VenueObservationKind : std::uint8_t {
     // Terminal venue evidence: quantity is final cumulative filled quantity,
     // not an incremental fill. Only accepted fills may change position.
     cancel_reconciled = 6,
+    // A reconciliation query's answer about one order (architecture 10.1.6).
+    //
+    // Like `cancel_reconciled`, quantity is FINAL CUMULATIVE filled quantity
+    // rather than an increment, and that is the whole safety argument. A query
+    // answer is a snapshot, not an event, so it has no venue sequence of its own
+    // and session-scoped identity is unsafe across exactly the reconnects
+    // reconciliation runs after. Cumulative evidence makes a repeat harmless BY
+    // VALUE - apply books the difference against what it already recorded, so a
+    // second delivery computes a delta of zero - which demotes deduplication
+    // from a correctness requirement to an optimisation.
+    //
+    // Uniquely, `venue_order_id` MAY be zero here, meaning the venue answered
+    // that it holds no such order. That answer is the point of reconciliation:
+    // it proves nothing was placed, so the reservation was never real risk and
+    // can be released. `validate` enforces that absence implies zero fill.
+    order_reconciled = 7,
 };
 
 struct PolicyRule {
@@ -284,6 +300,7 @@ template <typename Id>
         case VenueObservationKind::cancelled:
         case VenueObservationKind::effect_unknown:
         case VenueObservationKind::cancel_reconciled:
+        case VenueObservationKind::order_reconciled:
             return true;
     }
     return false;
@@ -412,6 +429,25 @@ template <typename Id>
             if (observation.price.atoms() <= 0) return ContractError::non_positive_price;
             if (observation.quantity.atoms() <= 0) {
                 return ContractError::non_positive_quantity;
+            }
+            return ContractError::none;
+        case VenueObservationKind::order_reconciled:
+            // A snapshot, never an execution: no price, fee, or execution
+            // identity may ride along and be mistaken for one.
+            if (observation.price.atoms() != 0 || observation.fee.atoms() != 0 ||
+                observation.execution_id.value() != 0) {
+                return ContractError::non_canonical_value;
+            }
+            if (observation.quantity.atoms() < 0) {
+                return ContractError::non_canonical_value;
+            }
+            // Absence implies nothing filled. "The venue denies this order but
+            // reports it filled" is incoherent, so it is refused at the contract
+            // boundary rather than adjudicated deeper in where the two halves
+            // would have to be reconciled against each other.
+            if (!detail::present(observation.venue_order_id) &&
+                observation.quantity.atoms() != 0) {
+                return ContractError::non_canonical_value;
             }
             return ContractError::none;
         case VenueObservationKind::order_rejected:

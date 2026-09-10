@@ -1129,33 +1129,93 @@ contract using an accepted phase rather than an argument from first principles.
 If the intent really was cluster-wide, section 10 should say so and Phase 4's
 acceptance needs revisiting.
 
-#### 10.1.6 HELD FOR APPROVAL: a query answer has no event identity
+#### 10.1.6 A query answer has no event identity (approved 2026-09-10)
 
 `ObserveFill` and `ObserveOrderEvent` deduplicate on venue event identity -
 `(venue_id, venue_session_id, venue_sequence)`. A query answer is a SNAPSHOT, not
 an event: it has no venue sequence. Worse, session-scoped identity is unsafe
 across reconnects, and a disconnect is exactly when reconciliation runs.
 
-Two options, and the choice is a material byte-contract decision:
+APPROVED: one new `VenueObservationKind`, `order_reconciled = 7`, inside the
+existing `VenueObservation`. Zero new bytes, no new command kind, no new struct.
+The alternative - a new command kind with content-addressed idempotency - would
+have cost a command kind plus a body in the snapshot and receipt paths to buy a
+property cumulative evidence already has.
 
-- ONE NEW `VenueObservationKind`, say `order_reconciled`, inside the existing
-  `VenueObservation`. Zero new bytes and no new command kind - one enum value.
-  Safety does not rest on identity at all: like `cancel_reconciled`, the evidence
-  carries FINAL CUMULATIVE filled quantity rather than an increment, so applying
-  the same answer twice is a no-op BY VALUE. Identity deduplication becomes an
-  optimisation instead of a correctness requirement. It still changes what
-  decoders must accept and invalidates existing goldens.
-- A NEW COMMAND KIND with content-addressed idempotency. Explicit, but costs a
-  command kind plus a body in the snapshot and receipt paths, to buy a property
-  cumulative-by-value evidence already has.
+The safety argument is not about identity at all, and this is worth stating
+precisely because the weaker version of it is the one that first comes to mind.
 
-Recommendation: the first. It reuses a pattern this project already accepted for
-exactly this problem, and its cost is one enum value.
+The weak version: quantity is FINAL CUMULATIVE filled rather than an increment,
+so applying the same answer twice is a no-op by value. True, but in practice the
+applicability check fires first, so replay protection is not what this buys.
 
-Because this is a material byte/economic contract choice, no code encodes it.
-The gateway-side half - `plan_reconciliation`, `classify_query`, and the query
-bookkeeping - is built and tested, and stops at the seam where evidence would be
-submitted.
+The strong version, which is what actually matters: because the answer is a TOTAL
+compared for EQUALITY against what the cluster has already booked, the verdict is
+a pure function of `(answer, currently booked)`. It does not depend on how many
+answers preceded it, or in what order they arrived, or whether any of them were
+seen twice. THE ADJUDICATION NEEDS NO HISTORY - which is precisely why it needs no
+reliable identity. An incremental encoding would have to know whether this
+particular message had already been counted, and that question is unanswerable
+without exactly the identity a snapshot cannot carry.
+
+A zero `venue_order_id` means the venue answered that it holds no such order.
+`validate` enforces that absence implies a zero fill, so "the venue denies this
+order but reports it filled" is refused at the contract boundary rather than
+adjudicated deeper in, where the two halves would have to be reconciled against
+each other. Price, fee, and execution identity must all be zero: a snapshot is not
+an execution, and carrying an average price would invite it to be booked as one.
+
+The change is purely ADDITIVE. No existing golden changes, no existing kind is
+touched, and the frame stays 116 bytes. The one real cost is that a decoder which
+rejects unknown kinds will reject kind 7. The model package needs no change and
+must not receive one: it deliberately implements no `VenueObservation`, and its
+safety interlock fails the build if the name appears at all.
+
+#### 10.1.7 There is no `Adopt` in Phase 5, and that is the correct answer
+
+Section 10 lists `Adopt` - associating venue evidence with a known intent - and
+10.1.4 derived when it would be safe. Implementing it revealed that the question
+is moot for a query answer, and the reason is worth recording rather than
+rediscovering.
+
+If the venue reports MORE cumulative filled than the cluster has booked, those are
+fills the cluster has never seen. Booking them means creating a position movement.
+But a snapshot carries no execution identity, no price, and no fee - which are
+exactly the fields a fill requires, and exactly the fields Phase 4's fill path
+checks. Adopting would mean inventing all three.
+
+So the divergence is a `Conflict`, not an `Adopt`. Both directions are:
+
+- below what is booked, the venue has lost fills the cluster accepted, and a fill
+  is never un-booked; and
+- above it, the cluster refuses to manufacture a position movement from a total.
+
+The order goes terminal-but-unresolved, retains its reservation, and blocks its
+own slot. That is the G-074a operator path, and it is the honest place for
+economics the cluster cannot settle from the evidence it holds.
+
+`Adopt` returns when reconciliation can obtain per-execution evidence - a fills
+query with execution identities - rather than an order-level snapshot. That is a
+venue-integration question, not a Phase 5 one.
+
+#### 10.1.8 What `order_reconciled` deliberately does not answer
+
+It resolves exactly one question: did the submit reach the venue, and how much has
+it filled. It is applicable only to a submit effect on an order in
+`submission_unknown` or `dispatch_authorized`, with its effect still `pending` or
+`unknown`.
+
+Not answered, and deferred with reasons:
+
+- WHETHER A RESTING ORDER IS ALSO CANCELLED. The observation has no field for it,
+  and the existing `cancelled` kind requires a cancel effect the cluster may never
+  have sent. A venue-initiated cancellation cannot be reported at all today; that
+  is a pre-existing gap, not one this creates.
+- A `partially_filled` ORDER THAT WENT SILENT. Its state is not
+  `submission_unknown`, so it is out of the applicable set. The order is known
+  live; only its subsequent fills are missing.
+- POSITION MOVEMENT. See 10.1.7. Agreement resolves the effect and never touches
+  the position.
 
 ### 10.2 What the reconciliation planner decides
 
@@ -1189,10 +1249,26 @@ strategy mode. A superseded gateway must not write venue evidence into consensus
 at all. A halt stops new risk; reconciliation originates none, and a halted
 cluster holding a blocked slot is precisely when resolving it matters most.
 
-Measured against the current fault matrix: sixteen of thirty-two seeds end with a
-stranded slot, every one of them in `submission_unknown`, and the planner engages
-on all sixteen. The matrix now asserts that bridge - any stranded order in a shape
-`need_of` does not recognise fails the build.
+Measured against the fault matrix, before and after the cluster half existed.
+BEFORE: sixteen of thirty-two seeds ended with a stranded slot, every one in
+`submission_unknown`. AFTER: none do. Eleven end with the venue confirming it
+holds a resting, unfilled order - exposure that is real and correct rather than
+stranded - one ends in a genuine `conflict` for an operator, and the rest resolve
+completely.
+
+The matrix asserts the sharp form of that: after reconciliation quiesces, NO order
+may remain in `submission_unknown`. The cluster is allowed to hold exposure; it is
+not allowed to still be wondering whether its order exists. It also asserts that
+every order still holding exposure sits in a state something can act on - either
+queryable, or already adjudicated - so exposure with no path forward fails the
+build.
+
+The matrix's own non-vacuity is asserted too: it must reach the `unavailable`
+branch at least once, because silence is the branch where reading an absent answer
+as an absent order would place a second real order. Making that reachable required
+one simulator fix - a query now runs over the same session a send does and is
+subject to the same disconnect, without which `QueryOutcome::unavailable` was
+unreachable and the classifier's most safety-critical branch was never exercised.
 
 ## 11. Execution authority and kill contract
 

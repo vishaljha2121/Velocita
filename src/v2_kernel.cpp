@@ -2417,6 +2417,42 @@ std::size_t settle_orphaned_effects(TradingState& state,
                                   next_version, observation);
     }
 
+    // Architecture 10.1.6. A reconciliation answer resolves exactly ONE question -
+    // did the submit reach the venue, and how much has it filled - and refuses
+    // everything it cannot answer honestly from a snapshot.
+    const bool reconciled_submit =
+        observation.kind == VenueObservationKind::order_reconciled;
+    if (reconciled_submit &&
+        !(effect->effect_id == order.effect_id &&
+          effect->operation == EffectOperation::submit &&
+          (order.state == ClusterOrderState::submission_unknown ||
+           order.state == ClusterOrderState::dispatch_authorized) &&
+          (effect->state == OutboxState::pending ||
+           effect->state == OutboxState::unknown))) {
+        return venue_event_result(state,
+                                  ApplyCode::venue_observation_not_applicable,
+                                  next_version, observation);
+    }
+    // A zero venue order id is the venue answering that it holds no such order.
+    // `validate` has already guaranteed that a zero identity carries a zero fill,
+    // so this is unambiguously a claim that nothing was ever placed.
+    const bool venue_denies_order =
+        reconciled_submit && observation.venue_order_id.value() == 0;
+    // Quantity is FINAL CUMULATIVE filled, so agreement is equality against what
+    // the cluster has already booked - never addition. That is what makes a
+    // repeated answer a no-op by value rather than by identity.
+    //
+    // Both directions of disagreement are conflicts, for different reasons.
+    // Below what is booked, the venue has lost fills the cluster accepted, and a
+    // fill is never un-booked. Above it, the venue reports fills the cluster has
+    // never seen - and a snapshot carries no execution identity, no price, and no
+    // fee, which are precisely the fields a fill requires. The cluster refuses to
+    // invent them rather than manufacture a position movement from a total.
+    const bool reconciled_conflict =
+        reconciled_submit &&
+        (venue_denies_order ? reservation.filled_quantity.atoms() != 0
+                            : observation.quantity != reservation.filled_quantity);
+
     // A new transport observation can repeat the same semantic uncertainty.
     // Retain its request receipt, but do not count it as another applied venue
     // transition or pretend that the state became "more unknown".
@@ -2472,7 +2508,12 @@ std::size_t settle_orphaned_effects(TradingState& state,
     const bool releases =
         reconciliation ||
         (observation.kind == VenueObservationKind::order_rejected &&
-         effect->operation == EffectOperation::submit);
+         effect->operation == EffectOperation::submit) ||
+        // Nothing was ever placed, so the reservation was never real risk. This
+        // is the single most valuable answer reconciliation can obtain, and it is
+        // economically identical to a submit the venue never accepted - which is
+        // why it needs no new lifecycle state of its own.
+        (venue_denies_order && !reconciled_conflict);
     RiskAccount* risk = nullptr;
     std::optional<QuantityLots> next_reserved_quantity;
     std::optional<MoneyMicros> next_reserved_margin;
@@ -2531,6 +2572,27 @@ std::size_t settle_orphaned_effects(TradingState& state,
             effect->state = OutboxState::acknowledged;
             if (order.state != ClusterOrderState::filled)
                 order.state = ClusterOrderState::cancelled;
+            break;
+        case VenueObservationKind::order_reconciled:
+            if (reconciled_conflict) {
+                // Terminal but NOT risk-resolved. The reservation is retained and
+                // this logical slot stays blocked; every other slot keeps trading.
+                // Architecture 10.1.5 chose that scoping over the contract's
+                // cluster-wide mode change.
+                effect->state = OutboxState::conflict;
+                order.state = ClusterOrderState::conflict;
+            } else if (venue_denies_order) {
+                effect->state = OutboxState::rejected;
+                order.state = ClusterOrderState::rejected;
+            } else {
+                // The venue holds the order and agrees about what it has filled.
+                // The submit definitely arrived, so the effect is resolved; the
+                // order is exactly as live as its booked fills say it is.
+                effect->state = OutboxState::acknowledged;
+                order.state = reservation.filled_quantity.atoms() > 0
+                                  ? ClusterOrderState::partially_filled
+                                  : ClusterOrderState::live;
+            }
             break;
         case VenueObservationKind::fill:
             return venue_event_result(

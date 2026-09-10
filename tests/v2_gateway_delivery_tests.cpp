@@ -31,6 +31,7 @@ namespace {
 using namespace velocita::v2;
 using velocita::v2::sim::FaultPolicy;
 using velocita::v2::sim::SendOutcome;
+using velocita::v2::sim::QueryOutcome;
 using velocita::v2::sim::SimulatedVenue;
 
 void require(const bool condition, const std::string& message) {
@@ -594,6 +595,266 @@ void test_the_reconciliation_planner_reads_no_clock_and_mutates_nothing() {
     require(first == second, "the reconciliation planner is not a function");
 }
 
+// --- adjudication of a reconciliation answer -------------------------------
+
+// Build the observation a gateway submits after a trustworthy query answer.
+// `venue_order` zero means the venue denies holding the order at all.
+VenueObservation reconciled(const TradingState& state, EffectId effect_id,
+                            const std::uint64_t venue_order,
+                            const std::int64_t cumulative_filled,
+                            const std::uint64_t sequence = 6'000) {
+    VenueObservation answer;
+    answer.kind = VenueObservationKind::order_reconciled;
+    answer.venue_id = VenueId{9};
+    answer.venue_session_id = VenueSessionId{1};
+    answer.venue_sequence = VenueSequence{sequence};
+    answer.effect_id = effect_id;
+    answer.venue_order_id = VenueOrderId{venue_order};
+    answer.quantity = QuantityLots::from_atoms(cumulative_filled);
+    answer.evidence_digest = digest(0x6C);
+    for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
+        if (state.outbox_effects[index].effect_id == effect_id) {
+            answer.cluster_order_id = state.outbox_effects[index].cluster_order_id;
+        }
+    }
+    return answer;
+}
+
+ApplyResult submit_answer(TradingState& state, const VenueObservation& answer,
+                          const std::uint64_t sequence) {
+    ApplyScratch scratch;
+    const Command command{{CallerId{1}, RequestSequence{sequence},
+                           observation_fingerprint(answer)},
+                          ObserveOrderEvent{answer}};
+    return apply(state, command, scratch);
+}
+
+const ClusterOrder& sole_order(const TradingState& state) {
+    require(state.order_count == 1, "fixture does not hold exactly one order");
+    return state.orders[0];
+}
+
+bool risk_released(const TradingState& state) {
+    const auto& order = sole_order(state);
+    return order.reservation_index < state.reservation_count &&
+           state.reservations[order.reservation_index].state ==
+               ReservationState::released;
+}
+
+void test_a_denied_order_releases_its_reservation_and_frees_the_slot() {
+    // The single most valuable answer reconciliation can obtain: the venue never
+    // had the order, so the held risk was never real. Economically this is a
+    // submit the venue refused, which is why it needs no new lifecycle state.
+    auto fixture = stranded_submit();
+    require(!risk_released(fixture.state), "the stranded fixture holds no risk");
+    const auto before = collect_metrics(fixture.state).unresolved_orders;
+    require(before == 1, "the stranded fixture is not stranded");
+
+    const auto applied = submit_answer(
+        fixture.state, reconciled(fixture.state, fixture.effect_id, 0, 0), 20);
+    require(applied.code == ApplyCode::applied,
+            "a definitive not-found answer was refused");
+    require(sole_order(fixture.state).state == ClusterOrderState::rejected,
+            "a denied order did not resolve");
+    require(risk_released(fixture.state), "a denied order kept its reservation");
+    require(collect_metrics(fixture.state).unresolved_orders == 0,
+            "a resolved order still counted as unresolved");
+
+    // The payoff. A blocked slot that reconciliation resolves must actually
+    // accept new risk again - otherwise the whole exercise recovers a metric
+    // rather than the ability to trade.
+    ApplyScratch scratch;
+    auto& state = fixture.state;
+    state.source_events[state.source_event_count++] = {
+        SourceId{12}, SourceGeneration{1}, SourceSequence{2}, digest(0x45)};
+    state.sources[0].sequence = SourceSequence{2};
+    auto next = frame(2, digest(0x45), state);
+    const Command evaluate{{CallerId{1}, RequestSequence{21}, digest(0x53)},
+                           EvaluateDecisionFrame{DecisionId{21},
+                                                 EvaluationMode::authoritative, next}};
+    require(apply(state, evaluate, scratch).code == ApplyCode::applied,
+            "a fresh decision was refused after reconciliation");
+    const Command authorize{{CallerId{1}, RequestSequence{22}, digest(0x54)},
+                            AuthorizeDecision{DecisionId{21}}};
+    require(apply(state, authorize, scratch).code == ApplyCode::applied,
+            "the logical slot stayed blocked after reconciliation resolved it");
+}
+
+void test_a_denied_order_that_already_filled_is_a_conflict() {
+    // The venue denies an order the cluster has booked fills against. One of the
+    // two is wrong and the cluster cannot tell which, so it refuses to choose.
+    auto fixture = stranded_submit();
+    // Book a fill first, then strand it, so the cluster genuinely holds evidence
+    // the venue is about to contradict.
+    auto& reservation = fixture.state.reservations[sole_order(fixture.state)
+                                                       .reservation_index];
+    reservation.filled_quantity = QuantityLots::from_atoms(1);
+
+    const auto applied = submit_answer(
+        fixture.state, reconciled(fixture.state, fixture.effect_id, 0, 0), 20);
+    require(applied.code == ApplyCode::applied,
+            "a contradicting answer was not recorded");
+    require(sole_order(fixture.state).state == ClusterOrderState::conflict,
+            "the venue denying a filled order was not a conflict");
+    require(!risk_released(fixture.state),
+            "a conflicted order released its reservation");
+    require(collect_metrics(fixture.state).unresolved_orders == 1,
+            "a conflicted order stopped being reported as unresolved");
+}
+
+void test_agreement_resolves_the_effect_without_moving_position() {
+    // The venue holds the order and agrees about what it has filled. The submit
+    // definitely arrived, so the effect resolves - but nothing about the position
+    // changes, because agreement is not a fill.
+    auto fixture = stranded_submit();
+    const auto before = fixture.state.risk_accounts[0];
+    const auto applied = submit_answer(
+        fixture.state, reconciled(fixture.state, fixture.effect_id, 77, 0), 20);
+    require(applied.code == ApplyCode::applied, "an agreeing answer was refused");
+    require(sole_order(fixture.state).state == ClusterOrderState::live,
+            "an order the venue holds did not become live");
+    require(!risk_released(fixture.state),
+            "a live order at the venue released its reservation");
+    require(fixture.state.risk_accounts[0].position_quantity ==
+                before.position_quantity,
+            "agreement moved the position");
+}
+
+void test_a_fill_the_cluster_never_saw_is_a_conflict_not_an_adopt() {
+    // The venue reports more filled than the cluster has booked. A snapshot
+    // carries no execution identity, no price, and no fee - exactly the fields a
+    // fill requires - so the cluster refuses to manufacture one from a total.
+    auto fixture = stranded_submit();
+    const auto applied = submit_answer(
+        fixture.state, reconciled(fixture.state, fixture.effect_id, 77, 2), 20);
+    require(applied.code == ApplyCode::applied,
+            "a divergent answer was not recorded");
+    require(sole_order(fixture.state).state == ClusterOrderState::conflict,
+            "an unseen fill was not treated as a conflict");
+    require(!risk_released(fixture.state),
+            "a conflicted order released its reservation");
+}
+
+void test_a_venue_that_lost_a_fill_is_a_conflict() {
+    // Below what is booked. A fill is never un-booked, so this can only be a
+    // conflict - the alternative is letting a venue talk the cluster out of a
+    // position it already recorded.
+    auto fixture = stranded_submit();
+    auto& reservation = fixture.state.reservations[sole_order(fixture.state)
+                                                       .reservation_index];
+    reservation.filled_quantity = QuantityLots::from_atoms(1);
+    const auto applied = submit_answer(
+        fixture.state, reconciled(fixture.state, fixture.effect_id, 77, 0), 20);
+    require(applied.code == ApplyCode::applied,
+            "a regressing answer was not recorded");
+    require(sole_order(fixture.state).state == ClusterOrderState::conflict,
+            "a venue losing a booked fill was not a conflict");
+}
+
+void test_replaying_the_same_answer_changes_nothing() {
+    // Three independent layers must each hold, and the test asserts all three
+    // rather than letting one cover for the others.
+    auto fixture = stranded_submit();
+    const auto answer = reconciled(fixture.state, fixture.effect_id, 77, 0);
+    require(submit_answer(fixture.state, answer, 20).code == ApplyCode::applied,
+            "the first answer was refused");
+    const auto settled = fixture.state;
+
+    // 1. Command identity. The same request returns its retained result.
+    require(submit_answer(fixture.state, answer, 20).code == ApplyCode::applied,
+            "an exact command replay did not return its retained result");
+
+    // 2. Venue event identity. A fresh request carrying the same venue identity
+    //    and the same evidence is recognised as already applied.
+    require(submit_answer(fixture.state, answer, 21).code ==
+                ApplyCode::already_applied,
+            "a repeated venue event identity was not recognised");
+
+    // 3. The case neither identity catches: the same answer under a FRESH venue
+    //    sequence, which is exactly what a re-queried snapshot looks like after a
+    //    reconnect mints a new session.
+    const auto fresh = reconciled(fixture.state, fixture.effect_id, 77, 0, 6'001);
+    (void)submit_answer(fixture.state, fresh, 22);
+    require(std::memcmp(&fixture.state.risk_accounts, &settled.risk_accounts,
+                        sizeof(settled.risk_accounts)) == 0 &&
+                std::memcmp(&fixture.state.reservations, &settled.reservations,
+                            sizeof(settled.reservations)) == 0 &&
+                fixture.state.orders[0].state == settled.orders[0].state,
+            "replaying a cumulative answer under a fresh identity moved economics");
+}
+
+void test_the_verdict_is_a_function_of_the_total_not_of_history() {
+    // This is what cumulative evidence actually buys, and it is stronger than
+    // "a replay is harmless". Because quantity is a TOTAL compared for equality
+    // against what the cluster has booked, the verdict depends only on the answer
+    // and the current booked quantity - never on how many answers preceded it, or
+    // in what order they arrived. The adjudication needs no history, which is
+    // precisely why it needs no reliable identity either.
+    //
+    // Same answer, same booked quantity, two states reached by different routes:
+    // the verdict must match.
+    const auto verdict_for = [](const std::int64_t booked,
+                                const std::int64_t reported) {
+        auto fixture = stranded_submit();
+        fixture.state.reservations[sole_order(fixture.state).reservation_index]
+            .filled_quantity = QuantityLots::from_atoms(booked);
+        (void)submit_answer(fixture.state,
+                            reconciled(fixture.state, fixture.effect_id, 77, reported),
+                            20);
+        return sole_order(fixture.state).state;
+    };
+    require(verdict_for(0, 0) == ClusterOrderState::live,
+            "agreement at zero was not agreement");
+    require(verdict_for(1, 1) == ClusterOrderState::partially_filled,
+            "agreement at one was not agreement");
+    require(verdict_for(0, 1) == ClusterOrderState::conflict,
+            "an unseen fill was not a conflict");
+    require(verdict_for(1, 0) == ClusterOrderState::conflict,
+            "a lost fill was not a conflict");
+}
+
+void test_a_reconciliation_answer_is_refused_where_it_cannot_apply() {
+    // A live order is not reconciling anything. Accepting an answer here would
+    // let a snapshot overwrite lifecycle the cluster already knows. Note that a
+    // merely AUTHORIZED order is different and legitimately reconcilable - that
+    // is the delivery-exhausted case - so the fixture has to be acknowledged
+    // first to reach a state where an answer really has nothing to say.
+    auto live = one_authorized_submit();
+    VenueObservation ack;
+    ack.kind = VenueObservationKind::order_acknowledged;
+    ack.venue_id = VenueId{9};
+    ack.venue_session_id = VenueSessionId{1};
+    ack.venue_sequence = VenueSequence{7'000};
+    ack.effect_id = live.effect_id;
+    ack.venue_order_id = VenueOrderId{77};
+    ack.evidence_digest = digest(0x6D);
+    for (std::size_t index = 0; index < live.state.outbox_effect_count; ++index) {
+        if (live.state.outbox_effects[index].effect_id == live.effect_id) {
+            ack.cluster_order_id = live.state.outbox_effects[index].cluster_order_id;
+        }
+    }
+    require(submit_answer(live.state, ack, 19).code == ApplyCode::applied,
+            "the acknowledgement fixture was refused");
+    require(sole_order(live.state).state == ClusterOrderState::live,
+            "the acknowledgement fixture is not live");
+    require(submit_answer(live.state, reconciled(live.state, live.effect_id, 77, 0),
+                          20)
+                    .code == ApplyCode::venue_observation_not_applicable,
+            "a reconciliation answer applied to an order that needs none");
+
+    // And once resolved, a second answer has nothing left to say.
+    auto fixture = stranded_submit();
+    require(submit_answer(fixture.state,
+                          reconciled(fixture.state, fixture.effect_id, 0, 0), 20)
+                    .code == ApplyCode::applied,
+            "the first answer was refused");
+    require(submit_answer(fixture.state,
+                          reconciled(fixture.state, fixture.effect_id, 77, 0, 6'002),
+                          21)
+                    .code == ApplyCode::venue_observation_not_applicable,
+            "a resolved order accepted a second, contradicting answer");
+}
+
 // --- the fault-matrix harness ----------------------------------------------
 
 struct RunOutcome {
@@ -617,9 +878,12 @@ struct RunOutcome {
     std::size_t ambiguous_declared{};
     std::size_t authorizations{};
 
-    // What the loop leaves behind, and whether reconciliation would engage on it.
+    // What the loop leaves behind, and what reconciliation did about it.
     std::map<ClusterOrderState, std::size_t> unresolved_states;
     std::size_t reconciliation_targets{};
+    std::size_t queries{};
+    std::size_t reconciled{};
+    std::map<QueryDisposition, std::size_t> dispositions;
 };
 
 // Refusals that lose no economic information: the cluster already holds the
@@ -643,6 +907,7 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
     ApplyScratch scratch;
     SimulatedVenue venue(seed, faults, VenueId{9});
     GatewayDeliveryState delivery;
+    GatewayReconciliationState reconciliation;
     const GatewayTimeouts timeouts{8};
 
     RunOutcome outcome;
@@ -786,6 +1051,70 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
                 ++outcome.event_refusals[applied.code];
             }
         }
+        // 6. Reconcile. This runs after the drain so it sees the freshest state,
+        //    and it is the only step allowed to resolve exposure the loop itself
+        //    could not.
+        const auto recon = plan_reconciliation(state, reconciliation, delivery,
+                                               control_of(state), capable_venue(),
+                                               timeouts, now);
+        for (std::size_t index = 0; index < recon.query_count; ++index) {
+            const auto& target = recon.to_query[index];
+            require(record_query(reconciliation, target.cluster_order_id, now),
+                    "the reconciliation arena overflowed");
+            const auto raw = venue.query(target.cluster_order_id, now);
+            require(record_answer(reconciliation, target.cluster_order_id),
+                    "record_answer did not find the outstanding query");
+            ++outcome.queries;
+
+            // Map the transport's answer into what the gateway may act on. The
+            // simulator's own result type deliberately never crosses this line.
+            VenueQueryView view;
+            view.venue_session_id = venue.session();
+            switch (raw.outcome) {
+                case QueryOutcome::known:
+                    view.status = VenueQueryStatus::known;
+                    view.venue_order_id = raw.venue_order_id;
+                    view.filled_quantity = raw.filled_quantity;
+                    view.remaining_quantity = raw.remaining_quantity;
+                    view.cancelled = raw.cancelled;
+                    // A deliberately corrupted answer is not authoritative. The
+                    // gateway must not launder it into consensus as truth.
+                    view.authoritative = !raw.inconsistent;
+                    break;
+                case QueryOutcome::not_found:
+                    view.status = VenueQueryStatus::not_found;
+                    view.authoritative = true;
+                    break;
+                case QueryOutcome::unavailable:
+                    view.status = VenueQueryStatus::unavailable;
+                    break;
+            }
+
+            const auto* attempt =
+                find_reconciliation(reconciliation, target.cluster_order_id);
+            const auto disposition = classify_query(view, attempt, timeouts);
+            ++outcome.dispositions[disposition];
+            if (disposition != QueryDisposition::submit) continue;
+
+            VenueObservation answer;
+            answer.kind = VenueObservationKind::order_reconciled;
+            answer.venue_id = VenueId{9};
+            answer.venue_session_id = view.venue_session_id;
+            answer.venue_sequence = VenueSequence{800'000 + now * 64 + index};
+            answer.cluster_order_id = target.cluster_order_id;
+            answer.effect_id = target.effect_id;
+            answer.venue_order_id = view.venue_order_id;
+            answer.quantity = view.filled_quantity;
+            answer.evidence_digest = digest(0x6C);
+            ++counter;
+            const Command command{{CallerId{1}, RequestSequence{counter},
+                                   observation_fingerprint(answer)},
+                                  ObserveOrderEvent{answer}};
+            if (apply(state, command, scratch).code == ApplyCode::applied) {
+                ++outcome.reconciled;
+            }
+        }
+
         now += 2;
     };
 
@@ -878,15 +1207,35 @@ void check_gates(const RunOutcome& outcome, const std::string& where) {
                 "an unsettled effect reported zero age" + where);
     }
     // Visibility is necessary but not sufficient: something has to be able to ACT
-    // on what is visible. Every stranded slot the loop produces must be one the
-    // reconciliation planner would engage. A failure here means the matrix found
-    // a way to strand an order in a shape `need_of` does not recognise, which is
-    // exactly the discovery worth failing a build over.
-    if (outcome.observed_unresolved > 0) {
-        require(outcome.reconciliation_targets > 0,
-                "an order was stranded in a state reconciliation would never "
-                "query" + where);
+    // on what is visible. Every order still holding exposure must be in a state
+    // that is either QUERYABLE by reconciliation, or one reconciliation has
+    // already ruled on. Anything else is exposure with no path forward at all,
+    // which is the discovery worth failing a build over.
+    for (const auto& [order_state, count] : outcome.unresolved_states) {
+        (void)count;
+        const bool queryable = order_state == ClusterOrderState::submission_unknown ||
+                               order_state == ClusterOrderState::reconciling ||
+                               order_state == ClusterOrderState::dispatch_authorized;
+        // Adjudicated: reconciliation has spoken and re-asking would add nothing.
+        // `conflict` is the G-074a operator path; `live` and `partially_filled`
+        // mean the venue confirmed it holds a working order, so the exposure is
+        // real and correct rather than stranded.
+        const bool adjudicated = order_state == ClusterOrderState::conflict ||
+                                 order_state == ClusterOrderState::live ||
+                                 order_state == ClusterOrderState::partially_filled ||
+                                 order_state == ClusterOrderState::cancel_pending;
+        require(queryable || adjudicated,
+                "an order holds exposure in a state nothing can act on: " +
+                    std::to_string(static_cast<int>(order_state)) + where);
     }
+    // The sharp claim, and the whole point of the increment: after reconciliation
+    // has run to quiescence, NO order may still be in submission_unknown. The
+    // cluster is allowed to hold exposure - a resting order at the venue, or a
+    // conflict an operator must settle - but it is not allowed to still be
+    // wondering whether its order exists.
+    require(outcome.unresolved_states.count(ClusterOrderState::submission_unknown) == 0,
+            "an order was still in submission_unknown after reconciliation "
+            "quiesced" + where);
 }
 
 void test_a_clean_venue_delivers_and_resolves() {
@@ -920,6 +1269,10 @@ void test_the_fault_matrix_holds_the_gate() {
     std::size_t total_orders = 0;
     std::size_t total_duplicate_fills = 0;
     std::size_t total_unresolved = 0;
+    std::size_t total_queries = 0;
+    std::size_t total_reconciled = 0;
+    std::size_t total_unavailable = 0;
+    std::size_t total_conflicts = 0;
     for (std::uint64_t seed = 1; seed <= 32; ++seed) {
         const auto outcome = run_seed(seed, faults, 12);
         // Printed BEFORE the gates so a failing seed's numbers are visible, and
@@ -937,8 +1290,9 @@ void test_the_fault_matrix_holds_the_gate() {
             for (const auto& [code, count] : outcome.event_refusals) {
                 std::cout << static_cast<int>(code) << "x" << count << " ";
             }
-            std::cout << "recon-targets " << outcome.reconciliation_targets
-                      << " states ";
+            std::cout << "queries " << outcome.queries << " reconciled "
+                      << outcome.reconciled << " recon-targets "
+                      << outcome.reconciliation_targets << " states ";
             for (const auto& [order_state, count] : outcome.unresolved_states) {
                 std::cout << static_cast<int>(order_state) << "x" << count << " ";
             }
@@ -950,6 +1304,14 @@ void test_the_fault_matrix_holds_the_gate() {
             total_duplicate_fills += count;
         }
         total_unresolved += outcome.metrics.unresolved_orders;
+        total_queries += outcome.queries;
+        total_reconciled += outcome.reconciled;
+        if (outcome.dispositions.count(QueryDisposition::unavailable) != 0) {
+            total_unavailable += outcome.dispositions.at(QueryDisposition::unavailable);
+        }
+        if (outcome.unresolved_states.count(ClusterOrderState::conflict) != 0) {
+            total_conflicts += outcome.unresolved_states.at(ClusterOrderState::conflict);
+        }
         total_sends += outcome.sends;
         total_ambiguous += outcome.ambiguous_declared;
         total_orders += outcome.venue_orders_created;
@@ -966,6 +1328,17 @@ void test_the_fault_matrix_holds_the_gate() {
     require(total_unresolved > 0,
             "the matrix never stranded an order, so the unresolved-visibility "
             "gate was never exercised");
+    require(total_queries > 0, "the matrix never reconciled anything");
+    require(total_reconciled > 0, "no reconciliation answer was ever accepted");
+    // Silence is the branch that matters most - it is the one where reading an
+    // absent answer as an absent order would place a second real order - so the
+    // matrix must actually reach it rather than only ever getting answers.
+    require(total_unavailable > 0,
+            "the matrix never lost a query, so the classifier's silence branch "
+            "was never exercised");
+    require(total_conflicts > 0,
+            "the matrix never produced a reconciliation conflict, so the refusal "
+            "to guess was never exercised");
 }
 
 void test_the_matrix_is_reproducible() {
@@ -1013,6 +1386,14 @@ int main() {
         test_only_a_trustworthy_answer_may_be_submitted();
         test_a_delivery_exhausted_order_is_reconciled_not_abandoned();
         test_the_reconciliation_planner_reads_no_clock_and_mutates_nothing();
+        test_a_denied_order_releases_its_reservation_and_frees_the_slot();
+        test_a_denied_order_that_already_filled_is_a_conflict();
+        test_agreement_resolves_the_effect_without_moving_position();
+        test_a_fill_the_cluster_never_saw_is_a_conflict_not_an_adopt();
+        test_a_venue_that_lost_a_fill_is_a_conflict();
+        test_replaying_the_same_answer_changes_nothing();
+        test_the_verdict_is_a_function_of_the_total_not_of_history();
+        test_a_reconciliation_answer_is_refused_where_it_cannot_apply();
         test_a_clean_venue_delivers_and_resolves();
         test_the_fault_matrix_holds_the_gate();
         test_the_matrix_is_reproducible();

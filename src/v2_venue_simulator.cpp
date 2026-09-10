@@ -47,6 +47,12 @@ Fault SimulatedVenue::choose_fault(const bool for_query) noexcept {
     // policy evaluator uses, so there is one precedence convention in the system
     // rather than two.
     if (for_query) {
+        // A query runs over the same session a send does, so it is subject to the
+        // same disconnect. Without this, `QueryOutcome::unavailable` would be
+        // unreachable and the most safety-critical branch of the gateway's
+        // classifier - the one that refuses to read silence as absence - would
+        // never be exercised by the matrix.
+        if (roll(policy_.disconnect_permille)) return Fault::disconnect;
         return roll(policy_.inconsistent_query_permille) ? Fault::inconsistent_query
                                                          : Fault::none;
     }
@@ -227,6 +233,14 @@ std::vector<VenueObservation> SimulatedVenue::poll(const Tick now) {
 QueryResult SimulatedVenue::query(const ClusterOrderId order, const Tick) {
     const auto fault = choose_fault(true);
     fault_log_.push_back(fault);
+
+    if (fault == Fault::disconnect) {
+        // The session ended mid-question. The venue said nothing, and nothing may
+        // be concluded from that - in particular NOT that the order is absent.
+        session_ = VenueSessionId{session_.value() + 1};
+        scheduled_.clear();
+        return {QueryOutcome::unavailable, {}, {}, {}, false, false};
+    }
 
     auto* resting = find(order);
     if (resting == nullptr) {
