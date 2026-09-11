@@ -1,4 +1,13 @@
-FROM --platform=linux/arm64 ubuntu:26.04
+# No --platform here, deliberately. This image is built natively on whichever
+# target is being validated: ARM64 on the Raspberry Pi, x86-64 on the NUC. Pinning
+# linux/arm64 in the FROM line made an x86-64 NUC pull an ARM64 base and run it
+# under emulation, which measures the wrong architecture and then fails the gate's
+# own dpkg-architecture check - so the NUC gate could never have passed.
+#
+# A caller that genuinely wants a non-native platform passes --platform to
+# `build` and `run` on the command line, which is what the ARM64 container gate
+# does on an x86-64 development host.
+FROM ubuntu:26.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG AERON_COMMIT=5b62f21d917af027cdf5a3241aa5f355149b04fa
