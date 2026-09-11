@@ -2086,6 +2086,24 @@ std::size_t settle_orphaned_effects(TradingState& state,
     }
     if (reservation.state == ReservationState::released ||
         observation.quantity > reservation.remaining_quantity) {
+        // The venue traded something the cluster cannot book: either the hold is
+        // already released, or the fill exceeds what was ever reserved. Booking
+        // it would exceed authorized risk, so the quantity is refused - but the
+        // DIVERGENCE must not be refused silently.
+        //
+        // This is the fill-after-cancel case made reachable by Phase 5. Until a
+        // gateway existed nothing produced `cancel_reconciled`, so a released
+        // reservation could not be contradicted; a reconciliation query answer is
+        // a SNAPSHOT, and a venue can still report a fill that was already
+        // executed when it called the order cancelled. The cluster's position is
+        // then genuinely wrong and only an operator can settle it.
+        //
+        // Marking the order `conflict` is what makes that true statement. It is
+        // terminal-but-unresolved, so `order_is_risk_resolved` refuses to reclaim
+        // the group and the retained proposal and effect bytes stay available to
+        // whoever has to resolve it. Mutating on a refusal path is deliberate and
+        // has precedent directly above: the refusal itself is new knowledge.
+        order.state = ClusterOrderState::conflict;
         return fill_result(state, ApplyCode::fill_quantity_conflict,
                            next_version, observation, observation.quantity);
     }

@@ -20,7 +20,10 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <cstdio>
 #include <iostream>
+#include <algorithm>
+#include <array>
 #include <map>
 #include <set>
 #include <stdexcept>
@@ -1118,6 +1121,111 @@ void test_new_risk_is_still_refused_outside_normal() {
 
 // --- the fault-matrix harness ----------------------------------------------
 
+// A bounded arena is a HORIZON BUDGET. It holds N records; if records are created
+// at rate r per state version and each lives h state versions, the arena needs
+// N >= r * h. Phase 4 chose every N by argument because r and h were unmeasurable
+// without a gateway. These are those numbers, taken under adversarial load.
+struct ArenaPeak {
+    const char* name;
+    std::size_t capacity;
+    std::size_t peak;
+
+    [[nodiscard]] std::size_t margin() const noexcept {
+        return capacity > peak ? capacity - peak : 0;
+    }
+};
+
+struct Horizons {
+    // Peak simultaneous occupancy, which is r * h realised.
+    std::size_t peak_decisions{};
+    std::size_t peak_orders{};
+    std::size_t peak_reservations{};
+    std::size_t peak_effects{};
+    std::size_t peak_receipts{};
+    std::size_t peak_venue_events{};
+    std::size_t peak_caller_cursors{};
+    std::size_t peak_source_events{};
+
+    // Lifetimes and horizons, in STATE VERSIONS. Wall-clock has no meaning to a
+    // clockless reducer, and a state version is exact on every replica.
+    std::uint64_t max_order_age{};        // authorization to last observation
+    std::uint64_t max_unresolved_age{};   // the retention horizon that matters
+    std::uint64_t max_unsettled_age{};
+    std::uint32_t max_send_attempts_used{};
+    std::uint32_t max_query_attempts_used{};
+    std::uint64_t final_state_version{};
+    // The safety property, which must hold at ANY capacity: a record holding
+    // unresolved exposure is never reclaimed. Saturation is a liveness bound and
+    // is acceptable; premature reclamation is a correctness failure and is not.
+    std::size_t vanished_while_unresolved{};
+    std::size_t peak_conflicts{};
+    std::uint64_t reclaimed_groups{};
+    std::map<ApplyCode, std::size_t> capacity_refusals;
+
+    void observe(const TradingMetrics& metrics) noexcept {
+        peak_decisions = std::max<std::size_t>(peak_decisions, metrics.decision_count);
+        peak_orders = std::max<std::size_t>(peak_orders, metrics.order_count);
+        peak_reservations =
+            std::max<std::size_t>(peak_reservations, metrics.reservation_count);
+        peak_effects =
+            std::max<std::size_t>(peak_effects, metrics.outbox_effect_count);
+        peak_receipts = std::max<std::size_t>(peak_receipts, metrics.receipt_count);
+        peak_venue_events = std::max<std::size_t>(
+            peak_venue_events, kMaxVenueEventReceipts - metrics.venue_event_headroom);
+        peak_caller_cursors =
+            std::max<std::size_t>(peak_caller_cursors, metrics.caller_cursor_count);
+        peak_source_events =
+            std::max<std::size_t>(peak_source_events, metrics.source_event_count);
+        max_unresolved_age =
+            std::max(max_unresolved_age, metrics.oldest_unresolved_order_age);
+        max_unsettled_age =
+            std::max(max_unsettled_age, metrics.oldest_unsettled_effect_age);
+        final_state_version = metrics.state_version;
+        peak_conflicts = std::max<std::size_t>(
+            peak_conflicts,
+            metrics.orders_by_state[static_cast<std::size_t>(
+                ClusterOrderState::conflict)]);
+        reclaimed_groups = std::max(reclaimed_groups, metrics.reclaimed_group_count);
+    }
+
+    void merge(const Horizons& other) noexcept {
+        peak_decisions = std::max(peak_decisions, other.peak_decisions);
+        peak_orders = std::max(peak_orders, other.peak_orders);
+        peak_reservations = std::max(peak_reservations, other.peak_reservations);
+        peak_effects = std::max(peak_effects, other.peak_effects);
+        peak_receipts = std::max(peak_receipts, other.peak_receipts);
+        peak_venue_events = std::max(peak_venue_events, other.peak_venue_events);
+        peak_caller_cursors =
+            std::max(peak_caller_cursors, other.peak_caller_cursors);
+        peak_source_events = std::max(peak_source_events, other.peak_source_events);
+        max_order_age = std::max(max_order_age, other.max_order_age);
+        max_unresolved_age = std::max(max_unresolved_age, other.max_unresolved_age);
+        max_unsettled_age = std::max(max_unsettled_age, other.max_unsettled_age);
+        max_send_attempts_used =
+            std::max(max_send_attempts_used, other.max_send_attempts_used);
+        max_query_attempts_used =
+            std::max(max_query_attempts_used, other.max_query_attempts_used);
+        final_state_version = std::max(final_state_version, other.final_state_version);
+        vanished_while_unresolved += other.vanished_while_unresolved;
+        peak_conflicts = std::max(peak_conflicts, other.peak_conflicts);
+        reclaimed_groups = std::max(reclaimed_groups, other.reclaimed_groups);
+        for (const auto& [code, count] : other.capacity_refusals) {
+            capacity_refusals[code] += count;
+        }
+    }
+
+    [[nodiscard]] std::array<ArenaPeak, 8> arenas() const noexcept {
+        return {{{"decisions", kMaxDecisionRecords, peak_decisions},
+                 {"orders", kMaxClusterOrders, peak_orders},
+                 {"reservations", kMaxRiskReservations, peak_reservations},
+                 {"outbox effects", kMaxOutboxEffects, peak_effects},
+                 {"request receipts", kMaxRequestReceipts, peak_receipts},
+                 {"venue events", kMaxVenueEventReceipts, peak_venue_events},
+                 {"caller cursors", kMaxCallerCursors, peak_caller_cursors},
+                 {"source events", kMaxSourceEventReceipts, peak_source_events}}};
+    }
+};
+
 struct RunOutcome {
     // Gate 1.
     std::size_t venue_orders_created{};
@@ -1152,7 +1260,41 @@ struct RunOutcome {
     // is the outcome the gate exists to exclude.
     std::set<std::uint64_t> answered_ahead;   // venue reported fills we never got
     std::set<std::uint64_t> never_answered;   // no trustworthy answer was obtained
+
+    // Architecture 9.1.7. Section 3 requires identity retention to exceed the
+    // retry, recovery and reconciliation horizons. Phase 4 could not show that,
+    // because the horizons did not exist until a gateway produced them. These are
+    // the measurements that discharge it.
+    Horizons horizons;
 };
+
+// Did an admission get refused because a bounded arena had no room? This is the
+// real liveness signal, and peak occupancy is not.
+//
+// Several arenas - the decision arena above all - sweep ON ADMISSION WHEN FULL,
+// so reaching the ceiling is the designed trigger for reclamation rather than a
+// symptom of anything. What matters is whether the sweep frees enough: if it
+// does, no admission is refused and the capacity genuinely exceeds the horizon.
+// Measuring occupancy instead would have condemned a sweep-on-full arena for
+// working exactly as designed.
+[[nodiscard]] bool is_capacity_refusal(const ApplyCode code) noexcept {
+    switch (code) {
+        case ApplyCode::source_capacity_exceeded:
+        case ApplyCode::source_event_capacity_exceeded:
+        case ApplyCode::decision_capacity_exceeded:
+        case ApplyCode::policy_capacity_exceeded:
+        case ApplyCode::receipt_capacity_exceeded:
+        case ApplyCode::reservation_capacity_exceeded:
+        case ApplyCode::order_capacity_exceeded:
+        case ApplyCode::outbox_capacity_exceeded:
+        case ApplyCode::fill_capacity_exceeded:
+        case ApplyCode::venue_event_capacity_exceeded:
+        case ApplyCode::risk_account_capacity_exceeded:
+            return true;
+        default:
+            return false;
+    }
+}
 
 // Refusals that lose no economic information: the cluster already holds the
 // fact, or it deliberately swept the resolved group that owned it.
@@ -1179,6 +1321,13 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
     const GatewayTimeouts timeouts{8};
 
     RunOutcome outcome;
+    const auto submit = [&](const Command& command) {
+        const auto result = apply(state, command, scratch);
+        if (is_capacity_refusal(result.code)) {
+            ++outcome.horizons.capacity_refusals[result.code];
+        }
+        return result;
+    };
     std::uint64_t counter = 0;
     std::uint64_t sequence = 0;
     std::uint64_t decision_id = 100;
@@ -1195,6 +1344,7 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
     // which is what makes "did anything stay unresolved" a real question rather
     // than an artefact of stopping mid-flight.
     std::uint64_t cycle = 0;
+    std::map<std::uint64_t, bool> last_seen;
     const auto tick = [&](const bool propose) {
         // 1. The edge proposes; the cluster authorizes. Refusals are expected and
         //    correct: slot exclusivity and arena headroom both fail closed, and
@@ -1207,15 +1357,15 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
                 next_identity(),
                 RecordSourceEvent{SourceId{12}, SourceGeneration{1},
                                   SourceSequence{sequence}, evidence}};
-            if (apply(state, record, scratch).code == ApplyCode::applied) {
+            if (submit(record).code == ApplyCode::applied) {
                 const DecisionId id{decision_id++};
                 const Command evaluate{next_identity(),
                                        EvaluateDecisionFrame{
                                            id, EvaluationMode::authoritative,
                                            frame(sequence, evidence, state)}};
-                if (apply(state, evaluate, scratch).code == ApplyCode::applied) {
+                if (submit(evaluate).code == ApplyCode::applied) {
                     const Command authorize{next_identity(), AuthorizeDecision{id}};
-                    if (apply(state, authorize, scratch).code == ApplyCode::applied) {
+                    if (submit(authorize).code == ApplyCode::applied) {
                         ++outcome.authorizations;
                     }
                 }
@@ -1235,7 +1385,7 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
                 }
                 const Command cancel{next_identity(),
                                      RequestCancel{order.cluster_order_id}};
-                if (apply(state, cancel, scratch).code == ApplyCode::applied) {
+                if (submit(cancel).code == ApplyCode::applied) {
                     ++outcome.cancels;
                 }
                 break;
@@ -1272,7 +1422,7 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
             const Command report{{CallerId{1}, RequestSequence{counter},
                                   observation_fingerprint(unknown)},
                                  ObserveOrderEvent{unknown}};
-            (void)apply(state, report, scratch);
+            (void)submit(report);
             (void)record_response(delivery, effect_id);
             ++outcome.ambiguous_declared;
         }
@@ -1340,7 +1490,7 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
             // gateway would declare an outcome unknown that the venue had
             // already told it, and retry something already answered.
             (void)record_response(delivery, observation.effect_id);
-            const auto applied = apply(state, command, scratch);
+            const auto applied = submit(command);
             if (applied.code == ApplyCode::applied) {
                 if (is_fill) {
                     outcome.cluster_booked[order] +=
@@ -1436,7 +1586,7 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
             const Command command{{CallerId{1}, RequestSequence{counter},
                                    observation_fingerprint(answer)},
                                   ObserveOrderEvent{answer}};
-            const auto adjudicated = apply(state, command, scratch);
+            const auto adjudicated = submit(command);
             if (adjudicated.code == ApplyCode::applied) {
                 ++outcome.reconciled;
             } else if (adjudicated.code ==
@@ -1447,6 +1597,52 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
                 // flight would close the gap.
                 outcome.answered_ahead.insert(target.cluster_order_id.value());
             }
+        }
+
+        // The gateway reclaims its own bookkeeping on the same cadence the
+        // reducer sweeps, or its arenas outlive the records they describe.
+        (void)reclaim_delivery_attempts(delivery, state);
+        (void)reclaim_reconciliation_attempts(reconciliation, state);
+
+        // Sample every tick. A peak that occurs between ticks is invisible to a
+        // single final reading, and the peak is the whole measurement.
+        outcome.horizons.observe(collect_metrics(state));
+
+        // Nothing unresolved may vanish. An order that leaves the arena must have
+        // been resolved when last seen - reclamation frees capacity, and freeing
+        // it against exposure that may still exist is the one failure no capacity
+        // choice can excuse.
+        std::map<std::uint64_t, bool> present;
+        for (std::size_t index = 0; index < state.order_count; ++index) {
+            const auto& order = state.orders[index];
+            const bool unresolved =
+                order.reservation_index >= state.reservation_count ||
+                state.reservations[order.reservation_index].state !=
+                    ReservationState::released;
+            present[order.cluster_order_id.value()] = unresolved;
+        }
+        for (const auto& [id, was_unresolved] : last_seen) {
+            if (present.count(id) != 0) continue;
+            if (was_unresolved) ++outcome.horizons.vanished_while_unresolved;
+        }
+        last_seen = present;
+        for (std::size_t index = 0; index < state.order_count; ++index) {
+            const auto& order = state.orders[index];
+            if (state.state_version >= order.authorization_state_version) {
+                outcome.horizons.max_order_age =
+                    std::max(outcome.horizons.max_order_age,
+                             state.state_version - order.authorization_state_version);
+            }
+        }
+        for (std::size_t index = 0; index < delivery.attempt_count; ++index) {
+            outcome.horizons.max_send_attempts_used =
+                std::max(outcome.horizons.max_send_attempts_used,
+                         delivery.attempts[index].attempts);
+        }
+        for (std::size_t index = 0; index < reconciliation.attempt_count; ++index) {
+            outcome.horizons.max_query_attempts_used =
+                std::max(outcome.horizons.max_query_attempts_used,
+                         reconciliation.attempts[index].attempts);
         }
 
         now += 2;
@@ -1505,10 +1701,25 @@ void check_gates(const RunOutcome& outcome, const std::string& where) {
         (void)booked;
     }
     for (const auto& [code, count] : outcome.fill_refusals) {
+        // `fill_quantity_conflict` is the one refusal that genuinely does not
+        // book a fill the venue reported: the hold is released, or the quantity
+        // exceeds what was ever reserved, and booking it would exceed authorized
+        // risk. That is allowed - but only because it is RECORDED. The gate is
+        // not "every fill is booked", which no risk-bounded system can promise;
+        // it is "no fill disappears without a trace", and the trace is a
+        // conflicted order that cannot be reclaimed.
+        if (code == ApplyCode::fill_quantity_conflict) continue;
         require(refusal_is_lossless(code),
                 "a fill was refused for a reason that loses it: code " +
                     std::to_string(static_cast<int>(code)) + " x" +
                     std::to_string(count) + where);
+    }
+    if (outcome.fill_refusals.count(ApplyCode::fill_quantity_conflict) != 0) {
+        require(outcome.metrics
+                        .orders_by_state[static_cast<std::size_t>(
+                            ClusterOrderState::conflict)] > 0,
+                "a fill was refused as unbookable without leaving a conflicted "
+                "order behind, so it vanished silently" + where);
     }
     // Non-fill venue evidence is what resolves a slot, so a refusal there that is
     // not idempotent suppression means evidence was dropped and an order can
@@ -1730,6 +1941,166 @@ void test_the_matrix_is_reproducible() {
             "two different seeds produced identical runs, so the seed is inert");
 }
 
+// --- architecture 9.1.7: the retention horizon measurement -----------------
+
+void report(const char* label, const Horizons& worst) {
+    if (std::getenv("VELOCITA_HORIZON_REPORT") == nullptr) return;
+    std::printf("\n  %s\n  arena              cap   peak  margin\n", label);
+    for (const auto& arena : worst.arenas()) {
+        std::printf("  %-16s %5zu  %5zu  %6zu\n", arena.name, arena.capacity,
+                    arena.peak, arena.margin());
+    }
+    std::printf("  max order age / unresolved / unsettled (versions): %llu / %llu / %llu\n",
+                static_cast<unsigned long long>(worst.max_order_age),
+                static_cast<unsigned long long>(worst.max_unresolved_age),
+                static_cast<unsigned long long>(worst.max_unsettled_age));
+    std::printf("  send attempts %u/%u   query attempts %u/%u   peak conflicts %zu\n",
+                worst.max_send_attempts_used, GatewayTimeouts{}.max_send_attempts,
+                worst.max_query_attempts_used, GatewayTimeouts{}.max_query_attempts,
+                worst.peak_conflicts);
+    for (const auto& [code, count] : worst.capacity_refusals) {
+        std::printf("  CAPACITY REFUSAL: code %d x%zu\n", static_cast<int>(code),
+                    count);
+    }
+    std::printf("  orders that vanished while unresolved: %zu\n",
+                worst.vanished_while_unresolved);
+    std::printf("  order groups reclaimed: %llu\n",
+                static_cast<unsigned long long>(worst.reclaimed_groups));
+    std::printf("  final state version: %llu\n\n",
+                static_cast<unsigned long long>(worst.final_state_version));
+}
+
+FaultPolicy nominal_faults() {
+    // Everything a healthy venue does badly: latency, loss, duplication,
+    // reordering, partial fills, disconnects, pacing. No self-contradiction.
+    FaultPolicy faults;
+    faults.delay_permille = 120;
+    faults.loss_permille = 80;
+    faults.duplication_permille = 120;
+    faults.reorder_permille = 120;
+    faults.partial_fill_permille = 180;
+    faults.disconnect_permille = 60;
+    faults.rate_limit_permille = 90;
+    return faults;
+}
+
+void test_retention_capacity_exceeds_the_horizon_under_nominal_faults() {
+    // Discharges the obligation Phase 4 was accepted with. Section 3 requires
+    // identity retention to exceed the maximum retry, recovery and reconciliation
+    // horizon. Phase 4 could not show that: 8.6 and 8.7 made retention finite and
+    // capacity-driven, and 8.4 recorded that the horizons were unknown until a
+    // gateway produced them. They exist now.
+    //
+    // The check is a MARGIN, not a bound. Every arena already fails closed at its
+    // ceiling - a refusal, never a silent drop - so "capacity is never exceeded"
+    // is true by construction and proves nothing. What must be shown is that the
+    // ceiling is never REACHED, because reaching it means the cluster is refusing
+    // work it was sized to accept.
+    Horizons worst;
+    for (std::uint64_t seed = 1; seed <= 48; ++seed) {
+        const auto outcome = run_seed(seed, nominal_faults(), 40);
+        check_gates(outcome, " (horizon seed " + std::to_string(seed) + ")");
+        worst.merge(outcome.horizons);
+    }
+    report("nominal faults, 48 seeds x 40 cycles", worst);
+
+    // The liveness property, stated where it actually lives. Not "no arena is
+    // ever full" - several sweep on admission when full, so fullness is their
+    // reclamation trigger - but "no admission was ever refused for want of room".
+    for (const auto& [code, count] : worst.capacity_refusals) {
+        require(false, "an admission was refused for capacity under nominal "
+                       "faults, so a bounded arena no longer exceeds its horizon: "
+                       "code " + std::to_string(static_cast<int>(code)) + " x" +
+                    std::to_string(count));
+    }
+    require(worst.vanished_while_unresolved == 0,
+            "an order holding unresolved exposure was reclaimed");
+    for (const auto& arena : worst.arenas()) {
+        require(arena.peak <= arena.capacity,
+                std::string("an arena exceeded its capacity, so a bound was not "
+                            "enforced: ") + arena.name);
+    }
+
+    // The run has to be long enough for the numbers to mean anything, and the
+    // honest evidence of that is RECLAMATION rather than an arbitrary version
+    // count: records must have been created, resolved, and swept, which is the
+    // full cycle the capacity question is about. A run that only ever filled
+    // arenas would satisfy a "no capacity refusal" check while measuring nothing.
+    require(worst.reclaimed_groups > 0,
+            "no order group was ever reclaimed, so the run never completed a "
+            "create-resolve-sweep cycle and measured nothing");
+    require(worst.peak_orders > 1 && worst.peak_effects > 1,
+            "the horizon run never held more than one order at a time");
+    require(worst.max_order_age > 0, "no order lived long enough to be measured");
+    require(worst.max_send_attempts_used > 1 && worst.max_query_attempts_used > 1,
+            "the run never retried or re-queried, so the horizons it measured "
+            "were not the ones the bounds describe");
+}
+
+void test_conflicts_saturate_the_cluster_and_it_fails_closed() {
+    // The other half of the measurement, and the more operationally important
+    // one. A conflict is terminal-but-unresolved by design, so it is never
+    // reclaimed - which means EVERY unresolved conflict permanently consumes one
+    // slot in the decision, order, reservation and effect arenas at once.
+    //
+    // With sixteen slots, enough simultaneous conflicts saturate the cluster and
+    // it stops accepting new decisions. That is correct - refusing is the only
+    // alternative to freeing capacity against exposure that may still exist - but
+    // it is a hard operational bound, and it makes the G-074a operator escalation
+    // path load-bearing rather than a convenience.
+    //
+    // The capacity cannot simply be raised: `TradingState` is 81,168 bytes against
+    // an accepted 81,920 ceiling, and one more decision record costs 704 of the
+    // 752 bytes left. This is a bound to characterise, not a number to move.
+    auto faults = nominal_faults();
+    faults.fill_after_cancel_permille = 90;
+    faults.inconsistent_query_permille = 220;
+
+    Horizons worst;
+    for (std::uint64_t seed = 1; seed <= 48; ++seed) {
+        const auto outcome = run_seed(seed, faults, 40);
+        check_gates(outcome, " (saturation seed " + std::to_string(seed) + ")");
+        worst.merge(outcome.horizons);
+    }
+    report("conflict-inducing faults, 48 seeds x 40 cycles", worst);
+
+    // SAFETY, which must hold at any capacity and under any load.
+    require(worst.vanished_while_unresolved == 0,
+            "an order holding unresolved exposure was reclaimed under saturation");
+    for (const auto& arena : worst.arenas()) {
+        require(arena.peak <= arena.capacity,
+                std::string("an arena exceeded its capacity, which means a bound "
+                            "was not enforced: ") + arena.name);
+    }
+
+    // LIVENESS, recorded rather than required. Saturation is the expected outcome
+    // here; asserting no capacity refusal would be asserting that conflicts are
+    // rare, which is not something the system controls.
+    require(worst.peak_conflicts > 0,
+            "the saturation run produced no conflicts, so it measured nothing");
+}
+
+void test_the_bounded_retry_and_query_budgets_are_actually_reached() {
+    // A bound that is never hit is untested, and the two attempt bounds are the
+    // only places where the gateway gives up on its own. If neither is reached
+    // under the full fault matrix, the numbers in `GatewayTimeouts` are guesses
+    // no evidence has touched.
+    FaultPolicy faults;
+    faults.loss_permille = 200;
+    faults.disconnect_permille = 150;
+    faults.rate_limit_permille = 200;
+    faults.inconsistent_query_permille = 200;
+
+    Horizons worst;
+    for (std::uint64_t seed = 1; seed <= 32; ++seed) {
+        worst.merge(run_seed(seed, faults, 30).horizons);
+    }
+    require(worst.max_send_attempts_used > 1,
+            "no effect was ever redelivered, so the retry budget is unexercised");
+    require(worst.max_query_attempts_used > 1,
+            "no order was ever re-queried, so the query budget is unexercised");
+}
+
 }  // namespace
 
 int main() {
@@ -1769,6 +2140,9 @@ int main() {
         test_a_clean_venue_delivers_and_resolves();
         test_the_fault_matrix_holds_the_gate();
         test_the_matrix_is_reproducible();
+        test_retention_capacity_exceeds_the_horizon_under_nominal_faults();
+        test_conflicts_saturate_the_cluster_and_it_fails_closed();
+        test_the_bounded_retry_and_query_budgets_are_actually_reached();
         std::cout << "all V2 gateway delivery tests passed\n";
         return 0;
     } catch (const std::exception& error) {

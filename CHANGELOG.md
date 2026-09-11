@@ -261,6 +261,58 @@ named-cause gate is now symmetric, covering a cancel awaiting its final word as
 well as an unknown submission, and asserts that cancels actually happen. Release
 28/28, full host Debug ASan+UBSan 28/28, model corpus 109/109.
 
+Eighth increment discharges architecture 9.1.7, the obligation Phase 4 was
+accepted with. Section 3 requires identity retention to exceed the maximum retry,
+recovery and reconciliation horizon; Phase 4 could not show that because the
+horizons did not exist until a gateway produced them. Measured now, recorded in
+section 10.5, reportable with `VELOCITA_HORIZON_REPORT=1`.
+
+Peak occupancy turned out to be the wrong measure, and asserting on it failed
+immediately: the decision arena sits at 16 of 16 under nominal faults with zero
+conflicts, because it sweeps ON ADMISSION WHEN FULL. Reaching the ceiling is how
+reclamation starts, so an occupancy assertion condemns a sweep-on-full arena for
+working as designed. The liveness property is one level down - no admission was
+ever refused for want of room - and that is what is now measured, across every
+command the harness issues.
+
+Under nominal adversarial faults over 48 seeds and 40 cycles: zero capacity
+refusals, zero orders reclaimed while holding unresolved exposure, 24 order groups
+reclaimed so the run completed full create-resolve-sweep cycles, maximum order age
+105 state versions, and both attempt bounds reached - 3 of 3 sends, 4 of 4 queries
+- so neither is an untested guess. The accepted capacities exceed the measured
+horizon and section 3 is satisfied for this load.
+
+The conflict-inducing run exposes the operational bound. A conflict is
+terminal-but-unresolved by design and so never reclaimed, which means every
+unresolved conflict permanently consumes one slot in the decision, order,
+reservation and outbox arenas at once. Sixteen simultaneous conflicts saturate the
+cluster and it stops accepting new decisions. That is correct - refusing beats
+freeing capacity against exposure that may still exist - but it makes the G-074a
+operator escalation path load-bearing rather than a convenience, and the capacity
+cannot be raised to soften it: TradingState is 81,168 bytes against an 81,920
+ceiling and one more decision record costs 704 of the 752 remaining.
+
+The safety property holds at any capacity and under both loads: zero orders left
+the arena while still holding unresolved exposure. Saturation is a liveness bound
+and acceptable; premature reclamation would be a correctness failure and is not.
+
+Two defects found before the measurement could report anything. The gateway's own
+bookkeeping never shrank - `GatewayDeliveryState` and `GatewayReconciliationState`
+are sized like the reducer's arenas but only ever appended, so a gateway that ran
+long enough exhausted its attempt arena and refused to record sends on a cluster
+with room to spare; `reclaim_delivery_attempts` and `reclaim_reconciliation_
+attempts` fix it, kept out of `plan_delivery` so that function stays pure. And a
+fill that cannot be booked was refused silently: with `fill_after_cancel` enabled a
+venue reports a fill after the cluster released its reservation on final cancel
+evidence, and the refusal changed nothing, so the venue traded and the position
+did not reflect it. Unreachable before Phase 5, because nothing produced
+`cancel_reconciled` and a released reservation could never be contradicted - a
+query answer is a snapshot, so the gateway asserts a finality it does not have.
+The fill still cannot be booked without exceeding authorized risk, but the order
+now goes to `conflict` so the group is retained and the divergence is visible. The
+gate was tightened to match: a fill may be refused as unbookable only if a
+conflicted order is left behind. Release 28/28, full host Debug ASan+UBSan 28/28.
+
 Status: Phases 1-4 are accepted on the required host, ARM64 Ubuntu, and physical
 Raspberry Pi 5 gates. Deterministic policy evaluation, risk reservation, cluster
 orders, accepted venue-evidence accounting, and the transactional outbox are

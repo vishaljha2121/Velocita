@@ -191,6 +191,51 @@ bool record_response(GatewayDeliveryState& delivery,
     return false;
 }
 
+std::size_t reclaim_delivery_attempts(GatewayDeliveryState& delivery,
+                                      const TradingState& state) noexcept {
+    const auto held = [&state](const EffectId effect_id) noexcept {
+        for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
+            if (state.outbox_effects[index].effect_id == effect_id) return true;
+        }
+        return false;
+    };
+    // Dense compaction in place, preserving order so the planner keeps
+    // considering effects in authorization order.
+    std::size_t kept = 0;
+    for (std::size_t index = 0; index < delivery.attempt_count; ++index) {
+        if (!held(delivery.attempts[index].effect_id)) continue;
+        delivery.attempts[kept++] = delivery.attempts[index];
+    }
+    const auto dropped = delivery.attempt_count - kept;
+    for (std::size_t index = kept; index < delivery.attempt_count; ++index) {
+        delivery.attempts[index] = {};
+    }
+    delivery.attempt_count = kept;
+    return dropped;
+}
+
+std::size_t reclaim_reconciliation_attempts(
+    GatewayReconciliationState& reconciliation,
+    const TradingState& state) noexcept {
+    const auto held = [&state](const ClusterOrderId order) noexcept {
+        for (std::size_t index = 0; index < state.order_count; ++index) {
+            if (state.orders[index].cluster_order_id == order) return true;
+        }
+        return false;
+    };
+    std::size_t kept = 0;
+    for (std::size_t index = 0; index < reconciliation.attempt_count; ++index) {
+        if (!held(reconciliation.attempts[index].cluster_order_id)) continue;
+        reconciliation.attempts[kept++] = reconciliation.attempts[index];
+    }
+    const auto dropped = reconciliation.attempt_count - kept;
+    for (std::size_t index = kept; index < reconciliation.attempt_count; ++index) {
+        reconciliation.attempts[index] = {};
+    }
+    reconciliation.attempt_count = kept;
+    return dropped;
+}
+
 bool record_unsent(GatewayDeliveryState& delivery,
                    const EffectId effect_id) noexcept {
     for (std::size_t index = 0; index < delivery.attempt_count; ++index) {

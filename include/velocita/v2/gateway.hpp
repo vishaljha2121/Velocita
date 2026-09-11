@@ -221,6 +221,25 @@ struct DeliveryPlan {
 [[nodiscard]] const DeliveryAttempt* find_attempt(
     const GatewayDeliveryState& delivery, EffectId effect_id) noexcept;
 
+// Drop bookkeeping for effects the cluster no longer holds.
+//
+// The gateway's arenas are the same size as the reducer's, but the reducer
+// RECLAIMS fully resolved order groups while this only ever appended - so a
+// gateway that ran long enough would exhaust its attempt arena and start refusing
+// to record sends, on a cluster with plenty of room. Nothing in a short run shows
+// it; the horizon measurement of 9.1.7 found it immediately.
+//
+// Safe by the same argument that makes the reducer's sweep safe: an effect absent
+// from the outbox arena was swept, and only a fully resolved group is swept, so
+// nothing is owed on it. A late response for a reclaimed effect simply finds no
+// attempt, which the shell already tolerates.
+//
+// Deliberately NOT folded into `plan_delivery`. That function is pure and takes
+// its state by const reference; reclamation mutates, so it stays an explicit step
+// the shell performs, like `record_send`. Returns how many records were dropped.
+std::size_t reclaim_delivery_attempts(GatewayDeliveryState& delivery,
+                                      const TradingState& state) noexcept;
+
 // --- reconciliation planning -----------------------------------------------
 //
 // Architecture 10 lists five typed outcomes as though they were one enum. Two of
@@ -374,6 +393,11 @@ struct ReconciliationPlan {
 [[nodiscard]] const ReconciliationAttempt* find_reconciliation(
     const GatewayReconciliationState& reconciliation,
     ClusterOrderId cluster_order_id) noexcept;
+
+// The reconciliation counterpart of `reclaim_delivery_attempts`, keyed on orders
+// rather than effects and safe for the same reason.
+std::size_t reclaim_reconciliation_attempts(
+    GatewayReconciliationState& reconciliation, const TradingState& state) noexcept;
 
 static_assert(std::is_trivially_copyable_v<GatewayDeliveryState>);
 static_assert(std::is_trivially_copyable_v<DeliveryPlan>);

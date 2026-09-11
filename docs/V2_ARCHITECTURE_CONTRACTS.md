@@ -1447,6 +1447,120 @@ so a partial fill and a lost response never combine. The branch is covered by
 direct unit tests instead. Closing it properly means letting faults compose, which
 is a simulator change worth making on its own.
 
+### 10.5 Discharging 9.1.7: the measured retention horizons (2026-09-10)
+
+Section 3 requires that identity retention exceed the maximum retry, recovery,
+snapshot restore, and reconciliation horizon. Phase 4 was accepted unable to show
+that: 8.6 and 8.7 made retention finite and capacity-driven, and 8.4 recorded the
+horizons as unknown until a gateway existed to produce them. They exist now, and
+these are the numbers.
+
+Measured by `v2-gateway-delivery-tests` driving the real kernel, guard, planner,
+and adversarial venue. Reported by setting `VELOCITA_HORIZON_REPORT=1`.
+
+#### 10.5.1 Peak occupancy is the WRONG measure, and this was got wrong first
+
+The first version asserted that no arena reaches its ceiling. It failed
+immediately on the decision arena at 16 of 16 - under NOMINAL faults, with zero
+conflicts.
+
+That is not a defect. The decision arena sweeps ON ADMISSION WHEN FULL, which is
+the reclamation trigger Phase 4 deliberately chose over a background sweep.
+Reaching the ceiling is how reclamation starts. An assertion on occupancy
+condemns a sweep-on-full arena for working exactly as designed.
+
+The liveness property lives one level down: not "no arena is ever full" but NO
+ADMISSION WAS EVER REFUSED FOR WANT OF ROOM. If the sweep frees enough, capacity
+genuinely exceeds the horizon; if it does not, admissions are refused and the
+capacity is wrong. The measurement now counts capacity refusals across every
+command the harness issues.
+
+#### 10.5.2 Nominal faults: 48 seeds, 40 cycles
+
+| arena | capacity | peak | margin |
+|---|---:|---:|---:|
+| decisions | 16 | 16 | 0 |
+| orders | 16 | 12 | 4 |
+| reservations | 16 | 12 | 4 |
+| outbox effects | 16 | 14 | 2 |
+| request receipts | 256 | 189 | 67 |
+| venue events | 64 | 51 | 13 |
+| caller cursors | 8 | 1 | 7 |
+| source events | 128 | 40 | 88 |
+
+- capacity refusals: **zero**;
+- orders reclaimed while holding unresolved exposure: **zero**;
+- order groups reclaimed: 24, so the run completed full create-resolve-sweep
+  cycles rather than only filling;
+- maximum order age: 105 state versions; maximum unresolved and unsettled age:
+  105;
+- send attempts used 3 of 3; query attempts used 4 of 4 - both bounds are reached,
+  so neither is an untested guess.
+
+VERDICT: for nominal adversarial operation, the accepted capacities exceed the
+measured horizon. Section 3 is satisfied and 9.1.7 is discharged for this load.
+
+#### 10.5.3 Conflict-inducing faults, and the operational bound they expose
+
+Adding `fill_after_cancel` and `inconsistent_query` raises the maximum order age
+to 178 state versions against a run length of 191 - an order that lives almost the
+entire run. That is a conflict, and a conflict is terminal-but-unresolved by
+design, so it is never reclaimed.
+
+The consequence is worth stating plainly, because it is the most operationally
+important number in this section: EVERY UNRESOLVED CONFLICT PERMANENTLY CONSUMES
+ONE SLOT IN THE DECISION, ORDER, RESERVATION AND OUTBOX ARENAS AT ONCE. With
+sixteen slots each, sixteen simultaneous conflicts saturate the cluster and it
+stops accepting new decisions.
+
+That is correct behaviour - refusing is the only alternative to freeing capacity
+against exposure that may still exist - but it makes the G-074a operator
+escalation path LOAD-BEARING rather than a convenience. A cluster with no operator
+path has a hard ceiling of sixteen lifetime unresolved conflicts.
+
+The capacity cannot simply be raised to soften it. `TradingState` is 81,168 bytes
+against the accepted 81,920 ceiling, and one more decision record costs 704 of the
+752 bytes remaining. Exactly one more slot fits, which changes nothing. Any real
+increase requires moving the state ceiling, which is itself provisional pending
+NUC validation. This is a bound to characterise and to staff around, not a number
+to move.
+
+#### 10.5.4 The safety property, which holds at any capacity
+
+Saturation is a liveness bound and is acceptable. Premature reclamation is a
+correctness failure and is not. The harness tracks every order across ticks and
+counts any that leaves the arena while still holding unresolved exposure.
+
+Measured zero under both loads. That is the property section 3 actually protects,
+and it holds independently of whether the capacities are generous.
+
+#### 10.5.5 Two defects the measurement found before it could report anything
+
+THE GATEWAY'S OWN BOOKKEEPING NEVER SHRANK. `GatewayDeliveryState` and
+`GatewayReconciliationState` are sized like the reducer's arenas but only ever
+appended, while the reducer reclaims resolved groups. A gateway that ran long
+enough exhausted its attempt arena and began refusing to record sends on a cluster
+with plenty of room. No short run shows it; the first 40-cycle run hit it
+immediately. `reclaim_delivery_attempts` and `reclaim_reconciliation_attempts` fix
+it, keyed on records the cluster still holds and deliberately kept out of
+`plan_delivery` so that function stays pure.
+
+A FILL THAT CANNOT BE BOOKED WAS REFUSED SILENTLY. With `fill_after_cancel`
+enabled, a venue reports a fill after the cluster has released the reservation on
+final cancel evidence. `apply` refused it with `fill_quantity_conflict` and
+changed nothing, so the venue traded and the cluster's position simply did not
+reflect it.
+
+This was unreachable before Phase 5: nothing produced `cancel_reconciled`, so a
+released reservation could never be contradicted. A reconciliation query answer is
+a SNAPSHOT, and a venue can still report a fill that was already executed when it
+called the order cancelled - so the gateway asserts a finality it does not have.
+The fill still cannot be booked, because booking it would exceed authorized risk.
+What changes is that the order now goes to `conflict`, which is
+terminal-but-unresolved, so the group is not reclaimed and the divergence is
+visible to the operator who has to settle it. The gate was tightened to match: a
+fill may be refused as unbookable, but only if a conflicted order is left behind.
+
 ## 11. Execution authority and kill contract
 
 Every sender tracks a committed `ExecutorGeneration` and `KillEpoch`. It rejects
