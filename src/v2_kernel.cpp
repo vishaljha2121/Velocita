@@ -2078,6 +2078,22 @@ std::size_t settle_orphaned_effects(TradingState& state,
                                next_version, observation, observation.quantity);
         }
     }
+    // A conflicted order is terminal-but-unresolved: internal state and venue
+    // evidence disagree and the cluster cannot tell which is right. Booking a
+    // later fill would move the position on one side of an unsettled
+    // disagreement, and - worse - carry the order to `filled`, releasing its
+    // reservation and erasing the conflict from the projection entirely. ADR 0001
+    // is explicit that reconciliation "never overwrites conflicting evidence to
+    // make a dashboard green", and that is exactly what this would be.
+    //
+    // `apply_observe_order_event` already refuses everything from `conflict`.
+    // The fill path did not, which is the asymmetry an enumeration of the
+    // reachable lifecycle found and reading the code did not.
+    if (order.state == ClusterOrderState::conflict) {
+        return fill_result(state, ApplyCode::venue_observation_not_applicable,
+                           next_version, observation, observation.quantity);
+    }
+
     auto* risk = find_risk_account(state, proposal.account_id,
                                    proposal.instrument_id);
     if (risk == nullptr) {
@@ -2453,8 +2469,19 @@ std::size_t settle_orphaned_effects(TradingState& state,
         (order.state == ClusterOrderState::submission_unknown ||
          order.state == ClusterOrderState::reconciling ||
          order.state == ClusterOrderState::cancel_pending) &&
-        (effect->state == OutboxState::pending ||
-         effect->state == OutboxState::unknown ||
+        // Deliberately excludes `pending`. A pending cancel has not been
+        // delivered yet, so its outcome is not in doubt - and answering "the
+        // order is still live" about it is true, useless, and destructive: it
+        // marks the cancel `rejected` and returns the order to `live`, silently
+        // abandoning an intent the operator asked for. Reconciliation is for
+        // cancels whose DELIVERY is uncertain, which is what the other three
+        // states mean.
+        //
+        // Consequence, recorded rather than hidden: a cancel whose send attempts
+        // are exhausted cannot yet be reconciled, because the useful answer there
+        // is "re-authorize a fresh cancel" and nothing does that. That needs a
+        // re-authorization story before the state is opened up.
+        (effect->state == OutboxState::unknown ||
          effect->state == OutboxState::rejected ||
          effect->state == OutboxState::reconciling);
     if (reconciled_submit && !reconciled_cancel &&
@@ -2520,6 +2547,20 @@ std::size_t settle_orphaned_effects(TradingState& state,
     const bool terminal = order.state == ClusterOrderState::filled ||
                           order.state == ClusterOrderState::cancelled ||
                           order.state == ClusterOrderState::rejected;
+    // A cancel the venue refuses after the order already finished. The refusal is
+    // definitive evidence about the CANCEL - it will never take effect - even
+    // though it says nothing about an order whose outcome is already known.
+    // Without this the effect stays `pending` forever: the gateway redelivers
+    // until its attempts are spent, every rejection is refused because the order
+    // is terminal, reconciliation never targets a finished order, and the group
+    // is never reclaimable because one of its effects is never settled.
+    const bool terminal_cancel_rejection =
+        observation.kind == VenueObservationKind::order_rejected &&
+        effect->operation == EffectOperation::cancel &&
+        effect->effect_id == order.effect_id &&
+        (order.state == ClusterOrderState::filled ||
+         order.state == ClusterOrderState::cancelled ||
+         order.state == ClusterOrderState::rejected);
     const bool late_cancel_completion =
         order.state == ClusterOrderState::filled &&
         (observation.kind == VenueObservationKind::cancelled ||
@@ -2569,13 +2610,14 @@ std::size_t settle_orphaned_effects(TradingState& state,
     }
     const bool effect_resolved = effect->state == OutboxState::acknowledged ||
                                  effect->state == OutboxState::rejected;
-    if ((terminal && !late_cancel_completion) ||
+    if ((terminal && !late_cancel_completion && !terminal_cancel_rejection) ||
         (effect_resolved && reconciled_cancel &&
          effect->state != OutboxState::rejected) ||
         order.state == ClusterOrderState::conflict ||
         (order.state == ClusterOrderState::reconciling && !reconciled_cancel &&
          !(cancel_reconcilable && (cancel_agrees || cancel_contradicts))) ||
-        (effect_resolved && !late_cancel_completion && !reconciled_cancel) ||
+        (effect_resolved && !late_cancel_completion && !reconciled_cancel &&
+         !terminal_cancel_rejection) ||
         (effect->effect_id != order.effect_id && !late_cancel_completion)) {
         return venue_event_result(state,
                                   ApplyCode::venue_observation_not_applicable,
@@ -2636,6 +2678,11 @@ std::size_t settle_orphaned_effects(TradingState& state,
             effect->state = OutboxState::rejected;
             if (effect->operation == EffectOperation::submit) {
                 order.state = ClusterOrderState::rejected;
+                break;
+            }
+            if (terminal_cancel_rejection) {
+                // Settles the effect and nothing else. The order's outcome is
+                // already known and a transport refusal may not revise it.
                 break;
             }
             // A rejected CANCEL does not prove the order is still working. The

@@ -237,6 +237,16 @@ if(BUILD_TESTING)
 
     # The Phase 5 gate: the real kernel, the real guard and planner, and the
     # adversarial venue, driven together through the G-033 fault matrix.
+    # An exhaustive inventory of the reachable order lifecycle, used to review
+    # the Phase 5 applicability predicates by enumeration rather than by reading.
+    add_executable(v2-lifecycle-reachability-tests
+        tests/v2_lifecycle_reachability_tests.cpp)
+    target_link_libraries(v2-lifecycle-reachability-tests PRIVATE velocita_v2_kernel)
+    target_compile_options(v2-lifecycle-reachability-tests PRIVATE
+        -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-lifecycle-reachability-tests
+        COMMAND v2-lifecycle-reachability-tests)
+
     add_executable(v2-gateway-delivery-tests tests/v2_gateway_delivery_tests.cpp)
     target_link_libraries(v2-gateway-delivery-tests PRIVATE velocita_v2_kernel
         velocita_v2_venue_simulator)

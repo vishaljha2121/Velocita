@@ -313,6 +313,43 @@ now goes to `conflict` so the group is retained and the divergence is visible. T
 gate was tightened to match: a fill may be refused as unbookable only if a
 conflicted order is left behind. Release 28/28, full host Debug ASan+UBSan 28/28.
 
+Tenth increment reviews the Phase 5 lifecycle by enumeration rather than by
+reading, and fixes the three defects that found. Recorded in architecture 10.8.
+
+`v2-lifecycle-reachability-tests` drives the kernel breadth-first through every
+command it accepts and records what actually happens, converging at 27 reachable
+lifecycle positions from depth 6 onward. It asserts the inventory permanently, so
+an edit that creates or removes a reachable position fails the build; it asserts
+that `conflict` is a sink; and it asserts that no position with an unsettled
+effect is a dead end. Its fixture is built independently of the delivery tests',
+the same cross-check discipline Phase 4 used for its property corpus.
+
+A FILL COULD ERASE A CONFLICT. `apply_observe_order_event` refuses everything from
+`conflict`; `apply_observe_fill` did not. A conflicted order accepted a later fill,
+moved to `filled`, released its reservation, and vanished from the conflict
+projection - ADR 0001's "never overwrites conflicting evidence to make a dashboard
+green", performed by the reducer. The fill path now refuses a conflicted order.
+
+A PENDING CANCEL COULD BE RECONCILED AWAY. A pending cancel has not been delivered,
+so its outcome is not in doubt, and answering "the order is still live" about it
+marked the cancel rejected and returned the order to live - silently abandoning an
+intent the operator asked for. Reconciliation about a cancel now requires its
+delivery to be uncertain. Consequence recorded rather than patched over: a cancel
+whose send attempts are exhausted cannot yet be reconciled, because the useful
+answer there is "re-authorize", and nothing does that yet.
+
+A CANCEL COULD BECOME PERMANENTLY UNSETTLEABLE. An order that fills while its
+cancel is in flight left the cancel effect pending forever: redelivery runs out,
+every rejection is refused because the order is terminal, and reconciliation never
+targets a finished order. One slot in each of four bounded arenas pinned
+permanently while the order read as healthily filled. A cancel rejection against a
+terminal order now settles the effect and leaves the order untouched.
+
+That third defect needed a fill, a cancel, a specific interleaving, and a venue
+answering with a rejection rather than a cancellation. No unit test would have
+been written for it and the fault matrix cannot produce it, because its faults do
+not compose. Release 29/29 and full host Debug ASan+UBSan 29/29.
+
 Status: Phases 1-4 are accepted on the required host, ARM64 Ubuntu, and physical
 Raspberry Pi 5 gates. Deterministic policy evaluation, risk reservation, cluster
 orders, accepted venue-evidence accounting, and the transactional outbox are

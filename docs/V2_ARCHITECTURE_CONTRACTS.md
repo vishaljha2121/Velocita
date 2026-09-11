@@ -1610,6 +1610,81 @@ Note the narrower `memcmp` uses elsewhere in these tests remain correct: they
 compare a state against a COPY OF ITSELF to prove a function mutated nothing, and
 there both sides share provenance and therefore padding.
 
+### 10.8 Reviewing the lifecycle by enumeration (2026-09-10)
+
+The handoff named `apply_observe_order_event` as the highest-risk area in Phase 5:
+nine interacting predicates feeding a guard disjunction with negations. Reading
+that code is how it was written, so reading it again is a poor way to find what is
+wrong with it.
+
+`v2-lifecycle-reachability-tests` instead DRIVES the kernel breadth-first through
+every command it accepts and records what actually happens. It converges at 27
+reachable lifecycle positions from depth 6 onward, and it found three defects that
+review-by-reading did not.
+
+The tool asserts three things permanently:
+
+1. THE INVENTORY. All 27 positions are listed and asserted. An edit that creates
+   or removes a reachable position fails the test, so the author has to justify it
+   rather than discover it later.
+2. `conflict` IS A SINK. Nothing may carry an order out of it.
+3. NO UNSETTLED EFFECT IS A DEAD END. Every position whose effect is still
+   unsettled must have at least one accepted transition.
+
+Its fixture is built independently of the delivery tests' fixture, on purpose -
+the same discipline Phase 4 used for its property corpus. A shared helper would
+hide exactly the kind of fixture error that has already bitten this phase twice.
+
+#### 10.8.1 A fill could erase a conflict
+
+`apply_observe_order_event` refuses everything from `conflict`. `apply_observe_fill`
+did not. So a conflicted order - terminal-but-unresolved, retained precisely so an
+operator can settle a disagreement - accepted a later fill, moved to `filled`,
+RELEASED ITS RESERVATION, and vanished from the conflict projection entirely.
+
+That is ADR 0001's "never overwrites conflicting evidence to make a dashboard
+green", performed by the reducer itself. The fill path now refuses a conflicted
+order, matching the venue-event path.
+
+The asymmetry is the lesson: two functions that must agree about a lifecycle rule
+had no structural reason to agree, and nothing compared them. Enumeration does.
+
+#### 10.8.2 A pending cancel could be reconciled away
+
+`reconciled_cancel` accepted a cancel effect in `pending`. A pending cancel has not
+been delivered yet, so its outcome is not in doubt - and answering "the order is
+still live" about it is true, useless, and destructive: it marked the cancel
+`rejected` and returned the order to `live`, silently abandoning an intent the
+operator had asked for.
+
+Reconciliation about a cancel now requires its DELIVERY to be uncertain -
+`unknown`, `rejected`, or `reconciling`.
+
+Recorded consequence: a cancel whose send attempts are exhausted cannot yet be
+reconciled, because its effect is still `pending`. The useful answer there is
+"re-authorize a fresh cancel" and nothing does that. Opening the state up needs a
+re-authorization story first, and inventing one here to close a gap the tool found
+would be the wrong order of work.
+
+#### 10.8.3 A cancel could become permanently unsettleable
+
+An order that fills while its cancel is in flight leaves the cancel effect
+`pending`. From there: the gateway redelivers until its attempts are spent; every
+`order_rejected` the venue sends is refused because the order is terminal;
+`need_of` never targets a finished order. The effect is never settled, so the
+group is never reclaimable - one slot in each of four bounded arenas pinned
+forever, while the order reads as healthily `filled`.
+
+A venue refusing a cancel IS definitive evidence about that cancel, even when it
+says nothing about an order whose outcome is already known. A cancel rejection
+against a terminal order now settles the EFFECT and leaves the order untouched.
+
+This one is worth noting as a class: the bug needed a fill, a cancel, a specific
+interleaving, and a venue that answers with a rejection rather than a
+cancellation. No unit test would have been written for it, and the fault matrix
+cannot produce it because its faults do not compose. Only enumeration finds a hole
+of that shape.
+
 ## 11. Execution authority and kill contract
 
 Every sender tracks a committed `ExecutorGeneration` and `KillEpoch`. It rejects
