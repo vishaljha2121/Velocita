@@ -5,7 +5,38 @@ Updated: 2026-09-10
 Purpose: compact working memory for the next agent session. Verify this file
 against Git before acting; do not reconstruct the project from chat history.
 
-## Phase 5 review outcome and gate readiness — 2026-09-10 (read this first)
+## Phase 5 physical Pi gate PASSED — 2026-09-11 (read this first)
+
+`BUILD_JOBS=2 ./deploy/run-v2-phase5-pi-gate.sh --yes` passed on the physical
+Raspberry Pi 5 at checkout `04329fad05837e7f2c6e9d8d075ba8e5ede90700`, source root
+`b23bdea07d60163cd05a970cf058af8e6d62665afb47f1217f5f1162f5e2d1b4`. Release 29/29,
+benchmark-instrumented 26/26, Debug ASan+UBSan 26/26, `throttled=0x0` before and
+after, 46.30 C to 50.70 C. Full record in
+`docs/evidence/V2_PHASE5_GATEWAY_SIMULATOR_ACCEPTANCE.md`.
+
+The bounded layout reproduced byte-for-byte on ARM64/GCC 15.2: `TradingState`
+81,168 of 81,920, snapshot 65,259 of 65,536. The sixteen-conflict saturation bound
+is now a hardware fact, not a host measurement.
+
+STILL OUTSTANDING before Phase 5 can be called accepted:
+
+1. the standalone ARM64 container gate, for parity with the Phase 4 promotion
+   rule - `BUILD_JOBS=2 ./deploy/run-v2-phase5-container-gate.sh --yes`. The Pi
+   gate runs the same container and adds hardware evidence, so this is a parity
+   run rather than new information, but the rule asks for three passes and this
+   candidate has two;
+2. the annotated checkpoint tag, once that passes; and
+3. NUC validation, still outstanding from Phase 4 and now load-bearing, since the
+   80-KiB ceiling is what makes the conflict bound immovable.
+
+Two earlier gate attempts failed in the GATE rather than the code, and both fixes
+were structural: a source root that depended on ambient locale (now `LC_ALL=C`
+inside the recipe) and a hand-maintained build target list that had drifted from
+`CMakeLists.txt` (now derived from `BUILDSYSTEM_TARGETS`). Both are recorded in
+the acceptance document, because a gate that only records its successes teaches
+nothing about its own blind spots.
+
+## Phase 5 review outcome — 2026-09-10 (superseded by the section above)
 
 Supersedes the review-request section below, which is retained for its risk
 inventory. Codex was unavailable, so the review named there was performed in

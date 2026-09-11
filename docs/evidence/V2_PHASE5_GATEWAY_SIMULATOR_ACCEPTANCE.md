@@ -1,6 +1,8 @@
 # V2 Phase 5 gateway and simulator acceptance evidence
 
-Status: HOST EVIDENCE RECORDED, TARGET GATES PENDING. Not accepted.
+Status: PASSED ON HOST AND ON THE PHYSICAL RASPBERRY PI 5. The ARM64 container
+gate has not been run as a separate pass; see "Deviation from the Phase 4
+promotion rule" below. Not yet accepted.
 
 ## Objective and promotion rule
 
@@ -94,7 +96,7 @@ source, or venue handle.
 
 ## Host evidence
 
-On 2026-09-10, at source root
+On 2026-09-11, at source root
 `b23bdea07d60163cd05a970cf058af8e6d62665afb47f1217f5f1162f5e2d1b4`:
 
 - Release full build and 29/29 CTest suites;
@@ -134,26 +136,59 @@ like a behavioural failure and is not one, and the first hypotheses it invites -
 char signedness, alignment, endianness - are all wrong. A gate that builds a
 different set of things than it runs will always mis-signal in this direction.
 
-## Target gates
+## Physical Raspberry Pi 5 evidence
 
-NOT RUN against the accepted candidate. Both scripts exist and are pinned to the
-candidate root.
-
-ARM64 container:
-
-```sh
-BUILD_JOBS=2 ./deploy/run-v2-phase5-container-gate.sh --yes
-```
-
-Physical Pi, after explicit source synchronization and `sudo -v`:
+Command, after explicit source synchronization and `sudo -v`:
 
 ```sh
 BUILD_JOBS=2 ./deploy/run-v2-phase5-pi-gate.sh --yes
 ```
 
-Record for each: the observed source root, compiler and kernel versions, runtime
-cache-line size, CPU and memory limits, suite results, CPU governor, firmware
-`throttled` before and after, and temperature before and after.
+Result: PASS on 2026-09-11, exit status 0, no failing step. Evidence on the Pi at
+`~/.local/share/velocita/v2-phase5-acceptance-pi-gates/20260911T183855Z`.
+
+- tested checkout: `04329fad05837e7f2c6e9d8d075ba8e5ede90700`;
+- observed source root `b23bdea07d60163cd05a970cf058af8e6d62665afb47f1217f5f1162f5e2d1b4`
+  matched the expected root exactly, over a 60-file manifest;
+- Raspberry Pi kernel 7.0.0-1016-raspi, AArch64 host, Ubuntu 26.04.1 LTS ARM64;
+- GCC 15.2.0, CMake 4.2.3, 64-byte target and runtime L1D cache line;
+- 4 CPUs, 2 GiB container memory, 256 MiB `/dev/shm`, `BUILD_JOBS=2`;
+- Release: 29/29 suites;
+- benchmark-instrumented: 26/26 V2 suites;
+- Debug ASan+UBSan: 26/26 V2 suites;
+- CPU governor: `ondemand`;
+- firmware power before and after: `throttled=0x0`; and
+- temperature: 46.30 C before, 50.70 C after.
+
+Slowest suites under ASan+UBSan on target: `v2-phase4-property-tests` 52.53 s,
+`v2-model-replay-tests` 15.75 s, `v2-gateway-delivery-tests` 2.46 s,
+`v2-risk-order-outbox-tests` 0.34 s, `v2-lifecycle-reachability-tests` 0.10 s.
+The four Phase 5 suites together add under three seconds to the sanitizer phase,
+so the cost of the enumeration and fault-matrix work on real hardware is small.
+
+The bounded layout reproduced byte-for-byte on ARM64/GCC: `TradingState` 81,168
+bytes against the 81,920 ceiling, 752 bytes of headroom, maximum canonical
+snapshot 65,259 of 65,536. That makes the sixteen-conflict saturation bound in
+architecture §10.5.3 a hardware fact rather than a host-only measurement.
+
+## Deviation from the Phase 4 promotion rule
+
+Phase 4 recorded three passes: host, a standalone ARM64 container gate, and the
+physical Pi. This candidate has host and physical Pi. The standalone container
+gate has not been run.
+
+Stated plainly rather than quietly dropped: the Pi gate EXECUTES THE SAME ARM64
+container and additionally verifies the physical host is AArch64 and records power
+and thermal evidence, so it is strictly stronger than the container gate on the
+same machine. A separate container pass would be a parity run rather than new
+information.
+
+That is an argument, not an exemption. Until it is run, this document records two
+of three and the candidate is not accepted:
+
+```sh
+BUILD_JOBS=2 ./deploy/run-v2-phase5-container-gate.sh --yes
+```
 
 ## Guarantee adjudication
 

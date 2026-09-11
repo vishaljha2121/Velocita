@@ -394,6 +394,28 @@ behavioural failure and is not one, and the hypotheses it invites - char
 signedness, alignment, endianness - are all wrong. A gate that builds a different
 set of things than it runs will always mis-signal in this direction.
 
+The Phase 5 physical Raspberry Pi 5 gate PASSED on 2026-09-11 at checkout
+04329fad, source root b23bdea0: Release 29/29, benchmark-instrumented 26/26, Debug
+ASan+UBSan 26/26, `throttled=0x0` before and after, 46.30 C to 50.70 C, governor
+`ondemand`, GCC 15.2.0 on Ubuntu 26.04.1 ARM64.
+
+The bounded layout reproduced byte-for-byte on ARM64: `TradingState` 81,168 of
+81,920 with 752 bytes headroom, maximum canonical snapshot 65,259 of 65,536. That
+turns the sixteen-conflict saturation bound into a hardware fact rather than a
+host-only measurement, and with it the argument that the arena capacities cannot
+be rebalanced within the current state ceiling.
+
+The four Phase 5 suites cost under three seconds of the sanitizer phase on target,
+against 52.53 s for the Phase 4 property corpus alone - so the enumeration and
+fault-matrix work is close to free on real hardware.
+
+Phase 5 is not yet accepted. The standalone ARM64 container gate has not been run
+as a separate pass. The Pi gate executes the same container and additionally
+verifies the physical host and records power and thermal evidence, so a container
+pass would be parity rather than new information - but the Phase 4 promotion rule
+asks for three and this candidate has two, so the deviation is recorded in the
+acceptance document rather than assumed away.
+
 Status: Phases 1-4 are accepted on the required host, ARM64 Ubuntu, and physical
 Raspberry Pi 5 gates. Deterministic policy evaluation, risk reservation, cluster
 orders, accepted venue-evidence accounting, and the transactional outbox are
