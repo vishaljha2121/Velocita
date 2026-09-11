@@ -5,6 +5,168 @@ Updated: 2026-09-10
 Purpose: compact working memory for the next agent session. Verify this file
 against Git before acting; do not reconstruct the project from chat history.
 
+## Phase 5 review handoff — 2026-09-10 (read this first)
+
+This section supersedes the Phase 4 "next task" text below for anything about
+what to do NEXT. The Phase 4 acceptance record itself is unchanged and still
+authoritative for Phase 4.
+
+Purpose of this handoff: Phase 5 is CODE COMPLETE ON THE HOST AND UNREVIEWED. It
+has never run on the target hardware. What is wanted is adversarial review and
+analysis, not more features.
+
+### Identity
+
+- branch: `v2/phase-4-risk-orders-outbox` (Phase 5 work continues on it; a
+  rename or a fresh branch is a reviewer call)
+- Phase 5 base: `dd77e61420c4ff5428fcd409cebdfebbe545cc77` (Phase 4 accepted)
+- HEAD at handoff: `fc21b17e00de6bf9a25399325f0f58cd49340cba`
+- source root at HEAD, computed with the Phase 4 gate recipe:
+  `d68f23ef5f9ab1ab594db3dec4cb2e0a2c2e654651c6ef75fba550d392479144`
+  (computed on the development host with `shasum -a 256`; the gate recomputes it
+  with `sha256sum` inside the container and the two must agree — treat a mismatch
+  as unverified, not as a defect, until the gate has run once)
+- no Phase 5 gate script exists yet. `deploy/run-v2-phase4-pi-gate.sh` is the
+  template; a Phase 5 script needs the new root and its own evidence directory.
+
+### Verification status
+
+Host only. Release 28/28 and full host Debug AddressSanitizer + UndefinedBehavior
+Sanitizer 28/28 at HEAD. Model corpus 109/109, untouched by Phase 5.
+
+NOT DONE: ARM64 container gate, physical Pi gate, NUC validation. Phase 5 cannot
+be accepted on this evidence.
+
+### The nine commits, in order
+
+| commit | what it settled |
+|---|---|
+| `4409ea3` | resolved five blocking contract contradictions in §9; added the pre-send guard |
+| `2b0e847` | deterministic adversarial venue simulator, test-only by CMake construction |
+| `4a4ee1a` | delivery planner and the Phase 5 gate; resend requires proof (§9.2.1) |
+| `bd39053` | reviewed §10, built the gateway half of reconciliation |
+| `f08bac0` | `order_reconciled` as the seventh observation kind (approved byte contract) |
+| `c7b1034` | cancel path through reconciliation; four findings |
+| `da87f62` | cancel redelivery without proof (approved amendment to §9.2.1) |
+| `f482bfa` | measured retention horizons; discharged §9.1.7 |
+| `fc21b17` | snapshot coverage for Phase 5 states; corrected two impossible fixtures |
+
+All reasoning is in `docs/V2_ARCHITECTURE_CONTRACTS.md` §§9.1–9.3 and §§10.1–10.7.
+Read those before the code; every non-obvious choice is argued there with the
+alternative that was rejected and why.
+
+### WHAT TO REVIEW HARDEST
+
+Ordered by how likely I think they are to be wrong.
+
+**1. The applicability matrix in `apply_observe_order_event`.** This is the single
+highest-risk area. It is now a large interacting set of booleans —
+`reconciled_submit`, `reconciled_cancel`, `cancel_reconcilable`, `cancel_agrees`,
+`cancel_contradicts`, `late_cancel_completion`, `reconciliation`, `terminal`,
+`effect_resolved` — feeding a six-term guard disjunction with negations. I believe
+each term individually; I am not confident about every interaction. The review
+that would actually settle it is a full truth table over (observation kind) ×
+(order state) × (effect state) × (effect operation), checking each cell against
+the contract rather than against the code. If a cell is wrong, this is where.
+
+**2. Three accepted Phase 4 behaviours changed.** Each needs an independent "is
+this right?" pass, not just "is it consistent?":
+  - a rejected cancel now moves the order to `reconciling`, not `live` (§10.3.6).
+    Justification: a venue refuses a cancel for "already cancelled", "already
+    filled" and "no such order" as readily as for "still working", and once
+    cancels may be redelivered a rejection of the duplicate is the common case.
+  - `fill_quantity_conflict` now marks the order `conflict` instead of refusing
+    silently (§10.5.5). It mutates on a refusal path, which has precedent in the
+    same function but is still worth challenging.
+  - Phase 4's outbox-reuse test now reconciles between a rejected cancel and a
+    fresh one. The arena-pressure guarantee is unchanged; the path is longer.
+
+**3. The asymmetric disagreement rule (§10.3.4).** I got this wrong first — both
+directions as conflict — and Phase 4's cancel/fill/final permutation test caught
+it. The corrected rule: a venue reporting MORE than the cluster booked is missing
+evidence (refuse, let it settle); reporting LESS is a conflict (no future evidence
+reduces a booked fill). Challenge the "above" case specifically: if the fills are
+genuinely lost the order stays unresolved forever rather than becoming a conflict,
+and I argued unresolved-and-recoverable beats terminal. That argument deserves a
+second opinion.
+
+**4. `order_reconciled` is overloaded.** The same kind means "the submit arrived"
+against a submit effect and "the cancel did not take" against a cancel effect. I
+think this is defensible — the observation states one fact and what it resolves
+depends on what was in doubt — but it is the kind of overload that reads fine
+until someone adds a third case.
+
+**5. The harness is unverified test code that found three bugs in itself.** It
+leaked the simulator's ground truth into the gateway's `authoritative` flag;
+it conflated "the venue answered" with "the cluster accepted the answer"; and its
+identity gate was scoped wrongly once cancels existed. Treat the ~900 lines of
+`tests/v2_gateway_delivery_tests.cpp` as suspect in the same way as the code it
+tests. Two fixtures in it built states the kernel cannot reach, and passed.
+
+**6. The gateway is not a process.** Everything is pure functions plus an
+in-process shell. No transport, no socket, no credential isolation, no Raft.
+§9.1.5 records that as the plan; nothing has been proven about the real boundary.
+
+### Known and deliberate gaps
+
+- **The simulator's faults do not compose.** `choose_fault` returns ONE fault per
+  operation by first match, so partial-fill-plus-loss, reordered fills, and late
+  duplicates are all unreachable. Consequence: fills never arrive out of order
+  end to end, and the matrix cannot produce a reconciliation conflict. Covered by
+  direct unit tests instead. Closing it means splitting `Fault` into its three
+  actual axes — transport per message, venue behaviour per operation, integrity
+  per answer — and re-measuring §10.5, because every seed changes.
+- **Sixteen simultaneous unresolved conflicts saturate the cluster** (§10.5.3).
+  Correct and fail-closed, but it makes the G-074a operator path load-bearing.
+  The capacity cannot be raised: `TradingState` is 81,168 of 81,920 bytes and one
+  more decision record costs 704 of the 752 remaining.
+- Native amend and overlapping replacement remain disabled, as in Phase 4.
+- A venue-initiated cancellation still cannot be reported: the existing
+  `cancelled` kind requires a cancel effect the cluster may never have sent. This
+  is pre-existing, not introduced by Phase 5.
+
+### Reproduction
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j8
+ctest --test-dir build --output-on-failure          # expect 28/28
+
+cmake -S . -B build-v2-sanitized -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
+  -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+cmake --build build-v2-sanitized -j8
+ctest --test-dir build-v2-sanitized --output-on-failure   # expect 28/28
+
+VELOCITA_HORIZON_REPORT=1 ./build/v2-gateway-delivery-tests   # §10.5 tables
+VELOCITA_MATRIX_TRACE=1   ./build/v2-gateway-delivery-tests   # per-seed matrix
+
+cd model && PYTHONPATH=src python3 -m unittest discover -s tests  # expect 109
+```
+
+Always build before `ctest`: `ctest` does not build, and this project has already
+produced one false pass from a stale binary.
+
+### Next tasks, in the order I would do them
+
+1. **Review and analysis** — this handoff's purpose. Nothing below should start
+   until the items above have had an adversarial pass.
+2. **Phase 5 gate scripts and target validation** — ARM64 container, then the
+   physical Pi, using `deploy/run-v2-phase4-pi-gate.sh` as the template with the
+   new source root. This is what Phase 5 acceptance requires and it is the largest
+   remaining unknown.
+3. **NUC validation**, still outstanding from Phase 4 and now more load-bearing,
+   because the 80-KiB state ceiling is what makes the sixteen-conflict bound
+   immovable.
+4. **Compose the simulator's faults**, then re-measure §10.5.
+
+### Protected uncommitted paths
+
+`model/`, `docs/README.md`, `docs/MUST_CONFIRM_BEFORE_ADAPTER_CONNECT.md`,
+`docs/V2_MODEL_AND_MARKET_DATA_EDGE_DESIGN.md`, and
+`docs/adr/0002-two-machine-pi-nuc-deployment-topology.md` are intentionally
+uncommitted. Do not `git add .`; commit by explicit path only. This rule exists
+because a directory-wide add already swept these into a Phase 4 commit once.
+
 ## Phase 4 accepted checkpoint — 2026-09-10 (authoritative)
 
 Phase 4 is accepted. The annotated checkpoint is `v2-phase4-accepted`; the
