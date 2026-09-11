@@ -1353,6 +1353,65 @@ recoverable if the evidence does arrive and stays visible with a rising age;
 `conflict` is terminal and cannot be recovered automatically. Do not spend a
 recoverable state on evidence that might have been one tick away.
 
+#### 10.3.5 A cancel may be redelivered without proof (approved 2026-09-10)
+
+Amends 9.2.1. That rule - a resend requires proof nothing reached the venue -
+exists because a duplicate SUBMIT creates a second order. A duplicate CANCEL
+creates nothing: it can only reduce exposure or leave it unchanged, and the venue
+deduplicates it by the same stable identity. So the rule was strictest exactly
+where its own justification does not apply, and strictest exactly when an operator
+is trying to get flat.
+
+APPROVED: a cancel effect may be redelivered after its response deadline passes,
+without reconciliation, bounded by the same `max_send_attempts`. `unknown` also
+becomes a deliverable state for a cancel and only for a cancel - an unknown cancel
+is precisely the effect most worth sending again. `reconciling` stays undeliverable
+for both: it means final evidence is owed and the cluster is mid-adjudication, so
+sending then would race the answer.
+
+Two mechanisms are deliberately kept distinct, because conflating them is how one
+intent becomes two orders:
+
+- REDELIVERY is the same `EffectId`, at-least-once, deduplicated by the venue.
+  This is what a timeout triggers.
+- RE-AUTHORIZATION mints a fresh cancel effect with a new identity, and is the
+  reducer's business. It only makes sense once the old cancel is known not to have
+  taken effect.
+
+ORDERING: redelivery FIRST, reconciliation second. `need_of` makes a silent cancel
+a reconciliation target only once its send attempts are spent. The cheap
+idempotent action is tried before the round trip that would most likely just say
+"send it again"; reconciliation takes over at the point where it starts adding
+information.
+
+#### 10.3.6 A rejected cancel does not prove the order is live
+
+The rider on 10.3.5, and it is not optional.
+
+`order_rejected` on a cancel effect returned the order to `live`. A venue refuses
+a cancel for "already cancelled", "already filled", and "no such order" as readily
+as for "still working" - and once cancels may be redelivered, a rejection of the
+DUPLICATE is the common case. Under a reordering transport that rejection can
+arrive before the original's `cancelled` observation, flipping a genuinely
+cancelled order back to working, after which its real cancellation is refused
+because the effect is already resolved.
+
+A rejected cancel therefore means the lifecycle is UNKNOWN, not live: the order
+moves to `reconciling`.
+
+That made `reconciling` a dead end, because `cancel_reconciled` can only say the
+cancel DID take effect. So `order_reconciled` was widened to speak about a cancel
+effect, where it means the venue still holds the order and the cancel did not take.
+The cancel effect becomes `rejected` - no economic result - and the order returns
+to `live`, which is also what lets `apply_request_cancel` reuse the record rather
+than consume an arena slot. The gateway chooses which kind to submit from the
+query's `cancelled` flag; both kinds already existed, so this costs no bytes.
+
+ACCEPTED-BEHAVIOUR CHANGE: Phase 4's outbox-reuse test previously rejected a
+cancel and immediately re-requested one. It now reconciles in between. The
+arena-pressure guarantee the test exists for is unchanged - a reconciliation is an
+observation and allocates no outbox slot - it just takes one more step to reach.
+
 ### 10.4 Two test-integrity defects found while doing this
 
 Recorded because both are the kind of thing that makes a green suite worthless.
@@ -1371,6 +1430,15 @@ recoverable direction. Its own comment claimed it tested that reconciliation
 "never overwrites conflicting evidence to make a dashboard green". It now denies a
 fill it has already made, which is the unclosable direction and the one that
 claim is about.
+
+A THIRD, found by exercising cancels end to end in the matrix rather than only in
+unit tests. The simulator attributed a cancellation to the SUBMIT's effect
+identity, because `base_observation` carries the resting order's originating
+effect - right for an acknowledgement or a fill, wrong for a cancellation, which
+resolves the cancel effect. The gateway therefore never saw a response to its
+cancel and timed it out, while the reducer refused the evidence as inapplicable to
+a submit. Unit tests could not find this: they construct observations directly and
+so had the identity right by construction. Only the end-to-end path had it wrong.
 
 Known coverage boundary, stated rather than papered over: the matrix cannot
 produce a reconciliation conflict. That needs an order which went unknown while

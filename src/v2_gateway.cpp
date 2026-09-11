@@ -5,18 +5,27 @@ namespace {
 
 // An effect is deliverable only from a state the gateway may act on.
 //
-// `pending` is the ordinary case. `unknown` and `reconciling` are deliberately
-// NOT deliverable here: ADR 0001 requires reconciliation before resending an
-// ambiguous effect, so re-sending one straight from this guard would be exactly
-// the blind retry G-026 forbids. A future reconcile-then-resend path will carry
-// its own evidence and is not this function's job.
+// `pending` is the ordinary case for both operations.
+//
+// `unknown` is deliverable for a CANCEL and not for a submit, and the asymmetry
+// is the same one that governs redelivery. Reconciliation must precede resending
+// an ambiguous SUBMIT because a duplicate submit creates a second order. A
+// duplicate cancel creates nothing - it can only reduce exposure or leave it
+// unchanged - so an unknown cancel is precisely the effect most worth sending
+// again, and refusing it means the guard is strictest about the one action an
+// operator needs when trying to get flat.
+//
+// `reconciling` stays undeliverable for both. It means final evidence is owed
+// and the cluster is mid-adjudication; sending then would race the answer.
 //
 // `claimed` and `attempted` are gateway-local by architecture 9.1.2 and the
 // reducer never writes them, so meeting one in replicated state means the state
 // is corrupt or forged. Refusing is the only honest response: interpreting it
 // would mean trusting a value the authority cannot have produced.
-[[nodiscard]] bool deliverable_from(const OutboxState state) noexcept {
-    return state == OutboxState::pending;
+[[nodiscard]] bool deliverable_from(const OutboxState state,
+                                    const EffectOperation operation) noexcept {
+    if (state == OutboxState::pending) return true;
+    return state == OutboxState::unknown && operation == EffectOperation::cancel;
 }
 
 // Replicated control state may forbid new external risk regardless of what the
@@ -84,12 +93,12 @@ PreSendDecision evaluate_pre_send(const TradingState& state,
         }
     }
     if (record == nullptr) return refuse(PreSendRefusal::effect_not_found);
-    if (!deliverable_from(record->state)) {
-        return refuse(PreSendRefusal::effect_not_deliverable);
-    }
     if (record->operation != EffectOperation::submit &&
         record->operation != EffectOperation::cancel) {
         return refuse(PreSendRefusal::unsupported_operation);
+    }
+    if (!deliverable_from(record->state, record->operation)) {
+        return refuse(PreSendRefusal::effect_not_deliverable);
     }
 
     // 2. Reconstruct the exact bytes. Doing this BEFORE the remaining checks is
@@ -240,7 +249,18 @@ DeliveryPlan plan_delivery(const TradingState& state,
         // reached the venue. Any other completed attempt may have left an order
         // resting there, so redelivering it is the gateway's own duplicate - the
         // exact failure G-025 and the Phase 5 gate exist to exclude.
-        if (attempt != nullptr && !attempt->resend_permitted) continue;
+        //
+        // A CANCEL is the exception, and the exception is principled rather than
+        // convenient. That rule exists because a duplicate SUBMIT creates a
+        // second order. A duplicate cancel cannot create risk: it can only reduce
+        // exposure or leave it unchanged, and the venue deduplicates it by the
+        // same stable identity. So the rule was strictest exactly where its own
+        // justification does not apply - and exactly when an operator is trying
+        // to get flat. Redelivery here is the same EffectId, never a fresh one;
+        // minting a new cancel is re-authorization and is the reducer's business.
+        const bool cancel = state.outbox_effects[index].operation ==
+                            EffectOperation::cancel;
+        if (attempt != nullptr && !attempt->resend_permitted && !cancel) continue;
         // Retries are bounded. A venue that refuses for pacing forever would
         // otherwise be retried forever; stopping leaves the effect pending and
         // visibly unsettled, which is the fail-closed outcome.
@@ -288,28 +308,41 @@ namespace {
     return EffectOperation::submit;
 }
 
+[[nodiscard]] bool delivery_exhausted(const ClusterOrder& order,
+                                      const GatewayDeliveryState& delivery,
+                                      const GatewayTimeouts& timeouts) noexcept {
+    const auto* attempt = find_attempt(delivery, order.effect_id);
+    return attempt != nullptr && attempt->attempts >= timeouts.max_send_attempts;
+}
+
 [[nodiscard]] ReconciliationNeed need_of(const TradingState& state,
                                         const ClusterOrder& order,
                                         const GatewayDeliveryState& delivery,
                                         const GatewayTimeouts& timeouts) noexcept {
     switch (order.state) {
         case ClusterOrderState::submission_unknown:
-            return current_operation(state, order) == EffectOperation::cancel
+            if (current_operation(state, order) != EffectOperation::cancel) {
+                return ReconciliationNeed::submission_unknown;
+            }
+            // Redelivery FIRST, reconciliation second. A cancel may be resent
+            // under its own identity without proof, so the cheap idempotent
+            // action is tried before the round trip that would most likely just
+            // tell us to try it. Reconciliation takes over when redelivery has
+            // stopped working, which is the only point at which the query
+            // actually adds information.
+            return delivery_exhausted(order, delivery, timeouts)
                        ? ReconciliationNeed::cancel_unconfirmed
-                       : ReconciliationNeed::submission_unknown;
+                       : ReconciliationNeed::none;
         case ClusterOrderState::reconciling:
             return ReconciliationNeed::cancel_unconfirmed;
-        case ClusterOrderState::dispatch_authorized: {
+        case ClusterOrderState::dispatch_authorized:
             // Authorized but never delivered. This is a target only once the
             // send attempts are SPENT: an order still waiting its turn to be
             // sent must not be queried, or the query races the send and the
             // venue is asked about an order the gateway is about to place.
-            const auto* attempt = find_attempt(delivery, order.effect_id);
-            return attempt != nullptr &&
-                           attempt->attempts >= timeouts.max_send_attempts
+            return delivery_exhausted(order, delivery, timeouts)
                        ? ReconciliationNeed::delivery_exhausted
                        : ReconciliationNeed::none;
-        }
         default:
             // A `live` order with no fill is deliberately NOT a target. Without a
             // clock there is no way to tell "its fill was lost" from "it has not

@@ -967,21 +967,87 @@ VenueObservation cancel_final(const TradingState& state, EffectId effect_id,
     return final;
 }
 
-void test_a_silent_cancel_is_reconciled_as_a_cancel_not_a_submission() {
-    // `submission_unknown` names the order but describes its current effect. If
-    // the planner read the order state alone it would go and reconcile a
-    // submission that was never in doubt, submit an `order_reconciled` the
-    // reducer correctly refuses, and burn its query budget while the cancel
-    // stayed stuck.
+void test_a_silent_cancel_redelivers_before_it_reconciles() {
+    // A cancel may be redelivered under its own identity without proof, because
+    // a duplicate cancel cannot create risk. So the cheap idempotent action is
+    // tried first and the query round trip - which would most likely just tell
+    // us to try it - is the fallback once redelivery has stopped working.
     const auto fixture = silent_cancel();
+    const GatewayTimeouts timeouts;
     const GatewayReconciliationState fresh;
-    const GatewayDeliveryState idle;
-    const auto plan = plan_reconciliation(fixture.state, fresh, idle,
-                                          control_of(fixture.state), capable_venue(),
-                                          GatewayTimeouts{}, 0);
-    require(plan.query_count == 1, "a silent cancel was not scheduled for query");
-    require(plan.to_query[0].need == ReconciliationNeed::cancel_unconfirmed,
+    GatewayDeliveryState delivery;
+
+    // Redelivery, not reconciliation, while attempts remain.
+    require(record_send(delivery, fixture.effect_id, 0), "record_send failed");
+    require(record_response(delivery, fixture.effect_id), "record_response failed");
+    const auto plan = plan_delivery(fixture.state, delivery, control_of(fixture.state),
+                                    capable_venue(), SendQuotaView{4}, timeouts, 5);
+    require(plan.send_count == 1 && plan.to_send[0] == fixture.effect_id,
+            "a silent cancel was not redelivered under its own identity");
+    require(plan_reconciliation(fixture.state, fresh, delivery,
+                                control_of(fixture.state), capable_venue(), timeouts, 5)
+                    .query_count == 0,
+            "a cancel was queried while redelivery was still available");
+
+    // Once attempts are spent, reconciliation takes over - and recognises it as a
+    // stuck CANCEL, not a stuck submission. `submission_unknown` names the order
+    // but describes its current effect; reading the order state alone would send
+    // the gateway off to reconcile a submission that was never in doubt.
+    while (find_attempt(delivery, fixture.effect_id)->attempts <
+           timeouts.max_send_attempts) {
+        require(record_send(delivery, fixture.effect_id, 5), "record_send failed");
+        require(record_response(delivery, fixture.effect_id), "record_response failed");
+    }
+    const auto recon = plan_reconciliation(fixture.state, fresh, delivery,
+                                           control_of(fixture.state), capable_venue(),
+                                           timeouts, 9);
+    require(recon.query_count == 1,
+            "an exhausted silent cancel was not scheduled for query");
+    require(recon.to_query[0].need == ReconciliationNeed::cancel_unconfirmed,
             "a silent cancel was mistaken for a silent submission");
+    require(plan_delivery(fixture.state, delivery, control_of(fixture.state),
+                          capable_venue(), SendQuotaView{4}, timeouts, 9)
+                    .send_count == 0,
+            "cancel redelivery was unbounded");
+}
+
+void test_a_rejected_cancel_does_not_prove_the_order_is_live() {
+    // The hazard that makes cancel redelivery non-free. A venue refuses a cancel
+    // for "already cancelled", "already filled", and "no such order" as readily
+    // as for "still working", and a rejection of the DUPLICATE is now the common
+    // case. Returning the order to `live` on that evidence would let a reordered
+    // rejection flip a genuinely cancelled order back to working - after which
+    // its real cancellation is refused because the effect is already resolved.
+    auto fixture = pending_cancel();
+    VenueObservation rejected;
+    rejected.kind = VenueObservationKind::order_rejected;
+    rejected.venue_id = VenueId{9};
+    rejected.venue_session_id = VenueSessionId{1};
+    rejected.venue_sequence = VenueSequence{7'400};
+    rejected.cluster_order_id = sole_order(fixture.state).cluster_order_id;
+    rejected.effect_id = fixture.effect_id;
+    rejected.evidence_digest = digest(0x75);
+    require(submit_answer(fixture.state, rejected, 20).code == ApplyCode::applied,
+            "a cancel rejection was refused");
+    require(sole_order(fixture.state).state == ClusterOrderState::reconciling,
+            "a rejected cancel was read as proof the order is still working");
+
+    // And `reconciling` must not be a dead end. `cancel_reconciled` can only say
+    // the cancel DID take effect, so without `order_reconciled` speaking about a
+    // cancel there would be no way back to a state a fresh cancel could be
+    // authorized from.
+    const auto applied = submit_answer(
+        fixture.state, reconciled(fixture.state, fixture.effect_id, 88, 0, 7'401), 21);
+    require(applied.code == ApplyCode::applied,
+            "reconciliation could not report the order still working");
+    require(sole_order(fixture.state).state == ClusterOrderState::live,
+            "reconciliation did not restore a working order");
+
+    ApplyScratch scratch;
+    const Command fresh_cancel{{CallerId{1}, RequestSequence{22}, digest(0x76)},
+                               RequestCancel{sole_order(fixture.state).cluster_order_id}};
+    require(apply(fixture.state, fresh_cancel, scratch).code == ApplyCode::applied,
+            "a fresh cancel could not be authorized after reconciliation");
 }
 
 void test_a_silent_cancel_can_be_finally_reconciled() {
@@ -1072,6 +1138,7 @@ struct RunOutcome {
     std::size_t sends{};
     std::size_t ambiguous_declared{};
     std::size_t authorizations{};
+    std::size_t cancels{};
 
     // What the loop leaves behind, and what reconciliation did about it.
     std::map<ClusterOrderState, std::size_t> unresolved_states;
@@ -1127,6 +1194,7 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
     // finish delivering what it already authorized without starting new risk -
     // which is what makes "did anything stay unresolved" a real question rather
     // than an artefact of stopping mid-flight.
+    std::uint64_t cycle = 0;
     const auto tick = [&](const bool propose) {
         // 1. The edge proposes; the cluster authorizes. Refusals are expected and
         //    correct: slot exclusivity and arena headroom both fail closed, and
@@ -1151,6 +1219,26 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
                         ++outcome.authorizations;
                     }
                 }
+            }
+        }
+
+        // 1b. Periodically cancel whatever is working. Without this the cancel
+        //     lifecycle - redelivery, rejection, final reconciliation - is only
+        //     ever unit-tested, and the interactions between a cancel in flight
+        //     and a fill in flight are exactly what a fault matrix is for.
+        if (propose && cycle % 3 == 2) {
+            for (std::size_t index = 0; index < state.order_count; ++index) {
+                const auto& order = state.orders[index];
+                if (order.state != ClusterOrderState::live &&
+                    order.state != ClusterOrderState::partially_filled) {
+                    continue;
+                }
+                const Command cancel{next_identity(),
+                                     RequestCancel{order.cluster_order_id}};
+                if (apply(state, cancel, scratch).code == ApplyCode::applied) {
+                    ++outcome.cancels;
+                }
+                break;
             }
         }
 
@@ -1198,11 +1286,18 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
             require(decision.permitted(),
                     "the planner scheduled an effect the guard refuses");
             const auto order = decision.effect->cluster_order_id.value();
-            const auto owner = outcome.identity_owner.find(order);
-            require(owner == outcome.identity_owner.end() ||
-                        owner->second == effect_id.value(),
-                    "one cluster order identity was sent under two effects");
-            outcome.identity_owner[order] = effect_id.value();
+            // Scoped to SUBMITS. A cancel carries the cluster order identity of
+            // the order it cancels, so sharing it is the point rather than a
+            // violation - what must never happen is one identity being used to
+            // CREATE a second venue order.
+            if (decision.effect->operation == EffectOperation::submit) {
+                const auto owner = outcome.identity_owner.find(order);
+                require(owner == outcome.identity_owner.end() ||
+                            owner->second == effect_id.value(),
+                        "one cluster order identity was submitted under two "
+                        "effects");
+                outcome.identity_owner[order] = effect_id.value();
+            }
 
             ++outcome.sends;
             const auto sent = venue.send(*decision.effect, now);
@@ -1239,9 +1334,14 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
                                    observation_fingerprint(observation)},
                                   is_fill ? CommandBody{ObserveFill{observation}}
                                           : CommandBody{ObserveOrderEvent{observation}}};
+            // The venue ANSWERED. Whether the cluster accepts the answer is a
+            // separate question with a separate outcome, and conflating the two
+            // would leave the attempt outstanding until it timed out - so the
+            // gateway would declare an outcome unknown that the venue had
+            // already told it, and retry something already answered.
+            (void)record_response(delivery, observation.effect_id);
             const auto applied = apply(state, command, scratch);
             if (applied.code == ApplyCode::applied) {
-                (void)record_response(delivery, observation.effect_id);
                 if (is_fill) {
                     outcome.cluster_booked[order] +=
                         applied.filled_quantity().atoms();
@@ -1307,8 +1407,20 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
             }
             outcome.never_answered.erase(target.cluster_order_id.value());
 
+            // Which kind the answer becomes is the gateway's only remaining
+            // choice, and it is a reporting choice rather than an economic one.
+            // `cancel_reconciled` asserts the cancel TOOK EFFECT and is final.
+            // `order_reconciled` asserts the venue still holds the order, which
+            // for a stuck cancel means the cancel did not take. Anything else -
+            // including an order the venue denies - is the latter with a zero
+            // identity, saying nothing is resting there.
+            const bool cancel_took_effect =
+                target.need == ReconciliationNeed::cancel_unconfirmed &&
+                view.status == VenueQueryStatus::known && view.cancelled;
             VenueObservation answer;
-            answer.kind = VenueObservationKind::order_reconciled;
+            answer.kind = cancel_took_effect
+                              ? VenueObservationKind::cancel_reconciled
+                              : VenueObservationKind::order_reconciled;
             answer.venue_id = VenueId{9};
             answer.venue_session_id = view.venue_session_id;
             answer.venue_sequence = VenueSequence{800'000 + now * 64 + index};
@@ -1317,6 +1429,9 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
             answer.venue_order_id = view.venue_order_id;
             answer.quantity = view.filled_quantity;
             answer.evidence_digest = digest(0x6C);
+            // `cancel_reconciled` requires a venue order identity; it is only
+            // ever built from a `known` answer, which always carries one.
+            if (cancel_took_effect && answer.venue_order_id.value() == 0) continue;
             ++counter;
             const Command command{{CallerId{1}, RequestSequence{counter},
                                    observation_fingerprint(answer)},
@@ -1337,7 +1452,7 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
         now += 2;
     };
 
-    for (std::uint64_t cycle = 0; cycle < cycles; ++cycle) tick(true);
+    for (cycle = 0; cycle < cycles; ++cycle) tick(true);
     // Drain. Bounded by construction: each pass advances virtual time by five
     // ticks, so every deadline and every scheduled response comes due. What is
     // still unresolved after this is genuinely unresolved.
@@ -1456,16 +1571,31 @@ void check_gates(const RunOutcome& outcome, const std::string& where) {
     // conflict and stays recoverable. What is excluded is an order stuck for no
     // reason at all, which is what the gate is really for.
     for (const auto& order : outcome.unresolved_orders_by_id) {
-        if (order.second != ClusterOrderState::submission_unknown) continue;
+        // Both stuck shapes, symmetrically: a submission whose outcome is unknown
+        // and a cancel awaiting its final word. Each must have a cause on record.
+        if (order.second != ClusterOrderState::submission_unknown &&
+            order.second != ClusterOrderState::reconciling) {
+            continue;
+        }
         require(outcome.answered_ahead.count(order.first) != 0 ||
                     outcome.never_answered.count(order.first) != 0,
-                "an order was stuck in submission_unknown with no cause on "
+                "an order was stuck awaiting reconciliation with no cause on "
                 "record" + where);
     }
 }
 
 void test_a_clean_venue_delivers_and_resolves() {
     const auto outcome = run_seed(1, FaultPolicy::clean(), 10);
+    if (std::getenv("VELOCITA_MATRIX_TRACE") != nullptr) {
+        std::cout << "clean: auth " << outcome.authorizations << " cancels "
+                  << outcome.cancels << " sends " << outcome.sends << " ambiguous "
+                  << outcome.ambiguous_declared << " unresolved "
+                  << outcome.observed_unresolved << " states ";
+        for (const auto& [s, c] : outcome.unresolved_states) {
+            std::cout << static_cast<int>(s) << "x" << c << " ";
+        }
+        std::cout << '\n';
+    }
     check_gates(outcome, " (clean)");
     require(outcome.venue_orders_created > 0, "the clean run never placed an order");
     require(outcome.ambiguous_declared == 0,
@@ -1499,6 +1629,7 @@ void test_the_fault_matrix_holds_the_gate() {
     std::size_t total_queries = 0;
     std::size_t total_reconciled = 0;
     std::size_t total_unavailable = 0;
+    std::size_t total_cancels = 0;
     for (std::uint64_t seed = 1; seed <= 32; ++seed) {
         const auto outcome = run_seed(seed, faults, 12);
         // Printed BEFORE the gates so a failing seed's numbers are visible, and
@@ -1531,6 +1662,7 @@ void test_the_fault_matrix_holds_the_gate() {
         }
         total_unresolved += outcome.metrics.unresolved_orders;
         total_queries += outcome.queries;
+        total_cancels += outcome.cancels;
         total_reconciled += outcome.reconciled;
         if (outcome.dispositions.count(QueryDisposition::unavailable) != 0) {
             total_unavailable += outcome.dispositions.at(QueryDisposition::unavailable);
@@ -1556,6 +1688,9 @@ void test_the_fault_matrix_holds_the_gate() {
     // Silence is the branch that matters most - it is the one where reading an
     // absent answer as an absent order would place a second real order - so the
     // matrix must actually reach it rather than only ever getting answers.
+    require(total_cancels > 0,
+            "the matrix never cancelled anything, so the cancel lifecycle was "
+            "never exercised end to end");
     require(total_unavailable > 0,
             "the matrix never lost a query, so the classifier's silence branch "
             "was never exercised");
@@ -1618,7 +1753,8 @@ int main() {
         test_the_reconciliation_planner_reads_no_clock_and_mutates_nothing();
         test_a_cancel_is_deliverable_in_every_strategy_mode();
         test_new_risk_is_still_refused_outside_normal();
-        test_a_silent_cancel_is_reconciled_as_a_cancel_not_a_submission();
+        test_a_silent_cancel_redelivers_before_it_reconciles();
+        test_a_rejected_cancel_does_not_prove_the_order_is_live();
         test_a_silent_cancel_can_be_finally_reconciled();
         test_a_cancel_final_below_booked_is_a_conflict();
         test_a_cancel_final_above_booked_waits_rather_than_conflicting();

@@ -340,7 +340,8 @@ velocita::v2::Command observe_order_event(
     observation.cluster_order_id = order_id;
     observation.effect_id = effect_id;
     if (kind == VenueObservationKind::order_acknowledged ||
-        kind == VenueObservationKind::cancelled) {
+        kind == VenueObservationKind::cancelled ||
+        kind == VenueObservationKind::order_reconciled) {
         observation.venue_order_id = VenueOrderId{70};
     }
     observation.evidence_digest = digest(marker);
@@ -1254,8 +1255,29 @@ void test_authorization_reserves_completion_and_cancel_capacity() {
                                       order_ids[0], cancel_ids[0], 1'900),
                   scratch).code == ApplyCode::applied,
             "cancel-rejection fixture failed");
+    // A rejected cancel no longer proves the order is still live (architecture
+    // 10.3.5). The venue refuses a cancel for "already cancelled", "already
+    // filled", and "no such order" as readily as for "still working", and once
+    // cancels may be redelivered a rejection of the DUPLICATE is the common case.
+    // So the order goes to `reconciling` and a fresh cancel needs reconciliation
+    // first. The arena-pressure guarantee this test exists for is unchanged - the
+    // reconciliation is an observation and allocates no outbox slot - it just
+    // takes one more step to reach.
+    require(apply(outbox_pressure,
+                  request_cancel(9, 0x76, order_ids[0]), scratch).code ==
+                ApplyCode::order_not_cancellable,
+            "a fresh cancel was authorized before reconciliation established "
+            "whether the order was still working");
+    require(apply(outbox_pressure,
+                  observe_order_event(2, 0x77,
+                                      VenueObservationKind::order_reconciled,
+                                      order_ids[0], cancel_ids[0], 1'901),
+                  scratch).code == ApplyCode::applied,
+            "reconciliation could not report the order still working");
+    // A fresh request identity: the refused attempt above retained its receipt,
+    // so re-presenting the same identity would correctly return that refusal.
     const auto retried = apply(
-        outbox_pressure, request_cancel(9, 0x76, order_ids[0]), scratch);
+        outbox_pressure, request_cancel(10, 0x78, order_ids[0]), scratch);
     require(retried.code == ApplyCode::applied &&
                 retried.effect_id() != cancel_ids[0] &&
                 outbox_pressure.outbox_effect_count == kMaxOutboxEffects,

@@ -218,6 +218,49 @@ conflict, because that needs an order which went unknown while already holding
 booked fills and the fault model applies one fault per operation. Direct unit
 tests cover the branch. Release 28/28 and full host Debug ASan+UBSan 28/28.
 
+Seventh increment makes a cancel redeliverable without proof, amending section
+9.2.1 on approval. That rule exists because a duplicate submit creates a second
+order; a duplicate cancel creates nothing, so the rule was strictest exactly where
+its justification does not apply and exactly when an operator is trying to get
+flat. A cancel may now be redelivered after its response deadline, bounded by the
+same attempt limit, and `unknown` becomes a deliverable state for a cancel and
+only for a cancel. `reconciling` stays undeliverable for both, since it means
+final evidence is owed and sending would race the answer.
+
+Redelivery and re-authorization are kept distinct: redelivery is the same EffectId
+at-least-once, deduplicated by the venue, and is what a timeout triggers;
+re-authorization mints a fresh cancel effect and is the reducer's business.
+Redelivery runs first and reconciliation second - the cheap idempotent action
+before the round trip that would most likely just say to send it again.
+
+The rider is not optional. `order_rejected` on a cancel returned the order to
+`live`, but a venue refuses a cancel for "already cancelled", "already filled",
+and "no such order" as readily as for "still working" - and a rejection of the
+duplicate is now the common case. Under reordering that rejection can arrive
+before the original's cancellation and flip a genuinely cancelled order back to
+working, after which its real cancellation is refused. A rejected cancel now means
+the lifecycle is unknown, so the order moves to `reconciling`. To stop that being
+a dead end, `order_reconciled` was widened to speak about a cancel effect, where
+it means the venue still holds the order and the cancel did not take: the cancel
+becomes `rejected` with no economic result and the order returns to `live`, which
+is also what lets the outbox record be reused. Both kinds already existed, so this
+costs no bytes.
+
+Accepted-behaviour change: Phase 4's outbox-reuse test rejected a cancel and
+immediately re-requested one; it now reconciles in between. The arena-pressure
+guarantee is unchanged - a reconciliation allocates no outbox slot - it just takes
+one more step.
+
+The matrix now cancels, and found a third test-integrity defect that unit tests
+structurally could not. The simulator attributed a cancellation to the submit's
+effect identity rather than the cancel's, so the gateway never saw a response to
+its cancel and timed it out while the reducer refused the evidence as inapplicable
+to a submit. Unit tests construct observations directly and so had the identity
+right by construction; only the end-to-end path had it wrong. The matrix's
+named-cause gate is now symmetric, covering a cancel awaiting its final word as
+well as an unknown submission, and asserts that cancels actually happen. Release
+28/28, full host Debug ASan+UBSan 28/28, model corpus 109/109.
+
 Status: Phases 1-4 are accepted on the required host, ARM64 Ubuntu, and physical
 Raspberry Pi 5 gates. Deterministic policy evaluation, risk reservation, cluster
 orders, accepted venue-evidence accounting, and the transactional outbox are

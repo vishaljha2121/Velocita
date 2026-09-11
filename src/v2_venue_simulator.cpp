@@ -133,6 +133,13 @@ SendOutcome SimulatedVenue::send(const OrderEffect& effect, const Tick now) {
         if (order == nullptr) return SendOutcome::business_rejected;
         order->cancelled = true;
         auto cancelled = base_observation(VenueObservationKind::cancelled, *order);
+        // Attributed to the CANCEL effect, not the submit. `base_observation`
+        // carries the resting order's originating effect, which is right for an
+        // acknowledgement or a fill but wrong here: a cancellation resolves the
+        // cancel effect, and reporting it against the submit would leave the
+        // cancel outstanding until it timed out while the reducer refused the
+        // evidence as inapplicable to a submit.
+        cancelled.effect_id = effect.effect_id;
         schedule(cancelled, now + latency(fault), fault == Fault::duplication,
                  fault == Fault::reorder);
 

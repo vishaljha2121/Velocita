@@ -2422,7 +2422,24 @@ std::size_t settle_orphaned_effects(TradingState& state,
     // everything it cannot answer honestly from a snapshot.
     const bool reconciled_submit =
         observation.kind == VenueObservationKind::order_reconciled;
-    if (reconciled_submit &&
+    // `order_reconciled` answers "the venue holds this order, with this cumulative
+    // fill". That is exactly as meaningful about a stuck CANCEL as about a stuck
+    // submit: it says the cancel did not take effect and the order is still
+    // working. Without this, `reconciling` is a dead end - `cancel_reconciled`
+    // can only say the cancel DID take effect, so an order whose cancel was
+    // rejected or lost would have no way back to a state a fresh cancel could be
+    // authorized from.
+    const bool reconciled_cancel =
+        reconciled_submit && effect->operation == EffectOperation::cancel &&
+        effect->effect_id == order.effect_id &&
+        (order.state == ClusterOrderState::submission_unknown ||
+         order.state == ClusterOrderState::reconciling ||
+         order.state == ClusterOrderState::cancel_pending) &&
+        (effect->state == OutboxState::pending ||
+         effect->state == OutboxState::unknown ||
+         effect->state == OutboxState::rejected ||
+         effect->state == OutboxState::reconciling);
+    if (reconciled_submit && !reconciled_cancel &&
         !(effect->effect_id == order.effect_id &&
           effect->operation == EffectOperation::submit &&
           (order.state == ClusterOrderState::submission_unknown ||
@@ -2535,10 +2552,12 @@ std::size_t settle_orphaned_effects(TradingState& state,
     const bool effect_resolved = effect->state == OutboxState::acknowledged ||
                                  effect->state == OutboxState::rejected;
     if ((terminal && !late_cancel_completion) ||
+        (effect_resolved && reconciled_cancel &&
+         effect->state != OutboxState::rejected) ||
         order.state == ClusterOrderState::conflict ||
-        (order.state == ClusterOrderState::reconciling &&
+        (order.state == ClusterOrderState::reconciling && !reconciled_cancel &&
          !(cancel_reconcilable && (cancel_agrees || cancel_contradicts))) ||
-        (effect_resolved && !late_cancel_completion) ||
+        (effect_resolved && !late_cancel_completion && !reconciled_cancel) ||
         (effect->effect_id != order.effect_id && !late_cancel_completion)) {
         return venue_event_result(state,
                                   ApplyCode::venue_observation_not_applicable,
@@ -2597,9 +2616,23 @@ std::size_t settle_orphaned_effects(TradingState& state,
             break;
         case VenueObservationKind::order_rejected:
             effect->state = OutboxState::rejected;
-            order.state = effect->operation == EffectOperation::submit
-                              ? ClusterOrderState::rejected
-                              : ClusterOrderState::live;
+            if (effect->operation == EffectOperation::submit) {
+                order.state = ClusterOrderState::rejected;
+                break;
+            }
+            // A rejected CANCEL does not prove the order is still working. The
+            // venue refuses a cancel for "already cancelled", "already filled",
+            // and "no such order" as readily as for "still live" - and once
+            // cancels may be redelivered, a rejection of the DUPLICATE is the
+            // common case. Returning the order to `live` on that evidence would
+            // let a reordered rejection flip a genuinely cancelled order back to
+            // working, after which its real cancellation is refused because the
+            // effect is already resolved.
+            //
+            // So a rejected cancel means the lifecycle is unknown, not live.
+            // Reconciliation establishes the truth before a fresh cancel can be
+            // authorized, which is the whole point of having it.
+            order.state = ClusterOrderState::reconciling;
             break;
         case VenueObservationKind::cancelled:
             if (effect->operation != EffectOperation::cancel) {
@@ -2641,9 +2674,14 @@ std::size_t settle_orphaned_effects(TradingState& state,
                 order.state = ClusterOrderState::rejected;
             } else {
                 // The venue holds the order and agrees about what it has filled.
-                // The submit definitely arrived, so the effect is resolved; the
-                // order is exactly as live as its booked fills say it is.
-                effect->state = OutboxState::acknowledged;
+                // For a submit that means the submit arrived and the effect is
+                // acknowledged. For a CANCEL it means the opposite - the order is
+                // still working, so the cancel did not take effect and had no
+                // economic result, which is exactly `rejected`. Marking it
+                // rejected is also what lets `apply_request_cancel` reuse the
+                // record for a fresh attempt rather than consuming the arena.
+                effect->state = reconciled_cancel ? OutboxState::rejected
+                                                  : OutboxState::acknowledged;
                 order.state = reservation.filled_quantity.atoms() > 0
                                   ? ClusterOrderState::partially_filled
                                   : ClusterOrderState::live;
