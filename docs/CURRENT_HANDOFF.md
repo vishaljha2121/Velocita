@@ -5,7 +5,56 @@ Updated: 2026-09-10
 Purpose: compact working memory for the next agent session. Verify this file
 against Git before acting; do not reconstruct the project from chat history.
 
-## Phase 5 review handoff — 2026-09-10 (read this first)
+## Phase 5 review outcome and gate readiness — 2026-09-10 (read this first)
+
+Supersedes the review-request section below, which is retained for its risk
+inventory. Codex was unavailable, so the review named there was performed in
+session.
+
+THE REVIEW FOUND THREE CORRECTNESS DEFECTS, all fixed in `c13c014`. They were
+found by ENUMERATION, not by reading: `v2-lifecycle-reachability-tests` drives the
+kernel breadth-first through every command it accepts and converges at 27
+reachable lifecycle positions. Details in architecture §10.8.
+
+1. A fill could erase a conflict. `apply_observe_order_event` refused everything
+   from `conflict`; `apply_observe_fill` did not, so a later fill carried a
+   conflicted order to `filled`, released its reservation, and removed it from the
+   conflict projection.
+2. A pending cancel could be reconciled away, marking it rejected and returning
+   the order to live - silently abandoning an operator's intent.
+3. A cancel could become permanently unsettleable when its order filled while it
+   was in flight, pinning one slot in each of four arenas forever.
+
+The tool now asserts the inventory permanently, asserts that `conflict` is a sink,
+and asserts that no unsettled effect is a dead end.
+
+GATE READINESS. Host evidence is recorded in
+`docs/evidence/V2_PHASE5_GATEWAY_SIMULATOR_ACCEPTANCE.md`: Release 29/29, full
+host Debug ASan+UBSan 29/29, model corpus 109/109. Both gate scripts exist and are
+pinned to source root
+`8d31c33e66a2345e0e8152ff42876b8eb7036f0250d9048f705cd1c6bee0bbc4`:
+
+```sh
+BUILD_JOBS=2 ./deploy/run-v2-phase5-container-gate.sh --yes   # ARM64 container
+BUILD_JOBS=2 ./deploy/run-v2-phase5-pi-gate.sh --yes          # physical Pi
+```
+
+Neither has run. Phase 5 is NOT accepted and cannot be on host evidence alone.
+
+DEFERRED WORK is now collected in `docs/V2_DEFERRED_FUNCTIONAL_SCOPE.md`, with a
+blast radius and a TRIGGER for each item. The one to know about: policies,
+sources and caller cursors are never reclaimed, so they are lifetime ceilings -
+sixteen `PublishPolicy` commands per cluster lifetime, ever. Not a correctness
+issue and not an optimisation either; it is the same availability defect §8.6
+fixed for receipts, still open for three arenas. Parked for the MVP deliberately.
+
+A capacity rebalance was investigated and REJECTED. The arenas look independent
+in a size table and are not: venue event receipts live inside the request receipt
+arena, that sub-budget rather than `kMaxClusterOrders` is the real limit on
+concurrent orders, and the policy arena that looks like free space is an
+unreclaimed lifetime budget. Reasoning in `V2_DEFERRED_FUNCTIONAL_SCOPE.md` §3.
+
+## Phase 5 review handoff — 2026-09-10 (risk inventory, superseded above)
 
 This section supersedes the Phase 4 "next task" text below for anything about
 what to do NEXT. The Phase 4 acceptance record itself is unchanged and still

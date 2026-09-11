@@ -350,6 +350,30 @@ answering with a rejection rather than a cancellation. No unit test would have
 been written for it and the fault matrix cannot produce it, because its faults do
 not compose. Release 29/29 and full host Debug ASan+UBSan 29/29.
 
+Phase 5 gate scripts and the acceptance evidence skeleton are in place, pinned to
+source root 8d31c33e. Host evidence is recorded; neither target gate has run, so
+Phase 5 is not accepted.
+
+Deferred functional work is collected in `docs/V2_DEFERRED_FUNCTIONAL_SCOPE.md`,
+separate from the V2.1 performance backlog because the distinction decides whether
+an item is ever mandatory. An optimisation is optional forever; an availability
+defect is optional only until the system runs long enough to reach it. Every item
+carries a blast radius and a trigger.
+
+The headline item: policies, sources and caller cursors are never reclaimed, so
+they are lifetime ceilings - sixteen `PublishPolicy` commands per cluster
+lifetime, ever, after which the model pipeline can no longer ship while trading
+continues on the frozen active policy. No economics are wrong and the refusal is
+typed and fail-closed, so it is not a correctness issue; but it is the same
+availability defect section 8.6 fixed for receipts, left open for three arenas,
+and it has no recovery path.
+
+A capacity rebalance was investigated and rejected. The arenas look independent in
+a size table and are not: venue event receipts live inside the request receipt
+arena, so that sub-budget rather than `kMaxClusterOrders` is the real limit on
+concurrent orders, and the policy arena that looks like free space is an
+unreclaimed lifetime budget rather than dead weight.
+
 Status: Phases 1-4 are accepted on the required host, ARM64 Ubuntu, and physical
 Raspberry Pi 5 gates. Deterministic policy evaluation, risk reservation, cluster
 orders, accepted venue-evidence accounting, and the transactional outbox are
