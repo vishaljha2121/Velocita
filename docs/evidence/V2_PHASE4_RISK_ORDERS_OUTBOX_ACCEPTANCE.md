@@ -166,6 +166,12 @@ authorize venue connectivity, paper/live delivery, or real-money trading.
   G-074a work owned by Phases 8 and 10; Phase 4 invents no wall-clock timeout.
 - A venue-session sequence watermark and caller-driven identity expiry remain
   deferred until the Phase 5 simulator/venue contract can justify their horizon.
-- The 80-KiB state capacity remains provisional until deferred NUC validation.
+- The 80-KiB state capacity was recorded here as provisional until deferred NUC
+  validation. DISCHARGED on 2026-09-11: the x86-64 NUC gate reproduced the bounded
+  layout byte-for-byte against ARM64 - `TradingState` 81,168 of 81,920 with 752
+  bytes headroom, maximum canonical snapshot 65,259 of 65,536 - so the capacity
+  holds on both deployment architectures. See
+  `V2_PHASE5_GATEWAY_SIMULATOR_ACCEPTANCE.md`. This closes a stated limitation and
+  does not alter the Phase 4 acceptance decision above.
 - This evidence authorizes no paper or live order delivery and makes no
   end-to-end latency, availability, or profitability claim.

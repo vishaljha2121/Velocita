@@ -5,7 +5,48 @@ Updated: 2026-09-10
 Purpose: compact working memory for the next agent session. Verify this file
 against Git before acting; do not reconstruct the project from chat history.
 
-## V2 PHASE 5 ACCEPTED — 2026-09-11 (read this first)
+## V2 PHASE 5 ACCEPTED ON ALL FOUR ENVIRONMENTS — 2026-09-11 (read this first)
+
+| environment | Release | instrumented | ASan+UBSan |
+|---|---|---|---|
+| development host | 29/29 | - | 29/29 |
+| ARM64 Linux container | 29/29 | 26/26 | 26/26 |
+| physical Raspberry Pi 5 | 29/29 | 26/26 | 26/26 |
+| x86-64 NUC | 29/29 | 26/26 | 26/26 |
+
+Source root `b23bdea07d60163cd05a970cf058af8e6d62665afb47f1217f5f1162f5e2d1b4`
+reproduced exactly on every one. Checkpoint `v2-phase5-accepted`. Record:
+`docs/evidence/V2_PHASE5_GATEWAY_SIMULATOR_ACCEPTANCE.md`.
+
+THE PHASE 4 PROVISIONAL-CAPACITY CAVEAT IS DISCHARGED. The NUC reproduced the
+bounded layout byte-for-byte against ARM64 - `TradingState` 81,168 of 81,920, 752
+bytes headroom, snapshot 65,259 of 65,536 - so the 80-KiB ceiling holds on both
+deployment architectures, and the sixteen-conflict saturation bound of §10.5.3 is
+architecture-independent. Neither machine in the ADR 0002 topology binds tighter.
+
+FIVE GATE-LEVEL DEFECTS were found across the campaign and none were in the code:
+a locale-dependent source root, a build target list drifted from `CMakeLists.txt`,
+two gates using different container engines, a container image pinned to ARM64
+that made the NUC gate unrunnable since Phase 3D, and a sanitizer whose coverage
+silently differed by architecture. All are recorded with cause and structural fix.
+
+NUC setup is documented in `docs/NUC_OPERATOR_RUNBOOK.md`, including the three
+host-level prerequisites that are not obvious: cgroup `cpu` delegation for
+rootless podman, system-scoped NetworkManager credentials for headless boot, and
+Tailscale key-expiry disablement.
+
+NEXT:
+
+1. Phase 6 Raft integration planning. Read architecture §9.1.1 first: "committed"
+   currently collapses to "applied", and Phase 6 must re-tighten it to genuine
+   quorum commitment AND re-run the Phase 5 delivery gates against the stricter
+   definition. Phase 5's guarantees are conditional on that until it happens.
+2. Deferred functional work in `docs/V2_DEFERRED_FUNCTIONAL_SCOPE.md`, each item
+   with a blast radius and a trigger. The one with a realistic trigger: policies,
+   sources and caller cursors are never reclaimed, so sixteen `PublishPolicy`
+   commands is a cluster lifetime budget.
+
+## V2 Phase 5 acceptance detail — 2026-09-11
 
 All three required gates passed at checkout
 `04329fad05837e7f2c6e9d8d075ba8e5ede90700`, source root

@@ -416,6 +416,42 @@ pass would be parity rather than new information - but the Phase 4 promotion rul
 asks for three and this candidate has two, so the deviation is recorded in the
 acceptance document rather than assumed away.
 
+### Phase 5 accepted on all four environments, and the Phase 4 capacity caveat discharged - 2026-09-11
+
+The x86-64 NUC gate PASSED: Release 29/29, benchmark-instrumented 26/26, Debug
+ASan+UBSan 26/26, at source root b23bdea0 matching the Pi and the container
+exactly. GCC 15.2.0, 64-byte target and runtime cache line, 4 CPUs, 2 GiB.
+
+The measurement the gate existed for: the bounded layout is BYTE-IDENTICAL to
+ARM64. `TradingState` 81,168 of 81,920 with 752 bytes headroom, maximum canonical
+snapshot 65,259 of 65,536, `DecisionRecordCold` 584, `RequestReceipt` 160. That is
+the intended result rather than a lucky one - every hot struct is padded to
+cache-line multiples and every field is fixed-width - but it is now measured on
+both deployment architectures rather than assumed.
+
+Two consequences. The 80-KiB state capacity is no longer provisional: Phase 4
+recorded it as pending NUC validation and this discharges it. And the
+sixteen-conflict saturation bound of architecture 10.5.3 is
+architecture-independent, so neither machine in the ADR 0002 topology binds
+tighter and operator escalation is sized the same on both.
+
+Three further gate defects surfaced, none in the candidate, each invisible from
+ARM64. Rootless podman on Ubuntu does not delegate the `cpu` cgroup controller, so
+the gate's deliberate CPU constraint could not be applied. The container image was
+pinned `FROM --platform=linux/arm64`, making an x86-64 host pull an ARM64 base and
+run it emulated - the Phase 3D NUC gate had existed since that line was written
+and records no evidence anywhere, consistent with never having passed. And GCC
+enables LeakSanitizer by default on x86-64 but not aarch64, while LSan needs
+ptrace that `--cap-drop ALL` denies: every suite died before executing a test,
+while the identical ARM64 run passed because LSan was never active. That last one
+means "Debug ASan+UBSan 26/26" had always meant different things on the two
+targets, and the Phase 4 and Phase 5 records asserted it for both without
+qualification.
+
+Five gate-level defects across the whole acceptance campaign and none in the code.
+`docs/NUC_OPERATOR_RUNBOOK.md` records the bring-up from what actually happened,
+including the three host prerequisites that are not obvious.
+
 ### Phase 5 accepted - 2026-09-11
 
 V2 Phase 5 is accepted for source root b23bdea0 at checkout 04329fad. All three
