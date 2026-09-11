@@ -5,7 +5,52 @@ Updated: 2026-09-10
 Purpose: compact working memory for the next agent session. Verify this file
 against Git before acting; do not reconstruct the project from chat history.
 
-## Phase 5 physical Pi gate PASSED — 2026-09-11 (read this first)
+## V2 PHASE 5 ACCEPTED — 2026-09-11 (read this first)
+
+All three required gates passed at checkout
+`04329fad05837e7f2c6e9d8d075ba8e5ede90700`, source root
+`b23bdea07d60163cd05a970cf058af8e6d62665afb47f1217f5f1162f5e2d1b4`. The annotated
+checkpoint is `v2-phase5-accepted`. Record:
+`docs/evidence/V2_PHASE5_GATEWAY_SIMULATOR_ACCEPTANCE.md`.
+
+| environment | Release | instrumented | ASan+UBSan |
+|---|---|---|---|
+| development host | 29/29 | - | 29/29 |
+| ARM64 Linux container | 29/29 | 26/26 | 26/26 |
+| physical Raspberry Pi 5 | 29/29 | 26/26 | 26/26 |
+
+Pi power evidence: `throttled=0x0` before and after, 46.30 C to 50.70 C, governor
+`ondemand`. Bounded layout reproduced byte-for-byte on ARM64/GCC 15.2:
+`TradingState` 81,168 of 81,920, snapshot 65,259 of 65,536.
+
+G-025 and G-026 are closed. G-074a remains open BY DESIGN and is now measured
+rather than assumed: architecture §10.5.3 records that sixteen simultaneous
+unresolved conflicts saturate the cluster, which makes operator escalation
+load-bearing rather than a convenience.
+
+NEXT, in order:
+
+1. NUC validation, outstanding since Phase 4. It is the last environment the
+   80-KiB state ceiling has not been checked on, and that ceiling is what makes
+   the sixteen-conflict bound immovable - so this is a layout-and-capacity gate
+   more than a functional one.
+2. Phase 6 Raft integration planning. Before writing code, re-read architecture
+   §9.1.1: "committed" currently collapses to "applied", and Phase 6 must
+   re-tighten it to genuine quorum commitment and re-run the Phase 5 delivery
+   gates against the stricter definition.
+3. Deferred functional work in `docs/V2_DEFERRED_FUNCTIONAL_SCOPE.md`, each item
+   carrying a blast radius and a trigger. The one with a realistic trigger:
+   policies, sources and caller cursors are never reclaimed, so sixteen
+   `PublishPolicy` commands is a cluster lifetime budget.
+
+Three gate-level defects were found and fixed along the way, none of them in the
+candidate: a source root that depended on ambient locale, a build target list that
+had drifted from `CMakeLists.txt`, and two gates attesting the same candidate
+through different container engines. All three are recorded in the acceptance
+document, because a gate that only records its successes teaches nothing about its
+own blind spots.
+
+## Phase 5 physical Pi gate detail — 2026-09-11
 
 `BUILD_JOBS=2 ./deploy/run-v2-phase5-pi-gate.sh --yes` passed on the physical
 Raspberry Pi 5 at checkout `04329fad05837e7f2c6e9d8d075ba8e5ede90700`, source root

@@ -416,6 +416,32 @@ pass would be parity rather than new information - but the Phase 4 promotion rul
 asks for three and this candidate has two, so the deviation is recorded in the
 acceptance document rather than assumed away.
 
+### Phase 5 accepted - 2026-09-11
+
+V2 Phase 5 is accepted for source root b23bdea0 at checkout 04329fad. All three
+required environments - development host, ARM64 Linux container, and the physical
+Raspberry Pi 5 - reproduced the same canonical source root and the same bounded
+layout and passed every required suite. Host 29/29 Release and 29/29 ASan+UBSan;
+container and Pi 29/29 Release, 26/26 instrumented, 26/26 ASan+UBSan. Pi power
+`throttled=0x0` before and after, 46.30 C to 50.70 C. The annotated checkpoint is
+`v2-phase5-accepted`.
+
+G-025 and G-026 are closed: delivery is at least once by stable EffectId, and an
+ambiguous outcome is explicitly unknown and reconciled before any resend that
+could duplicate risk. G-074a remains open by design and is now measured rather
+than assumed.
+
+The final container pass required one fix, recorded because it was a defect in the
+verification rather than the candidate: the container gate hardcoded docker while
+the physical target gate hardcodes podman, so two gates attesting the same
+candidate ran through different runtimes. It now prefers podman, which is what the
+target gate already requires.
+
+Three gate-level defects were found across the acceptance runs and none were in
+the code: a source root that depended on ambient locale, a build target list that
+had drifted from CMakeLists.txt, and the engine split above. All are recorded in
+the acceptance document rather than only the eventual pass.
+
 Status: Phases 1-4 are accepted on the required host, ARM64 Ubuntu, and physical
 Raspberry Pi 5 gates. Deterministic policy evaluation, risk reservation, cluster
 orders, accepted venue-evidence accounting, and the transactional outbox are

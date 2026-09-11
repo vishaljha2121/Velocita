@@ -1,8 +1,7 @@
 # V2 Phase 5 gateway and simulator acceptance evidence
 
-Status: PASSED ON HOST AND ON THE PHYSICAL RASPBERRY PI 5. The ARM64 container
-gate has not been run as a separate pass; see "Deviation from the Phase 4
-promotion rule" below. Not yet accepted.
+Status: ACCEPTED on the development host, the ARM64 Linux container, and the
+physical Raspberry Pi 5.
 
 ## Objective and promotion rule
 
@@ -171,24 +170,43 @@ bytes against the 81,920 ceiling, 752 bytes of headroom, maximum canonical
 snapshot 65,259 of 65,536. That makes the sixteen-conflict saturation bound in
 architecture §10.5.3 a hardware fact rather than a host-only measurement.
 
-## Deviation from the Phase 4 promotion rule
-
-Phase 4 recorded three passes: host, a standalone ARM64 container gate, and the
-physical Pi. This candidate has host and physical Pi. The standalone container
-gate has not been run.
-
-Stated plainly rather than quietly dropped: the Pi gate EXECUTES THE SAME ARM64
-container and additionally verifies the physical host is AArch64 and records power
-and thermal evidence, so it is strictly stronger than the container gate on the
-same machine. A separate container pass would be a parity run rather than new
-information.
-
-That is an argument, not an exemption. Until it is run, this document records two
-of three and the candidate is not accepted:
+## ARM64 Linux container evidence
 
 ```sh
 BUILD_JOBS=2 ./deploy/run-v2-phase5-container-gate.sh --yes
 ```
+
+Result: PASS on 2026-09-11, exit status 0, no failing step, environment
+`arm64-linux-container`. Observed source root
+`b23bdea07d60163cd05a970cf058af8e6d62665afb47f1217f5f1162f5e2d1b4`, matching the
+Pi gate and the expected root exactly.
+
+- Release: 29/29 suites;
+- benchmark-instrumented: 26/26 V2 suites; and
+- Debug ASan+UBSan: 26/26 V2 suites.
+
+This pass required one fix, recorded because it was a defect in the verification
+rather than in the candidate. The container gate hardcoded `docker` while the
+physical target gate hardcodes `podman`, so two gates attesting the same candidate
+ran through different runtimes with different rootless behaviour, security
+defaults, and exec semantics for a bind-mounted entrypoint. On the Pi that split
+produced a gate which passed under podman and could not start under docker on the
+same machine. The container gate now prefers podman - what the target gate already
+requires - so the two agree by default rather than by coincidence.
+
+## Acceptance decision
+
+Accept V2 Phase 5 for source root
+`b23bdea07d60163cd05a970cf058af8e6d62665afb47f1217f5f1162f5e2d1b4` at checkout
+`04329fad05837e7f2c6e9d8d075ba8e5ede90700`.
+
+All three required environments reproduced the same canonical source root and the
+same bounded layout, and passed every required suite without sanitizer failure,
+undervoltage, or throttling. The annotated checkpoint is `v2-phase5-accepted`.
+
+This decision closes G-025 and G-026. It authorizes Phase 6 Raft integration
+planning. It does NOT authorize venue connectivity, paper or live delivery, or
+real-money trading.
 
 ## Guarantee adjudication
 
