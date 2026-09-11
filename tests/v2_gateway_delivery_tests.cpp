@@ -15,6 +15,7 @@
 #include "velocita/v2/gateway.hpp"
 #include "velocita/v2/metrics.hpp"
 #include "velocita/v2/payload.hpp"
+#include "velocita/v2/state_snapshot.hpp"
 #include "velocita/v2/venue_simulator.hpp"
 
 #include <cstdint>
@@ -644,6 +645,161 @@ bool risk_released(const TradingState& state) {
                ReservationState::released;
 }
 
+// Book a real partial fill, so a "the cluster has already booked N" fixture is a
+// state the kernel can actually produce.
+//
+// Hand-setting `reservation.filled_quantity` looks equivalent and is not: it
+// leaves filled + remaining greater than the original, which is an invariant the
+// snapshot encoder checks and refuses. A test that asserts behaviour on a state
+// the reducer cannot reach proves nothing about the reducer.
+void book_partial_fill(TradingState& state, const EffectId effect_id,
+                       const std::int64_t quantity, const std::uint64_t sequence) {
+    VenueObservation fill;
+    fill.kind = VenueObservationKind::fill;
+    fill.venue_id = VenueId{9};
+    fill.venue_session_id = VenueSessionId{1};
+    fill.venue_sequence = VenueSequence{sequence};
+    fill.cluster_order_id = sole_order(state).cluster_order_id;
+    fill.effect_id = effect_id;
+    fill.venue_order_id = VenueOrderId{88};
+    fill.execution_id = ExecutionId{sequence};
+    fill.side = Side::buy;
+    fill.price = PriceTicks::from_atoms(11);
+    fill.quantity = QuantityLots::from_atoms(quantity);
+    fill.evidence_digest = digest(0x78);
+    ApplyScratch scratch;
+    const Command command{{CallerId{1}, RequestSequence{sequence},
+                           observation_fingerprint(fill)},
+                          ObserveFill{fill}};
+    const auto applied = apply(state, command, scratch);
+    require(applied.code == ApplyCode::applied,
+            "the partial-fill fixture was refused, code " +
+                std::to_string(static_cast<int>(applied.code)));
+    require(state.reservations[sole_order(state).reservation_index].filled_quantity ==
+                QuantityLots::from_atoms(quantity),
+            "the partial-fill fixture did not book its quantity");
+}
+
+// An acknowledged order with a cancel authorized and pending delivery. Built
+// through real commands, because the cancel lifecycle is where hand-built state
+// is most likely to be quietly impossible.
+Fixture pending_cancel() {
+    auto fixture = one_authorized_submit();
+    ClusterOrderId order{};
+    for (std::size_t index = 0; index < fixture.state.outbox_effect_count; ++index) {
+        if (fixture.state.outbox_effects[index].effect_id == fixture.effect_id) {
+            order = fixture.state.outbox_effects[index].cluster_order_id;
+        }
+    }
+    VenueObservation ack;
+    ack.kind = VenueObservationKind::order_acknowledged;
+    ack.venue_id = VenueId{9};
+    ack.venue_session_id = VenueSessionId{1};
+    ack.venue_sequence = VenueSequence{7'100};
+    ack.cluster_order_id = order;
+    ack.effect_id = fixture.effect_id;
+    ack.venue_order_id = VenueOrderId{88};
+    ack.evidence_digest = digest(0x71);
+    require(submit_answer(fixture.state, ack, 10).code == ApplyCode::applied,
+            "the cancel fixture could not acknowledge its order");
+
+    ApplyScratch scratch;
+    const Command cancel{{CallerId{1}, RequestSequence{11}, digest(0x72)},
+                         RequestCancel{order}};
+    const auto requested = apply(fixture.state, cancel, scratch);
+    require(requested.code == ApplyCode::applied,
+            "the cancel fixture could not authorize its cancel");
+    require(sole_order(fixture.state).state == ClusterOrderState::cancel_pending,
+            "the cancel fixture is not cancel-pending");
+    return {fixture.state, requested.effect_id()};
+}
+
+// A cancel whose response never arrived: the effect timed out and the gateway
+// reported it unknown. Note the order state is `submission_unknown` even though
+// the SUBMIT is not in doubt - the reducer overloads that state to mean "the
+// current effect's outcome is unknown", and the current effect here is a cancel.
+Fixture silent_cancel() {
+    auto fixture = pending_cancel();
+    VenueObservation unknown;
+    unknown.kind = VenueObservationKind::effect_unknown;
+    unknown.venue_id = VenueId{9};
+    unknown.venue_session_id = VenueSessionId{1};
+    unknown.venue_sequence = VenueSequence{7'200};
+    unknown.cluster_order_id = sole_order(fixture.state).cluster_order_id;
+    unknown.effect_id = fixture.effect_id;
+    unknown.evidence_digest = digest(0x73);
+    require(submit_answer(fixture.state, unknown, 12).code == ApplyCode::applied,
+            "the silent-cancel fixture could not go unknown");
+    require(sole_order(fixture.state).state ==
+                ClusterOrderState::submission_unknown,
+            "the silent-cancel fixture is not unknown");
+    return fixture;
+}
+
+// A cancel that went silent on an order which had genuinely booked part of its
+// quantity. Built in the order these things actually happen: the order fills
+// partially, the remainder is cancelled, and the cancel goes silent.
+//
+// The fill has to be booked BEFORE the cancel exists. Fill evidence is scoped to
+// the order's submit effect, and requesting a cancel makes the cancel effect
+// current - so a fill offered afterwards names the wrong effect and is correctly
+// refused. That ordering constraint is easy to miss and is exactly why this is a
+// helper rather than four lines repeated in each test.
+Fixture silent_cancel_with_booked_fill(const std::int64_t booked) {
+    auto fixture = one_authorized_submit();
+    const auto submit_effect = fixture.effect_id;
+    VenueObservation ack;
+    ack.kind = VenueObservationKind::order_acknowledged;
+    ack.venue_id = VenueId{9};
+    ack.venue_session_id = VenueSessionId{1};
+    ack.venue_sequence = VenueSequence{5'200};
+    ack.cluster_order_id = sole_order(fixture.state).cluster_order_id;
+    ack.effect_id = submit_effect;
+    ack.venue_order_id = VenueOrderId{88};
+    ack.evidence_digest = digest(0x7A);
+    require(submit_answer(fixture.state, ack, 5'201).code == ApplyCode::applied,
+            "the booked silent-cancel fixture could not acknowledge");
+    book_partial_fill(fixture.state, submit_effect, booked, 5'202);
+
+    ApplyScratch scratch;
+    const Command cancel{{CallerId{1}, RequestSequence{5'203}, digest(0x7B)},
+                         RequestCancel{sole_order(fixture.state).cluster_order_id}};
+    const auto requested = apply(fixture.state, cancel, scratch);
+    require(requested.code == ApplyCode::applied,
+            "the booked silent-cancel fixture could not authorize its cancel");
+
+    VenueObservation unknown;
+    unknown.kind = VenueObservationKind::effect_unknown;
+    unknown.venue_id = VenueId{9};
+    unknown.venue_session_id = VenueSessionId{1};
+    unknown.venue_sequence = VenueSequence{5'204};
+    unknown.cluster_order_id = sole_order(fixture.state).cluster_order_id;
+    unknown.effect_id = requested.effect_id();
+    unknown.evidence_digest = digest(0x7C);
+    require(submit_answer(fixture.state, unknown, 5'205).code == ApplyCode::applied,
+            "the booked silent-cancel fixture could not go unknown");
+    require(fixture.state.reservations[sole_order(fixture.state).reservation_index]
+                    .filled_quantity == QuantityLots::from_atoms(booked),
+            "the booked silent-cancel fixture lost its booked quantity");
+    return {fixture.state, requested.effect_id()};
+}
+
+VenueObservation cancel_final(const TradingState& state, EffectId effect_id,
+                              const std::int64_t cumulative_filled,
+                              const std::uint64_t sequence = 7'300) {
+    VenueObservation final;
+    final.kind = VenueObservationKind::cancel_reconciled;
+    final.venue_id = VenueId{9};
+    final.venue_session_id = VenueSessionId{1};
+    final.venue_sequence = VenueSequence{sequence};
+    final.cluster_order_id = sole_order(state).cluster_order_id;
+    final.effect_id = effect_id;
+    final.venue_order_id = VenueOrderId{88};
+    final.quantity = QuantityLots::from_atoms(cumulative_filled);
+    final.evidence_digest = digest(0x74);
+    return final;
+}
+
 void test_a_denied_order_releases_its_reservation_and_frees_the_slot() {
     // The single most valuable answer reconciliation can obtain: the venue never
     // had the order, so the held risk was never real. Economically this is a
@@ -683,15 +839,45 @@ void test_a_denied_order_releases_its_reservation_and_frees_the_slot() {
             "the logical slot stayed blocked after reconciliation resolved it");
 }
 
+void test_a_filled_submit_can_never_become_unknown() {
+    // The invariant that decides which conflict branches are even reachable, and
+    // it is worth pinning because two tests here were originally written against
+    // a state it forbids.
+    //
+    // A fill proves the submit reached the venue, so `apply_observe_fill` marks
+    // the submit effect acknowledged. A resolved effect cannot be declared
+    // unknown again. Therefore a SUBMIT effect in `submission_unknown` always has
+    // zero booked quantity - which means `order_reconciled` on a submit can only
+    // agree or be ahead, never behind.
+    //
+    // The same is NOT true of a cancel. A partially filled order can have its
+    // cancel go silent, and then the order is in `submission_unknown` with fills
+    // already booked. That is why the conflict branches exist and why they are
+    // reached through the cancel path.
+    auto fixture = one_authorized_submit();
+    book_partial_fill(fixture.state, fixture.effect_id, 1, 5'100);
+    require(sole_order(fixture.state).state == ClusterOrderState::partially_filled,
+            "the partial fill did not move the order");
+    VenueObservation unknown;
+    unknown.kind = VenueObservationKind::effect_unknown;
+    unknown.venue_id = VenueId{9};
+    unknown.venue_session_id = VenueSessionId{1};
+    unknown.venue_sequence = VenueSequence{5'101};
+    unknown.cluster_order_id = sole_order(fixture.state).cluster_order_id;
+    unknown.effect_id = fixture.effect_id;
+    unknown.evidence_digest = digest(0x79);
+    require(submit_answer(fixture.state, unknown, 5'102).code ==
+                ApplyCode::venue_observation_not_applicable,
+            "a submit the venue had demonstrably filled was allowed to become "
+            "unknown");
+}
+
 void test_a_denied_order_that_already_filled_is_a_conflict() {
     // The venue denies an order the cluster has booked fills against. One of the
     // two is wrong and the cluster cannot tell which, so it refuses to choose.
-    auto fixture = stranded_submit();
-    // Book a fill first, then strand it, so the cluster genuinely holds evidence
-    // the venue is about to contradict.
-    auto& reservation = fixture.state.reservations[sole_order(fixture.state)
-                                                       .reservation_index];
-    reservation.filled_quantity = QuantityLots::from_atoms(1);
+    // Reached through the CANCEL path, which is the only way an order can hold
+    // booked fills while its current effect's outcome is unknown.
+    auto fixture = silent_cancel_with_booked_fill(1);
 
     const auto applied = submit_answer(
         fixture.state, reconciled(fixture.state, fixture.effect_id, 0, 0), 20);
@@ -758,12 +944,9 @@ void test_a_venue_that_lost_a_fill_is_a_conflict() {
     // Below what is booked. A fill is never un-booked, so this can only be a
     // conflict - the alternative is letting a venue talk the cluster out of a
     // position it already recorded.
-    auto fixture = stranded_submit();
-    auto& reservation = fixture.state.reservations[sole_order(fixture.state)
-                                                       .reservation_index];
-    reservation.filled_quantity = QuantityLots::from_atoms(1);
+    auto fixture = silent_cancel_with_booked_fill(1);
     const auto applied = submit_answer(
-        fixture.state, reconciled(fixture.state, fixture.effect_id, 77, 0), 20);
+        fixture.state, reconciled(fixture.state, fixture.effect_id, 88, 0), 20);
     require(applied.code == ApplyCode::applied,
             "a regressing answer was not recorded");
     require(sole_order(fixture.state).state == ClusterOrderState::conflict,
@@ -814,11 +997,10 @@ void test_the_verdict_is_a_function_of_the_total_not_of_history() {
     // the verdict must match.
     const auto verdict_for = [](const std::int64_t booked,
                                 const std::int64_t reported) {
-        auto fixture = stranded_submit();
-        fixture.state.reservations[sole_order(fixture.state).reservation_index]
-            .filled_quantity = QuantityLots::from_atoms(booked);
+        auto fixture = booked > 0 ? silent_cancel_with_booked_fill(booked)
+                                  : stranded_submit();
         (void)submit_answer(fixture.state,
-                            reconciled(fixture.state, fixture.effect_id, 77, reported),
+                            reconciled(fixture.state, fixture.effect_id, 88, reported),
                             20);
         return sole_order(fixture.state).state;
     };
@@ -876,40 +1058,6 @@ void test_a_reconciliation_answer_is_refused_where_it_cannot_apply() {
 
 // --- the cancel path -------------------------------------------------------
 
-// An acknowledged order with a cancel authorized and pending delivery. Built
-// through real commands, because the cancel lifecycle is where hand-built state
-// is most likely to be quietly impossible.
-Fixture pending_cancel() {
-    auto fixture = one_authorized_submit();
-    ClusterOrderId order{};
-    for (std::size_t index = 0; index < fixture.state.outbox_effect_count; ++index) {
-        if (fixture.state.outbox_effects[index].effect_id == fixture.effect_id) {
-            order = fixture.state.outbox_effects[index].cluster_order_id;
-        }
-    }
-    VenueObservation ack;
-    ack.kind = VenueObservationKind::order_acknowledged;
-    ack.venue_id = VenueId{9};
-    ack.venue_session_id = VenueSessionId{1};
-    ack.venue_sequence = VenueSequence{7'100};
-    ack.cluster_order_id = order;
-    ack.effect_id = fixture.effect_id;
-    ack.venue_order_id = VenueOrderId{88};
-    ack.evidence_digest = digest(0x71);
-    require(submit_answer(fixture.state, ack, 10).code == ApplyCode::applied,
-            "the cancel fixture could not acknowledge its order");
-
-    ApplyScratch scratch;
-    const Command cancel{{CallerId{1}, RequestSequence{11}, digest(0x72)},
-                         RequestCancel{order}};
-    const auto requested = apply(fixture.state, cancel, scratch);
-    require(requested.code == ApplyCode::applied,
-            "the cancel fixture could not authorize its cancel");
-    require(sole_order(fixture.state).state == ClusterOrderState::cancel_pending,
-            "the cancel fixture is not cancel-pending");
-    return {fixture.state, requested.effect_id()};
-}
-
 void test_a_cancel_is_deliverable_in_every_strategy_mode() {
     // The mode gate asks "does control permit NEW RISK", and then applies the
     // answer to every effect. A cancel creates no risk - it can only reduce or
@@ -930,44 +1078,6 @@ void test_a_cancel_is_deliverable_in_every_strategy_mode() {
                 "a cancel was refused in strategy mode " +
                     std::to_string(static_cast<int>(mode)));
     }
-}
-
-// A cancel whose response never arrived: the effect timed out and the gateway
-// reported it unknown. Note the order state is `submission_unknown` even though
-// the SUBMIT is not in doubt - the reducer overloads that state to mean "the
-// current effect's outcome is unknown", and the current effect here is a cancel.
-Fixture silent_cancel() {
-    auto fixture = pending_cancel();
-    VenueObservation unknown;
-    unknown.kind = VenueObservationKind::effect_unknown;
-    unknown.venue_id = VenueId{9};
-    unknown.venue_session_id = VenueSessionId{1};
-    unknown.venue_sequence = VenueSequence{7'200};
-    unknown.cluster_order_id = sole_order(fixture.state).cluster_order_id;
-    unknown.effect_id = fixture.effect_id;
-    unknown.evidence_digest = digest(0x73);
-    require(submit_answer(fixture.state, unknown, 12).code == ApplyCode::applied,
-            "the silent-cancel fixture could not go unknown");
-    require(sole_order(fixture.state).state ==
-                ClusterOrderState::submission_unknown,
-            "the silent-cancel fixture is not unknown");
-    return fixture;
-}
-
-VenueObservation cancel_final(const TradingState& state, EffectId effect_id,
-                              const std::int64_t cumulative_filled,
-                              const std::uint64_t sequence = 7'300) {
-    VenueObservation final;
-    final.kind = VenueObservationKind::cancel_reconciled;
-    final.venue_id = VenueId{9};
-    final.venue_session_id = VenueSessionId{1};
-    final.venue_sequence = VenueSequence{sequence};
-    final.cluster_order_id = sole_order(state).cluster_order_id;
-    final.effect_id = effect_id;
-    final.venue_order_id = VenueOrderId{88};
-    final.quantity = QuantityLots::from_atoms(cumulative_filled);
-    final.evidence_digest = digest(0x74);
-    return final;
 }
 
 void test_a_silent_cancel_redelivers_before_it_reconciles() {
@@ -1071,9 +1181,7 @@ void test_a_silent_cancel_can_be_finally_reconciled() {
 void test_a_cancel_final_below_booked_is_a_conflict() {
     // The venue's final word reports less filled than the cluster booked. No
     // future evidence reduces a booked fill, so this gap can never close.
-    auto fixture = silent_cancel();
-    fixture.state.reservations[sole_order(fixture.state).reservation_index]
-        .filled_quantity = QuantityLots::from_atoms(1);
+    auto fixture = silent_cancel_with_booked_fill(1);
     const auto applied = submit_answer(
         fixture.state, cancel_final(fixture.state, fixture.effect_id, 0), 20);
     require(applied.code == ApplyCode::applied,
@@ -1101,6 +1209,95 @@ void test_a_cancel_final_above_booked_waits_rather_than_conflicting() {
     require(std::memcmp(&fixture.state.reservations, &before.reservations,
                         sizeof(before.reservations)) == 0,
             "a refused cancel final moved economics");
+}
+
+void test_states_reached_only_through_phase_five_survive_a_snapshot() {
+    // Every Phase 5 path ends somewhere the reducer can be asked to persist, and
+    // the snapshot codec was written and accepted before any of these paths
+    // existed. A state that cannot round trip is a state the cluster cannot
+    // restart from, which would make every guarantee above it conditional on
+    // never restarting.
+    const auto round_trips = [](const TradingState& state, const char* what) {
+        std::array<std::byte, kMaxStateSnapshotBytes> bytes{};
+        const auto encoded = encode_state_snapshot(state, bytes);
+        require(encoded.error == StateSnapshotError::none,
+                std::string("state did not encode: ") + what);
+        TradingState restored;
+        StateSnapshotScratch scratch;
+        const auto decoded = decode_state_snapshot(
+            {bytes.data(), encoded.bytes_written}, restored, scratch);
+        require(decoded.error == StateSnapshotError::none,
+                std::string("state did not decode: ") + what);
+        require(decoded.state_digest == encoded.state_digest,
+                std::string("state digest changed across a round trip: ") + what);
+        // Canonical equality, not `memcmp`. The struct has padding whose contents
+        // depend on how the value was built, and the snapshot is the canonical
+        // form by definition - so re-encoding the restored state and comparing
+        // BYTES is the equality that actually means "the cluster restarts here".
+        std::array<std::byte, kMaxStateSnapshotBytes> again{};
+        const auto reencoded = encode_state_snapshot(restored, again);
+        require(reencoded.error == StateSnapshotError::none &&
+                    reencoded.bytes_written == encoded.bytes_written &&
+                    std::equal(bytes.begin(),
+                               bytes.begin() + static_cast<std::ptrdiff_t>(
+                                                   encoded.bytes_written),
+                               again.begin()),
+                std::string("restored state did not re-encode identically: ") + what);
+    };
+
+    // A submission the venue denied: reservation released, order rejected.
+    {
+        auto fixture = stranded_submit();
+        require(submit_answer(fixture.state,
+                              reconciled(fixture.state, fixture.effect_id, 0, 0), 20)
+                        .code == ApplyCode::applied,
+                "denied-submit fixture failed");
+        round_trips(fixture.state, "submission denied by the venue");
+    }
+    // A conflict reached through reconciliation, which is terminal but retains
+    // its reservation and is deliberately unreclaimable.
+    {
+        auto fixture = silent_cancel_with_booked_fill(1);
+        require(submit_answer(fixture.state,
+                              reconciled(fixture.state, fixture.effect_id, 0, 0), 20)
+                        .code == ApplyCode::applied,
+                "reconciliation-conflict fixture failed");
+        require(sole_order(fixture.state).state == ClusterOrderState::conflict,
+                "reconciliation-conflict fixture is not conflicted");
+        round_trips(fixture.state, "conflict reached through reconciliation");
+    }
+    // A cancel that went silent and was finally reconciled.
+    {
+        auto fixture = silent_cancel();
+        require(submit_answer(fixture.state,
+                              cancel_final(fixture.state, fixture.effect_id, 0), 20)
+                        .code == ApplyCode::applied,
+                "silent-cancel fixture failed");
+        round_trips(fixture.state, "silent cancel finally reconciled");
+    }
+    // A rejected cancel restored to working by reconciliation - the state that
+    // did not exist at all before this phase.
+    {
+        auto fixture = pending_cancel();
+        VenueObservation rejected;
+        rejected.kind = VenueObservationKind::order_rejected;
+        rejected.venue_id = VenueId{9};
+        rejected.venue_session_id = VenueSessionId{1};
+        rejected.venue_sequence = VenueSequence{7'500};
+        rejected.cluster_order_id = sole_order(fixture.state).cluster_order_id;
+        rejected.effect_id = fixture.effect_id;
+        rejected.evidence_digest = digest(0x77);
+        require(submit_answer(fixture.state, rejected, 20).code == ApplyCode::applied,
+                "rejected-cancel fixture failed");
+        round_trips(fixture.state, "cancel rejected, lifecycle unknown");
+        require(submit_answer(fixture.state,
+                              reconciled(fixture.state, fixture.effect_id, 88, 0,
+                                         7'501),
+                              21)
+                        .code == ApplyCode::applied,
+                "cancel-restored fixture failed");
+        round_trips(fixture.state, "cancel rejected then restored to working");
+    }
 }
 
 void test_new_risk_is_still_refused_outside_normal() {
@@ -2124,12 +2321,14 @@ int main() {
         test_the_reconciliation_planner_reads_no_clock_and_mutates_nothing();
         test_a_cancel_is_deliverable_in_every_strategy_mode();
         test_new_risk_is_still_refused_outside_normal();
+        test_states_reached_only_through_phase_five_survive_a_snapshot();
         test_a_silent_cancel_redelivers_before_it_reconciles();
         test_a_rejected_cancel_does_not_prove_the_order_is_live();
         test_a_silent_cancel_can_be_finally_reconciled();
         test_a_cancel_final_below_booked_is_a_conflict();
         test_a_cancel_final_above_booked_waits_rather_than_conflicting();
         test_a_denied_order_releases_its_reservation_and_frees_the_slot();
+        test_a_filled_submit_can_never_become_unknown();
         test_a_denied_order_that_already_filled_is_a_conflict();
         test_agreement_resolves_the_effect_without_moving_position();
         test_a_fill_the_cluster_never_saw_is_missing_evidence_not_a_conflict();

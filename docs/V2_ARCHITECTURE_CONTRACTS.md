@@ -1561,6 +1561,55 @@ terminal-but-unresolved, so the group is not reclaimed and the divergence is
 visible to the operator who has to settle it. The gate was tightened to match: a
 fill may be refused as unbookable, but only if a conflicted order is left behind.
 
+### 10.6 An invariant that decides which conflict branches exist (2026-09-10)
+
+Found while adding snapshot coverage for Phase 5 states, and worth stating
+because two tests here were originally written against a state it forbids.
+
+`apply_observe_fill` marks the submit effect `acknowledged`: a fill proves the
+submit reached the venue. A resolved effect cannot be declared unknown again.
+Therefore A SUBMIT EFFECT IN `submission_unknown` ALWAYS HAS ZERO BOOKED
+QUANTITY, and `order_reconciled` about a submit can only agree with the cluster
+or be ahead of it - never behind.
+
+The conflict branches are still live, but only through the CANCEL path. A
+partially filled order can have its cancel go silent, and the order is then in
+`submission_unknown` with fills already booked, its current effect being the
+cancel. That is the only way an order holds booked fills while its current
+effect's outcome is unknown, and it is now how every conflict test reaches the
+state it asserts on.
+
+The corrected fixtures also record an ordering constraint that is easy to miss:
+a fill must be booked BEFORE a cancel is requested. Fill evidence is scoped to
+the order's submit effect, and `RequestCancel` makes the cancel effect current,
+so a fill offered afterwards names the wrong effect and is correctly refused.
+
+### 10.7 Phase 5 states survive snapshot restore, and how that is checked
+
+Every Phase 5 path ends somewhere the reducer may be asked to persist, and the
+snapshot codec was written and accepted before any of those paths existed. A
+state that cannot round trip is a state the cluster cannot restart from, which
+makes every guarantee above it conditional on never restarting.
+
+Four states are now covered: a submission the venue denied, a conflict reached
+through reconciliation, a silent cancel finally reconciled, and a cancel rejected
+then restored to working by reconciliation - the last of which did not exist at
+all before this phase.
+
+The equality used is RE-ENCODE AND COMPARE BYTES, not `memcmp` of the struct, and
+the distinction matters. `TradingState` has padding whose contents depend on how
+the value was built: a state assembled by applying commands carries different
+padding residue from one produced by `decode_state_snapshot` into a
+value-initialised object. `memcmp` reports that as a difference when nothing
+canonical has changed. The snapshot IS the canonical form, so re-encoding the
+restored state and comparing bytes is the equality that actually means "the
+cluster restarts here". This follows the convention the existing snapshot suite
+already uses.
+
+Note the narrower `memcmp` uses elsewhere in these tests remain correct: they
+compare a state against a COPY OF ITSELF to prove a function mutated nothing, and
+there both sides share provenance and therefore padding.
+
 ## 11. Execution authority and kill contract
 
 Every sender tracks a committed `ExecutorGeneration` and `KillEpoch`. It rejects
