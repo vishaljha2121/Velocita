@@ -40,11 +40,17 @@ failure_step=environment_preflight
 }
 
 failure_step=source_identity
+# LC_ALL=C is load-bearing, not decoration. Manifest order decides the root, and
+# collation decides manifest order: UTF-8 locales ignore '_' and '-' in primary
+# weight while C compares bytes, so the same tree hashes differently under a
+# different locale. A source root that depends on ambient environment is not a
+# source root. Pinning the collation makes the recipe reproducible anywhere,
+# including on a developer machine recomputing it by hand.
 (
     cd "$source_dir"
     find include/velocita/v2 src tests -maxdepth 1 -type f \
         \( -name 'v2_*' -o -name 'v2*.cpp' -o -name '*.hpp' \) -print0 |
-        sort -z |
+        LC_ALL=C sort -z |
         xargs -0 sha256sum
 ) >"$evidence_dir/source-manifest.sha256"
 actual_source_root=$(

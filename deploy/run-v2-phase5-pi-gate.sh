@@ -13,7 +13,7 @@ set -Eeuo pipefail
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 export VELOCITA_V2_PI_GATE_LABEL='V2 Phase 5 gateway/simulator acceptance'
-export VELOCITA_EXPECTED_SOURCE_ROOT=8d31c33e66a2345e0e8152ff42876b8eb7036f0250d9048f705cd1c6bee0bbc4
+export VELOCITA_EXPECTED_SOURCE_ROOT=d5c7c6c8defc8fddbb8ecc41b6b2e3cc094e5b1e67c24a3855e48f186cf24f4d
 export VELOCITA_V2_SOURCE_PI_EVIDENCE_ROOT=${VELOCITA_V2_PHASE5_ACCEPTANCE_PI_EVIDENCE_ROOT:-"$HOME/.local/share/velocita/v2-phase5-acceptance-pi-gates"}
 export VELOCITA_PI_CI_IMAGE=${VELOCITA_PI_CI_IMAGE:-localhost/velocita-pi-ci:v2-phase5-acceptance}
 export VELOCITA_V2_SOURCE_PI_CACHE_VOLUME=${VELOCITA_V2_PHASE5_ACCEPTANCE_PI_CACHE_VOLUME:-velocita-v2-phase5-acceptance-pi-ci-cache}

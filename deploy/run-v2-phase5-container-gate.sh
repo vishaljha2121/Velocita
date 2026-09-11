@@ -13,7 +13,12 @@ set -Eeuo pipefail
 #   { sha256sum CMakeLists.txt;
 #     find include/velocita/v2 src tests -maxdepth 1 -type f \
 #       \( -name 'v2_*' -o -name 'v2*.cpp' -o -name '*.hpp' \) -print0 |
-#       sort -z | xargs -0 sha256sum; } | sha256sum
+#       LC_ALL=C sort -z | xargs -0 sha256sum; } | sha256sum
+#
+# LC_ALL=C is required, not optional. Manifest order decides the root and
+# collation decides manifest order, so recomputing under a UTF-8 locale yields a
+# different value for identical content. On macOS use `shasum -a 256` in place of
+# `sha256sum`; the output format is the same.
 #
 # A mismatch means the tree moved, not that the gate is broken. Re-pin
 # deliberately; never edit the root to make a run pass.
@@ -22,7 +27,7 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 export VELOCITA_V2_CONTAINER_GATE_LABEL='V2 Phase 5 gateway/simulator acceptance'
 export VELOCITA_V2_CONTAINER_ENVIRONMENT='arm64-linux-container'
-export VELOCITA_EXPECTED_SOURCE_ROOT=8d31c33e66a2345e0e8152ff42876b8eb7036f0250d9048f705cd1c6bee0bbc4
+export VELOCITA_EXPECTED_SOURCE_ROOT=d5c7c6c8defc8fddbb8ecc41b6b2e3cc094e5b1e67c24a3855e48f186cf24f4d
 export VELOCITA_V2_PHASE2_CONTAINER_EVIDENCE_ROOT=${VELOCITA_V2_PHASE5_CONTAINER_EVIDENCE_ROOT:-"$HOME/.local/share/velocita/v2-phase5-container-gates"}
 export VELOCITA_PI_CI_IMAGE=${VELOCITA_PI_CI_IMAGE:-localhost/velocita-pi-ci:v2-phase5-acceptance}
 export VELOCITA_V2_PHASE2_CI_CACHE_VOLUME=${VELOCITA_V2_PHASE5_CONTAINER_CACHE_VOLUME:-velocita-v2-phase5-container-ci-cache}

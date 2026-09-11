@@ -20,7 +20,7 @@ accepted. It currently records one.
 - branch: `v2/phase-4-risk-orders-outbox`
 - Phase 5 base: `dd77e61420c4ff5428fcd409cebdfebbe545cc77` (Phase 4 accepted)
 - Phase 5 source root:
-  `8d31c33e66a2345e0e8152ff42876b8eb7036f0250d9048f705cd1c6bee0bbc4`
+  `d5c7c6c8defc8fddbb8ecc41b6b2e3cc094e5b1e67c24a3855e48f186cf24f4d`
 - gate scripts: `deploy/run-v2-phase5-container-gate.sh`,
   `deploy/run-v2-phase5-pi-gate.sh`
 - rollback point: `dd77e61420c4ff5428fcd409cebdfebbe545cc77`
@@ -29,9 +29,23 @@ The root covers `CMakeLists.txt` and the bounded V2 headers, sources and tests
 selected by the gate manifest. Gate scripts and this narrative are reviewed
 separately and do not alter that content root.
 
-The root recorded here was computed on the development host with `shasum -a 256`.
-The gate recomputes it inside the container with `sha256sum`. The two must agree;
-until a gate has run once, treat the value as unconfirmed rather than verified.
+The root recorded here is the value the gate itself computed on the physical Pi on
+2026-09-11, not a development-host estimate. The first pinned value was wrong and
+the gate correctly refused it: it had been computed under a UTF-8 locale, and
+manifest ORDER decides the root while COLLATION decides manifest order - UTF-8
+ignores `_` and `-` in primary weight where C compares bytes. The recipe now pins
+`LC_ALL=C` at the point it is computed, so it is reproducible on any machine.
+
+Recompute it by hand with:
+
+```sh
+{ sha256sum CMakeLists.txt;
+  find include/velocita/v2 src tests -maxdepth 1 -type f \
+    \( -name 'v2_*' -o -name 'v2*.cpp' -o -name '*.hpp' \) -print0 |
+    LC_ALL=C sort -z | xargs -0 sha256sum; } | sha256sum
+```
+
+On macOS substitute `shasum -a 256`; the output format is identical.
 
 ## Contracts frozen in this candidate
 
@@ -81,7 +95,7 @@ source, or venue handle.
 ## Host evidence
 
 On 2026-09-10, at source root
-`8d31c33e66a2345e0e8152ff42876b8eb7036f0250d9048f705cd1c6bee0bbc4`:
+`d5c7c6c8defc8fddbb8ecc41b6b2e3cc094e5b1e67c24a3855e48f186cf24f4d`:
 
 - Release full build and 29/29 CTest suites;
 - Debug AddressSanitizer plus UndefinedBehaviorSanitizer full build and 29/29
