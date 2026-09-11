@@ -26,11 +26,37 @@ if [[ $confirmed -ne 1 ]]; then
     [[ $answer == y || $answer == Y ]] || exit 1
 fi
 
-command -v docker >/dev/null || {
-    printf 'docker CLI is required; install Docker with an ARM64 Linux runtime.\n' >&2
+# Engine selection. This gate used to hardcode docker while the physical Pi gate
+# hardcodes podman - two gates attesting the same candidate through different
+# runtimes, with different security defaults, different rootless behaviour and
+# different exec semantics for a bind-mounted entrypoint. That is a difference
+# the evidence should not depend on, and it produced a gate that passed under
+# podman on the Pi and could not start under docker on the same machine.
+#
+# Podman is preferred because it is what the physical target gate already
+# requires, so the two agree by default. Override with VELOCITA_CONTAINER_ENGINE
+# when a specific runtime is the thing under test.
+container_engine=${VELOCITA_CONTAINER_ENGINE:-}
+if [[ -z $container_engine ]]; then
+    for candidate in podman docker; do
+        if command -v "$candidate" >/dev/null; then
+            container_engine=$candidate
+            break
+        fi
+    done
+fi
+if [[ -z $container_engine ]] || ! command -v "$container_engine" >/dev/null; then
+    printf 'podman or docker is required; install one with an ARM64 Linux runtime.\n' >&2
     exit 69
-}
-docker info >/dev/null
+fi
+"$container_engine" info >/dev/null
+
+# Rootless podman needs no platform flag on a native ARM64 host, and passing one
+# to docker preserves this gate's previous behaviour exactly.
+platform_args=()
+if [[ $container_engine == docker ]]; then
+    platform_args=(--platform linux/arm64)
+fi
 
 root_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 if [[ -n $(git -C "$root_dir" status --porcelain -- \
@@ -59,16 +85,16 @@ raft_commit=$(sed -n 's/^set(RAFT_COMMIT "\([0-9a-f]*\)".*/\1/p' "$root_dir/CMak
 
 mkdir -p "$evidence_dir"
 
-docker build \
-    --platform linux/arm64 \
+"$container_engine" build \
+    "${platform_args[@]}" \
     --build-arg "AERON_COMMIT=$aeron_commit" \
     --build-arg "RAFT_COMMIT=$raft_commit" \
     --tag "$image" \
     --file "$root_dir/deploy/pi-container/Containerfile" \
     "$root_dir"
 
-docker run --rm \
-    --platform linux/arm64 \
+"$container_engine" run --rm \
+    "${platform_args[@]}" \
     --cpus 4 \
     --memory 4g \
     --pids-limit 4096 \
