@@ -20,7 +20,7 @@ accepted. It currently records one.
 - branch: `v2/phase-4-risk-orders-outbox`
 - Phase 5 base: `dd77e61420c4ff5428fcd409cebdfebbe545cc77` (Phase 4 accepted)
 - Phase 5 source root:
-  `d5c7c6c8defc8fddbb8ecc41b6b2e3cc094e5b1e67c24a3855e48f186cf24f4d`
+  `b23bdea07d60163cd05a970cf058af8e6d62665afb47f1217f5f1162f5e2d1b4`
 - gate scripts: `deploy/run-v2-phase5-container-gate.sh`,
   `deploy/run-v2-phase5-pi-gate.sh`
 - rollback point: `dd77e61420c4ff5428fcd409cebdfebbe545cc77`
@@ -95,7 +95,7 @@ source, or venue handle.
 ## Host evidence
 
 On 2026-09-10, at source root
-`d5c7c6c8defc8fddbb8ecc41b6b2e3cc094e5b1e67c24a3855e48f186cf24f4d`:
+`b23bdea07d60163cd05a970cf058af8e6d62665afb47f1217f5f1162f5e2d1b4`:
 
 - Release full build and 29/29 CTest suites;
 - Debug AddressSanitizer plus UndefinedBehaviorSanitizer full build and 29/29
@@ -109,9 +109,35 @@ while holding unresolved exposure, 24 order groups reclaimed, maximum order age
 105 state versions, and both attempt bounds reached - 3 of 3 sends, 4 of 4
 queries.
 
+## Target gate attempts before the accepted candidate
+
+Two runs on the physical Pi on 2026-09-11 failed before reaching a verdict. Both
+failures were in the GATE, not in the code, and both are recorded because each
+exposed a real defect in how the candidate was being verified.
+
+ATTEMPT 1 (`20260911T022401Z`) - source root mismatch. The pinned value had been
+computed on a development host under a UTF-8 locale while the container computes
+under C. Manifest ORDER decides the root and COLLATION decides manifest order, so
+identical content hashed differently. Fixed by pinning `LC_ALL=C` inside the gate
+recipe itself; a source root that depends on ambient environment is not a source
+root.
+
+ATTEMPT 2 (`20260911T022849Z`) - four suites reported "Not Run". The source root
+matched and power was clean throughout, but the gate builds an explicit target
+list which had drifted from `CMakeLists.txt`: the four Phase 5 suites were never
+compiled. Fixed by deriving the gate's build targets from the build system itself
+via the `velocita-all-tests` and `velocita-v2-tests` aggregate targets, which
+cannot drift as suites are added.
+
+The second failure is worth keeping in the record for its SHAPE. "Not Run" reads
+like a behavioural failure and is not one, and the first hypotheses it invites -
+char signedness, alignment, endianness - are all wrong. A gate that builds a
+different set of things than it runs will always mis-signal in this direction.
+
 ## Target gates
 
-NOT RUN. Both scripts exist and are pinned to the candidate root.
+NOT RUN against the accepted candidate. Both scripts exist and are pinned to the
+candidate root.
 
 ARM64 container:
 

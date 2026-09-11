@@ -124,32 +124,11 @@ common_cmake_args=(
     -DFETCHCONTENT_FULLY_DISCONNECTED=ON
 )
 
+# Derived from CMakeLists.txt by the `velocita-all-tests` aggregate target, so it
+# cannot drift as suites are added. Only the non-test binaries the gate records
+# are named individually.
 release_targets=(
-    core-tests
-    metrics-tests
-    benchmark-tests
-    v2-contract-tests
-    v2-value-contract-tests
-    v2-payload-codec-tests
-    v2-kernel-policy-tests
-    v2-kernel-control-tests
-    v2-kernel-source-tests
-    v2-state-snapshot-tests
-    v2-kernel-codec-tests
-    v2-replay-tests
-    v2-model-replay-tests
-    v2-metrics-tests
-    v2-phase4-property-tests
-    v2-rule-evaluator-tests
-    v2-layout-tests
-    v2-decision-kernel-tests
-    v2-action-template-contract-tests
-    v2-action-resolver-tests
-    v2-executable-policy-contract-tests
-    v2-executable-policy-codec-tests
-    v2-artifact-digest-tests
-    v2-executable-policy-kernel-tests
-    v2-risk-order-outbox-tests
+    velocita-all-tests
     v2-contract-benchmark
     v2-phase3-benchmark
     v2-layout-report
@@ -175,18 +154,7 @@ cmake -S "$source_dir" -B "$instrumented_build" \
 
 failure_step=instrumented_build
 cmake --build "$instrumented_build" \
-    --target v2-contract-tests v2-value-contract-tests \
-             v2-payload-codec-tests v2-kernel-policy-tests \
-             v2-kernel-control-tests v2-kernel-source-tests \
-             v2-state-snapshot-tests v2-kernel-codec-tests v2-replay-tests \
-             v2-model-replay-tests v2-metrics-tests \
-             v2-phase4-property-tests v2-rule-evaluator-tests v2-layout-tests \
-             v2-decision-kernel-tests v2-action-template-contract-tests \
-             v2-action-resolver-tests \
-             v2-executable-policy-contract-tests \
-             v2-executable-policy-codec-tests \
-             v2-artifact-digest-tests v2-executable-policy-kernel-tests \
-             v2-risk-order-outbox-tests \
+    --target velocita-v2-tests \
     --parallel "$build_jobs"
 
 failure_step=instrumented_tests
@@ -202,18 +170,7 @@ cmake -S "$source_dir" -B "$sanitized_build" \
 
 failure_step=sanitized_build
 cmake --build "$sanitized_build" \
-    --target v2-contract-tests v2-value-contract-tests \
-             v2-payload-codec-tests v2-kernel-policy-tests \
-             v2-kernel-control-tests v2-kernel-source-tests \
-             v2-state-snapshot-tests v2-kernel-codec-tests v2-replay-tests \
-             v2-model-replay-tests v2-metrics-tests \
-             v2-phase4-property-tests v2-rule-evaluator-tests v2-layout-tests \
-             v2-decision-kernel-tests v2-action-template-contract-tests \
-             v2-action-resolver-tests \
-             v2-executable-policy-contract-tests \
-             v2-executable-policy-codec-tests \
-             v2-artifact-digest-tests v2-executable-policy-kernel-tests \
-             v2-risk-order-outbox-tests \
+    --target velocita-v2-tests \
     --parallel "$build_jobs"
 
 failure_step=sanitized_tests

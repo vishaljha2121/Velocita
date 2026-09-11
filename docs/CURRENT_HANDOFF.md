@@ -32,7 +32,7 @@ GATE READINESS. Host evidence is recorded in
 `docs/evidence/V2_PHASE5_GATEWAY_SIMULATOR_ACCEPTANCE.md`: Release 29/29, full
 host Debug ASan+UBSan 29/29, model corpus 109/109. Both gate scripts exist and are
 pinned to source root
-`d5c7c6c8defc8fddbb8ecc41b6b2e3cc094e5b1e67c24a3855e48f186cf24f4d`:
+`b23bdea07d60163cd05a970cf058af8e6d62665afb47f1217f5f1162f5e2d1b4`:
 
 ```sh
 BUILD_JOBS=2 ./deploy/run-v2-phase5-container-gate.sh --yes   # ARM64 container

@@ -374,6 +374,26 @@ arena, so that sub-budget rather than `kMaxClusterOrders` is the real limit on
 concurrent orders, and the policy arena that looks like free space is an
 unreclaimed lifetime budget rather than dead weight.
 
+Two Phase 5 Pi gate attempts failed in the gate rather than the code, and both
+fixes are structural rather than a re-pin.
+
+The first was a source root mismatch: the pinned value was computed on a
+development host under a UTF-8 locale while the container computes under C.
+Manifest order decides the root and collation decides manifest order, so identical
+content hashed differently. `LC_ALL=C` is now pinned inside the gate recipe - a
+source root that depends on ambient environment is not a source root.
+
+The second reported four suites as "Not Run". The gate builds an explicit target
+list that had drifted from `CMakeLists.txt`, so the Phase 5 suites were never
+compiled. The gate now builds `velocita-all-tests` and `velocita-v2-tests`,
+aggregate targets derived from `BUILDSYSTEM_TARGETS` rather than hand-maintained,
+so the list cannot drift as suites are added.
+
+That second failure is worth remembering for its shape: "Not Run" reads like a
+behavioural failure and is not one, and the hypotheses it invites - char
+signedness, alignment, endianness - are all wrong. A gate that builds a different
+set of things than it runs will always mis-signal in this direction.
+
 Status: Phases 1-4 are accepted on the required host, ARM64 Ubuntu, and physical
 Raspberry Pi 5 gates. Deterministic policy evaluation, risk reservation, cluster
 orders, accepted venue-evidence accounting, and the transactional outbox are

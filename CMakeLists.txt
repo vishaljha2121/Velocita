@@ -352,4 +352,30 @@ if(BUILD_TESTING)
     add_executable(v2-phase3-benchmark src/v2_phase3_benchmark.cpp)
     target_link_libraries(v2-phase3-benchmark PRIVATE velocita_v2_kernel)
     target_compile_options(v2-phase3-benchmark PRIVATE -Wall -Wextra -Wpedantic)
+
+    # Aggregate targets for the acceptance gates.
+    #
+    # The gates build explicit targets rather than `all`, to keep a four-core Pi
+    # from compiling binaries no suite runs. A HAND-MAINTAINED list is the
+    # obvious way to do that and it is wrong: it drifts from this file every time
+    # a test is added, and the failure surfaces as ctest reporting "Not Run",
+    # which reads like a behavioural failure and is not. Phase 5 added four
+    # suites and lost a full physical-target run to exactly that.
+    #
+    # These are derived from the build system itself, so they cannot drift. Must
+    # stay after every add_executable above: BUILDSYSTEM_TARGETS only sees what
+    # this directory has already defined.
+    get_property(velocita_defined_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+    set(velocita_all_test_targets "")
+    set(velocita_v2_test_targets "")
+    foreach(velocita_target IN LISTS velocita_defined_targets)
+        if(velocita_target MATCHES "-tests$")
+            list(APPEND velocita_all_test_targets ${velocita_target})
+            if(velocita_target MATCHES "^v2-")
+                list(APPEND velocita_v2_test_targets ${velocita_target})
+            endif()
+        endif()
+    endforeach()
+    add_custom_target(velocita-all-tests DEPENDS ${velocita_all_test_targets})
+    add_custom_target(velocita-v2-tests DEPENDS ${velocita_v2_test_targets})
 endif()
