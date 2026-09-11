@@ -248,6 +248,39 @@ appear nowhere in `TradingState`, `OrderEffect`, or `VenueObservation`, and
 `FeeMicros` carries no currency tag. Deferred deliberately rather than invented,
 so that a comparison is not written against fields nothing produces.
 
+## 4a. Leak detection is not part of any gate's sanitizer coverage
+
+Severity: coverage gap, uniform across targets. Trigger: before claiming the
+sanitizer suites cover allocation lifetime.
+
+GCC's AddressSanitizer enables LeakSanitizer by default on x86-64 and NOT on
+aarch64. LSan needs `ptrace` to stop threads at exit, and every gate runs
+`--cap-drop ALL`, so on x86-64 all 26 suites died during LSan initialisation
+before executing a single test. The identical aarch64 run passed, because LSan
+was never active there.
+
+The consequence is worth stating plainly: "Debug ASan+UBSan 26/26" has always
+meant something different on the two targets, and the Phase 4 and Phase 5
+acceptance records asserted it for both without qualification. Nobody was misled
+deliberately; the difference lived in a compiler runtime default rather than in
+anything anyone wrote.
+
+The gates now pin `ASAN_OPTIONS=detect_leaks=0` explicitly, so all three
+environments test the same thing and the choice is visible in the gate script
+rather than implied by the target. Address and undefined-behaviour checking are
+unaffected - those are what the suites were always actually exercising.
+
+Closing the gap means `--cap-add SYS_PTRACE` plus `detect_leaks=1` on both
+targets. That is real added coverage, and it is deferred deliberately rather than
+taken during a target bring-up, because it WIDENS what the already-accepted ARM64
+evidence asserts: a leak that was never checked for could surface and invalidate
+a passing record. It belongs in a reviewed increment with a re-run of the Pi and
+container gates, not smuggled in alongside a NUC setup.
+
+Worth noting the kernel itself is a poor leak candidate - the reducer owns no
+allocator and every arena is fixed-capacity - so the realistic yield is test
+harness and benchmark code. That argues for doing it, but not urgently.
+
 ## 5. Smaller recorded items
 
 - NATIVE AMEND AND OVERLAPPING REPLACEMENT remain disabled. Only the reviewed

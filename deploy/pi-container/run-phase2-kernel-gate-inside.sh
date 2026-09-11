@@ -174,6 +174,25 @@ cmake --build "$sanitized_build" \
     --parallel "$build_jobs"
 
 failure_step=sanitized_tests
+# LeakSanitizer is disabled EXPLICITLY rather than by accident.
+#
+# GCC's AddressSanitizer enables LSan by default on x86-64 and not on aarch64.
+# LSan needs ptrace to stop threads at exit, and this gate runs --cap-drop ALL,
+# so on x86-64 every suite died during LSan initialisation before executing a
+# single test - while the identical aarch64 run passed, because LSan was never
+# active there.
+#
+# So "Debug ASan+UBSan" has always meant something different on the two targets,
+# and the acceptance records said 26/26 for both without noting it. Pinning
+# detect_leaks=0 makes the three environments test the SAME thing and makes the
+# difference visible in this file instead of buried in a runtime default.
+#
+# Enabling leak detection uniformly - --cap-add SYS_PTRACE plus detect_leaks=1 on
+# both targets - is real added coverage and is deferred deliberately: it would
+# widen what the already-accepted ARM64 evidence asserts, so it belongs in a
+# reviewed increment rather than smuggled into a target bring-up.
+export ASAN_OPTIONS="${ASAN_OPTIONS:-}${ASAN_OPTIONS:+:}detect_leaks=0"
+printf 'asan_options=%s\n' "$ASAN_OPTIONS" >>"$evidence_dir/metadata.txt"
 ctest --test-dir "$sanitized_build" -R '^v2-.*-tests$' --output-on-failure |
     tee "$evidence_dir/sanitized-tests.txt"
 
