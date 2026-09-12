@@ -50,6 +50,17 @@ Digest256 digest(const std::uint8_t marker) {
 
 // A request identity's payload digest must be nonzero, and distinct commands
 // must not collide on (caller, sequence). One monotonic counter feeds both.
+const char* name_of_state(const ClusterOrderState state) {
+    switch (state) {
+        case ClusterOrderState::live:               return "live";
+        case ClusterOrderState::cancel_pending:     return "cancel_pending";
+        case ClusterOrderState::reconciling:        return "reconciling";
+        case ClusterOrderState::conflict:           return "conflict";
+        case ClusterOrderState::partially_filled:   return "partially_filled";
+        default:                                    return "other";
+    }
+}
+
 Digest256 request_digest(const std::uint64_t counter) {
     return digest(static_cast<std::uint8_t>(1 + counter % 255));
 }
@@ -1300,6 +1311,179 @@ void test_states_reached_only_through_phase_five_survive_a_snapshot() {
     }
 }
 
+void test_the_guard_refuses_an_incoherent_control_snapshot() {
+    // REVIEW FINDING P1-1. `evaluate_pre_send` compares the effect only against
+    // the supplied GatewayControlView, never against the TradingState it was
+    // handed. Two matching STALE values agree with each other and prove nothing
+    // about either being current, so the last callable decision before transport
+    // can authorize a send while holding authoritative state that already
+    // contains the revocation.
+    //
+    // `plan_reconciliation` already performs this coherency check, so the
+    // delivery and reconciliation halves apply different authority rules today.
+    const auto fixture = one_authorized_submit();
+    const auto stale = control_of(fixture.state);
+    ApplyScratch scratch;
+
+    {   // Kill epoch advanced in state; the cached view still matches the effect.
+        auto state = fixture.state;
+        const Command advance{{CallerId{1}, RequestSequence{40}, digest(0x61)},
+                              AdvanceKillEpoch{KillEpoch{
+                                  state.kill_epoch.value() + 1}}};
+        require(apply(state, advance, scratch).code == ApplyCode::applied,
+                "the kill-epoch fixture could not advance");
+        require(!evaluate_pre_send(state, fixture.effect_id, stale, capable_venue(),
+                                   SendQuotaView{4})
+                     .permitted(),
+                "a send was authorized against a kill epoch the supplied state "
+                "had already advanced past");
+    }
+    {   // Executor generation advanced in state.
+        auto state = fixture.state;
+        const Command advance{{CallerId{1}, RequestSequence{41}, digest(0x62)},
+                              SetExecutorGeneration{ExecutorGeneration{
+                                  state.executor_generation.value() + 1}}};
+        require(apply(state, advance, scratch).code == ApplyCode::applied,
+                "the generation fixture could not advance");
+        require(!evaluate_pre_send(state, fixture.effect_id, stale, capable_venue(),
+                                   SendQuotaView{4})
+                     .permitted(),
+                "a send was authorized against an executor generation the "
+                "supplied state had already superseded");
+    }
+    {   // Strategy mode revoked in state while the cached view still says normal.
+        auto state = fixture.state;
+        const Command halt{{CallerId{1}, RequestSequence{42}, digest(0x63)},
+                           SetStrategyMode{StrategyMode::halted, state.kill_epoch,
+                                           state.executor_generation}};
+        require(apply(state, halt, scratch).code == ApplyCode::applied,
+                "the halt fixture could not apply");
+        require(!evaluate_pre_send(state, fixture.effect_id, stale, capable_venue(),
+                                   SendQuotaView{4})
+                     .permitted(),
+                "new risk was authorized against a strategy mode the supplied "
+                "state had already revoked");
+    }
+}
+
+void test_repeated_cancel_cycles_cannot_starve_fill_capacity() {
+    // REVIEW FINDING P1-5. Authorization reserves worst-case future venue-event
+    // capacity for every live order, so an admitted order is guaranteed enough
+    // receipts to account all its remaining fills. `apply_request_cancel` does
+    // not re-check that reserve, and the accepted serial-cancel lifecycle can be
+    // repeated: reject the cancel, reconcile "still working", cancel again.
+    //
+    // Each cycle pins two more applied venue-event receipts to an order that is
+    // never resolved and therefore never reclaimed. If that can reach the 64
+    // ceiling, a later genuine fill is refused at the capacity check - the venue
+    // has executed and the cluster cannot account for it, while the order still
+    // reads as live rather than conflicted. That is the exact outcome the reserve
+    // exists to make impossible.
+    auto fixture = pending_cancel();
+    ApplyScratch scratch;
+    const auto order_id = sole_order(fixture.state).cluster_order_id;
+    std::uint64_t sequence = 8'000;
+    std::size_t cycles = 0;
+
+    for (; cycles < 40; ++cycles) {
+        auto current = sole_order(fixture.state).effect_id;
+        VenueObservation rejected;
+        rejected.kind = VenueObservationKind::order_rejected;
+        rejected.venue_id = VenueId{9};
+        rejected.venue_session_id = VenueSessionId{1};
+        rejected.venue_sequence = VenueSequence{++sequence};
+        rejected.cluster_order_id = order_id;
+        rejected.effect_id = current;
+        rejected.evidence_digest = digest(0x81);
+        if (submit_answer(fixture.state, rejected, ++sequence).code !=
+            ApplyCode::applied) {
+            break;
+        }
+        if (submit_answer(fixture.state,
+                          reconciled(fixture.state, current, 88, 0, ++sequence),
+                          ++sequence)
+                .code != ApplyCode::applied) {
+            break;
+        }
+        const Command again{{CallerId{1}, RequestSequence{++sequence},
+                             request_digest(sequence)},
+                            RequestCancel{order_id}};
+        if (apply(fixture.state, again, scratch).code != ApplyCode::applied) break;
+    }
+
+    const auto events =
+        kMaxVenueEventReceipts -
+        collect_metrics(fixture.state).venue_event_headroom;
+    std::printf("  P1-5 probe: %zu cycles, %zu venue events consumed, order %s\n",
+                cycles, events,
+                name_of_state(sole_order(fixture.state).state));
+
+    // The order was authorized for two lots and has filled none, so the reserve
+    // must still admit both remaining one-atom fills plus its control tail.
+    VenueObservation fill;
+    fill.kind = VenueObservationKind::fill;
+    fill.venue_id = VenueId{9};
+    fill.venue_session_id = VenueSessionId{1};
+    fill.venue_sequence = VenueSequence{++sequence};
+    fill.cluster_order_id = order_id;
+    fill.effect_id = fixture.effect_id;
+    fill.venue_order_id = VenueOrderId{88};
+    fill.execution_id = ExecutionId{9'999};
+    fill.side = Side::buy;
+    fill.price = PriceTicks::from_atoms(11);
+    fill.quantity = QuantityLots::from_atoms(1);
+    fill.evidence_digest = digest(0x82);
+    ApplyScratch fill_scratch;
+    const Command command{{CallerId{1}, RequestSequence{++sequence},
+                           observation_fingerprint(fill)},
+                          ObserveFill{fill}};
+    const auto applied = apply(fixture.state, command, fill_scratch);
+    require(applied.code != ApplyCode::venue_event_capacity_exceeded &&
+                applied.code != ApplyCode::fill_capacity_exceeded,
+            "repeated legal cancel cycles consumed the venue-event capacity "
+            "reserved for this order's own fills, so a real execution can no "
+            "longer be accounted");
+}
+
+void test_a_rejected_cancel_can_still_be_finally_reconciled() {
+    // REVIEW FINDING P1-4. Architecture 10.3.6 motivates the rejected-cancel
+    // state with a duplicate rejection overtaking the original SUCCESSFUL
+    // cancellation - and then the implementation refuses the final evidence for
+    // exactly that case.
+    //
+    // After `order_rejected` on a cancel the pair is (order=reconciling,
+    // effect=rejected). `cancel_reconcilable` accepts only
+    // (reconciling,reconciling) and (submission_unknown,unknown), so the "the
+    // venue did cancel it" truth has no path out and the reservation is stranded
+    // permanently. Only the opposite answer - "still working", via
+    // order_reconciled - was ever tested.
+    auto fixture = pending_cancel();
+    VenueObservation rejected;
+    rejected.kind = VenueObservationKind::order_rejected;
+    rejected.venue_id = VenueId{9};
+    rejected.venue_session_id = VenueSessionId{1};
+    rejected.venue_sequence = VenueSequence{7'600};
+    rejected.cluster_order_id = sole_order(fixture.state).cluster_order_id;
+    rejected.effect_id = fixture.effect_id;
+    rejected.evidence_digest = digest(0x7D);
+    require(submit_answer(fixture.state, rejected, 30).code == ApplyCode::applied,
+            "the cancel rejection was refused");
+    require(sole_order(fixture.state).state == ClusterOrderState::reconciling,
+            "a rejected cancel did not leave the lifecycle unknown");
+
+    // The venue is then queried and answers authoritatively that the order IS
+    // cancelled. That is final evidence and must resolve the slot.
+    const auto applied = submit_answer(
+        fixture.state, cancel_final(fixture.state, fixture.effect_id, 0, 7'601), 31);
+    require(applied.code == ApplyCode::applied,
+            "final cancel evidence was refused after a cancel rejection, so the "
+            "reservation is stranded with no path out");
+    require(sole_order(fixture.state).state == ClusterOrderState::cancelled,
+            "final cancel evidence did not resolve the order");
+    require(risk_released(fixture.state),
+            "a cancelled order kept its reservation");
+}
+
 void test_new_risk_is_still_refused_outside_normal() {
     // The other half of the same rule, which must not be lost while fixing it.
     const auto fixture = one_authorized_submit();
@@ -2320,6 +2504,9 @@ int main() {
         test_a_delivery_exhausted_order_is_reconciled_not_abandoned();
         test_the_reconciliation_planner_reads_no_clock_and_mutates_nothing();
         test_a_cancel_is_deliverable_in_every_strategy_mode();
+        test_the_guard_refuses_an_incoherent_control_snapshot();
+        test_repeated_cancel_cycles_cannot_starve_fill_capacity();
+        test_a_rejected_cancel_can_still_be_finally_reconciled();
         test_new_risk_is_still_refused_outside_normal();
         test_states_reached_only_through_phase_five_survive_a_snapshot();
         test_a_silent_cancel_redelivers_before_it_reconciles();

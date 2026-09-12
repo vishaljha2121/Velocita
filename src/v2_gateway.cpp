@@ -116,6 +116,27 @@ PreSendDecision evaluate_pre_send(const TradingState& state,
     //    expired by definition; no wall-clock deadline exists or is wanted.
     //    Generation is tested before kill epoch so a doubly-stale effect always
     //    reports the same reason on every host.
+    // The supplied view must be CURRENT, not merely self-consistent with the
+    // effect. Two matching stale values agree with each other and prove nothing
+    // about either being authoritative - and this function is handed the state
+    // that would have revealed the revocation, so accepting an incoherent pair
+    // means the last decision before transport ignored evidence it already held.
+    //
+    // Verified here rather than left to callers. The defect was never that a
+    // caller passed the wrong thing; it is that the signature permits an
+    // incoherent pair at all, and a convention cannot exclude what a type admits.
+    // `plan_reconciliation` has always performed this check, so until now the
+    // delivery and reconciliation halves applied different authority rules.
+    if (control.executor_generation != state.executor_generation) {
+        return refuse(PreSendRefusal::stale_executor_generation);
+    }
+    if (control.kill_epoch != state.kill_epoch) {
+        return refuse(PreSendRefusal::stale_kill_epoch);
+    }
+    if (control.strategy_mode != state.strategy_mode) {
+        return refuse(PreSendRefusal::control_forbids_new_risk);
+    }
+
     if (effect->executor_generation != control.executor_generation) {
         return refuse(PreSendRefusal::stale_executor_generation);
     }

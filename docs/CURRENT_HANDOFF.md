@@ -1,9 +1,683 @@
 # Current development handoff
 
-Updated: 2026-09-10
+Updated: 2026-09-12
 
 Purpose: compact working memory for the next agent session. Verify this file
 against Git before acting; do not reconstruct the project from chat history.
+
+## CLAUDE ACTION HANDOFF — Phase 5 acceptance review failed — 2026-09-12
+
+This section supersedes the `CODEX REVIEW REQUEST` and every older Phase 5
+`NEXT` section below it. The older sections remain in the file as an audit trail;
+they must not be read as current approval.
+
+### Executive decision
+
+Treat Phase 5 as REOPENED. Do not begin Phase 6 implementation and do not describe
+G-025 through G-034 as closed until the findings below are corrected and the
+candidate is re-gated.
+
+Reason: the review found direct reducer and pre-send correctness defects, a
+gateway-restart hole, and test oracles that can report green while losing venue
+evidence. Four-platform execution proves that the tested program behaves the same
+on those platforms; it cannot compensate for a test oracle that accepts the wrong
+answer.
+
+Do not delete or move `v2-phase5-accepted`. It is historical evidence for the
+candidate that was accepted at the time. After corrections, create a new
+superseding checkpoint and state explicitly why the earlier acceptance was
+superseded. Moving the old tag would destroy the audit trail and make the old
+evidence claim a different source than the source it actually tested.
+
+### Git and evidence identity verified by the review
+
+- The review checkout was DETACHED at
+  `ee2c9d9791d597008f7782e8b9e407914fd485cb`, not attached to
+  `v2/phase-4-risk-orders-outbox`. The named branch still pointed at `aadc2f5`.
+  This matters because a later commit made without first choosing a branch would
+  be easy to orphan even though its files remained in the object database.
+- `v2-phase5-accepted` is an annotated tag which peels to
+  `04329fad05837e7f2c6e9d8d075ba8e5ede90700`. Preserve it.
+- The canonical Phase 5 source-root recipe, including `LC_ALL=C`, reproduced
+  `b23bdea07d60163cd05a970cf058af8e6d62665afb47f1217f5f1162f5e2d1b4`
+  locally. Therefore the source-root value itself is not one of the findings.
+- The target PASS claims were present in repository documentation, but the Pi,
+  container, and NUC raw evidence bundles were not present on the review host.
+  Therefore this review verified repository consistency, not the contents of the
+  remote raw bundles. Do not turn that limited statement into a claim that the
+  target runs did not happen.
+- No build or test was run during this review because the handoff explicitly
+  requested analysis before further construction. The findings are static and
+  include concrete reachable traces; the first implementation step is to convert
+  each trace into a permanent RED test.
+
+Protected dirty paths at the review checkout were exactly:
+
+```text
+ M docs/README.md
+?? docs/MUST_CONFIRM_BEFORE_ADAPTER_CONNECT.md
+?? docs/V2_MODEL_AND_MARKET_DATA_EDGE_DESIGN.md
+?? docs/adr/0002-two-machine-pi-nuc-deployment-topology.md
+?? model/
+```
+
+Preserve all five. Never use `git add .` or `git add -A`; stage only explicit
+Phase 5 paths. The reason is operational, not stylistic: a directory-wide add has
+already swept unrelated research and topology work into a Phase 4 commit once.
+
+### Severity vocabulary used below
+
+- P1 means an acceptance blocker: a reachable path can send under stale
+  authority, lose or strand economic evidence, release risk on insufficient
+  evidence, or let the gate pass while such a defect exists.
+- P2 means the implementation may still be correct on a narrower path, but the
+  current proof or documented claim is materially stronger than the evidence.
+- P3 means documentation, reproducibility, or maintainability drift. It does not
+  independently make economics wrong, but it makes a later review easier to get
+  wrong.
+
+The labels describe blast radius, not implementation effort. Several P1 fixes are
+small; they remain P1 because their failure mode is economic divergence.
+
+### P1-1 — the final pre-send guard can authorize against stale control
+
+Evidence: `evaluate_pre_send` in `src/v2_gateway.cpp` compares the materialized
+effect's executor generation and kill epoch only with the separately supplied
+`GatewayControlView`. It does not compare that view with
+`TradingState::executor_generation`, `TradingState::kill_epoch`, or the state's
+current strategy mode. `plan_reconciliation` already performs the first of these
+coherency checks, so the delivery and reconciliation halves currently apply
+different authority rules.
+
+Reachable counterexample:
+
+1. authorize effect E under executor generation 3 and kill epoch 2;
+2. cache a matching `GatewayControlView{3, 2, normal}`;
+3. apply `AdvanceKillEpoch`, so the supplied `TradingState` now has a newer kill
+   epoch and is halted;
+4. call `evaluate_pre_send(new_state, E, old_control, ...)`;
+5. E passes because the effect and the stale view still agree with each other.
+
+The result is unsafe because the final guard has authoritative state containing
+the revocation and nevertheless authorizes the external side effect. Comparing
+two matching stale values does not prove either is current.
+
+Required RED: preserve an old matching view, advance kill epoch in the state, and
+assert that the old effect is refused. Repeat for executor generation and strategy
+mode so the test proves one coherent control snapshot rather than one field.
+
+Recommended GREEN: derive current generation, epoch, and strategy mode directly
+from the same `TradingState` used to find and materialize the effect. If a separate
+view remains necessary for the future process boundary, require and verify a
+state-version/commit-watermark identity proving the view and outbox came from one
+coherent read. Do not merely add one more caller convention; the existing defect
+is precisely that the type permits an incoherent pair.
+
+Acceptance condition: the last callable decision before transport refuses when
+either the state or its coherent authority snapshot has advanced since effect
+authorization.
+
+### P1-2 — gateway restart can blindly resend a possibly accepted submit
+
+Evidence: `GatewayDeliveryState` is deliberately local and disposable. After it
+is reset, `plan_delivery` sees a replicated `pending` submit with no attempt
+record and schedules it as a first send. `plan_reconciliation` targets a
+`dispatch_authorized` order only when the now-lost local attempt count is
+exhausted. The header says a restart rebuilds by reconciliation, but no recovery
+mode, startup barrier, or state seeding operation exists.
+
+Crash counterexample:
+
+1. the cluster authorizes submit E and retains it as pending;
+2. the gateway sends E and the venue accepts it;
+3. the gateway crashes before the acknowledgement is applied to the cluster;
+4. the restarted gateway has empty delivery bookkeeping while cluster state still
+   says pending;
+5. `plan_delivery` schedules E immediately instead of querying first.
+
+Stable `EffectId` reduces the damage only if the venue deduplicates that identity
+across the exact reconnect/session failure being tested. Relying on simulator
+deduplication is not the same guarantee as reconciliation-before-resend, and the
+architecture explicitly chose the latter for ambiguous risk-increasing sends.
+
+Required REDs: cut and restart the gateway (while preserving cluster and venue
+state) before send, after venue acceptance but before local attempt recording,
+after local recording but before venue observation, and after observation
+submission but before its cluster result. The post-possible-send cuts must query
+or otherwise establish absence before a risk-increasing resend. They must also
+block new risk until the startup recovery barrier completes, as G-032 requires.
+
+Recommended GREEN: add an explicit gateway recovery mode. At startup, treat every
+replicated unresolved submit as potentially attempted unless durable local proof
+says it was never sent. Rebuild open-order/relevant execution state, then enable
+ordinary delivery. A cancel may retain its approved idempotent-redelivery rule;
+the submit path may not inherit it.
+
+Acceptance condition: clearing every gateway-local structure at every crash cut
+cannot produce a blind risk-increasing resend or allow new risk before recovery.
+
+### P1-3 — venue response receipt and cluster evidence commit are conflated
+
+Evidence: the in-process delivery shell calls `record_response` before applying a
+venue observation, and the timeout path ignores the observation apply result
+before clearing the local awaiting-response flag. That is harmless only while
+`apply` is a synchronous infallible function call. Phase 6 makes proposal,
+leadership, commit, and apply separate outcomes.
+
+Failure trace under Raft:
+
+1. the venue answers E, so the gateway correctly stops the venue-response timer;
+2. the gateway proposes the canonical observation to the current leader;
+3. the proposal response is lost or leadership changes before the gateway learns
+   the committed result;
+4. local `awaiting_response` is already false, while replicated E remains pending;
+5. submit redelivery is forbidden, ambiguity is no longer scheduled, and
+   reconciliation does not target the shape;
+6. the effect is stranded without an owner retrying its evidence command.
+
+The venue answer and the Raft acceptance are two distinct acknowledgements. The
+first completes transport; only the second completes delivery of evidence to the
+authoritative state machine.
+
+Required RED: inject loss of the command response and leader change after the
+venue answer but before confirmed commit; retry the identical canonical command
+and request identity; assert one economic mutation and eventual terminal evidence
+delivery.
+
+Recommended GREEN: keep a bounded gateway-local queue of canonical observation
+commands until a committed retained result is observed. Retrying must preserve
+the original request identity and bytes. Backpressure when this queue is full must
+stop additional external sends before evidence can be dropped.
+
+Acceptance condition: a venue answer can stop its transport timeout without
+discarding the separate obligation to commit that answer into the cluster.
+
+### P1-4 — rejected-cancel success reconciliation is still impossible
+
+Evidence: `order_rejected` for the current cancel produces
+`(order=reconciling, effect=rejected)`. `cancel_reconcilable` accepts only
+`(reconciling,reconciling)` or `(submission_unknown,unknown)`. The later
+resolved-effect guard also refuses the rejected effect. Existing tests cover only
+the opposite query answer: “the order is still working,” encoded as
+`order_reconciled`.
+
+Reachable counterexample:
+
+1. request cancel C;
+2. receive `order_rejected(C)`, which correctly does not prove the order is live;
+3. query the venue and receive authoritative evidence that the order is cancelled;
+4. encode that evidence as `cancel_reconciled(C)`;
+5. apply refuses it, so the residual reservation and slot remain blocked forever.
+
+This is not an exotic branch. Section 10.3.6 specifically motivates the rejected
+state with a duplicate rejection overtaking the original successful
+cancellation. The implementation then refuses the final evidence for the exact
+case used to justify the state.
+
+Required REDs from `(reconciling,rejected)`:
+
+- equal cumulative `cancel_reconciled` must cancel and release residual risk;
+- below-booked final evidence must retain risk and enter conflict;
+- above-booked evidence must remain unresolved as missing fill evidence; and
+- snapshot restore before each answer must preserve the same outcome.
+
+Recommended GREEN: admit the rejected-current-cancel/reconciling-order pair to
+the cancel reconciliation adjudication. Keep ordinary resolved-effect rejection
+for every unrelated event; widen only the explicitly final reconciliation path.
+
+Acceptance condition: both possible truths after an opaque cancel rejection —
+“still working” and “cancelled” — have a bounded path out, without treating the
+rejection itself as proof of either.
+
+### P1-5 — repeated cancel/reconcile cycles invalidate the venue-event reserve
+
+Evidence: `future_venue_events_for_order` budgets a finite three-control-event
+tail for a live/partially-filled order. But the accepted lifecycle permits this
+cycle repeatedly:
+
+```text
+RequestCancel
+  -> order_rejected
+  -> order_reconciled(still working)
+  -> RequestCancel with a fresh generation
+```
+
+The outbox record is reused, so outbox capacity stays healthy. The two applied
+venue observations from every cycle remain request receipts pinned to the still
+unresolved order. `apply_request_cancel` does not re-check completion headroom.
+After enough cycles, `accepted_venue_event_count` reaches 64 and a subsequent
+valid fill is refused at the capacity check before the kernel can account it or
+mark its owning order conflicted.
+
+The defect is more serious than a typed availability refusal: the venue has
+executed a fill while the cluster position remains unchanged, and the order may
+still appear live rather than conflicted. The original authorization reserve was
+supposed to make that impossible.
+
+Required RED: use only public commands to repeat the cycle until close to the
+venue-event ceiling, then deliver the remaining valid fill fragments. The test
+must prove every admitted order always retains enough event capacity to account
+all remaining minimum-lot fills and the one final control path.
+
+Do not apply a local arithmetic patch before choosing a retention contract. The
+safe choices have different semantics:
+
+1. reclaim superseded cancel-generation event identities after a declared
+   retry/reconnect horizon while retaining a non-reusable watermark/tombstone;
+2. bound cancel re-authorization cycles and enter explicit operator escalation
+   before completion headroom is consumed; or
+3. increase/repartition canonical state, which reopens the reviewed size ceiling
+   and snapshot budgets.
+
+Reject the tempting fix “refuse RequestCancel when headroom is low” unless an
+equally strong emergency cancellation path exists. Cancel is risk-reducing; using
+capacity protection to prevent it can preserve bookkeeping by abandoning actual
+exposure.
+
+Acceptance condition: no legal repetition of the serial cancel lifecycle can
+consume capacity reserved for already-live fills or final evidence.
+
+### MATERIAL DECISION A — how fills behave after an order enters conflict
+
+Current implementation: `apply_observe_fill` refuses every fill when the order is
+already `conflict`.
+
+Why the current behavior is attractive: conflict remains a literal sink, so no
+automatic observation can make the order look healthy or reclaimable. This
+protects the operator-visible disagreement.
+
+Why the current behavior is economically dangerous: a unique execution carrying
+venue identity, execution identity, side, price, quantity, and fee is stronger
+evidence than the order-level cumulative snapshot that commonly created the
+conflict. If its quantity still fits the retained reservation, refusing it leaves
+the known position and remaining hold wrong even though the kernel has all fields
+needed to book it safely. Further real fills then widen the divergence the system
+claims to expose.
+
+RECOMMENDATION, awaiting user approval: book every unique fill that fits inside
+the still-retained reservation, update position and holds atomically, but preserve
+`order.state == conflict` and the conflicting effect state. Even when the final
+reserved atom fills and the reservation becomes released, keep the order group
+unreclaimable until explicit operator resolution because the historical
+disagreement still exists. Continue to refuse any quantity outside the authorized
+remaining hold and keep conflict visible.
+
+This separates two properties that the current code conflates:
+
+- `conflict is sticky` means later evidence cannot automatically declare the
+  dispute solved; and
+- `valid execution accounting continues` means authoritative fill evidence is
+  not discarded merely because a dispute already exists.
+
+Do not implement this economic change until the user approves it. The RED should
+then assert position, reservation, risk totals, sticky conflict, deduplication,
+snapshot restore, and non-reclamation together.
+
+### MATERIAL DECISION B — query freshness and finality are not represented
+
+Current rule: a reconciliation total below locally booked quantity becomes
+permanent conflict; `not_found` or an agreeing final cancellation can release
+risk. That rule is sound only if the answer is comparable with the cluster's
+evidence — meaning it is ordered after the relevant sends and complete through a
+venue execution watermark.
+
+Current `VenueQueryView::authoritative` says only that the venue claims the query
+window is complete. `VenueObservation` carries a gateway-authored event identity,
+not a native query watermark. One outstanding query orders queries relative to
+other queries, but does not order a query relative to fills arriving concurrently.
+
+Truthful stale-answer counterexample:
+
+1. cancel outcome is unknown and the gateway starts a query;
+2. the venue snapshots the order as working with cumulative fill zero;
+3. a fill executes and its submit-scoped observation commits in the cluster;
+4. the delayed query answer arrives with cumulative zero;
+5. the reducer sees “venue below cluster” and enters permanent conflict even
+   though neither side contradicted the other at a common time.
+
+The same missing ordering proof makes `not_found` unsafe after a possibly in-flight
+submit: absence at the query snapshot does not prove the earlier send cannot arrive
+later. It also makes “still working” insufficient proof that the last in-flight
+cancel failed.
+
+RECOMMENDATION, awaiting user approval: reconciliation may release risk or create
+a permanent conflict only when the gateway has venue-specific proof that the
+answer is ordered after every relevant send and complete through the relevant
+execution stream watermark. Without that proof, classify the query locally as
+incomplete/unavailable and submit no economic observation.
+
+For the simulator, model the ordering barrier explicitly rather than setting an
+unconditional Boolean. For a real adapter, the proof may be a venue monotonic
+sequence, a session barrier, an executions cursor plus order-query watermark, or
+a documented venue idempotency/finality guarantee. Do not invent a universal
+wire field before a venue supplies the semantics it would carry.
+
+Do not implement this material reconciliation rule until the user approves it.
+Once approved, document the exact meaning of “authoritative” in architecture and
+write stale-query/fill-overlap tests before touching the reducer.
+
+### Assessment of the five changed Phase 4 behaviors
+
+1. REJECTED CANCEL -> RECONCILING: retain. An opaque business rejection does not
+   distinguish already-cancelled, already-filled, absent, or still-working. Moving
+   directly to live would convert ambiguity into false certainty. P1-4 must add
+   the missing successful-cancel exit.
+2. FILL QUANTITY CONFLICT MUTATES TO CONFLICT: retain the visibility goal, but
+   make the result semantics explicit. A venue trade that cannot be booked must
+   not disappear behind a non-mutating-looking refusal. The current receipt path
+   also needs review because non-`applied` observations are not counted as applied
+   venue identities and may be reclaimed without retaining the offending evidence.
+3. FILL ON CONFLICT IS REFUSED: reject as currently implemented, subject to user
+   approval of Material Decision A. Sticky lifecycle and continued valid fill
+   accounting are compatible; one does not require freezing the other.
+4. `order_reconciled` SPEAKS ABOUT CANCEL: acceptable for the MVP only if Material
+   Decision B supplies finality. The observation's fact is “the venue still holds
+   this order with cumulative quantity Q”; the current effect operation determines
+   whether that resolves a submit or disproves a cancel. Split names would improve
+   readability but would not create the missing watermark.
+5. RECONCILE BEFORE REUSING A REJECTED CANCEL RECORD: retain in principle. Reuse
+   is safe only after finality proves the prior cancel did not take and cannot take
+   later. Without Material Decision B, overwriting the old effect record can make a
+   late successful cancellation inapplicable, so the current proof is incomplete.
+
+### P1/P2 — the 27-position lifecycle enumeration is not exhaustive
+
+The new test is useful as a sampled regression inventory, but its current claims
+must be narrowed or its algorithm replaced.
+
+Why it omits reachable states:
+
+- exploration discards every command whose `ApplyCode` is not `applied`;
+- `fill_quantity_conflict` deliberately mutates the order to conflict while
+  returning a non-applied code;
+- therefore authorized-submit -> oversized-fill and cancelled-order -> late-fill
+  conflict positions never enter the 27-position set;
+- its `Signature` records only current order/effect/reservation categories and a
+  filled/not-filled Boolean, omitting receipt occupancy, exact cumulative
+  quantity, historical sibling effects, and effect generations; and
+- visited-signature pruning expands only the first concrete state that maps to a
+  coarse signature, so a later history with different future behavior is dropped.
+
+Why its liveness assertion is insufficient: “no unsettled effect is a dead end”
+currently means only that the coarse position has at least one outgoing
+`ApplyCode::applied` edge. The edge may be a self-loop, may not be producible by
+the real gateway, and need not lead to settlement. It also examines only the
+current effect, while reclamation requires every sibling effect in the order group
+to be settled.
+
+There is an internal contradiction once refusal-mutations are included. An
+oversized fill can create `order=conflict` with `effect=pending`. “Conflict is a
+sink” correctly forbids automatic escape, while “every unsettled effect must have
+an applied successor” would require an escape. The correct property is narrower:
+every RECOVERABLE, non-conflict position must have a gateway-producible path to a
+settled or explicitly escalated state; adjudicated conflict is intentionally an
+operator-owned sink even if a historical effect remains nonterminal.
+
+Required replacement proof:
+
+1. retain every state-changing result, regardless of `ApplyCode`;
+2. assert a contract-derived transition table over observation kind x order state
+   x current effect state x operation, including expected code, mutation, economic
+   delta, and destination;
+3. separately explore reachable concrete representatives, preserving the state
+   fields that affect future transitions;
+4. prove reachability to settlement/escalation, not merely one outgoing edge;
+5. check all effects belonging to the order group; and
+6. cross-check that each claimed recovery edge is producible by the gateway, not
+   only constructible as a direct kernel command.
+
+Do not pin a new inventory count until the omitted refusal-mutation states and the
+two material decisions above are settled. A changing count is evidence of a
+contract change; forcing it back to 27 would hide the review result.
+
+### P1 — the delivery harness can pass while losing fills
+
+The fault matrix's fill oracle checks only `booked <= reported`. That prevents the
+cluster inventing quantity, but it permits every reported fill to remain unbooked.
+Its global allow-list treats `venue_observation_not_applicable`, `order_not_found`,
+and identity conflicts as lossless without proving that the particular execution
+was already booked or belonged to a safely reclaimed order. One conflicted order
+also globally excuses all `fill_quantity_conflict` refusals.
+
+Required correction: track every distinct `(VenueId, ExecutionId)` from venue
+creation through cluster result. Each execution must end in exactly one of:
+
+- booked exactly once with matching order and quantity;
+- proven duplicate of that already-booked execution; or
+- retained, order-specific conflict evidence explaining why it could not be
+  booked within authorized risk.
+
+A refusal-code allow-list cannot prove this because the same code can be safe for
+one execution and evidence loss for another. The oracle must bind the explanation
+to the execution and owning order.
+
+### P1 — the reconciliation harness excuses reducer applicability defects
+
+The harness labels every `venue_observation_not_applicable` reconciliation result
+as `answered_ahead`. It does not independently verify that the answer's cumulative
+quantity was actually above the cluster's booked quantity. P1-4 can therefore be
+misreported as permitted missing evidence rather than fail the gate.
+
+Required correction: compute the expected relation from pre-apply reservation
+state and submitted answer, then compare the reducer result against that
+independent expectation. Never infer why a refusal was correct from the refusal
+code produced by the code under test.
+
+### P2 — the simulator and saturation claims exceed their tests
+
+- The fault selector chooses one fault category per operation, so cross-category
+  combinations remain unreachable. This is documented as deferred, but the
+  deferred-scope trigger says it is required before claiming G-033 in full.
+  Therefore either compose the fault axes and remeasure, or narrow Phase 5's
+  acceptance claim and keep G-033 open.
+- Selecting the `loss` label for a cancel does not lose its cancellation response:
+  the cancel branch schedules the response and returns before the submit loss
+  branch. Counting selected labels therefore does not prove the named behavior
+  occurred. Assert observable fault effects, not enum reachability.
+- The “sixteen conflicts saturate the cluster” harness uses one logical slot and
+  asserts at most one unresolved order. It proves that conflict is retained under
+  that workload, not that sixteen concurrent conflicts reach refusal. The number
+  sixteen is a valid static consequence of equal 16-slot arenas and was shown to
+  have identical layout on ARM64 and x86-64; call it an ANALYTIC BOUND unless a
+  multi-slot test actually reaches all sixteen and the seventeenth refusal.
+
+### P2 — snapshot validation accepts gateway-local outbox states
+
+Architecture 9.1.2 says `claimed` and `attempted` are gateway-local and that
+snapshot validation must reject them because the reducer cannot produce them.
+`valid_state` currently accepts the entire contiguous `OutboxState` range,
+including both values.
+
+Required RED: encode and decode candidate states containing each forbidden value
+and require `invalid_state` without mutating the destination. Recommended GREEN:
+separate “known enum value” from “legal replicated value”; retain the numeric enum
+values for schema stability while excluding them from canonical `TradingState`.
+
+### P1 verification defect — UBSan diagnostics are not forced to fail the gate
+
+The shared target gate enables `-fsanitize=undefined` but neither compiles with
+`-fno-sanitize-recover=undefined` nor exports a fatal UBSan runtime option. It
+explicitly configures ASan leak behavior only. A sanitizer gate must make every
+diagnostic produce a nonzero test outcome; otherwise `ctest --output-on-failure`
+can retain no visible output for a process that recovered and exited zero.
+
+Required correction: pin non-recovering UBSan behavior in the shared gate and
+record the setting in metadata. Add a gate self-test or a tiny purpose-built
+negative probe which proves a UBSan finding makes the gate fail; do not rely on
+configuration inspection alone. Re-run every claimed sanitizer environment after
+the change because the old green result did not establish this property.
+
+LeakSanitizer remains a separate deferred coverage decision. Making UBSan fatal
+does not silently enable LSan and therefore does not contradict the explicit
+cross-architecture `detect_leaks=0` choice.
+
+### P2/P3 documentation and evidence corrections
+
+- `docs/V2_END_STATE_GUARANTEE_CHECKLIST.md` still marks G-025 through G-034
+  open, while the acceptance document says G-025 and G-026 are closed. Until this
+  review is remediated, keep them open and add the exact blocking evidence rather
+  than merely toggling boxes.
+- The acceptance document still says it “currently records one” environment while
+  its status says four. Correct the stale sentence when the document is rewritten.
+- `docs/V2_DEFERRED_FUNCTIONAL_SCOPE.md` still calls the state ceiling provisional
+  pending NUC validation even though the recorded NUC run discharged that caveat.
+- Architecture 10.6 says fills must precede cancel authorization. That is false as
+  a kernel invariant: `find_order_by_effect` deliberately recognizes retained
+  historical submit effects, and late submit-scoped fills preserve an unknown
+  current cancel. Correct the document; the old fixture merely lost the saved
+  submit `EffectId` after requesting cancel.
+- The annotated acceptance tag points at the source candidate before later gate,
+  NUC, sanitizer-policy, and final evidence-document commits. This can be retained
+  as a source-candidate checkpoint, but the superseding acceptance tag must point
+  at a commit containing the final gates and final evidence so a checkout of the
+  tag explains how it was accepted.
+
+### Direct answer for Phase 6: the current seam does not survive unchanged
+
+The deterministic economic reducer can survive commit-before-apply. Its inputs
+are canonical and its mutation is already deterministic. The statement
+“the gateway reads a post-apply state and only cares that it is authoritative” is
+nevertheless insufficient for the execution boundary.
+
+Phase 6 must add all of the following:
+
+1. A COHERENT COMMIT/APPLY VIEW. Delivery may consume an effect only after its log
+   entry is committed and applied, and its control fields must come from that same
+   state view.
+2. MONOTONIC STATE CONSUMPTION. `reclaim_delivery_attempts` treats an absent effect
+   as swept. If the gateway reads committed/applied index 100, then reroutes to a
+   lagging voter at index 90, it can delete attempt history for an effect which has
+   not actually disappeared. Catch-up to 100 then makes it look fresh and permits
+   resend. Every individual read was committed; monotonicity is the missing
+   property.
+3. SEPARATE VENUE AND RAFT ACKNOWLEDGEMENTS. P1-3 explains why a venue answer must
+   remain queued until its canonical observation command has a committed result.
+4. A STARTUP RECOVERY BARRIER. P1-2 explains why disposable local state otherwise
+   turns an ambiguous submit back into an apparent first send.
+5. A LAST-MOMENT AUTHORITY FENCE. Executor generation, kill epoch, and mode can
+   advance between plan creation and socket write. Planning cannot be the final
+   check.
+6. DISTINCT COORDINATES. `OrderEffect::committed_directive_index` currently holds
+   an authorization `state_version` and participates in canonical payload bytes.
+   Raft log index can advance for duplicates, no-ops, and configuration entries,
+   so it is not the same coordinate. Preserve the existing field as a domain
+   revision and carry commit provenance separately unless the user explicitly
+   approves a byte-contract migration.
+
+Required Phase 6 seam tests before implementation: append without commit, commit
+without apply, apply after commit, leader change with a lost client result, lost
+venue-observation proposal result, regressing follower read, gateway restart at
+every send/response/commit cut, and kill/generation advance between plan and send.
+Re-running the synchronous Phase 5 matrix with an `apply_is_committed` label would
+not exercise any of these intervals.
+
+### C++ quality and optimisation assessment
+
+Keep the core bounded design. Fixed arrays, injected ticks, value-returning pure
+planners, no allocator in the reducer, and exact payload reconstruction are good
+MVP choices. Their worst cases are explicit and small enough to measure.
+
+Do not optimize the repeated effect materialization yet. `plan_delivery` invokes
+the guard, and the shell materializes selected effects again, costing roughly
+`kMaxOutboxEffects * kMaxRequestReceipts` bounded comparisons per tick. That is
+real duplicated work, but it is a performance cost rather than a correctness or
+availability limit, and removing it prematurely risks creating two authorities
+for whether a payload is sendable. Keep it in V2.1 until measurement shows it on
+the critical path.
+
+After correctness is restored, refactor `apply_observe_order_event`. Ten coupled
+booleans feeding negated guard terms are difficult to review because state,
+applicability, quantity adjudication, and economic mutation are interleaved.
+Prefer explicit operation-specific transition functions or a reviewed transition
+table, while keeping all capacity and arithmetic checks before mutation. This is
+a maintainability refactor, not permission to alter bytes or economics silently.
+
+### Comment cleanup requested by the user
+
+The cleanup has NOT happened. At review time the eight Phase 5 C++ files held 999
+full-line comments in 5,002 lines, about 20 percent. The original seven files were
+unchanged since the earlier review; the lifecycle test added another 57 comment
+lines.
+
+Perform cleanup only after the RED/GREEN lifecycle corrections, because several
+comments currently expose reasoning that tests fail to encode. Then remove most:
+
+- historical narratives about how an earlier version was wrong;
+- headings that restate the following function or assertion;
+- multi-paragraph copies of architecture sections 9 and 10;
+- rhetoric such as “the single most important”; and
+- stale or false statements identified above.
+
+Retain short comments only where the type system cannot express the constraint:
+
+- sweep before any index lookup/reference borrow;
+- terminal is not equivalent to risk-resolved;
+- submit versus cancel retry asymmetry;
+- proof required before a risk-increasing resend;
+- ownership/publication and memory-order requirements;
+- canonical-byte equality rather than struct-padding equality; and
+- non-obvious checked-arithmetic or capacity-reserve derivations.
+
+The target is not zero comments. The target is that every surviving comment
+prevents a plausible future safety regression which names and tests alone cannot
+make obvious.
+
+### Exact remediation sequence for Claude
+
+Do not combine these into one large change. Preserve RED evidence and keep every
+contract decision auditable.
+
+1. Attach or create an explicit correction branch from `ee2c9d9`; do not commit on
+   an unnamed detached HEAD.
+2. RED/GREEN P1-1: coherent final pre-send authority. This is an implementation
+   invariant, not a new byte/economic contract.
+3. RED/GREEN P1-4: rejected cancel accepting final cancellation evidence, including
+   equality/below/above and snapshot suffixes. This completes the already-approved
+   opaque-rejection semantics.
+4. RED/GREEN snapshot rejection of `claimed` and `attempted`. This implements the
+   already-written architecture contract.
+5. Replace the lifecycle inventory/oracle so it retains state-changing refusals
+   and asserts contract-derived transitions. Re-run it before changing economic
+   behavior so its first REDs describe the current candidate honestly.
+6. Present Material Decisions A and B to the user. Do not encode them before
+   approval.
+7. After approval, TDD sticky-conflict fill accounting and query finality/freshness.
+8. Resolve P1-5's repeated-cancel event-retention contract. This may require a
+   separate user decision because the safe alternatives change retention or
+   operational escalation semantics.
+9. Add gateway restart cut tests and the bounded venue-evidence-to-Raft-commit
+   queue/seam. Keep Phase 6 transport implementation out; Phase 5 should define
+   and prove the behavior with an injected commit-result boundary.
+10. Repair the delivery harness with per-execution accounting and an independent
+    reconciliation oracle. A test result may never serve as its own expected
+    answer.
+11. Either compose simulator fault axes and remeasure, or explicitly narrow G-033
+    and Phase 5 acceptance. At minimum make cancel loss observable and test the
+    behavior rather than the selected fault label.
+12. Add a true multi-slot sixteen-conflict saturation test or rename the claim as
+    an analytic capacity bound.
+13. Make UBSan findings fatal, add a negative gate self-check, and regenerate all
+    affected sanitizer evidence.
+14. Remove/condense Phase 5 C++ comments using the policy above. Comment-only
+    cleanup comes after semantic stability so it cannot obscure blame.
+15. Correct architecture, deferred-scope, checklist, changelog, acceptance, and
+    this handoff together. Record every added and removed guarantee with its reason.
+16. Always build before CTest. Run focused RED/GREEN tests, then host Release
+    29/29 or the new count, full Debug ASan+UBSan, lifecycle report, horizon report,
+    matrix trace, model 109/109, and `git diff --check`.
+17. Freeze a new source root only after all semantic and test changes land. Then
+    rerun ARM64 container, physical Pi, and x86-64 NUC gates against that exact
+    root. Do not reuse the old target evidence for changed source.
+18. Write a superseding Phase 5 acceptance record and tag without moving or
+    deleting the historical `v2-phase5-accepted` checkpoint.
+
+### MVP boundary remains unchanged
+
+The corrections above do not authorize real venue connectivity, strategy logic,
+netting, WAL implementation, or full Raft integration. They repair the simulator,
+gateway contract, reducer transitions, and evidence needed to finish Phase 5.
+Phase 6 begins only after the corrected Phase 5 seam is accepted; Phase 6 then
+implements the actual commit/apply and leader-change machinery against that seam.
 
 ## CODEX REVIEW REQUEST — Phase 5 complete and accepted — 2026-09-12
 
