@@ -1399,14 +1399,17 @@ void test_repeated_cancel_cycles_cannot_starve_fill_capacity() {
             ApplyCode::applied) {
             break;
         }
+        const auto venue_sequence = ++sequence;
+        const auto request_sequence = ++sequence;
         if (submit_answer(fixture.state,
-                          reconciled(fixture.state, current, 88, 0, ++sequence),
-                          ++sequence)
+                          reconciled(fixture.state, current, 88, 0, venue_sequence),
+                          request_sequence)
                 .code != ApplyCode::applied) {
             break;
         }
-        const Command again{{CallerId{1}, RequestSequence{++sequence},
-                             request_digest(sequence)},
+        const auto cancel_sequence = ++sequence;
+        const Command again{{CallerId{1}, RequestSequence{cancel_sequence},
+                             request_digest(cancel_sequence)},
                             RequestCancel{order_id}};
         if (apply(fixture.state, again, scratch).code != ApplyCode::applied) break;
     }
@@ -1482,6 +1485,72 @@ void test_a_rejected_cancel_can_still_be_finally_reconciled() {
             "final cancel evidence did not resolve the order");
     require(risk_released(fixture.state),
             "a cancelled order kept its reservation");
+
+    // And it must survive a restart, since a state the cluster cannot restore
+    // from is a state it cannot really be in.
+    std::array<std::byte, kMaxStateSnapshotBytes> bytes{};
+    const auto encoded = encode_state_snapshot(fixture.state, bytes);
+    require(encoded.error == StateSnapshotError::none,
+            "the resolved rejected-cancel state did not encode");
+    TradingState restored;
+    StateSnapshotScratch scratch;
+    require(decode_state_snapshot({bytes.data(), encoded.bytes_written}, restored,
+                                  scratch)
+                    .error == StateSnapshotError::none,
+            "the resolved rejected-cancel state did not decode");
+}
+
+// The other two quantity relations from the same (reconciling, rejected) pair.
+// The review asked for all three because the adjudication must not depend on
+// which state the cancel happened to be rejected from.
+void test_rejected_cancel_final_evidence_covers_every_quantity_relation() {
+    const auto reject_the_cancel = [](Fixture& fixture, std::uint64_t sequence) {
+        VenueObservation rejected;
+        rejected.kind = VenueObservationKind::order_rejected;
+        rejected.venue_id = VenueId{9};
+        rejected.venue_session_id = VenueSessionId{1};
+        rejected.venue_sequence = VenueSequence{sequence};
+        rejected.cluster_order_id = sole_order(fixture.state).cluster_order_id;
+        rejected.effect_id = fixture.effect_id;
+        rejected.evidence_digest = digest(0x7D);
+        require(submit_answer(fixture.state, rejected, sequence + 1).code ==
+                    ApplyCode::applied,
+                "the cancel rejection was refused");
+    };
+
+    {   // BELOW what the cluster booked: unclosable, so a conflict.
+        auto fixture = silent_cancel_with_booked_fill(1);
+        // Drive it to (reconciling, rejected) rather than (submission_unknown,
+        // unknown), so the pair under test is the newly admitted one.
+        reject_the_cancel(fixture, 8'500);
+        require(sole_order(fixture.state).state == ClusterOrderState::reconciling,
+                "the below-booked fixture is not reconciling");
+        require(submit_answer(fixture.state,
+                              cancel_final(fixture.state, fixture.effect_id, 0,
+                                           8'502),
+                              8'503)
+                        .code == ApplyCode::applied,
+                "contradicting final evidence was not recorded");
+        require(sole_order(fixture.state).state == ClusterOrderState::conflict,
+                "a venue denying a booked fill in its final word was not a "
+                "conflict");
+        require(!risk_released(fixture.state),
+                "a conflicted order released its reservation");
+    }
+    {   // ABOVE what the cluster booked: missing evidence, so refuse and wait.
+        auto fixture = pending_cancel();
+        reject_the_cancel(fixture, 8'600);
+        const auto before = fixture.state;
+        require(submit_answer(fixture.state,
+                              cancel_final(fixture.state, fixture.effect_id, 1,
+                                           8'602),
+                              8'603)
+                        .code == ApplyCode::venue_observation_not_applicable,
+                "final evidence ahead of the cluster was not refused");
+        require(std::memcmp(&fixture.state.reservations, &before.reservations,
+                            sizeof(before.reservations)) == 0,
+                "a refused final answer moved economics");
+    }
 }
 
 void test_new_risk_is_still_refused_outside_normal() {
@@ -2507,6 +2576,7 @@ int main() {
         test_the_guard_refuses_an_incoherent_control_snapshot();
         test_repeated_cancel_cycles_cannot_starve_fill_capacity();
         test_a_rejected_cancel_can_still_be_finally_reconciled();
+        test_rejected_cancel_final_evidence_covers_every_quantity_relation();
         test_new_risk_is_still_refused_outside_normal();
         test_states_reached_only_through_phase_five_survive_a_snapshot();
         test_a_silent_cancel_redelivers_before_it_reconciles();

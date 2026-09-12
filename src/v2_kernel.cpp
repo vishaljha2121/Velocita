@@ -2584,7 +2584,18 @@ std::size_t settle_orphaned_effects(TradingState& state,
          // precisely how such a cancel should become resolvable, and requiring
          // `reconciling` closed the only way out of the state.
          (effect->state == OutboxState::unknown &&
-          order.state == ClusterOrderState::submission_unknown));
+          order.state == ClusterOrderState::submission_unknown) ||
+         // A REJECTED cancel. 10.3.6 makes an opaque business rejection mean the
+         // lifecycle is unknown rather than live, precisely because a rejection
+         // of a duplicate can overtake the original successful cancellation. It
+         // then has to admit the evidence for that case: without this the venue
+         // can answer "yes, it is cancelled" and the cluster has no way to record
+         // what it was told, stranding the reservation permanently.
+         //
+         // Widened only for the explicitly final reconciliation path. Ordinary
+         // events against a resolved effect stay refused.
+         (effect->state == OutboxState::rejected &&
+          order.state == ClusterOrderState::reconciling));
     // A disagreement has two very different causes, and collapsing them is how a
     // recoverable order gets frozen terminal.
     //
@@ -2617,7 +2628,7 @@ std::size_t settle_orphaned_effects(TradingState& state,
         (order.state == ClusterOrderState::reconciling && !reconciled_cancel &&
          !(cancel_reconcilable && (cancel_agrees || cancel_contradicts))) ||
         (effect_resolved && !late_cancel_completion && !reconciled_cancel &&
-         !terminal_cancel_rejection) ||
+         !terminal_cancel_rejection && !cancel_reconcilable) ||
         (effect->effect_id != order.effect_id && !late_cancel_completion)) {
         return venue_event_result(state,
                                   ApplyCode::venue_observation_not_applicable,
