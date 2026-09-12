@@ -559,6 +559,85 @@ void test_decode_is_transactional_for_corrupt_and_unknown_input() {
         {invalid_enum.data(), encoded.bytes_written}, "unknown strategy mode");
 }
 
+void test_snapshot_rejects_gateway_local_outbox_states() {
+    using namespace velocita::v2;
+    // Architecture 9.1.2: `claimed` and `attempted` are GATEWAY-LOCAL. The
+    // reducer never writes them, so meeting one in replicated state means the
+    // state is corrupt or forged - and interpreting it would mean trusting a
+    // value the authority cannot have produced. The contract said snapshot
+    // validation must reject them; the range check accepted the whole contiguous
+    // OutboxState span instead, so it accepted both.
+    const auto original = phase4_state();
+    std::array<std::byte, kMaxStateSnapshotBytes> storage{};
+    const auto encoded = encode_state_snapshot(original, storage);
+    require(encoded.error == StateSnapshotError::none,
+            "gateway-local fixture did not encode");
+
+    for (const auto forbidden : {OutboxState::claimed, OutboxState::attempted}) {
+        auto candidate = original;
+        candidate.outbox_effects[0].state = forbidden;
+        std::array<std::byte, kMaxStateSnapshotBytes> rejected{};
+        require(encode_state_snapshot(candidate, rejected).error ==
+                    StateSnapshotError::invalid_state,
+                "the encoder accepted a gateway-local outbox state");
+    }
+
+    // Locate the effect-state byte by DIFFING two legal encodings that differ in
+    // exactly that field. Derived from the canonical layout by construction, and
+    // self-checking - anything but a single differing byte means the assumption
+    // is wrong - rather than an object offset or a byte-pattern search.
+    auto alternative = original;
+    alternative.outbox_effects[0].state = OutboxState::rejected;
+    std::array<std::byte, kMaxStateSnapshotBytes> alternative_bytes{};
+    const auto alternative_encoded =
+        encode_state_snapshot(alternative, alternative_bytes);
+    require(alternative_encoded.error == StateSnapshotError::none &&
+                alternative_encoded.bytes_written == encoded.bytes_written,
+            "the alternative outbox state did not encode to the same length");
+    std::size_t state_offset = 0;
+    std::size_t differing = 0;
+    for (std::size_t index = 0; index < encoded.bytes_written - kDigestBytes;
+         ++index) {
+        if (storage[index] != alternative_bytes[index]) {
+            state_offset = index;
+            ++differing;
+        }
+    }
+    require(differing == 1,
+            "two encodings differing only in outbox effect state differed in " +
+                std::to_string(differing) + " bytes, so the located offset is "
+                "not the state field");
+
+    TradingState sentinel{};
+    std::array<std::byte, kMaxStateSnapshotBytes> sentinel_bytes{};
+    const auto sentinel_encoded = encode_state_snapshot(sentinel, sentinel_bytes);
+    require(sentinel_encoded.error == StateSnapshotError::none,
+            "gateway-local sentinel did not encode");
+    StateSnapshotScratch scratch;
+
+    for (const auto forbidden : {OutboxState::claimed, OutboxState::attempted}) {
+        auto forged = storage;
+        forged[state_offset] = static_cast<std::byte>(forbidden);
+        replace_integrity_digest({forged.data(), encoded.bytes_written});
+        auto destination = sentinel;
+        require(decode_state_snapshot({forged.data(), encoded.bytes_written},
+                                      destination, scratch)
+                        .error == StateSnapshotError::invalid_state,
+                "the decoder accepted a forged gateway-local outbox state");
+        std::array<std::byte, kMaxStateSnapshotBytes> after{};
+        const auto reencoded = encode_state_snapshot(destination, after);
+        require(reencoded.error == StateSnapshotError::none &&
+                    reencoded.bytes_written == sentinel_encoded.bytes_written &&
+                    std::equal(sentinel_bytes.begin(),
+                               sentinel_bytes.begin() +
+                                   static_cast<std::ptrdiff_t>(
+                                       sentinel_encoded.bytes_written),
+                               after.begin()),
+                "a rejected gateway-local state still published to the "
+                "destination");
+    }
+}
+
 void test_bounds_and_invalid_source_state_fail_closed() {
     using namespace velocita::v2;
     const auto state = populated_state();
@@ -759,6 +838,7 @@ int main() {
         test_round_trip_is_canonical_and_excludes_unused_capacity();
         test_phase4_state_survives_canonical_snapshot();
         test_decode_is_transactional_for_corrupt_and_unknown_input();
+        test_snapshot_rejects_gateway_local_outbox_states();
         test_bounds_and_invalid_source_state_fail_closed();
         test_declared_maximum_is_exact_and_encodable();
         std::cout << "all V2 state snapshot tests passed\n";

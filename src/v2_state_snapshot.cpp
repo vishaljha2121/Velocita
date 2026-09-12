@@ -258,11 +258,28 @@ private:
                static_cast<std::uint8_t>(ClusterOrderState::conflict);
 }
 
+// Legal in REPLICATED state, which is narrower than "a known enum value".
+//
+// Architecture 9.1.2 makes `claimed` and `attempted` gateway-local: the reducer
+// never writes them, so meeting one here means the snapshot is corrupt or forged.
+// Interpreting it would mean trusting a value the authority cannot have produced.
+// Their numeric values stay reserved for schema stability - this excludes them
+// from canonical `TradingState` without renumbering the enum.
 [[nodiscard]] constexpr bool known(const OutboxState value) noexcept {
-    return static_cast<std::uint8_t>(value) >=
-               static_cast<std::uint8_t>(OutboxState::pending) &&
-           static_cast<std::uint8_t>(value) <=
-               static_cast<std::uint8_t>(OutboxState::incomplete);
+    switch (value) {
+        case OutboxState::pending:
+        case OutboxState::acknowledged:
+        case OutboxState::rejected:
+        case OutboxState::unknown:
+        case OutboxState::reconciling:
+        case OutboxState::conflict:
+        case OutboxState::incomplete:
+            return true;
+        case OutboxState::claimed:
+        case OutboxState::attempted:
+            return false;
+    }
+    return false;
 }
 
 [[nodiscard]] constexpr bool known(const EffectOperation value) noexcept {
