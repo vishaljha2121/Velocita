@@ -5,7 +5,97 @@ Updated: 2026-09-10
 Purpose: compact working memory for the next agent session. Verify this file
 against Git before acting; do not reconstruct the project from chat history.
 
-## V2 PHASE 5 ACCEPTED ON ALL FOUR ENVIRONMENTS — 2026-09-11 (read this first)
+## CODEX REVIEW REQUEST — Phase 5 complete and accepted — 2026-09-12
+
+Phase 5 is ACCEPTED on all four environments and tagged `v2-phase5-accepted`.
+Twenty commits since Phase 4, from `4409ea3` to `6487a26`. What is wanted now is
+ADVERSARIAL REVIEW AND ANALYSIS, not more features. Nothing below should be built
+until the review lands.
+
+### Read in this order
+
+1. This section, then the acceptance table below it.
+2. `docs/evidence/V2_PHASE5_GATEWAY_SIMULATOR_ACCEPTANCE.md` - what was proved,
+   where, and the five gate defects found doing it.
+3. `docs/V2_ARCHITECTURE_CONTRACTS.md` §§9.1-9.3 and §§10.1-10.8 - every
+   non-obvious decision, argued with the alternative that was rejected and why.
+   READ THESE BEFORE THE CODE. The code will not tell you what was considered.
+4. `docs/V2_DEFERRED_FUNCTIONAL_SCOPE.md` - what was consciously left, each item
+   with a blast radius and a TRIGGER.
+5. `CHANGELOG.md`, the `[V2] - In development` section.
+
+### What to review hardest, ordered by how likely I think it is to be wrong
+
+ONE. `apply_observe_order_event` in `src/v2_kernel.cpp`. Nine interacting
+predicates - `reconciled_submit`, `reconciled_cancel`, `cancel_reconcilable`,
+`cancel_agrees`, `cancel_contradicts`, `late_cancel_completion`, `reconciliation`,
+`terminal`, `effect_resolved`, `terminal_cancel_rejection` - feeding a guard
+disjunction with negations. `v2-lifecycle-reachability-tests` enumerates the
+reachable lifecycle and asserts a 27-position inventory, which found three real
+defects reading never would have. It is still the highest-risk surface in the
+phase. The review that would settle it is a full truth table over (observation
+kind) x (order state) x (effect state) x (effect operation) checked against the
+CONTRACT rather than against the code.
+
+TWO. Five accepted Phase 4 behaviours were changed. Each needs an independent
+"is this right?", not merely "is it consistent?":
+  - a rejected cancel now moves the order to `reconciling`, not `live` (§10.3.6);
+  - `fill_quantity_conflict` now marks the order `conflict` instead of refusing
+    silently, mutating on a refusal path (§10.5.5);
+  - a fill on a conflicted order is now refused outright (§10.8.1);
+  - `order_reconciled` was widened to speak about cancel effects (§10.3.6); and
+  - Phase 4's outbox-reuse test now reconciles between a rejected cancel and a
+    fresh one.
+
+THREE. The asymmetric disagreement rule (§10.3.4). I got this wrong first - both
+directions as conflict - and an accepted Phase 4 permutation test caught it.
+Challenge the "above" case specifically: if fills are genuinely lost the order
+stays unresolved forever rather than becoming a conflict, and I argued
+unresolved-and-recoverable beats terminal. That deserves a second opinion.
+
+FOUR. `order_reconciled` is overloaded: the same kind means "the submit arrived"
+against a submit effect and "the cancel did not take" against a cancel effect.
+Defensible - the observation states one fact, and what it resolves depends on what
+was in doubt - but it is the kind of overload that reads fine until a third case
+arrives.
+
+FIVE. The test harness is unverified code that found FIVE bugs in itself: it
+leaked simulator ground truth into the gateway's `authoritative` flag; it
+conflated "the venue answered" with "the cluster accepted the answer"; its
+identity gate was scoped wrongly once cancels existed; and two fixtures built
+states the kernel cannot reach and passed anyway. Treat
+`tests/v2_gateway_delivery_tests.cpp` as suspect in the same way as the code it
+tests.
+
+SIX. The gateway is still pure functions plus an in-process shell. No transport,
+no socket, no credential isolation, no Raft. §9.1.5 records that as the plan;
+nothing has been proven about the real process boundary.
+
+### Known and deliberate - do not "fix" these without reading the reasoning
+
+- `docs/V2_DEFERRED_FUNCTIONAL_SCOPE.md` §1: policies, sources and caller cursors
+  are never reclaimed, so sixteen `PublishPolicy` commands is a cluster LIFETIME
+  budget. An availability defect of the same class §8.6 fixed for receipts,
+  parked for the MVP deliberately.
+- §2: the simulator's faults do not compose, so fills never arrive out of order
+  end to end and the matrix cannot produce a reconciliation conflict.
+- §3: a capacity rebalance was investigated and REJECTED. Venue event receipts
+  live inside the request receipt arena, so that sub-budget - not
+  `kMaxClusterOrders` - limits concurrent orders; and the policy arena that looks
+  like free space is an unreclaimed lifetime budget.
+- §4a: leak detection is not part of any gate's sanitizer coverage, now pinned off
+  explicitly rather than differing silently by architecture.
+
+### A question I would like answered
+
+Phase 5's guarantees are conditional on §9.1.1: "committed" currently collapses to
+"applied" because there is no commit index until Phase 6. Is there anything in the
+delivery or reconciliation design that will NOT survive re-tightening that to
+genuine quorum commitment? I believe the answer is no, because the gateway reads a
+post-apply state and cares only that the state it read is authoritative - but I
+have not tried to break it, and Phase 6 is the wrong time to find out.
+
+## V2 PHASE 5 ACCEPTED ON ALL FOUR ENVIRONMENTS — 2026-09-11
 
 | environment | Release | instrumented | ASan+UBSan |
 |---|---|---|---|
