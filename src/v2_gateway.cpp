@@ -269,6 +269,68 @@ bool record_unsent(GatewayDeliveryState& delivery,
     return false;
 }
 
+namespace {
+
+// An effect the reducer still owes an outcome on. `conflict` and `incomplete`
+// are deliberately included: both hold unknown exposure, and a restart that
+// treated them as finished would be deciding an outcome it cannot see.
+[[nodiscard]] bool effect_is_unsettled(const OutboxState state) noexcept {
+    return state != OutboxState::acknowledged && state != OutboxState::rejected;
+}
+
+}  // namespace
+
+std::size_t begin_gateway_recovery(GatewayDeliveryState& delivery,
+                                   const TradingState& state,
+                                   const Tick now) noexcept {
+    delivery.started = true;
+    std::size_t suspect = 0;
+    for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
+        const auto& effect = state.outbox_effects[index];
+        if (!effect_is_unsettled(effect.state)) continue;
+        if (find_attempt(delivery, effect.effect_id) != nullptr) continue;
+        if (delivery.attempt_count == delivery.attempts.size()) break;
+        // `awaiting_response` true and `resend_permitted` false: the same pair a
+        // send that left the process and has not been answered would carry. That
+        // is the honest description of what the restart knows.
+        delivery.attempts[delivery.attempt_count++] = {effect.effect_id, now, 1,
+                                                       true, false, true};
+        ++suspect;
+    }
+    delivery.recovering = suspect != 0;
+    return suspect;
+}
+
+bool recovery_complete(const GatewayDeliveryState& delivery,
+                       const TradingState& state) noexcept {
+    for (std::size_t index = 0; index < delivery.attempt_count; ++index) {
+        const auto& attempt = delivery.attempts[index];
+        if (!attempt.from_recovery) continue;
+        if (attempt.awaiting_response) return false;
+        const OutboxEffectRecord* effect = nullptr;
+        for (std::size_t slot = 0; slot < state.outbox_effect_count; ++slot) {
+            if (state.outbox_effects[slot].effect_id == attempt.effect_id) {
+                effect = &state.outbox_effects[slot];
+                break;
+            }
+        }
+        // Swept, so the group it belonged to was fully resolved.
+        if (effect == nullptr) continue;
+        switch (effect->state) {
+            case OutboxState::acknowledged:
+            case OutboxState::rejected:
+            case OutboxState::unknown:
+            case OutboxState::reconciling:
+            case OutboxState::conflict:
+                // Settled, or owned by the reconciliation planner from here.
+                break;
+            default:
+                return false;
+        }
+    }
+    return true;
+}
+
 DeliveryPlan plan_delivery(const TradingState& state,
                            const GatewayDeliveryState& delivery,
                            const GatewayControlView& control,
@@ -277,6 +339,12 @@ DeliveryPlan plan_delivery(const TradingState& state,
                            const GatewayTimeouts& timeouts,
                            const Tick now) noexcept {
     DeliveryPlan plan;
+
+    // 0. The startup barrier (P1-2). A gateway that has not scanned replicated
+    //    state cannot tell a fresh authorization from one a previous incarnation
+    //    already sent, so it does nothing at all. Failing closed here is the
+    //    point: the alternative failure is a second real order.
+    if (!delivery.started) return plan;
 
     // 1. Ambiguity first. An effect whose deadline has passed must be reported
     //    unknown before anything else considers sending it, so a timed-out
@@ -326,6 +394,10 @@ DeliveryPlan plan_delivery(const TradingState& state,
         // minting a new cancel is re-authorization and is the reducer's business.
         const bool cancel = state.outbox_effects[index].operation ==
                             EffectOperation::cancel;
+        // New risk waits for the recovery barrier (G-032). A cancel does not:
+        // it cannot create exposure, and a barrier that also stopped an operator
+        // getting flat would be protecting the wrong thing.
+        if (delivery.recovering && !cancel) continue;
         if (attempt != nullptr && !attempt->resend_permitted && !cancel) continue;
         // Retries are bounded. A venue that refuses for pacing forever would
         // otherwise be retried forever; stopping leaves the effect pending and

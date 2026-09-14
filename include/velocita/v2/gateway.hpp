@@ -142,6 +142,11 @@ struct DeliveryAttempt {
     // wrong in this direction places a second real order, so the strong claim
     // has to be asserted explicitly by a caller that saw the evidence.
     bool resend_permitted{};
+    // Seeded by the startup scan rather than by a send this gateway performed.
+    // The effect was already in replicated state when the process started, so
+    // whether it reached the venue is unknowable from here - which is the whole
+    // of P1-2.
+    bool from_recovery{};
 
     constexpr auto operator<=>(const DeliveryAttempt&) const noexcept = default;
 };
@@ -149,6 +154,24 @@ struct DeliveryAttempt {
 inline constexpr std::size_t kMaxDeliveryAttempts = kMaxOutboxEffects;
 
 struct GatewayDeliveryState {
+    // THE STARTUP BARRIER (G-032).
+    //
+    // A restarted gateway holds no attempt records, so a replicated `pending`
+    // submit is indistinguishable from one that was never sent - and treating it
+    // as never sent is exactly the blind risk-increasing resend G-026 forbids.
+    // The only fact separating the two is WHEN this gateway learned of the
+    // effect, and nothing in replicated state records that, so the gateway has
+    // to mark its own startup.
+    //
+    // `started` is false until `begin_gateway_recovery` runs, and `plan_delivery`
+    // schedules nothing at all until then. Forgetting the call therefore sends
+    // NOTHING rather than sending blindly, which is the direction a mistake about
+    // this has to fail in.
+    bool started{false};
+    // True from the startup scan until the barrier lifts. New risk is refused
+    // throughout. A cancel is not new risk and stays permitted - the whole point
+    // of a recovery barrier is lost if it also stops an operator getting flat.
+    bool recovering{false};
     std::size_t attempt_count{};
     std::array<DeliveryAttempt, kMaxDeliveryAttempts> attempts{};
 
@@ -220,6 +243,44 @@ struct DeliveryPlan {
                                  EffectId effect_id) noexcept;
 [[nodiscard]] const DeliveryAttempt* find_attempt(
     const GatewayDeliveryState& delivery, EffectId effect_id) noexcept;
+
+// --- startup recovery (P1-2, G-032) ----------------------------------------
+//
+// Run once, before the first `plan_delivery`, against replicated state as the
+// process finds it.
+//
+// Every unsettled effect already in the outbox is marked SUSPECT: an attempt
+// record with `awaiting_response` set and `resend_permitted` clear. Nothing new
+// is invented to do this - a suspect effect then travels the path an ambiguous
+// send already travels. Its deadline passes, the shell reports `effect_unknown`,
+// the reducer moves the order to `submission_unknown`, and reconciliation
+// queries the venue. "Reconcile before resend" is therefore not a new rule here;
+// it is the rule that was already there, applied to effects whose fate the
+// restart erased.
+//
+// The conservative direction is forced. Phase 5 has no durable local proof that
+// a send never happened, so every unsettled submit is treated as possibly
+// attempted. When durability arrives it can only ever narrow this set.
+//
+// Returns the number of effects marked suspect.
+std::size_t begin_gateway_recovery(GatewayDeliveryState& delivery,
+                                   const TradingState& state, Tick now) noexcept;
+
+// May ordinary delivery resume? Pure; the shell calls it and clears the barrier.
+//
+// True once every suspect effect has been handed to reconciliation or settled -
+// that is, none is still awaiting a response, and each is absent from the arena,
+// resolved, or in a state the reconciliation planner owns.
+//
+// Deliberately NOT "every suspect order is resolved". A suspect order whose
+// query attempts are spent would then block new risk on every OTHER slot
+// forever, trading a startup hazard for a permanent outage. Its own slot stays
+// blocked by ordinary slot exclusivity, which is the mechanism that already
+// exists for exactly that situation, and the resend of a suspect submit stays
+// forbidden regardless of this barrier because its attempt record carries
+// `resend_permitted = false` for the life of the effect.
+[[nodiscard]] bool recovery_complete(const GatewayDeliveryState& delivery,
+                                     const TradingState& state) noexcept;
 
 // Drop bookkeeping for effects the cluster no longer holds.
 //

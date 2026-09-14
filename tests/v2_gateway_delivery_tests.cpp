@@ -228,9 +228,27 @@ GatewayControlView control_of(const TradingState& state) {
     return {state.executor_generation, state.kill_epoch, state.strategy_mode};
 }
 
+// A gateway that was ALREADY RUNNING when the effect under test was authorized.
+//
+// It scans replicated state before that effect exists, so its startup scan finds
+// nothing suspect and it knows every later authorization is genuinely new. That
+// is the only situation in which a first send is safe, and saying so in a helper
+// keeps every planner test honest about which situation it is in. The restart
+// case - a gateway that finds effects already there - is P1-2's, and is tested
+// separately rather than assumed away here.
+GatewayDeliveryState running_gateway() {
+    GatewayDeliveryState delivery;
+    const TradingState before_anything;
+    require(begin_gateway_recovery(delivery, before_anything, 0) == 0,
+            "an empty cluster produced suspect effects");
+    require(delivery.started && !delivery.recovering,
+            "a gateway that scanned an empty cluster is still recovering");
+    return delivery;
+}
+
 void test_a_fresh_pending_effect_is_scheduled_once() {
     const auto fixture = one_authorized_submit();
-    const GatewayDeliveryState delivery;
+    const auto delivery = running_gateway();
     const auto plan = plan_delivery(fixture.state, delivery, control_of(fixture.state),
                                     capable_venue(), SendQuotaView{4},
                                     GatewayTimeouts{10}, 0);
@@ -245,7 +263,7 @@ void test_an_outstanding_effect_is_not_resent() {
     // reconciliation precedes it. Resending while the first attempt is still
     // outstanding is neither of those things.
     const auto fixture = one_authorized_submit();
-    GatewayDeliveryState delivery;
+    auto delivery = running_gateway();
     require(record_send(delivery, fixture.effect_id, 0), "record_send failed");
     const auto plan = plan_delivery(fixture.state, delivery, control_of(fixture.state),
                                     capable_venue(), SendQuotaView{4},
@@ -262,7 +280,7 @@ void test_a_passed_deadline_is_ambiguous_and_not_also_a_retry() {
     // both declares an outcome unknown and blindly resends it is precisely what
     // G-026 forbids, and it is an easy mistake to make by computing sends first.
     const auto fixture = one_authorized_submit();
-    GatewayDeliveryState delivery;
+    auto delivery = running_gateway();
     require(record_send(delivery, fixture.effect_id, 0), "record_send failed");
     const auto plan = plan_delivery(fixture.state, delivery, control_of(fixture.state),
                                     capable_venue(), SendQuotaView{4},
@@ -278,7 +296,7 @@ void test_an_answered_effect_is_never_blindly_resent() {
     // again is reconciliation's judgement, not the planner's - and until
     // reconciliation exists, the honest answer is "no".
     const auto fixture = one_authorized_submit();
-    GatewayDeliveryState delivery;
+    auto delivery = running_gateway();
     require(record_send(delivery, fixture.effect_id, 0), "record_send failed");
     require(record_response(delivery, fixture.effect_id),
             "record_response did not find the outstanding attempt");
@@ -299,7 +317,7 @@ void test_a_provably_unsent_effect_retries_under_its_own_identity() {
     // gate exists to exclude. A retry that never happened would wedge the slot
     // on a transient rate limit, which is the opposite failure.
     const auto fixture = one_authorized_submit();
-    GatewayDeliveryState delivery;
+    auto delivery = running_gateway();
     require(record_send(delivery, fixture.effect_id, 0), "first record_send failed");
     require(record_unsent(delivery, fixture.effect_id),
             "record_unsent did not find the attempt");
@@ -321,7 +339,7 @@ void test_unsent_retries_are_bounded() {
     // A venue that refuses for pacing forever must not become an unbounded retry
     // loop. Exhaustion leaves the effect pending and unsettled rather than sent.
     const auto fixture = one_authorized_submit();
-    GatewayDeliveryState delivery;
+    auto delivery = running_gateway();
     const GatewayTimeouts timeouts{10, 3};
     for (std::uint32_t round = 0; round < timeouts.max_send_attempts; ++round) {
         const auto plan = plan_delivery(fixture.state, delivery,
@@ -341,7 +359,7 @@ void test_unsent_retries_are_bounded() {
 
 void test_quota_bounds_the_plan() {
     const auto fixture = one_authorized_submit();
-    const GatewayDeliveryState delivery;
+    const auto delivery = running_gateway();
     require(plan_delivery(fixture.state, delivery, control_of(fixture.state),
                           capable_venue(), SendQuotaView{0}, GatewayTimeouts{10}, 0)
                     .send_count == 0,
@@ -351,7 +369,7 @@ void test_quota_bounds_the_plan() {
 void test_a_halted_cluster_plans_no_sends() {
     auto fixture = one_authorized_submit();
     fixture.state.strategy_mode = StrategyMode::halted;
-    const GatewayDeliveryState delivery;
+    const auto delivery = running_gateway();
     const auto plan = plan_delivery(fixture.state, delivery, control_of(fixture.state),
                                     capable_venue(), SendQuotaView{4},
                                     GatewayTimeouts{10}, 0);
@@ -363,7 +381,7 @@ void test_the_planner_only_schedules_what_the_guard_permits() {
     // If they ever do, the shell would either send something refused or stall on
     // something permitted. Both are silent failures, so assert the agreement.
     const auto fixture = one_authorized_submit();
-    const GatewayDeliveryState delivery;
+    const auto delivery = running_gateway();
     const auto plan = plan_delivery(fixture.state, delivery, control_of(fixture.state),
                                     capable_venue(), SendQuotaView{4},
                                     GatewayTimeouts{10}, 0);
@@ -907,6 +925,256 @@ void test_the_evidence_watermark_counts_only_accepted_evidence() {
             "an unknown order reported a non-zero evidence watermark");
 }
 
+// --- startup recovery (P1-2) -----------------------------------------------
+
+void test_a_gateway_crash_cannot_produce_a_second_order() {
+    // P1-2. Three cut points a crash actually reaches, each leaving the cluster
+    // saying `pending` while the gateway remembers nothing at all:
+    //
+    //   0. died before the send ever left;
+    //   1. the venue accepted it, died before recording the attempt locally;
+    //   2. recorded the attempt, died before the venue's answer was applied.
+    //
+    // The restarted gateway cannot tell these apart, and that is the point. What
+    // it must never do is assume the friendliest one.
+    for (int cut = 0; cut <= 2; ++cut) {
+        const std::string where = " (cut " + std::to_string(cut) + ")";
+        auto fixture = one_authorized_submit();
+        auto& state = fixture.state;
+        SimulatedVenue venue(1, FaultPolicy::clean(), VenueId{9});
+        const GatewayTimeouts timeouts;
+        sim::Tick now = 0;
+        std::size_t venue_orders = 0;
+
+        {
+            // The gateway's previous incarnation. Everything it learns here dies
+            // with it.
+            auto before_crash = running_gateway();
+            if (cut >= 1) {
+                const auto decision =
+                    evaluate_pre_send(state, fixture.effect_id, control_of(state),
+                                      capable_venue(), SendQuotaView{4});
+                require(decision.permitted(), "the guard refused the fixture" + where);
+                require(venue.send(*decision.effect, now) == SendOutcome::accepted,
+                        "the venue refused the submit" + where);
+                ++venue_orders;
+            }
+            if (cut >= 2) {
+                require(record_send(before_crash, fixture.effect_id, now),
+                        "record_send failed" + where);
+            }
+        }
+
+        // CRASH. `delivery` below is a brand new structure: no attempts, no
+        // memory, exactly what the process comes back with.
+        now += 1;
+        GatewayDeliveryState delivery;
+        require(begin_gateway_recovery(delivery, state, now) == 1,
+                "the startup scan did not find the pending submit" + where);
+        require(delivery.started && delivery.recovering,
+                "the startup scan did not raise the barrier" + where);
+        require(!recovery_complete(delivery, state),
+                "recovery completed before anything had been established" + where);
+
+        // THE WHOLE POINT. A restarted gateway facing a replicated pending submit
+        // sends nothing, at every cut - including cut 0, where the send genuinely
+        // never happened. Being conservative costs a round trip there; being
+        // optimistic costs a second real order at cuts 1 and 2, and nothing in
+        // replicated state distinguishes them.
+        require(plan_delivery(state, delivery, control_of(state), capable_venue(),
+                              SendQuotaView{4}, timeouts, now)
+                        .send_count == 0,
+                "a restarted gateway scheduled a possibly-sent submit" + where);
+
+        // The suspect effect travels the path an ambiguous send already travels.
+        now += timeouts.response_deadline;
+        const auto plan = plan_delivery(state, delivery, control_of(state),
+                                        capable_venue(), SendQuotaView{4}, timeouts,
+                                        now);
+        require(plan.send_count == 0 && plan.ambiguous_count == 1 &&
+                    plan.now_ambiguous[0] == fixture.effect_id,
+                "the suspect effect was not declared ambiguous" + where);
+
+        VenueObservation unknown;
+        unknown.kind = VenueObservationKind::effect_unknown;
+        unknown.venue_id = VenueId{9};
+        unknown.venue_session_id = venue.session();
+        unknown.venue_sequence = VenueSequence{910'000 + static_cast<std::uint64_t>(cut)};
+        unknown.cluster_order_id = sole_order(state).cluster_order_id;
+        unknown.effect_id = fixture.effect_id;
+        unknown.evidence_digest = digest(0x7E);
+        require(submit_answer(state, unknown, 9'100).code == ApplyCode::applied,
+                "the cluster refused the recovery's unknown report" + where);
+        require(record_response(delivery, fixture.effect_id),
+                "record_response did not find the suspect attempt" + where);
+
+        // The barrier lifts once every suspect has been handed to reconciliation.
+        // It does NOT wait for the answer: a suspect order whose queries are spent
+        // would otherwise block new risk on every other slot forever.
+        require(recovery_complete(delivery, state),
+                "the barrier never lifted" + where);
+        delivery.recovering = false;
+
+        // And the effect still cannot be resent, barrier or no barrier. That
+        // property lives in the attempt record, not in the barrier, which is why
+        // lifting the barrier does not restore it.
+        require(plan_delivery(state, delivery, control_of(state), capable_venue(),
+                              SendQuotaView{4}, timeouts, now)
+                        .send_count == 0,
+                "the suspect submit became resendable once recovery finished" + where);
+
+        // Reconciliation owns it from here. This is where absence gets
+        // ESTABLISHED rather than assumed.
+        GatewayReconciliationState reconciliation;
+        const auto recon = plan_reconciliation(state, reconciliation, delivery,
+                                               control_of(state), capable_venue(),
+                                               timeouts, now);
+        require(recon.query_count == 1 &&
+                    recon.to_query[0].cluster_order_id ==
+                        sole_order(state).cluster_order_id,
+                "the restart left an order nobody would query" + where);
+
+        const auto raw = venue.query(recon.to_query[0].cluster_order_id, now);
+        require(record_query(reconciliation, recon.to_query[0].cluster_order_id, now,
+                             accepted_evidence_watermark(
+                                 state, recon.to_query[0].cluster_order_id)),
+                "record_query failed" + where);
+        require(record_answer(reconciliation, recon.to_query[0].cluster_order_id),
+                "record_answer failed" + where);
+
+        // The venue's answer distinguishes the cuts the gateway could not. Cut 0
+        // never reached it; cuts 1 and 2 did.
+        require((cut == 0) == (raw.outcome == QueryOutcome::not_found),
+                "the venue's answer did not match what actually happened" + where);
+
+        const auto answer = reconciled(
+            state, fixture.effect_id,
+            raw.outcome == QueryOutcome::known ? raw.venue_order_id.value() : 0,
+            raw.filled_quantity.atoms(), 9'200);
+        const auto adjudicated = submit_answer(state, answer, 9'201);
+        if (cut == 0) {
+            // Absence ESTABLISHED, not assumed. The venue never had it, so the
+            // reservation was never real risk and the slot comes back.
+            require(adjudicated.code == ApplyCode::applied,
+                    "a definitive not-found was refused" + where);
+            require(sole_order(state).state == ClusterOrderState::rejected,
+                    "a denied order did not resolve after recovery" + where);
+            require(risk_released(state),
+                    "a denied order kept its reservation after recovery" + where);
+        } else {
+            // The venue is AHEAD of the cluster: it reports fills the cluster
+            // never received, because they were in flight when the process died.
+            // 10.3.4 makes that MISSING EVIDENCE rather than a conflict, so the
+            // answer is refused and the order stays queryable - which is the
+            // correct outcome, not a gap in recovery.
+            require(adjudicated.code == ApplyCode::venue_observation_not_applicable,
+                    "an answer ahead of the cluster was not refused" + where);
+            require(sole_order(state).state == ClusterOrderState::submission_unknown,
+                    "a refused answer moved the order" + where);
+
+            // And the evidence itself closes it. The observations the venue had
+            // already scheduled reach the restarted gateway and apply under the
+            // identity the pre-crash send established - which is the entire
+            // reason a retry must never mint a fresh one.
+            std::uint64_t sequence = 9'300;
+            for (const auto& observation : venue.poll(now + 8)) {
+                const bool is_fill = observation.kind == VenueObservationKind::fill;
+                const Command command{
+                    {CallerId{1}, RequestSequence{++sequence},
+                     observation_fingerprint(observation)},
+                    is_fill ? CommandBody{ObserveFill{observation}}
+                            : CommandBody{ObserveOrderEvent{observation}}};
+                ApplyScratch scratch;
+                (void)apply(state, command, scratch);
+            }
+            require(sole_order(state).state == ClusterOrderState::filled,
+                    "the in-flight evidence did not resolve the restart" + where);
+        }
+
+        // The oracle the whole test exists for. The simulator creates a resting
+        // order only for a cluster order identity it has never seen, so a blind
+        // resend would show up here as a second one - and at cut 0, where nothing
+        // was ever sent, as a first one after recovery.
+        require(venue_orders == static_cast<std::size_t>(cut == 0 ? 0 : 1),
+                "the restart changed how many orders exist at the venue" + where);
+    }
+}
+
+void test_recovery_blocks_new_risk_without_blocking_a_cancel() {
+    // G-032 blocks NEW RISK during recovery. A cancel is not new risk: it can
+    // only reduce exposure or leave it unchanged. A barrier that also stopped an
+    // operator getting flat would be protecting the wrong thing, and it would
+    // bite hardest exactly when a gateway has just come back and somebody wants
+    // out.
+    const GatewayTimeouts timeouts;
+    auto fixture = pending_cancel();
+    GatewayDeliveryState delivery;
+    // The submit is acknowledged and the cancel is not, so the scan finds exactly
+    // one suspect effect and it is the cancel.
+    require(begin_gateway_recovery(delivery, fixture.state, 0) == 1,
+            "the startup scan did not find the pending cancel");
+    require(delivery.recovering, "the startup scan did not raise the barrier");
+
+    // A suspect cancel waits out its synthetic deadline first. The restart does
+    // not know whether THIS cancel reached the venue either, and redelivering
+    // before its outcome has even been declared unknown would skip the step that
+    // makes redelivery legible.
+    require(plan_delivery(fixture.state, delivery, control_of(fixture.state),
+                          capable_venue(), SendQuotaView{4}, timeouts, 0)
+                    .send_count == 0,
+            "a suspect cancel was redelivered before its outcome was declared");
+    const auto matured =
+        plan_delivery(fixture.state, delivery, control_of(fixture.state),
+                      capable_venue(), SendQuotaView{4}, timeouts,
+                      timeouts.response_deadline);
+    require(matured.ambiguous_count == 1 &&
+                matured.now_ambiguous[0] == fixture.effect_id,
+            "the suspect cancel was never declared ambiguous");
+    require(record_response(delivery, fixture.effect_id), "record_response failed");
+
+    // NOW it goes, with the barrier still up. That is the approved 10.3.5 rule
+    // surviving recovery, which is the property this test exists for.
+    require(delivery.recovering, "the barrier lifted on its own");
+    require(plan_delivery(fixture.state, delivery, control_of(fixture.state),
+                          capable_venue(), SendQuotaView{4}, timeouts,
+                          timeouts.response_deadline)
+                    .send_count == 1,
+            "the recovery barrier refused to redeliver a cancel");
+
+    // The other half, isolated so the barrier cannot be credited for a refusal
+    // something else made. A gateway recovering from suspects on other slots can
+    // receive a fresh authorization while the barrier is still up; this is that
+    // state, and the ONLY difference between the two plans below is the flag.
+    const auto submit_fixture = one_authorized_submit();
+    auto barred = running_gateway();
+    barred.recovering = true;
+    require(plan_delivery(submit_fixture.state, barred,
+                          control_of(submit_fixture.state), capable_venue(),
+                          SendQuotaView{4}, timeouts, 0)
+                    .send_count == 0,
+            "the recovery barrier let new risk through");
+    barred.recovering = false;
+    require(plan_delivery(submit_fixture.state, barred,
+                          control_of(submit_fixture.state), capable_venue(),
+                          SendQuotaView{4}, timeouts, 0)
+                    .send_count == 1,
+            "lifting the barrier did not restore ordinary delivery, so the "
+            "refusal above proved nothing about the barrier");
+}
+
+void test_a_gateway_that_never_scanned_sends_nothing() {
+    // The failure direction for a forgotten startup scan has to be silence, not
+    // a blind send. This is the structural half of P1-2: the unsafe behaviour is
+    // not merely discouraged, it is unreachable without an explicit call.
+    const auto fixture = one_authorized_submit();
+    const GatewayDeliveryState never_started;
+    require(!never_started.started, "a fresh gateway claimed to have started");
+    require(plan_delivery(fixture.state, never_started, control_of(fixture.state),
+                          capable_venue(), SendQuotaView{4}, GatewayTimeouts{10}, 0)
+                    .send_count == 0,
+            "a gateway that never scanned replicated state sent anyway");
+}
+
 void test_a_denied_order_releases_its_reservation_and_frees_the_slot() {
     // The single most valuable answer reconciliation can obtain: the venue never
     // had the order, so the held risk was never real. Economically this is a
@@ -1284,7 +1552,7 @@ void test_a_silent_cancel_redelivers_before_it_reconciles() {
     const auto fixture = silent_cancel();
     const GatewayTimeouts timeouts;
     const GatewayReconciliationState fresh;
-    GatewayDeliveryState delivery;
+    auto delivery = running_gateway();
 
     // Redelivery, not reconciliation, while attempts remain.
     require(record_send(delivery, fixture.effect_id, 0), "record_send failed");
@@ -2188,7 +2456,12 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
     auto state = ready_state();
     ApplyScratch scratch;
     SimulatedVenue venue(seed, faults, VenueId{9});
+    // The gateway starts before the cluster holds anything, which is the honest
+    // description of this run: there is no previous incarnation whose sends it
+    // would have to be suspicious of. The restart case is exercised separately,
+    // by cutting the gateway mid-run.
     GatewayDeliveryState delivery;
+    (void)begin_gateway_recovery(delivery, state, 0);
     GatewayReconciliationState reconciliation;
     const GatewayTimeouts timeouts{8};
 
@@ -3088,6 +3361,9 @@ int main() {
         test_the_evidence_watermark_counts_only_accepted_evidence();
         test_a_delivery_exhausted_order_is_reconciled_not_abandoned();
         test_the_reconciliation_planner_reads_no_clock_and_mutates_nothing();
+        test_a_gateway_crash_cannot_produce_a_second_order();
+        test_recovery_blocks_new_risk_without_blocking_a_cancel();
+        test_a_gateway_that_never_scanned_sends_nothing();
         test_a_cancel_is_deliverable_in_every_strategy_mode();
         test_a_conflicted_order_keeps_accounting_valid_executions();
         test_an_expired_venue_event_is_refused_not_replayed();
