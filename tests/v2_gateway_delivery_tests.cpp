@@ -29,6 +29,7 @@
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -414,11 +415,11 @@ ClusterOrderId only_order(const TradingState& state) {
 // arena is empty. `delivery_exhausted` gets its own test below.
 const GatewayDeliveryState no_attempts;
 
-constexpr VenueQueryView authoritative_answer(const VenueQueryStatus status) {
+constexpr VenueQueryView complete_answer(const VenueQueryStatus status) {
     VenueQueryView answer;
     answer.status = status;
     answer.venue_session_id = VenueSessionId{1};
-    answer.authoritative = true;
+    answer.window_complete = true;
     return answer;
 }
 
@@ -450,7 +451,7 @@ void test_one_outstanding_query_at_a_time() {
     // reason at all.
     const auto stranded = stranded_submit();
     GatewayReconciliationState reconciliation;
-    require(record_query(reconciliation, only_order(stranded.state), 0),
+    require(record_query(reconciliation, only_order(stranded.state), 0, 0),
             "record_query failed");
     require(plan_reconciliation(stranded.state, reconciliation, no_attempts,
                                 control_of(stranded.state), capable_venue(),
@@ -463,7 +464,7 @@ void test_the_query_interval_is_respected() {
     const auto stranded = stranded_submit();
     const GatewayTimeouts timeouts;
     GatewayReconciliationState reconciliation;
-    require(record_query(reconciliation, only_order(stranded.state), 0),
+    require(record_query(reconciliation, only_order(stranded.state), 0, 0),
             "record_query failed");
     require(record_answer(reconciliation, only_order(stranded.state)),
             "record_answer failed");
@@ -491,7 +492,7 @@ void test_reconciliation_queries_are_bounded() {
                                     timeouts, now)
                         .query_count == 1,
                 "a query below the attempt bound was not planned");
-        require(record_query(reconciliation, order, now), "record_query failed");
+        require(record_query(reconciliation, order, now, 0), "record_query failed");
         require(record_answer(reconciliation, order), "record_answer failed");
         now += timeouts.query_interval;
     }
@@ -536,31 +537,76 @@ void test_only_a_trustworthy_answer_may_be_submitted() {
     // Silence proves nothing. In particular it does NOT prove the order is
     // absent, which is the inference that turns a network problem into a
     // duplicate order.
-    require(classify_query(authoritative_answer(VenueQueryStatus::unavailable),
-                           nullptr, timeouts) == QueryDisposition::unavailable,
+    require(classify_query(complete_answer(VenueQueryStatus::unavailable),
+                           nullptr, 0, timeouts) == QueryDisposition::unavailable,
             "an unavailable query was treated as an answer");
 
     // A partial view of a fill history is indistinguishable from a short one.
-    auto partial = authoritative_answer(VenueQueryStatus::known);
-    partial.authoritative = false;
-    require(classify_query(partial, nullptr, timeouts) == QueryDisposition::incomplete,
-            "a non-authoritative answer was treated as complete");
+    auto partial = complete_answer(VenueQueryStatus::known);
+    partial.window_complete = false;
+    require(classify_query(partial, nullptr, 0, timeouts) == QueryDisposition::incomplete,
+            "an answer that did not cover its window was treated as complete");
 
-    require(classify_query(authoritative_answer(VenueQueryStatus::known), nullptr,
-                           timeouts) == QueryDisposition::submit,
+    require(classify_query(complete_answer(VenueQueryStatus::known), nullptr, 0, timeouts) == QueryDisposition::submit,
             "a complete answer was not submitted");
 
     // The most valuable answer reconciliation can get: nothing was ever placed,
     // so the reservation can be released rather than held forever.
-    require(classify_query(authoritative_answer(VenueQueryStatus::not_found), nullptr,
-                           timeouts) == QueryDisposition::submit,
+    require(classify_query(complete_answer(VenueQueryStatus::not_found), nullptr, 0, timeouts) == QueryDisposition::submit,
             "a definitive not-found was not submitted");
 
     ReconciliationAttempt spent;
     spent.attempts = timeouts.max_query_attempts;
-    require(classify_query(authoritative_answer(VenueQueryStatus::unavailable), &spent,
-                           timeouts) == QueryDisposition::exhausted,
+    require(classify_query(complete_answer(VenueQueryStatus::unavailable), &spent, 0, timeouts) == QueryDisposition::exhausted,
             "a spent reconciliation kept reporting as merely unavailable");
+}
+
+void test_an_answer_that_predates_new_evidence_is_not_comparable() {
+    // DECISION B, the classifier half.
+    //
+    // `window_complete` orders an answer against other ANSWERS. It says nothing
+    // about fills arriving while the answer was in flight, and that gap is an
+    // economic hazard rather than a theoretical one: a venue can snapshot an
+    // order as working with cumulative zero, a fill can execute and commit in the
+    // cluster, and the delayed snapshot then reads as "venue below cluster" - a
+    // permanent conflict, although neither side ever contradicted the other at a
+    // common time.
+    const GatewayTimeouts timeouts;
+
+    ReconciliationAttempt issued;
+    issued.attempts = 1;
+    issued.evidence_at_query = 3;
+
+    // Evidence moved between asking and answering. Every kind of answer is
+    // barred - `not_found` most of all, because acting on that one releases the
+    // reservation for an order that has just traded.
+    for (const auto status :
+         {VenueQueryStatus::known, VenueQueryStatus::not_found}) {
+        require(classify_query(complete_answer(status), &issued, 4, timeouts) ==
+                    QueryDisposition::incomplete,
+                "an answer that predates committed evidence was submitted anyway");
+    }
+
+    // Standing still is the point. An unmoved barrier must not turn every query
+    // into a retry loop, or reconciliation would never resolve anything.
+    require(classify_query(complete_answer(VenueQueryStatus::known), &issued, 3,
+                           timeouts) == QueryDisposition::submit,
+            "an answer whose barrier never moved was refused");
+
+    // The barrier is a reason to ask AGAIN, never a reason to ask forever. Once
+    // the attempt budget is spent the order stays unresolved and visible, which
+    // is the G-074a operator situation rather than something to heal by guessing.
+    auto spent = issued;
+    spent.attempts = timeouts.max_query_attempts;
+    require(classify_query(complete_answer(VenueQueryStatus::known), &spent, 4,
+                           timeouts) == QueryDisposition::exhausted,
+            "a moved barrier kept asking past the attempt budget");
+
+    // A first query has no barrier to compare against, so it must not be barred
+    // by one. This is what stops the rule degenerating into "never submit".
+    require(classify_query(complete_answer(VenueQueryStatus::known), nullptr, 9,
+                           timeouts) == QueryDisposition::submit,
+            "an answer with no outstanding attempt was barred anyway");
 }
 
 void test_a_delivery_exhausted_order_is_reconciled_not_abandoned() {
@@ -820,6 +866,47 @@ VenueObservation cancel_final(const TradingState& state, EffectId effect_id,
     return final;
 }
 
+void test_the_evidence_watermark_counts_only_accepted_evidence() {
+    // The barrier is only as good as its coordinate. A watermark that moved on
+    // REFUSED evidence would bar answers for no reason and stall reconciliation;
+    // one that failed to move on accepted evidence would let the hazard through.
+    auto fixture = one_authorized_submit();
+    const auto order = sole_order(fixture.state).cluster_order_id;
+
+    const auto before = accepted_evidence_watermark(fixture.state, order);
+
+    VenueObservation ack;
+    ack.kind = VenueObservationKind::order_acknowledged;
+    ack.venue_id = VenueId{9};
+    ack.venue_session_id = VenueSessionId{1};
+    ack.venue_sequence = VenueSequence{4'100};
+    ack.cluster_order_id = order;
+    ack.effect_id = fixture.effect_id;
+    ack.venue_order_id = VenueOrderId{88};
+    ack.evidence_digest = digest(0x71);
+    require(submit_answer(fixture.state, ack, 4'101).code == ApplyCode::applied,
+            "the watermark fixture could not acknowledge its order");
+    const auto after_ack = accepted_evidence_watermark(fixture.state, order);
+    require(after_ack == before + 1, "accepted evidence did not move the watermark");
+
+    // The same acknowledgement again. It is refused, and a refusal is not
+    // evidence: nothing about the cluster's picture of this order changed, so
+    // barring a concurrent answer over it would be a stall with no cause.
+    require(submit_answer(fixture.state, ack, 4'102).code != ApplyCode::applied,
+            "a replayed acknowledgement was applied twice");
+    require(accepted_evidence_watermark(fixture.state, order) == after_ack,
+            "a refused observation moved the watermark");
+
+    book_partial_fill(fixture.state, fixture.effect_id, 1, 4'103);
+    require(accepted_evidence_watermark(fixture.state, order) == after_ack + 1,
+            "a booked fill did not move the watermark");
+
+    // An order the cluster does not hold has no evidence, and must not borrow
+    // another order's. The barrier is per-order or it is nothing.
+    require(accepted_evidence_watermark(fixture.state, ClusterOrderId{9'999}) == 0,
+            "an unknown order reported a non-zero evidence watermark");
+}
+
 void test_a_denied_order_releases_its_reservation_and_frees_the_slot() {
     // The single most valuable answer reconciliation can obtain: the venue never
     // had the order, so the held risk was never real. Economically this is a
@@ -971,6 +1058,95 @@ void test_a_venue_that_lost_a_fill_is_a_conflict() {
             "a regressing answer was not recorded");
     require(sole_order(fixture.state).state == ClusterOrderState::conflict,
             "a venue losing a booked fill was not a conflict");
+}
+
+void test_a_snapshot_taken_before_a_fill_cannot_strand_the_order() {
+    // DECISION B, the economic half, told as the sequence of events that
+    // actually happens on a venue. Every step below is individually true; the
+    // damage comes entirely from comparing two of them across time.
+    //
+    // The shape is reachable only through the CANCEL path, and that is not an
+    // accident: a fill resolves a submit whose outcome was unknown, so a submit
+    // in `submission_unknown` can never accumulate booked quantity. A cancel is
+    // different. Its outcome stays unknown while the order underneath it goes on
+    // trading, which is exactly the window a query can be issued in and answered
+    // after.
+    const GatewayTimeouts timeouts;
+    auto fixture = silent_cancel();
+    const auto submit_id = submit_effect_of(fixture.state);
+    const auto order = sole_order(fixture.state).cluster_order_id;
+
+    // 1. The gateway asks, stamping the order's evidence watermark as it asks.
+    //    That stamp is the only coordinate for "when" it has, and it is enough.
+    GatewayReconciliationState reconciliation;
+    const auto at_query = accepted_evidence_watermark(fixture.state, order);
+    require(record_query(reconciliation, order, 10, at_query),
+            "record_query failed");
+
+    // 2. The venue takes its snapshot now: the order is working and nothing has
+    //    traded. TRUE at the moment it is taken.
+    auto snapshot = complete_answer(VenueQueryStatus::known);
+    snapshot.venue_order_id = VenueOrderId{88};
+    snapshot.filled_quantity = QuantityLots{};
+
+    // 3. While that answer is in flight the order trades, and the cluster books
+    //    it. Also true. The order stays unresolved, because what is unknown is
+    //    the fate of the CANCEL, and a fill says nothing about that.
+    book_partial_fill(fixture.state, submit_id, 1, 5'400);
+    require(sole_order(fixture.state).state == ClusterOrderState::submission_unknown,
+            "the fill resolved the order, so the window this test needs is gone");
+    const auto at_answer = accepted_evidence_watermark(fixture.state, order);
+    require(at_answer != at_query, "the fill did not move the evidence watermark");
+
+    // 4. THE COUNTERFACTUAL, and the reason this test is not decoration. Acting
+    //    on the stale snapshot is not a wasted round trip: the venue's cumulative
+    //    zero sits BELOW the lot the cluster has booked, and that is the one
+    //    direction no later evidence can ever close (10.3.4). The order conflicts
+    //    permanently and its slot never comes back - over two facts that never
+    //    disagreed with each other.
+    {
+        auto counterfactual = fixture.state;
+        require(submit_answer(counterfactual,
+                              reconciled(counterfactual, fixture.effect_id, 88, 0),
+                              5'401)
+                        .code == ApplyCode::applied,
+                "the stale answer was not even accepted");
+        require(sole_order(counterfactual).state == ClusterOrderState::conflict,
+                "the stale answer did not strand the order, so the rest of this "
+                "test proves nothing");
+    }
+
+    // 5. What the gateway does instead. The barrier moved, so the answer is not
+    //    comparable with what the cluster now holds, and the only safe verdict is
+    //    to ask again. Note what is NOT claimed: the answer is not called wrong.
+    //    It is called incomparable, which is a much weaker and much more honest
+    //    thing to say about it.
+    require(classify_query(snapshot, find_reconciliation(reconciliation, order),
+                           at_answer, timeouts) == QueryDisposition::incomplete,
+            "a snapshot taken before a committed fill was acted on");
+    require(sole_order(fixture.state).state == ClusterOrderState::submission_unknown,
+            "refusing to act moved the order anyway");
+
+    // 6. And asking again resolves it, which is the half that keeps the barrier
+    //    from being a permanent stall dressed up as safety. A fresh snapshot
+    //    agrees with what the cluster booked, nothing has moved since that second
+    //    query was issued, and the order settles without anybody guessing.
+    require(record_answer(reconciliation, order), "record_answer failed");
+    require(record_query(reconciliation, order, 20, at_answer),
+            "record_query failed");
+    auto fresh_snapshot = snapshot;
+    fresh_snapshot.filled_quantity = QuantityLots::from_atoms(1);
+    require(classify_query(fresh_snapshot, find_reconciliation(reconciliation, order),
+                           accepted_evidence_watermark(fixture.state, order),
+                           timeouts) == QueryDisposition::submit,
+            "a comparable answer was refused");
+    require(submit_answer(fixture.state,
+                          reconciled(fixture.state, fixture.effect_id, 88, 1),
+                          5'402)
+                    .code == ApplyCode::applied,
+            "the agreeing answer was refused");
+    require(sole_order(fixture.state).state == ClusterOrderState::partially_filled,
+            "an agreeing answer did not resolve the order");
 }
 
 void test_replaying_the_same_answer_changes_nothing() {
@@ -1942,7 +2118,13 @@ struct RunOutcome {
     std::map<ClusterOrderState, std::size_t> unresolved_states;
     std::map<std::uint64_t, ClusterOrderState> unresolved_orders_by_id;
     std::size_t reconciliation_targets{};
+    // Asked and answered are counted separately because they no longer happen in
+    // the same step: a query is issued on one tick and classified on a later one.
+    // Collapsing them would hide exactly the interval the ordering barrier
+    // exists to police.
     std::size_t queries{};
+    std::size_t answers{};
+    std::size_t stale_answers{};
     std::size_t reconciled{};
     std::map<QueryDisposition, std::size_t> dispositions;
     // Why an order could not be resolved, recorded as it happens. An order left
@@ -2029,13 +2211,25 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
                                request_digest(counter)};
     };
 
+    // A query the venue has answered but the gateway has not yet seen. Holding
+    // these is what gives a query a non-zero flight time, and a non-zero flight
+    // time is what makes the ordering barrier reachable at all.
+    struct InFlightQuery {
+        ReconciliationTarget target{};
+        sim::Tick due{};
+        VenueQueryView view{};
+    };
+    std::vector<InFlightQuery> in_flight;
+
     // One tick of the loop. `propose` is false during the drain, so the run can
     // finish delivering what it already authorized without starting new risk -
     // which is what makes "did anything stay unresolved" a real question rather
-    // than an artefact of stopping mid-flight.
+    // than an artefact of stopping mid-flight. `issue_queries` is false on the
+    // final drain pass only, so every query the run asked gets an answer rather
+    // than being stranded in flight when the loop stops.
     std::uint64_t cycle = 0;
     std::map<std::uint64_t, bool> last_seen;
-    const auto tick = [&](const bool propose) {
+    const auto tick = [&](const bool propose, const bool issue_queries) {
         // 1. The edge proposes; the cluster authorizes. Refusals are expected and
         //    correct: slot exclusivity and arena headroom both fail closed, and
         //    the harness must tolerate that rather than force throughput.
@@ -2192,54 +2386,45 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
                 ++outcome.event_refusals[applied.code];
             }
         }
-        // 6. Reconcile. This runs after the drain so it sees the freshest state,
-        //    and it is the only step allowed to resolve exposure the loop itself
-        //    could not.
-        const auto recon = plan_reconciliation(state, reconciliation, delivery,
-                                               control_of(state), capable_venue(),
-                                               timeouts, now);
-        for (std::size_t index = 0; index < recon.query_count; ++index) {
-            const auto& target = recon.to_query[index];
-            require(record_query(reconciliation, target.cluster_order_id, now),
-                    "the reconciliation arena overflowed");
-            const auto raw = venue.query(target.cluster_order_id, now);
+        // 6. Reconcile, as a PIPELINE rather than a round trip inside one
+        //    statement.
+        //
+        //    A query is asked at one moment and answered at another, and the gap
+        //    between them is where the ordering hazard lives: a fill can execute
+        //    at the venue and commit in the cluster while a snapshot is in
+        //    flight, so the snapshot arrives reading BELOW what the cluster has
+        //    already booked without either side ever having contradicted the
+        //    other at a common time. Asking and answering in the same statement
+        //    makes that interval exactly zero, which is why the harness could
+        //    not previously reach the hazard at all.
+        //
+        // 6a. COLLECT what is now due. Placed after the drain on purpose: a fill
+        //     that committed while the query was in flight has already moved the
+        //     order's evidence watermark by the time its answer is classified,
+        //     which is precisely the condition the barrier tests for.
+        std::vector<InFlightQuery> still_flying;
+        still_flying.reserve(in_flight.size());
+        for (std::size_t index = 0; index < in_flight.size(); ++index) {
+            const auto& pending = in_flight[index];
+            if (pending.due > now) {
+                still_flying.push_back(pending);
+                continue;
+            }
+            const auto& target = pending.target;
+            const auto& view = pending.view;
             require(record_answer(reconciliation, target.cluster_order_id),
                     "record_answer did not find the outstanding query");
-            ++outcome.queries;
-
-            // Map the transport's answer into what the gateway may act on. The
-            // simulator's own result type deliberately never crosses this line.
-            VenueQueryView view;
-            view.venue_session_id = venue.session();
-            switch (raw.outcome) {
-                case QueryOutcome::known:
-                    view.status = VenueQueryStatus::known;
-                    view.venue_order_id = raw.venue_order_id;
-                    view.filled_quantity = raw.filled_quantity;
-                    view.remaining_quantity = raw.remaining_quantity;
-                    view.cancelled = raw.cancelled;
-                    // Authoritative means the VENUE says this answer covers the
-                    // window it was asked about. It deliberately does NOT consult
-                    // `raw.inconsistent`: that flag is the simulator telling the
-                    // test what it did, and wiring it in here would hand the
-                    // gateway ground truth no real gateway can have. A corrupted
-                    // answer must reach the reducer and be caught by the
-                    // reducer's own refusal to guess - which is the entire reason
-                    // that logic exists.
-                    view.authoritative = true;
-                    break;
-                case QueryOutcome::not_found:
-                    view.status = VenueQueryStatus::not_found;
-                    view.authoritative = true;
-                    break;
-                case QueryOutcome::unavailable:
-                    view.status = VenueQueryStatus::unavailable;
-                    break;
-            }
+            ++outcome.answers;
 
             const auto* attempt =
                 find_reconciliation(reconciliation, target.cluster_order_id);
-            const auto disposition = classify_query(view, attempt, timeouts);
+            const auto evidence_now =
+                accepted_evidence_watermark(state, target.cluster_order_id);
+            if (attempt != nullptr && evidence_now != attempt->evidence_at_query) {
+                ++outcome.stale_answers;
+            }
+            const auto disposition =
+                classify_query(view, attempt, evidence_now, timeouts);
             ++outcome.dispositions[disposition];
             if (disposition != QueryDisposition::submit) {
                 outcome.never_answered.insert(target.cluster_order_id.value());
@@ -2286,6 +2471,67 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
                 // the cluster is missing, not a conflict, because a fill still in
                 // flight would close the gap.
                 outcome.answered_ahead.insert(target.cluster_order_id.value());
+            }
+        }
+        in_flight = std::move(still_flying);
+
+        // 6b. ISSUE. The snapshot is taken at the venue NOW; the gateway sees it
+        //     only on a later tick. `record_query` stamps the order's evidence
+        //     watermark at this instant, and that stamp is the far side of the
+        //     barrier 6a checks against.
+        //
+        //     `plan_reconciliation` already refuses to issue a second query for
+        //     an order with one outstanding, so the pipeline never holds two
+        //     answers for the same order and cannot let a stale view overwrite a
+        //     fresh one.
+        if (issue_queries) {
+            const auto recon = plan_reconciliation(state, reconciliation, delivery,
+                                                   control_of(state), capable_venue(),
+                                                   timeouts, now);
+            for (std::size_t index = 0; index < recon.query_count; ++index) {
+                const auto& target = recon.to_query[index];
+                require(record_query(
+                            reconciliation, target.cluster_order_id, now,
+                            accepted_evidence_watermark(state,
+                                                        target.cluster_order_id)),
+                        "the reconciliation arena overflowed");
+                const auto raw = venue.query(target.cluster_order_id, now);
+                ++outcome.queries;
+
+                // Map the transport's answer into what the gateway may act on.
+                // The simulator's own result type deliberately never crosses this
+                // line.
+                VenueQueryView view;
+                view.venue_session_id = venue.session();
+                switch (raw.outcome) {
+                    case QueryOutcome::known:
+                        view.status = VenueQueryStatus::known;
+                        view.venue_order_id = raw.venue_order_id;
+                        view.filled_quantity = raw.filled_quantity;
+                        view.remaining_quantity = raw.remaining_quantity;
+                        view.cancelled = raw.cancelled;
+                        // The VENUE's own statement about coverage, carried
+                        // through unchanged. It deliberately does NOT consult
+                        // `raw.inconsistent`: that flag is the simulator telling
+                        // the test what it did, and wiring it in here would hand
+                        // the gateway ground truth no real gateway can have. A
+                        // corrupted answer must reach the reducer and be caught
+                        // by the reducer's own refusal to guess - which is the
+                        // entire reason that logic exists.
+                        view.window_complete = raw.window_complete;
+                        break;
+                    case QueryOutcome::not_found:
+                        view.status = VenueQueryStatus::not_found;
+                        view.window_complete = true;
+                        break;
+                    case QueryOutcome::unavailable:
+                        view.status = VenueQueryStatus::unavailable;
+                        break;
+                }
+                // One tick of query latency. It only has to be non-zero: what
+                // matters is that a fill can commit in between, not how long the
+                // venue takes.
+                in_flight.push_back({target, now + 1, view});
             }
         }
 
@@ -2338,11 +2584,19 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
         now += 2;
     };
 
-    for (cycle = 0; cycle < cycles; ++cycle) tick(true);
+    for (cycle = 0; cycle < cycles; ++cycle) tick(true, true);
     // Drain. Bounded by construction: each pass advances virtual time by five
     // ticks, so every deadline and every scheduled response comes due. What is
     // still unresolved after this is genuinely unresolved.
-    for (std::uint64_t pass = 0; pass < 12; ++pass) tick(false);
+    //
+    // The last pass stops asking and only collects, because a query issued on the
+    // final pass would never be answered - and an unanswered query leaves an
+    // order unresolved with nothing on record saying why, which is the one thing
+    // the gates below must never have to tolerate.
+    constexpr std::uint64_t kDrainPasses = 13;
+    for (std::uint64_t pass = 0; pass < kDrainPasses; ++pass) {
+        tick(false, pass + 1 < kDrainPasses);
+    }
 
     for (std::size_t index = 0; index < state.order_count; ++index) {
         const auto& order = state.orders[index];
@@ -2521,6 +2775,10 @@ void test_the_fault_matrix_holds_the_gate() {
     faults.disconnect_permille = 60;
     faults.rate_limit_permille = 90;
     faults.inconsistent_query_permille = 220;
+    // A venue that pages its execution history. Not a malfunction - ordinary
+    // behaviour the gateway has to survive, and the branch where an answer that
+    // does not cover its window gets refused rather than booked.
+    faults.partial_window_permille = 200;
 
     std::size_t total_sends = 0;
     std::size_t total_ambiguous = 0;
@@ -2530,6 +2788,8 @@ void test_the_fault_matrix_holds_the_gate() {
     std::size_t total_queries = 0;
     std::size_t total_reconciled = 0;
     std::size_t total_unavailable = 0;
+    std::size_t total_incomplete = 0;
+    std::size_t total_stale = 0;
     std::size_t total_cancels = 0;
     for (std::uint64_t seed = 1; seed <= 32; ++seed) {
         const auto outcome = run_seed(seed, faults, 12);
@@ -2548,8 +2808,9 @@ void test_the_fault_matrix_holds_the_gate() {
             for (const auto& [code, count] : outcome.event_refusals) {
                 std::cout << static_cast<int>(code) << "x" << count << " ";
             }
-            std::cout << "queries " << outcome.queries << " reconciled "
-                      << outcome.reconciled << " recon-targets "
+            std::cout << "queries " << outcome.queries << " answers "
+                      << outcome.answers << " stale " << outcome.stale_answers
+                      << " reconciled " << outcome.reconciled << " recon-targets "
                       << outcome.reconciliation_targets << " states ";
             for (const auto& [order_state, count] : outcome.unresolved_states) {
                 std::cout << static_cast<int>(order_state) << "x" << count << " ";
@@ -2568,6 +2829,10 @@ void test_the_fault_matrix_holds_the_gate() {
         if (outcome.dispositions.count(QueryDisposition::unavailable) != 0) {
             total_unavailable += outcome.dispositions.at(QueryDisposition::unavailable);
         }
+        if (outcome.dispositions.count(QueryDisposition::incomplete) != 0) {
+            total_incomplete += outcome.dispositions.at(QueryDisposition::incomplete);
+        }
+        total_stale += outcome.stale_answers;
         total_sends += outcome.sends;
         total_ambiguous += outcome.ambiguous_declared;
         total_orders += outcome.venue_orders_created;
@@ -2595,6 +2860,15 @@ void test_the_fault_matrix_holds_the_gate() {
     require(total_unavailable > 0,
             "the matrix never lost a query, so the classifier's silence branch "
             "was never exercised");
+    // The two halves of Decision B, each proved reachable on its own. Without
+    // these the barrier could be deleted and the matrix would still pass, which
+    // is the definition of a test that proves nothing.
+    require(total_incomplete > 0,
+            "the matrix never refused an answer as incomplete, so neither the "
+            "partial-window branch nor the ordering barrier was ever exercised");
+    require(total_stale > 0,
+            "no answer ever arrived after the cluster's evidence had moved, so "
+            "the ordering barrier was never actually crossed");
     // Deliberately NOT asserted here: that the matrix produced a reconciliation
     // conflict. A conflict needs an order that went unknown while already holding
     // booked fills, and this fault model cannot produce that - one fault applies
@@ -2810,6 +3084,8 @@ int main() {
         test_reconciliation_queries_are_bounded();
         test_reconciliation_is_fenced_by_generation_but_not_by_halt();
         test_only_a_trustworthy_answer_may_be_submitted();
+        test_an_answer_that_predates_new_evidence_is_not_comparable();
+        test_the_evidence_watermark_counts_only_accepted_evidence();
         test_a_delivery_exhausted_order_is_reconciled_not_abandoned();
         test_the_reconciliation_planner_reads_no_clock_and_mutates_nothing();
         test_a_cancel_is_deliverable_in_every_strategy_mode();
@@ -2832,6 +3108,7 @@ int main() {
         test_agreement_resolves_the_effect_without_moving_position();
         test_a_fill_the_cluster_never_saw_is_missing_evidence_not_a_conflict();
         test_a_venue_that_lost_a_fill_is_a_conflict();
+        test_a_snapshot_taken_before_a_fill_cannot_strand_the_order();
         test_replaying_the_same_answer_changes_nothing();
         test_the_verdict_is_a_function_of_the_total_not_of_history();
         test_a_reconciliation_answer_is_refused_where_it_cannot_apply();

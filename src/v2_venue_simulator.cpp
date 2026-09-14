@@ -53,8 +53,14 @@ Fault SimulatedVenue::choose_fault(const bool for_query) noexcept {
         // classifier - the one that refuses to read silence as absence - would
         // never be exercised by the matrix.
         if (roll(policy_.disconnect_permille)) return Fault::disconnect;
-        return roll(policy_.inconsistent_query_permille) ? Fault::inconsistent_query
-                                                         : Fault::none;
+        if (roll(policy_.inconsistent_query_permille)) {
+            return Fault::inconsistent_query;
+        }
+        // Ordered after `inconsistent_query` deliberately. A partial window makes
+        // the gateway ask again instead of acting, so putting it first would mask
+        // the corruption case the matrix most needs to reach.
+        return roll(policy_.partial_window_permille) ? Fault::partial_window
+                                                     : Fault::none;
     }
     if (roll(policy_.rate_limit_permille)) return Fault::rate_limit;
     if (roll(policy_.disconnect_permille)) return Fault::disconnect;
@@ -277,6 +283,21 @@ QueryResult SimulatedVenue::query(const ClusterOrderId order, const Tick) {
         result.filled_quantity = QuantityLots{};
         result.remaining_quantity = resting->original;
         result.inconsistent = true;
+    }
+
+    if (fault == Fault::partial_window) {
+        // A paged execution history. The venue is not lying: it is answering for
+        // the page it read and saying so. The numbers are a genuine PREFIX of the
+        // truth, which is exactly why a bounded answer is indistinguishable from a
+        // short one to anybody who ignores the flag.
+        //
+        // `inconsistent` stays false on purpose. Nothing was corrupted, and a test
+        // asserting on corruption must not be able to confuse the two.
+        const auto paged = resting->filled.atoms() / 2;
+        result.filled_quantity = QuantityLots::from_atoms(paged);
+        result.remaining_quantity =
+            QuantityLots::from_atoms(resting->original.atoms() - paged);
+        result.window_complete = false;
     }
     return result;
 }

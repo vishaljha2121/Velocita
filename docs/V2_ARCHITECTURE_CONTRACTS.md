@@ -1022,7 +1022,8 @@ Typed outcomes:
 - `Match`: internal state and venue evidence agree;
 - `Adopt`: venue evidence can be safely associated with a known intent;
 - `Conflict`: identity or economics disagree;
-- `Incomplete`: query boundary is not yet authoritative; and
+- `Incomplete`: the query's window is not yet known to be complete and
+  comparable; and
 - `Unavailable`: a trustworthy query cannot be completed.
 
 Only `Match` and policy-approved `Adopt` clear a recovery gate. Other outcomes
@@ -1079,7 +1080,7 @@ The split is enforced by the type system rather than by a comment.
 #### 10.1.3 Two of the five outcomes are not cluster facts
 
 `Incomplete` and `Unavailable` do not describe the order. They describe the
-QUERY: its window was not authoritative, or it could not be completed. The
+QUERY: its window was not complete, or it could not be completed at all. The
 reducer cannot observe either, because it never sees a query, and storing them
 would put a fact about the gateway's network into replicated economic state.
 
@@ -1420,9 +1421,10 @@ THE HARNESS WAS CHEATING. It set `VenueQueryView::authoritative` from the
 simulator's `inconsistent` flag - which is the simulator telling the TEST what it
 did, not something any real gateway could know. The gateway was being handed
 ground truth, so a corrupted answer never reached the reducer and the reducer's
-refusal to guess was never exercised. `authoritative` now models only what a venue
-says about its own query window, and a corrupted answer reaches the reducer to be
-caught there.
+refusal to guess was never exercised. The field now models only what a venue says
+about its own query window, and a corrupted answer reaches the reducer to be
+caught there. Section 10.9 renames it `window_complete`, because "authoritative"
+was still claiming more than a venue can actually say.
 
 THE FAULT CORRUPTED IN THE HARMLESS DIRECTION. `inconsistent_query` reported
 `original + 1` - above what the cluster booked, which 10.3.4 establishes is the
@@ -1684,6 +1686,93 @@ interleaving, and a venue that answers with a rejection rather than a
 cancellation. No unit test would have been written for it, and the fault matrix
 cannot produce it because its faults do not compose. Only enumeration finds a hole
 of that shape.
+
+### 10.9 A complete answer is not a comparable one (Decision B, approved 2026-09-13)
+
+`VenueQueryView` carried one boolean, `authoritative`, and the gateway treated it
+as licence to hand an answer to the reducer. The name claimed more than the field
+could deliver, and the gap between the claim and the delivery is an economic
+hazard rather than a naming quibble.
+
+WHAT THE FIELD ACTUALLY SAYS. A venue answering a query states that its answer
+covers the window it was asked about - that its execution history is not paged
+short. That orders the answer against OTHER ANSWERS from the same venue. It says
+nothing whatever about ordering against FILLS arriving concurrently, because the
+fill path and the query path are different streams that the venue never claimed to
+sequence against each other. The field is now called `window_complete`, which is
+what it means.
+
+WHY THAT GAP IS EXPENSIVE. Every step of the following is individually true:
+
+1. the cluster holds an order whose cancel went silent, with nothing yet booked;
+2. the gateway asks the venue about it, and the venue snapshots it as working with
+   cumulative zero;
+3. while the answer is in flight, the order trades and the cluster books a lot;
+4. the answer lands, reading cumulative zero against a cluster that has booked one.
+
+By 10.3.4 a venue reporting BELOW what the cluster booked is the unclosable
+direction: no later evidence reduces a booked fill, so the order is a permanent
+`conflict` and its slot never comes back. Nothing in that sequence was wrong. The
+loss comes entirely from comparing two moments as if they were one.
+
+The shape is reachable only through the cancel path, and that is not incidental. A
+fill RESOLVES a submit whose outcome was unknown, so a submit in
+`submission_unknown` can never accumulate booked quantity while it waits. A cancel
+is different: its outcome stays unknown while the order underneath it goes on
+trading. That is the window a query can be issued in and answered after, and it is
+the only one.
+
+THE BARRIER. The gateway records the order's ACCEPTED-EVIDENCE WATERMARK when it
+issues a query - the count of venue observations the cluster has accepted for that
+order - and compares it against the watermark when the answer arrives. If it
+moved, the answer predates evidence the cluster already holds, and
+`classify_query` returns `incomplete`: ask again. The verdict is deliberately weak.
+It does not say the answer is wrong. It says the answer is not comparable, which is
+all the gateway can honestly know and all the reducer needs it to withhold.
+
+Three properties keep this from becoming a stall dressed up as safety. A first
+query has no barrier to compare against and is never barred by one. An unmoved
+watermark submits normally. And the existing attempt budget still applies, so a
+barrier that keeps moving ends in `exhausted` - the order stays visibly
+unresolved, which is the G-074a operator situation rather than something to heal
+by guessing.
+
+NO NEW WIRE FIELD, DELIBERATELY. A real venue's freshness proof may be a monotonic
+sequence, a session barrier, an executions cursor paired with an order watermark,
+or a documented finality guarantee. Inventing a universal field in
+`VenueObservation` before a venue supplies the semantics it would carry is
+guessing at a byte contract. The gateway can establish the barrier from what it
+already knows, and an adapter can strengthen it later with whatever its venue
+actually offers. This is the same reasoning 10.1.1 used to refuse settlement
+fields nothing produces.
+
+WHERE THE BARRIER LIVES. Gateway-local, like delivery and reconciliation attempt
+bookkeeping, and for the same reason: a restart discards it and rebuilds it by
+querying again. It is not consensus state and must never become any, because it
+is a fact about one gateway's network rather than about the position.
+
+WHAT THE SIMULATOR HAD TO CHANGE. Two things, both of which were hiding the
+hazard rather than merely failing to test it.
+
+The harness asked and answered a query in the same statement, so the interval a
+fill could commit in was exactly zero and the barrier was unreachable by
+construction. Reconciliation is now a pipeline: a query is issued on one tick, the
+venue snapshots at that moment, and the answer is classified on a later tick after
+the drain. The final drain pass stops issuing and only collects, so no query is
+stranded unanswered - an unanswered query leaves an order unresolved with nothing
+on record saying why.
+
+And `window_complete` was set unconditionally true, so the branch that refuses an
+answer for not covering its window was never taken. `partial_window` is a tenth
+simulator class: a venue that pages its execution history and says so. It is NOT a
+malfunction and is kept distinct from `inconsistent_query` on purpose. Both read
+below the truth; only one is the venue contradicting itself, and a gateway that
+cannot tell them apart either treats ordinary paging as a permanent conflict or
+treats a contradiction as something to retry away.
+
+The matrix now asserts both halves are actually reached - an answer refused as
+incomplete, and an answer that arrived after the cluster's evidence had moved.
+Without those the barrier could be deleted and the suite would still pass.
 
 ## 11. Execution authority and kill contract
 

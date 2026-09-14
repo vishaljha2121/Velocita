@@ -432,19 +432,49 @@ const ReconciliationAttempt* find_reconciliation(
     return nullptr;
 }
 
+std::uint64_t accepted_evidence_watermark(
+    const TradingState& state, const ClusterOrderId cluster_order_id) noexcept {
+    // Counting accepted observations for the order is enough to detect movement,
+    // which is all the barrier needs. It deliberately does not try to order the
+    // evidence itself - that is the venue's coordinate to supply, not ours to
+    // invent.
+    std::uint64_t seen = 0;
+    const ClusterOrder* owner = nullptr;
+    for (std::size_t index = 0; index < state.order_count; ++index) {
+        if (state.orders[index].cluster_order_id == cluster_order_id) {
+            owner = &state.orders[index];
+            break;
+        }
+    }
+    if (owner == nullptr) return 0;
+    for (std::size_t index = 0; index < state.receipt_count; ++index) {
+        const auto& result = state.receipts[index].result;
+        if (result.code != ApplyCode::applied) continue;
+        if (result.detail_kind != ApplyResultDetailKind::fill &&
+            result.detail_kind != ApplyResultDetailKind::venue_event) {
+            continue;
+        }
+        if (result.decision_id != owner->decision_id) continue;
+        ++seen;
+    }
+    return seen;
+}
+
 bool record_query(GatewayReconciliationState& reconciliation,
-                  const ClusterOrderId cluster_order_id, const Tick now) noexcept {
+                  const ClusterOrderId cluster_order_id, const Tick now,
+                  const std::uint64_t evidence_at_query) noexcept {
     for (std::size_t index = 0; index < reconciliation.attempt_count; ++index) {
         auto& attempt = reconciliation.attempts[index];
         if (attempt.cluster_order_id != cluster_order_id) continue;
         attempt.last_query_at = now;
         attempt.awaiting_answer = true;
+        attempt.evidence_at_query = evidence_at_query;
         ++attempt.attempts;
         return true;
     }
     if (reconciliation.attempt_count == reconciliation.attempts.size()) return false;
-    reconciliation.attempts[reconciliation.attempt_count++] = {cluster_order_id, now,
-                                                               1, true};
+    reconciliation.attempts[reconciliation.attempt_count++] = {
+        cluster_order_id, now, 1, true, evidence_at_query};
     return true;
 }
 
@@ -461,6 +491,7 @@ bool record_answer(GatewayReconciliationState& reconciliation,
 
 QueryDisposition classify_query(const VenueQueryView& answer,
                                 const ReconciliationAttempt* const attempt,
+                                const std::uint64_t evidence_now,
                                 const GatewayTimeouts& timeouts) noexcept {
     // Exhaustion is checked first and applies even to an answer that arrived,
     // because the alternative is to keep querying forever whenever the venue
@@ -481,7 +512,21 @@ QueryDisposition classify_query(const VenueQueryView& answer,
             // partial view of a fill history is indistinguishable from a short
             // one. Submitting it would let the cluster book "the venue says two
             // filled" when the venue only meant "two so far, in this page".
-            if (!answer.authoritative) {
+            if (!answer.window_complete) {
+                return exhausted ? QueryDisposition::exhausted
+                                 : QueryDisposition::incomplete;
+            }
+            // THE ORDERING BARRIER. `window_complete` orders this answer against
+            // other queries and says nothing about fills that arrived while it was
+            // in flight. If the cluster accepted evidence for this order in the
+            // meantime, the snapshot predates evidence the cluster already holds,
+            // and comparing the two would be comparing two different moments -
+            // which is how a stale read becomes a permanent conflict.
+            //
+            // Ask again rather than conclude. Releasing risk or declaring a
+            // conflict both require an answer that is comparable, and this one
+            // demonstrably is not.
+            if (attempt != nullptr && evidence_now != attempt->evidence_at_query) {
                 return exhausted ? QueryDisposition::exhausted
                                  : QueryDisposition::incomplete;
             }

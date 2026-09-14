@@ -75,6 +75,7 @@ FaultPolicy everything_enabled() {
     policy.disconnect_permille = 60;
     policy.rate_limit_permille = 90;
     policy.inconsistent_query_permille = 200;
+    policy.partial_window_permille = 200;
     return policy;
 }
 
@@ -153,10 +154,10 @@ void test_no_wall_clock_influences_the_result() {
 }
 
 void test_every_fault_class_is_reachable() {
-    // An unreachable fault is a comment. Sweep seeds until each of the nine
+    // An unreachable fault is a comment. Sweep seeds until each of the ten
     // classes has actually fired at least once, and fail loudly if one cannot.
     std::set<Fault> seen;
-    for (std::uint64_t seed = 1; seed <= 400 && seen.size() < 9; ++seed) {
+    for (std::uint64_t seed = 1; seed <= 400 && seen.size() < 10; ++seed) {
         for (const auto fault : run(seed, everything_enabled()).faults) {
             if (fault != Fault::none) seen.insert(fault);
         }
@@ -174,6 +175,7 @@ void test_every_fault_class_is_reachable() {
     reached(Fault::disconnect, "disconnect");
     reached(Fault::rate_limit, "rate_limit");
     reached(Fault::inconsistent_query, "inconsistent_query");
+    reached(Fault::partial_window, "partial_window");
 }
 
 void test_a_clean_policy_produces_no_faults() {
@@ -255,6 +257,43 @@ void test_an_inconsistent_query_is_flagged_rather_than_silently_wrong() {
             "the inconsistent answer did not deny a fill it had already made");
 }
 
+void test_a_partial_window_answer_is_a_truthful_prefix_not_a_corruption() {
+    // A venue that pages its execution history is behaving correctly. The answer
+    // it returns is a genuine prefix of the truth - never larger, possibly
+    // smaller - and the only thing separating it from a SHORT answer is the flag
+    // saying the window is not covered.
+    //
+    // This is kept distinct from `inconsistent_query` on purpose. Both read below
+    // the truth; only one of them is the venue contradicting itself, and a
+    // gateway that cannot tell them apart either treats ordinary paging as a
+    // permanent conflict or treats a contradiction as something to retry away.
+    FaultPolicy always;
+    always.partial_window_permille = 1000;
+    SimulatedVenue venue(1, always, VenueId{9});
+    const auto effect = submit_effect(1);
+    require(venue.send(effect, 0) == SendOutcome::accepted, "submit failed");
+    const auto answer = venue.query(effect.cluster_order_id, 1);
+    require(answer.outcome == QueryOutcome::known,
+            "a paged answer was not an answer");
+    require(!answer.window_complete,
+            "a paged answer claimed to cover its whole window");
+    require(!answer.inconsistent,
+            "a paged answer was flagged as a self-contradiction");
+    require(answer.filled_quantity.atoms() < effect.quantity.atoms(),
+            "the paged answer was not actually short");
+    require(answer.filled_quantity.atoms() +
+                    answer.remaining_quantity.atoms() ==
+                effect.quantity.atoms(),
+            "the paged answer did not account for the original quantity");
+
+    // And the clean case must still say the window IS complete, or the flag
+    // would carry no information.
+    SimulatedVenue quiet(1, FaultPolicy::clean(), VenueId{9});
+    require(quiet.send(effect, 0) == SendOutcome::accepted, "submit failed");
+    require(quiet.query(effect.cluster_order_id, 1).window_complete,
+            "a complete answer did not say so");
+}
+
 void test_an_unknown_order_is_not_found_rather_than_unavailable() {
     // These must stay distinct: one says the venue answered that nothing exists,
     // the other says it would not answer. Conflating them is how reconciliation
@@ -290,6 +329,7 @@ int main() {
         test_every_observation_satisfies_the_kernel_contract();
         test_duplicate_client_identity_is_reported_as_a_venue_duplicate();
         test_an_inconsistent_query_is_flagged_rather_than_silently_wrong();
+        test_a_partial_window_answer_is_a_truthful_prefix_not_a_corruption();
         test_an_unknown_order_is_not_found_rather_than_unavailable();
         test_a_disconnect_issues_a_new_session();
         std::cout << "all V2 venue simulator tests passed\n";

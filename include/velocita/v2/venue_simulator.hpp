@@ -31,7 +31,7 @@ namespace velocita::v2::sim {
 
 using Tick = std::uint64_t;
 
-// The nine adversarial classes G-033 names, plus the clean case. One fault
+// The ten adversarial classes G-033 names, plus the clean case. One fault
 // applies per operation, chosen deterministically.
 enum class Fault : std::uint8_t {
     none = 0,
@@ -44,6 +44,7 @@ enum class Fault : std::uint8_t {
     disconnect,          // the session ends; a new one gets a new identity
     rate_limit,          // the venue refuses to accept right now
     inconsistent_query,  // a query disagrees with what was already reported
+    partial_window,      // a query answers truthfully but not for the whole window
 };
 
 // Probabilities in permille so a policy is exactly reproducible and expressible
@@ -59,6 +60,7 @@ struct FaultPolicy {
     std::uint16_t disconnect_permille{};
     std::uint16_t rate_limit_permille{};
     std::uint16_t inconsistent_query_permille{};
+    std::uint16_t partial_window_permille{};
 
     // Latency band, in ticks, for a response that is not lost.
     Tick minimum_latency{1};
@@ -102,6 +104,14 @@ struct QueryResult {
     // `inconsistent_query` fault, so a test can assert the gateway treated it as
     // a conflict rather than as truth.
     bool inconsistent{};
+    // Whether the venue says this answer covers the whole window it was asked
+    // about. A venue that pages its execution history answers truthfully for the
+    // page it returns and says nothing about the rest, and that is NOT a fault:
+    // it is ordinary, correct venue behaviour that a gateway must survive. The
+    // danger is that a bounded answer is indistinguishable from a short one, so a
+    // gateway that ignores this books "the venue says two filled" when the venue
+    // meant "two so far, in this page".
+    bool window_complete{true};
 };
 
 // One scheduled observation, owned by the simulator until its tick arrives.

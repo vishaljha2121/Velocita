@@ -284,10 +284,9 @@ struct VenueQueryView {
     QuantityLots remaining_quantity{};
     bool cancelled{};
     // Whether the venue says this answer covers the whole window it was asked
-    // about. Architecture 10 asks for "query window, cursor, session, and venue
-    // watermark"; in Phase 5 those collapse to this one honest boolean, and the
-    // rest is deferred rather than faked.
-    bool authoritative{};
+    // about. This is a statement about the QUERY, and it is only half of what an
+    // economic conclusion needs.
+    bool window_complete{};
 
     constexpr auto operator<=>(const VenueQueryView&) const noexcept = default;
 };
@@ -340,6 +339,20 @@ struct ReconciliationAttempt {
     Tick last_query_at{};
     std::uint32_t attempts{};
     bool awaiting_answer{};
+    // The order's accepted-evidence watermark when this query was ISSUED.
+    //
+    // `window_complete` orders a query against other queries. It says nothing
+    // about ordering against fills arriving concurrently, and that gap is a real
+    // economic hazard rather than a theoretical one: a venue can snapshot an
+    // order as working with cumulative zero, a fill can execute and commit in the
+    // cluster, and the delayed snapshot then reads as "venue below cluster" -
+    // producing a permanent conflict although neither side ever contradicted the
+    // other at a common time.
+    //
+    // Comparing this against the watermark when the ANSWER arrives is the
+    // ordering barrier. If cluster evidence moved in between, the answer predates
+    // evidence the cluster already holds and is not comparable with it.
+    std::uint64_t evidence_at_query{};
 
     constexpr auto operator<=>(const ReconciliationAttempt&) const noexcept = default;
 };
@@ -380,14 +393,43 @@ struct ReconciliationPlan {
     const GatewayTimeouts& timeouts,
     Tick now) noexcept;
 
+// The count of venue evidence the cluster has accepted for one order. Movement
+// between issuing a query and receiving its answer is what makes the answer
+// incomparable, so this is the coordinate the ordering barrier is built from.
+//
+// A count, not an ordering. Detecting movement is all the barrier needs, and
+// ordering the evidence itself is the venue's coordinate to supply rather than
+// ours to invent.
+//
+// Reclamation only frees groups that are already resolved, so an unresolved
+// order's count does not run backwards. The barrier compares for INEQUALITY
+// anyway: if it ever did move backwards, the answer is treated as incomparable
+// and asked again, which fails closed rather than silently submitting.
+[[nodiscard]] std::uint64_t accepted_evidence_watermark(
+    const TradingState& state, ClusterOrderId cluster_order_id) noexcept;
+
 // Pure classification of one answer. Never economic: see `QueryDisposition`.
+//
+// `evidence_now` is the order's watermark at the moment the answer arrived. An
+// answer whose barrier moved is classified `incomplete` - ask again - rather than
+// submitted, because an economic conclusion drawn across concurrent evidence is
+// a conclusion about two different moments.
+//
+// Deliberately NOT a new wire field. A real venue's proof may be a monotonic
+// sequence, a session barrier, an executions cursor plus order watermark, or a
+// documented finality guarantee; inventing a universal field before a venue
+// supplies the semantics it would carry would be guessing at the contract. The
+// gateway can establish the barrier from what it already knows, and an adapter
+// can strengthen it later with whatever its venue actually offers.
 [[nodiscard]] QueryDisposition classify_query(
     const VenueQueryView& answer,
     const ReconciliationAttempt* attempt,
+    std::uint64_t evidence_now,
     const GatewayTimeouts& timeouts) noexcept;
 
 [[nodiscard]] bool record_query(GatewayReconciliationState& reconciliation,
-                                ClusterOrderId cluster_order_id, Tick now) noexcept;
+                                ClusterOrderId cluster_order_id, Tick now,
+                                std::uint64_t evidence_at_query) noexcept;
 [[nodiscard]] bool record_answer(GatewayReconciliationState& reconciliation,
                                  ClusterOrderId cluster_order_id) noexcept;
 [[nodiscard]] const ReconciliationAttempt* find_reconciliation(
