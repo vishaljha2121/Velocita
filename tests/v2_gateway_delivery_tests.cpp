@@ -663,6 +663,15 @@ bool risk_released(const TradingState& state) {
 // leaves filled + remaining greater than the original, which is an invariant the
 // snapshot encoder checks and refuses. A test that asserts behaviour on a state
 // the reducer cannot reach proves nothing about the reducer.
+EffectId submit_effect_of(const TradingState& state) {
+    for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
+        if (state.outbox_effects[index].operation == EffectOperation::submit) {
+            return state.outbox_effects[index].effect_id;
+        }
+    }
+    return EffectId{};
+}
+
 void book_partial_fill(TradingState& state, const EffectId effect_id,
                        const std::int64_t quantity, const std::uint64_t sequence) {
     VenueObservation fill;
@@ -1309,6 +1318,127 @@ void test_states_reached_only_through_phase_five_survive_a_snapshot() {
                 "cancel-restored fixture failed");
         round_trips(fixture.state, "cancel rejected then restored to working");
     }
+}
+
+void test_a_conflicted_order_keeps_accounting_valid_executions() {
+    // MATERIAL DECISION A. A unique execution carrying venue identity, execution
+    // identity, side, price, quantity and fee is STRONGER evidence than the
+    // order-level cumulative snapshot that created the conflict. Refusing it left
+    // the known position and remaining hold wrong while the kernel held every
+    // field needed to book it safely.
+    //
+    // The decision separates two properties the code had conflated: the dispute
+    // stays recorded, and valid accounting continues anyway.
+    auto fixture = silent_cancel_with_booked_fill(1);
+    require(submit_answer(fixture.state,
+                          cancel_final(fixture.state, fixture.effect_id, 0, 9'500),
+                          9'501)
+                    .code == ApplyCode::applied,
+            "the conflict fixture was refused");
+    require(sole_order(fixture.state).state == ClusterOrderState::conflict,
+            "the conflict fixture is not conflicted");
+
+    const auto& order = sole_order(fixture.state);
+    const auto& reservation = fixture.state.reservations[order.reservation_index];
+    const auto position_before =
+        fixture.state.risk_accounts[0].position_quantity.atoms();
+    const auto reserved_before =
+        fixture.state.risk_accounts[0].reserved_quantity.atoms();
+    const auto remaining_before = reservation.remaining_quantity.atoms();
+    require(remaining_before > 0, "the conflict fixture has nothing left to fill");
+
+    // A genuine execution that FITS the still-retained reservation.
+    VenueObservation execution;
+    execution.kind = VenueObservationKind::fill;
+    execution.venue_id = VenueId{9};
+    execution.venue_session_id = VenueSessionId{1};
+    execution.venue_sequence = VenueSequence{9'502};
+    execution.cluster_order_id = order.cluster_order_id;
+    execution.effect_id = submit_effect_of(fixture.state);
+    execution.venue_order_id = VenueOrderId{88};
+    execution.execution_id = ExecutionId{9'502};
+    execution.side = Side::buy;
+    execution.price = PriceTicks::from_atoms(11);
+    execution.quantity = QuantityLots::from_atoms(remaining_before);
+    execution.evidence_digest = digest(0x94);
+    {
+        ApplyScratch fill_scratch;
+        const Command command{{CallerId{1}, RequestSequence{9'503},
+                               observation_fingerprint(execution)},
+                              ObserveFill{execution}};
+        const auto booked = apply(fixture.state, command, fill_scratch);
+        require(booked.code == ApplyCode::applied,
+                "a valid execution that fits the retained reservation was "
+                "refused against a conflicted order, code " +
+                    std::to_string(static_cast<int>(booked.code)));
+    }
+
+    const auto& after = sole_order(fixture.state);
+    const auto& reservation_after = fixture.state.reservations[after.reservation_index];
+
+    // POSITION and HOLDS moved, atomically and by exactly the executed quantity.
+    require(fixture.state.risk_accounts[0].position_quantity.atoms() ==
+                position_before + remaining_before,
+            "a valid execution against a conflicted order did not move the "
+            "position");
+    require(fixture.state.risk_accounts[0].reserved_quantity.atoms() <
+                reserved_before,
+            "the aggregate hold did not shrink as the reservation was consumed");
+    require(reservation_after.remaining_quantity.atoms() == 0 &&
+                reservation_after.state == ReservationState::released,
+            "the reservation was not consumed by the execution it authorized");
+
+    // STICKY. The lifecycle does not move, even though the reservation released.
+    require(after.state == ClusterOrderState::conflict,
+            "booking an execution declared the recorded disagreement solved");
+
+    // NOT RECLAIMABLE. order_is_risk_resolved keys off the terminal states, and
+    // conflict is deliberately not one, so the group survives for the operator.
+    const auto metrics = collect_metrics(fixture.state);
+    require(metrics.orders_by_state[static_cast<std::size_t>(
+                ClusterOrderState::conflict)] > 0,
+            "the conflicted order stopped being reported");
+    require(fixture.state.order_count == 1,
+            "the conflicted group was reclaimed despite an unsettled dispute");
+
+    // DEDUPLICATION still holds: the same execution cannot be booked twice.
+    const auto position_now =
+        fixture.state.risk_accounts[0].position_quantity.atoms();
+    VenueObservation duplicate;
+    duplicate.kind = VenueObservationKind::fill;
+    duplicate.venue_id = VenueId{9};
+    duplicate.venue_session_id = VenueSessionId{1};
+    duplicate.venue_sequence = VenueSequence{9'502};
+    duplicate.cluster_order_id = after.cluster_order_id;
+    duplicate.effect_id = submit_effect_of(fixture.state);
+    duplicate.venue_order_id = VenueOrderId{88};
+    duplicate.execution_id = ExecutionId{9'502};
+    duplicate.side = Side::buy;
+    duplicate.price = PriceTicks::from_atoms(11);
+    duplicate.quantity = QuantityLots::from_atoms(remaining_before);
+    duplicate.evidence_digest = digest(0x94);
+    ApplyScratch scratch;
+    const Command repeat{{CallerId{1}, RequestSequence{9'510},
+                          observation_fingerprint(duplicate)},
+                         ObserveFill{duplicate}};
+    (void)apply(fixture.state, repeat, scratch);
+    require(fixture.state.risk_accounts[0].position_quantity.atoms() ==
+                position_now,
+            "a duplicate execution was booked twice against a conflicted order");
+
+    // And the whole thing survives a restart.
+    std::array<std::byte, kMaxStateSnapshotBytes> bytes{};
+    const auto encoded = encode_state_snapshot(fixture.state, bytes);
+    require(encoded.error == StateSnapshotError::none,
+            "the conflicted-but-accounted state did not encode");
+    TradingState restored;
+    StateSnapshotScratch snapshot_scratch;
+    require(decode_state_snapshot({bytes.data(), encoded.bytes_written}, restored,
+                                  snapshot_scratch)
+                    .error == StateSnapshotError::none,
+            "the conflicted-but-accounted state did not decode");
+    require(restored.orders[0].state == ClusterOrderState::conflict,
+            "the restored order lost its recorded disagreement");
 }
 
 void test_an_expired_venue_event_is_refused_not_replayed() {
@@ -2683,6 +2813,7 @@ int main() {
         test_a_delivery_exhausted_order_is_reconciled_not_abandoned();
         test_the_reconciliation_planner_reads_no_clock_and_mutates_nothing();
         test_a_cancel_is_deliverable_in_every_strategy_mode();
+        test_a_conflicted_order_keeps_accounting_valid_executions();
         test_an_expired_venue_event_is_refused_not_replayed();
         test_the_guard_refuses_an_incoherent_control_snapshot();
         test_repeated_cancel_cycles_cannot_starve_fill_capacity();

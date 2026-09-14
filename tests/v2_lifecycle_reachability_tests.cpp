@@ -519,15 +519,28 @@ int main() {
         // hide exactly the result this tool exists to produce. Pin it only once
         // the contract is stable again.
 
-        // 1. CONFLICT IS AN OPERATOR-OWNED SINK. Terminal AND unresolved: the
-        //    cluster and the venue disagree and it cannot tell which is right,
-        //    so nothing may carry the order out automatically.
+        // 1. CONFLICT IS A STICKY LIFECYCLE, NOT A FROZEN ORDER.
+        //
+        //    Two properties were conflated in the first version of this check,
+        //    which forbade every transition out of a conflicted position. That is
+        //    too strong: material decision A keeps accounting valid executions
+        //    while the dispute stands, so a conflicted order's RESERVATION
+        //    legitimately moves - held to released - as fills book.
+        //
+        //    What must never happen is the LIFECYCLE STATE changing. Nothing may
+        //    automatically carry the order to filled, cancelled, rejected or back
+        //    to live, because that would declare a recorded disagreement solved
+        //    on evidence that did not settle it. `order_is_risk_resolved` keys off
+        //    that state, so holding it also keeps the group unreclaimable even
+        //    once the reservation releases.
         for (const auto& [signature, destinations] : found.transitions) {
             if (signature.order != ClusterOrderState::conflict) continue;
-            require(destinations.empty(),
-                    "a conflicted order moved automatically, so a recorded "
-                    "disagreement can be erased: " + signature.text() + " -> " +
-                        destinations.begin()->text());
+            for (const auto& next : destinations) {
+                require(next.order == ClusterOrderState::conflict,
+                        "a conflicted order changed lifecycle state, so a "
+                        "recorded disagreement can be erased: " +
+                            signature.text() + " -> " + next.text());
+            }
         }
 
         // 2. EVERY RECOVERABLE POSITION REACHES SETTLEMENT OR ESCALATION.
@@ -549,6 +562,9 @@ int main() {
             while (!queue.empty()) {
                 const auto here = queue.front();
                 queue.pop_front();
+                // A conflicted position counts as escalation, not settlement -
+                // an operator owns it from here. `group_is_settled` never reports
+                // true for one, because conflict is not a terminal order state.
                 if (here.group_settled ||
                     here.order == ClusterOrderState::conflict) {
                     return true;

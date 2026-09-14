@@ -2212,10 +2212,22 @@ std::size_t settle_orphaned_effects(TradingState& state,
     // `apply_observe_order_event` already refuses everything from `conflict`.
     // The fill path did not, which is the asymmetry an enumeration of the
     // reachable lifecycle found and reading the code did not.
-    if (order.state == ClusterOrderState::conflict) {
-        return fill_result(state, ApplyCode::venue_observation_not_applicable,
-                           next_version, observation, observation.quantity);
-    }
+    // A conflicted order KEEPS ACCOUNTING VALID EXECUTIONS. Two properties were
+    // conflated here and they are separable (material decision A):
+    //
+    //   CONFLICT IS STICKY - later evidence may not automatically declare the
+    //   dispute solved, so the lifecycle state and the group's unreclaimability
+    //   survive whatever arrives next; and
+    //
+    //   VALID EXECUTION ACCOUNTING CONTINUES - a unique fill carrying venue
+    //   identity, execution identity, side, price, quantity and fee is STRONGER
+    //   evidence than the order-level cumulative snapshot that usually created
+    //   the conflict. Refusing it left the known position and remaining hold
+    //   wrong while the kernel held every field needed to book it safely, and
+    //   further real fills widened the divergence the system claims to expose.
+    //
+    // Anything outside the authorized remaining hold is still refused below, and
+    // the sticky lifecycle is preserved at the state assignment near the end.
 
     auto* risk = find_risk_account(state, proposal.account_id,
                                    proposal.instrument_id);
@@ -2312,7 +2324,14 @@ std::size_t settle_orphaned_effects(TradingState& state,
     reservation.state = next_remaining->atoms() == 0
                             ? ReservationState::released
                             : ReservationState::partially_consumed;
-    if (next_remaining->atoms() == 0) {
+    if (order.state == ClusterOrderState::conflict) {
+        // Sticky. The reservation and holds have just been updated correctly, and
+        // the reservation may even have released - but the disagreement is
+        // historical and unresolved, so the order stays conflicted and
+        // `order_is_risk_resolved` keeps the group unreclaimable until an
+        // operator settles it. Booking the execution is not the same as agreeing
+        // about the order.
+    } else if (next_remaining->atoms() == 0) {
         order.state = ClusterOrderState::filled;
     } else if (order.state != ClusterOrderState::cancel_pending &&
                order.state != ClusterOrderState::reconciling &&
