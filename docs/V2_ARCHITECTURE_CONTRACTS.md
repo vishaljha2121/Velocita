@@ -1893,6 +1893,52 @@ The matrix now asserts both halves are actually reached - an answer refused as
 incomplete, and an answer that arrived after the cluster's evidence had moved.
 Without those the barrier could be deleted and the suite would still pass.
 
+### 10.10 Two harness oracles that could pass while losing money
+
+Both are test-integrity defects in the same class as 10.4, found by review rather
+than by failure - which is the point: a wrong oracle never fails.
+
+THE FILL ORACLE CHECKED A SUM. It asserted `booked <= reported` per order, which
+prevents the cluster inventing quantity and permits every reported fill to remain
+unbooked. Underneath it, a global allow-list treated
+`venue_observation_not_applicable`, `order_not_found` and the identity conflicts
+as "lossless" without proving that the particular execution was already booked or
+belonged to a safely reclaimed order. And one conflicted order anywhere in the run
+globally excused every `fill_quantity_conflict` refusal, including refusals on
+entirely different orders.
+
+The flaw is structural rather than a missing case. A REFUSAL CODE IS A FACT ABOUT
+A COMMAND; what must not be lost is an EXECUTION. The same code is safe for one
+execution and evidence loss for another -
+`venue_observation_not_applicable` on a swept order owes nothing, and on a live
+one it is a fill that vanished. No allow-list can tell those apart.
+
+So the gate now follows every distinct `(venue, execution)` from the venue's
+report to the cluster's answer, and each one must end in exactly one of three
+states: booked once for the quantity the venue reported; proven to be a repeat of
+that booking, by a code that identifies THAT execution; or never booked, with the
+owning order either conflicted or swept-while-resolved. The per-order sums survive
+as a cross-check against the ledger, so a disagreement between the two stops the
+run rather than being silently resolved in favour of whichever is consulted first.
+
+THE RECONCILIATION ORACLE READ THE ANSWER OFF THE CODE UNDER TEST. It labelled
+every `venue_observation_not_applicable` from a reconciliation answer as
+`answered_ahead` - permitted missing evidence - without checking whether the
+answer's cumulative quantity was actually above what the cluster had booked. A
+reducer applicability defect of exactly the P1-4 shape would therefore have been
+recorded as correct behaviour.
+
+The harness now computes the relation itself, from the reservation read BEFORE the
+apply and from the answer's own bytes, and checks the reducer against it: an
+applied answer below booked must leave the order conflicted; an applied answer
+equal to booked must not change whether it is conflicted; and a refusal only
+counts as `answered_ahead` when the answer was independently shown to be above.
+Anything else is recorded as an applicability refusal rather than excused.
+
+The rule both repairs follow: A TEST RESULT MAY NEVER SERVE AS ITS OWN EXPECTED
+ANSWER. Both oracles now have non-vacuity assertions of their own, because an
+oracle that never evaluates is indistinguishable from one that always agrees.
+
 ## 11. Execution authority and kill contract
 
 Every sender tracks a committed `ExecutorGeneration` and `KillEpoch`. It rejects

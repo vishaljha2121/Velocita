@@ -29,6 +29,7 @@
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -2669,6 +2670,31 @@ struct RunOutcome {
     std::map<ApplyCode, std::size_t> fill_refusals;
     std::map<ApplyCode, std::size_t> event_refusals;
 
+    // Gate 2 proper: one record per DISTINCT VENUE EXECUTION, followed from the
+    // moment the venue reported it to the moment the cluster accounted for it.
+    //
+    // `booked <= reported` per order is not this. It prevents the cluster
+    // inventing quantity and permits every reported fill to remain unbooked, and
+    // a global allow-list of refusal codes cannot close that: the SAME code is
+    // safe for one execution and evidence loss for another. An explanation has to
+    // be bound to the execution and its owning order, which is what this is.
+    struct ExecutionRecord {
+        std::uint64_t order{};
+        std::int64_t quantity{};
+        // Times the venue delivered it. More than one is the `duplication`
+        // fault, and the duplicate is byte-identical by construction.
+        std::size_t reported{};
+        // Times the CLUSTER booked it. More than one is the cardinal failure of
+        // the whole phase.
+        std::size_t booked{};
+        std::int64_t booked_quantity{};
+        std::map<ApplyCode, std::size_t> refusals;
+    };
+    // Keyed by (venue, execution). The harness runs one venue, but an execution
+    // identity is only unique within its venue and keying on half of it would be
+    // a latent defect the moment a second venue exists.
+    std::map<std::pair<std::uint64_t, std::uint64_t>, ExecutionRecord> executions;
+
     // Gate 3.
     TradingMetrics metrics{};
     std::size_t observed_unresolved{};
@@ -2681,6 +2707,11 @@ struct RunOutcome {
     // What the loop leaves behind, and what reconciliation did about it.
     std::map<ClusterOrderState, std::size_t> unresolved_states;
     std::map<std::uint64_t, ClusterOrderState> unresolved_orders_by_id;
+    // The cluster's final picture, and what it swept on the way. An execution's
+    // explanation is checked against the ORDER that owns it, which is the only
+    // place the explanation can actually live.
+    std::map<std::uint64_t, ClusterOrderState> final_order_states;
+    std::set<std::uint64_t> swept_while_resolved;
     std::size_t reconciliation_targets{};
     // Asked and answered are counted separately because they no longer happen in
     // the same step: a query is issued on one tick and classified on a later one.
@@ -2705,6 +2736,14 @@ struct RunOutcome {
     // is the outcome the gate exists to exclude.
     std::set<std::uint64_t> answered_ahead;   // venue reported fills we never got
     std::set<std::uint64_t> never_answered;   // no trustworthy answer was obtained
+    // A reconciliation answer the reducer refused for a reason that was NOT the
+    // venue being ahead. Counted separately because the harness used to label
+    // every such refusal `answered_ahead` without checking, which would let a
+    // reducer applicability defect read as permitted missing evidence.
+    std::size_t reconciliation_refused_inapplicable{};
+    // Times the independent oracle actually had a relation to check. Without
+    // this the assertions below could all be passing because they never ran.
+    std::size_t adjudications_checked{};
 
     // Architecture 9.1.7. Section 3 requires identity retention to exceed the
     // retry, recovery and reconciliation horizons. Phase 4 could not show that,
@@ -2793,6 +2832,36 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
         }
         return result;
     };
+
+    // THE INDEPENDENT ADJUDICATION ORACLE.
+    //
+    // Both read authoritative state directly rather than asking the reducer what
+    // it thought. A test that takes the reducer's reason and then agrees with it
+    // is not an oracle - it is the code under test grading its own paper, and it
+    // is how a real applicability defect reads as permitted missing evidence.
+    const auto booked_quantity_of =
+        [&](const ClusterOrderId id) -> std::optional<std::int64_t> {
+        for (std::size_t index = 0; index < state.order_count; ++index) {
+            const auto& order = state.orders[index];
+            if (order.cluster_order_id != id) continue;
+            if (order.reservation_index >= state.reservation_count) {
+                return std::nullopt;
+            }
+            return state.reservations[order.reservation_index]
+                .filled_quantity.atoms();
+        }
+        return std::nullopt;
+    };
+    const auto order_state_of =
+        [&](const ClusterOrderId id) -> std::optional<ClusterOrderState> {
+        for (std::size_t index = 0; index < state.order_count; ++index) {
+            if (state.orders[index].cluster_order_id == id) {
+                return state.orders[index].state;
+            }
+        }
+        return std::nullopt;
+    };
+
     std::uint64_t counter = 0;
     std::uint64_t sequence = 0;
     std::uint64_t decision_id = 100;
@@ -2855,6 +2924,18 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
             const Command command{identity,
                                   is_fill ? CommandBody{ObserveFill{observation}}
                                           : CommandBody{ObserveOrderEvent{observation}}};
+            const bool adjudication =
+                observation.kind == VenueObservationKind::order_reconciled ||
+                observation.kind == VenueObservationKind::cancel_reconciled;
+            // Read BEFORE the apply, so the expectation cannot be contaminated by
+            // what the apply did.
+            const auto booked_before =
+                adjudication ? booked_quantity_of(observation.cluster_order_id)
+                             : std::nullopt;
+            const auto state_before =
+                adjudication ? order_state_of(observation.cluster_order_id)
+                             : std::nullopt;
+
             const auto applied = submit(command);
 
             // Result lost: the command WAS applied and the gateway never learned
@@ -2872,24 +2953,67 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
             const bool reconciliation_answer =
                 observation.kind == VenueObservationKind::order_reconciled ||
                 observation.kind == VenueObservationKind::cancel_reconciled;
+            const auto execution_key =
+                std::pair<std::uint64_t, std::uint64_t>{
+                    observation.venue_id.value(), observation.execution_id.value()};
             if (applied.code == ApplyCode::applied) {
                 if (is_fill) {
                     outcome.cluster_booked[order] +=
                         applied.filled_quantity().atoms();
+                    auto& record = outcome.executions[execution_key];
+                    ++record.booked;
+                    record.booked_quantity += applied.filled_quantity().atoms();
                 }
                 if (reconciliation_answer) ++outcome.reconciled;
             } else if (is_fill) {
                 ++outcome.fill_refusals[applied.code];
+                ++outcome.executions[execution_key].refusals[applied.code];
             } else if (reconciliation_answer) {
-                if (applied.code == ApplyCode::venue_observation_not_applicable) {
-                    // The only refusal a trustworthy answer can draw here is the
-                    // venue reporting fills the cluster never received: real
-                    // evidence the cluster is missing, not a conflict, because a
-                    // fill still in flight would close the gap.
-                    outcome.answered_ahead.insert(order);
-                }
+                // Deliberately NOT "any not-applicable refusal means the venue
+                // was ahead". That inference reads the reducer's own reason back
+                // as its justification; the relation is checked below instead.
             } else {
                 ++outcome.event_refusals[applied.code];
+            }
+
+            if (!adjudication || !booked_before.has_value()) continue;
+            ++outcome.adjudications_checked;
+            const auto reported = observation.quantity.atoms();
+            const auto after = order_state_of(observation.cluster_order_id);
+            const bool conflicted_now =
+                after.has_value() && *after == ClusterOrderState::conflict;
+            const bool conflicted_before =
+                state_before.has_value() &&
+                *state_before == ClusterOrderState::conflict;
+
+            if (applied.code == ApplyCode::applied) {
+                if (reported < *booked_before) {
+                    // 10.3.4: no later evidence reduces a booked fill, so this is
+                    // the unclosable direction and the order must be retained as
+                    // conflicted rather than quietly corrected.
+                    require(conflicted_now,
+                            "an answer below what the cluster had booked did not "
+                            "conflict the order");
+                } else if (reported == *booked_before) {
+                    require(conflicted_now == conflicted_before,
+                            "an answer that agreed with the cluster changed "
+                            "whether the order was conflicted");
+                }
+            } else if (applied.code ==
+                       ApplyCode::venue_observation_not_applicable) {
+                if (reported > *booked_before) {
+                    // Missing evidence, PROVEN from state rather than inferred
+                    // from the refusal code: fills that close the gap may still
+                    // be in flight, and under a reordering transport they
+                    // routinely are.
+                    outcome.answered_ahead.insert(order);
+                } else {
+                    // The answer was not ahead, so the refusal is about
+                    // applicability - the order or its effect moved on between
+                    // the query being answered and the evidence being committed.
+                    // Recorded rather than excused.
+                    ++outcome.reconciliation_refused_inapplicable;
+                }
             }
         }
     };
@@ -3030,10 +3154,23 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
         for (const auto& observation : venue.poll(now)) {
             const bool is_fill = observation.kind == VenueObservationKind::fill;
             const auto order = observation.cluster_order_id.value();
-            if (is_fill &&
-                outcome.seen_executions.insert(observation.execution_id.value())
-                    .second) {
-                outcome.venue_reported[order] += observation.quantity.atoms();
+            if (is_fill) {
+                auto& record = outcome.executions[{observation.venue_id.value(),
+                                                   observation.execution_id.value()}];
+                if (record.reported == 0) {
+                    record.order = order;
+                    record.quantity = observation.quantity.atoms();
+                    outcome.seen_executions.insert(observation.execution_id.value());
+                    outcome.venue_reported[order] += observation.quantity.atoms();
+                } else {
+                    // A duplicate is byte-identical by construction. If it ever
+                    // is not, the ledger below would be comparing two different
+                    // facts under one identity.
+                    require(record.order == order &&
+                                record.quantity == observation.quantity.atoms(),
+                            "the venue reported one execution two different ways");
+                }
+                ++record.reported;
             }
             // The venue ANSWERED. Whether the cluster accepts the answer is a
             // separate question with a separate outcome, and conflating the two
@@ -3209,7 +3346,14 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
         }
         for (const auto& [id, was_unresolved] : last_seen) {
             if (present.count(id) != 0) continue;
-            if (was_unresolved) ++outcome.horizons.vanished_while_unresolved;
+            if (was_unresolved) {
+                ++outcome.horizons.vanished_while_unresolved;
+            } else {
+                // Swept, and only a fully resolved group is swept - so nothing
+                // is owed on anything it carried. That is a fact about state,
+                // not an inference from a refusal code.
+                outcome.swept_while_resolved.insert(id);
+            }
         }
         last_seen = present;
         for (std::size_t index = 0; index < state.order_count; ++index) {
@@ -3261,6 +3405,10 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
                 order.state;
         }
     }
+    for (std::size_t index = 0; index < state.order_count; ++index) {
+        outcome.final_order_states[state.orders[index].cluster_order_id.value()] =
+            state.orders[index].state;
+    }
     outcome.evidence_outstanding = evidence.obligation_count;
     outcome.metrics = collect_metrics(state);
     const GatewayReconciliationState fresh;
@@ -3289,8 +3437,85 @@ void check_gates(const RunOutcome& outcome, const std::string& where) {
     require(outcome.accepted_order_ids.size() == outcome.venue_orders_created,
             "the venue created more orders than there were distinct intents" + where);
 
-    // GATE 2: no lost accepted fill. Every distinct execution the venue reported
-    // must be booked exactly once, or refused for a reason that loses nothing.
+    // GATE 2: PER-EXECUTION ACCOUNTING.
+    //
+    // The old gate checked `booked <= reported` per order. That prevents the
+    // cluster inventing quantity and permits every reported fill to remain
+    // unbooked - and its allow-list of "lossless" refusal codes could not close
+    // the gap, because the same code is safe for one execution and evidence loss
+    // for another. `venue_observation_not_applicable` on a swept order owes
+    // nothing; on a live one it is a fill that vanished.
+    //
+    // So every distinct (venue, execution) is followed from the venue's report to
+    // the cluster's answer, and each one ends in exactly one of three states:
+    // booked once for the right quantity, proven to be a repeat of that booking,
+    // or unbooked with order-specific evidence saying why.
+    for (const auto& [key, record] : outcome.executions) {
+        const std::string which = " (execution " + std::to_string(key.second) +
+                                  " on order " + std::to_string(record.order) +
+                                  ")" + where;
+
+        // The cardinal failure. No reservation arithmetic downstream can undo a
+        // position booked twice.
+        require(record.booked <= 1,
+                "one venue execution was booked more than once" + which);
+
+        std::size_t accounted = record.booked;
+        for (const auto& [code, count] : record.refusals) {
+            const bool proves_repeat =
+                // The cluster already holds this exact execution.
+                code == ApplyCode::already_applied ||
+                // Same execution identity, different payload. The venue
+                // contradicted itself under one identity; refusing is right and
+                // the first version stands.
+                code == ApplyCode::fill_identity_conflict ||
+                // The venue reused a sequence for a different execution. Also
+                // the venue contradicting itself, also correctly refused.
+                code == ApplyCode::venue_event_identity_conflict;
+            if (record.booked == 1 && proves_repeat) {
+                accounted += count;
+                continue;
+            }
+            // Anything else has to be explained by the ORDER, below.
+            accounted += count;
+        }
+        require(accounted == record.reported,
+                "a venue execution was neither booked nor refused - it was "
+                "simply never accounted for" + which);
+
+        if (record.booked == 1) {
+            require(record.booked_quantity == record.quantity,
+                    "an execution was booked for a quantity the venue never "
+                    "reported" + which);
+            for (const auto& [code, count] : record.refusals) {
+                (void)count;
+                require(code == ApplyCode::already_applied ||
+                            code == ApplyCode::fill_identity_conflict ||
+                            code == ApplyCode::venue_event_identity_conflict,
+                        "a repeat of a booked execution was refused for a reason "
+                        "that does not prove it was that same execution: code " +
+                            std::to_string(static_cast<int>(code)) + which);
+            }
+            continue;
+        }
+
+        // NEVER BOOKED. The explanation must name the owning order, because that
+        // is the only place a durable trace of the loss can live.
+        const auto final_state = outcome.final_order_states.find(record.order);
+        const bool conflicted =
+            final_state != outcome.final_order_states.end() &&
+            final_state->second == ClusterOrderState::conflict;
+        const bool swept_resolved =
+            outcome.swept_while_resolved.count(record.order) != 0;
+        require(conflicted || swept_resolved,
+                "a venue execution was never booked and the order that owns it "
+                "carries no evidence of why - it is neither conflicted nor "
+                "resolved-and-swept" + which);
+    }
+
+    // The per-order sums stay as a cross-check on the ledger itself. If the two
+    // ever disagree, one of them is wrong and the run should stop rather than
+    // trust whichever happens to be consulted first.
     for (const auto& [order, reported] : outcome.venue_reported) {
         const auto booked = outcome.cluster_booked.count(order) != 0
                                 ? outcome.cluster_booked.at(order)
@@ -3304,20 +3529,30 @@ void check_gates(const RunOutcome& outcome, const std::string& where) {
                     where);
         (void)booked;
     }
-    for (const auto& [code, count] : outcome.fill_refusals) {
-        // `fill_quantity_conflict` is the one refusal that genuinely does not
-        // book a fill the venue reported: the hold is released, or the quantity
-        // exceeds what was ever reserved, and booking it would exceed authorized
-        // risk. That is allowed - but only because it is RECORDED. The gate is
-        // not "every fill is booked", which no risk-bounded system can promise;
-        // it is "no fill disappears without a trace", and the trace is a
-        // conflicted order that cannot be reclaimed.
-        if (code == ApplyCode::fill_quantity_conflict) continue;
-        require(refusal_is_lossless(code),
-                "a fill was refused for a reason that loses it: code " +
-                    std::to_string(static_cast<int>(code)) + " x" +
-                    std::to_string(count) + where);
+    {
+        std::map<std::uint64_t, std::int64_t> ledger_reported;
+        std::map<std::uint64_t, std::int64_t> ledger_booked;
+        for (const auto& [key, record] : outcome.executions) {
+            (void)key;
+            ledger_reported[record.order] += record.quantity;
+            ledger_booked[record.order] += record.booked_quantity;
+        }
+        require(ledger_reported == outcome.venue_reported,
+                "the execution ledger and the per-order totals disagree about "
+                "what the venue reported" + where);
+        std::map<std::uint64_t, std::int64_t> booked_nonzero;
+        for (const auto& [order, quantity] : ledger_booked) {
+            if (quantity != 0) booked_nonzero[order] = quantity;
+        }
+        require(booked_nonzero == outcome.cluster_booked,
+                "the execution ledger and the per-order totals disagree about "
+                "what the cluster booked" + where);
     }
+    // A cross-check, not the load-bearing assertion. On its own this is exactly
+    // the defect the ledger above replaces: ONE conflicted order anywhere would
+    // globally excuse every unbookable fill in the run, including fills on
+    // entirely different orders. It survives only because a cheap global
+    // contradiction is still worth catching.
     if (outcome.fill_refusals.count(ApplyCode::fill_quantity_conflict) != 0) {
         require(outcome.metrics
                         .orders_by_state[static_cast<std::size_t>(
@@ -3451,6 +3686,9 @@ void test_the_fault_matrix_holds_the_gate() {
     std::size_t total_incomplete = 0;
     std::size_t total_stale = 0;
     std::size_t total_cancels = 0;
+    std::size_t total_adjudications = 0;
+    std::size_t total_repeated_executions = 0;
+    std::size_t total_inapplicable = 0;
     for (std::uint64_t seed = 1; seed <= 32; ++seed) {
         const auto outcome = run_seed(seed, faults, 12);
         // Printed BEFORE the gates so a failing seed's numbers are visible, and
@@ -3468,6 +3706,18 @@ void test_the_fault_matrix_holds_the_gate() {
             for (const auto& [code, count] : outcome.event_refusals) {
                 std::cout << static_cast<int>(code) << "x" << count << " ";
             }
+            std::size_t unbooked = 0;
+            std::size_t repeated = 0;
+            for (const auto& [key, record] : outcome.executions) {
+                (void)key;
+                if (record.booked == 0) ++unbooked;
+                if (record.reported > 1) ++repeated;
+            }
+            std::cout << "adjudications " << outcome.adjudications_checked
+                      << " inapplicable "
+                      << outcome.reconciliation_refused_inapplicable << " ";
+            std::cout << "executions " << outcome.executions.size() << " unbooked "
+                      << unbooked << " repeated " << repeated << " ";
             std::cout << "queries " << outcome.queries << " answers "
                       << outcome.answers << " stale " << outcome.stale_answers
                       << " reconciled " << outcome.reconciled << " recon-targets "
@@ -3493,6 +3743,12 @@ void test_the_fault_matrix_holds_the_gate() {
             total_incomplete += outcome.dispositions.at(QueryDisposition::incomplete);
         }
         total_stale += outcome.stale_answers;
+        total_adjudications += outcome.adjudications_checked;
+        total_inapplicable += outcome.reconciliation_refused_inapplicable;
+        for (const auto& [key, record] : outcome.executions) {
+            (void)key;
+            if (record.reported > 1) ++total_repeated_executions;
+        }
         total_sends += outcome.sends;
         total_ambiguous += outcome.ambiguous_declared;
         total_orders += outcome.venue_orders_created;
@@ -3529,6 +3785,15 @@ void test_the_fault_matrix_holds_the_gate() {
     require(total_stale > 0,
             "no answer ever arrived after the cluster's evidence had moved, so "
             "the ordering barrier was never actually crossed");
+    // The two repaired oracles, each proved to have actually run. An oracle that
+    // never evaluates is indistinguishable from one that always agrees.
+    require(total_adjudications > 0,
+            "the independent adjudication oracle never had a reconciliation "
+            "answer to check, so it proves nothing");
+    require(total_repeated_executions > 0,
+            "the venue never delivered one execution twice, so the per-execution "
+            "ledger's duplicate branch was never exercised");
+    (void)total_inapplicable;
     // Deliberately NOT asserted here: that the matrix produced a reconciliation
     // conflict. A conflict needs an order that went unknown while already holding
     // booked fills, and this fault model cannot produce that - one fault applies
