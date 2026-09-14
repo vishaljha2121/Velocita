@@ -1311,6 +1311,89 @@ void test_states_reached_only_through_phase_five_survive_a_snapshot() {
     }
 }
 
+void test_an_expired_venue_event_is_refused_not_replayed() {
+    // The watermark makes receipts reclaimable. It is only SOUND because what it
+    // forgets it also refuses: re-presenting an observation below the watermark
+    // must never re-apply, because re-applying is a second economic mutation and
+    // that is the one outcome expiry may not produce. Losing the retained answer
+    // is the accepted cost - the same trade architecture 8.6 made for request
+    // receipts.
+    auto fixture = pending_cancel();
+    ApplyScratch scratch;
+    const auto order_id = sole_order(fixture.state).cluster_order_id;
+    std::uint64_t sequence = 9'000;
+
+    // Drive cycles until the sweep has advanced a watermark.
+    for (std::size_t cycle = 0; cycle < 40; ++cycle) {
+        if (fixture.state.venue_cursor_count != 0 &&
+            fixture.state.venue_cursors[0].expired_below.value() != 0) {
+            break;
+        }
+        const auto current = sole_order(fixture.state).effect_id;
+        VenueObservation rejected;
+        rejected.kind = VenueObservationKind::order_rejected;
+        rejected.venue_id = VenueId{9};
+        rejected.venue_session_id = VenueSessionId{1};
+        rejected.venue_sequence = VenueSequence{++sequence};
+        rejected.cluster_order_id = order_id;
+        rejected.effect_id = current;
+        rejected.evidence_digest = digest(0x91);
+        const auto reject_request = ++sequence;
+        if (submit_answer(fixture.state, rejected, reject_request).code !=
+            ApplyCode::applied) {
+            break;
+        }
+        const auto venue_sequence = ++sequence;
+        const auto request_sequence = ++sequence;
+        if (submit_answer(fixture.state,
+                          reconciled(fixture.state, current, 88, 0, venue_sequence),
+                          request_sequence)
+                .code != ApplyCode::applied) {
+            break;
+        }
+        const auto cancel_sequence = ++sequence;
+        const Command again{{CallerId{1}, RequestSequence{cancel_sequence},
+                             request_digest(cancel_sequence)},
+                            RequestCancel{order_id}};
+        if (apply(fixture.state, again, scratch).code != ApplyCode::applied) break;
+    }
+
+    require(fixture.state.venue_cursor_count == 1,
+            "no venue cursor was established under capacity pressure");
+    const auto watermark = fixture.state.venue_cursors[0].expired_below;
+    require(watermark.value() != 0,
+            "the sweep never advanced a watermark, so expiry is untested");
+
+    // Re-present an observation from below the watermark. It was applied once,
+    // long ago, and its receipt has since been reclaimed.
+    const auto before = fixture.state;
+    VenueObservation replayed;
+    replayed.kind = VenueObservationKind::order_rejected;
+    replayed.venue_id = VenueId{9};
+    replayed.venue_session_id = VenueSessionId{1};
+    replayed.venue_sequence = VenueSequence{watermark.value() - 1};
+    replayed.cluster_order_id = order_id;
+    replayed.effect_id = sole_order(fixture.state).effect_id;
+    replayed.evidence_digest = digest(0x92);
+    const auto applied = submit_answer(fixture.state, replayed, ++sequence);
+    require(applied.code == ApplyCode::venue_event_expired,
+            "an observation below the watermark was not refused as expired");
+    require(std::memcmp(&fixture.state.risk_accounts, &before.risk_accounts,
+                        sizeof(before.risk_accounts)) == 0 &&
+                std::memcmp(&fixture.state.reservations, &before.reservations,
+                            sizeof(before.reservations)) == 0 &&
+                sole_order(fixture.state).state == sole_order(before).state,
+            "an expired observation moved economics");
+
+    // Anything at or above the watermark still behaves exactly as before.
+    VenueObservation current_event = replayed;
+    current_event.venue_sequence = VenueSequence{sequence + 1'000};
+    current_event.evidence_digest = digest(0x93);
+    require(submit_answer(fixture.state, current_event, ++sequence).code !=
+                ApplyCode::venue_event_expired,
+            "the watermark expired an observation at or above itself");
+}
+
 void test_the_guard_refuses_an_incoherent_control_snapshot() {
     // REVIEW FINDING P1-1. `evaluate_pre_send` compares the effect only against
     // the supplied GatewayControlView, never against the TradingState it was
@@ -2600,6 +2683,7 @@ int main() {
         test_a_delivery_exhausted_order_is_reconciled_not_abandoned();
         test_the_reconciliation_planner_reads_no_clock_and_mutates_nothing();
         test_a_cancel_is_deliverable_in_every_strategy_mode();
+        test_an_expired_venue_event_is_refused_not_replayed();
         test_the_guard_refuses_an_incoherent_control_snapshot();
         test_repeated_cancel_cycles_cannot_starve_fill_capacity();
         test_a_rejected_cancel_can_still_be_finally_reconciled();

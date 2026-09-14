@@ -31,6 +31,7 @@ inline constexpr std::size_t kMaxVenueEventReceipts = 64;
 // fresh id would fill this arena with dead entries and rebuild the lifetime
 // wedge one level up. See architecture 8.6.
 inline constexpr std::size_t kMaxCallerCursors = 8;
+inline constexpr std::size_t kMaxVenueCursors = 8;
 static_assert(kMaxPolicies > 0);
 static_assert(kMaxSources > 0);
 static_assert(kMaxSourceEventReceipts > kMaxSources);
@@ -147,6 +148,11 @@ enum class ApplyCode : std::uint8_t {
     // re-execution would be a second economic mutation; the caller reconciles
     // against state, where almost every command's real protection already lives.
     request_expired,
+    // The venue-event identity is below its session's expiry watermark, so its
+    // receipt has been reclaimed and the kernel can no longer say what happened.
+    // It refuses rather than re-applying, because re-applying would be a second
+    // economic mutation - the same rule `request_expired` follows.
+    venue_event_expired,
 };
 
 // The highest RequestSequence whose receipt this caller has had RECLAIMED.
@@ -460,6 +466,30 @@ struct RequestReceipt {
     ApplyResult result{};
 };
 
+// The venue-event counterpart of `CallerCursor`, and deliberately the same shape
+// for the same reason (architecture 8.6).
+//
+// Venue-event receipts are retained so a re-presented observation returns its
+// original outcome rather than mutating economics twice. But an unresolved order
+// never releases its receipts, and the accepted serial-cancel lifecycle can be
+// repeated - reject, reconcile "still working", cancel again - so historical
+// evidence for superseded cancel generations accumulated until it consumed the
+// capacity that authorization had reserved for that order's OWN remaining fills.
+// A real execution then could not be accounted at all.
+//
+// `expired_below` is the watermark that makes those receipts reclaimable without
+// making them replayable. An observation whose sequence is below it is REFUSED as
+// expired, never re-applied: the same trade 8.6 accepted for request receipts,
+// where losing the retained answer is acceptable and a second economic mutation
+// is not. Anything at or above the watermark behaves exactly as before.
+struct VenueCursor {
+    VenueId venue_id{};
+    VenueSessionId venue_session_id{};
+    VenueSequence expired_below{};
+
+    constexpr auto operator<=>(const VenueCursor&) const noexcept = default;
+};
+
 struct SourceCursor {
     SourceId source_id{};
     SourceGeneration generation{};
@@ -664,6 +694,8 @@ struct TradingState {
     std::uint64_t settled_incomplete_effect_count{};
     std::size_t caller_cursor_count{};
     std::array<CallerCursor, kMaxCallerCursors> caller_cursors{};
+    std::size_t venue_cursor_count{};
+    std::array<VenueCursor, kMaxVenueCursors> venue_cursors{};
 };
 
 // Reserved for bounded temporary indexes/encoding buffers in later reducer

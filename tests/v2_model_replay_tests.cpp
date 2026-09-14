@@ -1242,7 +1242,7 @@ void test_generated_model_and_snapshot_replay() {
     require(coverage.count(DecisionCode::invalid_frame) != 0,
             "generated corpus never exercised invalid-frame precedence");
     require(actual ==
-                "4c0a3ab3aa9a4e0578bbfbd787fc65314134a5d0ae01b83317401e175f301677",
+                "0b49f0331cc5117603ec7dcb346c8c516ecd9da77a1b311bb1b44c94e9900051",
             "generated replay corpus changed without review: " + actual);
 
     std::cout << "generated histories=" << kSeedCount

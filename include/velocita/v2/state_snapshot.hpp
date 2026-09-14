@@ -20,7 +20,7 @@ inline constexpr std::size_t kStateSnapshotDigestInputOffset =
 inline constexpr std::size_t kStateSnapshotPayloadOffset =
     kStateSnapshotSchemaOffset + kStateSnapshotSchemaBytes;
 
-inline constexpr std::size_t kStateSnapshotEmptyPayloadBytes = 63;
+inline constexpr std::size_t kStateSnapshotEmptyPayloadBytes = 65;
 inline constexpr std::size_t kStateSnapshotPolicyFixedBytes = 133;
 inline constexpr std::size_t kStateSnapshotPolicyRuleBytes = 12;
 inline constexpr std::size_t kStateSnapshotSourceBytes = 24;
@@ -37,6 +37,7 @@ inline constexpr std::size_t kStateSnapshotRiskAccountBytes = 112;
 inline constexpr std::size_t kStateSnapshotRiskReservationBytes = 57;
 inline constexpr std::size_t kStateSnapshotClusterOrderBytes = 35;
 inline constexpr std::size_t kStateSnapshotCallerCursorBytes = 16;
+inline constexpr std::size_t kStateSnapshotVenueCursorBytes = 24;
 inline constexpr std::size_t kStateSnapshotOutboxEffectBytes = 62;
 inline constexpr std::size_t kStateSnapshotInstrumentBytes = 66;
 inline constexpr std::size_t kStateSnapshotVenueBytes = 21;
@@ -64,7 +65,8 @@ inline constexpr std::size_t kMaxStateSnapshotPayloadBytes =
     kMaxRiskReservations * kStateSnapshotRiskReservationBytes +
     kMaxClusterOrders * kStateSnapshotClusterOrderBytes +
     kMaxOutboxEffects * kStateSnapshotOutboxEffectBytes +
-    kMaxCallerCursors * kStateSnapshotCallerCursorBytes;
+    kMaxCallerCursors * kStateSnapshotCallerCursorBytes +
+    kMaxVenueCursors * kStateSnapshotVenueCursorBytes;
 
 inline constexpr std::size_t kMaxStateSnapshotBytes =
     kStateSnapshotPayloadOffset + kMaxStateSnapshotPayloadBytes + kDigestBytes;

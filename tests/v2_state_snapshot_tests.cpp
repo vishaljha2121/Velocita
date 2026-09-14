@@ -368,7 +368,9 @@ void test_empty_snapshot_has_canonical_layout() {
 
     const std::array expected_prefix{
         std::byte{'V'}, std::byte{'2'}, std::byte{'S'}, std::byte{'T'},
-        std::byte{63}, std::byte{0}, std::byte{0}, std::byte{0},
+        // 65, not 63: the empty payload grew by the two-byte venue-cursor count
+        // when the venue-event expiry watermark arena was added.
+        std::byte{65}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{5}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
@@ -382,7 +384,7 @@ void test_empty_snapshot_has_canonical_layout() {
             "returned digest differs from framed digest");
     const auto hash = to_hex(encoded.state_digest);
     require(hash ==
-                "a7c2a852eb7358b7472c9fdd78896be40898999396f8bfacd77eb94f2492816a",
+                "911471e6851c3dc2f96c19bbb1ee8c2ab18212991347e942295e624dc5b9894c",
             "empty state golden digest changed: " + hash);
     // V5 empty-payload size guard.
     //
@@ -398,7 +400,10 @@ void test_empty_snapshot_has_canonical_layout() {
                 kStateSnapshotPayloadOffset + kStateSnapshotEmptyPayloadBytes +
                     kDigestBytes,
             "empty snapshot length does not match the declared empty payload");
-    require(kStateSnapshotEmptyPayloadBytes == 63,
+    // 65 since the venue-event expiry watermark arena was added: the empty
+    // payload carries its two-byte count. Reviewed and approved as option 1a of
+    // the P1-5 retention contract.
+    require(kStateSnapshotEmptyPayloadBytes == 65,
             "V5 empty snapshot header grew without review");
 }
 
@@ -819,6 +824,14 @@ void test_declared_maximum_is_exact_and_encodable() {
     for (std::size_t index = 0; index < kMaxCallerCursors; ++index) {
         state.caller_cursors[index] = {CallerId{500 + index},
                                        RequestSequence{index + 1}};
+    }
+    // Venue cursors likewise. Each must carry a distinct (venue, session) pair or
+    // snapshot validation rejects the duplicate.
+    state.venue_cursor_count = kMaxVenueCursors;
+    for (std::size_t index = 0; index < kMaxVenueCursors; ++index) {
+        state.venue_cursors[index] = {VenueId{600 + index},
+                                      VenueSessionId{index + 1},
+                                      VenueSequence{index + 1}};
     }
 
     std::array<std::byte, kMaxStateSnapshotBytes> storage{};

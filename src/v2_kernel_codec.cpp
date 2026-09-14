@@ -177,6 +177,7 @@ private:
         case ApplyCode::risk_version_exhausted:
         case ApplyCode::risk_reconfiguration_blocked:
         case ApplyCode::request_expired:
+        case ApplyCode::venue_event_expired:
             return true;
     }
     return false;

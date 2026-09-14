@@ -178,6 +178,7 @@ private:
         case ApplyCode::risk_version_exhausted:
         case ApplyCode::risk_reconfiguration_blocked:
         case ApplyCode::request_expired:
+        case ApplyCode::venue_event_expired:
             return true;
     }
     return false;
@@ -339,7 +340,8 @@ private:
         state.reservation_count > state.reservations.size() ||
         state.order_count > state.orders.size() ||
         state.outbox_effect_count > state.outbox_effects.size() ||
-        state.caller_cursor_count > state.caller_cursors.size()) {
+        state.caller_cursor_count > state.caller_cursors.size() ||
+        state.venue_cursor_count > state.venue_cursors.size()) {
         return false;
     }
 
@@ -459,6 +461,20 @@ private:
         }
     }
 
+    for (std::size_t index = 0; index < state.venue_cursor_count; ++index) {
+        const auto& cursor = state.venue_cursors[index];
+        if (cursor.venue_id.value() == 0 ||
+            cursor.venue_session_id.value() == 0) {
+            return false;
+        }
+        for (std::size_t prior = 0; prior < index; ++prior) {
+            if (state.venue_cursors[prior].venue_id == cursor.venue_id &&
+                state.venue_cursors[prior].venue_session_id ==
+                    cursor.venue_session_id) {
+                return false;
+            }
+        }
+    }
     for (std::size_t index = 0; index < state.caller_cursor_count; ++index) {
         const auto& cursor = state.caller_cursors[index];
         // expired_below == 0 is the canonical first-admission state: the caller
@@ -740,6 +756,7 @@ private:
     size += state.order_count * kStateSnapshotClusterOrderBytes;
     size += state.outbox_effect_count * kStateSnapshotOutboxEffectBytes;
     size += state.caller_cursor_count * kStateSnapshotCallerCursorBytes;
+    size += state.venue_cursor_count * kStateSnapshotVenueCursorBytes;
     return size;
 }
 
@@ -946,6 +963,12 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
     // state_version, so the existing header layout stays byte-stable.
     writer.integral(state.reclaimed_group_count);
     writer.integral(state.settled_incomplete_effect_count);
+    writer.integral(static_cast<std::uint16_t>(state.venue_cursor_count));
+    for (std::size_t index = 0; index < state.venue_cursor_count; ++index) {
+        writer.integral(state.venue_cursors[index].venue_id.value());
+        writer.integral(state.venue_cursors[index].venue_session_id.value());
+        writer.integral(state.venue_cursors[index].expired_below.value());
+    }
     writer.integral(static_cast<std::uint16_t>(state.caller_cursor_count));
     for (std::size_t index = 0; index < state.caller_cursor_count; ++index) {
         writer.integral(state.caller_cursors[index].caller_id.value());
@@ -1345,6 +1368,16 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
         ExecutorGeneration{reader.integral<std::uint64_t>()};
     state.reclaimed_group_count = reader.integral<std::uint64_t>();
     state.settled_incomplete_effect_count = reader.integral<std::uint64_t>();
+    state.venue_cursor_count = reader.integral<std::uint16_t>();
+    if (state.venue_cursor_count > state.venue_cursors.size()) return false;
+    for (std::size_t index = 0; index < state.venue_cursor_count; ++index) {
+        state.venue_cursors[index].venue_id =
+            VenueId{reader.integral<std::uint64_t>()};
+        state.venue_cursors[index].venue_session_id =
+            VenueSessionId{reader.integral<std::uint64_t>()};
+        state.venue_cursors[index].expired_below =
+            VenueSequence{reader.integral<std::uint64_t>()};
+    }
     state.caller_cursor_count = reader.integral<std::uint16_t>();
     if (state.caller_cursor_count > state.caller_cursors.size()) return false;
     for (std::size_t index = 0; index < state.caller_cursor_count; ++index) {

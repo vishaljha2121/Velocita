@@ -1141,6 +1141,26 @@ std::size_t settle_orphaned_effects(TradingState& state,
 // Everything else - evaluations, source events, configuration, cancel requests,
 // and every refusal - is reclaimable. In a live maker those are the overwhelming
 // majority, because each no_action evaluation retains one.
+[[nodiscard]] const VenueCursor* find_venue_cursor(
+    const TradingState& state, const VenueId venue_id,
+    const VenueSessionId session_id) noexcept {
+    for (std::size_t index = 0; index < state.venue_cursor_count; ++index) {
+        if (state.venue_cursors[index].venue_id == venue_id &&
+            state.venue_cursors[index].venue_session_id == session_id) {
+            return &state.venue_cursors[index];
+        }
+    }
+    return nullptr;
+}
+
+[[nodiscard]] bool venue_event_is_expired(const TradingState& state,
+                                          const VenueId venue_id,
+                                          const VenueSessionId session_id,
+                                          const VenueSequence sequence) noexcept {
+    const auto* cursor = find_venue_cursor(state, venue_id, session_id);
+    return cursor != nullptr && sequence < cursor->expired_below;
+}
+
 [[nodiscard]] bool receipt_is_pinned(const TradingState& state,
                                      const RequestReceipt& receipt) noexcept {
     const auto& result = receipt.result;
@@ -1156,8 +1176,23 @@ std::size_t settle_orphaned_effects(TradingState& state,
             }
             return false;
         }
-        case ApplyResultDetailKind::fill:
-        case ApplyResultDetailKind::venue_event: {
+        case ApplyResultDetailKind::venue_event:
+            // Below its session's watermark this receipt is no longer
+            // load-bearing: a re-presentation is refused as expired rather than
+            // re-applied, so retaining the original answer buys nothing and
+            // costs capacity an unresolved order needs for its own fills.
+            //
+            // Only venue-event detail is expirable. Fill detail carries
+            // (venue, execution, quantity) and no sequence, so it cannot be
+            // matched against a watermark - which is the right asymmetry: fills
+            // are the economically load-bearing evidence and stay pinned.
+            if (venue_event_is_expired(state, receipt.result.event_venue_id(),
+                                       receipt.result.event_session_id(),
+                                       receipt.result.event_sequence())) {
+                return false;
+            }
+            [[fallthrough]];
+        case ApplyResultDetailKind::fill: {
             // Candidate schema V5 already carries DecisionId outside the tagged
             // detail words. Applied observations populate that existing field,
             // giving reclamation a zero-byte ownership edge to the order group.
@@ -1203,6 +1238,69 @@ std::size_t settle_orphaned_effects(TradingState& state,
     }
     state.receipt_count = kept;
     return dropped;
+}
+
+// Expire the oldest venue-event evidence for each session under capacity
+// pressure, recording a watermark so what is forgotten can never be replayed.
+//
+// The accepted serial-cancel lifecycle can repeat - reject, reconcile "still
+// working", cancel again - and an unresolved order never releases its receipts,
+// so historical evidence for superseded cancel generations accumulated until it
+// consumed the capacity authorization had reserved for that order's own fills.
+//
+// Half of each session's retained evidence is expired, oldest first. Half rather
+// than everything because the recent tail is the part a redelivery is most likely
+// to repeat, and a watermark that swallowed everything would turn every in-flight
+// duplicate into an expiry refusal at once.
+[[nodiscard]] std::size_t sweep_superseded_venue_events(TradingState& state) noexcept {
+    std::size_t expired = 0;
+    for (std::size_t index = 0; index < state.receipt_count; ++index) {
+        const auto& result = state.receipts[index].result;
+        if (result.code != ApplyCode::applied ||
+            result.detail_kind != ApplyResultDetailKind::venue_event) {
+            continue;
+        }
+        const auto venue = result.event_venue_id();
+        const auto session = result.event_session_id();
+        if (venue.value() == 0 || session.value() == 0) continue;
+        if (find_venue_cursor(state, venue, session) != nullptr) continue;
+        if (state.venue_cursor_count == state.venue_cursors.size()) continue;
+        state.venue_cursors[state.venue_cursor_count++] =
+            VenueCursor{venue, session, VenueSequence{}};
+    }
+    for (std::size_t cursor_index = 0; cursor_index < state.venue_cursor_count;
+         ++cursor_index) {
+        auto& cursor = state.venue_cursors[cursor_index];
+        std::size_t live = 0;
+        std::uint64_t highest = 0;
+        std::uint64_t lowest = std::numeric_limits<std::uint64_t>::max();
+        for (std::size_t index = 0; index < state.receipt_count; ++index) {
+            const auto& result = state.receipts[index].result;
+            if (result.code != ApplyCode::applied ||
+                result.detail_kind != ApplyResultDetailKind::venue_event ||
+                result.event_venue_id() != cursor.venue_id ||
+                result.event_session_id() != cursor.venue_session_id) {
+                continue;
+            }
+            if (result.event_sequence() < cursor.expired_below) continue;
+            ++live;
+            highest = std::max(highest, result.event_sequence().value());
+            lowest = std::min(lowest, result.event_sequence().value());
+        }
+        if (live < 2 || lowest >= highest) continue;
+        // Expire the oldest half by raising the watermark to the midpoint of the
+        // LIVE span. Taking it from the existing watermark instead would land far
+        // below the first retained sequence whenever a venue's numbering does not
+        // start near zero, and expire nothing at all.
+        //
+        // Sequences are venue-assigned and monotonic within a session, so a span
+        // midpoint orders them soundly without sorting an unbounded set.
+        const auto midpoint = lowest + (highest - lowest) / 2;
+        if (midpoint <= cursor.expired_below.value()) continue;
+        cursor.expired_below = VenueSequence{midpoint};
+        ++expired;
+    }
+    return expired;
 }
 
 // Source-event receipts have their own watermark already: SourceCursor holds the
@@ -1993,6 +2091,12 @@ std::size_t settle_orphaned_effects(TradingState& state,
         return fill_result(state, ApplyCode::venue_observation_not_applicable,
                            next_version, observation, observation.quantity);
     }
+    if (venue_event_is_expired(state, observation.venue_id,
+                               observation.venue_session_id,
+                               observation.venue_sequence)) {
+        return fill_result(state, ApplyCode::venue_event_expired, next_version,
+                           observation, observation.quantity);
+    }
 
     if (const auto* existing = find_applied_venue_event(state, observation.venue_id,
                                 observation.venue_session_id, observation.venue_sequence)) {
@@ -2017,6 +2121,7 @@ std::size_t settle_orphaned_effects(TradingState& state,
         // reference. Resolved groups release the observation receipts they own;
         // unresolved orders keep every identity that can still affect them.
         (void)sweep_resolved_order_groups(state);
+        (void)sweep_superseded_venue_events(state);
         (void)sweep_expired_receipts(state);
     }
     // Capacity is decided here but REFUSED below, after the owning order is
@@ -2390,6 +2495,17 @@ std::size_t settle_orphaned_effects(TradingState& state,
         return venue_event_result(state, ApplyCode::invalid_command,
                                   next_version, observation, contract_error);
     }
+    // Below its session watermark the receipt has been reclaimed, so the kernel
+    // can no longer say what happened. It refuses rather than re-applying:
+    // re-applying would be a second economic mutation, which is the one outcome
+    // expiry may never produce. Losing the retained answer is the accepted cost,
+    // exactly as architecture 8.6 accepted it for request receipts.
+    if (venue_event_is_expired(state, observation.venue_id,
+                               observation.venue_session_id,
+                               observation.venue_sequence)) {
+        return venue_event_result(state, ApplyCode::venue_event_expired,
+                                  next_version, observation);
+    }
     if (observation.kind == VenueObservationKind::fill) {
         return venue_event_result(state,
                                   ApplyCode::venue_observation_not_applicable,
@@ -2409,6 +2525,7 @@ std::size_t settle_orphaned_effects(TradingState& state,
     }
     if (accepted_venue_event_count(state) == kMaxVenueEventReceipts) {
         (void)sweep_resolved_order_groups(state);
+        (void)sweep_superseded_venue_events(state);
         (void)sweep_expired_receipts(state);
     }
     if (accepted_venue_event_count(state) == kMaxVenueEventReceipts) {
