@@ -41,44 +41,50 @@ bool SimulatedVenue::roll(const std::uint16_t permille) noexcept {
     return permille != 0 && draw < permille;
 }
 
-Fault SimulatedVenue::choose_fault(const bool for_query) noexcept {
-    // Fixed evaluation order so a policy enabling several faults always resolves
-    // the same way. First match wins, mirroring the ordered first-match rule the
-    // policy evaluator uses, so there is one precedence convention in the system
-    // rather than two.
+FaultSet SimulatedVenue::choose_faults(const bool for_query) noexcept {
+    // EVERY CLASS ROLLS, EVERY TIME, IN A FIXED ORDER.
+    //
+    // The old selector returned on the first match, so a class could only fire
+    // when no earlier class had - and cross-category combinations were
+    // unreachable by construction. A partial fill and a lost response could never
+    // reach the same order, which is precisely the interleaving that leaves an
+    // order unknown while already holding booked fills, which is precisely how a
+    // reconciliation conflict arises. The matrix could not produce one, and the
+    // acceptance record said so as though it were a property of the system rather
+    // than of the selector.
+    //
+    // Rolling unconditionally also means enabling one class cannot reshuffle
+    // another's draws, which `roll` already guaranteed within an operation and
+    // the early returns then gave back.
+    FaultSet faults;
     if (for_query) {
         // A query runs over the same session a send does, so it is subject to the
         // same disconnect. Without this, `QueryOutcome::unavailable` would be
         // unreachable and the most safety-critical branch of the gateway's
         // classifier - the one that refuses to read silence as absence - would
         // never be exercised by the matrix.
-        if (roll(policy_.disconnect_permille)) return Fault::disconnect;
-        if (roll(policy_.inconsistent_query_permille)) {
-            return Fault::inconsistent_query;
-        }
-        // Ordered after `inconsistent_query` deliberately. A partial window makes
-        // the gateway ask again instead of acting, so putting it first would mask
-        // the corruption case the matrix most needs to reach.
-        return roll(policy_.partial_window_permille) ? Fault::partial_window
-                                                     : Fault::none;
+        faults.disconnect = roll(policy_.disconnect_permille);
+        faults.inconsistent_query = roll(policy_.inconsistent_query_permille);
+        faults.partial_window = roll(policy_.partial_window_permille);
+        return faults;
     }
-    if (roll(policy_.rate_limit_permille)) return Fault::rate_limit;
-    if (roll(policy_.disconnect_permille)) return Fault::disconnect;
-    if (roll(policy_.loss_permille)) return Fault::loss;
-    if (roll(policy_.duplication_permille)) return Fault::duplication;
-    if (roll(policy_.reorder_permille)) return Fault::reorder;
-    if (roll(policy_.fill_after_cancel_permille)) return Fault::fill_after_cancel;
-    if (roll(policy_.partial_fill_permille)) return Fault::partial_fill;
-    if (roll(policy_.delay_permille)) return Fault::delay;
-    return Fault::none;
+    faults.rate_limit = roll(policy_.rate_limit_permille);
+    faults.disconnect = roll(policy_.disconnect_permille);
+    faults.loss = roll(policy_.loss_permille);
+    faults.duplication = roll(policy_.duplication_permille);
+    faults.reorder = roll(policy_.reorder_permille);
+    faults.fill_after_cancel = roll(policy_.fill_after_cancel_permille);
+    faults.partial_fill = roll(policy_.partial_fill_permille);
+    faults.delay = roll(policy_.delay_permille);
+    return faults;
 }
 
-Tick SimulatedVenue::latency(const Fault fault) noexcept {
+Tick SimulatedVenue::latency(const FaultSet& faults) noexcept {
     const auto span = policy_.maximum_latency >= policy_.minimum_latency
                           ? policy_.maximum_latency - policy_.minimum_latency + 1
                           : 1;
     auto ticks = policy_.minimum_latency + (next_random() % span);
-    if (fault == Fault::delay) ticks += policy_.delay_penalty;
+    if (faults.delay) ticks += policy_.delay_penalty;
     return ticks;
 }
 
@@ -119,12 +125,14 @@ void SimulatedVenue::schedule(VenueObservation observation, const Tick due,
 }
 
 SendOutcome SimulatedVenue::send(const OrderEffect& effect, const Tick now) {
-    const auto fault = choose_fault(false);
-    fault_log_.push_back(fault);
+    const auto faults = choose_faults(false);
+    fault_log_.push_back(faults);
 
-    if (fault == Fault::rate_limit) return SendOutcome::rate_limited;
+    // Both mean the effect never reached the venue's book, so nothing else can
+    // act on it. That is a consequence, not a precedence rule.
+    if (faults.rate_limit) return SendOutcome::rate_limited;
 
-    if (fault == Fault::disconnect) {
+    if (faults.disconnect) {
         // The session ends before the venue can answer. Anything in flight for
         // the old session is abandoned, and the caller cannot tell whether this
         // effect arrived: that is precisely an ambiguous outcome, never a
@@ -138,19 +146,29 @@ SendOutcome SimulatedVenue::send(const OrderEffect& effect, const Tick now) {
         auto* order = find(effect.cluster_order_id);
         if (order == nullptr) return SendOutcome::business_rejected;
         order->cancelled = true;
-        auto cancelled = base_observation(VenueObservationKind::cancelled, *order);
-        // Attributed to the CANCEL effect, not the submit. `base_observation`
-        // carries the resting order's originating effect, which is right for an
-        // acknowledgement or a fill but wrong here: a cancellation resolves the
-        // cancel effect, and reporting it against the submit would leave the
-        // cancel outstanding until it timed out while the reducer refused the
-        // evidence as inapplicable to a submit.
-        cancelled.effect_id = effect.effect_id;
-        schedule(cancelled, now + latency(fault), fault == Fault::duplication,
-                 fault == Fault::reorder);
+        // LOSS APPLIES TO A CANCEL TOO. The old code scheduled the cancellation
+        // unconditionally and returned before the submit branch's loss check, so
+        // selecting `loss` for a cancel lost nothing at all - the label was in
+        // the log and the behaviour it names never happened. That is the exact
+        // reason the tests now assert observable effects rather than labels.
+        //
+        // The venue really did cancel; the gateway simply never hears. That is
+        // the case the cancel-redelivery rule (10.3.5) exists for.
+        if (!faults.loss) {
+            auto cancelled =
+                base_observation(VenueObservationKind::cancelled, *order);
+            // Attributed to the CANCEL effect, not the submit. `base_observation`
+            // carries the resting order's originating effect, which is right for
+            // an acknowledgement or a fill but wrong here: a cancellation
+            // resolves the cancel effect, and reporting it against the submit
+            // would leave the cancel outstanding until it timed out while the
+            // reducer refused the evidence as inapplicable to a submit.
+            cancelled.effect_id = effect.effect_id;
+            schedule(cancelled, now + latency(faults), faults.duplication,
+                     faults.reorder);
+        }
 
-        if (fault == Fault::fill_after_cancel &&
-            order->filled < order->original) {
+        if (faults.fill_after_cancel && order->filled < order->original) {
             // A fill that was already in flight lands after the cancellation is
             // confirmed. The order really did trade; the cluster must account
             // for it rather than treat the cancel as final.
@@ -160,7 +178,7 @@ SendOutcome SimulatedVenue::send(const OrderEffect& effect, const Tick now) {
             fill.price = order->price;
             fill.quantity = QuantityLots::from_atoms(1);
             order->filled = QuantityLots::from_atoms(order->filled.atoms() + 1);
-            schedule(fill, now + latency(fault) + 1, false, false);
+            schedule(fill, now + latency(faults) + 1, false, false);
         }
         return SendOutcome::accepted;
     }
@@ -180,33 +198,50 @@ SendOutcome SimulatedVenue::send(const OrderEffect& effect, const Tick now) {
     order.original = effect.quantity;
     resting_.push_back(order);
 
-    if (fault == Fault::loss) {
-        // Accepted at the venue, but no response will ever arrive. The gateway
-        // must eventually treat this as unknown and reconcile - never as a
-        // rejection, and never as a licence to resend blindly.
+    auto& resting = resting_.back();
+    if (faults.loss) {
+        // Accepted at the venue, but no response to THIS OPERATION will ever
+        // arrive. The gateway must eventually treat it as unknown and reconcile -
+        // never as a rejection, and never as a licence to resend blindly.
+        //
+        // `loss` means the response stream for one operation dies, and the venue
+        // is left holding the order exactly as it was. It does NOT mean the venue
+        // silently traded: an order that filled with no execution ever reported
+        // could not be closed by any later evidence, because `order_reconciled`
+        // carries a cumulative total and no execution identity, so the cluster
+        // would have a permanently unresolvable order by construction rather than
+        // by fault.
         return SendOutcome::accepted;
     }
 
-    auto& resting = resting_.back();
     auto ack = base_observation(VenueObservationKind::order_acknowledged, resting);
-    schedule(ack, now + latency(fault), fault == Fault::duplication,
-             fault == Fault::reorder);
+    schedule(ack, now + latency(faults), faults.duplication, faults.reorder);
 
     const auto total = resting.original.atoms();
-    if (fault == Fault::partial_fill && total > 1) {
-        // One atom at a time. Partial fills are where duplicate-fill accounting
-        // actually bites: reservation arithmetic alone cannot catch a repeated
-        // partial, because filled plus remaining stays within the original.
-        for (std::int64_t index = 0; index < total; ++index) {
+    if (faults.partial_fill && total > 1) {
+        // One atom at a time, and it stops HALF WAY. Partial fills are where
+        // duplicate-fill accounting actually bites: reservation arithmetic alone
+        // cannot catch a repeated partial, because filled plus remaining stays
+        // within the original.
+        //
+        // Leaving the rest resting is what makes the cancel path reachable at
+        // all. Every submit used to fill completely and immediately, so by the
+        // time a cancel arrived there was nothing left to cancel - which is why
+        // `fill_after_cancel` could previously only fire on an order whose
+        // submit response had been LOST, and why a partially filled order with a
+        // silent cancel, the one shape a reconciliation conflict comes from, was
+        // unreachable.
+        const auto pieces = total / 2;
+        for (std::int64_t index = 0; index < pieces; ++index) {
             auto fill = base_observation(VenueObservationKind::fill, resting);
             fill.execution_id = ExecutionId{++execution_counter_};
             fill.side = resting.side;
             fill.price = resting.price;
             fill.quantity = QuantityLots::from_atoms(1);
-            schedule(fill, now + latency(fault) + static_cast<Tick>(index) + 1,
+            schedule(fill, now + latency(faults) + static_cast<Tick>(index) + 1,
                      false, false);
         }
-        resting.filled = resting.original;
+        resting.filled = QuantityLots::from_atoms(pieces);
     } else {
         auto fill = base_observation(VenueObservationKind::fill, resting);
         fill.execution_id = ExecutionId{++execution_counter_};
@@ -217,7 +252,7 @@ SendOutcome SimulatedVenue::send(const OrderEffect& effect, const Tick now) {
         // twice doubles the position, which no reservation arithmetic downstream
         // can undo. Duplicating only the acknowledgement would have exercised the
         // identity check on the harmless case and left this one untested.
-        schedule(fill, now + latency(fault) + 1, fault == Fault::duplication, false);
+        schedule(fill, now + latency(faults) + 1, faults.duplication, false);
         resting.filled = resting.original;
     }
     return SendOutcome::accepted;
@@ -244,10 +279,10 @@ std::vector<VenueObservation> SimulatedVenue::poll(const Tick now) {
 }
 
 QueryResult SimulatedVenue::query(const ClusterOrderId order, const Tick) {
-    const auto fault = choose_fault(true);
-    fault_log_.push_back(fault);
+    const auto faults = choose_faults(true);
+    fault_log_.push_back(faults);
 
-    if (fault == Fault::disconnect) {
+    if (faults.disconnect) {
         // The session ended mid-question. The venue said nothing, and nothing may
         // be concluded from that - in particular NOT that the order is absent.
         session_ = VenueSessionId{session_.value() + 1};
@@ -270,7 +305,7 @@ QueryResult SimulatedVenue::query(const ClusterOrderId order, const Tick) {
         resting->original.atoms() - resting->filled.atoms());
     result.cancelled = resting->cancelled;
 
-    if (fault == Fault::inconsistent_query) {
+    if (faults.inconsistent_query) {
         // The venue contradicts what it already reported, in the direction that
         // actually matters: DOWNWARD. It denies fills it has already sent.
         //
@@ -285,7 +320,7 @@ QueryResult SimulatedVenue::query(const ClusterOrderId order, const Tick) {
         result.inconsistent = true;
     }
 
-    if (fault == Fault::partial_window) {
+    if (faults.partial_window) {
         // A paged execution history. The venue is not lying: it is answering for
         // the page it read and saying so. The numbers are a genuine PREFIX of the
         // truth, which is exactly why a bounded answer is indistinguishable from a
@@ -293,7 +328,11 @@ QueryResult SimulatedVenue::query(const ClusterOrderId order, const Tick) {
         //
         // `inconsistent` stays false on purpose. Nothing was corrupted, and a test
         // asserting on corruption must not be able to confuse the two.
-        const auto paged = resting->filled.atoms() / 2;
+        // Pages whatever the answer currently says, so a corrupted answer that
+        // is ALSO paged reads as a page of the corruption rather than silently
+        // undoing it. Composition has to leave both facts visible or one class
+        // quietly cancels the other.
+        const auto paged = result.filled_quantity.atoms() / 2;
         result.filled_quantity = QuantityLots::from_atoms(paged);
         result.remaining_quantity =
             QuantityLots::from_atoms(resting->original.atoms() - paged);

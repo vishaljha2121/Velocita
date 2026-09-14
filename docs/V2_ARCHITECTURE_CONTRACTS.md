@@ -1568,6 +1568,11 @@ so a partial fill and a lost response never combine. The branch is covered by
 direct unit tests instead. Closing it properly means letting faults compose, which
 is a simulator change worth making on its own.
 
+CLOSED IN 10.11. Faults now compose and the boundary above no longer exists; the
+matrix produces reconciliation conflicts on its own. The paragraph is kept as
+written because the reasoning it records - that a coverage claim was a property of
+the SELECTOR rather than of the system - is the part worth remembering.
+
 ### 10.5 Discharging 9.1.7: the measured retention horizons (2026-09-10)
 
 Section 3 requires that identity retention exceed the maximum retry, recovery,
@@ -1938,6 +1943,65 @@ Anything else is recorded as an applicability refusal rather than excused.
 The rule both repairs follow: A TEST RESULT MAY NEVER SERVE AS ITS OWN EXPECTED
 ANSWER. Both oracles now have non-vacuity assertions of their own, because an
 oracle that never evaluates is indistinguishable from one that always agrees.
+
+### 10.11 Faults compose, and a label is not a behaviour (2026-09-13)
+
+Two defects in the same organ, both of which made the fault matrix claim more
+than it tested.
+
+THE SELECTOR CHOSE ONE CLASS PER OPERATION. `choose_fault` returned on the first
+match, so cross-category combinations were unreachable by construction. The
+acceptance record then reported "the matrix cannot produce a reconciliation
+conflict" as a property of the system. It was a property of the selector.
+
+Worse, it hid a second reason. Every submit set the venue order's filled quantity
+to its full original immediately, so by the time any cancel arrived there was
+nothing left to cancel. `fill_after_cancel` could therefore only fire on an order
+whose submit response had been LOST - the one case that leaves the venue holding
+an unfilled order - and a partially filled order with a silent cancel, which is
+the only shape a reconciliation conflict arises from, could not occur at all.
+
+Both are fixed together, because fixing either alone leaves the claim false.
+Every class now rolls independently in a fixed order, and a partial fill delivers
+half the order and leaves the rest resting. `rate_limit` and `disconnect` still
+preempt the rest - not by precedence, but by consequence: both mean the effect
+never reached the venue's book, so there is nothing left for another class to act
+on.
+
+The matrix now produces reconciliation conflicts on its own, and asserts that it
+does. The old note recording the gap has been kept rather than deleted: the
+lesson in it - a coverage claim that is really a statement about the test harness
+- outlives the gap itself.
+
+A LABEL IS NOT A BEHAVIOUR. `test_every_fault_class_is_reachable` swept seeds
+until each enum value had appeared in the fault log and called that coverage. It
+was wrong about at least one class and could not have detected it: selecting
+`loss` for a CANCEL lost nothing, because the cancel branch scheduled its
+cancellation and returned before the submit branch's loss check ever ran. The
+label went into the log and the behaviour it names never happened.
+
+`loss` now means the response stream for ONE OPERATION dies, which covers a
+cancel as well as a submit, and the venue is left holding the order exactly as it
+was. It deliberately does NOT mean the venue silently traded: an order that filled
+with no execution ever reported could not be closed by any later evidence, because
+`order_reconciled` carries a cumulative total and no execution identity - so the
+cluster would hold a permanently unresolvable order by construction rather than by
+fault, which is a modelling error rather than an adversary.
+
+Every class is now asserted by what it DID. Rate limiting produces no venue state;
+a lost submit leaves an order the venue still answers about; a lost cancel leaves
+an order the venue reports as cancelled with no cancellation ever delivered;
+duplication delivers identical bytes twice; a partial fill delivers more than one
+execution; `fill_after_cancel` delivers one after the cancellation; a delayed
+response misses its own latency band. Reorder is asserted as an A/B - the same
+seed with the class on and off must deliver a different order - because predicting
+the permutation would mean encoding the scheduler's tie-breaking into the test,
+and the test would then pass by agreeing with the code rather than by observing
+it.
+
+G-033 consequence: the guarantee reads "nine adversarial classes" in older
+evidence. It is ten, they compose, and each is asserted by effect. The acceptance
+record is superseded accordingly rather than amended.
 
 ## 11. Execution authority and kill contract
 

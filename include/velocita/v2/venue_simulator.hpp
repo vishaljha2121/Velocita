@@ -47,6 +47,62 @@ enum class Fault : std::uint8_t {
     partial_window,      // a query answers truthfully but not for the whole window
 };
 
+// Which classes fired on ONE operation. Composed, not chosen.
+//
+// The selector used to return a single `Fault` on a first-match basis, so
+// cross-category combinations were unreachable by construction - a partial fill
+// and a lost response could never happen to the same order, which is exactly the
+// interleaving that produces a conflict. Every class now rolls independently, so
+// "one fault per operation" is a policy a caller can set rather than a limit the
+// simulator imposes.
+//
+// `rate_limit` and `disconnect` still preempt the rest, not by precedence but by
+// consequence: both mean the effect never reached the venue's book, so there is
+// nothing left for another class to act on.
+struct FaultSet {
+    bool delay{};
+    bool loss{};
+    bool duplication{};
+    bool reorder{};
+    bool partial_fill{};
+    bool fill_after_cancel{};
+    bool disconnect{};
+    bool rate_limit{};
+    bool inconsistent_query{};
+    bool partial_window{};
+
+    [[nodiscard]] constexpr bool any() const noexcept {
+        return delay || loss || duplication || reorder || partial_fill ||
+               fill_after_cancel || disconnect || rate_limit ||
+               inconsistent_query || partial_window;
+    }
+
+    [[nodiscard]] constexpr bool contains(const Fault fault) const noexcept {
+        switch (fault) {
+            case Fault::none: return !any();
+            case Fault::delay: return delay;
+            case Fault::loss: return loss;
+            case Fault::duplication: return duplication;
+            case Fault::reorder: return reorder;
+            case Fault::partial_fill: return partial_fill;
+            case Fault::fill_after_cancel: return fill_after_cancel;
+            case Fault::disconnect: return disconnect;
+            case Fault::rate_limit: return rate_limit;
+            case Fault::inconsistent_query: return inconsistent_query;
+            case Fault::partial_window: return partial_window;
+        }
+        return false;
+    }
+
+    [[nodiscard]] constexpr std::size_t count() const noexcept {
+        return static_cast<std::size_t>(delay) + loss + duplication + reorder +
+               partial_fill + fill_after_cancel + disconnect + rate_limit +
+               inconsistent_query + partial_window;
+    }
+
+    constexpr bool operator==(const FaultSet&) const noexcept = default;
+};
+
 // Probabilities in permille so a policy is exactly reproducible and expressible
 // without floating point, matching the fixed-point discipline used everywhere
 // else in this codebase.
@@ -146,7 +202,11 @@ public:
     // is what makes a venue-scoped deduplication key unsafe across reconnects.
     [[nodiscard]] VenueSessionId session() const noexcept { return session_; }
 
-    [[nodiscard]] const std::vector<Fault>& fault_log() const noexcept {
+    // One entry per operation, holding every class that fired on it. Counting
+    // entries with a class set measures what the simulator DID; the tests that
+    // matter assert the observable effect instead, because a label is not a
+    // behaviour.
+    [[nodiscard]] const std::vector<FaultSet>& fault_log() const noexcept {
         return fault_log_;
     }
     [[nodiscard]] std::uint64_t seed() const noexcept { return seed_; }
@@ -165,8 +225,8 @@ private:
 
     [[nodiscard]] std::uint64_t next_random() noexcept;
     [[nodiscard]] bool roll(std::uint16_t permille) noexcept;
-    [[nodiscard]] Fault choose_fault(bool for_query) noexcept;
-    [[nodiscard]] Tick latency(Fault fault) noexcept;
+    [[nodiscard]] FaultSet choose_faults(bool for_query) noexcept;
+    [[nodiscard]] Tick latency(const FaultSet& faults) noexcept;
     void schedule(VenueObservation observation, Tick due, bool duplicate, bool reorder);
     [[nodiscard]] VenueObservation base_observation(
         VenueObservationKind kind, const Resting& order) noexcept;
@@ -183,7 +243,7 @@ private:
     std::uint64_t ordinal_{0};
     std::vector<Resting> resting_;
     std::vector<ScheduledObservation> scheduled_;
-    std::vector<Fault> fault_log_;
+    std::vector<FaultSet> fault_log_;
 };
 
 }  // namespace velocita::v2::sim

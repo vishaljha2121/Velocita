@@ -3687,6 +3687,7 @@ void test_the_fault_matrix_holds_the_gate() {
     std::size_t total_stale = 0;
     std::size_t total_cancels = 0;
     std::size_t total_adjudications = 0;
+    std::size_t total_conflicts = 0;
     std::size_t total_repeated_executions = 0;
     std::size_t total_inapplicable = 0;
     for (std::uint64_t seed = 1; seed <= 32; ++seed) {
@@ -3744,6 +3745,8 @@ void test_the_fault_matrix_holds_the_gate() {
         }
         total_stale += outcome.stale_answers;
         total_adjudications += outcome.adjudications_checked;
+        total_conflicts += outcome.metrics.orders_by_state[static_cast<std::size_t>(
+            ClusterOrderState::conflict)];
         total_inapplicable += outcome.reconciliation_refused_inapplicable;
         for (const auto& [key, record] : outcome.executions) {
             (void)key;
@@ -3794,16 +3797,19 @@ void test_the_fault_matrix_holds_the_gate() {
             "the venue never delivered one execution twice, so the per-execution "
             "ledger's duplicate branch was never exercised");
     (void)total_inapplicable;
-    // Deliberately NOT asserted here: that the matrix produced a reconciliation
-    // conflict. A conflict needs an order that went unknown while already holding
-    // booked fills, and this fault model cannot produce that - one fault applies
-    // per operation, so a partial fill and a lost response never combine, and the
-    // loop's drain granularity means fills either all beat the deadline or all
-    // miss it. Requiring it here would be a false requirement. The branch is
-    // covered directly and precisely by test_a_venue_that_lost_a_fill_is_a_conflict
-    // and test_a_denied_order_that_already_filled_is_a_conflict. Closing the gap
-    // properly means letting faults compose, which is a simulator change worth
-    // making on its own rather than smuggling in here.
+    // NOW ASSERTED, and it used to be the opposite. The note that stood here
+    // said a reconciliation conflict was unreachable: the fault selector chose
+    // one class per operation, so a partial fill and a lost response could never
+    // reach the same order, and every submit filled completely and immediately so
+    // no order had anything left to cancel. Both were properties of the
+    // SIMULATOR, recorded as though they were properties of the system.
+    //
+    // Faults now compose and a partial fill leaves half the order resting, so the
+    // shape arises on its own: an order holding booked executions whose cancel
+    // then goes silent, answered below what the cluster booked.
+    require(total_conflicts > 0,
+            "the matrix never produced a reconciliation conflict, so the branch "
+            "that retains unresolvable disagreement was never exercised");
 }
 
 void test_the_evidence_seam_holds_under_commit_faults() {
