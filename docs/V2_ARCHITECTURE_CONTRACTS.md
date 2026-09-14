@@ -1006,6 +1006,125 @@ downstream reservation arithmetic can undo it. Duplicating only the harmless
 observation would have tested the identity check on the case that does not
 matter.
 
+### 9.4 The startup recovery barrier (P1-2, 2026-09-13)
+
+`GatewayDeliveryState` is local and disposable by design (9.1.2), and 9.1.2 says
+a restart "discards it and rebuilds by reconciliation (G-032)". Nothing
+implemented that sentence. After a crash the planner saw a replicated `pending`
+submit with no attempt record and scheduled it as a FIRST SEND, which is the
+blind risk-increasing resend G-026 forbids.
+
+The crash counterexample is three lines long: the cluster authorizes submit E and
+retains it pending; the gateway sends E and the venue accepts it; the gateway
+dies before the acknowledgement is applied. The restarted gateway now holds empty
+bookkeeping against a cluster that still says pending, and sends E again.
+
+A stable `EffectId` reduces the damage only if the venue deduplicates that
+identity across the exact reconnect being tested. Relying on that is not the same
+guarantee as reconciling before resending, and ADR 0001 chose the latter.
+
+WHAT SEPARATES THE TWO CASES. A fresh authorization and one a previous
+incarnation already sent differ in exactly one fact: WHEN this gateway learned of
+the effect. Replicated state does not record that and should not - it is a fact
+about a process, not about a position. So the gateway marks its own startup.
+
+`begin_gateway_recovery` scans replicated state once and marks every unsettled
+effect SUSPECT: an attempt record with `awaiting_response` set and
+`resend_permitted` clear, which is exactly the pair a send that left the process
+and has not been answered would carry. Nothing new is invented to handle it. A
+suspect effect then travels the path an ambiguous send already travels - its
+deadline passes, the shell reports `effect_unknown`, the reducer moves the order
+to `submission_unknown`, and reconciliation queries the venue. "Reconcile before
+resend" is not a new rule here; it is the existing rule applied to effects whose
+fate the restart erased.
+
+FAILING CLOSED IS STRUCTURAL, NOT ADVISORY. `plan_delivery` schedules nothing at
+all until that scan has run, so forgetting the call sends NOTHING rather than
+sending blindly. The unsafe behaviour is unreachable without an explicit call
+rather than merely discouraged by a comment.
+
+THE CONSERVATIVE DIRECTION IS FORCED. Phase 5 has no durable local proof that a
+send never happened, so every unsettled submit is treated as possibly attempted -
+including the ones that genuinely never left. That costs a query round trip on a
+cold start. Durability, when it arrives in Phase 7, can only ever narrow the
+suspect set; it can never widen it.
+
+WHAT THE BARRIER BLOCKS, AND WHAT IT DOES NOT. New risk waits. A cancel does not:
+it cannot create exposure, and a barrier that also stopped an operator getting
+flat would be protecting the wrong thing at the worst possible moment. A suspect
+cancel still waits out its synthetic deadline first, so its redelivery is legible
+as redelivery rather than as a fresh send.
+
+WHEN THE BARRIER LIFTS - and this is the part that needed a decision rather than
+a rule. It lifts once every suspect has been HANDED TO RECONCILIATION, not once
+every suspect order is RESOLVED. The stricter reading is tempting and wrong: a
+suspect order whose query attempts are spent would block new risk on every other
+slot forever, trading a startup hazard for a permanent outage. Its own slot stays
+blocked by ordinary slot exclusivity, which is the mechanism that already exists
+for exactly that situation, and the suspect submit stays unresendable regardless
+of the barrier because its attempt record carries `resend_permitted = false` for
+the life of the effect. The safety property does not depend on the barrier; the
+barrier only bounds how long the gateway trades while its picture is incomplete.
+
+Tested at three crash cuts - before the send, after venue acceptance but before
+local recording, and after local recording but before the observation applied -
+against the real simulator, with "how many orders exist at the venue" as the
+oracle rather than any gateway-reported number.
+
+### 9.5 A venue answer is not a commit (P1-3, 2026-09-13)
+
+The delivery shell called `record_response` before applying a venue observation,
+and ignored the apply result before clearing the local awaiting-response flag.
+That is harmless only while `apply` is a synchronous, infallible function call.
+Phase 6 makes proposal, leadership, commit and apply four separate outcomes, and
+then the trace is:
+
+1. the venue answers E, so the gateway correctly stops its transport timer;
+2. the gateway proposes the canonical observation to the current leader;
+3. the proposal response is lost, or leadership changes, before the gateway
+   learns the committed result;
+4. local `awaiting_response` is already false while replicated E is still pending;
+5. submit redelivery is forbidden, ambiguity is no longer scheduled, and
+   reconciliation does not target that shape;
+6. the effect is stranded with nobody owning the retry of its evidence.
+
+TWO ACKNOWLEDGEMENTS, NOT ONE. The venue answer completes TRANSPORT. Only the
+cluster commit completes delivery of evidence to the authoritative state machine.
+`record_response` now closes the first; `record_evidence_obligation` opens the
+second, and only an observed committed result closes it.
+
+`GatewayEvidenceState` is a bounded gateway-local work list of canonical
+observation commands. It holds the OBSERVATION, not a rebuilt command, so a retry
+reconstructs identical bytes rather than rebuilding them from state that has moved
+on. It holds the identity unchanged, because a retry that minted a fresh one would
+be a second economic command rather than the same one again.
+
+WHAT MAKES THE RETRY SAFE IS ALREADY IN THE REDUCER, and it is stronger than
+expected. `apply` answers an identical command from its retained request receipt
+by returning the ORIGINAL RESULT verbatim - not a bare "already applied". That
+distinction is what makes this seam work at all: a gateway that lost a result
+needs to learn what the result WAS, not merely that there had been one. So a
+replayed result discharges the obligation, and the state machine does not advance.
+
+The two commit failures are deliberately modelled as different things, because a
+gateway cannot tell them apart and must be correct under both. A LOST RESULT means
+the command was applied and the gateway never learned; the retry meets the
+receipt. LOST LEADERSHIP means the command never reached the state machine; the
+retry is the first and only application. Only an unchanged identity makes one
+mechanism cover both.
+
+BACKPRESSURE. Both halves of `plan_delivery` produce evidence - a send produces a
+venue answer, an ambiguity declaration produces an `effect_unknown` command - so a
+full queue has to stop both. Evidence that cannot be queued is evidence that gets
+dropped, and no redelivery reproduces it and no query targets it. Stopping is the
+only option that loses nothing, and it self-clears as commits are observed. The
+queue is sized at four obligations per outbox effect rather than one, because an
+effect produces several observations over its life; sizing it to the outbox would
+make backpressure a throughput limit rather than a commit-problem signal.
+
+Phase 6 owns the transport. The obligation is Phase 5's, proved against an
+injected commit result, so Phase 6 does not inherit a seam that was never designed.
+
 ## 10. Reconciliation contract
 
 Reconciliation compares:

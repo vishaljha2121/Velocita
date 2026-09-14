@@ -197,6 +197,11 @@ struct GatewayTimeouts {
     // `max_send_attempts` exists. On exhaustion the gateway stops asking and the
     // order stays visibly unresolved rather than being resolved by guess.
     std::uint32_t max_query_attempts{4};
+    // Ticks after proposing an evidence command beyond which it is proposed
+    // again under the SAME identity. This bounds how long a lost proposal
+    // response leaves evidence undelivered; it is not a deadline on the cluster,
+    // which owes the gateway nothing.
+    Tick commit_deadline{4};
 };
 
 // One tick's worth of work, bounded by the outbox arena so a plan can never
@@ -212,13 +217,121 @@ struct DeliveryPlan {
     constexpr auto operator<=>(const DeliveryPlan&) const noexcept = default;
 };
 
+// --- evidence delivery seam (P1-3) -----------------------------------------
+//
+// A VENUE ANSWER AND A CLUSTER COMMIT ARE TWO DIFFERENT ACKNOWLEDGEMENTS. The
+// first completes transport; only the second completes delivery of evidence to
+// the authoritative state machine. Phase 5 conflated them because `apply` is a
+// synchronous, infallible function call - which stops being true the moment
+// Phase 6 makes proposal, leadership, commit and apply four separate outcomes.
+//
+// What the conflation produces: the venue answers E, the gateway correctly stops
+// its transport timer, the proposal response is lost or leadership changes, and
+// local `awaiting_response` is already false while replicated E is still
+// pending. Submit redelivery is forbidden, ambiguity is no longer scheduled, and
+// reconciliation does not target that shape - so the effect is stranded with
+// nobody owning the retry of its evidence.
+//
+// Phase 5 defines and proves the behaviour against an INJECTED commit result.
+// The transport is Phase 6's work; the obligation is not, and building the
+// obligation now is what stops Phase 6 inheriting a seam that was never designed.
+
+struct EvidenceObligation {
+    // The canonical command, byte-identical across every retry. A retry that
+    // minted a fresh identity would be a SECOND economic command rather than the
+    // same one again, and the reducer's request receipt could not deduplicate
+    // it - which is the whole mechanism that makes retrying safe.
+    CommandIdentity identity{};
+    // The observation itself, so a retry reconstructs identical bytes rather
+    // than rebuilding them from state that may have moved on. Its `kind` decides
+    // whether the command body is `ObserveFill` or `ObserveOrderEvent`.
+    VenueObservation observation{};
+    EffectId effect_id{};
+    Tick first_recorded_at{};
+    Tick last_proposed_at{};
+    std::uint32_t attempts{};
+    // False before the first proposal and between a lost result and the retry.
+    bool awaiting_commit{};
+};
+
+// Four per effect rather than one. An effect produces several observations over
+// its life - an acknowledgement, then partial fills - and sizing this to the
+// outbox would make the queue saturate on ordinary traffic rather than on a
+// commit problem, which would turn backpressure into a throughput limit.
+inline constexpr std::size_t kMaxEvidenceObligations = kMaxOutboxEffects * 4;
+
+// Gateway-local, like delivery and reconciliation bookkeeping. A restart
+// discards it - and that is survivable for the same reason the rest is: the
+// evidence the gateway forgets is evidence the cluster never received, so the
+// order stays unresolved and reconciliation asks the venue again.
+// No defaulted comparison: `VenueObservation` is a wire record without one, and
+// adding one there to make a gateway-local work list comparable would be the
+// tail wagging the dog. Nothing needs to compare two queues.
+struct GatewayEvidenceState {
+    std::size_t obligation_count{};
+    std::array<EvidenceObligation, kMaxEvidenceObligations> obligations{};
+};
+
+struct EvidencePlan {
+    std::size_t proposal_count{};
+    std::array<CommandIdentity, kMaxEvidenceObligations> to_propose{};
+
+    constexpr auto operator<=>(const EvidencePlan&) const noexcept = default;
+};
+
+// The gateway owes the cluster this observation. Called when the VENUE answers,
+// beside `record_response` rather than instead of it: one closes the transport
+// attempt, the other opens the commit obligation.
+//
+// Returns false when the queue is full. A caller that ignores that has dropped
+// evidence, which is why `plan_delivery` refuses to produce more work while the
+// queue is saturated.
+[[nodiscard]] bool record_evidence_obligation(GatewayEvidenceState& evidence,
+                                              const CommandIdentity& identity,
+                                              const VenueObservation& observation,
+                                              EffectId effect_id, Tick now) noexcept;
+
+// What must be proposed or re-proposed now. Pure; reads no clock.
+[[nodiscard]] EvidencePlan plan_evidence(const GatewayEvidenceState& evidence,
+                                         const GatewayTimeouts& timeouts,
+                                         Tick now) noexcept;
+
+// The command was handed to the cluster. This does NOT discharge anything: a
+// proposal is not a commit, and treating it as one is the defect.
+[[nodiscard]] bool record_proposal(GatewayEvidenceState& evidence,
+                                   const CommandIdentity& identity,
+                                   Tick now) noexcept;
+
+// A COMMITTED result was observed for this identity. Only this discharges the
+// obligation.
+//
+// A REPLAYED result counts. `apply` answers an identical command from its
+// retained request receipt, returning the ORIGINAL result rather than a bare
+// acknowledgement - and that distinction is what makes this seam work at all: a
+// gateway that lost a result needs to learn what the result WAS, not merely that
+// there had been one. Treating a replay as a failure would retry forever against
+// a cluster with nothing left to do.
+[[nodiscard]] bool discharge_evidence(GatewayEvidenceState& evidence,
+                                      const CommandIdentity& identity) noexcept;
+
+[[nodiscard]] bool evidence_queue_saturated(
+    const GatewayEvidenceState& evidence) noexcept;
+
+[[nodiscard]] const EvidenceObligation* find_obligation(
+    const GatewayEvidenceState& evidence, const CommandIdentity& identity) noexcept;
+
 // Pure and bounded. Reads no clock: `now` is supplied.
 //
 // Ambiguity is decided BEFORE sending, so an effect that has just timed out is
 // never also selected to send in the same tick. That ordering is what stops the
 // planner producing the blind retry G-026 forbids.
+// `evidence` is read for BACKPRESSURE, not for economics. A gateway whose
+// evidence queue is full cannot accept another observation, so producing more
+// work - a send, or an ambiguity declaration, both of which generate evidence -
+// would mean dropping some. Stopping is the only option that loses nothing.
 [[nodiscard]] DeliveryPlan plan_delivery(const TradingState& state,
                                          const GatewayDeliveryState& delivery,
+                                         const GatewayEvidenceState& evidence,
                                          const GatewayControlView& control,
                                          const VenueCapabilityView& venue,
                                          const SendQuotaView& quota,

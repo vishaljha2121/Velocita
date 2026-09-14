@@ -331,14 +331,100 @@ bool recovery_complete(const GatewayDeliveryState& delivery,
     return true;
 }
 
+bool record_evidence_obligation(GatewayEvidenceState& evidence,
+                                const CommandIdentity& identity,
+                                const VenueObservation& observation,
+                                const EffectId effect_id, const Tick now) noexcept {
+    // Idempotent on identity. The same observation offered twice is the same
+    // obligation, not two - the shell can be handed a duplicate by a venue that
+    // duplicates, and queueing it twice would propose identical bytes twice for
+    // no gain.
+    if (find_obligation(evidence, identity) != nullptr) return true;
+    if (evidence.obligation_count == evidence.obligations.size()) return false;
+    evidence.obligations[evidence.obligation_count++] = {
+        identity, observation, effect_id, now, 0, 0, false};
+    return true;
+}
+
+EvidencePlan plan_evidence(const GatewayEvidenceState& evidence,
+                           const GatewayTimeouts& timeouts,
+                           const Tick now) noexcept {
+    EvidencePlan plan;
+    for (std::size_t index = 0; index < evidence.obligation_count; ++index) {
+        const auto& obligation = evidence.obligations[index];
+        // Never proposed: go now. An obligation that waited for a deadline it had
+        // never started would sit there for one commit_deadline doing nothing.
+        if (obligation.attempts != 0) {
+            if (!obligation.awaiting_commit) {
+                // A result was lost rather than merely delayed; retry at once.
+            } else if (now < obligation.last_proposed_at + timeouts.commit_deadline) {
+                continue;
+            }
+        }
+        if (plan.proposal_count == plan.to_propose.size()) break;
+        plan.to_propose[plan.proposal_count++] = obligation.identity;
+    }
+    return plan;
+}
+
+bool record_proposal(GatewayEvidenceState& evidence,
+                     const CommandIdentity& identity, const Tick now) noexcept {
+    for (std::size_t index = 0; index < evidence.obligation_count; ++index) {
+        auto& obligation = evidence.obligations[index];
+        if (obligation.identity != identity) continue;
+        obligation.last_proposed_at = now;
+        obligation.awaiting_commit = true;
+        ++obligation.attempts;
+        return true;
+    }
+    return false;
+}
+
+bool discharge_evidence(GatewayEvidenceState& evidence,
+                        const CommandIdentity& identity) noexcept {
+    for (std::size_t index = 0; index < evidence.obligation_count; ++index) {
+        if (evidence.obligations[index].identity != identity) continue;
+        // Compact rather than tombstone. The queue is a work list, and a
+        // tombstoned slot would count against saturation while owing nothing.
+        for (std::size_t slot = index + 1; slot < evidence.obligation_count; ++slot) {
+            evidence.obligations[slot - 1] = evidence.obligations[slot];
+        }
+        evidence.obligations[--evidence.obligation_count] = {};
+        return true;
+    }
+    return false;
+}
+
+bool evidence_queue_saturated(const GatewayEvidenceState& evidence) noexcept {
+    return evidence.obligation_count == evidence.obligations.size();
+}
+
+const EvidenceObligation* find_obligation(const GatewayEvidenceState& evidence,
+                                          const CommandIdentity& identity) noexcept {
+    for (std::size_t index = 0; index < evidence.obligation_count; ++index) {
+        if (evidence.obligations[index].identity == identity) {
+            return &evidence.obligations[index];
+        }
+    }
+    return nullptr;
+}
+
 DeliveryPlan plan_delivery(const TradingState& state,
                            const GatewayDeliveryState& delivery,
+                           const GatewayEvidenceState& evidence,
                            const GatewayControlView& control,
                            const VenueCapabilityView& venue,
                            const SendQuotaView& quota,
                            const GatewayTimeouts& timeouts,
                            const Tick now) noexcept {
     DeliveryPlan plan;
+
+    // 0a. Backpressure (P1-3). Both halves of this function produce EVIDENCE - a
+    //     send produces a venue answer, an ambiguity declaration produces an
+    //     `effect_unknown` command - and evidence that cannot be queued is
+    //     evidence that gets dropped. Stopping is the only option that loses
+    //     nothing, and it self-clears as commits are observed.
+    if (evidence_queue_saturated(evidence)) return plan;
 
     // 0. The startup barrier (P1-2). A gateway that has not scanned replicated
     //    state cannot tell a fresh authorization from one a previous incarnation

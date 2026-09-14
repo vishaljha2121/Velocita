@@ -195,6 +195,11 @@ constexpr VenueCapabilityView capable_venue() {
     return {VenueId{9}, VenueCapabilitiesVersion{8}, true, true};
 }
 
+// An empty evidence queue. The planner reads it only for backpressure, so every
+// test that is not about backpressure wants it empty and says so once here
+// rather than constructing a fresh one each time.
+const GatewayEvidenceState no_evidence;
+
 // --- planner unit tests ----------------------------------------------------
 
 struct Fixture {
@@ -249,7 +254,7 @@ GatewayDeliveryState running_gateway() {
 void test_a_fresh_pending_effect_is_scheduled_once() {
     const auto fixture = one_authorized_submit();
     const auto delivery = running_gateway();
-    const auto plan = plan_delivery(fixture.state, delivery, control_of(fixture.state),
+    const auto plan = plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                                     capable_venue(), SendQuotaView{4},
                                     GatewayTimeouts{10}, 0);
     require(plan.send_count == 1 && plan.to_send[0] == fixture.effect_id,
@@ -265,7 +270,7 @@ void test_an_outstanding_effect_is_not_resent() {
     const auto fixture = one_authorized_submit();
     auto delivery = running_gateway();
     require(record_send(delivery, fixture.effect_id, 0), "record_send failed");
-    const auto plan = plan_delivery(fixture.state, delivery, control_of(fixture.state),
+    const auto plan = plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                                     capable_venue(), SendQuotaView{4},
                                     GatewayTimeouts{10}, 1);
     require(plan.send_count == 0,
@@ -282,7 +287,7 @@ void test_a_passed_deadline_is_ambiguous_and_not_also_a_retry() {
     const auto fixture = one_authorized_submit();
     auto delivery = running_gateway();
     require(record_send(delivery, fixture.effect_id, 0), "record_send failed");
-    const auto plan = plan_delivery(fixture.state, delivery, control_of(fixture.state),
+    const auto plan = plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                                     capable_venue(), SendQuotaView{4},
                                     GatewayTimeouts{8}, 20);
     require(plan.ambiguous_count == 1 && plan.now_ambiguous[0] == fixture.effect_id,
@@ -304,7 +309,7 @@ void test_an_answered_effect_is_never_blindly_resent() {
     require(attempt != nullptr && !attempt->awaiting_response &&
                 !attempt->resend_permitted,
             "a venue response left the effect marked resendable");
-    const auto plan = plan_delivery(fixture.state, delivery, control_of(fixture.state),
+    const auto plan = plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                                     capable_venue(), SendQuotaView{4},
                                     GatewayTimeouts{10}, 5);
     require(plan.send_count == 0,
@@ -321,7 +326,7 @@ void test_a_provably_unsent_effect_retries_under_its_own_identity() {
     require(record_send(delivery, fixture.effect_id, 0), "first record_send failed");
     require(record_unsent(delivery, fixture.effect_id),
             "record_unsent did not find the attempt");
-    const auto plan = plan_delivery(fixture.state, delivery, control_of(fixture.state),
+    const auto plan = plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                                     capable_venue(), SendQuotaView{4},
                                     GatewayTimeouts{10}, 5);
     require(plan.send_count == 1 && plan.to_send[0] == fixture.effect_id,
@@ -342,7 +347,7 @@ void test_unsent_retries_are_bounded() {
     auto delivery = running_gateway();
     const GatewayTimeouts timeouts{10, 3};
     for (std::uint32_t round = 0; round < timeouts.max_send_attempts; ++round) {
-        const auto plan = plan_delivery(fixture.state, delivery,
+        const auto plan = plan_delivery(fixture.state, delivery, no_evidence,
                                         control_of(fixture.state), capable_venue(),
                                         SendQuotaView{4}, timeouts, round);
         require(plan.send_count == 1,
@@ -350,7 +355,7 @@ void test_unsent_retries_are_bounded() {
         require(record_send(delivery, fixture.effect_id, round), "record_send failed");
         require(record_unsent(delivery, fixture.effect_id), "record_unsent failed");
     }
-    const auto plan = plan_delivery(fixture.state, delivery, control_of(fixture.state),
+    const auto plan = plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                                     capable_venue(), SendQuotaView{4}, timeouts, 9);
     require(plan.send_count == 0, "the retry bound did not stop scheduling");
     require(plan.ambiguous_count == 0,
@@ -360,7 +365,7 @@ void test_unsent_retries_are_bounded() {
 void test_quota_bounds_the_plan() {
     const auto fixture = one_authorized_submit();
     const auto delivery = running_gateway();
-    require(plan_delivery(fixture.state, delivery, control_of(fixture.state),
+    require(plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                           capable_venue(), SendQuotaView{0}, GatewayTimeouts{10}, 0)
                     .send_count == 0,
             "a zero quota still produced sends");
@@ -370,7 +375,7 @@ void test_a_halted_cluster_plans_no_sends() {
     auto fixture = one_authorized_submit();
     fixture.state.strategy_mode = StrategyMode::halted;
     const auto delivery = running_gateway();
-    const auto plan = plan_delivery(fixture.state, delivery, control_of(fixture.state),
+    const auto plan = plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                                     capable_venue(), SendQuotaView{4},
                                     GatewayTimeouts{10}, 0);
     require(plan.send_count == 0, "a halted cluster still planned new risk");
@@ -382,7 +387,7 @@ void test_the_planner_only_schedules_what_the_guard_permits() {
     // something permitted. Both are silent failures, so assert the agreement.
     const auto fixture = one_authorized_submit();
     const auto delivery = running_gateway();
-    const auto plan = plan_delivery(fixture.state, delivery, control_of(fixture.state),
+    const auto plan = plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                                     capable_venue(), SendQuotaView{4},
                                     GatewayTimeouts{10}, 0);
     for (std::size_t index = 0; index < plan.send_count; ++index) {
@@ -925,6 +930,285 @@ void test_the_evidence_watermark_counts_only_accepted_evidence() {
             "an unknown order reported a non-zero evidence watermark");
 }
 
+// --- the evidence-to-commit seam (P1-3) -------------------------------------
+
+// An injected commit boundary. `apply` is a synchronous, infallible function
+// call today; this stands in for what Phase 6 makes of it - propose, lead,
+// commit and apply as four separate outcomes, any of which can be lost.
+//
+// The two failures are deliberately NOT the same thing:
+//
+//   `result_lost`     the command WAS applied; the gateway never learned so.
+//   `leadership_lost` the command was NOT applied and must be proposed again.
+//
+// A gateway cannot tell them apart, which is exactly why a retry has to be
+// byte-identical: under `result_lost` the retry meets a reducer that already
+// applied the original, and only an unchanged request identity lets the receipt
+// recognise it.
+enum class CommitOutcome { committed, result_lost, leadership_lost };
+
+struct CommitBoundary {
+    TradingState* state;
+    ApplyScratch scratch;
+    // What the cluster ACTUALLY did. Kept for the TEST's oracle only - the
+    // gateway never sees it, and wiring it into the gateway would be the
+    // harness-cheating defect 10.4 records, in a new place.
+    std::optional<ApplyResult> truth;
+
+    // Returns the result the GATEWAY observes. `std::nullopt` means it observed
+    // nothing at all, which is the only honest model of a lost response.
+    std::optional<ApplyResult> propose(const CommandIdentity& identity,
+                                       const VenueObservation& observation,
+                                       const CommitOutcome outcome) {
+        const bool is_fill = observation.kind == VenueObservationKind::fill;
+        const Command command{identity,
+                              is_fill ? CommandBody{ObserveFill{observation}}
+                                      : CommandBody{ObserveOrderEvent{observation}}};
+        if (outcome == CommitOutcome::leadership_lost) {
+            // Never reached the state machine. Nothing to observe, nothing
+            // applied.
+            return std::nullopt;
+        }
+        truth = apply(*state, command, scratch);
+        if (outcome == CommitOutcome::result_lost) return std::nullopt;
+        return truth;
+    }
+};
+
+// The fill the seam tests carry. Built once so a retry is provably identical.
+VenueObservation seam_fill(const TradingState& state, const EffectId effect_id,
+                           const std::int64_t quantity) {
+    VenueObservation fill;
+    fill.kind = VenueObservationKind::fill;
+    fill.venue_id = VenueId{9};
+    fill.venue_session_id = VenueSessionId{1};
+    fill.venue_sequence = VenueSequence{8'400};
+    fill.cluster_order_id = sole_order(state).cluster_order_id;
+    fill.effect_id = effect_id;
+    fill.venue_order_id = VenueOrderId{88};
+    fill.execution_id = ExecutionId{8'400};
+    fill.side = Side::buy;
+    fill.price = PriceTicks::from_atoms(11);
+    fill.quantity = QuantityLots::from_atoms(quantity);
+    fill.evidence_digest = digest(0x78);
+    return fill;
+}
+
+Fixture acknowledged_order() {
+    auto fixture = one_authorized_submit();
+    VenueObservation ack;
+    ack.kind = VenueObservationKind::order_acknowledged;
+    ack.venue_id = VenueId{9};
+    ack.venue_session_id = VenueSessionId{1};
+    ack.venue_sequence = VenueSequence{8'300};
+    ack.cluster_order_id = sole_order(fixture.state).cluster_order_id;
+    ack.effect_id = fixture.effect_id;
+    ack.venue_order_id = VenueOrderId{88};
+    ack.evidence_digest = digest(0x71);
+    require(submit_answer(fixture.state, ack, 8'301).code == ApplyCode::applied,
+            "the seam fixture could not acknowledge its order");
+    return fixture;
+}
+
+void test_a_venue_answer_does_not_discharge_the_commit_obligation() {
+    // The defect in one sentence: the transport timer and the commit obligation
+    // were the same flag. They are two different acknowledgements, and only the
+    // second one means the cluster has the evidence.
+    const GatewayTimeouts timeouts;
+    auto fixture = acknowledged_order();
+    auto delivery = running_gateway();
+    require(record_send(delivery, fixture.effect_id, 0), "record_send failed");
+
+    const auto fill = seam_fill(fixture.state, fixture.effect_id, 1);
+    const CommandIdentity identity{CallerId{1}, RequestSequence{8'401},
+                                   observation_fingerprint(fill)};
+
+    // The venue answered. That closes the TRANSPORT attempt and nothing else.
+    require(record_response(delivery, fixture.effect_id), "record_response failed");
+    GatewayEvidenceState evidence;
+    require(record_evidence_obligation(evidence, identity, fill, fixture.effect_id, 0),
+            "the evidence queue refused its first obligation");
+    require(find_obligation(evidence, identity) != nullptr,
+            "the obligation was not recorded");
+
+    // Never proposed, so it goes now rather than waiting out a deadline it never
+    // started.
+    const auto first = plan_evidence(evidence, timeouts, 0);
+    require(first.proposal_count == 1 && first.to_propose[0] == identity,
+            "a fresh obligation was not proposed immediately");
+
+    // Proposing is not committing. This is the whole of P1-3.
+    require(record_proposal(evidence, identity, 0), "record_proposal failed");
+    require(find_obligation(evidence, identity) != nullptr,
+            "a proposal discharged the obligation");
+    require(plan_evidence(evidence, timeouts, 0).proposal_count == 0,
+            "an outstanding proposal was immediately re-proposed");
+
+    // A lost response looks like silence, and silence eventually means ask again
+    // - under the SAME identity, or the retry is a second economic command.
+    const auto again = plan_evidence(evidence, timeouts, timeouts.commit_deadline);
+    require(again.proposal_count == 1 && again.to_propose[0] == identity,
+            "a proposal whose result never arrived was never retried");
+
+    require(discharge_evidence(evidence, identity),
+            "a committed result did not discharge the obligation");
+    require(find_obligation(evidence, identity) == nullptr,
+            "the obligation survived its commit");
+    require(plan_evidence(evidence, timeouts, 1'000).proposal_count == 0,
+            "a discharged obligation was proposed again");
+}
+
+void test_a_lost_commit_result_moves_the_position_exactly_once() {
+    // The trace P1-3 names, run end to end. The gateway proposes, the result is
+    // lost, it retries the identical command, and the reducer's request receipt
+    // is what stops one venue fill becoming two booked ones.
+    const GatewayTimeouts timeouts;
+    auto fixture = acknowledged_order();
+    CommitBoundary cluster{&fixture.state, {}, {}};
+    const auto before = fixture.state.risk_accounts[0].position_quantity;
+
+    const auto fill = seam_fill(fixture.state, fixture.effect_id, 1);
+    const CommandIdentity identity{CallerId{1}, RequestSequence{8'402},
+                                   observation_fingerprint(fill)};
+    GatewayEvidenceState evidence;
+    require(record_evidence_obligation(evidence, identity, fill, fixture.effect_id, 0),
+            "the evidence queue refused an obligation");
+
+    // Proposal one: applied, result lost. The cluster has the fill; the gateway
+    // does not know it.
+    require(record_proposal(evidence, identity, 0), "record_proposal failed");
+    require(!cluster.propose(identity, fill, CommitOutcome::result_lost).has_value(),
+            "a lost result was still observed");
+    require(find_obligation(evidence, identity) != nullptr,
+            "a lost result silently discharged the obligation");
+    const auto after_first = fixture.state.risk_accounts[0].position_quantity;
+    require(after_first.atoms() == before.atoms() + 1,
+            "the first proposal did not move the position");
+
+    // Proposal two: the identical command, byte for byte.
+    const auto original = *cluster.truth;
+    const auto version_before_retry = fixture.state.state_version;
+    const auto retry = plan_evidence(evidence, timeouts, timeouts.commit_deadline);
+    require(retry.proposal_count == 1 && retry.to_propose[0] == identity,
+            "the obligation was not retried");
+    require(record_proposal(evidence, identity, timeouts.commit_deadline),
+            "record_proposal failed");
+    const auto result = cluster.propose(identity, fill, CommitOutcome::committed);
+    require(result.has_value(), "the retry produced no result");
+
+    // The retained request receipt answers it, and it answers with the ORIGINAL
+    // RESULT rather than a bare acknowledgement. That distinction is what makes
+    // the seam work at all: a gateway that lost a result needs to learn what the
+    // result WAS, not merely that there had been one.
+    require(result->code == original.code &&
+                result->state_version == original.state_version,
+            "an identical retry did not replay the original result");
+    require(fixture.state.state_version == version_before_retry,
+            "the retry advanced the state machine, so it re-executed");
+    require(fixture.state.risk_accounts[0].position_quantity.atoms() ==
+                after_first.atoms(),
+            "the retry moved the position a second time");
+
+    // A replayed result is a COMMITTED result: the evidence is in the state
+    // machine, which is the entire thing the obligation was tracking. Treating
+    // the replay as a failure would retry forever against a cluster with nothing
+    // left to do.
+    require(discharge_evidence(evidence, identity),
+            "a replayed result did not discharge the obligation");
+}
+
+void test_leadership_loss_before_commit_leaves_the_evidence_owned() {
+    // The other half. Here the command never reached the state machine, so the
+    // retry is not a duplicate at all - it is the first and only application.
+    // The gateway cannot tell this case from the one above, which is precisely
+    // why it must keep the obligation in both.
+    const GatewayTimeouts timeouts;
+    auto fixture = acknowledged_order();
+    CommitBoundary cluster{&fixture.state, {}, {}};
+    const auto before = fixture.state.risk_accounts[0].position_quantity;
+
+    const auto fill = seam_fill(fixture.state, fixture.effect_id, 1);
+    const CommandIdentity identity{CallerId{1}, RequestSequence{8'403},
+                                   observation_fingerprint(fill)};
+    GatewayEvidenceState evidence;
+    require(record_evidence_obligation(evidence, identity, fill, fixture.effect_id, 0),
+            "the evidence queue refused an obligation");
+    require(record_proposal(evidence, identity, 0), "record_proposal failed");
+    require(!cluster.propose(identity, fill, CommitOutcome::leadership_lost)
+                 .has_value(),
+            "a lost leadership produced a result");
+    require(fixture.state.risk_accounts[0].position_quantity.atoms() ==
+                before.atoms(),
+            "a command that never committed still moved the position");
+    require(find_obligation(evidence, identity) != nullptr,
+            "a leadership change discharged the obligation");
+
+    const auto retry = plan_evidence(evidence, timeouts, timeouts.commit_deadline);
+    require(retry.proposal_count == 1 && retry.to_propose[0] == identity,
+            "evidence stranded by a leadership change was never retried");
+    require(record_proposal(evidence, identity, timeouts.commit_deadline),
+            "record_proposal failed");
+    const auto result = cluster.propose(identity, fill, CommitOutcome::committed);
+    require(result.has_value() && result->code == ApplyCode::applied,
+            "the retry after a leadership change was not applied");
+    require(discharge_evidence(evidence, identity), "discharge failed");
+    require(fixture.state.risk_accounts[0].position_quantity.atoms() ==
+                before.atoms() + 1,
+            "the retry did not deliver the evidence exactly once");
+}
+
+void test_a_saturated_evidence_queue_stops_producing_more_evidence() {
+    // Backpressure. Both halves of `plan_delivery` produce evidence - a send
+    // produces a venue answer, an ambiguity declaration produces an
+    // `effect_unknown` command - so a full queue has to stop both. The
+    // alternative is dropping evidence, which is the one outcome that cannot be
+    // recovered from.
+    const GatewayTimeouts timeouts;
+    const auto fixture = one_authorized_submit();
+    auto delivery = running_gateway();
+    GatewayEvidenceState evidence;
+
+    const auto fill = seam_fill(fixture.state, fixture.effect_id, 1);
+    std::vector<CommandIdentity> queued;
+    for (std::uint64_t index = 0; index < kMaxEvidenceObligations; ++index) {
+        const CommandIdentity identity{CallerId{1}, RequestSequence{8'500 + index},
+                                       digest(static_cast<std::uint8_t>(
+                                           1 + index % 200))};
+        require(record_evidence_obligation(evidence, identity, fill,
+                                           fixture.effect_id, 0),
+                "the evidence queue refused an obligation before it was full");
+        queued.push_back(identity);
+    }
+    require(evidence_queue_saturated(evidence), "the queue never saturated");
+    const CommandIdentity overflow{CallerId{1}, RequestSequence{9'999}, digest(0x5F)};
+    require(!record_evidence_obligation(evidence, overflow, fill, fixture.effect_id, 0),
+            "a full evidence queue accepted one more obligation");
+
+    require(plan_delivery(fixture.state, delivery, evidence, control_of(fixture.state),
+                          capable_venue(), SendQuotaView{4}, timeouts, 0)
+                    .send_count == 0,
+            "a saturated evidence queue still scheduled a send");
+
+    // And an outstanding send is not declared ambiguous either, because that
+    // declaration is itself a command the gateway would owe the cluster.
+    require(record_send(delivery, fixture.effect_id, 0), "record_send failed");
+    require(plan_delivery(fixture.state, delivery, evidence, control_of(fixture.state),
+                          capable_venue(), SendQuotaView{4}, timeouts,
+                          timeouts.response_deadline)
+                    .ambiguous_count == 0,
+            "a saturated evidence queue still produced an ambiguity report");
+
+    // It self-clears. Backpressure that never lifted would be a deadlock wearing
+    // a safety argument.
+    require(discharge_evidence(evidence, queued.front()), "discharge failed");
+    require(!evidence_queue_saturated(evidence), "the queue stayed saturated");
+    require(plan_delivery(fixture.state, delivery, evidence, control_of(fixture.state),
+                          capable_venue(), SendQuotaView{4}, timeouts,
+                          timeouts.response_deadline)
+                    .ambiguous_count == 1,
+            "the planner stayed stopped after the queue drained");
+}
+
 // --- startup recovery (P1-2) -----------------------------------------------
 
 void test_a_gateway_crash_cannot_produce_a_second_order() {
@@ -981,14 +1265,14 @@ void test_a_gateway_crash_cannot_produce_a_second_order() {
         // never happened. Being conservative costs a round trip there; being
         // optimistic costs a second real order at cuts 1 and 2, and nothing in
         // replicated state distinguishes them.
-        require(plan_delivery(state, delivery, control_of(state), capable_venue(),
+        require(plan_delivery(state, delivery, no_evidence, control_of(state), capable_venue(),
                               SendQuotaView{4}, timeouts, now)
                         .send_count == 0,
                 "a restarted gateway scheduled a possibly-sent submit" + where);
 
         // The suspect effect travels the path an ambiguous send already travels.
         now += timeouts.response_deadline;
-        const auto plan = plan_delivery(state, delivery, control_of(state),
+        const auto plan = plan_delivery(state, delivery, no_evidence, control_of(state),
                                         capable_venue(), SendQuotaView{4}, timeouts,
                                         now);
         require(plan.send_count == 0 && plan.ambiguous_count == 1 &&
@@ -1018,7 +1302,7 @@ void test_a_gateway_crash_cannot_produce_a_second_order() {
         // And the effect still cannot be resent, barrier or no barrier. That
         // property lives in the attempt record, not in the barrier, which is why
         // lifting the barrier does not restore it.
-        require(plan_delivery(state, delivery, control_of(state), capable_venue(),
+        require(plan_delivery(state, delivery, no_evidence, control_of(state), capable_venue(),
                               SendQuotaView{4}, timeouts, now)
                         .send_count == 0,
                 "the suspect submit became resendable once recovery finished" + where);
@@ -1119,12 +1403,12 @@ void test_recovery_blocks_new_risk_without_blocking_a_cancel() {
     // not know whether THIS cancel reached the venue either, and redelivering
     // before its outcome has even been declared unknown would skip the step that
     // makes redelivery legible.
-    require(plan_delivery(fixture.state, delivery, control_of(fixture.state),
+    require(plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                           capable_venue(), SendQuotaView{4}, timeouts, 0)
                     .send_count == 0,
             "a suspect cancel was redelivered before its outcome was declared");
     const auto matured =
-        plan_delivery(fixture.state, delivery, control_of(fixture.state),
+        plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                       capable_venue(), SendQuotaView{4}, timeouts,
                       timeouts.response_deadline);
     require(matured.ambiguous_count == 1 &&
@@ -1135,7 +1419,7 @@ void test_recovery_blocks_new_risk_without_blocking_a_cancel() {
     // NOW it goes, with the barrier still up. That is the approved 10.3.5 rule
     // surviving recovery, which is the property this test exists for.
     require(delivery.recovering, "the barrier lifted on its own");
-    require(plan_delivery(fixture.state, delivery, control_of(fixture.state),
+    require(plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                           capable_venue(), SendQuotaView{4}, timeouts,
                           timeouts.response_deadline)
                     .send_count == 1,
@@ -1148,13 +1432,13 @@ void test_recovery_blocks_new_risk_without_blocking_a_cancel() {
     const auto submit_fixture = one_authorized_submit();
     auto barred = running_gateway();
     barred.recovering = true;
-    require(plan_delivery(submit_fixture.state, barred,
+    require(plan_delivery(submit_fixture.state, barred, no_evidence,
                           control_of(submit_fixture.state), capable_venue(),
                           SendQuotaView{4}, timeouts, 0)
                     .send_count == 0,
             "the recovery barrier let new risk through");
     barred.recovering = false;
-    require(plan_delivery(submit_fixture.state, barred,
+    require(plan_delivery(submit_fixture.state, barred, no_evidence,
                           control_of(submit_fixture.state), capable_venue(),
                           SendQuotaView{4}, timeouts, 0)
                     .send_count == 1,
@@ -1169,7 +1453,7 @@ void test_a_gateway_that_never_scanned_sends_nothing() {
     const auto fixture = one_authorized_submit();
     const GatewayDeliveryState never_started;
     require(!never_started.started, "a fresh gateway claimed to have started");
-    require(plan_delivery(fixture.state, never_started, control_of(fixture.state),
+    require(plan_delivery(fixture.state, never_started, no_evidence, control_of(fixture.state),
                           capable_venue(), SendQuotaView{4}, GatewayTimeouts{10}, 0)
                     .send_count == 0,
             "a gateway that never scanned replicated state sent anyway");
@@ -1557,7 +1841,7 @@ void test_a_silent_cancel_redelivers_before_it_reconciles() {
     // Redelivery, not reconciliation, while attempts remain.
     require(record_send(delivery, fixture.effect_id, 0), "record_send failed");
     require(record_response(delivery, fixture.effect_id), "record_response failed");
-    const auto plan = plan_delivery(fixture.state, delivery, control_of(fixture.state),
+    const auto plan = plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                                     capable_venue(), SendQuotaView{4}, timeouts, 5);
     require(plan.send_count == 1 && plan.to_send[0] == fixture.effect_id,
             "a silent cancel was not redelivered under its own identity");
@@ -1582,7 +1866,7 @@ void test_a_silent_cancel_redelivers_before_it_reconciles() {
             "an exhausted silent cancel was not scheduled for query");
     require(recon.to_query[0].need == ReconciliationNeed::cancel_unconfirmed,
             "a silent cancel was mistaken for a silent submission");
-    require(plan_delivery(fixture.state, delivery, control_of(fixture.state),
+    require(plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                           capable_venue(), SendQuotaView{4}, timeouts, 9)
                     .send_count == 0,
             "cancel redelivery was unbounded");
@@ -2360,6 +2644,18 @@ struct Horizons {
     }
 };
 
+// The cluster's own faults, as distinct from the venue's. `FaultPolicy` models a
+// counterparty; this models the seam between the gateway and the state machine,
+// which Phase 6 turns into proposal, leadership, commit and apply.
+struct CommitFaults {
+    // The command WAS applied; the gateway never learned so.
+    std::uint16_t result_loss_permille{};
+    // The command was NOT applied and must be proposed again.
+    std::uint16_t leadership_loss_permille{};
+
+    [[nodiscard]] static constexpr CommitFaults clean() noexcept { return {}; }
+};
+
 struct RunOutcome {
     // Gate 1.
     std::size_t venue_orders_created{};
@@ -2394,6 +2690,15 @@ struct RunOutcome {
     std::size_t answers{};
     std::size_t stale_answers{};
     std::size_t reconciled{};
+
+    // The evidence seam (P1-3). `evidence_dropped` must stay zero: an obligation
+    // the queue refused is evidence nobody owns any more, which is the one
+    // outcome backpressure exists to make impossible.
+    std::size_t evidence_owed{};
+    std::size_t evidence_proposed{};
+    std::size_t evidence_retried{};
+    std::size_t evidence_dropped{};
+    std::size_t evidence_outstanding{};
     std::map<QueryDisposition, std::size_t> dispositions;
     // Why an order could not be resolved, recorded as it happens. An order left
     // unresolved must have one of these against its name - "stuck for no reason"
@@ -2452,7 +2757,8 @@ bool refusal_is_lossless(const ApplyCode code) noexcept {
 }
 
 RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
-                    const std::uint64_t cycles) {
+                    const std::uint64_t cycles,
+                    const CommitFaults& commit_faults = CommitFaults::clean()) {
     auto state = ready_state();
     ApplyScratch scratch;
     SimulatedVenue venue(seed, faults, VenueId{9});
@@ -2463,7 +2769,21 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
     GatewayDeliveryState delivery;
     (void)begin_gateway_recovery(delivery, state, 0);
     GatewayReconciliationState reconciliation;
+    GatewayEvidenceState evidence;
     const GatewayTimeouts timeouts{8};
+
+    // The commit boundary's own draw stream, kept separate from the venue's so
+    // enabling a commit fault cannot reshuffle the venue's behaviour. Same
+    // splitmix64 the simulator uses, seeded apart.
+    std::uint64_t commit_random = seed ^ 0xC0FFEE5EA11ULL;
+    const auto commit_roll = [&](const std::uint16_t permille) {
+        commit_random += 0x9e3779b97f4a7c15ULL;
+        auto value = commit_random;
+        value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ULL;
+        value = (value ^ (value >> 27)) * 0x94d049bb133111ebULL;
+        value ^= value >> 31;
+        return permille != 0 && (value % 1000) < permille;
+    };
 
     RunOutcome outcome;
     const auto submit = [&](const Command& command) {
@@ -2493,6 +2813,86 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
         VenueQueryView view{};
     };
     std::vector<InFlightQuery> in_flight;
+
+    // THE EVIDENCE SEAM (P1-3). Every observation the gateway learns is OWED to
+    // the cluster, and owing it is a separate step from the venue having answered.
+    // `owe` records the obligation; `pump` proposes what is due and discharges
+    // only what the gateway actually observed a result for.
+    const auto owe = [&](const VenueObservation& observation) {
+        ++counter;
+        const CommandIdentity identity{CallerId{1}, RequestSequence{counter},
+                                       observation_fingerprint(observation)};
+        if (!record_evidence_obligation(evidence, identity, observation,
+                                        observation.effect_id, now)) {
+            // Must never happen: `plan_delivery` stops producing work while the
+            // queue is saturated, so the queue can only fill from evidence the
+            // loop was already committed to. Counted rather than asserted so the
+            // gate reports it instead of aborting mid-run.
+            ++outcome.evidence_dropped;
+            return;
+        }
+        ++outcome.evidence_owed;
+    };
+
+    const auto pump = [&]() {
+        const auto plan = plan_evidence(evidence, timeouts, now);
+        for (std::size_t index = 0; index < plan.proposal_count; ++index) {
+            const auto identity = plan.to_propose[index];
+            const auto* obligation = find_obligation(evidence, identity);
+            if (obligation == nullptr) continue;
+            const auto observation = obligation->observation;
+            const bool retry = obligation->attempts != 0;
+            require(record_proposal(evidence, identity, now),
+                    "record_proposal did not find its own obligation");
+            ++outcome.evidence_proposed;
+            if (retry) ++outcome.evidence_retried;
+
+            // Leadership lost: the command never reached the state machine. The
+            // obligation stays, and nothing was applied.
+            if (commit_roll(commit_faults.leadership_loss_permille)) continue;
+
+            const bool is_fill = observation.kind == VenueObservationKind::fill;
+            const Command command{identity,
+                                  is_fill ? CommandBody{ObserveFill{observation}}
+                                          : CommandBody{ObserveOrderEvent{observation}}};
+            const auto applied = submit(command);
+
+            // Result lost: the command WAS applied and the gateway never learned
+            // so. The obligation stays and will be proposed again under the same
+            // identity, which is the only reason that retry is safe.
+            if (commit_roll(commit_faults.result_loss_permille)) continue;
+
+            require(discharge_evidence(evidence, identity),
+                    "a committed result did not discharge its obligation");
+
+            // Bookkeeping moves here with the apply, because this is where the
+            // result is first OBSERVED. Counting it at the venue would count
+            // evidence the cluster may never have received.
+            const auto order = observation.cluster_order_id.value();
+            const bool reconciliation_answer =
+                observation.kind == VenueObservationKind::order_reconciled ||
+                observation.kind == VenueObservationKind::cancel_reconciled;
+            if (applied.code == ApplyCode::applied) {
+                if (is_fill) {
+                    outcome.cluster_booked[order] +=
+                        applied.filled_quantity().atoms();
+                }
+                if (reconciliation_answer) ++outcome.reconciled;
+            } else if (is_fill) {
+                ++outcome.fill_refusals[applied.code];
+            } else if (reconciliation_answer) {
+                if (applied.code == ApplyCode::venue_observation_not_applicable) {
+                    // The only refusal a trustworthy answer can draw here is the
+                    // venue reporting fills the cluster never received: real
+                    // evidence the cluster is missing, not a conflict, because a
+                    // fill still in flight would close the gap.
+                    outcome.answered_ahead.insert(order);
+                }
+            } else {
+                ++outcome.event_refusals[applied.code];
+            }
+        }
+    };
 
     // One tick of the loop. `propose` is false during the drain, so the run can
     // finish delivering what it already authorized without starting new risk -
@@ -2551,7 +2951,7 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
 
         // 2. Plan. Every judgement in the loop happens here, in a pure function.
         const auto control = control_of(state);
-        const auto plan = plan_delivery(state, delivery, control, capable_venue(),
+        const auto plan = plan_delivery(state, delivery, evidence, control, capable_venue(),
                                         SendQuotaView{4}, timeouts, now);
 
         // 3. Ambiguity is reported before anything is sent. A deadline passing
@@ -2575,14 +2975,13 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
             unknown.cluster_order_id = order;
             unknown.effect_id = effect_id;
             unknown.evidence_digest = digest(0x7E);
-            ++counter;
-            const Command report{{CallerId{1}, RequestSequence{counter},
-                                  observation_fingerprint(unknown)},
-                                 ObserveOrderEvent{unknown}};
-            (void)submit(report);
+            // The transport attempt closes; the OBLIGATION to tell the cluster
+            // opens. Two acknowledgements, not one.
             (void)record_response(delivery, effect_id);
+            owe(unknown);
             ++outcome.ambiguous_declared;
         }
+        pump();
 
         // 4. Send. The shell executes the plan and records what the transport
         //    saw; it decides nothing.
@@ -2636,29 +3035,20 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
                     .second) {
                 outcome.venue_reported[order] += observation.quantity.atoms();
             }
-            ++counter;
-            const Command command{{CallerId{1}, RequestSequence{counter},
-                                   observation_fingerprint(observation)},
-                                  is_fill ? CommandBody{ObserveFill{observation}}
-                                          : CommandBody{ObserveOrderEvent{observation}}};
             // The venue ANSWERED. Whether the cluster accepts the answer is a
             // separate question with a separate outcome, and conflating the two
             // would leave the attempt outstanding until it timed out - so the
             // gateway would declare an outcome unknown that the venue had
             // already told it, and retry something already answered.
+            //
+            // And the venue answering is not the cluster receiving. That second
+            // acknowledgement is what `owe` opens and only a committed result
+            // closes.
             (void)record_response(delivery, observation.effect_id);
-            const auto applied = submit(command);
-            if (applied.code == ApplyCode::applied) {
-                if (is_fill) {
-                    outcome.cluster_booked[order] +=
-                        applied.filled_quantity().atoms();
-                }
-            } else if (is_fill) {
-                ++outcome.fill_refusals[applied.code];
-            } else {
-                ++outcome.event_refusals[applied.code];
-            }
+            (void)order;
+            owe(observation);
         }
+        pump();
         // 6. Reconcile, as a PIPELINE rather than a round trip inside one
         //    statement.
         //
@@ -2730,23 +3120,10 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
             // `cancel_reconciled` requires a venue order identity; it is only
             // ever built from a `known` answer, which always carries one.
             if (cancel_took_effect && answer.venue_order_id.value() == 0) continue;
-            ++counter;
-            const Command command{{CallerId{1}, RequestSequence{counter},
-                                   observation_fingerprint(answer)},
-                                  ObserveOrderEvent{answer}};
-            const auto adjudicated = submit(command);
-            if (adjudicated.code == ApplyCode::applied) {
-                ++outcome.reconciled;
-            } else if (adjudicated.code ==
-                       ApplyCode::venue_observation_not_applicable) {
-                // The only refusal a trustworthy answer can draw here is the
-                // venue reporting fills the cluster never received: real evidence
-                // the cluster is missing, not a conflict, because a fill still in
-                // flight would close the gap.
-                outcome.answered_ahead.insert(target.cluster_order_id.value());
-            }
+            owe(answer);
         }
         in_flight = std::move(still_flying);
+        pump();
 
         // 6b. ISSUE. The snapshot is taken at the venue NOW; the gateway sees it
         //     only on a later tick. `record_query` stamps the order's evidence
@@ -2884,6 +3261,7 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
                 order.state;
         }
     }
+    outcome.evidence_outstanding = evidence.obligation_count;
     outcome.metrics = collect_metrics(state);
     const GatewayReconciliationState fresh;
     outcome.reconciliation_targets =
@@ -2894,6 +3272,15 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
 }
 
 void check_gates(const RunOutcome& outcome, const std::string& where) {
+    // GATE 0: no evidence was dropped. An obligation the queue refused is
+    // evidence nobody owns any more - no redelivery reproduces it, no query
+    // targets it - which is the one outcome backpressure exists to make
+    // impossible. It holds in every run, including the ones with no commit
+    // faults at all, because a queue that overflows on ordinary traffic would be
+    // a sizing error rather than a fault.
+    require(outcome.evidence_dropped == 0,
+            "the gateway dropped evidence it owed the cluster" + where);
+
     // GATE 1: no duplicate venue order. The simulator creates a resting order
     // only for a cluster order identity it has never seen, and answers a repeat
     // with `venue_duplicate` instead. So the count of orders it created must
@@ -3154,6 +3541,61 @@ void test_the_fault_matrix_holds_the_gate() {
     // making on its own rather than smuggling in here.
 }
 
+void test_the_evidence_seam_holds_under_commit_faults() {
+    // P1-3 under the fault model rather than in isolation. The venue misbehaves
+    // AND the seam between the gateway and the state machine misbehaves, which is
+    // the combination Phase 6 will actually run in.
+    FaultPolicy faults;
+    faults.delay_permille = 120;
+    faults.loss_permille = 80;
+    faults.duplication_permille = 120;
+    faults.reorder_permille = 120;
+    faults.partial_fill_permille = 180;
+    faults.disconnect_permille = 60;
+    faults.rate_limit_permille = 90;
+    faults.inconsistent_query_permille = 220;
+    faults.partial_window_permille = 200;
+
+    CommitFaults commit;
+    // The command was applied and the gateway never learned so. The retry meets a
+    // reducer that already has the evidence.
+    commit.result_loss_permille = 200;
+    // The command never reached the state machine. The retry is the first and
+    // only application.
+    commit.leadership_loss_permille = 150;
+
+    std::size_t total_owed = 0;
+    std::size_t total_proposed = 0;
+    std::size_t total_retried = 0;
+    std::size_t total_outstanding = 0;
+    for (std::uint64_t seed = 1; seed <= 24; ++seed) {
+        const auto outcome = run_seed(seed, faults, 12, commit);
+        // Every gate still holds. In particular GATE 2: a retried command must
+        // not book its fill twice, and the reducer's request receipt is what
+        // makes that true - the retry is answered from the receipt with the
+        // ORIGINAL result rather than re-executed.
+        check_gates(outcome, " (commit-fault seed " + std::to_string(seed) + ")");
+        total_owed += outcome.evidence_owed;
+        total_proposed += outcome.evidence_proposed;
+        total_retried += outcome.evidence_retried;
+        total_outstanding += outcome.evidence_outstanding;
+    }
+
+    require(total_owed > 0, "the matrix never owed the cluster any evidence");
+    // The seam is only proved if it was actually crossed the hard way. Without
+    // this the commit faults could be disabled and the test would still pass.
+    require(total_retried > 0,
+            "no evidence was ever re-proposed, so neither a lost result nor a "
+            "leadership change was ever survived");
+    require(total_proposed > total_owed,
+            "every obligation committed first time, so the retry path is untested");
+    // And the queue drains. Evidence that is merely owed forever is evidence the
+    // cluster never received; a seam that accumulates obligations has replaced a
+    // dropped fact with a stuck one.
+    require(total_outstanding == 0,
+            "the run ended still owing the cluster evidence");
+}
+
 void test_the_matrix_is_reproducible() {
     // The seed is required evidence in the Phase 5 gate, which is worth nothing
     // unless replaying it reproduces the run exactly.
@@ -3364,6 +3806,10 @@ int main() {
         test_a_gateway_crash_cannot_produce_a_second_order();
         test_recovery_blocks_new_risk_without_blocking_a_cancel();
         test_a_gateway_that_never_scanned_sends_nothing();
+        test_a_venue_answer_does_not_discharge_the_commit_obligation();
+        test_a_lost_commit_result_moves_the_position_exactly_once();
+        test_leadership_loss_before_commit_leaves_the_evidence_owned();
+        test_a_saturated_evidence_queue_stops_producing_more_evidence();
         test_a_cancel_is_deliverable_in_every_strategy_mode();
         test_a_conflicted_order_keeps_accounting_valid_executions();
         test_an_expired_venue_event_is_refused_not_replayed();
@@ -3390,6 +3836,7 @@ int main() {
         test_a_reconciliation_answer_is_refused_where_it_cannot_apply();
         test_a_clean_venue_delivers_and_resolves();
         test_the_fault_matrix_holds_the_gate();
+        test_the_evidence_seam_holds_under_commit_faults();
         test_the_matrix_is_reproducible();
         test_retention_capacity_exceeds_the_horizon_under_nominal_faults();
         test_conflicts_saturate_the_cluster_and_it_fails_closed();
