@@ -2019,10 +2019,12 @@ std::size_t settle_orphaned_effects(TradingState& state,
         (void)sweep_resolved_order_groups(state);
         (void)sweep_expired_receipts(state);
     }
-    if (accepted_venue_event_count(state) == kMaxVenueEventReceipts) {
-        return fill_result(state, ApplyCode::fill_capacity_exceeded,
-                           next_version, observation, observation.quantity);
-    }
+    // Capacity is decided here but REFUSED below, after the owning order is
+    // known. The sweep above must still precede any index lookup - compaction
+    // moves records - but the refusal itself must not happen before the cluster
+    // can say which order was affected.
+    const bool venue_evidence_exhausted =
+        accepted_venue_event_count(state) == kMaxVenueEventReceipts;
 
     const auto order_index = find_order_by_effect(
         state, observation.cluster_order_id, observation.effect_id);
@@ -2031,6 +2033,22 @@ std::size_t settle_orphaned_effects(TradingState& state,
                            next_version, observation, observation.quantity);
     }
     auto& order = state.orders[order_index];
+    if (venue_evidence_exhausted) {
+        // The venue executed and the cluster has no receipt capacity left to
+        // account for it. The quantity genuinely cannot be booked - doing so
+        // without retaining its identity would break at-most-once accounting -
+        // but the ORDER must not go on reading as live while its position is
+        // known to be wrong.
+        //
+        // Marking it conflicted makes the divergence operator-visible and keeps
+        // the group unreclaimable, which is the same treatment an unbookable
+        // quantity already receives. It does not fix the exhaustion itself;
+        // that is the retention contract, and the contract must not be chosen
+        // by leaving the loss silent in the meantime.
+        order.state = ClusterOrderState::conflict;
+        return fill_result(state, ApplyCode::fill_capacity_exceeded,
+                           next_version, observation, observation.quantity);
+    }
     OutboxEffectRecord* outbox = nullptr;
     for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
         if (state.outbox_effects[index].effect_id == observation.effect_id) {

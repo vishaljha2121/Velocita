@@ -1429,7 +1429,21 @@ void test_repeated_cancel_cycles_cannot_starve_fill_capacity() {
     fill.venue_session_id = VenueSessionId{1};
     fill.venue_sequence = VenueSequence{++sequence};
     fill.cluster_order_id = order_id;
-    fill.effect_id = fixture.effect_id;
+    // The SUBMIT effect, located from current state. `fixture.effect_id` is the
+    // original cancel, and reuse_rejected_cancel has overwritten that record many
+    // generations ago - naming it would be refused as not-applicable and the test
+    // would pass while proving nothing.
+    EffectId submit_effect{};
+    for (std::size_t index = 0; index < fixture.state.outbox_effect_count; ++index) {
+        const auto& effect = fixture.state.outbox_effects[index];
+        if (effect.cluster_order_id == order_id &&
+            effect.operation == EffectOperation::submit) {
+            submit_effect = effect.effect_id;
+        }
+    }
+    require(submit_effect.value() != 0,
+            "the cycle fixture lost its submit effect");
+    fill.effect_id = submit_effect;
     fill.venue_order_id = VenueOrderId{88};
     fill.execution_id = ExecutionId{9'999};
     fill.side = Side::buy;
@@ -1441,6 +1455,19 @@ void test_repeated_cancel_cycles_cannot_starve_fill_capacity() {
                            observation_fingerprint(fill)},
                           ObserveFill{fill}};
     const auto applied = apply(fixture.state, command, fill_scratch);
+    // PART ONE, fixed: whatever happens to the quantity, the divergence must
+    // never be silent. A venue execution the cluster cannot book must leave the
+    // order conflicted and its group unreclaimable, not reading as live.
+    if (applied.code == ApplyCode::fill_capacity_exceeded ||
+        applied.code == ApplyCode::venue_event_capacity_exceeded) {
+        require(sole_order(fixture.state).state == ClusterOrderState::conflict,
+                "a fill refused for capacity left the order looking healthy, so "
+                "a real execution vanished without a trace");
+    }
+
+    // PART TWO, still open pending the retention contract: the reserve that
+    // authorization established for this order's own fills must survive any legal
+    // repetition of the serial cancel lifecycle.
     require(applied.code != ApplyCode::venue_event_capacity_exceeded &&
                 applied.code != ApplyCode::fill_capacity_exceeded,
             "repeated legal cancel cycles consumed the venue-event capacity "
