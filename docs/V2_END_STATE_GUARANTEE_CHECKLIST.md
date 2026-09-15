@@ -195,21 +195,39 @@ Phase 11 strategy/model validation and controlled canary
 
 ## 6. Replication and availability semantics — Phase 6
 
-- [ ] **G-035 — Apply after commit only.** A command invokes the authoritative
+- [x] **G-035 — Apply after commit only.** A command invokes the authoritative
   reducer only after the configured Raft commit condition is satisfied.
-- [ ] **G-036 — Stable retry across routing and leadership.** Follower routing,
+- [x] **G-036 — Stable retry across routing and leadership.** Follower routing,
   lost responses, and leader changes preserve the original request identity.
-- [ ] **G-037 — Leader-crash cut-point safety.** A crash before commit creates no
+- [x] **G-037 — Leader-crash cut-point safety.** A crash before commit creates no
   effect; a crash after commit preserves and redelivers the same effect identity.
-- [ ] **G-038 — Quorum loss fails closed.** Loss of quorum prevents new
+- [x] **G-038 — Quorum loss fails closed.** Loss of quorum prevents new
   authoritative risk decisions and risk-increasing outbox creation.
-- [ ] **G-039 — Replica convergence.** Healthy voters converge on commit index,
+- [x] **G-039 — Replica convergence.** Healthy voters converge on commit index,
   applied index, state digest, policy identity, and outbox watermark.
-- [ ] **G-040 — Snapshot install preserves authority.** A restarted or replaced
+- [x] **G-040 — Snapshot install preserves authority.** A restarted or replaced
   voter recovers all safety and dedup state before participating normally.
-- [ ] **G-041 — Honest failure domain.** Three voters on one Pi are process-fault
+- [x] **G-041 — Honest failure domain.** Three voters on one Pi are process-fault
   exercises, not host fault tolerance; host-failure continuity requires voters
   on independent failure domains.
+
+  Phase 6 closes G-035 through G-040 by construction and by test; G-041 is closed
+  as a STATEMENT rather than a mechanism, which is what it always was. The
+  replication suite runs three voters in one process, so it proves process-fault
+  and partition behaviour and nothing about host failure. ADR 0002's two-machine
+  topology is where host-independent failure domains come from.
+
+  `ReplicatedKernel` has exactly one call to `apply()`, in the Raft apply
+  callback, so G-035 is the shape of the code rather than a rule it follows. The
+  reducer is unchanged and does not know it is replicated, which is why the same
+  deterministic suite passes on one voter and on three.
+
+  Evidence: `tests/v2_replication_tests.cpp`, nine properties including both
+  leader-crash cut points, quorum-loss fail-closed with a non-vacuity retry after
+  healing, restart recovery by log replay, and cross-voter convergence on the
+  canonical snapshot digest. G-040's snapshot install is covered as RESTORE BY
+  REPLAY of the committed prefix; compaction-based install arrives with Phase 7,
+  which owns snapshot durability.
 
 ## 7. Durability, bounded memory, snapshot, and compaction — Phase 7
 

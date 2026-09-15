@@ -13,6 +13,60 @@ release-engineering work.
 
 ## [V2] - In development
 
+### Phase 6 in development - Raft Decision/OMS integration
+
+#### The reducer placed behind consensus — 2026-09-15
+
+`ReplicatedKernel` puts the deterministic V2 reducer behind willemt/raft,
+reusing V1's payload-generic storage, peer wire and checksum layers unchanged.
+V1's `RaftNode` is untouched, so its accepted gates stay valid; what is
+duplicated is the Raft callback table and nothing economic.
+
+The reducer did not change. It gains nothing, loses nothing, and does not know
+it is replicated - which is why the same deterministic suite passes on one voter
+and on three. `ReplicatedKernel` has exactly one call to `apply()`, in the Raft
+apply callback, so G-035 is the shape of the code rather than a rule it follows.
+
+Nine properties proved in `tests/v2_replication_tests.cpp`, all driving the
+economic fixture through PUBLIC COMMANDS ONLY - strategy mode, risk limits,
+policy publish and validate, executable-policy stage and activate, source event,
+decision evaluation and authorization - so reaching an outbox effect at all
+proves the full economic path survives proposal, replication and commit:
+
+- an admitted-but-unrouted command reaches no voter's reducer, then takes effect
+  exactly once when it commits;
+- a follower refuses a command and names the current leader, and the committed
+  result carries the original command identity back;
+- a leader crash before commit leaves no decision and no outbox effect;
+- a leader crash after commit replays to a byte-identical state with the same
+  effect identity;
+- a retry of an identical command returns the retained result without advancing
+  the state machine;
+- quorum loss creates no new risk on any voter, with a non-vacuity retry after
+  healing, since an uncommitted entry from a deposed leader may legitimately be
+  truncated and a client retries;
+- a restarted voter recovers state, outbox and dedup by replaying its committed
+  prefix; and
+- all voters converge on the canonical snapshot digest, commit index, applied
+  index, outbox watermark and state version.
+
+G-035 through G-040 are closed. G-041 is closed as the statement it always was:
+three voters in one process prove process-fault and partition behaviour and
+nothing about host failure, which is what ADR 0002's two-machine topology is for.
+
+A LIFETIME BUG FOUND AND FIXED. `log_append_entry` in willemt/raft copies the
+entry struct, so only the `data.buf` pointer - the caller's buffer would have to
+outlive the log entry, and a proposal's buffer cannot. It surfaced immediately as
+`committed entry did not decode`, because a V2 command is a canonical frame with
+a length and a digest and corrupt bytes fail loudly rather than producing a
+plausible wrong value. `ReplicatedKernel` now owns every payload the log can
+reference, keyed by log index and bounded by the log. The same pattern appears in
+V1's `RaftNode`; a probe did not reproduce a failure there and V1 passes under
+AddressSanitizer, so it is recorded as worth a look rather than a confirmed
+defect.
+
+Host Release 30/30, Debug ASan+UBSan 30/30 non-recovering.
+
 ### Phase 5 corrected acceptance - venue simulator and execution gateway
 
 #### MVP V1 excludes perpetuals; synthetic restart proof tightened — 2026-09-15

@@ -2334,6 +2334,73 @@ for reconciliation rather than blind overwrite. A single overloaded
 mutations and require order/effect identities that unsolicited venue economics
 do not own. Exact bytes remain unfrozen pending venue evidence.
 
+### 10.16 Phase 6: the reducer behind consensus (2026-09-15)
+
+ADR 0001 puts the deterministic reducer at the centre and everything untestable
+outside it. Phase 6 is the seam that keeps that true under replication, and the
+measure of success is that THE REDUCER DID NOT CHANGE. It gains nothing, loses
+nothing, and does not know it is replicated - which is precisely why the same
+deterministic suite passes on one voter and on three.
+
+G-035 IS THE SHAPE OF THE CODE, NOT A RULE IT FOLLOWS. `ReplicatedKernel` has
+exactly one call to `apply()`, inside the Raft apply callback. There is no other
+path from a command to the reducer, so a command that is proposed and never
+commits cannot have an economic effect - not because something checks, but
+because nothing connects them.
+
+A SEPARATE CLASS FROM V1's `RaftNode`, deliberately. V1 is accepted and gated,
+and its storage, peer-wire and checksum layers are already payload-generic
+(`WalRecord::payload` and `PeerMessage::payload` are byte vectors), so they are
+reused unchanged. What is duplicated is the Raft callback table and nothing
+economic. Generalising V1 instead would have put an accepted artifact at risk to
+save about three hundred lines of boilerplate.
+
+RESTORE IS BY REPLAY, NOT BY TRUSTING A STORED BLOB. A restarting voter appends
+its WAL, sets the commit index, and re-applies the committed prefix through the
+same reducer. The reducer is deterministic, so this reconstructs exactly the
+state that prefix produced - and if it ever did not, this path surfaces the
+divergence instead of hiding it behind a state file. Snapshot install for
+COMPACTED prefixes arrives with Phase 7, which owns snapshot durability.
+
+A RETRY IS NOT SHORT-CIRCUITED FROM THE RETAINED RECEIPT. Answering an
+already-applied command from local state would be a read whose correctness
+depends on still being leader, and a deposed leader would serve a stale answer
+with no way to know. The retry is proposed like anything else, and the reducer
+answers it with the original result when it commits. The cost is a duplicate log
+entry, bounded by the caller's own retry policy; the alternative costs a
+read-index discipline that Phase 6 does not need.
+
+THE CONVERGENCE ORACLE IS THE CANONICAL SNAPSHOT DIGEST. Comparing state
+versions, order counts or outbox watermarks across voters can agree while the
+states differ. The digest covers all of it at once, so `state_digest_of` is used
+by both the convergence check and any future snapshot install, and the two cannot
+drift apart about what "the same state" means.
+
+#### 10.16.1 A lifetime bug that consensus made reachable
+
+`log_append_entry` in willemt/raft does
+`memcpy(&entries[back], ety, sizeof(raft_entry_t))`. That copies the entry STRUCT
+and therefore only the `data.buf` POINTER. The caller's buffer would have to
+outlive the log entry, and a proposal's buffer cannot: commit happens after
+`propose` returns, and a slow follower can be re-sent an entry arbitrarily later.
+
+It surfaced immediately and deterministically here as
+`committed entry did not decode`, because a V2 command is a canonical frame with
+a length and a digest - corrupt bytes fail loudly rather than producing a
+plausible wrong value. A less structured payload would have produced a wrong
+answer instead of an error.
+
+`ReplicatedKernel` now owns every payload the log can still reference, keyed by
+log index, and `log_offer` repoints the STORED entry at the owned copy. The map
+is bounded by the log: entries leave on poll, pop and clear.
+
+Recorded because the ownership question is not obvious from the callback
+signature, and because the same pattern appears in V1's `RaftNode`. A probe that
+scribbled the buffer immediately after `raft_recv_entry` did NOT reproduce a
+failure there, and V1's suites pass under AddressSanitizer, so this is a thing to
+look at rather than a confirmed defect in V1 - stated at that strength
+deliberately.
+
 ## 11. Execution authority and kill contract
 
 Every sender tracks a committed `ExecutorGeneration` and `KillEpoch`. It rejects

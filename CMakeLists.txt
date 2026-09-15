@@ -138,6 +138,15 @@ target_link_libraries(velocita_v2_kernel PUBLIC velocita_v2_contracts
     PRIVATE velocita_v2_evaluator)
 target_compile_options(velocita_v2_kernel PRIVATE -Wall -Wextra -Wpedantic)
 
+# Phase 6. The deterministic reducer behind consensus. Links willemt_raft and
+# velocita_core's payload-generic storage/wire layers; V1's RaftNode is left
+# untouched so its accepted gates stay valid.
+add_library(velocita_v2_replication src/v2_replication.cpp)
+target_include_directories(velocita_v2_replication PUBLIC include)
+target_link_libraries(velocita_v2_replication
+    PUBLIC velocita_v2_kernel velocita_core)
+target_compile_options(velocita_v2_replication PRIVATE -Wall -Wextra -Wpedantic)
+
 add_executable(raft-node src/node_main.cpp)
 target_link_libraries(raft-node PRIVATE velocita_aeron velocita_metrics)
 
@@ -229,6 +238,11 @@ if(BUILD_TESTING)
         velocita_v2_venue_simulator)
     target_compile_options(v2-venue-simulator-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-venue-simulator-tests COMMAND v2-venue-simulator-tests)
+
+    add_executable(v2-replication-tests tests/v2_replication_tests.cpp)
+    target_link_libraries(v2-replication-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-replication-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-replication-tests COMMAND v2-replication-tests)
 
     add_executable(v2-gateway-tests tests/v2_gateway_tests.cpp)
     target_link_libraries(v2-gateway-tests PRIVATE velocita_v2_kernel)

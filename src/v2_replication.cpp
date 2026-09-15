@@ -1,0 +1,430 @@
+#include "velocita/v2/replication.hpp"
+
+#include <algorithm>
+#include <array>
+#include <stdexcept>
+
+namespace velocita::v2 {
+namespace {
+
+std::string_view role_name(raft_server_t* server) {
+    switch (raft_get_state(server)) {
+        case RAFT_STATE_FOLLOWER: return "follower";
+        case RAFT_STATE_CANDIDATE: return "candidate";
+        case RAFT_STATE_LEADER: return "leader";
+        default: return "none";
+    }
+}
+
+}  // namespace
+
+Digest256 state_digest_of(const TradingState& state) {
+    // The canonical snapshot digest, so "the same state" means the same thing to
+    // a convergence check and to a snapshot install. Anything cheaper - a state
+    // version, an order count - can agree while the states differ.
+    static thread_local std::array<std::byte, kMaxStateSnapshotBytes> storage{};
+    const auto encoded = encode_state_snapshot(state, storage);
+    if (encoded.error != StateSnapshotError::none) {
+        throw std::runtime_error("replica state is not encodable");
+    }
+    return encoded.state_digest;
+}
+
+ReplicatedKernel::ReplicatedKernel(const std::int32_t node_id,
+                                   std::filesystem::path data_dir,
+                                   std::vector<std::int32_t> members)
+    : node_id_(node_id),
+      members_(std::move(members)),
+      metadata_store_(data_dir),
+      wal_(std::move(data_dir)),
+      metadata_(metadata_store_.load()),
+      scratch_(std::make_unique<ApplyScratch>()),
+      codec_scratch_(std::make_unique<KernelCommandCodecScratch>()),
+      server_(raft_new()) {
+    if (server_ == nullptr) throw std::runtime_error("raft_new failed");
+
+    raft_cbs_t table{};
+    table.send_requestvote = &ReplicatedKernel::send_request_vote;
+    table.send_appendentries = &ReplicatedKernel::send_append_entries;
+    table.applylog = &ReplicatedKernel::apply_log;
+    table.persist_vote = &ReplicatedKernel::persist_vote;
+    table.persist_term = &ReplicatedKernel::persist_term;
+    table.log_offer = &ReplicatedKernel::log_offer;
+    table.log_poll = &ReplicatedKernel::log_poll;
+    table.log_pop = &ReplicatedKernel::log_pop;
+    table.log_clear = &ReplicatedKernel::log_clear;
+    table.log_get_node_id = &ReplicatedKernel::log_get_node_id;
+    raft_set_callbacks(server_, &table, this);
+
+    if (members_.empty()) members_.push_back(node_id_);
+    std::sort(members_.begin(), members_.end());
+    members_.erase(std::unique(members_.begin(), members_.end()), members_.end());
+    if (!std::binary_search(members_.begin(), members_.end(), node_id_)) {
+        throw std::runtime_error("cluster membership does not include the local node");
+    }
+    for (const auto member : members_) {
+        if (member <= 0 ||
+            raft_add_node(server_, nullptr, member, member == node_id_) == nullptr) {
+            throw std::runtime_error("failed to add Raft member " + std::to_string(member));
+        }
+    }
+
+    if (raft_set_current_term(server_, metadata_.term) != 0) {
+        throw std::runtime_error("failed to restore Raft term");
+    }
+    if (metadata_.voted_for >= 0 &&
+        raft_vote_for_nodeid(server_, metadata_.voted_for) != 0) {
+        throw std::runtime_error("failed to restore Raft vote");
+    }
+
+    // Restore by REPLAY, not by trusting a stored state blob. The reducer is
+    // deterministic, so replaying the committed prefix reconstructs exactly the
+    // state that prefix produced - and if it ever did not, that is a defect this
+    // path surfaces rather than hides.
+    const auto records = wal_.read_all();
+    for (const auto& record : records) {
+        raft_entry_t entry{};
+        entry.term = record.term;
+        entry.id = record.entry_id;
+        entry.type = record.entry_type;
+        entry.data.buf = const_cast<std::byte*>(record.payload.data());
+        entry.data.len = static_cast<unsigned int>(record.payload.size());
+        if (raft_append_entry(server_, &entry) != 0) {
+            throw std::runtime_error("failed to restore WAL entry " +
+                                     std::to_string(record.index));
+        }
+    }
+    if (metadata_.commit_index < 0 ||
+        metadata_.commit_index > raft_get_current_idx(server_)) {
+        throw std::runtime_error("metadata commit index is outside the WAL");
+    }
+    raft_set_commit_idx(server_, metadata_.commit_index);
+    if (raft_apply_all(server_) != 0) {
+        throw std::runtime_error("failed to replay committed WAL entries: " +
+                                 callback_error_);
+    }
+    restoring_ = false;
+}
+
+ReplicatedKernel::~ReplicatedKernel() {
+    if (server_ != nullptr) raft_free(server_);
+}
+
+void ReplicatedKernel::tick(const int elapsed_ms) {
+    if (const int result = raft_periodic(server_, elapsed_ms); result != 0) {
+        throw std::runtime_error("raft_periodic failed: " + std::to_string(result));
+    }
+    persist_commit_index();
+    if (const int result = raft_apply_all(server_); result != 0) {
+        throw std::runtime_error("raft_apply_all failed: " + std::to_string(result) +
+                                 " " + callback_error_);
+    }
+}
+
+bool ReplicatedKernel::is_leader() const { return raft_is_leader(server_) != 0; }
+
+ProposeOutcome ReplicatedKernel::propose(const std::span<const std::byte> command_bytes) {
+    ProposeOutcome outcome;
+    outcome.leader_id = raft_get_current_leader(server_);
+    outcome.term = raft_get_current_term(server_);
+    outcome.index = raft_get_current_idx(server_);
+    if (!is_leader()) {
+        outcome.status = ProposeStatus::not_leader;
+        return outcome;
+    }
+
+    // The entry id is a Raft-level hint, not an economic identity. The command's
+    // real identity lives in its canonical bytes and is enforced by the reducer's
+    // request receipt, so narrowing it to 31 bits here costs nothing.
+    std::uint64_t seed = 0;
+    for (const auto byte : command_bytes) {
+        seed = seed * 1099511628211ULL ^ static_cast<std::uint64_t>(byte);
+    }
+
+    std::vector<std::byte> payload(command_bytes.begin(), command_bytes.end());
+    msg_entry_t entry{};
+    entry.id = static_cast<raft_entry_id_t>(seed & 0x7FFFFFFFU);
+    entry.type = RAFT_LOGTYPE_NORMAL;
+    entry.data.buf = payload.data();
+    entry.data.len = static_cast<unsigned int>(payload.size());
+    msg_entry_response_t raft_response{};
+    const int result = raft_recv_entry(server_, &entry, &raft_response);
+    if (result == RAFT_ERR_NOT_LEADER) {
+        outcome.status = ProposeStatus::not_leader;
+        outcome.leader_id = raft_get_current_leader(server_);
+        return outcome;
+    }
+    if (result != 0) {
+        outcome.status = ProposeStatus::refused;
+        return outcome;
+    }
+
+    persist_commit_index();
+    if (const int applied = raft_apply_all(server_); applied != 0) {
+        throw std::runtime_error("raft_apply_all failed: " + std::to_string(applied) +
+                                 " " + callback_error_);
+    }
+    outcome.status = ProposeStatus::admitted;
+    outcome.index = raft_response.idx;
+    outcome.term = raft_response.term;
+    return outcome;
+}
+
+std::optional<CommittedResult> ReplicatedKernel::take_committed_result() {
+    if (committed_results_.empty()) return std::nullopt;
+    auto result = committed_results_.front();
+    committed_results_.pop_front();
+    return result;
+}
+
+std::optional<PeerMessage> ReplicatedKernel::take_outbound_message() {
+    if (outbound_messages_.empty()) return std::nullopt;
+    auto result = std::move(outbound_messages_.front());
+    outbound_messages_.pop_front();
+    return result;
+}
+
+ReplicaStatus ReplicatedKernel::status() const {
+    ReplicaStatus value;
+    value.node_id = node_id_;
+    value.leader_id = raft_get_current_leader(server_);
+    value.role = role_name(server_);
+    value.term = raft_get_current_term(server_);
+    value.current_index = raft_get_current_idx(server_);
+    value.commit_index = raft_get_commit_idx(server_);
+    value.applied_index = raft_get_last_applied_idx(server_);
+    value.state_version = state_.state_version;
+    value.outbox_effect_count = state_.outbox_effect_count;
+    value.state_digest = state_digest_of(state_);
+    return value;
+}
+
+void ReplicatedKernel::persist_commit_index() {
+    const auto commit = raft_get_commit_idx(server_);
+    if (commit == metadata_.commit_index) return;
+    metadata_.term = raft_get_current_term(server_);
+    metadata_.voted_for = raft_get_voted_for(server_);
+    metadata_.commit_index = commit;
+    metadata_store_.save(metadata_);
+}
+
+void ReplicatedKernel::receive_peer(const PeerMessage& message) {
+    if (message.recipient_id != node_id_ || message.sender_id == node_id_) {
+        throw std::runtime_error("peer message has invalid route");
+    }
+    auto* sender = raft_get_node(server_, message.sender_id);
+    if (sender == nullptr) throw std::runtime_error("peer message came from a non-member");
+
+    int result = 0;
+    if (const auto* value = std::get_if<RequestVote>(&message.payload)) {
+        msg_requestvote_t request{value->term, value->candidate_id, value->last_log_index,
+                                  value->last_log_term};
+        msg_requestvote_response_t response{};
+        result = raft_recv_requestvote(server_, sender, &request, &response);
+        outbound_messages_.push_back(
+            {node_id_, message.sender_id,
+             RequestVoteResponse{response.term, response.vote_granted != 0}});
+    } else if (const auto* value = std::get_if<RequestVoteResponse>(&message.payload)) {
+        msg_requestvote_response_t response{value->term, value->vote_granted ? 1 : 0};
+        result = raft_recv_requestvote_response(server_, sender, &response);
+    } else if (const auto* value = std::get_if<AppendEntries>(&message.payload)) {
+        std::vector<raft_entry_t> entries(value->entries.size());
+        for (std::size_t i = 0; i < value->entries.size(); ++i) {
+            const auto& source = value->entries[i];
+            entries[i].term = source.term;
+            entries[i].id = source.id;
+            entries[i].type = source.type;
+            entries[i].data.buf = const_cast<std::byte*>(source.payload.data());
+            entries[i].data.len = static_cast<unsigned int>(source.payload.size());
+        }
+        msg_appendentries_t request{};
+        request.term = value->term;
+        request.prev_log_idx = value->previous_log_index;
+        request.prev_log_term = value->previous_log_term;
+        request.leader_commit = value->leader_commit;
+        request.n_entries = static_cast<int>(entries.size());
+        request.entries = entries.data();
+        msg_appendentries_response_t response{};
+        result = raft_recv_appendentries(server_, sender, &request, &response);
+        outbound_messages_.push_back(
+            {node_id_, message.sender_id,
+             AppendEntriesResponse{response.term, response.success != 0,
+                                   response.current_idx, response.first_idx}});
+    } else if (const auto* value = std::get_if<AppendEntriesResponse>(&message.payload)) {
+        msg_appendentries_response_t response{};
+        response.term = value->term;
+        response.success = value->success ? 1 : 0;
+        response.current_idx = value->current_index;
+        response.first_idx = value->first_index;
+        result = raft_recv_appendentries_response(server_, sender, &response);
+    }
+    if (result != 0 && result != RAFT_ERR_NOT_LEADER) {
+        throw std::runtime_error("raft peer handling failed: " + std::to_string(result) +
+                                 " " + callback_error_);
+    }
+    persist_commit_index();
+    if (const int applied = raft_apply_all(server_); applied != 0) {
+        throw std::runtime_error("raft_apply_all failed: " + std::to_string(applied) +
+                                 " " + callback_error_);
+    }
+}
+
+int ReplicatedKernel::apply_log(raft_server_t*, void* user_data, raft_entry_t* entry,
+                                const raft_index_t index) {
+    auto& self = *static_cast<ReplicatedKernel*>(user_data);
+    try {
+        const auto bytes = std::span<const std::byte>(
+            static_cast<const std::byte*>(entry->data.buf), entry->data.len);
+
+        // THE ONLY CALL TO apply() IN THIS CLASS. G-035 is not a rule the code
+        // follows, it is the shape of the code: there is no other path from a
+        // command to the reducer, so a command that never commits cannot have an
+        // economic effect.
+        Command command;
+        const auto decoded =
+            decode_kernel_command(bytes, command, *self.codec_scratch_);
+        if (decoded.error != KernelCodecError::none) {
+            self.callback_error_ = "committed entry did not decode: type=" +
+                std::to_string(entry->type) + " len=" +
+                std::to_string(entry->data.len) + " codec=" +
+                std::to_string(static_cast<int>(decoded.error));
+            return RAFT_ERR_SHUTDOWN;
+        }
+        const auto result = apply(self.state_, command, *self.scratch_);
+
+        if (!self.restoring_) {
+            self.committed_results_.push_back(
+                {command.identity, result, entry->term, index});
+        }
+        return 0;
+    } catch (const std::exception& error) {
+        self.callback_error_ = error.what();
+        return RAFT_ERR_SHUTDOWN;
+    }
+}
+
+int ReplicatedKernel::send_request_vote(raft_server_t*, void* user_data, raft_node_t* node,
+                                        msg_requestvote_t* message) {
+    auto& self = *static_cast<ReplicatedKernel*>(user_data);
+    self.outbound_messages_.push_back(
+        {self.node_id_, raft_node_get_id(node),
+         RequestVote{message->term, message->candidate_id, message->last_log_idx,
+                     message->last_log_term}});
+    return 0;
+}
+
+int ReplicatedKernel::send_append_entries(raft_server_t*, void* user_data,
+                                          raft_node_t* node,
+                                          msg_appendentries_t* message) {
+    auto& self = *static_cast<ReplicatedKernel*>(user_data);
+    AppendEntries append{};
+    append.term = message->term;
+    append.previous_log_index = message->prev_log_idx;
+    append.previous_log_term = message->prev_log_term;
+    append.leader_commit = message->leader_commit;
+    for (int i = 0; i < message->n_entries; ++i) {
+        const auto& entry = message->entries[i];
+        const auto* begin = static_cast<const std::byte*>(entry.data.buf);
+        append.entries.push_back({entry.term, entry.id, entry.type,
+                                  std::vector<std::byte>(begin, begin + entry.data.len)});
+    }
+    self.outbound_messages_.push_back(
+        {self.node_id_, raft_node_get_id(node), std::move(append)});
+    return 0;
+}
+
+int ReplicatedKernel::persist_vote(raft_server_t*, void* user_data, raft_node_id_t vote) {
+    auto& self = *static_cast<ReplicatedKernel*>(user_data);
+    self.metadata_.voted_for = vote;
+    if (self.restoring_) return 0;
+    try {
+        self.metadata_store_.save(self.metadata_);
+        return 0;
+    } catch (const std::exception& error) {
+        self.callback_error_ = error.what();
+        return RAFT_ERR_SHUTDOWN;
+    }
+}
+
+int ReplicatedKernel::persist_term(raft_server_t*, void* user_data, raft_term_t term,
+                                   raft_node_id_t vote) {
+    auto& self = *static_cast<ReplicatedKernel*>(user_data);
+    self.metadata_.term = term;
+    self.metadata_.voted_for = vote;
+    if (self.restoring_) return 0;
+    try {
+        self.metadata_store_.save(self.metadata_);
+        return 0;
+    } catch (const std::exception& error) {
+        self.callback_error_ = error.what();
+        return RAFT_ERR_SHUTDOWN;
+    }
+}
+
+int ReplicatedKernel::log_offer(raft_server_t*, void* user_data, raft_entry_t* entry,
+                                const raft_index_t index) {
+    auto& self = *static_cast<ReplicatedKernel*>(user_data);
+    try {
+        const auto* begin = static_cast<const std::byte*>(entry->data.buf);
+        std::vector<std::byte> payload(begin, begin + entry->data.len);
+
+        // Take ownership BEFORE anything else can read the entry, and repoint
+        // the log's own copy at it. `entry` here is the stored entry, so this
+        // replaces the caller's short-lived pointer with one whose lifetime the
+        // node controls. Without it, applying after commit reads freed memory.
+        auto& owned = self.log_payloads_[static_cast<std::uint64_t>(index)];
+        owned = std::move(payload);
+        entry->data.buf = owned.data();
+
+        if (self.restoring_) return 0;
+        self.wal_.append({static_cast<std::uint64_t>(index), entry->term, entry->id,
+                          entry->type, owned});
+        return 0;
+    } catch (const std::exception& error) {
+        self.callback_error_ = error.what();
+        return RAFT_ERR_SHUTDOWN;
+    }
+}
+
+int ReplicatedKernel::log_poll(raft_server_t*, void* user_data, raft_entry_t*,
+                               const raft_index_t index) {
+    auto& self = *static_cast<ReplicatedKernel*>(user_data);
+    self.log_payloads_.erase(static_cast<std::uint64_t>(index));
+    return 0;
+}
+
+int ReplicatedKernel::log_pop(raft_server_t*, void* user_data, raft_entry_t*,
+                              const raft_index_t index) {
+    auto& self = *static_cast<ReplicatedKernel*>(user_data);
+    self.log_payloads_.erase(self.log_payloads_.lower_bound(
+                                 static_cast<std::uint64_t>(index)),
+                             self.log_payloads_.end());
+    if (self.restoring_) return 0;
+    try {
+        self.wal_.truncate_from(static_cast<std::uint64_t>(index));
+        return 0;
+    } catch (const std::exception& error) {
+        self.callback_error_ = error.what();
+        return RAFT_ERR_SHUTDOWN;
+    }
+}
+
+int ReplicatedKernel::log_clear(raft_server_t*, void* user_data, raft_entry_t*,
+                                raft_index_t) {
+    auto& self = *static_cast<ReplicatedKernel*>(user_data);
+    self.log_payloads_.clear();
+    if (self.restoring_) return 0;
+    try {
+        self.wal_.truncate_from(1);
+        return 0;
+    } catch (const std::exception& error) {
+        self.callback_error_ = error.what();
+        return RAFT_ERR_SHUTDOWN;
+    }
+}
+
+int ReplicatedKernel::log_get_node_id(raft_server_t*, void*, raft_entry_t*, raft_index_t) {
+    return -1;
+}
+
+}  // namespace velocita::v2
