@@ -37,11 +37,17 @@ class WriteAheadLog {
 public:
     explicit WriteAheadLog(std::filesystem::path data_dir);
     void append(const WalRecord& record);
+    // Remove a SUFFIX: every record whose index is at or above this one.
     void truncate_from(std::uint64_t first_removed_index);
+    // Remove a PREFIX: every record whose index is at or below this one. Used
+    // after a snapshot covering that prefix is durable, never before.
+    void discard_through(std::uint64_t last_removed_index);
     [[nodiscard]] std::vector<WalRecord> read_all() const;
     [[nodiscard]] const std::filesystem::path& path() const noexcept { return path_; }
 
 private:
+    void rewrite(const std::vector<WalRecord>& kept) const;
+
     std::filesystem::path path_;
 };
 

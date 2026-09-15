@@ -4,12 +4,14 @@
 #include "velocita/wire.hpp"
 #include "velocita/v2/kernel.hpp"
 #include "velocita/v2/kernel_codec.hpp"
+#include "velocita/v2/snapshot_store.hpp"
 #include "velocita/v2/state_snapshot.hpp"
 
 extern "C" {
 #include "raft.h"
 }
 
+#include <array>
 #include <cstdint>
 #include <deque>
 #include <filesystem>
@@ -85,6 +87,27 @@ struct ReplicaStatus {
     Digest256 state_digest{};
 };
 
+// A read of committed outbox state, carrying the authority that was true AT THE
+// MOMENT OF THE READ.
+//
+// The gateway must not act on a deposed leader's view. `TradingState` alone
+// cannot say whether it is current, so a bare reference invites exactly that
+// mistake; this makes the caller hold the evidence alongside the data, and
+// `authoritative` is the single question worth asking.
+//
+// Not a read-index read. A read-index round trip proves leadership at the read's
+// linearization point and is the stricter form; this proves only that THIS node
+// believed itself leader when the bytes were taken, which is sufficient while
+// the gateway is in-process with the voter and must be revisited when it is not.
+struct CommittedOutboxView {
+    bool authoritative{};
+    std::int32_t leader_id{-1};
+    std::int64_t term{};
+    std::int64_t applied_index{};
+    std::size_t effect_count{};
+    std::array<OutboxEffectRecord, kMaxOutboxEffects> effects{};
+};
+
 class ReplicatedKernel {
 public:
     ReplicatedKernel(std::int32_t node_id, std::filesystem::path data_dir,
@@ -115,6 +138,21 @@ public:
 
     [[nodiscard]] ReplicaStatus status() const;
 
+    // The committed outbox, with the authority under which it was read. A
+    // caller that ignores `authoritative` is reading a follower's or a deposed
+    // leader's copy, which is stale by definition.
+    [[nodiscard]] CommittedOutboxView committed_outbox() const;
+
+    // Capture a durable snapshot at the current applied index and reclaim the
+    // log prefix it covers. Ordering is the whole point and is enforced here
+    // rather than documented: the snapshot is fsynced and renamed BEFORE any
+    // entry is reclaimed, so a crash in between leaves a durable snapshot and a
+    // log that still holds the prefix - recoverable - rather than the reverse,
+    // which loses entries nothing covers.
+    //
+    // Returns the last index included, or zero when there was nothing to take.
+    std::uint64_t compact();
+
     // Read-only view for tests and for the gateway's committed-outbox read. It
     // is authoritative only on a leader that has not been deposed; callers that
     // need that guarantee must check `is_leader()` at the same moment, and a
@@ -139,7 +177,10 @@ private:
     std::vector<std::int32_t> members_;
     MetadataStore metadata_store_;
     WriteAheadLog wal_;
+    SnapshotStore snapshots_;
     PersistentMetadata metadata_;
+    // Highest index reclaimed by `log_poll` during the current `raft_end_snapshot`.
+    std::uint64_t polled_through_{};
 
     TradingState state_{};
     std::unique_ptr<ApplyScratch> scratch_;

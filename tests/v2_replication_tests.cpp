@@ -4,6 +4,7 @@
 
 #include <array>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -601,6 +602,182 @@ void test_all_voters_converge(const std::filesystem::path& root) {
             "the convergence check ran on a cluster with nothing to converge on");
 }
 
+
+// --- Phase 6 leftover: the committed-outbox read contract -------------------
+
+void test_a_committed_outbox_read_carries_its_own_authority(
+    const std::filesystem::path& root) {
+    Cluster cluster(root, 3);
+    (void)build_authorized_submit(cluster);
+    cluster.drain_results();
+    cluster.settle(200);
+
+    auto& leader = cluster.elect();
+    const auto from_leader = leader.committed_outbox();
+    require(from_leader.authoritative,
+            "a leader's own outbox read did not claim authority");
+    require(from_leader.effect_count == 1, "the leader read no committed effect");
+    require(from_leader.effects[0].effect_id.value() != 0,
+            "the read returned an effect with no identity");
+    require(from_leader.applied_index > 0,
+            "an authoritative read carried no applied index");
+
+    // A follower holds the same BYTES and must not present them as
+    // authoritative. That distinction is the entire contract: without it a
+    // caller cannot tell a current view from a stale one, and both look correct.
+    for (const auto& node : cluster.nodes) {
+        if (node->is_leader()) continue;
+        const auto from_follower = node->committed_outbox();
+        require(!from_follower.authoritative,
+                "a follower presented its outbox as authoritative");
+        require(from_follower.effect_count == from_leader.effect_count,
+                "a follower disagreed about committed outbox contents");
+        require(from_follower.leader_id == from_leader.leader_id,
+                "a follower named a different leader");
+    }
+}
+
+// --- Phase 7a: durable snapshots, compaction and install --------------------
+
+void test_a_snapshot_is_durable_before_its_prefix_is_reclaimed(
+    const std::filesystem::path& root) {
+    Cluster cluster(root, 1);
+    (void)build_authorized_submit(cluster);
+    cluster.settle(50);
+
+    auto& only = cluster.elect();
+    const auto before = only.status();
+    const auto wal_before = velocita::WriteAheadLog(root / "1").read_all().size();
+    require(wal_before > 1, "the fixture did not produce a log worth compacting");
+
+    const auto included = only.compact();
+    require(included > 0, "compaction covered nothing");
+
+    // The ORDER is the property. After compaction both must be true at once:
+    // the snapshot exists and decodes, and the log no longer holds the prefix.
+    // If reclamation could precede durability, a crash between them would leave
+    // neither.
+    const auto stored = SnapshotStore(root / "1").load();
+    require(stored.has_value(), "compaction reclaimed a prefix with no snapshot");
+    require(stored->last_included_index == included,
+            "the snapshot did not cover the prefix that was reclaimed");
+    require(stored->state_digest == before.state_digest,
+            "the snapshot captured a different state than the replica held");
+
+    const auto wal_after = velocita::WriteAheadLog(root / "1").read_all().size();
+    require(wal_after < wal_before, "compaction reclaimed nothing from the log");
+    for (const auto& record : velocita::WriteAheadLog(root / "1").read_all()) {
+        require(record.index > included,
+                "a reclaimed entry is still in the log");
+    }
+}
+
+void test_a_restart_installs_the_snapshot_and_replays_the_rest(
+    const std::filesystem::path& root) {
+    Cluster cluster(root, 1);
+    const auto sequence = build_authorized_submit(cluster);
+    cluster.settle(50);
+    const auto included = cluster.elect().compact();
+    require(included > 0, "compaction covered nothing");
+
+    // More commands AFTER the snapshot, so recovery has to do both halves:
+    // install the snapshot, then replay the suffix the snapshot does not cover.
+    (void)cluster.commit(command(sequence + 1,
+                                 RecordSourceEvent{SourceId{12}, SourceGeneration{1},
+                                                   SourceSequence{2}, digest(0x45)}));
+    cluster.settle(50);
+    const auto before = cluster.elect().status();
+    require(before.applied_index > static_cast<std::int64_t>(included),
+            "the fixture left nothing beyond the snapshot to replay");
+
+    cluster.restart(1);
+    cluster.settle(200);
+
+    const auto after = cluster.node(1).status();
+    require(after.state_digest == before.state_digest,
+            "installing the snapshot and replaying the suffix produced a "
+            "different state");
+    require(after.applied_index == before.applied_index,
+            "recovery did not reach the pre-restart applied index");
+    require(after.outbox_effect_count == before.outbox_effect_count,
+            "recovery lost outbox effects held only in the snapshot");
+}
+
+void test_a_corrupt_snapshot_degrades_to_replay_rather_than_refusing_to_start(
+    const std::filesystem::path& root) {
+    Cluster cluster(root, 1);
+    (void)build_authorized_submit(cluster);
+    cluster.settle(50);
+    const auto before = cluster.elect().status();
+
+    // No compaction, so the log still holds everything. Corrupting the snapshot
+    // must therefore cost nothing at all.
+    SnapshotStore store(root / "1");
+    store.save(cluster.elect().state(), 1, 1);
+    require(store.load().has_value(), "the fixture snapshot did not round-trip");
+
+    {
+        std::fstream file(store.path(), std::ios::binary | std::ios::in | std::ios::out);
+        require(file.good(), "could not open the snapshot to corrupt it");
+        file.seekp(20);
+        const char rubbish = 0x7F;
+        file.write(&rubbish, 1);
+    }
+    require(!store.load().has_value(),
+            "a corrupted snapshot still loaded, so the checksum proves nothing");
+
+    // The node must still start. A snapshot is an optimisation over replay, and
+    // an unreadable one has to degrade to the thing it optimised - refusing to
+    // start would turn a recoverable disk fault into an outage.
+    cluster.restart(1);
+    cluster.settle(200);
+    require(cluster.node(1).status().state_digest == before.state_digest,
+            "a node with a corrupt snapshot did not recover by replay");
+}
+
+void test_recovery_is_never_behind_the_last_acknowledged_commit(
+    const std::filesystem::path& root) {
+    // The power-cut property, stated as the invariant rather than as a fault
+    // injection: whatever a caller was told had committed must still be there
+    // after a restart, at every point where the durable artefacts differ.
+    Cluster cluster(root, 1);
+    const auto sequence = build_authorized_submit(cluster);
+    cluster.settle(50);
+
+    struct Point {
+        const char* name;
+        bool compact_here;
+        bool extra_command;
+    };
+    const std::array<Point, 3> points{{{"no snapshot", false, false},
+                                       {"snapshot only", true, false},
+                                       {"snapshot then more", true, true}}};
+
+    std::uint64_t next = sequence;
+    for (const auto& point : points) {
+        if (point.compact_here) (void)cluster.elect().compact();
+        if (point.extra_command) {
+            (void)cluster.commit(command(
+                ++next, RecordSourceEvent{SourceId{12}, SourceGeneration{1},
+                                          SourceSequence{2}, digest(0x45)}));
+        }
+        cluster.settle(50);
+
+        const auto acknowledged = cluster.elect().status();
+        cluster.restart(1);
+        cluster.settle(200);
+        const auto recovered = cluster.node(1).status();
+
+        const std::string where = std::string(" at ") + point.name;
+        require(recovered.state_version >= acknowledged.state_version,
+                "recovery went backwards" + where);
+        require(recovered.state_digest == acknowledged.state_digest,
+                "recovery produced a different state" + where);
+        require(recovered.outbox_effect_count == acknowledged.outbox_effect_count,
+                "recovery lost an acknowledged outbox effect" + where);
+    }
+}
+
 // --- the same suite on a single voter ----------------------------------------
 
 void test_one_voter_reaches_the_same_state(const std::filesystem::path& root) {
@@ -648,6 +825,12 @@ int main() {
         test_quorum_loss_creates_no_new_risk_decision(fresh("quorum"));
         test_a_restarted_voter_recovers_state_outbox_and_dedup(fresh("restart"));
         test_all_voters_converge(fresh("converge"));
+        test_a_committed_outbox_read_carries_its_own_authority(fresh("outbox-read"));
+        test_a_snapshot_is_durable_before_its_prefix_is_reclaimed(fresh("compact"));
+        test_a_restart_installs_the_snapshot_and_replays_the_rest(fresh("install"));
+        test_a_corrupt_snapshot_degrades_to_replay_rather_than_refusing_to_start(
+            fresh("corrupt-snapshot"));
+        test_recovery_is_never_behind_the_last_acknowledged_commit(fresh("power-cut"));
         test_one_voter_reaches_the_same_state(fresh("voter-count"));
 
         std::filesystem::remove_all(root);

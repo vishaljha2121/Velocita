@@ -36,7 +36,8 @@ ReplicatedKernel::ReplicatedKernel(const std::int32_t node_id,
     : node_id_(node_id),
       members_(std::move(members)),
       metadata_store_(data_dir),
-      wal_(std::move(data_dir)),
+      wal_(data_dir),
+      snapshots_(std::move(data_dir)),
       metadata_(metadata_store_.load()),
       scratch_(std::make_unique<ApplyScratch>()),
       codec_scratch_(std::make_unique<KernelCommandCodecScratch>()),
@@ -69,6 +70,33 @@ ReplicatedKernel::ReplicatedKernel(const std::int32_t node_id,
         }
     }
 
+    // INSTALL THE SNAPSHOT FIRST, then replay only what it does not cover.
+    //
+    // Without a snapshot this is replay from the beginning, which is the
+    // strongest form: the reducer is deterministic, so replaying the committed
+    // prefix reconstructs exactly the state that prefix produced, and a
+    // divergence surfaces instead of hiding behind a state file. A snapshot is
+    // the same guarantee for a prefix that has been reclaimed, and it is only
+    // trusted because the canonical decoder revalidates every invariant before
+    // it is accepted.
+    std::uint64_t installed_through = 0;
+    if (auto stored = snapshots_.load()) {
+        const int began = raft_begin_load_snapshot(
+            server_, stored->last_included_term,
+            static_cast<raft_index_t>(stored->last_included_index));
+        if (began == 0) {
+            state_ = stored->state;
+            installed_through = stored->last_included_index;
+            if (raft_end_load_snapshot(server_) != 0) {
+                throw std::runtime_error("failed to install the stored snapshot");
+            }
+        }
+    }
+
+    // Hard state is restored AFTER the snapshot, not before.
+    // `raft_begin_load_snapshot` assigns `current_term` from the snapshot and
+    // clears the vote, so restoring them first silently loses both - and the
+    // symptom appears far away, as a commit index that no longer fits the log.
     if (raft_set_current_term(server_, metadata_.term) != 0) {
         throw std::runtime_error("failed to restore Raft term");
     }
@@ -77,12 +105,12 @@ ReplicatedKernel::ReplicatedKernel(const std::int32_t node_id,
         throw std::runtime_error("failed to restore Raft vote");
     }
 
-    // Restore by REPLAY, not by trusting a stored state blob. The reducer is
-    // deterministic, so replaying the committed prefix reconstructs exactly the
-    // state that prefix produced - and if it ever did not, that is a defect this
-    // path surfaces rather than hides.
     const auto records = wal_.read_all();
     for (const auto& record : records) {
+        // Entries the snapshot already accounts for are skipped rather than
+        // re-applied. A crash between a durable snapshot and its prefix
+        // reclamation leaves exactly this overlap, and it has to be harmless.
+        if (record.index <= installed_through) continue;
         raft_entry_t entry{};
         entry.term = record.term;
         entry.id = record.entry_id;
@@ -96,7 +124,11 @@ ReplicatedKernel::ReplicatedKernel(const std::int32_t node_id,
     }
     if (metadata_.commit_index < 0 ||
         metadata_.commit_index > raft_get_current_idx(server_)) {
-        throw std::runtime_error("metadata commit index is outside the WAL");
+        throw std::runtime_error(
+            "metadata commit index " + std::to_string(metadata_.commit_index) +
+            " is outside the log, whose current index is " +
+            std::to_string(raft_get_current_idx(server_)) +
+            " (snapshot covered through " + std::to_string(installed_through) + ")");
     }
     raft_set_commit_idx(server_, metadata_.commit_index);
     if (raft_apply_all(server_) != 0) {
@@ -114,6 +146,26 @@ void ReplicatedKernel::tick(const int elapsed_ms) {
     if (const int result = raft_periodic(server_, elapsed_ms); result != 0) {
         throw std::runtime_error("raft_periodic failed: " + std::to_string(result));
     }
+
+    // A LEADER SERVES A NON-ZERO TERM. willemt promotes a lone voting node
+    // straight to leader without campaigning - "only one voting node means it's
+    // safe for us to become the leader" - which is correct for safety and leaves
+    // `current_term` at zero. Raft's own model has no term-zero leader; zero
+    // means no leader has ever existed.
+    //
+    // Left alone it is not cosmetic. Entries inherit the leader's term, so they
+    // are written with term zero, and `raft_begin_load_snapshot` rejects a zero
+    // term outright - so a single-voter cluster could take a snapshot and then
+    // silently fail to install it on restart, recovering from the log prefix it
+    // had already reclaimed. Restoring the invariant here is the narrowest place
+    // that closes it, and on a multi-voter cluster the branch never fires
+    // because an election has already raised the term.
+    if (raft_is_leader(server_) != 0 && raft_get_current_term(server_) == 0) {
+        if (raft_set_current_term(server_, 1) != 0) {
+            throw std::runtime_error("failed to raise a leader's term above zero");
+        }
+    }
+
     persist_commit_index();
     if (const int result = raft_apply_all(server_); result != 0) {
         throw std::runtime_error("raft_apply_all failed: " + std::to_string(result) +
@@ -197,6 +249,60 @@ ReplicaStatus ReplicatedKernel::status() const {
     value.outbox_effect_count = state_.outbox_effect_count;
     value.state_digest = state_digest_of(state_);
     return value;
+}
+
+CommittedOutboxView ReplicatedKernel::committed_outbox() const {
+    CommittedOutboxView view;
+    view.authoritative = raft_is_leader(server_) != 0;
+    view.leader_id = raft_get_current_leader(server_);
+    view.term = raft_get_current_term(server_);
+    view.applied_index = raft_get_last_applied_idx(server_);
+    view.effect_count = state_.outbox_effect_count;
+    for (std::size_t index = 0; index < state_.outbox_effect_count; ++index) {
+        view.effects[index] = state_.outbox_effects[index];
+    }
+    return view;
+}
+
+std::uint64_t ReplicatedKernel::compact() {
+    const auto applied = raft_get_last_applied_idx(server_);
+    if (applied <= 0) return 0;
+
+    // The term OF THE ENTRY at `applied`, not the server's current term. They
+    // are different quantities: a snapshot describes a log position, and the
+    // position's term is what a peer needs to decide whether the snapshot is
+    // ahead of its own log. Using the current term also reads zero on a node
+    // that has not yet campaigned, which `raft_begin_load_snapshot` rejects
+    // outright - so the mistake shows up as a snapshot that silently refuses to
+    // install on restart.
+    const auto* last = raft_get_entry_from_idx(server_, applied);
+    if (last == nullptr) return 0;
+    const auto term = last->term;
+
+    if (raft_begin_snapshot(server_, 0) != 0) return 0;
+    try {
+        // DURABLE BEFORE RECLAIMED. `save` returns only after fsync, rename and
+        // a directory fsync, so by the time any entry is polled away the
+        // snapshot that replaces it is on disk. The reverse order loses entries
+        // that nothing covers, and a crash is the only witness.
+        snapshots_.save(state_, static_cast<std::uint64_t>(applied), term);
+    } catch (...) {
+        (void)raft_cancel_snapshot(server_);
+        throw;
+    }
+
+    polled_through_ = 0;
+    if (raft_end_snapshot(server_) != 0) {
+        throw std::runtime_error("failed to end the snapshot: " + callback_error_);
+    }
+    if (polled_through_ != 0) {
+        // Reclaiming the WAL prefix last means a crash here leaves entries the
+        // snapshot already covers. Restart skips them by index, so the overlap
+        // costs a little disk and nothing else. Failing the other way would
+        // cost committed entries.
+        wal_.discard_through(polled_through_);
+    }
+    return static_cast<std::uint64_t>(applied);
 }
 
 void ReplicatedKernel::persist_commit_index() {
@@ -390,6 +496,8 @@ int ReplicatedKernel::log_poll(raft_server_t*, void* user_data, raft_entry_t*,
                                const raft_index_t index) {
     auto& self = *static_cast<ReplicatedKernel*>(user_data);
     self.log_payloads_.erase(static_cast<std::uint64_t>(index));
+    self.polled_through_ =
+        std::max(self.polled_through_, static_cast<std::uint64_t>(index));
     return 0;
 }
 

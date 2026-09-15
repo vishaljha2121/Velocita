@@ -141,7 +141,10 @@ target_compile_options(velocita_v2_kernel PRIVATE -Wall -Wextra -Wpedantic)
 # Phase 6. The deterministic reducer behind consensus. Links willemt_raft and
 # velocita_core's payload-generic storage/wire layers; V1's RaftNode is left
 # untouched so its accepted gates stay valid.
-add_library(velocita_v2_replication src/v2_replication.cpp)
+add_library(velocita_v2_replication
+    src/v2_replication.cpp
+    src/v2_snapshot_store.cpp
+)
 target_include_directories(velocita_v2_replication PUBLIC include)
 target_link_libraries(velocita_v2_replication
     PUBLIC velocita_v2_kernel velocita_core)

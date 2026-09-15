@@ -2401,6 +2401,76 @@ failure there, and V1's suites pass under AddressSanitizer, so this is a thing t
 look at rather than a confirmed defect in V1 - stated at that strength
 deliberately.
 
+### 10.17 Phase 7a: durable snapshots, and two library truths worth writing down
+
+The safety half of Phase 7, which also closes Phase 6's snapshot-install
+leftover. The performance half - asynchronous WAL, block arena, SPSC rings - is
+NOT done, and until it is, Phase 7's objective sentence ("remove synchronous
+storage blocking from the owner loop") is not met and no performance claim may
+be made.
+
+THE SNAPSHOT INVENTS NO ECONOMICS. Its payload is the canonical state snapshot
+the reducer already defines, so `SnapshotStore` adds framing and durability and
+nothing else. That matters twice: the canonical encoder already refuses an
+impossible state, and it already carries its own digest, so a snapshot that
+decodes is one the reducer would have accepted. A new magic (`VSN2`) and a new
+filename keep a V1 directory from ever being misread as a V2 snapshot.
+
+DURABLE BEFORE RECLAIMED, enforced by the order of statements rather than by a
+comment. `save` returns only after fsync, rename, and a fsync of the DIRECTORY -
+the last is easy to omit and would let a crash reveal the old snapshot after
+`save` returned, with the prefix already reclaimed on the strength of it. Only
+then does `raft_end_snapshot` poll entries away, and only then is the WAL prefix
+discarded. A crash anywhere in that sequence leaves a durable snapshot plus a log
+that still holds the prefix: an overlap, which restart skips by index, and which
+costs a little disk. The reverse order costs committed entries.
+
+A CORRUPT SNAPSHOT DEGRADES TO REPLAY. `load` returns absent for anything it
+cannot fully verify rather than throwing, because replay from the log is always
+correct and refusing to start turns a recoverable disk fault into an outage. A
+snapshot is an optimisation over replay and has to fail like one.
+
+#### 10.17.1 willemt/raft promotes a lone voter without campaigning
+
+> "Only one voting node means it's safe for us to become the leader"
+
+`raft_periodic` makes a single voting node leader directly. That is correct for
+safety and it leaves `current_term` at zero, which Raft's own model does not have
+a leader for: term zero means no leader has ever existed.
+
+Left alone it is not cosmetic. `raft_recv_entry` assigns `ety->term =
+me->current_term`, so entries are written with term zero; `raft_begin_load_snapshot`
+rejects a zero `last_included_term` outright. A single-voter cluster could
+therefore take a snapshot, reclaim the prefix it covered, and then silently fail
+to install that snapshot on restart - recovering from a log whose prefix was
+already gone. Two library behaviours that are individually defensible compose
+into data loss.
+
+`ReplicatedKernel::tick` restores the invariant: a leader at term zero is raised
+to term one. On a multi-voter cluster the branch never fires, because an election
+has already raised the term.
+
+#### 10.17.2 A snapshot's term is the entry's term, not the server's
+
+The first attempt recorded `raft_get_current_term` as `last_included_term`. Those
+are different quantities - a snapshot describes a LOG POSITION, and the position's
+term is what a peer compares against its own log - and the difference is invisible
+until a peer needs it. It also reads zero on a node that has not campaigned, which
+is how the previous defect surfaced. The term now comes from
+`raft_get_entry_from_idx(applied)`.
+
+#### 10.17.3 The committed-outbox read carries its own authority
+
+`CommittedOutboxView` pairs the bytes with the authority under which they were
+read. `TradingState` alone cannot say whether it is current, so handing out a
+bare reference invites a caller to act on a deposed leader's copy - which looks
+identical to a correct one.
+
+It proves only that THIS node believed itself leader when the bytes were taken. A
+read-index round trip proves leadership at the read's linearization point and is
+the stricter form; that is deferred, and the distinction is recorded here rather
+than left for a reader to assume the stronger guarantee.
+
 ## 11. Execution authority and kill contract
 
 Every sender tracks a committed `ExecutorGeneration` and `KillEpoch`. It rejects

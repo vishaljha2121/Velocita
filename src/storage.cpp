@@ -223,38 +223,45 @@ void WriteAheadLog::append(const WalRecord& record) {
     }
 }
 
-void WriteAheadLog::truncate_from(std::uint64_t first_removed_index) {
-    auto records = read_all();
-    if (first_removed_index == 0 || first_removed_index > records.size() + 1U) {
-        throw std::runtime_error("WAL truncation index is outside the log");
-    }
-    if (first_removed_index == records.size() + 1U) return;
+namespace {
 
+// One encoder for both rewrites, so a prefix discard and a suffix truncation
+// cannot drift apart about the record format.
+std::vector<std::byte> encode_wal_record(const WalRecord& record) {
+    std::vector<std::byte> bytes;
+    bytes.reserve(kWalHeaderSize + record.payload.size());
+    append_le(bytes, kWalMagic);
+    append_le(bytes, kStorageVersion);
+    append_le(bytes, kWalHeaderSize);
+    append_le(bytes, static_cast<std::uint32_t>(record.payload.size()));
+    append_le<std::uint32_t>(bytes, 0);
+    append_le(bytes, record.index);
+    append_le(bytes, record.term);
+    append_le(bytes, record.entry_id);
+    append_le(bytes, record.entry_type);
+    const auto crc_offset = bytes.size();
+    append_le<std::uint32_t>(bytes, 0);
+    bytes.insert(bytes.end(), record.payload.begin(), record.payload.end());
+    const auto checksum = crc32(bytes);
+    for (std::size_t byte = 0; byte < sizeof(checksum); ++byte) {
+        bytes[crc_offset + byte] =
+            static_cast<std::byte>((checksum >> (byte * 8U)) & 0xFFU);
+    }
+    return bytes;
+}
+
+}  // namespace
+
+// Rewrite the log to exactly `kept`, atomically. Temp file, fsync, rename,
+// fsync the directory: a crash at any point leaves either the old log or the
+// new one, never a partial one.
+void WriteAheadLog::rewrite(const std::vector<WalRecord>& kept) const {
     const auto temporary = path_.string() + ".tmp";
     const int fd = ::open(temporary.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd < 0) throw io_error("open", temporary);
     try {
-        for (std::size_t i = 0; i + 1U < first_removed_index; ++i) {
-            const auto& record = records[i];
-            std::vector<std::byte> bytes;
-            bytes.reserve(kWalHeaderSize + record.payload.size());
-            append_le(bytes, kWalMagic);
-            append_le(bytes, kStorageVersion);
-            append_le(bytes, kWalHeaderSize);
-            append_le(bytes, static_cast<std::uint32_t>(record.payload.size()));
-            append_le<std::uint32_t>(bytes, 0);
-            append_le(bytes, record.index);
-            append_le(bytes, record.term);
-            append_le(bytes, record.entry_id);
-            append_le(bytes, record.entry_type);
-            const auto crc_offset = bytes.size();
-            append_le<std::uint32_t>(bytes, 0);
-            bytes.insert(bytes.end(), record.payload.begin(), record.payload.end());
-            const auto checksum = crc32(bytes);
-            for (std::size_t byte = 0; byte < sizeof(checksum); ++byte) {
-                bytes[crc_offset + byte] = static_cast<std::byte>((checksum >> (byte * 8U)) & 0xFFU);
-            }
-            write_all(fd, bytes, temporary);
+        for (const auto& record : kept) {
+            write_all(fd, encode_wal_record(record), temporary);
         }
         if (::fsync(fd) != 0) throw io_error("fsync", temporary);
         if (::close(fd) != 0) throw io_error("close", temporary);
@@ -264,6 +271,33 @@ void WriteAheadLog::truncate_from(std::uint64_t first_removed_index) {
     }
     if (::rename(temporary.c_str(), path_.c_str()) != 0) throw io_error("rename", path_);
     fsync_directory(path_.parent_path());
+}
+
+void WriteAheadLog::truncate_from(std::uint64_t first_removed_index) {
+    auto records = read_all();
+    if (first_removed_index == 0) {
+        throw std::runtime_error("WAL truncation index is outside the log");
+    }
+    // Selected by the record's OWN index rather than by position. Position and
+    // index coincide only while no prefix has been reclaimed, and compaction
+    // ends that.
+    std::vector<WalRecord> kept;
+    for (auto& record : records) {
+        if (record.index < first_removed_index) kept.push_back(std::move(record));
+    }
+    if (kept.size() == records.size()) return;
+    rewrite(kept);
+}
+
+void WriteAheadLog::discard_through(const std::uint64_t last_removed_index) {
+    if (last_removed_index == 0) return;
+    auto records = read_all();
+    std::vector<WalRecord> kept;
+    for (auto& record : records) {
+        if (record.index > last_removed_index) kept.push_back(std::move(record));
+    }
+    if (kept.size() == records.size()) return;
+    rewrite(kept);
 }
 
 std::vector<WalRecord> WriteAheadLog::read_all() const {
@@ -304,7 +338,10 @@ std::vector<WalRecord> WriteAheadLog::read_all() const {
         if (stored_crc != crc32(checksum_bytes)) {
             throw std::runtime_error("WAL checksum mismatch at offset " + std::to_string(record_start));
         }
-        if (record.index != records.size() + 1U) {
+        // Contiguous WITHIN ITSELF, not necessarily starting at one. A log whose
+        // prefix a snapshot has reclaimed legitimately begins above one, and
+        // requiring index == position + 1 would make compaction unreadable.
+        if (!records.empty() && record.index != records.back().index + 1U) {
             throw std::runtime_error("WAL index is not contiguous at offset " + std::to_string(record_start));
         }
         records.push_back(std::move(record));
