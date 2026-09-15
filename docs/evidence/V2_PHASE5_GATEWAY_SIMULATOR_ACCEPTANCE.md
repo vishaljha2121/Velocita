@@ -1,7 +1,14 @@
 # V2 Phase 5 gateway and simulator acceptance evidence
 
-Status: ACCEPTED on the development host, the ARM64 Linux container, the physical
-Raspberry Pi 5, and the x86-64 NUC.
+Status: SUPERSEDED on 2026-09-15 by
+`V2_PHASE5_CORRECTED_ACCEPTANCE.md`. Preserved unchanged below, together with the
+tag `v2-phase5-accepted`, as the historical record of what was accepted on
+2026-09-11 and of a candidate a later review found defective. Do not read
+anything below this line as current approval; the corrected record names each
+defect and where it was fixed.
+
+Original status line: ACCEPTED on the development host, the ARM64 Linux
+container, the physical Raspberry Pi 5, and the x86-64 NUC.
 
 ## Objective and promotion rule
 

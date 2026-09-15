@@ -5,6 +5,71 @@ Updated: 2026-09-15
 Purpose: compact working memory for the next agent session. Verify this file
 against Git before acting; do not reconstruct the project from chat history.
 
+## PHASE 5 CORRECTIONS COMPLETE — target gates in progress — 2026-09-15
+
+This section supersedes every older section below it, including the CODEX
+TAKEOVER section that follows. Those remain as an audit trail and must not be
+read as current status.
+
+### What is done
+
+Every P1 and P2 from the 2026-09-12 acceptance review is corrected, every
+approved material contract is encoded, and the source is frozen.
+
+- correction range: `65cadc2..85a2d26` on branch `v2/phase-5-corrections`;
+- frozen source root
+  `681e222d7b6a6b314d1bf4e73bc24f2ce9685faa39a68a7832cf7abb5ec6976f`, pinned in
+  all three Phase 5 gate scripts;
+- the last open material contract, native versus synthetic observation identity,
+  is approved and implemented (architecture 10.15). Sequence deduplication now
+  searches the native domain only; synthetic replay is caught by the retained
+  request receipt and by cumulative-by-value adjudication. Zero bytes added;
+  retained result VALUES change, so kernel-codec and state-snapshot schemas move
+  V6 to V7 and the golden corpora were regenerated as a reviewed migration;
+- comment pruning is finished at the reviewed density: `v2_kernel.cpp` 13%,
+  `v2_gateway.cpp` 5%, `v2_venue_simulator.cpp` 9%, delivery tests 1%. Reasoning
+  lives in architecture sections 9.4, 9.5 and 10.9 through 10.15.
+
+### Verification at the frozen root
+
+- host Release 29/29, no warnings from project targets;
+- host Debug ASan+UBSan 29/29, configured `-fno-sanitize-recover=undefined` and
+  run under `UBSAN_OPTIONS=halt_on_error=1`;
+- model 109/109, unmodified;
+- `git diff --check` clean;
+- ARM64 Linux container gate `20260915T134221Z`: PASS, gate-computed root
+  matching the pin, Release 29/29, instrumented 26/26, sanitized 26/26, UBSan
+  negative probe diagnosing and exiting nonzero, `TradingState` 81,360 and
+  maximum canonical snapshot 65,451;
+- lifecycle reachability: 42 signatures, conflict a sink, no unsettled dead end;
+- horizons, nominal 48 seeds x 40 cycles: zero capacity refusals, zero orders
+  reclaimed while unresolved, 17 groups reclaimed, max order age 123 versions,
+  both attempt bounds reached;
+- horizons, conflict-inducing: peak conflicts 1, max order age 210 versions,
+  zero orders vanished while unresolved.
+
+### What remains
+
+1. x86-64 NUC gate at the frozen root. Sync command in
+   `docs/NUC_OPERATOR_RUNBOOK.md`; host `bulbazar@100.72.127.102`, tree
+   `~/aeron-raft-pi-phase5-nuc`, log `~/nuc-gate.log`.
+2. Physical Raspberry Pi 5 gate at the frozen root. The Pi (`vishalkapi`) was
+   OFFLINE during this session; the gate has not been attempted against this
+   source. Clean power evidence is required.
+3. Record both in `docs/evidence/V2_PHASE5_CORRECTED_ACCEPTANCE.md`, which is
+   written and currently marks them pending, then tag the corrected checkpoint.
+   Do not move or delete `v2-phase5-accepted`.
+
+Until all four environments record the same root, Phase 5 stays REOPENED, G-025
+through G-034 stay open, and Phase 6 does not begin.
+
+### Protected paths, unchanged
+
+`model/`, `docs/README.md`, `docs/MUST_CONFIRM_BEFORE_ADAPTER_CONNECT.md`,
+`docs/V2_MODEL_AND_MARKET_DATA_EDGE_DESIGN.md`, and ADR 0002 remain
+uncommitted and untouched. Never `git add .` or `git add -A`; stage explicit
+Phase 5 paths only.
+
 ## CODEX TAKEOVER — Phase 5 corrections remain open — 2026-09-14
 
 This section supersedes every older `NEXT` section below it. Claude stopped at
