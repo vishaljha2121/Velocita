@@ -5,6 +5,119 @@ Updated: 2026-09-15
 Purpose: compact working memory for the next agent session. Verify this file
 against Git before acting; do not reconstruct the project from chat history.
 
+## CODEX HANDOVER — Phase 5 accepted, venue contract verified, perps gap open — 2026-09-15
+
+This section supersedes every older section below it. Those remain as an audit
+trail and must not be read as current status.
+
+### Where the tree is
+
+- branch `v2/phase-5-corrections`, HEAD `4223ac0`;
+- tag `v2-phase5-corrected-accepted` at `b39edf1`; `v2-phase5-accepted`
+  (`04329fa`) preserved as history and NOT moved;
+- frozen source root
+  `681e222d7b6a6b314d1bf4e73bc24f2ce9685faa39a68a7832cf7abb5ec6976f`, pinned in
+  all three Phase 5 gate scripts. Commits after `b39edf1` are documentation only
+  and do not move it - verify before assuming;
+- host Release 29/29, host Debug ASan+UBSan 29/29 with
+  `-fno-sanitize-recover=undefined` and `halt_on_error=1`, model 109/109
+  unmodified, `git diff --check` clean.
+
+### What was accepted, and the one exception
+
+Phase 5 is ACCEPTED on host, ARM64 Linux container (`20260915T134221Z`) and
+x86-64 NUC (`20260915T134322Z` and `20260915T154328Z`, two accounts, two
+independently synced trees). G-025 through G-034 are closed.
+
+THE PI GATE HAS NOT RUN against this source; the machine was offline. That is a
+CARRIED OBLIGATION, recorded in the acceptance record and the checklist, and a
+later failure voids the acceptance. The ARM64 container gate proves logic and
+byte layout on a real aarch64 kernel, so the gap is physical hardware and clean
+power evidence, not unverified behaviour.
+
+Evidence: `docs/evidence/V2_PHASE5_CORRECTED_ACCEPTANCE.md`, which supersedes
+`V2_PHASE5_GATEWAY_SIMULATOR_ACCEPTANCE.md`.
+
+### What to review first, in this order
+
+1. THE PERPS GAP, `docs/evidence/V2_TRUEMARKETS_CONTRACT_VERIFICATION.md` §6.
+   The DeFi surface is Hyperliquid PERPETUALS. `apply_observe_fill` requires a
+   matching submit effect, so liquidation, auto-deleveraging and funding cannot
+   be represented by any command in the kernel. This is an architectural premise
+   failure, not an implementation defect, and it is the largest open item in the
+   project. Three options are written up; all three cost something. A fourth that
+   was not thought of would be the most valuable thing this review could produce.
+2. THE NATIVE/SYNTHETIC IDENTITY DOMAIN, architecture 10.15, commit `45b13d9`.
+   The last material contract change. Synthetic observations leave the venue's
+   sequence-deduplication domain and are protected by retained command identity
+   plus cumulative-by-value adjudication. The specific question worth adversarial
+   attention: command identity is now load-bearing for RECONCILIATION and not
+   only for delivery, so a gateway that ever retried an obligation under a fresh
+   identity would double-adjudicate. It is pinned by
+   `test_a_replayed_synthetic_answer_is_caught_by_command_identity`; is that
+   pin sufficient?
+3. WHETHER ACCEPTANCE ON THREE ENVIRONMENTS IS PROPERLY BOUNDED. The reasoning
+   is in the acceptance record's promotion-rule section. Challenge it if the
+   scoping is weaker than it reads.
+
+### Open work, ranked by what it blocks
+
+1. PERPS POSITION-CHANGE REPRESENTATION. Blocks any live DeFi trading. See above.
+2. CREATE-ORDER SCHEMA. Every DeFi-limit statement found concerns CANCELLING a
+   resting order; the create schema is client-rendered and unread. A read-only
+   `GET` probe resolves it. Needs a KYC'd API key; funding is explicitly optional
+   for read-only exploration.
+3. UNVERIFIED DEFI ECONOMICS: maker/taker fee (the published schedule is CeFi
+   only), default leverage, per-fill on-chain cost. Any one of these can invert
+   the sign of the edge.
+4. `PostOnlyMode::required` CANNOT BE SATISFIED. Post-only is absent from an
+   otherwise exhaustive True Markets order model. The pre-send guard would refuse
+   every order with `venue_cannot_represent_intent`, correctly. Decide whether
+   the strategy drops post-only - the cost of an accidental cross is 4 bps taker
+   on CeFi, unknown on DeFi - or whether the venue exposes it undocumented.
+5. PREPARE/EXECUTE DOUBLE AMBIGUITY. One economic intent crosses the process
+   boundary twice, each crossing separately ambiguous. `DeliveryAttempt` models
+   one send per effect.
+6. `initialized` HAS NO V2 EQUIVALENT. The venue holds unsigned payloads: it
+   knows the intent, the order is not in the book, no venue risk exists.
+   `dispatch_authorized` and `acknowledged` each assert something stronger.
+7. TICK SIZE IS PRICE-BANDED across nine buckets (CeFi table; no DeFi table
+   published), so a cached `InstrumentExecutionProfile` goes stale when price
+   crosses a boundary.
+8. THE PI GATE.
+
+### Constraints that still bind
+
+- Protected uncommitted paths: `model/`, `docs/README.md`,
+  `docs/MUST_CONFIRM_BEFORE_ADAPTER_CONNECT.md`,
+  `docs/V2_MODEL_AND_MARKET_DATA_EDGE_DESIGN.md`, ADR 0002. Never `git add .` or
+  `git add -A`; stage explicit paths only. A directory-wide add has already swept
+  unrelated research into a commit once.
+- `model/` must never be able to trade: no wallet keys, no signing, no order
+  submission. Its interlock fails the build if `OrderEffect` or `VenueObservation`
+  appears; do not weaken it to make something compile.
+- `ReadOnlyHttp` refuses any non-GET and any path containing `/orders` before a
+  socket opens. Do not route around it to answer a documentation question.
+- The API key is an EC P-256 private key that signs on-chain actions. G-066: it
+  never enters replicated policy, commands, snapshots, logs, test fixtures or
+  evidence bundles.
+- Review any NEW material byte or economic contract choice with the user BEFORE
+  encoding it.
+- Do not move or delete `v2-phase5-accepted`.
+
+### Method notes worth carrying
+
+- A GATE PASS PROVES THIS TREE MATCHES ITS OWN PIN, never that it is the
+  candidate you meant to test - the pin travels inside the tree. NUC run
+  `20260915T152553Z` passed against the superseded candidate for exactly this
+  reason. Compare the gate-computed root against a value held OUTSIDE the tree,
+  and check that the `ubsan_*` metadata keys are PRESENT, since a stale gate
+  script omits them rather than printing them wrong.
+- A test result may never serve as its own expected answer. Two oracles in this
+  phase reported green while losing venue evidence.
+- The quickstart was the least reliable page on the venue's documentation site.
+  Endpoint reference pages carried the accurate contract.
+
 ## PHASE 5 ACCEPTED ON THREE ENVIRONMENTS — Pi gate carried — 2026-09-15
 
 This section supersedes every older section below it, including the CODEX
