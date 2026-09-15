@@ -1,8 +1,9 @@
 # V2 Phase 5 corrected gateway and simulator acceptance evidence
 
-Status: CANDIDATE. Host and ARM64 container evidence recorded below; x86-64 NUC
-and physical Raspberry Pi 5 evidence are recorded as each gate completes. This
-document does not claim acceptance until all four are present.
+Status: CANDIDATE. Host, ARM64 Linux container and x86-64 NUC evidence are
+recorded below at one pinned source root. The physical Raspberry Pi 5 gate is
+OUTSTANDING: the Pi was offline throughout this session. This document does not
+claim acceptance until all four are present.
 
 This record SUPERSEDES `V2_PHASE5_GATEWAY_SIMULATOR_ACCEPTANCE.md`. That document
 is not deleted and its tag `v2-phase5-accepted` is not moved: it is the honest
@@ -183,13 +184,48 @@ deferred deliberately.
 
 ## x86-64 NUC evidence
 
-Pending. The NUC gate is a LAYOUT AND CAPACITY gate: the open question is whether
-the bounded layout holds with x86-64 padding and alignment rather than ARM64's.
+The NUC gate is a LAYOUT AND CAPACITY gate more than a functional one. The Pi and
+container gates prove the logic on ARM64; the open question here is whether the
+bounded layout holds with x86-64 padding and alignment rather than ARM64's.
+
+Command, on the NUC:
+
+```sh
+cd ~/aeron-raft-pi-phase5-nuc
+BUILD_JOBS=4 ./deploy/run-v2-phase5-nuc-gate.sh --yes
+```
+
+Run `20260915T134322Z`: PASS, `failure_step=none`, environment
+`nuc-x86_64-linux-container`, `machine=x86_64`, `dpkg_architecture=amd64`.
+
+- gate-computed source root
+  `681e222d7b6a6b314d1bf4e73bc24f2ce9685faa39a68a7832cf7abb5ec6976f`, matching
+  the pin and the container gate's;
+- Release 29/29; instrumented 26/26; sanitized 26/26;
+- `ubsan_compile_recovery=disabled`,
+  `ubsan_options=halt_on_error=1:print_stacktrace=1`, negative probe exit
+  status 1; and
+- layout BYTE-IDENTICAL to ARM64 and to the host:
+
+| item | x86-64 | aarch64 | ceiling |
+|---|---:|---:|---:|
+| `TradingState` | 81,360 | 81,360 | 81,920 |
+| maximum canonical snapshot | 65,451 | 65,451 | 65,536 |
+| `ApplyResult` | 112 | 112 | 112 |
+| `ClusterOrder` | 48 | 48 | - |
+
+That equality is the result this gate exists to obtain. It is not a coincidence
+of these particular structs: every V2 record is built from fixed-width integers,
+strong-id wrappers over them, and `std::array`, with no pointers, no `bool`
+packing assumptions and no implementation-defined widths. The measurement
+confirms the discipline rather than discovering a fact about one compiler.
 
 ## Physical Raspberry Pi 5 evidence
 
-Pending. The Pi was offline at the time of writing (`vishalkapi`, last seen 12h
-before this run). Clean power evidence - `throttled=0x0` before and after, plus
+OUTSTANDING. The Pi (`vishalkapi`, 100.84.151.116) was offline for the whole of
+this session - last seen roughly 12 hours before the other two gates ran - so the
+gate was never attempted against this source. Nothing is inferred from the other
+three passing: this is a missing run, not a passing one. Clean power evidence - `throttled=0x0` before and after, plus
 temperature - is part of the acceptance record rather than a nicety: a throttled
 run measures a different machine than the one that will trade.
 

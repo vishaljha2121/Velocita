@@ -48,17 +48,35 @@ approved material contract is encoded, and the source is frozen.
 - horizons, conflict-inducing: peak conflicts 1, max order age 210 versions,
   zero orders vanished while unresolved.
 
-### What remains
+- x86-64 NUC gate `20260915T134322Z`: PASS, gate-computed root matching the pin,
+  Release 29/29, instrumented 26/26, sanitized 26/26, UBSan negative probe exit
+  status 1. Layout BYTE-IDENTICAL to ARM64: `TradingState` 81,360, maximum
+  canonical snapshot 65,451, `ApplyResult` 112, `ClusterOrder` 48.
 
-1. x86-64 NUC gate at the frozen root. Sync command in
-   `docs/NUC_OPERATOR_RUNBOOK.md`; host `bulbazar@100.72.127.102`, tree
-   `~/aeron-raft-pi-phase5-nuc`, log `~/nuc-gate.log`.
-2. Physical Raspberry Pi 5 gate at the frozen root. The Pi (`vishalkapi`) was
-   OFFLINE during this session; the gate has not been attempted against this
-   source. Clean power evidence is required.
-3. Record both in `docs/evidence/V2_PHASE5_CORRECTED_ACCEPTANCE.md`, which is
-   written and currently marks them pending, then tag the corrected checkpoint.
-   Do not move or delete `v2-phase5-accepted`.
+### What remains — exactly one thing
+
+THE PHYSICAL RASPBERRY PI 5 GATE, at the frozen root. The Pi (`vishalkapi`,
+100.84.151.116) was offline for this entire session, last seen roughly 12 hours
+before the other gates ran, so the gate was never attempted against this source.
+Three passes do not imply the fourth.
+
+```sh
+# development host, once the Pi is reachable
+cd /Users/vishaljha
+rsync -av --delete --exclude build/ --exclude 'build-*/' --exclude .git/ \
+  aeron-raft-pi/ bhaikapi@vishalkapi.local:~/aeron-raft-pi/
+
+# on the Pi, after `sudo -v`
+cd ~/aeron-raft-pi
+./deploy/run-v2-phase5-pi-gate.sh --yes
+```
+
+Verify the tree's root before running; it must be
+`681e222d7b6a6b314d1bf4e73bc24f2ce9685faa39a68a7832cf7abb5ec6976f`. Clean power
+evidence - `throttled=0x0` before and after, plus temperature - is part of the
+record. Then fill in the Pi section of
+`docs/evidence/V2_PHASE5_CORRECTED_ACCEPTANCE.md`, flip its status to ACCEPTED,
+and tag the corrected checkpoint. Do not move or delete `v2-phase5-accepted`.
 
 Until all four environments record the same root, Phase 5 stays REOPENED, G-025
 through G-034 stay open, and Phase 6 does not begin.
