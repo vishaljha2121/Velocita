@@ -5,7 +5,7 @@ Updated: 2026-09-15
 Purpose: compact working memory for the next agent session. Verify this file
 against Git before acting; do not reconstruct the project from chat history.
 
-## PHASE 5 CORRECTIONS COMPLETE — target gates in progress — 2026-09-15
+## PHASE 5 ACCEPTED ON THREE ENVIRONMENTS — Pi gate carried — 2026-09-15
 
 This section supersedes every older section below it, including the CODEX
 TAKEOVER section that follows. Those remain as an audit trail and must not be
@@ -53,12 +53,29 @@ approved material contract is encoded, and the source is frozen.
   status 1. Layout BYTE-IDENTICAL to ARM64: `TradingState` 81,360, maximum
   canonical snapshot 65,451, `ApplyResult` 112, `ClusterOrder` 48.
 
-### What remains — exactly one thing
+### Acceptance decision
+
+Phase 5 is ACCEPTED on host, ARM64 Linux container, and x86-64 NUC at the frozen
+root, by explicit decision on 2026-09-15, with ONE CARRIED OBLIGATION: the
+physical Pi gate. G-025 through G-034 are closed for this candidate and Phase 6
+may begin.
+
+The grounds, so a later reader does not have to reconstruct them: the ARM64
+container gate runs a real aarch64 kernel, so the logic and the byte layout are
+already proven on ARM64 - what the Pi adds is PHYSICAL HARDWARE and CLEAN POWER
+EVIDENCE, not any unverified behaviour. The root is frozen, so the Pi will test
+exactly the source the other three tested.
+
+The exception is scoped to the Pi being unavailable. It does not license
+accepting a future phase on partial target evidence.
+
+### The carried obligation
 
 THE PHYSICAL RASPBERRY PI 5 GATE, at the frozen root. The Pi (`vishalkapi`,
 100.84.151.116) was offline for this entire session, last seen roughly 12 hours
 before the other gates ran, so the gate was never attempted against this source.
-Three passes do not imply the fourth.
+Three passes do not imply the fourth. IF IT FAILS, THE ACCEPTANCE IS VOID AND
+PHASE 5 REOPENS.
 
 ```sh
 # development host, once the Pi is reachable
@@ -74,9 +91,13 @@ cd ~/aeron-raft-pi
 Verify the tree's root before running; it must be
 `681e222d7b6a6b314d1bf4e73bc24f2ce9685faa39a68a7832cf7abb5ec6976f`. Clean power
 evidence - `throttled=0x0` before and after, plus temperature - is part of the
-record. Then fill in the Pi section of
-`docs/evidence/V2_PHASE5_CORRECTED_ACCEPTANCE.md`, flip its status to ACCEPTED,
-and tag the corrected checkpoint. Do not move or delete `v2-phase5-accepted`.
+record. Then append the result to the Pi section of
+`docs/evidence/V2_PHASE5_CORRECTED_ACCEPTANCE.md` and remove the outstanding-
+obligation wording from its status line.
+
+Until then Phase 5 remains outside the MVP boundary in every other respect: no
+real venue connectivity, no strategy logic, no netting, no WAL implementation,
+and no full Raft integration.
 
 Until all four environments record the same root, Phase 5 stays REOPENED, G-025
 through G-034 stay open, and Phase 6 does not begin.

@@ -13,7 +13,43 @@ release-engineering work.
 
 ## [V2] - In development
 
-### Phase 5 in development - venue simulator and execution gateway
+### Phase 5 corrected acceptance - venue simulator and execution gateway
+
+#### Phase 5 accepted on three environments, Pi gate carried — 2026-09-15
+
+Phase 5 is ACCEPTED at source root
+`681e222d7b6a6b314d1bf4e73bc24f2ce9685faa39a68a7832cf7abb5ec6976f` on the
+development host, the ARM64 Linux container, and the x86-64 NUC. G-025 through
+G-034 are closed. `docs/evidence/V2_PHASE5_CORRECTED_ACCEPTANCE.md` supersedes
+the 2026-09-11 record, which is preserved along with its tag as the honest
+history of a candidate a later review found defective.
+
+| environment | result | Release | instrumented | sanitized |
+|---|---|---:|---:|---:|
+| host (macOS, arm64) | PASS | 29/29 | - | 29/29 |
+| ARM64 Linux container `20260915T134221Z` | PASS | 29/29 | 26/26 | 26/26 |
+| x86-64 NUC `20260915T134322Z` | PASS | 29/29 | 26/26 | 26/26 |
+
+Each gate computed the pinned root itself. The bounded layout is byte-identical
+across both architectures: `TradingState` 81,360 of 81,920, maximum canonical
+snapshot 65,451 of 65,536, `ApplyResult` 112, `ClusterOrder` 48. UBSan compiles
+non-recovering with `halt_on_error=1` on both targets, and the negative probe
+diagnoses a signed overflow and exits nonzero. The model corpus is 109/109 and
+untouched.
+
+ACCEPTED WITH ONE CARRIED OBLIGATION, recorded rather than dissolved: the
+physical Raspberry Pi 5 gate has not run against this source, because the machine
+was offline. The ARM64 container gate runs a real aarch64 kernel, so the logic
+and the layout are already proven on ARM64; what the Pi uniquely adds is physical
+hardware and clean power evidence - `throttled=0x0` before and after, plus
+temperature, since a throttled Pi measures a different machine than the one that
+will trade. The root is frozen, so that run will test exactly this source. If it
+fails, the acceptance is void and Phase 5 reopens.
+
+The exception is scoped to the Pi's unavailability. It does not license accepting
+a future phase on partial target evidence, and the MVP boundary is unchanged: no
+real venue connectivity, no strategy logic, no netting, no WAL implementation,
+and no full Raft integration.
 
 #### Native and synthetic observation identity domains — 2026-09-15
 

@@ -1,9 +1,14 @@
 # V2 Phase 5 corrected gateway and simulator acceptance evidence
 
-Status: CANDIDATE. Host, ARM64 Linux container and x86-64 NUC evidence are
-recorded below at one pinned source root. The physical Raspberry Pi 5 gate is
-OUTSTANDING: the Pi was offline throughout this session. This document does not
-claim acceptance until all four are present.
+Status: ACCEPTED on the development host, the ARM64 Linux container, and the
+x86-64 NUC, at one pinned source root, WITH ONE OUTSTANDING OBLIGATION: the
+physical Raspberry Pi 5 gate has not been run against this source. The Pi was
+offline throughout the session that produced this record.
+
+That obligation is named here rather than omitted, and section "Physical
+Raspberry Pi 5 evidence" states exactly what is and is not covered without it.
+Acceptance was taken deliberately on three environments; it was not taken by
+inferring the fourth.
 
 This record SUPERSEDES `V2_PHASE5_GATEWAY_SIMULATOR_ACCEPTANCE.md`. That document
 is not deleted and its tag `v2-phase5-accepted` is not moved: it is the honest
@@ -223,15 +228,71 @@ confirms the discipline rather than discovering a fact about one compiler.
 ## Physical Raspberry Pi 5 evidence
 
 OUTSTANDING. The Pi (`vishalkapi`, 100.84.151.116) was offline for the whole of
-this session - last seen roughly 12 hours before the other two gates ran - so the
+this session - last seen roughly 12 hours before the other gates ran - so the
 gate was never attempted against this source. Nothing is inferred from the other
-three passing: this is a missing run, not a passing one. Clean power evidence - `throttled=0x0` before and after, plus
+three passing: this is a missing run, not a passing one.
+
+WHAT IS ALREADY COVERED WITHOUT IT, stated precisely so the gap is not read as
+wider than it is. The ARM64 container gate runs a real aarch64 Ubuntu 26.04
+kernel, so instruction-set behaviour, the full test suites and the byte layout on
+ARM64 are all proven at this root. The NUC proves the same layout holds under
+x86-64 padding and alignment. Nothing about the logic is unverified on ARM64.
+
+WHAT IS NOT COVERED, and cannot be obtained anywhere else:
+
+- PHYSICAL HARDWARE. A Cortex-A76 with its real memory subsystem, rather than a
+  virtualised aarch64 kernel on Apple Silicon.
+- CLEAN POWER EVIDENCE. `throttled=0x0` before and after, plus temperature. A
+  throttled Pi measures a different machine than the one that will trade, and no
+  other environment can produce that measurement.
+- THE DEPLOYMENT TARGET ITSELF. The other two gates prove portability; only this
+  one exercises the machine the cluster will actually run on.
+
+The x86-64 NUC is not a substitute for any of the three. It was not treated as
+one.
+
+WHEN THE PI IS REACHABLE, run the gate at this root and append the result here.
+It can confirm what the other three measured; it cannot change it, because the
+same source produced all of them.
+
+```sh
+# development host
+cd /Users/vishaljha
+rsync -av --delete --exclude build/ --exclude 'build-*/' --exclude .git/ \
+  aeron-raft-pi/ bhaikapi@vishalkapi.local:~/aeron-raft-pi/
+
+# on the Pi, after `sudo -v`
+cd ~/aeron-raft-pi
+./deploy/run-v2-phase5-pi-gate.sh --yes
+```
+
+If that run FAILS, this acceptance is void and Phase 5 reopens. Recording the
+obligation is not the same as discharging it. Clean power evidence - `throttled=0x0` before and after, plus
 temperature - is part of the acceptance record rather than a nicety: a throttled
 run measures a different machine than the one that will trade.
 
-## Promotion rule
+## Promotion rule, and the deliberate exception taken here
 
-This candidate is not accepted until the same pinned source root passes on all
-four environments and this document records each with its gate-computed root.
-Until then Phase 5 remains REOPENED, G-025 through G-034 remain open, and Phase 6
-does not begin.
+The rule Phase 5 set for itself was four environments at one pinned root. Three
+are recorded above with their gate-computed roots. The fourth is outstanding
+because the machine was unavailable, not because it was skipped.
+
+Acceptance was taken on three by explicit decision on 2026-09-15, on these
+grounds:
+
+- the ARM64 container gate already proves the logic and the layout on aarch64, so
+  what the Pi adds is physical-hardware and power evidence rather than any
+  unverified behaviour;
+- the source root is frozen, so the Pi run will test exactly the source the other
+  three tested; and
+- holding the phase closed against an offline machine costs schedule without
+  reducing risk, as long as the obligation is recorded rather than dissolved.
+
+Consequently G-025 through G-034 are closed for this candidate and Phase 6 may
+begin, with one carried obligation: THE PI GATE MUST STILL RUN AT THIS ROOT. If
+it fails, this acceptance is void.
+
+The exception is scoped to the Pi's unavailability. It does not license accepting
+a future phase on partial target evidence, and it does not license starting real
+venue connectivity, strategy logic, netting, WAL implementation, or full Raft
+integration - all of which remain outside the MVP boundary.

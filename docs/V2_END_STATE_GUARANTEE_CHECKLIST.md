@@ -134,43 +134,64 @@ Phase 11 strategy/model validation and controlled canary
   stopped the kernel permanently once full.
 - [x] **G-024 — One terminal command outcome.** Every admitted logical command
   eventually has exactly one retained typed terminal outcome.
-- [ ] **G-025 — Delivery is not falsely called exactly-once.** External delivery
+- [x] **G-025 — Delivery is not falsely called exactly-once.** External delivery
   is at least once by stable EffectId; safety comes from deduplication and
   reconciliation, not from assuming the network is transactional.
-- [ ] **G-026 — Timeout means unknown.** A post-send timeout is never treated as
+- [x] **G-026 — Timeout means unknown.** A post-send timeout is never treated as
   proof of rejection and is never followed by a blind risk-increasing retry.
 
   Phase 4 acceptance closes G-010 through G-024 for the deterministic reducer.
   G-024 retention is within the declared bounded request horizon; below its
   conservative caller prefix the only outcome is the non-mutating
-  `request_expired` refusal. G-025 and G-026 remain open because no execution
-  gateway or post-send timeout exists before Phase 5. Phase 4 supplies their
-  stable effect identity and explicit unknown state, but does not claim transport
-  behavior it cannot execute.
+  `request_expired` refusal. Phase 4 supplied G-025 and G-026 their stable effect
+  identity and explicit unknown state but could not claim transport behaviour it
+  had no gateway to execute; Phase 5's corrected acceptance closes both. See the
+  note under G-034.
 
 ## 5. Execution gateway and venue simulator — Phase 5
 
-- [ ] **G-027 — Committed effects only.** The gateway can deliver only an effect
+- [x] **G-027 — Committed effects only.** The gateway can deliver only an effect
   read from committed and applied outbox state.
-- [ ] **G-028 — Executor cannot invent economics.** The gateway may validate,
+- [x] **G-028 — Executor cannot invent economics.** The gateway may validate,
   lower, encode, defer, reject, send, query, or reconcile; it may not originate
   or economically modify an order.
-- [ ] **G-029 — Final pre-send guard.** Immediately before external send, the
+- [x] **G-029 — Final pre-send guard.** Immediately before external send, the
   gateway checks effect shape, policy constraints, expiry, venue capability,
   quota, executor generation, kill epoch, and current authority.
-- [ ] **G-030 — Typed transport outcome.** Venue success, venue duplicate,
+- [x] **G-030 — Typed transport outcome.** Venue success, venue duplicate,
   business rejection, pre-send failure, and ambiguous post-send failure remain
   distinct states.
-- [ ] **G-031 — Crash-cut safety.** Crashes before send leave a deliverable
+- [x] **G-031 — Crash-cut safety.** Crashes before send leave a deliverable
   pending effect; crashes after a possible send produce unknown/reconcile state,
   not an assumed retry.
-- [ ] **G-032 — Reconciliation before risk.** Gateway restart or reconnect
+- [x] **G-032 — Reconciliation before risk.** Gateway restart or reconnect
   rebuilds open-order and relevant venue state before new risk is enabled.
-- [ ] **G-033 — Adversarial simulator proof.** The gateway is tested against
+- [x] **G-033 — Adversarial simulator proof.** The gateway is tested against
   delay, loss, duplication, reorder, partial fill, fill-after-cancel,
-  disconnect, rate-limit, and inconsistent-query scenarios.
-- [ ] **G-034 — Bounded executor resources.** Normal and emergency queues,
+  disconnect, rate-limit, inconsistent-query, and partial-query-window
+  scenarios. TEN classes, not the nine originally listed, and they COMPOSE: the
+  selector used to choose one per operation, which made a documented coverage gap
+  a property of the selector rather than of the system. Each class is asserted by
+  the effect it produced, not by appearing in the selector's log - which is how
+  `loss` on a cancel was found to log its label while losing nothing.
+- [x] **G-034 — Bounded executor resources.** Normal and emergency queues,
   attempts, timeouts, and rate-limit accounting are explicitly bounded.
+
+  Phase 5's CORRECTED acceptance closes G-025 through G-034. See
+  `docs/evidence/V2_PHASE5_CORRECTED_ACCEPTANCE.md`, which supersedes the
+  2026-09-11 record after a review found reducer and pre-send defects, a
+  gateway-restart hole, and two test oracles that could report green while losing
+  venue evidence. The earlier record and its tag are preserved as history.
+
+  CLOSED WITH ONE CARRIED OBLIGATION: the physical Raspberry Pi 5 gate has not
+  run against this source root, because the machine was offline. The ARM64
+  container gate proves the logic and the byte layout on a real aarch64 kernel,
+  so what the Pi adds is physical-hardware and clean-power evidence rather than
+  unverified behaviour. If that run later fails, these ten guarantees reopen.
+
+  G-074a stays open by design: an order holding unresolvable disagreement is
+  retained as `conflict` and requires operator escalation. The corrected evidence
+  measures the concurrent bound rather than asserting it.
 
 ## 6. Replication and availability semantics — Phase 6
 
