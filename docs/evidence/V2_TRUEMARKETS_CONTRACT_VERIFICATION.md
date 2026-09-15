@@ -12,50 +12,82 @@ per row rather than averaged away.
 
 | # | Blocking question | DeFi answer | Confidence |
 |---|---|---|---|
-| 1 | Resting limit orders? | **CONTRADICTED** — see below | unresolved |
-| 2 | Post-only available? | **Not documented** → treat as unsupported | verified-absent |
+| 1 | Resting limit orders? | **YES** | verified |
+| 2 | Post-only available? | **Not documented by True Markets** | unverified |
 | 3 | Public order book? | **Yes** | verified |
 | 4 | Maker rebates / tiered fees? | **No DeFi schedule published** | unverified |
-| 5 | Chain and gas cost? | **Not documented** | unverified |
+| 5 | Chain / underlying venue? | **Hyperliquid**. Gas undocumented | venue verified |
 
-Two of five are answered. One is answered negatively, which is usable. **Two
-remain blocking, and one of those is a contradiction in the source itself.**
+**The project is NOT a venue-level no-go.** The stop condition in the must-confirm
+doc — "if (1) or (3) is no, stop" — does not fire. Both are yes.
 
-## 1. Resting limit orders on DeFi — THE CONTRADICTION
+## 1. Resting limit orders on DeFi — YES
 
-Two pages on the same site disagree, and the disagreement decides whether a
-market-making strategy is possible on the only surface this account can trade.
-
-AGAINST, from the quickstart:
+An earlier revision of this document recorded this as an unresolved
+contradiction, because the quickstart states:
 
 > "Limit orders are supported only on the CeFi assets"
 
-FOR, from the order endpoint index:
+That statement is wrong, or scoped to its own market-order example. Two
+independent reference pages say otherwise in terms that cannot be read any other
+way.
 
-> `POST /orders/{id}/cancel` — "Cancel a limit order (**CeFi or DeFi**)"
+From `POST /orders/{id}/cancel`:
+
+> "Venue-polymorphic cancel. The `payloads` field is the signal:"
 >
-> `POST /orders/{id}/cancel/execute` — "Execute a **resting DeFi limit order**
-> cancellation ... Submits the client's signatures over the payloads returned by
-> `POST /orders/{id}/cancel` to cancel a **resting DeFi limit order**."
+> **"DeFi cancellation (Hyperliquid): Resting orders return `200 OK` with
+> unsigned payloads."**
+>
+> Eligibility: "CeFi orders in `pending` or `active` status, and **DeFi orders in
+> `active` status**."
 
-A venue does not ship a dedicated two-step signing endpoint to cancel an object
-that cannot exist. But the quickstart is unambiguous in the other direction, and
-a quickstart is the page most likely to be current.
+From the Gateway API overview's status enumeration:
 
-This is exactly the case G-063 names: unsupported or ambiguous venue behaviour is
-represented as unknown, never guessed into success. It is NOT resolvable from
-documentation, and it is not resolvable by attempting an order — the research
-package's `ReadOnlyHttp` refuses any non-GET and any path containing `/orders`
-before a socket opens, and that interlock stays.
+> "`active` — **limit order resting in order book**"
 
-The safe resolution is a read-only `GET` against the asset catalog filtered to
-DeFi, checking whether assets advertise a limit-order capability:
+So DeFi orders reach `active`, `active` means resting in the book, and the cancel
+path treats DeFi resting orders as a first-class case with its own signing step.
+A venue does not ship a two-step signing endpoint, an eligibility rule and a
+status value for an object that cannot exist.
 
-```
-GET /v1/conductor/assets?venue=defi
-```
+TREAT THE QUICKSTART AS STALE ON THIS POINT. It is worth recording that a
+quickstart was the least reliable page on the site here, because the usual
+heuristic is the opposite.
 
-which the quickstart documents as the supported filter.
+Still not directly confirmed, and the gap is narrow but real: every DeFi-limit
+statement above concerns CANCELLING one. The `POST /orders` CREATE schema is
+rendered client-side and could not be extracted, so the exact field combination
+that creates a resting DeFi limit order — the type value, whether a price field
+is required, whether a venue selector is needed — is unread. That is a schema
+question now, not a feasibility question.
+
+## 1b. The DeFi order lifecycle, from the Gateway API overview
+
+Quoted because it does not match the Phase 5 state machine and Phase 9 has to
+bridge the difference:
+
+> `initialized` — "awaiting client signature (DeFi orders, CeFi buy orders
+> needing funding bridge)"
+> `pending` — "submitted to venue, awaiting settlement"
+> `active` — "limit order resting in order book"
+> `complete` — "fully filled"
+> `canceled` / `cancel_pending` — "user-canceled or exchange-rejected"
+> `failed` — "rejected or execution reverted"
+
+> "The `payloads` field in the create response is the signal: if it's non-empty,
+> you need to sign and call execute. If it's empty or absent, the order is
+> already submitted."
+
+Base URLs, and note that a UAT environment exists:
+
+> Production `https://api.truemarkets.co/v1/gateway`
+> UAT `https://api.uat.truemarkets.co/v1/gateway`
+> "All endpoints require a JWT access token in the `Authorization: Bearer
+> <token>` header."
+
+A UAT environment means the create-order schema question above, and the whole
+Phase 9 adapter, can be resolved against a real API without risking funds.
 
 ## 2. Post-only — not documented
 
@@ -121,10 +153,31 @@ Two findings, and the second is the one that matters here:
   must-confirm doc's own warning applies: a wrong maker fee inverts the sign of
   the expected edge.
 
-## 5. Chain and gas — not documented
+## 5. Underlying venue is Hyperliquid; gas still undocumented
 
-No page names the settlement chain, the gas payer, or a per-fill on-chain cost.
-What is established is the SHAPE of the DeFi flow, which implies both:
+Named once, in passing, on the cancel page:
+
+> "**DeFi cancellation (Hyperliquid)**: Resting orders return 200 OK with
+> unsigned payloads."
+
+That single word resolves more than the rest of the site combined, because it
+identifies what the gateway is actually brokering to. It also imposes a
+discipline: EVERYTHING KNOWN ABOUT HYPERLIQUID DIRECTLY IS OUT OF SCOPE FOR THIS
+DOCUMENT. We trade through True Markets' abstraction, not against Hyperliquid, so
+Hyperliquid's own fee schedule, its post-only flag and its gas model are
+properties of a system we do not call. Importing them here is precisely the
+failure the must-confirm doc warns about: "a value we inferred must never become
+indistinguishable from one the venue documented".
+
+What it legitimately changes is the RESEARCH PLAN. The questions "does a resting
+book exist", "is there depth", "what does a fill cost on-chain" now have a known
+place to be answered from primary sources, and the answers can then be checked
+against what True Markets actually exposes. Any Hyperliquid fact that survives
+that check gets recorded as a True Markets fact with a True Markets source.
+
+The gas question specifically remains open and still deserves its billing as the
+term most likely to disqualify the strategy. What is established is the SHAPE of
+the DeFi flow, which implies a signer and therefore a chain account:
 
 > `POST /orders` — "Creates a new order. For DeFi orders, returns **unsigned
 > payloads for client signing**."
@@ -137,8 +190,9 @@ So the client holds a key and signs, and the account API carries `create-wallet`
 payloads normally means the client bears gas, but the documentation does not say
 so and this record will not assume it.
 
-This remains the term the must-confirm doc flags as most likely to disqualify the
-strategy: at 1 USDC per quote, a per-fill gas cost can exceed the entire spread.
+At 1 USDC per quote, a per-fill on-chain cost can exceed the entire spread, so
+this stays blocking for the economics even though it no longer blocks the
+architecture.
 
 ## What this changes in the frozen Phase 5 contracts
 
@@ -152,12 +206,26 @@ than to discover against a live key.
   costs nothing.
 - CONFIRMED FIT. GTC exists, matching `TimeInForce::good_til_cancel`.
 - MISFIT TO RESOLVE. `PostOnlyMode::required` cannot be satisfied — see §2.
-- NEW AMBIGUITY WINDOW. DeFi is prepare → sign → execute, so ONE economic intent
-  crosses the process boundary TWICE, each crossing with its own ambiguous
-  outcome. Phase 5's delivery model assumes one send per effect. An effect that
-  was prepared but whose execute is ambiguous is a state the current
-  `DeliveryAttempt` does not distinguish, and reconciliation by client order
-  identity may not find a prepared-but-unexecuted order at all.
+- NEW AMBIGUITY WINDOW, now confirmed by the status enumeration. DeFi is
+  prepare → sign → execute, so ONE economic intent crosses the process boundary
+  TWICE, each crossing with its own ambiguous outcome. Phase 5's delivery model
+  assumes one send per effect. An effect prepared but whose execute is ambiguous
+  is a state `DeliveryAttempt` does not distinguish, and reconciliation by client
+  order identity may not find a prepared-but-unexecuted order at all.
+- A LIFECYCLE STATE V2 DOES NOT HAVE. `initialized` means the gateway holds
+  unsigned payloads: the venue knows the intent, the order is NOT in the book,
+  and no venue risk exists yet. V2's nearest states both assert something
+  stronger — `dispatch_authorized` says nothing has been sent, `acknowledged`
+  says the venue has it. Mapping `initialized` onto either is wrong in a way that
+  matters: onto the first, a crash loses a signable payload the venue is holding;
+  onto the second, the cluster believes it has exposure it does not have.
+  Phase 9 needs the distinction, and the cheapest place to put it is the outbox
+  effect state rather than the order lifecycle, since it describes delivery
+  progress rather than economics.
+- STATUS MAPPING, otherwise clean: `active` → `live`, `complete` → `filled`,
+  `canceled` → `cancelled`, `cancel_pending` → `cancel_pending`, `failed` →
+  `rejected`. `pending` ("submitted to venue, awaiting settlement") sits between
+  V2's `acknowledged` and `live` and is the second state needing a decision.
 - TICK SIZE IS PRICE-BANDED, NOT PER-SYMBOL. `/documentation/increment-sizes`
   publishes nine buckets by price range for CeFi, from tick 1 at $500,000+ down
   to 0.0000000001 below $0.00001, with **min notional 1.00 in every bucket**.
@@ -182,3 +250,6 @@ right.
 - https://docs.truemarkets.co/apis/retail/create-order/
 - https://docs.truemarkets.co/apis/retail/execute-cancel-order/
 - https://docs.truemarkets.co/apis/retail/modify-order/
+- https://docs.truemarkets.co/apis/retail/prepare-cancel-order/
+- https://docs.truemarkets.co/apis/retail/true-markets-gateway-api
+- https://docs.truemarkets.co/apis/retail/orders
