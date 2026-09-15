@@ -17,9 +17,14 @@ per row rather than averaged away.
 | 3 | Public order book? | **Yes** | verified |
 | 4 | Maker rebates / tiered fees? | **No DeFi schedule published** | unverified |
 | 5 | Chain / underlying venue? | **Hyperliquid**. Gas undocumented | venue verified |
+| 6 | Instrument type | **Perpetual futures, not spot** | verified |
 
 **The project is NOT a venue-level no-go.** The stop condition in the must-confirm
 doc — "if (1) or (3) is no, stop" — does not fire. Both are yes.
+
+BUT THE INSTRUMENT IS A PERPETUAL, which the must-confirm doc did not think to
+ask about, and which breaks an assumption Phase 5 is built on. See section 6; it
+is the largest open item on this page.
 
 ## 1. Resting limit orders on DeFi — YES
 
@@ -194,6 +199,77 @@ At 1 USDC per quote, a per-fill on-chain cost can exceed the entire spread, so
 this stays blocking for the economics even though it no longer blocks the
 architecture.
 
+## 6. The DeFi surface is PERPETUALS, and this is the finding that matters
+
+From the positions endpoint index:
+
+> "**Query a user's open Hyperliquid perpetual positions.**"
+>
+> `GET /positions` — "Returns a read-only list of the authenticated user's open
+> positions. **Data is fetched on demand from the venue; nothing is persisted.**"
+>
+> `GET /portfolio` — "Unified portfolio across CeFi and DeFi venues: valued
+> balances, open positions, and **PnL** in a single call."
+
+Perpetual futures, not spot. Three consequences, in increasing order of how much
+they cost to fix.
+
+### 6.1 V2 cannot represent a position change it did not authorize
+
+This is architectural and it is not a Phase 5 defect — Phase 5 was built for a
+model where every position change descends from an effect the cluster authorized,
+which is true of spot limit orders and false of perps.
+
+`apply_observe_fill` requires a matching SUBMIT effect before any fill can book:
+
+```cpp
+if (outbox == nullptr || outbox->operation != EffectOperation::submit) {
+    return fill_result(state, ApplyCode::venue_observation_not_applicable, ...);
+}
+```
+
+A perp venue changes a position without an order in at least three ways:
+
+- LIQUIDATION. The venue force-closes the position. There is no effect, so no
+  `effect_id`, so no command in the entire kernel can carry it.
+- AUTO-DELEVERAGING. Someone else's liquidation closes part of yours.
+- FUNDING. A periodic cash flow against an open position. Not a fill, not a fee,
+  not an order — V2 has no term for it anywhere in `RiskAccount`.
+
+Offer any of these to the reducer today and it answers
+`venue_observation_not_applicable`, correctly by its own contract, and the
+cluster's position silently diverges from the venue's. The divergence is
+detectable — `GET /positions` is authoritative and the gateway can query it — but
+there is currently nothing the gateway could SUBMIT to close the gap.
+
+The honest options for Phase 9, none of them free:
+
+1. A new observation kind for unsolicited position change, adjudicated the way
+   `order_reconciled` is: cumulative by value, no effect identity required. This
+   is the smallest change that preserves the invariant "the reducer owns
+   economics", and it is a byte-contract change requiring review.
+2. Treat any unexplained divergence as `conflict` and escalate. Safe, cheap, and
+   turns an ordinary funding payment into an operator incident several times a
+   day, which means it will be ignored and then it protects nothing.
+3. Trade spot on CeFi instead, where the authorized-effect assumption holds — but
+   this account is DeFi-only, so it is not available.
+
+### 6.2 Margin is against a position, not against an order
+
+`RiskAccount` carries `reserved_margin`, `initial_margin_ppm` and
+`max_reserved_exposure`, so margin machinery exists. It reserves against an
+ORDER and releases when that order resolves. Perp maintenance margin is assessed
+continuously against an open POSITION and moves with the mark price. These are
+different quantities and the second has no representation.
+
+### 6.3 Leverage changes what a 20 USDC budget means
+
+A 20 USDC budget on spot bounds the loss at 20 USDC. The same budget as perp
+margin bounds nothing by itself: notional is a multiple of it and the loss
+surface scales with the multiple. Whatever leverage the venue defaults to is now
+a required input to the economics, alongside the fee and gas terms — and it is
+undocumented here.
+
 ## What this changes in the frozen Phase 5 contracts
 
 Recorded now because the adapter is Phase 9 and these are cheaper to know early
@@ -253,3 +329,7 @@ right.
 - https://docs.truemarkets.co/apis/retail/prepare-cancel-order/
 - https://docs.truemarkets.co/apis/retail/true-markets-gateway-api
 - https://docs.truemarkets.co/apis/retail/orders
+- https://docs.truemarkets.co/apis/retail/list-positions
+- https://docs.truemarkets.co/apis/retail/get-portfolio
+- https://docs.truemarkets.co/getting-started/create-an-account
+- https://docs.truemarkets.co/cli/authentication
