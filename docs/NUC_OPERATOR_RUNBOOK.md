@@ -164,8 +164,34 @@ rsync -av --delete --exclude 'build/' --exclude 'build-*/' \
 ```
 
 ```sh
-# on the NUC, no sudo - rootless podman
+# on the NUC: CHECK BEFORE YOU RUN, against a value from outside this tree
 cd ~/aeron-raft-pi-phase5-nuc
+git log --oneline -1
+{ sha256sum CMakeLists.txt;
+  find include/velocita/v2 src tests -maxdepth 1 -type f \
+    \( -name 'v2_*' -o -name 'v2*.cpp' -o -name '*.hpp' \) -print0 |
+    LC_ALL=C sort -z | xargs -0 sha256sum; } | sha256sum
+```
+
+Compare that against the root written in the handoff, the tag message, or the
+acceptance record - NOT against the pin inside `deploy/`. This step is not
+ceremony, and skipping it has already produced a PASS on the wrong candidate.
+
+WHY THE GATE CANNOT DO THIS FOR YOU. `VELOCITA_EXPECTED_SOURCE_ROOT` lives in
+`deploy/run-v2-phase5-nuc-gate.sh`, which travels INSIDE the tree. A stale tree
+therefore carries its own stale pin, the two agree, and the gate passes - because
+it was asked whether the tree matches its pin, and it does. A PASS proves THIS
+TREE MATCHES ITS OWN PIN; it never proves THIS IS THE CANDIDATE YOU MEANT. The
+root check catches tampering and transfer corruption, which break that internal
+agreement. It cannot catch the wrong tree, which preserves it.
+
+This bites hardest when the machine has more than one account. Each has its own
+`~/aeron-raft-pi-phase5-nuc` and its own rootless podman storage, so a tree
+synced for one user is invisible to the other and can sit at an old commit
+indefinitely.
+
+```sh
+# on the NUC, no sudo - rootless podman
 BUILD_JOBS=4 ./deploy/run-v2-phase5-nuc-gate.sh --yes
 ```
 
@@ -173,6 +199,28 @@ No power preflight: a NUC has no firmware `throttled` interface, and the gate
 disables that check rather than fabricating a value.
 
 Evidence lands in `~/.local/share/velocita/v2-phase5-nuc-gates/<timestamp>/`.
+
+## Reading the evidence
+
+```sh
+d=$(ls -1dt ~/.local/share/velocita/v2-phase5-nuc-gates/*/ | head -1)
+cat "$d/summary.tsv"; cat "$d/source-root.sha256"
+grep -hE "tests passed" "$d"/{release,instrumented,sanitized}-tests.txt
+grep -E "trading_state_size|state_snapshot_max|ubsan|machine=" "$d/metadata.txt"
+```
+
+Check three things, not one:
+
+1. the gate-computed root in `source-root.sha256` equals the value you hold
+   outside the tree;
+2. the suite counts are 29 / 26 / 26; and
+3. `ubsan_compile_recovery` and `ubsan_negative_probe_exit_status` are PRESENT,
+   with a nonzero probe status.
+
+The third is the sharpest staleness detector available, and the easiest to skim
+past, because a stale gate script does not print those keys WRONG - it does not
+print them at all. Absence in a grep whose other lines look correct reads as
+nothing rather than as a finding.
 
 ## Recomputing the source root by hand
 

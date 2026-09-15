@@ -48,10 +48,19 @@ approved material contract is encoded, and the source is frozen.
 - horizons, conflict-inducing: peak conflicts 1, max order age 210 versions,
   zero orders vanished while unresolved.
 
-- x86-64 NUC gate `20260915T134322Z`: PASS, gate-computed root matching the pin,
-  Release 29/29, instrumented 26/26, sanitized 26/26, UBSan negative probe exit
-  status 1. Layout BYTE-IDENTICAL to ARM64: `TradingState` 81,360, maximum
-  canonical snapshot 65,451, `ApplyResult` 112, `ClusterOrder` 48.
+- x86-64 NUC gates `20260915T134322Z` (account `bulbazar`) and
+  `20260915T154328Z` (account `vishal`, synced independently by the operator):
+  both PASS, gate-computed root matching the pin, Release 29/29, instrumented
+  26/26, sanitized 26/26, UBSan negative probe exit status 1. Layout
+  BYTE-IDENTICAL to ARM64: `TradingState` 81,360, maximum canonical snapshot
+  65,451, `ApplyResult` 112, `ClusterOrder` 48.
+
+BEFORE RUNNING ANY GATE, compare the tree's computed root against the value in
+THIS FILE, not against the pin inside `deploy/`. The pin travels with the source,
+so a stale tree agrees with itself and passes. NUC run `20260915T152553Z` did
+exactly that against the superseded candidate. Each NUC account has its own
+`~/aeron-raft-pi-phase5-nuc` and its own podman storage, so a tree synced for one
+user can sit at an old commit indefinitely, invisible to the other.
 
 ### Acceptance decision
 

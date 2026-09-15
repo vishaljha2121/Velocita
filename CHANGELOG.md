@@ -29,8 +29,11 @@ history of a candidate a later review found defective.
 | host (macOS, arm64) | PASS | 29/29 | - | 29/29 |
 | ARM64 Linux container `20260915T134221Z` | PASS | 29/29 | 26/26 | 26/26 |
 | x86-64 NUC `20260915T134322Z` | PASS | 29/29 | 26/26 | 26/26 |
+| x86-64 NUC `20260915T154328Z` | PASS | 29/29 | 26/26 | 26/26 |
 
-Each gate computed the pinned root itself. The bounded layout is byte-identical
+The NUC ran twice, from two accounts and two independently synced trees on the
+same machine, which shows the result does not depend on leftover state in the
+tree that produced it. Each gate computed the pinned root itself. The bounded layout is byte-identical
 across both architectures: `TradingState` 81,360 of 81,920, maximum canonical
 snapshot 65,451 of 65,536, `ApplyResult` 112, `ClusterOrder` 48. UBSan compiles
 non-recovering with `halt_on_error=1` on both targets, and the negative probe
@@ -50,6 +53,20 @@ The exception is scoped to the Pi's unavailability. It does not license acceptin
 a future phase on partial target evidence, and the MVP boundary is unchanged: no
 real venue connectivity, no strategy logic, no netting, no WAL implementation,
 and no full Raft integration.
+
+A GATE-LEVEL FALSE GREEN, found and recorded on the way. An earlier NUC attempt
+from a second account, run `20260915T152553Z`, reported PASS against the
+SUPERSEDED candidate: that account's tree had never received the corrected
+source. The gate was correct to pass it, and that is the point -
+`VELOCITA_EXPECTED_SOURCE_ROOT` lives in the gate script, which travels inside
+the tree, so a stale tree carries its own stale pin and the two agree. A PASS
+proves this tree matches its own pin; it never proves this is the candidate you
+meant to test. Only comparing the gate-computed root against a value held outside
+the tree distinguishes them. The sharpest staleness signal turned out to be the
+ABSENCE of the `ubsan_*` metadata keys, because a stale gate script does not
+print them wrong - it does not print them at all.
+`docs/NUC_OPERATOR_RUNBOOK.md` now makes the external comparison an explicit step
+and tells the operator to check for those keys' presence.
 
 #### Native and synthetic observation identity domains — 2026-09-15
 

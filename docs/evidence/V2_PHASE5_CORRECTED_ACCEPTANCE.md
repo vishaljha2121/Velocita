@@ -200,8 +200,20 @@ cd ~/aeron-raft-pi-phase5-nuc
 BUILD_JOBS=4 ./deploy/run-v2-phase5-nuc-gate.sh --yes
 ```
 
-Run `20260915T134322Z`: PASS, `failure_step=none`, environment
-`nuc-x86_64-linux-container`, `machine=x86_64`, `dpkg_architecture=amd64`.
+Run TWICE, from two separate accounts and two independently synced trees on the
+same machine. Both PASS, `failure_step=none`, environment
+`nuc-x86_64-linux-container`, `machine=x86_64`, `dpkg_architecture=amd64`:
+
+| run | account | tree |
+|---|---|---|
+| `20260915T134322Z` | `bulbazar` | synced from the tag by the implementing session |
+| `20260915T154328Z` | `vishal` | synced independently by the operator |
+
+The second run is not redundant. It reproduces the first from a clean sync
+performed by a different person into a different home directory, which is the
+only way to show the result does not depend on leftover state in the tree that
+produced it. Both report identical roots, identical suite counts, and identical
+measured layout.
 
 - gate-computed source root
   `681e222d7b6a6b314d1bf4e73bc24f2ce9685faa39a68a7832cf7abb5ec6976f`, matching
@@ -224,6 +236,41 @@ of these particular structs: every V2 record is built from fixed-width integers,
 strong-id wrappers over them, and `std::array`, with no pointers, no `bool`
 packing assumptions and no implementation-defined widths. The measurement
 confirms the discipline rather than discovering a fact about one compiler.
+
+### A PASS on the wrong candidate, and why the gate could not catch it
+
+Recorded because it is a FALSE-GREEN SHAPE at the gate level, and the existing
+gate-defect record in the superseded document shows this project keeps those.
+
+An earlier attempt from the operator's account, run `20260915T152553Z`, reported
+PASS with root `b23bdea07d60163cd05a970cf058af8e6d62665afb47f1217f5f1162f5e2d1b4`
+and `trading_state_size_bytes=81168`. That is the SUPERSEDED 2026-09-11
+candidate. The account held a tree from earlier work and the corrected source had
+never been synced into it.
+
+THE GATE WAS CORRECT TO PASS IT. `VELOCITA_EXPECTED_SOURCE_ROOT` lives in
+`deploy/run-v2-phase5-nuc-gate.sh`, which travels INSIDE the tree, so an old tree
+carries its own old pin and the two agreed. The check compared what it was given
+against what came with it.
+
+The general statement, which matters beyond this incident: a gate PASS proves
+THIS TREE MATCHES ITS OWN PIN. It never proves THIS IS THE CANDIDATE I MEANT TO
+TEST. The root check catches tampering and transfer corruption, both of which
+break that internal agreement; it cannot catch running the wrong tree, because
+running the wrong tree preserves it. Only comparing the gate-computed root
+against a value held OUTSIDE the tree - a handoff, a tag message, this document -
+distinguishes the two.
+
+Three independent signals identified the stale run, and the third is the most
+reliable: the root, the struct sizes, and the ABSENCE of the `ubsan_*` keys
+entirely. The corrected gate always records `ubsan_compile_recovery` and
+`ubsan_negative_probe_exit_status`; their absence means the gate script itself
+predates the UBSan hardening, which is a fact about the tree that no amount of
+re-reading the source root would reveal. A missing key is easy to skim past in a
+grep whose other lines all look right.
+
+`docs/NUC_OPERATOR_RUNBOOK.md` now makes the external-value comparison an
+explicit step rather than an implied one.
 
 ## Physical Raspberry Pi 5 evidence
 
