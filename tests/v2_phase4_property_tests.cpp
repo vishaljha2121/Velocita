@@ -573,6 +573,19 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
                 }
                 const auto risk_before = state.risk_accounts[0];
                 const auto duplicate_kind = generator.bounded(3);
+
+                // Only a NATIVE observation can be judged by venue sequence
+                // identity. A synthetic one - a gateway-declared timeout, or a
+                // reconciliation answer - carries a number the gateway chose, so
+                // a repeat of it is re-adjudicated rather than refused on
+                // identity. What must hold either way is the economic invariant
+                // asserted below, and that is the property this case exists for.
+                auto origin = ObservationOrigin::native;
+                if (const auto* event = std::get_if<ObserveOrderEvent>(&command.body)) {
+                    origin = observation_origin(event->observation.kind);
+                }
+                const bool synthetic = origin == ObservationOrigin::synthetic;
+
                 ApplyCode expected = ApplyCode::applied;
                 if (duplicate_kind == 1) {
                     command.identity.request_sequence = RequestSequence{request++};
@@ -595,10 +608,20 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
                     }
                 }
                 const auto outcome = admit(command, "duplicate observation");
-                require(outcome.code == expected,
+                // For a synthetic repeat the code is a function of the ORDER's
+                // current state rather than of identity, so pinning one value
+                // here would pin the fixture's timing instead of the contract.
+                // What is pinned is the thing that would be wrong: the venue's
+                // sequence domain must never claim a number the gateway chose.
+                const bool code_matches =
+                    synthetic && duplicate_kind != 0
+                        ? outcome.code != ApplyCode::venue_event_identity_conflict
+                        : outcome.code == expected;
+                require(code_matches,
                         "duplicate observation returned the wrong code seed=" +
                             std::to_string(seed) + " step=" +
-                            std::to_string(trace_step));
+                            std::to_string(trace_step) + " code=" +
+                            std::to_string(static_cast<int>(outcome.code)));
                 if (duplicate_kind == 0) coverage.same_request_duplicate = true;
                 if (duplicate_kind == 1) coverage.cross_request_duplicate = true;
                 if (duplicate_kind == 2) {

@@ -31,7 +31,6 @@ inline constexpr std::size_t kMaxVenueEventReceipts = 64;
 // fresh id would fill this arena with dead entries and rebuild the lifetime
 // wedge one level up. See architecture 8.6.
 inline constexpr std::size_t kMaxCallerCursors = 8;
-inline constexpr std::size_t kMaxVenueCursors = 8;
 static_assert(kMaxPolicies > 0);
 static_assert(kMaxSources > 0);
 static_assert(kMaxSourceEventReceipts > kMaxSources);
@@ -148,10 +147,8 @@ enum class ApplyCode : std::uint8_t {
     // re-execution would be a second economic mutation; the caller reconciles
     // against state, where almost every command's real protection already lives.
     request_expired,
-    // The venue-event identity is below its session's expiry watermark, so its
-    // receipt has been reclaimed and the kernel can no longer say what happened.
-    // It refuses rather than re-applying, because re-applying would be a second
-    // economic mutation - the same rule `request_expired` follows.
+    // Reserved for historical results from the withdrawn venue-sequence
+    // watermark design. New reducers never emit this code.
     venue_event_expired,
 };
 
@@ -169,6 +166,7 @@ enum class ApplyCode : std::uint8_t {
 struct CallerCursor {
     CallerId caller_id{};
     RequestSequence expired_below{};
+    RequestSequence gateway_results_acknowledged_through{};
 
     constexpr auto operator<=>(const CallerCursor&) const noexcept = default;
 };
@@ -278,6 +276,10 @@ struct ConfigureRiskLimits {
     std::uint32_t maximum_fee_ppm{};
 };
 
+struct AcknowledgeGatewayResults {
+    RequestSequence acknowledged_through{};
+};
+
 [[nodiscard]] constexpr bool valid_risk_limits(const ConfigureRiskLimits& value) noexcept {
     return value.account_id.value() != 0 && value.instrument_id.value() != 0 &&
            value.risk_policy_version.value() != 0 && value.max_order_quantity.atoms() > 0 &&
@@ -303,7 +305,8 @@ using CommandBody = std::variant<PublishPolicy,
                                  RequestCancel,
                                  ObserveOrderEvent,
                                  RequestReplace,
-                                 ConfigureRiskLimits>;
+                                 ConfigureRiskLimits,
+                                 AcknowledgeGatewayResults>;
 
 struct Command {
     CommandIdentity identity{};
@@ -381,10 +384,16 @@ struct ApplyResult {
     ApplyResultDetailKind detail_kind{ApplyResultDetailKind::none};
 
     [[nodiscard]] constexpr PolicyId policy_id() const noexcept {
-        return detail_kind == ApplyResultDetailKind::fill ? PolicyId{} : PolicyId{metadata_words[0]};
+        return detail_kind == ApplyResultDetailKind::fill ||
+                       detail_kind == ApplyResultDetailKind::venue_event
+                   ? PolicyId{}
+                   : PolicyId{metadata_words[0]};
     }
     [[nodiscard]] constexpr PolicyVersion policy_version() const noexcept {
-        return detail_kind == ApplyResultDetailKind::fill ? PolicyVersion{} : PolicyVersion{metadata_words[1]};
+        return detail_kind == ApplyResultDetailKind::fill ||
+                       detail_kind == ApplyResultDetailKind::venue_event
+                   ? PolicyVersion{}
+                   : PolicyVersion{metadata_words[1]};
     }
     [[nodiscard]] constexpr VenueSessionId fill_session_id() const noexcept {
         return detail_kind == ApplyResultDetailKind::fill ? VenueSessionId{metadata_words[0]} : VenueSessionId{};
@@ -452,6 +461,22 @@ struct ApplyResult {
                    ? VenueSequence{detail.words[2]}
                    : VenueSequence{};
     }
+    [[nodiscard]] constexpr EffectId event_effect_id() const noexcept {
+        return detail_kind == ApplyResultDetailKind::venue_event
+                   ? EffectId{metadata_words[0]}
+                   : EffectId{};
+    }
+    // Which identity domain this receipt belongs to. Retained because the kind
+    // is not in the result, and a deduplication or reclamation pass must know
+    // whether the sequence means anything without going to find the
+    // observation.
+    [[nodiscard]] constexpr ObservationOrigin event_origin() const noexcept {
+        return detail_kind == ApplyResultDetailKind::venue_event &&
+                       metadata_words[1] ==
+                           static_cast<std::uint64_t>(ObservationOrigin::synthetic)
+                   ? ObservationOrigin::synthetic
+                   : ObservationOrigin::native;
+    }
 
     constexpr auto operator<=>(const ApplyResult&) const noexcept = default;
 };
@@ -464,30 +489,6 @@ struct PolicyRecord {
 struct RequestReceipt {
     CommandIdentity identity{};
     ApplyResult result{};
-};
-
-// The venue-event counterpart of `CallerCursor`, and deliberately the same shape
-// for the same reason (architecture 8.6).
-//
-// Venue-event receipts are retained so a re-presented observation returns its
-// original outcome rather than mutating economics twice. But an unresolved order
-// never releases its receipts, and the accepted serial-cancel lifecycle can be
-// repeated - reject, reconcile "still working", cancel again - so historical
-// evidence for superseded cancel generations accumulated until it consumed the
-// capacity that authorization had reserved for that order's OWN remaining fills.
-// A real execution then could not be accounted at all.
-//
-// `expired_below` is the watermark that makes those receipts reclaimable without
-// making them replayable. An observation whose sequence is below it is REFUSED as
-// expired, never re-applied: the same trade 8.6 accepted for request receipts,
-// where losing the retained answer is acceptable and a second economic mutation
-// is not. Anything at or above the watermark behaves exactly as before.
-struct VenueCursor {
-    VenueId venue_id{};
-    VenueSessionId venue_session_id{};
-    VenueSequence expired_below{};
-
-    constexpr auto operator<=>(const VenueCursor&) const noexcept = default;
 };
 
 struct SourceCursor {
@@ -620,6 +621,7 @@ struct ClusterOrder {
     std::uint64_t authorization_state_version{};
     std::uint16_t reservation_index{};
     ClusterOrderState state{ClusterOrderState::dispatch_authorized};
+    std::uint64_t last_evidence_state_version{};
 
     constexpr auto operator<=>(const ClusterOrder&) const noexcept = default;
 };
@@ -694,8 +696,6 @@ struct TradingState {
     std::uint64_t settled_incomplete_effect_count{};
     std::size_t caller_cursor_count{};
     std::array<CallerCursor, kMaxCallerCursors> caller_cursors{};
-    std::size_t venue_cursor_count{};
-    std::array<VenueCursor, kMaxVenueCursors> venue_cursors{};
 };
 
 // Reserved for bounded temporary indexes/encoding buffers in later reducer

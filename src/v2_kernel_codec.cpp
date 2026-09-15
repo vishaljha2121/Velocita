@@ -233,6 +233,7 @@ private:
         case KernelCommandKind::observe_order_event:
         case KernelCommandKind::request_replace:
         case KernelCommandKind::configure_risk_limits:
+        case KernelCommandKind::acknowledge_gateway_results:
             return true;
     }
     return false;
@@ -307,6 +308,11 @@ private:
     if (const auto* body = std::get_if<ConfigureRiskLimits>(&command.body)) {
         return valid_risk_limits(*body);
     }
+    if (const auto* body =
+            std::get_if<AcknowledgeGatewayResults>(&command.body)) {
+        return body->acknowledged_through.value() != 0 &&
+               body->acknowledged_through < command.identity.request_sequence;
+    }
     return false;
 }
 
@@ -357,6 +363,7 @@ private:
                ? result.event_venue_id().value() != 0 &&
                      result.event_session_id().value() != 0 &&
                      result.event_sequence().value() != 0 &&
+                     result.event_effect_id().value() != 0 &&
                      result.decision_id.value() != 0
                : result.detail != ApplyResultDetail{};
 }
@@ -422,7 +429,10 @@ private:
         return KernelCommandKind::observe_order_event;
     }
     if (std::holds_alternative<RequestReplace>(body)) return KernelCommandKind::request_replace;
-    return KernelCommandKind::configure_risk_limits;
+    if (std::holds_alternative<ConfigureRiskLimits>(body)) {
+        return KernelCommandKind::configure_risk_limits;
+    }
+    return KernelCommandKind::acknowledge_gateway_results;
 }
 
 [[nodiscard]] std::size_t body_size(const CommandBody& body) noexcept {
@@ -464,6 +474,7 @@ private:
     }
     if (std::holds_alternative<RequestReplace>(body)) return 16;
     if (std::holds_alternative<ConfigureRiskLimits>(body)) return 88;
+    if (std::holds_alternative<AcknowledgeGatewayResults>(body)) return 8;
     const auto& value = std::get<EvaluateDecisionFrame>(body);
     return sizeof(std::uint64_t) + sizeof(std::uint8_t) +
            kDecisionFramePayloadFixedBytes +
@@ -688,6 +699,9 @@ void write_body(Writer& writer, const CommandBody& body) noexcept {
         writer.integral(value->max_reserved_exposure.atoms());
         writer.integral(value->initial_margin_ppm);
         writer.integral(value->maximum_fee_ppm);
+    } else if (const auto* value =
+                   std::get_if<AcknowledgeGatewayResults>(&body)) {
+        writer.integral(value->acknowledged_through.value());
     }
 }
 
@@ -1002,6 +1016,10 @@ void write_body(Writer& writer, const CommandBody& body) noexcept {
                 MoneyMicros::from_atoms(reader.integral<std::int64_t>()),
                 MoneyMicros::from_atoms(reader.integral<std::int64_t>()),
                 reader.integral<std::uint32_t>(), reader.integral<std::uint32_t>()};
+            return true;
+        case KernelCommandKind::acknowledge_gateway_results:
+            body = AcknowledgeGatewayResults{
+                RequestSequence{reader.integral<std::uint64_t>()}};
             return true;
     }
     return false;

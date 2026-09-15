@@ -1426,8 +1426,18 @@ void test_cancel_fill_final_evidence_permutations() {
             final.identity.request_sequence =
                 RequestSequence{state.state_version + 1'000};
             const auto final_result = apply(state, final, scratch);
+            // `venue_observation_not_applicable` joins the accepted set because
+            // `cancel_reconciled` is a SYNTHETIC observation: it no longer holds
+            // a place in the venue's sequence domain, so a re-presentation after
+            // the order has already converged is re-adjudicated and refused on
+            // the order's state rather than on identity. That refusal is the
+            // correct answer - there is nothing left for the evidence to say -
+            // and the convergence asserted below is what this test is actually
+            // about.
             require((final_result.code == ApplyCode::applied ||
-                     final_result.code == ApplyCode::already_applied) &&
+                     final_result.code == ApplyCode::already_applied ||
+                     final_result.code ==
+                         ApplyCode::venue_observation_not_applicable) &&
                     state.risk_accounts[0].position_quantity == QuantityLots::from_atoms(filled) &&
                     state.risk_accounts[0].reserved_quantity == QuantityLots{} &&
                     state.reservations[0].state == ReservationState::released &&
@@ -1516,8 +1526,22 @@ void test_cancel_before_earlier_fill_does_not_lose_fill_evidence() {
                 std::equal(direct_bytes.begin(), direct_bytes.begin() +
                     static_cast<std::ptrdiff_t>(direct_snapshot.bytes_written), replay_bytes.begin()),
             "reconciliation replay produced different snapshot bytes");
+    // A cross-request retry of a SYNTHETIC final proof. It is no longer refused
+    // on venue sequence identity - that domain belongs to the venue - so it is
+    // re-adjudicated and refused on the order, which has already converged.
+    // Asserted as the property the message names rather than as a code: the
+    // retry must not move economics a second time.
+    const auto before_retry = state;
     proof.identity.request_sequence = RequestSequence{4};
-    require(apply(state, proof, scratch).code == ApplyCode::already_applied,
+    const auto retried = apply(state, proof, scratch);
+    require(retried.code != ApplyCode::venue_event_identity_conflict,
+            "a synthetic final proof was refused on a venue sequence identity");
+    require(state.orders[0].state == before_retry.orders[0].state &&
+                state.reservations[0] == before_retry.reservations[0] &&
+                state.risk_accounts[0].position_quantity ==
+                    before_retry.risk_accounts[0].position_quantity &&
+                state.risk_accounts[0].reserved_quantity ==
+                    before_retry.risk_accounts[0].reserved_quantity,
             "cross-request final proof retry mutated economics twice");
     auto payload = encode_payload(evidence);
     require(payload.error == PayloadError::none && payload.bytes.size() == 116,
@@ -1664,9 +1688,13 @@ void test_fill_digest_cannot_hide_changed_economics() {
     retry_event.identity.request_sequence = RequestSequence{9};
     require(apply(state, retry_event, scratch).code == ApplyCode::already_applied,
             "verified venue-event fingerprint did not survive restore");
+    // Mutated to another NATIVE kind on purpose. The venue's sequence domain is
+    // what this case is about, and only a native observation belongs to it: the
+    // venue said sequence 1302 was an acknowledgement, and it cannot also have
+    // been a rejection.
     auto changed_event = event;
     std::get<ObserveOrderEvent>(changed_event.body).observation.kind =
-        VenueObservationKind::effect_unknown;
+        VenueObservationKind::order_rejected;
     require(apply(state, changed_event, scratch).code == ApplyCode::invalid_command,
             "same-request event lookup bypassed fingerprint verification");
     changed_event.identity.request_sequence = RequestSequence{2};
@@ -1676,6 +1704,23 @@ void test_fill_digest_cannot_hide_changed_economics() {
         std::get<ObserveOrderEvent>(changed_event.body).observation);
     require(apply(state, changed_event, scratch).code == ApplyCode::venue_event_identity_conflict,
             "valid fingerprint concealed conflicting venue-event content");
+
+    // And the counterpart. A SYNTHETIC observation carrying the same number is
+    // not a contradiction, because that number was never the venue's to give:
+    // the gateway chose it. Refusing here would discard the gateway's only way
+    // of telling the cluster an effect's outcome is unknown.
+    auto synthetic_event = event;
+    auto& synthetic_observation =
+        std::get<ObserveOrderEvent>(synthetic_event.body).observation;
+    synthetic_observation.kind = VenueObservationKind::effect_unknown;
+    synthetic_observation.venue_order_id = VenueOrderId{};
+    synthetic_event.identity.request_sequence = RequestSequence{3};
+    synthetic_event.identity.payload_digest =
+        observation_fingerprint(synthetic_observation);
+    require(apply(state, synthetic_event, scratch).code !=
+                ApplyCode::venue_event_identity_conflict,
+            "a gateway-authored observation was refused on a venue sequence it "
+            "never owned");
 }
 
 void test_cancel_effect_can_be_reconstructed() {
@@ -2312,8 +2357,8 @@ void test_risk_configuration_codec_and_restore() {
     const auto encoded = encode_kernel_command(command, bytes);
     require(encoded.error == KernelCodecError::none && encoded.bytes_written == 180,
             "risk configuration lacks its canonical 88-byte body");
-    require(bytes[8] == std::byte{5} && bytes[10] == std::byte{17},
-            "risk configuration schema/kind is not V5/17");
+    require(bytes[8] == std::byte{7} && bytes[10] == std::byte{17},
+            "risk configuration schema/kind is not V7/17");
     std::vector<std::byte> expected;
     for (const std::uint64_t value : {5ULL, 4ULL, 6ULL, 1ULL, 2ULL, 3ULL, 4ULL, 8ULL, 4000ULL, 8000ULL})
         for (unsigned shift = 0; shift < 64; shift += 8)
@@ -3385,10 +3430,13 @@ void test_resolved_orders_release_venue_identity_capacity() {
         const auto submit = apply(
             state, authorize_decision(request++, 0x63, decision), scratch);
         require(submit.code == ApplyCode::applied,
-                "sustained venue-identity fixture could not authorize");
+                "sustained venue-identity fixture could not authorize cycle " +
+                    std::to_string(cycle) + " with code " +
+                    std::to_string(static_cast<int>(submit.code)));
+        const auto fill_request = request++;
         const auto filled = apply(
             state,
-            observe_fill(request++, 0x64, submit.cluster_order_id(),
+            observe_fill(fill_request, 0x64, submit.cluster_order_id(),
                          submit.effect_id(), ExecutionId{execution++}, 2,
                          Side::sell, 11),
             scratch);
@@ -3396,6 +3444,12 @@ void test_resolved_orders_release_venue_identity_capacity() {
                     filled.decision_id == decision,
                 "resolved orders did not release venue identity capacity or "
                 "the fill lost its owning decision");
+        const auto ack_request = request++;
+        const Command acknowledge{
+            {CallerId{2}, RequestSequence{ack_request}, digest(0x65)},
+            AcknowledgeGatewayResults{RequestSequence{fill_request}}};
+        require(apply(state, acknowledge, scratch).code == ApplyCode::applied,
+                "sustained venue-identity fixture could not acknowledge its fill");
         ++completed;
     }
     const auto retained_venue_identities = std::count_if(
@@ -3410,6 +3464,90 @@ void test_resolved_orders_release_venue_identity_capacity() {
                 retained_venue_identities <
                     static_cast<std::ptrdiff_t>(kMaxVenueEventReceipts),
             "resolved venue identities accumulated into a lifetime ceiling");
+}
+
+void test_gateway_acknowledgement_can_drain_a_full_receipt_arena() {
+    using namespace velocita::v2;
+    TradingState state;
+    ApplyScratch scratch;
+
+    for (std::uint64_t sequence = 1; sequence <= kMaxRequestReceipts;
+         ++sequence) {
+        const auto refused = apply(
+            state,
+            observe_fill(sequence, 0x67, ClusterOrderId{91}, EffectId{92},
+                         ExecutionId{10'000 + sequence}),
+            scratch);
+        require(refused.code == ApplyCode::venue_observation_not_applicable,
+                "the acknowledgement saturation fixture changed refusal class");
+    }
+    require(state.receipt_count == kMaxRequestReceipts,
+            "the acknowledgement saturation fixture did not fill the arena");
+
+    const auto version_before_invalid = state.state_version;
+    const Command invalid{
+        {CallerId{2}, RequestSequence{kMaxRequestReceipts + 1}, digest(0x68)},
+        AcknowledgeGatewayResults{
+            RequestSequence{kMaxRequestReceipts + 1}}};
+    require(apply(state, invalid, scratch).code ==
+                ApplyCode::receipt_capacity_exceeded &&
+                state.state_version == version_before_invalid &&
+                state.receipt_count == kMaxRequestReceipts,
+            "an invalid acknowledgement received privileged admission");
+
+    const Command acknowledge{
+        {CallerId{2}, RequestSequence{kMaxRequestReceipts + 1}, digest(0x69)},
+        AcknowledgeGatewayResults{RequestSequence{kMaxRequestReceipts}}};
+    require(apply(state, acknowledge, scratch).code == ApplyCode::applied,
+            "a full receipt arena refused the acknowledgement needed to drain it");
+    require(state.receipt_count < kMaxRequestReceipts,
+            "the acknowledgement advanced but released no receipt capacity");
+}
+
+void test_acknowledged_duplicate_fills_do_not_exhaust_receipts() {
+    using namespace velocita::v2;
+    auto state = ready_state();
+    ApplyScratch scratch;
+    const auto submit = apply(state, authorize(2, 0x69), scratch);
+    require(submit.code == ApplyCode::applied,
+            "duplicate-fill fixture could not authorize");
+
+    std::uint64_t request = 1'000;
+    const auto original = observe_fill(
+        request++, 0x6a, submit.cluster_order_id(), submit.effect_id(),
+        ExecutionId{9'900}, 1, Side::buy, 11);
+    require(apply(state, original, scratch).code == ApplyCode::applied,
+            "duplicate-fill fixture could not book its first fill");
+    const auto acknowledge = [&](const std::uint64_t through) {
+        const auto sequence = request++;
+        const Command command{
+            {CallerId{2}, RequestSequence{sequence}, digest(0x6b)},
+            AcknowledgeGatewayResults{RequestSequence{through}}};
+        return apply(state, command, scratch).code;
+    };
+    require(acknowledge(original.identity.request_sequence.value()) ==
+                ApplyCode::applied,
+            "duplicate-fill fixture could not acknowledge its first fill");
+
+    for (std::size_t duplicate = 0;
+         duplicate < kMaxRequestReceipts + 16; ++duplicate) {
+        auto replay = original;
+        replay.identity.request_sequence = RequestSequence{request++};
+        const auto result = apply(state, replay, scratch);
+        require(result.code == ApplyCode::already_applied,
+                "acknowledged duplicate fills exhausted receipt capacity");
+        require(acknowledge(replay.identity.request_sequence.value()) ==
+                    ApplyCode::applied,
+                "duplicate-fill acknowledgement could not drain receipts");
+    }
+
+    const auto final = apply(
+        state,
+        observe_fill(request++, 0x6c, submit.cluster_order_id(),
+                     submit.effect_id(), ExecutionId{9'901}, 1, Side::buy, 11),
+        scratch);
+    require(final.code == ApplyCode::applied,
+            "duplicate redelivery prevented a fresh execution from booking");
 }
 
 
@@ -3446,6 +3584,8 @@ int main() {
         test_request_receipts_do_not_bound_the_kernel_lifetime();
         test_an_expired_request_is_refused_never_re_executed();
         test_resolved_orders_release_venue_identity_capacity();
+        test_gateway_acknowledgement_can_drain_a_full_receipt_arena();
+        test_acknowledged_duplicate_fills_do_not_exhaust_receipts();
         test_reclaimed_decision_retains_identity_and_authorization();
         test_completed_requote_cycles_do_not_exhaust_bounded_arenas();
         test_sweep_preserves_records_an_unresolved_effect_still_needs();

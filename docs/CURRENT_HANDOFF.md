@@ -1,9 +1,278 @@
 # Current development handoff
 
-Updated: 2026-09-12
+Updated: 2026-09-15
 
 Purpose: compact working memory for the next agent session. Verify this file
 against Git before acting; do not reconstruct the project from chat history.
+
+## CODEX TAKEOVER — Phase 5 corrections remain open — 2026-09-14
+
+This section supersedes every older `NEXT` section below it. Claude stopped at
+commit `5b9eaa2` on branch `v2/phase-5-corrections`, with an uncommitted
+multi-slot conflict test and its architecture text. Those two edits are preserved
+but are not correct enough to commit: eight templates in one active executable
+policy do not prove an eight-conflict cluster-lifetime bound, because policy
+rotation can introduce different nonzero `LogicalOrderSlot` values while old
+conflicts remain retained.
+
+### Verified checkpoint
+
+- committed correction range: `65cadc2..5b9eaa2`;
+- protected dirty paths remain `docs/README.md`,
+  `docs/MUST_CONFIRM_BEFORE_ADAPTER_CONNECT.md`,
+  `docs/V2_MODEL_AND_MARKET_DATA_EDGE_DESIGN.md`, ADR 0002, and `model/`;
+- current dirty Phase 5 paths additionally include
+  `docs/V2_ARCHITECTURE_CONTRACTS.md`, `src/v2_kernel.cpp`, and
+  `tests/v2_gateway_delivery_tests.cpp`;
+- current-tree host Release passed 29/29 after a build;
+- current-tree Debug ASan+UBSan passed 29/29 after a build;
+- the protected Python model passed 109/109 and was not modified; and
+- `git diff --check` was clean before the new intentional RED described below.
+
+These green runs are a reproducible baseline, not corrected Phase 5 acceptance.
+They predate the permanent counterexamples added during this takeover and do not
+replace fresh ARM64, Pi, and NUC gates after the source is frozen.
+
+### New P1 finding — the venue-event sweep mixes identity domains
+
+`VenueCursor::expired_below` assumes every observation carrying the same
+`(VenueId, VenueSessionId)` belongs to one monotonic venue sequence. The Phase 5
+shell violates that assumption: native acknowledgements and fills use the
+venue's sequence, while `effect_unknown` and reconciliation observations are
+gateway-authored and use synthetic high ranges. The capacity sweep computes a
+midpoint from those mixed values and treats everything below it as expired.
+
+Concrete public-command trace now pinned in
+`test_a_fresh_fill_cannot_be_expired_by_gateway_authored_control_sequences`:
+
+```text
+native acknowledgement 7,100
+  -> repeated cancel/reconcile evidence around 900,000
+  -> capacity sweep advances the shared floor above 8,000
+  -> fresh native fill 8,000 with a new ExecutionId
+  -> venue_event_expired (wrong)
+```
+
+The first RED returned code 59, `venue_event_expired`. The smallest GREEN removes
+fill admission from this cursor. That is correct because fill idempotency is
+already `(VenueId, ExecutionId)`, and fill receipts are deliberately never
+reclaimed while their order is retained. The focused gateway-delivery suite then
+passed.
+
+The next permanent RED applies the same reachable trace to a fresh cancellation
+response. It currently fails with code 59. This proves the fill change is a
+containment, not closure: the shared cursor can discard any fresh native control
+response after unrelated gateway-authored evidence advances it.
+
+There is a second independent unsoundness even if gateway-authored values are
+separated. The sweep advances to a midpoint of the values already observed. A
+transport may deliver native sequence 100 before delayed native sequence 50;
+seeing 100 is not proof that every value below 100 is complete. Only a
+venue/session replay barrier or a proven contiguous prefix can establish such a
+floor. Arithmetic over a sparse observed set cannot.
+
+### Recommended replacement — proof-carrying reclamation
+
+Do not patch the midpoint or reserve disjoint number ranges. Both retain the
+false premise that a large observed number proves older evidence cannot still be
+fresh. Replace it with a reference-and-acknowledgement rule:
+
+```text
+receipt is economically unneeded
+  AND its owning effect is settled or gone
+  AND the gateway has observed the committed command result
+  => receipt payload may be compacted
+```
+
+Why each term is required:
+
+1. Economic unneededness prevents reclaiming fill identity or materialization
+   provenance while a live order can still consume it.
+2. Effect settlement prevents deleting the only exact answer while an unknown or
+   reconciling effect may still receive a duplicate or final response.
+3. Gateway commit acknowledgement prevents the cluster from dropping a result
+   while the gateway is retrying the identical observation after a lost Raft
+   client response. “Applied” and “the producer learned it applied” are different
+   facts.
+
+Recommended zero/unfavourable alternatives:
+
+- Merely exempt fills: necessary containment, but fresh acknowledgements and
+  cancellations remain losable, as the second RED proves.
+- Use separate numeric ranges: prevents collision but not reordered native gaps;
+  a high value is still not a contiguous-prefix proof.
+- Keep the midpoint and add more capacity: delays the same semantic failure and
+  consumes snapshot headroom without making reclamation correct.
+- Never reclaim: safe for identity but restores P1-5, where legal serial cancel
+  cycles consume completion capacity reserved for a live order's real fills.
+- Refuse further cancels: preserves memory by blocking a risk-reducing action and
+  is unacceptable without an equally strong emergency cancel path.
+
+### Material contract approved and implemented — 2026-09-14
+
+The user approved all five choices below before canonical bytes changed:
+
+1. Remove/deprecate the heuristic `VenueCursor` floor and reserve
+   `venue_event_expired`'s numeric code without emitting it from new state.
+2. Record the observation's `EffectId` in the currently unused metadata words of
+   a venue-event `ApplyResult`. Object size remains 112 bytes, but canonical
+   result bytes change. This supplies the ownership edge the sweep currently
+   guesses.
+3. Add a monotonic gateway result-acknowledgement coordinate, advanced by a
+   replicated command from the stable gateway `CallerId`. A receipt cannot be
+   compacted before this coordinate covers its request identity.
+4. Replace Decision B's receipt COUNT with a monotonic per-order
+   `last_evidence_state_version`. Counts can decrease during reclamation and then
+   return to the old value after new evidence: an ABA that can make a stale query
+   appear comparable. A revision never moves backward.
+5. Require a separate gateway-local venue finality fact—query window complete AND
+   ordered after relevant sends—before a query may release risk or create
+   conflict. The per-order revision only proves cluster evidence did not change
+   while the query was in flight; it does not prove the venue's snapshot was
+   final.
+
+Implementation is now GREEN on the host:
+
+- kernel/result schema V6 reserves historical `venue_event_expired` code 59 but
+  never emits it; the heuristic venue cursor and its eight-slot arena are gone;
+- command kind 18 is `AcknowledgeGatewayResults`, with an eight-byte inclusive
+  request-prefix body. It can acknowledge only an earlier request of the same
+  stable `CallerId`, advances monotonically, and cannot regress the cursor;
+- an applied venue-event result stores its exact `EffectId` in metadata word 0,
+  so reclamation follows an ownership edge rather than a venue-sequence guess;
+- a venue-event receipt stays pinned until the producer prefix covers its
+  request and its exact effect is settled/superseded. Current unresolved effects
+  and all fill receipts remain pinned fail-closed;
+- `ClusterOrder::last_evidence_state_version` replaces the receipt-count query
+  barrier. It advances on accepted evidence and on state-changing fill refusals,
+  survives receipt compaction and snapshot restore, and cannot exhibit count ABA;
+- `VenueQueryView::ordered_after_relevant_sends` is independent of
+  `window_complete`; both must be true before `classify_query` submits an answer;
+- simulator polling is non-destructive. A gateway restart replays unacknowledged
+  canonical observations, while explicit acknowledgement removes them only
+  after the committed result is observed; and
+- permanent tests cover the original fresh-fill and fresh-cancel failures,
+  unacknowledged-result backpressure, safe post-ack reclamation, monotonic query
+  revision, venue finality, and crashes after poll, obligation creation, and
+  cluster apply.
+
+Measured rather than estimated: `TradingState` is 81,360 bytes with 560 bytes of
+headroom; maximum canonical snapshot is 65,451 bytes with 85 bytes of headroom;
+`ClusterOrder` is 48 bytes; `ApplyResult` remains 112 bytes; and the result frame
+remains 128 bytes. Release is 29/29, full Debug ASan+UBSan is 29/29, and the
+horizon report passes. ARM64, Pi, and NUC gates have not yet been rerun for this
+correction.
+
+The four follow-on acceptance corrections are also implemented:
+
+- the per-execution oracle rejects a never-booked execution unless its owning
+  order remains conflicted and its exact `(VenueId, ExecutionId)` result receipt
+  remains in replicated state; resolved-and-swept is no longer an excuse;
+- restart recovery excludes `OutboxState::incomplete` from its suspect set,
+  matching the reducer and pre-send guard's terminal/non-deliverable meaning and
+  avoiding a barrier no transport response can clear;
+- a public-command policy rotation exposes logical slot 9 after eight retained
+  conflicts. Authorization is refused by `outbox_capacity_exceeded`, proving the
+  measured eight-order bound comes from sixteen submit-plus-cancel outbox units,
+  not one policy's template count; and
+- the shared Linux target gate compiles UBSan non-recovering, exports
+  `halt_on_error=1`, records both settings, and runs a permanent signed-overflow
+  negative probe which must diagnose UB and terminate nonzero.
+
+The focused gateway-delivery suite is GREEN after each RED/GREEN increment. The
+UBSan probe reproduced the old false-green shape with exit status 0, then exited
+134 under the corrected settings. Full host suites and every target gate still
+need to be rerun after documentation/comment cleanup and source freeze.
+
+### Additional adversarial corrections — 2026-09-15
+
+Three independent audits found that the proof machinery still shared causes
+with the behavior it claimed to verify. Each counterexample is now a permanent
+test and each implemented correction is GREEN in its focused suite.
+
+1. Recovery inspected a process-local `awaiting_response` flag before the
+   current replicated outbox state. A cancel reconciliation can resolve risk and
+   change an older submit from pending to `incomplete` after startup scanning;
+   the stale local flag then blocked recovery forever. Recovery completion now
+   treats the current replicated effect state, or safe post-sweep absence, as
+   authoritative. The test reaches the transition through public cancel,
+   unknown, and reconciliation commands rather than mutating a fixture.
+2. The execution oracle counted bookings from `ApplyResult::filled_quantity`.
+   Its per-order total and per-execution ledger therefore repeated the same
+   answer and could both agree while the risk-account position did not move.
+   It now samples the authoritative position immediately around every fill
+   apply, before simulated result loss, attributes the delta by execution and
+   side, and checks the signed total against final position movement. Separate
+   negative controls reject a successful-looking receipt with no mutation.
+3. The simulator cleared scheduled observations on send and query disconnect.
+   That deleted unacknowledged input before poll or after poll/before commit,
+   while the old oracle learned executions only from the same damaged queue.
+   Disconnect now changes the session for future evidence without changing
+   ownership of prior evidence. A separate simulator execution ledger records
+   venue-book mutation before delivery; the matrix requires every such execution
+   to appear in replayable delivery with identical identity and economics.
+4. Snapshot validation checked V6 proof fields individually but not as a graph.
+   It now rejects an applied venue-event receipt whose retained effect belongs
+   to another decision, and rejects a retained order whose evidence revision is
+   older than an applied fill/event receipt for that decision. Encoder and
+   forged-decoder tests cover the impossible states.
+5. Gateway receipt expiry could jump across an uncommitted sequence gap when a
+   later acknowledgement-command receipt was reclaimed. All gateway receipts
+   above the acknowledged producer prefix are now pinned, regardless of command
+   kind. Applied full fills and state-changing fill conflicts retain their exact
+   execution identity and owning decision through group and receipt pressure.
+6. A completely full receipt arena originally refused the acknowledgement
+   command needed to release it. Valid monotonic acknowledgements now receive a
+   bounded control admission path: reclamation is evaluated against the proposed
+   prefix, then the command advances state and stores its own ordinary receipt.
+   Invalid or regressive acknowledgements receive no special admission.
+7. Retaining every fill-tagged response pinned acknowledged duplicate deliveries
+   forever. Replay-only `already_applied` and identity-conflict responses now
+   compact after acknowledgement because the original applied receipt reproduces
+   their answer. The first exact capacity/quantity-conflict receipt stays pinned
+   while its order exists; duplicates of that same evidence do not. Every
+   `fill_quantity_conflict` path now leaves a sticky conflict and advances the
+   evidence revision, so the result code has one snapshot-verifiable meaning.
+
+One material correction is deliberately not encoded yet. Native venue control
+events and gateway-synthesized reconciliation events still share the same
+`(VenueId, VenueSessionId, VenueSequence)` deduplication domain. The recommended
+zero-size change derives a two-valued origin domain from observation kind,
+stores it in venue-event result metadata word 1, and acknowledges simulator
+input by exact canonical observation rather than the three-number tuple. User
+approval is required because retained canonical result bytes change.
+
+### Crash-cut obligation which the sweep rule does not replace
+
+`GatewayEvidenceState` is local, and `SimulatedVenue::poll` destructively removes
+an observation. A crash after poll but before committed apply loses the canonical
+fill command; the venue query exposes only a cumulative quantity and cannot
+reconstruct its `ExecutionId`. Therefore restart reconciliation can discover a
+gap but cannot supply the missing execution evidence.
+
+The Phase 5 seam must model one of two real guarantees:
+
+- replayable venue input whose cursor is acknowledged only after the observation
+  command commits; or
+- durable local journalling before acknowledging non-replayable input.
+
+Recommend the first for the simulator because it proves the transactional
+ordering without pulling WAL implementation into Phase 5. The real adapter must
+select replay or durability from actual venue capability later. Add crash cuts
+after poll/before obligation, after obligation/before proposal, and after
+apply/before result before closing P1-3.
+
+### Exact next steps
+
+1. Obtain the material identity-domain decision and implement it by RED/GREEN.
+2. Finish comment pruning while retaining only invariants that are unsafe to
+   infer locally; keep the full reasoning in architecture docs.
+3. Run full Release, freshly configured fatal ASan+UBSan, lifecycle/horizon/matrix
+   reports, model 109/109, and `git diff --check`.
+4. Review the complete diff, commit only explicit Phase 5 paths, compute and pin
+   the new source root, then run fresh ARM64 container, Pi, and NUC gates.
+5. Write superseding Phase 5 acceptance evidence and tag the corrected checkpoint;
+   preserve `v2-phase5-accepted` as historical evidence.
 
 ## CLAUDE ACTION HANDOFF — Phase 5 acceptance review failed — 2026-09-12
 

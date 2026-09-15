@@ -219,7 +219,7 @@ void test_command_identity_and_kind_are_explicit() {
     const std::array expected_prefix{
         std::byte{'V'}, std::byte{'2'}, std::byte{'K'}, std::byte{'C'},
         std::byte{104}, std::byte{0}, std::byte{0}, std::byte{0},
-        std::byte{5}, std::byte{0},
+        std::byte{7}, std::byte{0},
         std::byte{8}, std::byte{0},
         std::byte{12}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
@@ -230,9 +230,9 @@ void test_command_identity_and_kind_are_explicit() {
     const auto full_hash =
         to_hex(sha256_digest({bytes.data(), encoded.bytes_written}));
     require(frame_hash ==
-                "a8e53d4b54e57bfcc2fad0b1f614b9f51ea7b708fcfdc9dcb83bbd5a554b1a64" &&
+                "331636abe72ec39fb783b750c9471cfae6dbee7fe8f353f1d97ac8d2a2324165" &&
                 full_hash ==
-                    "678b88f5c041b65f16adee892f23fafa8667b54421e8f055304e30d82fed21b0",
+                    "3ccea659ca9468349dea4f23b70455e23aea734e002a1932e08bb4240aa08fd0",
             "source-command golden corpus changed: frame=" + frame_hash +
                 " full=" + full_hash);
     // Approved V5 migration changes only schema/digests for this old command.
@@ -270,8 +270,9 @@ void test_decision_kind_is_explicit_and_not_a_variant_ordinal() {
 
 void test_phase4_authorization_command_and_result_are_canonical_v4() {
     using namespace velocita::v2;
-    require(kKernelCodecSchemaVersion == 5,
-            "risk configuration command/result bytes did not move to schema V5");
+    require(kKernelCodecSchemaVersion == 7,
+            "the native/synthetic observation origin did not move results to "
+            "schema V7");
 
     const auto original = command(44, AuthorizeDecision{DecisionId{21}});
     std::array<std::byte, kMaxKernelCommandBytes> command_bytes{};
@@ -349,9 +350,9 @@ void test_result_round_trip_is_canonical() {
     const auto frame_hash = to_hex(encoded.frame_digest);
     const auto full_hash = to_hex(sha256_digest(bytes));
     require(frame_hash ==
-                "37e53433eb6d062a2395c9b1822c6acb66573417993e3b72b6903d14609e9254" &&
+                "d20eaba6c5703340f6356147abe90b850e1742c9d7fadd3b11f016a81515ff47" &&
                 full_hash ==
-                    "3e0cd39ed581784096696a75156cc0db3c97adfdca1c7bddaa439f9b54fd5232",
+                    "277cb91ab3e73b53c638a93dbb17f53f05ca7cbdee40b58aa47244a43f3fc7f5",
             "apply-result golden corpus changed: frame=" + frame_hash +
                 " full=" + full_hash);
 }
@@ -484,6 +485,7 @@ void test_cancel_and_order_event_commands_are_canonical_v4() {
     result.detail = ApplyResultDetail::venue_event(
         VenueId{9}, VenueSessionId{2}, VenueSequence{71});
     result.detail_kind = ApplyResultDetailKind::venue_event;
+    result.metadata_words[0] = EffectId{41}.value();
     result.decision_id = DecisionId{21};
     std::array<std::byte, kKernelResultBytes> result_bytes{};
     ApplyResult restored_result;
@@ -491,8 +493,37 @@ void test_cancel_and_order_event_commands_are_canonical_v4() {
                     KernelCodecError::none &&
                 decode_kernel_result(result_bytes, restored_result).error ==
                     KernelCodecError::none &&
-                restored_result == result,
+                restored_result == result &&
+                restored_result.event_effect_id() == EffectId{41} &&
+                restored_result.policy_id() == PolicyId{},
             "venue-event result identity did not round trip in V4 bytes");
+}
+
+void test_gateway_result_acknowledgement_is_canonical_v6() {
+    using namespace velocita::v2;
+    require(static_cast<std::uint16_t>(
+                KernelCommandKind::acknowledge_gateway_results) == 18,
+            "gateway result acknowledgement command kind changed");
+    const auto original =
+        command(90, AcknowledgeGatewayResults{RequestSequence{89}});
+    std::array<std::byte, kMaxKernelCommandBytes> bytes{};
+    const auto encoded = encode_kernel_command(original, bytes);
+    Command restored;
+    KernelCommandCodecScratch scratch;
+    require(encoded.error == KernelCodecError::none &&
+                decode_kernel_command(
+                    {bytes.data(), encoded.bytes_written}, restored, scratch)
+                        .error == KernelCodecError::none &&
+                std::holds_alternative<AcknowledgeGatewayResults>(restored.body) &&
+                std::get<AcknowledgeGatewayResults>(restored.body)
+                        .acknowledged_through == RequestSequence{89},
+            "gateway result acknowledgement did not round trip canonically");
+
+    const auto invalid =
+        command(90, AcknowledgeGatewayResults{RequestSequence{90}});
+    require(encode_kernel_command(invalid, bytes).error ==
+                KernelCodecError::invalid_value,
+            "a gateway acknowledged its own uncommitted command result");
 }
 
 void test_replacement_command_is_canonical_v4() {
@@ -667,6 +698,7 @@ int main() {
         test_fill_command_and_result_are_canonical_v4();
         test_cancel_and_order_event_commands_are_canonical_v4();
         test_replacement_command_is_canonical_v4();
+        test_gateway_result_acknowledgement_is_canonical_v6();
         test_result_round_trip_is_canonical();
         test_result_decode_is_transactional_and_fail_closed();
         test_command_decode_is_transactional_and_fail_closed();

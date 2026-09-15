@@ -1,11 +1,3 @@
-// The deterministic adversarial venue.
-//
-// A fault simulator is only worth having if a failure it produces is
-// reproducible and every fault it claims to model is actually reachable. Those
-// are the two properties tested here, and they are prerequisites for the G-033
-// matrix meaning anything: an irreproducible failure is an anecdote, and an
-// unreachable fault is a comment.
-
 #include "velocita/v2/payload.hpp"
 #include "velocita/v2/venue_simulator.hpp"
 
@@ -80,8 +72,6 @@ FaultPolicy everything_enabled() {
     return policy;
 }
 
-// Drive one seed through a fixed script and return everything observable, so two
-// runs can be compared for exact equality.
 struct Trace {
     std::vector<SendOutcome> sends;
     std::vector<std::vector<std::byte>> observations;
@@ -126,8 +116,6 @@ bool operator==(const Trace& left, const Trace& right) {
            left.faults == right.faults && left.sessions == right.sessions;
 }
 
-// --- tests -----------------------------------------------------------------
-
 void test_a_seed_reproduces_its_run_exactly() {
     for (const std::uint64_t seed : {1ULL, 7ULL, 42ULL, 9'001ULL}) {
         require(run(seed, everything_enabled()) == run(seed, everything_enabled()),
@@ -136,16 +124,12 @@ void test_a_seed_reproduces_its_run_exactly() {
 }
 
 void test_different_seeds_explore_different_behaviour() {
-    // A simulator whose seed does not matter is a fixture, not a fault model.
     const auto first = run(1, everything_enabled());
     const auto second = run(2, everything_enabled());
     require(!(first == second), "two seeds produced identical runs");
 }
 
 void test_no_wall_clock_influences_the_result() {
-    // The only time input is the caller's tick. Running the same seed while the
-    // machine's real clock has moved on must change nothing - this is what makes
-    // a timeout test exact instead of flaky.
     const auto before = run(11, everything_enabled());
     volatile std::uint64_t spin = 0;
     for (std::uint64_t index = 0; index < 5'000'000; ++index) spin += index;
@@ -154,8 +138,6 @@ void test_no_wall_clock_influences_the_result() {
             "elapsed real time changed a virtual-time run");
 }
 
-// A policy with exactly one class always on, so the effect under test cannot be
-// confused with any other. Latency is pinned so "when" is decidable too.
 FaultPolicy only(std::uint16_t FaultPolicy::*knob) {
     FaultPolicy policy = FaultPolicy::clean();
     policy.minimum_latency = 1;
@@ -165,18 +147,7 @@ FaultPolicy only(std::uint16_t FaultPolicy::*knob) {
 }
 
 void test_every_fault_class_produces_its_observable_effect() {
-    // THE OLD VERSION OF THIS TEST COUNTED LABELS. It swept seeds until each
-    // enum value had appeared in the fault log, and called that reachability.
-    //
-    // It was wrong about at least one class and could not have known. Selecting
-    // `loss` for a CANCEL lost nothing: the cancel branch scheduled its response
-    // and returned before the submit branch's loss check ever ran, so the label
-    // went in the log and the behaviour it names never happened. A test that
-    // asserts on the selector's output is asserting that the simulator chose to
-    // say something, not that it did it.
-    //
-    // Every class below is therefore driven at 1000 permille and checked by what
-    // it DID.
+    // Verify fault reachability through observable outcomes, not selector labels.
     const auto effect = submit_effect(1);
 
     {   // RATE_LIMIT: refused at the transport, nothing at the venue.
@@ -200,15 +171,14 @@ void test_every_fault_class_produces_its_observable_effect() {
                 "a lost submit was not accepted at the venue");
         require(venue.poll(1'000).empty(),
                 "a lost submit still produced a response");
-        // And the venue really does hold it: a query finds the order.
+
         require(venue.query(effect.cluster_order_id, 1).outcome ==
                     QueryOutcome::known,
                 "a lost submit left nothing at the venue, so it was not a LOST "
                 "RESPONSE, it was a refused send");
     }
-    {   // LOSS on a CANCEL: the venue cancels, the gateway never hears. This is
-        // the case the old label-counting test reported as covered while the
-        // code did the opposite.
+    {   // LOSS on a CANCEL: the venue cancels, the gateway never hears.
+
         FaultPolicy clean_then_lossy = FaultPolicy::clean();
         clean_then_lossy.minimum_latency = 1;
         clean_then_lossy.maximum_latency = 1;
@@ -221,7 +191,7 @@ void test_every_fault_class_produces_its_observable_effect() {
                 "the cancel was refused");
         require(lossy.poll(1'000).empty(),
                 "a lost cancel still delivered its cancellation");
-        // The cancellation really happened; only the news of it was lost.
+
         require(lossy.query(effect.cluster_order_id, 2).cancelled,
                 "a lost cancel did not cancel the order at the venue");
     }
@@ -252,9 +222,8 @@ void test_every_fault_class_produces_its_observable_effect() {
         }
         require(fills > 1, "partial_fill delivered a single execution");
     }
-    {   // FILL_AFTER_CANCEL: an execution arrives AFTER the cancellation. It
-        // needs an order with something left to cancel, which is what
-        // `partial_fill` leaving half resting provides.
+    {   // FILL_AFTER_CANCEL: an execution arrives after cancellation.
+
         FaultPolicy policy = only(&FaultPolicy::fill_after_cancel_permille);
         policy.partial_fill_permille = 1000;
         SimulatedVenue venue(1, policy, VenueId{9});
@@ -286,14 +255,7 @@ void test_every_fault_class_produces_its_observable_effect() {
         require(!venue.poll(1'000).empty(), "a delayed response never arrived");
     }
     {   // REORDER: the delivered order is not the natural one.
-        //
-        // Asserted as an A/B rather than by predicting a specific permutation.
-        // Every roll consumes a draw whether or not its class is enabled, so
-        // turning reorder off changes the reorder decision and NOTHING else -
-        // which makes any difference between the two traces attributable to
-        // reorder alone. Predicting the permutation instead would mean encoding
-        // the scheduler's tie-breaking into the test, and the test would then
-        // pass by agreeing with the code rather than by observing it.
+        // Each roll consumes a draw even when disabled, isolating reorder in the A/B trace.
         auto with_reorder = everything_enabled();
         with_reorder.reorder_permille = 1000;
         auto without_reorder = with_reorder;
@@ -326,15 +288,6 @@ void test_every_fault_class_produces_its_observable_effect() {
 }
 
 void test_faults_compose_on_one_operation() {
-    // The selector used to return on the first match, so cross-category
-    // combinations were unreachable BY CONSTRUCTION - and the acceptance record
-    // reported "the matrix cannot produce a reconciliation conflict" as though
-    // that were a property of the system rather than of the selector.
-    //
-    // The combination that matters most is a partially filled order whose CANCEL
-    // then goes silent: the order holds booked executions while its current
-    // effect's outcome is unknown, which is the only shape from which a
-    // reconciliation answer below booked can arise.
     FaultPolicy policy = FaultPolicy::clean();
     policy.minimum_latency = 1;
     policy.maximum_latency = 1;
@@ -343,12 +296,9 @@ void test_faults_compose_on_one_operation() {
     SimulatedVenue venue(1, policy, VenueId{9});
     const auto partial = submit_effect(4, 4);
 
-    // The submit's own responses are lost, so nothing arrives for it.
     require(venue.send(partial, 0) == SendOutcome::accepted, "submit failed");
     require(venue.poll(1'000).empty(), "the lost submit delivered a response");
 
-    // Both classes fired on the same operation, which the old selector could not
-    // express at all.
     require(venue.fault_log().size() == 1, "one send produced two log entries");
     require(venue.fault_log().front().count() >= 2,
             "two classes did not fire on one operation, so composition is not "
@@ -359,18 +309,12 @@ void test_faults_compose_on_one_operation() {
 }
 
 void test_a_clean_policy_produces_no_faults() {
-    // The clean case must be genuinely clean, or every failure becomes ambiguous
-    // between "the code is wrong" and "the simulator misbehaved".
     for (const auto& faults : run(5, FaultPolicy::clean()).faults) {
         require(!faults.any(), "the clean policy produced a fault");
     }
 }
 
 void test_enabling_a_fault_does_not_shift_unrelated_draws() {
-    // Every roll consumes a draw even at zero probability, so turning one fault
-    // on cannot reshuffle the rest. Without this, comparing two policies would
-    // be meaningless: everything would differ for reasons unrelated to the
-    // fault under study.
     FaultPolicy off = FaultPolicy::clean();
     off.minimum_latency = 1;
     off.maximum_latency = 1;
@@ -384,9 +328,6 @@ void test_enabling_a_fault_does_not_shift_unrelated_draws() {
 }
 
 void test_every_observation_satisfies_the_kernel_contract() {
-    // The simulator must not be able to produce evidence the kernel would refuse
-    // for structural reasons; otherwise a gateway test would fail on the
-    // simulator's malformedness rather than on the behaviour under test.
     for (std::uint64_t seed = 1; seed <= 40; ++seed) {
         SimulatedVenue venue(seed, everything_enabled(), VenueId{9});
         Tick now = 0;
@@ -407,8 +348,6 @@ void test_every_observation_satisfies_the_kernel_contract() {
 }
 
 void test_duplicate_client_identity_is_reported_as_a_venue_duplicate() {
-    // This is the venue-side idempotency that makes at-least-once delivery safe
-    // under G-025, so it must be distinguishable from acceptance.
     SimulatedVenue venue(1, FaultPolicy::clean(), VenueId{9});
     const auto effect = submit_effect(1);
     require(venue.send(effect, 0) == SendOutcome::accepted, "first submit failed");
@@ -417,9 +356,6 @@ void test_duplicate_client_identity_is_reported_as_a_venue_duplicate() {
 }
 
 void test_an_inconsistent_query_is_flagged_rather_than_silently_wrong() {
-    // Reconciliation must be able to tell that the venue contradicted itself.
-    // ADR 0001: reconciliation "never overwrites conflicting evidence to make a
-    // dashboard green."
     FaultPolicy always;
     always.inconsistent_query_permille = 1000;
     SimulatedVenue venue(1, always, VenueId{9});
@@ -428,25 +364,15 @@ void test_an_inconsistent_query_is_flagged_rather_than_silently_wrong() {
     const auto answer = venue.query(effect.cluster_order_id, 1);
     require(answer.outcome == QueryOutcome::known && answer.inconsistent,
             "a corrupted query answer was not flagged as inconsistent");
-    // Downward is the direction that matters. A total ahead of the cluster's own
-    // evidence reads as fills still in flight and stays recoverable; a total
-    // BELOW what the cluster booked can never be closed by later evidence, which
-    // is what makes it a conflict rather than a gap.
+    // An understated total denies booked fills; an overstated total can be evidence in flight.
     require(answer.filled_quantity.atoms() == 0 &&
                 answer.remaining_quantity == effect.quantity,
             "the inconsistent answer did not deny a fill it had already made");
 }
 
 void test_a_partial_window_answer_is_a_truthful_prefix_not_a_corruption() {
-    // A venue that pages its execution history is behaving correctly. The answer
-    // it returns is a genuine prefix of the truth - never larger, possibly
-    // smaller - and the only thing separating it from a SHORT answer is the flag
-    // saying the window is not covered.
-    //
-    // This is kept distinct from `inconsistent_query` on purpose. Both read below
-    // the truth; only one of them is the venue contradicting itself, and a
-    // gateway that cannot tell them apart either treats ordinary paging as a
-    // permanent conflict or treats a contradiction as something to retry away.
+    // Partial windows are truthful prefixes; incomplete coverage must remain distinct
+    // from a complete answer that contradicts booked fills.
     FaultPolicy always;
     always.partial_window_permille = 1000;
     SimulatedVenue venue(1, always, VenueId{9});
@@ -466,8 +392,6 @@ void test_a_partial_window_answer_is_a_truthful_prefix_not_a_corruption() {
                 effect.quantity.atoms(),
             "the paged answer did not account for the original quantity");
 
-    // And the clean case must still say the window IS complete, or the flag
-    // would carry no information.
     SimulatedVenue quiet(1, FaultPolicy::clean(), VenueId{9});
     require(quiet.send(effect, 0) == SendOutcome::accepted, "submit failed");
     require(quiet.query(effect.cluster_order_id, 1).window_complete,
@@ -475,17 +399,13 @@ void test_a_partial_window_answer_is_a_truthful_prefix_not_a_corruption() {
 }
 
 void test_an_unknown_order_is_not_found_rather_than_unavailable() {
-    // These must stay distinct: one says the venue answered that nothing exists,
-    // the other says it would not answer. Conflating them is how reconciliation
-    // invents a fact.
     SimulatedVenue venue(1, FaultPolicy::clean(), VenueId{9});
     require(venue.query(ClusterOrderId{7'777}, 0).outcome == QueryOutcome::not_found,
             "an absent order did not report not_found");
 }
 
 void test_a_disconnect_issues_a_new_session() {
-    // A redelivery after a reconnect carries a new session id, which is exactly
-    // why a session-scoped deduplication key would be unsafe.
+    // Session changes must not defeat execution deduplication.
     FaultPolicy always;
     always.disconnect_permille = 1000;
     SimulatedVenue venue(1, always, VenueId{9});
@@ -494,6 +414,122 @@ void test_a_disconnect_issues_a_new_session() {
             "a disconnect did not produce an ambiguous outcome");
     require(venue.session().value() > before.value(),
             "a disconnect did not issue a new session");
+}
+
+void test_observations_replay_after_gateway_restart_until_acknowledged() {
+    SimulatedVenue venue(1, FaultPolicy::clean(), VenueId{9});
+    require(venue.send(submit_effect(1), 0) == SendOutcome::accepted,
+            "submit failed");
+    const auto first = venue.poll(100);
+    require(!first.empty(), "the venue produced no observation to replay");
+    require(venue.poll(100).empty(),
+            "one gateway instance received the same observation twice");
+
+    venue.restart_delivery();
+    const auto replayed = venue.poll(100);
+    require(replayed.size() == first.size(),
+            "restart did not replay every unacknowledged observation");
+    for (std::size_t index = 0; index < first.size(); ++index) {
+        require(encode_payload(first[index]).bytes ==
+                    encode_payload(replayed[index]).bytes,
+                "restart changed canonical observation bytes");
+        venue.acknowledge_observation(replayed[index]);
+    }
+    venue.restart_delivery();
+    require(venue.poll(100).empty(),
+            "an acknowledged observation replayed after restart");
+}
+
+void test_disconnect_preserves_every_unacknowledged_observation() {
+    FaultPolicy policy = FaultPolicy::clean();
+    policy.disconnect_permille = 500;
+    policy.minimum_latency = 1;
+    policy.maximum_latency = 1;
+
+    std::uint64_t query_seed = 0;
+    for (std::uint64_t seed = 1; seed <= 10'000; ++seed) {
+        SimulatedVenue candidate(seed, policy, VenueId{9});
+        const auto effect = submit_effect(1);
+        if (candidate.send(effect, 0) != SendOutcome::accepted) continue;
+        if (candidate.query(effect.cluster_order_id, 1).outcome ==
+            QueryOutcome::unavailable) {
+            query_seed = seed;
+            break;
+        }
+    }
+    require(query_seed != 0, "no deterministic query-disconnect seed was found");
+
+    {
+        SimulatedVenue control(query_seed, policy, VenueId{9});
+        require(control.send(submit_effect(1), 0) == SendOutcome::accepted,
+                "control submit failed");
+        const auto expected = control.poll(100);
+        SimulatedVenue venue(query_seed, policy, VenueId{9});
+        const auto effect = submit_effect(1);
+        require(venue.send(effect, 0) == SendOutcome::accepted, "submit failed");
+        require(venue.query(effect.cluster_order_id, 1).outcome ==
+                    QueryOutcome::unavailable,
+                "the selected query did not disconnect");
+        venue.restart_delivery();
+        const auto delivered = venue.poll(100);
+        require(delivered.size() == expected.size(),
+                "a query disconnect erased observations not yet delivered");
+        for (std::size_t index = 0; index < expected.size(); ++index) {
+            require(encode_payload(delivered[index]).bytes ==
+                        encode_payload(expected[index]).bytes,
+                    "a query disconnect changed undelivered observation bytes");
+        }
+    }
+
+    {
+        SimulatedVenue venue(query_seed, policy, VenueId{9});
+        const auto effect = submit_effect(1);
+        require(venue.send(effect, 0) == SendOutcome::accepted, "submit failed");
+        const auto delivered = venue.poll(100);
+        require(!delivered.empty(), "the venue produced no observation");
+        require(venue.query(effect.cluster_order_id, 1).outcome ==
+                    QueryOutcome::unavailable,
+                "the selected query did not disconnect");
+        venue.restart_delivery();
+        const auto replayed = venue.poll(100);
+        require(replayed.size() == delivered.size(),
+                "a query disconnect erased delivered but unacknowledged evidence");
+        for (std::size_t index = 0; index < delivered.size(); ++index) {
+            require(encode_payload(delivered[index]).bytes ==
+                        encode_payload(replayed[index]).bytes,
+                    "a query disconnect changed replayed observation bytes");
+        }
+    }
+
+    std::uint64_t send_seed = 0;
+    for (std::uint64_t seed = 1; seed <= 10'000; ++seed) {
+        SimulatedVenue candidate(seed, policy, VenueId{9});
+        if (candidate.send(submit_effect(1), 0) != SendOutcome::accepted) continue;
+        if (candidate.send(submit_effect(2), 1) == SendOutcome::ambiguous) {
+            send_seed = seed;
+            break;
+        }
+    }
+    require(send_seed != 0, "no deterministic send-disconnect seed was found");
+
+    SimulatedVenue control(send_seed, policy, VenueId{9});
+    require(control.send(submit_effect(1), 0) == SendOutcome::accepted,
+            "control submit failed");
+    const auto expected = control.poll(100);
+    SimulatedVenue venue(send_seed, policy, VenueId{9});
+    require(venue.send(submit_effect(1), 0) == SendOutcome::accepted,
+            "first submit failed");
+    require(venue.send(submit_effect(2), 1) == SendOutcome::ambiguous,
+            "the selected second send did not disconnect");
+    venue.restart_delivery();
+    const auto delivered = venue.poll(100);
+    require(delivered.size() == expected.size(),
+            "a send disconnect erased earlier unacknowledged observations");
+    for (std::size_t index = 0; index < expected.size(); ++index) {
+        require(encode_payload(delivered[index]).bytes ==
+                    encode_payload(expected[index]).bytes,
+                "a send disconnect changed earlier observation bytes");
+    }
 }
 
 }  // namespace
@@ -513,6 +549,8 @@ int main() {
         test_a_partial_window_answer_is_a_truthful_prefix_not_a_corruption();
         test_an_unknown_order_is_not_found_rather_than_unavailable();
         test_a_disconnect_issues_a_new_session();
+        test_observations_replay_after_gateway_restart_until_acknowledged();
+        test_disconnect_preserves_every_unacknowledged_observation();
         std::cout << "all V2 venue simulator tests passed\n";
         return 0;
     } catch (const std::exception& error) {

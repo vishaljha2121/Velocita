@@ -9,30 +9,10 @@
 
 namespace velocita::v2::sim {
 
-// A deterministic adversarial venue.
-//
-// TEST-ONLY BY CONSTRUCTION. This lives in its own CMake library that no
-// production target links, so "test-only" is a build fact rather than a comment
-// somebody has to honour. Architecture 9.1.6 records the decision: promoting a
-// test double to a product later is easier than discovering a test double in
-// production.
-//
-// Two properties make it useful rather than merely present:
-//
-//   VIRTUAL TIME. The simulator never reads a clock. Every deadline is a tick
-//   count supplied by the caller, so a timeout test is exact instead of slow and
-//   flaky, and a fault matrix replays identically on a loaded CI box and an idle
-//   laptop. This is the same discipline `OwnerLoopScheduler` established in V1.1.
-//
-//   SEEDED FAULTS. Every adversarial choice comes from a splitmix64 stream keyed
-//   by (seed, operation ordinal). Re-running a seed reproduces the exact fault
-//   sequence, which is what makes a failure in the G-033 matrix reportable
-//   instead of anecdotal. The seed is required evidence in the Phase 5 gate.
+// Test-only venue with caller-supplied ticks and deterministic seeded faults.
 
 using Tick = std::uint64_t;
 
-// The ten adversarial classes G-033 names, plus the clean case. One fault
-// applies per operation, chosen deterministically.
 enum class Fault : std::uint8_t {
     none = 0,
     delay,               // the response arrives, late
@@ -47,18 +27,7 @@ enum class Fault : std::uint8_t {
     partial_window,      // a query answers truthfully but not for the whole window
 };
 
-// Which classes fired on ONE operation. Composed, not chosen.
-//
-// The selector used to return a single `Fault` on a first-match basis, so
-// cross-category combinations were unreachable by construction - a partial fill
-// and a lost response could never happen to the same order, which is exactly the
-// interleaving that produces a conflict. Every class now rolls independently, so
-// "one fault per operation" is a policy a caller can set rather than a limit the
-// simulator imposes.
-//
-// `rate_limit` and `disconnect` still preempt the rest, not by precedence but by
-// consequence: both mean the effect never reached the venue's book, so there is
-// nothing left for another class to act on.
+// Classes roll independently; rate limits and disconnects prevent book mutation.
 struct FaultSet {
     bool delay{};
     bool loss{};
@@ -103,9 +72,6 @@ struct FaultSet {
     constexpr bool operator==(const FaultSet&) const noexcept = default;
 };
 
-// Probabilities in permille so a policy is exactly reproducible and expressible
-// without floating point, matching the fixed-point discipline used everywhere
-// else in this codebase.
 struct FaultPolicy {
     std::uint16_t delay_permille{};
     std::uint16_t loss_permille{};
@@ -117,20 +83,13 @@ struct FaultPolicy {
     std::uint16_t rate_limit_permille{};
     std::uint16_t inconsistent_query_permille{};
     std::uint16_t partial_window_permille{};
-
-    // Latency band, in ticks, for a response that is not lost.
     Tick minimum_latency{1};
     Tick maximum_latency{3};
-    // Extra ticks a delayed response waits beyond the normal band.
     Tick delay_penalty{25};
 
     [[nodiscard]] static constexpr FaultPolicy clean() noexcept { return {}; }
 };
 
-// What the transport reports at the moment of sending. These are the five
-// distinct outcomes G-030 requires, and keeping them distinct is the whole
-// point: collapsing `timeout` into `rejected` is how a system convinces itself
-// an order does not exist when it does.
 enum class SendOutcome : std::uint8_t {
     accepted = 1,        // the venue took it
     venue_duplicate,     // the venue already has this client identity
@@ -140,10 +99,7 @@ enum class SendOutcome : std::uint8_t {
     rate_limited,        // refused for pacing; nothing is at the venue
 };
 
-// What a reconciliation query can say. `unavailable` is deliberately distinct
-// from "no such order": one means the venue would not answer, the other means it
-// answered that nothing exists. Treating them alike is how reconciliation
-// invents a fact.
+// Unavailable is silence; not_found is an explicit absence answer.
 enum class QueryOutcome : std::uint8_t {
     known = 1,
     not_found,
@@ -156,58 +112,51 @@ struct QueryResult {
     QuantityLots filled_quantity{};
     QuantityLots remaining_quantity{};
     bool cancelled{};
-    // True when this answer was deliberately corrupted by the
-    // `inconsistent_query` fault, so a test can assert the gateway treated it as
-    // a conflict rather than as truth.
     bool inconsistent{};
-    // Whether the venue says this answer covers the whole window it was asked
-    // about. A venue that pages its execution history answers truthfully for the
-    // page it returns and says nothing about the rest, and that is NOT a fault:
-    // it is ordinary, correct venue behaviour that a gateway must survive. The
-    // danger is that a bounded answer is indistinguishable from a short one, so a
-    // gateway that ignores this books "the venue says two filled" when the venue
-    // meant "two so far, in this page".
+    // A partial window is a prefix, not proof of the complete execution total.
     bool window_complete{true};
+    bool ordered_after_relevant_sends{true};
 };
 
-// One scheduled observation, owned by the simulator until its tick arrives.
+// Observations remain owned until acknowledged; restart can redeliver them.
 struct ScheduledObservation {
     Tick due{};
-    // Preserves natural order within a tick so `reorder` is a deliberate act
-    // rather than an artefact of container ordering.
+    // Preserves natural within-tick order unless the reorder fault applies.
     std::uint64_t ordinal{};
     VenueObservation observation{};
+    bool delivered{};
+};
+
+struct SimulatedExecution {
+    VenueId venue_id{};
+    ExecutionId execution_id{};
+    ClusterOrderId cluster_order_id{};
+    Side side{};
+    QuantityLots quantity{};
 };
 
 class SimulatedVenue final {
 public:
     SimulatedVenue(std::uint64_t seed, FaultPolicy policy, VenueId venue_id) noexcept;
 
-    // Offer an effect to the venue at `now`. Returns what the transport saw.
-    // Any resulting observations are scheduled, not returned: a venue answers
-    // later, and pretending otherwise would hide every timing bug this exists to
-    // find.
+    // Returns the transport outcome; observations arrive asynchronously through poll.
     [[nodiscard]] SendOutcome send(const OrderEffect& effect, Tick now);
 
-    // Observations whose due tick has arrived, in delivery order. Draining is
-    // the caller's business; the simulator holds nothing back once due.
+    // Returns due observations once per delivery run; acknowledgement removes them.
     [[nodiscard]] std::vector<VenueObservation> poll(Tick now);
+    void acknowledge_observation(const VenueObservation& observation) noexcept;
+    void restart_delivery() noexcept;
 
-    // Reconciliation query. This is the API that makes send-then-reconcile
-    // possible, and therefore the reason the gateway need not record intent in
-    // consensus before sending (architecture 9.1.6).
     [[nodiscard]] QueryResult query(ClusterOrderId order, Tick now);
 
-    // The current session. A disconnect retires it and issues a new one, which
-    // is what makes a venue-scoped deduplication key unsafe across reconnects.
+    // Reconnects change session identity; execution deduplication must survive them.
     [[nodiscard]] VenueSessionId session() const noexcept { return session_; }
 
-    // One entry per operation, holding every class that fired on it. Counting
-    // entries with a class set measures what the simulator DID; the tests that
-    // matter assert the observable effect instead, because a label is not a
-    // behaviour.
     [[nodiscard]] const std::vector<FaultSet>& fault_log() const noexcept {
         return fault_log_;
+    }
+    [[nodiscard]] const std::vector<SimulatedExecution>& executions() const noexcept {
+        return executions_;
     }
     [[nodiscard]] std::uint64_t seed() const noexcept { return seed_; }
 
@@ -243,6 +192,7 @@ private:
     std::uint64_t ordinal_{0};
     std::vector<Resting> resting_;
     std::vector<ScheduledObservation> scheduled_;
+    std::vector<SimulatedExecution> executions_;
     std::vector<FaultSet> fault_log_;
 };
 

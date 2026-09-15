@@ -160,7 +160,10 @@ find_receipt(const TradingState& state, const CommandIdentity& identity) noexcep
     return state.order_count;
 }
 
-[[nodiscard]] const RequestReceipt* find_applied_venue_event(
+// The NATIVE identity domain only. A synthetic observation's sequence was chosen
+// by the gateway, not by the venue, so it is not an identity and must neither
+// claim nor block one here.
+[[nodiscard]] const RequestReceipt* find_applied_native_event(
     const TradingState& state,
     const VenueId venue_id,
     const VenueSessionId session_id,
@@ -168,9 +171,14 @@ find_receipt(const TradingState& state, const CommandIdentity& identity) noexcep
     for (std::size_t index = 0; index < state.receipt_count; ++index) {
         const auto& receipt = state.receipts[index];
         const auto& outcome = receipt.result;
-        const bool event_matches = outcome.detail_kind == ApplyResultDetailKind::venue_event &&
+        const bool event_matches =
+            outcome.detail_kind == ApplyResultDetailKind::venue_event &&
+            outcome.event_origin() == ObservationOrigin::native &&
             outcome.event_venue_id() == venue_id &&
-            outcome.event_session_id() == session_id && outcome.event_sequence() == sequence;
+            outcome.event_session_id() == session_id &&
+            outcome.event_sequence() == sequence;
+        // A fill is always native, and its venue-event coordinates are retained
+        // in the fill detail rather than the event detail.
         const bool fill_matches = outcome.detail_kind == ApplyResultDetailKind::fill &&
             outcome.fill_venue_id() == venue_id &&
             outcome.fill_session_id() == session_id && outcome.fill_sequence() == sequence;
@@ -1129,42 +1137,51 @@ std::size_t settle_orphaned_effects(TradingState& state,
 // would still have accepted; the two must be changed together.
 // A receipt may be forgotten only if nothing still depends on it.
 //
-// Two families are pinned. AUTHORIZATION receipts are the provenance
-// materialize_order_effect uses to rebuild an effect's exact historical bytes, so
-// dropping one while its effect lives would strand a pending external effect and
-// break G-020. FILL and VENUE-EVENT receipts are the deduplication for
-// (VenueId, ExecutionId): dropping one while its order can still accept quantity
-// would let a redelivered PARTIAL fill book twice, and reservation arithmetic
-// does not catch that - filled plus remaining stays within the original, so the
-// double booking looks legitimate.
-//
-// Everything else - evaluations, source events, configuration, cancel requests,
-// and every refusal - is reclaimable. In a live maker those are the overwhelming
-// majority, because each no_action evaluation retains one.
-[[nodiscard]] const VenueCursor* find_venue_cursor(
-    const TradingState& state, const VenueId venue_id,
-    const VenueSessionId session_id) noexcept {
-    for (std::size_t index = 0; index < state.venue_cursor_count; ++index) {
-        if (state.venue_cursors[index].venue_id == venue_id &&
-            state.venue_cursors[index].venue_session_id == session_id) {
-            return &state.venue_cursors[index];
+// Authorization provenance stays while its effect exists. Fill identity stays
+// while its order exists. A control-event result additionally requires producer
+// acknowledgement and a settled/superseded effect before it can be forgotten.
+[[nodiscard]] const CallerCursor* find_caller_cursor(
+    const TradingState& state, const CallerId caller_id) noexcept {
+    for (std::size_t index = 0; index < state.caller_cursor_count; ++index) {
+        if (state.caller_cursors[index].caller_id == caller_id) {
+            return &state.caller_cursors[index];
         }
     }
     return nullptr;
 }
 
-[[nodiscard]] bool venue_event_is_expired(const TradingState& state,
-                                          const VenueId venue_id,
-                                          const VenueSessionId session_id,
-                                          const VenueSequence sequence) noexcept {
-    const auto* cursor = find_venue_cursor(state, venue_id, session_id);
-    return cursor != nullptr && sequence < cursor->expired_below;
-}
-
 [[nodiscard]] bool receipt_is_pinned(const TradingState& state,
-                                     const RequestReceipt& receipt) noexcept {
+                                     const RequestReceipt& receipt,
+                                     const CallerId acknowledging_caller = {},
+                                     const RequestSequence acknowledged_through = {}) noexcept {
     const auto& result = receipt.result;
-    if (result.code != ApplyCode::applied) return false;
+    const auto* producer =
+        find_caller_cursor(state, receipt.identity.caller_id);
+    auto effective_acknowledgement =
+        producer == nullptr ? RequestSequence{}
+                            : producer->gateway_results_acknowledged_through;
+    if (receipt.identity.caller_id == acknowledging_caller &&
+        effective_acknowledgement < acknowledged_through) {
+        effective_acknowledgement = acknowledged_through;
+    }
+    if (producer != nullptr &&
+        effective_acknowledgement.value() != 0 &&
+        effective_acknowledgement < receipt.identity.request_sequence) {
+        return true;
+    }
+    const bool gateway_evidence =
+        result.detail_kind == ApplyResultDetailKind::fill ||
+        result.detail_kind == ApplyResultDetailKind::venue_event;
+    if (gateway_evidence) {
+        if (producer == nullptr ||
+            effective_acknowledgement < receipt.identity.request_sequence) {
+            return true;
+        }
+    }
+    if (result.code != ApplyCode::applied &&
+        result.detail_kind != ApplyResultDetailKind::fill) {
+        return false;
+    }
     switch (result.detail_kind) {
         case ApplyResultDetailKind::authorization: {
             for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
@@ -1176,31 +1193,48 @@ std::size_t settle_orphaned_effects(TradingState& state,
             }
             return false;
         }
-        case ApplyResultDetailKind::venue_event:
-            // Below its session's watermark this receipt is no longer
-            // load-bearing: a re-presentation is refused as expired rather than
-            // re-applied, so retaining the original answer buys nothing and
-            // costs capacity an unresolved order needs for its own fills.
-            //
-            // Only venue-event detail is expirable. Fill detail carries
-            // (venue, execution, quantity) and no sequence, so it cannot be
-            // matched against a watermark - which is the right asymmetry: fills
-            // are the economically load-bearing evidence and stay pinned.
-            if (venue_event_is_expired(state, receipt.result.event_venue_id(),
-                                       receipt.result.event_session_id(),
-                                       receipt.result.event_sequence())) {
+        case ApplyResultDetailKind::venue_event: {
+            const auto effect_id = result.event_effect_id();
+            if (effect_id.value() == 0) return true;
+            for (std::size_t index = 0; index < state.outbox_effect_count;
+                 ++index) {
+                const auto& effect = state.outbox_effects[index];
+                if (effect.effect_id != effect_id) continue;
+                if (!effect_is_settled(effect.state)) return true;
+                const auto order_index =
+                    find_order_by_decision(state, result.decision_id);
+                return order_index != state.order_count &&
+                       state.orders[order_index].effect_id == effect_id &&
+                       !order_is_risk_resolved(state,
+                                               state.orders[order_index]);
+            }
+            return false;
+        }
+        case ApplyResultDetailKind::fill: {
+            if (result.decision_id.value() == 0) return false;
+            if (find_order_by_decision(state, result.decision_id) ==
+                state.order_count) {
                 return false;
             }
-            [[fallthrough]];
-        case ApplyResultDetailKind::fill: {
-            // Candidate schema V5 already carries DecisionId outside the tagged
-            // detail words. Applied observations populate that existing field,
-            // giving reclamation a zero-byte ownership edge to the order group.
-            // A zero id is retained fail-closed for old development fixtures and
-            // snapshots rather than guessed into an owner.
-            if (result.decision_id.value() == 0) return true;
-            return find_order_by_decision(state, result.decision_id) !=
-                   state.order_count;
+            if (result.code == ApplyCode::applied) return true;
+            if (result.code != ApplyCode::fill_capacity_exceeded &&
+                result.code != ApplyCode::fill_quantity_conflict) {
+                return false;
+            }
+            for (std::size_t index = 0; index < state.receipt_count; ++index) {
+                const auto& earlier = state.receipts[index];
+                if (earlier.identity == receipt.identity) break;
+                if (earlier.result.detail_kind == ApplyResultDetailKind::fill &&
+                    earlier.result.code == result.code &&
+                    earlier.result.decision_id == result.decision_id &&
+                    earlier.result.fill_venue_id() == result.fill_venue_id() &&
+                    earlier.result.execution_id() == result.execution_id() &&
+                    earlier.identity.payload_digest ==
+                        receipt.identity.payload_digest) {
+                    return false;
+                }
+            }
+            return true;
         }
         default:
             return false;
@@ -1211,11 +1245,14 @@ std::size_t settle_orphaned_effects(TradingState& state,
 // meaningful, and the caller watermarks that make expiry detectable are advanced
 // on admission rather than here, so a forgotten receipt is always already
 // covered by its caller's cursor.
-[[nodiscard]] std::size_t sweep_expired_receipts(TradingState& state) noexcept {
+[[nodiscard]] std::size_t sweep_expired_receipts(
+    TradingState& state, const CallerId acknowledging_caller = {},
+    const RequestSequence acknowledged_through = {}) noexcept {
     std::size_t kept = 0;
     std::size_t dropped = 0;
     for (std::size_t index = 0; index < state.receipt_count; ++index) {
-        if (!receipt_is_pinned(state, state.receipts[index])) {
+        if (!receipt_is_pinned(state, state.receipts[index],
+                               acknowledging_caller, acknowledged_through)) {
             // Record what is being forgotten, per caller, so a later retry of
             // exactly this identity is refused rather than re-executed.
             const auto& identity = state.receipts[index].identity;
@@ -1223,7 +1260,8 @@ std::size_t settle_orphaned_effects(TradingState& state,
             if (cursor == nullptr &&
                 state.caller_cursor_count < state.caller_cursors.size()) {
                 cursor = &state.caller_cursors[state.caller_cursor_count++];
-                *cursor = CallerCursor{identity.caller_id, RequestSequence{}};
+                *cursor = CallerCursor{identity.caller_id, RequestSequence{},
+                                       RequestSequence{}};
             }
             if (cursor != nullptr && cursor->expired_below < identity.request_sequence) {
                 cursor->expired_below = identity.request_sequence;
@@ -1238,69 +1276,6 @@ std::size_t settle_orphaned_effects(TradingState& state,
     }
     state.receipt_count = kept;
     return dropped;
-}
-
-// Expire the oldest venue-event evidence for each session under capacity
-// pressure, recording a watermark so what is forgotten can never be replayed.
-//
-// The accepted serial-cancel lifecycle can repeat - reject, reconcile "still
-// working", cancel again - and an unresolved order never releases its receipts,
-// so historical evidence for superseded cancel generations accumulated until it
-// consumed the capacity authorization had reserved for that order's own fills.
-//
-// Half of each session's retained evidence is expired, oldest first. Half rather
-// than everything because the recent tail is the part a redelivery is most likely
-// to repeat, and a watermark that swallowed everything would turn every in-flight
-// duplicate into an expiry refusal at once.
-[[nodiscard]] std::size_t sweep_superseded_venue_events(TradingState& state) noexcept {
-    std::size_t expired = 0;
-    for (std::size_t index = 0; index < state.receipt_count; ++index) {
-        const auto& result = state.receipts[index].result;
-        if (result.code != ApplyCode::applied ||
-            result.detail_kind != ApplyResultDetailKind::venue_event) {
-            continue;
-        }
-        const auto venue = result.event_venue_id();
-        const auto session = result.event_session_id();
-        if (venue.value() == 0 || session.value() == 0) continue;
-        if (find_venue_cursor(state, venue, session) != nullptr) continue;
-        if (state.venue_cursor_count == state.venue_cursors.size()) continue;
-        state.venue_cursors[state.venue_cursor_count++] =
-            VenueCursor{venue, session, VenueSequence{}};
-    }
-    for (std::size_t cursor_index = 0; cursor_index < state.venue_cursor_count;
-         ++cursor_index) {
-        auto& cursor = state.venue_cursors[cursor_index];
-        std::size_t live = 0;
-        std::uint64_t highest = 0;
-        std::uint64_t lowest = std::numeric_limits<std::uint64_t>::max();
-        for (std::size_t index = 0; index < state.receipt_count; ++index) {
-            const auto& result = state.receipts[index].result;
-            if (result.code != ApplyCode::applied ||
-                result.detail_kind != ApplyResultDetailKind::venue_event ||
-                result.event_venue_id() != cursor.venue_id ||
-                result.event_session_id() != cursor.venue_session_id) {
-                continue;
-            }
-            if (result.event_sequence() < cursor.expired_below) continue;
-            ++live;
-            highest = std::max(highest, result.event_sequence().value());
-            lowest = std::min(lowest, result.event_sequence().value());
-        }
-        if (live < 2 || lowest >= highest) continue;
-        // Expire the oldest half by raising the watermark to the midpoint of the
-        // LIVE span. Taking it from the existing watermark instead would land far
-        // below the first retained sequence whenever a venue's numbering does not
-        // start near zero, and expire nothing at all.
-        //
-        // Sequences are venue-assigned and monotonic within a session, so a span
-        // midpoint orders them soundly without sorting an unbounded set.
-        const auto midpoint = lowest + (highest - lowest) / 2;
-        if (midpoint <= cursor.expired_below.value()) continue;
-        cursor.expired_below = VenueSequence{midpoint};
-        ++expired;
-    }
-    return expired;
 }
 
 // Source-event receipts have their own watermark already: SourceCursor holds the
@@ -2091,14 +2066,7 @@ std::size_t settle_orphaned_effects(TradingState& state,
         return fill_result(state, ApplyCode::venue_observation_not_applicable,
                            next_version, observation, observation.quantity);
     }
-    if (venue_event_is_expired(state, observation.venue_id,
-                               observation.venue_session_id,
-                               observation.venue_sequence)) {
-        return fill_result(state, ApplyCode::venue_event_expired, next_version,
-                           observation, observation.quantity);
-    }
-
-    if (const auto* existing = find_applied_venue_event(state, observation.venue_id,
+    if (const auto* existing = find_applied_native_event(state, observation.venue_id,
                                 observation.venue_session_id, observation.venue_sequence)) {
         if (existing->result.detail_kind != ApplyResultDetailKind::fill ||
             existing->result.execution_id() != observation.execution_id) {
@@ -2121,7 +2089,6 @@ std::size_t settle_orphaned_effects(TradingState& state,
         // reference. Resolved groups release the observation receipts they own;
         // unresolved orders keep every identity that can still affect them.
         (void)sweep_resolved_order_groups(state);
-        (void)sweep_superseded_venue_events(state);
         (void)sweep_expired_receipts(state);
     }
     // Capacity is decided here but REFUSED below, after the owning order is
@@ -2151,8 +2118,10 @@ std::size_t settle_orphaned_effects(TradingState& state,
         // that is the retention contract, and the contract must not be chosen
         // by leaving the loss silent in the meantime.
         order.state = ClusterOrderState::conflict;
+        order.last_evidence_state_version = next_version;
         return fill_result(state, ApplyCode::fill_capacity_exceeded,
-                           next_version, observation, observation.quantity);
+                           next_version, observation, observation.quantity,
+                           ContractError::none, order.decision_id);
     }
     OutboxEffectRecord* outbox = nullptr;
     for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
@@ -2166,23 +2135,27 @@ std::size_t settle_orphaned_effects(TradingState& state,
     // otherwise resolve cancel delivery.
     if (outbox == nullptr || outbox->operation != EffectOperation::submit) {
         return fill_result(state, ApplyCode::venue_observation_not_applicable,
-                           next_version, observation, observation.quantity);
+                           next_version, observation, observation.quantity,
+                           ContractError::none, order.decision_id);
     }
     if (order.reservation_index >= state.reservation_count) {
         return fill_result(state, ApplyCode::venue_observation_not_applicable,
-                           next_version, observation, observation.quantity);
+                           next_version, observation, observation.quantity,
+                           ContractError::none, order.decision_id);
     }
     auto& reservation = state.reservations[order.reservation_index];
     const auto decision_index = find_decision_index(state, order.decision_id);
     if (decision_index == state.decision_count) {
         return fill_result(state, ApplyCode::venue_observation_not_applicable,
-                           next_version, observation, observation.quantity);
+                           next_version, observation, observation.quantity,
+                           ContractError::none, order.decision_id);
     }
     const auto& proposal = state.decision_cold[decision_index].proposal;
     if (proposal.venue_id != observation.venue_id ||
         proposal.side != observation.side) {
         return fill_result(state, ApplyCode::venue_observation_not_applicable,
-                           next_version, observation, observation.quantity);
+                           next_version, observation, observation.quantity,
+                           ContractError::none, order.decision_id);
     }
     // A pending amend or historical fill after its acknowledgement cannot be
     // charged to the currently active terms. Preserve the existing hold and
@@ -2197,8 +2170,10 @@ std::size_t settle_orphaned_effects(TradingState& state,
              order.state == ClusterOrderState::reconciling)) {
             current.state = OutboxState::reconciling;
             order.state = ClusterOrderState::reconciling;
+            order.last_evidence_state_version = next_version;
             return fill_result(state, ApplyCode::fill_quantity_conflict,
-                               next_version, observation, observation.quantity);
+                               next_version, observation, observation.quantity,
+                               ContractError::none, order.decision_id);
         }
     }
     // A conflicted order is terminal-but-unresolved: internal state and venue
@@ -2233,7 +2208,8 @@ std::size_t settle_orphaned_effects(TradingState& state,
                                    proposal.instrument_id);
     if (risk == nullptr) {
         return fill_result(state, ApplyCode::risk_account_not_found,
-                           next_version, observation, observation.quantity);
+                           next_version, observation, observation.quantity,
+                           ContractError::none, order.decision_id);
     }
     if (reservation.state == ReservationState::released ||
         observation.quantity > reservation.remaining_quantity) {
@@ -2255,8 +2231,10 @@ std::size_t settle_orphaned_effects(TradingState& state,
         // whoever has to resolve it. Mutating on a refusal path is deliberate and
         // has precedent directly above: the refusal itself is new knowledge.
         order.state = ClusterOrderState::conflict;
+        order.last_evidence_state_version = next_version;
         return fill_result(state, ApplyCode::fill_quantity_conflict,
-                           next_version, observation, observation.quantity);
+                           next_version, observation, observation.quantity,
+                           ContractError::none, order.decision_id);
     }
 
     const auto next_remaining = reservation.remaining_quantity.checked_sub(
@@ -2265,8 +2243,11 @@ std::size_t settle_orphaned_effects(TradingState& state,
         observation.quantity);
     if (!next_remaining || !next_filled || next_remaining->atoms() < 0 ||
         *next_filled > reservation.original_quantity) {
+        order.state = ClusterOrderState::conflict;
+        order.last_evidence_state_version = next_version;
         return fill_result(state, ApplyCode::fill_quantity_conflict,
-                           next_version, observation, observation.quantity);
+                           next_version, observation, observation.quantity,
+                           ContractError::none, order.decision_id);
     }
     const auto next_notional = proportional_remaining_hold(
         reservation.remaining_notional, *next_remaining,
@@ -2279,13 +2260,15 @@ std::size_t settle_orphaned_effects(TradingState& state,
         reservation.remaining_quantity);
     if (!next_notional || !next_margin || !next_fee) {
         return fill_result(state, ApplyCode::risk_arithmetic_overflow,
-                           next_version, observation, observation.quantity);
+                           next_version, observation, observation.quantity,
+                           ContractError::none, order.decision_id);
     }
     const auto released_margin = reservation.margin_hold.checked_sub(*next_margin);
     const auto released_fee = reservation.fee_hold.checked_sub(*next_fee);
     if (!released_margin || !released_fee) {
         return fill_result(state, ApplyCode::risk_arithmetic_overflow,
-                           next_version, observation, observation.quantity);
+                           next_version, observation, observation.quantity,
+                           ContractError::none, order.decision_id);
     }
     const auto next_reserved_quantity = risk->reserved_quantity.checked_sub(
         observation.quantity);
@@ -2301,12 +2284,14 @@ std::size_t settle_orphaned_effects(TradingState& state,
         !next_position || next_reserved_quantity->atoms() < 0 ||
         next_reserved_margin->atoms() < 0 || next_reserved_fee->atoms() < 0) {
         return fill_result(state, ApplyCode::position_arithmetic_overflow,
-                           next_version, observation, observation.quantity);
+                           next_version, observation, observation.quantity,
+                           ContractError::none, order.decision_id);
     }
     if (risk->position_version.value() ==
         std::numeric_limits<std::uint64_t>::max()) {
         return fill_result(state, ApplyCode::position_arithmetic_overflow,
-                           next_version, observation, observation.quantity);
+                           next_version, observation, observation.quantity,
+                           ContractError::none, order.decision_id);
     }
 
     // Commit section: the accepted fill, position move, reservation release,
@@ -2340,6 +2325,7 @@ std::size_t settle_orphaned_effects(TradingState& state,
         order.state = ClusterOrderState::partially_filled;
     }
     outbox->state = OutboxState::acknowledged;
+    order.last_evidence_state_version = next_version;
     return fill_result(state, ApplyCode::applied, next_version, observation,
                        observation.quantity, ContractError::none,
                        order.decision_id);
@@ -2361,6 +2347,9 @@ std::size_t settle_orphaned_effects(TradingState& state,
             observation.venue_id, observation.venue_session_id,
             observation.venue_sequence);
         value.detail_kind = ApplyResultDetailKind::venue_event;
+        value.metadata_words[0] = observation.effect_id.value();
+        value.metadata_words[1] =
+            static_cast<std::uint64_t>(observation_origin(observation.kind));
     }
     value.decision_id = decision_id;
     return value;
@@ -2514,37 +2503,30 @@ std::size_t settle_orphaned_effects(TradingState& state,
         return venue_event_result(state, ApplyCode::invalid_command,
                                   next_version, observation, contract_error);
     }
-    // Below its session watermark the receipt has been reclaimed, so the kernel
-    // can no longer say what happened. It refuses rather than re-applying:
-    // re-applying would be a second economic mutation, which is the one outcome
-    // expiry may never produce. Losing the retained answer is the accepted cost,
-    // exactly as architecture 8.6 accepted it for request receipts.
-    if (venue_event_is_expired(state, observation.venue_id,
-                               observation.venue_session_id,
-                               observation.venue_sequence)) {
-        return venue_event_result(state, ApplyCode::venue_event_expired,
-                                  next_version, observation);
-    }
     if (observation.kind == VenueObservationKind::fill) {
         return venue_event_result(state,
                                   ApplyCode::venue_observation_not_applicable,
                                   next_version, observation);
     }
-    if (const auto* existing = find_applied_venue_event(
-            state, observation.venue_id, observation.venue_session_id,
-            observation.venue_sequence)) {
-        const auto exact =
-            existing->identity.payload_digest == identity.payload_digest;
-        return venue_event_result(
-            state,
-            exact ? ApplyCode::already_applied
-                  : ApplyCode::venue_event_identity_conflict,
-            next_version, observation, ContractError::none,
-            exact ? existing->result.decision_id : DecisionId{});
+    // Sequence identity is the VENUE's guarantee, so only a native observation
+    // may be judged by it. A synthetic replay is caught by the retained request
+    // receipt and by cumulative-by-value adjudication instead (10.15).
+    if (observation_origin(observation.kind) == ObservationOrigin::native) {
+        if (const auto* existing = find_applied_native_event(
+                state, observation.venue_id, observation.venue_session_id,
+                observation.venue_sequence)) {
+            const auto exact =
+                existing->identity.payload_digest == identity.payload_digest;
+            return venue_event_result(
+                state,
+                exact ? ApplyCode::already_applied
+                      : ApplyCode::venue_event_identity_conflict,
+                next_version, observation, ContractError::none,
+                exact ? existing->result.decision_id : DecisionId{});
+        }
     }
     if (accepted_venue_event_count(state) == kMaxVenueEventReceipts) {
         (void)sweep_resolved_order_groups(state);
-        (void)sweep_superseded_venue_events(state);
         (void)sweep_expired_receipts(state);
     }
     if (accepted_venue_event_count(state) == kMaxVenueEventReceipts) {
@@ -2945,6 +2927,7 @@ std::size_t settle_orphaned_effects(TradingState& state,
     if (releases && order_is_risk_resolved(state, order)) {
         (void)settle_orphaned_effects(state, order.cluster_order_id);
     }
+    order.last_evidence_state_version = next_version;
     return venue_event_result(state, ApplyCode::applied, next_version,
                               observation, ContractError::none,
                               order.decision_id);
@@ -3039,6 +3022,28 @@ std::size_t settle_orphaned_effects(TradingState& state,
     return outcome;
 }
 
+[[nodiscard]] ApplyResult apply_acknowledge_gateway_results(
+    TradingState& state, const CallerId caller_id,
+    const RequestSequence command_sequence,
+    const AcknowledgeGatewayResults& command,
+    const std::uint64_t next_version) noexcept {
+    if (command.acknowledged_through.value() == 0 ||
+        command.acknowledged_through >= command_sequence) {
+        return result(state, ApplyCode::invalid_command, next_version);
+    }
+    auto* cursor = find_caller_cursor(state, caller_id);
+    if (cursor == nullptr) {
+        return result(state, ApplyCode::invalid_command, next_version);
+    }
+    if (command.acknowledged_through <=
+        cursor->gateway_results_acknowledged_through) {
+        return result(state, ApplyCode::already_applied, next_version);
+    }
+    cursor->gateway_results_acknowledged_through =
+        command.acknowledged_through;
+    return result(state, ApplyCode::applied, next_version);
+}
+
 [[nodiscard]] ApplyResult apply_new_command(TradingState& state,
                                             const Command& command,
                                             const std::uint64_t next_version) noexcept {
@@ -3093,6 +3098,12 @@ std::size_t settle_orphaned_effects(TradingState& state,
     }
     if (const auto* body = std::get_if<ConfigureRiskLimits>(&command.body)) {
         return apply_configure_risk_limits(state, *body, next_version);
+    }
+    if (const auto* body =
+            std::get_if<AcknowledgeGatewayResults>(&command.body)) {
+        return apply_acknowledge_gateway_results(
+            state, command.identity.caller_id,
+            command.identity.request_sequence, *body, next_version);
     }
     return result(state, ApplyCode::invalid_command, next_version);
 }
@@ -3252,6 +3263,23 @@ ApplyResult apply(TradingState& state,
         (void)sweep_expired_receipts(state);
     }
     if (state.receipt_count == state.receipts.size()) {
+        if (const auto* acknowledgement =
+                std::get_if<AcknowledgeGatewayResults>(&command.body)) {
+            const auto* cursor =
+                find_caller_cursor(state, command.identity.caller_id);
+            if (cursor != nullptr &&
+                acknowledgement->acknowledged_through.value() != 0 &&
+                acknowledgement->acknowledged_through <
+                    command.identity.request_sequence &&
+                cursor->gateway_results_acknowledged_through <
+                    acknowledgement->acknowledged_through) {
+                (void)sweep_expired_receipts(
+                    state, command.identity.caller_id,
+                    acknowledgement->acknowledged_through);
+            }
+        }
+    }
+    if (state.receipt_count == state.receipts.size()) {
         return result(state, ApplyCode::receipt_capacity_exceeded, state.state_version);
     }
     // A caller the cluster has never seen needs a cursor before its first command
@@ -3267,7 +3295,8 @@ ApplyResult apply(TradingState& state,
 
     if (find_caller_cursor(state, command.identity.caller_id) == nullptr) {
         state.caller_cursors[state.caller_cursor_count++] =
-            CallerCursor{command.identity.caller_id, RequestSequence{}};
+            CallerCursor{command.identity.caller_id, RequestSequence{},
+                         RequestSequence{}};
     }
     const auto next_version = state.state_version + 1;
     const auto outcome = apply_new_command(state, command, next_version);

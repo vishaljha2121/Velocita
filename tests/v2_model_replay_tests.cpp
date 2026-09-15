@@ -983,7 +983,8 @@ ApplyResult model_new_command(ModelState& state,
                                  std::is_same_v<T, RequestCancel> ||
                                  std::is_same_v<T, ObserveOrderEvent> ||
                                  std::is_same_v<T, RequestReplace> ||
-                                 std::is_same_v<T, ConfigureRiskLimits>) {
+                                 std::is_same_v<T, ConfigureRiskLimits> ||
+                                 std::is_same_v<T, AcknowledgeGatewayResults>) {
                 // This generator covers Phase 1-3 only. A complete independent
                 // Phase 4 model remains an acceptance requirement.
                 return model_result(state, ApplyCode::invalid_command, version);
@@ -1017,7 +1018,8 @@ ApplyResult model_apply(ModelState& state, const Command& command) {
         require(state.caller_cursors.size() < kMaxCallerCursors,
                 "generated history exceeded the model caller bound");
         state.caller_cursors.push_back(
-            CallerCursor{command.identity.caller_id, RequestSequence{}});
+            CallerCursor{command.identity.caller_id, RequestSequence{},
+                         RequestSequence{}});
     }
     const auto next_version = state.state_version + 1;
     const auto result =
@@ -1242,7 +1244,7 @@ void test_generated_model_and_snapshot_replay() {
     require(coverage.count(DecisionCode::invalid_frame) != 0,
             "generated corpus never exercised invalid-frame precedence");
     require(actual ==
-                "0b49f0331cc5117603ec7dcb346c8c516ecd9da77a1b311bb1b44c94e9900051",
+                "12eb691c214c9ca220fb00fd711006fbb0fdd5a1c213567350cd950216245087",
             "generated replay corpus changed without review: " + actual);
 
     std::cout << "generated histories=" << kSeedCount

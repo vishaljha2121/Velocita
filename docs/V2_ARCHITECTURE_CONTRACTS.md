@@ -563,7 +563,7 @@ Receipts are pinned in two families. AUTHORIZATION receipts are the provenance
 dropping one while that exact effect lives would strand a pending external effect
 and break G-020. A definitively rejected cancel record may be reused for its next
 generation; the superseded authorization receipt then becomes reclaimable.
-FILL and VENUE-EVENT receipts are pinned while their owning order exists, because
+FILL and VENUE-EVENT receipts were originally pinned while their owning order exists, because
 a redelivered PARTIAL fill would otherwise book twice. Everything else, including
 every refusal, is reclaimable, and in a live maker those are the overwhelming
 majority.
@@ -609,6 +609,11 @@ be encoded. The result codec and snapshot validator apply the same rule, ensurin
 that an admitted `invalid_command` can never make the next snapshot invalid.
 
 #### Venue-event identities: reclaimed with their order
+
+**SUPERSEDED BY 10.13.** Fill identities still follow this rule. Control-event
+receipts now follow the stricter effect-reference plus producer-acknowledgement
+proof because one unresolved order can legally supersede several serial cancel
+effects.
 
 A fill or venue-event identity is reclaimable EXACTLY when its cluster order
 group is reclaimed, and is pinned for as long as that order exists.
@@ -1070,6 +1075,14 @@ Tested at three crash cuts - before the send, after venue acceptance but before
 local recording, and after local recording but before the observation applied -
 against the real simulator, with "how many orders exist at the venue" as the
 oracle rather than any gateway-reported number.
+
+`OutboxState::incomplete` is excluded from the startup suspect set. It is the
+replicated terminal statement that an orphaned effect's outcome was never
+established after the order's risk resolved; the pre-send guard already refuses
+it and reclamation may remove it. Treating it as in flight manufactured an
+awaiting-response attempt that no legitimate transport action could complete and
+could leave the startup barrier raised forever. Exclusion does not conceal the
+loss: `settled_incomplete_effect_count` remains monotonic and operator-visible.
 
 ### 9.5 A venue answer is not a commit (P1-3, 2026-09-13)
 
@@ -1635,21 +1648,28 @@ design, so it is never reclaimed.
 
 The consequence is worth stating plainly, because it is the most operationally
 important number in this section: EVERY UNRESOLVED CONFLICT PERMANENTLY CONSUMES
-ONE SLOT IN THE DECISION, ORDER, RESERVATION AND OUTBOX ARENAS AT ONCE. With
-sixteen slots each, sixteen simultaneous conflicts saturate the cluster and it
-stops accepting new decisions.
+ONE SLOT IN THE DECISION, ORDER, RESERVATION AND OUTBOX ARENAS AT ONCE.
+
+CORRECTED IN 10.12. The sentence that stood here said sixteen simultaneous
+conflicts saturate the cluster, on the strength of a harness that used one
+logical order slot. A later correction attributed the measured limit of eight
+to the templates in one active policy. That proof was also wrong: policy rotation
+can expose different logical slot values while old conflicts remain. The
+rotation-aware measurement still stops at eight, but the enforcing mechanism is
+the outbox's reserved cancel budget, not the active policy's template count.
 
 That is correct behaviour - refusing is the only alternative to freeing capacity
 against exposure that may still exist - but it makes the G-074a operator
-escalation path LOAD-BEARING rather than a convenience. A cluster with no operator
-path has a hard ceiling of sixteen lifetime unresolved conflicts.
+escalation path LOAD-BEARING rather than a convenience, and it does so at half
+the number this section used to claim.
 
-The capacity cannot simply be raised to soften it. `TradingState` is 81,168 bytes
-against the accepted 81,920 ceiling, and one more decision record costs 704 of the
-752 bytes remaining. Exactly one more slot fits, which changes nothing. Any real
-increase requires moving the state ceiling, which is itself provisional pending
-NUC validation. This is a bound to characterise and to staff around, not a number
-to move.
+Raising only the decision/order/reservation arenas would not soften it. Every
+unresolved order owns a submit effect and must retain capacity for one future
+risk-reducing cancel. An unresolved order with no cancel therefore costs one
+resident outbox record plus one reserved record; once a cancel exists it costs
+two resident records. With sixteen outbox records, eight is the best-case
+concurrent unresolved-order ceiling. Repeated historical effects can bind
+earlier, never later.
 
 #### 10.5.4 The safety property, which holds at any capacity
 
@@ -1846,10 +1866,10 @@ is different: its outcome stays unknown while the order underneath it goes on
 trading. That is the window a query can be issued in and answered after, and it is
 the only one.
 
-THE BARRIER. The gateway records the order's ACCEPTED-EVIDENCE WATERMARK when it
-issues a query - the count of venue observations the cluster has accepted for that
-order - and compares it against the watermark when the answer arrives. If it
-moved, the answer predates evidence the cluster already holds, and
+THE BARRIER. The gateway records the order's ACCEPTED-EVIDENCE REVISION when it
+issues a query - the last `StateVersion` at which evidence changed that order -
+and compares it against the revision when the answer arrives. If it moved, the
+answer predates evidence the cluster already holds, and
 `classify_query` returns `incomplete`: ask again. The verdict is deliberately weak.
 It does not say the answer is wrong. It says the answer is not comparable, which is
 all the gateway can honestly know and all the reducer needs it to withhold.
@@ -1861,14 +1881,17 @@ barrier that keeps moving ends in `exhausted` - the order stays visibly
 unresolved, which is the G-074a operator situation rather than something to heal
 by guessing.
 
-NO NEW WIRE FIELD, DELIBERATELY. A real venue's freshness proof may be a monotonic
-sequence, a session barrier, an executions cursor paired with an order watermark,
-or a documented finality guarantee. Inventing a universal field in
-`VenueObservation` before a venue supplies the semantics it would carry is
-guessing at a byte contract. The gateway can establish the barrier from what it
-already knows, and an adapter can strengthen it later with whatever its venue
-actually offers. This is the same reasoning 10.1.1 used to refuse settlement
-fields nothing produces.
+The first implementation used a retained-receipt count. Section 10.13 supersedes
+that choice: reclamation can decrease a count and later evidence can return it to
+the same value, so equality can recur through ABA. The per-order revision is
+monotonic while the order exists and survives snapshots.
+
+VENUE FINALITY IS SEPARATE. `window_complete` says the answer is not paged short;
+it does not prove the snapshot was ordered after the sends it adjudicates. The
+gateway must separately establish `ordered_after_relevant_sends` from a venue
+barrier, ordered session, or documented API guarantee. Both facts must be true.
+This stays gateway-local rather than adding an invented universal field to
+`VenueObservation`.
 
 WHERE THE BARRIER LIVES. Gateway-local, like delivery and reconciliation attempt
 bookkeeping, and for the same reason: a restart discards it and rebuilds it by
@@ -1919,12 +1942,14 @@ execution and evidence loss for another -
 one it is a fill that vanished. No allow-list can tell those apart.
 
 So the gate now follows every distinct `(venue, execution)` from the venue's
-report to the cluster's answer, and each one must end in exactly one of three
-states: booked once for the quantity the venue reported; proven to be a repeat of
-that booking, by a code that identifies THAT execution; or never booked, with the
-owning order either conflicted or swept-while-resolved. The per-order sums survive
-as a cross-check against the ledger, so a disagreement between the two stops the
-run rather than being silently resolved in favour of whichever is consulted first.
+report to the cluster's answer. A booked execution must move position once for
+the reported quantity. An unbooked execution must leave its owning order in
+`conflict` with the exact `(VenueId, ExecutionId)` receipt retained. A
+resolved-and-swept order proves only that risk was closed before reclamation; it
+cannot prove that a later reported execution was booked. The per-order sums
+survive as a cross-check against the ledger, so a disagreement between the two
+stops the run rather than being silently resolved in favour of whichever is
+consulted first.
 
 THE RECONCILIATION ORACLE READ THE ANSWER OFF THE CODE UNDER TEST. It labelled
 every `venue_observation_not_applicable` from a reconciliation answer as
@@ -2002,6 +2027,277 @@ it.
 G-033 consequence: the guarantee reads "nine adversarial classes" in older
 evidence. It is ten, they compose, and each is asserted by effect. The acceptance
 record is superseded accordingly rather than amended.
+
+### 10.12 The concurrent-conflict bound is the reserved outbox budget
+
+Two earlier explanations were wrong. The Phase 5 acceptance harness used one
+logical slot and could not prove sixteen concurrent conflicts. The first review
+then treated eight templates in one active policy as a cluster-lifetime slot
+namespace. Policy rotation disproves that: a later policy can name slot 9 while
+conflicts on slots 1 through 8 remain retained.
+
+The measured bound is nevertheless eight for a different reason. Authorization
+enforces `outbox_effect_count + orders_needing_cancel_slot + 2 <=
+kMaxOutboxEffects`. The two added units are the new submit and its reserved future
+cancel. Thus every unresolved order consumes two units of the outbox budget:
+either one submit plus one reserved cancel, or two resident submit/cancel effects.
+With `kMaxOutboxEffects == 16`, at most eight such orders can coexist in the best
+case. Extra historical effects reduce this availability bound.
+
+`test_policy_rotation_reaches_the_reserved_outbox_conflict_bound` drives eight
+distinct slots to conflict through public commands, then publishes, validates,
+stages, and activates policy version 2 with logical slots 9 through 16. A valid
+proposal on slot 9 reaches authorization, proving slot identity is not the
+barrier, and is refused with `outbox_capacity_exceeded`. At that point eight
+orders, eight reservations, and sixteen effects remain retained; no unresolved
+risk was reclaimed.
+
+The rejected alternatives remain useful. Calling sixteen a runtime bound ignored
+the reserved cancel lane. Calling eight a template bound ignored policy rotation.
+Increasing only decision/order/reservation capacity changes neither result;
+increasing outbox capacity changes it but spends replicated-state and snapshot
+budget and still requires the G-074a operator path because conflict is
+intentionally unreclaimable without authoritative evidence.
+
+### 10.13 Proof-carrying evidence reclamation (approved 2026-09-14)
+
+The venue-event watermark introduced for repeated serial cancels was unsafe in
+two independent ways. It compared venue-native sequences with gateway-authored
+control sequences inside one numeric domain, and it inferred a contiguous prefix
+from the midpoint of sparse observations. A delayed native response could
+therefore be classified expired even though it was new evidence. Increasing the
+arena or separating number ranges only delays or disguises that error; neither
+proves that a forgotten observation cannot still arrive.
+
+Reclamation now requires proofs rather than age:
+
+```text
+the exact owning effect is settled, superseded, or gone
+AND the stable gateway has durably consumed the committed command result
+AND no live fill identity or current unresolved-effect provenance depends on it
+=> the venue-event receipt may be compacted
+```
+
+Each term closes a different failure. Effect settlement prevents compaction
+while final evidence can still revise the effect. The gateway acknowledgement
+separates cluster apply from the producer learning the result; without it, a
+lost Raft client response can race receipt deletion. Economic/provenance pinning
+keeps all fill receipts while their order exists and keeps the current unresolved
+effect, so capacity relief never comes from forgetting executable risk.
+
+The ownership edge is explicit. An applied venue-event `ApplyResult` stores the
+observation's `EffectId` in metadata word 0; `ApplyResult` remains 112 bytes and
+its frame remains 128 bytes. Policy accessors return no policy identity for this
+tag. A zero effect identity in an accepted result is invalid and snapshot/result
+decoders fail closed.
+
+The consumer proof is command kind 18,
+`AcknowledgeGatewayResults{acknowledged_through}`. The caller is the command's
+stable `CallerId`; the body is one little-endian u64 and covers an inclusive
+request prefix strictly below the acknowledgement command's own sequence. The
+replicated cursor advances monotonically and a repeated or lower prefix is a
+no-op. The meaning is stronger than socket receipt: the gateway has durably
+incorporated every committed result in the prefix and will not blindly recreate
+those commands after restart. A producer that cannot make that promise must not
+advance the coordinate; bounded backpressure is the correct failure.
+
+The withdrawn `VenueCursor` arena and all midpoint logic are removed. Apply code
+59, `venue_event_expired`, remains allocated only so historical result values are
+not renumbered; schema V6 reducers never emit it. Re-presenting a compacted
+request identity is refused through the existing caller prefix and cannot
+re-execute. A redelivery under a new request identity still meets effect and
+order lifecycle checks; fill identity remains retained and independently keyed
+by `(VenueId, ExecutionId)`.
+
+Query ordering changes with reclamation. A receipt count is not a revision:
+compaction can move it down and later evidence can return it to the old value.
+`ClusterOrder::last_evidence_state_version` is therefore the cluster-side
+barrier. It advances on accepted evidence and on fill refusals that deliberately
+move the order to conflict, is encoded in snapshot V6, and never regresses while
+the order exists. It detects concurrent cluster evidence but does not establish
+venue finality, so `VenueQueryView` separately requires both `window_complete`
+and `ordered_after_relevant_sends`. A complete but pre-send snapshot is retried,
+never used to release risk or manufacture conflict.
+
+The simulator models the matching input-ownership rule. `poll` exposes due
+observations once per gateway incarnation but retains their canonical bytes.
+`restart_delivery` re-exposes everything not acknowledged, and
+`acknowledge_observation` removes an identity only after a committed result is
+observed. This is the replayable-input option; a future adapter for a venue that
+cannot replay must durably journal the observation before acknowledging it.
+That adapter choice depends on real venue capability and remains outside Phase 5.
+
+The byte migration is explicit: kernel command/result and state snapshot schemas
+advance to V6 with no silent V5 reinterpretation. Measured resident state is
+81,360 bytes against the 81,920-byte ceiling; maximum canonical snapshot is
+65,451 bytes; headroom is 560 and 85 bytes respectively. The small snapshot
+margin is now an engineering constraint: further replicated fields require a
+reviewed rebalance or schema redesign rather than optimistic packing.
+
+### 10.14 Independent evidence and recovery proofs
+
+Acceptance machinery must not obtain its expected and actual values from the
+same returned object. The original execution matrix incremented both its
+per-order booked total and its per-execution booked count from
+`ApplyResult::filled_quantity`. A reducer that emitted the expected receipt but
+failed to move position would satisfy both comparisons. Result loss made the
+inverse mistake: it skipped the bookkeeping even though cluster state had already
+mutated.
+
+The corrected oracle samples authoritative position immediately before and after
+every fill apply, before any simulated result loss. The execution's side converts
+that signed delta back to executed quantity; the ledger permits one nonzero
+mutation per `(VenueId, ExecutionId)` and the signed sum must equal final
+risk-account position movement. Returned receipts still prove identity and
+refusal reason, but no longer prove their own economic effect.
+
+Polling cannot independently prove that every venue execution was delivered,
+because queue deletion removes both the input and the oracle's observation of
+the input. The simulator therefore records execution truth at venue-book mutation
+and records delivery separately. Every actual execution must later enter the
+replayable delivery ledger with the same order, side, and quantity. Disconnect
+changes only the session assigned to future observations; it neither erases nor
+acknowledges already scheduled evidence. This is the same ownership rule as a
+durable input log: producer acknowledgement, not connection lifetime, releases
+the record.
+
+Recovery uses the same authority ordering. `GatewayDeliveryState` is a
+reconstructible process cache; `TradingState` is replicated authority. An effect
+may become `incomplete` after startup scanning when definitive sibling evidence
+resolves the order and settles orphaned effects. Recovery completion must inspect
+the current outbox state before any cached `awaiting_response` flag. Pending or
+otherwise unresolved replicated effects still block; acknowledged, rejected,
+unknown, reconciling, conflict, incomplete, and safely swept effects do not.
+
+Snapshot validation follows cross-record ownership rather than validating new V6
+fields in isolation. When a retained venue-event result names a retained effect,
+both must name the same decision. When an applied fill or venue event names a
+retained order's decision, the order's monotonic evidence revision must cover the
+result state version. These checks reject checksum-valid graphs that the reducer
+could never produce and that reclamation or stale-query barriers would otherwise
+trust.
+
+One identity issue remains pending explicit byte-contract approval. Native venue
+control evidence and gateway-synthesized reconciliation evidence currently share
+the three-number venue/session/sequence key even though they have different
+sequence producers. The recommended representation derives a two-valued origin
+domain from `VenueObservationKind` and retains it in the unused venue-event result
+metadata word. This costs no resident or wire bytes. A domain per event kind is
+rejected because it weakens global native sequence uniqueness; numeric ranges are
+rejected because convention is not proof; an explicit observation field is
+rejected for now because snapshot headroom is only 85 bytes.
+
+Proof-carrying retention needs a control escape from its own bound. If every
+ordinary receipt slot contains an unacknowledged gateway result, making the
+acknowledgement compete for an ordinary free slot deadlocks reclamation. The
+acknowledgement therefore has a narrow admission rule: only a syntactically
+valid, forward-moving prefix from an existing caller may evaluate compaction
+against its proposed value. Covered receipts are removed first, after which the
+command advances the cursor and occupies a normal receipt slot. No permanent
+slot is reserved, and a command that cannot prove it will free capacity remains
+refused.
+
+Producer acknowledgement does not make every fill result permanently valuable.
+The original applied `(VenueId, ExecutionId)` receipt remains the economic
+identity tombstone while its order exists. An `already_applied` or identity-
+conflict response is derivable from that tombstone and may compact once consumed.
+For state-changing capacity or quantity conflict, the first exact execution
+receipt remains and repeated copies compact. This bounds duplicate delivery
+without erasing either the booked identity or the evidence that made an order
+conflicted.
+
+`fill_quantity_conflict` now has one lifecycle meaning. Even the checked-
+arithmetic failure path marks the order conflicted and advances its evidence
+revision; returning the same code without recording the disagreement made
+snapshot validation dependent on hidden control flow. Snapshot admission can
+therefore require the order revision to cover retained fill-capacity and
+fill-quantity conflict results as well as applied observations.
+
+### 10.15 Native and synthetic observations are different identity domains (approved 2026-09-15)
+
+Every `VenueObservation` carried a `(VenueId, VenueSessionId, VenueSequence)`
+triple and the reducer deduplicated all of them on it. Only some of them own one.
+
+NATIVE observations - `order_acknowledged`, `order_rejected`, `fill`, `cancelled`
+- are the venue's own events. The sequence is the venue's, it is monotonic
+because the venue says so, and the triple is a real identity the cluster may
+refuse a repeat on.
+
+SYNTHETIC observations - `effect_unknown`, `order_reconciled`,
+`cancel_reconciled` - are authored by the GATEWAY about an order. A declared
+timeout is not a venue event. A query answer is a snapshot, not an event, and
+10.1.6 already records that it has no venue sequence of its own. Whatever number
+reached the wire was chosen by the shell, and nothing coordinates that choice
+with the venue's counter.
+
+WHAT THE SHARED DOMAIN COSTS, in both directions and both reachable:
+
+- a gateway-authored `effect_unknown` takes sequence N; the venue later answers
+  the same cancel for real at its own sequence N; the native cancellation is
+  refused `venue_event_identity_conflict`. Real venue evidence discarded because
+  a gateway-authored record squatted on a number it did not own.
+- the venue used sequence N earlier; a reconciliation answer carrying N is
+  refused the same way. That answer is the only thing that can resolve an
+  unknown effect, so the order is stranded with nothing else able to reach it.
+
+Reserving a numeric band for the gateway was considered and rejected. It prevents
+a collision only for as long as the assumption about the band holds, and a real
+venue's sequence is whatever that venue emits - the gateway cannot know it in
+advance. An assumption that fails once and fails silently is worse than no
+assumption.
+
+THE CONTRACT. `ObservationOrigin` is derived from the observation kind by a total
+switch, so the two can never disagree and no byte is spent saying twice what the
+kind already says once. `find_applied_native_event` searches the native domain
+only, and the venue-event path consults it only for a native observation.
+
+The origin is RETAINED in venue-event result metadata word 1 - the word left free
+when 10.13 put the owning `EffectId` in word 0. A reclamation or deduplication
+pass must know whether a receipt's sequence means anything without going to find
+the observation it came from. Zero bytes added: `ApplyResult` stays 112 bytes,
+`TradingState` stays 81,360 with 560 bytes of headroom, and the maximum canonical
+snapshot stays 65,451. Retained result VALUES change, so the codec and snapshot
+schemas move to V7 and the golden corpora were regenerated as a reviewed
+migration.
+
+WHAT PROTECTS A SYNTHETIC REPLAY INSTEAD, and it is stronger for this purpose
+than a number nobody owns:
+
+1. COMMAND IDENTITY. The retained request receipt answers an identical command
+   with the original result and does not re-execute. The gateway's evidence
+   obligation (9.5) retries under the identity it first used, byte for byte,
+   which is what makes this work - and that makes the seam's identity discipline
+   load-bearing for reconciliation and not only for delivery. Pinned by
+   `test_a_replayed_synthetic_answer_is_caught_by_command_identity` rather than
+   left as an inference.
+2. IDEMPOTENCE BY VALUE. Reconciliation carries a FINAL CUMULATIVE total, so
+   re-deciding it against what the cluster already holds computes a delta of
+   zero. This was always the real safety argument (10.1.6); deduplication was an
+   optimisation standing in front of it.
+
+A consequence worth stating because a test had pinned the old behaviour: a
+synthetic answer re-presented under a fresh identity after its effect has
+resolved is now refused `venue_observation_not_applicable` rather than
+`already_applied`. The old refusal claimed "this identity is taken", which was a
+statement about a number nobody owned. The new one is a statement about the
+ORDER, and it is the same statement the reducer makes about any late evidence for
+a settled effect.
+
+FILLS ARE UNCHANGED and deliberately so. A fill is native, and its authoritative
+economic identity is `(VenueId, ExecutionId)` rather than the sequence triple -
+that is what makes a duplicate fill impossible to book twice, and it is
+independent of everything above.
+
+THE SIMULATOR ACKNOWLEDGES BY CANONICAL FINGERPRINT, not by the triple. Matching
+on `(venue, session, sequence)` let a synthetic observation retire a native one
+the cluster had not yet committed - evidence loss dressed up as bookkeeping, and
+invisible because the queue merely got shorter.
+
+The decoder validates word 1 as an exact enum value. `event_origin()` resolves
+anything it does not recognise to `native`, which is the correct fail-closed
+reading at runtime and precisely the wrong thing to accept from a decoder: a
+forged word would move a gateway-authored receipt into the venue's identity
+domain, where it can refuse real venue evidence.
 
 ## 11. Execution authority and kill contract
 

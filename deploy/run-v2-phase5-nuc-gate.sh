@@ -9,9 +9,9 @@ set -Eeuo pipefail
 # architecture: `TradingState` must still fit 81,920 bytes and the canonical
 # snapshot 65,536, with x86-64 struct padding and alignment rather than ARM64's.
 #
-# That matters because architecture 10.5.3 shows the state ceiling is what makes
-# the sixteen-conflict saturation bound immovable. If the layout is tighter here,
-# the bound is tighter here, and the ADR 0002 two-machine topology has to know it.
+# That matters because architecture 10.12 derives the best-case eight unresolved
+# orders from the sixteen-record submit-plus-reserved-cancel outbox budget. If
+# the layout is tighter here, that availability bound cannot be raised safely.
 #
 # No firmware power interface exists on a NUC, so the Pi's throttled=0x0
 # precondition is disabled rather than fabricated.

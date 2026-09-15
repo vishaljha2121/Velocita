@@ -15,6 +15,150 @@ release-engineering work.
 
 ### Phase 5 in development - venue simulator and execution gateway
 
+#### Native and synthetic observation identity domains — 2026-09-15
+
+Approved material contract, implemented RED/GREEN. Every `VenueObservation`
+carried a `(VenueId, VenueSessionId, VenueSequence)` triple and the reducer
+deduplicated all of them on it, but only the venue's own events own one.
+`effect_unknown`, `order_reconciled` and `cancel_reconciled` are authored by the
+gateway; whatever sequence reached the wire was chosen by the shell, and nothing
+coordinates that choice with the venue's counter.
+
+Two reachable REDs pinned, in both directions: a native cancellation refused
+`venue_event_identity_conflict` because a gateway-authored `effect_unknown` had
+taken its sequence, and a reconciliation answer refused because the venue had
+once used the number the shell put on it. The second case strands the order,
+because that answer is the only thing that can resolve an unknown effect.
+
+`ObservationOrigin` is derived from the observation kind by a total switch and
+retained in venue-event result metadata word 1, the word left free when
+proof-carrying reclamation put the owning `EffectId` in word 0. Sequence
+deduplication now searches the native domain only. Synthetic replay is protected
+by retained command identity and by idempotence in value - reconciliation carries
+a final cumulative total, so re-deciding it computes a delta of zero. Fills are
+unchanged: their authoritative economic identity is `(VenueId, ExecutionId)`.
+
+The simulator acknowledges scheduled observations by canonical fingerprint rather
+than by the triple, so a synthetic observation can no longer retire a native one
+the cluster has not committed. The decoder validates word 1 as an exact enum
+value, because the runtime accessor resolves an unrecognised word to `native` and
+a forged word would otherwise move a gateway-authored receipt into the venue's
+identity domain.
+
+Measured rather than estimated: zero bytes added. `ApplyResult` stays 112 bytes,
+`TradingState` stays 81,360 with 560 bytes of headroom, and the maximum canonical
+snapshot stays 65,451. Retained result values change, so kernel-codec and
+state-snapshot schemas move V6 to V7 and the golden corpora were regenerated as a
+reviewed migration. Host Release 29/29.
+
+Behaviour change worth recording because a test had pinned the old outcome: a
+synthetic answer re-presented under a fresh identity after its effect has
+resolved is now refused `venue_observation_not_applicable` rather than
+`already_applied`. The old refusal asserted that an identity was taken; the new
+one asserts a fact about the order.
+
+#### Reopened acceptance correction review — 2026-09-14
+
+Reviewed correction commits `65cadc2..5b9eaa2` from Git after the previous
+author's session ended without a new handoff. Host Release 29/29, full Debug
+ASan+UBSan 29/29, and model 109/109 reproduced on the inherited tree. These are
+baseline results, not acceptance: permanent counterexamples added afterward
+intentionally reopen the focused suite.
+
+Added a public-command RED proving that the venue-event expiry watermark mixed
+native venue sequences with gateway-authored reconciliation/control sequences.
+The high synthetic values advanced the shared floor past a new native fill and
+the kernel returned `venue_event_expired` despite a new `(VenueId, ExecutionId)`
+inside the retained reservation. Removed that redundant fill-side expiry check;
+fill deduplication and retention already use the economically authoritative
+execution identity, so the session watermark added only an unsafe rejection
+path. The focused gateway-delivery suite returned GREEN.
+
+Added the corresponding fresh-cancel RED. It still returns
+`venue_event_expired`, proving a fill exemption is containment rather than a
+sound reclamation contract. The required replacement is proof-carrying
+reclamation: ownership/economic liveness, effect settlement, and producer
+acknowledgement of the committed result must all precede compaction. The proposed
+canonical changes and rejected shortcuts are recorded at the top of
+`docs/CURRENT_HANDOFF.md`; implementation is paused for the required material
+contract review.
+
+Approved and replaced the heuristic with proof-carrying reclamation. Schema V6
+removes replicated venue cursors, records the exact observation `EffectId` in
+the unchanged-size `ApplyResult`, adds monotonic command kind 18 for the stable
+gateway to acknowledge committed result prefixes, and retains a venue-event
+receipt until both consumer acknowledgement and effect settlement/supersession
+are proven. Code 59 remains reserved for historical decoding and is no longer
+emitted.
+
+Replaced the receipt-count query barrier with
+`ClusterOrder::last_evidence_state_version` and required an independent
+`ordered_after_relevant_sends` venue-finality fact in addition to a complete
+query window. This removes count ABA after reclamation and prevents an old but
+complete query from releasing or conflicting current risk.
+
+Made simulator delivery replayable until explicit post-commit acknowledgement.
+Permanent crash-cut tests cover poll-before-obligation,
+obligation-before-proposal, and apply-before-result; a replayed fill changes the
+position exactly once. After 40 legal cancel/reconcile cycles the corrected
+path retained 18/64 venue events instead of wedging at 64 after 31 cycles.
+Host Release and full Debug ASan+UBSan pass 29/29. `TradingState` is 81,360 bytes with 560 bytes of
+headroom; maximum canonical snapshot is 65,451 bytes with 85 bytes of headroom.
+
+Repaired three remaining acceptance oracles. A resolved-and-swept order no longer
+excuses a never-booked execution: the order must remain conflicted and its exact
+venue/execution receipt must remain retained. Restart recovery no longer treats a
+settled `incomplete` effect as an in-flight response and therefore cannot deadlock
+its barrier on a non-deliverable effect. A replicated policy rotation proves a
+new logical slot reaches authorization after eight conflicts and is refused by
+`outbox_capacity_exceeded`; the bound is the sixteen-record submit-plus-reserved-
+cancel budget, not the eight templates in one policy.
+
+Made undefined-behavior diagnostics fatal in the shared target gate with both
+`-fno-sanitize-recover=undefined` and `UBSAN_OPTIONS=halt_on_error=1`. A permanent
+signed-overflow negative probe must emit the expected UBSan diagnostic and exit
+nonzero before sanitized suites may run. Leak detection remains explicitly off
+and is not conflated with UBSan termination.
+
+Closed five further proof gaps found by adversarial review. Recovery completion
+now follows current replicated outbox state when an effect becomes `incomplete`
+after startup scanning, rather than allowing a stale process-local response flag
+to deadlock the barrier. Gateway receipt reclamation pins every request above the
+producer's acknowledged prefix, so a later acknowledgement command cannot expire
+an earlier uncommitted gap; full-fill and conflicting-fill evidence retain their
+exact execution and decision ownership across arena pressure.
+
+Made the execution oracle independent of reducer result bytes. It samples the
+risk-account position before and after every fill apply—even when the simulated
+client result is lost—and attributes the signed economic delta to the execution.
+The simulator separately records every execution when venue state changes, before
+delivery scheduling. The matrix now rejects both a successful-looking fill with
+no economic mutation and an actual venue execution that never entered replayable
+delivery.
+
+Disconnect no longer clears scheduled observations: reconnect changes the
+identity of future events but is not proof that prior unacknowledged evidence was
+consumed. Permanent tests cover query disconnect before poll, query disconnect
+after poll/before acknowledgement, and a later send disconnect. Snapshot V6 now
+validates proof-field relationships, rejecting cross-decision effect links and
+evidence revisions older than retained applied observations. The native-versus-
+synthetic event identity-domain correction remains open for explicit byte-contract
+approval.
+
+Added two bounded-liveness regressions around the producer acknowledgement. A
+full 256-receipt arena can now admit the valid monotonic acknowledgement that
+releases covered results; malformed or regressive acknowledgements have no
+special lane. A live partially filled order also survives more than 256
+acknowledged redeliveries of one execution without exhausting receipts. The
+original applied receipt and one exact state-changing conflict receipt remain;
+replay-only result receipts compact because their answers are reproducible.
+
+Unified `fill_quantity_conflict`: every path now makes conflict sticky and
+advances `last_evidence_state_version`. Snapshot validation consequently covers
+both applied observations and state-changing fill-capacity/quantity refusals,
+without inferring mutation from an ambiguous result code. Current-tree host
+Release is 29/29 after a complete rebuild; target and sanitized reruns remain.
+
 Phase 5 opened with a contract review rather than code, because sections 9
 through 15 - the primary gateway contract - had never passed an approval gate
 while sections 8.1 through 8.7 had. The review found thirteen contradictions or

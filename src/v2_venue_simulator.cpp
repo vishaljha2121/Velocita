@@ -1,20 +1,19 @@
 #include "velocita/v2/venue_simulator.hpp"
 
+#include "velocita/v2/digest.hpp"
+
 #include <algorithm>
 
 namespace velocita::v2::sim {
 namespace {
 
-// Digest a scheduled observation so the evidence field is non-zero and varies.
-// The simulator is not a venue's cryptography; this only has to be deterministic
-// and distinct, since the kernel checks only that it is non-zero.
+// Deterministic test evidence, not cryptographic venue proof.
 [[nodiscard]] Digest256 evidence_of(const std::uint64_t marker) noexcept {
     Digest256 value;
     for (std::size_t index = 0; index < 8; ++index) {
         value.bytes[index] = static_cast<std::byte>((marker >> (index * 8)) & 0xFF);
     }
-    // Guarantee non-zero even for marker 0, which would otherwise fail
-    // `validate()` for a reason that has nothing to do with the test.
+    // Validation requires non-zero evidence even for marker zero.
     value.bytes[8] = std::byte{0x01};
     return value;
 }
@@ -34,35 +33,15 @@ std::uint64_t SimulatedVenue::next_random() noexcept {
 }
 
 bool SimulatedVenue::roll(const std::uint16_t permille) noexcept {
-    // Always consume a draw, even at zero probability. Otherwise enabling one
-    // fault would shift every later draw and a "same seed, one extra fault"
-    // comparison would diverge for reasons unrelated to the fault.
+    // Consume a draw even at zero probability so toggling one fault preserves later draws.
     const auto draw = next_random() % 1000;
     return permille != 0 && draw < permille;
 }
 
 FaultSet SimulatedVenue::choose_faults(const bool for_query) noexcept {
-    // EVERY CLASS ROLLS, EVERY TIME, IN A FIXED ORDER.
-    //
-    // The old selector returned on the first match, so a class could only fire
-    // when no earlier class had - and cross-category combinations were
-    // unreachable by construction. A partial fill and a lost response could never
-    // reach the same order, which is precisely the interleaving that leaves an
-    // order unknown while already holding booked fills, which is precisely how a
-    // reconciliation conflict arises. The matrix could not produce one, and the
-    // acceptance record said so as though it were a property of the system rather
-    // than of the selector.
-    //
-    // Rolling unconditionally also means enabling one class cannot reshuffle
-    // another's draws, which `roll` already guaranteed within an operation and
-    // the early returns then gave back.
+    // Roll every applicable class in fixed order so faults can compose reproducibly.
     FaultSet faults;
     if (for_query) {
-        // A query runs over the same session a send does, so it is subject to the
-        // same disconnect. Without this, `QueryOutcome::unavailable` would be
-        // unreachable and the most safety-critical branch of the gateway's
-        // classifier - the one that refuses to read silence as absence - would
-        // never be exercised by the matrix.
         faults.disconnect = roll(policy_.disconnect_permille);
         faults.inconsistent_query = roll(policy_.inconsistent_query_permille);
         faults.partial_window = roll(policy_.partial_window_permille);
@@ -111,16 +90,12 @@ VenueObservation SimulatedVenue::base_observation(const VenueObservationKind kin
 
 void SimulatedVenue::schedule(VenueObservation observation, const Tick due,
                               const bool duplicate, const bool reorder) {
-    // Reorder pulls a response earlier than its natural position by giving it a
-    // lower ordinal than everything already queued. That models a venue whose
-    // transport does not preserve order, without needing a second queue.
+    // Zero ordinal moves a response ahead of natural-order responses due at the same tick.
     const auto ordinal = reorder ? 0 : ++ordinal_;
-    scheduled_.push_back({due, ordinal, observation});
+    scheduled_.push_back({due, ordinal, observation, false});
     if (duplicate) {
-        // A duplicate is byte-identical, including its sequence and evidence.
-        // That is the case that matters: a duplicate carrying fresh identity
-        // would be caught trivially by identity checks.
-        scheduled_.push_back({due, ordinal, observation});
+        // Duplicate canonical bytes, including sequence and evidence.
+        scheduled_.push_back({due, ordinal, observation, false});
     }
 }
 
@@ -128,17 +103,10 @@ SendOutcome SimulatedVenue::send(const OrderEffect& effect, const Tick now) {
     const auto faults = choose_faults(false);
     fault_log_.push_back(faults);
 
-    // Both mean the effect never reached the venue's book, so nothing else can
-    // act on it. That is a consequence, not a precedence rule.
     if (faults.rate_limit) return SendOutcome::rate_limited;
 
     if (faults.disconnect) {
-        // The session ends before the venue can answer. Anything in flight for
-        // the old session is abandoned, and the caller cannot tell whether this
-        // effect arrived: that is precisely an ambiguous outcome, never a
-        // rejection.
         session_ = VenueSessionId{session_.value() + 1};
-        scheduled_.clear();
         return SendOutcome::ambiguous;
     }
 
@@ -146,45 +114,32 @@ SendOutcome SimulatedVenue::send(const OrderEffect& effect, const Tick now) {
         auto* order = find(effect.cluster_order_id);
         if (order == nullptr) return SendOutcome::business_rejected;
         order->cancelled = true;
-        // LOSS APPLIES TO A CANCEL TOO. The old code scheduled the cancellation
-        // unconditionally and returned before the submit branch's loss check, so
-        // selecting `loss` for a cancel lost nothing at all - the label was in
-        // the log and the behaviour it names never happened. That is the exact
-        // reason the tests now assert observable effects rather than labels.
-        //
-        // The venue really did cancel; the gateway simply never hears. That is
-        // the case the cancel-redelivery rule (10.3.5) exists for.
+        // Loss suppresses the cancellation response, not the venue-side cancellation.
         if (!faults.loss) {
             auto cancelled =
                 base_observation(VenueObservationKind::cancelled, *order);
-            // Attributed to the CANCEL effect, not the submit. `base_observation`
-            // carries the resting order's originating effect, which is right for
-            // an acknowledgement or a fill but wrong here: a cancellation
-            // resolves the cancel effect, and reporting it against the submit
-            // would leave the cancel outstanding until it timed out while the
-            // reducer refused the evidence as inapplicable to a submit.
+            // Cancellation resolves the cancel effect; the resting order retains the submit EffectId.
             cancelled.effect_id = effect.effect_id;
             schedule(cancelled, now + latency(faults), faults.duplication,
                      faults.reorder);
         }
 
         if (faults.fill_after_cancel && order->filled < order->original) {
-            // A fill that was already in flight lands after the cancellation is
-            // confirmed. The order really did trade; the cluster must account
-            // for it rather than treat the cancel as final.
+            // A fill already in flight can arrive after cancellation acknowledgement.
             auto fill = base_observation(VenueObservationKind::fill, *order);
             fill.execution_id = ExecutionId{++execution_counter_};
             fill.side = order->side;
             fill.price = order->price;
             fill.quantity = QuantityLots::from_atoms(1);
             order->filled = QuantityLots::from_atoms(order->filled.atoms() + 1);
+            executions_.push_back({fill.venue_id, fill.execution_id,
+                                   fill.cluster_order_id, fill.side,
+                                   fill.quantity});
             schedule(fill, now + latency(faults) + 1, false, false);
         }
         return SendOutcome::accepted;
     }
 
-    // A submit. Duplicate client identity is the venue's own idempotency, and it
-    // is what makes at-least-once delivery safe under G-025.
     if (find(effect.cluster_order_id) != nullptr) {
         return SendOutcome::venue_duplicate;
     }
@@ -200,17 +155,8 @@ SendOutcome SimulatedVenue::send(const OrderEffect& effect, const Tick now) {
 
     auto& resting = resting_.back();
     if (faults.loss) {
-        // Accepted at the venue, but no response to THIS OPERATION will ever
-        // arrive. The gateway must eventually treat it as unknown and reconcile -
-        // never as a rejection, and never as a licence to resend blindly.
-        //
-        // `loss` means the response stream for one operation dies, and the venue
-        // is left holding the order exactly as it was. It does NOT mean the venue
-        // silently traded: an order that filled with no execution ever reported
-        // could not be closed by any later evidence, because `order_reconciled`
-        // carries a cumulative total and no execution identity, so the cluster
-        // would have a permanently unresolvable order by construction rather than
-        // by fault.
+        // Leave the accepted order resting. Unreported executions cannot be recovered
+        // from reconciliation totals alone, which carry no execution identities.
         return SendOutcome::accepted;
     }
 
@@ -219,18 +165,7 @@ SendOutcome SimulatedVenue::send(const OrderEffect& effect, const Tick now) {
 
     const auto total = resting.original.atoms();
     if (faults.partial_fill && total > 1) {
-        // One atom at a time, and it stops HALF WAY. Partial fills are where
-        // duplicate-fill accounting actually bites: reservation arithmetic alone
-        // cannot catch a repeated partial, because filled plus remaining stays
-        // within the original.
-        //
-        // Leaving the rest resting is what makes the cancel path reachable at
-        // all. Every submit used to fill completely and immediately, so by the
-        // time a cancel arrived there was nothing left to cancel - which is why
-        // `fill_after_cancel` could previously only fire on an order whose
-        // submit response had been LOST, and why a partially filled order with a
-        // silent cancel, the one shape a reconciliation conflict comes from, was
-        // unreachable.
+        // Leave half resting so cancellation and fill-after-cancel remain reachable.
         const auto pieces = total / 2;
         for (std::int64_t index = 0; index < pieces; ++index) {
             auto fill = base_observation(VenueObservationKind::fill, resting);
@@ -238,6 +173,9 @@ SendOutcome SimulatedVenue::send(const OrderEffect& effect, const Tick now) {
             fill.side = resting.side;
             fill.price = resting.price;
             fill.quantity = QuantityLots::from_atoms(1);
+            executions_.push_back({fill.venue_id, fill.execution_id,
+                                   fill.cluster_order_id, fill.side,
+                                   fill.quantity});
             schedule(fill, now + latency(faults) + static_cast<Tick>(index) + 1,
                      false, false);
         }
@@ -248,10 +186,10 @@ SendOutcome SimulatedVenue::send(const OrderEffect& effect, const Tick now) {
         fill.side = resting.side;
         fill.price = resting.price;
         fill.quantity = resting.original;
-        // A duplicated FILL is the economically dangerous duplicate: booking it
-        // twice doubles the position, which no reservation arithmetic downstream
-        // can undo. Duplicating only the acknowledgement would have exercised the
-        // identity check on the harmless case and left this one untested.
+
+        executions_.push_back({fill.venue_id, fill.execution_id,
+                               fill.cluster_order_id, fill.side,
+                               fill.quantity});
         schedule(fill, now + latency(faults) + 1, faults.duplication, false);
         resting.filled = resting.original;
     }
@@ -266,16 +204,34 @@ std::vector<VenueObservation> SimulatedVenue::poll(const Tick now) {
                          return left.ordinal < right.ordinal;
                      });
     std::vector<VenueObservation> due;
-    std::size_t kept = 0;
     for (auto& entry : scheduled_) {
-        if (entry.due <= now) {
+        if (entry.due <= now && !entry.delivered) {
             due.push_back(entry.observation);
-        } else {
-            scheduled_[kept++] = entry;
+            entry.delivered = true;
         }
     }
-    scheduled_.resize(kept);
     return due;
+}
+
+void SimulatedVenue::acknowledge_observation(
+    const VenueObservation& observation) noexcept {
+    // By canonical fingerprint, not by (venue, session, sequence). That tuple is
+    // an identity only for native events, so acknowledging by it lets a
+    // gateway-authored observation retire a native one the cluster has not
+    // committed - evidence loss that is invisible because the queue merely gets
+    // shorter.
+    const auto acknowledged = observation_fingerprint(observation);
+    scheduled_.erase(
+        std::remove_if(scheduled_.begin(), scheduled_.end(),
+                       [&](const ScheduledObservation& entry) noexcept {
+                           return observation_fingerprint(entry.observation) ==
+                                  acknowledged;
+                       }),
+        scheduled_.end());
+}
+
+void SimulatedVenue::restart_delivery() noexcept {
+    for (auto& entry : scheduled_) entry.delivered = false;
 }
 
 QueryResult SimulatedVenue::query(const ClusterOrderId order, const Tick) {
@@ -283,17 +239,12 @@ QueryResult SimulatedVenue::query(const ClusterOrderId order, const Tick) {
     fault_log_.push_back(faults);
 
     if (faults.disconnect) {
-        // The session ended mid-question. The venue said nothing, and nothing may
-        // be concluded from that - in particular NOT that the order is absent.
         session_ = VenueSessionId{session_.value() + 1};
-        scheduled_.clear();
         return {QueryOutcome::unavailable, {}, {}, {}, false, false};
     }
 
     auto* resting = find(order);
     if (resting == nullptr) {
-        // Nothing here. Distinct from `unavailable`: this is an answer, and a
-        // gateway may act on it.
         return {QueryOutcome::not_found, {}, {}, {}, false, false};
     }
 
@@ -306,32 +257,14 @@ QueryResult SimulatedVenue::query(const ClusterOrderId order, const Tick) {
     result.cancelled = resting->cancelled;
 
     if (faults.inconsistent_query) {
-        // The venue contradicts what it already reported, in the direction that
-        // actually matters: DOWNWARD. It denies fills it has already sent.
-        //
-        // Corrupting upward would be the benign direction - the cluster reads a
-        // total ahead of its own evidence as fills still in flight, which is
-        // usually true and is recoverable. Denying a fill is unclosable: no
-        // future evidence reduces what the cluster has already booked. ADR 0001
-        // is explicit that reconciliation "never overwrites conflicting evidence
-        // to make a dashboard green", and this is the case that tests it.
+        // Deny already-reported fills: later evidence cannot reduce booked executions.
         result.filled_quantity = QuantityLots{};
         result.remaining_quantity = resting->original;
         result.inconsistent = true;
     }
 
     if (faults.partial_window) {
-        // A paged execution history. The venue is not lying: it is answering for
-        // the page it read and saying so. The numbers are a genuine PREFIX of the
-        // truth, which is exactly why a bounded answer is indistinguishable from a
-        // short one to anybody who ignores the flag.
-        //
-        // `inconsistent` stays false on purpose. Nothing was corrupted, and a test
-        // asserting on corruption must not be able to confuse the two.
-        // Pages whatever the answer currently says, so a corrupted answer that
-        // is ALSO paged reads as a page of the corruption rather than silently
-        // undoing it. Composition has to leave both facts visible or one class
-        // quietly cancels the other.
+        // Page the current answer, including any corruption, so both faults remain visible.
         const auto paged = result.filled_quantity.atoms() / 2;
         result.filled_quantity = QuantityLots::from_atoms(paged);
         result.remaining_quantity =

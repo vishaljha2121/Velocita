@@ -1,14 +1,3 @@
-// Phase 5: the execution gateway's final pre-send guard.
-//
-// The property under test is narrow and absolute: an effect that fails the guard
-// is never handed to a transport. Everything else in Phase 5 - the simulator,
-// the fault matrix, reconciliation - hangs off this boundary, so it is worth
-// fixing before any of it exists.
-//
-// The transport here is a recording double. It exists to prove a negative: that
-// send() was NOT called. A test that only checked the returned refusal code
-// would pass even if the shell sent the effect anyway.
-
 #include "velocita/v2/gateway.hpp"
 #include "velocita/v2/payload.hpp"
 
@@ -35,8 +24,7 @@ Digest256 digest(const std::uint8_t marker) {
     return value;
 }
 
-// Records every send. The gateway shell must consult the guard first, so a
-// refused effect must leave this empty.
+// Assert the transport stayed empty: a refusal code alone cannot prove no send occurred.
 class RecordingTransport final {
 public:
     void send(const OrderEffect& effect) {
@@ -50,9 +38,6 @@ private:
     std::vector<std::vector<std::byte>> sent_;
 };
 
-// The shell, reduced to its essence: consult the guard, send only if permitted.
-// Everything untestable about a real gateway - sockets, clocks, queues - lives
-// above this line; nothing below it is untestable.
 PreSendDecision deliver(const TradingState& state,
                         const EffectId effect_id,
                         const GatewayControlView& control,
@@ -63,11 +48,6 @@ PreSendDecision deliver(const TradingState& state,
     if (decision.permitted()) transport.send(*decision.effect);
     return decision;
 }
-
-// --- fixture ---------------------------------------------------------------
-//
-// Built through real commands rather than by hand, so the guard is exercised
-// against states the kernel can actually produce.
 
 PolicyArtifact policy() {
     PolicyArtifact value;
@@ -222,8 +202,6 @@ constexpr VenueCapabilityView capable_venue() {
 
 constexpr SendQuotaView open_quota() { return {16}; }
 
-// --- tests -----------------------------------------------------------------
-
 void test_a_permitted_effect_is_sent_with_its_exact_canonical_bytes() {
     const auto fixture = authorized_submit();
     RecordingTransport transport;
@@ -233,9 +211,7 @@ void test_a_permitted_effect_is_sent_with_its_exact_canonical_bytes() {
     require(decision.permitted(), "a valid effect was refused before send");
     require(transport.send_count() == 1, "a permitted effect was not sent once");
 
-    // The gateway may not economically modify an effect (ADR 0001 invariant 3),
-    // so what reaches the transport must be byte-identical to what the cluster
-    // can independently reconstruct.
+    // Transport bytes must equal the cluster's canonical reconstruction.
     const auto authoritative = materialize_order_effect(fixture.state, fixture.effect_id);
     require(authoritative.has_value() &&
                 encode_payload(*authoritative).bytes == transport.last(),
@@ -251,8 +227,7 @@ void test_the_guard_reads_no_clock_and_mutates_nothing() {
                                          open_quota());
     require(std::memcmp(&probe, &fixture.state, sizeof(TradingState)) == 0,
             "the pre-send guard mutated authoritative state");
-    // Same inputs, same answer: the guard is a function, not a sampler. A clock
-    // read anywhere inside it would eventually break this.
+
     const auto second = evaluate_pre_send(probe, fixture.effect_id,
                                           matching_control(probe), capable_venue(),
                                           open_quota());
@@ -278,7 +253,6 @@ void test_stale_control_authority_is_never_sent() {
                 what + ": a refused effect reached the transport");
     };
 
-    // Architecture 9.1.3: this IS the expiry check. There is no deadline field.
     auto newer_generation = matching_control(fixture.state);
     newer_generation.executor_generation =
         ExecutorGeneration{fixture.state.executor_generation.value() + 1};
@@ -302,10 +276,6 @@ void test_a_venue_that_cannot_represent_the_intent_is_refused_not_approximated()
     const auto fixture = authorized_submit();
     RecordingTransport transport;
 
-    // The fixture's template requires post-only. Architecture 9.1.4: lowering is
-    // representation only, so a venue without post-only must be refused rather
-    // than sent a downgraded order. This is reject-not-clamp at the transport
-    // boundary, matching the rule Phase 3D set for the policy envelope.
     auto venue = capable_venue();
     venue.supports_post_only = false;
     const auto decision = deliver(fixture.state, fixture.effect_id,
@@ -316,7 +286,6 @@ void test_a_venue_that_cannot_represent_the_intent_is_refused_not_approximated()
     require(transport.send_count() == 0,
             "an unrepresentable effect was approximated onto the venue");
 
-    // A different venue entirely is not this effect's venue.
     auto wrong_venue = capable_venue();
     wrong_venue.venue_id = VenueId{99};
     RecordingTransport other;
@@ -347,9 +316,6 @@ void test_an_unknown_or_unreconstructable_effect_is_refused() {
                 transport.send_count() == 0,
             "an unknown EffectId was not refused");
 
-    // Corrupting the retained digest makes the payload unreconstructable. There
-    // is then nothing safe to send, and the guard must say so rather than
-    // sending a reconstruction it cannot vouch for.
     auto corrupt = fixture.state;
     corrupt.outbox_effects[0].payload_digest = digest(0xEE);
     RecordingTransport second;
@@ -376,10 +342,7 @@ void test_a_settled_effect_is_not_deliverable() {
 }
 
 void test_gateway_local_delivery_states_are_never_read_from_the_cluster() {
-    // Architecture 9.1.2: `claimed` and `attempted` are gateway-local. The
-    // reducer never writes them, so encountering one in replicated state means
-    // the state is corrupt or forged, and the guard must refuse rather than
-    // interpret it.
+    // claimed and attempted are gateway-local; replicated occurrences must be refused.
     const auto fixture = authorized_submit();
     for (const auto local : {OutboxState::claimed, OutboxState::attempted}) {
         auto state = fixture.state;

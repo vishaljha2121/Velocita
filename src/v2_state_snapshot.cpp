@@ -321,10 +321,21 @@ private:
                          value.decision_id.value() != 0
                    : value.detail != ApplyResultDetail{};
     }
+    // Metadata word 1 carries the identity domain. Validated as an exact enum
+    // value because `event_origin()` resolves anything unrecognised to `native`:
+    // correct at runtime, and exactly the wrong thing to accept from a decoder,
+    // where a forged word would move a gateway-authored receipt into the venue's
+    // identity domain.
+    const auto origin = value.metadata_words[1];
+    const bool known_origin =
+        origin == static_cast<std::uint64_t>(ObservationOrigin::native) ||
+        origin == static_cast<std::uint64_t>(ObservationOrigin::synthetic);
     return accepted
                ? value.event_venue_id().value() != 0 &&
                      value.event_session_id().value() != 0 &&
                      value.event_sequence().value() != 0 &&
+                     value.event_effect_id().value() != 0 &&
+                     known_origin &&
                      value.decision_id.value() != 0
                : value.detail != ApplyResultDetail{};
 }
@@ -340,8 +351,7 @@ private:
         state.reservation_count > state.reservations.size() ||
         state.order_count > state.orders.size() ||
         state.outbox_effect_count > state.outbox_effects.size() ||
-        state.caller_cursor_count > state.caller_cursors.size() ||
-        state.venue_cursor_count > state.venue_cursors.size()) {
+        state.caller_cursor_count > state.caller_cursors.size()) {
         return false;
     }
 
@@ -461,20 +471,6 @@ private:
         }
     }
 
-    for (std::size_t index = 0; index < state.venue_cursor_count; ++index) {
-        const auto& cursor = state.venue_cursors[index];
-        if (cursor.venue_id.value() == 0 ||
-            cursor.venue_session_id.value() == 0) {
-            return false;
-        }
-        for (std::size_t prior = 0; prior < index; ++prior) {
-            if (state.venue_cursors[prior].venue_id == cursor.venue_id &&
-                state.venue_cursors[prior].venue_session_id ==
-                    cursor.venue_session_id) {
-                return false;
-            }
-        }
-    }
     for (std::size_t index = 0; index < state.caller_cursor_count; ++index) {
         const auto& cursor = state.caller_cursors[index];
         // expired_below == 0 is the canonical first-admission state: the caller
@@ -640,6 +636,7 @@ private:
         if (order.cluster_order_id.value() == 0 || order.effect_id.value() == 0 ||
             order.decision_id.value() == 0 || order.authorization_state_version == 0 ||
             order.authorization_state_version > state.state_version ||
+            order.last_evidence_state_version > state.state_version ||
             order.reservation_index >= state.reservation_count || !known(order.state) ||
             state.reservations[order.reservation_index].cluster_order_id !=
                 order.cluster_order_id) {
@@ -715,6 +712,43 @@ private:
             if (state.outbox_effects[prior].effect_id == effect.effect_id) return false;
         }
     }
+
+    for (std::size_t receipt_index = 0; receipt_index < state.receipt_count;
+         ++receipt_index) {
+        const auto& result = state.receipts[receipt_index].result;
+        const bool applied_observation =
+            result.code == ApplyCode::applied &&
+            (result.detail_kind == ApplyResultDetailKind::fill ||
+             result.detail_kind == ApplyResultDetailKind::venue_event);
+        const bool state_changing_fill_refusal =
+            result.detail_kind == ApplyResultDetailKind::fill &&
+            (result.code == ApplyCode::fill_capacity_exceeded ||
+             result.code == ApplyCode::fill_quantity_conflict);
+        if (!applied_observation && !state_changing_fill_refusal) {
+            continue;
+        }
+
+        if (result.code == ApplyCode::applied &&
+            result.detail_kind == ApplyResultDetailKind::venue_event) {
+            for (std::size_t effect_index = 0;
+                 effect_index < state.outbox_effect_count; ++effect_index) {
+                const auto& effect = state.outbox_effects[effect_index];
+                if (effect.effect_id == result.event_effect_id() &&
+                    effect.decision_id != result.decision_id) {
+                    return false;
+                }
+            }
+        }
+
+        for (std::size_t order_index = 0; order_index < state.order_count;
+             ++order_index) {
+            const auto& order = state.orders[order_index];
+            if (order.decision_id == result.decision_id &&
+                order.last_evidence_state_version < result.state_version) {
+                return false;
+            }
+        }
+    }
     return true;
 }
 
@@ -756,7 +790,6 @@ private:
     size += state.order_count * kStateSnapshotClusterOrderBytes;
     size += state.outbox_effect_count * kStateSnapshotOutboxEffectBytes;
     size += state.caller_cursor_count * kStateSnapshotCallerCursorBytes;
-    size += state.venue_cursor_count * kStateSnapshotVenueCursorBytes;
     return size;
 }
 
@@ -963,16 +996,13 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
     // state_version, so the existing header layout stays byte-stable.
     writer.integral(state.reclaimed_group_count);
     writer.integral(state.settled_incomplete_effect_count);
-    writer.integral(static_cast<std::uint16_t>(state.venue_cursor_count));
-    for (std::size_t index = 0; index < state.venue_cursor_count; ++index) {
-        writer.integral(state.venue_cursors[index].venue_id.value());
-        writer.integral(state.venue_cursors[index].venue_session_id.value());
-        writer.integral(state.venue_cursors[index].expired_below.value());
-    }
     writer.integral(static_cast<std::uint16_t>(state.caller_cursor_count));
     for (std::size_t index = 0; index < state.caller_cursor_count; ++index) {
         writer.integral(state.caller_cursors[index].caller_id.value());
         writer.integral(state.caller_cursors[index].expired_below.value());
+        writer.integral(
+            state.caller_cursors[index]
+                .gateway_results_acknowledged_through.value());
     }
 
     writer.integral(static_cast<std::uint16_t>(state.policy_count));
@@ -1073,6 +1103,7 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
         writer.integral(order.authorization_state_version);
         writer.integral(order.reservation_index);
         writer.integral(static_cast<std::uint8_t>(order.state));
+        writer.integral(order.last_evidence_state_version);
     }
 
     writer.integral(static_cast<std::uint16_t>(state.outbox_effect_count));
@@ -1368,22 +1399,14 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
         ExecutorGeneration{reader.integral<std::uint64_t>()};
     state.reclaimed_group_count = reader.integral<std::uint64_t>();
     state.settled_incomplete_effect_count = reader.integral<std::uint64_t>();
-    state.venue_cursor_count = reader.integral<std::uint16_t>();
-    if (state.venue_cursor_count > state.venue_cursors.size()) return false;
-    for (std::size_t index = 0; index < state.venue_cursor_count; ++index) {
-        state.venue_cursors[index].venue_id =
-            VenueId{reader.integral<std::uint64_t>()};
-        state.venue_cursors[index].venue_session_id =
-            VenueSessionId{reader.integral<std::uint64_t>()};
-        state.venue_cursors[index].expired_below =
-            VenueSequence{reader.integral<std::uint64_t>()};
-    }
     state.caller_cursor_count = reader.integral<std::uint16_t>();
     if (state.caller_cursor_count > state.caller_cursors.size()) return false;
     for (std::size_t index = 0; index < state.caller_cursor_count; ++index) {
         state.caller_cursors[index].caller_id =
             CallerId{reader.integral<std::uint64_t>()};
         state.caller_cursors[index].expired_below =
+            RequestSequence{reader.integral<std::uint64_t>()};
+        state.caller_cursors[index].gateway_results_acknowledged_through =
             RequestSequence{reader.integral<std::uint64_t>()};
     }
 
@@ -1530,6 +1553,7 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
         order.reservation_index = reader.integral<std::uint16_t>();
         order.state =
             static_cast<ClusterOrderState>(reader.integral<std::uint8_t>());
+        order.last_evidence_state_version = reader.integral<std::uint64_t>();
     }
 
     state.outbox_effect_count = reader.integral<std::uint16_t>();

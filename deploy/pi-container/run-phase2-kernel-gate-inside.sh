@@ -90,6 +90,12 @@ build_root="$work_root/$source_root"
 release_build="$build_root/release"
 instrumented_build="$build_root/instrumented"
 sanitized_build="$build_root/sanitized"
+sanitizer_compile_flags=(
+    -fsanitize=address,undefined
+    -fno-sanitize-recover=undefined
+    -fno-omit-frame-pointer
+)
+sanitizer_link_flags=(-fsanitize=address,undefined)
 
 {
     printf 'started_utc=%s\n' "$(date --iso-8601=seconds --utc)"
@@ -164,8 +170,8 @@ ctest --test-dir "$instrumented_build" -R '^v2-.*-tests$' --output-on-failure |
 failure_step=sanitized_configure
 cmake -S "$source_dir" -B "$sanitized_build" \
     -DCMAKE_BUILD_TYPE=Debug \
-    -DCMAKE_CXX_FLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer' \
-    -DCMAKE_EXE_LINKER_FLAGS='-fsanitize=address,undefined' \
+    -DCMAKE_CXX_FLAGS="${sanitizer_compile_flags[*]}" \
+    -DCMAKE_EXE_LINKER_FLAGS="${sanitizer_link_flags[*]}" \
     "${common_cmake_args[@]}"
 
 failure_step=sanitized_build
@@ -192,7 +198,34 @@ failure_step=sanitized_tests
 # widen what the already-accepted ARM64 evidence asserts, so it belongs in a
 # reviewed increment rather than smuggled into a target bring-up.
 export ASAN_OPTIONS="${ASAN_OPTIONS:-}${ASAN_OPTIONS:+:}detect_leaks=0"
+export UBSAN_OPTIONS="${UBSAN_OPTIONS:-}${UBSAN_OPTIONS:+:}halt_on_error=1:print_stacktrace=1"
 printf 'asan_options=%s\n' "$ASAN_OPTIONS" >>"$evidence_dir/metadata.txt"
+printf 'ubsan_options=%s\n' "$UBSAN_OPTIONS" >>"$evidence_dir/metadata.txt"
+printf 'ubsan_compile_recovery=disabled\n' >>"$evidence_dir/metadata.txt"
+
+failure_step=ubsan_negative_probe
+ubsan_probe="$sanitized_build/ubsan-negative-probe"
+c++ "${sanitizer_compile_flags[@]}" \
+    "$source_dir/deploy/pi-container/ubsan-negative-probe.cpp" \
+    "${sanitizer_link_flags[@]}" -o "$ubsan_probe"
+set +e
+"$ubsan_probe" >"$evidence_dir/ubsan-negative-probe.txt" 2>&1
+ubsan_probe_status=$?
+set -e
+sed -n '1,20p' "$evidence_dir/ubsan-negative-probe.txt"
+printf 'ubsan_negative_probe_exit_status=%s\n' "$ubsan_probe_status" \
+    >>"$evidence_dir/metadata.txt"
+if [[ $ubsan_probe_status -eq 0 ]]; then
+    printf 'UBSan negative probe recovered and exited zero.\n' >&2
+    exit 1
+fi
+if ! grep -q 'runtime error: signed integer overflow' \
+    "$evidence_dir/ubsan-negative-probe.txt"; then
+    printf 'UBSan negative probe failed without the expected diagnostic.\n' >&2
+    exit 1
+fi
+
+failure_step=sanitized_tests
 ctest --test-dir "$sanitized_build" -R '^v2-.*-tests$' --output-on-failure |
     tee "$evidence_dir/sanitized-tests.txt"
 

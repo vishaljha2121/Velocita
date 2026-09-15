@@ -103,6 +103,22 @@ enum class EffectOperation : std::uint8_t {
     replace = 3,
 };
 
+// Who authored an observation's identity (architecture 10.15).
+//
+// A NATIVE observation is the venue's own event and its sequence is the venue's,
+// so `(venue, session, sequence)` is a real identity. A SYNTHETIC one is
+// authored by the gateway - a declared timeout, or an answer to a query it asked
+// - and its sequence was chosen by the shell. Deduplicating both in one domain
+// lets a gateway-chosen number collide with a venue-chosen one, and the loser is
+// real economic evidence in either direction.
+//
+// Derived from the kind rather than carried on the wire, so the two cannot
+// disagree.
+enum class ObservationOrigin : std::uint8_t {
+    native = 1,
+    synthetic = 2,
+};
+
 enum class VenueObservationKind : std::uint8_t {
     order_acknowledged = 1,
     order_rejected = 2,
@@ -129,6 +145,26 @@ enum class VenueObservationKind : std::uint8_t {
     // can be released. `validate` enforces that absence implies zero fill.
     order_reconciled = 7,
 };
+
+// Total by construction: every kind is named, so adding one forces a decision
+// here rather than defaulting into the venue's identity domain by omission.
+[[nodiscard]] constexpr ObservationOrigin observation_origin(
+    const VenueObservationKind kind) noexcept {
+    switch (kind) {
+        case VenueObservationKind::order_acknowledged:
+        case VenueObservationKind::order_rejected:
+        case VenueObservationKind::fill:
+        case VenueObservationKind::cancelled:
+            return ObservationOrigin::native;
+        case VenueObservationKind::effect_unknown:
+        case VenueObservationKind::cancel_reconciled:
+        case VenueObservationKind::order_reconciled:
+            return ObservationOrigin::synthetic;
+    }
+    // An unknown kind is refused upstream by `validate`; treating it as native
+    // here keeps the strictest deduplication for anything unrecognised.
+    return ObservationOrigin::native;
+}
 
 struct PolicyRule {
     std::uint16_t feature_index{};

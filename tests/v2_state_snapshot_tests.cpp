@@ -171,6 +171,60 @@ velocita::v2::TradingState phase4_state() {
     return state;
 }
 
+velocita::v2::TradingState phase5_observation_state() {
+    using namespace velocita::v2;
+    auto state = phase4_state();
+    state.orders[0].state = ClusterOrderState::live;
+    state.orders[0].last_evidence_state_version = state.state_version;
+    state.outbox_effects[0].state = OutboxState::acknowledged;
+
+    ApplyResult observation;
+    observation.code = ApplyCode::applied;
+    observation.state_version = state.state_version;
+    observation.strategy_mode = state.strategy_mode;
+    observation.kill_epoch = state.kill_epoch;
+    observation.executor_generation = state.executor_generation;
+    observation.metadata_words[0] = state.outbox_effects[0].effect_id.value();
+    observation.metadata_words[1] =
+        static_cast<std::uint64_t>(ObservationOrigin::native);
+    observation.detail = ApplyResultDetail::venue_event(
+        VenueId{7}, VenueSessionId{8}, VenueSequence{9});
+    observation.decision_id = state.orders[0].decision_id;
+    observation.detail_kind = ApplyResultDetailKind::venue_event;
+    state.receipts[state.receipt_count++] = {
+        {CallerId{12}, RequestSequence{15}, digest(0x66)}, observation};
+    return state;
+}
+
+velocita::v2::TradingState overfill_conflict_state() {
+    using namespace velocita::v2;
+    auto state = phase4_state();
+    VenueObservation observation;
+    observation.kind = VenueObservationKind::fill;
+    observation.venue_id = VenueId{7};
+    observation.venue_session_id = VenueSessionId{8};
+    observation.venue_sequence = VenueSequence{99};
+    observation.cluster_order_id = state.orders[0].cluster_order_id;
+    observation.effect_id = state.outbox_effects[0].effect_id;
+    observation.venue_order_id = VenueOrderId{70};
+    observation.execution_id = ExecutionId{99};
+    observation.side = Side::buy;
+    observation.price = PriceTicks::from_atoms(42);
+    observation.quantity = QuantityLots::from_atoms(3);
+    observation.evidence_digest = digest(0x67);
+    ApplyScratch scratch;
+    const Command command{
+        {CallerId{33}, RequestSequence{1}, observation_fingerprint(observation)},
+        ObserveFill{observation}};
+    const auto refused = apply(state, command, scratch);
+    require(refused.code == ApplyCode::fill_quantity_conflict &&
+                state.orders[0].state == ClusterOrderState::conflict &&
+                state.orders[0].last_evidence_state_version ==
+                    refused.state_version,
+            "the overfill fixture did not produce state-changing refusal evidence");
+    return state;
+}
+
 velocita::v2::ExecutablePolicyBundle maximum_bundle(
     const velocita::v2::PolicyArtifact& policy_value,
     const bool active) {
@@ -368,10 +422,8 @@ void test_empty_snapshot_has_canonical_layout() {
 
     const std::array expected_prefix{
         std::byte{'V'}, std::byte{'2'}, std::byte{'S'}, std::byte{'T'},
-        // 65, not 63: the empty payload grew by the two-byte venue-cursor count
-        // when the venue-event expiry watermark arena was added.
-        std::byte{65}, std::byte{0}, std::byte{0}, std::byte{0},
-        std::byte{5}, std::byte{0},
+        std::byte{63}, std::byte{0}, std::byte{0}, std::byte{0},
+        std::byte{7}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{5}};
@@ -384,9 +436,9 @@ void test_empty_snapshot_has_canonical_layout() {
             "returned digest differs from framed digest");
     const auto hash = to_hex(encoded.state_digest);
     require(hash ==
-                "911471e6851c3dc2f96c19bbb1ee8c2ab18212991347e942295e624dc5b9894c",
+                "4745fb92763197e0e191daa7bdf1854cc4eb4c9d0ae37123df3f5c2366cfd73c",
             "empty state golden digest changed: " + hash);
-    // V5 empty-payload size guard.
+    // V6 empty-payload size guard.
     //
     // This previously asserted V5's empty payload was byte-identical to V4's
     // apart from the schema byte, i.e. that B1 added no header field. That is
@@ -400,16 +452,17 @@ void test_empty_snapshot_has_canonical_layout() {
                 kStateSnapshotPayloadOffset + kStateSnapshotEmptyPayloadBytes +
                     kDigestBytes,
             "empty snapshot length does not match the declared empty payload");
-    // 65 since the venue-event expiry watermark arena was added: the empty
-    // payload carries its two-byte count. Reviewed and approved as option 1a of
-    // the P1-5 retention contract.
-    require(kStateSnapshotEmptyPayloadBytes == 65,
-            "V5 empty snapshot header grew without review");
+    require(kStateSnapshotEmptyPayloadBytes == 63,
+            "V6 empty snapshot header grew without review");
 }
 
 void test_round_trip_is_canonical_and_excludes_unused_capacity() {
     using namespace velocita::v2;
     auto original = populated_state();
+    original.caller_cursor_count = 1;
+    original.caller_cursors[0] = {CallerId{12}, RequestSequence{5},
+                                  RequestSequence{14}};
+    original.orders[0].last_evidence_state_version = 9;
     auto same_logical_state = original;
     same_logical_state.policies[7].artifact.policy_id = PolicyId{999};
     same_logical_state.sources[9].source_id = SourceId{999};
@@ -453,8 +506,9 @@ void test_round_trip_is_canonical_and_excludes_unused_capacity() {
 
 void test_phase4_state_survives_canonical_snapshot() {
     using namespace velocita::v2;
-    require(kStateSnapshotSchemaVersion == 5,
-            "risk configuration receipts did not move snapshots to V5");
+    require(kStateSnapshotSchemaVersion == 7,
+            "the native/synthetic observation origin did not move snapshots to "
+            "V7");
     const auto original = phase4_state();
     std::array<std::byte, kMaxStateSnapshotBytes> storage{};
     const auto encoded = encode_state_snapshot(original, storage);
@@ -643,6 +697,101 @@ void test_snapshot_rejects_gateway_local_outbox_states() {
     }
 }
 
+void test_snapshot_rejects_an_unknown_observation_origin() {
+    using namespace velocita::v2;
+    // `event_origin()` resolves anything it does not recognise to `native`.
+    // That is the right reading at runtime - the strictest deduplication for
+    // anything unrecognised - and exactly the wrong thing to accept from a
+    // decoder: a forged word would move a gateway-authored receipt into the
+    // venue's identity domain, where it can refuse real venue evidence under a
+    // sequence the venue actually owns.
+    auto state = phase5_observation_state();
+    auto& retained = state.receipts[state.receipt_count - 1].result;
+
+    for (const auto origin :
+         {ObservationOrigin::native, ObservationOrigin::synthetic}) {
+        retained.metadata_words[1] = static_cast<std::uint64_t>(origin);
+        std::array<std::byte, kMaxStateSnapshotBytes> storage{};
+        require(encode_state_snapshot(state, storage).error ==
+                    StateSnapshotError::none,
+                "a known observation origin was rejected");
+    }
+
+    for (const std::uint64_t forged : {0ULL, 3ULL, ~0ULL}) {
+        retained.metadata_words[1] = forged;
+        std::array<std::byte, kMaxStateSnapshotBytes> storage{};
+        require(encode_state_snapshot(state, storage).error ==
+                    StateSnapshotError::invalid_state,
+                "an unknown observation origin was accepted as canonical state");
+    }
+}
+
+void test_snapshot_rejects_cross_linked_or_uncovered_evidence() {
+    using namespace velocita::v2;
+    const auto state = phase5_observation_state();
+    std::array<std::byte, kMaxStateSnapshotBytes> storage{};
+    require(encode_state_snapshot(state, storage).error ==
+                StateSnapshotError::none,
+            "the valid Phase 5 evidence fixture did not encode");
+
+    auto cross_linked = state;
+    cross_linked.receipts[cross_linked.receipt_count - 1].result.decision_id =
+        DecisionId{22};
+    require(encode_state_snapshot(cross_linked, storage).error ==
+                StateSnapshotError::invalid_state,
+            "snapshot accepted venue evidence linked to another decision's effect");
+
+    auto uncovered = state;
+    --uncovered.orders[0].last_evidence_state_version;
+    require(encode_state_snapshot(uncovered, storage).error ==
+                StateSnapshotError::invalid_state,
+            "snapshot accepted an order revision older than its retained evidence");
+
+    auto decodable = state;
+    decodable.state_version = state.state_version + 1;
+    std::array<std::byte, kMaxStateSnapshotBytes> before{};
+    const auto before_result = encode_state_snapshot(decodable, before);
+    auto alternate = decodable;
+    ++alternate.orders[0].last_evidence_state_version;
+    std::array<std::byte, kMaxStateSnapshotBytes> after{};
+    const auto after_result = encode_state_snapshot(alternate, after);
+    require(before_result.error == StateSnapshotError::none &&
+                after_result.error == StateSnapshotError::none &&
+                before_result.bytes_written == after_result.bytes_written,
+            "evidence-revision locator fixtures did not encode equally");
+    std::size_t revision_offset = 0;
+    std::size_t differences = 0;
+    for (std::size_t index = 0;
+         index < before_result.bytes_written - kDigestBytes; ++index) {
+        if (before[index] != after[index]) {
+            revision_offset = index;
+            ++differences;
+        }
+    }
+    require(differences == 1 && before[revision_offset] == std::byte{10},
+            "the canonical evidence-revision byte could not be isolated");
+
+    auto forged = before;
+    forged[revision_offset] = std::byte{9};
+    replace_integrity_digest({forged.data(), before_result.bytes_written});
+    TradingState destination = populated_state();
+    StateSnapshotScratch scratch;
+    require(decode_state_snapshot({forged.data(), before_result.bytes_written},
+                                  destination, scratch)
+                    .error == StateSnapshotError::invalid_state,
+            "decoder accepted an order revision older than retained evidence");
+
+    const auto refusal_state = overfill_conflict_state();
+    require(encode_state_snapshot(refusal_state, storage).error ==
+                StateSnapshotError::none,
+            "the state-changing fill-refusal fixture did not encode");
+    auto uncovered_refusal = refusal_state;
+    --uncovered_refusal.orders[0].last_evidence_state_version;
+    require(encode_state_snapshot(uncovered_refusal, storage).error ==
+                StateSnapshotError::invalid_state,
+            "snapshot accepted an order revision older than conflict evidence");
+}
+
 void test_bounds_and_invalid_source_state_fail_closed() {
     using namespace velocita::v2;
     const auto state = populated_state();
@@ -671,22 +820,26 @@ void test_bounds_and_invalid_source_state_fail_closed() {
 
     invalid = state;
     invalid.caller_cursor_count = 1;
-    invalid.caller_cursors[0] = {CallerId{}, RequestSequence{}};
+    invalid.caller_cursors[0] = {CallerId{}, RequestSequence{},
+                                 RequestSequence{}};
     require(encode_state_snapshot(invalid, storage).error ==
                 StateSnapshotError::invalid_state,
             "snapshot accepted a caller cursor with no stable identity");
 
     invalid = state;
     invalid.caller_cursor_count = 2;
-    invalid.caller_cursors[0] = {CallerId{91}, RequestSequence{}};
-    invalid.caller_cursors[1] = {CallerId{91}, RequestSequence{7}};
+    invalid.caller_cursors[0] = {CallerId{91}, RequestSequence{},
+                                 RequestSequence{}};
+    invalid.caller_cursors[1] = {CallerId{91}, RequestSequence{7},
+                                 RequestSequence{6}};
     require(encode_state_snapshot(invalid, storage).error ==
                 StateSnapshotError::invalid_state,
             "snapshot accepted duplicate caller cursor identities");
 
     auto first_admission = state;
     first_admission.caller_cursor_count = 1;
-    first_admission.caller_cursors[0] = {CallerId{91}, RequestSequence{}};
+    first_admission.caller_cursors[0] = {CallerId{91}, RequestSequence{},
+                                         RequestSequence{}};
     require(encode_state_snapshot(first_admission, storage).error ==
                 StateSnapshotError::none,
             "a registered caller with no expired prefix was not canonical");
@@ -822,16 +975,9 @@ void test_declared_maximum_is_exact_and_encodable() {
     // honest if the largest VALID state fills every arena, including this one.
     state.caller_cursor_count = kMaxCallerCursors;
     for (std::size_t index = 0; index < kMaxCallerCursors; ++index) {
-        state.caller_cursors[index] = {CallerId{500 + index},
-                                       RequestSequence{index + 1}};
-    }
-    // Venue cursors likewise. Each must carry a distinct (venue, session) pair or
-    // snapshot validation rejects the duplicate.
-    state.venue_cursor_count = kMaxVenueCursors;
-    for (std::size_t index = 0; index < kMaxVenueCursors; ++index) {
-        state.venue_cursors[index] = {VenueId{600 + index},
-                                      VenueSessionId{index + 1},
-                                      VenueSequence{index + 1}};
+        state.caller_cursors[index] = {
+            CallerId{500 + index}, RequestSequence{index + 1},
+            RequestSequence{index + 2}};
     }
 
     std::array<std::byte, kMaxStateSnapshotBytes> storage{};
@@ -852,6 +998,8 @@ int main() {
         test_phase4_state_survives_canonical_snapshot();
         test_decode_is_transactional_for_corrupt_and_unknown_input();
         test_snapshot_rejects_gateway_local_outbox_states();
+        test_snapshot_rejects_an_unknown_observation_origin();
+        test_snapshot_rejects_cross_linked_or_uncovered_evidence();
         test_bounds_and_invalid_source_state_fail_closed();
         test_declared_maximum_is_exact_and_encodable();
         std::cout << "all V2 state snapshot tests passed\n";
