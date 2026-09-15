@@ -2260,20 +2260,22 @@ snapshot stays 65,451. Retained result VALUES change, so the codec and snapshot
 schemas move to V7 and the golden corpora were regenerated as a reviewed
 migration.
 
-WHAT PROTECTS A SYNTHETIC REPLAY INSTEAD, and it is stronger for this purpose
-than a number nobody owns:
+WHAT PROTECTS A SYNTHETIC RETRY INSTEAD:
 
 1. COMMAND IDENTITY. The retained request receipt answers an identical command
    with the original result and does not re-execute. The gateway's evidence
    obligation (9.5) retries under the identity it first used, byte for byte,
    which is what makes this work - and that makes the seam's identity discipline
-   load-bearing for reconciliation and not only for delivery. Pinned by
+   load-bearing for exact result recovery and not only for delivery. Pinned by
    `test_a_replayed_synthetic_answer_is_caught_by_command_identity` rather than
    left as an inference.
-2. IDEMPOTENCE BY VALUE. Reconciliation carries a FINAL CUMULATIVE total, so
-   re-deciding it against what the cluster already holds computes a delta of
-   zero. This was always the real safety argument (10.1.6); deduplication was an
-   optimisation standing in front of it.
+2. STATE-BASED APPLICABILITY. Reconciliation carries a FINAL CUMULATIVE total,
+   so while an effect remains unresolved its verdict is a function of the total
+   and the evidence already booked, not of message history. Once an answer
+   resolves the effect, the same observation under a fresh command identity is
+   refused `venue_observation_not_applicable`. It does not re-enter an economic
+   delta path, and `order_reconciled` never invents missing fills in the first
+   place.
 
 A consequence worth stating because a test had pinned the old behaviour: a
 synthetic answer re-presented under a fresh identity after its effect has
@@ -2282,6 +2284,17 @@ resolved is now refused `venue_observation_not_applicable` rather than
 statement about a number nobody owned. The new one is a statement about the
 ORDER, and it is the same statement the reducer makes about any late evidence for
 a settled effect.
+
+RESTART IS NOT A RETRY UNDER A REBUILT IDENTITY. `GatewayEvidenceState` is
+process-local. If the process dies after the synthetic command commits but before
+it sees the result, the replacement gateway first reads replicated state. A
+resolved effect needs neither the lost obligation nor another query. If the
+effect is still unresolved, the replacement gateway issues a new query and its
+answer is a new snapshot, not a reconstruction of the lost command. This boundary
+is covered by the startup recovery and reconciliation suites as separate
+properties. A single-trace characterization remains useful, but is deferred to
+the next gate-moving source increment because it would not change production
+behavior.
 
 FILLS ARE UNCHANGED and deliberately so. A fill is native, and its authoritative
 economic identity is `(VenueId, ExecutionId)` rather than the sequence triple -
@@ -2298,6 +2311,28 @@ anything it does not recognise to `native`, which is the correct fail-closed
 reading at runtime and precisely the wrong thing to accept from a decoder: a
 forged word would move a gateway-authored receipt into the venue's identity
 domain, where it can refuse real venue evidence.
+
+### 10.16 MVP V1 excludes perpetual execution (approved 2026-09-15)
+
+MVP V1 does not trade perpetuals. The verified True Markets DeFi surface is
+therefore not a V1 execution target. The existing reducer may continue to model
+spot-style order effects, but no adapter may present a perpetual liquidation,
+ADL, or funding movement as though it descended from one of those effects.
+
+This avoids adding speculative economic state while the venue's exposed event
+identities, funding ledger, leverage, margin mode, fees, and finality fields are
+unverified. It also preserves the rule that an unsupported product fails closed:
+normally-flat or taker-only operation is not a substitute, because opening and
+closing are distinct external actions and a failure can leave exposure between
+them.
+
+Before any perpetual connection, the trigger in
+`V2_DEFERRED_FUNCTIONAL_SCOPE.md` §6 requires the reviewed ledger-first design:
+typed external executions, typed funding settlements, and account snapshots used
+for reconciliation rather than blind overwrite. A single overloaded
+`VenueObservationKind` is rejected because it would conflate position and cash
+mutations and require order/effect identities that unsolicited venue economics
+do not own. Exact bytes remain unfrozen pending venue evidence.
 
 ## 11. Execution authority and kill contract
 

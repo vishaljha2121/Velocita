@@ -5,14 +5,15 @@ Updated: 2026-09-15
 Purpose: compact working memory for the next agent session. Verify this file
 against Git before acting; do not reconstruct the project from chat history.
 
-## CODEX HANDOVER — Phase 5 accepted, venue contract verified, perps gap open — 2026-09-15
+## CODEX HANDOVER — Phase 5 accepted, MVP V1 excludes perpetuals — 2026-09-15
 
 This section supersedes every older section below it. Those remain as an audit
 trail and must not be read as current status.
 
 ### Where the tree is
 
-- branch `v2/phase-5-corrections`, HEAD `4223ac0`;
+- branch `v2/phase-5-corrections`; the handover review started at `698a01a`.
+  Use Git for the current HEAD rather than embedding a self-staling value here;
 - tag `v2-phase5-corrected-accepted` at `b39edf1`; `v2-phase5-accepted`
   (`04329fa`) preserved as history and NOT moved;
 - frozen source root
@@ -38,53 +39,66 @@ power evidence, not unverified behaviour.
 Evidence: `docs/evidence/V2_PHASE5_CORRECTED_ACCEPTANCE.md`, which supersedes
 `V2_PHASE5_GATEWAY_SIMULATOR_ACCEPTANCE.md`.
 
-### What to review first, in this order
+### MVP V1 scope decision and review conclusions
 
-1. THE PERPS GAP, `docs/evidence/V2_TRUEMARKETS_CONTRACT_VERIFICATION.md` §6.
-   The DeFi surface is Hyperliquid PERPETUALS. `apply_observe_fill` requires a
-   matching submit effect, so liquidation, auto-deleveraging and funding cannot
-   be represented by any command in the kernel. This is an architectural premise
-   failure, not an implementation defect, and it is the largest open item in the
-   project. Three options are written up; all three cost something. A fourth that
-   was not thought of would be the most valuable thing this review could produce.
-2. THE NATIVE/SYNTHETIC IDENTITY DOMAIN, architecture 10.15, commit `45b13d9`.
-   The last material contract change. Synthetic observations leave the venue's
-   sequence-deduplication domain and are protected by retained command identity
-   plus cumulative-by-value adjudication. The specific question worth adversarial
-   attention: command identity is now load-bearing for RECONCILIATION and not
-   only for delivery, so a gateway that ever retried an obligation under a fresh
-   identity would double-adjudicate. It is pinned by
-   `test_a_replayed_synthetic_answer_is_caught_by_command_identity`; is that
-   pin sufficient?
-3. WHETHER ACCEPTANCE ON THREE ENVIRONMENTS IS PROPERLY BOUNDED. The reasoning
-   is in the acceptance record's promotion-rule section. Challenge it if the
-   scoping is weaker than it reads.
+MVP V1 WILL NOT TRADE PERPETUALS. The True Markets DeFi surface verified in the
+venue record is Hyperliquid perpetuals, so it is not a V1 execution target. No
+perpetual position, liquidation, ADL, funding, leverage, or margin-maintenance
+contract is to be added to the reducer for V1. This is a fail-closed scope
+decision, not a claim that the existing spot accounting can safely approximate
+perpetuals.
+
+Before any later perpetual connection, implement the deferred ledger-first
+design in `V2_DEFERRED_FUNCTIONAL_SCOPE.md`: separately identified external
+executions and funding settlements, with an authoritative account snapshot used
+as a reconciliation check rather than a blind overwrite. Exact bytes remain
+unfrozen until the venue's exposed identities and finality fields are verified.
+
+The native/synthetic identity split in architecture 10.15 is sound, but its old
+explanation overstated cumulative-value idempotence. Stable command identity
+returns the original result while one gateway evidence obligation is retried.
+After that answer resolves the effect, the same observation under a fresh
+identity is refused as `venue_observation_not_applicable`; it does not compute
+and apply an economic delta. A restart discards gateway-local obligations and
+uses replicated lifecycle state plus a fresh reconciliation query if one is
+still needed. Existing tests separately pin identical-command result replay,
+fresh-identity refusal, startup recovery, and reconciliation. An additional
+single-trace characterization was deliberately deferred because it would change
+the accepted source root without correcting production behavior and force every
+target gate to be repeated.
+
+Three-environment acceptance is sufficient to continue development, not to
+authorize live deployment. The physical Pi gate remains mandatory before any
+live venue connection.
 
 ### Open work, ranked by what it blocks
 
-1. PERPS POSITION-CHANGE REPRESENTATION. Blocks any live DeFi trading. See above.
-2. CREATE-ORDER SCHEMA. Every DeFi-limit statement found concerns CANCELLING a
+1. PHASE 6 CONSENSUS INTEGRATION. This is the next implementation phase. Do not
+   pull the deferred perpetual contracts into it.
+2. THE PHYSICAL PI GATE. It remains a carried Phase 5 obligation and blocks live
+   deployment, though not Phase 6 development.
+3. CREATE-ORDER SCHEMA. Every DeFi-limit statement found concerns CANCELLING a
    resting order; the create schema is client-rendered and unread. A read-only
-   `GET` probe resolves it. Needs a KYC'd API key; funding is explicitly optional
-   for read-only exploration.
-3. UNVERIFIED DEFI ECONOMICS: maker/taker fee (the published schedule is CeFi
+   `GET` probe resolves it. Because V1 excludes the verified DeFi perpetual
+   surface, this is deferred until a later perpetual iteration or a different
+   spot venue is selected.
+4. UNVERIFIED DEFI ECONOMICS: maker/taker fee (the published schedule is CeFi
    only), default leverage, per-fill on-chain cost. Any one of these can invert
-   the sign of the edge.
-4. `PostOnlyMode::required` CANNOT BE SATISFIED. Post-only is absent from an
+   the sign of the edge. Deferred with perpetual trading.
+5. `PostOnlyMode::required` CANNOT BE SATISFIED. Post-only is absent from an
    otherwise exhaustive True Markets order model. The pre-send guard would refuse
    every order with `venue_cannot_represent_intent`, correctly. Decide whether
    the strategy drops post-only - the cost of an accidental cross is 4 bps taker
    on CeFi, unknown on DeFi - or whether the venue exposes it undocumented.
-5. PREPARE/EXECUTE DOUBLE AMBIGUITY. One economic intent crosses the process
+6. PREPARE/EXECUTE DOUBLE AMBIGUITY. One economic intent crosses the process
    boundary twice, each crossing separately ambiguous. `DeliveryAttempt` models
    one send per effect.
-6. `initialized` HAS NO V2 EQUIVALENT. The venue holds unsigned payloads: it
+7. `initialized` HAS NO V2 EQUIVALENT. The venue holds unsigned payloads: it
    knows the intent, the order is not in the book, no venue risk exists.
    `dispatch_authorized` and `acknowledged` each assert something stronger.
-7. TICK SIZE IS PRICE-BANDED across nine buckets (CeFi table; no DeFi table
+8. TICK SIZE IS PRICE-BANDED across nine buckets (CeFi table; no DeFi table
    published), so a cached `InstrumentExecutionProfile` goes stale when price
    crosses a boundary.
-8. THE PI GATE.
 
 ### Constraints that still bind
 

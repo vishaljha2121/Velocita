@@ -299,3 +299,47 @@ harness and benchmark code. That argues for doing it, but not urgently.
 - THE `CallerId` ASSIGNMENT CONVENTION is not written down anywhere. Whether it
   is per-role or per-process decides whether §1.4's caller-cursor ceiling is
   harmless or serious.
+
+## 6. Perpetual position and account accounting
+
+Severity: correctness gap for perpetuals; outside MVP V1 by explicit scope.
+Trigger: before connecting any perpetual venue or authorizing any perpetual
+order, including through the True Markets DeFi surface verified on 2026-09-15.
+
+MVP V1 does not trade perpetuals. The current reducer assumes every position
+change descends from a cluster-authorized submit effect. That premise does not
+hold for liquidation or auto-deleveraging, and funding changes account equity
+without changing position. A strategy that normally closes quickly reduces the
+exposure window but cannot remove it, because opening and closing are separate
+external actions and a failure may occur between them.
+
+The reviewed implementation direction is LEDGER FIRST, split by economic type:
+
+1. an identified external-execution command for liquidation and ADL, carrying
+   the venue's immutable event identity plus account, instrument, side, price,
+   quantity, fee or realised PnL, and reason;
+2. an identified funding-settlement command carrying its immutable settlement
+   identity and signed account-value movement, without pretending it is a fill;
+   and
+3. an authoritative venue-account snapshot used as an ordering-bounded
+   reconciliation check, not as a silent overwrite of newer replicated fills.
+
+The gateway remains an evidence producer, not an economic authority. The reducer
+must validate canonical bytes, deduplicate the venue-owned identity, apply the
+typed mutation, and retain an auditable adjustment. If the venue exposes only an
+absolute position and not the events that produced it, any fallback adjustment
+requires a separately approved fail-closed protocol: block new risk, establish a
+venue finality barrier, record the discrepancy, and then apply an explicit
+correction. Never infer funding from a position delta or invent execution price,
+fee, or PnL from a snapshot.
+
+A single additional `VenueObservationKind` was rejected for this work. The
+existing observation requires an order and effect identity, lacks direct account
+and instrument identity, and cannot represent both position-changing executions
+and cash-only funding without overloading fields. Repurposing its order fields
+would save bytes by discarding type safety at the most privileged economic seam.
+
+Exact command bytes remain deliberately unfrozen. They depend on whether the
+adapter exposes a stable transaction hash, per-fill trade identifier, funding
+settlement identifier, and an ordering or finality token. Freeze the byte
+contract only after those read-only venue fields are verified and reviewed.

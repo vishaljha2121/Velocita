@@ -15,6 +15,27 @@ release-engineering work.
 
 ### Phase 5 corrected acceptance - venue simulator and execution gateway
 
+#### MVP V1 excludes perpetuals; synthetic restart proof tightened — 2026-09-15
+
+MVP V1 will not trade perpetuals. No liquidation, ADL, funding, leverage, or
+maintenance-margin bytes were added to the reducer. The verified True Markets
+DeFi surface is therefore not a V1 execution target. The ledger-first design for
+separate external executions and funding settlements is recorded in
+`V2_DEFERRED_FUNCTIONAL_SCOPE.md` with a hard trigger before any later perpetual
+connection. A single generic position observation was rejected because it would
+conflate position and cash mutations and overload an order/effect-centric byte
+contract.
+
+Corrected the synthetic-replay explanation: stable command identity returns the
+original result while an evidence obligation is retried; a fresh command about
+an already resolved effect is refused by state-based applicability rather than
+applying a cumulative economic delta. Existing tests separately cover the
+identity replay, fresh-identity refusal, startup scan, and reconciliation. A
+single integrated restart characterization was considered but deferred: it
+would change the frozen gate source root without correcting production behavior,
+forcing all target gates to be repeated for an oracle-only improvement. No
+production behavior, test source, or encoded byte contract changed.
+
 #### Phase 5 accepted on three environments, Pi gate carried — 2026-09-15
 
 Phase 5 is ACCEPTED at source root
@@ -86,10 +107,10 @@ because that answer is the only thing that can resolve an unknown effect.
 `ObservationOrigin` is derived from the observation kind by a total switch and
 retained in venue-event result metadata word 1, the word left free when
 proof-carrying reclamation put the owning `EffectId` in word 0. Sequence
-deduplication now searches the native domain only. Synthetic replay is protected
-by retained command identity and by idempotence in value - reconciliation carries
-a final cumulative total, so re-deciding it computes a delta of zero. Fills are
-unchanged: their authoritative economic identity is `(VenueId, ExecutionId)`.
+deduplication now searches the native domain only. A synthetic retry is protected
+by retained command identity, while a fresh command is adjudicated by the
+effect's current state and the reconciliation total. Fills are unchanged: their
+authoritative economic identity is `(VenueId, ExecutionId)`.
 
 The simulator acknowledges scheduled observations by canonical fingerprint rather
 than by the triple, so a synthetic observation can no longer retire a native one

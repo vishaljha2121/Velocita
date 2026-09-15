@@ -254,6 +254,30 @@ The honest options for Phase 9, none of them free:
 3. Trade spot on CeFi instead, where the authorized-effect assumption holds — but
    this account is DeFi-only, so it is not available.
 
+### 6.1.1 MVP V1 decision and deferred design — 2026-09-15
+
+MVP V1 will not trade perpetuals. Consequently the verified True Markets DeFi
+surface is not a V1 execution target, and no perpetual accounting byte contract
+is being added merely to keep that venue nominally in scope. A taker-only or
+normally-flat strategy was considered and rejected as a safety substitute:
+opening and closing are separate external actions, so a crash or partition can
+still leave a position exposed to liquidation, ADL, or funding between them.
+
+Option 1 above is also insufficient as written. The existing
+`VenueObservation` is scoped to a cluster order and effect, while liquidation and
+ADL need not have either; funding is a cash/equity movement rather than a
+position movement. One cumulative position value also lacks the execution price,
+fee, realised PnL, and immutable event identity required for an auditable
+adjustment, and an unordered snapshot could overwrite newer fill evidence.
+
+The approved direction for the later perpetual iteration is ledger-first:
+separate commands for identified external executions and identified funding
+settlements, plus an authoritative venue-account snapshot used as a
+reconciliation check. Exact bytes remain unfrozen until read-only verification
+establishes which event identities and ordering/finality fields True Markets
+actually exposes. `docs/V2_DEFERRED_FUNCTIONAL_SCOPE.md` §6 owns the trigger and
+implementation constraints.
+
 ### 6.2 Margin is against a position, not against an order
 
 `RiskAccount` carries `reserved_margin`, `initial_margin_ppm` and
