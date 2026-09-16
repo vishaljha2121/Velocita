@@ -130,6 +130,14 @@ public:
     // for them.
     void flush_durability();
 
+    // Move the writing off this thread. Until this is called, `flush_durability`
+    // does the I/O inline - which keeps tests deterministic and is why the
+    // thread is opt-in rather than implied by construction.
+    void start_writer();
+    void stop_writer();
+
+    [[nodiscard]] WalMetrics wal_metrics() const;
+
     [[nodiscard]] bool is_leader() const;
 
     // Offer canonical V2 command bytes to consensus. Never applies them here:
@@ -205,10 +213,17 @@ private:
     // loop no longer pays a sync per record.
     WalBlockArena arena_;
     std::unique_ptr<WalSegment> segment_;
+    // Declared after the segment and arena it refers to, so it is destroyed
+    // first and its thread is joined while both are still alive.
+    std::unique_ptr<WalWriter> writer_;
     SnapshotStore snapshots_;
     PersistentMetadata metadata_;
     // Highest index reclaimed by `log_poll` during the current `raft_end_snapshot`.
     std::uint64_t polled_through_{};
+    std::uint64_t blocks_submitted_{};
+    std::uint64_t backpressure_refusals_{};
+    std::uint64_t highest_staged_index_{};
+    bool writer_running_{false};
 
     TradingState state_{};
     std::unique_ptr<ApplyScratch> scratch_;

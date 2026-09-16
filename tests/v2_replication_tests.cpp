@@ -855,6 +855,58 @@ void test_an_entry_cannot_commit_before_its_bytes_are_durable(
             "no result arrived after the entry became durable");
 }
 
+void test_a_writer_thread_carries_durability_off_the_owner_loop(
+    const std::filesystem::path& root) {
+    // The same cluster, with the I/O moved to another thread. Nothing about the
+    // guarantees may change: the point of the thread is WHERE the fsync happens,
+    // not whether it has to happen before an entry counts.
+    Cluster cluster(root, 1);
+    auto& node = cluster.elect();
+    node.start_writer();
+
+    std::uint64_t sequence = 0;
+    const auto value = command(
+        ++sequence,
+        SetStrategyMode{StrategyMode::normal, KillEpoch{}, ExecutorGeneration{}});
+    require(node.propose(encoded(value)).status == ProposeStatus::admitted,
+            "the leader refused the command");
+
+    std::optional<CommittedResult> committed;
+    for (int round = 0; round < 4000 && !committed; ++round) {
+        node.flush_durability();   // submits and collects; the thread writes
+        node.tick(10);
+        committed = node.take_committed_result();
+        // The invariant still holds at every observation, now with a real
+        // thread between the append and the sync.
+        require(node.status().commit_index <=
+                    static_cast<std::int64_t>(node.durable_index()),
+                "a threaded writer let commit run ahead of durability");
+    }
+    require(committed.has_value(), "the command never committed with a writer thread");
+    require(committed->result.code == ApplyCode::applied, "the command failed");
+
+    const auto metrics = node.wal_metrics();
+    require(metrics.blocks_submitted > 0,
+            "no blocks were handed to the writer, so the thread did nothing");
+    require(metrics.blocks_durable > 0, "the writer thread made nothing durable");
+    require(metrics.backpressure_refusals == 0,
+            "the arena refused a record under a trivial load");
+    require(metrics.durable_index >= metrics.highest_staged_index,
+            "durability never caught up with staging");
+    require(metrics.durability_lag() == 0,
+            "the writer thread left a durability gap after settling");
+
+    node.stop_writer();
+
+    // And the durable bytes are real: a restart with no thread reconstructs the
+    // same state from what the thread put on disk.
+    const auto before = node.status();
+    cluster.restart(1);
+    cluster.settle(200);
+    require(cluster.node(1).status().state_digest == before.state_digest,
+            "state written by the writer thread did not survive a restart");
+}
+
 void test_durability_is_tracked_separately_and_never_overstated(
     const std::filesystem::path& root) {
     Cluster cluster(root, 1);
@@ -948,6 +1000,7 @@ int main() {
         test_recovery_is_never_behind_the_last_acknowledged_commit(fresh("power-cut"));
         test_durability_is_tracked_separately_and_never_overstated(fresh("durable"));
         test_an_entry_cannot_commit_before_its_bytes_are_durable(fresh("gate"));
+        test_a_writer_thread_carries_durability_off_the_owner_loop(fresh("writer"));
         test_one_voter_reaches_the_same_state(fresh("voter-count"));
 
         std::filesystem::remove_all(root);

@@ -38,6 +38,7 @@ ReplicatedKernel::ReplicatedKernel(const std::int32_t node_id,
       metadata_store_(data_dir),
       wal_(data_dir),
       segment_(std::make_unique<WalSegment>(data_dir)),
+      writer_(std::make_unique<WalWriter>(*segment_, arena_)),
       snapshots_(std::move(data_dir)),
       metadata_(metadata_store_.load()),
       scratch_(std::make_unique<ApplyScratch>()),
@@ -195,7 +196,58 @@ void ReplicatedKernel::flush_durability() {
     // staged indefinitely - the time half of the flush trigger; the arena's
     // block-full rotation is the space half.
     arena_.seal_open_block();
-    (void)segment_->flush(arena_);
+
+    // Hand sealed blocks to the writer. A full submission ring is backpressure
+    // like any other: the blocks stay sealed and go on the next pass.
+    bool submitted_any = false;
+    while (const auto descriptor = arena_.next_unsubmitted()) {
+        if (!writer_->submit(*descriptor)) break;
+        ++blocks_submitted_;
+        submitted_any = true;
+    }
+
+    // With no writer thread the I/O happens here, which is what keeps a test
+    // deterministic. With one, the thread has already done it or will shortly.
+    if (!writer_running_) {
+        (void)writer_->poll();
+    }
+    (void)submitted_any;
+
+    // Completions are applied BY THE OWNER, which is what keeps every mutation
+    // of the arena on one thread and lets the writer read sealed bytes without
+    // a lock.
+    BlockDescriptor finished{};
+    while (writer_->take_completion(finished)) {
+        (void)arena_.complete(finished);
+    }
+}
+
+void ReplicatedKernel::start_writer() {
+    if (writer_running_) return;
+    writer_running_ = true;
+    writer_->start();
+}
+
+void ReplicatedKernel::stop_writer() {
+    if (!writer_running_) return;
+    writer_->stop();
+    writer_running_ = false;
+    // Anything the thread finished on its way out still needs applying, or the
+    // arena would hold blocks that are durable and look sealed.
+    BlockDescriptor finished{};
+    while (writer_->take_completion(finished)) {
+        (void)arena_.complete(finished);
+    }
+}
+
+WalMetrics ReplicatedKernel::wal_metrics() const {
+    WalMetrics metrics;
+    metrics.blocks_submitted = blocks_submitted_;
+    metrics.blocks_durable = writer_->blocks_written();
+    metrics.backpressure_refusals = backpressure_refusals_;
+    metrics.highest_staged_index = highest_staged_index_;
+    metrics.durable_index = arena_.durable_index();
+    return metrics;
 }
 
 bool ReplicatedKernel::is_leader() const { return raft_is_leader(server_) != 0; }
@@ -534,9 +586,13 @@ int ReplicatedKernel::log_offer(raft_server_t*, void* user_data, raft_entry_t* e
                                                owned});
         switch (self.arena_.stage(framed, static_cast<std::uint64_t>(index))) {
             case StageOutcome::staged:
+                self.highest_staged_index_ =
+                    std::max(self.highest_staged_index_,
+                             static_cast<std::uint64_t>(index));
                 return 0;
             case StageOutcome::backpressure:
             case StageOutcome::record_too_large:
+                ++self.backpressure_refusals_;
                 // Bounded refusal. Accepting an entry the log cannot make
                 // durable would be exactly the overwrite the arena refuses, one
                 // level up.

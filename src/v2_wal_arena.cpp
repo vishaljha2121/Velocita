@@ -130,6 +130,9 @@ void WalBlockArena::finish_open_block() {
     }
     block.state = BlockState::sealed;
     sealed_.push_back(*open_slot_);
+    // Note: `submitted_` is deliberately not touched. A newly sealed block is
+    // unsubmitted by construction, and it sits behind everything already handed
+    // out.
     open_slot_.reset();
 }
 
@@ -168,6 +171,14 @@ std::optional<BlockDescriptor> WalBlockArena::next_sealed() {
                            block.highest_record_index, block.used};
 }
 
+std::optional<BlockDescriptor> WalBlockArena::next_unsubmitted() {
+    if (submitted_ >= sealed_.size()) return std::nullopt;
+    const auto slot = sealed_[submitted_++];
+    const auto& block = blocks_[slot];
+    return BlockDescriptor{slot, block.generation, block.sequence,
+                           block.highest_record_index, block.used};
+}
+
 std::span<const std::byte> WalBlockArena::block_bytes(
     const BlockDescriptor& descriptor) const {
     const auto& block = blocks_[descriptor.slot];
@@ -190,6 +201,7 @@ bool WalBlockArena::complete(const BlockDescriptor& descriptor) {
     // make.
     if (position != sealed_.begin()) return false;
     sealed_.erase(position);
+    if (submitted_ > 0) --submitted_;
 
     block.state = BlockState::durable;
     if (block.highest_record_index > durable_index_.load(std::memory_order_relaxed)) {
@@ -242,26 +254,20 @@ WalSegment::~WalSegment() {
     if (fd_ >= 0) ::close(fd_);
 }
 
-std::size_t WalSegment::flush(WalBlockArena& arena) {
-    std::vector<BlockDescriptor> written;
-    while (const auto descriptor = arena.next_sealed()) {
-        const auto framed = frame_block(descriptor->generation, descriptor->sequence,
-                                        arena.block_bytes(*descriptor));
-        std::size_t done = 0;
-        while (done < framed.size()) {
-            const auto result =
-                ::pwrite(fd_, framed.data() + done, framed.size() - done,
-                         static_cast<off_t>(next_offset_ + done));
-            if (result <= 0) throw std::runtime_error("WAL block write failed");
-            done += static_cast<std::size_t>(result);
-        }
-        next_offset_ += kWalBlockBytes;
-        written.push_back(*descriptor);
-        // Released only after the sync below. Marking a block durable here would
-        // be claiming durability for bytes still in the page cache.
-        if (!arena.complete(*descriptor)) break;
+void WalSegment::write_block(const BlockDescriptor& descriptor,
+                             const std::span<const std::byte> payload) {
+    const auto framed = frame_block(descriptor.generation, descriptor.sequence, payload);
+    std::size_t done = 0;
+    while (done < framed.size()) {
+        const auto result = ::pwrite(fd_, framed.data() + done, framed.size() - done,
+                                     static_cast<off_t>(next_offset_ + done));
+        if (result <= 0) throw std::runtime_error("WAL block write failed");
+        done += static_cast<std::size_t>(result);
     }
-    if (written.empty()) return 0;
+    next_offset_ += kWalBlockBytes;
+}
+
+void WalSegment::sync() {
     // `fdatasync` where it exists, `fsync` where it does not. macOS has no
     // `fdatasync`, and F_FULLFSYNC is the only call there that actually reaches
     // the platter - but the development host is not the deployment target, and
@@ -272,6 +278,20 @@ std::size_t WalSegment::flush(WalBlockArena& arena) {
 #else
     if (::fdatasync(fd_) != 0) throw std::runtime_error("WAL fdatasync failed");
 #endif
+}
+
+std::size_t WalSegment::flush(WalBlockArena& arena) {
+    // The synchronous path, for callers with no writer thread. Writes every
+    // sealed block, syncs ONCE, and only then releases them - releasing before
+    // the sync would make "durable" mean "in the page cache".
+    std::vector<BlockDescriptor> written;
+    while (const auto descriptor = arena.next_sealed()) {
+        write_block(*descriptor, arena.block_bytes(*descriptor));
+        written.push_back(*descriptor);
+        if (!arena.complete(*descriptor)) break;
+    }
+    if (written.empty()) return 0;
+    sync();
     return written.size();
 }
 
@@ -369,6 +389,66 @@ std::vector<WalRecord> WalSegment::read_records() const {
         }
     }
     return records;
+}
+
+WalWriter::WalWriter(WalSegment& segment, const WalBlockArena& arena)
+    : segment_(segment), arena_(arena) {}
+
+WalWriter::~WalWriter() { stop(); }
+
+bool WalWriter::submit(const BlockDescriptor& descriptor) noexcept {
+    return submissions_.push(descriptor);
+}
+
+bool WalWriter::take_completion(BlockDescriptor& descriptor) noexcept {
+    return completions_.pop(descriptor);
+}
+
+std::size_t WalWriter::poll() {
+    std::vector<BlockDescriptor> done;
+    BlockDescriptor descriptor{};
+    while (submissions_.pop(descriptor)) {
+        // Reading the arena's bytes for a SEALED slot. The owner cannot recycle
+        // that slot until it applies the completion this pass will publish, so
+        // the bytes are stable for exactly as long as they are needed.
+        segment_.write_block(descriptor, arena_.block_bytes(descriptor));
+        done.push_back(descriptor);
+        if (done.size() >= completions_.capacity() / 2) break;
+    }
+    if (done.empty()) return 0;
+
+    // ONE SYNC FOR THE WHOLE PASS, and strictly before any completion is
+    // published. Publishing first would make "completed" mean "written", and
+    // written is not durable.
+    segment_.sync();
+
+    for (const auto& finished : done) {
+        while (!completions_.push(finished)) {
+            // The owner has not drained. Yielding rather than dropping: a
+            // dropped completion would leave a block sealed forever and the
+            // arena would fill and refuse, which is safe but a permanent stall.
+            std::this_thread::yield();
+        }
+    }
+    blocks_written_.fetch_add(done.size(), std::memory_order_release);
+    return done.size();
+}
+
+void WalWriter::start() {
+    if (running_.exchange(true, std::memory_order_acq_rel)) return;
+    thread_ = std::thread([this] {
+        while (running_.load(std::memory_order_acquire)) {
+            if (poll() == 0) std::this_thread::yield();
+        }
+        // Drain anything left, so stopping does not strand submitted blocks.
+        while (poll() > 0) {
+        }
+    });
+}
+
+void WalWriter::stop() {
+    if (!running_.exchange(false, std::memory_order_acq_rel)) return;
+    if (thread_.joinable()) thread_.join();
 }
 
 }  // namespace velocita::v2

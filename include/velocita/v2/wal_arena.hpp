@@ -1,6 +1,7 @@
 #pragma once
 
 #include "velocita/storage.hpp"
+#include "velocita/v2/spsc_ring.hpp"
 
 #include <atomic>
 #include <cstddef>
@@ -8,6 +9,7 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <thread>
 #include <span>
 #include <vector>
 
@@ -93,8 +95,14 @@ public:
     // trigger's time half; `stage` supplies the space half.
     void seal_open_block();
 
-    // Next sealed block for the writer, in sequence order.
+    // Next sealed block for the writer, in sequence order. Peeks: the block
+    // stays queued until `complete`.
     [[nodiscard]] std::optional<BlockDescriptor> next_sealed();
+
+    // Next sealed block NOT YET HANDED to a writer, advancing the hand-off
+    // marker. Distinct from `next_sealed` because a block stays queued until it
+    // completes, so peeking alone would submit the same block on every pass.
+    [[nodiscard]] std::optional<BlockDescriptor> next_unsubmitted();
 
     // The bytes the writer must put on disk, framed and checksummed.
     [[nodiscard]] std::span<const std::byte> block_bytes(
@@ -145,6 +153,9 @@ private:
     // block may not become durable before an earlier one, or the durable index
     // would cover a gap.
     std::vector<std::size_t> sealed_;
+    // How many of `sealed_` have been handed to a writer. Front-relative, so it
+    // decreases as blocks complete off the front.
+    std::size_t submitted_{0};
     std::atomic<std::uint64_t> durable_index_{0};
 };
 
@@ -183,6 +194,13 @@ public:
     // durable after the bytes it describes are on disk.
     std::size_t flush(WalBlockArena& arena);
 
+    // Split so a writer thread can batch many blocks behind ONE sync. Together
+    // they are `flush`; apart they are what makes a single sync per pass
+    // possible.
+    void write_block(const BlockDescriptor& descriptor,
+                     std::span<const std::byte> payload);
+    void sync();
+
     // Records recovered from the segment, in order, stopping at the first block
     // that does not verify. Everything after a torn block is unreachable by
     // definition, so reading past it would be inventing history.
@@ -204,6 +222,76 @@ private:
     std::filesystem::path path_;
     int fd_{-1};
     std::uint64_t next_offset_{0};
+};
+
+// What the storage layer is doing, in numbers an operator can act on. Kept here
+// rather than in the trading metrics because none of it is economic: a full
+// arena is a disk problem, not a risk problem.
+struct WalMetrics {
+    // Blocks handed to the writer and blocks made durable. The difference is
+    // work in flight, and a difference that stops shrinking is a stalled writer.
+    std::uint64_t blocks_submitted{};
+    std::uint64_t blocks_durable{};
+    // Records refused because the arena was full. Non-zero means the log could
+    // not keep up and admission was correctly failing closed, which is a
+    // capacity signal rather than an error.
+    std::uint64_t backpressure_refusals{};
+    // Highest index appended, and highest made durable. The gap between them is
+    // the exposure asynchronous durability buys, expressed as a number.
+    std::uint64_t highest_staged_index{};
+    std::uint64_t durable_index{};
+
+    [[nodiscard]] std::uint64_t durability_lag() const noexcept {
+        return highest_staged_index > durable_index
+                   ? highest_staged_index - durable_index
+                   : 0;
+    }
+};
+
+// Moves sealed blocks to disk, off the owner's thread.
+//
+// THE OWNER OWNS THE ARENA; THE WRITER ONLY READS SEALED BLOCKS. A sealed slot
+// is not reused until its completion is applied BY THE OWNER, so the bytes the
+// writer reads are stable for exactly as long as it holds the descriptor. That
+// is what lets this be lock-free rather than merely lock-light.
+//
+// Descriptors cross in an SPSC ring in each direction. `poll` does one pass and
+// is public, so a test drives the writer deterministically and a thread is an
+// option rather than an assumption.
+class WalWriter {
+public:
+    WalWriter(WalSegment& segment, const WalBlockArena& arena);
+    ~WalWriter();
+    WalWriter(const WalWriter&) = delete;
+    WalWriter& operator=(const WalWriter&) = delete;
+
+    // Owner side: hand over a sealed block. False means the ring is full, which
+    // the caller must treat as backpressure rather than retry forever.
+    [[nodiscard]] bool submit(const BlockDescriptor& descriptor) noexcept;
+    // Owner side: collect a finished block, to be applied to the arena.
+    [[nodiscard]] bool take_completion(BlockDescriptor& descriptor) noexcept;
+
+    // Writer side: one pass. Writes every submitted block, syncs ONCE, then
+    // publishes completions. The single sync per pass is the whole economy of
+    // the design, and publishing only after it is what makes a completion mean
+    // durable.
+    std::size_t poll();
+
+    void start();
+    void stop();
+
+    [[nodiscard]] std::uint64_t blocks_written() const noexcept {
+        return blocks_written_.load(std::memory_order_acquire);
+    }
+
+private:
+    WalSegment& segment_;
+    const WalBlockArena& arena_;
+    SpscRing<BlockDescriptor, 64> submissions_;
+    SpscRing<BlockDescriptor, 64> completions_;
+    std::atomic<std::uint64_t> blocks_written_{0};
+    std::atomic<bool> running_{false};
+    std::thread thread_;
 };
 
 }  // namespace velocita::v2

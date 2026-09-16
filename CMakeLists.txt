@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.30)
 
 project(velocita_raft VERSION 0.1.0 LANGUAGES C CXX)
 
+find_package(Threads REQUIRED)
+
 option(VELOCITA_BENCHMARK_INSTRUMENTATION
        "Compile benchmark-only Raft stage timestamps into the node and response wire format" OFF)
 set(VELOCITA_TARGET_CACHE_LINE_SIZE "64" CACHE STRING
@@ -270,13 +272,18 @@ if(BUILD_TESTING)
     target_compile_options(v2-venue-simulator-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-venue-simulator-tests COMMAND v2-venue-simulator-tests)
 
+    add_executable(v2-spsc-ring-tests tests/v2_spsc_ring_tests.cpp)
+    target_link_libraries(v2-spsc-ring-tests PRIVATE velocita_v2_replication Threads::Threads)
+    target_compile_options(v2-spsc-ring-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-spsc-ring-tests COMMAND v2-spsc-ring-tests)
+
     add_executable(v2-wal-arena-tests tests/v2_wal_arena_tests.cpp)
     target_link_libraries(v2-wal-arena-tests PRIVATE velocita_v2_replication)
     target_compile_options(v2-wal-arena-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-wal-arena-tests COMMAND v2-wal-arena-tests)
 
     add_executable(v2-replication-tests tests/v2_replication_tests.cpp)
-    target_link_libraries(v2-replication-tests PRIVATE velocita_v2_replication)
+    target_link_libraries(v2-replication-tests PRIVATE velocita_v2_replication Threads::Threads)
     target_compile_options(v2-replication-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-replication-tests COMMAND v2-replication-tests)
 

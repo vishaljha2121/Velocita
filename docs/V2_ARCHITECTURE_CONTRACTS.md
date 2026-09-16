@@ -2623,13 +2623,56 @@ discards the prefix a durable snapshot covers.
 RECOVERY PREFERS THE SEGMENT and falls back to the legacy per-record file, so a
 directory written by an older build still starts.
 
-STATUS: the write path is asynchronous, the durability gate is enforced inside
-Raft, and both are tested by mutation as well as by assertion. Still outstanding
-from Phase 7's implementation scope: SPSC descriptor rings and a writer thread
-(flush is driven explicitly, which is deliberate), preallocated segments, and
-durable-index and backpressure metrics. No performance claim is made - Phase 7's
-gate puts correctness and power-cut evidence before throughput, and no benchmark
-has been run.
+#### 10.18.4 Moving the sync off the owner's thread
+
+`flush_durability` still performed the `pwrite` and the `fsync` inline. That is
+one sync per drain rather than one per record, which is most of the win, but the
+owner loop still stopped for the disk. `WalWriter` removes the rest.
+
+WHO OWNS WHAT, because that is the whole safety argument. The OWNER owns the
+arena: staging, sealing, and applying completions all happen on its thread, so
+every mutation of arena state is single-threaded and needs no lock. The WRITER
+only ever READS the bytes of a SEALED block. A sealed slot is not reused until
+its completion is applied by the owner, so those bytes are stable for exactly as
+long as the writer holds the descriptor - the generation guard is what makes that
+true rather than merely likely.
+
+Descriptors cross in an `SpscRing` in each direction. Single producer and single
+consumer is a precondition rather than a hint: two producers racing on the head
+would both believe they held the same slot and nothing would detect it. Full
+means full - `push` refuses rather than overwriting, because an overwritten
+descriptor is a block whose bytes never reach the disk while the arena believes
+they have.
+
+ONE SYNC PER PASS, PUBLISHED AFTER. The writer drains submissions, writes them
+all, syncs ONCE, and only then pushes completions. Publishing before the sync
+would make "completed" mean "written", and written is not durable.
+
+THE THREAD IS OPT-IN. `start_writer` moves the I/O; without it `flush_durability`
+polls inline. That keeps every existing test deterministic and makes the threaded
+path a thing to be demonstrated rather than assumed - which is the same reason
+the arena's writer and the simulator's clock are explicit.
+
+Verified under ThreadSanitizer, both the ring on its own across a real
+two-hundred-thousand-entry producer/consumer handoff, and the replication suite
+with the writer thread running. The ordering claims in `SpscRing` are about two
+threads, so asserting them on one would have been asserting nothing.
+
+#### 10.18.5 What the storage layer reports
+
+`WalMetrics` is deliberately separate from the trading metrics: none of it is
+economic, and a full arena is a disk problem rather than a risk problem. It
+carries blocks submitted and blocks durable - a difference that stops shrinking
+is a stalled writer - backpressure refusals, and the highest staged index against
+the durable one. That last pair is the exposure asynchronous durability buys,
+expressed as a number rather than as a paragraph.
+
+STATUS: the write path is asynchronous, the sync happens off the owner's thread,
+the durability gate is enforced inside Raft, and the guards are tested by
+mutation and by ThreadSanitizer as well as by assertion. Still outstanding from
+Phase 7's implementation scope: preallocated segments. No performance claim is
+made - Phase 7's gate puts correctness and power-cut evidence before throughput,
+and no benchmark has been run.
 
 ## 11. Execution authority and kill contract
 
