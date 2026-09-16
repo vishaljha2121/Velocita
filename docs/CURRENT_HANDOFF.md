@@ -1,9 +1,106 @@
 # Current development handoff
 
-Updated: 2026-09-15
+Updated: 2026-09-16
 
 Purpose: compact working memory for the next agent session. Verify this file
 against Git before acting; do not reconstruct the project from chat history.
+
+## REVIEW LANDED — six Phase 6/7 defects corrected, gates pinned and unrun — 2026-09-16
+
+This section supersedes every older section below it, including the one
+immediately following. Those remain as an audit trail and must not be read as
+current status.
+
+### Where the tree is
+
+- branch `v2/phase-5-corrections`, HEAD `fe78105`; use Git rather than trusting
+  this value;
+- source root `4c9265268598bf5f56b65efeebd761d005fcf23400d49f7371281c146babe26f`.
+  THIS IS THE VALUE TO COMPARE ON THE TARGET, and the reason it is written here
+  is that the pin inside `deploy/` travels with the tree and therefore agrees
+  with a stale copy just as happily as with the right one;
+- development host: Release 34/34, Debug ASan+UBSan 31/31 (the `v2-` suites),
+  both also from a clean-slate configure;
+- tags `v2-phase5-accepted` and `v2-phase5-corrected-accepted` unmoved.
+
+### What happened
+
+An independent review found five defects in Phases 6 and 7; a sixth came out of
+the same pass. All six are fixed and committed. The full account is
+`docs/evidence/V2_PHASE6_7_CORRECTION_RED_GREEN.md`; the CHANGELOG entries for
+2026-09-16 carry the narrative.
+
+The worst was mine: `WalSegment::flush` wrote each block, RELEASED it, and
+synced after the loop. Releasing raises the durable index, and the durable index
+is what this node reports to Raft for its own quorum vote - so a crash in that
+window left this node having already counted entries that were not on disk. The
+function's own comment stated the correct order and the code did the opposite.
+
+Also fixed: membership lost across a snapshot load; truncation and compaction
+racing the writer thread; a durability advance not reconsidering quorum; and the
+patch-stamp gap below.
+
+ONE DECISION WAS REVERSED. Recovery now REFUSES a commit index past the end of
+the log rather than clamping it. My clamp was a response to a sweep that
+truncates the segment externally - which cannot happen while the durability
+contract holds. I had taught the node to tolerate a broken disk silently, on the
+single-voter shape that has no peer to re-supply what was lost. ADR 0006 carries
+the amendment, the accepted cost (such a node does not start without a human),
+and the condition that would revisit it (peer snapshot transport, which does not
+exist).
+
+### What I added on top of the review
+
+MUTATION-CHECKED ALL SIX FIXES, and three had no test that failed when the fix
+was reverted - including the flush ordering, the most serious of them. Each gap
+is now closed by a test that kills its mutant:
+
+- the durable index is read from INSIDE the sync, through the
+  `before_file_sync` checkpoint. A crash cannot expose this bug: `_exit` does
+  not drop the page cache, so the file looks identical either way.
+- the power-cut sweep asserts the REASON recovery refused. Without the explicit
+  check the node still refuses, via an unrelated replay failure with an empty
+  cause - which tells an operator nothing, defeating the point of refusing.
+- `ReplicatedKernel` gained an optional `StorageCheckpoints` seam, defaulted off
+  and carrying no behaviour, so a test can PARK the writer mid-drain and deliver
+  a replacing suffix while it sits there. The mutant had survived forty
+  consecutive runs of the old threaded test; it now dies 5/5.
+
+THE PATCH STAMP WAS RECORDING, NOT CHECKING. The Raft fork's stamp compares
+digests only on the branch that finds an existing stamp. The branch that APPLIES
+the patch - every first configure on a clean machine, so every container gate
+and both physical targets - recorded the result without comparing it. The patch
+carries zero context, so hunks apply by line number alone and `patch` exiting
+zero proves placement happened, not that it happened where the review put it.
+Now FATAL on mismatch, verified by perturbing a digest.
+
+### What is NOT done
+
+- NEITHER PHASE 6/7 GATE HAS BEEN RUN. `deploy/run-v2-phase7-container-gate.sh`
+  (ARM64) and `deploy/run-v2-phase7-nuc-gate.sh` (x86-64) are written and pinned
+  to the root above. Expected counts 34 / 31 / 31.
+  `docs/NUC_OPERATOR_RUNBOOK.md` section 7 is the procedure. THE NUC IS THE NEXT
+  TARGET GATE.
+- The physical Pi gate remains a carried Phase 5 obligation, deferred while the
+  machine is offline. It gates the TAG, not HEAD.
+- Peer snapshot transport does not exist, so a follower that loses committed
+  history needs an operator, not just a leader.
+- `docs/README.md` is modified and uncommitted. It is a protected path; I did
+  not touch it and did not commit it.
+
+### Where a reviewer should push hardest
+
+1. `writer-truncation-race`. It is the newest test and the one whose correctness
+   is hardest to see: a parked writer, a bounded release so the passing case
+   cannot deadlock against its own join, and an invariant (the durable index may
+   never name an index the segment does not hold) chosen because the obvious
+   assertion collapses when the replacement reuses an index.
+2. Whether refusing recovery is right for a MULTI-VOTER follower. I argue it is
+   correct today only because peer snapshot transport is missing. If you think
+   the single-voter and follower cases should already diverge, say so - that is
+   a material change, not a tweak.
+3. The three mutants that survived. Two were in fixes nobody doubted, which is
+   the point: a green suite said nothing about them.
 
 ## CODEX HANDOVER — Phases 5, 6 and 7 complete; re-gate pending — 2026-09-15
 
