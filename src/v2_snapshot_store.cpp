@@ -2,6 +2,7 @@
 
 #include "velocita/storage.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <fcntl.h>
@@ -22,11 +23,23 @@ namespace {
 // independently.
 constexpr std::uint32_t kSnapshotMagic = 0x324E5356U;
 constexpr std::uint16_t kSnapshotFrameVersion = 1;
-constexpr std::size_t kHeaderBytes = 34;
+// Frame layout, by offset. Stated as fields rather than as one number so that
+// changing the frame fails the BUILD instead of silently under-reserving - the
+// previous form asserted 34 by hand and nothing tied it to what was written.
+constexpr std::size_t kMagicOffset = 0;
+constexpr std::size_t kVersionOffset = kMagicOffset + 4;
+constexpr std::size_t kIndexOffset = kVersionOffset + 2;
+constexpr std::size_t kTermOffset = kIndexOffset + 8;
+constexpr std::size_t kLengthOffset = kTermOffset + 8;
+constexpr std::size_t kReservedOffset = kLengthOffset + 8;
+constexpr std::size_t kHeaderBytes = kReservedOffset + 4;
+constexpr std::size_t kChecksumBytes = 4;
+static_assert(kHeaderBytes == 34, "the V2 snapshot frame header is 34 bytes");
 
-void append_le64(std::vector<std::byte>& out, const std::uint64_t value) {
-    for (std::size_t i = 0; i < 8; ++i) {
-        out.push_back(static_cast<std::byte>((value >> (i * 8U)) & 0xFFU));
+void write_le(std::span<std::byte> out, const std::size_t offset,
+              const std::uint64_t value, const std::size_t width) {
+    for (std::size_t i = 0; i < width; ++i) {
+        out[offset + i] = static_cast<std::byte>((value >> (i * 8U)) & 0xFFU);
     }
 }
 
@@ -56,26 +69,27 @@ void SnapshotStore::save(const TradingState& state,
                                  "encoder rejects");
     }
 
-    std::vector<std::byte> bytes;
-    bytes.reserve(kHeaderBytes + encoded.bytes_written + 4);
-    for (std::size_t i = 0; i < 4; ++i) {
-        bytes.push_back(static_cast<std::byte>((kSnapshotMagic >> (i * 8U)) & 0xFFU));
-    }
-    bytes.push_back(static_cast<std::byte>(kSnapshotFrameVersion & 0xFFU));
-    bytes.push_back(static_cast<std::byte>((kSnapshotFrameVersion >> 8U) & 0xFFU));
-    append_le64(bytes, last_included_index);
-    append_le64(bytes, static_cast<std::uint64_t>(last_included_term));
-    append_le64(bytes, encoded.bytes_written);
-    bytes.push_back(std::byte{0});
-    bytes.push_back(std::byte{0});
-    bytes.push_back(std::byte{0});
-    bytes.push_back(std::byte{0});
-    bytes.insert(bytes.end(), payload.begin(),
-                 payload.begin() + static_cast<std::ptrdiff_t>(encoded.bytes_written));
-    const auto checksum = crc32(bytes);
-    for (std::size_t i = 0; i < 4; ++i) {
-        bytes.push_back(static_cast<std::byte>((checksum >> (i * 8U)) & 0xFFU));
-    }
+    // Sized once and written by offset, rather than reserved and pushed. The
+    // size is exact either way, but only this form lets the compiler see that:
+    // GCC 15 cannot prove the push_back path never reallocates and reports a
+    // -Wfree-nonheap-object on the reallocation it cannot rule out.
+    std::vector<std::byte> bytes(kHeaderBytes + encoded.bytes_written + kChecksumBytes,
+                                 std::byte{0});
+    write_le(bytes, kMagicOffset, kSnapshotMagic, 4);
+    write_le(bytes, kVersionOffset, kSnapshotFrameVersion, 2);
+    write_le(bytes, kIndexOffset, last_included_index, 8);
+    write_le(bytes, kTermOffset, static_cast<std::uint64_t>(last_included_term), 8);
+    write_le(bytes, kLengthOffset, encoded.bytes_written, 8);
+    // kReservedOffset stays zero.
+    std::copy(payload.begin(),
+              payload.begin() + static_cast<std::ptrdiff_t>(encoded.bytes_written),
+              bytes.begin() + static_cast<std::ptrdiff_t>(kHeaderBytes));
+    // COVERS EVERYTHING BUT ITSELF. The trailing field is part of the buffer
+    // now that the frame is sized up front, so the span has to stop short of it
+    // - checksumming the zeroed field would silently change the frame's bytes.
+    const auto covered = std::span<const std::byte>(bytes).first(
+        kHeaderBytes + encoded.bytes_written);
+    write_le(bytes, kHeaderBytes + encoded.bytes_written, crc32(covered), kChecksumBytes);
 
     const auto temporary = path_.string() + ".tmp";
     const int fd = ::open(temporary.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);

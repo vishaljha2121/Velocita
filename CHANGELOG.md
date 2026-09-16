@@ -44,6 +44,34 @@ GNU patch 2.5.8, and the two agree here.
 This is the first time the fork has been exercised on Linux at all, which is
 what the target gates are for.
 
+#### First NUC PASS, and the two warnings it printed — 2026-09-16
+
+`V2 Phase 6/7 replication and durability acceptance target gate: PASS`, 34 / 31
+/ 31, `trading_state_size_bytes=81360` against the 81,920 budget and
+`state_snapshot_max_canonical_bytes=65451` against 65,536 - so the x86-64 layout
+still fits, as it did for Phase 5.
+
+GCC 15 printed two warnings the development host's clang does not, and both are
+now gone rather than tolerated:
+
+- `-Wunused-result` on `ftruncate` in the flush rollback. `(void)` does not
+  satisfy `warn_unused_result`, and the reason the result is ignored was
+  nowhere. It is ignored because the frontier must be rolled back whether or not
+  the truncation succeeds: those bytes were never synced so nothing may rely on
+  them, and leaving the frontier where the failed write left it would guarantee
+  duplicate records on a retry. Now stated where the decision is.
+- `-Wfree-nonheap-object` in `SnapshotStore::save`. A false positive about the
+  `std::vector` reallocation path - `kHeaderBytes` was exactly what the
+  push_backs wrote, so no reallocation could ever occur, but nothing said so and
+  GCC cannot prove it. The frame is now sized once and written BY OFFSET, with
+  the header length derived from the field offsets rather than asserted as 34,
+  so changing the frame fails the build instead of silently under-reserving.
+
+The second change touches a persisted frame, so it was checked as a byte
+comparison rather than by the suite passing: the same state produces a
+byte-identical 143-byte frame before and after, and both load. A round-trip test
+would have agreed with itself either way.
+
 #### And the gate runs read-only, so the fork moves to image build — 2026-09-16
 
 The second NUC run got past the missing tool and failed on the thing the tool
@@ -95,7 +123,7 @@ Verified by perturbing an expected digest and confirming configure refuses.
 
 `deploy/run-v2-phase7-container-gate.sh` (ARM64) and
 `deploy/run-v2-phase7-nuc-gate.sh` (x86-64), both pinned to source root
-`b241ad40cb1770e243a3bf06220e2a1711857c9c03ceeedae71deab613f3dcde`.
+`f81f4eeb627c0e36fc5327ef8c287f9ad77f4cd0d164b171bb1794a64816378d`.
 
 Phase 5's gates asked a layout question. These ask a durability and scheduling
 one, which is the part least trustworthy on the development host: `fdatasync`

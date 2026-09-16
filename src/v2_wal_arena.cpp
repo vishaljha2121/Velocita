@@ -353,7 +353,17 @@ std::size_t WalSegment::flush(WalBlockArena& arena) {
         // The blocks remain sealed and therefore cannot be recycled as
         // durable. Roll back the append frontier so a caller that deliberately
         // retries after handling the I/O failure does not duplicate records.
-        (void)::ftruncate(fd_, static_cast<off_t>(original_offset));
+        //
+        // The frontier is rolled back WHETHER OR NOT the truncation succeeds,
+        // and that is the safer of the two bad options rather than an oversight.
+        // The bytes past `original_offset` were never synced, so nothing may
+        // rely on them; leaving the frontier where the failed write left it
+        // would guarantee duplicate records on the retry, while rolling it back
+        // means the retry overwrites a region no reader is entitled to. A
+        // `(void)` cast does not satisfy `warn_unused_result`, and suppressing
+        // the warning rather than saying this was the wrong answer.
+        const int rollback = ::ftruncate(fd_, static_cast<off_t>(original_offset));
+        static_cast<void>(rollback);
         next_offset_ = original_offset;
         reserved_through_ = original_reserved;
         throw;
