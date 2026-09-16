@@ -240,13 +240,32 @@ WalSegment::WalSegment(std::filesystem::path data_dir)
     fd_ = ::open(path_.c_str(), O_RDWR | O_CREAT, 0644);
     if (fd_ < 0) throw std::runtime_error("cannot open " + path_.string());
     struct stat info {};
-    if (::fstat(fd_, &info) == 0) {
-        // Resume at a block boundary. A partial tail block is overwritten rather
-        // than appended after, because a block that never completed cannot be
-        // part of the durable prefix and leaving it in place would put a torn
-        // block in the middle of the file.
-        next_offset_ = (static_cast<std::uint64_t>(info.st_size) / kWalBlockBytes) *
-                       kWalBlockBytes;
+    if (::fstat(fd_, &info) != 0) return;
+    reserved_through_ = static_cast<std::uint64_t>(info.st_size);
+
+    // RESUME AT THE WRITTEN FRONTIER, FOUND BY WALKING, not by dividing the file
+    // size.
+    //
+    // File size stopped meaning "end of data" the moment space was reserved
+    // ahead of the writes: a segment with a 2 MiB reservation and one block
+    // written would resume 2 MiB in, leaving a hole of zeros that recovery reads
+    // as the end of the log - silently losing everything appended afterwards.
+    //
+    // Walking also handles a torn tail for free. The first block that does not
+    // verify is where writing resumes, so a block that never completed is
+    // overwritten rather than left sitting in the middle of the file.
+    std::vector<std::byte> block(kWalBlockBytes);
+    next_offset_ = 0;
+    while (next_offset_ + kWalBlockBytes <= reserved_through_) {
+        std::size_t done = 0;
+        while (done < kWalBlockBytes) {
+            const auto result = ::pread(fd_, block.data() + done, kWalBlockBytes - done,
+                                        static_cast<off_t>(next_offset_ + done));
+            if (result <= 0) break;
+            done += static_cast<std::size_t>(result);
+        }
+        if (done != kWalBlockBytes || !decode_block(block)) break;
+        next_offset_ += kWalBlockBytes;
     }
 }
 
@@ -254,8 +273,21 @@ WalSegment::~WalSegment() {
     if (fd_ >= 0) ::close(fd_);
 }
 
+void WalSegment::reserve_through(const std::uint64_t offset) {
+    if (offset <= reserved_through_) return;
+    const auto target = offset + kWalPrealloctionBlocks * kWalBlockBytes;
+    // ZEROS, deliberately. A reserved region must not decode as a block, and
+    // `decode_block` rejects a zero magic, so unwritten space reads as the end
+    // of the log exactly as an unextended file would.
+    if (::ftruncate(fd_, static_cast<off_t>(target)) != 0) {
+        throw std::runtime_error("WAL preallocation failed");
+    }
+    reserved_through_ = target;
+}
+
 void WalSegment::write_block(const BlockDescriptor& descriptor,
                              const std::span<const std::byte> payload) {
+    reserve_through(next_offset_ + kWalBlockBytes);
     const auto framed = frame_block(descriptor.generation, descriptor.sequence, payload);
     std::size_t done = 0;
     while (done < framed.size()) {
@@ -350,6 +382,8 @@ void WalSegment::truncate_from(const std::uint64_t first_removed_index) {
     }
     if (kept.size() == records.size()) return;
     rewrite_segment(fd_, next_offset_, kept);
+    // The rewrite truncated the file, so the reservation is gone with it.
+    reserved_through_ = next_offset_;
 }
 
 void WalSegment::discard_through(const std::uint64_t last_removed_index) {
@@ -361,6 +395,7 @@ void WalSegment::discard_through(const std::uint64_t last_removed_index) {
     }
     if (kept.size() == records.size()) return;
     rewrite_segment(fd_, next_offset_, kept);
+    reserved_through_ = next_offset_;
 }
 
 std::vector<WalRecord> WalSegment::read_records() const {

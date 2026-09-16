@@ -1,5 +1,6 @@
 #include "velocita/v2/wal_arena.hpp"
 
+#include <filesystem>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -246,6 +247,63 @@ void test_framing_round_trips_exactly() {
     require(decoded->payload == payload, "framing did not round-trip the payload");
 }
 
+void test_preallocated_space_does_not_read_back_as_data(
+    const std::filesystem::path& root) {
+    // Preallocation extends the file well past the write frontier. That space
+    // must read as the END of the log, not as blocks - otherwise recovery would
+    // walk into reserved zeros and, at best, stop for the wrong reason.
+    std::filesystem::create_directories(root);
+    // REAL records, not arbitrary bytes. The framing tests above only exercise
+    // the block layer, so they pass on any payload; this one walks the whole
+    // path back out through the record decoder and needs records that decode.
+    const auto staged_record = [](const std::uint64_t index) {
+        velocita::WalRecord value;
+        value.index = index;
+        value.term = 1;
+        value.entry_id = static_cast<std::int32_t>(index);
+        value.entry_type = 0;
+        value.payload = record(64, static_cast<std::uint8_t>(0x40 + index));
+        return velocita::encode_wal_record(value);
+    };
+
+    WalBlockArena arena;
+    require(arena.stage(staged_record(1), 1) == StageOutcome::staged, "stage failed");
+    arena.seal_open_block();
+
+    {
+        WalSegment segment(root);
+        require(segment.flush(arena) == 1, "flush wrote nothing");
+    }
+
+    const auto size = std::filesystem::file_size(root / "v2-wal-blocks.bin");
+    require(size > kWalBlockBytes,
+            "the segment was not preallocated beyond the block it wrote");
+
+    WalSegment reopened(root);
+    const auto records = reopened.read_records();
+    require(records.size() == 1,
+            "recovery read " + std::to_string(records.size()) +
+                " records from a segment holding one, so reserved space is being "
+                "read as data");
+    require(records.front().index == 1, "the recovered record is not the one written");
+
+    // And appending after a reopen must continue AFTER the existing block, not
+    // overwrite it - the resume point comes from the written frontier, which is
+    // not the file size once space is reserved ahead of it.
+    WalBlockArena more;
+    require(more.stage(staged_record(2), 2) == StageOutcome::staged, "stage failed");
+    more.seal_open_block();
+    require(reopened.flush(more) == 1, "second flush wrote nothing");
+
+    WalSegment again(root);
+    const auto both = again.read_records();
+    require(both.size() == 2,
+            "appending after a reopen lost or duplicated a record: got " +
+                std::to_string(both.size()));
+    require(both[0].index == 1 && both[1].index == 2,
+            "records came back in the wrong order after a reopen");
+}
+
 }  // namespace
 
 int main() {
@@ -258,6 +316,13 @@ int main() {
         test_the_durable_index_advances_only_on_completion_and_only_in_order();
         test_a_stalled_writer_causes_bounded_refusal_not_overwrite();
         test_a_torn_or_corrupt_block_is_detected_not_guessed();
+        {
+            const auto root = std::filesystem::temp_directory_path() /
+                              "velocita-v2-wal-arena-tests";
+            std::filesystem::remove_all(root);
+            test_preallocated_space_does_not_read_back_as_data(root);
+            std::filesystem::remove_all(root);
+        }
         std::cout << "all V2 WAL arena tests passed\n";
         return 0;
     } catch (const std::exception& error) {

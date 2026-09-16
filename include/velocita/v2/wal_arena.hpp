@@ -47,6 +47,12 @@ inline constexpr std::size_t kWalBlockPayloadBytes =
 // is full, admission is refused, which is the only behaviour that cannot lose an
 // entry that is not yet durable.
 inline constexpr std::size_t kWalArenaBlocks = 8;
+// Blocks preallocated ahead of the write frontier. Extending a file is a
+// metadata operation the filesystem may itself have to journal, so doing it on
+// the write path puts an unpredictable cost exactly where the phase is trying to
+// remove one. Reserving ahead turns almost every write into an overwrite of
+// space that already exists.
+inline constexpr std::size_t kWalPrealloctionBlocks = 32;
 
 enum class BlockState : std::uint8_t {
     // Owned by the producer, accepting records.
@@ -219,9 +225,15 @@ public:
     [[nodiscard]] const std::filesystem::path& path() const noexcept { return path_; }
 
 private:
+    void reserve_through(std::uint64_t offset);
+
     std::filesystem::path path_;
     int fd_{-1};
     std::uint64_t next_offset_{0};
+    // How far the file has been extended. Distinct from `next_offset_`: the
+    // space exists, nothing has been written into it, and recovery must not read
+    // it as data.
+    std::uint64_t reserved_through_{0};
 };
 
 // What the storage layer is doing, in numbers an operator can act on. Kept here

@@ -73,10 +73,40 @@ which Raft has no leader for; entries then inherit term zero, and
 could therefore snapshot, reclaim the prefix, and silently fail to install the
 snapshot on restart. A leader's term is now raised to one.
 
-No performance claim is made. Phase 7's gate puts correctness and power-cut
-evidence before throughput, and no benchmark has been run.
+#### Off-thread sync, and preallocated segments — 2026-09-15
 
-Host Release 31/31, Debug ASan+UBSan 31/31.
+`WalWriter` moves the pwrite and the fsync to another thread. The owner owns the
+arena - staging, sealing and applying completions all stay on its thread, so
+every mutation is single-threaded and lockless; the writer only reads the bytes
+of a SEALED block, which the generation guard keeps stable for exactly as long
+as it holds the descriptor. `SpscRing` carries descriptors each way and refuses
+when full, because an overwritten descriptor is a block whose bytes never reach
+disk while the arena believes they have. One sync per pass, completions
+published only after it.
+
+The thread is opt-in, so every existing test stays deterministic and the threaded
+path is demonstrated rather than assumed. Verified under ThreadSanitizer: the
+ring alone across a 200,000-entry handoff, and the replication suite with the
+writer running.
+
+Segments preallocate ahead of the frontier, since extending a file is a metadata
+operation the filesystem may journal. That broke the resume logic in a way worth
+recording: resuming at `file_size / block` is correct only while file size means
+"end of data", and reserving ahead ends that - a segment with one block written
+and 2 MiB reserved would resume 2 MiB in, leaving a hole recovery reads as the
+end of the log. The frontier is now found by walking, which also overwrites a
+torn tail for free.
+
+`WalMetrics` reports blocks submitted against blocks durable, backpressure
+refusals, and staged index against durable index - the exposure asynchronous
+durability buys, as a number.
+
+Phase 7's implementation scope is complete. No performance claim is made: the
+gate puts correctness and power-cut evidence before throughput, no benchmark has
+been run, and the power-cut matrix is three durability points rather than genuine
+power interruption.
+
+Host Release 32/32, Debug ASan+UBSan 32/32, TSan clean, model 109/109.
 
 ### Phase 6 in development - Raft Decision/OMS integration
 

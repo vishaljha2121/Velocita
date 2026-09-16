@@ -2667,12 +2667,42 @@ is a stalled writer - backpressure refusals, and the highest staged index agains
 the durable one. That last pair is the exposure asynchronous durability buys,
 expressed as a number rather than as a paragraph.
 
-STATUS: the write path is asynchronous, the sync happens off the owner's thread,
-the durability gate is enforced inside Raft, and the guards are tested by
-mutation and by ThreadSanitizer as well as by assertion. Still outstanding from
-Phase 7's implementation scope: preallocated segments. No performance claim is
-made - Phase 7's gate puts correctness and power-cut evidence before throughput,
-and no benchmark has been run.
+#### 10.18.6 Preallocation, and the assumption it broke
+
+Extending a file is a metadata operation the filesystem may itself have to
+journal, so doing it on the write path puts an unpredictable cost exactly where
+this phase is trying to remove one. The segment now reserves blocks ahead of the
+frontier, turning almost every write into an overwrite of space that already
+exists. Reserved space is zeros, and `decode_block` rejects a zero magic, so it
+reads as the end of the log exactly as an unextended file would.
+
+IT BROKE THE RESUME LOGIC, and the way it broke is worth keeping. The segment
+used to resume at `(file_size / block) * block`, which is correct only while file
+size means "end of data". Reserving ahead ends that: a segment with a 2 MiB
+reservation and one block written would resume 2 MiB in, leaving a hole of zeros
+that recovery reads as the end of the log - silently losing everything appended
+after the reopen.
+
+The frontier is now found by WALKING blocks until one fails to verify, which is
+the same walk recovery does. That also handles a torn tail for free: the first
+block that does not verify is where writing resumes, so a block that never
+completed is overwritten rather than left in the middle of the file.
+
+The test that caught it appends after a reopen and requires both records back.
+An earlier version of that test staged arbitrary bytes rather than encoded
+records and so proved only that the BLOCK layer round-tripped - the record
+decoder had nothing to find and reported zero either way. Staging real records
+was the difference between a test that passes and a test that looks.
+
+STATUS: Phase 7's implementation scope is complete - asynchronous staging, an
+off-thread sync, preallocated segments, checksummed versioned snapshots and
+compaction, and durable-index and backpressure metrics. The durability gate is
+enforced inside Raft by the pinned patch. Guards are tested by mutation and by
+ThreadSanitizer as well as by assertion.
+
+NO PERFORMANCE CLAIM IS MADE. Phase 7's gate puts correctness and power-cut
+evidence before throughput, no benchmark has been run, and the power-cut matrix
+is currently three durability points rather than genuine power interruption.
 
 ## 11. Execution authority and kill contract
 
