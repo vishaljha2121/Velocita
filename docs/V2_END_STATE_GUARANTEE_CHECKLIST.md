@@ -231,31 +231,104 @@ Phase 11 strategy/model validation and controlled canary
 
 ## 7. Durability, bounded memory, snapshot, and compaction — Phase 7
 
-- [ ] **G-042 — Quorum-durable success.** A successful decision means durable
+- [x] **G-042 — Quorum-durable success.** A successful decision means durable
   under the declared quorum policy, never merely present in process RAM.
-- [ ] **G-043 — Owner loop does not synchronously wait on routine disk I/O.**
+- [x] **G-043 — Owner loop does not synchronously wait on routine disk I/O.**
   Fixed-capacity staging and a persistence owner move batched writes/flushes off
   the consensus owner loop while durability acknowledgement remains explicit.
-- [ ] **G-044 — Safe block ownership.** WAL arena blocks have single-writer
+- [x] **G-044 — Safe block ownership.** WAL arena blocks have single-writer
   ownership, generation-safe reuse, release/acquire publication, and no record
   straddling an invalid boundary.
-- [ ] **G-045 — Backpressure before corruption.** Writer stall, disk full, or a
+- [x] **G-045 — Backpressure before corruption.** Writer stall, disk full, or a
   full arena causes bounded refusal/backpressure; live data is not overwritten.
-- [ ] **G-046 — Torn/corrupt data detection.** Framing, length, generation, and
+- [x] **G-046 — Torn/corrupt data detection.** Framing, length, generation, and
   checksums identify torn or corrupt suffixes and recover only according to an
   explicit valid-prefix policy.
-- [ ] **G-047 — Hard-state recovery.** Term/vote and other required hard state
+- [x] **G-047 — Hard-state recovery.** Term/vote and other required hard state
   survive a cut through a tested atomic/two-slot recovery protocol.
-- [ ] **G-048 — Snapshot-before-reclaim.** Snapshot bytes and metadata become
+- [x] **G-048 — Snapshot-before-reclaim.** Snapshot bytes and metadata become
   durable before WAL segments or state needed for recovery are reclaimed.
-- [ ] **G-049 — Complete compacted state.** Snapshot/compaction retains policy,
+- [x] **G-049 — Complete compacted state.** Snapshot/compaction retains policy,
   risk, reservation, order, fill, receipt, outbox, unknown, fencing, source, and
   reconciliation state required for equivalent continuation.
-- [ ] **G-050 — No acknowledged effect disappears.** Process crash or power cut
+- [x] **G-050 — No acknowledged effect disappears.** Process crash or power cut
   cannot recover behind the last response acknowledged under the declared
   durability contract.
 - [ ] **G-051 — V1/V2 storage isolation.** V2 storage cannot be mistaken for or
   destructively migrated from a V1 format without an explicit migration tool.
+  OPEN, and not an oversight of effort - see the finding below.
+
+  Phase 7 closes G-042 through G-050. G-051 is the one that does not close, and
+  the reason is worth stating precisely rather than deferring silently.
+
+  G-042 IS THE DECLARED POLICY, NOT A HOPE. willemt counts a leader's own vote
+  unconditionally, which cannot be corrected from outside the library, so the
+  pinned fork in `deploy/patches` gates that vote on an optional `durable_idx`
+  callback. The other half is on this side of the wire: a follower's reported
+  `current_idx` becomes its match index, so `receive_peer` clamps it to that
+  follower's own durable index. Both halves are pinned by mutation - removing
+  either fails a named test. Evidence: `v2-durable-quorum-tests` (three cases,
+  including that a NULL callback leaves historical behaviour byte-identical, so
+  V1 is provably unaffected), plus `gate` and `follower-ack` in
+  `v2-replication-tests`.
+
+  G-043 IS TRUE OF THE STEADY STATE AND IS CLAIMED AS NOTHING MORE. `log_offer`
+  stages and returns; the sync happens in `flush_durability`. Measured on the
+  development host over two thousand command-sized records, owner-loop time went
+  from 21.6 us median / 109 us p99 to 0.042 us / 208 us. But truncation and
+  compaction QUIESCE THE WRITER and rewrite the segment synchronously, which is
+  a rare maintenance barrier on the owner loop. That is a real exception to the
+  guarantee's plain reading and is recorded here rather than in a footnote.
+  Evidence: `writer` and `writer-truncation-race`.
+
+  G-044 and G-045 are the arena's own suite: no record straddles a block, a
+  block-sized record is refused rather than split, generations make a stale
+  completion unable to release a recycled slot, the durable index advances only
+  on completion and only in order, and a stalled writer produces bounded refusal
+  rather than overwriting bytes that are not yet durable. Two of these were
+  confirmed by mutation rather than assumed. Evidence: `v2-wal-arena-tests`.
+
+  G-046'S VALID-PREFIX POLICY IS "REFUSE", and that is a reversal. Recovery
+  first clamped a commit index past the end of the log; it now refuses and
+  preserves the files. ADR 0006's amendment carries the argument - a sweep that
+  truncates the segment externally is simulating a disk that lost acknowledged
+  data, and clamping taught the node to tolerate that silently on the
+  single-voter shape that has no peer to re-supply it. Evidence: the power-cut
+  sweep in `corrupt-wal-sweep`, which cuts at every structurally distinct offset
+  through the written frontier and requires the refusal to NAME the missing
+  history rather than merely to happen.
+
+  G-047: `torn-hard-state`. G-048: `compact` and `snapshot-directory`, which
+  proves a directory-sync failure is not reported as success. G-049: the
+  canonical snapshot encoder covers `kill_epoch` and `executor_generation`
+  alongside policy, risk, reservations, orders, receipts, outbox and cursors, so
+  the fencing state Phase 8 will USE is already carried across a compaction -
+  what Phase 8 adds is enforcement, not new state to persist. G-050 is the sweep
+  again, from the other side: no cut recovers behind the last acknowledged
+  commit.
+
+  THE G-051 FINDING. `ReplicatedKernel` reuses V1's `MetadataStore` and
+  `WriteAheadLog` unchanged, which was a deliberate and still-correct decision -
+  those layers are payload-generic. The consequence was not noticed: both write
+  into the SAME FILENAMES, `metadata.bin` and `raft.wal`, carrying the SAME
+  `kMetadataMagic`, `kWalMagic` and `kStorageVersion`. A V2 node pointed at a V1
+  data directory therefore reads V1's hard state SUCCESSFULLY - magic and
+  version match, because they are the same constants - and only fails later,
+  incidentally, when a V1 payload reaches the V2 command codec. The reverse is
+  worse: nothing stops a V1 node applying V2 payloads to the counter FSM.
+
+  So the guarantee is unmet in both directions, and the accidental failure is
+  not a mechanism. Closing it means a format discriminator in files that are
+  already persisted, which is a material byte-contract change and belongs in a
+  reviewed increment rather than smuggled in alongside Phase 7's acceptance.
+  V2's own files - `v2-wal-blocks.bin`, `v2-snapshot.bin` - are already
+  distinctly named and are not part of this finding.
+
+  Gate evidence: `V2 Phase 6/7 replication and durability acceptance target
+  gate: PASS` on the x86-64 NUC, 34 / 31 / 31, source root
+  `b241ad40cb1770e243a3bf06220e2a1711857c9c03ceeedae71deab613f3dcde`. The ARM64
+  container gate is written and pinned but has not been run, and the physical Pi
+  gate remains a carried Phase 5 obligation.
 
 ## 8. Execution fencing, kill, and emergency risk reduction — Phase 8
 
