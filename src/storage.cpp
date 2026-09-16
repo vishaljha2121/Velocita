@@ -223,10 +223,8 @@ void WriteAheadLog::append(const WalRecord& record) {
     }
 }
 
-namespace {
-
-// One encoder for both rewrites, so a prefix discard and a suffix truncation
-// cannot drift apart about the record format.
+// One encoder for every path that writes a record - the two file rewrites and
+// block staging - so they cannot drift apart about the format.
 std::vector<std::byte> encode_wal_record(const WalRecord& record) {
     std::vector<std::byte> bytes;
     bytes.reserve(kWalHeaderSize + record.payload.size());
@@ -250,7 +248,44 @@ std::vector<std::byte> encode_wal_record(const WalRecord& record) {
     return bytes;
 }
 
-}  // namespace
+std::vector<WalRecord> decode_wal_records(const std::span<const std::byte> bytes) {
+    std::vector<WalRecord> records;
+    std::size_t position = 0;
+    while (position + kWalHeaderSize <= bytes.size()) {
+        std::size_t offset = position;
+        if (read_le<std::uint32_t>(bytes, offset) != kWalMagic) break;
+        if (read_le<std::uint16_t>(bytes, offset) != kStorageVersion) break;
+        if (read_le<std::uint16_t>(bytes, offset) != kWalHeaderSize) break;
+        const auto payload_size = read_le<std::uint32_t>(bytes, offset);
+        (void)read_le<std::uint32_t>(bytes, offset);
+        if (payload_size > kMaxPayload) break;
+        const auto total = kWalHeaderSize + payload_size;
+        if (position + total > bytes.size()) break;
+
+        WalRecord record;
+        record.index = read_le<std::uint64_t>(bytes, offset);
+        record.term = read_le<std::int64_t>(bytes, offset);
+        record.entry_id = read_le<std::int32_t>(bytes, offset);
+        record.entry_type = read_le<std::int32_t>(bytes, offset);
+        const auto stored_crc = read_le<std::uint32_t>(bytes, offset);
+
+        std::vector<std::byte> covered(
+            bytes.begin() + static_cast<std::ptrdiff_t>(position),
+            bytes.begin() + static_cast<std::ptrdiff_t>(position + total));
+        const auto crc_position = kWalHeaderSize - sizeof(std::uint32_t);
+        for (std::size_t i = 0; i < sizeof(std::uint32_t); ++i) {
+            covered[crc_position + i] = std::byte{0};
+        }
+        if (crc32(covered) != stored_crc) break;
+
+        record.payload.assign(
+            bytes.begin() + static_cast<std::ptrdiff_t>(position + kWalHeaderSize),
+            bytes.begin() + static_cast<std::ptrdiff_t>(position + total));
+        records.push_back(std::move(record));
+        position += total;
+    }
+    return records;
+}
 
 // Rewrite the log to exactly `kept`, atomically. Temp file, fsync, rename,
 // fsync the directory: a crash at any point leaves either the old log or the

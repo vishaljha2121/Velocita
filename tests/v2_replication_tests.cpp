@@ -647,7 +647,7 @@ void test_a_snapshot_is_durable_before_its_prefix_is_reclaimed(
 
     auto& only = cluster.elect();
     const auto before = only.status();
-    const auto wal_before = velocita::WriteAheadLog(root / "1").read_all().size();
+    const auto wal_before = WalSegment(root / "1").read_records().size();
     require(wal_before > 1, "the fixture did not produce a log worth compacting");
 
     const auto included = only.compact();
@@ -664,9 +664,9 @@ void test_a_snapshot_is_durable_before_its_prefix_is_reclaimed(
     require(stored->state_digest == before.state_digest,
             "the snapshot captured a different state than the replica held");
 
-    const auto wal_after = velocita::WriteAheadLog(root / "1").read_all().size();
+    const auto wal_after = WalSegment(root / "1").read_records().size();
     require(wal_after < wal_before, "compaction reclaimed nothing from the log");
-    for (const auto& record : velocita::WriteAheadLog(root / "1").read_all()) {
+    for (const auto& record : WalSegment(root / "1").read_records()) {
         require(record.index > included,
                 "a reclaimed entry is still in the log");
     }
@@ -778,6 +778,47 @@ void test_recovery_is_never_behind_the_last_acknowledged_commit(
     }
 }
 
+
+// --- Phase 7b: durability is a separate index from commit -------------------
+
+void test_durability_is_tracked_separately_and_never_overstated(
+    const std::filesystem::path& root) {
+    Cluster cluster(root, 1);
+    (void)build_authorized_submit(cluster);
+    cluster.settle(50);
+
+    auto& node = cluster.elect();
+    const auto durable = node.durable_index();
+    const auto status = node.status();
+
+    // Non-vacuity first: records really are going through the block segment, so
+    // everything below is about the new path and not the legacy one.
+    const auto staged = WalSegment(root / "1").read_records();
+    require(!staged.empty(),
+            "no records reached the block segment, so this test is measuring the "
+            "old synchronous path");
+    require(durable >= staged.back().index,
+            "the durable index does not cover the records on disk");
+
+    // The persisted hard state is a statement about BYTES ON DISK. willemt can
+    // advance its in-memory commit index past what this node has synced, since
+    // it counts the leader's own vote unconditionally; persisting that would
+    // leave a restart reading a commit index past the end of its own log.
+    const auto persisted = velocita::MetadataStore(root / "1").load();
+    require(persisted.commit_index <= static_cast<std::int64_t>(durable),
+            "the persisted commit index ran ahead of durability: commit " +
+                std::to_string(persisted.commit_index) + " durable " +
+                std::to_string(durable));
+    require(persisted.commit_index <= status.current_index,
+            "the persisted commit index is past the end of the log");
+
+    // And the whole point: a restart reconstructs from those durable bytes.
+    cluster.restart(1);
+    cluster.settle(200);
+    require(cluster.node(1).status().state_digest == status.state_digest,
+            "recovery from the block segment produced a different state");
+}
+
 // --- the same suite on a single voter ----------------------------------------
 
 void test_one_voter_reaches_the_same_state(const std::filesystem::path& root) {
@@ -831,6 +872,7 @@ int main() {
         test_a_corrupt_snapshot_degrades_to_replay_rather_than_refusing_to_start(
             fresh("corrupt-snapshot"));
         test_recovery_is_never_behind_the_last_acknowledged_commit(fresh("power-cut"));
+        test_durability_is_tracked_separately_and_never_overstated(fresh("durable"));
         test_one_voter_reaches_the_same_state(fresh("voter-count"));
 
         std::filesystem::remove_all(root);

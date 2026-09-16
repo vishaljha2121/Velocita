@@ -13,6 +13,48 @@ release-engineering work.
 
 ## [V2] - In development
 
+### Phase 7 in development - durability and bounded memory
+
+#### Durable snapshots, compaction, and an asynchronous write path — 2026-09-15
+
+Phase 7a: `SnapshotStore` frames and persists the canonical state snapshot the
+reducer already defines, adding durability and no economics. Durable strictly
+before reclaimed - fsync, rename, fsync the DIRECTORY, and only then poll entries
+away - so a crash leaves a snapshot plus an overlapping log rather than neither.
+A corrupt snapshot degrades to replay instead of refusing to start.
+
+Phase 7b: `WalBlockArena` stages records in fixed blocks and `WalSegment` drains
+them with `pwrite` plus one sync per drain. `log_offer` now stages and returns,
+so the owner loop no longer pays an open/write/fsync/close per record. A record
+never straddles a block; every slot reuse mints a generation so a late completion
+cannot release a recycled slot; the durable index advances in order only; and a
+stalled writer produces bounded refusal rather than overwriting bytes that are
+not yet durable. Two guards were checked by mutation rather than assumed.
+
+The persisted commit index is clamped to the durable index. willemt counts the
+leader's own vote unconditionally, so its in-memory commit index can name an
+entry this node has staged but not synced; persisting that would leave a restart
+reading a commit index past the end of its own log, which the constructor then
+refuses - turning a survivable crash into a node that will not start.
+
+The stricter property, that the in-memory commit index never exceeds
+quorum-durable, needs the self-vote gated inside Raft and is NOT done. Bounded
+and stated exactly: nothing is applied, no client answered and no outbox effect
+created before durability, so no observed commit can be lost; what can be lost is
+an entry the leader's own commit index reached and nobody was told about.
+
+TWO LIBRARY BEHAVIOURS THAT COMPOSE INTO DATA LOSS, found and fixed in 7a.
+willemt promotes a lone voter to leader without campaigning, leaving term zero,
+which Raft has no leader for; entries then inherit term zero, and
+`raft_begin_load_snapshot` rejects a zero term outright. A single-voter cluster
+could therefore snapshot, reclaim the prefix, and silently fail to install the
+snapshot on restart. A leader's term is now raised to one.
+
+No performance claim is made. Phase 7's gate puts correctness and power-cut
+evidence before throughput, and no benchmark has been run.
+
+Host Release 31/31, Debug ASan+UBSan 31/31.
+
 ### Phase 6 in development - Raft Decision/OMS integration
 
 #### The reducer placed behind consensus — 2026-09-15

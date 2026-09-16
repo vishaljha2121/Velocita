@@ -2,6 +2,10 @@
 
 #include <algorithm>
 #include <cstring>
+#include <fcntl.h>
+#include <stdexcept>
+#include <sys/stat.h>
+#include <unistd.h>
 
 namespace velocita::v2 {
 namespace {
@@ -210,6 +214,155 @@ BlockState WalBlockArena::state_of(const std::size_t slot) const noexcept {
 
 std::uint64_t WalBlockArena::generation_of(const std::size_t slot) const noexcept {
     return blocks_[slot].generation;
+}
+
+WalSegment::WalSegment(std::filesystem::path data_dir)
+    : path_(std::move(data_dir) / "v2-wal-blocks.bin") {
+    std::filesystem::create_directories(path_.parent_path());
+    fd_ = ::open(path_.c_str(), O_RDWR | O_CREAT, 0644);
+    if (fd_ < 0) throw std::runtime_error("cannot open " + path_.string());
+    struct stat info {};
+    if (::fstat(fd_, &info) == 0) {
+        // Resume at a block boundary. A partial tail block is overwritten rather
+        // than appended after, because a block that never completed cannot be
+        // part of the durable prefix and leaving it in place would put a torn
+        // block in the middle of the file.
+        next_offset_ = (static_cast<std::uint64_t>(info.st_size) / kWalBlockBytes) *
+                       kWalBlockBytes;
+    }
+}
+
+WalSegment::~WalSegment() {
+    if (fd_ >= 0) ::close(fd_);
+}
+
+std::size_t WalSegment::flush(WalBlockArena& arena) {
+    std::vector<BlockDescriptor> written;
+    while (const auto descriptor = arena.next_sealed()) {
+        const auto framed = frame_block(descriptor->generation, descriptor->sequence,
+                                        arena.block_bytes(*descriptor));
+        std::size_t done = 0;
+        while (done < framed.size()) {
+            const auto result =
+                ::pwrite(fd_, framed.data() + done, framed.size() - done,
+                         static_cast<off_t>(next_offset_ + done));
+            if (result <= 0) throw std::runtime_error("WAL block write failed");
+            done += static_cast<std::size_t>(result);
+        }
+        next_offset_ += kWalBlockBytes;
+        written.push_back(*descriptor);
+        // Released only after the sync below. Marking a block durable here would
+        // be claiming durability for bytes still in the page cache.
+        if (!arena.complete(*descriptor)) break;
+    }
+    if (written.empty()) return 0;
+    // `fdatasync` where it exists, `fsync` where it does not. macOS has no
+    // `fdatasync`, and F_FULLFSYNC is the only call there that actually reaches
+    // the platter - but the development host is not the deployment target, and
+    // pretending otherwise in a durability path would be the wrong kind of
+    // portability.
+#if defined(__APPLE__)
+    if (::fsync(fd_) != 0) throw std::runtime_error("WAL fsync failed");
+#else
+    if (::fdatasync(fd_) != 0) throw std::runtime_error("WAL fdatasync failed");
+#endif
+    return written.size();
+}
+
+namespace {
+
+// Rewrite a whole segment from records, packing blocks the same way staging
+// does so a rewritten segment is indistinguishable from a staged one.
+void rewrite_segment(const int fd, std::uint64_t& next_offset,
+                     const std::vector<WalRecord>& kept) {
+    std::vector<std::byte> payload;
+    std::uint64_t sequence = 1;
+    std::uint64_t offset = 0;
+    const auto emit = [&]() {
+        if (payload.empty()) return;
+        const auto framed = frame_block(sequence, sequence, payload);
+        std::size_t done = 0;
+        while (done < framed.size()) {
+            const auto result = ::pwrite(fd, framed.data() + done, framed.size() - done,
+                                         static_cast<off_t>(offset + done));
+            if (result <= 0) throw std::runtime_error("WAL rewrite failed");
+            done += static_cast<std::size_t>(result);
+        }
+        offset += kWalBlockBytes;
+        ++sequence;
+        payload.clear();
+    };
+    for (const auto& record : kept) {
+        auto framed = encode_wal_record(record);
+        if (framed.size() > kWalBlockPayloadBytes) {
+            throw std::runtime_error("a retained record no longer fits a block");
+        }
+        if (payload.size() + framed.size() > kWalBlockPayloadBytes) emit();
+        payload.insert(payload.end(), framed.begin(), framed.end());
+    }
+    emit();
+#if defined(__APPLE__)
+    if (::fsync(fd) != 0) throw std::runtime_error("WAL rewrite fsync failed");
+#else
+    if (::fdatasync(fd) != 0) throw std::runtime_error("WAL rewrite fsync failed");
+#endif
+    // Drop whatever followed, so a shorter log cannot leave older blocks
+    // readable past its own end.
+    if (::ftruncate(fd, static_cast<off_t>(offset)) != 0) {
+        throw std::runtime_error("WAL rewrite truncate failed");
+    }
+    next_offset = offset;
+}
+
+}  // namespace
+
+void WalSegment::truncate_from(const std::uint64_t first_removed_index) {
+    auto records = read_records();
+    std::vector<WalRecord> kept;
+    for (auto& record : records) {
+        if (record.index < first_removed_index) kept.push_back(std::move(record));
+    }
+    if (kept.size() == records.size()) return;
+    rewrite_segment(fd_, next_offset_, kept);
+}
+
+void WalSegment::discard_through(const std::uint64_t last_removed_index) {
+    if (last_removed_index == 0) return;
+    auto records = read_records();
+    std::vector<WalRecord> kept;
+    for (auto& record : records) {
+        if (record.index > last_removed_index) kept.push_back(std::move(record));
+    }
+    if (kept.size() == records.size()) return;
+    rewrite_segment(fd_, next_offset_, kept);
+}
+
+std::vector<WalRecord> WalSegment::read_records() const {
+    std::vector<WalRecord> records;
+    struct stat info {};
+    if (::fstat(fd_, &info) != 0) return records;
+    const auto size = static_cast<std::uint64_t>(info.st_size);
+
+    std::vector<std::byte> block(kWalBlockBytes);
+    for (std::uint64_t offset = 0; offset + kWalBlockBytes <= size;
+         offset += kWalBlockBytes) {
+        std::size_t done = 0;
+        while (done < kWalBlockBytes) {
+            const auto result = ::pread(fd_, block.data() + done, kWalBlockBytes - done,
+                                        static_cast<off_t>(offset + done));
+            if (result <= 0) break;
+            done += static_cast<std::size_t>(result);
+        }
+        if (done != kWalBlockBytes) break;
+        const auto decoded = decode_block(block);
+        // STOP at the first block that does not verify. Everything after it is
+        // unreachable by definition; reading past would be inventing history.
+        if (!decoded) break;
+        for (auto& record : decode_wal_records(decoded->payload)) {
+            records.push_back(std::move(record));
+        }
+    }
+    return records;
 }
 
 }  // namespace velocita::v2

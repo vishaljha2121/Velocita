@@ -37,6 +37,7 @@ ReplicatedKernel::ReplicatedKernel(const std::int32_t node_id,
       members_(std::move(members)),
       metadata_store_(data_dir),
       wal_(data_dir),
+      segment_(std::make_unique<WalSegment>(data_dir)),
       snapshots_(std::move(data_dir)),
       metadata_(metadata_store_.load()),
       scratch_(std::make_unique<ApplyScratch>()),
@@ -105,7 +106,10 @@ ReplicatedKernel::ReplicatedKernel(const std::int32_t node_id,
         throw std::runtime_error("failed to restore Raft vote");
     }
 
-    const auto records = wal_.read_all();
+    // Blocks first, then the legacy per-record file. A directory written by an
+    // older build has no segment, and must still start.
+    auto records = segment_->read_records();
+    if (records.empty()) records = wal_.read_all();
     for (const auto& record : records) {
         // Entries the snapshot already accounts for are skipped rather than
         // re-applied. A crash between a durable snapshot and its prefix
@@ -166,11 +170,20 @@ void ReplicatedKernel::tick(const int elapsed_ms) {
         }
     }
 
+    flush_durability();
     persist_commit_index();
     if (const int result = raft_apply_all(server_); result != 0) {
         throw std::runtime_error("raft_apply_all failed: " + std::to_string(result) +
                                  " " + callback_error_);
     }
+}
+
+void ReplicatedKernel::flush_durability() {
+    // Seal whatever is open so a quiet period cannot leave recent records
+    // staged indefinitely - the time half of the flush trigger; the arena's
+    // block-full rotation is the space half.
+    arena_.seal_open_block();
+    (void)segment_->flush(arena_);
 }
 
 bool ReplicatedKernel::is_leader() const { return raft_is_leader(server_) != 0; }
@@ -211,6 +224,7 @@ ProposeOutcome ReplicatedKernel::propose(const std::span<const std::byte> comman
         return outcome;
     }
 
+    flush_durability();
     persist_commit_index();
     if (const int applied = raft_apply_all(server_); applied != 0) {
         throw std::runtime_error("raft_apply_all failed: " + std::to_string(applied) +
@@ -296,6 +310,7 @@ std::uint64_t ReplicatedKernel::compact() {
         throw std::runtime_error("failed to end the snapshot: " + callback_error_);
     }
     if (polled_through_ != 0) {
+        segment_->discard_through(polled_through_);
         // Reclaiming the WAL prefix last means a crash here leaves entries the
         // snapshot already covers. Restart skips them by index, so the overlap
         // costs a little disk and nothing else. Failing the other way would
@@ -306,7 +321,20 @@ std::uint64_t ReplicatedKernel::compact() {
 }
 
 void ReplicatedKernel::persist_commit_index() {
-    const auto commit = raft_get_commit_idx(server_);
+    // NEVER PERSIST A COMMIT INDEX BEYOND WHAT IS DURABLE.
+    //
+    // willemt counts the leader's own vote unconditionally, so `commit_idx` can
+    // momentarily name an entry this node has staged but not synced. Recording
+    // that would be the one unrecoverable version of the mistake: a restart
+    // would read a commit index pointing past the end of its own log.
+    //
+    // Clamping keeps the persisted hard state a statement about bytes on disk.
+    // The stricter property - that the in-memory commit index itself never
+    // exceeds quorum-durable - needs the self-vote gated inside Raft, which is
+    // the fork 10.18.1 describes and which is not done.
+    const auto durable = static_cast<raft_index_t>(arena_.durable_index());
+    const auto raw = raft_get_commit_idx(server_);
+    const auto commit = (durable > 0 && durable < raw) ? durable : raw;
     if (commit == metadata_.commit_index) return;
     metadata_.term = raft_get_current_term(server_);
     metadata_.voted_for = raft_get_voted_for(server_);
@@ -368,6 +396,7 @@ void ReplicatedKernel::receive_peer(const PeerMessage& message) {
         throw std::runtime_error("raft peer handling failed: " + std::to_string(result) +
                                  " " + callback_error_);
     }
+    flush_durability();
     persist_commit_index();
     if (const int applied = raft_apply_all(server_); applied != 0) {
         throw std::runtime_error("raft_apply_all failed: " + std::to_string(applied) +
@@ -483,9 +512,25 @@ int ReplicatedKernel::log_offer(raft_server_t*, void* user_data, raft_entry_t* e
         entry->data.buf = owned.data();
 
         if (self.restoring_) return 0;
-        self.wal_.append({static_cast<std::uint64_t>(index), entry->term, entry->id,
-                          entry->type, owned});
-        return 0;
+
+        // STAGE, DO NOT SYNC. This runs inside a Raft callback and therefore
+        // inside the owner loop; the whole objective of the phase is that it
+        // must not block on the disk. Durability follows in `flush_durability`.
+        const auto framed = encode_wal_record({static_cast<std::uint64_t>(index),
+                                               entry->term, entry->id, entry->type,
+                                               owned});
+        switch (self.arena_.stage(framed, static_cast<std::uint64_t>(index))) {
+            case StageOutcome::staged:
+                return 0;
+            case StageOutcome::backpressure:
+            case StageOutcome::record_too_large:
+                // Bounded refusal. Accepting an entry the log cannot make
+                // durable would be exactly the overwrite the arena refuses, one
+                // level up.
+                self.callback_error_ = "WAL staging refused the entry";
+                return RAFT_ERR_SHUTDOWN;
+        }
+        return RAFT_ERR_SHUTDOWN;
     } catch (const std::exception& error) {
         self.callback_error_ = error.what();
         return RAFT_ERR_SHUTDOWN;
@@ -509,7 +554,11 @@ int ReplicatedKernel::log_pop(raft_server_t*, void* user_data, raft_entry_t*,
                              self.log_payloads_.end());
     if (self.restoring_) return 0;
     try {
+        // Both stores, or a restart reads back entries Raft has popped. The
+        // arena's own staged bytes for those indices are dropped with the
+        // blocks they live in.
         self.wal_.truncate_from(static_cast<std::uint64_t>(index));
+        self.segment_->truncate_from(static_cast<std::uint64_t>(index));
         return 0;
     } catch (const std::exception& error) {
         self.callback_error_ = error.what();
@@ -524,6 +573,7 @@ int ReplicatedKernel::log_clear(raft_server_t*, void* user_data, raft_entry_t*,
     if (self.restoring_) return 0;
     try {
         self.wal_.truncate_from(1);
+        self.segment_->truncate_from(1);
         return 0;
     } catch (const std::exception& error) {
         self.callback_error_ = error.what();

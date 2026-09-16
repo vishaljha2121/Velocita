@@ -2546,10 +2546,42 @@ What it costs is that the leader's log index lags its accepted proposals, so
 weaker statement than it was, and the distinction is recorded here rather than
 left for a caller to assume the stronger one.
 
-STATUS: the arena and its properties are implemented and tested. The protocol
-above is DECLARED AND NOT YET ENFORCED - `ReplicatedKernel` still writes
-synchronously through `WriteAheadLog`. Until the integration lands, Phase 7's
-objective sentence is not met and no performance claim may be made.
+#### 10.18.2 What the integration actually enforces, and what it does not
+
+`log_offer` now STAGES and returns. The sync happens in `flush_durability`,
+driven from `tick`, `propose` and `receive_peer` - so the owner loop no longer
+pays an open/write/fsync/close per record, which is Phase 7's objective for the
+write path.
+
+ENFORCED: THE PERSISTED COMMIT INDEX NEVER EXCEEDS THE DURABLE INDEX. willemt can
+advance its in-memory commit index past what this node has synced, because it
+counts the leader's own vote unconditionally. Recording that would be the one
+unrecoverable version of the mistake - a restart reading a commit index that
+points past the end of its own log, which the constructor then refuses, turning a
+survivable crash into a node that will not start. `persist_commit_index` clamps,
+so the hard state stays a statement about bytes on disk.
+
+NOT ENFORCED: the stricter property, that the IN-MEMORY commit index never
+exceeds quorum-durable. That requires gating the self-vote inside Raft, which is
+the fork 10.18.1 describes. The exposure is bounded and worth stating exactly: a
+leader can internally consider an entry committed while its own copy is only
+staged. Nothing is applied, no client is answered, and no outbox effect exists
+before the bytes are durable, so no OBSERVED commit can be lost. What can be lost
+is an entry the leader's own `commit_idx` had reached and nobody was told about,
+which a client retry reproduces.
+
+THE SEGMENT IS RECLAIMED ON BOTH PATHS, and the suffix one is correctness rather
+than housekeeping. `log_pop` truncates the segment as well as the legacy file,
+because an entry Raft has popped must not come back on restart - a segment that
+kept it would resurrect a log the cluster has already rejected. `compact`
+discards the prefix a durable snapshot covers.
+
+RECOVERY PREFERS THE SEGMENT and falls back to the legacy per-record file, so a
+directory written by an older build still starts.
+
+STATUS: the write path is asynchronous and its properties are tested. No
+performance claim is made here - Phase 7's gate puts correctness and power-cut
+evidence before throughput, and no benchmark has been run.
 
 ## 11. Execution authority and kill contract
 

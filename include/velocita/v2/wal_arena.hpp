@@ -158,4 +158,45 @@ struct DecodedBlock {
 [[nodiscard]] std::optional<DecodedBlock> decode_block(
     std::span<const std::byte> bytes);
 
+// The durable side of the arena: a preopened append-only segment of fixed-size
+// blocks.
+//
+// Preopened and held open, because the cost this phase exists to remove is a
+// per-record open/write/fsync/close. `flush` writes whole blocks at a block
+// stride and syncs once per drain rather than once per record.
+class WalSegment {
+public:
+    explicit WalSegment(std::filesystem::path data_dir);
+    ~WalSegment();
+    WalSegment(const WalSegment&) = delete;
+    WalSegment& operator=(const WalSegment&) = delete;
+
+    // Drain every sealed block: write, sync once, then release them in order.
+    // The sync happens BEFORE any release, so a block is only ever reported
+    // durable after the bytes it describes are on disk.
+    std::size_t flush(WalBlockArena& arena);
+
+    // Records recovered from the segment, in order, stopping at the first block
+    // that does not verify. Everything after a torn block is unreachable by
+    // definition, so reading past it would be inventing history.
+    [[nodiscard]] std::vector<WalRecord> read_records() const;
+
+    // Rewrite the segment to exactly the records that survive a filter, as
+    // fresh blocks. Both are rare (truncation on a leader change, discard after
+    // a snapshot), so a rewrite is the right cost for the simplest correctness.
+    //
+    // `truncate_from` removing a SUFFIX is not housekeeping - an entry Raft has
+    // popped must not come back on restart, and a segment that kept it would
+    // resurrect a log the cluster has already rejected.
+    void truncate_from(std::uint64_t first_removed_index);
+    void discard_through(std::uint64_t last_removed_index);
+
+    [[nodiscard]] const std::filesystem::path& path() const noexcept { return path_; }
+
+private:
+    std::filesystem::path path_;
+    int fd_{-1};
+    std::uint64_t next_offset_{0};
+};
+
 }  // namespace velocita::v2

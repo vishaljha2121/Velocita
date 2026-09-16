@@ -53,4 +53,12 @@ private:
 
 std::uint32_t crc32(std::span<const std::byte> bytes);
 
+// Record framing, exposed so block staging and file recovery cannot drift apart
+// about what a record looks like. `decode_wal_records` parses as many COMPLETE
+// records as the span holds and stops at the first malformed one, because a
+// partial tail is exactly what a torn write leaves and guessing past it is how a
+// half record becomes a whole wrong one.
+[[nodiscard]] std::vector<std::byte> encode_wal_record(const WalRecord& record);
+[[nodiscard]] std::vector<WalRecord> decode_wal_records(std::span<const std::byte> bytes);
+
 }  // namespace velocita

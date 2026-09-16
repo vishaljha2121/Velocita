@@ -5,6 +5,7 @@
 #include "velocita/v2/kernel.hpp"
 #include "velocita/v2/kernel_codec.hpp"
 #include "velocita/v2/snapshot_store.hpp"
+#include "velocita/v2/wal_arena.hpp"
 #include "velocita/v2/state_snapshot.hpp"
 
 extern "C" {
@@ -138,6 +139,13 @@ public:
 
     [[nodiscard]] ReplicaStatus status() const;
 
+    // Highest log index whose bytes are on disk. Distinct from the commit index
+    // on purpose: the gap between them is where asynchronous durability lives,
+    // and collapsing the two is the mistake this phase exists to prevent.
+    [[nodiscard]] std::uint64_t durable_index() const noexcept {
+        return arena_.durable_index();
+    }
+
     // The committed outbox, with the authority under which it was read. A
     // caller that ignores `authoritative` is reading a follower's or a deposed
     // leader's copy, which is stale by definition.
@@ -172,11 +180,17 @@ private:
     static int log_get_node_id(raft_server_t*, void*, raft_entry_t*, raft_index_t);
 
     void persist_commit_index();
+    void flush_durability();
 
     std::int32_t node_id_;
     std::vector<std::int32_t> members_;
     MetadataStore metadata_store_;
     WriteAheadLog wal_;
+    // Staging plus the segment it drains into. `log_offer` stages and returns;
+    // the fsync happens in `flush_durability`, driven from `tick`, so the owner
+    // loop no longer pays a sync per record.
+    WalBlockArena arena_;
+    std::unique_ptr<WalSegment> segment_;
     SnapshotStore snapshots_;
     PersistentMetadata metadata_;
     // Highest index reclaimed by `log_poll` during the current `raft_end_snapshot`.
