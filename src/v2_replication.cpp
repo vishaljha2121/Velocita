@@ -56,6 +56,10 @@ ReplicatedKernel::ReplicatedKernel(const std::int32_t node_id,
     table.log_pop = &ReplicatedKernel::log_pop;
     table.log_clear = &ReplicatedKernel::log_clear;
     table.log_get_node_id = &ReplicatedKernel::log_get_node_id;
+    // THE GATE. Without this callback Raft counts our vote as soon as an entry
+    // is appended, which with an asynchronous log means before its bytes exist
+    // on disk.
+    table.durable_idx = &ReplicatedKernel::durable_idx;
     raft_set_callbacks(server_, &table, this);
 
     if (members_.empty()) members_.push_back(node_id_);
@@ -126,6 +130,15 @@ ReplicatedKernel::ReplicatedKernel(const std::int32_t node_id,
                                      std::to_string(record.index));
         }
     }
+    // Records recovered from disk are durable by definition - they were read
+    // from it. Telling the arena so is what lets a restarted node count itself
+    // toward quorum for its own recovered log.
+    std::uint64_t recovered_through = installed_through;
+    for (const auto& record : records) {
+        recovered_through = std::max(recovered_through, record.index);
+    }
+    arena_.seed_durable_index(recovered_through);
+
     if (metadata_.commit_index < 0 ||
         metadata_.commit_index > raft_get_current_idx(server_)) {
         throw std::runtime_error(
@@ -170,7 +183,6 @@ void ReplicatedKernel::tick(const int elapsed_ms) {
         }
     }
 
-    flush_durability();
     persist_commit_index();
     if (const int result = raft_apply_all(server_); result != 0) {
         throw std::runtime_error("raft_apply_all failed: " + std::to_string(result) +
@@ -224,7 +236,6 @@ ProposeOutcome ReplicatedKernel::propose(const std::span<const std::byte> comman
         return outcome;
     }
 
-    flush_durability();
     persist_commit_index();
     if (const int applied = raft_apply_all(server_); applied != 0) {
         throw std::runtime_error("raft_apply_all failed: " + std::to_string(applied) +
@@ -329,9 +340,12 @@ void ReplicatedKernel::persist_commit_index() {
     // would read a commit index pointing past the end of its own log.
     //
     // Clamping keeps the persisted hard state a statement about bytes on disk.
-    // The stricter property - that the in-memory commit index itself never
-    // exceeds quorum-durable - needs the self-vote gated inside Raft, which is
-    // the fork 10.18.1 describes and which is not done.
+    //
+    // With the pinned durability patch this should never bind: Raft no longer
+    // counts our vote before the bytes are on disk, so the commit index cannot
+    // outrun durability in the first place. It stays as the cheaper of two
+    // checks - if the callback is ever unwired, this is what stops a restart
+    // reading a commit index past the end of its own log.
     const auto durable = static_cast<raft_index_t>(arena_.durable_index());
     const auto raw = raft_get_commit_idx(server_);
     const auto commit = (durable > 0 && durable < raw) ? durable : raw;
@@ -396,7 +410,6 @@ void ReplicatedKernel::receive_peer(const PeerMessage& message) {
         throw std::runtime_error("raft peer handling failed: " + std::to_string(result) +
                                  " " + callback_error_);
     }
-    flush_durability();
     persist_commit_index();
     if (const int applied = raft_apply_all(server_); applied != 0) {
         throw std::runtime_error("raft_apply_all failed: " + std::to_string(applied) +
@@ -583,6 +596,11 @@ int ReplicatedKernel::log_clear(raft_server_t*, void* user_data, raft_entry_t*,
 
 int ReplicatedKernel::log_get_node_id(raft_server_t*, void*, raft_entry_t*, raft_index_t) {
     return -1;
+}
+
+raft_index_t ReplicatedKernel::durable_idx(raft_server_t*, void* user_data) {
+    const auto& self = *static_cast<const ReplicatedKernel*>(user_data);
+    return static_cast<raft_index_t>(self.arena_.durable_index());
 }
 
 }  // namespace velocita::v2

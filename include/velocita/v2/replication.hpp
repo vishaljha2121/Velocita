@@ -117,7 +117,19 @@ public:
     ReplicatedKernel(const ReplicatedKernel&) = delete;
     ReplicatedKernel& operator=(const ReplicatedKernel&) = delete;
 
+    // Raft's periodic work and apply. Deliberately does NOT drive the disk:
+    // flushing is `flush_durability`, and the owner loop decides when to call
+    // it. The same discipline the arena uses for its writer and the simulator
+    // uses for time - nothing that decides behaviour may be implicit, and a
+    // tick that silently synced would make the gap between appended and durable
+    // unobservable, including to a test trying to prove it is enforced.
     void tick(int elapsed_ms);
+
+    // Drain staged blocks to disk and sync. Until this runs, entries this node
+    // has appended are NOT durable and it will not count itself toward quorum
+    // for them.
+    void flush_durability();
+
     [[nodiscard]] bool is_leader() const;
 
     // Offer canonical V2 command bytes to consensus. Never applies them here:
@@ -178,9 +190,11 @@ private:
     static int log_pop(raft_server_t*, void*, raft_entry_t*, raft_index_t);
     static int log_clear(raft_server_t*, void*, raft_entry_t*, raft_index_t);
     static int log_get_node_id(raft_server_t*, void*, raft_entry_t*, raft_index_t);
+    // Reports this node's durable index to Raft, which uses it for the local
+    // node's own quorum contribution. See the pinned patch in deploy/patches.
+    static raft_index_t durable_idx(raft_server_t*, void*);
 
     void persist_commit_index();
-    void flush_durability();
 
     std::int32_t node_id_;
     std::vector<std::int32_t> members_;

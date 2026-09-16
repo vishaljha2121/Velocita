@@ -198,6 +198,12 @@ bool WalBlockArena::complete(const BlockDescriptor& descriptor) {
     return true;
 }
 
+void WalBlockArena::seed_durable_index(const std::uint64_t index) noexcept {
+    if (index > durable_index_.load(std::memory_order_relaxed)) {
+        durable_index_.store(index, std::memory_order_release);
+    }
+}
+
 std::size_t WalBlockArena::sealed_count() const noexcept { return sealed_.size(); }
 
 std::size_t WalBlockArena::free_blocks() const noexcept {

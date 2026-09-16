@@ -112,6 +112,13 @@ public:
         return durable_index_.load(std::memory_order_acquire);
     }
 
+    // Adopt a durable index established elsewhere - specifically, records
+    // recovered from disk at startup. Those bytes ARE durable; the arena simply
+    // did not stage them. Without this a restarted node would report durability
+    // of zero and refuse to count itself toward quorum for its own recovered
+    // log. Never lowers the index.
+    void seed_durable_index(std::uint64_t index) noexcept;
+
     [[nodiscard]] std::size_t sealed_count() const noexcept;
     [[nodiscard]] std::size_t free_blocks() const noexcept;
     [[nodiscard]] BlockState state_of(std::size_t slot) const noexcept;

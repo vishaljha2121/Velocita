@@ -37,11 +37,34 @@ entry this node has staged but not synced; persisting that would leave a restart
 reading a commit index past the end of its own log, which the constructor then
 refuses - turning a survivable crash into a node that will not start.
 
-The stricter property, that the in-memory commit index never exceeds
-quorum-durable, needs the self-vote gated inside Raft and is NOT done. Bounded
-and stated exactly: nothing is applied, no client answered and no outbox effect
-created before durability, so no observed commit can be lost; what can be lost is
-an entry the leader's own commit index reached and nobody was told about.
+#### The pinned Raft fork — 2026-09-15
+
+The property left open above is now enforced. `deploy/patches/0001-raft-durable-quorum.patch`
+adds one OPTIONAL `durable_idx` callback to willemt/raft and uses it in the two
+places that count the LOCAL node without consulting durability: the
+`votes = 1` that starts the leader's quorum count, and the immediate commit for
+a single voting node. Neither was reachable through the public API - there is no
+setter for one's own match index. A peer's durability was never the problem,
+since its append-entries response already reports it.
+
+When the callback is NULL the behaviour is byte-for-byte as before, which keeps
+V1's node unaffected on the shared target. The patch is applied at configure time
+rather than vendored, so the upstream pin stays the source of truth and the delta
+stays reviewable; failure to apply is FATAL, because silently building unpatched
+Raft would silently restore the defect.
+
+AND A VACUOUS TEST, WORTH RECORDING. The first version had `tick` flush and
+asserted `commit <= durable` after every tick of every scenario. It passed - and
+it also passed with the callback unwired entirely. The harness closed the gap on
+every tick, so the window the invariant describes never existed at a moment
+anything could observe it.
+
+`flush_durability` is now separate from `tick` and public, so the owner loop
+decides when the disk happens. The real test withholds it: fifty ticks with no
+flush, asserting nothing commits, no result appears, and the entry really is in
+the log so something is actually being withheld - then flushes and requires the
+same entry to commit, so the gate is a gate rather than a deadlock. Both
+mutations fail it now.
 
 TWO LIBRARY BEHAVIOURS THAT COMPOSE INTO DATA LOSS, found and fixed in 7a.
 willemt promotes a lone voter to leader without campaigning, leaving term zero,

@@ -1,0 +1,144 @@
+Gate a voter's own quorum contribution on its durable index
+
+Phase 7 makes the write-ahead log asynchronous, which splits two numbers that
+used to be the same: the highest log index this node HOLDS, and the highest
+index whose bytes are on stable storage. Raft's safety argument is stated in
+terms of the second; this implementation assumes the first.
+
+Two places assume it, and both concern the node's OWN contribution rather than a
+peer's - a peer's durability is already reported by its append-entries response,
+so only the local side is missing:
+
+  * raft_recv_appendentries_response starts its quorum count at `votes = 1`,
+    counting the leader unconditionally. There is no setter for one's own match
+    index, so an application cannot correct this from outside.
+  * raft_recv_entry commits immediately when there is a single voting node,
+    because a quorum of one is always already satisfied.
+
+A single voting node also needs commit to advance LATER, once durability catches
+up: at raft_recv_entry time the entry has only just been staged, and nothing
+else would ever revisit it. That re-check goes in raft_periodic, which such a
+deployment already ticks.
+
+The callback is OPTIONAL. When it is NULL the behaviour is byte-for-byte as
+before, so existing users - including this repository's V1 node - are unaffected
+and need no change.
+
+Base commit is pinned by RAFT_COMMIT in CMakeLists.txt. Regenerate this patch by
+diffing a clean checkout of that commit against the modified tree; do not hand-
+edit it.
+
+--- a/include/raft.h
++++ b/include/raft.h
+@@ -265,6 +265,28 @@
+     raft_node_t* node
+     );
+ 
++/** Callback for asking the application how much of the log is DURABLE.
++ *
++ * Return the highest log index whose bytes are known to be on stable storage.
++ * Raft uses this for the local node's own quorum contribution only; a peer's
++ * durability is already reported by its append-entries response.
++ *
++ * A node that reports a durable index it has not achieved can lose a committed
++ * entry, so an implementation that is unsure must report the lower value.
++ *
++ * OPTIONAL. When NULL, raft treats the log as durable as soon as it is
++ * appended, which is correct for a synchronous log and is the historical
++ * behaviour.
++ * @param[in] raft The Raft server making this callback
++ * @param[in] user_data User data that is passed from Raft server
++ * @return highest durable log index */
++typedef raft_index_t (
++*func_durable_idx_f
++)   (
++    raft_server_t* raft,
++    void *user_data
++    );
++
+ #ifndef HAVE_FUNC_LOG
+ #define HAVE_FUNC_LOG
+ /** Callback for providing debug logging information.
+@@ -421,6 +443,9 @@
+     /** Callback for detecting when a non-voting node has sufficient logs. */
+     func_node_has_sufficient_logs_f node_has_sufficient_logs;
+ 
++    /** Callback for the local node's durable log index. Optional; see above. */
++    func_durable_idx_f durable_idx;
++
+     func_membership_event_f notify_membership_event;
+ 
+     /** Callback for catching debugging log messages
+--- a/src/raft_server.c
++++ b/src/raft_server.c
+@@ -219,6 +219,17 @@
+     me->timeout_elapsed = 0;
+ }
+ 
++/* How much of our own log is durable. Without the callback the log is treated
++ * as durable on append, which is what a synchronous log gives and is what every
++ * existing user expects. */
++static raft_index_t raft_local_durable_idx(raft_server_t* me_)
++{
++    raft_server_private_t* me = (raft_server_private_t*)me_;
++    if (!me->cb.durable_idx)
++        return raft_get_current_idx(me_);
++    return me->cb.durable_idx(me_, raft_get_udata(me_));
++}
++
+ int raft_periodic(raft_server_t* me_, int msec_since_last_period)
+ {
+     raft_server_private_t* me = (raft_server_private_t*)me_;
+@@ -230,6 +241,19 @@
+         raft_node_is_voting(raft_get_my_node((void*)me)) &&
+         !raft_is_leader(me_))
+         raft_become_leader(me_);
++
++    /* A single voting node is its own quorum, so its commit index follows its
++     * durability directly. This cannot be done once at append time: with an
++     * asynchronous log the entry has only been staged by then, and nothing
++     * else would ever revisit it. */
++    if (1 == raft_get_num_voting_nodes(me_) && raft_is_leader(me_))
++    {
++        raft_index_t durable = raft_local_durable_idx(me_);
++        raft_index_t current = raft_get_current_idx(me_);
++        raft_index_t safe = durable < current ? durable : current;
++        if (raft_get_commit_idx(me_) < safe)
++            raft_set_commit_idx(me_, safe);
++    }
+ 
+     if (me->state == RAFT_STATE_LEADER)
+     {
+@@ -355,7 +379,13 @@
+         raft_entry_t* ety = raft_get_entry_from_idx(me_, point);
+         if (raft_get_commit_idx(me_) < point && ety->term == me->current_term)
+         {
+-            int i, votes = 1;
++            /* Count ourselves only for an entry we have actually made
++             * durable. Counting unconditionally lets a leader form a quorum
++             * around a copy that a power cut would erase. */
++            int i, votes = 0;
++            if (point <= raft_local_durable_idx(me_))
++                votes = 1;
++
+             for (i = 0; i < me->num_nodes; i++)
+             {
+                 raft_node_t* node = me->nodes[i];
+@@ -763,9 +793,15 @@
+             raft_send_appendentries(me_, node);
+     }
+ 
+-    /* if we're the only node, we can consider the entry committed */
++    /* if we're the only node, we can consider the entry committed - but only
++     * as far as the log is durable. raft_periodic advances it the rest of the
++     * way once the writer catches up. */
+     if (1 == raft_get_num_voting_nodes(me_))
+-        raft_set_commit_idx(me_, raft_get_current_idx(me_));
++    {
++        raft_index_t durable = raft_local_durable_idx(me_);
++        raft_index_t current = raft_get_current_idx(me_);
++        raft_set_commit_idx(me_, durable < current ? durable : current);
++    }
+ 
+     r->id = ety->id;
+     r->idx = raft_get_current_idx(me_);

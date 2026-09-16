@@ -214,10 +214,31 @@ struct Cluster {
         }
     }
 
+    // THE DURABILITY INVARIANT, checked after every single tick of every test
+    // rather than in one place that could be skipped.
+    //
+    // With the pinned Raft patch a voter counts its own vote only for entries it
+    // has made durable, so a commit index ahead of the durable index means the
+    // gate is not doing its job. Checking it here makes every existing scenario
+    // - elections, partitions, restarts, compaction - a witness for it.
+    void check_durability_invariant() const {
+        for (const auto& candidate : nodes) {
+            const auto status = candidate->status();
+            const auto durable = candidate->durable_index();
+            require(status.commit_index <= static_cast<std::int64_t>(durable),
+                    "node " + std::to_string(status.node_id) +
+                        " committed past its durable index: commit " +
+                        std::to_string(status.commit_index) + " durable " +
+                        std::to_string(durable));
+        }
+    }
+
     void settle(const int rounds = 40) {
         for (int round = 0; round < rounds; ++round) {
+            for (auto& candidate : nodes) candidate->flush_durability();
             for (auto& candidate : nodes) candidate->tick(10);
             route();
+            check_durability_invariant();
         }
     }
 
@@ -230,8 +251,10 @@ struct Cluster {
 
     ReplicatedKernel& elect() {
         for (int round = 0; round < 2000; ++round) {
+            for (auto& candidate : nodes) candidate->flush_durability();
             for (auto& candidate : nodes) candidate->tick(10);
             route();
+            check_durability_invariant();
             if (leader() != nullptr) {
                 settle(20);
                 if (auto* confirmed = leader()) return *confirmed;
@@ -250,8 +273,10 @@ struct Cluster {
                 "leader refused a command: status " +
                     std::to_string(static_cast<int>(outcome.status)));
         for (int round = 0; round < rounds; ++round) {
+            for (auto& candidate : nodes) candidate->flush_durability();
             for (auto& candidate : nodes) candidate->tick(10);
             route();
+            check_durability_invariant();
             if (auto result = chosen.take_committed_result()) return *result;
         }
         throw std::runtime_error("command did not commit");
@@ -781,6 +806,55 @@ void test_recovery_is_never_behind_the_last_acknowledged_commit(
 
 // --- Phase 7b: durability is a separate index from commit -------------------
 
+void test_an_entry_cannot_commit_before_its_bytes_are_durable(
+    const std::filesystem::path& root) {
+    // THE GATE, proved by withholding the disk.
+    //
+    // An earlier version of this check only asserted `commit <= durable` while
+    // the harness flushed on every tick. That invariant held trivially, because
+    // the gap it describes was closed before anything could observe it - and
+    // removing the gate entirely still passed. The test proved nothing.
+    //
+    // Here the cluster ticks WITHOUT flushing, so the entry is staged and never
+    // synced, and the leader's own vote is the only one available.
+    Cluster cluster(root, 1);
+    auto& node = cluster.elect();
+
+    const auto value = command(
+        1, SetStrategyMode{StrategyMode::normal, KillEpoch{}, ExecutorGeneration{}});
+    const auto before_commit = node.status().commit_index;
+    const auto before_durable = node.durable_index();
+
+    require(node.propose(encoded(value)).status == ProposeStatus::admitted,
+            "the leader refused the command");
+
+    for (int round = 0; round < 50; ++round) {
+        node.tick(10);  // no flush_durability: the disk never happens
+        require(node.durable_index() == before_durable,
+                "durability advanced with no flush");
+        require(node.status().commit_index == before_commit,
+                "an entry committed while its bytes were only staged");
+        require(!node.take_committed_result(),
+                "a result appeared for an entry that was never durable");
+    }
+    require(node.status().current_index > before_commit,
+            "the entry never reached the log, so nothing was being withheld");
+
+    // Now let the disk happen. The same entry must commit and apply.
+    for (int round = 0; round < 50; ++round) {
+        node.flush_durability();
+        node.tick(10);
+        if (node.status().commit_index > before_commit) break;
+    }
+    require(node.durable_index() > before_durable,
+            "flushing did not advance durability");
+    require(node.status().commit_index > before_commit,
+            "the entry never committed even once durable, so the gate is a "
+            "deadlock rather than a gate");
+    require(node.take_committed_result().has_value(),
+            "no result arrived after the entry became durable");
+}
+
 void test_durability_is_tracked_separately_and_never_overstated(
     const std::filesystem::path& root) {
     Cluster cluster(root, 1);
@@ -873,6 +947,7 @@ int main() {
             fresh("corrupt-snapshot"));
         test_recovery_is_never_behind_the_last_acknowledged_commit(fresh("power-cut"));
         test_durability_is_tracked_separately_and_never_overstated(fresh("durable"));
+        test_an_entry_cannot_commit_before_its_bytes_are_durable(fresh("gate"));
         test_one_voter_reaches_the_same_state(fresh("voter-count"));
 
         std::filesystem::remove_all(root);

@@ -2553,6 +2553,52 @@ driven from `tick`, `propose` and `receive_peer` - so the owner loop no longer
 pays an open/write/fsync/close per record, which is Phase 7's objective for the
 write path.
 
+#### 10.18.3 The pinned Raft fork, and a vacuous test that hid behind it
+
+The property left open above is now enforced, by a pinned patch in
+`deploy/patches/0001-raft-durable-quorum.patch`.
+
+WHY IT COULD NOT BE DONE FROM OUTSIDE. Two places in willemt count the LOCAL
+node's contribution without consulting durability, and neither is reachable
+through the public API: `raft_recv_appendentries_response` starts its quorum
+count at `votes = 1`, and there is no setter for one's own match index; and
+`raft_recv_entry` commits immediately when there is a single voting node. A
+peer's durability was never the problem - an append-entries response already
+reports it.
+
+The patch adds one OPTIONAL callback, `durable_idx`. When it is NULL the
+behaviour is byte-for-byte as before, which is what keeps V1's node unaffected
+and is why the patch is safe to apply to a shared target. It also adds the
+single-voter re-check to `raft_periodic`, because at `raft_recv_entry` time an
+asynchronously staged entry is never durable yet and nothing else would revisit
+it.
+
+Applied at configure time rather than vendored, so the upstream pin stays the
+source of truth and the delta stays reviewable as a diff. A failure to apply is
+FATAL: silently building unpatched Raft would silently restore the defect.
+
+FLUSHING IS THE CALLER'S DECISION, and this changed because of a test failure of
+a particular kind. `tick` no longer touches the disk; `flush_durability` is
+separate and public.
+
+The first version of this work had `tick` flush, and asserted the invariant
+`commit <= durable` after every tick across every scenario. That test passed. It
+also passed with the durability callback unwired entirely, and with recovered
+durability left unseeded. It was VACUOUS: the harness closed the gap on every
+tick, so the window the invariant describes never existed at a moment anything
+could observe it.
+
+Separating the two makes the gap observable, and the real test withholds the disk
+- ticking fifty times without flushing and asserting that nothing commits, that
+no result appears, and that the entry is genuinely in the log so something is
+actually being withheld - then flushes and requires that the same entry commits,
+so the gate is a gate and not a deadlock. Both mutations now fail it.
+
+The general lesson is the one this project keeps relearning: an invariant that
+holds because the harness maintains it is not evidence about the code. The fix
+was not a better assertion but an API that stops deciding things implicitly -
+the same reason the arena's writer and the simulator's clock are explicit.
+
 ENFORCED: THE PERSISTED COMMIT INDEX NEVER EXCEEDS THE DURABLE INDEX. willemt can
 advance its in-memory commit index past what this node has synced, because it
 counts the leader's own vote unconditionally. Recording that would be the one
@@ -2561,14 +2607,12 @@ points past the end of its own log, which the constructor then refuses, turning 
 survivable crash into a node that will not start. `persist_commit_index` clamps,
 so the hard state stays a statement about bytes on disk.
 
-NOT ENFORCED: the stricter property, that the IN-MEMORY commit index never
-exceeds quorum-durable. That requires gating the self-vote inside Raft, which is
-the fork 10.18.1 describes. The exposure is bounded and worth stating exactly: a
-leader can internally consider an entry committed while its own copy is only
-staged. Nothing is applied, no client is answered, and no outbox effect exists
-before the bytes are durable, so no OBSERVED commit can be lost. What can be lost
-is an entry the leader's own `commit_idx` had reached and nobody was told about,
-which a client retry reproduces.
+ALSO ENFORCED NOW, via the patch: the in-memory commit index never exceeds
+quorum-durable either. A voter counts itself only for entries whose bytes are on
+disk, so a leader can no longer form a quorum around a copy a power cut would
+erase. `seed_durable_index` closes the restart half - records read back from disk
+ARE durable, and without saying so a restarted node would refuse to count itself
+for its own recovered log.
 
 THE SEGMENT IS RECLAIMED ON BOTH PATHS, and the suffix one is correctness rather
 than housekeeping. `log_pop` truncates the segment as well as the legacy file,
@@ -2579,9 +2623,13 @@ discards the prefix a durable snapshot covers.
 RECOVERY PREFERS THE SEGMENT and falls back to the legacy per-record file, so a
 directory written by an older build still starts.
 
-STATUS: the write path is asynchronous and its properties are tested. No
-performance claim is made here - Phase 7's gate puts correctness and power-cut
-evidence before throughput, and no benchmark has been run.
+STATUS: the write path is asynchronous, the durability gate is enforced inside
+Raft, and both are tested by mutation as well as by assertion. Still outstanding
+from Phase 7's implementation scope: SPSC descriptor rings and a writer thread
+(flush is driven explicitly, which is deliberate), preallocated segments, and
+durable-index and backpressure metrics. No performance claim is made - Phase 7's
+gate puts correctness and power-cut evidence before throughput, and no benchmark
+has been run.
 
 ## 11. Execution authority and kill contract
 

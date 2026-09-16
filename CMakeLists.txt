@@ -50,6 +50,33 @@ if(NOT willemt_raft_POPULATED)
     FetchContent_Populate(willemt_raft)
 endif()
 
+# PINNED FORK. Phase 7 splits "appended" from "durable", and upstream counts a
+# leader's own vote before its bytes are on disk - see
+# deploy/patches/0001-raft-durable-quorum.patch for why that cannot be corrected
+# from outside the library.
+#
+# Applied here rather than vendored so the upstream pin above stays the source of
+# truth and the delta stays reviewable as a diff. A sentinel makes reconfiguring
+# idempotent, and a failure to apply is FATAL: silently building unpatched raft
+# would silently restore the defect the patch exists to remove.
+set(VELOCITA_RAFT_PATCH ${CMAKE_CURRENT_SOURCE_DIR}/deploy/patches/0001-raft-durable-quorum.patch)
+set(VELOCITA_RAFT_PATCH_STAMP ${willemt_raft_SOURCE_DIR}/.velocita-durable-quorum-applied)
+if(NOT EXISTS ${VELOCITA_RAFT_PATCH_STAMP})
+    execute_process(
+        COMMAND patch -p1 --forward --input=${VELOCITA_RAFT_PATCH}
+        WORKING_DIRECTORY ${willemt_raft_SOURCE_DIR}
+        RESULT_VARIABLE VELOCITA_RAFT_PATCH_RESULT
+        OUTPUT_VARIABLE VELOCITA_RAFT_PATCH_OUTPUT
+        ERROR_VARIABLE VELOCITA_RAFT_PATCH_OUTPUT)
+    if(NOT VELOCITA_RAFT_PATCH_RESULT EQUAL 0)
+        message(FATAL_ERROR
+            "failed to apply the pinned raft durability patch against "
+            "${RAFT_COMMIT}:\n${VELOCITA_RAFT_PATCH_OUTPUT}")
+    endif()
+    file(WRITE ${VELOCITA_RAFT_PATCH_STAMP} "${RAFT_COMMIT}\n")
+    message(STATUS "Applied the pinned raft durability patch")
+endif()
+
 add_library(willemt_raft STATIC
     ${willemt_raft_SOURCE_DIR}/src/raft_log.c
     ${willemt_raft_SOURCE_DIR}/src/raft_node.c
