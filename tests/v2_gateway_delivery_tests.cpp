@@ -208,8 +208,19 @@ Fixture one_authorized_submit() {
     return {state, submit.effect_id()};
 }
 
+// A live authority lease, held constant, because these suites are about
+// delivery and reconciliation rather than about authority. The lease's own
+// behaviour is covered in `v2-gateway-tests`; here it must simply never be the
+// reason something did or did not send.
+//
+// The lease is fail-closed, so leaving these fields default would have silenced
+// every send in this file - which is how the enforcement was confirmed to reach
+// every path rather than only the new tests.
+constexpr Tick kLiveLeaseBound = 1'000'000;
+
 GatewayControlView control_of(const TradingState& state) {
-    return {state.executor_generation, state.kill_epoch, state.strategy_mode};
+    return {state.executor_generation, state.kill_epoch, state.strategy_mode,
+            0, kLiveLeaseBound, 0};
 }
 
 GatewayDeliveryState running_gateway() {

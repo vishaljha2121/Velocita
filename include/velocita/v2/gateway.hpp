@@ -18,6 +18,9 @@ enum class PreSendRefusal : std::uint8_t {
     stale_executor_generation,
     stale_kill_epoch,
     control_forbids_new_risk,
+    // The gateway's cached authority is older than its lease permits, so it can
+    // no longer claim to know whether it still holds authority.
+    authority_lease_expired,
     unsupported_operation,
     venue_cannot_represent_intent,
     quota_exhausted,
@@ -34,20 +37,73 @@ struct VenueCapabilityView {
     constexpr auto operator<=>(const VenueCapabilityView&) const noexcept = default;
 };
 
+using Tick = std::uint64_t;
+
 // Disposable control cache; evaluate_pre_send verifies it against replicated state.
+//
+// THE LEASE IS WHAT GENERATION FENCING CANNOT DO. Comparing this cache against
+// cluster state only helps a gateway that can still READ the cluster. One that
+// is partitioned keeps believing its last good answer indefinitely, and nothing
+// bounded how long it may act on it - so the fence protects against a gateway
+// that knows it was superseded and not against one that cannot find out.
+//
+// `confirmed_at` is when this view was last confirmed against an authoritative
+// read, `lease_bound` is how stale that is allowed to get, and `now` is the
+// caller's tick. Time is a PARAMETER, not a clock read: the guard stays pure,
+// and a test can place the gateway at any point in the lease without waiting.
 struct GatewayControlView {
     ExecutorGeneration executor_generation{};
     KillEpoch kill_epoch{};
     StrategyMode strategy_mode{StrategyMode::halted};
+    Tick confirmed_at{};
+    Tick lease_bound{};
+    Tick now{};
+
+    // Fail-closed, and the defaults are the reason this is a function rather
+    // than a comparison at the call site. A zero `lease_bound` is NOT "no
+    // limit": a gateway that cannot say how long its authority is good for does
+    // not have any. Nor is a view confirmed in the future credit for freshness.
+    [[nodiscard]] constexpr bool lease_is_live() const noexcept {
+        if (lease_bound == 0) return false;
+        if (confirmed_at > now) return false;
+        return now - confirmed_at <= lease_bound;
+    }
 
     constexpr auto operator<=>(const GatewayControlView&) const noexcept = default;
 };
 
+// TWO LANES, because the moment you most need to cancel is the moment the
+// normal lane is exhausted. A cancel path sharing the normal budget is not an
+// independent one, and a partition tends to exhaust that budget and lapse the
+// lease at the same time.
 struct SendQuotaView {
     std::uint32_t normal_lane_remaining{};
+    // Reserved for risk-REDUCING effects only. Never drawn on by a submit or a
+    // replace, so exhausting the normal lane cannot consume it.
+    std::uint32_t emergency_lane_remaining{};
 
     constexpr auto operator<=>(const SendQuotaView&) const noexcept = default;
 };
+
+// Admission to the emergency lane is decided by the OPERATION'S IDENTITY, not
+// by arithmetic on its fields.
+//
+// A `replace` can be economically risk-reducing - a smaller quantity, a worse
+// price - but proving that requires comparing it against the resting order, and
+// an emergency lane whose safety rests on a comparison is a lane that fails
+// whenever the comparison is wrong. A cancel is risk-reducing because of what it
+// is. That is the invariant worth having, and it costs only that a reducing
+// replace waits for normal capacity.
+[[nodiscard]] constexpr bool reduces_risk(const EffectOperation operation) noexcept {
+    switch (operation) {
+        case EffectOperation::cancel:
+            return true;
+        case EffectOperation::submit:
+        case EffectOperation::replace:
+            return false;
+    }
+    return false;
+}
 
 // Refusal carries no payload; permission carries the reconstructed canonical effect.
 struct PreSendDecision {
@@ -67,8 +123,6 @@ struct PreSendDecision {
     const GatewayControlView& control,
     const VenueCapabilityView& venue,
     const SendQuotaView& quota) noexcept;
-
-using Tick = std::uint64_t;
 
 // Gateway-local and non-durable; restart rebuilds through reconciliation.
 struct DeliveryAttempt {

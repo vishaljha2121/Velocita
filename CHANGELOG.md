@@ -13,6 +13,50 @@ release-engineering work.
 
 ## [V2] - In development
 
+### Phase 8 in development - execution authority, fencing, and emergency control
+
+#### The authority lease and the reserved cancel lane — 2026-09-16
+
+First slice. Both mechanisms are ENFORCED and neither is yet DRIVEN - the
+refusal exists, the thing that would renew or trigger it does not - so no
+Phase 8 guarantee is ticked. The checklist records what each one still needs.
+
+THE LEASE IS WHAT GENERATION FENCING CANNOT DO. Comparing the gateway's cached
+authority against cluster state only helps a gateway that can still READ the
+cluster. A partitioned one keeps believing its last good answer indefinitely, so
+the fence protected against a gateway that knows it was superseded and not
+against one that cannot find out. `GatewayControlView` now carries
+`confirmed_at`, `lease_bound` and `now`, and a risk-increasing send is refused
+with `authority_lease_expired` once the cache is staler than the bound. Time is
+a parameter, not a clock read, so the guard stays pure and a test can place the
+gateway anywhere in the lease without waiting.
+
+Fail-closed, and that is the reason it is a function rather than a comparison at
+the call site: a zero bound is not "no limit" but "no authority", and a view
+claiming confirmation in the future earns no credit. Making it fail-closed
+silenced every send in the delivery suite until its fixture declared a lease,
+which is how the enforcement was confirmed to reach every path rather than only
+the new tests.
+
+A CANCEL IS EXEMPT, deliberately. A lapsed lease means this gateway may no
+longer be the authority, and the safe response is to stop opening exposure, not
+to stop closing it. Refusing cancels would trap risk at exactly the moment an
+operator most needs it gone.
+
+THE RESERVED LANE. `SendQuotaView` gained `emergency_lane_remaining`, drawable
+only by risk-REDUCING effects. The asymmetry is the reservation - a lane both
+kinds can spend is one lane with two names. Admission is by the OPERATION'S
+IDENTITY, cancel yes and submit/replace no, rather than by arithmetic on the
+effect's fields: a `replace` can be economically reducing, but proving it means
+comparing against the resting order, and a lane whose safety rests on a
+comparison fails whenever the comparison is wrong. A reducing replace waits for
+normal capacity, which is the right price.
+
+Four properties, each mutation-confirmed against its own assertion: a lapsed
+lease stops new risk and the boundary tick itself does not; an unconfigured
+lease is expired rather than unlimited; a cancel survives both an exhausted
+normal lane and a lapsed lease; a submit cannot draw on the reserved lane.
+
 ### Phase 7 in development - durability and bounded memory
 
 #### The first Phase 6/7 NUC gate run, and what it caught — 2026-09-16

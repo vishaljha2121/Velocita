@@ -389,6 +389,57 @@ Phase 11 strategy/model validation and controlled canary
 - [ ] **G-060 — Emergency evidence is retained.** Every emergency external
   action is recorded and reconciled into authoritative cluster state.
 
+  PHASE 8 IS IN PROGRESS AND NOTHING HERE IS TICKED YET. The first slice landed
+  the two mechanisms the rest depends on, and the honest position is that both
+  are ENFORCED but neither is yet DRIVEN - the refusal exists, the thing that
+  would renew or trigger it does not. Ticking a box on the refusal alone would
+  claim a working kill path from a guard that nothing calls.
+
+  THE AUTHORITY LEASE (toward G-055). Generation and kill-epoch fencing compare
+  the gateway's cache against cluster state, which only helps a gateway that can
+  still READ the cluster. A partitioned one keeps believing its last good answer
+  indefinitely - so the fence protected against a gateway that knows it was
+  superseded, and not against one that cannot find out. `GatewayControlView` now
+  carries `confirmed_at`, `lease_bound` and `now`, and a risk-increasing send is
+  refused with `authority_lease_expired` once the cache is older than the bound.
+  Fail-closed: a zero bound is not "no limit" but "no authority", and a view
+  claiming confirmation in the future earns no credit.
+
+  A CANCEL IS EXEMPT FROM THE LEASE, deliberately. A lapsed lease means this
+  gateway may no longer be the authority, and the safe response to that is to
+  stop opening exposure, not to stop closing it. Refusing cancels would trap
+  risk at exactly the moment an operator most needs it gone.
+
+  THE RESERVED LANE (toward G-056, G-057, G-058). `SendQuotaView` gained
+  `emergency_lane_remaining`, which only risk-REDUCING effects may draw on. The
+  asymmetry is the reservation: a lane both kinds can spend is one lane with two
+  names. Admission is by the OPERATION'S IDENTITY - cancel yes, submit and
+  replace no - rather than by arithmetic on the effect's fields. A `replace` can
+  be economically reducing, but proving it requires comparing against the
+  resting order, and a lane whose safety rests on a comparison fails whenever
+  the comparison is wrong. The cost is that a reducing replace waits for normal
+  capacity, which is the right price.
+
+  Evidence: four properties in `v2-gateway-tests` - a lapsed lease stops new
+  risk (and the boundary tick itself does not), an unconfigured lease is expired
+  rather than unlimited, a cancel survives both an exhausted normal lane and a
+  lapsed lease, and a submit cannot draw on the reserved lane. Each is
+  mutation-confirmed against its own assertion. Making the lease fail-closed
+  also silenced every send in `v2-gateway-delivery-tests` until its fixture
+  declared a lease, which is how the enforcement was confirmed to reach every
+  delivery path rather than only the new tests.
+
+  WHAT EACH GUARANTEE STILL NEEDS. G-052/G-054 have their pre-send refusals from
+  Phase 5 but no external fence to be single against. G-053 and G-059 need the
+  manual promotion workflow and its reconciliation proof. G-055 needs the
+  RENEWAL path - something that advances `confirmed_at` only on an authoritative
+  read, which is where the guarantee actually binds. G-056 needs an
+  authenticated operator control path independent of strategy traffic. G-057 and
+  G-058 need stop and mass-cancel as operations, not just a lane that would
+  carry them. G-060 needs emergency actions recorded into cluster state, which
+  means new command bytes and therefore a reviewed byte contract. G-057a needs
+  the closed-order case driven end to end.
+
 ## 9. TrueMarkets adapter boundary — Phase 9
 
 - [ ] **G-061 — Official-contract implementation.** Authentication, clocks,

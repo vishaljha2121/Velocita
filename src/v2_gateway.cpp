@@ -87,11 +87,32 @@ PreSendDecision evaluate_pre_send(const TradingState& state,
         return refuse(PreSendRefusal::control_forbids_new_risk);
     }
 
+    // THE LEASE, and only for effects that increase risk.
+    //
+    // Placed after the fences it complements rather than before them: when the
+    // gateway CAN see the cluster, a stale generation is the more specific
+    // answer and the more useful one to report. The lease is what remains true
+    // when it cannot see the cluster at all.
+    //
+    // A cancel is deliberately exempt. A lapsed lease means this gateway may no
+    // longer be the authority, and the safe response to that is to stop opening
+    // exposure - not to stop closing it. Refusing cancels here would trap risk
+    // at precisely the moment the operator most needs it gone, which inverts
+    // what the lease is for.
+    const bool reducing = reduces_risk(effect->operation);
+    if (!reducing && !control.lease_is_live()) {
+        return refuse(PreSendRefusal::authority_lease_expired);
+    }
+
     if (!venue_can_represent(*effect, venue)) {
         return refuse(PreSendRefusal::venue_cannot_represent_intent);
     }
 
-    if (quota.normal_lane_remaining == 0) {
+    // Risk-reducing effects may fall back to the reserved lane; nothing else
+    // may touch it. That asymmetry IS the reservation - a lane both lanes can
+    // spend is one lane with two names.
+    if (quota.normal_lane_remaining == 0 &&
+        !(reducing && quota.emergency_lane_remaining > 0)) {
         return refuse(PreSendRefusal::quota_exhausted);
     }
 

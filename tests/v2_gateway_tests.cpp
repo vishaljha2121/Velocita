@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -192,15 +193,38 @@ Fixture authorized_submit() {
     return {state, submit.effect_id(), submit.cluster_order_id()};
 }
 
+// The same fixture carried one step further: the submit is acknowledged so the
+// order rests, then a cancel is authorized against it. The emergency-lane tests
+// need a RISK-REDUCING effect, and a cancel is the only operation that is one by
+// its identity alone.
+Fixture authorized_cancel() {
+    auto fixture = authorized_submit();
+    ApplyScratch scratch;
+    const Command cancel{{CallerId{1}, RequestSequence{3}, digest(0x53)},
+                         RequestCancel{fixture.cluster_order_id}};
+    const auto result = apply(fixture.state, cancel, scratch);
+    require(result.code == ApplyCode::applied,
+            "gateway fixture could not authorize its cancel");
+    require(result.effect_id() != fixture.effect_id,
+            "the cancel reused the submit's effect identity");
+    return {fixture.state, result.effect_id(), fixture.cluster_order_id};
+}
+
+// A control view confirmed against the leader AT `now`, with a lease that has
+// not lapsed. Every existing test wants this: it is the ordinary case.
+constexpr Tick kNow = 1000;
+constexpr Tick kLeaseBound = 50;
+
 GatewayControlView matching_control(const TradingState& state) {
-    return {state.executor_generation, state.kill_epoch, state.strategy_mode};
+    return {state.executor_generation, state.kill_epoch, state.strategy_mode,
+            kNow, kLeaseBound, kNow};
 }
 
 constexpr VenueCapabilityView capable_venue() {
     return {VenueId{9}, VenueCapabilitiesVersion{8}, true, true};
 }
 
-constexpr SendQuotaView open_quota() { return {16}; }
+constexpr SendQuotaView open_quota() { return {16, 4}; }
 
 void test_a_permitted_effect_is_sent_with_its_exact_canonical_bytes() {
     const auto fixture = authorized_submit();
@@ -272,6 +296,116 @@ void test_stale_control_authority_is_never_sent() {
     }
 }
 
+void test_an_expired_authority_lease_stops_new_risk() {
+    // G-055. Generation and kill-epoch fencing compare the gateway's cache
+    // against CLUSTER STATE, which only helps a gateway that can still read the
+    // cluster. A partitioned one keeps believing its last good answer forever,
+    // and nothing in Phase 5 bounded how long it may act on it.
+    //
+    // The lease bounds exactly that: how stale a confirmed control view may be
+    // before this gateway must assume someone else holds authority.
+    const auto fixture = authorized_submit();
+
+    const auto attempt = [&](const GatewayControlView& control) {
+        RecordingTransport transport;
+        const auto decision = deliver(fixture.state, fixture.effect_id, control,
+                                      capable_venue(), open_quota(), transport);
+        return std::pair{decision.refusal, transport.send_count()};
+    };
+
+    auto fresh = matching_control(fixture.state);
+    require(attempt(fresh).first == PreSendRefusal::none,
+            "a freshly confirmed control view was refused");
+
+    // Exactly at the bound is still inside it; one tick past is not.
+    auto at_bound = matching_control(fixture.state);
+    at_bound.now = at_bound.confirmed_at + at_bound.lease_bound;
+    require(attempt(at_bound).first == PreSendRefusal::none,
+            "a control view exactly at the lease bound was refused");
+
+    auto lapsed = matching_control(fixture.state);
+    lapsed.now = lapsed.confirmed_at + lapsed.lease_bound + 1;
+    const auto [refusal, sends] = attempt(lapsed);
+    require(refusal == PreSendRefusal::authority_lease_expired,
+            "a lapsed authority lease did not stop a new-risk send");
+    require(sends == 0, "an effect reached the transport under a lapsed lease");
+}
+
+void test_an_unconfigured_lease_is_expired_not_unlimited() {
+    // FAIL CLOSED. A default-constructed control view carries no lease, and the
+    // tempting reading of "no bound" is "no limit". For an authority check the
+    // only safe reading is the opposite: a gateway that cannot say when it last
+    // confirmed its authority does not have any.
+    const auto fixture = authorized_submit();
+    GatewayControlView unconfigured{fixture.state.executor_generation,
+                                    fixture.state.kill_epoch,
+                                    fixture.state.strategy_mode};
+    RecordingTransport transport;
+    const auto decision = deliver(fixture.state, fixture.effect_id, unconfigured,
+                                  capable_venue(), open_quota(), transport);
+    require(decision.refusal == PreSendRefusal::authority_lease_expired,
+            "an unconfigured lease was treated as unlimited authority");
+    require(transport.send_count() == 0,
+            "an effect was sent with no authority lease at all");
+
+    // And a view claiming confirmation in the future is nonsense, not credit.
+    auto from_the_future = matching_control(fixture.state);
+    from_the_future.confirmed_at = from_the_future.now + 1;
+    RecordingTransport other;
+    require(deliver(fixture.state, fixture.effect_id, from_the_future,
+                    capable_venue(), open_quota(), other)
+                    .refusal == PreSendRefusal::authority_lease_expired,
+            "a control view confirmed in the future was accepted");
+}
+
+void test_a_cancel_survives_what_stops_new_risk() {
+    // G-056 and G-058. The emergency lane exists because the moment you most
+    // need to cancel is the moment the normal lane is exhausted or the lease has
+    // lapsed - a partition is exactly when both happen at once. A cancel path
+    // that shares the normal lane's budget, or that the lease stops, is not an
+    // independent kill path.
+    const auto fixture = authorized_cancel();
+
+    // Normal lane empty, emergency lane has room.
+    RecordingTransport starved;
+    require(deliver(fixture.state, fixture.effect_id, matching_control(fixture.state),
+                    capable_venue(), SendQuotaView{0, 1}, starved)
+                    .permitted(),
+            "a cancel was refused while emergency capacity remained");
+    require(starved.send_count() == 1, "the cancel did not reach the transport");
+
+    // Lease lapsed. New risk is stopped; reducing risk is not.
+    auto lapsed = matching_control(fixture.state);
+    lapsed.now = lapsed.confirmed_at + lapsed.lease_bound + 1;
+    RecordingTransport after_lapse;
+    require(deliver(fixture.state, fixture.effect_id, lapsed, capable_venue(),
+                    SendQuotaView{0, 1}, after_lapse)
+                    .permitted(),
+            "a lapsed lease stopped a cancel, trapping risk it cannot reduce");
+
+    // Both lanes empty is still a refusal - the lane is reserved, not infinite.
+    RecordingTransport exhausted;
+    require(deliver(fixture.state, fixture.effect_id, matching_control(fixture.state),
+                    capable_venue(), SendQuotaView{0, 0}, exhausted)
+                    .refusal == PreSendRefusal::quota_exhausted,
+            "a cancel was sent with both lanes exhausted");
+}
+
+void test_the_emergency_lane_cannot_carry_new_risk() {
+    // G-057. The lane may only reduce risk, so admission is decided by the
+    // OPERATION'S IDENTITY and not by arithmetic on its fields. A submit drawing
+    // on emergency capacity would be the whole guarantee inverted.
+    const auto fixture = authorized_submit();
+    RecordingTransport transport;
+    const auto decision = deliver(fixture.state, fixture.effect_id,
+                                  matching_control(fixture.state), capable_venue(),
+                                  SendQuotaView{0, 8}, transport);
+    require(decision.refusal == PreSendRefusal::quota_exhausted,
+            "a submit drew on the reserved emergency lane");
+    require(transport.send_count() == 0,
+            "a risk-increasing effect was sent on the emergency lane");
+}
+
 void test_a_venue_that_cannot_represent_the_intent_is_refused_not_approximated() {
     const auto fixture = authorized_submit();
     RecordingTransport transport;
@@ -301,7 +435,7 @@ void test_exhausted_quota_defers_rather_than_sending() {
     RecordingTransport transport;
     const auto decision = deliver(fixture.state, fixture.effect_id,
                                   matching_control(fixture.state), capable_venue(),
-                                  SendQuotaView{0}, transport);
+                                  SendQuotaView{0, 0}, transport);
     require(decision.refusal == PreSendRefusal::quota_exhausted &&
                 transport.send_count() == 0,
             "an effect was sent with no remaining quota");
@@ -363,7 +497,11 @@ int main() {
         test_a_permitted_effect_is_sent_with_its_exact_canonical_bytes();
         test_the_guard_reads_no_clock_and_mutates_nothing();
         test_stale_control_authority_is_never_sent();
-        test_a_venue_that_cannot_represent_the_intent_is_refused_not_approximated();
+        test_an_expired_authority_lease_stops_new_risk();
+    test_an_unconfigured_lease_is_expired_not_unlimited();
+    test_a_cancel_survives_what_stops_new_risk();
+    test_the_emergency_lane_cannot_carry_new_risk();
+    test_a_venue_that_cannot_represent_the_intent_is_refused_not_approximated();
         test_exhausted_quota_defers_rather_than_sending();
         test_an_unknown_or_unreconstructable_effect_is_refused();
         test_a_settled_effect_is_not_deliverable();
