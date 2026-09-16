@@ -144,6 +144,7 @@ target_compile_options(velocita_v2_kernel PRIVATE -Wall -Wextra -Wpedantic)
 add_library(velocita_v2_replication
     src/v2_replication.cpp
     src/v2_snapshot_store.cpp
+    src/v2_wal_arena.cpp
 )
 target_include_directories(velocita_v2_replication PUBLIC include)
 target_link_libraries(velocita_v2_replication
@@ -241,6 +242,11 @@ if(BUILD_TESTING)
         velocita_v2_venue_simulator)
     target_compile_options(v2-venue-simulator-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-venue-simulator-tests COMMAND v2-venue-simulator-tests)
+
+    add_executable(v2-wal-arena-tests tests/v2_wal_arena_tests.cpp)
+    target_link_libraries(v2-wal-arena-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-wal-arena-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-wal-arena-tests COMMAND v2-wal-arena-tests)
 
     add_executable(v2-replication-tests tests/v2_replication_tests.cpp)
     target_link_libraries(v2-replication-tests PRIVATE velocita_v2_replication)

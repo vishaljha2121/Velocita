@@ -2471,6 +2471,86 @@ read-index round trip proves leadership at the read's linearization point and is
 the stricter form; that is deferred, and the distinction is recorded here rather
 than left for a reader to assume the stronger guarantee.
 
+### 10.18 Phase 7b: bounded block staging, and the durability protocol it enables
+
+`WriteAheadLog::append` opens, writes, fsyncs and closes PER RECORD, from inside
+a Raft log callback and therefore from inside the owner loop. Every proposal pays
+a full sync before anything else can happen. Removing that is Phase 7's objective.
+
+THE CONTRACT THAT MUST NOT BREAK, stated before any mechanism: a voter may
+contribute to quorum only for entries it has made DURABLE. Synchronous appends
+satisfy it by accident, because the log index and the durable index are the same
+number. Splitting them is the entire point, and every remaining hazard in this
+section lives in the gap between the two.
+
+BLOCKS, AND WHY A RECORD NEVER STRADDLES ONE. A torn write at a block boundary
+can split a record, and half a record whose length prefix survived is
+indistinguishable from a whole short one. `WalBlockArena` seals a block short
+rather than straddle, so a torn write is always a bad BLOCK - detectable by
+checksum - rather than a plausible record. A record larger than one block's
+payload is refused rather than split.
+
+GENERATIONS, AND THE STALE COMPLETION. A slot is reused once its bytes are
+durable. A completion that arrives after the slot has been recycled would
+otherwise release work that a different record now occupies, marking bytes
+durable that were never written. Every reuse mints a new generation and
+`complete` ignores a descriptor whose generation has moved on. Removing that
+guard fails the suite, which was checked by mutation rather than assumed.
+
+THE DURABLE INDEX ADVANCES IN ORDER ONLY. A later block completing before an
+earlier one would let the index cover a gap it never crossed. Out-of-order
+completion is refused.
+
+BOUNDED REFUSAL, NEVER OVERWRITE. A stalled writer fills the arena and admission
+is then refused. Overwriting would discard bytes that are not yet durable, and
+the entry they belong to may already have been counted toward a quorum. The
+refusal lifts as soon as one block drains, because backpressure that never lifted
+would be a deadlock with a safety argument attached.
+
+NO HIDDEN THREAD. The writer is driven by an explicit call, so tests drive it
+deterministically and a production loop chooses its own thread. This is the
+discipline the venue simulator uses for time, applied to I/O: nothing that
+decides behaviour may be implicit.
+
+#### 10.18.1 Why the leader must be durable BEFORE Raft sees an entry
+
+willemt computes commit like this:
+
+```c
+int i, votes = 1;                       /* the leader counts itself */
+for (...) if (point <= raft_node_get_match_idx(node)) votes++;
+if (raft_get_num_voting_nodes(me_) / 2 < votes) raft_set_commit_idx(me_, point);
+```
+
+The leader's self-vote is unconditional and there is no setter for one's own
+match index, so a leader that has merely STAGED an entry still counts itself
+toward quorum. Asynchronous durability therefore breaks the contract above
+unless something else restores it.
+
+The plan anticipated this and called for "a pinned Raft fork/adapter". A fork is
+avoidable, and the alternative is simpler to reason about:
+
+> DECLARED PROTOCOL. A voter admits an entry to the Raft log only after that
+> entry's bytes are durable. The leader satisfies this by staging to the WAL
+> first and calling `raft_recv_entry` only once the durable index covers it. A
+> follower satisfies it by withholding its AppendEntries success response until
+> its own durable index covers the entries that response acknowledges.
+
+Under that protocol willemt's unconditional self-vote is honest, because
+everything in the leader's log is durable by construction. The owner loop still
+never blocks: proposing stages and returns, and the sync happens on the writer's
+schedule.
+
+What it costs is that the leader's log index lags its accepted proposals, so
+`ProposeStatus::admitted` comes to mean STAGED rather than LOGGED. That is a
+weaker statement than it was, and the distinction is recorded here rather than
+left for a caller to assume the stronger one.
+
+STATUS: the arena and its properties are implemented and tested. The protocol
+above is DECLARED AND NOT YET ENFORCED - `ReplicatedKernel` still writes
+synchronously through `WriteAheadLog`. Until the integration lands, Phase 7's
+objective sentence is not met and no performance claim may be made.
+
 ## 11. Execution authority and kill contract
 
 Every sender tracks a committed `ExecutorGeneration` and `KillEpoch`. It rejects
