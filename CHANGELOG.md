@@ -15,11 +15,31 @@ release-engineering work.
 
 ### Phase 7 in development - durability and bounded memory
 
+#### The patch digest check was recording, not checking — 2026-09-16
+
+The pinned Raft fork's stamp records the commit, the patch digest and the
+SHA256 of both patched sources, and refuses to build on a mismatch. But only on
+the branch that finds an EXISTING stamp. The branch that APPLIES the patch -
+taken by every first configure on a clean machine, which is every container gate
+and both physical targets - recorded the resulting digests without ever
+comparing them to the reviewed values.
+
+That matters more than it looks, because the patch carries zero context: every
+hunk applies by line number alone. `patch` exiting zero says the hunks were
+placed, not that they were placed where the review put them, and a source
+differing from the pinned commit by one line can absorb them silently into code
+that compiles and is wrong. The one check that would catch it was inert on the
+one path where it was needed.
+
+The apply branch now compares against the expected digests and fails FATAL,
+naming both values and saying not to update them to make the build pass.
+Verified by perturbing an expected digest and confirming configure refuses.
+
 #### Phase 6/7 gates, pinned — 2026-09-16
 
 `deploy/run-v2-phase7-container-gate.sh` (ARM64) and
 `deploy/run-v2-phase7-nuc-gate.sh` (x86-64), both pinned to source root
-`acca3812d306ecfa51cf5f53539d7182a239ddc324d50819d178cbef16a95d25`.
+`4c9265268598bf5f56b65efeebd761d005fcf23400d49f7371281c146babe26f`.
 
 Phase 5's gates asked a layout question. These ask a durability and scheduling
 one, which is the part least trustworthy on the development host: `fdatasync`

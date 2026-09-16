@@ -30,7 +30,7 @@ set -Eeuo pipefail
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 export VELOCITA_V2_PI_GATE_LABEL='V2 Phase 6/7 replication and durability acceptance'
-export VELOCITA_EXPECTED_SOURCE_ROOT=acca3812d306ecfa51cf5f53539d7182a239ddc324d50819d178cbef16a95d25
+export VELOCITA_EXPECTED_SOURCE_ROOT=4c9265268598bf5f56b65efeebd761d005fcf23400d49f7371281c146babe26f
 export VELOCITA_EXPECTED_HOST_MACHINE=x86_64
 export VELOCITA_EXPECTED_CONTAINER_ARCH=amd64
 export VELOCITA_V2_HOST_ENVIRONMENT=nuc-x86_64-linux-container

@@ -111,6 +111,29 @@ elseif(NOT EXISTS ${VELOCITA_RAFT_PATCH_STAMP})
     endif()
     file(SHA256 ${willemt_raft_SOURCE_DIR}/include/raft.h VELOCITA_RAFT_H_SHA256)
     file(SHA256 ${willemt_raft_SOURCE_DIR}/src/raft_server.c VELOCITA_RAFT_SERVER_SHA256)
+    # CHECK THE RESULT, do not merely record it.
+    #
+    # `patch` exiting zero says the hunks were placed, not that they were placed
+    # where the review put them. The patch carries ZERO CONTEXT, so every hunk
+    # applies by line number alone and a source that differs from the pinned
+    # commit by even one line can absorb it silently into working, wrong code.
+    #
+    # This is the branch that matters: a first configure on a clean machine -
+    # every container gate, and both physical targets - takes it. Recording the
+    # digests here without comparing them made the stamp a record of whatever
+    # happened rather than a check that the right thing happened, and left the
+    # expected values guarding only the migration path they were added for.
+    if(NOT VELOCITA_RAFT_H_SHA256 STREQUAL VELOCITA_RAFT_EXPECTED_H_SHA256 OR
+       NOT VELOCITA_RAFT_SERVER_SHA256 STREQUAL VELOCITA_RAFT_EXPECTED_SERVER_SHA256)
+        message(FATAL_ERROR
+            "the pinned raft durability patch applied but produced unreviewed "
+            "content against ${RAFT_COMMIT}. Expected raft.h "
+            "${VELOCITA_RAFT_EXPECTED_H_SHA256} and raft_server.c "
+            "${VELOCITA_RAFT_EXPECTED_SERVER_SHA256}; got "
+            "${VELOCITA_RAFT_H_SHA256} and ${VELOCITA_RAFT_SERVER_SHA256}. "
+            "Do not update the expected digests to make this pass - regenerate "
+            "the patch against the pinned commit and review the diff.")
+    endif()
     file(WRITE ${VELOCITA_RAFT_PATCH_STAMP}
         "RAFT_COMMIT=${RAFT_COMMIT}\n"
         "PATCH_SHA256=${VELOCITA_RAFT_PATCH_SHA256}\n"
