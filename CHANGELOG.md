@@ -15,6 +15,24 @@ release-engineering work.
 
 ### Phase 7 in development - durability and bounded memory
 
+#### Phase 6/7 gates, pinned — 2026-09-16
+
+`deploy/run-v2-phase7-container-gate.sh` (ARM64) and
+`deploy/run-v2-phase7-nuc-gate.sh` (x86-64), both pinned to source root
+`acca3812d306ecfa51cf5f53539d7182a239ddc324d50819d178cbef16a95d25`.
+
+Phase 5's gates asked a layout question. These ask a durability and scheduling
+one, which is the part least trustworthy on the development host: `fdatasync`
+rather than `fsync`, a real page cache, a real scheduler behind the writer
+thread, and directory syncs that mean something. Expected suite counts are
+34 / 31 / 31.
+
+The pin travels inside the tree, so it proves the tree matches its own pin and
+nothing more. The external comparison stays an explicit operator step; it has
+already caught a PASS against a superseded candidate.
+
+Not yet run. `docs/NUC_OPERATOR_RUNBOOK.md` section 7 carries the procedure.
+
 #### Corrections from an independent review — 2026-09-16
 
 An independent review of Phases 6 and 7 found five defects. The RED evidence is

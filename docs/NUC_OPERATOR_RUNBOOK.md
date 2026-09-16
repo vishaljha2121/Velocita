@@ -222,6 +222,54 @@ past, because a stale gate script does not print those keys WRONG - it does not
 print them at all. Absence in a grep whose other lines look correct reads as
 nothing rather than as a finding.
 
+## 7. The Phase 6/7 gate
+
+Phase 5's NUC gate asked a LAYOUT question - whether the bounded structures
+still fit under x86-64 padding. Phase 6/7 asks a different one, and it is the
+reason this machine is the target for those phases: the write path now has a
+THREAD in it. The writer drains off the owner loop, truncation and compaction
+quiesce it, and `v2-replication-tests` parks that writer mid-drain and rewrites
+the segment underneath it. That is a real interleaving on real cores, over a
+filesystem where `fdatasync` and a directory sync mean what they say.
+
+Same shape as section 6, different directory, different pin:
+
+```sh
+# from the development host
+git -C "$nuc_sync_dir" checkout --detach <accepted-commit>
+git -C "$nuc_sync_dir" status --short          # MUST be empty
+rsync -av --delete --exclude 'build/' --exclude 'build-*/' \
+  "$nuc_sync_dir/" <you>@<nuc>:~/aeron-raft-pi-phase7-nuc/
+```
+
+```sh
+# on the NUC: CHECK BEFORE YOU RUN, against a value from outside this tree
+cd ~/aeron-raft-pi-phase7-nuc
+git log --oneline -1
+{ sha256sum CMakeLists.txt;
+  find include/velocita/v2 src tests -maxdepth 1 -type f \
+    \( -name 'v2_*' -o -name 'v2*.cpp' -o -name '*.hpp' \) -print0 |
+    LC_ALL=C sort -z | xargs -0 sha256sum; } | sha256sum
+
+BUILD_JOBS=4 ./deploy/run-v2-phase7-nuc-gate.sh --yes
+```
+
+Evidence lands in `~/.local/share/velocita/v2-phase7-nuc-gates/<timestamp>/`,
+and the suite counts to expect are 34 / 31 / 31 - the release step runs every
+suite, the instrumented and sanitized steps run the `v2-` ones.
+
+The read-the-evidence checklist in the previous section applies unchanged, with
+those counts and that directory. The root check especially: a stale tree carries
+its own stale pin, the two agree, and the gate passes - which is how a PASS was
+once obtained against a superseded candidate in another account's copy of the
+tree on this same machine.
+
+ONE THING IS DIFFERENT ABOUT READING THIS GATE. A threaded test that passes
+tells you less than one that fails, because a race can hide. If
+`writer-truncation-race` fails here and passes on the development host, believe
+this machine. If it passes here, that is one schedule agreeing with two others,
+which is the evidence available and not a proof.
+
 ## Recomputing the source root by hand
 
 ```sh
