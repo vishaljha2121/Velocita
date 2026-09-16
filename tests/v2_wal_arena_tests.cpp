@@ -5,6 +5,8 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <sys/wait.h>
+#include <unistd.h>
 
 namespace {
 
@@ -247,6 +249,65 @@ void test_framing_round_trips_exactly() {
     require(decoded->payload == payload, "framing did not round-trip the payload");
 }
 
+void test_the_durable_index_does_not_advance_before_the_sync(
+    const std::filesystem::path& root) {
+    // The narrowest window in the whole durability path, and the one that was
+    // wrong. `flush` writes blocks, syncs, and releases them; the release is
+    // what raises the durable index, and the durable index is what this node
+    // reports to Raft for its own quorum vote. Releasing before the sync means
+    // counting a vote for bytes that are in the page cache and nowhere else - a
+    // power cut in that window loses entries a majority already promised.
+    //
+    // Observed at the `before_file_sync` checkpoint rather than by crashing,
+    // because a crash cannot show it: `_exit` does not drop the page cache, so
+    // the file comes back complete either way and the bug is invisible on disk.
+    // What distinguishes correct from incorrect is the INDEX at that instant.
+    std::filesystem::create_directories(root);
+
+    const auto staged_record = [](const std::uint64_t index) {
+        velocita::WalRecord value;
+        value.index = index;
+        value.term = 1;
+        value.entry_id = static_cast<std::int32_t>(index);
+        value.entry_type = 0;
+        value.payload = record(64, static_cast<std::uint8_t>(0x70 + index));
+        return velocita::encode_wal_record(value);
+    };
+
+    struct Observation {
+        WalBlockArena* arena;
+        std::size_t calls;
+        std::uint64_t durable_at_sync;
+    };
+
+    WalBlockArena arena;
+    require(arena.stage(staged_record(1), 1) == StageOutcome::staged, "stage failed");
+    arena.seal_open_block();
+
+    Observation seen{&arena, 0, 0};
+    WalSegment segment(root, {[](StorageCheckpoint at, void* context) {
+                                  if (at != StorageCheckpoint::before_file_sync) return;
+                                  auto& observation = *static_cast<Observation*>(context);
+                                  ++observation.calls;
+                                  observation.durable_at_sync =
+                                      observation.arena->durable_index();
+                              },
+                              &seen});
+
+    require(segment.flush(arena) == 1, "flush wrote nothing");
+    // Without this the assertion below would hold vacuously on any build where
+    // the checkpoint stopped firing.
+    require(seen.calls == 1,
+            "the pre-sync checkpoint fired " + std::to_string(seen.calls) +
+                " times, so the window was never observed");
+    require(seen.durable_at_sync == 0,
+            "the durable index was already " + std::to_string(seen.durable_at_sync) +
+                " when the sync began, so a block was credited as durable before "
+                "its bytes reached the disk");
+    require(arena.durable_index() == 1,
+            "the durable index did not advance after a successful sync");
+}
+
 void test_preallocated_space_does_not_read_back_as_data(
     const std::filesystem::path& root) {
     // Preallocation extends the file well past the write frontier. That space
@@ -304,6 +365,48 @@ void test_preallocated_space_does_not_read_back_as_data(
             "records came back in the wrong order after a reopen");
 }
 
+void test_rewrite_crashes_preserve_one_complete_history(const std::filesystem::path& root) {
+    for (const auto point : {StorageCheckpoint::rewrite_block, StorageCheckpoint::file_synced,
+                             StorageCheckpoint::file_renamed, StorageCheckpoint::directory_synced}) {
+        const auto dir = root / std::to_string(static_cast<int>(point));
+        std::filesystem::create_directories(dir);
+        {
+            WalBlockArena arena;
+            WalSegment segment(dir);
+            for (std::uint64_t index = 1; index <= 3; ++index) {
+                velocita::WalRecord value{index, 1, static_cast<std::int32_t>(index), 0,
+                    record(3000, static_cast<std::uint8_t>(index))};
+                require(arena.stage(velocita::encode_wal_record(value), index) == StageOutcome::staged,
+                        "rewrite fixture stage refused");
+                arena.seal_open_block();
+                segment.flush(arena);
+            }
+        }
+        auto selected = point;
+        const auto child = ::fork();
+        require(child >= 0, "fork failed");
+        if (child == 0) {
+            WalSegment segment(dir, {[](StorageCheckpoint at, void* context) {
+                if (at == *static_cast<StorageCheckpoint*>(context)) ::_exit(77);
+            }, &selected});
+            segment.discard_through(1);
+            ::_exit(0);
+        }
+        int status = 0;
+        require(::waitpid(child, &status, 0) == child && WIFEXITED(status), "child failed");
+        require(WEXITSTATUS(status) == 77, "rewrite checkpoint was not exercised");
+        const auto recovered = WalSegment(dir).read_records();
+        const bool old = recovered.size() == 3 && recovered[0].index == 1 &&
+                         recovered[1].index == 2 && recovered[2].index == 3;
+        const bool replaced = recovered.size() == 2 && recovered[0].index == 2 &&
+                              recovered[1].index == 3;
+        require(old || replaced, "rewrite crash recovered a mixed/duplicated history");
+        for (const auto& value : recovered)
+            require(value.payload == record(3000, static_cast<std::uint8_t>(value.index)),
+                    "rewrite crash changed record bytes");
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -320,6 +423,8 @@ int main() {
             const auto root = std::filesystem::temp_directory_path() /
                               "velocita-v2-wal-arena-tests";
             std::filesystem::remove_all(root);
+            test_rewrite_crashes_preserve_one_complete_history(root / "rewrite");
+            test_the_durable_index_does_not_advance_before_the_sync(root / "presync");
             test_preallocated_space_does_not_read_back_as_data(root);
             std::filesystem::remove_all(root);
         }

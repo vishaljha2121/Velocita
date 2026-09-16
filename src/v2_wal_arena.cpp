@@ -15,6 +15,14 @@ namespace {
 constexpr std::uint32_t kBlockMagic = 0x32425756U;
 constexpr std::uint16_t kBlockVersion = 1;
 
+void sync_directory(const std::filesystem::path& path) {
+    const int directory = ::open(path.c_str(), O_RDONLY);
+    if (directory < 0) throw std::runtime_error("WAL directory open failed");
+    const int result = ::fsync(directory);
+    ::close(directory);
+    if (result != 0) throw std::runtime_error("WAL directory sync failed");
+}
+
 void put_le(std::vector<std::byte>& out, const std::uint64_t value,
             const std::size_t width) {
     for (std::size_t i = 0; i < width; ++i) {
@@ -216,6 +224,14 @@ void WalBlockArena::seed_durable_index(const std::uint64_t index) noexcept {
     }
 }
 
+void WalBlockArena::rewind_durable_index(const std::uint64_t surviving_index) {
+    if (open_slot_ || !sealed_.empty() || submitted_ != 0) {
+        throw std::logic_error("cannot rewind durability with outstanding WAL work");
+    }
+    durable_index_.store(std::min(surviving_index, durable_index()),
+                         std::memory_order_release);
+}
+
 std::size_t WalBlockArena::sealed_count() const noexcept { return sealed_.size(); }
 
 std::size_t WalBlockArena::free_blocks() const noexcept {
@@ -234,11 +250,13 @@ std::uint64_t WalBlockArena::generation_of(const std::size_t slot) const noexcep
     return blocks_[slot].generation;
 }
 
-WalSegment::WalSegment(std::filesystem::path data_dir)
-    : path_(std::move(data_dir) / "v2-wal-blocks.bin") {
+WalSegment::WalSegment(std::filesystem::path data_dir, StorageCheckpoints checkpoints)
+    : path_(std::move(data_dir) / "v2-wal-blocks.bin"), checkpoints_(checkpoints) {
     std::filesystem::create_directories(path_.parent_path());
     fd_ = ::open(path_.c_str(), O_RDWR | O_CREAT, 0644);
     if (fd_ < 0) throw std::runtime_error("cannot open " + path_.string());
+    try { sync_directory(path_.parent_path()); }
+    catch (...) { ::close(fd_); fd_ = -1; throw; }
     struct stat info {};
     if (::fstat(fd_, &info) != 0) return;
     reserved_through_ = static_cast<std::uint64_t>(info.st_size);
@@ -306,8 +324,10 @@ void WalSegment::sync() {
     // pretending otherwise in a durability path would be the wrong kind of
     // portability.
 #if defined(__APPLE__)
+    checkpoints_(StorageCheckpoint::before_file_sync);
     if (::fsync(fd_) != 0) throw std::runtime_error("WAL fsync failed");
 #else
+    checkpoints_(StorageCheckpoint::before_file_sync);
     if (::fdatasync(fd_) != 0) throw std::runtime_error("WAL fdatasync failed");
 #endif
 }
@@ -317,13 +337,32 @@ std::size_t WalSegment::flush(WalBlockArena& arena) {
     // sealed block, syncs ONCE, and only then releases them - releasing before
     // the sync would make "durable" mean "in the page cache".
     std::vector<BlockDescriptor> written;
-    while (const auto descriptor = arena.next_sealed()) {
+    const auto original_offset = next_offset_;
+    const auto original_reserved = reserved_through_;
+    const auto pending = arena.sealed_count();
+    for (std::size_t i = 0; i < pending; ++i) {
+        const auto descriptor = arena.next_sealed();
+        if (!descriptor) throw std::runtime_error("WAL sealed queue changed during flush");
         write_block(*descriptor, arena.block_bytes(*descriptor));
         written.push_back(*descriptor);
-        if (!arena.complete(*descriptor)) break;
     }
     if (written.empty()) return 0;
-    sync();
+    try {
+        sync();
+    } catch (...) {
+        // The blocks remain sealed and therefore cannot be recycled as
+        // durable. Roll back the append frontier so a caller that deliberately
+        // retries after handling the I/O failure does not duplicate records.
+        (void)::ftruncate(fd_, static_cast<off_t>(original_offset));
+        next_offset_ = original_offset;
+        reserved_through_ = original_reserved;
+        throw;
+    }
+    for (const auto& descriptor : written) {
+        if (!arena.complete(descriptor)) {
+            throw std::runtime_error("WAL completion order violation");
+        }
+    }
     return written.size();
 }
 
@@ -332,7 +371,7 @@ namespace {
 // Rewrite a whole segment from records, packing blocks the same way staging
 // does so a rewritten segment is indistinguishable from a staged one.
 void rewrite_segment(const int fd, std::uint64_t& next_offset,
-                     const std::vector<WalRecord>& kept) {
+                     const std::vector<WalRecord>& kept, StorageCheckpoints checkpoints) {
     std::vector<std::byte> payload;
     std::uint64_t sequence = 1;
     std::uint64_t offset = 0;
@@ -347,6 +386,7 @@ void rewrite_segment(const int fd, std::uint64_t& next_offset,
             done += static_cast<std::size_t>(result);
         }
         offset += kWalBlockBytes;
+        checkpoints(StorageCheckpoint::rewrite_block);
         ++sequence;
         payload.clear();
     };
@@ -359,20 +399,42 @@ void rewrite_segment(const int fd, std::uint64_t& next_offset,
         payload.insert(payload.end(), framed.begin(), framed.end());
     }
     emit();
+    if (::ftruncate(fd, static_cast<off_t>(offset)) != 0) {
+        throw std::runtime_error("WAL rewrite truncate failed");
+    }
 #if defined(__APPLE__)
     if (::fsync(fd) != 0) throw std::runtime_error("WAL rewrite fsync failed");
 #else
     if (::fdatasync(fd) != 0) throw std::runtime_error("WAL rewrite fsync failed");
 #endif
-    // Drop whatever followed, so a shorter log cannot leave older blocks
-    // readable past its own end.
-    if (::ftruncate(fd, static_cast<off_t>(offset)) != 0) {
-        throw std::runtime_error("WAL rewrite truncate failed");
-    }
+    checkpoints(StorageCheckpoint::file_synced);
     next_offset = offset;
 }
 
 }  // namespace
+
+void WalSegment::rewrite(const std::vector<WalRecord>& kept) {
+    const auto temporary = path_.string() + ".rewrite";
+    int replacement = ::open(temporary.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0644);
+    if (replacement < 0) throw std::runtime_error("WAL replacement open failed");
+    try {
+        std::uint64_t end = 0;
+        rewrite_segment(replacement, end, kept, checkpoints_);
+        if (::rename(temporary.c_str(), path_.c_str()) != 0)
+            throw std::runtime_error("WAL replacement rename failed");
+        ::close(fd_);
+        fd_ = replacement;
+        replacement = -1;
+        next_offset_ = end;
+        reserved_through_ = end;
+        checkpoints_(StorageCheckpoint::file_renamed);
+        sync_directory(path_.parent_path());
+        checkpoints_(StorageCheckpoint::directory_synced);
+    } catch (...) {
+        if (replacement >= 0) ::close(replacement);
+        throw;
+    }
+}
 
 void WalSegment::truncate_from(const std::uint64_t first_removed_index) {
     auto records = read_records();
@@ -381,9 +443,7 @@ void WalSegment::truncate_from(const std::uint64_t first_removed_index) {
         if (record.index < first_removed_index) kept.push_back(std::move(record));
     }
     if (kept.size() == records.size()) return;
-    rewrite_segment(fd_, next_offset_, kept);
-    // The rewrite truncated the file, so the reservation is gone with it.
-    reserved_through_ = next_offset_;
+    rewrite(kept);
 }
 
 void WalSegment::discard_through(const std::uint64_t last_removed_index) {
@@ -394,8 +454,7 @@ void WalSegment::discard_through(const std::uint64_t last_removed_index) {
         if (record.index > last_removed_index) kept.push_back(std::move(record));
     }
     if (kept.size() == records.size()) return;
-    rewrite_segment(fd_, next_offset_, kept);
-    reserved_through_ = next_offset_;
+    rewrite(kept);
 }
 
 std::vector<WalRecord> WalSegment::read_records() const {

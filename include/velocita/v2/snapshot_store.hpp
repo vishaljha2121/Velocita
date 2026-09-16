@@ -2,6 +2,7 @@
 
 #include "velocita/v2/kernel.hpp"
 #include "velocita/v2/state_snapshot.hpp"
+#include "velocita/v2/storage_checkpoint.hpp"
 
 #include <cstdint>
 #include <filesystem>
@@ -32,7 +33,7 @@ struct StoredSnapshot {
 
 class SnapshotStore {
 public:
-    explicit SnapshotStore(std::filesystem::path data_dir);
+    explicit SnapshotStore(std::filesystem::path data_dir, StorageCheckpoints checkpoints = {});
 
     // Absent, or unreadable for any reason, reads as absent rather than
     // throwing: a corrupt snapshot must degrade to "replay the whole log",
@@ -48,6 +49,7 @@ public:
     [[nodiscard]] const std::filesystem::path& path() const noexcept { return path_; }
 
 private:
+    StorageCheckpoints checkpoints_;
     std::filesystem::path path_;
 };
 

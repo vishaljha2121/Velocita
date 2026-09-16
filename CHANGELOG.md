@@ -15,6 +15,80 @@ release-engineering work.
 
 ### Phase 7 in development - durability and bounded memory
 
+#### Corrections from an independent review — 2026-09-16
+
+An independent review of Phases 6 and 7 found five defects. The RED evidence is
+in `docs/evidence/V2_PHASE6_7_CORRECTION_RED_GREEN.md`; each case failed against
+`8f66dca` before the fix.
+
+THE DURABLE INDEX ADVANCED BEFORE THE BYTES WERE SYNCED. `WalSegment::flush`
+wrote each block, then called `arena.complete()` on it, and synced only after the
+loop. `complete()` is what raises the durable index, and the durable index is
+what this node reports to Raft for its own quorum vote - so a crash between the
+write and the sync left this node having already counted entries that were not on
+disk. The whole point of Phase 7's gate, defeated inside the function whose own
+comment described the correct order. Flush now writes every block, syncs, and
+only then completes; a sync failure rolls the batch back rather than leaving it
+half-credited.
+
+MEMBERSHIP WAS LOST ACROSS A SNAPSHOT LOAD. Loading a Raft snapshot clears the
+node table, and nothing restored the configured peers, so a node that recovered
+from a snapshot came back believing it was alone. Now restored from the
+configured membership after load, covered by an independent suite
+(`v2-snapshot-membership-tests`). No byte change.
+
+TRUNCATION AND COMPACTION RACED THE WRITER. `log_pop`, `log_clear` and `compact`
+rewrote or shortened the segment while the off-thread writer could still be
+draining into it. Each now quiesces the writer, flushes, rewrites the segment
+atomically (temp, sync, rename, sync the directory), lowers the durable
+watermark to the surviving prefix, and restarts the writer if it was running.
+This is a rare synchronous maintenance barrier and is stated as one: the claim is
+an asynchronous STEADY-STATE write path, not a fully non-blocking owner loop.
+
+A DURABILITY ADVANCE DID NOT RECONSIDER QUORUM. The pinned patch gated the
+leader's own vote on its durable index, but nothing re-evaluated the commit index
+when durability later caught up - so with peers already acked, an entry could sit
+uncommitted until the next unrelated event. `raft_periodic` now re-walks the
+window between the commit index and the safe point, keeping Raft's current-term
+restriction and the NULL-callback path byte-identical. Held by
+`v2-durable-quorum-tests`, which drives willemt directly rather than through
+`ReplicatedKernel`; removing the re-evaluation leaves the replication suite green
+and fails only this one.
+
+A RECOVERED COMMIT INDEX PAST THE END OF THE LOG NOW REFUSES, reversing the
+clamp introduced on 2026-09-15. The power-cut sweep that motivated clamping
+truncates the segment EXTERNALLY, which cannot happen while the durability
+contract holds - so clamping taught the node to tolerate a broken disk silently,
+on the single-voter shape that has no peer to re-supply what was lost. Recovery
+now names the condition and leaves the files untouched for diagnosis. The cost is
+accepted and stated in ADR 0006's amendment: such a node does not start without a
+human, and the revisit condition is peer snapshot transport, which would let a
+FOLLOWER rejoin by re-fetching instead.
+
+EVERY ONE OF THESE FIXES WAS THEN MUTATION-CHECKED, and three of the six had no
+test that failed when the fix was reverted - including the flush-ordering defect,
+which is the most serious of the set. Reverting a fix and finding the suite still
+green is the only way to learn that; the table and the three new tests are in
+`docs/evidence/V2_PHASE6_7_CORRECTION_RED_GREEN.md`. Briefly:
+
+- the durable index is now read from inside the sync, through the
+  `before_file_sync` checkpoint, because a crash cannot expose this bug at all -
+  `_exit` does not drop the page cache, so the file looks identical either way.
+- the power-cut sweep now asserts the REASON recovery refused, not just that it
+  did. Without the explicit check the node still refuses, via an unrelated replay
+  failure with an empty cause - a refusal that tells an operator nothing, which
+  defeats the point of refusing.
+- `ReplicatedKernel` gained an optional `StorageCheckpoints` seam, defaulted off
+  and carrying no behaviour, so a test can PARK the writer mid-drain and deliver
+  a replacing suffix while it sits there. The truncation race was previously
+  "covered" by a test that ran both threads and hoped; the mutant survived forty
+  consecutive runs of it and is now killed five times out of five.
+
+THE PATCH STAMP NOW PINS WHAT IT PATCHED. The build records the Raft commit and
+the SHA256 of the patch and of both patched sources, and fails with a
+FATAL_ERROR on any mismatch, so a fork that drifts cannot be built against
+silently.
+
 #### Durable snapshots, compaction, and an asynchronous write path — 2026-09-15
 
 Phase 7a: `SnapshotStore` frames and persists the canonical state snapshot the
@@ -34,8 +108,10 @@ not yet durable. Two guards were checked by mutation rather than assumed.
 The persisted commit index is clamped to the durable index. willemt counts the
 leader's own vote unconditionally, so its in-memory commit index can name an
 entry this node has staged but not synced; persisting that would leave a restart
-reading a commit index past the end of its own log, which the constructor then
-refuses - turning a survivable crash into a node that will not start.
+reading a commit index past the end of its own log, which the constructor
+refuses. Clamping on the WRITE side is what makes that refusal meaningful: with
+it, the only way to reach that shape is for the storage to have lost data it
+acknowledged, so the refusal names a broken disk rather than a normal crash.
 
 #### The pinned Raft fork — 2026-09-15
 
@@ -116,11 +192,10 @@ structurally distinct offset through the written frontier. It found two defects
 on its first run, both of which three hand-picked durability points had been
 green over:
 
-- a recovered commit index past the end of the log was FATAL. A cut that loses
-  the tail leaves exactly that shape - hard state that was durable naming entries
-  that were not - and the node refused to start, converting a survivable crash
-  into a permanent outage whose only remedy was deleting state. It now clamps and
-  reports the gap through `recovered_commit_clamped`.
+- a recovered commit index past the end of the log. A cut that loses the tail
+  leaves exactly that shape - hard state that was durable naming entries that
+  were not. This was first "fixed" by clamping, then reversed: see the
+  2026-09-16 entry and ADR 0006's amendment.
 - ONE 64 KiB BLOCK PER RECORD. `flush_durability` seals on every call, correctly,
   so a quiet system writes a block per record and a 200-byte command cost 64 KiB.
   The block is now 4 KiB, page-sized, with a static assertion tying it to the

@@ -43,8 +43,8 @@ std::uint64_t read_le64(const std::vector<std::byte>& bytes, std::size_t& offset
 
 }  // namespace
 
-SnapshotStore::SnapshotStore(std::filesystem::path data_dir)
-    : path_(std::move(data_dir) / "v2-snapshot.bin") {}
+SnapshotStore::SnapshotStore(std::filesystem::path data_dir, StorageCheckpoints checkpoints)
+    : checkpoints_(checkpoints), path_(std::move(data_dir) / "v2-snapshot.bin") {}
 
 void SnapshotStore::save(const TradingState& state,
                          const std::uint64_t last_included_index,
@@ -97,14 +97,16 @@ void SnapshotStore::save(const TradingState& state,
     if (::rename(temporary.c_str(), path_.c_str()) != 0) {
         throw std::runtime_error("snapshot rename failed");
     }
+    checkpoints_(StorageCheckpoint::file_renamed);
     // The rename is only durable once the DIRECTORY is synced. Without this a
     // crash can leave the old snapshot visible after `save` returned, and the
     // caller has already reclaimed the log prefix on the strength of it.
     const int dir = ::open(path_.parent_path().c_str(), O_RDONLY);
-    if (dir >= 0) {
-        (void)::fsync(dir);
-        ::close(dir);
-    }
+    if (dir < 0) throw std::runtime_error("snapshot directory open failed");
+    const int synced = ::fsync(dir);
+    ::close(dir);
+    if (synced != 0) throw std::runtime_error("snapshot directory fsync failed");
+    checkpoints_(StorageCheckpoint::directory_synced);
 }
 
 std::optional<StoredSnapshot> SnapshotStore::load() const {

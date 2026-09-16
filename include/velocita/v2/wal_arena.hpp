@@ -3,6 +3,7 @@
 #include "velocita/storage.hpp"
 #include "velocita/v2/kernel_codec.hpp"
 #include "velocita/v2/spsc_ring.hpp"
+#include "velocita/v2/storage_checkpoint.hpp"
 
 #include <atomic>
 #include <cstddef>
@@ -163,6 +164,9 @@ public:
     // log. Never lowers the index.
     void seed_durable_index(std::uint64_t index) noexcept;
 
+    // Caller has joined/drained the writer and durably removed the suffix.
+    void rewind_durable_index(std::uint64_t surviving_index);
+
     [[nodiscard]] std::size_t sealed_count() const noexcept;
     [[nodiscard]] std::size_t free_blocks() const noexcept;
     [[nodiscard]] BlockState state_of(std::size_t slot) const noexcept;
@@ -220,7 +224,7 @@ struct DecodedBlock {
 // stride and syncs once per drain rather than once per record.
 class WalSegment {
 public:
-    explicit WalSegment(std::filesystem::path data_dir);
+    explicit WalSegment(std::filesystem::path data_dir, StorageCheckpoints checkpoints = {});
     ~WalSegment();
     WalSegment(const WalSegment&) = delete;
     WalSegment& operator=(const WalSegment&) = delete;
@@ -256,8 +260,10 @@ public:
 
 private:
     void reserve_through(std::uint64_t offset);
+    void rewrite(const std::vector<WalRecord>& records);
 
     std::filesystem::path path_;
+    StorageCheckpoints checkpoints_;
     int fd_{-1};
     std::uint64_t next_offset_{0};
     // How far the file has been extended. Distinct from `next_offset_`: the

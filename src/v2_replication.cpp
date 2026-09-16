@@ -32,12 +32,13 @@ Digest256 state_digest_of(const TradingState& state) {
 
 ReplicatedKernel::ReplicatedKernel(const std::int32_t node_id,
                                    std::filesystem::path data_dir,
-                                   std::vector<std::int32_t> members)
+                                   std::vector<std::int32_t> members,
+                                   StorageCheckpoints checkpoints)
     : node_id_(node_id),
       members_(std::move(members)),
       metadata_store_(data_dir),
       wal_(data_dir),
-      segment_(std::make_unique<WalSegment>(data_dir)),
+      segment_(std::make_unique<WalSegment>(data_dir, checkpoints)),
       writer_(std::make_unique<WalWriter>(*segment_, arena_)),
       snapshots_(std::move(data_dir)),
       metadata_(metadata_store_.load()),
@@ -45,6 +46,8 @@ ReplicatedKernel::ReplicatedKernel(const std::int32_t node_id,
       codec_scratch_(std::make_unique<KernelCommandCodecScratch>()),
       server_(raft_new()) {
     if (server_ == nullptr) throw std::runtime_error("raft_new failed");
+    const auto release_server = [](raft_server_t* server) { raft_free(server); };
+    std::unique_ptr<raft_server_t, decltype(release_server)> startup_guard(server_, release_server);
 
     raft_cbs_t table{};
     table.send_requestvote = &ReplicatedKernel::send_request_vote;
@@ -69,13 +72,9 @@ ReplicatedKernel::ReplicatedKernel(const std::int32_t node_id,
     if (!std::binary_search(members_.begin(), members_.end(), node_id_)) {
         throw std::runtime_error("cluster membership does not include the local node");
     }
-    for (const auto member : members_) {
-        if (member <= 0 ||
-            raft_add_node(server_, nullptr, member, member == node_id_) == nullptr) {
-            throw std::runtime_error("failed to add Raft member " + std::to_string(member));
-        }
+    if (raft_add_node(server_, nullptr, node_id_, 1) == nullptr) {
+        throw std::runtime_error("failed to add Raft member " + std::to_string(node_id_));
     }
-
     // INSTALL THE SNAPSHOT FIRST, then replay only what it does not cover.
     //
     // Without a snapshot this is replay from the beginning, which is the
@@ -99,6 +98,17 @@ ReplicatedKernel::ReplicatedKernel(const std::int32_t node_id,
         }
     }
 
+    // `raft_begin_load_snapshot` retains only the local Raft node. Restore the
+    // configured voter set after the snapshot so a restarted voter cannot
+    // accidentally become a one-node cluster.
+    for (const auto member : members_) {
+        if (member == node_id_) continue;
+        if (member <= 0 ||
+            raft_add_node(server_, nullptr, member, member == node_id_) == nullptr) {
+            throw std::runtime_error("failed to add Raft member " + std::to_string(member));
+        }
+    }
+
     // Hard state is restored AFTER the snapshot, not before.
     // `raft_begin_load_snapshot` assigns `current_term` from the snapshot and
     // clears the vote, so restoring them first silently loses both - and the
@@ -115,11 +125,15 @@ ReplicatedKernel::ReplicatedKernel(const std::int32_t node_id,
     // older build has no segment, and must still start.
     auto records = segment_->read_records();
     if (records.empty()) records = wal_.read_all();
+    auto expected_index = installed_through + 1;
     for (const auto& record : records) {
         // Entries the snapshot already accounts for are skipped rather than
         // re-applied. A crash between a durable snapshot and its prefix
         // reclamation leaves exactly this overlap, and it has to be harmless.
         if (record.index <= installed_through) continue;
+        if (record.index != expected_index++) {
+            throw std::runtime_error("WAL history is not a contiguous snapshot suffix");
+        }
         raft_entry_t entry{};
         entry.term = record.term;
         entry.id = record.entry_id;
@@ -144,32 +158,18 @@ ReplicatedKernel::ReplicatedKernel(const std::int32_t node_id,
         throw std::runtime_error("metadata holds a negative commit index");
     }
 
-    // A RECOVERED COMMIT INDEX PAST THE END OF THE LOG IS CLAMPED, NOT REFUSED.
-    //
-    // This was a hard failure, and the power-cut sweep showed that to be the
-    // wrong trade the first time it ran. A cut that loses the tail of the
-    // segment leaves exactly this shape: hard state that was durable naming
-    // entries that were not. Refusing to start turns a survivable crash into a
-    // permanent outage whose only remedy is deleting state - which is worse than
-    // the problem, and is the remedy most likely to destroy the evidence.
-    //
-    // Clamping is safe for the reason "committed" means something: a majority
-    // held those entries, so a peer re-supplies them. A single voter that lost
-    // them has suffered real loss, but that requires the storage to have broken
-    // its own durability contract, and the honest response is to start, report
-    // it, and let an operator see the number.
     const auto log_end = raft_get_current_idx(server_);
     if (metadata_.commit_index > log_end) {
-        recovered_commit_clamped_ =
-            static_cast<std::uint64_t>(metadata_.commit_index - log_end);
-        metadata_.commit_index = log_end;
+        throw std::runtime_error("recovery refused: committed WAL history is missing; preserve storage for repair");
     }
-    raft_set_commit_idx(server_, metadata_.commit_index);
+    raft_set_commit_idx(server_, std::max(static_cast<raft_index_t>(metadata_.commit_index),
+        static_cast<raft_index_t>(installed_through)));
     if (raft_apply_all(server_) != 0) {
         throw std::runtime_error("failed to replay committed WAL entries: " +
                                  callback_error_);
     }
     restoring_ = false;
+    (void)startup_guard.release();
 }
 
 ReplicatedKernel::~ReplicatedKernel() {
@@ -389,12 +389,16 @@ std::uint64_t ReplicatedKernel::compact() {
         throw std::runtime_error("failed to end the snapshot: " + callback_error_);
     }
     if (polled_through_ != 0) {
+        const bool resume_writer = writer_running_;
+        stop_writer();
+        flush_durability();
         segment_->discard_through(polled_through_);
         // Reclaiming the WAL prefix last means a crash here leaves entries the
         // snapshot already covers. Restart skips them by index, so the overlap
         // costs a little disk and nothing else. Failing the other way would
         // cost committed entries.
         wal_.discard_through(polled_through_);
+        if (resume_writer) start_writer();
     }
     return static_cast<std::uint64_t>(applied);
 }
@@ -660,8 +664,14 @@ int ReplicatedKernel::log_pop(raft_server_t*, void* user_data, raft_entry_t*,
         // Both stores, or a restart reads back entries Raft has popped. The
         // arena's own staged bytes for those indices are dropped with the
         // blocks they live in.
+        const bool resume_writer = self.writer_running_;
+        self.stop_writer();
+        self.flush_durability();
         self.wal_.truncate_from(static_cast<std::uint64_t>(index));
         self.segment_->truncate_from(static_cast<std::uint64_t>(index));
+        self.arena_.rewind_durable_index(static_cast<std::uint64_t>(index - 1));
+        self.highest_staged_index_ = static_cast<std::uint64_t>(index - 1);
+        if (resume_writer) self.start_writer();
         return 0;
     } catch (const std::exception& error) {
         self.callback_error_ = error.what();
@@ -675,8 +685,14 @@ int ReplicatedKernel::log_clear(raft_server_t*, void* user_data, raft_entry_t*,
     self.log_payloads_.clear();
     if (self.restoring_) return 0;
     try {
+        const bool resume_writer = self.writer_running_;
+        self.stop_writer();
+        self.flush_durability();
         self.wal_.truncate_from(1);
         self.segment_->truncate_from(1);
+        self.arena_.rewind_durable_index(0);
+        self.highest_staged_index_ = 0;
+        if (resume_writer) self.start_writer();
         return 0;
     } catch (const std::exception& error) {
         self.callback_error_ = error.what();

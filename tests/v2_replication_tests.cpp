@@ -3,7 +3,11 @@
 #include "velocita/v2/artifact_digest.hpp"
 
 #include <array>
+#include <chrono>
+#include <condition_variable>
 #include <filesystem>
+#include <mutex>
+#include <thread>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -997,7 +1001,144 @@ void test_durability_is_tracked_separately_and_never_overstated(
 
 // --- Phase 7: the power-cut matrix -------------------------------------------
 
-void test_recovery_survives_a_cut_at_every_byte_boundary(
+void test_truncation_does_not_race_the_writer(const std::filesystem::path& root) {
+    // A suffix replacement REWRITES the segment. If the writer thread is still
+    // draining while that happens, blocks belonging to the rejected suffix are
+    // written to a file that is about to be replaced, and their completions are
+    // published afterwards - so the owner raises the durable index for entries
+    // the segment no longer holds. The node then reports as durable a suffix
+    // that a restart cannot find, which is the exact thing the durability gate
+    // exists to make impossible.
+    //
+    // Timing alone cannot pin this: the drain usually finishes first, which is
+    // why running both threads and hoping produced a green test over a broken
+    // truncation. The writer is therefore PARKED inside its drain, at the point
+    // where its bytes are written but not yet synced, until the owner has
+    // reached the replacement. The park releases itself after a bounded wait so
+    // that the correct implementation - which joins the writer before
+    // rewriting - cannot deadlock against it.
+    struct Park {
+        std::mutex mutex;
+        std::condition_variable changed;
+        bool parked{false};
+        bool armed{false};
+    };
+    static Park park;
+    park.parked = false;
+    park.armed = false;
+
+    const auto dir = root / "node";
+    const StorageCheckpoints checkpoints{
+        [](const StorageCheckpoint at, void*) {
+            if (at != StorageCheckpoint::before_file_sync) return;
+            std::unique_lock<std::mutex> lock(park.mutex);
+            if (!park.armed) return;
+            park.armed = false;
+            park.parked = true;
+            park.changed.notify_all();
+            // Bounded: the fix joins this thread, so an unbounded park would
+            // hang the passing case rather than fail the broken one.
+            park.changed.wait_for(lock, std::chrono::milliseconds(300),
+                                  [] { return !park.parked; });
+            park.parked = false;
+        },
+        nullptr};
+
+    const auto first_payload = encoded(command(1, SetStrategyMode{StrategyMode::normal, {}, {}}));
+    const auto second_payload = encoded(command(2, SetStrategyMode{StrategyMode::normal, {}, {}}));
+    const auto replacement = encoded(command(3, SetStrategyMode{StrategyMode::normal, {}, {}}));
+
+    {
+        ReplicatedKernel node(2, dir, {1, 2, 3}, checkpoints);
+        node.start_writer();
+
+        // Two entries, so the replacement below removes index 2 and keeps
+        // index 1. A single entry would hide the defect: the replacement reuses
+        // the same index, so a stale completion and a correct one name the same
+        // number and the invariant cannot tell them apart.
+        velocita::AppendEntries append{};
+        append.term = 1;
+        // `PeerLogEntry` is {term, id, type, payload}; the index comes from
+        // `previous_log_index` plus position.
+        append.entries.push_back({1, 1, RAFT_LOGTYPE_NORMAL, first_payload});
+        node.receive_peer({1, 2, append});
+        node.flush_durability();
+        // Settle the first entry before arming, so the park catches the drain
+        // that carries index 2 and not this one.
+        // The owner applies completions; the writer only publishes them. So
+        // draining is a loop of `flush_durability`, not a sleep.
+        for (int i = 0; i < 500 && node.durable_index() < 1; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            node.flush_durability();
+        }
+        require(node.durable_index() == 1, "the writer never made the first entry durable");
+
+        {
+            std::lock_guard<std::mutex> lock(park.mutex);
+            park.armed = true;
+        }
+        append.entries[0] = {1, 2, RAFT_LOGTYPE_NORMAL, second_payload};
+        append.previous_log_index = 1;
+        append.previous_log_term = 1;
+        node.receive_peer({1, 2, append});
+        node.flush_durability();
+        while (node.take_outbound_message()) {}
+
+        {
+            std::unique_lock<std::mutex> lock(park.mutex);
+            const auto caught = park.changed.wait_for(
+                lock, std::chrono::seconds(2), [] { return park.parked; });
+            require(caught,
+                    "the writer was never parked mid-drain, so the race was "
+                    "never set up and this test proves nothing");
+        }
+
+        // The writer now holds index 2's bytes written but unsynced. Replace the
+        // suffix from index 2 while it sits there.
+        append.term = 2;
+        append.previous_log_index = 1;
+        append.previous_log_term = 1;
+        append.entries[0] = {2, 3, RAFT_LOGTYPE_NORMAL, replacement};
+        node.receive_peer({3, 2, append});
+
+        {
+            std::lock_guard<std::mutex> lock(park.mutex);
+            park.parked = false;
+            park.armed = false;
+        }
+        park.changed.notify_all();
+
+        for (int i = 0; i < 200; ++i) {
+            node.flush_durability();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        node.stop_writer();
+        node.flush_durability();
+
+        // THE INVARIANT. The durable index may never name an index the segment
+        // does not hold - "durable" is a claim about bytes on disk, and a claim
+        // that outruns the file is the failure this whole phase is about.
+        const auto records = WalSegment(dir).read_records();
+        std::uint64_t highest_on_disk = 0;
+        for (const auto& record : records) {
+            highest_on_disk = std::max(highest_on_disk, record.index);
+        }
+        require(node.durable_index() <= highest_on_disk,
+                "the node reports durable index " + std::to_string(node.durable_index()) +
+                    " but the segment holds only up to " + std::to_string(highest_on_disk) +
+                    ", so a rewritten segment was credited with the suffix it dropped");
+        require(records.size() == 2 && records[1].index == 2 && records[1].term == 2 &&
+                    records[1].payload == replacement,
+                "the segment does not hold the replacement suffix after the rewrite");
+    }
+
+    // And the claim must survive the restart it is about.
+    ReplicatedKernel restarted(2, dir, {1, 2, 3});
+    require(restarted.status().current_index == 2,
+            "the restart did not recover the replaced suffix");
+}
+
+void test_corruption_of_acknowledged_history_fails_closed(
     const std::filesystem::path& root) {
     // THE POWER-CUT PROPERTY, as a sweep rather than a handful of points.
     //
@@ -1068,25 +1209,36 @@ void test_recovery_survives_a_cut_at_every_byte_boundary(
             std::filesystem::resize_file(path, cut);
         }
 
-        // THE NODE MUST START. A cut log is the normal case after a power cut,
-        // and refusing to start would turn every crash into an outage.
+        if (cut < data_end) {
+            // Refusing is necessary but not sufficient. The reversal from
+            // clamping to refusing (ADR 0006's amendment) was made so an
+            // operator is TOLD what happened and the files are left intact, and
+            // a refusal that surfaces as a downstream replay failure with an
+            // empty cause serves neither. So the diagnostic is part of the
+            // contract and is asserted as one: without this, deleting the
+            // explicit check still "refuses", because `raft_apply_all` then
+            // fails on the entries that are not there - which is how a
+            // mutation of that check survived this sweep.
+            std::string reason;
+            try { Cluster restarted(dir, 1); }
+            catch (const std::runtime_error& error) { reason = error.what(); }
+            require(!reason.empty(),
+                    "lost acknowledged WAL history was accepted at cut " +
+                        std::to_string(cut));
+            require(reason.find("committed WAL history is missing") != std::string::npos,
+                    "recovery refused at cut " + std::to_string(cut) +
+                        " without naming the missing committed history: " + reason);
+            ++recovered_partial;
+            continue;
+        }
         Cluster restarted(dir, 1);
         restarted.settle(200);
         const auto after = restarted.elect().status();
 
         const std::string where = " at cut " + std::to_string(cut);
-        if (after.state_digest == acknowledged.state_digest) {
-            ++recovered_full;
-        } else {
-            ++recovered_partial;
-            // A partial recovery must be a PREFIX, never an invention: fewer
-            // effects than were acknowledged, never more, and never a state
-            // version beyond the one that was reached.
-            require(after.outbox_effect_count <= acknowledged.outbox_effect_count,
-                    "recovery invented outbox effects" + where);
-            require(after.state_version <= acknowledged.state_version,
-                    "recovery reached a state version nothing ever produced" + where);
-        }
+        require(after.state_digest == acknowledged.state_digest,
+                "intact acknowledged prefix changed" + where);
+        ++recovered_full;
 
         // And whatever it recovered, it must be able to keep going: a node that
         // starts but cannot make progress has traded an outage for a slower one.
@@ -1176,9 +1328,78 @@ void test_one_voter_reaches_the_same_state(const std::filesystem::path& root) {
             "commands");
 }
 
+void test_suffix_replacement_invalidates_old_durability(
+    const std::filesystem::path& root, const bool flushed, const bool threaded) {
+    const auto dir = root / "node";
+    const auto replacement = encoded(command(2, SetStrategyMode{StrategyMode::normal, {}, {}}));
+    {
+        ReplicatedKernel node(2, dir, {1, 2, 3});
+        velocita::AppendEntries first{};
+        first.term = 1;
+        first.entries.push_back({1, 1, RAFT_LOGTYPE_NORMAL,
+            encoded(command(1, SetStrategyMode{StrategyMode::normal, {}, {}}))});
+        node.receive_peer({1, 2, first});
+        if (flushed) node.flush_durability();
+        if (threaded) {
+            node.start_writer();
+            node.flush_durability();
+        }
+        while (node.take_outbound_message()) {}
+        first.term = 2;
+        first.entries[0] = {2, 2, RAFT_LOGTYPE_NORMAL, replacement};
+        node.receive_peer({3, 2, first});
+        const auto reply = node.take_outbound_message();
+        require(reply.has_value(), "replacement produced no acknowledgement");
+        const auto ack = std::get<velocita::AppendEntriesResponse>(reply->payload);
+        require(ack.current_index == 0,
+                "replacement acknowledged using obsolete history durability");
+        node.stop_writer();
+        node.flush_durability();
+        const auto records = WalSegment(dir).read_records();
+        require(records.size() == 1 && records[0].index == 1 &&
+                    records[0].term == 2 && records[0].payload == replacement,
+                "rejected staged suffix reappeared on disk");
+    }
+    ReplicatedKernel restarted(2, dir, {1, 2, 3});
+    require(restarted.status().current_index == 1 && restarted.durable_index() == 1,
+            "restart changed the replacement log's index");
+}
+
+void test_compacted_corrupt_snapshot_refuses_empty_recovery(
+    const std::filesystem::path& root) {
+    {
+        Cluster cluster(root, 1);
+        (void)build_authorized_submit(cluster);
+        cluster.settle();
+        require(cluster.elect().compact() > 0, "fixture must compact");
+    }
+    const auto snapshot = root / "1" / "v2-snapshot.bin";
+    std::filesystem::resize_file(snapshot, 3);
+    bool refused = false;
+    try { ReplicatedKernel restarted(1, root / "1", {1}); }
+    catch (const std::runtime_error&) { refused = true; }
+    require(refused, "corrupt compacted snapshot allowed empty recovery");
+    require(std::filesystem::file_size(snapshot) == 3,
+            "refused recovery overwrote the diagnostic evidence");
+}
+
+void test_snapshot_directory_failure_is_not_success(const std::filesystem::path& root) {
+    auto directory = root / "original";
+    std::filesystem::create_directories(directory);
+    SnapshotStore store(directory, {[](StorageCheckpoint point, void* context) {
+        if (point != StorageCheckpoint::file_renamed) return;
+        const auto& dir = *static_cast<std::filesystem::path*>(context);
+        std::filesystem::rename(dir, dir.string() + ".moved");
+    }, &directory});
+    bool refused = false;
+    try { store.save(TradingState{}, 1, 1); }
+    catch (const std::runtime_error&) { refused = true; }
+    require(refused, "snapshot reported success without syncing its directory");
+}
+
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
     try {
         const auto root = std::filesystem::temp_directory_path() /
                           "velocita-v2-replication-tests";
@@ -1188,6 +1409,33 @@ int main() {
             std::filesystem::create_directories(path);
             return path;
         };
+
+        const auto corrections = [&](const std::string& name) {
+            if (name == "suffix-staged")
+                test_suffix_replacement_invalidates_old_durability(fresh("suffix-staged"), false, false);
+            else if (name == "suffix-durable")
+                test_suffix_replacement_invalidates_old_durability(fresh("suffix-durable"), true, false);
+            else if (name == "suffix-threaded")
+                test_suffix_replacement_invalidates_old_durability(fresh("suffix-threaded"), false, true);
+            else if (name == "writer-truncation-race")
+                test_truncation_does_not_race_the_writer(fresh("writer-truncation-race"));
+            else if (name == "compacted-corrupt")
+                test_compacted_corrupt_snapshot_refuses_empty_recovery(fresh("compacted-corrupt"));
+            else if (name == "corrupt-wal-sweep")
+                test_corruption_of_acknowledged_history_fails_closed(fresh("corrupt-wal-sweep"));
+            else if (name == "snapshot-directory")
+                test_snapshot_directory_failure_is_not_success(fresh("snapshot-directory"));
+            else throw std::runtime_error("unknown correction test: " + name);
+        };
+        if (argc == 2) {
+            corrections(argv[1]);
+            std::cout << argv[1] << " passed\n";
+            return 0;
+        }
+        for (const auto* name : {"suffix-staged", "suffix-durable", "suffix-threaded",
+                                 "writer-truncation-race", "compacted-corrupt",
+                                 "snapshot-directory"})
+            corrections(name);
 
         test_only_committed_commands_invoke_the_reducer(fresh("committed-only"));
         test_follower_routing_preserves_command_identity(fresh("routing"));
@@ -1204,7 +1452,7 @@ int main() {
             fresh("corrupt-snapshot"));
         test_recovery_is_never_behind_the_last_acknowledged_commit(fresh("power-cut"));
         test_durability_is_tracked_separately_and_never_overstated(fresh("durable"));
-        test_recovery_survives_a_cut_at_every_byte_boundary(fresh("power-cut-sweep"));
+        test_corruption_of_acknowledged_history_fails_closed(fresh("corrupt-wal-sweep"));
         test_a_torn_hard_state_write_never_produces_a_corrupt_hard_state(
             fresh("torn-hard-state"));
         test_an_entry_cannot_commit_before_its_bytes_are_durable(fresh("gate"));

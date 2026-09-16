@@ -61,10 +61,9 @@ Clamping a follower's ack costs a round trip - the leader sees a lower match,
 resends, and the follower reports the higher index once its writer catches up.
 The alternative is a quorum formed around bytes a power cut would erase.
 
-A recovered commit index past the end of the log is CLAMPED, not refused, and the
-gap is reported through `recovered_commit_clamped`. Refusing turned a survivable
-crash into a permanent outage whose only remedy was deleting state - which is
-also the remedy most likely to destroy the evidence.
+A recovered commit index past the end of the log REFUSES RECOVERY, preserving the
+files for diagnosis. This reverses an earlier decision in this ADR; see the
+amendment below.
 
 Measured on the development host over two thousand command-sized records, owner
 loop time: median 21.6 us synchronous against 0.042 us off-thread, max 7136 us
@@ -88,6 +87,41 @@ makes the delta invisible in review.
 KEEP THE SYNC ON THE OWNER'S THREAD, BATCHED. One sync per drain rather than per
 record is most of the win and needs no thread. It leaves the owner loop stopping
 for the disk, which is the objective sentence of the phase.
+
+## Amendment, 2026-09-16: a missing committed prefix refuses rather than clamps
+
+The original text of this ADR decided that a recovered commit index past the end
+of the log should be CLAMPED and reported, on the grounds that refusing turns a
+survivable crash into a permanent outage whose only remedy is deleting state.
+That decision was wrong, and the reasoning that produced it was wrong in an
+instructive way.
+
+The power-cut sweep that motivated it truncates the segment EXTERNALLY. That is
+not a thing that can happen while the durability contract holds - with the gate
+enforced, commit never exceeds durable, so a commit index past the end of the log
+means the storage lost data it had acknowledged. The sweep was simulating a
+broken disk, and the response was to teach the node to tolerate a broken disk
+silently.
+
+Clamping therefore did not make a survivable crash survivable. It made
+unacknowledged data loss invisible, and it did so on the single-voter
+configuration that is the MVP deployment shape, where there is no peer to
+re-supply what was lost.
+
+DECISION: refuse recovery, name the condition, and leave the files untouched for
+diagnosis. Do not invent an operator acknowledgement flow and do not erase
+history automatically.
+
+The cost is real and is accepted: a node in this state does not start without a
+human. That is the correct cost, because the alternative is a cluster that
+continues with a hole in its committed history and no one aware of it.
+
+WHAT WOULD CHANGE THIS. In a multi-voter cluster a follower that lost its tail
+should be able to rejoin by re-fetching from the leader rather than requiring an
+operator. That needs peer snapshot transport, which is a material wire contract
+that has not been reviewed or built. When it exists, this decision should be
+revisited for followers specifically - it would remain correct for a single
+voter.
 
 ## A note on how two of these were found
 

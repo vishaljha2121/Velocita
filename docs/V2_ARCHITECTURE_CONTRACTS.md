@@ -2721,16 +2721,25 @@ cut the node must start, must not invent state, and must be able to continue.
 
 It found two things immediately, which is the argument for sweeps over points.
 
-A RECOVERED COMMIT INDEX PAST THE END OF THE LOG WAS FATAL. A cut that loses the
-tail leaves exactly that shape: hard state that was durable naming entries that
-were not. The node refused to start. That is the wrong trade - it converts a
-survivable crash into a permanent outage whose only remedy is deleting state,
-which is also the remedy most likely to destroy the evidence. It now CLAMPS and
-reports the gap through `recovered_commit_clamped`. Clamping is safe for the
-reason "committed" means something: a majority held those entries and a peer
-re-supplies them. On a single voter a non-zero value is real loss, which requires
-the storage to have broken its own durability contract, and the honest response
-is to start, report it, and let an operator see the number.
+A RECOVERED COMMIT INDEX PAST THE END OF THE LOG. A cut that loses the tail
+leaves exactly that shape: hard state that was durable naming entries that were
+not.
+
+This was first "fixed" by clamping and reporting, on the grounds that refusing
+turns a survivable crash into a permanent outage. That was wrong, and it is worth
+keeping why. The sweep truncates the segment EXTERNALLY, which cannot happen
+while the durability contract holds - with the gate enforced, commit never
+exceeds durable, so this shape means the storage lost data it had acknowledged.
+The sweep was simulating a broken disk, and clamping taught the node to tolerate
+a broken disk silently, on the single-voter configuration that has no peer to
+re-supply what was lost.
+
+RECOVERY NOW REFUSES, names the condition, and leaves the files untouched for
+diagnosis. A node in this state does not start without a human, which is the
+correct cost: the alternative is a cluster continuing with a hole in its
+committed history and nobody aware of it. ADR 0006 carries the amendment and the
+condition under which it should be revisited - peer snapshot transport, which
+would let a FOLLOWER rejoin by re-fetching rather than requiring an operator.
 
 ONE 64 KiB BLOCK PER RECORD. `flush_durability` seals whatever is open on every
 call - correctly, since leaving a record staged to save a write is the latency

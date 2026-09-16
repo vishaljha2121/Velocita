@@ -63,7 +63,41 @@ endif()
 # would silently restore the defect the patch exists to remove.
 set(VELOCITA_RAFT_PATCH ${CMAKE_CURRENT_SOURCE_DIR}/deploy/patches/0001-raft-durable-quorum.patch)
 set(VELOCITA_RAFT_PATCH_STAMP ${willemt_raft_SOURCE_DIR}/.velocita-durable-quorum-applied)
-if(NOT EXISTS ${VELOCITA_RAFT_PATCH_STAMP})
+file(SHA256 ${VELOCITA_RAFT_PATCH} VELOCITA_RAFT_PATCH_SHA256)
+set(VELOCITA_RAFT_EXPECTED_H_SHA256
+    "63b950cc7aa6dd10af41f0a291804d4b85cd3a25de43973aa1a8a9b446fc360b")
+set(VELOCITA_RAFT_EXPECTED_SERVER_SHA256
+    "3604fff1269195814b5f58ff7d2d90bc6589a86f58e8b5553e70fb78781d3e8c")
+if(EXISTS ${VELOCITA_RAFT_PATCH_STAMP})
+    file(READ ${VELOCITA_RAFT_PATCH_STAMP} VELOCITA_RAFT_PATCH_STAMP_CONTENT)
+    string(FIND "${VELOCITA_RAFT_PATCH_STAMP_CONTENT}" "RAFT_COMMIT=${RAFT_COMMIT}\n" VELOCITA_RAFT_STAMP_COMMIT)
+    string(FIND "${VELOCITA_RAFT_PATCH_STAMP_CONTENT}" "PATCH_SHA256=${VELOCITA_RAFT_PATCH_SHA256}\n" VELOCITA_RAFT_STAMP_PATCH)
+    string(REGEX MATCH "RAFT_H_SHA256=([0-9a-f]+)" _ "${VELOCITA_RAFT_PATCH_STAMP_CONTENT}")
+    set(VELOCITA_RAFT_STAMP_H_SHA256 "${CMAKE_MATCH_1}")
+    string(REGEX MATCH "RAFT_SERVER_SHA256=([0-9a-f]+)" _ "${VELOCITA_RAFT_PATCH_STAMP_CONTENT}")
+    set(VELOCITA_RAFT_STAMP_SERVER_SHA256 "${CMAKE_MATCH_1}")
+    file(SHA256 ${willemt_raft_SOURCE_DIR}/include/raft.h VELOCITA_RAFT_H_SHA256)
+    file(SHA256 ${willemt_raft_SOURCE_DIR}/src/raft_server.c VELOCITA_RAFT_SERVER_SHA256)
+    if(VELOCITA_RAFT_STAMP_COMMIT GREATER_EQUAL 0 AND
+       VELOCITA_RAFT_H_SHA256 STREQUAL VELOCITA_RAFT_EXPECTED_H_SHA256 AND
+       VELOCITA_RAFT_SERVER_SHA256 STREQUAL VELOCITA_RAFT_EXPECTED_SERVER_SHA256 AND
+       VELOCITA_RAFT_STAMP_PATCH LESS 0)
+        # Migrate the pre-digest stamp only when the patched source content is
+        # exactly the content produced by this patch and pinned commit.
+        file(WRITE ${VELOCITA_RAFT_PATCH_STAMP}
+            "RAFT_COMMIT=${RAFT_COMMIT}\n"
+            "PATCH_SHA256=${VELOCITA_RAFT_PATCH_SHA256}\n"
+            "RAFT_H_SHA256=${VELOCITA_RAFT_H_SHA256}\n"
+            "RAFT_SERVER_SHA256=${VELOCITA_RAFT_SERVER_SHA256}\n")
+    elseif(VELOCITA_RAFT_STAMP_COMMIT LESS 0 OR
+           VELOCITA_RAFT_STAMP_PATCH LESS 0 OR
+           NOT VELOCITA_RAFT_STAMP_H_SHA256 STREQUAL VELOCITA_RAFT_H_SHA256 OR
+           NOT VELOCITA_RAFT_STAMP_SERVER_SHA256 STREQUAL VELOCITA_RAFT_SERVER_SHA256)
+        message(FATAL_ERROR
+            "stale or invalid pinned raft durability patch stamp; remove the "
+            "willemt_raft dependency and reconfigure against RAFT_COMMIT=${RAFT_COMMIT}")
+    endif()
+elseif(NOT EXISTS ${VELOCITA_RAFT_PATCH_STAMP})
     execute_process(
         COMMAND patch -p1 --forward --input=${VELOCITA_RAFT_PATCH}
         WORKING_DIRECTORY ${willemt_raft_SOURCE_DIR}
@@ -75,7 +109,13 @@ if(NOT EXISTS ${VELOCITA_RAFT_PATCH_STAMP})
             "failed to apply the pinned raft durability patch against "
             "${RAFT_COMMIT}:\n${VELOCITA_RAFT_PATCH_OUTPUT}")
     endif()
-    file(WRITE ${VELOCITA_RAFT_PATCH_STAMP} "${RAFT_COMMIT}\n")
+    file(SHA256 ${willemt_raft_SOURCE_DIR}/include/raft.h VELOCITA_RAFT_H_SHA256)
+    file(SHA256 ${willemt_raft_SOURCE_DIR}/src/raft_server.c VELOCITA_RAFT_SERVER_SHA256)
+    file(WRITE ${VELOCITA_RAFT_PATCH_STAMP}
+        "RAFT_COMMIT=${RAFT_COMMIT}\n"
+        "PATCH_SHA256=${VELOCITA_RAFT_PATCH_SHA256}\n"
+        "RAFT_H_SHA256=${VELOCITA_RAFT_H_SHA256}\n"
+        "RAFT_SERVER_SHA256=${VELOCITA_RAFT_SERVER_SHA256}\n")
     message(STATUS "Applied the pinned raft durability patch")
 endif()
 
@@ -290,6 +330,20 @@ if(BUILD_TESTING)
     target_link_libraries(v2-replication-tests PRIVATE velocita_v2_replication Threads::Threads)
     target_compile_options(v2-replication-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-replication-tests COMMAND v2-replication-tests)
+
+    add_executable(v2-snapshot-membership-tests
+        tests/v2_snapshot_membership_tests.cpp)
+    target_link_libraries(v2-snapshot-membership-tests PRIVATE
+        velocita_v2_replication Threads::Threads)
+    target_compile_options(v2-snapshot-membership-tests PRIVATE
+        -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-snapshot-membership-tests
+        COMMAND v2-snapshot-membership-tests)
+
+    add_executable(v2-durable-quorum-tests tests/v2_durable_quorum_tests.cpp)
+    target_link_libraries(v2-durable-quorum-tests PRIVATE willemt_raft)
+    target_compile_options(v2-durable-quorum-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-durable-quorum-tests COMMAND v2-durable-quorum-tests)
 
     add_executable(v2-gateway-tests tests/v2_gateway_tests.cpp)
     target_link_libraries(v2-gateway-tests PRIVATE velocita_v2_kernel)
