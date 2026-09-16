@@ -15,7 +15,7 @@ current status.
 
 - branch `v2/phase-5-corrections`, HEAD `fe78105`; use Git rather than trusting
   this value;
-- source root `f81f4eeb627c0e36fc5327ef8c287f9ad77f4cd0d164b171bb1794a64816378d`.
+- source root `543eb468167ed51dd8c918d8de356c7028dec736a9f223fe1618f5e40b83c14d`.
   THIS IS THE VALUE TO COMPARE ON THE TARGET, and the reason it is written here
   is that the pin inside `deploy/` travels with the tree and therefore agrees
   with a stale copy just as happily as with the right one;

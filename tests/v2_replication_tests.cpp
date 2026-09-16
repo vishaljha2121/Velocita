@@ -26,6 +26,16 @@ void require(const bool condition, const std::string& message) {
     if (!condition) throw std::runtime_error(message);
 }
 
+// Content digest of a file, for asserting a file was NOT touched.
+std::string file_digest(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return "<missing>";
+    const std::string bytes((std::istreambuf_iterator<char>(in)),
+                            std::istreambuf_iterator<char>());
+    return std::to_string(bytes.size()) + ":" +
+           std::to_string(std::hash<std::string>{}(bytes));
+}
+
 Digest256 digest(const std::uint8_t marker) {
     Digest256 value;
     value.bytes[0] = std::byte{marker};
@@ -984,7 +994,7 @@ void test_durability_is_tracked_separately_and_never_overstated(
     // advance its in-memory commit index past what this node has synced, since
     // it counts the leader's own vote unconditionally; persisting that would
     // leave a restart reading a commit index past the end of its own log.
-    const auto persisted = velocita::MetadataStore(root / "1").load();
+    const auto persisted = velocita::MetadataStore(root / "1", velocita::kV2MetadataFileName).load();
     require(persisted.commit_index <= static_cast<std::int64_t>(durable),
             "the persisted commit index ran ahead of durability: commit " +
                 std::to_string(persisted.commit_index) + " durable " +
@@ -1254,6 +1264,74 @@ void test_corruption_of_acknowledged_history_fails_closed(
             "truncated anything meaningful");
 }
 
+void test_v2_storage_is_not_v1_storage(const std::filesystem::path& root) {
+    // G-051. V2 reuses V1's MetadataStore and WriteAheadLog - they are
+    // payload-generic and duplicating them would have been worse - but that
+    // made both milestones write the same filenames with the same magic and
+    // version constants. A V2 node aimed at a V1 directory therefore ACCEPTED
+    // V1's hard state, because the values it validates are literally the values
+    // V1 wrote, and failed only later and by accident when a V1 payload reached
+    // the V2 codec.
+    //
+    // The fix is distinct names, so the two formats cannot occupy one path.
+    // What that has to mean, and what this asserts, is that a V2 node started
+    // on a populated V1 directory begins EMPTY and leaves V1's files alone -
+    // not that it fails in some other way further down.
+    const auto dir = root / "shared";
+    std::filesystem::create_directories(dir);
+
+    // A V1 data directory: hard state a V1 node would have written, plus a log
+    // record whose payload means nothing to V2.
+    velocita::PersistentMetadata v1_metadata;
+    v1_metadata.term = 9;
+    v1_metadata.voted_for = 3;
+    v1_metadata.commit_index = 4;
+    velocita::MetadataStore(dir).save(v1_metadata);
+    velocita::WalRecord v1_record;
+    v1_record.index = 1;
+    v1_record.term = 9;
+    v1_record.entry_id = 1;
+    v1_record.entry_type = 0;
+    v1_record.payload = std::vector<std::byte>(16, std::byte{0xA5});
+    velocita::WriteAheadLog(dir).append(v1_record);
+
+    const auto v1_metadata_digest = file_digest(dir / velocita::kV1MetadataFileName);
+    const auto v1_wal_digest = file_digest(dir / velocita::kV1WalFileName);
+
+    {
+        ReplicatedKernel node(1, dir, {1});
+        const auto status = node.status();
+        require(status.term == 0 && status.commit_index == 0 &&
+                    status.current_index == 0,
+                "a V2 node adopted V1 hard state: term " + std::to_string(status.term) +
+                    " commit " + std::to_string(status.commit_index) + " index " +
+                    std::to_string(status.current_index));
+        require(status.state_version == 0,
+                "a V2 node replayed something from a V1 directory");
+
+        // Then let it RUN in that directory, so the assertions below are about
+        // a node doing its normal work rather than one that touched nothing.
+        for (int i = 0; i < 20; ++i) {
+            node.tick(120);
+            node.flush_durability();
+        }
+        require(node.status().term > 0,
+                "the V2 node never advanced its own term, so it wrote no "
+                "metadata and the file checks below prove nothing");
+    }
+
+    // And it must not have written over what V1 left. Storage isolation that
+    // works by starting fresh and clobbering the other milestone's files is not
+    // isolation; it is the destructive migration G-051 names.
+    require(file_digest(dir / velocita::kV1MetadataFileName) == v1_metadata_digest,
+            "the V2 node rewrote V1's metadata");
+    require(file_digest(dir / velocita::kV1WalFileName) == v1_wal_digest,
+            "the V2 node rewrote V1's write-ahead log");
+    require(std::filesystem::exists(dir / velocita::kV2MetadataFileName),
+            "the V2 node wrote no metadata of its own, so this proves nothing "
+            "about which file it used");
+}
+
 void test_a_torn_hard_state_write_never_produces_a_corrupt_hard_state(
     const std::filesystem::path& root) {
     // The plan asks for "hard-state two-slot recovery chooses newest valid
@@ -1267,7 +1345,7 @@ void test_a_torn_hard_state_write_never_produces_a_corrupt_hard_state(
     cluster.settle(50);
     const auto before = cluster.elect().status();
 
-    const auto metadata_path = root / "1" / "metadata.bin";
+    const auto metadata_path = root / "1" / velocita::kV2MetadataFileName;
     require(std::filesystem::exists(metadata_path),
             "the fixture wrote no metadata to tear");
     const auto size = std::filesystem::file_size(metadata_path);
@@ -1281,7 +1359,7 @@ void test_a_torn_hard_state_write_never_produces_a_corrupt_hard_state(
     std::filesystem::resize_file(torn, size / 2);
     bool refused = false;
     try {
-        (void)velocita::MetadataStore(root / "1").load();
+        (void)velocita::MetadataStore(root / "1", velocita::kV2MetadataFileName).load();
     } catch (const std::exception&) {
         refused = true;
     }
@@ -1292,7 +1370,7 @@ void test_a_torn_hard_state_write_never_produces_a_corrupt_hard_state(
     std::filesystem::resize_file(metadata_path, size / 2);
     bool threw = false;
     try {
-        (void)velocita::MetadataStore(root / "1").load();
+        (void)velocita::MetadataStore(root / "1", velocita::kV2MetadataFileName).load();
     } catch (const std::exception&) {
         threw = true;
     }
@@ -1423,6 +1501,8 @@ int main(int argc, char** argv) {
                 test_compacted_corrupt_snapshot_refuses_empty_recovery(fresh("compacted-corrupt"));
             else if (name == "corrupt-wal-sweep")
                 test_corruption_of_acknowledged_history_fails_closed(fresh("corrupt-wal-sweep"));
+            else if (name == "v1-v2-isolation")
+                test_v2_storage_is_not_v1_storage(fresh("v1-v2-isolation"));
             else if (name == "snapshot-directory")
                 test_snapshot_directory_failure_is_not_success(fresh("snapshot-directory"));
             else throw std::runtime_error("unknown correction test: " + name);
@@ -1455,6 +1535,7 @@ int main(int argc, char** argv) {
         test_corruption_of_acknowledged_history_fails_closed(fresh("corrupt-wal-sweep"));
         test_a_torn_hard_state_write_never_produces_a_corrupt_hard_state(
             fresh("torn-hard-state"));
+        test_v2_storage_is_not_v1_storage(fresh("v1-v2-isolation"));
         test_an_entry_cannot_commit_before_its_bytes_are_durable(fresh("gate"));
         test_a_follower_ack_never_covers_merely_staged_entries(fresh("follower-ack"));
         test_a_writer_thread_carries_durability_off_the_owner_loop(fresh("writer"));

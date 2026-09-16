@@ -254,9 +254,8 @@ Phase 11 strategy/model validation and controlled canary
 - [x] **G-050 — No acknowledged effect disappears.** Process crash or power cut
   cannot recover behind the last response acknowledged under the declared
   durability contract.
-- [ ] **G-051 — V1/V2 storage isolation.** V2 storage cannot be mistaken for or
+- [x] **G-051 — V1/V2 storage isolation.** V2 storage cannot be mistaken for or
   destructively migrated from a V1 format without an explicit migration tool.
-  OPEN, and not an oversight of effort - see the finding below.
 
   Phase 7 closes G-042 through G-050. G-051 is the one that does not close, and
   the reason is worth stating precisely rather than deferring silently.
@@ -307,22 +306,46 @@ Phase 11 strategy/model validation and controlled canary
   again, from the other side: no cut recovers behind the last acknowledged
   commit.
 
-  THE G-051 FINDING. `ReplicatedKernel` reuses V1's `MetadataStore` and
-  `WriteAheadLog` unchanged, which was a deliberate and still-correct decision -
-  those layers are payload-generic. The consequence was not noticed: both write
-  into the SAME FILENAMES, `metadata.bin` and `raft.wal`, carrying the SAME
-  `kMetadataMagic`, `kWalMagic` and `kStorageVersion`. A V2 node pointed at a V1
-  data directory therefore reads V1's hard state SUCCESSFULLY - magic and
-  version match, because they are the same constants - and only fails later,
-  incidentally, when a V1 payload reaches the V2 command codec. The reverse is
-  worse: nothing stops a V1 node applying V2 payloads to the counter FSM.
+  G-051 WAS FOUND OPEN WHILE WRITING THIS SECTION, and is closed here.
+  `ReplicatedKernel` reuses V1's `MetadataStore` and `WriteAheadLog` unchanged,
+  which was a deliberate and still-correct decision - those layers are
+  payload-generic. The consequence was not noticed: both wrote the SAME
+  FILENAMES, `metadata.bin` and `raft.wal`, carrying the SAME `kMetadataMagic`,
+  `kWalMagic` and `kStorageVersion`. A V2 node pointed at a V1 data directory
+  therefore read V1's hard state SUCCESSFULLY - magic and version matched,
+  because they were the same constants - and failed only later and incidentally,
+  when a V1 payload reached the V2 command codec. Nothing at all stopped a V1
+  node reading V2 storage.
 
-  So the guarantee is unmet in both directions, and the accidental failure is
-  not a mechanism. Closing it means a format discriminator in files that are
-  already persisted, which is a material byte-contract change and belongs in a
-  reviewed increment rather than smuggled in alongside Phase 7's acceptance.
-  V2's own files - `v2-wal-blocks.bin`, `v2-snapshot.bin` - are already
-  distinctly named and are not part of this finding.
+  V2 now uses `v2-metadata.bin` and `v2-raft.wal`, so the two formats cannot
+  occupy one path. Distinct names were chosen over a magic discriminator because
+  they give the stronger guarantee - the file is not merely rejected, it is not
+  consulted - and because they change NO PERSISTED FRAME'S BYTES, so this is not
+  a byte-contract change. The file name is a defaulted constructor parameter,
+  with V1's name as the default, so V1 is unchanged by construction rather than
+  by review.
+
+  Evidence: `v1-v2-isolation` in `v2-replication-tests`. It builds a populated
+  V1 directory, starts a V2 node on it, and requires the node to begin with term
+  0, commit 0 and no state - then lets it RUN there and requires V1's two files
+  to be byte-unchanged afterwards, because isolation that works by clobbering
+  the other milestone's data is the destructive migration this guarantee names.
+  Mutation-confirmed: restoring the shared names fails it with `recovery
+  refused: committed WAL history is missing`, which is precisely the accidental
+  late failure described above.
+
+  MIGRATION. An existing V2 data directory is not read by the new names. There
+  is no V2 production data, so no tool is provided; a Pi or NUC carrying a Phase
+  6/7 scratch directory should have it removed or its two files renamed.
+
+  NOTE ON GATE COVERAGE, which this change exposed. `include/velocita/storage.hpp`
+  and `src/storage.cpp` are OUTSIDE the source-root manifest - it selects
+  `include/velocita/v2` plus `v2_*` and `*.hpp` under `src` and `tests` - yet V2
+  links against them, as this change demonstrates. A modification there does not
+  move the pinned root. That is defensible while V1 is separately accepted and
+  gated, but it means the Phase 6/7 root does not cover all the code Phase 6/7
+  runs, and it should be reviewed before the root is used as an acceptance
+  identity again.
 
   Gate evidence: `V2 Phase 6/7 replication and durability acceptance target
   gate: PASS` on the x86-64 NUC, 34 / 31 / 31, source root

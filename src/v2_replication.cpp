@@ -36,8 +36,11 @@ ReplicatedKernel::ReplicatedKernel(const std::int32_t node_id,
                                    StorageCheckpoints checkpoints)
     : node_id_(node_id),
       members_(std::move(members)),
-      metadata_store_(data_dir),
-      wal_(data_dir),
+      // V2's own file names. V1 and V2 share this storage layer and share its
+      // magic and version constants, so distinct names are what keeps a node
+      // from reading the other milestone's directory as its own. See G-051.
+      metadata_store_(data_dir, kV2MetadataFileName),
+      wal_(data_dir, kV2WalFileName),
       segment_(std::make_unique<WalSegment>(data_dir, checkpoints)),
       writer_(std::make_unique<WalWriter>(*segment_, arena_)),
       snapshots_(std::move(data_dir)),

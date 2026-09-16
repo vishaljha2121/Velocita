@@ -44,6 +44,44 @@ GNU patch 2.5.8, and the two agree here.
 This is the first time the fork has been exercised on Linux at all, which is
 what the target gates are for.
 
+#### Phase 7 guarantees closed, and G-051 with them — 2026-09-16
+
+G-042 through G-050 closed against named tests, with two honesty notes rather
+than clean claims: G-043 holds for the STEADY STATE only, because truncation and
+compaction quiesce the writer and rewrite synchronously; and G-046's
+valid-prefix policy is "refuse", reversing the earlier clamp.
+
+G-051 WAS FOUND OPEN WHILE WRITING THAT SECTION. `ReplicatedKernel` reuses V1's
+`MetadataStore` and `WriteAheadLog` - correct, they are payload-generic - but
+both wrote `metadata.bin` and `raft.wal` with the same magic and storage version
+constants. A V2 node pointed at a V1 directory therefore ACCEPTED V1's hard
+state, because the values it validates were the values V1 wrote, and failed only
+later and incidentally when a V1 payload reached the V2 codec. Nothing stopped a
+V1 node reading V2 storage.
+
+V2 now uses `v2-metadata.bin` and `v2-raft.wal`. Distinct names rather than a
+magic discriminator: the guarantee is stronger - the other format is not
+rejected, it is not consulted - and NO PERSISTED FRAME'S BYTES CHANGE, so this
+is not a byte-contract change. The name is a defaulted constructor parameter
+with V1's name as the default, so V1 is unchanged by construction.
+
+Held by `v1-v2-isolation`, which starts a V2 node on a populated V1 directory,
+requires it to begin empty, then lets it run and requires V1's files to be
+byte-unchanged - isolation that works by clobbering the other milestone's data
+is the destructive migration the guarantee names. Restoring the shared names
+fails it.
+
+MIGRATION: an existing V2 data directory is not read under the new names. There
+is no V2 production data, so no tool is provided; a Pi or NUC holding a Phase
+6/7 scratch directory should have it removed.
+
+AND A GATE-COVERAGE NOTE this exposed. `include/velocita/storage.hpp` and
+`src/storage.cpp` are outside the source-root manifest, yet V2 links against
+them - as this change demonstrates. Changing them does not move the pinned root.
+Defensible while V1 is separately gated, but the Phase 6/7 root does not cover
+all the code Phase 6/7 runs, and that should be reviewed before the root is used
+as an acceptance identity again.
+
 #### First NUC PASS, and the two warnings it printed — 2026-09-16
 
 `V2 Phase 6/7 replication and durability acceptance target gate: PASS`, 34 / 31
@@ -123,7 +161,7 @@ Verified by perturbing an expected digest and confirming configure refuses.
 
 `deploy/run-v2-phase7-container-gate.sh` (ARM64) and
 `deploy/run-v2-phase7-nuc-gate.sh` (x86-64), both pinned to source root
-`f81f4eeb627c0e36fc5327ef8c287f9ad77f4cd0d164b171bb1794a64816378d`.
+`543eb468167ed51dd8c918d8de356c7028dec736a9f223fe1618f5e40b83c14d`.
 
 Phase 5's gates asked a layout question. These ask a durability and scheduling
 one, which is the part least trustworthy on the development host: `fdatasync`

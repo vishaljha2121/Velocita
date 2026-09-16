@@ -113,7 +113,8 @@ std::uint32_t crc32(std::span<const std::byte> bytes) {
     return ~crc;
 }
 
-MetadataStore::MetadataStore(std::filesystem::path data_dir) : path_(std::move(data_dir) / "metadata.bin") {
+MetadataStore::MetadataStore(std::filesystem::path data_dir, std::string file_name)
+    : path_(std::move(data_dir) / std::move(file_name)) {
     std::filesystem::create_directories(path_.parent_path());
 }
 
@@ -178,7 +179,8 @@ void MetadataStore::save(const PersistentMetadata& metadata) const {
     fsync_directory(path_.parent_path());
 }
 
-WriteAheadLog::WriteAheadLog(std::filesystem::path data_dir) : path_(std::move(data_dir) / "raft.wal") {
+WriteAheadLog::WriteAheadLog(std::filesystem::path data_dir, std::string file_name)
+    : path_(std::move(data_dir) / std::move(file_name)) {
     std::filesystem::create_directories(path_.parent_path());
 }
 
