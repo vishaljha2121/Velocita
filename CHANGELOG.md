@@ -15,6 +15,35 @@ release-engineering work.
 
 ### Phase 7 in development - durability and bounded memory
 
+#### The first Phase 6/7 NUC gate run, and what it caught — 2026-09-16
+
+FAIL at `configure`, with a FATAL_ERROR whose body was EMPTY:
+
+```
+failed to apply the pinned raft durability patch against
+e428eeb921a014192d1d703dd317f3f29f5916c5:
+```
+
+`patch` is not in the container image. The Raft fork is applied at configure
+time rather than vendored, Ubuntu's minimal base plus `--no-install-recommends`
+does not carry `patch`, and no gate had ever needed it because the fork is newer
+than the image. Added to the Containerfile.
+
+The blank message is the more interesting half. `execute_process` reports a
+program it cannot find through `RESULT_VARIABLE` and writes nothing to the
+output, so a MISSING TOOL and a REJECTED HUNK are indistinguishable - and the
+obvious reading of a blank patch error is that the patch did not apply, which
+sends you to the diff and the zero-context hunks instead of to the image. The
+tool is now resolved with `find_program` and refused by name, and the apply
+failure reports patch's exit status alongside its output.
+
+Worth recording: the hunks were never the problem. GNU patch 2.7.6 applies them
+cleanly against the pinned commit on the target host; the development host runs
+GNU patch 2.5.8, and the two agree here.
+
+This is the first time the fork has been exercised on Linux at all, which is
+what the target gates are for.
+
 #### The patch digest check was recording, not checking — 2026-09-16
 
 The pinned Raft fork's stamp records the commit, the patch digest and the
@@ -39,7 +68,7 @@ Verified by perturbing an expected digest and confirming configure refuses.
 
 `deploy/run-v2-phase7-container-gate.sh` (ARM64) and
 `deploy/run-v2-phase7-nuc-gate.sh` (x86-64), both pinned to source root
-`4c9265268598bf5f56b65efeebd761d005fcf23400d49f7371281c146babe26f`.
+`6906db86c83ca630aa46784c02aa5776f3315e3dd22128e26828a44489d98274`.
 
 Phase 5's gates asked a layout question. These ask a durability and scheduling
 one, which is the part least trustworthy on the development host: `fdatasync`

@@ -13,6 +13,10 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG AERON_COMMIT=5b62f21d917af027cdf5a3241aa5f355149b04fa
 ARG RAFT_COMMIT=e428eeb921a014192d1d703dd317f3f29f5916c5
 
+# `patch` is here because the pinned Raft fork is applied at configure time, not
+# vendored. Ubuntu's minimal image plus --no-install-recommends does not carry
+# it, and its absence surfaced as a configure failure with an EMPTY message -
+# CMake reports a missing program the same way it reports a rejected hunk.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
@@ -21,6 +25,7 @@ RUN apt-get update \
         git \
         libbsd-dev \
         ninja-build \
+        patch \
         pkg-config \
         uuid-dev \
     && rm -rf /var/lib/apt/lists/*

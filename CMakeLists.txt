@@ -98,8 +98,21 @@ if(EXISTS ${VELOCITA_RAFT_PATCH_STAMP})
             "willemt_raft dependency and reconfigure against RAFT_COMMIT=${RAFT_COMMIT}")
     endif()
 elseif(NOT EXISTS ${VELOCITA_RAFT_PATCH_STAMP})
+    # Resolve the tool separately so a MISSING PATCH and a REJECTED HUNK do not
+    # produce the same message. They did: `execute_process` reports a program it
+    # cannot find through RESULT_VARIABLE and writes nothing to the output, so a
+    # container image without `patch` failed configure with a FATAL_ERROR whose
+    # body was blank - and the obvious reading of a blank patch error is that the
+    # patch did not apply, which sends you to the diff instead of the image.
+    find_program(VELOCITA_PATCH_EXECUTABLE patch)
+    if(NOT VELOCITA_PATCH_EXECUTABLE)
+        message(FATAL_ERROR
+            "`patch` was not found on PATH, and the pinned raft durability fork "
+            "is applied at configure time rather than vendored. Install it "
+            "(Debian/Ubuntu: `patch`) and reconfigure.")
+    endif()
     execute_process(
-        COMMAND patch -p1 --forward --input=${VELOCITA_RAFT_PATCH}
+        COMMAND ${VELOCITA_PATCH_EXECUTABLE} -p1 --forward --input=${VELOCITA_RAFT_PATCH}
         WORKING_DIRECTORY ${willemt_raft_SOURCE_DIR}
         RESULT_VARIABLE VELOCITA_RAFT_PATCH_RESULT
         OUTPUT_VARIABLE VELOCITA_RAFT_PATCH_OUTPUT
@@ -107,7 +120,8 @@ elseif(NOT EXISTS ${VELOCITA_RAFT_PATCH_STAMP})
     if(NOT VELOCITA_RAFT_PATCH_RESULT EQUAL 0)
         message(FATAL_ERROR
             "failed to apply the pinned raft durability patch against "
-            "${RAFT_COMMIT}:\n${VELOCITA_RAFT_PATCH_OUTPUT}")
+            "${RAFT_COMMIT} (patch exited ${VELOCITA_RAFT_PATCH_RESULT}):\n"
+            "${VELOCITA_RAFT_PATCH_OUTPUT}")
     endif()
     file(SHA256 ${willemt_raft_SOURCE_DIR}/include/raft.h VELOCITA_RAFT_H_SHA256)
     file(SHA256 ${willemt_raft_SOURCE_DIR}/src/raft_server.c VELOCITA_RAFT_SERVER_SHA256)
