@@ -92,10 +92,21 @@ if(EXISTS ${VELOCITA_RAFT_PATCH_STAMP})
     elseif(VELOCITA_RAFT_STAMP_COMMIT LESS 0 OR
            VELOCITA_RAFT_STAMP_PATCH LESS 0 OR
            NOT VELOCITA_RAFT_STAMP_H_SHA256 STREQUAL VELOCITA_RAFT_H_SHA256 OR
-           NOT VELOCITA_RAFT_STAMP_SERVER_SHA256 STREQUAL VELOCITA_RAFT_SERVER_SHA256)
+           NOT VELOCITA_RAFT_STAMP_SERVER_SHA256 STREQUAL VELOCITA_RAFT_SERVER_SHA256 OR
+           NOT VELOCITA_RAFT_H_SHA256 STREQUAL VELOCITA_RAFT_EXPECTED_H_SHA256 OR
+           NOT VELOCITA_RAFT_SERVER_SHA256 STREQUAL VELOCITA_RAFT_EXPECTED_SERVER_SHA256)
+        # The last two conditions are the ones that matter when the stamp was
+        # written somewhere else - the container image applies the patch at BUILD
+        # time, because the gate runs read-only and cannot patch anything. Without
+        # them this branch only checks the stamp against itself, so any image
+        # could declare its own content correct. The reviewed digests live here
+        # and nowhere else, so that declaration is always checked against them.
         message(FATAL_ERROR
             "stale or invalid pinned raft durability patch stamp; remove the "
-            "willemt_raft dependency and reconfigure against RAFT_COMMIT=${RAFT_COMMIT}")
+            "willemt_raft dependency and reconfigure against RAFT_COMMIT=${RAFT_COMMIT}. "
+            "Expected raft.h ${VELOCITA_RAFT_EXPECTED_H_SHA256} and raft_server.c "
+            "${VELOCITA_RAFT_EXPECTED_SERVER_SHA256}; found ${VELOCITA_RAFT_H_SHA256} "
+            "and ${VELOCITA_RAFT_SERVER_SHA256}.")
     endif()
 elseif(NOT EXISTS ${VELOCITA_RAFT_PATCH_STAMP})
     # Resolve the tool separately so a MISSING PATCH and a REJECTED HUNK do not

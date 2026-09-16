@@ -41,7 +41,7 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 export VELOCITA_V2_CONTAINER_GATE_LABEL='V2 Phase 6/7 replication and durability acceptance'
 export VELOCITA_V2_CONTAINER_ENVIRONMENT='arm64-linux-container'
-export VELOCITA_EXPECTED_SOURCE_ROOT=6906db86c83ca630aa46784c02aa5776f3315e3dd22128e26828a44489d98274
+export VELOCITA_EXPECTED_SOURCE_ROOT=b241ad40cb1770e243a3bf06220e2a1711857c9c03ceeedae71deab613f3dcde
 export VELOCITA_V2_PHASE2_CONTAINER_EVIDENCE_ROOT=${VELOCITA_V2_PHASE7_CONTAINER_EVIDENCE_ROOT:-"$HOME/.local/share/velocita/v2-phase7-container-gates"}
 export VELOCITA_PI_CI_IMAGE=${VELOCITA_PI_CI_IMAGE:-localhost/velocita-pi-ci:v2-phase7-acceptance}
 export VELOCITA_V2_PHASE2_CI_CACHE_VOLUME=${VELOCITA_V2_PHASE7_CONTAINER_CACHE_VOLUME:-velocita-v2-phase7-container-ci-cache}

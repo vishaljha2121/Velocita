@@ -44,6 +44,33 @@ GNU patch 2.5.8, and the two agree here.
 This is the first time the fork has been exercised on Linux at all, which is
 what the target gates are for.
 
+#### And the gate runs read-only, so the fork moves to image build — 2026-09-16
+
+The second NUC run got past the missing tool and failed on the thing the tool
+would have done:
+
+```
+File include/raft.h is read-only; trying to patch anyway
+/usr/bin/patch: **** Can't create temporary file include/raft.h.ocsCbaq :
+Read-only file system
+```
+
+The gate runs `podman run --read-only` with the source at `/src:ro`. Those are
+deliberate - a run must not be able to modify what it is validating - and the
+pinned dependency is baked into the image, so it is read-only too.
+Configure-time patching worked on a development host and could never have worked
+here.
+
+The fork is now applied in the Containerfile, which also writes the stamp
+CMakeLists.txt reads in place of patching. The reviewed digests stay in
+CMakeLists.txt and nowhere else, and the stamp branch now checks against them:
+it previously compared the stamp only with itself, so any image could have
+declared its own content correct. A stale image built from an older patch fails
+that check rather than being used.
+
+Both branches - apply and stamp - are now verified by perturbing an expected
+digest and confirming configure refuses.
+
 #### The patch digest check was recording, not checking — 2026-09-16
 
 The pinned Raft fork's stamp records the commit, the patch digest and the
@@ -68,7 +95,7 @@ Verified by perturbing an expected digest and confirming configure refuses.
 
 `deploy/run-v2-phase7-container-gate.sh` (ARM64) and
 `deploy/run-v2-phase7-nuc-gate.sh` (x86-64), both pinned to source root
-`6906db86c83ca630aa46784c02aa5776f3315e3dd22128e26828a44489d98274`.
+`b241ad40cb1770e243a3bf06220e2a1711857c9c03ceeedae71deab613f3dcde`.
 
 Phase 5's gates asked a layout question. These ask a durability and scheduling
 one, which is the part least trustworthy on the development host: `fdatasync`
