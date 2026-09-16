@@ -429,16 +429,75 @@ Phase 11 strategy/model validation and controlled canary
   declared a lease, which is how the enforcement was confirmed to reach every
   delivery path rather than only the new tests.
 
+  THE RENEWAL PATH (G-055, second slice). `renew_authority` is where the lease
+  actually binds. A lease any read could renew would expire only when the
+  process stopped, which is the one case needing no protection; this one renews
+  ONLY on an authoritative read, so a gateway that cannot reach a leader gets no
+  renewal and lapses by itself, with nobody having to notice or reach it. Two
+  refusals carry weight beyond the obvious: a backwards tick does not renew,
+  because a clock that moved backwards is the worst thing to extend authority
+  on; and renewal adopts the authority it confirmed rather than only the time,
+  because refreshing the clock while keeping the old generation would leave a
+  gateway holding authority that looks fresh and is stale - worse than not
+  renewing at all. Evidence: three properties in `v2-gateway-tests`, including
+  the end-to-end one an operator cares about - after the last authoritative
+  read, the gateway keeps sending for at most `lease_bound` ticks and then stops
+  on its own, and no amount of further time brings it back.
+
+  OPERATOR AUTHORIZATION (G-056, first half). The reducer CANNOT verify a
+  signature: G-066 keeps key material out of replicated state and `apply`
+  performs no I/O, so authentication is necessarily a property of the edge. What
+  the cluster can do is refuse a control action - kill epoch, executor
+  generation, strategy mode - from a caller the edge never authenticated, and
+  record which operator issued the one it accepted. `kMaxOperatorCallerId`
+  reserves a `CallerId` band for that, and the existing `CommandIdentity`
+  already carries both the caller and a digest binding the payload, so this
+  needed NO NEW BYTES. `ApplyCode::unauthorized_control` is appended at the end
+  of the enum, so every existing code keeps its value.
+
+  The refusal happens BEFORE the receipt lookup, so an unauthorized control
+  command leaves no trace - retaining a receipt would make a replay of the same
+  bytes return a completed action rather than the refusal, which is exactly the
+  confusion an audit of a kill cannot afford.
+
+  THE DEPLOYMENT OBLIGATION THAT MAKES THIS MEAN ANYTHING: the edge must never
+  issue a reserved `CallerId` to a strategy. The reservation is one-directional
+  by design - control must come from an operator caller, but an operator caller
+  may also issue ordinary commands - because making it exclusive would buy
+  nothing the edge does not already have to guarantee.
+
+  THE CONTROL LANE (G-056, second half). `propose` had no admission control at
+  all, so a strategy flooding the cluster filled the staging arena and the
+  command that would stop the flood was the one that could not get in.
+  `ProposeLane::control` may draw on `kControlLaneReservedBlocks` that nothing
+  else may touch - the same asymmetry as the gateway's emergency lane, on the
+  cluster side. The check sits in `propose` rather than in the arena because by
+  the time `log_offer` stages, Raft has already assigned the entry an index;
+  before the entry exists is the only point at which turning it away is free.
+
+  A MARGIN, NOT AN EXEMPTION. Control commands are refused too once the reserve
+  is gone: unbounded admission is precisely what the arena's backpressure exists
+  to prevent (G-045), and overwriting bytes that are not yet durable in order to
+  deliver a kill trades one failure for a worse one.
+
+  Evidence: `control-lane` in `v2-replication-tests`, which floods until the
+  normal lane closes and then MEASURES what the control lane can absorb. A
+  one-command assertion proved nothing - whatever block was open still had room,
+  so one more record fits whether or not anything was reserved, and shrinking
+  the margin to zero left such an assertion green. The test now requires the
+  control lane to supply more bytes than a single block could hold, which only
+  real reserved blocks can do.
+
   WHAT EACH GUARANTEE STILL NEEDS. G-052/G-054 have their pre-send refusals from
   Phase 5 but no external fence to be single against. G-053 and G-059 need the
-  manual promotion workflow and its reconciliation proof. G-055 needs the
-  RENEWAL path - something that advances `confirmed_at` only on an authoritative
-  read, which is where the guarantee actually binds. G-056 needs an
-  authenticated operator control path independent of strategy traffic. G-057 and
-  G-058 need stop and mass-cancel as operations, not just a lane that would
-  carry them. G-060 needs emergency actions recorded into cluster state, which
-  means new command bytes and therefore a reviewed byte contract. G-057a needs
-  the closed-order case driven end to end.
+  manual promotion workflow and its reconciliation proof. G-055 has both its
+  refusal and its renewal, and needs the gateway loop that calls them plus an
+  accepted bound. G-056 has authorization and independence, and needs the
+  authenticated edge that assigns operator callers. G-057 and G-058 need stop
+  and mass-cancel as operations, not just a lane that would carry them. G-060
+  needs emergency actions recorded into cluster state, which means new command
+  bytes and therefore a reviewed byte contract. G-057a needs the closed-order
+  case driven end to end.
 
 ## 9. TrueMarkets adapter boundary — Phase 9
 

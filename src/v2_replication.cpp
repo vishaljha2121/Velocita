@@ -271,13 +271,26 @@ WalMetrics ReplicatedKernel::wal_metrics() const {
 
 bool ReplicatedKernel::is_leader() const { return raft_is_leader(server_) != 0; }
 
-ProposeOutcome ReplicatedKernel::propose(const std::span<const std::byte> command_bytes) {
+ProposeOutcome ReplicatedKernel::propose(const std::span<const std::byte> command_bytes,
+                                         const ProposeLane lane) {
     ProposeOutcome outcome;
     outcome.leader_id = raft_get_current_leader(server_);
     outcome.term = raft_get_current_term(server_);
     outcome.index = raft_get_current_idx(server_);
     if (!is_leader()) {
         outcome.status = ProposeStatus::not_leader;
+        return outcome;
+    }
+
+    // THE RESERVATION, and it has to be here rather than in the arena.
+    //
+    // By the time `log_offer` calls `stage`, Raft has already accepted the entry
+    // and assigned it an index; refusing there means unwinding a log the leader
+    // has committed to. So the lane is checked before the entry exists, which is
+    // the only point at which turning it away is free.
+    if (lane == ProposeLane::normal &&
+        arena_.free_blocks() <= kControlLaneReservedBlocks) {
+        outcome.status = ProposeStatus::normal_lane_exhausted;
         return outcome;
     }
 

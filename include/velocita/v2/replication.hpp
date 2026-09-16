@@ -53,7 +53,33 @@ enum class ProposeStatus : std::uint8_t {
     not_leader,
     // The local Raft server refused the entry.
     refused,
+    // Staging capacity is down to the margin reserved for control commands, so
+    // a normal-lane command is turned away while a control one would still be
+    // admitted. Distinct from `refused` because the caller's correct response is
+    // different: this one says retry later, that one says something is wrong.
+    normal_lane_exhausted,
 };
+
+// WHICH LANE A COMMAND IS PROPOSED ON.
+//
+// The mirror of the gateway's `SendQuotaView::emergency_lane_remaining`, on the
+// cluster side and for the same reason: a kill that has to queue behind normal
+// traffic is not an independent kill path. A flood of strategy commands fills
+// the staging arena, and without a reservation the command that stops the flood
+// is the one that cannot get in.
+//
+// The reservation is a MARGIN, not an exemption. Control commands may draw on
+// the reserved blocks and nothing else may, but when those are gone too they are
+// refused like anything else - unbounded admission is exactly what the arena's
+// backpressure exists to prevent, and overwriting bytes that are not yet durable
+// to deliver a kill would trade one failure for a worse one.
+enum class ProposeLane : std::uint8_t {
+    normal = 0,
+    control,
+};
+
+// Staging blocks that only `ProposeLane::control` may consume.
+inline constexpr std::size_t kControlLaneReservedBlocks = 4;
 
 struct ProposeOutcome {
     ProposeStatus status{ProposeStatus::refused};
@@ -158,7 +184,8 @@ public:
     // answers an identical command with its original result when the retry
     // commits. Correctness first; the log cost of a duplicate is bounded by the
     // caller's own retry policy.
-    [[nodiscard]] ProposeOutcome propose(std::span<const std::byte> command_bytes);
+    [[nodiscard]] ProposeOutcome propose(std::span<const std::byte> command_bytes,
+                                         ProposeLane lane = ProposeLane::normal);
 
     [[nodiscard]] std::optional<CommittedResult> take_committed_result();
 

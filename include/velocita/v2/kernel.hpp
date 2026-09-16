@@ -150,6 +150,11 @@ enum class ApplyCode : std::uint8_t {
     // Reserved for historical results from the withdrawn venue-sequence
     // watermark design. New reducers never emit this code.
     venue_event_expired,
+    // A control action arrived from a caller outside the reserved operator
+    // band. See `kMaxOperatorCallerId`. Appended at the END of this enum on
+    // purpose: every existing code keeps its value, so no retained result and
+    // no golden byte moves.
+    unauthorized_control,
 };
 
 // The highest RequestSequence whose receipt this caller has had RECLAIMED.
@@ -197,6 +202,28 @@ struct SupersedePolicy {
     PolicyId policy_id{};
     PolicyVersion policy_version{};
 };
+
+// THE OPERATOR CALLER BAND. Control actions - kill epoch, executor generation,
+// strategy mode - are accepted only from a `CallerId` at or below this value.
+//
+// The reducer CANNOT verify a signature. G-066 keeps key material out of
+// replicated state and `apply` performs no I/O, so authentication is
+// necessarily a property of the edge that admits the command. What the cluster
+// can do is refuse a control action from a caller the edge never authenticated,
+// and record which operator issued the one it accepted - the existing
+// `CommandIdentity` already carries both the caller and a digest binding the
+// payload, so this needs no new bytes.
+//
+// ONE-DIRECTIONAL, deliberately: a control command must come from an operator
+// caller, but an operator caller may also issue ordinary ones. Making it
+// exclusive would buy nothing the edge does not already have to guarantee, and
+// the guarantee it does have to make is the deployment obligation that gives
+// this meaning - NEVER ISSUE A RESERVED CallerId TO A STRATEGY.
+inline constexpr std::uint64_t kMaxOperatorCallerId = 15;
+
+[[nodiscard]] constexpr bool is_operator_caller(const CallerId caller) noexcept {
+    return caller.value() != 0 && caller.value() <= kMaxOperatorCallerId;
+}
 
 struct SetStrategyMode {
     StrategyMode mode{StrategyMode::halted};

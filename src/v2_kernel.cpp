@@ -3224,6 +3224,20 @@ ApplyResult apply(TradingState& state,
                           : ContractError::missing_digest);
     }
 
+    // AUTHORIZATION BEFORE ANYTHING ELSE MUTATES OR IS REMEMBERED.
+    //
+    // Placed ahead of the receipt lookup on purpose: an unauthorized control
+    // command must leave no trace at all. Retaining a receipt for it would make
+    // a replay of the same bytes return a completed action rather than the
+    // refusal, which is exactly the confusion an audit of a kill cannot afford.
+    if (std::holds_alternative<AdvanceKillEpoch>(command.body) ||
+        std::holds_alternative<SetExecutorGeneration>(command.body) ||
+        std::holds_alternative<SetStrategyMode>(command.body)) {
+        if (!is_operator_caller(command.identity.caller_id)) {
+            return result(state, ApplyCode::unauthorized_control, state.state_version);
+        }
+    }
+
     // Verify actual observation bytes before either request or economic-event
     // deduplication. A copied digest must never hide changed evidence.
     const VenueObservation* observation = nullptr;

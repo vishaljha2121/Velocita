@@ -3,6 +3,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include "velocita/v2/kernel_codec.hpp"
+
+#include <array>
+#include <cstring>
+#include <span>
+#include <initializer_list>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -28,6 +34,110 @@ velocita::v2::Command command(const std::uint64_t request_sequence,
                                    RequestSequence{request_sequence},
                                    digest(payload_marker)},
                    std::move(body)};
+}
+
+void test_control_authority_is_reserved_to_operator_callers() {
+    using namespace velocita::v2;
+    // G-056, the authorization half. The reducer CANNOT verify a signature:
+    // G-066 keeps key material out of replicated state and `apply` performs no
+    // I/O, so authentication is necessarily an edge property. What the cluster
+    // can do - and what this enforces - is refuse a control action from a caller
+    // the edge never authenticated, and record which operator did issue it.
+    //
+    // The reservation is ONE-DIRECTIONAL by design. A control command must come
+    // from an operator caller; an operator caller is not forbidden ordinary
+    // ones. The deployment obligation that makes this mean something is that the
+    // edge never hands a reserved CallerId to a strategy.
+    const auto control_from = [](const std::uint64_t caller,
+                                 const std::uint64_t sequence,
+                                 CommandBody body) {
+        return Command{CommandIdentity{CallerId{caller}, RequestSequence{sequence},
+                                       digest(std::byte{0x77})},
+                       std::move(body)};
+    };
+
+    require(kMaxOperatorCallerId > 0,
+            "the operator caller band is empty, so nothing can ever issue control");
+
+    for (const auto& body : std::initializer_list<CommandBody>{
+             AdvanceKillEpoch{KillEpoch{1}},
+             SetExecutorGeneration{ExecutorGeneration{1}},
+             SetStrategyMode{StrategyMode::normal, KillEpoch{}, ExecutorGeneration{}}}) {
+        TradingState state;
+        ApplyScratch scratch;
+        const auto unauthorized =
+            apply(state, control_from(kMaxOperatorCallerId + 1, 1, body), scratch);
+        require(unauthorized.code == ApplyCode::unauthorized_control,
+                "a control command from a non-operator caller was not refused");
+
+        // Refused means NOTHING MOVED - not even the request receipt, or a
+        // replay of the same command would come back as a completed action.
+        TradingState untouched;
+        require(std::memcmp(&state, &untouched, sizeof(TradingState)) == 0,
+                "a refused control command still mutated authoritative state");
+    }
+
+    // The same command from inside the band is accepted, so the refusal above
+    // is about the caller and not about the command being malformed.
+    {
+        TradingState state;
+        ApplyScratch scratch;
+        const auto allowed = apply(
+            state, control_from(kMaxOperatorCallerId, 1, AdvanceKillEpoch{KillEpoch{1}}),
+            scratch);
+        require(allowed.code == ApplyCode::applied,
+                "a control command from an operator caller was refused");
+        require(state.kill_epoch.value() == 1, "the accepted kill epoch did not take");
+    }
+
+    // A REFUSAL THAT CANNOT BE ENCODED IS NOT A REFUSAL AN OPERATOR EVER SEES.
+    //
+    // `ApplyCode` is carried in the canonical 128-byte result and validated on
+    // the way back in, so a new code has to be admitted by the codec and by the
+    // snapshot or the result fails to decode. Adding the code and forgetting
+    // those two lists is silent - it was caught here by a compiler warning
+    // about an unhandled switch, which is luck rather than coverage.
+    {
+        TradingState state;
+        ApplyScratch scratch;
+        const auto refused = apply(
+            state,
+            control_from(kMaxOperatorCallerId + 1, 1, AdvanceKillEpoch{KillEpoch{1}}),
+            scratch);
+        require(refused.code == ApplyCode::unauthorized_control, "fixture drifted");
+
+        std::array<std::byte, kKernelResultBytes> bytes{};
+        const auto encoded = encode_kernel_result(refused, bytes);
+        require(encoded.error == KernelCodecError::none,
+                "an unauthorized-control result could not be encoded");
+        ApplyResult decoded{};
+        const auto read = decode_kernel_result(
+            std::span<const std::byte>(bytes).first(encoded.bytes_written), decoded);
+        require(read.error == KernelCodecError::none,
+                "an unauthorized-control result could not be decoded back");
+        require(decoded.code == ApplyCode::unauthorized_control,
+                "the refusal did not survive a canonical round trip");
+    }
+
+    // And an ordinary command from a high caller is untouched by any of this.
+    {
+        TradingState state;
+        ApplyScratch scratch;
+        const auto ordinary = apply(
+            state,
+            control_from(kMaxOperatorCallerId + 1, 1,
+                         ConfigureRiskLimits{AccountId{5}, InstrumentId{4},
+                                             RiskPolicyVersion{6}, RiskVersion{0},
+                                             KillEpoch{}, ExecutorGeneration{},
+                                             QuantityLots::from_atoms(4),
+                                             QuantityLots::from_atoms(8),
+                                             MoneyMicros::from_atoms(4'000),
+                                             MoneyMicros::from_atoms(8'000),
+                                             1'000'000, 2'500}),
+            scratch);
+        require(ordinary.code != ApplyCode::unauthorized_control,
+                "the operator reservation leaked onto an ordinary command");
+    }
 }
 
 void test_boot_and_kill_epoch_are_fail_safe() {
@@ -196,6 +306,7 @@ void test_invalid_mode_is_typed_and_retained() {
 
 int main() {
     try {
+        test_control_authority_is_reserved_to_operator_callers();
         test_boot_and_kill_epoch_are_fail_safe();
         test_kill_epoch_never_regresses();
         test_executor_generation_advance_removes_new_risk_authority();

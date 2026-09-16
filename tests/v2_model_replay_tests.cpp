@@ -171,10 +171,15 @@ StageExecutablePolicy executable_bundle_command(const PolicyArtifact& base) {
     return value;
 }
 
+// These fixtures issue control commands, so their caller has to be one the edge
+// would have authenticated - see `kMaxOperatorCallerId`. The number is otherwise
+// arbitrary.
+constexpr CallerId kFixtureOperator{7};
+
 Command new_command(const std::uint64_t sequence,
                     const std::uint64_t marker,
                     CommandBody body) {
-    return Command{CommandIdentity{CallerId{77}, RequestSequence{sequence},
+    return Command{CommandIdentity{kFixtureOperator, RequestSequence{sequence},
                                    digest(marker)},
                    std::move(body)};
 }
@@ -1243,8 +1248,15 @@ void test_generated_model_and_snapshot_replay() {
             "generated corpus never exercised a rejected decision");
     require(coverage.count(DecisionCode::invalid_frame) != 0,
             "generated corpus never exercised invalid-frame precedence");
+    // RE-PINNED 2026-09-16, for a reviewed fixture change and nothing else.
+    // Control actions are now accepted only from the reserved operator caller
+    // band (`kMaxOperatorCallerId`), and this corpus issues them, so its caller
+    // moved from 77 into the band. Every generated command's identity therefore
+    // changed, which is the whole of the difference - the generator, the
+    // distribution and the reducer are untouched. The coverage assertions above
+    // still hold, which is what makes that claim checkable rather than asserted.
     require(actual ==
-                "12eb691c214c9ca220fb00fd711006fbb0fdd5a1c213567350cd950216245087",
+                "ed3732db95453b12dfdaf9d15a616a302be4c94bfc0a78d5fafe38b8b8aa5eca",
             "generated replay corpus changed without review: " + actual);
 
     std::cout << "generated histories=" << kSeedCount

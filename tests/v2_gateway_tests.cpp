@@ -406,6 +406,95 @@ void test_the_emergency_lane_cannot_carry_new_risk() {
             "a risk-increasing effect was sent on the emergency lane");
 }
 
+void test_only_an_authoritative_read_renews_the_lease() {
+    // G-055 BINDS HERE, not at the refusal. A lease that any read could renew
+    // would lapse only when the gateway stopped running, which is the one case
+    // that needs no protection. What makes the bound mean something is that a
+    // gateway which cannot obtain an AUTHORITATIVE answer gets no renewal and
+    // therefore lapses on its own, without anyone having to notice or tell it.
+    const auto fixture = authorized_submit();
+    auto control = matching_control(fixture.state);
+
+    const AuthorityReading authoritative{true, fixture.state.executor_generation,
+                                         fixture.state.kill_epoch,
+                                         fixture.state.strategy_mode};
+    AuthorityReading follower = authoritative;
+    follower.authoritative = false;
+
+    require(renew_authority(control, authoritative, kNow + 10),
+            "an authoritative read did not renew the lease");
+    require(control.confirmed_at == kNow + 10,
+            "renewal did not move the confirmation time");
+
+    // A follower's or deposed leader's copy renews nothing, and - the part that
+    // matters - leaves the previous confirmation time exactly where it was.
+    const auto before = control;
+    require(!renew_authority(control, follower, kNow + 11),
+            "a non-authoritative read reported a renewal");
+    require(control.confirmed_at == before.confirmed_at,
+            "a non-authoritative read extended the lease");
+
+    // Time running backwards is not evidence of freshness.
+    require(!renew_authority(control, authoritative, kNow + 9),
+            "a backwards tick renewed the lease");
+    require(control.confirmed_at == before.confirmed_at,
+            "a backwards tick moved the confirmation time");
+}
+
+void test_renewal_adopts_the_authority_it_confirmed() {
+    // The failure this rules out is worse than no renewal at all: refreshing the
+    // CLOCK while keeping the old generation would leave the gateway holding
+    // authority that looks fresh and is stale, which is precisely the state the
+    // lease exists to make impossible.
+    const auto fixture = authorized_submit();
+    auto control = matching_control(fixture.state);
+
+    AuthorityReading promoted{true, fixture.state.executor_generation,
+                              fixture.state.kill_epoch, fixture.state.strategy_mode};
+    promoted.executor_generation =
+        ExecutorGeneration{fixture.state.executor_generation.value() + 1};
+    promoted.kill_epoch = KillEpoch{fixture.state.kill_epoch.value() + 1};
+
+    require(renew_authority(control, promoted, kNow + 1), "renewal was refused");
+    require(control.executor_generation == promoted.executor_generation &&
+                control.kill_epoch == promoted.kill_epoch,
+            "renewal refreshed the clock but kept the old authority");
+}
+
+void test_a_gateway_that_loses_the_cluster_stops_within_its_lease() {
+    // The property an operator actually cares about, stated end to end: after
+    // the last authoritative read, this gateway keeps sending for at most
+    // `lease_bound` ticks and then stops by itself. Nothing has to reach it.
+    const auto fixture = authorized_submit();
+    auto control = matching_control(fixture.state);
+    const AuthorityReading reading{true, fixture.state.executor_generation,
+                                   fixture.state.kill_epoch,
+                                   fixture.state.strategy_mode};
+
+    const Tick last_contact = kNow + 100;
+    require(renew_authority(control, reading, last_contact), "renewal was refused");
+
+    const auto sends_at = [&](const Tick when) {
+        auto probe = control;
+        probe.now = when;
+        RecordingTransport transport;
+        const auto decision = deliver(fixture.state, fixture.effect_id, probe,
+                                      capable_venue(), open_quota(), transport);
+        return decision.permitted() && transport.send_count() == 1;
+    };
+
+    require(sends_at(last_contact), "the gateway stopped sending while in contact");
+    require(sends_at(last_contact + kLeaseBound),
+            "the gateway stopped sending before its lease was spent");
+    require(!sends_at(last_contact + kLeaseBound + 1),
+            "the gateway kept sending past its lease with no authoritative read");
+
+    // And no amount of further time brings it back on its own - only a renewal
+    // does, which is what makes the stop safe rather than a pause.
+    require(!sends_at(last_contact + kLeaseBound * 100),
+            "a lapsed gateway resumed sending without renewing");
+}
+
 void test_a_venue_that_cannot_represent_the_intent_is_refused_not_approximated() {
     const auto fixture = authorized_submit();
     RecordingTransport transport;
@@ -501,6 +590,9 @@ int main() {
     test_an_unconfigured_lease_is_expired_not_unlimited();
     test_a_cancel_survives_what_stops_new_risk();
     test_the_emergency_lane_cannot_carry_new_risk();
+    test_only_an_authoritative_read_renews_the_lease();
+    test_renewal_adopts_the_authority_it_confirmed();
+    test_a_gateway_that_loses_the_cluster_stops_within_its_lease();
     test_a_venue_that_cannot_represent_the_intent_is_refused_not_approximated();
         test_exhausted_quota_defers_rather_than_sending();
         test_an_unknown_or_unreconstructable_effect_is_refused();

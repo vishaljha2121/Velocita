@@ -1264,6 +1264,92 @@ void test_corruption_of_acknowledged_history_fails_closed(
             "truncated anything meaningful");
 }
 
+void test_a_flood_of_normal_commands_cannot_starve_a_kill(
+    const std::filesystem::path& root) {
+    // G-056, the independence half. The kill command already exists and is now
+    // authorized; what was missing is that it had to queue behind everything
+    // else. A strategy that floods the cluster fills the staging arena, and
+    // without a reservation the command that stops the flood is precisely the
+    // one that cannot get in.
+    //
+    // Driven by NOT FLUSHING. Staging fills, nothing drains it, and the arena
+    // reaches the reserved margin - which is the same shape as a stalled disk or
+    // a writer that cannot keep up, and is why the margin is in blocks rather
+    // than in a rate.
+    Cluster cluster(root, 1);
+    auto& node = cluster.elect();
+
+    std::size_t admitted = 0;
+    bool normal_refused = false;
+    for (std::size_t i = 0; i < 20'000 && !normal_refused; ++i) {
+        const auto bytes = encoded(command(static_cast<std::uint64_t>(i + 1),
+                                           SetStrategyMode{StrategyMode::normal, {}, {}}));
+        const auto outcome = node.propose(bytes);
+        if (outcome.status == ProposeStatus::normal_lane_exhausted) {
+            normal_refused = true;
+            break;
+        }
+        require(outcome.status == ProposeStatus::admitted,
+                "a normal command was refused for an unexpected reason");
+        ++admitted;
+        node.tick(1);
+    }
+    require(normal_refused,
+            "the normal lane never filled, so this test never reached the "
+            "condition it exists to check");
+    require(admitted > 0, "the fixture admitted nothing at all");
+
+    // THE POINT, and it has to be measured rather than sampled. A single
+    // control command getting through proves almost nothing: whatever block was
+    // open when the normal lane closed still had room in it, so one more record
+    // fits whether or not any blocks were actually reserved. Shrinking the
+    // margin to zero left a one-command assertion green, which is how that was
+    // found.
+    //
+    // So count how much the control lane can absorb, and require it to exceed
+    // what one block could hold. Only real reserved BLOCKS can supply that.
+    std::size_t control_admitted = 0;
+    std::size_t control_bytes = 0;
+    bool control_refused = false;
+    for (std::size_t i = 0; i < 20'000 && !control_refused; ++i) {
+        const auto more = encoded(command(900'001 + static_cast<std::uint64_t>(i),
+                                          AdvanceKillEpoch{KillEpoch{i + 1}}));
+        const auto outcome = node.propose(more, ProposeLane::control);
+        if (outcome.status != ProposeStatus::admitted) {
+            control_refused = true;
+            break;
+        }
+        ++control_admitted;
+        control_bytes += more.size();
+        node.tick(1);
+    }
+    require(control_admitted > 0,
+            "a control command was starved by a normal-lane flood");
+    require(control_bytes > kWalBlockPayloadBytes,
+            "the control lane absorbed only " + std::to_string(control_bytes) +
+                " bytes, which one already-open block could have supplied - so "
+                "nothing proves any capacity was reserved for it");
+
+    // And the reservation is a margin, not an exemption: drain the reserve and
+    // control is refused too, because unbounded admission is what the arena's
+    // backpressure exists to prevent.
+    require(control_refused,
+            "the control lane admitted without bound, which is the failure the "
+            "arena's backpressure exists to prevent");
+
+    // Draining restores the normal lane, so the refusal was backpressure and not
+    // a latch that needs clearing.
+    node.flush_durability();
+    for (int i = 0; i < 50; ++i) {
+        node.tick(1);
+        node.flush_durability();
+    }
+    const auto after = encoded(command(950'001,
+                                       SetStrategyMode{StrategyMode::normal, {}, {}}));
+    require(node.propose(after).status == ProposeStatus::admitted,
+            "the normal lane did not recover after the arena drained");
+}
+
 void test_v2_storage_is_not_v1_storage(const std::filesystem::path& root) {
     // G-051. V2 reuses V1's MetadataStore and WriteAheadLog - they are
     // payload-generic and duplicating them would have been worse - but that
@@ -1501,6 +1587,8 @@ int main(int argc, char** argv) {
                 test_compacted_corrupt_snapshot_refuses_empty_recovery(fresh("compacted-corrupt"));
             else if (name == "corrupt-wal-sweep")
                 test_corruption_of_acknowledged_history_fails_closed(fresh("corrupt-wal-sweep"));
+            else if (name == "control-lane")
+                test_a_flood_of_normal_commands_cannot_starve_a_kill(fresh("control-lane"));
             else if (name == "v1-v2-isolation")
                 test_v2_storage_is_not_v1_storage(fresh("v1-v2-isolation"));
             else if (name == "snapshot-directory")
@@ -1536,6 +1624,7 @@ int main(int argc, char** argv) {
         test_a_torn_hard_state_write_never_produces_a_corrupt_hard_state(
             fresh("torn-hard-state"));
         test_v2_storage_is_not_v1_storage(fresh("v1-v2-isolation"));
+        test_a_flood_of_normal_commands_cannot_starve_a_kill(fresh("control-lane"));
         test_an_entry_cannot_commit_before_its_bytes_are_durable(fresh("gate"));
         test_a_follower_ack_never_covers_merely_staged_entries(fresh("follower-ack"));
         test_a_writer_thread_carries_durability_off_the_owner_loop(fresh("writer"));

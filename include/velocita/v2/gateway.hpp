@@ -72,6 +72,39 @@ struct GatewayControlView {
     constexpr auto operator<=>(const GatewayControlView&) const noexcept = default;
 };
 
+// What an authoritative read of the cluster yielded.
+//
+// `authoritative` is the entire point and is deliberately the first field: a
+// follower's copy, or a deposed leader's, is stale by definition, and Phase 6
+// made the gateway carry that evidence alongside the data precisely so it could
+// not be dropped on the floor here. This is the same question
+// `CommittedOutboxView::authoritative` answers, narrowed to the control fields
+// so the guard stays free of the replication layer.
+struct AuthorityReading {
+    bool authoritative{};
+    ExecutorGeneration executor_generation{};
+    KillEpoch kill_epoch{};
+    StrategyMode strategy_mode{StrategyMode::halted};
+
+    constexpr auto operator<=>(const AuthorityReading&) const noexcept = default;
+};
+
+// Renew the control cache from a read. Returns whether it renewed.
+//
+// THIS IS WHERE THE LEASE BINDS. The refusal in `evaluate_pre_send` is only the
+// consequence; what gives the bound meaning is that a gateway which cannot
+// obtain an authoritative answer gets NO RENEWAL and lapses on its own, with
+// nobody having to notice or reach it. A lease any read could renew would
+// expire only when the process stopped, which is the one case needing no
+// protection.
+//
+// Renewal adopts the authority it confirmed, not merely the time. Refreshing
+// the clock while keeping the old generation would leave the gateway holding
+// authority that looks fresh and is stale - worse than not renewing at all.
+[[nodiscard]] bool renew_authority(GatewayControlView& control,
+                                   const AuthorityReading& reading,
+                                   Tick now) noexcept;
+
 // TWO LANES, because the moment you most need to cancel is the moment the
 // normal lane is exhausted. A cancel path sharing the normal budget is not an
 // independent one, and a partition tends to exhaust that budget and lapse the

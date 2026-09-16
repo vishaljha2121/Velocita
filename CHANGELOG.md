@@ -15,6 +15,64 @@ release-engineering work.
 
 ### Phase 8 in development - execution authority, fencing, and emergency control
 
+#### Lease renewal, operator authorization, and the control lane — 2026-09-16
+
+THE RENEWAL PATH IS WHERE THE LEASE BINDS. A lease any read could renew would
+expire only when the process stopped, which is the one case needing no
+protection. `renew_authority` renews only on an AUTHORITATIVE read, so a gateway
+that cannot reach a leader gets no renewal and lapses by itself. Two of its
+refusals matter more than they look: a backwards tick does not renew, because a
+clock that moved backwards is the worst thing to extend authority on; and
+renewal adopts the authority it confirmed rather than only the time, since
+refreshing the clock while keeping the old generation leaves a gateway holding
+authority that looks fresh and is stale - worse than not renewing at all.
+
+OPERATOR AUTHORIZATION, WITH NO NEW BYTES. The reducer cannot verify a
+signature: G-066 keeps key material out of replicated state and `apply` performs
+no I/O, so authentication is necessarily an edge property. The cluster's job is
+to refuse a control action from a caller the edge never authenticated, and to
+record which operator issued the one it accepted. `kMaxOperatorCallerId` reserves
+a `CallerId` band; `CommandIdentity` already carries the caller and a digest
+binding the payload. `ApplyCode::unauthorized_control` is appended at the END of
+the enum, so every existing code keeps its value and no golden byte moves.
+
+The refusal lands before the receipt lookup, so an unauthorized control command
+leaves no trace. Retaining a receipt would make a replay of the same bytes return
+a completed action rather than the refusal - the one confusion an audit of a kill
+cannot afford.
+
+THE DEPLOYMENT OBLIGATION: the edge must never issue a reserved CallerId to a
+strategy. The reservation is one-directional by design.
+
+THE CONTROL LANE. `propose` had no admission control at all, so a strategy flood
+filled the staging arena and the command that would stop the flood was the one
+that could not get in. `ProposeLane::control` may draw on
+`kControlLaneReservedBlocks` that nothing else may touch. The check sits in
+`propose`, not the arena: by the time `log_offer` stages, Raft has already
+assigned the entry an index, and before the entry exists is the only point at
+which turning it away is free. It is a MARGIN, NOT AN EXEMPTION - control is
+refused too once the reserve is gone, because unbounded admission is exactly what
+backpressure exists to prevent (G-045).
+
+A VACUOUS ASSERTION FOUND BY MUTATION. The lane test first checked that one
+control command got through after the normal lane closed. That proves almost
+nothing: whatever block was open still had room, so one more record fits whether
+or not anything was reserved - and shrinking the margin to zero left it green.
+The test now MEASURES what the control lane absorbs and requires it to exceed a
+single block's payload, which only real reserved blocks can supply.
+
+Three pinned digests moved, all from one reviewed cause: the replay corpora
+issue control commands, so their caller moved into the operator band and every
+generated command's identity changed with it. The generators, distributions and
+reducer are untouched, and each suite's coverage assertions still hold - which
+is what makes that claim checkable rather than asserted. The codec corpus was
+NOT re-pinned: its caller was already inside the band.
+
+Also closed, and found by a compiler warning rather than a test: the new
+`ApplyCode` was missing from the codec's and the snapshot's `known()` switches,
+so a refusal could not survive a canonical round trip. Now covered by a
+round-trip assertion that fails when either list is incomplete.
+
 #### The authority lease and the reserved cancel lane — 2026-09-16
 
 First slice. Both mechanisms are ENFORCED and neither is yet DRIVEN - the

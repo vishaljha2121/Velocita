@@ -38,6 +38,25 @@ namespace {
 
 }  // namespace
 
+bool renew_authority(GatewayControlView& control, const AuthorityReading& reading,
+                     const Tick now) noexcept {
+    // A non-authoritative read is not a weaker renewal, it is none: the cached
+    // confirmation time must stay exactly where it was, or a partitioned
+    // gateway polling a follower would hold its lease open forever.
+    if (!reading.authoritative) return false;
+    // Time running backwards is not evidence of freshness. Refusing rather than
+    // clamping, because a tick that moved backwards means the caller's clock is
+    // wrong and extending authority on it is the one thing not to do.
+    if (now < control.confirmed_at) return false;
+
+    control.executor_generation = reading.executor_generation;
+    control.kill_epoch = reading.kill_epoch;
+    control.strategy_mode = reading.strategy_mode;
+    control.confirmed_at = now;
+    control.now = now;
+    return true;
+}
+
 PreSendDecision evaluate_pre_send(const TradingState& state,
                                   const EffectId effect_id,
                                   const GatewayControlView& control,
