@@ -138,6 +138,14 @@ public:
 
     [[nodiscard]] WalMetrics wal_metrics() const;
 
+    // How many committed entries the hard state named that the log did not hold
+    // at startup. Non-zero means a cut lost part of the log tail: the node
+    // started anyway and clamped, and a peer is expected to re-supply. On a
+    // single voter a non-zero value is real loss and demands an operator.
+    [[nodiscard]] std::uint64_t recovered_commit_clamped() const noexcept {
+        return recovered_commit_clamped_;
+    }
+
     [[nodiscard]] bool is_leader() const;
 
     // Offer canonical V2 command bytes to consensus. Never applies them here:
@@ -223,6 +231,7 @@ private:
     std::uint64_t blocks_submitted_{};
     std::uint64_t backpressure_refusals_{};
     std::uint64_t highest_staged_index_{};
+    std::uint64_t recovered_commit_clamped_{};
     bool writer_running_{false};
 
     TradingState state_{};

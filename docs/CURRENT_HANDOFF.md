@@ -5,7 +5,128 @@ Updated: 2026-09-15
 Purpose: compact working memory for the next agent session. Verify this file
 against Git before acting; do not reconstruct the project from chat history.
 
-## CODEX HANDOVER — Phase 5 accepted, MVP V1 excludes perpetuals — 2026-09-15
+## CODEX HANDOVER — Phases 5, 6 and 7 complete; re-gate pending — 2026-09-15
+
+This section supersedes every older section below it. Those remain as an audit
+trail and must not be read as current status.
+
+### Read these, in this order
+
+1. This section.
+2. `docs/adr/0003` through `0006` - the four material decisions taken since the
+   last takeover, each with the alternatives rejected and why.
+3. `docs/V2_ARCHITECTURE_CONTRACTS.md` sections 10.15 through 10.18.9, which are
+   the detailed reasoning the ADRs summarise.
+4. `docs/evidence/V2_TRUEMARKETS_CONTRACT_VERIFICATION.md`.
+
+Verify every claim against Git before acting on it.
+
+### Where the tree is
+
+- branch `v2/phase-5-corrections`; use Git for HEAD rather than a value embedded
+  here;
+- tag `v2-phase5-corrected-accepted` at `b39edf1`; `v2-phase5-accepted`
+  (`04329fa`) preserved and NOT moved;
+- host Release 32/32, Debug ASan+UBSan 32/32 with
+  `-fno-sanitize-recover=undefined` and `halt_on_error=1`, ThreadSanitizer clean
+  on the ring and the replication suite, model 109/109 unmodified,
+  `git diff --check` clean;
+- THE SOURCE ROOT HAS MOVED well past the Phase 5 pin
+  (`681e222d…6976f`), because Phases 6 and 7 added manifest files. Target gates
+  will correctly refuse until the tree is re-frozen and re-pinned.
+
+### What was done since the takeover, and why
+
+FOUR MATERIAL DECISIONS, each an ADR:
+
+- ADR 0003, NATIVE VERSUS SYNTHETIC OBSERVATION IDENTITY. Gateway-authored
+  observations were sharing the venue's sequence-deduplication domain, so a
+  number the shell chose could refuse real venue evidence, and real venue
+  evidence could refuse the only answer able to resolve an unknown effect. Zero
+  bytes added; codec and snapshot schemas V6 to V7.
+- ADR 0004, MVP V1 EXCLUDES PERPETUALS. The verified DeFi surface is Hyperliquid
+  perpetuals, and `apply_observe_fill` requires every fill to name an authorizing
+  submit effect. Liquidation, ADL and funding carry no `effect_id`, so no command
+  in the kernel can represent them. Fail-closed scope decision, not a claim that
+  spot accounting approximates perps.
+- ADR 0005, THE REDUCER BEHIND CONSENSUS. `ReplicatedKernel` is a separate class
+  from V1's node, reusing the payload-generic storage and peer wire. Exactly one
+  call to `apply()`, in the Raft apply callback, so G-035 is the shape of the
+  code. G-035 through G-041 closed.
+- ADR 0006, ASYNCHRONOUS DURABILITY AND A PINNED RAFT FORK. Staging plus an
+  off-thread sync, with a pinned patch adding an optional `durable_idx` callback
+  so a voter counts its own vote only for entries it has made durable. Phase 7
+  complete in implementation scope and test-first list.
+
+### What is NOT done, stated plainly
+
+1. THE PHYSICAL PI GATE. A carried Phase 5 obligation; the machine was offline
+   for the whole session. It blocks live deployment, not development. Gate the
+   TAG, not HEAD - `git checkout --detach v2-phase5-corrected-accepted` - because
+   the obligation is against that tree.
+2. RE-FREEZE AND RE-GATE FOR PHASES 6 AND 7. Nothing since `b39edf1` has run on
+   ARM64 container, NUC or Pi. This is the highest-value next step: it converts
+   "green on a laptop" into evidence at a pinned root.
+3. A READ-INDEX DISCIPLINE for authority-sensitive reads. `CommittedOutboxView`
+   proves only that this node believed itself leader when the bytes were taken.
+4. PERFORMANCE ON THE DEPLOYMENT TARGETS. The storage benchmark has only run on
+   a development laptop.
+
+### Where a reviewer should push hardest
+
+- THE PINNED RAFT PATCH (`deploy/patches/0001-raft-durable-quorum.patch`). It
+  changes quorum arithmetic. Is the single-voter re-check in `raft_periodic`
+  reachable in every path that matters, and does the NULL-callback path really
+  leave V1 byte-for-byte unchanged?
+- THE FOLLOWER ACK CLAMP in `receive_peer`. It lowers a reported `current_idx`.
+  Does that interact safely with `first_idx` and with willemt's next-index
+  backoff, or can it wedge a follower that is behind?
+- `recovered_commit_clamped`. Clamping rather than refusing is a deliberate trade
+  argued in ADR 0006. On a single voter a non-zero value is real loss; is
+  reporting it enough, or does it need to refuse new risk until an operator
+  acknowledges?
+- WHETHER ANY OF THE NEW TESTS ARE VACUOUS. Three were, during this session, and
+  all three were found by mutation rather than by reading. Assume there is a
+  fourth.
+
+### Method notes, each of which cost something to learn
+
+- MUTATION-CHECK A GUARD OR DO NOT CLAIM IT. Three tests in this session passed
+  with the code under test removed: the durability invariant (the harness closed
+  the gap before anything could observe it), a WAL test that staged arbitrary
+  bytes so the record decoder had nothing to find, and an earlier oracle that
+  read its expected answer off the code under test.
+- A SWEEP BEATS HAND-PICKED POINTS. The power-cut sweep found two defects on its
+  first run that three durability points had been green over for a day.
+- A GATE PASS PROVES THIS TREE MATCHES ITS OWN PIN, never that it is the
+  candidate you meant to test - the pin travels inside the tree. NUC run
+  `20260915T152553Z` passed against the superseded candidate for exactly this
+  reason. Compare the gate-computed root against a value held OUTSIDE the tree,
+  and check the `ubsan_*` metadata keys are PRESENT, since a stale gate script
+  omits them rather than printing them wrong.
+- NOTHING THAT DECIDES BEHAVIOUR MAY BE IMPLICIT. The simulator's clock, the WAL
+  writer's poll, and `flush_durability` are all explicit for the same reason: an
+  implicit one makes the behaviour it decides unobservable, including to a test
+  trying to prove it.
+
+### Constraints that still bind
+
+- Protected uncommitted paths: `model/`, `docs/README.md`,
+  `docs/MUST_CONFIRM_BEFORE_ADAPTER_CONNECT.md`,
+  `docs/V2_MODEL_AND_MARKET_DATA_EDGE_DESIGN.md`, ADR 0002. Never `git add .` or
+  `git add -A`; stage explicit paths only.
+- `model/` must never be able to trade. Its interlock fails the build if
+  `OrderEffect` or `VenueObservation` appears; do not weaken it to compile.
+- `ReadOnlyHttp` refuses non-GET and any path containing `/orders`. Do not route
+  around it to answer a documentation question.
+- The API key is an EC P-256 private key that signs on-chain actions. G-066: it
+  never enters replicated policy, commands, snapshots, logs, test fixtures or
+  evidence bundles.
+- Review any NEW material byte or economic contract choice with the user BEFORE
+  encoding it.
+- Do not move or delete `v2-phase5-accepted`.
+
+## SUPERSEDED — Phase 5 accepted, MVP V1 excludes perpetuals — 2026-09-15
 
 This section supersedes every older section below it. Those remain as an audit
 trail and must not be read as current status.

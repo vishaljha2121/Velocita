@@ -140,13 +140,29 @@ ReplicatedKernel::ReplicatedKernel(const std::int32_t node_id,
     }
     arena_.seed_durable_index(recovered_through);
 
-    if (metadata_.commit_index < 0 ||
-        metadata_.commit_index > raft_get_current_idx(server_)) {
-        throw std::runtime_error(
-            "metadata commit index " + std::to_string(metadata_.commit_index) +
-            " is outside the log, whose current index is " +
-            std::to_string(raft_get_current_idx(server_)) +
-            " (snapshot covered through " + std::to_string(installed_through) + ")");
+    if (metadata_.commit_index < 0) {
+        throw std::runtime_error("metadata holds a negative commit index");
+    }
+
+    // A RECOVERED COMMIT INDEX PAST THE END OF THE LOG IS CLAMPED, NOT REFUSED.
+    //
+    // This was a hard failure, and the power-cut sweep showed that to be the
+    // wrong trade the first time it ran. A cut that loses the tail of the
+    // segment leaves exactly this shape: hard state that was durable naming
+    // entries that were not. Refusing to start turns a survivable crash into a
+    // permanent outage whose only remedy is deleting state - which is worse than
+    // the problem, and is the remedy most likely to destroy the evidence.
+    //
+    // Clamping is safe for the reason "committed" means something: a majority
+    // held those entries, so a peer re-supplies them. A single voter that lost
+    // them has suffered real loss, but that requires the storage to have broken
+    // its own durability contract, and the honest response is to start, report
+    // it, and let an operator see the number.
+    const auto log_end = raft_get_current_idx(server_);
+    if (metadata_.commit_index > log_end) {
+        recovered_commit_clamped_ =
+            static_cast<std::uint64_t>(metadata_.commit_index - log_end);
+        metadata_.commit_index = log_end;
     }
     raft_set_commit_idx(server_, metadata_.commit_index);
     if (raft_apply_all(server_) != 0) {
@@ -446,10 +462,28 @@ void ReplicatedKernel::receive_peer(const PeerMessage& message) {
         request.entries = entries.data();
         msg_appendentries_response_t response{};
         result = raft_recv_appendentries(server_, sender, &request, &response);
+
+        // A FOLLOWER'S SUCCESS MUST NOT COVER ENTRIES IT HAS ONLY STAGED.
+        //
+        // The leader turns `current_idx` straight into this follower's match
+        // index and counts it toward quorum. Reporting an index whose bytes are
+        // not yet on disk is therefore the same defect as a leader counting its
+        // own undurable copy - just on the other side of the wire, and not
+        // fixable by the patch that fixed that one, because this number is
+        // produced here.
+        //
+        // Clamping costs a round trip: the leader sees a lower match, resends,
+        // and the follower reports the higher index once its writer has caught
+        // up. That is the correct trade - the alternative is a quorum formed
+        // around bytes a power cut would erase.
+        auto reported = response.current_idx;
+        const auto durable = static_cast<raft_index_t>(arena_.durable_index());
+        if (response.success != 0 && reported > durable) reported = durable;
+
         outbound_messages_.push_back(
             {node_id_, message.sender_id,
-             AppendEntriesResponse{response.term, response.success != 0,
-                                   response.current_idx, response.first_idx}});
+             AppendEntriesResponse{response.term, response.success != 0, reported,
+                                   response.first_idx}});
     } else if (const auto* value = std::get_if<AppendEntriesResponse>(&message.payload)) {
         msg_appendentries_response_t response{};
         response.term = value->term;

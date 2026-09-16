@@ -1,6 +1,7 @@
 #pragma once
 
 #include "velocita/storage.hpp"
+#include "velocita/v2/kernel_codec.hpp"
 #include "velocita/v2/spsc_ring.hpp"
 
 #include <atomic>
@@ -39,14 +40,43 @@ namespace velocita::v2 {
 // chooses. The same discipline the simulator uses for time: nothing that decides
 // behaviour is allowed to be implicit.
 
-inline constexpr std::size_t kWalBlockBytes = 64 * 1024;
+// Page-sized, and that is a write-amplification decision rather than an
+// alignment one.
+//
+// `flush_durability` seals whatever is open on every call, because leaving a
+// record staged to save a write is exactly the latency this phase exists to
+// remove. The consequence is that a quiet system writes ONE BLOCK PER RECORD, so
+// the block size is the cost of a single small command reaching the disk. At
+// 64 KiB a ~200-byte command cost 64 KiB; at 4 KiB it costs 4 KiB, which on an
+// SD-backed deployment is the difference between plausible and not.
+//
+// The floor is the largest record that must never be refused: a canonical
+// command frame plus its record header. The static assertion below keeps that
+// relationship enforced rather than remembered.
+inline constexpr std::size_t kWalBlockBytes = 4096;
 inline constexpr std::size_t kWalBlockHeaderBytes = 32;
 inline constexpr std::size_t kWalBlockPayloadBytes =
     kWalBlockBytes - kWalBlockHeaderBytes;
+
+// A record that cannot fit a block is refused rather than split, so the block
+// must be large enough for the biggest command the codec can produce. Checked
+// here so growing the command budget fails the BUILD rather than silently
+// refusing records at runtime, which would look like backpressure and would not
+// be.
+inline constexpr std::size_t kWalRecordHeaderBytes = 44;
+static_assert(kMaxKernelCommandBytes + kWalRecordHeaderBytes <= kWalBlockPayloadBytes,
+              "a canonical command frame must fit in one WAL block");
 // Fixed capacity. The arena is a bounded budget, not a queue that grows: when it
 // is full, admission is refused, which is the only behaviour that cannot lose an
 // entry that is not yet durable.
-inline constexpr std::size_t kWalArenaBlocks = 8;
+// Sized as a TOTAL staging budget, not as a block count.
+//
+// This was eight when a block was 64 KiB. Shrinking the block to 4 KiB to cut
+// write amplification shrank the buffer sixteen-fold with it, and the storage
+// benchmark found the consequence immediately: four fifths of records refused,
+// because only eight could ever be in flight. Sixty-four blocks restores a
+// quarter-megabyte of staging, which is the number that was actually intended.
+inline constexpr std::size_t kWalArenaBlocks = 64;
 // Blocks preallocated ahead of the write frontier. Extending a file is a
 // metadata operation the filesystem may itself have to journal, so doing it on
 // the write path puts an unpredictable cost exactly where the phase is trying to

@@ -180,6 +180,10 @@ target_link_libraries(velocita_v2_replication
     PUBLIC velocita_v2_kernel velocita_core)
 target_compile_options(velocita_v2_replication PRIVATE -Wall -Wextra -Wpedantic)
 
+add_executable(v2-storage-benchmark src/v2_storage_benchmark.cpp)
+target_link_libraries(v2-storage-benchmark PRIVATE velocita_v2_replication Threads::Threads)
+target_compile_options(v2-storage-benchmark PRIVATE -Wall -Wextra -Wpedantic)
+
 add_executable(raft-node src/node_main.cpp)
 target_link_libraries(raft-node PRIVATE velocita_aeron velocita_metrics)
 

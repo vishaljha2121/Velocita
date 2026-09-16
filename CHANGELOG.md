@@ -101,10 +101,56 @@ torn tail for free.
 refusals, and staged index against durable index - the exposure asynchronous
 durability buys, as a number.
 
-Phase 7's implementation scope is complete. No performance claim is made: the
-gate puts correctness and power-cut evidence before throughput, no benchmark has
-been run, and the power-cut matrix is three durability points rather than genuine
-power interruption.
+#### Phase 7 complete: follower acks, a power-cut sweep, and a measurement — 2026-09-15
+
+A FOLLOWER'S ACK WAS THE OTHER HALF OF THE LEADER'S DEFECT. The leader turns a
+follower's reported `current_idx` straight into that follower's match index and
+counts it toward quorum, so a follower acking entries it has only staged is a
+leader counting an undurable copy one hop away - and the Raft patch cannot fix
+it, because the number is produced on this side of the wire. `receive_peer` now
+clamps it to the follower's own durable index. Pinned by a three-voter test in
+which only the leader flushes; removing the clamp fails it.
+
+THE POWER-CUT MATRIX IS NOW A SWEEP, truncating the segment at every
+structurally distinct offset through the written frontier. It found two defects
+on its first run, both of which three hand-picked durability points had been
+green over:
+
+- a recovered commit index past the end of the log was FATAL. A cut that loses
+  the tail leaves exactly that shape - hard state that was durable naming entries
+  that were not - and the node refused to start, converting a survivable crash
+  into a permanent outage whose only remedy was deleting state. It now clamps and
+  reports the gap through `recovered_commit_clamped`.
+- ONE 64 KiB BLOCK PER RECORD. `flush_durability` seals on every call, correctly,
+  so a quiet system writes a block per record and a 200-byte command cost 64 KiB.
+  The block is now 4 KiB, page-sized, with a static assertion tying it to the
+  largest canonical command frame so growing the command budget fails the BUILD
+  rather than silently refusing records at runtime.
+
+THE MEASUREMENT, now that correctness and power-cut evidence pass. Owner-loop
+time over two thousand command-sized records on the development host:
+
+| | synchronous | off-thread |
+|---|---:|---:|
+| median | 21.6 us | 0.042 us |
+| p99 | 109 us | 208 us |
+| max | 7136 us | 358 us |
+
+The median is the objective; the p99 is the honest part. Off-thread is ~500x
+faster at the median and 20x better at the worst case, and WORSE at p99 - under
+sustained load faster than the disk the owner waits for a block instead of an
+fsync. The design converts an unbounded per-record stall into a bounded
+queue-full one; it does not make the disk faster. The benchmark's first run also
+found a sizing error: shrinking the block sixteen-fold had shrunk the staging
+budget with it, refusing four fifths of records. The arena is now 64 blocks.
+
+These are a laptop's figures. No claim is made for the Pi or the NUC until the
+gates run there.
+
+Phase 7 is complete in implementation scope and in its test-first list. Four ADRs
+record the material decisions taken since the last takeover: 0003 native and
+synthetic observation identity, 0004 MVP V1 excludes perpetuals, 0005 the reducer
+behind consensus, 0006 asynchronous durability and the pinned Raft fork.
 
 Host Release 32/32, Debug ASan+UBSan 32/32, TSan clean, model 109/109.
 

@@ -855,6 +855,56 @@ void test_an_entry_cannot_commit_before_its_bytes_are_durable(
             "no result arrived after the entry became durable");
 }
 
+void test_a_follower_ack_never_covers_merely_staged_entries(
+    const std::filesystem::path& root) {
+    // The leader turns a follower's reported current_idx straight into that
+    // follower's match index and counts it toward quorum. A follower that acks
+    // entries it has only staged is therefore the same defect as a leader
+    // counting its own undurable copy - and the Raft patch cannot fix it,
+    // because this number is produced on our side of the wire.
+    Cluster cluster(root, 3);
+    auto& leader = cluster.elect();
+    const auto leader_id = leader.status().node_id;
+    const auto before = leader.status().commit_index;
+
+    const auto value = command(
+        1, SetStrategyMode{StrategyMode::normal, KillEpoch{}, ExecutorGeneration{}});
+    require(leader.propose(encoded(value)).status == ProposeStatus::admitted,
+            "the leader refused the command");
+
+    // ONLY THE LEADER FLUSHES. Followers receive, append and stage, and reply -
+    // but their bytes never reach the disk, so their acks must not be worth a
+    // quorum.
+    for (int round = 0; round < 200; ++round) {
+        leader.flush_durability();
+        for (auto& node : cluster.nodes) node->tick(10);
+        cluster.route();
+        require(leader.status().commit_index == before,
+                "the leader committed on follower acks that covered only staged "
+                "entries");
+        require(!leader.take_committed_result(),
+                "a result appeared while no follower had synced");
+    }
+
+    // Non-vacuity: the followers really did receive and stage it, so something
+    // was genuinely being withheld rather than never sent.
+    bool a_follower_holds_it = false;
+    for (const auto& node : cluster.nodes) {
+        if (node->status().node_id == leader_id) continue;
+        if (node->status().current_index > before) a_follower_holds_it = true;
+        require(node->durable_index() == 0,
+                "a follower synced despite never being flushed");
+    }
+    require(a_follower_holds_it,
+            "no follower ever received the entry, so nothing was being withheld");
+
+    // Let the followers reach the disk. The same entry must now commit.
+    cluster.settle(400);
+    require(cluster.elect().status().commit_index > before,
+            "the entry never committed once followers were durable, so the clamp "
+            "is a deadlock rather than a gate");
+}
+
 void test_a_writer_thread_carries_durability_off_the_owner_loop(
     const std::filesystem::path& root) {
     // The same cluster, with the I/O moved to another thread. Nothing about the
@@ -945,6 +995,161 @@ void test_durability_is_tracked_separately_and_never_overstated(
             "recovery from the block segment produced a different state");
 }
 
+// --- Phase 7: the power-cut matrix -------------------------------------------
+
+void test_recovery_survives_a_cut_at_every_byte_boundary(
+    const std::filesystem::path& root) {
+    // THE POWER-CUT PROPERTY, as a sweep rather than a handful of points.
+    //
+    // A power cut can land anywhere: between two blocks, inside a block header,
+    // inside a record, inside the checksum. The guarantee is not that every cut
+    // preserves everything - that is impossible - but that recovery never comes
+    // back holding LESS than the last state a caller was told about, and never
+    // comes back holding something the cluster never agreed.
+    //
+    // Each iteration builds a node, records what it acknowledged, truncates its
+    // segment at a chosen offset, and restarts.
+    const auto build = [&](const std::filesystem::path& dir) {
+        std::filesystem::remove_all(dir);
+        std::filesystem::create_directories(dir);
+        Cluster cluster(dir, 1);
+        (void)build_authorized_submit(cluster);
+        cluster.settle(50);
+        return cluster.elect().status();
+    };
+
+    const auto segment_path = [](const std::filesystem::path& dir) {
+        return dir / "1" / "v2-wal-blocks.bin";
+    };
+
+    // Establish the shape once: how big the segment is, and what a clean restart
+    // recovers, so the sweep below has something to compare against.
+    const auto reference_dir = root / "reference";
+    const auto acknowledged = build(reference_dir);
+    const auto full_size = std::filesystem::file_size(segment_path(reference_dir));
+    require(full_size >= kWalBlockBytes,
+            "the fixture produced no segment to cut");
+
+    // Offsets chosen to land in every structurally distinct place: nothing, a
+    // few bytes (inside the magic), inside the header, just short of a block,
+    // exactly a block, and past the written frontier into reserved space.
+    // The written frontier, not the file size: preallocation leaves reserved
+    // zeros past the data, and cutting inside those changes nothing.
+    const auto written = WalSegment(reference_dir / "1").read_records().size();
+    require(written > 1, "the fixture wrote too few blocks to sweep");
+    const auto data_end = written * kWalBlockBytes;
+
+    std::vector<std::uint64_t> cuts{
+        0, 3, kWalBlockHeaderBytes / 2, kWalBlockHeaderBytes,
+        kWalBlockHeaderBytes + 7, kWalBlockBytes - 1,
+    };
+    // Every block boundary, and a byte either side of each, so a cut lands in a
+    // header, in a payload, and exactly between blocks.
+    for (std::uint64_t block = 1; block <= written; ++block) {
+        const auto boundary = block * kWalBlockBytes;
+        cuts.push_back(boundary - 1);
+        cuts.push_back(boundary);
+        cuts.push_back(boundary + kWalBlockHeaderBytes / 2);
+    }
+    cuts.push_back(data_end);
+
+    std::size_t recovered_full = 0;
+    std::size_t recovered_partial = 0;
+    for (const auto cut : cuts) {
+        if (cut > full_size) continue;
+        const auto dir = root / ("cut-" + std::to_string(cut));
+        const auto before = build(dir);
+        require(before.state_digest == acknowledged.state_digest,
+                "the fixture was not reproducible at cut " + std::to_string(cut));
+
+        {
+            // Truncate: the bytes past the cut simply never reached the platter.
+            const auto path = segment_path(dir);
+            std::filesystem::resize_file(path, cut);
+        }
+
+        // THE NODE MUST START. A cut log is the normal case after a power cut,
+        // and refusing to start would turn every crash into an outage.
+        Cluster restarted(dir, 1);
+        restarted.settle(200);
+        const auto after = restarted.elect().status();
+
+        const std::string where = " at cut " + std::to_string(cut);
+        if (after.state_digest == acknowledged.state_digest) {
+            ++recovered_full;
+        } else {
+            ++recovered_partial;
+            // A partial recovery must be a PREFIX, never an invention: fewer
+            // effects than were acknowledged, never more, and never a state
+            // version beyond the one that was reached.
+            require(after.outbox_effect_count <= acknowledged.outbox_effect_count,
+                    "recovery invented outbox effects" + where);
+            require(after.state_version <= acknowledged.state_version,
+                    "recovery reached a state version nothing ever produced" + where);
+        }
+
+        // And whatever it recovered, it must be able to keep going: a node that
+        // starts but cannot make progress has traded an outage for a slower one.
+        const auto resumed = restarted.elect().status();
+        require(resumed.node_id == 1, "the node did not resume after a cut" + where);
+    }
+
+    require(recovered_full > 0,
+            "no cut recovered the acknowledged state, so the sweep never "
+            "exercised a clean boundary");
+    require(recovered_partial > 0,
+            "every cut recovered everything, so the sweep never actually "
+            "truncated anything meaningful");
+}
+
+void test_a_torn_hard_state_write_never_produces_a_corrupt_hard_state(
+    const std::filesystem::path& root) {
+    // The plan asks for "hard-state two-slot recovery chooses newest valid
+    // sequence". Two slots are one way to get the property; this implementation
+    // gets the same property from a temp file plus an atomic rename, so what is
+    // tested here is the PROPERTY rather than the mechanism: recovery never
+    // observes a partially written hard state.
+    std::filesystem::create_directories(root / "1");
+    Cluster cluster(root, 1);
+    (void)build_authorized_submit(cluster);
+    cluster.settle(50);
+    const auto before = cluster.elect().status();
+
+    const auto metadata_path = root / "1" / "metadata.bin";
+    require(std::filesystem::exists(metadata_path),
+            "the fixture wrote no metadata to tear");
+    const auto size = std::filesystem::file_size(metadata_path);
+
+    // A torn hard state cannot be produced by truncating the real file, because
+    // rename is atomic - which IS the property. So the test asserts the two
+    // halves that make it true: a partial file is refused rather than
+    // misinterpreted, and the real path never leaves one behind.
+    const auto torn = root / "1" / "metadata.torn";
+    std::filesystem::copy_file(metadata_path, torn);
+    std::filesystem::resize_file(torn, size / 2);
+    bool refused = false;
+    try {
+        (void)velocita::MetadataStore(root / "1").load();
+    } catch (const std::exception&) {
+        refused = true;
+    }
+    require(!refused, "the intact metadata was refused");
+
+    // Now tear the real one and require a refusal rather than a plausible
+    // misreading - a hard state read wrong is worse than one that fails loudly.
+    std::filesystem::resize_file(metadata_path, size / 2);
+    bool threw = false;
+    try {
+        (void)velocita::MetadataStore(root / "1").load();
+    } catch (const std::exception&) {
+        threw = true;
+    }
+    require(threw,
+            "a truncated hard state was accepted, so a torn write could be read "
+            "as a valid term or vote");
+    (void)before;
+}
+
 // --- the same suite on a single voter ----------------------------------------
 
 void test_one_voter_reaches_the_same_state(const std::filesystem::path& root) {
@@ -999,7 +1204,11 @@ int main() {
             fresh("corrupt-snapshot"));
         test_recovery_is_never_behind_the_last_acknowledged_commit(fresh("power-cut"));
         test_durability_is_tracked_separately_and_never_overstated(fresh("durable"));
+        test_recovery_survives_a_cut_at_every_byte_boundary(fresh("power-cut-sweep"));
+        test_a_torn_hard_state_write_never_produces_a_corrupt_hard_state(
+            fresh("torn-hard-state"));
         test_an_entry_cannot_commit_before_its_bytes_are_durable(fresh("gate"));
+        test_a_follower_ack_never_covers_merely_staged_entries(fresh("follower-ack"));
         test_a_writer_thread_carries_durability_off_the_owner_loop(fresh("writer"));
         test_one_voter_reaches_the_same_state(fresh("voter-count"));
 

@@ -2694,15 +2694,94 @@ records and so proved only that the BLOCK layer round-tripped - the record
 decoder had nothing to find and reported zero either way. Staging real records
 was the difference between a test that passes and a test that looks.
 
-STATUS: Phase 7's implementation scope is complete - asynchronous staging, an
-off-thread sync, preallocated segments, checksummed versioned snapshots and
-compaction, and durable-index and backpressure metrics. The durability gate is
-enforced inside Raft by the pinned patch. Guards are tested by mutation and by
-ThreadSanitizer as well as by assertion.
+#### 10.18.7 A follower's ack is the other half of the same defect
 
-NO PERFORMANCE CLAIM IS MADE. Phase 7's gate puts correctness and power-cut
-evidence before throughput, no benchmark has been run, and the power-cut matrix
-is currently three durability points rather than genuine power interruption.
+The pinned patch gates a LEADER's own vote. A follower's acknowledgement carries
+the same hazard from the other direction and the patch cannot touch it, because
+the number is produced on this side of the wire: `raft_recv_appendentries` returns
+a `current_idx`, the leader turns it straight into that follower's match index,
+and counts it toward quorum. A follower that acks entries it has only staged is
+a leader counting an undurable copy, one hop away.
+
+`receive_peer` clamps the reported index to the follower's own durable index. It
+costs a round trip - the leader sees a lower match, resends, and the follower
+reports the higher index once its writer catches up - and the alternative is a
+quorum formed around bytes a power cut would erase.
+
+Pinned by a three-voter test in which ONLY THE LEADER FLUSHES: followers receive,
+append and reply, and the leader must not commit. Removing the clamp fails it.
+
+#### 10.18.8 The power-cut sweep, and the two defects it found on its first run
+
+The earlier "power-cut matrix" was three durability points. It is now a sweep:
+the segment is truncated at every structurally distinct offset - nothing, inside
+the magic, inside the header, one byte short of a block, exactly a block, a byte
+past one, and every block boundary through the written frontier - and after each
+cut the node must start, must not invent state, and must be able to continue.
+
+It found two things immediately, which is the argument for sweeps over points.
+
+A RECOVERED COMMIT INDEX PAST THE END OF THE LOG WAS FATAL. A cut that loses the
+tail leaves exactly that shape: hard state that was durable naming entries that
+were not. The node refused to start. That is the wrong trade - it converts a
+survivable crash into a permanent outage whose only remedy is deleting state,
+which is also the remedy most likely to destroy the evidence. It now CLAMPS and
+reports the gap through `recovered_commit_clamped`. Clamping is safe for the
+reason "committed" means something: a majority held those entries and a peer
+re-supplies them. On a single voter a non-zero value is real loss, which requires
+the storage to have broken its own durability contract, and the honest response
+is to start, report it, and let an operator see the number.
+
+ONE 64 KiB BLOCK PER RECORD. `flush_durability` seals whatever is open on every
+call - correctly, since leaving a record staged to save a write is the latency
+the phase exists to remove - so a quiet system writes one block per record. At
+64 KiB a two-hundred-byte command cost 64 KiB of disk. The block is now 4 KiB,
+page-sized, with a static assertion tying it to the largest canonical command
+frame so growing the command budget fails the BUILD rather than silently
+refusing records at runtime, which would look like backpressure and would not be.
+
+#### 10.18.9 What the measurement actually says
+
+Phase 7's gate puts correctness and power-cut evidence before throughput. Both
+now pass, so `v2-storage-benchmark` measures rather than claims. It reports the
+OWNER LOOP's time, separated from the disk's, because that is what the phase set
+out to change - and it reports the synchronous and off-thread figures together,
+since the difference between them is the only part that is about the design
+rather than about the machine it ran on.
+
+On the development host, two thousand command-sized records:
+
+| | synchronous | off-thread |
+|---|---:|---:|
+| median | 21.6 us | 0.042 us |
+| p99 | 109 us | 208 us |
+| max | 7136 us | 358 us |
+
+THE MEDIAN IS THE OBJECTIVE AND THE P99 IS THE HONEST PART. Off-thread is about
+five hundred times faster at the median and twenty times better at the worst
+case, because the owner no longer waits for an fsync. At p99 it is WORSE, and
+that is not a defect: under sustained load faster than the disk the owner waits
+for a block instead, which is bounded admission refusal doing exactly what it
+promises. The design converts an unbounded per-record stall into a bounded
+queue-full one; it does not make the disk faster.
+
+The first run of that benchmark reported four fifths of records refused, because
+shrinking the block from 64 KiB to 4 KiB shrank the total staging budget
+sixteen-fold along with it. The arena is now sixty-four blocks - a quarter of a
+megabyte, which is the budget that was actually intended. A benchmark that found
+a sizing error before it found a number was worth writing.
+
+These figures are a development laptop's. The deployment targets are a Pi and a
+NUC, and no claim is made about either until the gates run there.
+
+STATUS: Phase 7 is complete in implementation scope and in its test-first list -
+block and generation transitions, no record straddling a block, torn-data
+detection, release/acquire publication proven under ThreadSanitizer, stale
+completions refused, durable-index ordering, a follower ack that never covers
+staged entries, commit never exceeding quorum-durable, bounded refusal under
+writer stall, hard-state torn-write refusal, snapshot durability before
+reclamation, and a power-cut sweep. Guards are tested by mutation as well as by
+assertion.
 
 ## 11. Execution authority and kill contract
 
