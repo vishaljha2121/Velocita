@@ -282,6 +282,38 @@ ProposeOutcome ReplicatedKernel::propose(const std::span<const std::byte> comman
         return outcome;
     }
 
+    // THE LANE IS A LABEL UNTIL IT IS CHECKED.
+    //
+    // `ProposeLane` is chosen by the caller, so naming the control lane is not
+    // the same as being entitled to it. Two ways that would make the
+    // reservation meaningless:
+    //
+    //   - label an ordinary command "control" and spend the kill path's
+    //     reserved blocks on strategy traffic;
+    //   - offer a real control command from an unauthenticated caller. The
+    //     reducer refuses it - but only AFTER the entry has consumed reserved
+    //     capacity, committed and replicated. A refusal that costs the resource
+    //     it was protecting is a denial of service on the kill path.
+    //
+    // So the lane decodes and checks before the entry exists. That costs a
+    // decode on a path taken once per operator action, and it is the difference
+    // between a reservation and a bypass anyone may name.
+    if (lane == ProposeLane::control) {
+        Command probe;
+        const auto decoded =
+            decode_kernel_command(command_bytes, probe, *codec_scratch_);
+        const bool is_control =
+            decoded.error == KernelCodecError::none &&
+            (std::holds_alternative<AdvanceKillEpoch>(probe.body) ||
+             std::holds_alternative<SetExecutorGeneration>(probe.body) ||
+             std::holds_alternative<SetStrategyMode>(probe.body)) &&
+            is_operator_caller(probe.identity.caller_id);
+        if (!is_control) {
+            outcome.status = ProposeStatus::not_a_control_command;
+            return outcome;
+        }
+    }
+
     // THE RESERVATION, and it has to be here rather than in the arena.
     //
     // By the time `log_offer` calls `stage`, Raft has already accepted the entry

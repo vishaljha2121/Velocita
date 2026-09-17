@@ -15,6 +15,35 @@ release-engineering work.
 
 ### Phase 8 in development - execution authority, fencing, and emergency control
 
+#### The control lane checks its label, and leadership is not promotion — 2026-09-16
+
+A HOLE OPENED BY THE PREVIOUS COMMIT, closed here. `ProposeLane` is chosen by
+the caller, so naming the control lane was not the same as being entitled to it.
+Two ways that made the reservation meaningless: label an ordinary command
+"control" and spend the kill path's reserved blocks on strategy traffic; or
+offer a real control command from an unauthenticated caller, which the reducer
+refuses - but only after the entry has consumed reserved capacity, committed and
+replicated. A refusal that costs the resource it was protecting is a denial of
+service on the kill path.
+
+`propose` now decodes and checks before the entry exists: the right kind of
+command, from a caller in the operator band. Bytes that do not decode are not a
+control command either, because the lane cannot take the caller's word for what
+it is carrying. That costs one decode on a path taken once per operator action.
+
+G-053: LEADERSHIP IS NOT PROMOTION. The dangerous reading of "the leader is the
+gateway" is that whoever wins Raft has become the execution authority - dangerous
+precisely because leadership changes on its own, from a timeout or a restart,
+while the old gateway may still be alive and sending. `no-auto-promotion`
+promotes once deliberately, then removes and restores leadership three times,
+requiring the executor generation to be unchanged on every voter after each, and
+across a restart. It also requires leadership to have actually moved, or
+"leadership changed and nothing promoted" is a claim about an event that never
+happened.
+
+Mutation-confirmed against the REALISTIC unsafe design - promote once per
+leadership term - after a cruder mutant was killed by the wrong assertion.
+
 #### Lease renewal, operator authorization, and the control lane — 2026-09-16
 
 THE RENEWAL PATH IS WHERE THE LEASE BINDS. A lease any read could renew would

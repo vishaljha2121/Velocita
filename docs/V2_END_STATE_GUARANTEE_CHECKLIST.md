@@ -488,9 +488,37 @@ Phase 11 strategy/model validation and controlled canary
   control lane to supply more bytes than a single block could hold, which only
   real reserved blocks can do.
 
+  THE LANE IS A LABEL UNTIL IT IS CHECKED. `ProposeLane` is chosen by the
+  caller, so naming the control lane is not the same as being entitled to it.
+  Two ways that would have made the reservation meaningless, both now refused
+  before the entry exists: label an ordinary command "control" and spend the
+  kill path's blocks on strategy traffic; or offer a real control command from
+  an unauthenticated caller, which the reducer refuses only AFTER the entry has
+  consumed reserved capacity, committed and replicated - a refusal that costs
+  the resource it was protecting is a denial of service on the kill path. Bytes
+  that do not decode are not a control command either: the lane cannot take the
+  caller's word for what it is carrying. Evidence: `control-lane-admission`.
+
+  G-053 IS ABOUT AN EVENT NOBODY WATCHES. The dangerous reading of "the leader
+  is the gateway" is that whoever wins Raft has thereby become the execution
+  authority - dangerous because leadership changes on its own, from a timeout, a
+  slow link or a restart, while the old gateway may still be alive and sending.
+  Executor generation is what the pre-send guard fences on, so the property is
+  simply that no leadership event moves it.
+
+  `no-auto-promotion` promotes once deliberately, then takes leadership away and
+  returns it three times, and requires the generation to be unchanged on EVERY
+  voter after each - and unchanged across a restart, since a voter coming back
+  with no memory of who it was must recover the generation rather than mint one.
+  It also requires leadership to have actually moved, because "leadership
+  changed and nothing promoted" is otherwise a claim about an event that never
+  happened. Mutation-confirmed against the realistic unsafe design - promote once
+  per leadership term - not merely against an obvious one.
+
   WHAT EACH GUARANTEE STILL NEEDS. G-052/G-054 have their pre-send refusals from
-  Phase 5 but no external fence to be single against. G-053 and G-059 need the
-  manual promotion workflow and its reconciliation proof. G-055 has both its
+  Phase 5 but no external fence to be single against. G-053 has its property proved - nothing
+  promotes automatically - and needs the operator-facing workflow that makes a
+  deliberate promotion safe, which is G-059's reconciliation proof. G-055 has both its
   refusal and its renewal, and needs the gateway loop that calls them plus an
   accepted bound. G-056 has authorization and independence, and needs the
   authenticated edge that assigns operator callers. G-057 and G-058 need stop

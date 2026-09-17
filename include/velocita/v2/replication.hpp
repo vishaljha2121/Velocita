@@ -58,6 +58,10 @@ enum class ProposeStatus : std::uint8_t {
     // admitted. Distinct from `refused` because the caller's correct response is
     // different: this one says retry later, that one says something is wrong.
     normal_lane_exhausted,
+    // Offered on `ProposeLane::control`, but it is not an authenticated control
+    // command: the wrong kind of command, a caller outside the operator band,
+    // or bytes that do not decode at all.
+    not_a_control_command,
 };
 
 // WHICH LANE A COMMAND IS PROPOSED ON.

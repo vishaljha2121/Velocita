@@ -147,6 +147,14 @@ DecisionFrame decision_frame() {
     return value;
 }
 
+// Same, with the caller spelled out, for the tests that care which one it is.
+Command command_from(const std::uint64_t caller, const std::uint64_t sequence,
+                     CommandBody body) {
+    return {{CallerId{caller}, RequestSequence{sequence},
+             digest(static_cast<std::uint8_t>(0x60 + (sequence % 150)))},
+            std::move(body)};
+}
+
 Command command(const std::uint64_t sequence, CommandBody body) {
     return {{CallerId{1}, RequestSequence{sequence},
              digest(static_cast<std::uint8_t>(0x60 + (sequence % 150)))},
@@ -1264,6 +1272,129 @@ void test_corruption_of_acknowledged_history_fails_closed(
             "truncated anything meaningful");
 }
 
+void test_winning_leadership_is_not_promotion(const std::filesystem::path& root) {
+    // G-053. The dangerous reading of "the leader is the gateway" is that
+    // whoever wins Raft has thereby become the execution authority. It is
+    // dangerous because Raft leadership changes on its own - a timeout, a slow
+    // link, a restart - and the old gateway may still be alive and sending.
+    // Promotion has to be a decision somebody makes, not a consequence of an
+    // election nobody watched.
+    //
+    // Executor generation is what the pre-send guard fences on, so this asserts
+    // the only thing that matters: no leadership event moves it. The generation
+    // moves when an operator says so, and at no other time.
+    Cluster cluster(root, 3);
+    auto& first = cluster.elect();
+    const auto original = first.state().executor_generation;
+    const auto first_leader = first.status().node_id;
+
+    // Promote deliberately once, so the test is not merely observing a value
+    // that nothing in this fixture could ever change.
+    const auto promote = encoded(command_from(kMaxOperatorCallerId, 1,
+        SetExecutorGeneration{ExecutorGeneration{original.value() + 1}}));
+    require(first.propose(promote, ProposeLane::control).status ==
+                ProposeStatus::admitted,
+            "a deliberate promotion was refused");
+    cluster.settle(200);
+    const auto promoted = cluster.elect().state().executor_generation;
+    require(promoted.value() == original.value() + 1,
+            "the deliberate promotion did not take");
+
+    // Now take leadership away and give it to somebody else, repeatedly. Each
+    // of these is exactly the event a standby might mistake for its cue.
+    std::set<std::int32_t> leaders_seen{first_leader};
+    for (int round = 0; round < 3; ++round) {
+        const auto leader = cluster.elect().status().node_id;
+        cluster.partitioned.insert(leader);
+        cluster.settle(400);
+        cluster.partitioned.erase(leader);
+        cluster.settle(400);
+        leaders_seen.insert(cluster.elect().status().node_id);
+
+        for (auto& node : cluster.nodes) {
+            require(node->state().executor_generation == promoted,
+                    "a leadership change moved the executor generation on node " +
+                        std::to_string(node->status().node_id));
+        }
+    }
+
+    // Without this the loop above could have re-elected the same voter every
+    // time, and "leadership changed and nothing promoted" would be a claim about
+    // an event that never happened.
+    require(leaders_seen.size() > 1,
+            "leadership never actually moved, so this test never observed the "
+            "event it exists to rule out");
+
+    const auto final_leader = cluster.elect().status().node_id;
+
+    // And a restart - a voter coming back with no memory of who it was - is not
+    // a promotion either. It recovers the generation, it does not mint one.
+    cluster.restart(final_leader);
+    cluster.settle(400);
+    for (auto& node : cluster.nodes) {
+        require(node->state().executor_generation == promoted,
+                "a restart moved the executor generation on node " +
+                    std::to_string(node->status().node_id));
+    }
+}
+
+void test_the_control_lane_admits_only_authenticated_control(
+    const std::filesystem::path& root) {
+    // THE RESERVE IS ONLY A RESERVE IF NOT EVERYONE CAN SPEND IT.
+    //
+    // `ProposeLane` is chosen by the caller, so on its own it is a label, not a
+    // permission. Two ways to make the reservation meaningless follow from that,
+    // and both are closed here:
+    //
+    //   - label an ordinary command "control" and spend the kill path's blocks
+    //     on strategy traffic;
+    //   - send a real control command from an unauthenticated caller, which the
+    //     reducer will refuse - AFTER the entry has already consumed reserved
+    //     capacity, committed, and replicated. A refusal that costs the resource
+    //     it was protecting is a denial of service on the kill path.
+    //
+    // Both are refused BEFORE the entry exists, which is the only point at which
+    // refusing is free.
+    Cluster cluster(root, 1);
+    auto& node = cluster.elect();
+
+    const auto ordinary = encoded(command(1, ConfigureRiskLimits{
+        AccountId{5}, InstrumentId{4}, RiskPolicyVersion{6}, RiskVersion{0},
+        KillEpoch{}, ExecutorGeneration{}, QuantityLots::from_atoms(4),
+        QuantityLots::from_atoms(8), MoneyMicros::from_atoms(4'000),
+        MoneyMicros::from_atoms(8'000), 1'000'000, 2'500}));
+    require(node.propose(ordinary, ProposeLane::control).status ==
+                ProposeStatus::not_a_control_command,
+            "an ordinary command was admitted to the control lane");
+
+    // The same command on its own lane is fine, so the refusal is about the
+    // lane and not about the command.
+    require(node.propose(ordinary).status == ProposeStatus::admitted,
+            "the ordinary command was not admissible at all");
+
+    const auto unauthenticated =
+        encoded(command_from(kMaxOperatorCallerId + 1, 2,
+                             AdvanceKillEpoch{KillEpoch{1}}));
+    require(node.propose(unauthenticated, ProposeLane::control).status ==
+                ProposeStatus::not_a_control_command,
+            "an unauthenticated caller was allowed to spend the kill reserve");
+
+    // And the real thing still gets in.
+    const auto authentic = encoded(command_from(kMaxOperatorCallerId, 3,
+                                                AdvanceKillEpoch{KillEpoch{1}}));
+    require(node.propose(authentic, ProposeLane::control).status ==
+                ProposeStatus::admitted,
+            "an authenticated control command was refused by its own lane");
+
+    // Undecodable bytes are not a control command either. The lane cannot take
+    // the caller's word for what it is carrying, so anything it cannot read is
+    // not something it may reserve capacity for.
+    const std::vector<std::byte> garbage(64, std::byte{0xEE});
+    require(node.propose(garbage, ProposeLane::control).status ==
+                ProposeStatus::not_a_control_command,
+            "the control lane reserved capacity for bytes it could not read");
+}
+
 void test_a_flood_of_normal_commands_cannot_starve_a_kill(
     const std::filesystem::path& root) {
     // G-056, the independence half. The kill command already exists and is now
@@ -1587,6 +1718,11 @@ int main(int argc, char** argv) {
                 test_compacted_corrupt_snapshot_refuses_empty_recovery(fresh("compacted-corrupt"));
             else if (name == "corrupt-wal-sweep")
                 test_corruption_of_acknowledged_history_fails_closed(fresh("corrupt-wal-sweep"));
+            else if (name == "no-auto-promotion")
+                test_winning_leadership_is_not_promotion(fresh("no-auto-promotion"));
+            else if (name == "control-lane-admission")
+                test_the_control_lane_admits_only_authenticated_control(
+                    fresh("control-lane-admission"));
             else if (name == "control-lane")
                 test_a_flood_of_normal_commands_cannot_starve_a_kill(fresh("control-lane"));
             else if (name == "v1-v2-isolation")
@@ -1625,6 +1761,9 @@ int main(int argc, char** argv) {
             fresh("torn-hard-state"));
         test_v2_storage_is_not_v1_storage(fresh("v1-v2-isolation"));
         test_a_flood_of_normal_commands_cannot_starve_a_kill(fresh("control-lane"));
+        test_the_control_lane_admits_only_authenticated_control(
+            fresh("control-lane-admission"));
+        test_winning_leadership_is_not_promotion(fresh("no-auto-promotion"));
         test_an_entry_cannot_commit_before_its_bytes_are_durable(fresh("gate"));
         test_a_follower_ack_never_covers_merely_staged_entries(fresh("follower-ack"));
         test_a_writer_thread_carries_durability_off_the_owner_loop(fresh("writer"));
