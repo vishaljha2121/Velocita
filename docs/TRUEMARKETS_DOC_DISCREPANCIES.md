@@ -235,14 +235,20 @@ than inside a comment nobody revisits.
 
 Python's `urllib` receives `HTTP 403` with body `error code: 1010` on every
 request to `api.truemarkets.co`, including plain unauthenticated GETs. `curl`
-with a browser user-agent receives `200` for the identical URL. That is a
-Cloudflare browser-signature block, not an API response.
+with a browser user-agent receives `200` for the identical URL.
 
-WHY IT IS DANGEROUS RATHER THAN MERELY ANNOYING. No API error appears. A client
-built on a default HTTP library sees a uniform 403 on everything and will
-naturally conclude its credentials or its request envelope are wrong - when
-nothing has reached the API at all. We spent an auth-envelope investigation on
-exactly this before noticing `1010` is a Cloudflare code.
+NARROWED 2026-09-17, AND THE FIRST VERSION OF THIS ROW OVERSTATED IT. A RAW
+PYTHON TLS SOCKET sending browser-like headers receives `200`. So the block is on
+the USER-AGENT, not on the TLS fingerprint - `urllib` announces itself as
+`Python-urllib/3.x` and trips the rule. Any client that sets a browser
+user-agent passes, which makes this a one-line fix in the adapter rather than a
+transport constraint.
+
+WHY IT IS STILL DANGEROUS. No API error appears. A client on a default HTTP
+library sees a uniform 403 on everything and will naturally conclude its
+credentials or its request envelope are wrong - when nothing reached the API at
+all. We spent an auth-envelope investigation on exactly this before noticing
+`1010` is a Cloudflare code, and the fix turned out to be a header.
 
 ---
 
@@ -300,6 +306,33 @@ in favour of `key_id`. The response field is `access_token`.
 
 None of that is documented. It was established by trying four envelopes and
 recording which the venue accepted.
+
+---
+
+## D-16. Market data requires authentication; the asset catalog does not
+
+| | |
+|---|---|
+| Status | RESOLVED - answers an open must-confirm row |
+| First seen | 2026-09-17 |
+
+`MUST_CONFIRM_BEFORE_ADAPTER_CONNECT.md` lists "authentication requirement for
+market data" as an open field, with "may block collection entirely" as the
+consequence if it is required.
+
+It is required. `/v1/market-data/*`, `/v1/conductor/orderbook` and
+`/v1/defi/orderbook` all return `401 Jwt is missing` unauthenticated, while
+`GET /v1/conductor/assets` returns 200 without a credential (D-11).
+
+CONSEQUENCE. `model/`'s collector cannot gather market data, by construction:
+`ReadOnlyHttp` prohibits the auth endpoint precisely so the research package can
+never hold a credential. Collecting book data therefore needs either a separate
+credentialled collector outside `model/`, or a deliberate decision to relax that
+interlock - which should not be taken quietly.
+
+`/v1/defi/market` responds `400 handshake error: bad "Upgrade" header` to a plain
+GET, confirming it is a live WebSocket endpoint reachable without a credential at
+the transport level. Whether the socket then demands a token is untested.
 
 ---
 
