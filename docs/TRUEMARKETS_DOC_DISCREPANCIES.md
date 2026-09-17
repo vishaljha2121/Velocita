@@ -303,6 +303,51 @@ recording which the venue accepted.
 
 ---
 
+## D-14. Increment sizes are scoped to CeFi *explicitly*, and DeFi has none anywhere
+
+| | |
+|---|---|
+| Status | OPEN - supersedes D-6 with a stronger finding |
+| First seen | 2026-09-17 |
+
+D-6 recorded that the increment table looked CeFi-scoped. It is scoped
+EXPLICITLY, in the page's own words:
+
+> "True Markets' CeFi exchange (the "Exchange") enforces minimum increments for
+> all instruments traded on the Exchange."
+
+under the heading "CeFi Exchange Minimum Increments". The page mentions DeFi
+nowhere at all.
+
+PAGES CHECKED FOR A DEFI TICK OR LOT, ALL NEGATIVE: `/documentation/increment-sizes`,
+`/market-data/overview`, `/apis/retail/true-markets-gateway-api`,
+`/apis/retail/create-order/`, and the asset catalog itself (no field on any of
+213 entries mentions tick, lot, fee, minimum, increment or precision). The DeFi
+WebSocket channel list names `priceCandles`, `trendingAssets`, `surgingAssets`,
+`referencePrices`, `orderbook` and `error` - no instrument-metadata channel,
+unlike CeFi which has one called `instrument`.
+
+WHY THE CHAIN'S DOCUMENTATION IS NOT THE ANSWER. Tick and lot are MARKET rules,
+not chain rules. A chain publishes token decimals - how many atoms make a whole
+token - and we already have that from the catalog's `decimals` field. Nothing on
+Solana or Base states whether True Markets' matching will accept a price of
+1.234567 or round it, because that is True Markets' rule and not the chain's.
+
+THE ONE REAL EXCEPTION IS HYPERLIQUID. `hypercore-spot` and `hypercore-perp` are
+Hyperliquid, whose own exchange API publishes spot metadata including size
+decimals and tick rules. That is authoritative - but it is the EXCHANGE's
+documentation rather than the chain's, and it covers two tradeable assets out of
+204.
+
+A POSSIBILITY WORTH HOLDING OPEN. The DeFi surface may have no tick or lot at
+all, accepting arbitrary precision down to token decimals. If so the cluster
+cannot represent it as things stand: `quote_micros_per_tick_lot` is an integer
+number of quote micros, and tick x lot would be a fraction below one. That is a
+modelling question, not a lookup, and it changes what a "verified" answer would
+even look like.
+
+---
+
 ## How to add a row
 
 One heading per discrepancy, numbered. Record what the docs say, what we did
