@@ -77,6 +77,30 @@ new way to reach that comparison; it does not touch the comparison.
 Cluster-wide escalation was considered and rejected again, as architecture 10.1.5
 already rejected it: one unreconcilable order must not halt everything.
 
+## Implementation status, 2026-09-17
+
+RULE 1 IS BUILT AND TESTED. An unsolicited `cancelled` on a resting order moves
+it to `reconciling`, which the existing `cancel_unconfirmed` need already
+targets - so the push case is complete and self-heals through machinery that was
+already there. Mutation-confirmed two ways.
+
+RULES 2 AND 3 ARE NOT BUILT, and were deliberately backed out after being
+written. Rule 3 - widening `order_reconciled` to resting orders - sits inside
+Phase 4's evidence-applicability machinery, where several gates interact: an
+effect-centric resolved check, a terminal check, a conflict check, and a
+`venue_denies_order` path. A first attempt exempted the wrong predicate and
+caused a late `order_acknowledged` to erase partial-fill knowledge; the second
+still refused for a reason not yet located.
+
+RULE 2 WAS BACKED OUT WITH IT, ON PURPOSE. Querying resting orders while their
+answers are refused is worse than not querying: the attempt never discharges,
+and because the heartbeat is deliberately uncapped it would retry forever. The
+two rules are one increment and must land together.
+
+This does not change the decision. It records that the remaining half needs a
+focused pass over the applicability gates rather than an incremental patch, and
+that the tree is green without it.
+
 ## Consequences
 
 An order can now leave `live` without the cluster having authorized anything,

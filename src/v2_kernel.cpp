@@ -2865,6 +2865,18 @@ enum class CancelDisposition : std::uint8_t {
     }
     const bool effect_resolved = effect->state == OutboxState::acknowledged ||
                                  effect->state == OutboxState::rejected;
+    // ADR 0008. An unsolicited cancellation is evidence about the ORDER, not
+    // about the submit effect that placed it - and that effect being resolved
+    // is the NORMAL case here, since the venue acknowledged the order before
+    // cancelling it. The gate below is effect-centric, so without this exemption
+    // it swallows exactly the evidence this change exists to accept.
+    const bool unsolicited_cancellation =
+        observation.kind == VenueObservationKind::cancelled &&
+        effect->operation == EffectOperation::submit &&
+        effect->effect_id == order.effect_id &&
+        (order.state == ClusterOrderState::acknowledged ||
+         order.state == ClusterOrderState::live ||
+         order.state == ClusterOrderState::partially_filled);
     if ((terminal && !late_cancel_completion && !terminal_cancel_rejection) ||
         (effect_resolved && reconciled_cancel &&
          effect->state != OutboxState::rejected) ||
@@ -2872,7 +2884,8 @@ enum class CancelDisposition : std::uint8_t {
         (order.state == ClusterOrderState::reconciling && !reconciled_cancel &&
          !(cancel_reconcilable && (cancel_agrees || cancel_contradicts))) ||
         (effect_resolved && !late_cancel_completion && !reconciled_cancel &&
-         !terminal_cancel_rejection && !cancel_reconcilable) ||
+         !terminal_cancel_rejection && !cancel_reconcilable &&
+         !unsolicited_cancellation) ||
         (effect->effect_id != order.effect_id && !late_cancel_completion)) {
         return venue_event_result(state,
                                   ApplyCode::venue_observation_not_applicable,
@@ -2955,10 +2968,33 @@ enum class CancelDisposition : std::uint8_t {
             order.state = ClusterOrderState::reconciling;
             break;
         case VenueObservationKind::cancelled:
+            // ADR 0008. An UNSOLICITED cancellation of a resting order is
+            // evidence, not noise. Refusing it left the cluster believing a dead
+            // order was still working - reservation held, slot occupied, book
+            // silently wrong - and exchange-initiated cancellation is routine
+            // rather than exotic: a post-only order that would cross, self-trade
+            // prevention, a market halt.
+            //
+            // It lands in `reconciling`, which is exactly where an AUTHORED
+            // cancel puts an order, because `cancelled` is a notification here
+            // and not terminal evidence. Settlement comes from cumulative
+            // evidence afterwards, so the venue still cannot free reserved risk
+            // by announcing anything. Deliberately NOT `conflict`: that is
+            // terminal-but-stuck and blocks a resume under G-059, so a routine
+            // post-only rejection would wedge trading until a human cleared it.
             if (effect->operation != EffectOperation::cancel) {
-                return venue_event_result(
-                    state, ApplyCode::venue_observation_not_applicable,
-                    next_version, observation);
+                const bool resting =
+                    order.state == ClusterOrderState::acknowledged ||
+                    order.state == ClusterOrderState::live ||
+                    order.state == ClusterOrderState::partially_filled;
+                if (!resting || effect->operation != EffectOperation::submit ||
+                    effect->effect_id != order.effect_id) {
+                    return venue_event_result(
+                        state, ApplyCode::venue_observation_not_applicable,
+                        next_version, observation);
+                }
+                order.state = ClusterOrderState::reconciling;
+                break;
             }
             effect->state = order.state == ClusterOrderState::filled
                                 ? OutboxState::acknowledged : OutboxState::reconciling;

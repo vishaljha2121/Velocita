@@ -3551,7 +3551,7 @@ void test_acknowledged_duplicate_fills_do_not_exhaust_receipts() {
 }
 
 
-void test_an_unrequested_venue_cancellation_cannot_release_risk() {
+void test_an_unrequested_venue_cancellation_is_evidence_not_noise() {
     using namespace velocita::v2;
     // THE OTHER HALF OF G-060, and it is narrower than ADR 0007 first claimed.
     //
@@ -3593,13 +3593,41 @@ void test_an_unrequested_venue_cancellation_cannot_release_risk() {
                             submit.cluster_order_id(), submit.effect_id(), 902),
         scratch);
 
-    require(outcome.code == ApplyCode::venue_observation_not_applicable,
-            "an unrequested venue cancellation was accepted as evidence");
-    require(state.orders[0].state == ClusterOrderState::live,
-            "an unrequested venue cancellation moved the order anyway");
+    // ADR 0008. The venue telling us unprompted is EVIDENCE, and refusing it left
+    // the cluster believing a dead order was resting - reservation held, slot
+    // occupied, book silently wrong. Exchange-initiated cancellation is routine
+    // (a post-only order that would cross, self-trade prevention, a halt), so
+    // this fires in normal operation and not only from a console.
+    //
+    // It moves to `reconciling`, which is exactly what an AUTHORED cancel
+    // produces: `cancelled` is a notification in this design, not terminal
+    // evidence, and settlement comes from cumulative evidence afterwards. Not
+    // `conflict` - that is terminal-but-stuck and blocks a resume under G-059,
+    // so a routine post-only rejection would wedge trading until a human cleared
+    // it, and a safety rule that fires constantly gets disabled.
+    require(outcome.code == ApplyCode::applied,
+            "an unrequested venue cancellation was refused, leaving the cluster "
+            "believing a dead order was still resting");
+    require(state.orders[0].state == ClusterOrderState::reconciling,
+            "an unrequested venue cancellation did not put the order in doubt");
+
+    // THE SAFETY HALF IS UNCHANGED AND IS THE POINT. Accepting the notification
+    // must not release anything: the venue cannot free reserved risk by
+    // announcing a cancellation, only cumulative evidence can settle it.
     require_economics_unchanged(before, state,
                                 "an unrequested venue cancellation released "
                                 "reserved risk on the venue's word alone");
+    require(state.reservations[0].state != ReservationState::released,
+            "an unrequested venue cancellation released the reservation");
+
+    // And it is now in doubt, so a resume is blocked until it is settled - the
+    // divergence is visible rather than silent, which is the whole change.
+    state.strategy_mode = StrategyMode::halted;
+    const Command resume{{CallerId{9}, RequestSequence{77}, digest(0x5A)},
+                         SetStrategyMode{StrategyMode::normal, state.kill_epoch,
+                                         state.executor_generation}};
+    require(apply(state, resume, scratch).code == ApplyCode::reconciliation_required,
+            "trading could resume while an order's fate was unknown");
 }
 
 velocita::v2::Command mass_cancel(const velocita::v2::TradingState& state,
@@ -3841,7 +3869,7 @@ int main() {
         test_fill_failures_are_atomic_and_bounded();
         test_cancel_and_unknown_remain_risk_bearing_until_evidence();
         test_fill_cancel_race_consumes_one_reservation();
-        test_an_unrequested_venue_cancellation_cannot_release_risk();
+        test_an_unrequested_venue_cancellation_is_evidence_not_noise();
         test_mass_cancel_pulls_every_cancellable_order_in_scope();
         test_mass_cancel_skips_the_uncancellable_without_failing();
         test_mass_cancel_refuses_rather_than_half_finishing();

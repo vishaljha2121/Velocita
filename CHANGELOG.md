@@ -15,6 +15,39 @@ release-engineering work.
 
 ### Phase 8 in development - execution authority, fencing, and emergency control
 
+#### An unsolicited venue cancellation is evidence — 2026-09-17
+
+ADR 0008, first of three rules. A native `cancelled` for a resting order the
+cluster never asked to cancel is now accepted and moves the order to
+`reconciling`. Refusing it left the cluster believing a dead order was still
+working - reservation held, slot occupied, book silently wrong - and
+exchange-initiated cancellation is routine rather than exotic: a post-only order
+that would cross, self-trade prevention, a market halt.
+
+`reconciling` is exactly where an AUTHORED cancel puts an order, because
+`cancelled` is a notification in this design and not terminal evidence.
+Settlement still comes from cumulative evidence, so the venue cannot free
+reserved risk by announcing anything. Deliberately not `conflict`: that is
+terminal-but-stuck and blocks a resume under G-059, so a routine post-only
+rejection would wedge trading until a human cleared it, and a safety rule that
+fires constantly during normal operation is one that gets disabled.
+
+The gate that had been swallowing it is effect-centric, and the distinction is
+the fix: an unsolicited cancellation is evidence about the ORDER, not about the
+submit effect that placed it - and that effect being resolved is the normal case
+here, since the venue acknowledged the order before cancelling it.
+
+Because `reconciling` already carries the `cancel_unconfirmed` need, the push
+case self-heals through machinery that was already built.
+
+RULES 2 AND 3 OF ADR 0008 ARE NOT IN THIS COMMIT. They were written and then
+backed out: widening `order_reconciled` to resting orders sits inside Phase 4's
+evidence-applicability gates, where a first attempt exempted the wrong predicate
+and made a late `order_acknowledged` erase partial-fill knowledge. Querying
+resting orders while their answers are refused is worse than not querying - the
+attempt never discharges and the heartbeat is uncapped - so the two rules are
+one increment and must land together. The ADR records this.
+
 #### G-060, and a claim the test falsified — 2026-09-17
 
 The gateway half is now a PROPERTY rather than a sample: for every identity
