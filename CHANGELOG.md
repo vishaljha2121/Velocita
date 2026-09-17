@@ -15,6 +15,45 @@ release-engineering work.
 
 ### Phase 9 in development - True Markets adapter
 
+#### The venue wire: exact units, and two sources that must prove each other — 2026-09-17
+
+A FINDING FIRST, because it shaped the whole slice. The replicated
+`InstrumentExecutionProfile` carries `quote_micros_per_tick_lot` - the PRODUCT of
+tick size and lot size. That is what risk needs, since it yields notional. It is
+NOT enough to render a venue order, which needs price and quantity SEPARATELY,
+and the factors cannot be recovered from their product. So the adapter must carry
+tick and lot itself, from venue metadata that is not replicated and must not be.
+
+That leaves two sources for one economic fact, and the only safe thing to do
+with two sources is make them prove each other. `spec_agrees_with_profile`
+requires tick x lot to reproduce the replicated product EXACTLY - not closely,
+because a product that does not land on a whole number of quote micros cannot be
+represented by the contract at all, and rounding it would encode an error as a
+price. A tick size wrong by a factor of ten is the classic venue-metadata error
+and the one that makes every quote invalid; it is refused, as is a spec for a
+different instrument or venue, because agreeing about a number is not the same
+as being about the same thing.
+
+EVERY CONVERSION IS INTEGER. There is no floating point in the header or its
+implementation. A value that round-trips through a double is a value nobody
+chose, and the venue accepts it as readily as a correct one.
+
+REFUSAL RATHER THAN TRUNCATION is the contract of the return value. A prefix of a
+number is a valid-looking number: "1234" cut from "12345" is an order at a tenth
+of the price, and it would be accepted.
+
+WHAT MUTATION TESTING ACTUALLY SHOWED, recorded because the honest result is more
+useful than the tidy one. Removing the exactness check and removing the buffer
+refusal each die on their named assertion. But rewriting the sign handling as
+`negative ? -atoms : atoms` - the classic int64-min bug - STILL RENDERS int64 min
+correctly on this compiler, so every value assertion passes. It is caught by
+UBSan instead: "negation of -9223372036854775808 cannot be represented". The
+protection for that line is the Debug ASan+UBSan run that gates every phase, and
+nowhere else. The comment on the function now says so rather than implying an
+assertion covers it.
+
+36/36 host, 36/36 ASan+UBSan.
+
 #### The venue boundary, made explicit — 2026-09-17
 
 Until now there was none. `SimulatedVenue` is a concrete class used only by
