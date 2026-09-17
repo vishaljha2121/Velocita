@@ -59,6 +59,11 @@ surface; what was withdrawn is the claim that the DeFi surface is VERIFIED
 perpetual. Instrument type is recorded as unverified, NOT as spot - absence of a
 word is not evidence.
 
+RESOLVED 2026-09-17 BY THE CATALOG. `GET /v1/conductor/assets` reports
+`type: spot` on all 210 DeFi and all 3 CeFi assets. That is positive evidence
+from a field rather than the absence of a word, so instrument type moves from
+UNVERIFIED to VERIFIED SPOT. See `evidence/V2_TRUEMARKETS_CATALOG_2026-09-17.md`.
+
 WHAT IT COST. Two days of Phase 9 planning aimed at an execution target that ADR
 0004 forbade, and a near-miss: the block was discovered by the project owner
 noticing the docs disagreed with our own evidence file, not by us.
@@ -183,11 +188,15 @@ The project owner reports that the DeFi surface settles on **Base** and
 **Hyperliquid**, and that the catalog includes **Robinhood tokens**. None of this
 appears in the documentation as read on 2026-09-17.
 
-WHY IT IS WRITTEN DOWN. So it is not lost, and so that confirming or
-contradicting it later is a finding rather than a surprise. A Base + Hyperliquid
-split would mean two chains, two gas regimes, and possibly two instrument types
-under one `venue=defi` label - which the adapter would have to keep apart rather
-than average.
+CONFIRMED 2026-09-17, ALL THREE. The catalog reports chains
+`solana` (112), `base` (73), `robinhood` (20), `hypercore-spot` (3),
+`hypercore-perp` (1) and `arbitrum` (1). The owner's recollection was better than
+the documentation.
+
+AND IT IS WORSE THAN A TWO-CHAIN SPLIT: there are SIX chain labels under one
+`venue=defi`, so the adapter cannot treat "defi" as one venue with one gas
+regime. `hypercore-perp` holds exactly one asset - USDC, the settlement token,
+itself typed `spot` - so no perpetual instrument is listed.
 
 ---
 
@@ -214,6 +223,83 @@ nothing was sent, and the effect would be retried into a second live order.
 Given D-2, where a documented fact about this venue changed under us inside two
 days, a dependency of this weight belongs on a list somebody re-reads rather
 than inside a comment nobody revisits.
+
+---
+
+## D-10. Cloudflare blocks non-browser clients, and says nothing useful
+
+| | |
+|---|---|
+| Status | OPEN - the adapter must handle it |
+| First seen | 2026-09-17 |
+
+Python's `urllib` receives `HTTP 403` with body `error code: 1010` on every
+request to `api.truemarkets.co`, including plain unauthenticated GETs. `curl`
+with a browser user-agent receives `200` for the identical URL. That is a
+Cloudflare browser-signature block, not an API response.
+
+WHY IT IS DANGEROUS RATHER THAN MERELY ANNOYING. No API error appears. A client
+built on a default HTTP library sees a uniform 403 on everything and will
+naturally conclude its credentials or its request envelope are wrong - when
+nothing has reached the API at all. We spent an auth-envelope investigation on
+exactly this before noticing `1010` is a Cloudflare code.
+
+---
+
+## D-11. The asset catalog needs no authentication
+
+| | |
+|---|---|
+| Status | RESOLVED - and it corrects an assumption of ours |
+| First seen | 2026-09-17 |
+
+`GET /v1/conductor/assets` returns 200 with no `Authorization` header, and the
+authenticated response is byte-identical.
+
+WHAT THIS CORRECTS. The catalog confirmation procedure was written on the
+assumption that a credential was required, and the project owner was asked for
+one on that basis. It was not needed. `model/`'s `ReadOnlyHttp` - which
+deliberately prohibits the auth endpoint and can never hold a credential - could
+have fetched this the whole time.
+
+---
+
+## D-12. Tick size, lot size, fees and minimums are published NOWHERE
+
+| | |
+|---|---|
+| Status | OPEN - blocks priced orders |
+| First seen | 2026-09-17 |
+
+No field on any of the 213 catalog entries mentions tick, lot, fee, minimum,
+increment or precision. `market_data` carries supply figures only and `networks`
+is empty. Four plausible metadata paths 404: `/v1/conductor/assets/{id}`,
+`/v1/conductor/pairs`, `/v1/conductor/markets`, `/v1/conductor/instruments`.
+
+WHAT IT BLOCKS. `VenueInstrumentSpec` exists precisely to carry tick and lot
+separately, because the replicated profile stores only their product and the
+factors cannot be recovered from it. With no source for either,
+`spec_agrees_with_profile` can never be satisfied and the adapter cannot render a
+priced order. This is now the narrowest blocker on the execution path.
+
+---
+
+## D-13. The auth envelope is undocumented but now verified
+
+| | |
+|---|---|
+| Status | RESOLVED by experiment |
+| First seen | 2026-09-17 |
+
+`POST /v1/auth/api-key/token` accepts
+`{"key_id": "<uuid>", "timestamp": <integer>, "signature": "<base64url>"}`
+where the signature is ES256 over `{key_id}.{timestamp}` as RAW r||s, sixty-four
+bytes, base64url and unpadded. A DER-encoded signature is the wrong shape, a
+STRING timestamp is rejected as `invalid request body`, and `keyId` is rejected
+in favour of `key_id`. The response field is `access_token`.
+
+None of that is documented. It was established by trying four envelopes and
+recording which the venue accepted.
 
 ---
 
