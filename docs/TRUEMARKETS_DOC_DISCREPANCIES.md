@@ -348,6 +348,45 @@ even look like.
 
 ---
 
+## D-15. Hyperliquid prices are significant figures, not a tick - which the cluster cannot represent
+
+| | |
+|---|---|
+| Status | OPEN - a modelling problem, not a lookup |
+| First seen | 2026-09-17 |
+
+Hyperliquid's own documentation is precise where True Markets' is silent:
+
+> "Prices can have up to 5 significant figures, but no more than
+> `MAX_DECIMALS - szDecimals` decimal places." Integer prices are always valid.
+> "Sizes are rounded to the `szDecimals` of that asset."
+> `MAX_DECIMALS` is 6 for perps and 8 for spot.
+
+So the allowed price granularity DEPENDS ON THE PRICE. Near 1.2345 the increment
+is 0.0001; near 12345 it is 1. There is no fixed tick to put in a field.
+
+WHY THAT MATTERS MORE THAN THE MISSING NUMBER. `InstrumentExecutionProfile`
+carries ONE `quote_micros_per_tick_lot`, and `VenueInstrumentSpec` carries ONE
+`tick_quote_micros`. Both assume a constant tick. A significant-figure rule
+cannot be expressed by either, and a cached value would be correct only while the
+price stays inside one decade - which is the D-6 staleness hazard again, but
+continuous rather than in nine buckets.
+
+CONSEQUENCE FOR "JUST TRADE HYPERLIQUID ASSETS". Restricting to `hypercore-*`
+does buy authoritative, published rules. It does not buy rules the cluster can
+hold, and it shrinks the tradable universe to TWO assets - KNTQ and PURR, the
+only `hypercore-spot` entries marked tradeable. It also leaves a second gap: the
+rules above are HYPERLIQUID's, and we would be trading through True Markets'
+gateway, which may validate or round differently on top. Upstream documentation
+is necessary and not sufficient.
+
+WHAT WOULD ACTUALLY RESOLVE IT. Either a price-granularity representation the
+contract can hold - significant figures are expressible as a rule rather than a
+number - or a per-instrument tick that True Markets states for its own gateway.
+The first is a byte-contract question; the second is a question for the venue.
+
+---
+
 ## How to add a row
 
 One heading per discrepancy, numbered. Record what the docs say, what we did
