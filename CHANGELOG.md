@@ -15,6 +15,46 @@ release-engineering work.
 
 ### Phase 8 in development - execution authority, fencing, and emergency control
 
+#### G-057a's fencing half, and the gateway loop deferred to Phase 9 — 2026-09-17
+
+G-057a discharges a forward reference Phase 4 left open deliberately.
+`settle_orphaned_effects` marks an effect `incomplete` when its order resolved
+before that effect ever received evidence - the alternative being a group that
+can never be reclaimed, which wedges the bounded arenas - and its own comment
+says the late-send hazard "is answered by executor-generation and kill-epoch
+fencing plus stable EffectId idempotency in Phase 8, not by retaining these
+bytes forever."
+
+That answer is now a test, stated as three claims, and the guarantee's whole
+point is that the second and third protect us rather than the first: the cluster
+does NOT keep the bytes (a settled-incomplete effect is not deliverable - the
+availability trade Phase 4 made, not a protection); FENCING stops a gateway that
+kept them anyway, and the `OrderEffect` carries the generation and kill epoch it
+was authorized under, so the refusal does not depend on the cluster being able to
+rebuild it; and `EffectId` is derived rather than allocated, so the same effect
+rebuilds to the same identity and bytes.
+
+WHAT THE TEST IS AND IS NOT. Its individual assertions overlap existing coverage
+- zeroing the effect's generation is caught by the pre-send suite long before it
+reaches here - so it is NOT claimed as unique mutation coverage. Its value is
+assembling the exact scenario the guarantee names, a closed order's orphaned
+effect, which no other test does.
+
+THE BOX STAYS UNTICKED. The guarantee says a duplicate "is a deterministic no-op
+rather than a second external effect". The cluster can supply a stable
+idempotency key and does; whether a redelivery becomes one order or two is the
+VENUE's decision, and depends on the adapter using `EffectId` as its idempotency
+key. Recorded as a Phase 9 obligation rather than assumed.
+
+THE GATEWAY LOOP IS DEFERRED TO PHASE 9. Every Phase 8 mechanism is enforced and
+none is DRIVEN: nothing calls `renew_authority`, chooses a lease bound, reaches
+for the emergency lane, or runs the resting-order heartbeat. That loop's shape is
+decided by the adapter it talks to - the lease bound by real round-trip times,
+the heartbeat cadence by venue rate limits, the authoritative read by whether the
+gateway is in-process with a voter - so building it first would mean choosing
+those numbers twice. No Phase 8 guarantee is ticked as a result, which is a
+sequencing decision and not an omission.
+
 #### A resting order is confirmed, not assumed — 2026-09-17
 
 ADR 0008 rules 2 and 3, completing the visibility half of G-060. Reconciliation

@@ -636,6 +636,85 @@ void test_the_gateway_can_send_nothing_the_cluster_did_not_author() {
             "the authored effect survived the outbox it came from");
 }
 
+void test_a_late_send_against_a_closed_order_is_fenced_not_retained() {
+    // G-057a, and it discharges a forward reference Phase 4 left open on
+    // purpose. Orphan settlement (architecture 8.2) marks an effect `incomplete`
+    // when its order resolved before that effect ever received evidence - the
+    // alternative being a group that can never be reclaimed, which wedges the
+    // bounded arenas. `settle_orphaned_effects` says so in as many words: a late
+    // gateway send against a closed order "is answered by executor-generation
+    // and kill-epoch fencing plus stable EffectId idempotency in Phase 8, not by
+    // retaining these bytes forever."
+    //
+    // This is that answer, stated as three separate claims, because the
+    // guarantee is precisely that the SECOND and THIRD are what protect us and
+    // not the first.
+    auto fixture = authorized_submit();
+    const auto effect_id = fixture.effect_id;
+
+    // CLAIM ONE: the cluster does NOT keep the bytes. Once settled, the effect
+    // is not deliverable and the guard says so - which is the availability trade
+    // Phase 4 made, not a protection.
+    fixture.state.outbox_effects[0].state = OutboxState::incomplete;
+    RecordingTransport settled_transport;
+    const auto settled = deliver(fixture.state, effect_id,
+                                 matching_control(fixture.state), capable_venue(),
+                                 open_quota(), settled_transport);
+    require(settled.refusal == PreSendRefusal::effect_not_deliverable,
+            "a settled-incomplete effect was still considered deliverable");
+    require(settled_transport.send_count() == 0,
+            "a settled-incomplete effect reached the transport");
+
+    // CLAIM TWO: FENCING is what stops a gateway that kept the bytes anyway.
+    // A stale executor generation or kill epoch is refused at the last pre-send
+    // boundary regardless of what the gateway is holding, and regardless of
+    // whether the cluster still has anything to say about that effect.
+    auto advanced = fixture.state;
+    advanced.outbox_effects[0].state = OutboxState::pending;
+    const auto stale_control = matching_control(advanced);
+    advanced.executor_generation =
+        ExecutorGeneration{advanced.executor_generation.value() + 1};
+    RecordingTransport generation_transport;
+    require(deliver(advanced, effect_id, stale_control, capable_venue(),
+                    open_quota(), generation_transport)
+                    .refusal == PreSendRefusal::stale_executor_generation,
+            "a deposed gateway's late send was not fenced by generation");
+    require(generation_transport.send_count() == 0,
+            "a deposed gateway's late send reached the transport");
+
+    auto killed = fixture.state;
+    killed.outbox_effects[0].state = OutboxState::pending;
+    const auto pre_kill_control = matching_control(killed);
+    killed.kill_epoch = KillEpoch{killed.kill_epoch.value() + 1};
+    RecordingTransport kill_transport;
+    require(deliver(killed, effect_id, pre_kill_control, capable_venue(),
+                    open_quota(), kill_transport)
+                    .refusal == PreSendRefusal::stale_kill_epoch,
+            "a late send from before the kill was not fenced by kill epoch");
+    require(kill_transport.send_count() == 0,
+            "a late send from before the kill reached the transport");
+
+    // AND THE EFFECT'S OWN BYTES CARRY THE FENCE, which is what makes this work
+    // when the gateway is holding a payload the cluster has forgotten. An
+    // OrderEffect names the generation and kill epoch it was authorized under,
+    // so the refusal does not depend on the cluster being able to rebuild it.
+    const auto authorized = materialize_order_effect(fixture.state, effect_id);
+    require(authorized.has_value(), "the fixture effect could not be rebuilt");
+    require(authorized->executor_generation == fixture.state.executor_generation &&
+                authorized->kill_epoch == fixture.state.kill_epoch,
+            "the effect does not carry the authority it was created under, so a "
+            "gateway holding it could not be fenced by its own bytes");
+
+    // CLAIM THREE: IDENTITY IS STABLE, so a duplicate is recognisable as one.
+    // The EffectId is derived, not allocated, so rebuilding the same effect
+    // yields the same identity - which is what lets a venue treat a redelivery
+    // as the same request rather than as a second order.
+    const auto rebuilt = materialize_order_effect(fixture.state, effect_id);
+    require(rebuilt.has_value() && rebuilt->effect_id == effect_id &&
+                encode_payload(*rebuilt).bytes == encode_payload(*authorized).bytes,
+            "the same effect did not rebuild to the same identity and bytes");
+}
+
 void test_an_unknown_or_unreconstructable_effect_is_refused() {
     const auto fixture = authorized_submit();
     RecordingTransport transport;
@@ -702,6 +781,7 @@ int main() {
     test_a_venue_that_cannot_represent_the_intent_is_refused_not_approximated();
         test_exhausted_quota_defers_rather_than_sending();
         test_the_gateway_can_send_nothing_the_cluster_did_not_author();
+    test_a_late_send_against_a_closed_order_is_fenced_not_retained();
     test_an_unknown_or_unreconstructable_effect_is_refused();
         test_a_settled_effect_is_not_deliverable();
         test_gateway_local_delivery_states_are_never_read_from_the_cluster();

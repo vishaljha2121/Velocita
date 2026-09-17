@@ -613,6 +613,44 @@ Phase 11 strategy/model validation and controlled canary
   Closing it needs an evidence kind for "the venue does not hold this order",
   which is a material byte contract and a change to accepted Phase 4 economics.
 
+  G-057a: THE FENCING HALF IS CLOSED, THE IDEMPOTENCY HALF IS PHASE 9'S. This
+  guarantee discharges a forward reference Phase 4 left open deliberately.
+  `settle_orphaned_effects` marks an effect `incomplete` when its order resolved
+  before that effect ever received evidence - the alternative being a group that
+  can never be reclaimed, which wedges the bounded arenas - and its own comment
+  says the late-send hazard "is answered by executor-generation and kill-epoch
+  fencing plus stable EffectId idempotency in Phase 8, not by retaining these
+  bytes forever."
+
+  `test_a_late_send_against_a_closed_order_is_fenced_not_retained` states that
+  answer as three claims, and the point of the guarantee is that the SECOND and
+  THIRD protect us rather than the first:
+
+    1. The cluster does NOT keep the bytes. A settled-incomplete effect is
+       refused as `effect_not_deliverable`. That is the availability trade Phase
+       4 made, not a protection.
+    2. FENCING stops a gateway that kept the bytes anyway - a stale executor
+       generation or kill epoch is refused at the last pre-send boundary, and
+       the `OrderEffect` carries the generation and kill epoch it was authorized
+       under, so the refusal does not depend on the cluster being able to
+       rebuild it.
+    3. IDENTITY IS STABLE. `EffectId` is derived rather than allocated, so the
+       same effect rebuilds to the same identity and the same canonical bytes.
+
+  WHAT THIS TEST IS AND IS NOT. Its individual assertions overlap existing
+  coverage - zeroing the effect's generation is caught by the pre-send suite long
+  before it reaches here - so it is not claimed as unique mutation coverage. Its
+  value is that it assembles the exact scenario the guarantee names, a CLOSED
+  order's orphaned effect, which no other test does. Acceptance asked for that
+  scenario specifically.
+
+  THE BOX STAYS UNTICKED FOR ONE REASON. The guarantee says a duplicate "is a
+  deterministic no-op rather than a second external effect". The cluster can
+  supply a stable idempotency key and does; whether a redelivery becomes one
+  order or two is decided by the VENUE, and depends on the adapter using
+  `EffectId` as its idempotency key. That is a Phase 9 obligation and is recorded
+  as one rather than assumed here.
+
   WHAT EACH GUARANTEE STILL NEEDS. G-052/G-054 have their pre-send refusals from
   Phase 5 but no external fence to be single against. G-053 has its property proved - nothing
   promotes automatically - and needs the operator-facing workflow that makes a
@@ -625,8 +663,20 @@ Phase 11 strategy/model validation and controlled canary
   the no-side-door property, the safety half, and now the visibility half under
   ADR 0008 - a resting order is confirmed rather than assumed, so a cancellation
   the cluster never authorized is discovered whether the venue pushes the event
-  or the event is lost. No byte contract was needed. G-057a needs the closed-order
-  case driven end to end.
+  or the event is lost. No byte contract was needed. G-057a's fencing half is closed
+  above; its idempotency half is the Phase 9 adapter's obligation to use
+  `EffectId` as the venue idempotency key.
+
+  AND THE GATEWAY LOOP IS DEFERRED TO PHASE 9, deliberately. Every mechanism in
+  this phase is enforced; what is missing is the loop that DRIVES them - calls
+  `renew_authority` against an authoritative read, chooses a lease bound, reaches
+  for the emergency lane, and runs the resting-order heartbeat. That loop's shape
+  is decided by the venue adapter it talks to: the lease bound depends on real
+  round-trip times, the heartbeat cadence on the venue's rate limits, and the
+  authoritative read on whether the gateway is in-process with a voter. Building
+  it before the adapter would mean choosing those numbers twice. Phase 8's
+  guarantees therefore stay unticked until Phase 9 supplies the driver, and that
+  is a sequencing decision rather than an omission.
 
 ## 9. TrueMarkets adapter boundary — Phase 9
 

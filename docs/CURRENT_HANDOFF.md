@@ -1,9 +1,105 @@
 # Current development handoff
 
-Updated: 2026-09-16
+Updated: 2026-09-17
 
 Purpose: compact working memory for the next agent session. Verify this file
 against Git before acting; do not reconstruct the project from chat history.
+
+## PHASE 8 SUBSTANTIALLY BUILT, DRIVER DEFERRED TO PHASE 9 — 2026-09-17
+
+This section supersedes every older one below it. Those remain as an audit trail
+and must not be read as current status.
+
+### Where the tree is
+
+- branch `v2/phase-5-corrections`; use Git for HEAD rather than trusting a value
+  written here;
+- development host Release 34/34 and Debug ASan+UBSan 34/34;
+- tags `v2-phase7-nuc-gated` (the tree that actually passed the NUC gate, root
+  `b241ad40...`) and `v2-phase7-complete` (guarantees closed, NOT gate-covered);
+- NO Phase 8 gate exists yet, and the Phase 7 gate pins were deliberately frozen
+  rather than allowed to drift with Phase 8 work.
+
+### Read these first, in this order
+
+1. This section.
+2. `docs/adr/0007` (mass cancel; the log as audit record) and `docs/adr/0008`
+   (a resting order is confirmed, not assumed). Both carry amendments recording
+   claims that turned out false - read the amendments, not just the decisions.
+3. The Phase 8 block in `docs/V2_END_STATE_GUARANTEE_CHECKLIST.md`.
+4. The 2026-09-16 and 2026-09-17 CHANGELOG entries.
+
+### What Phase 8 built
+
+FOUR MECHANISMS, none subsuming another, all enforced and mutation-checked:
+
+- THE AUTHORITY LEASE. Generation fencing compares a cached view against cluster
+  state, which only helps a gateway that can still READ the cluster; a
+  partitioned one believes its last good answer indefinitely. The lease bounds
+  how stale that belief may be, renews ONLY on an authoritative read, and is
+  fail-closed - a zero bound means no authority, not no limit. A cancel is
+  exempt: a lapsed lease means stop opening exposure, not stop closing it.
+- OPERATOR AUTHORIZATION WITH NO NEW BYTES. The reducer cannot verify a
+  signature (G-066 keeps keys out of replicated state, `apply` does no I/O), so
+  authentication is necessarily an edge property. `kMaxOperatorCallerId` reserves
+  a CallerId band. THE DEPLOYMENT OBLIGATION: the edge must never issue a
+  reserved CallerId to a strategy.
+- TWO RESERVED LANES, gateway-side and cluster-side. `ProposeLane::control`
+  decodes and checks before the entry exists, because a refusal that costs the
+  resource it was protecting is a denial of service on the kill path.
+- MASS CANCEL as one command (ADR 0007), atomic over the cancellable set.
+
+PLUS: resuming `normal` requires reconciliation (G-059); leadership is never
+promotion (G-053); an unsolicited venue cancellation is evidence (ADR 0008 r1);
+and a resting order is confirmed rather than assumed (ADR 0008 r2/r3).
+
+### What is NOT done, and why
+
+THE GATEWAY LOOP IS DEFERRED TO PHASE 9, deliberately. Every mechanism is
+enforced and none is DRIVEN: nothing calls `renew_authority`, nothing chooses a
+lease bound, nothing reaches for the emergency lane, nothing runs the
+resting-order heartbeat. That loop's shape is decided by the adapter it talks to
+- the lease bound by real round-trip times, the heartbeat cadence by venue rate
+limits, the authoritative read by whether the gateway is in-process with a voter.
+Building it first would mean choosing those numbers twice.
+
+CONSEQUENTLY NO PHASE 8 GUARANTEE IS TICKED. That is a sequencing decision, not
+an omission, and ticking one on a refusal nothing calls would claim a working
+kill path from a guard sitting in isolation.
+
+Also open: the ARM64 container gate and a Phase 8 gate have never been run; the
+physical Pi gate remains a carried Phase 5 obligation; peer snapshot transport
+does not exist; `docs/README.md` is modified and uncommitted (protected path,
+not touched).
+
+### Where a reviewer should push hardest
+
+1. ADR 0008's amendments. Two claims I wrote were falsified by tests I then
+   wrote - that an out-of-band venue action reconciles back (it could not be
+   represented at all), and that closing the gap needed a byte contract (it did
+   not). Both corrections are recorded; check the reasoning, not just the result.
+2. The two ACCEPTED TESTS whose expectations changed under ADR 0008. Both
+   required a reconciliation answer for a healthy order to be refused. That
+   assumption is what the ADR overturns, but it is still an accepted test being
+   rewritten and deserves a second opinion.
+3. `disposition_of_cancel`. Mass cancel's feasibility pass and acting pass read
+   one rule so they cannot drift; verify they genuinely do.
+
+### Method notes that cost something to learn
+
+- A REFUSAL CODE TELLS YOU WHICH CHECK FAILED ONLY IF YOU CONFIRM WHICH CHECK
+  RAN. A day was lost blaming applicability gates for a refusal that was
+  `validate` rejecting a test fixture with a zero venue sequence - and the
+  instrumentation used to chase it was misattributing single-line returns while
+  the lines being read came from other tests in the same suite run.
+- MUTATE, THEN CHECK WHICH ASSERTION DIED. Several mutants were killed by the
+  wrong test, which is a false pass in disguise: the suite caught something, not
+  the thing.
+- A SWEEP OVER AN ARBITRARY RANGE PROVES LESS THAN IT LOOKS. The identities a
+  wrong lookup returns are the other ids in the same records, not random numbers.
+- `cp` RESTORING A FILE CAN LEAVE A STALE OBJECT on this host's mtime
+  granularity, so the next run measures the previous binary. Delete the object
+  file, do not rely on `touch`.
 
 ## REVIEW LANDED — six Phase 6/7 defects corrected, gates pinned and unrun — 2026-09-16
 
