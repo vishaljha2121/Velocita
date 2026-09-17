@@ -15,6 +15,45 @@ release-engineering work.
 
 ### Phase 9 in development - True Markets adapter
 
+#### A two-step venue send is one effect — 2026-09-17
+
+Implements ADR 0009. The DeFi order path is not one request: `POST /orders`
+returns unsigned payloads and leaves the order awaiting a client signature, then
+a second call submits the signatures and the order rests. Cancellation has the
+same prepare-then-execute shape. The gateway never learns any of that - nothing
+in the cluster's model could use it and everything in it would be complicated by
+it.
+
+THE SAFETY CONTENT IS THE OUTCOME MAPPING, and specifically that the two
+ambiguity points are NOT the same answer. An ambiguous FIRST step reports
+`pre_send_failure`, because an `initialized` order cannot fill - it awaits a
+signature that was never sent - so "nothing is at the venue" is true in the only
+sense the gateway cares about. An ambiguous SUBMISSION reports `ambiguous`,
+because the order may be resting and only reconciliation can find out.
+
+Collapsing them either way is expensive. Reporting step one as ambiguous sends
+the gateway reconciling an order that cannot exist; reporting step two as
+nothing-sent lets the effect be retried into a SECOND LIVE ORDER.
+
+AN AMBIGUOUS SUBMISSION IS NEVER ABANDONED. Cancelling what may be a live order
+is worse than leaving it, and the gateway's reconciliation asks what is actually
+resting with the cluster's full picture rather than the adapter's partial one.
+Every other post-step-one failure does abandon the unsigned order - it cannot
+fill, so that cleanup is untidiness rather than risk.
+
+The load-bearing documented fact - `initialized` means "awaiting client
+signature" - is recorded as D-9 in the discrepancies file rather than left in a
+comment, because a documented fact about this venue already changed under us once
+inside two days.
+
+Five mutants, each dying on its own named assertion.
+
+A METHOD FIX THAT FINALLY STUCK. Mutation through cmake is unreliable here and
+cost the third such incident today; a fresh build directory works but its 46s
+configure blew a command timeout and left a mutation in the working tree.
+Compiling the suite DIRECTLY with `c++ -Iinclude tests/<suite>.cpp <deps>` takes
+seconds and has no objects to go stale. Recorded in the handoff.
+
 #### The create-order body, and the refusal that protects the strategy — 2026-09-17
 
 The documented market-order body encodes. The LIMIT body refuses until somebody

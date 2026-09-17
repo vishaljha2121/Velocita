@@ -62,6 +62,57 @@ VenueSessionId seam_session(void* context) {
 
 }  // namespace
 
+SendOutcome resolve_two_step_send(const TwoStepSend& steps,
+                                  const OrderEffect& effect) noexcept {
+    // STEP ONE. Nothing exists at the venue until this succeeds.
+    switch (steps.prepare_fn(steps.context, effect)) {
+        case StepOutcome::succeeded:
+            break;
+        case StepOutcome::rate_limited:
+            return SendOutcome::rate_limited;
+        case StepOutcome::refused:
+        case StepOutcome::ambiguous:
+            // Ambiguity here is reported as "nothing was sent" because an order
+            // left `initialized` cannot fill. See ADR 0009 for the documented
+            // fact this rests on, and for why it is recorded as a dependency
+            // rather than assumed.
+            return SendOutcome::pre_send_failure;
+    }
+
+    // From here an `initialized` order may exist, so every failure path below
+    // attempts to abandon it.
+    switch (steps.sign_fn(steps.context, effect)) {
+        case StepOutcome::succeeded:
+            break;
+        case StepOutcome::rate_limited:
+        case StepOutcome::refused:
+        case StepOutcome::ambiguous:
+            // Signing is local. It cannot be ambiguous about the VENUE, so every
+            // non-success means nothing was submitted.
+            steps.abandon_fn(steps.context, effect);
+            return SendOutcome::pre_send_failure;
+    }
+
+    switch (steps.submit_fn(steps.context, effect)) {
+        case StepOutcome::succeeded:
+            return SendOutcome::accepted;
+        case StepOutcome::ambiguous:
+            // THE ONE THAT MATTERS. The order may be resting. Do NOT abandon -
+            // abandoning what may be a live order is worse than leaving it, and
+            // only the gateway's reconciliation can establish which it is.
+            return SendOutcome::ambiguous;
+        case StepOutcome::rate_limited:
+            steps.abandon_fn(steps.context, effect);
+            return SendOutcome::rate_limited;
+        case StepOutcome::refused:
+            // A clean refusal at submission is the venue declining on its own
+            // terms, which is economic information and not a transport failure.
+            steps.abandon_fn(steps.context, effect);
+            return SendOutcome::business_rejected;
+    }
+    return SendOutcome::pre_send_failure;
+}
+
 VenueTransport simulated_venue_transport(SimulatedVenue& venue) noexcept {
     seams().push_back(std::make_unique<SimulatorSeam>(SimulatorSeam{&venue, {}}));
     VenueTransport transport;

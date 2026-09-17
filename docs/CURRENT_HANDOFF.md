@@ -87,14 +87,23 @@ not touched).
 
 ### Method notes that cost something to learn
 
-- MUTATION TESTING IN A SHARED BUILD DIRECTORY IS UNRELIABLE ON THIS HOST, and it
-  produced WRONG RESULTS REPEATEDLY in the 2026-09-17 session - mutants reported
-  as surviving that were never compiled, and mutants killed by an assertion
-  belonging to a different property. Deleting the object file is not enough and
-  `touch` is not enough; sub-second mtime granularity defeats both. USE A FRESH
-  BUILD DIRECTORY PER MUTANT, confirm the compile line actually appears, and
-  check WHICH assertion died. A mutant that dies on the wrong assertion is a
-  false pass wearing a green coat.
+- MUTATION TESTING THROUGH CMAKE IS UNRELIABLE ON THIS HOST, and it produced
+  WRONG RESULTS REPEATEDLY on 2026-09-17: mutants reported as surviving that were
+  never compiled, and mutants killed by an assertion belonging to a different
+  property. Deleting the object file is not enough, `touch` is not enough, and a
+  fresh build directory costs 46 seconds of configure each time - which is what
+  pushed a four-mutant loop past the command timeout and left a mutation applied
+  in the working tree.
+
+  WHAT WORKS: compile the suite DIRECTLY, no cmake.
+
+      c++ -std=c++20 -O1 -DVELOCITA_TARGET_CACHE_LINE_SIZE=128 -Iinclude \
+          -o /tmp/t tests/<suite>.cpp <its .cpp deps>
+
+  Seconds rather than minutes, and immune to staleness because there are no
+  objects to go stale. Always check WHICH assertion died: a mutant that dies on
+  an assertion belonging to a different property is a false pass wearing a green
+  coat, and that happened three times in one day.
 
 - A REFUSAL CODE TELLS YOU WHICH CHECK FAILED ONLY IF YOU CONFIRM WHICH CHECK
   RAN. A day was lost blaming applicability gates for a refusal that was

@@ -38,6 +38,137 @@ OrderEffect submit_effect(const std::uint64_t id) {
     return effect;
 }
 
+// ADR 0009. Every path through the two-step send, with the venue's answers
+// injected so nothing here touches a network.
+struct StepScript {
+    StepOutcome prepare{StepOutcome::succeeded};
+    StepOutcome sign{StepOutcome::succeeded};
+    StepOutcome submit{StepOutcome::succeeded};
+    int abandons{};
+    int prepares{};
+    int signs{};
+    int submits{};
+};
+
+TwoStepSend scripted(StepScript& script) {
+    TwoStepSend steps;
+    steps.context = &script;
+    steps.prepare_fn = [](void* c, const OrderEffect&) {
+        auto& s = *static_cast<StepScript*>(c);
+        ++s.prepares;
+        return s.prepare;
+    };
+    steps.sign_fn = [](void* c, const OrderEffect&) {
+        auto& s = *static_cast<StepScript*>(c);
+        ++s.signs;
+        return s.sign;
+    };
+    steps.submit_fn = [](void* c, const OrderEffect&) {
+        auto& s = *static_cast<StepScript*>(c);
+        ++s.submits;
+        return s.submit;
+    };
+    steps.abandon_fn = [](void* c, const OrderEffect&) {
+        ++static_cast<StepScript*>(c)->abandons;
+    };
+    return steps;
+}
+
+void test_a_clean_two_step_send_is_one_accepted() {
+    StepScript script;
+    require(resolve_two_step_send(scripted(script), submit_effect(1)) ==
+                SendOutcome::accepted,
+            "a send where both steps succeeded was not accepted");
+    require(script.prepares == 1 && script.signs == 1 && script.submits == 1,
+            "the happy path did not run each step exactly once");
+    require(script.abandons == 0, "a successful send abandoned its own order");
+}
+
+void test_nothing_happens_at_the_venue_before_step_one_succeeds() {
+    for (const auto outcome : {StepOutcome::refused, StepOutcome::ambiguous}) {
+        StepScript script;
+        script.prepare = outcome;
+        require(resolve_two_step_send(scripted(script), submit_effect(1)) ==
+                    SendOutcome::pre_send_failure,
+                "a failed first step did not report that nothing was sent");
+        require(script.signs == 0 && script.submits == 0,
+                "the adapter signed or submitted after the first step failed");
+        require(script.abandons == 0,
+                "the adapter tried to abandon an order the venue never created");
+    }
+
+    StepScript paced;
+    paced.prepare = StepOutcome::rate_limited;
+    require(resolve_two_step_send(scripted(paced), submit_effect(1)) ==
+                SendOutcome::rate_limited,
+            "pacing at the first step was reported as a failure, which tells the "
+            "caller to reconsider the order rather than to slow down");
+}
+
+void test_step_one_ambiguity_is_not_step_two_ambiguity() {
+    // THE DISTINCTION THIS WHOLE FUNCTION EXISTS FOR.
+    //
+    // Both are "we do not know what the venue did". They are reported
+    // differently because an order left `initialized` CANNOT FILL - it awaits a
+    // signature that was never sent - while an ambiguous submission may be
+    // resting right now.
+    //
+    // Collapsing them either way is expensive. Reporting step one as `ambiguous`
+    // sends the gateway reconciling for an order that cannot exist. Reporting
+    // step two as `pre_send_failure` tells the gateway nothing is at the venue
+    // when something may be, and the effect would be retried into a second live
+    // order.
+    StepScript first;
+    first.prepare = StepOutcome::ambiguous;
+    const auto first_step = resolve_two_step_send(scripted(first), submit_effect(1));
+
+    StepScript second;
+    second.submit = StepOutcome::ambiguous;
+    const auto second_step = resolve_two_step_send(scripted(second), submit_effect(1));
+
+    require(first_step == SendOutcome::pre_send_failure,
+            "an ambiguous first step claimed something might be resting");
+    require(second_step == SendOutcome::ambiguous,
+            "an ambiguous submission claimed nothing was sent, which would let "
+            "the effect be retried into a second live order");
+    require(first_step != second_step,
+            "the two ambiguity points were collapsed into one answer");
+}
+
+void test_an_ambiguous_submission_is_never_abandoned() {
+    // Abandoning what may be a live order is worse than leaving it. Only the
+    // gateway's reconciliation can establish which it is, and it asks with the
+    // cluster's full picture rather than the adapter's partial one.
+    StepScript script;
+    script.submit = StepOutcome::ambiguous;
+    require(resolve_two_step_send(scripted(script), submit_effect(1)) ==
+                SendOutcome::ambiguous,
+            "fixture drifted");
+    require(script.abandons == 0,
+            "the adapter cancelled an order that may have been resting");
+}
+
+void test_a_failure_after_step_one_abandons_the_unsigned_order() {
+    // A signing failure or a clean refusal leaves an `initialized` order behind.
+    // It cannot fill, so the cleanup is untidiness rather than risk - but
+    // leaving it forever would litter the venue with unsigned orders.
+    StepScript signing;
+    signing.sign = StepOutcome::refused;
+    require(resolve_two_step_send(scripted(signing), submit_effect(1)) ==
+                SendOutcome::pre_send_failure,
+            "a signing failure was not reported as nothing-sent");
+    require(signing.abandons == 1 && signing.submits == 0,
+            "a signing failure did not abandon the unsigned order");
+
+    StepScript refused;
+    refused.submit = StepOutcome::refused;
+    require(resolve_two_step_send(scripted(refused), submit_effect(1)) ==
+                SendOutcome::business_rejected,
+            "a venue declining at submission was reported as a transport "
+            "failure rather than as the economic answer it is");
+    require(refused.abandons == 1, "a refused submission left its order behind");
+}
+
 // THE POINT OF THE WHOLE FILE. A scenario is run twice - once against the
 // simulator directly, once through the transport vtable that wraps it - and the
 // two must agree at every step.
@@ -195,6 +326,11 @@ void test_an_undelivered_observation_survives_truncation() {
 
 int main() {
     try {
+        test_a_clean_two_step_send_is_one_accepted();
+        test_nothing_happens_at_the_venue_before_step_one_succeeds();
+        test_step_one_ambiguity_is_not_step_two_ambiguity();
+        test_an_ambiguous_submission_is_never_abandoned();
+        test_a_failure_after_step_one_abandons_the_unsigned_order();
         test_the_simulator_behaves_identically_through_the_seam();
         test_a_poll_never_overruns_the_caller_s_buffer();
         test_an_undelivered_observation_survives_truncation();

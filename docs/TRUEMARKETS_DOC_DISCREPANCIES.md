@@ -191,6 +191,32 @@ than average.
 
 ---
 
+## D-9. `initialized` meaning "awaiting client signature" is load-bearing
+
+| | |
+|---|---|
+| Status | DEPENDENCY - documented today, and the design fails if it changes |
+| First seen | 2026-09-17 |
+
+The Gateway API overview describes the DeFi order lifecycle status
+`initialized` as "awaiting client signature (DeFi orders, CeFi buy orders ...)".
+
+WHY IT IS IN THIS FILE RATHER THAN TAKEN FOR GRANTED. ADR 0009 resolves the
+venue's two-step send into one `SendOutcome`, and reports an AMBIGUOUS FIRST STEP
+as `pre_send_failure` - "nothing is at the venue". That is only true because an
+`initialized` order cannot fill: it is awaiting a signature that was never sent,
+so it holds no exposure.
+
+IF THE VENUE COULD EVER ACTIVATE AN ORDER WITHOUT THE CLIENT SIGNATURE, that
+mapping is unsafe - step one would create live risk while the gateway is told
+nothing was sent, and the effect would be retried into a second live order.
+
+Given D-2, where a documented fact about this venue changed under us inside two
+days, a dependency of this weight belongs on a list somebody re-reads rather
+than inside a comment nobody revisits.
+
+---
+
 ## How to add a row
 
 One heading per discrepancy, numbered. Record what the docs say, what we did

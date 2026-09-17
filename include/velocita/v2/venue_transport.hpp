@@ -3,6 +3,7 @@
 #include "velocita/v2/venue_simulator.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <span>
 #include <type_traits>
 
@@ -79,6 +80,57 @@ struct VenueTransport {
 };
 
 static_assert(std::is_trivially_copyable_v<VenueTransport>);
+
+// ---------------------------------------------------------------------------
+// ADR 0009. A TWO-STEP VENUE SEND IS ONE EFFECT.
+//
+// The DeFi order path is not one request: `POST /orders` returns unsigned
+// payloads and leaves the order `initialized`, "awaiting client signature";
+// signing happens locally; a second call submits the signatures and the order
+// rests. The gateway never learns any of that, because nothing in the cluster's
+// model could use it and everything in it would be complicated by it.
+//
+// This resolves the steps into ONE `SendOutcome`, and the resolution is the
+// whole safety content of the adapter's send path.
+
+enum class StepOutcome : std::uint8_t {
+    // The step did what it said.
+    succeeded = 1,
+    // The step refused, and refused cleanly - we know it did not take effect.
+    refused,
+    // We do not know. A timeout, a dropped connection, a response we could not
+    // read. NOT a failure, and treating it as one is how a live order becomes
+    // invisible.
+    ambiguous,
+    // Refused for pacing. Distinct from `refused` because the caller should slow
+    // down rather than conclude anything about the order.
+    rate_limited,
+};
+
+// The three things the adapter can do, injected so the resolution can be tested
+// without a network. `abandon` is best-effort cleanup of an order left
+// `initialized`; its outcome is deliberately ignored - see below.
+struct TwoStepSend {
+    StepOutcome (*prepare_fn)(void* context, const OrderEffect& effect){};
+    StepOutcome (*sign_fn)(void* context, const OrderEffect& effect){};
+    StepOutcome (*submit_fn)(void* context, const OrderEffect& effect){};
+    void (*abandon_fn)(void* context, const OrderEffect& effect){};
+    void* context{};
+};
+
+// Resolve a two-step send into the single outcome the gateway understands.
+//
+// STEP ONE'S AMBIGUITY BECOMES `pre_send_failure`, and that is the one claim
+// here that could be wrong. An `initialized` order cannot fill - it awaits a
+// signature that was never sent - so it holds no exposure, and "nothing is at
+// the venue" is true in the only sense the gateway cares about. It rests on the
+// documented meaning of `initialized` and fails with it.
+//
+// STEP TWO'S AMBIGUITY BECOMES `ambiguous`, which is the dangerous one and the
+// reason the distinction exists: the order may be resting, and only the
+// gateway's reconciliation can find out.
+[[nodiscard]] SendOutcome resolve_two_step_send(const TwoStepSend& steps,
+                                                const OrderEffect& effect) noexcept;
 
 // The simulator, presented through the seam. Every existing suite keeps talking
 // to `SimulatedVenue` directly; this exists so the SAME venue can be driven both
