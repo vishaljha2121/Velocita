@@ -3551,6 +3551,179 @@ void test_acknowledged_duplicate_fills_do_not_exhaust_receipts() {
 }
 
 
+velocita::v2::Command mass_cancel(const velocita::v2::TradingState& state,
+                                  const std::uint64_t request,
+                                  const std::uint8_t marker,
+                                  const velocita::v2::MassCancelScope scope,
+                                  const velocita::v2::AccountId account = {},
+                                  const velocita::v2::InstrumentId instrument = {}) {
+    using namespace velocita::v2;
+    return {{CallerId{9}, RequestSequence{request}, digest(marker)},
+            RequestMassCancel{scope, account, instrument, state.kill_epoch,
+                              state.executor_generation}};
+}
+
+void test_mass_cancel_pulls_every_cancellable_order_in_scope() {
+    using namespace velocita::v2;
+    // ADR 0007. One command, one log entry, applied atomically - because the
+    // alternative (N individual cancels on the control lane) can drain the
+    // four-block reserve it shares with the kill path, and a mass-cancel that
+    // stops half way leaves orders live while the operator believes the book is
+    // flat.
+    auto state = ready_state();
+    ApplyScratch scratch;
+    std::vector<ClusterOrderId> live;
+    for (std::uint64_t slot = 1; slot <= 3; ++slot) {
+        const DecisionId decision{20 + slot};
+        append_submit_decision(state, decision, 11, 1, LogicalOrderSlot{static_cast<std::uint16_t>(slot)});
+        const auto authorized = apply(
+            state, authorize_decision(40 + slot, static_cast<std::uint8_t>(0x90 + slot),
+                                      decision),
+            scratch);
+        require(authorized.code == ApplyCode::applied,
+                "the fixture could not authorize order " + std::to_string(slot));
+        live.push_back(authorized.cluster_order_id());
+    }
+    require(state.order_count == 3, "the fixture did not produce three orders");
+
+    const auto before_effects = state.outbox_effect_count;
+    const auto outcome = apply(state, mass_cancel(state, 90, 0xA1, MassCancelScope::all),
+                               scratch);
+    require(outcome.code == ApplyCode::applied,
+            "a mass cancel over three live orders was refused");
+    require(outcome.mass_cancelled() == 3,
+            "the result reported " + std::to_string(outcome.mass_cancelled()) +
+                " cancels rather than three");
+
+    for (const auto id : live) {
+        const ClusterOrder* order = nullptr;
+        for (std::size_t i = 0; i < state.order_count; ++i) {
+            if (state.orders[i].cluster_order_id == id) order = &state.orders[i];
+        }
+        require(order != nullptr && order->state == ClusterOrderState::cancel_pending,
+                "an order in scope was not left cancel-pending");
+    }
+    require(state.outbox_effect_count == before_effects + 3,
+            "the mass cancel did not produce one cancel effect per order");
+    for (std::size_t i = before_effects; i < state.outbox_effect_count; ++i) {
+        require(state.outbox_effects[i].operation == EffectOperation::cancel,
+                "the mass cancel emitted an effect that was not a cancel");
+    }
+}
+
+void test_mass_cancel_skips_the_uncancellable_without_failing() {
+    using namespace velocita::v2;
+    // An already-filled order is not a FAILURE of a mass cancel, it is simply
+    // outside the cancellable set - and a strict reading would make the command
+    // useless in the one situation it exists for, since there is nearly always a
+    // filled or conflicted order in the book when things go wrong.
+    //
+    // What "atomic" therefore means: the cancellable set is decided up front,
+    // and either all of THAT set is cancelled or none of it is.
+    auto state = ready_state();
+    ApplyScratch scratch;
+    append_submit_decision(state, DecisionId{21}, 11, 1, LogicalOrderSlot{1});
+    const auto first = apply(state, authorize_decision(41, 0x91, DecisionId{21}), scratch);
+    require(first.code == ApplyCode::applied, "fixture order one failed");
+    append_submit_decision(state, DecisionId{22}, 11, 1, LogicalOrderSlot{2});
+    const auto second = apply(state, authorize_decision(42, 0x92, DecisionId{22}), scratch);
+    require(second.code == ApplyCode::applied, "fixture order two failed");
+
+    // Put the first beyond cancelling, by hand: the point under test is the
+    // reducer's selection rule, not the route that produced the state.
+    for (std::size_t i = 0; i < state.order_count; ++i) {
+        if (state.orders[i].cluster_order_id == first.cluster_order_id()) {
+            state.orders[i].state = ClusterOrderState::filled;
+        }
+    }
+
+    const auto outcome = apply(state, mass_cancel(state, 90, 0xA2, MassCancelScope::all),
+                               scratch);
+    require(outcome.code == ApplyCode::applied,
+            "a mass cancel refused because one order was already filled");
+    require(outcome.mass_cancelled() == 1,
+            "the mass cancel did not cancel exactly the cancellable order");
+    require(outcome.mass_skipped() == 1,
+            "the result did not report the order it could not cancel");
+
+    for (std::size_t i = 0; i < state.order_count; ++i) {
+        if (state.orders[i].cluster_order_id == first.cluster_order_id()) {
+            require(state.orders[i].state == ClusterOrderState::filled,
+                    "the mass cancel disturbed an order it could not cancel");
+        }
+        if (state.orders[i].cluster_order_id == second.cluster_order_id()) {
+            require(state.orders[i].state == ClusterOrderState::cancel_pending,
+                    "the cancellable order was not cancelled");
+        }
+    }
+}
+
+void test_mass_cancel_refuses_rather_than_half_finishing() {
+    using namespace velocita::v2;
+    // THE PROPERTY THE SINGLE COMMAND EXISTS FOR. If the outbox cannot hold a
+    // cancel for every order in the cancellable set, the whole command is
+    // refused and NOTHING moves. A partial mass cancel is the worst outcome
+    // available: some orders live, no record of the intent to cancel them, and
+    // an operator who has been told the book is flat.
+    auto state = ready_state();
+    ApplyScratch scratch;
+    for (std::uint64_t slot = 1; slot <= 3; ++slot) {
+        const DecisionId decision{20 + slot};
+        append_submit_decision(state, decision, 11, 1, LogicalOrderSlot{static_cast<std::uint16_t>(slot)});
+        require(apply(state, authorize_decision(40 + slot,
+                                                static_cast<std::uint8_t>(0x90 + slot),
+                                                decision),
+                      scratch)
+                    .code == ApplyCode::applied,
+                "fixture order failed");
+    }
+
+    // Fill the outbox so that fewer free slots remain than orders to cancel.
+    state.outbox_effect_count = state.outbox_effects.size() - 1;
+
+    const auto snapshot = state;
+    const auto outcome = apply(state, mass_cancel(state, 90, 0xA3, MassCancelScope::all),
+                               scratch);
+    require(outcome.code == ApplyCode::outbox_capacity_exceeded,
+            "a mass cancel that could not fit was not refused");
+    // Economics, not bytes. A refusal is REQUIRED to move state - it retains a
+    // request receipt, which is what makes the refusal itself replayable and
+    // attributable. What must not move is anything economic.
+    require_economics_unchanged(snapshot, state,
+                                "a refused mass cancel still changed economics, "
+                                "so it was not atomic");
+    for (std::size_t i = 0; i < state.order_count; ++i) {
+        require(state.orders[i].state == snapshot.orders[i].state,
+                "a refused mass cancel still moved an order's state");
+    }
+}
+
+void test_mass_cancel_is_fenced_like_every_other_control_action() {
+    using namespace velocita::v2;
+    // The expected kill epoch and executor generation are carried for the same
+    // reason SetStrategyMode carries them: an operator acting on a stale view of
+    // authority must not have that action silently applied to a newer one.
+    auto state = ready_state();
+    ApplyScratch scratch;
+    append_submit_decision(state, DecisionId{21}, 11, 1, LogicalOrderSlot{1});
+    require(apply(state, authorize_decision(41, 0x91, DecisionId{21}), scratch).code ==
+                ApplyCode::applied,
+            "fixture order failed");
+
+    auto stale = mass_cancel(state, 90, 0xA4, MassCancelScope::all);
+    std::get<RequestMassCancel>(stale.body).expected_kill_epoch =
+        KillEpoch{state.kill_epoch.value() + 1};
+    const auto snapshot = state;
+    require(apply(state, stale, scratch).code == ApplyCode::stale_control_generation,
+            "a mass cancel against a stale kill epoch was applied");
+    require_economics_unchanged(snapshot, state,
+                                "a stale-fenced mass cancel still changed economics");
+    for (std::size_t i = 0; i < state.order_count; ++i) {
+        require(state.orders[i].state == snapshot.orders[i].state,
+                "a stale-fenced mass cancel still moved an order's state");
+    }
+}
+
 int main() {
     try {
         {
@@ -3617,6 +3790,10 @@ int main() {
         test_fill_failures_are_atomic_and_bounded();
         test_cancel_and_unknown_remain_risk_bearing_until_evidence();
         test_fill_cancel_race_consumes_one_reservation();
+        test_mass_cancel_pulls_every_cancellable_order_in_scope();
+        test_mass_cancel_skips_the_uncancellable_without_failing();
+        test_mass_cancel_refuses_rather_than_half_finishing();
+        test_mass_cancel_is_fenced_like_every_other_control_action();
         std::cout << "all V2 risk/order/outbox tests passed\n";
         return 0;
     } catch (const std::exception& error) {

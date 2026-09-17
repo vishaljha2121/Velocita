@@ -1386,6 +1386,18 @@ void test_the_control_lane_admits_only_authenticated_control(
                 ProposeStatus::admitted,
             "an authenticated control command was refused by its own lane");
 
+    // The lane must carry the operation it was built for. ADR 0007 notes this
+    // explicitly, because adding a mass cancel and forgetting the lane would
+    // leave the emergency command refused by the emergency path.
+    const auto flatten = encoded(command_from(
+        kMaxOperatorCallerId, 4,
+        RequestMassCancel{MassCancelScope::all, {}, {}, KillEpoch{1},
+                          ExecutorGeneration{}}));
+    require(node.propose(flatten, ProposeLane::control).status ==
+                ProposeStatus::admitted,
+            "the control lane refused a mass cancel, which is the operation it "
+            "exists to carry");
+
     // Undecodable bytes are not a control command either. The lane cannot take
     // the caller's word for what it is carrying, so anything it cannot read is
     // not something it may reserve capacity for.

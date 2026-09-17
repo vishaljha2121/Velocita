@@ -989,6 +989,7 @@ ApplyResult model_new_command(ModelState& state,
                                  std::is_same_v<T, ObserveOrderEvent> ||
                                  std::is_same_v<T, RequestReplace> ||
                                  std::is_same_v<T, ConfigureRiskLimits> ||
+                                 std::is_same_v<T, RequestMassCancel> ||
                                  std::is_same_v<T, AcknowledgeGatewayResults>) {
                 // This generator covers Phase 1-3 only. A complete independent
                 // Phase 4 model remains an acceptance requirement.

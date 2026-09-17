@@ -15,6 +15,46 @@ release-engineering work.
 
 ### Phase 8 in development - execution authority, fencing, and emergency control
 
+#### Mass cancel, as one command — 2026-09-17
+
+Implements ADR 0007. `RequestMassCancel` is one command and one log entry,
+carrying a scope (all, account, or account-and-instrument) and the usual
+expected kill epoch and executor generation.
+
+WHAT "ATOMIC" MEANS, because the strict reading would be useless. An order that
+is already filled, or already being cancelled, is not a failure of a mass cancel
+- it is outside the cancellable set, the same way an out-of-scope order is.
+There is nearly always a filled or conflicted order in the book when things have
+gone wrong, so refusing on account of one would make the command unusable in the
+situation it exists for. The cancellable set is decided up front, and either all
+of that set is cancelled or none of it is.
+
+ONE RULE, READ TWICE. The feasibility pass and the acting pass would drift if
+each had its own idea of what a cancel would do, and a plan that disagrees with
+the action is worse than no plan. `disposition_of_cancel` is the single place
+that decides, extracted from `apply_request_cancel`, which now reads it too.
+Only the aggregate constraint - outbox capacity - is checked across the whole
+set; checking per order is precisely what produces a half-finished mass cancel.
+
+THE AUTHORITY SPLIT IS DELIBERATE. The control lane admits mass cancel and
+requires an operator caller to do so; the reducer does NOT restrict it to
+operators. Mass cancel only reduces risk, and requiring operator authority to
+reduce risk is the asymmetry error avoided everywhere else in this phase. Anyone
+may flatten the book on the normal lane. What an operator caller buys is the
+right to spend the kill reserve doing it.
+
+Appending a `KernelCommandKind` is additive - kinds are tagged by explicit value
+rather than by variant index - so no existing command's bytes changed and no
+corpus digest moved. An unknown scope decodes as a refusal rather than as `all`,
+and a scoped request naming no account is refused at encode time: a zero account
+under a scope of `account` would reach every order whose proposal also carries
+none, which is the broadest possible reading of the narrowest request.
+
+Mutation-confirmed four ways. Also fixed, and found by a sanitizer-build
+warning rather than a test: the model-replay visitor fell off the end of a
+non-void lambda for the new variant, which is undefined behaviour and not a
+style nit.
+
 #### Resuming normal trading now requires reconciliation — 2026-09-16
 
 G-059, and specifically the half that is actually dangerous. A kill is easy;

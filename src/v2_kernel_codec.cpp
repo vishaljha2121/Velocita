@@ -116,6 +116,16 @@ private:
     return false;
 }
 
+[[nodiscard]] constexpr bool known(const MassCancelScope value) noexcept {
+    switch (value) {
+        case MassCancelScope::all:
+        case MassCancelScope::account:
+        case MassCancelScope::account_instrument:
+            return true;
+    }
+    return false;
+}
+
 [[nodiscard]] constexpr bool known(const ApplyCode value) noexcept {
     switch (value) {
         case ApplyCode::applied:
@@ -236,6 +246,7 @@ private:
         case KernelCommandKind::request_replace:
         case KernelCommandKind::configure_risk_limits:
         case KernelCommandKind::acknowledge_gateway_results:
+        case KernelCommandKind::request_mass_cancel:
             return true;
     }
     return false;
@@ -266,6 +277,22 @@ private:
     }
     if (std::holds_alternative<AdvanceKillEpoch>(command.body) ||
         std::holds_alternative<SetExecutorGeneration>(command.body)) {
+        return true;
+    }
+    if (const auto* body = std::get_if<RequestMassCancel>(&command.body)) {
+        // The scope must be one we know, and a scoped request must actually
+        // name its scope - a zero account on a scope of `account` would reach
+        // every order whose proposal also carries none, which is the broadest
+        // possible reading of the narrowest possible request.
+        if (!known(body->scope)) return false;
+        if (body->scope == MassCancelScope::account ||
+            body->scope == MassCancelScope::account_instrument) {
+            if (body->account_id.value() == 0) return false;
+        }
+        if (body->scope == MassCancelScope::account_instrument &&
+            body->instrument_id.value() == 0) {
+            return false;
+        }
         return true;
     }
     if (const auto* body = std::get_if<RecordSourceEvent>(&command.body)) {
@@ -427,6 +454,9 @@ private:
     if (std::holds_alternative<RequestCancel>(body)) {
         return KernelCommandKind::request_cancel;
     }
+    if (std::holds_alternative<RequestMassCancel>(body)) {
+        return KernelCommandKind::request_mass_cancel;
+    }
     if (std::holds_alternative<ObserveOrderEvent>(body)) {
         return KernelCommandKind::observe_order_event;
     }
@@ -471,6 +501,8 @@ private:
         return kVenueObservationPayloadBytes;
     }
     if (std::holds_alternative<RequestCancel>(body)) return 8;
+    // scope(1) + account(8) + instrument(8) + kill epoch(8) + generation(8)
+    if (std::holds_alternative<RequestMassCancel>(body)) return 33;
     if (std::holds_alternative<ObserveOrderEvent>(body)) {
         return kVenueObservationPayloadBytes;
     }
@@ -683,6 +715,12 @@ void write_body(Writer& writer, const CommandBody& body) noexcept {
         write_observation(writer, value->observation);
     } else if (const auto* value = std::get_if<RequestCancel>(&body)) {
         writer.integral(value->cluster_order_id.value());
+    } else if (const auto* value = std::get_if<RequestMassCancel>(&body)) {
+        writer.integral(static_cast<std::uint8_t>(value->scope));
+        writer.integral(value->account_id.value());
+        writer.integral(value->instrument_id.value());
+        writer.integral(value->expected_kill_epoch.value());
+        writer.integral(value->expected_executor_generation.value());
     } else if (const auto* value = std::get_if<ObserveOrderEvent>(&body)) {
         write_observation(writer, value->observation);
     } else if (const auto* value = std::get_if<RequestReplace>(&body)) {
@@ -991,6 +1029,20 @@ void write_body(Writer& writer, const CommandBody& body) noexcept {
             body = RequestCancel{
                 ClusterOrderId{reader.integral<std::uint64_t>()}};
             return true;
+        case KernelCommandKind::request_mass_cancel: {
+            RequestMassCancel value;
+            value.scope = static_cast<MassCancelScope>(reader.integral<std::uint8_t>());
+            value.account_id = AccountId{reader.integral<std::uint64_t>()};
+            value.instrument_id = InstrumentId{reader.integral<std::uint64_t>()};
+            value.expected_kill_epoch = KillEpoch{reader.integral<std::uint64_t>()};
+            value.expected_executor_generation =
+                ExecutorGeneration{reader.integral<std::uint64_t>()};
+            // An unknown scope is not a scope. Decoding it as `all` would turn a
+            // corrupt or newer-version command into the broadest possible action.
+            if (!known(value.scope)) return false;
+            body = value;
+            return true;
+        }
         case KernelCommandKind::observe_order_event: {
             ObserveOrderEvent value;
             if (!read_observation(reader, value.observation) ||

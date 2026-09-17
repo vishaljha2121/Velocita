@@ -57,6 +57,9 @@ enum class KernelCommandKind : std::uint16_t {
     request_replace = 16,
     configure_risk_limits = 17,
     acknowledge_gateway_results = 18,
+    // Appended. Kinds are tagged by explicit value, not by variant index, so
+    // every existing command keeps its number and no encoded bytes change.
+    request_mass_cancel = 19,
 };
 
 enum class KernelCodecError : std::uint8_t {

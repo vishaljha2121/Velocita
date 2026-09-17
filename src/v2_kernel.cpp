@@ -2380,6 +2380,89 @@ std::size_t settle_orphaned_effects(TradingState& state,
     return value;
 }
 
+// WHAT A CANCEL OF THIS ORDER WOULD DO, decided in one place.
+//
+// A mass cancel has to know the answer for every order in scope BEFORE it
+// mutates anything, because it must refuse rather than half-finish. Asking the
+// question twice - once to plan, once to act - is how the two answers drift
+// apart, and a plan that disagrees with the action is worse than no plan. So
+// both callers read this.
+enum class CancelDisposition : std::uint8_t {
+    // Will emit a cancel effect into a fresh outbox slot.
+    needs_slot,
+    // Will overwrite a definitively rejected cancel record for the same order,
+    // so it costs no additional outbox capacity.
+    reuses_slot,
+    // A cancel is already outstanding. Not an error and not work.
+    already_cancelling,
+    // Terminal, unreserved, or otherwise beyond cancelling.
+    not_cancellable,
+};
+
+[[nodiscard]] constexpr bool known(const MassCancelScope value) noexcept {
+    switch (value) {
+        case MassCancelScope::all:
+        case MassCancelScope::account:
+        case MassCancelScope::account_instrument:
+            return true;
+    }
+    return false;
+}
+
+[[nodiscard]] CancelDisposition disposition_of_cancel(
+    const TradingState& state, const ClusterOrder& order) noexcept {
+    if (order.reservation_index >= state.reservation_count) {
+        return CancelDisposition::not_cancellable;
+    }
+    const auto& reservation = state.reservations[order.reservation_index];
+
+    const OutboxEffectRecord* current_effect = nullptr;
+    for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
+        if (state.outbox_effects[index].effect_id == order.effect_id) {
+            current_effect = &state.outbox_effects[index];
+            break;
+        }
+    }
+
+    if ((order.state == ClusterOrderState::cancel_pending ||
+         order.state == ClusterOrderState::submission_unknown) &&
+        current_effect != nullptr &&
+        current_effect->operation == EffectOperation::cancel) {
+        return CancelDisposition::already_cancelling;
+    }
+
+    const auto cancellable =
+        order.state == ClusterOrderState::dispatch_authorized ||
+        order.state == ClusterOrderState::acknowledged ||
+        order.state == ClusterOrderState::live ||
+        order.state == ClusterOrderState::partially_filled;
+    if (!cancellable || reservation.state == ReservationState::released) {
+        return CancelDisposition::not_cancellable;
+    }
+
+    const bool reuse_rejected_cancel =
+        current_effect != nullptr &&
+        current_effect->operation == EffectOperation::cancel &&
+        current_effect->state == OutboxState::rejected;
+    return reuse_rejected_cancel ? CancelDisposition::reuses_slot
+                                 : CancelDisposition::needs_slot;
+}
+
+[[nodiscard]] bool order_matches_scope(const ClusterOrder&,
+                                       const EconomicActionProposal& proposal,
+                                       const RequestMassCancel& command) noexcept {
+    switch (command.scope) {
+        case MassCancelScope::all:
+            return true;
+        case MassCancelScope::account:
+            return proposal.account_id == command.account_id;
+        case MassCancelScope::account_instrument:
+            return proposal.account_id == command.account_id &&
+                   proposal.instrument_id == command.instrument_id;
+    }
+    return false;
+}
+
 [[nodiscard]] ApplyResult apply_request_cancel(
     TradingState& state,
     const RequestCancel& command,
@@ -2974,6 +3057,89 @@ std::size_t settle_orphaned_effects(TradingState& state,
 //
 // The command kind stays allocated so reintroducing replacement later needs no
 // wire renumbering. It decodes, and it refuses before touching any economics.
+[[nodiscard]] ApplyResult apply_request_mass_cancel(
+    TradingState& state,
+    const RequestMassCancel& command,
+    const std::uint64_t next_version) noexcept {
+    if (!known(command.scope)) {
+        return result(state, ApplyCode::invalid_command, next_version, {}, {},
+                      PolicyLifecycle::none, ContractError::invalid_enum);
+    }
+    if (command.expected_kill_epoch != state.kill_epoch ||
+        command.expected_executor_generation != state.executor_generation) {
+        return result(state, ApplyCode::stale_control_generation, next_version);
+    }
+
+    // PASS ONE DECIDES, AND MUTATES NOTHING.
+    //
+    // The set to cancel is fixed here, before anything moves, and the only
+    // aggregate constraint - outbox capacity - is checked against the whole set
+    // rather than one order at a time. Checking per order is what produces a
+    // half-finished mass cancel: the first few fit, the rest do not, and the
+    // operator has been told the book is flat.
+    std::array<std::uint16_t, kMaxClusterOrders> selected{};
+    std::size_t selected_count = 0;
+    std::size_t in_scope = 0;
+    std::size_t skipped = 0;
+    std::size_t new_slots_needed = 0;
+    for (std::size_t index = 0; index < state.order_count; ++index) {
+        const auto& order = state.orders[index];
+        const auto decision_index = find_decision_index(state, order.decision_id);
+        if (decision_index == state.decision_count) {
+            // No proposal, so no account or instrument to compare. Only a
+            // scope of `all` can be sure it means this order.
+            if (command.scope != MassCancelScope::all) continue;
+        } else if (!order_matches_scope(order,
+                                        state.decision_cold[decision_index].proposal,
+                                        command)) {
+            continue;
+        }
+        ++in_scope;
+
+        switch (disposition_of_cancel(state, order)) {
+            case CancelDisposition::needs_slot:
+                ++new_slots_needed;
+                selected[selected_count++] = static_cast<std::uint16_t>(index);
+                break;
+            case CancelDisposition::reuses_slot:
+                selected[selected_count++] = static_cast<std::uint16_t>(index);
+                break;
+            case CancelDisposition::already_cancelling:
+            case CancelDisposition::not_cancellable:
+                // NOT A FAILURE. An order that is already terminal, or already
+                // being cancelled, is outside the cancellable set the same way
+                // an out-of-scope order is. A strict reading would make this
+                // command useless in the one situation it exists for, because
+                // there is nearly always a filled or conflicted order in the
+                // book when things have gone wrong.
+                ++skipped;
+                break;
+        }
+    }
+
+    const auto free_slots = state.outbox_effects.size() - state.outbox_effect_count;
+    if (new_slots_needed > free_slots) {
+        return result(state, ApplyCode::outbox_capacity_exceeded, next_version);
+    }
+
+    // PASS TWO ACTS, and cannot fail for a reason pass one did not see: it
+    // reuses `apply_request_cancel` unchanged, and that function's own
+    // preconditions are the ones `disposition_of_cancel` just evaluated.
+    std::size_t cancelled = 0;
+    for (std::size_t i = 0; i < selected_count; ++i) {
+        const auto order_id = state.orders[selected[i]].cluster_order_id;
+        const auto outcome =
+            apply_request_cancel(state, RequestCancel{order_id}, next_version);
+        if (outcome.code == ApplyCode::applied) ++cancelled;
+        else ++skipped;
+    }
+
+    auto value = result(state, ApplyCode::applied, next_version);
+    value.detail = ApplyResultDetail::mass_cancel(in_scope, cancelled, skipped);
+    value.detail_kind = ApplyResultDetailKind::mass_cancel;
+    return value;
+}
+
 [[nodiscard]] ApplyResult apply_request_replace(
     TradingState& state,
     const RequestReplace& command,
@@ -3110,6 +3276,9 @@ std::size_t settle_orphaned_effects(TradingState& state,
     }
     if (const auto* body = std::get_if<ObserveFill>(&command.body)) {
         return apply_observe_fill(state, command.identity, *body, next_version);
+    }
+    if (const auto* body = std::get_if<RequestMassCancel>(&command.body)) {
+        return apply_request_mass_cancel(state, *body, next_version);
     }
     if (const auto* body = std::get_if<RequestCancel>(&command.body)) {
         return apply_request_cancel(state, *body, next_version);

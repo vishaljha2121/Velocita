@@ -242,6 +242,39 @@ struct SetExecutorGeneration {
     ExecutorGeneration new_generation{};
 };
 
+// WHAT A MASS CANCEL REACHES. Named rather than encoded as wildcard zeros,
+// because an operator reading a log entry under pressure should not have to
+// know that an empty account means "everything".
+enum class MassCancelScope : std::uint8_t {
+    all = 1,
+    account = 2,
+    account_instrument = 3,
+};
+
+// ADR 0007. ONE command, not N individual cancels.
+//
+// The N-cancel form needed no new bytes and fails twice. Sixteen entries
+// against a four-block control reserve can drain the kill path it was meant to
+// sit beside - the exact failure the reservation exists to prevent, arriving
+// from inside the lane. And a mass cancel that stops half way leaves orders
+// live with no record of the intent to cancel them, while the operator has been
+// told the book is flat.
+//
+// Bounded by construction: the scope can name at most `kMaxClusterOrders`
+// orders, and `kMaxOutboxEffects` is the same number by static assertion, so
+// the request either fits or is refused. Neither outcome is partial.
+//
+// Carries the expected control values for the same reason `SetStrategyMode`
+// does: an operator acting on a stale view of authority must not have that
+// action silently applied to a newer one.
+struct RequestMassCancel {
+    MassCancelScope scope{MassCancelScope::all};
+    AccountId account_id{};
+    InstrumentId instrument_id{};
+    KillEpoch expected_kill_epoch{};
+    ExecutorGeneration expected_executor_generation{};
+};
+
 struct RecordSourceEvent {
     SourceId source_id{};
     SourceGeneration source_generation{};
@@ -333,6 +366,7 @@ using CommandBody = std::variant<PublishPolicy,
                                  AuthorizeDecision,
                                  ObserveFill,
                                  RequestCancel,
+                                 RequestMassCancel,
                                  ObserveOrderEvent,
                                  RequestReplace,
                                  ConfigureRiskLimits,
@@ -350,6 +384,8 @@ enum class ApplyResultDetailKind : std::uint8_t {
     fill = 3,
     venue_event = 4,
     risk_configuration = 5,
+    // Appended, so every existing kind keeps its value.
+    mass_cancel = 6,
 };
 
 // Three canonical 64-bit words are interpreted only through the explicit tag.
@@ -379,6 +415,16 @@ struct ApplyResultDetail {
         const QuantityLots filled_quantity) noexcept {
         return {{{venue_id.value(), execution_id.value(),
                   static_cast<std::uint64_t>(filled_quantity.atoms())}}};
+    }
+
+    // How much a mass cancel actually did. An operator who fired one needs to
+    // know the difference between "nothing was open" and "nothing could be
+    // cancelled", and those are the same `applied` result without this.
+    [[nodiscard]] static constexpr ApplyResultDetail mass_cancel(
+        const std::uint64_t in_scope,
+        const std::uint64_t cancelled,
+        const std::uint64_t skipped) noexcept {
+        return {{{in_scope, cancelled, skipped}}};
     }
 
     [[nodiscard]] static constexpr ApplyResultDetail venue_event(
@@ -491,6 +537,16 @@ struct ApplyResult {
                    ? VenueSequence{detail.words[2]}
                    : VenueSequence{};
     }
+    [[nodiscard]] constexpr std::uint64_t mass_in_scope() const noexcept {
+        return detail_kind == ApplyResultDetailKind::mass_cancel ? detail.words[0] : 0;
+    }
+    [[nodiscard]] constexpr std::uint64_t mass_cancelled() const noexcept {
+        return detail_kind == ApplyResultDetailKind::mass_cancel ? detail.words[1] : 0;
+    }
+    [[nodiscard]] constexpr std::uint64_t mass_skipped() const noexcept {
+        return detail_kind == ApplyResultDetailKind::mass_cancel ? detail.words[2] : 0;
+    }
+
     [[nodiscard]] constexpr EffectId event_effect_id() const noexcept {
         return detail_kind == ApplyResultDetailKind::venue_event
                    ? EffectId{metadata_words[0]}

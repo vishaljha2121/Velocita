@@ -298,6 +298,14 @@ ProposeOutcome ReplicatedKernel::propose(const std::span<const std::byte> comman
     // So the lane decodes and checks before the entry exists. That costs a
     // decode on a path taken once per operator action, and it is the difference
     // between a reservation and a bypass anyone may name.
+    //
+    // `RequestMassCancel` is admitted here but is NOT operator-only in the
+    // reducer, and the split is deliberate. Mass cancel only reduces risk, and
+    // requiring operator authority to reduce risk is the asymmetry error this
+    // phase avoids everywhere else - anyone may flatten the book on the normal
+    // lane. What an operator caller buys is the right to spend the KILL
+    // RESERVE doing it, which is a claim on a scarce resource rather than a
+    // claim about the action.
     if (lane == ProposeLane::control) {
         Command probe;
         const auto decoded =
@@ -306,7 +314,8 @@ ProposeOutcome ReplicatedKernel::propose(const std::span<const std::byte> comman
             decoded.error == KernelCodecError::none &&
             (std::holds_alternative<AdvanceKillEpoch>(probe.body) ||
              std::holds_alternative<SetExecutorGeneration>(probe.body) ||
-             std::holds_alternative<SetStrategyMode>(probe.body)) &&
+             std::holds_alternative<SetStrategyMode>(probe.body) ||
+             std::holds_alternative<RequestMassCancel>(probe.body)) &&
             is_operator_caller(probe.identity.caller_id);
         if (!is_control) {
             outcome.status = ProposeStatus::not_a_control_command;

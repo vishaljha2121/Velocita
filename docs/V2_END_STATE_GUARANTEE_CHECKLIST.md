@@ -537,6 +537,42 @@ Phase 11 strategy/model validation and controlled canary
   `normal`, and narrowing it to `conflict` alone. Each mutant is killed by the
   assertion that names its property.
 
+  MASS CANCEL (G-057, G-058), per ADR 0007. `RequestMassCancel` is one command
+  and one log entry, applied atomically, carrying a scope and the usual expected
+  control values. The N-individual-cancels alternative needed no new bytes and
+  failed twice: sixteen entries against a four-block reserve can drain the kill
+  path it shares, and a mass cancel that stops half way leaves orders live while
+  the operator has been told the book is flat.
+
+  WHAT "ATOMIC" MEANS HERE, because the strict reading would be useless. An
+  order that is already filled, or already being cancelled, is not a FAILURE of
+  a mass cancel - it is outside the cancellable set, the same way an
+  out-of-scope order is. There is nearly always a filled or conflicted order in
+  the book when things have gone wrong, so refusing on account of one would make
+  the command unusable in the situation it exists for. The cancellable set is
+  decided up front and either all of THAT set is cancelled or none of it is.
+
+  ONE RULE, READ TWICE. The feasibility pass and the acting pass would drift if
+  each had its own idea of what a cancel would do, and a plan that disagrees
+  with the action is worse than no plan - so `disposition_of_cancel` is the
+  single place that decides, and `apply_request_cancel` reads it too. Only the
+  aggregate constraint, outbox capacity, is evaluated across the whole set;
+  checking it per order is exactly what produces a half-finished mass cancel.
+
+  THE SPLIT ON AUTHORITY IS DELIBERATE. The control lane admits mass cancel and
+  requires an operator caller to do so, but the REDUCER does not restrict it to
+  operators. Mass cancel only reduces risk, and requiring operator authority to
+  reduce risk is the asymmetry error avoided everywhere else in this phase.
+  Anyone may flatten the book on the normal lane; what an operator caller buys
+  is the right to spend the kill reserve doing it - a claim on a scarce
+  resource, not a claim about the action.
+
+  Evidence: four properties in `v2-risk-order-outbox-tests` and one in
+  `control-lane-admission`. Mutation-confirmed four ways, including that
+  checking capacity per order rather than in aggregate fails the atomicity test,
+  and that forgetting the lane leaves the emergency command refused by the
+  emergency path - the exact failure ADR 0007 predicted.
+
   WHAT EACH GUARANTEE STILL NEEDS. G-052/G-054 have their pre-send refusals from
   Phase 5 but no external fence to be single against. G-053 has its property proved - nothing
   promotes automatically - and needs the operator-facing workflow that makes a
@@ -544,8 +580,8 @@ Phase 11 strategy/model validation and controlled canary
   gate now refuses to let an operator skip. G-055 has both its
   refusal and its renewal, and needs the gateway loop that calls them plus an
   accepted bound. G-056 has authorization and independence, and needs the
-  authenticated edge that assigns operator callers. G-057 and G-058 need stop
-  and mass-cancel as operations, not just a lane that would carry them. G-060
+  authenticated edge that assigns operator callers. G-057 and G-058 have their
+  operations; they need the gateway side that reaches for them. G-060
   needs emergency actions recorded into cluster state, which means new command
   bytes and therefore a reviewed byte contract. G-057a needs the closed-order
   case driven end to end.
