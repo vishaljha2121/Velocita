@@ -13,6 +13,43 @@ release-engineering work.
 
 ## [V2] - In development
 
+### Phase 9 in development - True Markets adapter
+
+#### The venue boundary, made explicit — 2026-09-17
+
+Until now there was none. `SimulatedVenue` is a concrete class used only by
+tests, and no production code talked to a venue at all - so "the gateway does not
+know which venue it is talking to" was a design intention with nothing enforcing
+it. `VenueTransport` is the seam the True Markets adapter will sit behind.
+
+SHAPED AS FUNCTION POINTERS PLUS A CONTEXT, matching `StorageCheckpoints` rather
+than introducing virtual dispatch. Trivially copyable, owns nothing, and can be
+handed to a pure planner without dragging a class hierarchy behind it.
+
+WHAT DELIBERATELY DOES NOT APPEAR IN IT: authentication, JWT refresh, rate-limit
+pacing, retry policy, and the venue's two-step DeFi signing flow where
+`POST /orders` returns unsigned payloads and a second call submits the
+signatures. A `send` is ONE CALL from this side however many round trips it
+costs on the other, because the gateway reasons about effects and not about
+HTTP. The moment any of that leaks through the struct, the simulator and the
+venue stop being substitutable and every test written against the simulator
+stops meaning anything about production.
+
+POLL WRITES INTO A CALLER-OWNED SPAN rather than returning a vector, and that is
+the one place the seam deliberately differs from the simulator it wraps. An
+adapter must not decide how much memory the gateway spends, so a venue that
+floods us is TRUNCATED rather than obeyed. Truncation must then DEFER rather
+than drop, because an observation is economic evidence and losing one loses a
+fill - so the overflow is held and offered first on the next poll, while
+acknowledgement still goes straight to the venue, which is what keeps
+redelivery-on-crash working.
+
+Held by three properties: the same venue driven directly and through the seam
+produces an identical trace of outcomes, counts and sessions; a poll never
+overruns its buffer; and draining one observation at a time yields exactly the
+sequence a single wide poll delivers. Mutation-confirmed both ways - dropping
+the overflow and ignoring the caller's buffer size each fail a named assertion.
+
 ### Phase 8 in development - execution authority, fencing, and emergency control
 
 #### G-057a's fencing half, and the gateway loop deferred to Phase 9 — 2026-09-17

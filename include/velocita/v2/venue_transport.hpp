@@ -1,0 +1,89 @@
+#pragma once
+
+#include "velocita/v2/venue_simulator.hpp"
+
+#include <cstddef>
+#include <span>
+#include <type_traits>
+
+namespace velocita::v2::sim {
+
+// Phase 9. THE VENUE BOUNDARY, made explicit.
+//
+// Until now there was none. `SimulatedVenue` is a concrete class used only by
+// tests, and no production code talked to a venue at all - so "the gateway does
+// not know which venue it is talking to" was a design intention with nothing
+// enforcing it. This is the seam that makes it true, and the thing the True
+// Markets adapter will sit behind.
+//
+// SHAPED AS FUNCTION POINTERS PLUS A CONTEXT, matching `StorageCheckpoints`
+// rather than introducing virtual dispatch. It costs nothing at an I/O boundary
+// either way; what matters is that the struct is trivially copyable, has no
+// ownership, and can be handed to a pure planner without dragging a class
+// hierarchy behind it.
+//
+// WHAT DELIBERATELY DOES NOT APPEAR HERE. Authentication, JWT refresh, rate-limit
+// pacing, retry policy, and the venue's two-step DeFi signing flow - where
+// `POST /orders` returns unsigned payloads and a second call submits the
+// signatures. All of that is the adapter's business. A `send` is one call from
+// this side however many round trips it costs on the other, because the gateway
+// reasons about EFFECTS and not about HTTP. The moment any of it leaks through
+// this struct, the simulator and the venue stop being substitutable and every
+// test written against the simulator stops meaning anything about production.
+
+// The largest number of observations one poll may hand back. A bound the CALLER
+// owns, not the venue: a venue that floods us must be truncated rather than
+// obeyed, and truncation must defer the remainder rather than drop it.
+inline constexpr std::size_t kMaxVenueObservationsPerPoll = 32;
+
+struct VenueTransport {
+    // Deliver one committed effect. Returns the transport outcome only -
+    // economic evidence arrives later and asynchronously through `poll`, which
+    // is what makes an ambiguous send representable rather than a guess.
+    SendOutcome (*send_fn)(void* context, const OrderEffect& effect, Tick now){};
+
+    // Fill `out` with due observations and return how many were written. Never
+    // writes more than `out.size()`; whatever did not fit stays owned by the
+    // venue and is offered again.
+    std::size_t (*poll_fn)(void* context, std::span<VenueObservation> out, Tick now){};
+
+    // Release one observation. Until this is called the venue still owns it, so
+    // a crash between poll and acknowledgement redelivers rather than loses.
+    void (*acknowledge_fn)(void* context, const VenueObservation& observation){};
+
+    // Ask the venue about one order. `QueryOutcome::unavailable` is silence and
+    // `not_found` is an explicit absence answer; conflating them is how a
+    // reconnect becomes an invented fact.
+    QueryResult (*query_fn)(void* context, ClusterOrderId order, Tick now){};
+
+    // Session identity. It CHANGES on reconnect, which is why deduplication may
+    // never be scoped to it alone.
+    VenueSessionId (*session_fn)(void* context){};
+
+    void* context{};
+
+    [[nodiscard]] SendOutcome send(const OrderEffect& effect, const Tick now) const {
+        return send_fn(context, effect, now);
+    }
+    [[nodiscard]] std::size_t poll(const std::span<VenueObservation> out,
+                                   const Tick now) const {
+        return poll_fn(context, out, now);
+    }
+    void acknowledge(const VenueObservation& observation) const {
+        acknowledge_fn(context, observation);
+    }
+    [[nodiscard]] QueryResult query(const ClusterOrderId order, const Tick now) const {
+        return query_fn(context, order, now);
+    }
+    [[nodiscard]] VenueSessionId session() const { return session_fn(context); }
+};
+
+static_assert(std::is_trivially_copyable_v<VenueTransport>);
+
+// The simulator, presented through the seam. Every existing suite keeps talking
+// to `SimulatedVenue` directly; this exists so the SAME venue can be driven both
+// ways and the two compared, which is the only way the seam's transparency is a
+// fact rather than a claim.
+[[nodiscard]] VenueTransport simulated_venue_transport(SimulatedVenue& venue) noexcept;
+
+}  // namespace velocita::v2::sim
