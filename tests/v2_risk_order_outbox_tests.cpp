@@ -3551,6 +3551,93 @@ void test_acknowledged_duplicate_fills_do_not_exhaust_receipts() {
 }
 
 
+// An `order_reconciled` answer meaning THE VENUE HOLDS NO SUCH ORDER. A zero
+// `venue_order_id` is what expresses absence, and `validate` enforces that
+// absence implies zero cumulative fill.
+//
+// The venue sequence is NOT optional even though this kind is synthetic - the
+// identity check in `validate` requires one of every observation, and leaving it
+// zero produced an `invalid_identity` refusal that looked exactly like an
+// applicability refusal. That cost a long detour through the applicability gates
+// before the cause turned out to be the fixture.
+velocita::v2::Command reconciled_absent(
+    const std::uint64_t request,
+    const std::uint8_t marker,
+    const velocita::v2::ClusterOrderId order_id,
+    const velocita::v2::EffectId effect_id,
+    const std::uint64_t venue_sequence) {
+    using namespace velocita::v2;
+    VenueObservation observation;
+    observation.kind = VenueObservationKind::order_reconciled;
+    observation.venue_id = VenueId{9};
+    observation.venue_session_id = VenueSessionId{2};
+    observation.venue_sequence = VenueSequence{venue_sequence};
+    observation.cluster_order_id = order_id;
+    observation.effect_id = effect_id;
+    observation.venue_order_id = VenueOrderId{};
+    observation.quantity = QuantityLots::from_atoms(0);
+    observation.evidence_digest = digest(marker);
+    return {{CallerId{4}, RequestSequence{request},
+             observation_fingerprint(observation)},
+            ObserveOrderEvent{observation}};
+}
+
+void test_a_resting_order_the_venue_does_not_hold_is_resolved() {
+    using namespace velocita::v2;
+    // ADR 0008, rules 2 and 3. Asking about a resting order is pointless if the
+    // answer is refused, and it was: `order_reconciled` applied only to
+    // `submission_unknown` and `dispatch_authorized`. An order the venue
+    // acknowledged and then lost - a cancellation whose event never arrived -
+    // could be queried forever and never resolved.
+    auto state = ready_state();
+    ApplyScratch scratch;
+    const auto submit = apply(state, authorize(2, 0xf1), scratch);
+    require(submit.code == ApplyCode::applied, "submit fixture did not authorize");
+    require(apply(state,
+                  observe_order_event(1, 0xf2, VenueObservationKind::order_acknowledged,
+                                      submit.cluster_order_id(), submit.effect_id(), 901),
+                  scratch)
+                    .code == ApplyCode::applied,
+            "the fixture could not get the order acknowledged");
+    require(state.orders[0].state == ClusterOrderState::live,
+            "the fixture order is not resting");
+
+    const auto answered = apply(
+        state,
+        reconciled_absent(2, 0xf7, submit.cluster_order_id(), submit.effect_id(), 902),
+        scratch);
+    require(answered.code == ApplyCode::applied,
+            "the venue answered that it does not hold a resting order and the "
+            "cluster refused to hear it");
+    require(state.orders[0].state == ClusterOrderState::cancelled,
+            "an absent resting order with no booked fills did not resolve");
+    require(state.reservations[0].state == ReservationState::released,
+            "an absent resting order with no booked fills kept its reservation");
+
+    // And a resting order the venue DOES still hold is left alone - the query is
+    // a confirmation, not an excuse to move something that is fine.
+    auto healthy = ready_state();
+    ApplyScratch other;
+    const auto held = apply(healthy, authorize(2, 0xe1), other);
+    require(apply(healthy,
+                  observe_order_event(1, 0xe2, VenueObservationKind::order_acknowledged,
+                                      held.cluster_order_id(), held.effect_id(), 801),
+                  other)
+                    .code == ApplyCode::applied,
+            "the second fixture could not be acknowledged");
+    const auto before = healthy;
+    require(apply(healthy,
+                  observe_order_event(2, 0xe3, VenueObservationKind::order_reconciled,
+                                      held.cluster_order_id(), held.effect_id(), 802),
+                  other)
+                    .code == ApplyCode::applied,
+            "a confirmation that the venue still holds the order was refused");
+    require(healthy.orders[0].state == ClusterOrderState::live,
+            "confirming a healthy resting order moved it");
+    require_economics_unchanged(before, healthy,
+                                "confirming a healthy resting order changed economics");
+}
+
 void test_an_unrequested_venue_cancellation_is_evidence_not_noise() {
     using namespace velocita::v2;
     // THE OTHER HALF OF G-060, and it is narrower than ADR 0007 first claimed.
@@ -3869,6 +3956,7 @@ int main() {
         test_fill_failures_are_atomic_and_bounded();
         test_cancel_and_unknown_remain_risk_bearing_until_evidence();
         test_fill_cancel_race_consumes_one_reservation();
+        test_a_resting_order_the_venue_does_not_hold_is_resolved();
         test_an_unrequested_venue_cancellation_is_evidence_not_noise();
         test_mass_cancel_pulls_every_cancellable_order_in_scope();
         test_mass_cancel_skips_the_uncancellable_without_failing();

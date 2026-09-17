@@ -2728,7 +2728,28 @@ enum class CancelDisposition : std::uint8_t {
         (effect->state == OutboxState::unknown ||
          effect->state == OutboxState::rejected ||
          effect->state == OutboxState::reconciling);
-    if (reconciled_submit && !reconciled_cancel &&
+    // ADR 0008, rule 3. A RESTING ORDER IS A LEGITIMATE SUBJECT OF
+    // RECONCILIATION. The original window was `submission_unknown` and
+    // `dispatch_authorized` - orders whose DELIVERY was in doubt - which made
+    // asking about a resting order pointless, because the answer was refused.
+    // An order the venue acknowledged and then lost could be queried forever.
+    //
+    // The effect state widens with it: a resting order's submit effect is
+    // `acknowledged`, which the delivery-in-doubt window excluded by design.
+    //
+    // The KIND is part of the predicate. Without it this exempts any observation
+    // against a resting order with an acknowledged submit effect, including a
+    // late `order_acknowledged` - which the gate refuses on purpose, because
+    // replaying it would erase partial-fill knowledge.
+    const bool reconciled_resting =
+        reconciled_submit &&
+        effect->effect_id == order.effect_id &&
+        effect->operation == EffectOperation::submit &&
+        (order.state == ClusterOrderState::acknowledged ||
+         order.state == ClusterOrderState::live ||
+         order.state == ClusterOrderState::partially_filled) &&
+        effect->state == OutboxState::acknowledged;
+    if (reconciled_submit && !reconciled_cancel && !reconciled_resting &&
         !(effect->effect_id == order.effect_id &&
           effect->operation == EffectOperation::submit &&
           (order.state == ClusterOrderState::submission_unknown ||
@@ -2885,7 +2906,7 @@ enum class CancelDisposition : std::uint8_t {
          !(cancel_reconcilable && (cancel_agrees || cancel_contradicts))) ||
         (effect_resolved && !late_cancel_completion && !reconciled_cancel &&
          !terminal_cancel_rejection && !cancel_reconcilable &&
-         !unsolicited_cancellation) ||
+         !unsolicited_cancellation && !reconciled_resting) ||
         (effect->effect_id != order.effect_id && !late_cancel_completion)) {
         return venue_event_result(state,
                                   ApplyCode::venue_observation_not_applicable,
@@ -3027,7 +3048,18 @@ enum class CancelDisposition : std::uint8_t {
                 order.state = ClusterOrderState::conflict;
             } else if (venue_denies_order) {
                 effect->state = OutboxState::rejected;
-                order.state = ClusterOrderState::rejected;
+                // ADR 0008. The LABEL differs by how the order got here, because
+                // the two say different things to whoever reads the state.
+                // `rejected` means the venue refused the order - true when the
+                // submit's delivery was in doubt and the venue turns out never to
+                // have had it. An order the venue ACKNOWLEDGED and later stopped
+                // holding was not refused; it is gone, which is `cancelled`.
+                //
+                // Economically identical either way - terminal, zero fills, the
+                // reservation released below - so this is about not telling an
+                // operator something false.
+                order.state = reconciled_resting ? ClusterOrderState::cancelled
+                                                 : ClusterOrderState::rejected;
             } else {
                 // The venue holds the order and agrees about what it has filled.
                 // For a submit that means the submit arrived and the effect is

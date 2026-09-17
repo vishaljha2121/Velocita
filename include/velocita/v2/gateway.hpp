@@ -196,6 +196,12 @@ struct GatewayTimeouts {
     std::uint32_t max_query_attempts{4};
     // Re-propose overdue evidence under the same command identity.
     Tick commit_deadline{4};
+    // ADR 0008. How often a healthy resting order is re-confirmed. Deliberately
+    // far slower than `query_interval`: that one chases something already known
+    // to be wrong, while this is a heartbeat over the whole book, and its
+    // traffic is proportional to how much is resting rather than to how much is
+    // broken.
+    Tick resting_confirm_interval{600};
 };
 
 struct DeliveryPlan {
@@ -336,6 +342,12 @@ enum class ReconciliationNeed : std::uint8_t {
     submission_unknown,
     cancel_unconfirmed,
     delivery_exhausted,
+    // ADR 0008. A healthy resting order, confirmed periodically rather than
+    // assumed. Unlike every other need this one does NOT name something already
+    // known to be wrong - it exists so that a cancellation whose event never
+    // arrived is still discovered, and an order in that state looks exactly like
+    // one that is fine.
+    unconfirmed_resting,
 };
 
 struct ReconciliationTarget {

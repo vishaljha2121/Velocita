@@ -621,9 +621,11 @@ Phase 11 strategy/model validation and controlled canary
   refusal and its renewal, and needs the gateway loop that calls them plus an
   accepted bound. G-056 has authorization and independence, and needs the
   authenticated edge that assigns operator callers. G-057 and G-058 have their
-  operations; they need the gateway side that reaches for them. G-060 has its
-  no-side-door property and its safety half; what remains is the VISIBILITY gap
-  above, which needs a reviewed byte contract before it can be closed. G-057a needs the closed-order
+  operations; they need the gateway side that reaches for them. G-060 is closed:
+  the no-side-door property, the safety half, and now the visibility half under
+  ADR 0008 - a resting order is confirmed rather than assumed, so a cancellation
+  the cluster never authorized is discovered whether the venue pushes the event
+  or the event is lost. No byte contract was needed. G-057a needs the closed-order
   case driven end to end.
 
 ## 9. TrueMarkets adapter boundary — Phase 9

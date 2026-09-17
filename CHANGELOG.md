@@ -15,6 +15,45 @@ release-engineering work.
 
 ### Phase 8 in development - execution authority, fencing, and emergency control
 
+#### A resting order is confirmed, not assumed — 2026-09-17
+
+ADR 0008 rules 2 and 3, completing the visibility half of G-060. Reconciliation
+now ASKS about resting orders, and `order_reconciled` is applicable to them, so a
+cancellation whose event never arrived - a dropped socket, a reconnect gap - is
+discovered rather than believed away.
+
+THE HEARTBEAT IS SLOWER AND UNCAPPED, and both differ from every other
+reconciliation need on purpose. The others chase something already known to be
+wrong, so they are urgent and give up after `max_query_attempts` to avoid
+hammering a stuck venue. Confirming a resting order is not urgent, and giving up
+returns the cluster to assuming - the exact state this removes. The bound is the
+RATE, not the count.
+
+THE FIRST ATTEMPT WAS BACKED OUT AND THE REASON IS THE USEFUL PART. The refusal
+was blamed on the applicability gates and two were patched on that theory. The
+actual cause was the TEST FIXTURE: `validate` requires a venue sequence on every
+observation, including a synthetic one, and a zero there produces
+`invalid_identity`, which from outside reads exactly like an applicability
+refusal. The instrumentation used to chase it was also misattributing
+single-line returns, and the lines being read came from other tests in the same
+run. Re-done as a focused pass - enumerate all twelve refusal sites, identify
+the two that can fire, then change - the original patch turned out to be right.
+The work was never wrong; the diagnosis was.
+
+TWO ACCEPTED TESTS CHANGED THEIR EXPECTATIONS, authorised by the ADR and
+recorded there. Both required a reconciliation answer for a healthy order to be
+refused - one because the effect was "already resolved", one because a live
+order "needs none". That is the assumption being overturned, and the first
+one's own comment already conceded that admitting it was harmless by value.
+Both now require the answer to be admitted and to move nothing.
+
+ONE LABEL CHANGED. An absent answer for an order the venue never acknowledged
+still resolves to `rejected`. One the venue ACKNOWLEDGED and later stopped
+holding resolves to `cancelled` - it was not refused, it is gone. Economically
+identical, so this is about not telling an operator something false.
+
+Five mutants, each dying on the assertion that names its property.
+
 #### An unsolicited venue cancellation is evidence — 2026-09-17
 
 ADR 0008, first of three rules. A native `cancelled` for a resting order the

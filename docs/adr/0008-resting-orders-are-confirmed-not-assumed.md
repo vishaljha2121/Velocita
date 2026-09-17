@@ -79,27 +79,47 @@ already rejected it: one unreconcilable order must not halt everything.
 
 ## Implementation status, 2026-09-17
 
-RULE 1 IS BUILT AND TESTED. An unsolicited `cancelled` on a resting order moves
-it to `reconciling`, which the existing `cancel_unconfirmed` need already
-targets - so the push case is complete and self-heals through machinery that was
-already there. Mutation-confirmed two ways.
+ALL THREE RULES BUILT AND MUTATION-CONFIRMED, five mutants, each dying on the
+assertion that names its property.
 
-RULES 2 AND 3 ARE NOT BUILT, and were deliberately backed out after being
-written. Rule 3 - widening `order_reconciled` to resting orders - sits inside
-Phase 4's evidence-applicability machinery, where several gates interact: an
-effect-centric resolved check, a terminal check, a conflict check, and a
-`venue_denies_order` path. A first attempt exempted the wrong predicate and
-caused a late `order_acknowledged` to erase partial-fill knowledge; the second
-still refused for a reason not yet located.
+A FIRST ATTEMPT AT RULES 2 AND 3 WAS BACKED OUT AND THE REASON IS WORTH KEEPING.
+The refusal being chased was blamed on the applicability gates, and two of them
+were patched on that theory. The actual cause was the TEST FIXTURE: `validate`
+requires a venue sequence on every observation, including a synthetic one, and a
+zero there produced `invalid_identity` - which reads exactly like an
+applicability refusal from the outside. The instrumentation used to find it was
+also misattributing single-line returns, and the `[NA]` lines being read came
+from other tests in the same suite run.
 
-RULE 2 WAS BACKED OUT WITH IT, ON PURPOSE. Querying resting orders while their
-answers are refused is worse than not querying: the attempt never discharges,
-and because the heartbeat is deliberately uncapped it would retry forever. The
-two rules are one increment and must land together.
+Re-done as a focused pass, the function's twelve refusal sites were enumerated
+first and the two that could fire for this case identified BEFORE any change.
+Both were the ones patched originally. The work was never wrong; the diagnosis
+was, and the lesson is that a refusal code says which check failed only if you
+confirm which check ran.
 
-This does not change the decision. It records that the remaining half needs a
-focused pass over the applicability gates rather than an incremental patch, and
-that the tree is green without it.
+TWO ACCEPTED TESTS CHANGED THEIR EXPECTATIONS, which this ADR authorises and
+which should not pass unremarked:
+
+  * `test_replaying_the_same_answer_changes_nothing` required a repeat answer to
+    be refused because the effect was already resolved. Under rule 2 a resting
+    order is re-confirmed on an uncapped heartbeat, so refusing repeats is the
+    "assume" behaviour being removed. The old comment already conceded that
+    admitting it was harmless by value - adjudicating a final cumulative total
+    against what the cluster holds computes a delta of zero - so the refusal was
+    the tidier statement, not the safer one.
+
+  * `test_a_reconciliation_answer_is_refused_where_it_cannot_apply` required a
+    live order to reject a reconciliation answer because it "needs none". That
+    is the clearest statement of the assumption this ADR overturns.
+
+Both now require the answer to be ADMITTED AND TO MOVE NOTHING, which is what a
+confirmation should look like.
+
+ONE LABEL CHANGED. An absent answer for an order the venue never acknowledged
+still resolves to `rejected` - the venue refused it. An order the venue
+ACKNOWLEDGED and later stopped holding resolves to `cancelled`, because it was
+not refused, it is gone. Economically identical - terminal, zero fills,
+reservation released - so this is about not telling an operator something false.
 
 ## Consequences
 

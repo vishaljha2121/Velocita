@@ -475,8 +475,14 @@ namespace {
             return delivery_exhausted(order, delivery, timeouts)
                        ? ReconciliationNeed::delivery_exhausted
                        : ReconciliationNeed::none;
+        case ClusterOrderState::acknowledged:
+        case ClusterOrderState::live:
+        case ClusterOrderState::partially_filled:
+            // ADR 0008. Confirmed, not assumed. Nothing here is known to be
+            // wrong, and that is exactly the point: an order whose cancellation
+            // event was lost looks identical to one that is fine.
+            return ReconciliationNeed::unconfirmed_resting;
         default:
-            // A resting order without fills is not evidence of a lost fill.
             return ReconciliationNeed::none;
     }
 }
@@ -585,11 +591,22 @@ ReconciliationPlan plan_reconciliation(const TradingState& state,
 
         const auto* attempt = find_reconciliation(reconciliation,
                                                   order.cluster_order_id);
+        const bool heartbeat = need == ReconciliationNeed::unconfirmed_resting;
         if (attempt != nullptr) {
             // One outstanding query per order prevents answers from arriving out of order.
             if (attempt->awaiting_answer) continue;
-            if (attempt->attempts >= timeouts.max_query_attempts) continue;
-            if (now < attempt->last_query_at + timeouts.query_interval) continue;
+            // THE ATTEMPT CAP DOES NOT APPLY TO THE HEARTBEAT. Giving up is right
+            // for a need that names something already wrong: stop hammering a
+            // stuck venue, leave the slot blocked, let an operator see it. Giving
+            // up on confirming a resting order instead returns the cluster to
+            // ASSUMING, which is the silent state ADR 0008 exists to end. The
+            // bound on this need is its RATE, not its count.
+            if (!heartbeat && attempt->attempts >= timeouts.max_query_attempts) {
+                continue;
+            }
+            const auto interval = heartbeat ? timeouts.resting_confirm_interval
+                                            : timeouts.query_interval;
+            if (now < attempt->last_query_at + interval) continue;
         }
         if (plan.query_count == plan.to_query.size()) break;
         plan.to_query[plan.query_count++] = {order.cluster_order_id, order.effect_id,

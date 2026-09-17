@@ -426,6 +426,69 @@ void test_reconciliation_targets_only_unresolvable_exposure() {
             "the reconciliation target does not name the stranded order");
 }
 
+void test_a_resting_order_is_confirmed_rather_than_assumed() {
+    // ADR 0008. Reconciliation only ever asked about orders already known to be
+    // wrong, so a resting order was never questioned - and a cancellation whose
+    // event never arrived (a dropped socket, a reconnect gap) left the cluster
+    // holding a reservation against an order that no longer existed, with
+    // nothing to raise it.
+    auto fixture = one_authorized_submit();
+    for (std::size_t i = 0; i < fixture.state.order_count; ++i) {
+        fixture.state.orders[i].state = ClusterOrderState::live;
+    }
+    const GatewayTimeouts timeouts;
+    const GatewayReconciliationState fresh;
+
+    const auto first = plan_reconciliation(fixture.state, fresh, no_attempts,
+                                           control_of(fixture.state),
+                                           capable_venue(), timeouts, 0);
+    require(first.query_count == 1,
+            "a resting order was never asked about, so a cancellation whose "
+            "event was lost would stay invisible");
+    require(first.to_query[0].need == ReconciliationNeed::unconfirmed_resting,
+            "the resting order was queried under the wrong need");
+
+    // THE CADENCE IS SLOWER THAN EVERY OTHER NEED, because confirming a healthy
+    // order is not urgent and the traffic is proportional to the whole book.
+    GatewayReconciliationState asked;
+    require(record_query(asked, only_order(fixture.state), 0, 0),
+            "the fixture could not record a query");
+    require(record_answer(asked, only_order(fixture.state)),
+            "the fixture could not record its answer");
+    require(plan_reconciliation(fixture.state, asked, no_attempts,
+                                control_of(fixture.state), capable_venue(),
+                                timeouts, timeouts.query_interval)
+                    .query_count == 0,
+            "a resting order was re-queried at the urgent interval");
+    require(plan_reconciliation(fixture.state, asked, no_attempts,
+                                control_of(fixture.state), capable_venue(),
+                                timeouts, timeouts.resting_confirm_interval)
+                    .query_count == 1,
+            "a resting order was never re-confirmed");
+
+    // AND IT IS UNCAPPED. The other needs give up after `max_query_attempts`,
+    // which is right for something already known to be wrong: stop hammering a
+    // stuck venue. Confirming a resting order is a HEARTBEAT, and giving up
+    // returns the system to exactly the silent state this exists to end. The
+    // bound is the rate, not the count.
+    GatewayReconciliationState exhausted;
+    for (std::uint32_t attempt = 0; attempt <= timeouts.max_query_attempts + 2;
+         ++attempt) {
+        require(record_query(exhausted, only_order(fixture.state),
+                             attempt * timeouts.resting_confirm_interval, 0),
+                "the fixture could not record a repeated query");
+        require(record_answer(exhausted, only_order(fixture.state)),
+                "the fixture could not record a repeated answer");
+    }
+    const auto after_many = plan_reconciliation(
+        fixture.state, exhausted, no_attempts, control_of(fixture.state),
+        capable_venue(), timeouts,
+        (timeouts.max_query_attempts + 8) * timeouts.resting_confirm_interval);
+    require(after_many.query_count == 1,
+            "resting confirmation gave up after the attempt cap, which returns "
+            "the cluster to assuming rather than confirming");
+}
+
 void test_one_outstanding_query_at_a_time() {
     const auto stranded = stranded_submit();
     GatewayReconciliationState reconciliation;
@@ -1659,26 +1722,31 @@ void test_replaying_the_same_answer_changes_nothing() {
     require(submit_answer(fixture.state, answer, 20).code == ApplyCode::applied,
             "an exact command replay did not return its retained result");
 
-    // A repeat under a FRESH request identity is no longer refused by the venue's
+    // A repeat under a FRESH request identity is not refused by the venue's
     // sequence domain, because a synthetic answer never belonged to that domain -
-    // its sequence was chosen by the gateway. It is admitted and adjudicated
-    // again, and adjudicating a final cumulative total against what the cluster
-    // already holds computes a delta of zero. Harmless by value, which is the
-    // property that was always doing the real work.
-    // Under a FRESH request identity the venue's sequence domain no longer
-    // refuses it, because a synthetic answer never belonged to that domain - its
-    // sequence was chosen by the gateway. It reaches adjudication and is refused
-    // there, on the ground that actually holds: the effect this answer was about
-    // is already resolved, so there is nothing left for it to say.
+    // its sequence was chosen by the gateway.
     //
-    // The distinction matters. The old refusal claimed "this identity is taken",
-    // which was a statement about a number nobody owned. The new one is a
-    // statement about the ORDER, and it is the same statement the reducer would
-    // make about any late evidence for a settled effect.
-    require(submit_answer(fixture.state, answer, 21).code ==
-                ApplyCode::venue_observation_not_applicable,
-            "a re-adjudicated answer for a resolved effect was not refused as "
-            "inapplicable");
+    // CHANGED BY ADR 0008, DELIBERATELY. This previously required a refusal, on
+    // the ground that the effect was already resolved and the answer had nothing
+    // left to say. That ground no longer holds: the first answer left the order
+    // RESTING, and a resting order is now confirmed rather than assumed, on an
+    // uncapped heartbeat. Refusing repeat confirmations is precisely the
+    // "assume" behaviour ADR 0008 exists to end - a cancellation whose event
+    // never arrived would be undiscoverable.
+    //
+    // Admitting it was always safe, and the comment this replaces said so:
+    // adjudicating a FINAL CUMULATIVE total against what the cluster already
+    // holds computes a delta of zero. Harmless by value is the property that was
+    // doing the real work; the refusal was the tidier statement, not the safer
+    // one.
+    const auto before_repeat = fixture.state;
+    require(submit_answer(fixture.state, answer, 21).code == ApplyCode::applied,
+            "a repeat confirmation of a resting order was refused, which returns "
+            "the cluster to assuming rather than confirming");
+    require(fixture.state.orders[0].state == before_repeat.orders[0].state &&
+                fixture.state.reservations[0] == before_repeat.reservations[0] &&
+                fixture.state.risk_accounts[0] == before_repeat.risk_accounts[0],
+            "a repeat confirmation moved something, so it was not a no-op by value");
     require(sole_order(fixture.state).state == settled.orders[0].state,
             "a re-adjudicated answer moved the order");
 
@@ -1731,10 +1799,26 @@ void test_a_reconciliation_answer_is_refused_where_it_cannot_apply() {
             "the acknowledgement fixture was refused");
     require(sole_order(live.state).state == ClusterOrderState::live,
             "the acknowledgement fixture is not live");
+    // CHANGED BY ADR 0008. This encoded the assumption the ADR overturns - that a
+    // live order "needs none" - and it is the most direct statement of it in the
+    // suite. A resting order is now confirmed rather than assumed, because a
+    // cancellation whose event never arrived leaves an order looking exactly
+    // like this one and nothing else would ever discover it.
+    //
+    // The answer here says the venue still holds the order with zero filled,
+    // which agrees with what the cluster holds, so it is admitted and moves
+    // nothing. That is what a confirmation is supposed to look like.
+    const auto before_confirm = live.state;
     require(submit_answer(live.state, reconciled(live.state, live.effect_id, 77, 0),
                           20)
-                    .code == ApplyCode::venue_observation_not_applicable,
-            "a reconciliation answer applied to an order that needs none");
+                    .code == ApplyCode::applied,
+            "a confirmation of a resting order was refused, so a lost "
+            "cancellation would stay undiscoverable");
+    require(sole_order(live.state).state == ClusterOrderState::live,
+            "confirming a resting order moved it");
+    require(live.state.reservations[0] == before_confirm.reservations[0] &&
+                live.state.risk_accounts[0] == before_confirm.risk_accounts[0],
+            "confirming a resting order changed economics");
 
     auto fixture = stranded_submit();
     require(submit_answer(fixture.state,
@@ -4213,7 +4297,8 @@ int main() {
         test_a_halted_cluster_plans_no_sends();
         test_the_planner_only_schedules_what_the_guard_permits();
         test_reconciliation_targets_only_unresolvable_exposure();
-        test_one_outstanding_query_at_a_time();
+        test_a_resting_order_is_confirmed_rather_than_assumed();
+    test_one_outstanding_query_at_a_time();
         test_the_query_interval_is_respected();
         test_reconciliation_queries_are_bounded();
         test_reconciliation_is_fenced_by_generation_but_not_by_halt();
