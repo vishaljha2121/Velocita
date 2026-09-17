@@ -15,6 +15,45 @@ release-engineering work.
 
 ### Phase 9 in development - True Markets adapter
 
+#### The create-order body, and the refusal that protects the strategy — 2026-09-17
+
+The documented market-order body encodes. The LIMIT body refuses until somebody
+verifies the schema, and that refusal is the point of the commit.
+
+WHY. As of 2026-09-17 the create-order request schema does not render on the
+venue's docs - only the market-order example does - so the price field name is
+unknown, as is whether `qty_unit` accepts a base-denominated quantity. Many APIs
+ignore fields they do not recognise. A guessed price field that the venue drops
+turns a LIMIT order into a MARKET order: it crosses the spread, pays taker fees
+on every quote, inverts the maker economics this project exists to capture, and
+reports success while doing it. Nothing on our side can detect that afterwards.
+So `VenueOrderSchema` carries a `verified` flag and encoding refuses without it -
+not knowing is a state the code can be in, rather than a gap somebody fills with
+a plausible guess.
+
+`qty_unit` is sent as BASE rather than the quickstart's "quote". The cluster
+authorizes a quantity of an instrument, not a spend; nothing in V2 can express
+"five dollars of BTC", and pretending otherwise would let a price move change the
+size of an order the reducer already sized.
+
+Unsafe metadata is REFUSED, NOT ESCAPED. An asset symbol is alphanumeric on every
+venue, so anything else means the metadata is wrong - and escaping would carry a
+corrupt symbol into a live order and let the venue decide what it meant. A body
+too long for its buffer refuses with zero bytes written, because a partial
+request is a request. A cancel is refused outright: it has its own endpoint and
+its own two-step signing flow, and encoding one as a create-order body would
+place a NEW order in order to cancel one.
+
+A METHOD FAILURE WORTH RECORDING. Three mutants were first reported as surviving
+when none of them had been compiled - and earlier in the day a fourth died on an
+assertion belonging to a different property, which is a false pass wearing a
+green coat. Mutation runs in the shared build directory are unreliable on this
+host; deleting the object file and `touch` both fail against sub-second mtime
+granularity. Re-run one fresh build directory per mutant, all three die on their
+own named assertions. The handoff's method notes now say so.
+
+36/36 host, 36/36 ASan+UBSan.
+
 #### The venue wire: exact units, and two sources that must prove each other — 2026-09-17
 
 A FINDING FIRST, because it shaped the whole slice. The replicated

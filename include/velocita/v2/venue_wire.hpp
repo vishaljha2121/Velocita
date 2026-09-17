@@ -4,9 +4,11 @@
 #include "velocita/v2/contracts.hpp"
 #include "velocita/v2/domain.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string_view>
 
 namespace velocita::v2 {
 
@@ -87,5 +89,85 @@ struct VenueInstrumentSpec {
 [[nodiscard]] std::size_t render_quantity(QuantityLots quantity,
                                           const VenueInstrumentSpec& spec,
                                           std::span<char> out) noexcept;
+
+// ---------------------------------------------------------------------------
+// The create-order request body.
+
+// Longest asset symbol the adapter will carry, plus room for a terminator.
+inline constexpr std::size_t kMaxAssetSymbolBytes = 16;
+// Longest venue field name the adapter will carry.
+inline constexpr std::size_t kMaxVenueFieldBytes = 24;
+// Enough for the documented body plus a limit order's extra fields.
+inline constexpr std::size_t kMaxOrderRequestBytes = 512;
+
+struct AssetSymbol {
+    std::array<char, kMaxAssetSymbolBytes> text{};
+    std::uint8_t length{};
+
+    constexpr auto operator<=>(const AssetSymbol&) const noexcept = default;
+};
+
+[[nodiscard]] AssetSymbol asset_symbol(std::string_view text) noexcept;
+
+// FIELD NAMES THE VENUE HAS NOT DOCUMENTED, carried explicitly so that not
+// knowing them is a state the code can be in rather than a gap somebody fills
+// with a plausible guess.
+//
+// As of 2026-09-17 the create-order request schema does not render on
+// `docs.truemarkets.co`; only the market-order example does. So the price field
+// name, and whether `qty_unit` accepts a base-denominated quantity, are
+// UNKNOWN.
+//
+// WHY A GUESS HERE IS WORSE THAN A REFUSAL. Many APIs ignore fields they do not
+// recognise. If the price field is guessed wrong and ignored, a LIMIT order
+// silently becomes a MARKET order - it crosses the spread and pays taker fees on
+// every quote, which inverts the maker economics this project exists to capture,
+// and it does so while appearing to work. That is the single most expensive
+// failure available at this boundary and it is invisible from our side.
+struct VenueOrderSchema {
+    // Set only when these names came from the venue, never from inference.
+    bool verified{};
+    std::array<char, kMaxVenueFieldBytes> price_field{};
+    std::uint8_t price_field_length{};
+    std::array<char, kMaxVenueFieldBytes> base_qty_unit{};
+    std::uint8_t base_qty_unit_length{};
+};
+
+enum class OrderBodyError : std::uint8_t {
+    none = 0,
+    // The buffer could not hold the body. Never a partial write.
+    output_too_small,
+    // A symbol or field name held a character that cannot be placed in JSON
+    // without escaping. Refused rather than escaped: an asset symbol is
+    // alphanumeric everywhere, so anything else means the metadata is wrong.
+    unsafe_text,
+    // Empty symbol, empty field name, or a quantity or price that would not
+    // convert.
+    unrepresentable_value,
+    // A limit order was requested against a schema nobody verified. See
+    // `VenueOrderSchema`.
+    schema_unverified,
+    // The effect asks for something the documented surface cannot express.
+    unsupported_operation,
+};
+
+struct OrderBodyResult {
+    OrderBodyError error{OrderBodyError::none};
+    std::size_t bytes_written{};
+};
+
+// Encode the documented market-order body:
+//   {"base_asset":..,"quote_asset":..,"qty":..,"qty_unit":"base","side":..,
+//    "type":"market"}
+[[nodiscard]] OrderBodyResult encode_market_order_body(
+    const OrderEffect& effect, const VenueInstrumentSpec& spec,
+    AssetSymbol base, AssetSymbol quote, std::span<char> out) noexcept;
+
+// Encode a limit-order body. REFUSES unless the schema is verified, for the
+// reason given on `VenueOrderSchema`.
+[[nodiscard]] OrderBodyResult encode_limit_order_body(
+    const OrderEffect& effect, const VenueInstrumentSpec& spec,
+    AssetSymbol base, AssetSymbol quote, const VenueOrderSchema& schema,
+    std::span<char> out) noexcept;
 
 }  // namespace velocita::v2

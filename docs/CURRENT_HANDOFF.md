@@ -87,6 +87,15 @@ not touched).
 
 ### Method notes that cost something to learn
 
+- MUTATION TESTING IN A SHARED BUILD DIRECTORY IS UNRELIABLE ON THIS HOST, and it
+  produced WRONG RESULTS REPEATEDLY in the 2026-09-17 session - mutants reported
+  as surviving that were never compiled, and mutants killed by an assertion
+  belonging to a different property. Deleting the object file is not enough and
+  `touch` is not enough; sub-second mtime granularity defeats both. USE A FRESH
+  BUILD DIRECTORY PER MUTANT, confirm the compile line actually appears, and
+  check WHICH assertion died. A mutant that dies on the wrong assertion is a
+  false pass wearing a green coat.
+
 - A REFUSAL CODE TELLS YOU WHICH CHECK FAILED ONLY IF YOU CONFIRM WHICH CHECK
   RAN. A day was lost blaming applicability gates for a refusal that was
   `validate` rejecting a test fixture with a zero venue sequence - and the
