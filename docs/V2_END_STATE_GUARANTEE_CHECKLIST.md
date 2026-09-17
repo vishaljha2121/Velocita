@@ -573,6 +573,46 @@ Phase 11 strategy/model validation and controlled canary
   and that forgetting the lane leaves the emergency command refused by the
   emergency path - the exact failure ADR 0007 predicted.
 
+  G-060, AND THE CLAIM IT FALSIFIED. The accepted reading (ADR 0007) is that no
+  emergency action reaches a venue except through a committed command. The
+  gateway side of that is now stated as a PROPERTY rather than a sample: for
+  every identity probed, permission implies the effect is in the committed
+  outbox, and the bytes handed over are the cluster's own reconstruction.
+  Emptying the outbox leaves the gateway with nothing to send, because it has no
+  reserve of its own.
+
+  A sweep over an arbitrary numeric range is weaker than it looks - the ids a
+  wrong lookup would really return are the OTHER ids in the same records - so
+  the probe also covers every cluster order id, decision id and generation the
+  state holds.
+
+  WHAT TRYING TO BREAK IT TAUGHT US. Keying both the guard's scan and
+  `materialize_order_effect` on `cluster_order_id`, so the two agree with each
+  other, changes nothing: the canonical payload digest BINDS THE EFFECT ID, so
+  an id that is not the record's own cannot reconstruct. The lookup key is not
+  the defence; the defence is that the bytes only exist for the identity that
+  authored them. That is a stronger guarantee than the one being tested for, and
+  it is why no mutation of the lookup opens a second door.
+
+  THE ADR'S OTHER CLAIM WAS FALSE AND IS AMENDED. ADR 0007 said an out-of-band
+  venue action would reconcile back through `ObserveOrderEvent` into `conflict`
+  or `reconciling`. Writing the test showed it does not: no evidence kind says
+  "the venue cancelled an order you never asked to cancel" - `cancelled` is only
+  applicable against a cancel the cluster authored, and `order_reconciled` can
+  only say the venue STILL HOLDS an order. An unrequested cancellation is
+  refused, and the cluster goes on believing the order is live.
+
+  This is the same shape as ADR 0004: V2 cannot represent a position change it
+  did not authorize. The containment is therefore not "we reconcile it" but the
+  stronger statement that an out-of-band action cannot be represented, which is
+  why the emergency path must go through the cluster.
+
+  The SAFETY half holds and is tested: a venue cannot unilaterally free reserved
+  risk by announcing a cancellation the cluster never authored. The VISIBILITY
+  half is OPEN - the two books can diverge silently and nothing raises it.
+  Closing it needs an evidence kind for "the venue does not hold this order",
+  which is a material byte contract and a change to accepted Phase 4 economics.
+
   WHAT EACH GUARANTEE STILL NEEDS. G-052/G-054 have their pre-send refusals from
   Phase 5 but no external fence to be single against. G-053 has its property proved - nothing
   promotes automatically - and needs the operator-facing workflow that makes a
@@ -581,9 +621,9 @@ Phase 11 strategy/model validation and controlled canary
   refusal and its renewal, and needs the gateway loop that calls them plus an
   accepted bound. G-056 has authorization and independence, and needs the
   authenticated edge that assigns operator callers. G-057 and G-058 have their
-  operations; they need the gateway side that reaches for them. G-060
-  needs emergency actions recorded into cluster state, which means new command
-  bytes and therefore a reviewed byte contract. G-057a needs the closed-order
+  operations; they need the gateway side that reaches for them. G-060 has its
+  no-side-door property and its safety half; what remains is the VISIBILITY gap
+  above, which needs a reviewed byte contract before it can be closed. G-057a needs the closed-order
   case driven end to end.
 
 ## 9. TrueMarkets adapter boundary — Phase 9

@@ -3551,6 +3551,57 @@ void test_acknowledged_duplicate_fills_do_not_exhaust_receipts() {
 }
 
 
+void test_an_unrequested_venue_cancellation_cannot_release_risk() {
+    using namespace velocita::v2;
+    // THE OTHER HALF OF G-060, and it is narrower than ADR 0007 first claimed.
+    //
+    // The accepted reading is that no emergency action reaches a venue except
+    // through a committed command. Nothing in this system can PREVENT someone
+    // acting at the venue's own console, so the ADR said such an action would
+    // reconcile back through `ObserveOrderEvent`. Writing this test showed that
+    // is false: `order_reconciled` can only say the venue STILL HOLDS an order,
+    // and `cancel_reconciled` is tied to a cancel the cluster authored. There is
+    // no evidence kind that says "the venue cancelled something you never asked
+    // to cancel". See ADR 0007's amendment.
+    //
+    // What IS true, and is what this pins: the cluster refuses to act on that
+    // evidence rather than absorbing it. A venue cannot unilaterally free
+    // reserved risk by announcing a cancellation the cluster never authored.
+    // That is the safety half. The visibility half is an open gap, recorded as
+    // one.
+    auto state = ready_state();
+    ApplyScratch scratch;
+    const auto submit = apply(state, authorize(2, 0xf1), scratch);
+    require(submit.code == ApplyCode::applied, "submit fixture did not authorize");
+
+    // The venue must have ACKNOWLEDGED the order first. Cancelling something the
+    // venue never admitted to holding is not an out-of-band action, it is an
+    // inapplicable event, and refusing it proves nothing about this case.
+    require(apply(state,
+                  observe_order_event(1, 0xf2, VenueObservationKind::order_acknowledged,
+                                      submit.cluster_order_id(), submit.effect_id(), 901),
+                  scratch)
+                    .code == ApplyCode::applied,
+            "the fixture could not get the order acknowledged");
+    require(state.orders[0].state == ClusterOrderState::live,
+            "the fixture order is not resting at the venue");
+
+    const auto before = state;
+    const auto outcome = apply(
+        state,
+        observe_order_event(2, 0xf4, VenueObservationKind::cancelled,
+                            submit.cluster_order_id(), submit.effect_id(), 902),
+        scratch);
+
+    require(outcome.code == ApplyCode::venue_observation_not_applicable,
+            "an unrequested venue cancellation was accepted as evidence");
+    require(state.orders[0].state == ClusterOrderState::live,
+            "an unrequested venue cancellation moved the order anyway");
+    require_economics_unchanged(before, state,
+                                "an unrequested venue cancellation released "
+                                "reserved risk on the venue's word alone");
+}
+
 velocita::v2::Command mass_cancel(const velocita::v2::TradingState& state,
                                   const std::uint64_t request,
                                   const std::uint8_t marker,
@@ -3790,6 +3841,7 @@ int main() {
         test_fill_failures_are_atomic_and_bounded();
         test_cancel_and_unknown_remain_risk_bearing_until_evidence();
         test_fill_cancel_race_consumes_one_reservation();
+        test_an_unrequested_venue_cancellation_cannot_release_risk();
         test_mass_cancel_pulls_every_cancellable_order_in_scope();
         test_mass_cancel_skips_the_uncancellable_without_failing();
         test_mass_cancel_refuses_rather_than_half_finishing();

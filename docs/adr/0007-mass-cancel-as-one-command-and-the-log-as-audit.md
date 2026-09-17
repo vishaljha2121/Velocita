@@ -77,11 +77,47 @@ it was authorized under. Rejected for two reasons, in order of weight:
 
 WHAT THIS OBLIGES US TO SAY PLAINLY, rather than leave implied: an action taken
 at the venue outside the cluster is NOT SUPPORTED and is not made safe by this
-decision. If one happens anyway, the venue's own event reconciles back through
-`ObserveOrderEvent` and the order lands in `conflict` or `reconciling` - which,
-by G-059, now blocks a resume until someone resolves it. That is the honest
-containment: the system does not prevent an out-of-band action, it refuses to
-pretend it did not happen.
+decision. See the amendment below for what actually happens if one occurs; the
+first version of this ADR got it wrong.
+
+## Amendment, 2026-09-17: an out-of-band venue action is not representable
+
+The paragraph above originally claimed that an action taken at the venue outside
+the cluster would reconcile back through `ObserveOrderEvent`, leaving the order
+in `conflict` or `reconciling` and blocking a resume by G-059. WRITING THE TEST
+FOR THAT CLAIM SHOWED IT IS FALSE, and the correction matters more than the
+original claim did.
+
+There is no evidence kind that says "the venue cancelled an order you never
+asked to cancel". `cancelled` is only applicable against a cancel the cluster
+authored. `order_reconciled` answers "the venue STILL HOLDS this order, with
+this cumulative fill" - it cannot express absence. `cancel_reconciled` says a
+cancel took effect, and is likewise tied to an effect the cluster authored.
+
+So an unrequested `cancelled` for a live order is refused with
+`venue_observation_not_applicable`, and the cluster goes on believing the order
+is live.
+
+THIS IS THE SAME SHAPE AS ADR 0004. V2 cannot represent a position change it did
+not authorize; that is why perpetuals are out of MVP V1, and an out-of-band
+cancellation is a member of the same class. The honest containment is therefore
+NOT "we reconcile it" but the stronger and simpler statement:
+
+  An out-of-band venue action cannot be represented, which is precisely why the
+  emergency path must go through the cluster. The guarantee is not that we
+  recover from a side door; it is that there must not be one.
+
+WHAT IS ACTUALLY GUARANTEED, and is now tested: the cluster refuses to ACT on
+such evidence rather than absorbing it. A venue cannot unilaterally free reserved
+risk by announcing a cancellation the cluster never authored - the order stays
+live, the reservation stays held, and economics do not move. That is the safety
+half and it holds.
+
+WHAT IS OPEN, recorded rather than closed by redefinition: the VISIBILITY half.
+The cluster's book and the venue's book can diverge silently, and nothing today
+raises that. Closing it needs an evidence kind for "the venue does not hold this
+order", which is a material byte contract and a change to accepted Phase 4
+economics. It is not folded into this ADR.
 
 ## Consequences
 

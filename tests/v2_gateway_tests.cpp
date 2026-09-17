@@ -530,6 +530,112 @@ void test_exhausted_quota_defers_rather_than_sending() {
             "an effect was sent with no remaining quota");
 }
 
+void test_the_gateway_can_send_nothing_the_cluster_did_not_author() {
+    // G-060, under the reading accepted in ADR 0007: the guarantee is that no
+    // emergency action reaches a venue except through a committed command.
+    // There is no side door - not a gateway acting on its own initiative, not a
+    // stale identity resurrected from somewhere else.
+    //
+    // Stated as a PROPERTY rather than as a sample. The existing unknown-effect
+    // test checks one fabricated id, which is evidence about that id. What the
+    // guarantee needs is the implication in general: if the guard permits an
+    // effect, that effect is in the committed outbox. Sweeping the identity
+    // space is the difference between "999999 was refused" and "nothing outside
+    // the outbox is permitted".
+    const auto fixture = authorized_submit();
+
+    const auto in_outbox = [](const TradingState& state, const EffectId id) {
+        for (std::size_t i = 0; i < state.outbox_effect_count; ++i) {
+            if (state.outbox_effects[i].effect_id == id) return true;
+        }
+        return false;
+    };
+
+    std::size_t permitted_count = 0;
+    const auto probe = [&](const EffectId id) {
+        const auto decision = evaluate_pre_send(fixture.state, id,
+                                                matching_control(fixture.state),
+                                                capable_venue(), open_quota());
+        if (!decision.permitted()) return;
+        ++permitted_count;
+        require(in_outbox(fixture.state, id),
+                "the pre-send guard permitted EffectId " +
+                    std::to_string(id.value()) +
+                    ", which the cluster never authored");
+        // And the bytes it hands over are the cluster's own reconstruction, not
+        // something the gateway assembled. Identity alone is not enough: an
+        // effect that exists but whose payload the gateway chose would still be
+        // an action the cluster did not author.
+        const auto authoritative = materialize_order_effect(fixture.state, id);
+        require(authoritative.has_value() &&
+                    encode_payload(*decision.effect).bytes ==
+                        encode_payload(*authoritative).bytes,
+                "the permitted payload differs from the cluster's own");
+    };
+
+    for (std::uint64_t candidate = 0; candidate < 4'096; ++candidate) {
+        probe(EffectId{candidate});
+    }
+    // Neighbours of the real identity, because an off-by-one in a lookup is how
+    // a plausible-but-unauthored id would actually arise.
+    const auto real = fixture.effect_id.value();
+    for (std::uint64_t delta = 1; delta <= 64; ++delta) {
+        probe(EffectId{real + delta});
+        if (real >= delta) probe(EffectId{real - delta});
+    }
+    probe(fixture.effect_id);
+
+    // AND EVERY OTHER IDENTITY THE STATE ACTUALLY HOLDS. A sweep over an
+    // arbitrary numeric range is weaker than it looks: the ids a wrong lookup
+    // would really return are not random numbers, they are the OTHER ids
+    // sitting in the same records.
+    //
+    // WHAT TRYING TO BREAK THIS TAUGHT US, recorded because it is the real
+    // reason the guarantee holds. Keying BOTH the guard's scan and
+    // `materialize_order_effect` on `cluster_order_id` - so the two agree with
+    // each other, which is what makes a lookup bug dangerous - changes nothing:
+    // the canonical payload digest BINDS THE EFFECT ID, so an id that is not
+    // the record's own cannot reconstruct and is refused as
+    // `payload_unreconstructable`. The lookup key is not the defence. The
+    // defence is that the bytes only exist for the identity that authored them.
+    for (std::size_t i = 0; i < fixture.state.outbox_effect_count; ++i) {
+        const auto& effect = fixture.state.outbox_effects[i];
+        probe(EffectId{effect.cluster_order_id.value()});
+        probe(EffectId{effect.decision_id.value()});
+        probe(EffectId{effect.effect_generation});
+    }
+    for (std::size_t i = 0; i < fixture.state.order_count; ++i) {
+        probe(EffectId{fixture.state.orders[i].cluster_order_id.value()});
+        probe(EffectId{fixture.state.orders[i].decision_id.value()});
+    }
+    for (std::size_t i = 0; i < fixture.state.decision_count; ++i) {
+        probe(EffectId{fixture.state.decision_hot[i].decision_id.value()});
+    }
+
+    require(permitted_count == 1,
+            "the sweep permitted " + std::to_string(permitted_count) +
+                " effects rather than the single authored one, so it either "
+                "proved nothing or found a second door");
+
+    // AND EMPTYING THE OUTBOX EMPTIES THE GATEWAY. If the cluster holds no
+    // authored effect, there is nothing to send - the gateway has no reserve of
+    // its own to fall back on.
+    auto emptied = fixture.state;
+    emptied.outbox_effect_count = 0;
+    for (std::uint64_t candidate = 0; candidate < 1'024; ++candidate) {
+        require(!evaluate_pre_send(emptied, EffectId{candidate},
+                                   matching_control(emptied), capable_venue(),
+                                   open_quota())
+                     .permitted(),
+                "a gateway with an empty committed outbox still had something "
+                "to send");
+    }
+    require(!evaluate_pre_send(emptied, fixture.effect_id, matching_control(emptied),
+                               capable_venue(), open_quota())
+                 .permitted(),
+            "the authored effect survived the outbox it came from");
+}
+
 void test_an_unknown_or_unreconstructable_effect_is_refused() {
     const auto fixture = authorized_submit();
     RecordingTransport transport;
@@ -595,7 +701,8 @@ int main() {
     test_a_gateway_that_loses_the_cluster_stops_within_its_lease();
     test_a_venue_that_cannot_represent_the_intent_is_refused_not_approximated();
         test_exhausted_quota_defers_rather_than_sending();
-        test_an_unknown_or_unreconstructable_effect_is_refused();
+        test_the_gateway_can_send_nothing_the_cluster_did_not_author();
+    test_an_unknown_or_unreconstructable_effect_is_refused();
         test_a_settled_effect_is_not_deliverable();
         test_gateway_local_delivery_states_are_never_read_from_the_cluster();
         std::cout << "all V2 gateway tests passed\n";

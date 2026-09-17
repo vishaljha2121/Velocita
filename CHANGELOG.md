@@ -15,6 +15,40 @@ release-engineering work.
 
 ### Phase 8 in development - execution authority, fencing, and emergency control
 
+#### G-060, and a claim the test falsified — 2026-09-17
+
+The gateway half is now a PROPERTY rather than a sample: for every identity
+probed, permission implies the effect is in the committed outbox, and the bytes
+handed over are the cluster's own reconstruction. Emptying the outbox leaves the
+gateway with nothing to send. The probe covers every cluster order id, decision
+id and generation the state holds, because a sweep over an arbitrary numeric
+range is weaker than it looks - the ids a wrong lookup really returns are the
+other ids in the same records.
+
+WHAT TRYING TO BREAK IT TAUGHT US. Keying both the guard's scan and
+`materialize_order_effect` on `cluster_order_id`, so the two agree with each
+other, changes nothing: the canonical payload digest BINDS THE EFFECT ID, so an
+id that is not the record's own cannot reconstruct. The lookup key is not the
+defence - the defence is that the bytes only exist for the identity that
+authored them.
+
+AND ADR 0007'S OTHER CLAIM WAS FALSE. It said an out-of-band venue action would
+reconcile back through `ObserveOrderEvent` into `conflict` or `reconciling`.
+Writing the test showed it does not. No evidence kind says "the venue cancelled
+an order you never asked to cancel": `cancelled` is only applicable against a
+cancel the cluster authored, and `order_reconciled` can only say the venue STILL
+HOLDS an order. An unrequested cancellation is refused and the cluster goes on
+believing the order is live.
+
+Same shape as ADR 0004 - V2 cannot represent a position change it did not
+authorize - so the containment is not "we reconcile it" but the stronger
+statement that an out-of-band action cannot be represented, which is why the
+emergency path must go through the cluster. The ADR carries the amendment.
+
+The safety half holds and is tested: a venue cannot unilaterally free reserved
+risk by announcing a cancellation nobody authored. The visibility half is OPEN
+and recorded as such rather than closed by redefinition.
+
 #### Mass cancel, as one command — 2026-09-17
 
 Implements ADR 0007. `RequestMassCancel` is one command and one log entry,
