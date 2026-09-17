@@ -717,6 +717,31 @@ template <std::size_t WordCount>
         return result(state, ApplyCode::already_applied, next_version);
     }
 
+    // G-059. A kill is easy; UNDOING one is where the damage gets done. The
+    // moment after an emergency is when the cluster's picture of its own
+    // exposure is least trustworthy - usually that is why the kill happened -
+    // and resuming normal trading then can double a position nobody confirmed.
+    //
+    // ONE-WAY, deliberately. Only a transition INTO the mode that permits new
+    // risk is gated. Reducing authority is never blocked by it, or an
+    // unreconciled cluster could not be halted, and a safety rule that prevents
+    // halting has become the thing it exists to prevent.
+    //
+    // And only the states that mean "unknown" block it. A healthy resting order
+    // is a known quantity; treating it as a reason to stay halted would make the
+    // rule mean "never resume while trading", which is not a safety property but
+    // a deadlock - and the first operator to meet it would route around it.
+    if (command.mode == StrategyMode::normal) {
+        for (std::size_t index = 0; index < state.order_count; ++index) {
+            const auto order_state = state.orders[index].state;
+            if (order_state == ClusterOrderState::submission_unknown ||
+                order_state == ClusterOrderState::reconciling ||
+                order_state == ClusterOrderState::conflict) {
+                return result(state, ApplyCode::reconciliation_required, next_version);
+            }
+        }
+    }
+
     state.strategy_mode = command.mode;
     return result(state, ApplyCode::applied, next_version);
 }

@@ -15,6 +15,29 @@ release-engineering work.
 
 ### Phase 8 in development - execution authority, fencing, and emergency control
 
+#### Resuming normal trading now requires reconciliation — 2026-09-16
+
+G-059, and specifically the half that is actually dangerous. A kill is easy;
+UNDOING one is where the damage gets done. The moment after an emergency is when
+the cluster's picture of its own exposure is least trustworthy - usually that is
+why the kill happened - and resuming normal trading then can double a position
+nobody has confirmed.
+
+A transition into `normal` is refused with `reconciliation_required` while any
+order sits in `submission_unknown`, `reconciling` or `conflict`: the three states
+that mean the cluster cannot say what its exposure is.
+
+Two boundaries are what make this a safety rule rather than a deadlock. It is
+ONE-WAY - reducing authority is never blocked, or an unreconciled cluster could
+not be halted, and a rule that prevents halting has become the thing it exists to
+prevent; a kill in particular must always work. And only the unknown states block
+it: a healthy resting order is a known quantity, and treating it as a reason to
+stay halted would make the rule mean "never resume while trading", which the
+first operator to meet it would route around.
+
+Mutation-confirmed three ways - removing the gate, applying it to every mode
+rather than only to `normal`, and narrowing it to `conflict` alone.
+
 #### The control lane checks its label, and leadership is not promotion — 2026-09-16
 
 A HOLE OPENED BY THE PREVIOUS COMMIT, closed here. `ProposeLane` is chosen by

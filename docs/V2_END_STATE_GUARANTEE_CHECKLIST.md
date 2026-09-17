@@ -515,10 +515,33 @@ Phase 11 strategy/model validation and controlled canary
   happened. Mutation-confirmed against the realistic unsafe design - promote once
   per leadership term - not merely against an obvious one.
 
+  G-059, THE HALF THAT IS ACTUALLY DANGEROUS. A kill is easy; UNDOING one is
+  where the damage gets done. The moment after an emergency is when the
+  cluster's picture of its own exposure is least trustworthy - usually that is
+  why the kill happened - and resuming normal trading then can double a position
+  nobody has confirmed. `apply_set_strategy_mode` now refuses a transition into
+  `normal` while any order sits in `submission_unknown`, `reconciling` or
+  `conflict`: the three states that mean the cluster cannot say what its
+  exposure is.
+
+  TWO BOUNDARIES MAKE THIS A SAFETY RULE RATHER THAN A DEADLOCK. It is
+  ONE-WAY - reducing authority is never blocked, or an unreconciled cluster
+  could not be halted, and a rule that prevents halting has become the thing it
+  exists to prevent; a kill in particular must always work. And only the
+  unknown states block it - a healthy resting order is a known quantity, and
+  treating it as a reason to stay halted would make the rule mean "never resume
+  while trading", which the first operator to meet it would route around.
+
+  Evidence: `test_resuming_normal_requires_reconciliation`, mutation-confirmed
+  three ways - removing the gate, applying it to every mode rather than only to
+  `normal`, and narrowing it to `conflict` alone. Each mutant is killed by the
+  assertion that names its property.
+
   WHAT EACH GUARANTEE STILL NEEDS. G-052/G-054 have their pre-send refusals from
   Phase 5 but no external fence to be single against. G-053 has its property proved - nothing
   promotes automatically - and needs the operator-facing workflow that makes a
-  deliberate promotion safe, which is G-059's reconciliation proof. G-055 has both its
+  deliberate promotion safe, which is what G-059's reconciliation
+  gate now refuses to let an operator skip. G-055 has both its
   refusal and its renewal, and needs the gateway loop that calls them plus an
   accepted bound. G-056 has authorization and independence, and needs the
   authenticated edge that assigns operator callers. G-057 and G-058 need stop

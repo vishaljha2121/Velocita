@@ -155,6 +155,9 @@ enum class ApplyCode : std::uint8_t {
     // purpose: every existing code keeps its value, so no retained result and
     // no golden byte moves.
     unauthorized_control,
+    // A resume into a risk-increasing mode was refused because the cluster
+    // cannot currently say what its exposure is. See G-059.
+    reconciliation_required,
 };
 
 // The highest RequestSequence whose receipt this caller has had RECLAIMED.

@@ -36,6 +36,104 @@ velocita::v2::Command command(const std::uint64_t request_sequence,
                    std::move(body)};
 }
 
+void test_resuming_normal_requires_reconciliation() {
+    using namespace velocita::v2;
+    // G-059. A kill is easy; UNDOING one is where the damage gets done. The
+    // moment after an emergency is exactly when the cluster's picture of its own
+    // exposure is least trustworthy - that is usually why the kill happened -
+    // and resuming normal trading then can double a position nobody has
+    // confirmed.
+    //
+    // Three order states mean "the cluster does not know its exposure":
+    // `submission_unknown` (it cannot say whether the venue has the order at
+    // all), `reconciling` and `conflict` (it and the venue disagree). Resuming
+    // is refused while any of them is present. Every other state is a known
+    // quantity - a healthy resting order is not a reason to stay halted, and
+    // treating it as one would make the rule unusable and then ignored.
+    const auto with_order_in = [](const ClusterOrderState order_state) {
+        TradingState state;
+        state.strategy_mode = StrategyMode::halted;
+        state.order_count = 1;
+        state.orders[0].state = order_state;
+        return state;
+    };
+
+    const auto resume = [](TradingState& state) {
+        ApplyScratch scratch;
+        return apply(state,
+                     Command{CommandIdentity{CallerId{9}, RequestSequence{1},
+                                             digest(std::byte{0x31})},
+                             SetStrategyMode{StrategyMode::normal, state.kill_epoch,
+                                             state.executor_generation}},
+                     scratch);
+    };
+
+    for (const auto blocked : {ClusterOrderState::submission_unknown,
+                               ClusterOrderState::reconciling,
+                               ClusterOrderState::conflict}) {
+        auto state = with_order_in(blocked);
+        const auto outcome = resume(state);
+        require(outcome.code == ApplyCode::reconciliation_required,
+                "normal trading resumed with an order in state " +
+                    std::to_string(static_cast<int>(blocked)));
+        require(state.strategy_mode == StrategyMode::halted,
+                "a refused resume still changed the strategy mode");
+    }
+
+    // A healthy resting order does NOT block a resume. Without this the rule
+    // would mean "never resume while trading", which is not a safety property
+    // but a deadlock, and the first operator to meet it would route around it.
+    for (const auto allowed : {ClusterOrderState::live,
+                               ClusterOrderState::partially_filled,
+                               ClusterOrderState::filled,
+                               ClusterOrderState::cancelled}) {
+        auto state = with_order_in(allowed);
+        require(resume(state).code == ApplyCode::applied,
+                "a known order state blocked a resume: " +
+                    std::to_string(static_cast<int>(allowed)));
+        require(state.strategy_mode == StrategyMode::normal,
+                "the accepted resume did not take");
+    }
+
+    // AND THE RULE IS ONE-WAY. Reducing authority is never blocked by the same
+    // condition, or an unreconciled cluster could not be halted - which would
+    // turn a safety rule into the thing it exists to prevent.
+    for (const auto safer : {StrategyMode::halted, StrategyMode::no_new_risk,
+                             StrategyMode::cancel_only, StrategyMode::reduce_only}) {
+        auto state = with_order_in(ClusterOrderState::conflict);
+        state.strategy_mode = StrategyMode::normal;
+        ApplyScratch scratch;
+        const auto outcome = apply(
+            state,
+            Command{CommandIdentity{CallerId{9}, RequestSequence{1},
+                                    digest(std::byte{0x32})},
+                    SetStrategyMode{safer, state.kill_epoch,
+                                    state.executor_generation}},
+            scratch);
+        require(outcome.code == ApplyCode::applied,
+                "an unreconciled cluster could not reduce its own authority to " +
+                    std::to_string(static_cast<int>(safer)));
+    }
+
+    // A kill must never be blocked by it either - the one command that must
+    // always work is the one that stops everything.
+    {
+        auto state = with_order_in(ClusterOrderState::conflict);
+        state.strategy_mode = StrategyMode::normal;
+        ApplyScratch scratch;
+        const auto outcome =
+            apply(state,
+                  Command{CommandIdentity{CallerId{9}, RequestSequence{1},
+                                          digest(std::byte{0x33})},
+                          AdvanceKillEpoch{KillEpoch{1}}},
+                  scratch);
+        require(outcome.code == ApplyCode::applied,
+                "an unreconciled cluster could not be killed");
+        require(state.strategy_mode == StrategyMode::halted,
+                "the kill did not halt the cluster");
+    }
+}
+
 void test_control_authority_is_reserved_to_operator_callers() {
     using namespace velocita::v2;
     // G-056, the authorization half. The reducer CANNOT verify a signature:
@@ -307,6 +405,7 @@ void test_invalid_mode_is_typed_and_retained() {
 int main() {
     try {
         test_control_authority_is_reserved_to_operator_callers();
+        test_resuming_normal_requires_reconciliation();
         test_boot_and_kill_epoch_are_fail_safe();
         test_kill_epoch_never_regresses();
         test_executor_generation_advance_removes_new_risk_authority();

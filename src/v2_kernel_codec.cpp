@@ -179,6 +179,7 @@ private:
         case ApplyCode::request_expired:
         case ApplyCode::venue_event_expired:
         case ApplyCode::unauthorized_control:
+        case ApplyCode::reconciliation_required:
             return true;
     }
     return false;
