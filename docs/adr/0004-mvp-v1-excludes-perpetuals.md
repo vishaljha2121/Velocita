@@ -29,6 +29,42 @@ releases when it resolves - different quantities, and the second has no
 representation. And leverage means a 20 USDC budget no longer bounds the loss at
 20 USDC.
 
+## Amendment, 2026-09-17: the factual premise no longer holds
+
+The Context above rests on one quoted fact - that `GET /positions` is described
+as "Query a user's open Hyperliquid perpetual positions". THAT SENTENCE IS NO
+LONGER IN THE DOCUMENTATION. A re-read on 2026-09-17 found it replaced by
+"Returns a read-only list of the authenticated user's open positions", found no
+mention of Hyperliquid or perpetuals on any page checked, and found the
+quickstart describing spot trading with a spot market order as its example. See
+`docs/evidence/V2_TRUEMARKETS_RECHECK_2026-09-17.md`.
+
+THIS ADR IS AMENDED, NOT WITHDRAWN, and the distinction matters:
+
+  * THE REASONING IS UNTOUCHED AND STILL CORRECT. A perpetual venue moves a
+    position with no order at all - liquidation, auto-deleveraging, funding -
+    and none of those carries an `effect_id`, so no command in the kernel can
+    represent them. Position-based maintenance margin has no representation
+    either, and leverage means a 20 USDC budget does not bound the loss at 20
+    USDC. All of that remains true of any perpetual surface.
+
+  * THE DECISION STANDS FOR PERPETUALS. MVP V1 will not trade them, and the
+    recommended design when they are picked up is still the new
+    unsolicited-position-change observation kind described below.
+
+  * WHAT IS WITHDRAWN IS THE CLAIM THAT THE DEFI SURFACE IS VERIFIED PERPETUAL.
+    That is now UNVERIFIED. Absence of the word "perpetual" is not positive
+    evidence of spot settlement, and the must-confirm discipline forbids letting
+    an inference become indistinguishable from a documented fact.
+
+CONSEQUENCE FOR PHASE 9. This ADR no longer blocks a spot execution target,
+because it never argued against spot - it argued against perpetuals and was
+applied to the DeFi surface only because that surface was believed to be
+perpetual. Resting DeFi limit orders remain documented and re-verified today.
+Instrument type must be confirmed before connecting, which
+`MUST_CONFIRM_BEFORE_ADAPTER_CONNECT.md` already requires and which the collector
+already enforces by refusing to start on unverified fields.
+
 ## Decision
 
 MVP V1 will not trade perpetuals. No perpetual position, liquidation, ADL,
