@@ -77,7 +77,7 @@ a DATE, and a decision resting on it inherits that date.
 
 | | |
 |---|---|
-| Status | OPEN - blocks live limit orders |
+| Status | RESOLVED 2026-09-18 by the MCP server's own tool schema. See D-22. |
 | First seen | 2026-09-17 |
 
 `/apis/retail/create-order/` shows only the endpoint line - "POST /orders -
@@ -626,6 +626,155 @@ another market entirely.
 
 An earlier note in the feasibility evidence claimed HYPE was not on True Markets.
 That was wrong and is corrected there; the project owner spotted it.
+
+## D-22. The order schema was never behind a broken page - it is published as an MCP tool
+
+| | |
+|---|---|
+| Status | RESOLVED. Closes D-3. |
+| First seen | 2026-09-18 |
+| Evidence | `docs/evidence/V2_TRUEMARKETS_MCP_SCHEMA_2026-09-18.md` |
+
+`docs.truemarkets.co/mcp/` publishes two MCP servers. Both answer `tools/list`
+over plain HTTP, and the reply carries a JSON Schema per tool. That is a
+MACHINE-READABLE, VENUE-AUTHORED contract - a strictly better source than the
+REST reference prose that failed to render in D-3, and better than anything the
+browser DevTools route would have produced.
+
+`trade_prepare`, read from the server on 2026-09-18:
+
+```json
+{"properties": {
+   "side":       {"type":"string","description":"Order side (buy, sell)"},
+   "base_asset": {"type":"string","description":"Token symbol or contract address to trade"},
+   "qty":        {"type":"string","description":"Amount to trade"},
+   "chain":      {"type":"string","description":"Blockchain network (solana, base) for an on-chain swap. Omit for an exchange (CeFi) order."},
+   "qty_unit":   {"type":"string","description":"Quantity unit: 'base' (token amount) or 'quote' (USDC amount). Defaults to 'quote' for buys and 'base' for sells."}},
+ "required": ["side","base_asset","qty"]}
+```
+
+So `qty_unit` DOES accept a base-denominated quantity - the open half of D-3.
+The other half, the price field name, is answered by its absence: see D-23.
+
+WHAT THIS COST. Nothing, in the end, but only because the guess was refused.
+`encode_limit_order_body` has been refusing with `schema_unverified` since it was
+written. Had it shipped a plausible price field name instead, it would have been
+wrong in the specific way D-3 warned about - and the venue would have accepted
+the order anyway, as a market order, silently.
+
+---
+
+## D-23. There is no limit order, no cancel, and no order book. The venue is market-swap only.
+
+| | |
+|---|---|
+| Status | RESOLVED, and it invalidates an architectural premise |
+| First seen | 2026-09-18 |
+| Supersedes | D-1, D-4, D-6, D-14 for the DeFi path |
+
+`trade_prepare` is described by the venue as "**Create a market order**". Its
+schema has no price, no order type, no time-in-force, and no client order id.
+Across all seventeen tools on the trading server there is:
+
+* no tool that places a priced order;
+* no tool that cancels anything;
+* no tool that lists open or resting orders;
+* no tool that returns an order book, a best bid/offer, or a quote depth.
+
+The trading vocabulary is exactly three verbs: `get_quote`, `trade_prepare`,
+`trade_execute`. That is a request-for-quote swap, not an exchange.
+
+WHY THIS IS THE MOST EXPENSIVE ROW IN THIS FILE. V2 is built to post and manage
+resting liquidity. `OrderEffect` carries `PriceTicks`; the adapter renders price
+and quantity separately; Phase 8 built mass-cancel; ADR 0008 reconciles resting
+state. On this venue NONE of that has a counterpart. There is nothing to rest,
+nothing to cancel, and no price to post.
+
+D-1 recorded that the quickstart and the endpoint reference disagreed about
+whether DeFi limit orders exist. The MCP server is a third source and it settles
+it: on the surface the venue actually exposes to programmatic clients, they do
+not. D-1's "RESOLVED against the endpoint reference" conclusion was wrong.
+
+WHAT IT CHANGES. The maker economics this project was designed to capture are
+unavailable here. Every True Markets trade crosses a spread and pays it. That is
+a fact about the venue, not a defect in the cluster - and the cluster's
+mechanisms remain correct for Hyperliquid, which does have a book. But any claim
+that V2 "market-makes on True Markets" would be false, and must not be made.
+
+---
+
+## D-24. `qty_unit`'s default depends on the side
+
+| | |
+|---|---|
+| Status | OPEN as a hazard; mitigated by always sending the field |
+| First seen | 2026-09-18 |
+
+> "Defaults to 'quote' for buys and 'base' for sells."
+
+An omitted `qty_unit` means USDC on a buy and tokens on a sell. The same request
+body, with `side` flipped and nothing else changed, denominates `qty` in a
+different currency.
+
+WHAT WE DO ABOUT IT. The encoder emits `qty_unit` EXPLICITLY on every order,
+including when the value equals the default. A field whose meaning depends on
+another field is a field that must never be left to a default, and "the default
+happened to be right" is not a property any test can pin down.
+
+This is also why the same rule already applied to `chain`: see D-25.
+
+---
+
+## D-25. Omitting `chain` silently switches venue from DeFi to CeFi
+
+| | |
+|---|---|
+| Status | OPEN as a hazard; mitigated by always sending the field |
+| First seen | 2026-09-18 |
+
+> "Blockchain network (solana, base) for an on-chain swap. **Omit for an
+> exchange (CeFi) order.**"
+
+Absence is not "unspecified", it is a different venue with different custody,
+different settlement and a different fee schedule. A dropped field routes the
+order somewhere else entirely, and the request stays valid.
+
+This also contradicts nothing in the docs so much as it reveals what they never
+said: the REST reference describes DeFi and CeFi as separate endpoints, and the
+MCP surface merges them into one call distinguished only by a field's presence.
+
+TWO CONSEQUENCES. The encoder always sends `chain`. And the chain vocabulary is
+`solana, base` ONLY - so the `hypercore-spot`, `hypercore-perp`, `robinhood` and
+`arbitrum` entries in the asset catalog (D-11) are listed but not addressable by
+this API. PURR is `hypercore-spot`. **The decision to "stick to PURR" cannot be
+executed on this venue** and is withdrawn; HYPE-on-solana (D-21) is reachable,
+because it is a bridged Solana token.
+
+---
+
+## D-26. `trade_prepare` is sometimes itself the terminal action
+
+| | |
+|---|---|
+| Status | OPEN - drives the two-step send design |
+| First seen | 2026-09-18 |
+| Related | D-9, ADR 0007 |
+
+> "Returns an order_id and, when signing is required, unsigned payloads for the
+> client to sign. **If no payloads are returned the order was submitted
+> directly.**"
+
+So one call has two behaviours, and which one happened is knowable only by
+inspecting the response. A client that crashes after sending `trade_prepare` and
+before reading the reply cannot tell whether it has a pending unsigned order or
+a LIVE SUBMITTED ONE.
+
+This is worse than the ambiguity `resolve_two_step_send` was built for, which
+assumed prepare was always inert. It is the same shape as D-9's `initialized`
+problem and must be resolved the same way: on recovery, treat the outcome as
+UNKNOWN and reconcile against the venue before sending anything else. With no
+open-orders tool (D-23), reconciliation has to go through `get_balances`, which
+is a materially weaker signal - it shows position, not orders.
 
 ---
 
