@@ -5,12 +5,22 @@
 - [`ADR 0001`](adr/0001-v2-replicated-decision-oms-and-execution-boundary.md):
   why the replicated Decision/OMS cluster, committed outbox, and single active
   execution boundary were selected.
+- [`ADR 0002`](adr/0002-two-machine-pi-nuc-deployment-topology.md):
+  how the available ARM64 Pi and x86-64 NUC may be used without mistaking
+  co-located voters for independent failure domains.
 - [`V2_ARCHITECTURE_CONTRACTS.md`](V2_ARCHITECTURE_CONTRACTS.md): authority,
   identity, message, reducer, order, risk, outbox, reconciliation, persistence,
   threading, failure, and metric contracts.
 - [`V2_TDD_IMPLEMENTATION_AND_VALIDATION_PLAN.md`](V2_TDD_IMPLEMENTATION_AND_VALIDATION_PLAN.md):
   red-green-refactor discipline, test architecture, phased build order,
   acceptance gates, evidence, and rollback.
+- [`V2_MODEL_AND_MARKET_DATA_EDGE_DESIGN.md`](V2_MODEL_AND_MARKET_DATA_EDGE_DESIGN.md):
+  how the model and market-data edge attach to the cluster, the two byte
+  contracts they produce, feature-schema identity, shadow-evaluation parity, and
+  the structural safety boundary. Implementation in [`model/`](../model).
+- [`MUST_CONFIRM_BEFORE_ADAPTER_CONNECT.md`](MUST_CONFIRM_BEFORE_ADAPTER_CONNECT.md):
+  venue facts that are verified, and the ones that block collection until
+  confirmed.
 - [`V2 Phase 1 macOS candidate evidence`](evidence/V2_PHASE1_MACOS_CANDIDATE.md):
   exact contract commit, tests, codec measurements, limits, and pending
   Raspberry Pi gate.

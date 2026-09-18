@@ -24,6 +24,42 @@ would take that back - the `/orders` refusal is a second line, not the first.
 So "the collector needs a credential" is the wrong framing. The collector needs a
 TOKEN. Something has to hold a KEY to mint one, and the whole question is what.
 
+## Amendment, 2026-09-18: the premise was wrong; the decision survives it
+
+THE CONTEXT ABOVE OPENS "Market data on this venue requires a JWT (D-16)". THAT
+IS NOT ESTABLISHED, and D-16 is withdrawn.
+
+The evidence for it was `401 Jwt is missing` on market-data paths. But
+`/v1/prices` answers `401` unauthenticated and a plain `404` WITH a valid token,
+so the 401 is a blanket edge gate on unrouted paths, fired before routing. It was
+never evidence about those paths at all. The Market Data Service API page states
+the opposite outright: "All endpoints are public - no authentication or API key
+is required."
+
+So the collector may need NO credential whatsoever, and the question this ADR
+answers may not arise for market data.
+
+WHY THE DECISION STANDS ANYWAY, on narrower grounds than it was made:
+
+  * the asset catalog is public (D-11) and market data is documented as public,
+    so a collector should hold nothing - which is strictly stronger than holding
+    a token, and this ADR's rule permits it;
+  * where a credential IS required - and `/v1/conductor/*` genuinely requires one
+    - the key/token split remains correct, because the key signs orders and a
+    token does not;
+  * the execution adapter will need the key regardless, and "the operator holds
+    the key, nothing long-lived does" is the property worth keeping.
+
+WHAT THIS CHANGES IN PRACTICE. Collectors should try UNAUTHENTICATED first and
+hold a token only where a path proves to require one. A tool that always presents
+a credential teaches nobody which endpoints actually need it, and this
+investigation spent a token establishing facts that needed none.
+
+WHAT IT COST. Three discrepancy rows and this ADR's premise were built on a 401
+treated as evidence about a path never confirmed to exist. The lesson is narrower
+than "verify more": AN ERROR CODE IS EVIDENCE ABOUT THE REQUEST THAT PRODUCED IT,
+AND NOTHING ELSE.
+
 ## Decision
 
 THE OPERATOR HOLDS THE KEY. NO LONG-LIVED COMPONENT DOES.

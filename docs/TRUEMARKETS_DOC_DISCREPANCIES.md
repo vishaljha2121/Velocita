@@ -320,9 +320,21 @@ recording which the venue accepted.
 market data" as an open field, with "may block collection entirely" as the
 consequence if it is required.
 
-It is required. `/v1/market-data/*`, `/v1/conductor/orderbook` and
-`/v1/defi/orderbook` all return `401 Jwt is missing` unauthenticated, while
-`GET /v1/conductor/assets` returns 200 without a credential (D-11).
+WITHDRAWN 2026-09-18. THIS ROW WAS WRONG AND THE REASONING BEHIND IT WAS BAD.
+
+It claimed market data requires authentication because `/v1/market-data/*` and
+the orderbook paths answered `401 Jwt is missing` unauthenticated. They do. But
+`/v1/prices` answers `401` unauthenticated and PLAIN `404 Not Found` WITH a valid
+token - so the 401 is a blanket edge gate on paths the router does not know,
+fired BEFORE routing. An unauthenticated 401 on this host says nothing about
+whether a path exists, let alone whether it needs a credential.
+
+The Market Data Service API page states the opposite outright: "All endpoints are
+public - no authentication or API key is required."
+
+WHAT THE ERROR WAS, stated so it is not repeated: a 401 was treated as evidence
+about a path that was never confirmed to exist. Three rows and one ADR were built
+on it.
 
 CONSEQUENCE. `model/`'s collector cannot gather market data, by construction:
 `ReadOnlyHttp` prohibits the auth endpoint precisely so the research package can
@@ -499,6 +511,48 @@ CONSEQUENCE. The book is reachable only over the WebSocket at
 `/v1/defi/market`, which a plain GET confirms is live (`400 handshake error: bad
 "Upgrade" header`). Inferring a tick size for D-12 therefore requires a
 WebSocket client, and `curl` on this host has no `wss` support.
+
+---
+
+## D-19. The Market Data Service is documented but not locatable
+
+| | |
+|---|---|
+| Status | OPEN - blocks every market-data route |
+| First seen | 2026-09-18 |
+
+`/apis/marketdata/market-data-service-api` describes a service with REST
+**Prices** (current candles, windowed and point-in-time history, batched
+lookups, min/max ranges) and **Market Cap** endpoints, plus the two WebSockets.
+It states three things that matter:
+
+> "All endpoints are public - no authentication or API key is required"
+> "Prices, market caps, and other numeric values are returned as strings to
+> preserve full decimal precision"
+> WebSocket details live in separate AsyncAPI specs.
+
+NONE OF IT IS REACHABLE. On `api.truemarkets.co`, every plausible path -
+`/v1/prices`, `/v1/prices/candles`, `/v1/market-cap` and six more - returns a
+PLAIN `404 Not Found` with a valid token, which by D-18's test means the edge
+does not route them at all. Five plausible hostnames do not resolve:
+`marketdata`, `md`, `market-data`, `prices` and `data` under
+`truemarkets.co`.
+
+So the service has a documented API, a documented auth posture, and no
+discoverable address. Either it is on a domain not guessable from the
+documentation, or it is not deployed.
+
+THE ONE GENUINELY USEFUL FACT SALVAGED: numeric values are returned as STRINGS to
+preserve decimal precision. That is the right choice for tick inference and it
+means a price arrives exactly as the venue represents it, rather than through a
+float. When the service is located, its price strings are the evidence D-12
+needs.
+
+WHAT TO ASK. The base URL of the Market Data Service, and the AsyncAPI spec for
+the DeFi WebSocket - the subscribe envelope is `{"type":"subscribe","topics":[..]}`
+by experiment, but every documented channel name (`orderbook`, `priceCandles`,
+`referencePrices`, `trendingAssets`) is rejected as `unknown_channel`, so the
+documented channel list does not match the live socket either.
 
 ---
 

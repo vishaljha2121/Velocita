@@ -55,6 +55,24 @@ Paste the blockquoted block; the surrounding notes are for us.
 
 ---
 
+## Ask these too (added 2026-09-18, market data)
+
+> **8. What is the base URL of the Market Data Service?** The API page describes
+> REST Prices and Market Cap endpoints and says all of it is public, but nothing
+> under `api.truemarkets.co` serves them - `/v1/prices`, `/v1/prices/candles`,
+> `/v1/market-cap` and others all 404 with a valid token - and
+> `marketdata.`, `md.`, `market-data.`, `prices.` and `data.truemarkets.co` do
+> not resolve.
+>
+> **9. Can I have the AsyncAPI spec for the DeFi WebSocket at
+> `/v1/defi/market`?** The socket connects and the subscribe envelope appears to
+> be `{"type":"subscribe","topics":[...]}` - it answers "no topics provided" to
+> anything else. But every channel name in the market-data overview
+> (`orderbook`, `priceCandles`, `referencePrices`, `trendingAssets`) is rejected
+> as `unknown_channel`, so I cannot construct a valid topic.
+
+---
+
 ## Notes for us, not for them
 
 QUESTION 1 IS THE ONE THAT MATTERS. It blocks rendering any priced order: the

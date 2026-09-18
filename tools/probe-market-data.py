@@ -58,26 +58,16 @@ FORBIDDEN_SEGMENTS = frozenset({
 # all, despite the documentation describing a market-data service - so the
 # candidates below stay inside the namespaces that answer.
 CANDIDATES = [
-    # known-good, as a control: a probe where everything 404s proves nothing
-    "/v1/conductor/assets",
-    # market data inside the namespace that routes
-    "/v1/conductor/candles",
-    "/v1/conductor/prices",
-    "/v1/conductor/price",
-    "/v1/conductor/book",
-    "/v1/conductor/depth",
-    "/v1/conductor/instruments",
-    "/v1/conductor/pairs",
-    "/v1/conductor/markets",
-    "/v1/conductor/tickers",
-    "/v1/conductor/reference-prices",
-    # the other routing namespaces
-    "/v1/account",
-    "/v1/account/balances",
-    "/v1/account/kyc-status",
-    "/v1/defi/market/candles",
-    "/v1/defi/market/reference-prices",
-    "/v1/cefi/market/depth",
+    "/v1/conductor/assets",          # control: a probe where all 404 proves nothing
+    "/v1/prices",
+    "/v1/prices/current",
+    "/v1/prices/candles",
+    "/v1/prices/history",
+    "/v1/prices/latest",
+    "/v1/prices/batch",
+    "/v1/market-cap",
+    "/v1/marketcap",
+    "/v1/market-cap/latest",
 ]
 
 
