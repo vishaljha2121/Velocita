@@ -66,7 +66,9 @@ and the address must come from the REST catalog (D-11) before HYPE is measured.
 
 ## Volume implied, at the measured lower bound
 
-For SOL at c = 0.5 bps, a loss budget buys 2/c = 40,000x its own size in volume.
+For SOL at c = 0.5 bps, a loss budget buys 2/c = 40,000x its own size in volume -
+so $100 of budget buys $4M of volume, not $40M. (An earlier draft of ADR 0011
+had this table 10x high; corrected 2026-09-18.)
 That figure is the OPTIMISTIC END of ADR 0011's table and assumes zero venue
 markup, which has not been measured. Do not plan against it until `get_quote`
 has been compared to a Jupiter route for the same notional.

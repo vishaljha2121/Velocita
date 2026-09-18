@@ -65,9 +65,9 @@ Two facts fall out, and both are load-bearing:
 
 **Cost per unit volume varies by three orders of magnitude across assets.**
 SOL round-trips for a fraction of a basis point; DRIFT costs 772 bps at $2000.
-At `max_volume = 2 x budget / c`, a $100 loss budget buys roughly $40M of SOL
-volume or $26k of DRIFT volume. ASSET SELECTION IS THE STRATEGY. There is no
-cleverness in timing that recovers a factor of 7000.
+At `max_volume = 2 x budget / c`, a $100 loss budget buys roughly $4M of SOL
+volume or $28k of DRIFT volume. ASSET SELECTION IS THE STRATEGY. There is no
+cleverness in timing that recovers a factor of 140.
 
 **Impact is superlinear in size.** DRIFT costs 71 bps at $25 and 772 bps at
 $2000 - 11x the rate for 80x the size. So for a fixed volume target, many small
@@ -211,10 +211,10 @@ that markup plus the route cost, and the markup dominates completely:**
 
 | assumed TM markup | effective `c` on SOL | volume per $100 of budget |
 |---|---|---|
-| 0 bps | 0.5 bps | $40,000,000 |
-| 10 bps | 10.5 bps | $1,900,000 |
-| 30 bps | 30.5 bps | $656,000 |
-| 100 bps | 100.5 bps | $199,000 |
+| 0 bps | 0.5 bps | $4,000,000 |
+| 10 bps | 10.5 bps | $190,000 |
+| 30 bps | 30.5 bps | $66,000 |
+| 100 bps | 100.5 bps | $20,000 |
 
 A factor of 200 between the best and worst case. No further design decision is
 worth making until this is measured.
