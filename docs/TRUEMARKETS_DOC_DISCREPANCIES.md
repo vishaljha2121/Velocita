@@ -776,6 +776,74 @@ UNKNOWN and reconcile against the venue before sending anything else. With no
 open-orders tool (D-23), reconciliation has to go through `get_balances`, which
 is a materially weaker signal - it shows position, not orders.
 
+## D-27. `list_assets` and `get_asset` are advertised and return 404
+
+| | |
+|---|---|
+| Status | OPEN - the two tools that enumerate instruments are the broken ones |
+| First seen | 2026-09-18 |
+
+Both MCP servers advertise `list_assets` ("List all available tradeable tokens.
+Returns symbol, name, chain, address, and decimals for each asset") and
+`get_asset`. Both return, as the tool's own result content:
+
+```
+status 404: {"type":"not_found","message":"not found","request_id":"..."}
+```
+
+Confirmed standalone, with and without the `chain` argument, not under rate
+limiting. Every other market-data tool works: `get_trending_assets`,
+`get_market_cap`, `get_market_summary` and `get_price_history` all return data.
+
+WHY IT IS THE WORST TWO TO LOSE. They are the only tools that yield an asset's
+`decimals` and contract address - the instrument identity the adapter keys on
+(D-21) and the precision it renders with (D-20). Everything else returns prices
+for symbols that cannot be resolved to an instrument through this API.
+
+MITIGATION: the REST catalog of D-11 still serves this, needs no auth, and
+remains the instrument source of record. The MCP servers are used for prices
+only.
+
+SEPARATE OBSERVATION worth recording: the servers report RATE LIMITING as JSON-RPC
+`-32602 invalid params`. A sweep of twelve calls in quick succession returned
+`-32602` for eleven of them; each succeeded when retried alone. An error that
+names the request shape when the problem is request RATE will send a client
+looking for a bug in its own arguments - which is precisely what it did here for
+several minutes.
+
+---
+
+## D-28. A market order cannot be given a price bound
+
+| | |
+|---|---|
+| Status | OPEN - the largest economic risk in the swap design |
+| First seen | 2026-09-18 |
+| Drives | ADR 0011 section 6 |
+
+`trade_prepare` has no slippage, limit-price, minimum-received or
+maximum-cost parameter. Its complete schema is `{side, base_asset, qty, chain?,
+qty_unit?}`.
+
+`get_quote` exists, but it is indicative and is bound to nothing: it returns no
+quote id, and `trade_prepare` accepts none. The two calls are independent, so
+between quoting and ordering the price may move by any amount and the order
+still executes.
+
+THERE IS THEREFORE NO API-LEVEL WAY TO BOUND A FILL. The only control is
+indirect: `trade_prepare` returns unsigned payloads, and an unsigned payload
+does not execute - so a client can inspect the expected output and decline to
+sign. ADR 0011 builds the bound there because there is nowhere else to build it.
+
+AND THE VENUE CAN REMOVE THAT CONTROL PER CALL. Per D-26, "if no payloads are
+returned the order was submitted directly" - no signing step, therefore no
+bound, therefore a fill at whatever the market gave. The client does not choose
+which mode it gets and is not told in advance.
+
+This compounds with D-23: with no cancel and no open-orders query, an
+unbounded fill cannot be pulled back and can only be discovered through
+`get_balances`.
+
 ---
 
 ## How to add a row
