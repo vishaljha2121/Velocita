@@ -420,6 +420,49 @@ The first is a byte-contract question; the second is a question for the venue.
 
 ---
 
+## D-17. OUR OWN BUG: `model/` cannot fetch an order book
+
+| | |
+|---|---|
+| Status | OPEN - in a protected path, reported not fixed |
+| First seen | 2026-09-18 |
+
+Not a venue discrepancy. Recorded here because it was found the same way and
+would otherwise be lost.
+
+`ReadOnlyHttp._guard` matches `STATE_CHANGING_PATH_FRAGMENTS` as SUBSTRINGS, and
+the list contains `/order`. So `/v1/market-data/orderbook` and
+`/v1/defi/orderbook` are both refused:
+
+```
+REFUSED: /v1/market-data/orderbook -> matches state-changing fragment '/order'
+REFUSED: /v1/defi/orderbook        -> matches state-changing fragment '/order'
+```
+
+`model/` exists to compute book metrics - it ships `BookObservation` and
+`features/book_metrics.py` - so THE PACKAGE STRUCTURALLY CANNOT COLLECT THE DATA
+IT WAS BUILT TO ANALYSE. There is no escape hatch either: `post_allowlist`
+covers POST only, and a GET refusal has no allowlist at all.
+
+WHY THE INSTINCT WAS RIGHT AND THE IMPLEMENTATION WRONG. Over-broad is correct
+for this list - the comment "a false refusal costs one allowlist entry, a false
+permit costs an order" is the right trade. But over-broad should mean MORE
+SEGMENTS THAN NECESSARY, not any path that happens to START WITH THE SAME
+LETTERS. An order book is not an order, and no amount of caution makes reading
+one dangerous.
+
+FIXED IN `tools/probe-market-data.py` by comparing path SEGMENTS rather than
+substrings: `orders`, `order`, `cancel`, `sign` and the rest are refused when
+they appear as a whole segment, so `/orderbook` passes and `/orders` does not.
+`orders` is kept on the list even for GET, deliberately - this tooling has no
+business reading the order book of record, and a path check that reasons about
+intent is one that gets argued with.
+
+NOT FIXED IN `model/`, which is a protected path. The same segment-wise
+comparison is the suggested change, and it needs no other alteration.
+
+---
+
 ## How to add a row
 
 One heading per discrepancy, numbered. Record what the docs say, what we did

@@ -25,11 +25,25 @@ BASE = "https://api.truemarkets.co"
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/140.0 Safari/537.36")
 
-# Deliberately over-broad, matching model/'s STATE_CHANGING_PATH_FRAGMENTS: a
-# false refusal costs one line here, a false permit costs an order.
-FORBIDDEN = ("/orders", "/order", "/trade", "/execute", "/submit", "/cancel",
-             "/withdraw", "/deposit", "/transfer", "/approve", "/swap", "/sign",
-             "/transaction")
+# Forbidden path SEGMENTS, compared segment by segment rather than as
+# substrings.
+#
+# Substring matching was wrong here and the failure was instructive: `/order`
+# matched `/v1/market-data/orderbook`, so the probe refused to read an ORDER
+# BOOK - market data whose whole purpose is to be read, and which cannot place
+# anything. Over-broad is the right instinct for this list, but "over-broad"
+# should mean "more segments than strictly necessary", not "any path that starts
+# with the same letters".
+#
+# `orders` stays on the list even though GET /orders would merely LIST orders.
+# That is a standing project rule and it is kept deliberately: this tool has no
+# business reading the order book of record, and a path check that reasons about
+# intent is a path check that gets argued with.
+FORBIDDEN_SEGMENTS = frozenset({
+    "orders", "order", "trade", "trades", "execute", "submit", "cancel",
+    "withdraw", "deposit", "transfer", "approve", "swap", "sign", "signature",
+    "transaction", "transactions",
+})
 
 CANDIDATES = [
     "/v1/market-data/instruments",
@@ -48,10 +62,10 @@ CANDIDATES = [
 
 
 def get(path: str, token: str) -> tuple[str, bytes]:
-    lowered = path.lower()
-    for fragment in FORBIDDEN:
-        if fragment in lowered:
-            raise SystemExit(f"refusing {path}: matches {fragment!r}")
+    segments = [s for s in path.lower().split("?")[0].split("/") if s]
+    for segment in segments:
+        if segment in FORBIDDEN_SEGMENTS:
+            raise SystemExit(f"refusing {path}: path segment {segment!r} is state-changing")
     result = subprocess.run(
         ["curl", "-sS", "-m", "20", "-w", "\n%{http_code}",
          "-H", f"user-agent: {UA}", "-H", f"authorization: Bearer {token}",
@@ -66,7 +80,20 @@ def main() -> int:
     if len(sys.argv) != 3:
         print(__doc__)
         return 2
-    token = pathlib.Path(sys.argv[1]).read_text().strip()
+    token_file = pathlib.Path(sys.argv[1])
+    token = token_file.read_text().strip()
+
+    # A JWT is three dot-separated base64url segments on one line. Anything else
+    # is almost certainly the KEY JSON handed over by mistake - which would send
+    # private key material in an Authorization header, and produce a curl
+    # failure that looks like a network problem rather than an operator error.
+    if token.startswith("{") or "\n" in token or token.count(".") != 2:
+        raise SystemExit(
+            f"{token_file} does not look like a token.\n"
+            "If this is the API key JSON, mint a token from it first:\n"
+            f"  ./tools/mint-token.py {token_file} <token-path>\n"
+            "and pass the TOKEN path here. The key must never be sent as a "
+            "bearer credential.")
     out = pathlib.Path(sys.argv[2])
     out.mkdir(parents=True, exist_ok=True)
 
