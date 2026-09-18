@@ -45,19 +45,39 @@ FORBIDDEN_SEGMENTS = frozenset({
     "transaction", "transactions",
 })
 
+# TWO 404 SHAPES DISTINGUISH TWO DIFFERENT FACTS, and reading them apart is what
+# makes this probe worth running:
+#
+#   {"type":"not_found",...,"request_id":...}  the prefix ROUTES to the API and
+#                                              this path is not one it serves
+#   Not Found (plain text)                     the edge does not route this at
+#                                              all; nothing reached the API
+#
+# The first round established that only `/v1/conductor/*`, `/v1/account/*` and
+# `/v1/defi/market*` route. `/v1/market-data/*` does not exist on this host at
+# all, despite the documentation describing a market-data service - so the
+# candidates below stay inside the namespaces that answer.
 CANDIDATES = [
-    "/v1/market-data/instruments",
-    "/v1/market-data/orderbook",
-    "/v1/market-data/candles",
-    "/v1/market-data/prices",
-    "/v1/market-data/reference-prices",
-    "/v1/defi/orderbook",
-    "/v1/defi/market/orderbook",
-    "/v1/conductor/orderbook",
-    "/v1/conductor/quotes",
+    # known-good, as a control: a probe where everything 404s proves nothing
     "/v1/conductor/assets",
-    "/v1/account/portfolio",
-    "/v1/positions",
+    # market data inside the namespace that routes
+    "/v1/conductor/candles",
+    "/v1/conductor/prices",
+    "/v1/conductor/price",
+    "/v1/conductor/book",
+    "/v1/conductor/depth",
+    "/v1/conductor/instruments",
+    "/v1/conductor/pairs",
+    "/v1/conductor/markets",
+    "/v1/conductor/tickers",
+    "/v1/conductor/reference-prices",
+    # the other routing namespaces
+    "/v1/account",
+    "/v1/account/balances",
+    "/v1/account/kyc-status",
+    "/v1/defi/market/candles",
+    "/v1/defi/market/reference-prices",
+    "/v1/cefi/market/depth",
 ]
 
 

@@ -463,6 +463,45 @@ comparison is the suggested change, and it needs no other alteration.
 
 ---
 
+## D-18. There is no REST market data; the advertised service is not on this host
+
+| | |
+|---|---|
+| Status | RESOLVED as a negative - market data is WebSocket-only |
+| First seen | 2026-09-18 |
+
+The documentation index advertises a "Market Data" API with real-time quotes,
+book and candles, and the market-data overview names REST endpoints ("Get price
+candles by symbol", "Get CeFi instrument price history"). Twenty-nine paths were
+probed with a valid token. NONE of them serve market data.
+
+READING THE TWO 404 SHAPES APART IS WHAT MADE THIS CONCLUSIVE:
+
+| response | meaning |
+|---|---|
+| `{"type":"not_found", ..., "request_id": ...}` | the prefix ROUTES to the API; this path is not one it serves |
+| `Not Found` (plain text) | the edge does not route this at all; nothing reached the API |
+
+`/v1/market-data/*` returns the PLAIN form, so that prefix does not exist on
+`api.truemarkets.co` - the advertised service is elsewhere, or is not REST.
+`/v1/conductor/*`, `/v1/account/*` and `/v1/defi/market*` return the JSON form,
+so they route; within them, only `GET /v1/conductor/assets` (200) and
+`/v1/conductor/quotes` (405, so POST-only) exist at all.
+
+WHY THE EARLIER 401s MEANT NOTHING. Unauthenticated, `/v1/market-data/orderbook`
+answered `401 Jwt is missing`; with a valid token the same path answers `404`.
+The auth gate sits IN FRONT of routing, so an unauthenticated 401 says nothing
+about whether a path exists. This is precisely why the first use of a token was a
+probe rather than a collector - building against those 401s would have produced a
+collector aimed at paths that were never there.
+
+CONSEQUENCE. The book is reachable only over the WebSocket at
+`/v1/defi/market`, which a plain GET confirms is live (`400 handshake error: bad
+"Upgrade" header`). Inferring a tick size for D-12 therefore requires a
+WebSocket client, and `curl` on this host has no `wss` support.
+
+---
+
 ## How to add a row
 
 One heading per discrepancy, numbered. Record what the docs say, what we did
