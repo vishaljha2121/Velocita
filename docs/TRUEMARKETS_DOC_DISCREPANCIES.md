@@ -125,19 +125,33 @@ quote size is small.
 
 ---
 
-## D-5. No DeFi fee schedule, and no gas cost
+## D-5. No DeFi fee schedule; gas is sponsored (operator report)
 
 | | |
 |---|---|
-| Status | OPEN |
-| First seen | 2026-09-15 |
+| Status | PARTLY RESOLVED - gas answered, fees still open |
+| First seen | 2026-09-15; updated 2026-09-18 |
 
 The published fee schedule is scoped to CeFi. No maker/taker schedule is
-published for DeFi, and the per-fill on-chain cost is undocumented.
+published for DeFi.
 
-WHY IT MATTERS MORE THAN IT LOOKS. At a 1 USDC quote, gas is the term most
-likely to disqualify the strategy outright - it can exceed the entire spread. A
-cost floor computed without it is not conservative, it is wrong.
+GAS IS SPONSORED BY TRUE MARKETS, reported by the project owner 2026-09-18.
+UNVERIFIED in documentation - it appears nowhere on the pages read - and recorded
+here as an operator report rather than a venue statement, per D-8's precedent
+where the owner's recollection proved better than the docs.
+
+WHAT THAT CHANGES, AND IT IS NOT SMALL. Gas was the term most likely to
+disqualify the strategy: at a 20 USDC notional, one cent of gas is 5 bps and ten
+cents is 50 bps against a measured 26 bps spread on PURR. Sponsorship removes the
+per-fill FIXED cost entirely, which means there is no longer a minimum viable
+order size imposed by cost. Small-notional, high-turnover quoting becomes
+economically possible rather than arithmetically dead.
+
+WHAT REMAINS OPEN is the fee schedule, which is now the ONLY unknown cost term.
+It is also the one that decides whether turnover is cheap or self-defeating: a
+10 bps taker fee on both legs costs 20 bps of a 26 bps spread, while a zero or
+rebated maker fee makes volume generation nearly free. Question 4 in
+`QUESTIONS_FOR_TRUEMARKETS.md` is now the single highest-value thing to ask.
 
 ---
 
