@@ -187,6 +187,46 @@ Both land on exactly 10, both exact. So the existing
 it cannot do is follow them across a decade boundary, which is what the
 significant-figure rule in the profile is for.
 
+## Solana: data is free and available; an order book is not
+
+Asked whether Solana market data is reachable the way Hyperliquid's is. It is,
+and it costs nothing - but it answers a different question than expected.
+
+FREE AND UNAUTHENTICATED, measured 2026-09-18:
+
+* `lite-api.jup.ag/price/v3` - HYPE on Solana at **91.275** USD, pool liquidity
+  $4.7M, decimals 9. No key.
+* `lite-api.jup.ag/swap/v1/quote` - a 20 USDC buy routes **BisonFi -> Meteora
+  DLMM**, two hops, price impact 0.0007%.
+
+TWO THINGS FOLLOW, AND THE SECOND IS THE IMPORTANT ONE.
+
+FIRST, THE PRICES CONFIRM D-21 NUMERICALLY. Solana HYPE quotes 91.275 while
+Hyperliquid Core's HYPE mid is 91.45 - about 19 basis points apart at the same
+moment. Two markets, one underlying, and a real basis between them. Anyone
+quoting one from the other is trading that basis without meaning to.
+
+SECOND, THERE IS NO ORDER BOOK TO REST IN. The route is AMM - Meteora DLMM is a
+concentrated-liquidity pool, BisonFi likewise - reached through an aggregator.
+An AMM has a curve, not a bid-ask ladder. There is no queue, no top of book, and
+no resting limit order in the sense Phase 5 is built around.
+
+So True Markets' `active` status - "limit order resting in order book" - CANNOT
+mean a public Solana book for these assets, because none exists. It must be True
+Markets' own construct: they hold the order and execute against AMM liquidity
+when the price is reached. That is a conditional order placed with a
+counterparty, not a quote in a market.
+
+WHAT THAT MEANS FOR THE STRATEGY, stated plainly because it is the kind of thing
+that is expensive to discover late. On True Markets' Solana assets there is no
+spread to capture and no queue position to hold - the two things a passive
+market-making strategy earns from. Providing liquidity to an AMM is a different
+activity with a different risk (impermanent loss rather than inventory), and V2
+models neither.
+
+The `hypercore-*` assets remain the only ones reachable through True Markets
+where a real order book exists, and Hyperliquid Core is where that book lives.
+
 ## Why the Phase 9 seam matters now
 
 `VenueTransport` exists so the gateway cannot tell which venue it is talking to.
