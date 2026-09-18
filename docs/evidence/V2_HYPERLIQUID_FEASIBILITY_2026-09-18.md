@@ -128,6 +128,45 @@ workable book rather than a dead one.
 
 KNTQ trades as `@334` against USDC and `@254` against USDH; both non-canonical.
 
+## Which instrument, measured rather than assumed
+
+The universe is small only THROUGH TRUE MARKETS. True Markets lists three
+hypercore assets; Hyperliquid spot has 328 pairs, including 23 tokenised
+equities and commodities - SpaceX, Tesla, Apple, Google, SPY, QQQ, gold, silver.
+
+But listed is not tradable. Top-of-book, measured 2026-09-18:
+
+| pair | spread | top-5 depth (bid/ask) | levels |
+|---|---:|---|---|
+| **HYPE/USDC** | **1.4 bps** | $12.0k / $34.6k | 20 / 20 |
+| PURR/USDC | 26 bps | $1.4k / $12.6k | 20 / 20 |
+| SPCX (SpaceX) | 3,068 bps | $64 / $209 | 20 / 3 |
+| TSLA | 14,272 bps | $86 / $662 | 17 / 9 |
+
+THE TOKENISED EQUITIES ARE NOT MARKETS. A 30% spread on SpaceX with sixty-four
+dollars of depth, and a 143% spread on Tesla, are books with nothing in them.
+Quoting there is not market making; it is being the only participant, and a 20
+USDC order would be a meaningful fraction of the entire visible book.
+
+HYPE IS THE OUTLIER AND THE OBVIOUS TARGET. A 1.4 bps spread with twelve to
+thirty-five thousand dollars in the top five levels is a real, contested market -
+the only one of the four where a passive quote competes rather than defines the
+price. It is also NOT AVAILABLE ON TRUE MARKETS at all, which is a further
+argument for trading Hyperliquid directly rather than through a gateway that
+lists three of its assets.
+
+### The contract holds both candidates today
+
+| | szDecimals | lot | price | sig-fig increment | tick (micros) | `quote_micros_per_tick_lot` |
+|---|---:|---|---|---|---:|---:|
+| HYPE | 2 | 0.01 HYPE | 91.446 | 0.001 | 1000 | **10** |
+| PURR | 0 | 1 PURR | 0.12809 | 0.00001 | 10 | **10** |
+
+Both land on exactly 10, both exact. So the existing
+`InstrumentExecutionProfile` can carry either instrument at today's prices; what
+it cannot do is follow them across a decade boundary, which is what the
+significant-figure rule in the profile is for.
+
 ## Why the Phase 9 seam matters now
 
 `VenueTransport` exists so the gateway cannot tell which venue it is talking to.
