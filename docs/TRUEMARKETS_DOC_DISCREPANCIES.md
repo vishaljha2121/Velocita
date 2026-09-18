@@ -556,6 +556,36 @@ documented channel list does not match the live socket either.
 
 ---
 
+## D-20. True Markets' `decimals` is token precision, not the order lot
+
+| | |
+|---|---|
+| Status | OPEN - would cause rejected or mis-sized orders |
+| First seen | 2026-09-18 |
+
+True Markets publishes one `decimals` per catalog asset. For both `hypercore-*`
+assets it matches Hyperliquid's `weiDecimals` exactly - the TOKEN's precision -
+and it is NOT the order size increment:
+
+| symbol | TM `decimals` | HL `weiDecimals` | HL `szDecimals` |
+|---|---:|---:|---:|
+| PURR | 5 | 5 | **0** |
+| KNTQ | 8 | 8 | **2** |
+
+PURR orders must be in WHOLE units. A reader of the True Markets catalog alone
+would conclude 0.00001 PURR is tradable - wrong by five orders of magnitude - and
+would find out by having orders rejected or silently rounded.
+
+CONSEQUENCE. `VenueInstrumentSpec.lot_base_atoms` cannot be derived from the True
+Markets catalog. For the hypercore assets Hyperliquid supplies it directly; for
+the other 201 assets there is no source at all, which is D-12 unchanged.
+
+This also narrows D-12: the missing facts are not "tick and lot" generically but
+specifically an order-size increment and a price rule, neither of which the
+catalog's `decimals` is.
+
+---
+
 ## How to add a row
 
 One heading per discrepancy, numbered. Record what the docs say, what we did

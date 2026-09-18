@@ -77,6 +77,57 @@ Trading Hyperliquid perps seriously means reopening ADR 0004 and building the
 unsolicited-position-change observation kind it already names as the recommended
 design.
 
+## Restricting True Markets to the hypercore assets
+
+The tradable set is TWO:
+
+| symbol | TM `decimals` | HL `weiDecimals` | HL `szDecimals` | HL pair |
+|---|---:|---:|---:|---|
+| PURR | 5 | 5 | **0** | `PURR/USDC`, canonical |
+| KNTQ | 8 | 8 | **2** | `@334` KNTQ/USDC, non-canonical |
+
+(`USDC` on `hypercore-spot` is not tradeable; the `hypercore-perp` USDC entry is
+the settlement token.)
+
+### TRUE MARKETS' `decimals` IS NOT THE LOT SIZE
+
+This is the finding, and it would have been expensive to discover by having
+orders rejected.
+
+True Markets publishes one `decimals` per asset and it matches Hyperliquid's
+`weiDecimals` exactly - the TOKEN's precision. It is NOT `szDecimals`, which is
+the ORDER SIZE increment and differs for both assets:
+
+* PURR has `weiDecimals` 5 but `szDecimals` **0** - orders must be in WHOLE PURR.
+  A reader of True Markets' catalog alone would conclude 0.00001 PURR is
+  tradable.
+* KNTQ has `weiDecimals` 8 but `szDecimals` **2** - orders round to 0.01.
+
+So `VenueInstrumentSpec.lot_base_atoms` cannot be derived from True Markets'
+catalog at all. Taking `decimals` as the lot would produce sizes the venue
+rounds or rejects, and for PURR it would be wrong by five orders of magnitude.
+
+### So yes - and Hyperliquid gives more than market data
+
+For these two assets Hyperliquid supplies BOTH the book and the ORDER
+CONSTRAINTS that True Markets does not publish. That is not "an external data
+source"; it is the venue True Markets routes to, read directly.
+
+THE ASSUMPTION THAT REMAINS, and it must stay marked as one: these are
+HYPERLIQUID's constraints, and whether True Markets' gateway passes them through
+unchanged - rather than applying its own rounding or minimum - is unverified. It
+is a far better grounded assumption than a guess, and question 1 in
+`QUESTIONS_FOR_TRUEMARKETS.md` is exactly how to settle it.
+
+### What the universe looks like in practice
+
+`PURR/USDC` is the only canonical pair of the two, and its book is real: twenty
+levels a side, around 0.128 USDC, resting sizes of a few hundred to a thousand
+PURR - so roughly 25 to 130 USDC a level. Against a 20 USDC budget that is a
+workable book rather than a dead one.
+
+KNTQ trades as `@334` against USDC and `@254` against USDH; both non-canonical.
+
 ## Why the Phase 9 seam matters now
 
 `VenueTransport` exists so the gateway cannot tell which venue it is talking to.
