@@ -151,9 +151,29 @@ USDC order would be a meaningful fraction of the entire visible book.
 HYPE IS THE OUTLIER AND THE OBVIOUS TARGET. A 1.4 bps spread with twelve to
 thirty-five thousand dollars in the top five levels is a real, contested market -
 the only one of the four where a passive quote competes rather than defines the
-price. It is also NOT AVAILABLE ON TRUE MARKETS at all, which is a further
-argument for trading Hyperliquid directly rather than through a gateway that
-lists three of its assets.
+price.
+
+CORRECTION, 2026-09-18: an earlier version of this paragraph said HYPE is "not
+available on True Markets at all". THAT WAS WRONG - the project owner saw it on
+their site, and it is in the catalog. What is true is sharper and more useful:
+
+| listing | chain | address / id | decimals |
+|---|---|---|---|
+| True Markets `HYPE` | **solana** | `98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g` | 9 |
+| True Markets `CBHYPE` | **base** | `0xB200000000000000000000451d033a5000cb479e` | 18 |
+| Hyperliquid native | **hypercore** | tokenId `0x0d01dc56dcaaca66ad901c959b4011ec` | 8, `szDecimals` 2 |
+
+THREE INSTRUMENTS, ONE UNDERLYING, THREE VENUES. The 1.4 bps book measured above
+is Hyperliquid Core's `HYPE/USDC`. True Markets' `HYPE` is a BRIDGED token
+trading on Solana; `CBHYPE` is Coinbase's wrapper on Base. They are linked by
+arbitrage and a bridge, not by being the same order book - different depth,
+different spread, and a different price at any given instant.
+
+So this is the cross-venue trap in its most tempting form. Quoting True Markets'
+Solana HYPE from Hyperliquid Core's book would look reasonable, would be wrong,
+and the error would be invisible until a fill arrived at a price that came from
+somewhere else. The `hypercore-*` assets remain the only ones where True Markets
+routes to the book we can read - which is still just KNTQ and PURR.
 
 ### The contract holds both candidates today
 

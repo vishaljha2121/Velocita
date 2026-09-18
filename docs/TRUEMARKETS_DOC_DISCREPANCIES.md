@@ -586,6 +586,35 @@ catalog's `decimals` is.
 
 ---
 
+## D-21. One symbol, several instruments: `HYPE` is three different things
+
+| | |
+|---|---|
+| Status | OPEN - a modelling requirement, not a venue fault |
+| First seen | 2026-09-18 |
+
+The catalog carries `HYPE` on `solana` and `CBHYPE` on `base`, while Hyperliquid
+Core carries its own native `HYPE`. Same underlying, three venues, three decimal
+conventions - 9, 18 and 8.
+
+Nothing is wrong with the venue here. The finding is about US: a symbol is not an
+instrument, and the adapter must key on `(venue, chain, address)` rather than on
+a ticker. `InstrumentId` already forces that discipline inside the cluster, but
+any config, research note or operator instruction written in terms of "HYPE"
+names three different books.
+
+WHY IT MATTERS MORE THAN IT SOUNDS. The measured Hyperliquid Core book for HYPE
+is 1.4 bps deep; True Markets' HYPE is a bridged Solana token whose book we
+cannot see at all (D-19). Using the first as market data for the second is the
+cross-venue error in its most tempting form - it would look reasonable and the
+mistake would be invisible until a fill arrived at a price that came from
+another market entirely.
+
+An earlier note in the feasibility evidence claimed HYPE was not on True Markets.
+That was wrong and is corrected there; the project owner spotted it.
+
+---
+
 ## How to add a row
 
 One heading per discrepancy, numbered. Record what the docs say, what we did
