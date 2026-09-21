@@ -1,9 +1,220 @@
 # Current development handoff
 
-Updated: 2026-09-17
+Updated: 2026-09-21
 
 Purpose: compact working memory for the next agent session. Verify this file
 against Git before acting; do not reconstruct the project from chat history.
+
+## PHASE 9: THE VENUE TURNED OUT NOT TO BE AN EXCHANGE — 2026-09-21
+
+This section supersedes every older one below it. Those remain as an audit trail
+and must not be read as current status.
+
+### Where the tree is
+
+- branch `v2/phase-5-corrections`; use Git for HEAD rather than trusting a value
+  written here;
+- development host was last green at 34/34 Release and 34/34 Debug ASan+UBSan,
+  BEFORE this block of work. **This block changed no C++ at all** - it is
+  documentation, evidence and four read-only Python tools - so the test state is
+  unchanged, but re-run before trusting it;
+- tags `v2-phase7-nuc-gated`, `v2-phase7-complete`, `v2-phase8-mechanisms`;
+- no Phase 8 or Phase 9 gate has ever been run.
+
+### Read these first, in this order
+
+1. This section, all of it. The premise change in step 2 invalidates design work
+   that still looks current elsewhere in the tree.
+2. `docs/adr/0011-the-swap-execution-model.md` - PROPOSED, not accepted.
+3. `docs/TRUEMARKETS_DOC_DISCREPANCIES.md`, rows D-22 to D-28.
+4. The 2026-09-21 CHANGELOG entries.
+5. `docs/evidence/V2_TRUEMARKETS_MCP_SCHEMA_2026-09-18.md` - the venue's own
+   tool schemas, which are the authority wherever prose disagrees.
+
+### THE PREMISE THAT CHANGED
+
+True Markets publishes two MCP servers at `mcp.truemarkets.co`. Both answer
+`tools/list` anonymously with a JSON Schema per tool. Read from that source:
+
+    get_quote      -> indicative, binds nothing, returns no quote id
+    trade_prepare  -> "Create a market order"
+    trade_execute  -> submit signatures
+
+No price parameter. No order type. No time-in-force. Across all seventeen tools:
+no cancel, no open-orders query, no order book.
+
+**True Markets is a request-for-quote swap venue, not an exchange.** V2 is built
+to post and manage resting liquidity - `OrderEffect` carries `PriceTicks`, Phase
+8 built mass cancel, ADR 0008 reconciles resting orders. None of that has a
+counterpart on this venue. D-1 concluded from the endpoint reference that DeFi
+limit orders existed; that conclusion was wrong, and the MCP schema settles it.
+
+The mechanisms remain correct for Hyperliquid, which has a real book. Do not
+delete them. Do not claim V2 market-makes on True Markets.
+
+### DECISIONS ALREADY TAKEN, WITH THEIR REASONING
+
+Recorded in full in ADR 0011 and the 2026-09-21 CHANGELOG. In brief:
+
+- **A swap is `EffectOperation::swap_market`**, not a parallel effect type, so
+  Phase 8's mechanisms cannot come to cover one path and not the other.
+- **Chain becomes part of `VenueId`** (`truemarkets-solana` / `-base` / `-cefi`).
+  Rejected alternative: a validated `chain` field. Folding it into the venue id
+  makes D-25 unrepresentable rather than guarded, and stops per-venue risk
+  limits pooling on-chain and exchange exposure.
+- **Quantity is denominated in what the side spends** - quote micros for buys,
+  base lots for sells - which makes risk reservation exact on buys and inventory
+  exact on sells. Rejected alternative: deriving the basis from `side` at encode
+  time, which puts one rule in two places and, on divergence, buys 113 USDC of
+  something instead of 113 units.
+- **The price bound lives at the signing step**, because D-28 leaves nowhere
+  else: no slippage parameter exists and `get_quote` binds nothing. An unsigned
+  payload does not execute, so declining to sign IS the slippage control.
+
+### DECISIONS WITHDRAWN — do not act on these if you find them elsewhere
+
+- **Trading PURR is withdrawn.** `trade_prepare` accepts solana and base only;
+  PURR is `hypercore-spot` and is not addressable through this API. Any note
+  recommending PURR predates 2026-09-18.
+- **The significant-figure pricing ADR (D-15) is deferred**, not cancelled. It
+  is moot on True Markets - there is no price to render - and belongs to the
+  Hyperliquid adapter. This cancels the byte-contract churn that work was about
+  to cause; do not start it for True Markets.
+- **D-1's "limit orders exist" is withdrawn**, superseded by D-23.
+- `docs/QUESTIONS_FOR_TRUEMARKETS.md` is SHELVED. The project owner is not
+  asking the venue anything this iteration, by explicit decision. Do not write
+  work that depends on a venue answer.
+
+### TWO THINGS BLOCK PROGRESS, AND THEY ARE INDEPENDENT
+
+**BLOCKER 1 - the markup, which gates all economics.**
+
+The objective is maximum volume traded for a leaderboard. On a swap venue
+capital recycles, so volume is bounded by the loss budget:
+
+    max_volume = loss_budget x 2 / c        (c = round-trip cost fraction)
+
+Measured `c` on Solana through Jupiter: SOL 0.1-0.7 bps, JUP 1.5-10.6, JTO
+46-72, DRIFT 71-772, W 58-357. **These are a LOWER BOUND** - they are the raw
+on-chain route, and any True Markets markup sits on top and dominates. Per $100
+of budget: $4M of volume at zero markup, $190k at 10 bps, $66k at 30 bps, $20k
+at 100 bps.
+
+`tools/measure-markup.py <email>` measures it. It is read-only, needs an email
+OTP login, and places no order. IT HAS NOT BEEN RUN - it needs the project
+owner's login, so it cannot be run by an agent. Ask for the output; do not
+size a strategy against the Jupiter figures.
+
+**BLOCKER 2 - the gateway process topology, which gates the node binary.**
+
+OPEN QUESTION, and the project owner asked what "the Velocita book" recommends.
+THE BOOK IS NOT IN THIS REPOSITORY - it is an external source, quoted secondhand
+in `docs/V1_1_PHASE3_STORAGE_DESIGN_PIVOT.md` (Chapter 13, the mapped Raft log),
+`docs/PI_OPERATOR_RUNBOOK.md` §14 ("the book's reference shape" for metrics) and
+`docs/V2_PHASE3_DECISION_EVALUATOR_DESIGN.md`. **Do not invent what it says.**
+Ask the owner for the chapter before deciding.
+
+What the repository already constrains, independent of the book:
+
+- ADR 0001 lists "venue stalls cannot block Raft apply" as a property to
+  preserve, and gives the gateway TLS/REST/WebSocket session mechanics and
+  transport attempts. In-process means blocking venue I/O shares an address
+  space and scheduler with a voter whose tick regularity is already monitored
+  (`owner_loop_max_gap_nanoseconds`, tick age, both on the dashboard).
+- ADR 0001 has the gateway consume committed outbox effects AFTER apply, which
+  is already a queue-shaped relationship and a natural process boundary.
+- A TRAP WORTH NAMING: §14's book-derived metrics shape - each voter writes a
+  page, a SEPARATE exporter maps all three read-only - looks like precedent for
+  separation. It is not. ADR 0001 classes read models as disposable projections
+  that never become trading authority, and `renew_authority`'s read is
+  authoritative by definition. The pattern does not transfer.
+
+The outgoing session's recommendation, NOT the book's and NOT accepted:
+separate process, same host, outbox over Aeron IPC, lease bound sized to a local
+IPC round trip rather than a network one. Reasoning: it keeps the authoritative
+read sub-millisecond while putting a process boundary between apply and True
+Markets' TLS stack; it makes gateway restart independent of voter restart, so a
+wedged venue session does not force a Raft membership event; and it makes Phase
+8 demonstrable - killing the gateway shows the cluster holding consensus while
+the lease expires and trading stops fail-closed.
+
+### WHAT IS LEFT TO RUN SHADOW MODE ON THE NUC
+
+The observability stack is BUILT AND WORKING - Prometheus, Grafana, three-node
+quadlet cluster, alert and recording rules, process exporter, an 18-panel
+dashboard. It is all pointed at `velocita-raft:v1` running `counter_fsm`.
+
+**THERE IS NO V2 NODE BINARY.** Every V2 target in `CMakeLists.txt` is a test, a
+benchmark or a report tool. Nothing links the reducer to the replication layer
+in a process that can be started. That is the single largest item and everything
+else stacks on it.
+
+| | item | why | size |
+|---|---|---|---|
+| S1 | `v2-node` binary: WAL + replication + `apply()` in one process | nothing runs today | large |
+| S2 | V2 metrics -> shared page -> exporter | `collect_metrics` is a pure function nobody writes anywhere; the exporter reads the V1 page | medium |
+| S3 | quadlets for 3x `v2-node`, plus a V2 dashboard | V1 quadlets hardcode `raft-node` and the counter FSM | small-medium |
+| S4 | observation ingest -> `VenueObservation` | a feed now exists (TM 5s price history, Jupiter) but nothing converts it | medium |
+| S5 | minimal gateway loop, shadow only: decides, never sends | drives the lease and heartbeat | medium |
+
+THE USEFUL PART OF THE SEQUENCING: shadow mode is blocked on strictly less than
+live trading, and the two tracks do not touch. Blocker 1 and the V3 byte contract
+gate anything that SENDS; S1-S3 gate the shadow run and need no venue decision
+at all - no price rendering, no `qty_unit`, no signing. So stability data can be
+gathered while the economics question is still open, which is the right order:
+if the cluster cannot hold a steady apply rate for hours on the NUC, the
+strategy does not matter.
+
+S5 also partly discharges the gateway loop Phase 8 deliberately deferred. That
+deferral was justified by needing real round-trip times and venue rate limits to
+choose the lease bound and heartbeat cadence - shadow mode is where those get
+measured without money at risk.
+
+### Still carried, unrelated to shadow mode
+
+ARM64 container gate never run; Phase 8 gate never run; physical Pi gate remains
+a Phase 5 obligation; peer snapshot transport does not exist; `docs/README.md`
+is modified and uncommitted (protected path, not touched).
+
+### Tools added this block, all read-only
+
+- `tools/mcp-tools.py <url>` - `initialize` + `tools/list` only, refuses
+  `tools/call`. How the schemas were captured.
+- `tools/mcp-read.py <tool> k=v ...` - market data. Pinned to the marketdata
+  server, which has NO trading tool to call, so it is safe BY CONSTRUCTION.
+- `tools/roundtrip-cost.py [sizes]` - Jupiter round-trip cost. Simulates routes;
+  builds no transaction.
+- `tools/measure-markup.py <email> [sizes]` - the Blocker 1 measurement. Its
+  safety is a RULE, not a property: `get_quote` exists only on the trading
+  server, so it holds a session that can trade. Four-name allowlist, by-name
+  refusal of `trade_prepare`/`trade_execute`, no signing code. Do not add tools
+  to that allowlist.
+
+### Method notes from this block
+
+- A MACHINE-READABLE SCHEMA BEATS PROSE, AND IS OFTEN CHEAPER TO GET. D-3 sat
+  open for four days because a documentation page would not render, and the
+  fallbacks considered were a browser DevTools session (needs the owner's login,
+  and to see a request body, a real order) and scraping the frontend bundle
+  (blocked by a Cloudflare JS challenge on `app.truemarkets.co`). The MCP
+  `tools/list` endpoint answered it anonymously in one call. Look for a
+  machine-readable contract before reverse-engineering a human one.
+- AN ERROR CODE DESCRIBES THE REQUEST THAT PRODUCED IT AND NOTHING ELSE. The MCP
+  servers report RATE LIMITING as `-32602 invalid params`; a twelve-call sweep
+  returned it eleven times and every call succeeded when retried alone. Several
+  minutes went into looking for an argument bug that did not exist.
+- CHECK ARITHMETIC THAT CARRIES A CONCLUSION. ADR 0011's volume table was
+  committed 10x high and corrected in `191a741`. `2/c` at c = 0.5 bps is the
+  MULTIPLIER 40,000, so $100 buys $4M - not $40M. A figure that reads as a
+  headline deserves a second evaluation before it is committed.
+- A REFUSAL WRITTEN BEFORE THE ANSWER IS KNOWN CAN BE THE THING THAT SAVES YOU.
+  `encode_limit_order_body`'s `schema_unverified` guard was written against a
+  guess nobody had yet made, on the reasoning that an ignored price field turns
+  a limit order into a market order silently. The venue turned out to have no
+  price field at all, so that is precisely what a guess would have produced.
+- DO NOT ATTRIBUTE A RECOMMENDATION TO A SOURCE YOU HAVE NOT READ. The book is
+  not in the repository. Saying so was more useful than producing a plausible
+  answer the owner would have acted on believing it was theirs.
 
 ## PHASE 8 SUBSTANTIALLY BUILT, DRIVER DEFERRED TO PHASE 9 — 2026-09-17
 

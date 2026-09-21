@@ -15,6 +15,178 @@ release-engineering work.
 
 ### Phase 9 in development - True Markets adapter
 
+#### The venue is not an exchange — the limit-order premise is withdrawn — 2026-09-21
+
+`docs.truemarkets.co/mcp/` publishes two MCP servers. Both answer `tools/list`
+anonymously, and the reply carries a JSON Schema per tool. That is the venue's
+own machine-readable contract, served by the system that enforces it - a
+strictly better source than the REST prose that failed to render in D-3, and
+better than the browser-DevTools route it replaced, which needed a logged-in
+session and, to see a request body, a real order.
+
+WHAT IT SETTLED, AND WHY IT COST SO LITTLE TO FIND. D-3 had been open since
+2026-09-17 with the price field name unknown. `trade_prepare` takes
+`{side, base_asset, qty, chain?, qty_unit?}` and nothing else. `qty_unit` does
+accept a base-denominated quantity, which was the open half of D-3. The other
+half is answered by absence.
+
+THE VENUE HAS NO LIMIT ORDER. `trade_prepare` is described by True Markets as
+"Create a market order". There is no price parameter, no order type, no
+time-in-force, and across all seventeen tools no cancel, no open-orders query
+and no order book. The trading vocabulary is three verbs: `get_quote`,
+`trade_prepare`, `trade_execute`. This is a request-for-quote swap venue.
+
+V2 is built to post and manage resting liquidity. On this venue there is nothing
+to rest, nothing to cancel, and no price to post. D-1 had concluded from the
+endpoint reference that DeFi limit orders existed; the MCP server is a third
+source and it settles the question the other way. **D-1's conclusion was wrong.**
+
+WHAT SAVED US was a refusal written before the answer was known.
+`encode_limit_order_body` has refused with `schema_unverified` since it was
+written, on the reasoning recorded in `venue_wire.hpp`: many APIs ignore fields
+they do not recognise, so a guessed price field would have produced a LIMIT
+order that silently executed as a MARKET order, crossing the spread and paying
+taker fees on every quote while appearing to work. That is exactly what would
+have happened. The refusal is now permanent rather than provisional.
+
+Also recorded, all from the same source:
+
+- D-24: `qty_unit`'s default DEPENDS ON THE SIDE - quote for buys, base for
+  sells. The same body with `side` flipped denominates `qty` in a different
+  currency. Mitigated by always sending the field.
+- D-25: omitting `chain` does not mean unspecified, it routes the order to a
+  CeFi exchange with different custody, settlement and fees, and the request
+  stays valid. Mitigated structurally - see ADR 0011 section 4.
+- D-26: "If no payloads are returned the order was submitted directly." One call,
+  two behaviours. A crash after sending `trade_prepare` leaves it unknown whether
+  an order is live, which is worse than `resolve_two_step_send` assumed.
+- D-27: `list_assets` and `get_asset` are advertised on both servers and return
+  404. They are the only tools yielding decimals and contract address, so the
+  REST catalog (D-11) stays the instrument source of record. Separately, the
+  servers report RATE LIMITING as JSON-RPC `-32602 invalid params`, which sent
+  this session hunting a bug in its own arguments for several minutes.
+- D-28: no slippage, limit-price or minimum-received parameter exists anywhere
+  on the order path, and `get_quote` returns no quote id to bind. **A fill
+  cannot be bounded through the API.**
+
+Evidence: `docs/evidence/V2_TRUEMARKETS_MCP_SCHEMA_2026-09-18.md`, captured by
+`tools/mcp-tools.py`, which speaks `initialize` and `tools/list` and refuses
+`tools/call`. No order was placed and no account was authenticated.
+
+#### ADR 0011 proposed: the swap execution model, and volume as the objective — 2026-09-21
+
+STATUS: PROPOSED. The byte contract change in section 5 is NOT approved and NOT
+encoded. Nothing in this entry has been implemented.
+
+THE OBJECTIVE IS MAXIMUM VOLUME TRADED, for a leaderboard, and on a swap venue
+that changes what the architecture is optimising. Capital RECYCLES - a round
+trip returns your money minus costs - so capital is not the constraint. The loss
+budget is:
+
+    max_volume = loss_budget x 2 / c        (c = round-trip cost fraction)
+
+Volume is bounded by `1/c` and nothing else, so every design question reduces to
+what makes `c` small and what stops it silently becoming large. This is a
+cost-minimisation system, not a market-making system with the quoting removed,
+and cost minimisation has a different risk model.
+
+MEASURED `c` on Solana through Jupiter's quote endpoint (route simulation; no
+transaction built, signed or sent). SOL 0.1-0.7 bps, JUP 1.5-10.6, JTO 46-72,
+DRIFT 71-772, W 58-357, across $25 to $2000.
+
+Two conclusions, both load-bearing. Cost per unit volume spans roughly four
+orders of magnitude across assets, so ASSET SELECTION IS THE STRATEGY - no
+timing cleverness recovers a factor of 140 between SOL and DRIFT. And impact is
+superlinear in size, so many small round trips beat few large ones, floored by
+per-trade overhead and rate limits rather than by economics.
+
+A DEFECT IN THIS ANALYSIS, CORRECTED. The volume table was committed 10x high
+and fixed in `191a741`: at c = 0.5 bps a budget buys 40,000x its own size in
+volume, so $100 buys $4M and not $40M. The SOL-to-DRIFT spread is 140x, not
+7000x - 7720x is the ratio of their COSTS, which is a different quantity. The
+conclusions did not change.
+
+FOUR DECISIONS, and the options weighed for each:
+
+1. A swap is `EffectOperation::swap_market`, not a parallel `SwapEffect` type.
+   A second type would duplicate the gateway, risk reservation, kill epoch,
+   idempotency and audit trail, and create a second path Phase 8's mechanisms
+   would have to be taught about separately - which is how a safety mechanism
+   comes to cover one path and not the other.
+
+2. The chain becomes part of `VenueId` (`truemarkets-solana`, `-base`, `-cefi`)
+   rather than a field on the effect. CONSIDERED AND REJECTED: a `chain` field
+   validated on the way out. Folding it into the venue id makes D-25's
+   dropped-field-changes-venue failure UNREPRESENTABLE rather than guarded -
+   there is no field to omit - and it stops per-venue risk limits silently
+   pooling on-chain and exchange exposure.
+   CONSEQUENCE: `hypercore-spot`, `hypercore-perp`, `robinhood` and `arbitrum`
+   are in the catalog but not addressable, because `trade_prepare` accepts
+   solana and base only. **PURR is hypercore-spot, so the decision to trade PURR
+   is withdrawn.** HYPE is reachable as a bridged Solana token, subject to
+   D-21's warning about which HYPE.
+
+3. Quantity is denominated in what the side SPENDS - quote micros for buys, base
+   lots for sells. A buy spends USDC, so quote denomination makes the risk
+   reservation exact rather than an estimate a price move invalidates; a sell
+   spends tokens, so base denomination makes the inventory exact. Denominate
+   either side the other way and the quantity that matters becomes a function of
+   a price nobody has observed yet. This is why the venue defaults that way.
+   CONSIDERED AND REJECTED: deriving the basis from `side` at encode time. That
+   puts the rule in two places - reducer and encoder - and a divergence places a
+   buy for 113 USDC instead of 113 SOL. Storing it costs one byte, makes
+   divergence impossible, and puts the denomination in the replicated log where
+   ADR 0007 says the audit lives.
+   THE BYTE CONTRACT CHANGE: `OrderEffect` V2 -> V3 gains `QuantityBasis
+   quantity_basis` and `std::int64_t quote_micros`; 166 B -> 176 B after
+   padding. Exactly one of `quantity` / `quote_micros` is non-zero, enforced by
+   a validator. `base_lots` remains the only legal basis for a limit order, so
+   Hyperliquid is unaffected. NEEDS APPROVAL BEFORE ENCODING.
+
+4. The price bound lives at the SIGNING step, because D-28 leaves nowhere else.
+   `trade_prepare` takes no slippage parameter and `get_quote` binds nothing, so
+   the only control is that an unsigned payload does not execute: prepare, read
+   the expected output, sign only if within bound. REFUSING TO SIGN IS THE
+   SLIPPAGE CONTROL.
+   AND THIS IS WHY D-26 IS THE MOST DANGEROUS ROW IN THAT FILE. When
+   `trade_prepare` submits directly there is no signing step, therefore no
+   bound, therefore a fill at whatever the market gave - and the client does not
+   choose which mode it gets. The two-step is not merely a crash-recovery
+   concern; it is the only mechanism by which a price bound exists at all.
+
+WHAT IS FORECLOSED. No market making on True Markets, no post-only, no queue
+position, no maker rebate, no resting liquidity. Any claim that V2 "market-makes
+on True Markets" would be false. The significant-figure pricing work (D-15) is
+MOOT here - there is no price to render - and defers to the Hyperliquid adapter,
+which cancels the byte-contract churn that work was about to cause.
+
+WHAT IS WEAKENED, SAID PLAINLY. Phase 8's mass cancel has no venue counterpart
+here. Market orders do not rest, so the safety action on this venue is "stop
+sending", which the kill epoch already provides. `RequestMassCancel` stays
+correct for Hyperliquid and meaningful for internal state, but its venue leg on
+a swap adapter will be an explicit, documented no-op rather than something that
+quietly succeeds.
+
+#### The number that gates the economics is unmeasured — 2026-09-21
+
+Every value of `c` above came from Jupiter, not from True Markets, and is
+therefore a LOWER BOUND: any venue markup sits on top and dominates completely.
+Per $100 of loss budget the achievable volume is $4,000,000 at zero markup,
+$190,000 at 10 bps, $66,000 at 30 bps and $20,000 at 100 bps - a factor of 200
+across a plausible range.
+
+NO FURTHER DESIGN WORK ON THE STRATEGY IS WORTH DOING UNTIL THIS IS MEASURED,
+and it is cheap: `get_quote` is read-only, needs a login and nothing else, and
+places no order. `tools/measure-markup.py` performs the comparison.
+
+That tool's safety is a RULE and not a property, which is a real difference from
+its siblings and is recorded in its docstring. `tools/mcp-read.py` is pinned to
+the market-data server, which has no trading tool to call, so it is safe BY
+CONSTRUCTION. `get_quote` exists only on the trading server, so the markup tool
+necessarily holds a session that CAN trade: it carries a four-name allowlist,
+refuses `trade_prepare` and `trade_execute` by name as a second barrier, and
+contains no signing code or any path that could produce a signature.
+
 #### A two-step venue send is one effect — 2026-09-17
 
 Implements ADR 0009. The DeFi order path is not one request: `POST /orders`
