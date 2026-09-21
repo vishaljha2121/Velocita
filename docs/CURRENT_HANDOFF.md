@@ -173,8 +173,12 @@ measured without money at risk.
 ### Still carried, unrelated to shadow mode
 
 ARM64 container gate never run; Phase 8 gate never run; physical Pi gate remains
-a Phase 5 obligation; peer snapshot transport does not exist; `docs/README.md`
-is modified and uncommitted (protected path, not touched).
+a Phase 5 obligation; peer snapshot transport does not exist.
+
+`docs/README.md` is CLEAN as of 2026-09-21 and tracked. Older sections below
+describe it as modified and uncommitted; that is stale. `model/` remains
+untracked and protected - never `git add .` or `git add -A`, commit by explicit
+path only.
 
 ### Tools added this block, all read-only
 
