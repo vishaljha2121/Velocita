@@ -207,6 +207,14 @@ bool authorizable(const ApplyResult& evaluated) noexcept {
            evaluated.action_resolution_code == ActionResolutionCode::proposed;
 }
 
+PaperRequest paper_request(const ShadowProgram& program, const ApplyResult& evaluated, bool exits_only) noexcept {
+    if (!authorizable(evaluated)) return PaperRequest::none;
+    if (!exits_only) return PaperRequest::authorize;
+    const auto index = evaluated.matched_rule_index;
+    const bool exit = index < program.rules.size() && program.rules[index].action == ShadowAction::exit;
+    return exit ? PaperRequest::authorize : PaperRequest::withheld;
+}
+
 Command authorize_decision(CallerId caller, std::uint64_t sequence, DecisionId decision) {
     return identified(caller, sequence, AuthorizeDecision{decision});
 }

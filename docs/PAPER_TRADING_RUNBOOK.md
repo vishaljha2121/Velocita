@@ -160,3 +160,194 @@ existing `velocita_shadow_*` series (names unchanged).
 K and E are the current kill epoch and executor generation (every `COMMITTED`
 line prints them). The client has no mass-cancel verb yet: open paper orders
 are resolved by the gateway's simulator.
+
+## 7. Install a volume strategy (paper only)
+
+Four volume programs sit beside the trend program. Each has its own policy
+id and feature schema id, because feature 4 means something different in each.
+The feature vector is always the four daily features (trend, ret1, vol, dev,
+indices 0-3, the same as the trend program), then the strategy's one feature at
+index 4, then the price in ticks (index 5). Rules are first-match; no match is
+HOLD (no order).
+
+| `--strategy` | Policy | Schema | Feature 4 (exact) | Rules | Parameters (default) |
+|---|---|---|---|---|---|
+| `trend` (running) | 21 | 31 | none (4 features) | `0 gt 0 enter_long`, `0 le 0 exit` | `--value 125` |
+| `churn` | 22 | 32 | phase = (floor(event_ns / (P x 1e9)) mod 2) x 1,000,000 | `4 gt 0 enter_long`, `4 le 0 exit` | `--period-s` P (60) |
+| `trend_churn` | 23 | 33 | phase, as churn | `0 le 0 exit`, `4 gt 0 enter_long`, `4 le 0 exit` | `--value 125 --period-s 60` |
+| `rotate` | 24 | 34 | rotation = (event_ns mod (R x 1e9)) / 1000, microseconds into the period | `0 le 0 exit`, `4 lt W x 1e6 exit`, `0 gt 0 enter_long` | `--value 125 --period-s` R (1800) `--exit-window-s` W (60) |
+| `dip` | 25 | 35 | mdev = round_half_even((price / SMA - 1) x 1e6), SMA over the last N UTC-minute closes | `4 lt -x x 100 enter_long`, `4 gt y x 100 exit`, else hold | `--window-min` N (30) `--enter-below-bps` x (20) `--exit-above-bps` y (10) |
+
+Definitions (`model/src/velocita_model/shadow/volume.py`):
+
+- **event_ns** is the venue's own timestamp of the reference price, not our
+  clock. Phase and rotation are functions of that one number, so a replay or a
+  restarted edge computes the same feature for the same tick. A tick counter
+  would restart at every edge restart and depend on which prices the throttle
+  dropped; the event time does neither. Periods are aligned to the Unix epoch
+  (1800 s divides a day: rotations start at :00 and :30).
+- **Minute closes (dip):** the last observed price in each UTC minute. Every new
+  observation enters the window, including throttled ones, so the window does
+  not depend on `--min-tick-interval-s`. A minute without a price carries the
+  previous close. The newest minute's close is the tick's own price (as today's
+  close is in the daily features). Memory is at most N closes plus one carried
+  close (N <= 1440). The window lives in memory: after each edge start, ticks are
+  refused as `warming_up` for N minutes (`velocita_shadow_messages_total{outcome="warming_up"}`).
+- **Periods versus ticks.** After each fill the next authorization is refused
+  `stale_risk_state` (one tick lost to the re-sync, ADR 0016). At 30 s ticks, a
+  60 s phase holds two ticks: one acts, one may be lost. Keep `--period-s` and
+  `--exit-window-s` at least 2 x `--min-tick-interval-s`, or trades are skipped.
+- The model digest is the SHA-256 of the program's parameter line, for example
+  `velocita.volume.v1 churn sma_days=125 period_s=60` (the program file's first line).
+
+### 7.1 Clip and limits
+
+The recommended clip is **12 lots** = 0.00012 BTC. At BTC $84,000 (P = 84,000 ticks):
+
+    notional = 10 x P x 12 = 120 P micros = 10,080,000 = $10.08
+    margin   = $10.08 (100 %); fee hold = ceil(10,080,000 x 0.015) = 151,200 = $0.1512
+    held     = $10.2312 <= $25 exposure;  12 <= max_order_lots 25;  12 <= max_reserved_lots 25
+    template cap: 120 P <= 25,000,000 until BTC $208,333
+
+So every current limit holds. One limit no longer means "one clip": with
+`max_position_lots=25` a second 12-lot buy passes while long 12 (12 + 12 <= 25).
+Tighten the position to the clip, **while flat** (below a position it becomes
+reduce-only, and a 12-lot sell from 25 leaves 1 lot that can never be sold
+in 12-lot clips). From the Mac, with R the current risk version
+(`grep paper_risk_version ~/velocita-v2/textfile/velocita-shadow.prom` on nuc1)
+and K, E the current kill epoch and executor generation:
+
+    tools/velocita-secrets client-key caller-9 | velocita-v2-client --caller-key-id 9 --caller-id 7 --key-stdin \
+      --incarnation <INC> --session-file ~/.velocita/client.session --response-endpoint 100.91.80.64:42400 \
+      --node 1=100.72.127.102:42301 --node 2=100.84.151.116:42302 --node 3=100.85.36.22:42303 \
+      --aeron-dir /tmp/velocita-client --sequence <NEXT> [--dry-run] \
+      risk-limits account=1 instrument=1 risk_policy_version=1 expected_risk_version=<R> \
+        kill_epoch=<K> executor_generation=<E> max_order_lots=12 max_reserved_lots=12 \
+        max_order_notional_micros=25000000 max_reserved_exposure_micros=25000000 \
+        initial_margin_ppm=1000000 maximum_fee_ppm=15000 max_position_lots=12 allow_short=0 \
+        reason_code=20260930
+
+The risk version moves to R + 1; the edge re-syncs on its next refusal. If the
+account is long 25 when you switch, either keep `--order-quantity-lots 25` for
+this strategy (volume per dollar lost does not depend on the clip; only the
+speed does), or install it first with 25 lots, let one exit fill, then tighten
+the limits and reinstall with 12 lots as `--policy-version 2`.
+
+What it costs, flat prices, 12 lots at $84,000: buy fee ceil(10,080,000 x 115 bp)
+= $0.1159, sell fee $0.1210, **$0.2369 per round trip for $20.16 of volume, about
+$85 of volume per dollar lost**. The $12 weekly cap is about 50 round trips, about
+$1,000 of volume. Churn at 60 s phases can do up to 30 round trips an hour, so
+the cap binds within about two hours of flat prices; price moves add to or
+subtract from that.
+
+### 7.2 Deploy the code (once)
+
+Export this commit to nuc1 as in `M3_DEPLOYMENT_LOG.md` item 45 (`git archive`,
+`COPYFILE_DISABLE=1 tar --no-xattrs` over ssh, check `SOURCE_COMMIT`), then on nuc1:
+
+    cd ~/src/aeron-raft-pi
+    podman build -f deploy/v2/Containerfile --target shadow -t localhost/velocita-v2-shadow:m3 .
+    install -m 0644 deploy/v2/systemd/velocita-v2-shadow-edge.service \
+        deploy/v2/systemd/velocita-v2-shadow-setup.service ~/.config/systemd/user/
+    systemctl --user daemon-reload
+    systemctl --user restart velocita-v2-shadow-edge
+
+With `VELOCITA_STRATEGY_ARGS` unset the trend program and every TICK line are
+byte-identical to what runs now (`model/tests/test_shadow_volume.py`), except
+that a TICK line gains ` exits_only=1` while the buy stop of section 7.4 is on;
+the restart adds the paper book and its series. The gateway's
+`velocita_gateway_volume_usd_total{side}` needs the voter image rebuilt
+(`podman build -f deploy/v2/Containerfile -t localhost/velocita-v2:m3 .`) and
+`systemctl --user restart velocita-v2-gateway`. Restart the gateway **only while
+flat**: its paper venue starts again at $25 quote and 0 base (a sell while long
+would be killed `insufficient_base`) unless it is given `--paper-base-lots`.
+
+### 7.3 Install one strategy
+
+1. Choose the arguments. In `~/velocita-v2/shadow/shadow.env` add ONE of:
+
+        VELOCITA_STRATEGY_ARGS=--strategy churn --period-s 60 --order-quantity-lots 12
+        VELOCITA_STRATEGY_ARGS=--strategy trend_churn --value 125 --period-s 60 --order-quantity-lots 12
+        VELOCITA_STRATEGY_ARGS=--strategy rotate --value 125 --period-s 1800 --exit-window-s 60 --order-quantity-lots 12
+        VELOCITA_STRATEGY_ARGS=--strategy dip --window-min 30 --enter-below-bps 20 --exit-above-bps 10 --order-quantity-lots 12
+
+   optionally followed on the same line by `--weekly-loss-cap-usd 12` (the
+   default) and the research run's interval, `--expected-week-volume-usd LO,HI
+   --expected-week-loss-usd LO,HI`. Both units read this one variable after
+   their own arguments, so it replaces `--order-quantity-lots 25` in both and
+   the program the edge names is the one setup installs.
+2. Install it (nuc1). Stop the edge first: between activation and the edge's
+   restart its frames would name the superseded policy.
+
+        systemctl --user stop velocita-v2-shadow-edge
+        systemctl --user start velocita-v2-shadow-setup
+        journalctl --user -u velocita-v2-shadow-setup | grep SETUP
+        # SETUP generation=G first_sequence=S kill_epoch=K executor_generation=E strategy_mode=1
+        grep -E '^(# generated|policy\.(id|version|feature_schema_id)|features|rule)' ~/velocita-v2/shadow/state/trend.program
+        systemctl --user start velocita-v2-shadow-edge
+
+   Expected for churn: `# generated from velocita.volume.v1 churn sma_days=125
+   period_s=60`, `policy.id = 22`, `policy.version = 1`,
+   `policy.feature_schema_id = 32`, `features.generic = 5`, `rule.1 = 4 gt 0
+   enter_long`, `rule.2 = 4 le 0 exit`. (The file keeps its old name.)
+3. Check: `journalctl --user -u velocita-v2-shadow-edge | grep READY` shows
+   `mode=paper`; the Strategy dashboard's `velocita_shadow_feature_micros{name="phase"}`
+   (or `rotation`, `mdev`) moves; the Paper trading dashboard's last row fills.
+
+Rules of the kernel that shape reinstalls:
+
+- **A changed program needs a new version.** Any program-shaping argument
+  (strategy, value, period, window, thresholds, clip, caps) changes the policy
+  bytes; under the same id and version the kernel refuses it
+  (`immutable_policy_conflict`). Add `--policy-version N+1` to
+  `VELOCITA_STRATEGY_ARGS`. `--weekly-loss-cap-usd`, the expected intervals,
+  `--paper-*-bps` and `--min-tick-interval-s` do not shape the program: change
+  them and restart only the edge.
+- **A superseded version cannot come back.** Returning to trend after a volume
+  strategy: `VELOCITA_STRATEGY_ARGS=--policy-version 2` (policy 21 version 1 is
+  superseded), then step 2. Returning to churn after rotate: churn's next version.
+- **Capacity.** The kernel keeps at most 16 policy records per cluster and never
+  reclaims one. Trend v1 uses one; each install above uses another. Keep a count;
+  a fresh cluster resets it.
+
+### 7.4 The weekly loss budget
+
+The edge keeps a paper book (`model/src/velocita_model/shadow/paper_book.py`,
+persisted in `/state/ledger.db`, table `paper_book`):
+
+- A fill is booked only when the kernel's position confirms it: an `applied`
+  authorization is the pending order, and the next `stale_risk_state` re-sync
+  that moves the position by that order's size books it at the order's price
+  (FOK at the limit, ADR 0018). A move no order explains (for example the long
+  a trend strategy left) is adopted and marked at that tick's price.
+- Fees are the paper venue's, ceil(notional x bps / 10,000) micros at 115 bp
+  buy and 120 bp sell (`--paper-buy-bps`, `--paper-sell-bps`: keep them equal
+  to the gateway's `--buy-fee-bps`, `--sell-fee-bps`). Each fee is realized at its
+  fill and taken from cash at once; a sell realizes its price move against the
+  cost of the lots sold.
+- The week is the ISO week (UTC) of the tick that confirms the fill. Loss =
+  max(0, -realized P&L of the week).
+- **The stop:** while the week's loss is above `--weekly-loss-cap-usd` (default
+  12), or while the book is flat and its cash cannot pay a clip plus its fee,
+  the edge sends `exits_only=1` on each TICK line. The submitter still records
+  the frame but does not ask the kernel to authorize a proposal from an
+  enter_long rule (`authorization=withheld`); exits are asked for as before.
+  The stop lifts on Monday 00:00 UTC. It is the edge's own brake, not a kernel
+  control: the kernel limits and `strategy-mode` (section 6) still apply.
+- One round trip can overshoot the cap: the loss is known only once a sell is
+  confirmed.
+
+Series: `velocita_paper_volume_usd_total`, `velocita_paper_fills_total{side}`,
+`velocita_paper_week_{volume,fees,pnl,loss}_usd`, `velocita_paper_week_fills`,
+`velocita_paper_weekly_loss_cap_usd`, `velocita_paper_buys_stopped{reason}`,
+`velocita_paper_buys_withheld_total{reason}` (buys proposed while flat and never
+sent: `loss_budget`, `insufficient_balance`), `velocita_paper_cash_usd`,
+`velocita_paper_unattributed_position_changes_total`, and when configured
+`velocita_paper_expected_week_{volume,loss}_usd{bound="low"|"high"}`. The gateway
+adds `velocita_gateway_volume_usd_total{side}` (filled notional).
+
+Dashboard, Paper trading, last row "Volume strategies: this ISO week against the
+loss budget": volume, fees (cents), net P&L, volume per dollar lost, trades per
+hour, the loss-budget gauge (percent of the cap), observed weekly volume and
+loss beside the expected interval and the cap, the stop and withheld buys,
+volume by side, and gateway fees over a rolling 7 days.

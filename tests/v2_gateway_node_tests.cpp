@@ -1011,6 +1011,10 @@ void paper_venue_fill_books_position_and_measured_fee() {
     require(metrics.fee_micros_total == 26, "fees " + std::to_string(metrics.fee_micros_total) + " micros, expected 26");
     require(gateway.paper_venue->balances().fees_paid.atoms() == 26, "the venue and the gateway disagree on fees");
     require(metrics.fills_buy == 1 && !gateway.loop.new_risk_stopped(), "paper fill metrics");
+    // Volume is the fill's notional at its own price and quantity: 100 x 11 x 2.
+    require(metrics.volume_micros_buy == 100 * 11 * kOrderLots && metrics.volume_micros_sell == 0,
+            "volume " + std::to_string(metrics.volume_micros_buy) + "/" + std::to_string(metrics.volume_micros_sell) +
+                " micros, expected 2200 bought and 0 sold");
     require(metrics.last_fill_timestamp_seconds > 0, "last fill timestamp not set");
 }
 

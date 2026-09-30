@@ -89,6 +89,8 @@ struct GatewayMetrics {
     std::size_t position_count{};
     std::array<GatewayPosition, kMaxRiskAccounts> positions{};
     std::int64_t fee_micros_total{};
+    // Filled notional by side: price x lots x the served row's quote micros per tick-lot.
+    std::int64_t volume_micros_buy{}, volume_micros_sell{};
     double last_fill_timestamp_seconds{};  // wall clock when the last fill committed; 0 = none
     double heartbeat_timestamp_seconds{};  // wall clock of the last loop step
 };
@@ -142,6 +144,7 @@ private:
     void on_authority(LinkOutcome& outcome, Tick now);
     void on_command(const LinkOutcome& outcome, Tick now);
     void poll_venue(Tick now);
+    [[nodiscard]] std::optional<std::int64_t> fill_notional(const VenueObservation& fill) const noexcept;
     void choose(Tick now);
     [[nodiscard]] bool propose_evidence(Tick now);
     [[nodiscard]] bool deliver(Tick now);

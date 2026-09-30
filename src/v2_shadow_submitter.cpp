@@ -317,6 +317,12 @@ std::string extend_reservation(const std::filesystem::path& file, const std::arr
     return store(file, State{incarnation, generation, reserved_through});
 }
 
+std::optional<bool> parse_exits_only(const std::optional<std::string_view>& value) noexcept {
+    if (!value || *value == "0") return false;
+    if (*value == "1") return true;
+    return std::nullopt;
+}
+
 // -- split authority and operator verbs --------------------------------------
 
 std::string submitter_role_error(SubmitterRole role, CallerId caller) {

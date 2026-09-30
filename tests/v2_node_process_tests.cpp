@@ -648,13 +648,13 @@ void shadow_submitter_scenario(Harness& h, const std::string& submitter) {
     paper_args.insert(paper_args.end(), {"--mode", "paper"});
     const auto action = std::to_string(static_cast<int>(DecisionCode::action));
     const auto place = std::to_string(static_cast<int>(Directive::place_limit));
-    const auto paper_tick = [&](Piped& p, int id, bool up) {
+    const auto paper_tick = [&](Piped& p, int id, bool up, const std::string& extra = "") {
         std::ostringstream digest;
         digest << std::hex;
         for (int i = 0; i < 32; ++i) digest << (i == 0 ? "f" : "0") << (i == 31 ? (id % 16) : (i == 30 ? id / 16 % 16 : 0));
         p.send("TICK id=" + std::to_string(id) + " event_ns=" + std::to_string(2000 + id) + " receive_ns=" +
                std::to_string(2010 + id) + " age_ns=10 features=" + (up ? "50000" : "-50000") + ",0,0,0,11 evidence=" +
-               digest.str());
+               digest.str() + extra);
         const auto line = p.line(std::chrono::seconds(30));
         require(line.rfind("DECISION ", 0) == 0 && word(line, "risk_version") == "1" &&
                     word(line, "position_version") == "1",
@@ -681,10 +681,22 @@ void shadow_submitter_scenario(Harness& h, const std::string& submitter) {
                     (why == "order_slot_occupied" || why == "position_limit_exceeded"),
                 "a second order on an occupied slot was not refused for that reason: " + refused);
     }
+    // The edge's loss stop: with exits_only=1 the buy is not even asked for (the
+    // kernel would have answered with a refusal code), while the exit still is.
+    const auto withheld = paper_tick(second, 24, true, " exits_only=1");
+    require(word(withheld, "decision_code") == action && word(withheld, "authorization") == "withheld",
+            "a buy under the loss stop was sent for authorization: " + withheld);
+    const auto exit_asked = paper_tick(second, 25, false, " exits_only=1");
+    const auto exit_answer = word(exit_asked, "authorization");
+    require(exit_answer != "withheld" && exit_answer != "none", "the loss stop withheld an exit: " + exit_asked);
+    second.send("TICK id=26 event_ns=2026 receive_ns=2036 age_ns=10 features=50000,0,0,0,11 evidence=f" +
+                std::string(63, '1') + " exits_only=yes");
+    const auto unclear = second.line(std::chrono::seconds(30));
+    require(unclear.rfind("ERROR id=26 reason=bad_tick", 0) == 0, "an unclear stop token was guessed: " + unclear);
     // Halt: the next frame is not actionable, so nothing is sent for authorization.
     const auto halted = h.operator_command(5, {"strategy-mode", "halted", "1", "1"}, h.await_leader(), 20000);
     require(halted.exit_code == 0, "halt refused: " + halted.output);
-    const auto after_halt = paper_tick(second, 24, true);
+    const auto after_halt = paper_tick(second, 27, true);
     require(word(after_halt, "decision_code") == std::to_string(static_cast<int>(DecisionCode::control_halted)) &&
                 word(after_halt, "authorization") == "none",
             "a halted cluster still offered a paper decision for authorization: " + after_halt);

@@ -13,6 +13,9 @@ shadow submitter (`velocita-v2-shadow-submitter`) -> decisions and metrics.
   rule program, so research and cluster cannot drift.
 * Agreement: the Python rule engine's match is compared with the cluster's on
   every decision and counted, never hidden (M3a).
+* Volume strategies (`volume.py`) append one feature after the four daily ones;
+  the price is always the last feature. In paper mode the paper book
+  (`paper_book.py`) may add `exits_only=1` to a TICK line (the weekly loss stop).
 """
 
 from __future__ import annotations
@@ -31,6 +34,7 @@ from ..collectors.market_stream import publish
 from ..contracts.enums import PredicateOperator
 from ..research import rules
 from ..research.bars import DailyBars
+from . import volume
 
 NO_RULE = 65535  # the evaluator's "no rule matched" sentinel
 SHADOW_RECORDED = 17  # DecisionCode::shadow_recorded in include/velocita/v2/kernel.hpp (parity-tested)
@@ -58,21 +62,39 @@ def model_digest(strategy: str, value: int) -> str:
     return hashlib.sha256(f"velocita.rules.v1 {strategy} {value}".encode()).hexdigest()
 
 
+def strategy_program(strategy: str, value: int,
+                     params: volume.Params | None = None) -> tuple[list[rules.Rule], rules.Settings]:
+    if strategy in volume.STRATEGIES:
+        return volume.program(strategy, value, params or volume.Params())
+    return rules.DEMOS[strategy][0](value)
+
+
+def feature_names(strategy: str) -> tuple[str, ...]:
+    spec = volume.STRATEGIES.get(strategy)
+    return FEATURE_NAMES + ((spec.feature,) if spec else ())
+
+
 def program_text(strategy: str, value: int, catalog: CatalogRow, *, policy_id: int, policy_version: int,
                  feature_schema_id: int, valid_from_ns: int, valid_until_ns: int, order_quantity_lots: int,
                  max_notional_micros: int, max_age_ns: int, source_id: int, time_in_force: str,
-                 post_only: str) -> str:
-    program, _settings = rules.DEMOS[strategy][0](value)
-    lines = [f"# generated from research.rules.{strategy}({value})",
+                 post_only: str, params: volume.Params | None = None) -> str:
+    program, _settings = strategy_program(strategy, value, params)
+    if strategy in volume.STRATEGIES:
+        params = params or volume.Params()
+        header = f"# generated from {volume.model_text(strategy, value, params)}"
+        digest = volume.model_digest(strategy, value, params)
+    else:
+        header, digest = f"# generated from research.rules.{strategy}({value})", model_digest(strategy, value)
+    lines = [header,
              f"catalog.root = {catalog.root}", f"catalog.account = {catalog.account}",
              f"catalog.venue = {catalog.venue}", f"catalog.instrument = {catalog.instrument}",
              f"catalog.instrument_spec_version = {catalog.instrument_spec_version}",
              f"catalog.venue_capabilities_version = {catalog.venue_capabilities_version}",
              f"policy.id = {policy_id}", f"policy.version = {policy_version}",
              f"policy.feature_schema_id = {feature_schema_id}", "policy.risk_version = 1",
-             f"policy.model_digest = {model_digest(strategy, value)}",
+             f"policy.model_digest = {digest}",
              f"policy.valid_from_ns = {valid_from_ns}", f"policy.valid_until_ns = {valid_until_ns}",
-             f"features.generic = {len(rules.FEATURE_NAMES)}"]
+             f"features.generic = {len(feature_names(strategy))}"]
     lines += [f"rule.{i + 1} = {r.feature} {_OPS[r.op]} {r.threshold} {_ACTIONS[r.action]}" for i, r in enumerate(program)]
     lines += [f"order.time_in_force = {time_in_force}", f"order.post_only = {post_only}",
               f"order.quantity_lots = {order_quantity_lots}", f"order.max_notional_micros = {max_notional_micros}",
@@ -101,16 +123,27 @@ class Tick:
     features: list[int]
     evidence: str
     expected_rule: int | None
+    exits_only: bool = False  # the paper book's buy stop; the token is sent only while it is on
 
     def line(self) -> str:
         return (f"TICK id={self.tick_id} event_ns={self.event_ns} receive_ns={self.receive_ns} age_ns={self.age_ns} "
-                f"features={','.join(map(str, self.features))} evidence={self.evidence}")
+                f"features={','.join(map(str, self.features))} evidence={self.evidence}"
+                + (" exits_only=1" if self.exits_only else ""))
 
 
 class FeatureSource:
     def __init__(self, strategy: str, value: int, *, closes: Sequence[tuple[date, float]], usd_per_tick: Decimal,
-                 symbol: str = "BTC|USD", min_interval_ns: int = 0) -> None:
-        self.program, self.settings = rules.DEMOS[strategy][0](value)
+                 symbol: str = "BTC|USD", min_interval_ns: int = 0, params: volume.Params | None = None,
+                 window: volume.MinuteWindow | None = None) -> None:
+        self.program, self.settings = strategy_program(strategy, value, params)
+        self.feature_names = feature_names(strategy)
+        spec = volume.STRATEGIES.get(strategy)
+        self.extra = spec.feature if spec else None
+        self.params = volume.resolved(strategy, params or volume.Params()) if spec else None
+        # The minute window outlives a day's FeatureSource: the caller passes the same one in.
+        if window is None and self.extra == "mdev":
+            window = volume.MinuteWindow(self.params.window_min)
+        self.window = window
         self.closes = list(closes)
         self.usd_per_tick = usd_per_tick
         self.symbol = symbol
@@ -140,6 +173,8 @@ class FeatureSource:
             event_ns = rfc3339_ns(row["timestamp"])
         except (KeyError, ValueError, TypeError, InvalidOperation):
             return "other", None
+        if self.window is not None:
+            self.window.observe(event_ns, mid)  # every new observation, throttled or not
         # The venue re-sends its last price every second between ~12 s refreshes:
         # only a newer observation is a source event.
         if event_ns <= self.last_event_ns:
@@ -157,11 +192,23 @@ class FeatureSource:
         feats = rules.features(bars, 0, len(history), self.settings)
         if feats is None:
             return "no_history", None
+        if self.extra is not None:
+            extra = self._extra(event_ns)
+            if extra is None:
+                return "warming_up", None
+            feats = tuple(feats) + (extra,)
         self.last_event_ns = event_ns
         self.last_forward_ns = receive_ns
         return "tick", Tick(tick_id, event_ns, receive_ns, max(0, receive_ns - event_ns),
                     list(feats) + [price_ticks(mid, self.usd_per_tick)],
                     hashlib.sha256(raw.encode("utf-8")).hexdigest(), rules.first_match(self.program, feats))
+
+    def _extra(self, event_ns: int) -> int | None:
+        if self.extra == "phase":
+            return volume.phase(event_ns, self.params.period_s)
+        if self.extra == "rotation":
+            return volume.rotation(event_ns, self.params.period_s)
+        return self.window.deviation_micros()
 
 
 _TEXT_FIELDS = ("id", "authorization", "mode")
@@ -197,6 +244,7 @@ class EdgeMetrics:
     messages: dict[str, int] = field(default_factory=dict)
     directives: dict[tuple[str, str], int] = field(default_factory=dict)
     last_features: tuple[int, ...] = ()
+    feature_names: tuple[str, ...] = FEATURE_NAMES
     last_price_usd: Decimal | None = None
     # Paper mode: the kernel's verdict on each AuthorizeDecision, by ApplyCode name.
     paper: bool = False
@@ -209,8 +257,8 @@ class EdgeMetrics:
     def observe_message(self, outcome: str, tick: Tick | None, usd_per_tick: Decimal) -> None:
         self.messages[outcome] = self.messages.get(outcome, 0) + 1
         if tick is not None:
-            self.last_features = tuple(tick.features[:len(FEATURE_NAMES)])
-            self.last_price_usd = tick.features[len(FEATURE_NAMES)] * usd_per_tick
+            self.last_features = tuple(tick.features[:-1])
+            self.last_price_usd = tick.features[-1] * usd_per_tick
 
     def observe(self, d: dict, *, tick_receive_ns: int, expected_rule: int | None, age_ns: int = 0) -> None:
         code = int(d["decision_code"])
@@ -242,7 +290,7 @@ class EdgeMetrics:
         if "authorization" in d:
             self.paper = True
             self.risk_version, self.position_version = int(d["risk_version"]), int(d["position_version"])
-            if d["authorization"] != "none":
+            if d["authorization"] not in ("none", "withheld"):  # withheld: never sent (paper book counts it)
                 name = str(d["authorization"])
                 self.authorizations[name] = self.authorizations.get(name, 0) + 1
             if int(d.get("resync", 0)):
@@ -282,7 +330,7 @@ class EdgeMetrics:
         if self.last_features:
             out.append("# TYPE velocita_shadow_feature_micros gauge")
             out += [f'velocita_shadow_feature_micros{{name="{name}"}} {v}'
-                    for name, v in zip(FEATURE_NAMES, self.last_features)]
+                    for name, v in zip(self.feature_names, self.last_features)]
         if self.last_price_usd is not None:
             out += ["# TYPE velocita_shadow_price_usd gauge", f"velocita_shadow_price_usd {self.last_price_usd}"]
         if self.last_decision_ns:
@@ -321,15 +369,20 @@ class RunResult:
 def run_once(socket_factory: Callable[[], object], submitter_argv: Sequence[str], source: FeatureSource, *,
              textfile: str | None, shadow_recorded_code: int, clock_ns: Callable[[], int] = time.time_ns,
              metrics: EdgeMetrics | None = None, reply_timeout_s: float = 60.0,
-             topics: Iterable[str] = ("reference_prices",), ledger=None) -> RunResult:
-    """One submitter process and one market-data connection, until either ends."""
+             topics: Iterable[str] = ("reference_prices",), ledger=None, paper_book=None) -> RunResult:
+    """One submitter process and one market-data connection, until either ends.
+    PAPER_BOOK (paper mode only) books the kernel-confirmed fills and sets the
+    TICK line's buy stop."""
     metrics = metrics or EdgeMetrics(shadow_recorded_code)
+    metrics.feature_names = source.feature_names
     result = RunResult()
     last_price: Decimal | None = None
+    paper = False
 
     def rendered() -> str:
         text = metrics.render(now_ns=clock_ns())
-        return text + ledger.render(last_price) if ledger is not None and last_price is not None else text
+        text = text + ledger.render(last_price) if ledger is not None and last_price is not None else text
+        return text + paper_book.render() if paper and paper_book is not None else text
     process = subprocess.Popen(list(submitter_argv), stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
                                bufsize=1)
     metrics.submitter_starts += 1
@@ -359,6 +412,8 @@ def run_once(socket_factory: Callable[[], object], submitter_argv: Sequence[str]
                 metrics.observe_message(source.last_outcome, tick, source.usd_per_tick)
                 if tick is None:
                     continue
+                stop = paper_book.gate(tick.event_ns, tick.features[-1]) if paper and paper_book is not None else None
+                tick.exits_only = stop is not None
                 process.stdin.write(tick.line() + "\n")
                 process.stdin.flush()
                 metrics.ticks += 1
@@ -378,6 +433,12 @@ def run_once(socket_factory: Callable[[], object], submitter_argv: Sequence[str]
                     if (ledger is not None and int(decision["decision_code"]) == recorded_code
                             and int(decision.get("resolution", 0)) == PROPOSED and rule < len(source.program)):
                         ledger.observe(tick.event_ns, last_price, source.program[rule].action.value)
+                    if paper and paper_book is not None:
+                        action = source.program[rule].action.value if rule < len(source.program) else None
+                        paper_book.observe(tick.event_ns, tick.features[-1], action=action,
+                                           authorization=str(decision.get("authorization", "none")),
+                                           resync_position=int(decision["position_lots"]) if int(
+                                               decision.get("resync", 0)) else None, stop=stop)
                 else:
                     metrics.errors += 1
                     result.errors += 1

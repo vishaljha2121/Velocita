@@ -54,6 +54,10 @@ struct SubmitterStart {
 enum class SubmitterRole : std::uint8_t { setup, ticks };
 [[nodiscard]] std::string submitter_role_error(SubmitterRole role, CallerId caller);
 
+// The TICK line's optional `exits_only` token: absent or 0 = buys allowed, 1 =
+// exits only. Any other value is a bad tick, never a guess.
+[[nodiscard]] std::optional<bool> parse_exits_only(const std::optional<std::string_view>& value) noexcept;
+
 // Stable snake_case name of every ApplyCode (metrics labels, operator output).
 [[nodiscard]] std::string_view apply_code_name(ApplyCode code) noexcept;
 

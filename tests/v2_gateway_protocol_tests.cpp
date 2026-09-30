@@ -301,6 +301,8 @@ void test_metrics_start_at_zero_with_every_label() {
           "velocita_gateway_stage_ms_bucket{stage=\"authorized_to_proof\",le=\"+Inf\"} 0",
           "velocita_gateway_stage_ms_count{stage=\"fill_to_committed\"} 0",
           "velocita_gateway_fees_usd_total 0.000000", "velocita_gateway_last_fill_timestamp_seconds 0.000000",
+          "velocita_gateway_volume_usd_total{side=\"buy\"} 0.000000",
+          "velocita_gateway_volume_usd_total{side=\"sell\"} 0.000000",
           "velocita_gateway_heartbeat_timestamp_seconds 0.000000"})
         require(text.find(line + "\n") != std::string::npos, "metrics page lacks: " + line);
     require(text.find("decision_to_authorized") == std::string::npos, "an unmeasured stage was exported");
@@ -312,7 +314,12 @@ void test_metrics_start_at_zero_with_every_label() {
                 after.find("velocita_gateway_stage_ms_bucket{stage=\"proof_to_sent\",le=\"5\"} 1\n") != std::string::npos &&
                 after.find("velocita_gateway_stage_ms_sum{stage=\"proof_to_sent\"} 3.000000\n") != std::string::npos,
             "histogram buckets are not cumulative at the right boundaries");
+    metrics.volume_micros_sell = 21'000'001;
+    const auto sold = render_gateway_metrics(metrics);
     require(after.find("velocita_gateway_fees_usd_total 1.234567\n") != std::string::npos, "fee micros to USD");
+    require(sold.find("velocita_gateway_volume_usd_total{side=\"sell\"} 21.000001\n") != std::string::npos &&
+                sold.find("velocita_gateway_volume_usd_total{side=\"buy\"} 0.000000\n") != std::string::npos,
+            "volume micros to USD by side");
 }
 
 const std::string kConfig =

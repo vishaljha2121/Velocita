@@ -339,6 +339,36 @@ void risk_limits_are_canonical_and_described_in_lots_and_dollars() {
 
 }  // namespace
 
+// A volume program as the edge writes it (model/.../shadow/volume.py, churn):
+// five generic features, rules on feature 4, the price at index 5.
+void a_five_feature_volume_program_parses() {
+    std::string text = valid_text();
+    text.replace(text.find("policy.id = 21"), 14, "policy.id = 22");
+    text.replace(text.find("feature_schema_id = 31"), 22, "feature_schema_id = 32");
+    text.replace(text.find("features.generic = 4"), 20, "features.generic = 5");
+    text.replace(text.find("rule.1"), text.find("order.time_in_force") - text.find("rule.1"),
+                 "rule.1 = 4 gt 0 enter_long\nrule.2 = 4 le 0 exit\n");
+    const auto result = parse(text);
+    require(result.program.has_value(), "the churn program was refused: " + result.error);
+    const auto& p = *result.program;
+    require(p.policy_id == PolicyId{22} && p.feature_schema_id == FeatureSchemaId{32} && p.generic_features == 5 &&
+                p.rules.size() == 2 && p.rules[0].feature == 4 && p.rules[0].action == ShadowAction::enter_long &&
+                p.rules[1].feature == 4 && p.rules[1].op == PredicateOperator::less_than_or_equal &&
+                p.rules[1].action == ShadowAction::exit,
+            "the churn program differs from the text");
+    std::string beyond = text;
+    beyond.replace(beyond.find("rule.2 = 4"), 10, "rule.2 = 6");  // 0..4 generic, 5 = price, 6 does not exist
+    require(!parse(beyond).program, "a rule on a feature past the price was accepted");
+}
+
+void the_exits_only_token_is_zero_one_or_a_bad_tick() {
+    require(parse_exits_only(std::nullopt) == std::optional<bool>(false), "an absent token stopped buys");
+    require(parse_exits_only(std::string_view("0")) == std::optional<bool>(false), "0 stopped buys");
+    require(parse_exits_only(std::string_view("1")) == std::optional<bool>(true), "1 did not stop buys");
+    for (const std::string_view bad : {"", "2", "true", "01", " 1"})
+        require(!parse_exits_only(bad).has_value(), "exits_only='" + std::string(bad) + "' was guessed");
+}
+
 int main() {
     try {
         a_valid_file_parses_to_the_hand_built_program();
@@ -352,6 +382,8 @@ int main() {
         the_risk_limits_verb_builds_every_field();
         bad_risk_limits_are_refused_before_sending();
         risk_limits_are_canonical_and_described_in_lots_and_dollars();
+        the_exits_only_token_is_zero_one_or_a_bad_tick();
+        a_five_feature_volume_program_parses();
         std::cout << "shadow submitter tests passed\n";
         return 0;
     } catch (const std::exception& error) {

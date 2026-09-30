@@ -84,6 +84,14 @@ struct FrameBinding {
 // Paper: a committed evaluation whose proposal the kernel could authorize.
 [[nodiscard]] bool authorizable(const ApplyResult& evaluated) noexcept;
 
+// Paper, per tick: ask the kernel, withhold, or nothing to ask. EXITS_ONLY is the
+// edge's buy stop (weekly loss budget or paper balance spent): a proposal from
+// an enter_long rule is withheld, exits still go. A matched index the program
+// does not have is treated as a buy, so the stop fails closed.
+enum class PaperRequest : std::uint8_t { none, authorize, withheld };
+[[nodiscard]] PaperRequest paper_request(const ShadowProgram& program, const ApplyResult& evaluated,
+                                         bool exits_only) noexcept;
+
 [[nodiscard]] Command authorize_decision(CallerId caller, std::uint64_t sequence, DecisionId decision);
 
 inline constexpr ApplyResultDetailKind kRiskStateDetailKind = ApplyResultDetailKind::risk_state;

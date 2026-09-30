@@ -1421,6 +1421,665 @@
      "sort": "desc"
     }
    }
+  },
+  {
+   "type": "row",
+   "title": "Volume strategies: this ISO week against the loss budget",
+   "id": 26,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 46
+   },
+   "panels": []
+  },
+  {
+   "type": "stat",
+   "title": "Volume this week",
+   "id": 27,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Filled notional, buys plus sells. ISO week to date (UTC, from Monday 00:00), from the edge's paper book: fills the kernel's position confirmed, costed at the paper venue's fees.",
+   "gridPos": {
+    "h": 6,
+    "w": 4,
+    "x": 0,
+    "y": 47
+   },
+   "targets": [
+    {
+     "expr": "max(velocita_paper_week_volume_usd)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Fees this week",
+   "id": 28,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Paper venue fees on this week's fills, in US cents. ISO week to date (UTC, from Monday 00:00), from the edge's paper book: fills the kernel's position confirmed, costed at the paper venue's fees.",
+   "gridPos": {
+    "h": 6,
+    "w": 4,
+    "x": 4,
+    "y": 47
+   },
+   "targets": [
+    {
+     "expr": "100 * max(velocita_paper_week_fees_usd)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix:\u00a2",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 1
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Net P&L this week",
+   "id": 29,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Realized: each buy's fee at the buy, each sell's price move and fee at the sell. ISO week to date (UTC, from Monday 00:00), from the edge's paper book: fills the kernel's position confirmed, costed at the paper venue's fees.",
+   "gridPos": {
+    "h": 6,
+    "w": 4,
+    "x": 8,
+    "y": 47
+   },
+   "targets": [
+    {
+     "expr": "max(velocita_paper_week_pnl_usd)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": 0
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 2
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Volume per $ lost",
+   "id": 30,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Dollars of volume bought with each dollar lost this week: the leaderboard's efficiency. 'unknown' while the week has no loss.",
+   "gridPos": {
+    "h": 6,
+    "w": 4,
+    "x": 12,
+    "y": 47
+   },
+   "targets": [
+    {
+     "expr": "max(velocita_paper_week_volume_usd) / (max(velocita_paper_week_loss_usd) > 0)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Trades per hour (1h)",
+   "id": 31,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Paper fills per hour over the last hour, from the gateway.",
+   "gridPos": {
+    "h": 6,
+    "w": 4,
+    "x": 16,
+    "y": 47
+   },
+   "targets": [
+    {
+     "expr": "3600 * sum(rate(velocita_gateway_fills_total[1h]))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 1
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "gauge",
+   "title": "Loss budget used",
+   "id": 32,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "This week's realized loss as a share of --weekly-loss-cap-usd (default $12). Above 100 % the edge stops buys (exits only) until Monday 00:00 UTC.",
+   "gridPos": {
+    "h": 6,
+    "w": 4,
+    "x": 20,
+    "y": 47
+   },
+   "targets": [
+    {
+     "expr": "100 * max(velocita_paper_week_loss_usd) / max(velocita_paper_weekly_loss_cap_usd)",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "min": 0,
+     "max": 100,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 75
+       },
+       {
+        "color": "red",
+        "value": 100
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "showThresholdMarkers": true,
+    "showThresholdLabels": false,
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Weekly volume: observed vs expected",
+   "id": 33,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "The paper run against the backtest's prediction interval (the edge's --expected-week-volume-usd LOW,HIGH; absent until configured). Observed restarts at 0 each Monday; the gateway line is a rolling 7 days.",
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 0,
+    "y": 53
+   },
+   "targets": [
+    {
+     "expr": "max(velocita_paper_week_volume_usd)",
+     "legendFormat": "observed (ISO week to date)",
+     "refId": "A"
+    },
+    {
+     "expr": "max(velocita_paper_expected_week_volume_usd{bound=\"low\"})",
+     "legendFormat": "expected low",
+     "refId": "B"
+    },
+    {
+     "expr": "max(velocita_paper_expected_week_volume_usd{bound=\"high\"})",
+     "legendFormat": "expected high",
+     "refId": "C"
+    },
+    {
+     "expr": "sum(increase(velocita_gateway_volume_usd_total[7d]))",
+     "legendFormat": "gateway fills, last 7 days",
+     "refId": "D"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Weekly loss: observed vs expected and the cap",
+   "id": 34,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Loss = max(0, -net P&L of the week). Expected: the edge's --expected-week-loss-usd LOW,HIGH.",
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 8,
+    "y": 53
+   },
+   "targets": [
+    {
+     "expr": "max(velocita_paper_week_loss_usd)",
+     "legendFormat": "observed (ISO week to date)",
+     "refId": "A"
+    },
+    {
+     "expr": "max(velocita_paper_expected_week_loss_usd{bound=\"low\"})",
+     "legendFormat": "expected low",
+     "refId": "B"
+    },
+    {
+     "expr": "max(velocita_paper_expected_week_loss_usd{bound=\"high\"})",
+     "legendFormat": "expected high",
+     "refId": "C"
+    },
+    {
+     "expr": "max(velocita_paper_weekly_loss_cap_usd)",
+     "legendFormat": "cap (buys stop above it)",
+     "refId": "D"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Buys stopped and withheld",
+   "id": 35,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "stopped = 1 while the edge sends exits_only (loss_budget: the week's loss is above the cap; insufficient_balance: flat and the book's cash cannot pay a clip plus fee). withheld = buys the strategy proposed while flat that were never sent.",
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 16,
+    "y": 53
+   },
+   "targets": [
+    {
+     "expr": "max by (reason) (velocita_paper_buys_stopped)",
+     "legendFormat": "stopped: {{reason}}",
+     "refId": "A"
+    },
+    {
+     "expr": "sum by (reason) (increase(velocita_paper_buys_withheld_total[1h]))",
+     "legendFormat": "withheld per hour: {{reason}}",
+     "refId": "B"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Volume by side (USD per hour, 1h)",
+   "id": 36,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Filled notional per hour from the gateway's fills.",
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 61
+   },
+   "targets": [
+    {
+     "expr": "sum by (side) (3600 * rate(velocita_gateway_volume_usd_total[1h]))",
+     "legendFormat": "{{side}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "normal"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Fees, last 7 days (cents)",
+   "id": 37,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Venue-reported paper fees over a rolling week, in US cents.",
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 61
+   },
+   "targets": [
+    {
+     "expr": "100 * sum(increase(velocita_gateway_fees_usd_total[7d]))",
+     "legendFormat": "gateway, rolling 7 days",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix:\u00a2",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
   }
  ],
  "templating": {
