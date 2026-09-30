@@ -315,7 +315,7 @@
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "Seconds since the last paper fill. The daily trend strategy trades a few times a year, so a long gap is normal.",
+   "description": "Seconds since the last paper fill seen by the running gateway (it resets on restart). The daily trend strategy trades a few times a year, so a long gap is normal.",
    "gridPos": {
     "h": 6,
     "w": 4,
@@ -324,7 +324,7 @@
    },
    "targets": [
     {
-     "expr": "time() - max(velocita_gateway_last_fill_timestamp_seconds)",
+     "expr": "time() - (max(velocita_gateway_last_fill_timestamp_seconds) > 0)",
      "legendFormat": "",
      "refId": "A",
      "instant": true
@@ -346,7 +346,7 @@
       "mode": "thresholds"
      },
      "mappings": [],
-     "noValue": "unknown"
+     "noValue": "no fill since gateway start"
     },
     "overrides": []
    },

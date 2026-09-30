@@ -56,9 +56,9 @@ def thresholds(*steps):
 
 
 def stat(title, expr, x, w, unit="none", steps=(("green", None),), legend="", description="", h=4, mappings=None,
-         decimals=None):
+         decimals=None, no_value="unknown"):
     defaults = {"unit": unit, "thresholds": thresholds(*steps), "color": {"mode": "thresholds"},
-                "mappings": mappings or [], "noValue": "unknown"}
+                "mappings": mappings or [], "noValue": no_value}
     if decimals is not None:
         defaults["decimals"] = decimals
     panels.append({
@@ -510,10 +510,11 @@ def paper_now_row():
     stat("Unknown outcomes (range)", 'sum(increase(velocita_gateway_unknown_outcomes_total[$__range]))', 12, 4, h=6,
          steps=(("green", None), ("red", 1)), decimals=0,
          description="Orders whose venue outcome the gateway could not establish. Each one stops new risk. Must be 0.")
-    stat("Since last fill", 'time() - max(velocita_gateway_last_fill_timestamp_seconds)', 16, 4, h=6, unit="s",
-         steps=(("blue", None),),
-         description="Seconds since the last paper fill. The daily trend strategy trades a few times a year, so "
-                     "a long gap is normal.")
+    # The gauge is 0 until the gateway process sees its first fill (it restarts at 0), and time() - 0 is 1970.
+    stat("Since last fill", 'time() - (max(velocita_gateway_last_fill_timestamp_seconds) > 0)', 16, 4, h=6, unit="s",
+         steps=(("blue", None),), no_value="no fill since gateway start",
+         description="Seconds since the last paper fill seen by the running gateway (it resets on restart). The daily "
+                     "trend strategy trades a few times a year, so a long gap is normal.")
     stat("Fees paid", '100 * sum(velocita_gateway_fees_usd_total)', 20, 4, h=6, unit=CENTS, decimals=1,
          steps=(("blue", None),), description="All fees charged on paper fills since the gateway's counters began, in US cents.")
     advance(6)
