@@ -97,7 +97,13 @@ PAPER_METRICS = {
     "velocita_gateway_fills_total", "velocita_gateway_rejects_total", "velocita_gateway_unknown_outcomes_total",
     "velocita_gateway_authority_requests_total", "velocita_gateway_stage_ms_bucket", "velocita_gateway_stage_ms_sum",
     "velocita_gateway_stage_ms_count", "velocita_gateway_position_lots", "velocita_gateway_fees_usd_total",
-    "velocita_gateway_last_fill_timestamp_seconds",
+    "velocita_gateway_last_fill_timestamp_seconds", "velocita_gateway_volume_usd_total",
+}
+# The edge's paper book (model/.../shadow/paper_book.py), shown in the volume row.
+PAPER_BOOK_METRICS = {
+    "velocita_paper_week_volume_usd", "velocita_paper_week_fees_usd", "velocita_paper_week_pnl_usd",
+    "velocita_paper_week_loss_usd", "velocita_paper_weekly_loss_cap_usd", "velocita_paper_expected_week_volume_usd",
+    "velocita_paper_expected_week_loss_usd", "velocita_paper_buys_stopped", "velocita_paper_buys_withheld_total",
 }
 PAPER_STAGES = {"decision_to_authorized", "authorized_to_proof", "proof_to_sent", "sent_to_fill", "fill_to_committed"}
 
@@ -185,6 +191,25 @@ class DashboardsAreGeneratedAndLoadable(unittest.TestCase):
         for p in fees:
             self.assertEqual(p["fieldConfig"]["defaults"]["unit"], "suffix:¢", p["title"])
             self.assertTrue(all(t["expr"].startswith("100 * ") for t in p["targets"]), p["title"])
+
+    def test_volume_row_shows_the_week_against_the_budget_and_the_expectation(self):
+        paper = next(d for d in dashboards().values() if d["uid"] == "velocita-v2-paper")
+        text = "\n".join(exprs(paper))
+        self.assertEqual(set(re.findall(r"\bvelocita_paper_[a-z_]+", text)), PAPER_BOOK_METRICS)
+        self.assertIn('sum by (side) (3600 * rate(velocita_gateway_volume_usd_total[1h]))', text)
+        budget = [p for p in content_panels(paper) if p["type"] == "gauge"]
+        self.assertEqual(len(budget), 1)
+        self.assertIn("velocita_paper_weekly_loss_cap_usd", budget[0]["targets"][0]["expr"])
+        self.assertEqual((budget[0]["fieldConfig"]["defaults"]["min"], budget[0]["fieldConfig"]["defaults"]["max"]),
+                         (0, 100))
+        for observed, expected in (("velocita_paper_week_volume_usd", "velocita_paper_expected_week_volume_usd"),
+                                   ("velocita_paper_week_loss_usd", "velocita_paper_expected_week_loss_usd")):
+            self.assertTrue(any(p["type"] == "timeseries" and
+                                {observed, expected} <= set(re.findall(r"velocita_paper_[a-z_]+", "".join(
+                                    t["expr"] for t in p["targets"]))) for p in content_panels(paper)),
+                            f"no panel draws {observed} beside {expected}")
+        self.assertEqual([p["title"] for p in paper["panels"] if p["type"] == "row"][-1],
+                         "Volume strategies: this ISO week against the loss budget")
 
     def test_new_risk_stopped_is_the_first_and_widest_paper_panel(self):
         paper = next(d for d in dashboards().values() if d["uid"] == "velocita-v2-paper")

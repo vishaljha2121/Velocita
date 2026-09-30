@@ -20,11 +20,12 @@
 //   risk and position versions (start: --risk-version / --position-version, default
 //   1/1); after an actionable decision, AuthorizeDecision. A stale_risk_state
 //   refusal that reports the account's versions is adopted for the next frame.
-// stdin:  TICK id=ID event_ns=N receive_ns=N age_ns=N features=F0,F1,..,PRICE evidence=HEX64
+// stdin:  TICK id=ID event_ns=N receive_ns=N age_ns=N features=F0,F1,..,PRICE evidence=HEX64 [exits_only=0|1]
+//         exits_only=1 (paper): an enter_long proposal is recorded but not sent for authorization.
 // stdout: READY generation=G first_sequence=S mode=shadow|paper caller_id=C
 //         DECISION id=ID source_seq=Q decision=D code=C decision_code=DC rule=R proposed=P effective=E resolution=A
 //                  from=V t_read_ns=T t_source_ns=T t_decision_ns=T
-//           paper adds: risk_version=R position_version=P authorization=NAME|none [resync=1 position_lots=Q]
+//           paper adds: risk_version=R position_version=P authorization=NAME|none|withheld [resync=1 position_lots=Q]
 // Timestamps are wall-clock nanoseconds (comparable with the edge on the same host).
 // Exit: 0 at end of input (or setup done); 2 setup refused; 3 a command could not be committed
 // within the timeout (restart: the next run is a new source generation); 64 usage.
@@ -299,6 +300,7 @@ int run(const Arguments& a) {
             if (eq != std::string::npos) f[token.substr(0, eq)] = token.substr(eq + 1);
         }
         ShadowTick tick;
+        bool exits_only = false;
         tick.source = parsed.source;
         tick.generation = SourceGeneration{start.generation};
         tick.sequence = SourceSequence{source_sequence + 1};
@@ -316,6 +318,10 @@ int run(const Arguments& a) {
             if (!hex_bytes(f.at("evidence"), tick.evidence_digest.bytes) || tick.evidence_digest.is_zero())
                 throw Usage("evidence");
             if (tick.features.size() != program.generic_features + 1u) throw Usage("feature count");
+            const auto gate = parse_exits_only(f.contains("exits_only") ? std::optional<std::string_view>(f["exits_only"])
+                                                                        : std::nullopt);
+            if (!gate) throw Usage("exits_only");
+            exits_only = *gate;
         } catch (const std::exception& error) {
             std::cout << "ERROR id=" << f["id"] << " reason=bad_tick" << std::endl;
             continue;  // nothing was sent; the source sequence is unused
@@ -348,7 +354,9 @@ int run(const Arguments& a) {
         const auto& r = evaluated->result;
         std::string_view authorization = "none";
         bool resynced = false;
-        if (a.paper && authorizable(r)) {
+        const auto request = a.paper ? paper_request(program, r, exits_only) : PaperRequest::none;
+        if (request == PaperRequest::withheld) authorization = "withheld";
+        if (request == PaperRequest::authorize) {
             const auto outcome = commit(session, authorize_decision(caller, sequence++, decision), ProposeLane::normal,
                                         total);
             if (!outcome || outcome->state != SubmitState::committed) {

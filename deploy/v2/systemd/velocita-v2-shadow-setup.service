@@ -4,8 +4,9 @@
 # Never enabled; run by hand:  systemctl --user start velocita-v2-shadow-setup
 #
 # The program is generated with the edge's own program arguments (kept equal to
-# velocita-v2-shadow-edge.service's by tests/test_secrets_presence.py), so the
-# policy installed is the one the edge's frames name. Run it BEFORE starting the
+# velocita-v2-shadow-edge.service's by tests/test_secrets_presence.py, and both
+# read $VELOCITA_STRATEGY_ARGS from shadow.env), so the policy installed is the
+# one the edge's frames name. Run it BEFORE starting the
 # edge on a new cluster. caller-11.key is the voter's own copy in the RAM secrets
 # directory; only this one-shot container mounts it, never the tick loop.
 # Own session and state files: sharing the tick loop's would skip its source generation.
@@ -26,7 +27,7 @@ ExecStartPre=/usr/bin/podman run --rm --replace --name velocita-v2-shadow-progra
     localhost/velocita-v2-shadow:m3 \
     --usd-per-tick 1 --catalog-root ${VELOCITA_CATALOG_ROOT} --catalog-row 1,20,1,1,1 \
     --order-quantity-lots 25 --max-notional-micros 25000000 --time-in-force fok --post-only prohibited \
-    --program-out /state/trend.program --program-only
+    --program-out /state/trend.program $VELOCITA_STRATEGY_ARGS --program-only
 ExecStart=/usr/bin/podman run --rm --replace --name velocita-v2-shadow-setup \
     --network host --userns=keep-id \
     --read-only --security-opt no-new-privileges --cap-drop all \

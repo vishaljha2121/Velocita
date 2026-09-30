@@ -583,12 +583,83 @@ def position_row():
     advance(8)
 
 
+def gauge(title, expr, x, w, unit="percent", h=6, description="", maximum=100, steps=(("green", None),)):
+    panels.append({
+        "type": "gauge", "title": title, "id": _id(), "datasource": DS, "description": description,
+        "gridPos": {"h": h, "w": w, "x": x, "y": _y},
+        "targets": [{"expr": expr, "refId": "A", "instant": True}],
+        "fieldConfig": {"defaults": {"unit": unit, "min": 0, "max": maximum, "thresholds": thresholds(*steps),
+                                     "color": {"mode": "thresholds"}, "noValue": "unknown"}, "overrides": []},
+        "options": {"showThresholdMarkers": True, "showThresholdLabels": False,
+                    "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False}},
+    })
+
+
+WEEK_VOLUME = 'max(velocita_paper_week_volume_usd)'
+WEEK_LOSS = 'max(velocita_paper_week_loss_usd)'
+
+
+def volume_row():
+    row("Volume strategies: this ISO week against the loss budget")
+    week = ("ISO week to date (UTC, from Monday 00:00), from the edge's paper book: fills the kernel's position "
+            "confirmed, costed at the paper venue's fees.")
+    stat("Volume this week", WEEK_VOLUME, 0, 4, unit="currencyUSD", h=6, steps=(("blue", None),),
+         description="Filled notional, buys plus sells. " + week)
+    stat("Fees this week", '100 * max(velocita_paper_week_fees_usd)', 4, 4, unit=CENTS, h=6, decimals=1,
+         steps=(("blue", None),), description="Paper venue fees on this week's fills, in US cents. " + week)
+    stat("Net P&L this week", 'max(velocita_paper_week_pnl_usd)', 8, 4, unit="currencyUSD", h=6, decimals=2,
+         steps=(("red", None), ("green", 0)),
+         description="Realized: each buy's fee at the buy, each sell's price move and fee at the sell. " + week)
+    stat("Volume per $ lost", f'{WEEK_VOLUME} / ({WEEK_LOSS} > 0)', 12, 4, h=6, decimals=0,
+         steps=(("blue", None),),
+         description="Dollars of volume bought with each dollar lost this week: the leaderboard's efficiency. "
+                     "'unknown' while the week has no loss.")
+    stat("Trades per hour (1h)", '3600 * sum(rate(velocita_gateway_fills_total[1h]))', 16, 4, h=6, decimals=1,
+         steps=(("blue", None),), description="Paper fills per hour over the last hour, from the gateway.")
+    gauge("Loss budget used", f'100 * {WEEK_LOSS} / max(velocita_paper_weekly_loss_cap_usd)', 20, 4,
+          steps=(("green", None), ("orange", 75), ("red", 100)),
+          description="This week's realized loss as a share of --weekly-loss-cap-usd (default $12). Above 100 % "
+                      "the edge stops buys (exits only) until Monday 00:00 UTC.")
+    advance(6)
+    series("Weekly volume: observed vs expected", [
+        (WEEK_VOLUME, "observed (ISO week to date)"),
+        ('max(velocita_paper_expected_week_volume_usd{bound="low"})', "expected low"),
+        ('max(velocita_paper_expected_week_volume_usd{bound="high"})', "expected high"),
+        ('sum(increase(velocita_gateway_volume_usd_total[7d]))', "gateway fills, last 7 days"),
+    ], 0, 8, unit="currencyUSD",
+           description="The paper run against the backtest's prediction interval (the edge's "
+                       "--expected-week-volume-usd LOW,HIGH; absent until configured). Observed restarts at 0 each "
+                       "Monday; the gateway line is a rolling 7 days.")
+    series("Weekly loss: observed vs expected and the cap", [
+        (WEEK_LOSS, "observed (ISO week to date)"),
+        ('max(velocita_paper_expected_week_loss_usd{bound="low"})', "expected low"),
+        ('max(velocita_paper_expected_week_loss_usd{bound="high"})', "expected high"),
+        ('max(velocita_paper_weekly_loss_cap_usd)', "cap (buys stop above it)"),
+    ], 8, 8, unit="currencyUSD",
+           description="Loss = max(0, -net P&L of the week). Expected: the edge's --expected-week-loss-usd LOW,HIGH.")
+    series("Buys stopped and withheld", [
+        ('max by (reason) (velocita_paper_buys_stopped)', "stopped: {{reason}}"),
+        ('sum by (reason) (increase(velocita_paper_buys_withheld_total[1h]))', "withheld per hour: {{reason}}"),
+    ], 16, 8, description="stopped = 1 while the edge sends exits_only (loss_budget: the week's loss is above the "
+                          "cap; insufficient_balance: flat and the book's cash cannot pay a clip plus fee). "
+                          "withheld = buys the strategy proposed while flat that were never sent.")
+    advance(8)
+    series("Volume by side (USD per hour, 1h)", [
+        ('sum by (side) (3600 * rate(velocita_gateway_volume_usd_total[1h]))', "{{side}}"),
+    ], 0, 12, unit="currencyUSD", stack=True, description="Filled notional per hour from the gateway's fills.")
+    series("Fees, last 7 days (cents)", [
+        ('100 * sum(increase(velocita_gateway_fees_usd_total[7d]))', "gateway, rolling 7 days"),
+    ], 12, 12, unit=CENTS, description="Venue-reported paper fees over a rolling week, in US cents.")
+    advance(8)
+
+
 def paper():
     start()
     paper_now_row()
     tick_to_trade_row()
     orders_row()
     position_row()
+    volume_row()
     return finish(PAPER, "Phase 2 paper trading: the gateway against the TrueMarkets simulator. Tick-to-trade by "
                          "stage, orders, fills, position and fees. No real order is sent.", ["paper", "gateway"])
 

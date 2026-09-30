@@ -194,7 +194,8 @@ def cmd_shadow_edge(args: argparse.Namespace) -> int:
 
     from .adapters.websocket import ReadOnlyMarketSocket
     from .research.bars import load_binance_daily_api
-    from .shadow import edge
+    from .shadow import edge, volume
+    from .shadow.paper_book import PaperBook
 
     submitter = args.submitter[1:] if args.submitter[:1] == ["--"] else args.submitter
     if not submitter and not args.program_only:
@@ -202,15 +203,34 @@ def cmd_shadow_edge(args: argparse.Namespace) -> int:
         return 64
     account, venue, instrument, spec, caps = (int(x) for x in args.catalog_row.split(","))
     catalog = edge.CatalogRow(args.catalog_root, account, venue, instrument, spec, caps)
-    Path(args.program_out).write_text(edge.program_text(
-        args.strategy, args.value, catalog, policy_id=args.policy_id, policy_version=args.policy_version,
-        feature_schema_id=args.feature_schema_id, valid_from_ns=args.valid_from_ns, valid_until_ns=args.valid_until_ns,
-        order_quantity_lots=args.order_quantity_lots, max_notional_micros=args.max_notional_micros,
-        max_age_ns=args.max_age_ns, source_id=args.source_id, time_in_force=args.time_in_force,
-        post_only=args.post_only), encoding="utf-8")
+    params = volume.Params(args.period_s, args.exit_window_s, args.window_min, args.enter_below_bps,
+                           args.exit_above_bps)
+    default_policy, default_schema = volume.identity(args.strategy)
+    try:
+        text = edge.program_text(
+            args.strategy, args.value, catalog,
+            policy_id=args.policy_id if args.policy_id is not None else default_policy,
+            policy_version=args.policy_version,
+            feature_schema_id=args.feature_schema_id if args.feature_schema_id is not None else default_schema,
+            valid_from_ns=args.valid_from_ns, valid_until_ns=args.valid_until_ns,
+            order_quantity_lots=args.order_quantity_lots, max_notional_micros=args.max_notional_micros,
+            max_age_ns=args.max_age_ns, source_id=args.source_id, time_in_force=args.time_in_force,
+            post_only=args.post_only, params=params if args.strategy in volume.STRATEGIES else None)
+    except ValueError as error:
+        print(f"shadow-edge: {error}", file=sys.stderr)
+        return 64
+    Path(args.program_out).write_text(text, encoding="utf-8")
     if args.program_only:
         return 0  # the operator's setup step installs this file (velocita-v2-shadow-submitter --setup-only)
     metrics = edge.EdgeMetrics(shadow_recorded_code=args.shadow_recorded_code)
+    interval = lambda text: tuple(Decimal(v) for v in text.split(",")) if text else None
+    paper_book = PaperBook(clip_lots=args.order_quantity_lots, quote_micros_per_tick_lot=args.quote_micros_per_tick_lot,
+                           buy_bps=args.paper_buy_bps, sell_bps=args.paper_sell_bps, cash_usd=Decimal(args.book_usd),
+                           weekly_loss_cap_usd=Decimal(args.weekly_loss_cap_usd), db=args.ledger_db,
+                           expected_week_volume_usd=interval(args.expected_week_volume_usd),
+                           expected_week_loss_usd=interval(args.expected_week_loss_usd))
+    window = (volume.MinuteWindow(volume.resolved(args.strategy, params).window_min)
+              if args.strategy == "dip" else None)
     book = None
     if args.ledger_db is not None:
         from .research import costs as measured_costs
@@ -247,9 +267,11 @@ def cmd_shadow_edge(args: argparse.Namespace) -> int:
         closes = [(d, c) for d, c in zip(bars.dates, bars.close[0]) if c is not None]
         source = edge.FeatureSource(args.strategy, args.value, closes=closes,
                                     usd_per_tick=Decimal(args.usd_per_tick), symbol=args.symbol,
-                                    min_interval_ns=int(args.min_tick_interval_s * 1_000_000_000))
+                                    min_interval_ns=int(args.min_tick_interval_s * 1_000_000_000),
+                                    params=params if args.strategy in volume.STRATEGIES else None, window=window)
         result = edge.run_once(lambda: DayBoundSocket(today), submitter, source, textfile=args.textfile,
-                               shadow_recorded_code=args.shadow_recorded_code, metrics=metrics, ledger=book)
+                               shadow_recorded_code=args.shadow_recorded_code, metrics=metrics, ledger=book,
+                               paper_book=paper_book)
         print(f"edge run ended: {result.reason} decisions={result.decisions} errors={result.errors}", flush=True)
         if args.once:
             return 0 if result.decisions else 1
@@ -334,9 +356,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     edge_parser = sub.add_parser(
         "shadow-edge", help="live ticks -> rule features -> the C++ submitter (shadow, or paper: never a venue)")
+    from .shadow.volume import STRATEGIES as VOLUME_STRATEGIES
     edge_parser.add_argument("--strategy", default="trend", choices=sorted(__import__(
-        "velocita_model.research.rules", fromlist=["DEMOS"]).DEMOS))
-    edge_parser.add_argument("--value", type=int, default=125)
+        "velocita_model.research.rules", fromlist=["DEMOS"]).DEMOS) + sorted(VOLUME_STRATEGIES))
+    edge_parser.add_argument("--value", type=int, default=125, help="the trend SMA in days (trend, trend_churn, rotate)")
+    edge_parser.add_argument("--period-s", type=int, default=None,
+                             help="churn/trend_churn: seconds per phase (default 60); rotate: rotation period "
+                                  "(default 1800)")
+    edge_parser.add_argument("--exit-window-s", type=int, default=60,
+                             help="rotate: the exit lasts this many seconds at the start of each period")
+    edge_parser.add_argument("--window-min", type=int, default=30, help="dip: moving average of the last N minute closes")
+    edge_parser.add_argument("--enter-below-bps", type=int, default=20, help="dip: buy below the average by this much")
+    edge_parser.add_argument("--exit-above-bps", type=int, default=10, help="dip: sell above the average by this much")
     edge_parser.add_argument("--symbol", default="BTC|USD")
     edge_parser.add_argument("--history-pair", default="BTCUSDT")
     edge_parser.add_argument("--history-days", type=int, default=400)
@@ -352,9 +383,11 @@ def build_parser() -> argparse.ArgumentParser:
                              help="forward at most one price per interval (each tick uses two Raft log entries)")
     edge_parser.add_argument("--catalog-root", required=True)
     edge_parser.add_argument("--catalog-row", required=True, help="account,venue,instrument,spec_version,caps_version")
-    edge_parser.add_argument("--policy-id", type=int, default=21)
+    edge_parser.add_argument("--policy-id", type=int, default=None,
+                             help="default: the strategy's (trend 21, churn 22, trend_churn 23, rotate 24, dip 25)")
     edge_parser.add_argument("--policy-version", type=int, default=1)
-    edge_parser.add_argument("--feature-schema-id", type=int, default=31)
+    edge_parser.add_argument("--feature-schema-id", type=int, default=None,
+                             help="default: the strategy's (trend 31, churn 32, trend_churn 33, rotate 34, dip 35)")
     edge_parser.add_argument("--valid-from-ns", type=int, default=1)
     edge_parser.add_argument("--valid-until-ns", type=int, default=4_102_444_800_000_000_000)  # 2100-01-01
     edge_parser.add_argument("--order-quantity-lots", type=int, default=1)
@@ -364,6 +397,16 @@ def build_parser() -> argparse.ArgumentParser:
     edge_parser.add_argument("--time-in-force", default="gtc")
     edge_parser.add_argument("--post-only", default="required")
     edge_parser.add_argument("--shadow-recorded-code", type=int, default=17)  # edge.SHADOW_RECORDED
+    edge_parser.add_argument("--weekly-loss-cap-usd", default="12",
+                             help="paper: stop buys (exits only) while this ISO week's realized loss exceeds it")
+    edge_parser.add_argument("--paper-buy-bps", type=int, default=115, help="paper venue buy fee (the gateway's)")
+    edge_parser.add_argument("--paper-sell-bps", type=int, default=120, help="paper venue sell fee (the gateway's)")
+    edge_parser.add_argument("--quote-micros-per-tick-lot", type=int, default=10,
+                             help="the catalog row's notional unit ($1 tick x 0.00001 BTC lot = 10 micros)")
+    edge_parser.add_argument("--expected-week-volume-usd", default=None,
+                             help="LOW,HIGH: the backtest's weekly volume interval, drawn beside the observed")
+    edge_parser.add_argument("--expected-week-loss-usd", default=None,
+                             help="LOW,HIGH: the backtest's weekly loss interval, drawn beside the observed")
     edge_parser.add_argument("--program-out", type=Path, required=True)
     edge_parser.add_argument("--textfile", default=None)
     edge_parser.add_argument("--once", action="store_true", help="one run (tests and smoke checks)")

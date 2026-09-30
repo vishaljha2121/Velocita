@@ -16,6 +16,10 @@
 #   VELOCITA_NODES=--node 1=100.72.127.102:42301 --node 2=100.84.151.116:42302 --node 3=100.85.36.22:42303
 #     (every voter's ingress; unbraced $VELOCITA_NODES splits into one argument per word)
 #   VELOCITA_MODE_ARGS=               (shadow) or: --mode paper [--risk-version R --position-version P]
+#   VELOCITA_STRATEGY_ARGS=           (the trend program) or a volume strategy, e.g.
+#     --strategy churn --period-s 60 --order-quantity-lots 12 --weekly-loss-cap-usd 12
+#     (read by BOTH this unit and velocita-v2-shadow-setup.service: the program the
+#     edge names is the one setup installs; see docs/PAPER_TRADING_RUNBOOK.md §7)
 # Secret: %t/velocita-secrets/caller-12.key, pushed from the Mac with
 # velocita-secrets like the node secrets. The single-file mount pins the key
 # the edge started with: restart the edge after rotating caller-12.
@@ -52,6 +56,7 @@ ExecStart=/usr/bin/podman run --rm --replace --name velocita-v2-shadow-edge \
     --order-quantity-lots 25 --max-notional-micros 25000000 --time-in-force fok --post-only prohibited \
     --program-out /state/trend.program --textfile /textfile/velocita-shadow.prom --history-cache /state/history \
     --ledger-db /state/ledger.db --costs-evidence /opt/velocita-model/evidence/quotes_buy_sell_1631utc.json \
+    $VELOCITA_STRATEGY_ARGS \
     -- velocita-v2-shadow-submitter --program /state/trend.program --catalog /etc/velocita/catalog.bin \
     --caller-key-id 12 --caller-id 21 --key-file /run/velocita-secrets/caller-12.key \
     --incarnation ${VELOCITA_INCARNATION} \

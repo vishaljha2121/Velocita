@@ -429,6 +429,101 @@ void the_risk_view_moves_only_on_a_reported_stale_refusal() {
     r.detail.words = {4, 0, 25};
     require(resync_risk_view(current, r) == current, "a zero position version was adopted");
 }
+
+// Exits-only (the edge's weekly loss stop): the rule that matched decides, read
+// from the program the policy was built from. Rule 0 of the trend program is
+// enter_long and rule 1 is exit, by construction above.
+void exits_only_withholds_a_buy_and_still_asks_for_an_exit() {
+    const auto program = trend_program();
+    ApplyResult buy;
+    buy.code = ApplyCode::applied;
+    buy.evaluation_mode = EvaluationMode::authoritative;
+    buy.decision_code = DecisionCode::action;
+    buy.effective_directive = Directive::place_limit;
+    buy.action_resolution_code = ActionResolutionCode::proposed;
+    buy.matched_rule_index = 0;
+    auto sell = buy;
+    sell.matched_rule_index = 1;
+    require(paper_request(program, buy, false) == PaperRequest::authorize, "a buy was not asked for without the stop");
+    require(paper_request(program, sell, false) == PaperRequest::authorize, "an exit was not asked for");
+    require(paper_request(program, buy, true) == PaperRequest::withheld, "the stop let a buy through");
+    require(paper_request(program, sell, true) == PaperRequest::authorize, "the stop withheld an exit");
+    auto unknown = buy;
+    unknown.matched_rule_index = 2;  // the program has two rules
+    require(paper_request(program, unknown, true) == PaperRequest::withheld, "an unknown rule passed the stop");
+    auto hold = buy;
+    hold.effective_directive = Directive::no_action;
+    require(paper_request(program, hold, true) == PaperRequest::none &&
+                paper_request(program, hold, false) == PaperRequest::none,
+            "a decision with nothing to place was offered or withheld");
+}
+
+// Through the real reducer: the stop withholds the enter rule's buy, so no order
+// exists afterwards; the same frame without the stop becomes one order.
+void a_withheld_buy_leaves_no_order() {
+    Harness h;
+    (void)h.setup();
+    h.caller = CallerId{21};
+    require(h.configure_risk(RiskVersion{0}).code == ApplyCode::applied, "risk limits refused");
+    const auto up = h.paper_tick(50'000, {});
+    require(paper_request(h.program, up, true) == PaperRequest::withheld, "the enter rule's buy was not withheld");
+    require(h.state.order_count == 0, "an order exists before any authorization");
+    const auto again = h.paper_tick(50'000, {});
+    require(paper_request(h.program, again, false) == PaperRequest::authorize &&
+                h.authorize().code == ApplyCode::applied && h.state.order_count == 1,
+            "without the stop the same buy did not become an order");
+}
+
+// Installing a volume program over the running trend one: a new policy id with
+// a five-feature schema (the four daily features, then phase), rules on feature
+// 4. Phase is 1,000,000 in an odd half-period and 0 in an even one.
+void a_trend_churn_program_replaces_the_trend_program_and_follows_the_phase() {
+    Harness h;
+    (void)h.setup();
+    ShadowProgram churn = trend_program();
+    churn.policy_id = PolicyId{23};
+    churn.feature_schema_id = FeatureSchemaId{33};
+    churn.generic_features = 5;
+    constexpr std::uint16_t kPhase = 4;
+    churn.rules = {{kTrend, PredicateOperator::less_than_or_equal, 0, ShadowAction::exit},
+                   {kPhase, PredicateOperator::greater_than, 0, ShadowAction::enter_long},
+                   {kPhase, PredicateOperator::less_than_or_equal, 0, ShadowAction::exit}};
+    h.program = churn;
+    require(h.state.strategy_mode == StrategyMode::normal, "the trend setup did not leave the strategy enabled");
+    const auto installed = h.setup();
+    // Four policy steps are new; the mode was already normal, so its step is a no-op.
+    for (std::size_t step = 0; step < installed.size(); ++step)
+        require(installed[step].code == (step < 4 ? ApplyCode::applied : ApplyCode::already_applied),
+                "installing the churn program, step " + std::to_string(step) + ": code " +
+                    std::to_string(static_cast<int>(installed[step].code)));
+    require(h.state.active_executable_policy.executable_policy.policy_id == PolicyId{23},
+            "the churn policy is not the active one");
+    const auto frame = [&](std::int64_t trend, std::int64_t phase) {
+        ShadowTick t;
+        t.source = SourceId{41};
+        t.generation = SourceGeneration{1};
+        t.sequence = SourceSequence{++h.source_sequence};
+        t.event_time_ns = 2'000 + static_cast<std::int64_t>(h.source_sequence);
+        t.receive_time_ns = t.event_time_ns + 10;
+        t.market_data_age_ns = 10;
+        t.features = {trend, 0, 0, 0, phase, 11};
+        t.evidence_digest.bytes[0] = std::byte{0x78};
+        t.evidence_digest.bytes[1] = static_cast<std::byte>(h.source_sequence & 0xff);
+        const auto commands = shadow_tick(h.program, t, h.caller, h.sequence, DecisionId{++h.decisions});
+        h.sequence += 2;
+        (void)catalog_test::apply(h.state, commands[0], h.scratch);
+        return catalog_test::apply(h.state, commands[1], h.scratch);
+    };
+    // Uptrend, odd phase -> rule 1 (enter); uptrend, even phase -> rule 2 (exit);
+    // downtrend wins over an odd phase -> rule 0 (exit).
+    const auto enter = frame(50'000, kMicros);
+    require(enter.decision_code == DecisionCode::shadow_recorded && enter.matched_rule_index == 1 &&
+                enter.proposed_directive == Directive::place_limit,
+            "odd phase in an uptrend did not enter");
+    require(frame(50'000, 0).matched_rule_index == 2, "even phase in an uptrend did not exit");
+    require(frame(-1, kMicros).matched_rule_index == 0, "a downtrend did not exit first");
+}
+
 }  // namespace
 
 int main() {
@@ -449,6 +544,9 @@ int main() {
         shadow_decisions_are_never_offered_for_authorization();
         authorizable_needs_every_condition();
         the_risk_view_moves_only_on_a_reported_stale_refusal();
+        exits_only_withholds_a_buy_and_still_asks_for_an_exit();
+        a_withheld_buy_leaves_no_order();
+        a_trend_churn_program_replaces_the_trend_program_and_follows_the_phase();
         std::cout << "shadow program tests passed\n";
         return 0;
     } catch (const std::exception& error) {

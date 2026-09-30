@@ -328,6 +328,8 @@ void GatewayLoop::on_command(const LinkOutcome& outcome, Tick now) {
     if (observation.kind != VenueObservationKind::fill) return;
     ++(observation.side == Side::buy ? metrics_.fills_buy : metrics_.fills_sell);
     metrics_.fee_micros_total += observation.fee.atoms();
+    if (const auto notional = fill_notional(observation))
+        (observation.side == Side::buy ? metrics_.volume_micros_buy : metrics_.volume_micros_sell) += *notional;
     metrics_.last_fill_timestamp_seconds = clock_.wall_seconds(clock_.context);
     for (auto& mark : fill_marks_) {
         if (mark.sequence != in_flight_identity_.request_sequence) continue;
@@ -336,6 +338,17 @@ void GatewayLoop::on_command(const LinkOutcome& outcome, Tick now) {
                 static_cast<double>(now - mark.polled_at));
         mark = {};
     }
+}
+
+std::optional<std::int64_t> GatewayLoop::fill_notional(const VenueObservation& fill) const noexcept {
+    const auto* row = catalog_.lookup(config_.account, config_.venue.venue_id, config_.instrument,
+                                      config_.instrument_spec_version, config_.venue.capabilities_version);
+    if (!row || fill.price.atoms() <= 0 || fill.quantity.atoms() <= 0) return std::nullopt;
+    const auto per_lot = row->instrument.quote_micros_per_tick_lot.checked_multiply(fill.price.atoms());
+    if (!per_lot) return std::nullopt;
+    const auto notional = per_lot->checked_multiply(fill.quantity.atoms());
+    if (!notional) return std::nullopt;
+    return notional->atoms();
 }
 
 void GatewayLoop::poll_venue(Tick now) {
@@ -603,6 +616,11 @@ std::string render_gateway_metrics(const GatewayMetrics& m) {
             << m.positions[i].instrument_id.value() << "\"} " << m.positions[i].lots << '\n';
     type("velocita_gateway_fees_usd_total", "counter", "Venue-reported fees on committed fills (fee micros / 1e6).");
     out << "velocita_gateway_fees_usd_total " << number(static_cast<double>(m.fee_micros_total) / 1e6) << '\n';
+    type("velocita_gateway_volume_usd_total", "counter", "Filled notional on committed fills, by side (micros / 1e6).");
+    out << "velocita_gateway_volume_usd_total{side=\"buy\"} " << number(static_cast<double>(m.volume_micros_buy) / 1e6)
+        << '\n'
+        << "velocita_gateway_volume_usd_total{side=\"sell\"} " << number(static_cast<double>(m.volume_micros_sell) / 1e6)
+        << '\n';
     type("velocita_gateway_last_fill_timestamp_seconds", "gauge", "Wall-clock time the last fill committed (0: none).");
     out << "velocita_gateway_last_fill_timestamp_seconds " << number(m.last_fill_timestamp_seconds) << '\n';
     return out.str();

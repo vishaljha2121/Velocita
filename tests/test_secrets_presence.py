@@ -124,18 +124,27 @@ class UnitSecretMounts(unittest.TestCase):
         shaping = ("--strategy", "--value", "--usd-per-tick", "--catalog-root", "--catalog-row", "--policy-id",
                    "--policy-version", "--feature-schema-id", "--valid-from-ns", "--valid-until-ns",
                    "--order-quantity-lots", "--max-notional-micros", "--max-age-ns", "--source-id",
-                   "--time-in-force", "--post-only", "--program-out")
+                   "--time-in-force", "--post-only", "--program-out", "--period-s", "--exit-window-s",
+                   "--window-min", "--enter-below-bps", "--exit-above-bps")
+        # A volume strategy is chosen in shadow.env; both units must read it, after
+        # their literal arguments so it can replace them (argparse keeps the last).
+        chosen = "$VELOCITA_STRATEGY_ARGS"
 
-        def program_args(unit, start, end):
+        def program_words(unit, start, end):
             text = (self.SYSTEMD / unit).read_text().replace("\\\n", " ")
             words = text[text.index(start):].split()
-            words = words[1:words.index(end)] if end in words else words[1:]
+            return words[1:words.index(end)] if end in words else words[1:]
+
+        def program_args(words):
             return {w: words[i + 1] for i, w in enumerate(words) if w in shaping}
 
-        edge = program_args("velocita-v2-shadow-edge.service", "localhost/velocita-v2-shadow:m3", "--")
-        setup = program_args("velocita-v2-shadow-setup.service", "localhost/velocita-v2-shadow:m3", "--program-only")
-        self.assertEqual(setup, edge)
-        self.assertEqual(edge["--order-quantity-lots"], "25")
+        edge = program_words("velocita-v2-shadow-edge.service", "localhost/velocita-v2-shadow:m3", "--")
+        setup = program_words("velocita-v2-shadow-setup.service", "localhost/velocita-v2-shadow:m3", "--program-only")
+        self.assertEqual(program_args(setup), program_args(edge))
+        self.assertEqual(program_args(edge)["--order-quantity-lots"], "25")
+        for words in (edge, setup):
+            self.assertEqual(words.count(chosen), 1)
+            self.assertTrue(all(words.index(chosen) > words.index(w) for w in shaping if w in words))
 
     def test_no_long_running_unit_holds_the_operator_key(self):
         for unit in sorted(self.SYSTEMD.glob("*.service")):
