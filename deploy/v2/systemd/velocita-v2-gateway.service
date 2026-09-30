@@ -28,7 +28,7 @@ ExecStartPre=/usr/bin/mkdir -p %h/velocita-v2/gateway/state %h/velocita-v2/textf
 ExecStart=/usr/bin/podman run --rm --replace --name velocita-v2-gateway \
     --network host --userns=keep-id \
     --read-only --security-opt no-new-privileges --cap-drop all \
-    --pids-limit 64 --memory 256m --log-driver journald \
+    --pids-limit 64 --memory 512m --log-driver journald \
     --shm-size 256m -e AERON_TERM_BUFFER_LENGTH=1048576 \
     -v %h/velocita-v2/config/catalog.bin:/etc/velocita/catalog.bin:ro \
     -v %h/velocita-v2/gateway/state:/state \

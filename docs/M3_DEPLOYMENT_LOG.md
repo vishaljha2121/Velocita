@@ -556,3 +556,73 @@ No venue, credential or trading action. Started 2026-09-25.
     prevent this; the standard fix is Raft pre-vote (thesis section 9.6): a
     candidate first asks whether it could win, without raising its term, and
     voters that still hear a leader say no.
+
+44. **Phase 2 deployed; first paper trade (CP-075, 2026-09-30).** A fresh
+    cluster was created from tag `v2-cp075-phase2-paper` (commit `5f20fdb`).
+    - Incarnation `5ebc6359dd25d63ff02df0ee9e78875c`.
+    - Images: nuc1 `069ca3b759dc` (shadow image `fe0591f45acd`), Pi
+      `8e4e7ecca2ff`, nuc2 `32a0566e4c5b`. Each built with 122/122 tests.
+      The previous images are kept as `:m3-pre-p2`.
+    - The old cluster `453345d0` is retired under `~/velocita-v2/retired/`.
+
+    Order of events:
+    1. The ceremony from the Mac (kill epoch 1, executor generation 1,
+       catalog `167b67…`).
+    2. `velocita-v2-shadow-setup` as operator CallerId 9.
+    3. `risk-limits` from the Mac, at index 10 / risk version 1: $25 per
+       order and exposure, 25-lot position cap, long-only, 1.5% fee hold,
+       reason 20260930.
+    4. The shadow edge as CallerId 21.
+    5. The gateway (CallerId 22): first unarmed, then armed with
+       `--freshness-ms 2000 --allow-new-risk`.
+    6. The edge switched to `--mode paper`.
+
+    The first paper tick bought 25 lots (0.00025 BTC) at about $84,409,
+    FOK-filled by PaperVenue, with a fee of $0.242676:
+    ceil(10 × 84,409 × 25 × 115 bp) micros, which is exact.
+    - Tick 2 was refused `stale_risk_state`. The edge re-synced to
+      position version 2 and position 25.
+    - Ticks 3 and 4 were refused `position_limit_exceeded`.
+    - One order and one fill in total, 0 errors, and the term stayed at 49
+      throughout.
+
+45. **Deploy tooling failures (fixed in procedure; recorded in memory).**
+    - **macOS openrsync wrote nothing to the hosts.** It exited 0 with a
+      `user@host:path` target, and instead created local directories named
+      `velocitas@<host>aft-pi` in the repo. The hosts then rebuilt the OLD
+      source from cache and tagged it as the new image. Detected by the image
+      IDs and the test count (119, not 122).
+    - **macOS tar added AppleDouble `._*` files**, which broke the tests that
+      glob `*.json` / `*.service`.
+    - **Procedure now:**
+      1. `git archive`, then `COPYFILE_DISABLE=1 tar --no-xattrs` over ssh,
+         swapping the directory into place.
+      2. Check `SOURCE_COMMIT` plus a whole-tree sha256 against the export
+         before building.
+    - **Killing `podman build` leaves its test step running in the build
+      container.** That step keeps writing into the log. Delete the log
+      before rebuilding, never just truncate it.
+
+46. **Setup and gateway units were OOM-killed at 256 MB** (exit 137,
+    `OOMKilled=true`). They run the same submitter/Aeron client as the edge,
+    which has 512 MB. Both units are now 512 MB.
+
+47. **Election bursts on the new cluster (open).** The term went 2 → 8 → 23 → 49
+    in three bursts of 15–45 s, at 11:50:30, 12:06:30 and 12:10:00:
+    - +6 while the setup container was OOM-killed;
+    - +15 while Prometheus, Grafana and md-stream restarted on nuc1;
+    - +24 at a gateway container start.
+
+    During each burst, Prometheus on nuc1 also missed another host's
+    exporter. Between bursts the cluster is stable: 2 h idle, edge only,
+    unarmed gateway state reads at 4/s, and armed gateway plus paper mode.
+
+    Ruled out:
+    - CPU (load about 1.2 of 4 cores);
+    - firewall changes (every container uses host networking);
+    - gateway steady-state traffic.
+
+    Suspects: IO or memory pressure on nuc1 stalling its voter, or a brief
+    network stall, turned into many terms by the missing pre-vote
+    (finding 43). Consequence for paper trading: the gateway stops new risk
+    on every election and stays stopped until restarted (manual on day 1).
