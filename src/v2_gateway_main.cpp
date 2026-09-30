@@ -5,8 +5,8 @@
 //
 //   velocita-v2-gateway --caller-key-id N --caller-id N --key-file FILE --incarnation HEX32
 //       --catalog FILE --session-file FILE --state-file FILE --response-endpoint HOST:PORT
-//       --node ID=HOST:PORT [--node ...] --aeron-dir DIR --venue paper|simulated
-//       --metrics-textfile PATH
+//       --node ID=HOST:PORT [--node ...] --aeron-dir DIR --venue paper|simulated|truemarkets
+//       --metrics-textfile PATH [--arm-live-venue --signer-endpoint PATH]
 //       [--freshness-ms N --allow-new-risk] [--catalog-root HEX64]
 //       [--catalog-row ACCOUNT,VENUE,INSTRUMENT,SPEC,CAPS] [--lease-ms N] [--timeout-ms N]
 //       [--state-interval-ms N] [--buy-fee-bps N] [--sell-fee-bps N] [--paper-quote-usd N]
@@ -17,6 +17,8 @@
 // binds. New risk needs BOTH --allow-new-risk and a nonzero --freshness-ms;
 // otherwise it only reconciles and cancels. Any unknown outcome or conflict
 // stops new risk until a restart.
+// --venue truemarkets needs --arm-live-venue AND --signer-endpoint, and is then
+// still refused because no build compiles a live venue transport (ADR 0019).
 // stdout: READY ..., then NEW_RISK stopped=0|1 on every change.
 // Exit: 0 on SIGINT/SIGTERM, 2 runtime failure, 64 usage.
 
@@ -26,6 +28,7 @@
 #include "velocita/v2/node_files.hpp"
 #include "velocita/v2/paper_venue.hpp"
 #include "velocita/v2/shadow_submitter.hpp"
+#include "velocita/v2/truemarkets_venue.hpp"
 #include "velocita/v2/venue_simulator.hpp"
 
 #include <atomic>
@@ -97,6 +100,8 @@ struct Arguments {
     std::uint64_t lease_ms{2000}, timeout_ms{3000}, state_interval_ms{250};
     std::uint64_t buy_fee_bps{115}, sell_fee_bps{120}, paper_quote_usd{25}, paper_base_lots{0};
     bool allow_new_risk{};
+    bool arm_live_venue{};
+    std::string signer_endpoint;
 };
 
 Arguments parse(int argc, char** argv) {
@@ -105,6 +110,10 @@ Arguments parse(int argc, char** argv) {
         const std::string key = argv[i];
         if (key == "--allow-new-risk") {
             a.allow_new_risk = true;
+            continue;
+        }
+        if (key == "--arm-live-venue") {
+            a.arm_live_venue = true;
             continue;
         }
         if (i + 1 >= argc) throw Usage("missing value for " + key);
@@ -121,6 +130,7 @@ Arguments parse(int argc, char** argv) {
         else if (key == "--incarnation") a.have_incarnation = hex_bytes(value, a.incarnation);
         else if (key == "--response-endpoint") a.response_endpoint = endpoint(value);
         else if (key == "--venue") a.venue = value;
+        else if (key == "--signer-endpoint") a.signer_endpoint = value;
         else if (key == "--catalog-row") {
             std::array<std::uint64_t, 5> row{};
             std::size_t at = 0;
@@ -149,6 +159,17 @@ Arguments parse(int argc, char** argv) {
         } else {
             throw Usage("unknown argument " + key);
         }
+    }
+    // Checked before anything else so the refusal is the whole diagnostic and
+    // no key file, Aeron directory or network is touched. Every build today
+    // refuses here: none compiles a live transport (ADR 0019).
+    if (a.venue == "truemarkets") {
+        const auto refusal = truemarkets::evaluate_live_arming({a.arm_live_venue, a.signer_endpoint});
+        if (refusal != truemarkets::LiveArmingRefusal::none)
+            throw Usage("--venue truemarkets refused: " + std::string(truemarkets::describe(refusal)));
+    }
+    if (a.arm_live_venue || !a.signer_endpoint.empty()) {
+        if (a.venue != "truemarkets") throw Usage("--arm-live-venue and --signer-endpoint apply only to --venue truemarkets");
     }
     if (a.key_file.empty() || a.session_file.empty() || a.state_file.empty() || a.aeron_dir.empty() ||
         a.catalog.empty() || a.metrics_textfile.empty() || !a.have_incarnation || a.nodes.empty() ||

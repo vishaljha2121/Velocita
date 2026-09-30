@@ -261,6 +261,16 @@ target_include_directories(velocita_v2_paper_venue PUBLIC include)
 target_link_libraries(velocita_v2_paper_venue PUBLIC velocita_v2_contracts PRIVATE velocita_v2_venue_simulator)
 target_compile_options(velocita_v2_paper_venue PRIVATE -Wall -Wextra -Wpedantic)
 
+# ADR 0019. True Markets adapter state machine and wire encoding. All venue I/O
+# and signing are injected; this library holds no network or TLS code, which
+# the v2-truemarkets-no-network-symbols test checks on its object files.
+add_library(velocita_v2_truemarkets_venue
+    src/v2_truemarkets_venue.cpp
+    src/v2_truemarkets_wire.cpp)
+target_include_directories(velocita_v2_truemarkets_venue PUBLIC include)
+target_link_libraries(velocita_v2_truemarkets_venue PUBLIC velocita_v2_contracts PRIVATE velocita_v2_venue_simulator)
+target_compile_options(velocita_v2_truemarkets_venue PRIVATE -Wall -Wextra -Wpedantic)
+
 add_library(velocita_v2_kernel
     src/v2_gateway_authority.cpp
     src/v2_gateway_dispatch.cpp
@@ -341,7 +351,7 @@ target_compile_options(velocita_v2_gateway_loop PRIVATE -Wall -Wextra -Wpedantic
 
 add_executable(velocita-v2-gateway src/v2_gateway_main.cpp)
 target_link_libraries(velocita-v2-gateway PRIVATE velocita_v2_gateway_loop velocita_v2_paper_venue
-    velocita_v2_node_aeron Threads::Threads)
+    velocita_v2_truemarkets_venue velocita_v2_node_aeron Threads::Threads)
 target_compile_options(velocita-v2-gateway PRIVATE -Wall -Wextra -Wpedantic)
 
 add_executable(velocita-v2-shadow-submitter src/v2_shadow_submitter_main.cpp)
@@ -371,7 +381,8 @@ target_link_libraries(velocita-v2-shadow-catalog PRIVATE velocita_v2_node)
 target_compile_options(velocita-v2-shadow-catalog PRIVATE -Wall -Wextra -Wpedantic)
 
 # Structural interlock: no venue simulator/transport code may reach the node.
-foreach(velocita_node_target IN ITEMS velocita_v2_node velocita_v2_node_aeron velocita-v2-node velocita-v2-client)
+foreach(velocita_node_target IN ITEMS velocita_v2_node velocita_v2_node_aeron velocita-v2-node velocita-v2-client
+        velocita-v2-shadow-submitter velocita-v2-status velocita-v2-exporter velocita-v2-shadow-catalog)
     get_target_property(velocita_node_links ${velocita_node_target} LINK_LIBRARIES)
     foreach(velocita_node_link IN LISTS velocita_node_links)
         if(velocita_node_link MATCHES "venue")
@@ -946,6 +957,40 @@ if(BUILD_TESTING)
     target_link_libraries(v2-paper-venue-tests PRIVATE velocita_v2_kernel velocita_v2_paper_venue)
     target_compile_options(v2-paper-venue-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-paper-venue-tests COMMAND v2-paper-venue-tests)
+
+    add_executable(v2-truemarkets-wire-tests tests/v2_truemarkets_wire_tests.cpp)
+    target_link_libraries(v2-truemarkets-wire-tests PRIVATE velocita_v2_truemarkets_venue)
+    target_compile_options(v2-truemarkets-wire-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-truemarkets-wire-tests COMMAND v2-truemarkets-wire-tests)
+
+    add_executable(v2-truemarkets-venue-tests tests/v2_truemarkets_venue_tests.cpp)
+    target_link_libraries(v2-truemarkets-venue-tests PRIVATE velocita_v2_kernel velocita_v2_truemarkets_venue)
+    target_compile_options(v2-truemarkets-venue-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-truemarkets-venue-tests COMMAND v2-truemarkets-venue-tests)
+
+    # The adapter library must contain no path to a network: no socket, name
+    # resolution or TLS symbol may be referenced by its objects.
+    add_test(NAME v2-truemarkets-no-network-symbols
+        COMMAND ${CMAKE_COMMAND} -DLIBRARY=$<TARGET_FILE:velocita_v2_truemarkets_venue>
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/check_no_network_symbols.cmake)
+
+    # --venue truemarkets must refuse to start: without arming, without a
+    # signer, and (in every build today) without a compiled live transport.
+    foreach(velocita_refusal IN ITEMS
+            "unarmed|not armed|--venue;truemarkets"
+            "signer-only|not armed|--venue;truemarkets;--signer-endpoint;/run/velocita/signer.sock"
+            "armed-no-signer|no signer|--venue;truemarkets;--arm-live-venue"
+            "armed-with-signer|no live venue transport|--venue;truemarkets;--arm-live-venue;--signer-endpoint;/run/velocita/signer.sock")
+        string(REPLACE "|" ";" velocita_refusal_parts "${velocita_refusal}")
+        list(GET velocita_refusal_parts 0 velocita_refusal_name)
+        list(GET velocita_refusal_parts 1 velocita_refusal_expect)
+        list(SUBLIST velocita_refusal_parts 2 -1 velocita_refusal_args)
+        string(REPLACE ";" "," velocita_refusal_args "${velocita_refusal_args}")
+        add_test(NAME v2-gateway-truemarkets-refuses-${velocita_refusal_name}
+            COMMAND ${CMAKE_COMMAND} -DBINARY=$<TARGET_FILE:velocita-v2-gateway>
+                    "-DARGS=${velocita_refusal_args}" "-DEXPECT=${velocita_refusal_expect}"
+                    -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/check_gateway_refusal.cmake)
+    endforeach()
 
     add_executable(v2-gateway-protocol-tests tests/v2_gateway_protocol_tests.cpp)
     target_link_libraries(v2-gateway-protocol-tests PRIVATE velocita_v2_gateway_loop)
