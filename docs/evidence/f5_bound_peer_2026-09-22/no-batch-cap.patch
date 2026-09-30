@@ -1,0 +1,13 @@
+diff --git a/src/v2_replication.cpp b/private/tmp/f5-bound-peer.3d2CC0/no-batch-cap.cpp
+index facea1f..4cfe05a 100644
+--- a/src/v2_replication.cpp
++++ b/private/tmp/f5-bound-peer.3d2CC0/no-batch-cap.cpp
+@@ -888,7 +888,7 @@ int ReplicatedKernel::send_append_entries(raft_server_t*, void* user_data,
+     append.previous_log_index = message->prev_log_idx;
+     append.previous_log_term = message->prev_log_term;
+     append.leader_commit = message->leader_commit;
+-    const auto count = std::min(message->n_entries, static_cast<int>(kMaxBoundPeerEntries));
++    const auto count = message->n_entries;
+     append.entries.reserve(static_cast<std::size_t>(count));
+     for (int i = 0; i < count; ++i) {
+         const auto& entry = message->entries[i];

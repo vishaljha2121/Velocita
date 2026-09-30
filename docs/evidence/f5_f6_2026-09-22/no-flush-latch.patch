@@ -1,0 +1,11 @@
+--- src/v2_replication.cpp	2026-09-22 15:10:27
++++ /private/tmp/f5f6-integration.BeTkrZ/no-flush-latch.cpp	2026-09-22 15:11:43
+@@ -270,7 +270,7 @@
+         // medium. Continuing could let this process serve authority from an
+         // in-memory log whose durable prefix is ambiguous. Only restart and
+         // recovery may decide what survived.
+-        storage_failed_ = true;
++        // MUTANT: no flush failure latch.
+         throw;
+     }
+ }

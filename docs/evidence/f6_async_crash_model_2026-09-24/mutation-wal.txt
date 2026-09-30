@@ -1,0 +1,2 @@
+ballot persistence model schedule=0 cuts=5
+async persistence model: composed schedule=0 cut=11: crash image lost or changed committed prefix 1

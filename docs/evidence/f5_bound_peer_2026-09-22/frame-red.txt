@@ -1,0 +1,5 @@
+Direct Release-archive command (with initial stub):
+/usr/bin/c++ -std=c++20 -O3 -DNDEBUG -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude tests/v2_bound_frame_tests.cpp src/v2_bound_frame.cpp /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_contracts.a -o /private/tmp/v2-bound-frame-red.VIQ5XM/v2-bound-frame-tests && /private/tmp/v2-bound-frame-red.VIQ5XM/v2-bound-frame-tests
+
+Exit: 1
+Output: v2 bound frame tests failed: golden encode failed

@@ -1,0 +1,9 @@
+2026-09-23: permanent independent startup regressions, directly compiled against
+the current rebuilt Release replication library before adding boundary checks.
+Exit 1 with all three intended failures:
+future-generation: startup served with an archive catalog from future storage generation two
+archive-ahead: startup served with archive coverage ahead of recovered commit two
+boundary-term: startup served with archive term two conflicting with snapshot term one at index two
+3 archive startup regression(s) failed
+Each fixture uses decodable/rechecksummed canonical artifacts rather than mere
+digest corruption, and asserts full directory bytes remain unchanged on refusal.

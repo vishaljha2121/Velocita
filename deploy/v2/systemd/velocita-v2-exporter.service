@@ -1,0 +1,20 @@
+# Serves this host's voter health page as Prometheus metrics on the Tailscale
+# address (port 9410). Read-only: the data directory is mounted read-only.
+[Unit]
+Description=Velocita V2 metrics exporter
+
+[Service]
+EnvironmentFile=%h/.config/velocita/host.env
+ExecStart=/usr/bin/podman run --rm --replace --name velocita-v2-exporter \
+    --network host --userns=keep-id --read-only --cap-drop all \
+    --security-opt no-new-privileges --memory 64m --pids-limit 16 \
+    -v %h/velocita-v2/data:/var/lib/velocita-v2:ro \
+    --entrypoint /usr/local/bin/velocita-v2-exporter localhost/velocita-v2:m3 \
+    --health /var/lib/velocita-v2/node-${VELOCITA_NODE}/health.page \
+    --host ${VELOCITA_HOST} --listen ${VELOCITA_TAILSCALE_IP} --port 9410
+ExecStop=/usr/bin/podman stop -t 5 velocita-v2-exporter
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

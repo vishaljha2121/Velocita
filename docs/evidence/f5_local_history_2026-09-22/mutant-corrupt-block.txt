@@ -1,0 +1,1 @@
+V2 WAL arena test failed: a complete corrupt WAL block was accepted as an empty segment

@@ -1,0 +1,1 @@
+selected bridge RED: recovery refused: deployment quota cannot cover accepted archive obligations

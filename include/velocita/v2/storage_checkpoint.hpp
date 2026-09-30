@@ -8,9 +8,17 @@ enum class StorageCheckpoint {
     file_synced,
     file_renamed,
     directory_synced,
+    before_block_write,
+    compaction_archive_verified,
+    compaction_snapshot_verified,
+    compaction_before_wal_rewrite,
+    compaction_wal_rewritten,
+    history_recovery_before_publication,
+    history_recovery_published,
+    writer_idle_before_control_acquire,
 };
 
-// Optional deterministic crash/failure seam. No callback on ordinary appends.
+// Optional deterministic crash/failure seam. No observer is installed in production by default.
 struct StorageCheckpoints {
     void (*observe)(StorageCheckpoint, void*){};
     void* context{};

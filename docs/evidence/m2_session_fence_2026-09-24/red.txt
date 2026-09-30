@@ -1,0 +1,2 @@
+session fence tests failed: fence decision differs at step 0
+exit=1

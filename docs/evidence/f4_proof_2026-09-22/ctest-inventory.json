@@ -1,0 +1,1033 @@
+{
+  "backtraceGraph" : 
+  {
+    "commands" : 
+    [
+      "add_test"
+    ],
+    "files" : 
+    [
+      "/Users/vishaljha/aeron-raft-pi/CMakeLists.txt"
+    ],
+    "nodes" : 
+    [
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 308,
+        "parent" : 0
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 312,
+        "parent" : 2
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 316,
+        "parent" : 4
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 321,
+        "parent" : 6
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 326,
+        "parent" : 8
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 331,
+        "parent" : 10
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 336,
+        "parent" : 12
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 341,
+        "parent" : 14
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 346,
+        "parent" : 16
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 351,
+        "parent" : 18
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 356,
+        "parent" : 20
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 361,
+        "parent" : 22
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 366,
+        "parent" : 24
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 371,
+        "parent" : 26
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 376,
+        "parent" : 28
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 382,
+        "parent" : 30
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 387,
+        "parent" : 32
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 392,
+        "parent" : 34
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 397,
+        "parent" : 36
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 405,
+        "parent" : 38
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 411,
+        "parent" : 40
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 416,
+        "parent" : 42
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 427,
+        "parent" : 44
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 435,
+        "parent" : 46
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 440,
+        "parent" : 48
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 445,
+        "parent" : 50
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 450,
+        "parent" : 52
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 456,
+        "parent" : 54
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 462,
+        "parent" : 56
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 470,
+        "parent" : 58
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 477,
+        "parent" : 60
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 485,
+        "parent" : 62
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 494,
+        "parent" : 64
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 503,
+        "parent" : 66
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 510,
+        "parent" : 68
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 516,
+        "parent" : 70
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 521,
+        "parent" : 72
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 526,
+        "parent" : 74
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 531,
+        "parent" : 76
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 536,
+        "parent" : 78
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 544,
+        "parent" : 80
+      },
+      {
+        "file" : 0
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 553,
+        "parent" : 82
+      }
+    ]
+  },
+  "kind" : "ctestInfo",
+  "tests" : 
+  [
+    {
+      "backtrace" : 1,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/core-tests"
+      ],
+      "name" : "core-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 3,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/metrics-tests"
+      ],
+      "name" : "metrics-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 5,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/benchmark-tests"
+      ],
+      "name" : "benchmark-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 7,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-contract-tests"
+      ],
+      "name" : "v2-contract-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 9,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-value-contract-tests"
+      ],
+      "name" : "v2-value-contract-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 11,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-payload-codec-tests"
+      ],
+      "name" : "v2-payload-codec-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 13,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-kernel-policy-tests"
+      ],
+      "name" : "v2-kernel-policy-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 15,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-venue-wire-tests"
+      ],
+      "name" : "v2-venue-wire-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 17,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-venue-transport-tests"
+      ],
+      "name" : "v2-venue-transport-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 19,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-kernel-control-tests"
+      ],
+      "name" : "v2-kernel-control-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 21,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-kernel-source-tests"
+      ],
+      "name" : "v2-kernel-source-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 23,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-state-snapshot-tests"
+      ],
+      "name" : "v2-state-snapshot-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 25,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-kernel-codec-tests"
+      ],
+      "name" : "v2-kernel-codec-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 27,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-replay-tests"
+      ],
+      "name" : "v2-replay-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 29,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-model-replay-tests"
+      ],
+      "name" : "v2-model-replay-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 31,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-venue-simulator-tests"
+      ],
+      "name" : "v2-venue-simulator-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 33,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-spsc-ring-tests"
+      ],
+      "name" : "v2-spsc-ring-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 35,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-wal-arena-tests"
+      ],
+      "name" : "v2-wal-arena-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 37,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-replication-tests"
+      ],
+      "name" : "v2-replication-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 39,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-snapshot-membership-tests"
+      ],
+      "name" : "v2-snapshot-membership-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 41,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-durable-quorum-tests"
+      ],
+      "name" : "v2-durable-quorum-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 43,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-gateway-tests"
+      ],
+      "name" : "v2-gateway-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 45,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-lifecycle-reachability-tests"
+      ],
+      "name" : "v2-lifecycle-reachability-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 47,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-gateway-delivery-tests"
+      ],
+      "name" : "v2-gateway-delivery-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 49,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-metrics-tests"
+      ],
+      "name" : "v2-metrics-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 51,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-phase4-property-tests"
+      ],
+      "name" : "v2-phase4-property-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 53,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-rule-evaluator-tests"
+      ],
+      "name" : "v2-rule-evaluator-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 55,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-layout-tests"
+      ],
+      "name" : "v2-layout-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 57,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-decision-kernel-tests"
+      ],
+      "name" : "v2-decision-kernel-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 59,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-action-template-contract-tests"
+      ],
+      "name" : "v2-action-template-contract-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 61,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-action-resolver-tests"
+      ],
+      "name" : "v2-action-resolver-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 63,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-executable-policy-contract-tests"
+      ],
+      "name" : "v2-executable-policy-contract-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 65,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-executable-policy-codec-tests"
+      ],
+      "name" : "v2-executable-policy-codec-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 67,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-artifact-digest-tests"
+      ],
+      "name" : "v2-artifact-digest-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 69,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-execution-catalog-tests"
+      ],
+      "name" : "v2-execution-catalog-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 71,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-catalog-binding-tests"
+      ],
+      "name" : "v2-catalog-binding-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 73,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-authority-barrier-tests"
+      ],
+      "name" : "v2-authority-barrier-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 75,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-authority-storage-failure-tests"
+      ],
+      "name" : "v2-authority-storage-failure-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 77,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-gateway-authority-tests"
+      ],
+      "name" : "v2-gateway-authority-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 79,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-authority-composition-tests"
+      ],
+      "name" : "v2-authority-composition-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 81,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-executable-policy-kernel-tests"
+      ],
+      "name" : "v2-executable-policy-kernel-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    },
+    {
+      "backtrace" : 83,
+      "command" : 
+      [
+        "/private/tmp/velocita-full-audit.lYB4P5/release/v2-risk-order-outbox-tests"
+      ],
+      "name" : "v2-risk-order-outbox-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/private/tmp/velocita-full-audit.lYB4P5/release"
+        }
+      ]
+    }
+  ],
+  "version" : 
+  {
+    "major" : 1,
+    "minor" : 0
+  }
+}

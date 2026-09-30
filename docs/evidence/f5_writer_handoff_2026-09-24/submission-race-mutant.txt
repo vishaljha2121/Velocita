@@ -1,0 +1,1 @@
+WAL target switch adversarial tests failed: partial record in complete WAL block

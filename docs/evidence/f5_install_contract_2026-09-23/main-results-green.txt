@@ -1,0 +1,2 @@
+cold result contract: S=2 C=4 retained=5 committed_suffix_notifications=0 retained_notifications=1
+snapshot install result contract prerequisite passed

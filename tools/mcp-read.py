@@ -3,11 +3,8 @@
 
     ./tools/mcp-read.py list_assets chain=solana
 
-WHY THIS IS SAFE BY CONSTRUCTION, not by care. The endpoint is pinned to the
-marketdata server, and that server exposes ten tools, none of which trade: there
-is no `trade_prepare` on it to call. The safety property is a fact about the
-server's tool list rather than a rule this script remembers to enforce - so it
-cannot be lost by editing this file.
+The endpoint and a local read-only tool allowlist are both checked. A server's
+advertised tools can change; the endpoint name alone is not a safety boundary.
 
 The trading server is refused outright even though it serves the same ten tools,
 because reaching it means holding a session that CAN trade. See ADR 0011.
@@ -20,11 +17,19 @@ import urllib.error
 import urllib.request
 
 ENDPOINT = "https://mcp.truemarkets.co/marketdata/mcp"
+ALLOWED = frozenset({"get_asset", "get_asset_summary", "get_asset_summary_history",
+                     "get_market_cap", "get_market_summary", "get_price_history",
+                     "get_surging_assets", "get_trending_assets", "list_assets",
+                     "list_market_caps"})
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/140.0 Safari/537.36")
 
 
 def rpc(method, params=None, session=None, rid=1):
+    if method not in {"initialize", "notifications/initialized", "tools/call"}:
+        raise ValueError("unsupported method")
+    if method == "tools/call" and (params or {}).get("name") not in ALLOWED:
+        raise ValueError("tool not in read-only allowlist")
     body = json.dumps({"jsonrpc": "2.0", "id": rid,
                        "method": method, "params": params or {}}).encode()
     req = urllib.request.Request(ENDPOINT, data=body, method="POST")
@@ -54,6 +59,9 @@ def main(argv):
     if not argv:
         print(__doc__)
         return 2
+    if argv[0] not in ALLOWED:
+        print("tool not in read-only allowlist")
+        return 1
     tool, args = argv[0], dict(a.split("=", 1) for a in argv[1:])
 
     _, headers, raw = rpc("initialize", {
@@ -65,9 +73,11 @@ def main(argv):
     status, _, raw = rpc("tools/call", {"name": tool, "arguments": args},
                          session=session, rid=2)
     doc = parse(raw)
-    if status != 200 or "error" in doc:
+    if status != 200 or "error" in doc or doc.get("result", {}).get("isError"):
         print(json.dumps(doc, indent=2)[:1200])
         return 1
+    if "structuredContent" in doc["result"]:
+        print(json.dumps(doc["result"]["structuredContent"], indent=2))
     for block in doc["result"].get("content", []):
         text = block.get("text", "")
         try:

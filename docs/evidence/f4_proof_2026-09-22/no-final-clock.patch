@@ -1,0 +1,11 @@
+--- src/v2_gateway_dispatch.cpp	2026-09-22 14:35:51
++++ /private/tmp/f4-proof-mutations.e8D7Tj/no-final-clock.cpp	2026-09-22 14:42:25
+@@ -38,7 +38,7 @@
+         delivery.attempt_count == delivery.attempts.size()) return refuse();
+ 
+     // Sample again after validation; queued/prepared work did not buy a new age.
+-    const auto at_handoff = transport.clock(transport.context);
++    const auto at_handoff = now;
+     if (at_handoff < now) { authority.stop_new_risk(); return refuse(); }
+     if (actual.effect.operation == EffectOperation::cancel) {
+         if (!authority.permits_committed_cancel(actual, known_control)) return refuse();

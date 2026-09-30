@@ -1,0 +1,1 @@
+independent struct/hashlib golden: 57f6a72cca5a41c9c2d62340da351afe1f725ba8de790d94659c1c5a89aa8abc

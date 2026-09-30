@@ -1,0 +1,12 @@
+--- src/v2_replication.cpp	2026-09-22 15:10:27
++++ /private/tmp/f5f6-integration.BeTkrZ/pre-self-vote.cpp	2026-09-22 15:10:27
+@@ -203,9 +203,6 @@
+     if (const int result = raft_periodic(server_, elapsed_ms); result != 0) {
+         throw std::runtime_error("raft_periodic failed: " + std::to_string(result));
+     }
+-    // The pinned candidate path ignores its self-vote callback's return code.
+-    // Our latch must dominate subsequent owner work even when Raft returns zero.
+-    require_usable();
+ 
+     // A LEADER SERVES A NON-ZERO TERM. willemt promotes a lone voting node
+     // straight to leader without campaigning - "only one voting node means it's

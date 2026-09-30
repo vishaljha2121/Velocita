@@ -1,0 +1,11 @@
+--- src/v2_archive_segment.cpp	2026-09-23 13:06:50
++++ /private/tmp/v2-archive-final-mutants.btbp7c/command-codec.cpp	2026-09-23 13:14:07
+@@ -74,7 +74,7 @@
+     }
+     if (record.entry_type != 0) return ArchiveSegmentError::invalid_entry_type;
+     Command command;
+-    if (decode_kernel_command(record.payload, command, scratch.command).error !=
++    if (false && decode_kernel_command(record.payload, command, scratch.command).error !=
+         KernelCodecError::none)
+         return ArchiveSegmentError::invalid_payload;
+     return ArchiveSegmentError::none;

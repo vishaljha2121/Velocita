@@ -1,0 +1,19 @@
+python3 -c '
+import json, pathlib, re, subprocess
+script=pathlib.Path("deploy/pi-container/run-phase2-kernel-gate-inside.sh").read_text()
+expected=re.search(r"v2_required_tests=\((.*?)\n\)",script,re.S).group(1).split()+["core-tests","metrics-tests","benchmark-tests"]
+for build in ["/private/tmp/velocita-full-audit.lYB4P5/release", "/private/tmp/aeron-phase67-audit-build"]:
+    tests=json.loads(subprocess.check_output(["ctest","--test-dir",build,"--show-only=json-v1"],text=True))["tests"]
+    names=[t["name"] for t in tests]
+    assert len(names)==len(set(names))==86
+    assert set(names)==set(expected), (set(expected)-set(names),set(names)-set(expected))
+    for test in tests:
+        for p in test.get("properties",[]):
+            assert not(p["name"]=="DISABLED" and p["value"])
+            assert p["name"] not in ("SKIP_RETURN_CODE","SKIP_REGULAR_EXPRESSION")
+    print(build,": exact86 host/83 V2, no disabled or conditional-skip suites")
+'
+Exit: 0
+
+/private/tmp/velocita-full-audit.lYB4P5/release : exact86 host/83 V2, no disabled or conditional-skip suites
+/private/tmp/aeron-phase67-audit-build : exact86 host/83 V2, no disabled or conditional-skip suites

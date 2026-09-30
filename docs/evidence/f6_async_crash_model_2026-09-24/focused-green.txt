@@ -1,0 +1,7 @@
+ballot persistence model schedule=0 cuts=5
+async persistence model schedule=0 cuts=20
+ballot persistence model schedule=1 cuts=5
+async persistence model schedule=1 cuts=20
+ballot persistence model schedule=2 cuts=5
+async persistence model schedule=2 cuts=20
+async persistence crash-image model passed 75 cuts

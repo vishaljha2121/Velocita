@@ -1,0 +1,1 @@
+async persistence fence test: state applied before metadata directory durability

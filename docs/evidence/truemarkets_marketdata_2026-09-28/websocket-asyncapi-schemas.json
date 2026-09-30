@@ -1,0 +1,733 @@
+[
+ {
+  "id": "websocket/marketdata",
+  "title": "True Markets Market Data WebSocket",
+  "description": "Overview",
+  "source": "@site/docs/websocket/marketdata.mdx",
+  "sourceDirName": "websocket",
+  "slug": "/websocket/marketdata",
+  "permalink": "/websocket/marketdata",
+  "draft": false,
+  "unlisted": false,
+  "tags": [],
+  "version": "current",
+  "lastUpdatedAt": null,
+  "frontMatter": {
+   "title": "True Markets Market Data WebSocket",
+   "hide_title": true,
+   "sidebar_label": "WebSocket"
+  },
+  "sidebar": "marketData",
+  "previous": {
+   "title": "Get CeFi min/max price over a window",
+   "permalink": "/apis/marketdata/get-ce-fi-min-max-price-over-a-window"
+  }
+ },
+ {
+  "title": "Payload",
+  "body": {
+   "content": {
+    "application/json": {
+     "schema": {
+      "type": "object",
+      "required": [
+       "type",
+       "status",
+       "timestamp"
+      ],
+      "properties": {
+       "type": {
+        "type": "string",
+        "enum": [
+         "error"
+        ]
+       },
+       "status": {
+        "type": "string",
+        "enum": [
+         "error"
+        ],
+        "example": "error"
+       },
+       "timestamp": {
+        "type": "integer",
+        "format": "int64",
+        "example": 1234567890
+       },
+       "message": {
+        "type": "string",
+        "description": "Human-readable error description.",
+        "example": "invalid client message format"
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ {
+  "title": "Payload",
+  "body": {
+   "content": {
+    "application/json": {
+     "schema": {
+      "type": "object",
+      "required": [
+       "type",
+       "timestamp",
+       "topics",
+       "data"
+      ],
+      "properties": {
+       "type": {
+        "type": "string",
+        "enum": [
+         "orderbook"
+        ]
+       },
+       "timestamp": {
+        "type": "integer",
+        "format": "int64",
+        "example": 1234567890
+       },
+       "topics": {
+        "type": "array",
+        "description": "The concrete topic this message belongs to, e.g. `[\"orderbook.hyperliquid-spot.HYPE-USDC\"]`.",
+        "items": {
+         "type": "string"
+        }
+       },
+       "data": {
+        "type": "object",
+        "description": "A full order-book depth snapshot for one pair; each update replaces the prior book.",
+        "properties": {
+         "venue": {
+          "type": "string",
+          "description": "Order-book venue.",
+          "example": "hyperliquid-spot"
+         },
+         "pair": {
+          "type": "string",
+          "description": "Display pair.",
+          "example": "HYPE-USDC"
+         },
+         "coin": {
+          "type": "string",
+          "description": "Venue wire identifier for the pair.",
+          "example": "@107"
+         },
+         "bids": {
+          "type": "array",
+          "description": "Bid levels, best (highest price) first, truncated to the configured depth.",
+          "items": {
+           "type": "object",
+           "description": "A single order-book price level. Values are decimal strings to preserve precision.",
+           "properties": {
+            "px": {
+             "type": "string",
+             "description": "Price at this level.",
+             "example": "67.40"
+            },
+            "sz": {
+             "type": "string",
+             "description": "Total size resting at this level.",
+             "example": "12.5"
+            },
+            "n": {
+             "type": "integer",
+             "description": "Number of orders at this level.",
+             "example": 3
+            }
+           }
+          }
+         },
+         "asks": {
+          "type": "array",
+          "description": "Ask levels, best (lowest price) first, truncated to the configured depth.",
+          "items": {
+           "type": "object",
+           "description": "A single order-book price level. Values are decimal strings to preserve precision.",
+           "properties": {
+            "px": {
+             "type": "string",
+             "description": "Price at this level.",
+             "example": "67.40"
+            },
+            "sz": {
+             "type": "string",
+             "description": "Total size resting at this level.",
+             "example": "12.5"
+            },
+            "n": {
+             "type": "integer",
+             "description": "Number of orders at this level.",
+             "example": 3
+            }
+           }
+          }
+         },
+         "event_timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Venue-reported book time.",
+          "example": "2026-05-07T12:00:00Z"
+         },
+         "occurred_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Time the producer emitted the event.",
+          "example": "2026-05-07T12:00:00Z"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ {
+  "title": "Payload",
+  "body": {
+   "content": {
+    "application/json": {
+     "schema": {
+      "type": "object",
+      "required": [
+       "type",
+       "timestamp",
+       "topics",
+       "data"
+      ],
+      "properties": {
+       "type": {
+        "type": "string",
+        "enum": [
+         "price_candles"
+        ]
+       },
+       "timestamp": {
+        "type": "integer",
+        "format": "int64",
+        "description": "Unix timestamp (seconds) when the message was generated.",
+        "example": 1234567890
+       },
+       "topics": {
+        "type": "array",
+        "description": "The concrete topic this message belongs to, e.g. `[\"price_candles\"]` \u2014 even for `all` subscribers.",
+        "items": {
+         "type": "string",
+         "description": "Topic identifier. `all` is a wildcard alias for every stream (order-book\nexcluded). Order-book depth uses parameterized topics of the form\n`orderbook.{venue}.{pair}` (e.g. `orderbook.hyperliquid-spot.HYPE-USDC`,\n`orderbook.hyperliquid-perp.BTC-USD`); these are subscribable but not part\nof the fixed enum below and are never delivered to `all` subscribers.\n",
+         "enum": [
+          "all",
+          "price_candles",
+          "trending_assets",
+          "surging_assets",
+          "reference_prices"
+         ],
+         "example": "price_candles"
+        }
+       },
+       "data": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "description": "OHLC price data for a single asset and interval.",
+         "properties": {
+          "symbol": {
+           "type": "string",
+           "description": "Asset symbol.",
+           "example": "SOL"
+          },
+          "address": {
+           "type": "string",
+           "description": "Asset contract address.",
+           "example": "So11111111111111111111111111111111111111112"
+          },
+          "chain": {
+           "type": "string",
+           "description": "Blockchain the asset lives on.",
+           "example": "solana"
+          },
+          "interval": {
+           "type": "string",
+           "description": "Candle interval (e.g. `1h`, `4h`, `24h`).",
+           "example": "1h"
+          },
+          "open": {
+           "type": "string",
+           "description": "Opening price for the interval.",
+           "example": "100.50"
+          },
+          "high": {
+           "type": "string",
+           "description": "Highest price during the interval.",
+           "example": "102.00"
+          },
+          "low": {
+           "type": "string",
+           "description": "Lowest price during the interval.",
+           "example": "99.00"
+          },
+          "close": {
+           "type": "string",
+           "description": "Closing price for the interval.",
+           "example": "101.25"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ {
+  "title": "Payload",
+  "body": {
+   "content": {
+    "application/json": {
+     "schema": {
+      "type": "object",
+      "required": [
+       "type",
+       "timestamp",
+       "topics",
+       "data"
+      ],
+      "properties": {
+       "type": {
+        "type": "string",
+        "enum": [
+         "reference_prices"
+        ]
+       },
+       "timestamp": {
+        "type": "integer",
+        "format": "int64",
+        "example": 1234567890
+       },
+       "topics": {
+        "type": "array",
+        "description": "The concrete topic this message belongs to, e.g. `[\"reference_prices\"]` \u2014 even for `all` subscribers.",
+        "items": {
+         "type": "string",
+         "description": "Topic identifier. `all` is a wildcard alias for every stream (order-book\nexcluded). Order-book depth uses parameterized topics of the form\n`orderbook.{venue}.{pair}` (e.g. `orderbook.hyperliquid-spot.HYPE-USDC`,\n`orderbook.hyperliquid-perp.BTC-USD`); these are subscribable but not part\nof the fixed enum below and are never delivered to `all` subscribers.\n",
+         "enum": [
+          "all",
+          "price_candles",
+          "trending_assets",
+          "surging_assets",
+          "reference_prices"
+         ],
+         "example": "price_candles"
+        }
+       },
+       "data": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "description": "Weighted average reference price computed from multiple exchange BBOs.",
+         "properties": {
+          "symbol": {
+           "type": "string",
+           "example": "SOL"
+          },
+          "mid_price": {
+           "type": "string",
+           "description": "Weighted mid price.",
+           "example": "100.50"
+          },
+          "bid": {
+           "type": "string",
+           "description": "Weighted best bid.",
+           "example": "100.49"
+          },
+          "ask": {
+           "type": "string",
+           "description": "Weighted best ask.",
+           "example": "100.51"
+          },
+          "sources": {
+           "type": "array",
+           "description": "Per-exchange BBOs that contributed to the weighted price.",
+           "items": {
+            "type": "object",
+            "description": "Best bid and offer from a single exchange contributing to a reference price.",
+            "properties": {
+             "source": {
+              "type": "string",
+              "description": "Exchange the BBO was sourced from.",
+              "example": "coinbase"
+             },
+             "bid": {
+              "type": "string",
+              "example": "100.49"
+             },
+             "ask": {
+              "type": "string",
+              "example": "100.51"
+             },
+             "mid_price": {
+              "type": "string",
+              "example": "100.50"
+             },
+             "weight_pct": {
+              "type": "string",
+              "description": "Percentage weight applied to this source when computing the reference price.",
+              "example": "0.5"
+             },
+             "timestamp": {
+              "type": "string",
+              "format": "date-time",
+              "description": "RFC 3339 timestamp when the BBO was observed.",
+              "example": "2026-05-07T12:00:00Z"
+             }
+            }
+           }
+          },
+          "timestamp": {
+           "type": "string",
+           "format": "date-time",
+           "description": "RFC 3339 timestamp when the reference price was computed.",
+           "example": "2026-05-07T12:00:00Z"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ {
+  "title": "Payload",
+  "body": {
+   "content": {
+    "application/json": {
+     "schema": {
+      "type": "object",
+      "required": [
+       "type",
+       "topics"
+      ],
+      "properties": {
+       "type": {
+        "type": "string",
+        "description": "Action the request is intending to take.",
+        "enum": [
+         "subscribe",
+         "unsubscribe"
+        ],
+        "example": "subscribe"
+       },
+       "topics": {
+        "type": "array",
+        "description": "Topics to subscribe to or unsubscribe from, e.g. `[\"price_candles\"]`, `[\"price_candles\",\"surging_assets\"]`, or `[\"all\"]`.",
+        "items": {
+         "type": "string",
+         "description": "Topic identifier. `all` is a wildcard alias for every stream (order-book\nexcluded). Order-book depth uses parameterized topics of the form\n`orderbook.{venue}.{pair}` (e.g. `orderbook.hyperliquid-spot.HYPE-USDC`,\n`orderbook.hyperliquid-perp.BTC-USD`); these are subscribable but not part\nof the fixed enum below and are never delivered to `all` subscribers.\n",
+         "enum": [
+          "all",
+          "price_candles",
+          "trending_assets",
+          "surging_assets",
+          "reference_prices"
+         ],
+         "example": "price_candles"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ {
+  "title": "Payload",
+  "body": {
+   "content": {
+    "application/json": {
+     "schema": {
+      "type": "object",
+      "required": [
+       "type",
+       "status",
+       "timestamp"
+      ],
+      "properties": {
+       "type": {
+        "type": "string",
+        "enum": [
+         "subscribe",
+         "unsubscribe"
+        ],
+        "example": "subscribe"
+       },
+       "status": {
+        "type": "string",
+        "description": "`success` when every requested topic was accepted; `error` when one or more were rejected (accepted topics are still applied).",
+        "enum": [
+         "success",
+         "error"
+        ],
+        "example": "success"
+       },
+       "timestamp": {
+        "type": "integer",
+        "format": "int64",
+        "description": "Unix timestamp (seconds) when the response was generated.",
+        "example": 1234567890
+       },
+       "message": {
+        "type": "string",
+        "description": "Human-readable description of the result.",
+        "example": "Successfully subscribed to topics"
+       },
+       "topics": {
+        "type": "array",
+        "description": "Accepted (applied) topics by canonical key. Omitted when none were accepted.",
+        "items": {
+         "type": "string",
+         "description": "Topic identifier. `all` is a wildcard alias for every stream (order-book\nexcluded). Order-book depth uses parameterized topics of the form\n`orderbook.{venue}.{pair}` (e.g. `orderbook.hyperliquid-spot.HYPE-USDC`,\n`orderbook.hyperliquid-perp.BTC-USD`); these are subscribable but not part\nof the fixed enum below and are never delivered to `all` subscribers.\n",
+         "enum": [
+          "all",
+          "price_candles",
+          "trending_assets",
+          "surging_assets",
+          "reference_prices"
+         ],
+         "example": "price_candles"
+        }
+       },
+       "rejected": {
+        "type": "array",
+        "description": "Topics that could not be parsed, with reasons. Present only when status is `error`.",
+        "items": {
+         "type": "object",
+         "description": "A requested topic that could not be parsed, with the reason.",
+         "required": [
+          "topic",
+          "reason"
+         ],
+         "properties": {
+          "topic": {
+           "type": "string",
+           "description": "The rejected raw topic string as sent by the client.",
+           "example": "orderbook.hyperliquid.HYPE-USD"
+          },
+          "reason": {
+           "type": "string",
+           "description": "Why the topic was rejected.",
+           "enum": [
+            "empty_topic",
+            "unknown_channel",
+            "unsupported_channel",
+            "invalid_topic_format",
+            "unclassified"
+           ],
+           "example": "unsupported_channel"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ {
+  "title": "Payload",
+  "body": {
+   "content": {
+    "application/json": {
+     "schema": {
+      "type": "object",
+      "required": [
+       "type",
+       "timestamp",
+       "topics",
+       "data"
+      ],
+      "properties": {
+       "type": {
+        "type": "string",
+        "enum": [
+         "surging_assets"
+        ]
+       },
+       "timestamp": {
+        "type": "integer",
+        "format": "int64",
+        "example": 1234567890
+       },
+       "topics": {
+        "type": "array",
+        "description": "The concrete topic this message belongs to, e.g. `[\"surging_assets\"]` \u2014 even for `all` subscribers.",
+        "items": {
+         "type": "string",
+         "description": "Topic identifier. `all` is a wildcard alias for every stream (order-book\nexcluded). Order-book depth uses parameterized topics of the form\n`orderbook.{venue}.{pair}` (e.g. `orderbook.hyperliquid-spot.HYPE-USDC`,\n`orderbook.hyperliquid-perp.BTC-USD`); these are subscribable but not part\nof the fixed enum below and are never delivered to `all` subscribers.\n",
+         "enum": [
+          "all",
+          "price_candles",
+          "trending_assets",
+          "surging_assets",
+          "reference_prices"
+         ],
+         "example": "price_candles"
+        }
+       },
+       "data": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "description": "Asset with significant price movement over the trailing 1h, 4h, and 24h windows.",
+         "properties": {
+          "symbol": {
+           "type": "string",
+           "example": "SOL"
+          },
+          "address": {
+           "type": "string",
+           "example": "So11111111111111111111111111111111111111112"
+          },
+          "chain": {
+           "type": "string",
+           "example": "solana"
+          },
+          "price_change_pct_1h": {
+           "type": "string",
+           "description": "Price change percentage over the last 1 hour.",
+           "example": "5.25"
+          },
+          "price_change_pct_4h": {
+           "type": "string",
+           "description": "Price change percentage over the last 4 hours.",
+           "example": "10.50"
+          },
+          "price_change_pct_24h": {
+           "type": "string",
+           "description": "Price change percentage over the last 24 hours.",
+           "example": "15.75"
+          },
+          "price_1h_ago": {
+           "type": "string",
+           "description": "Price 1 hour ago.",
+           "example": "95.00"
+          },
+          "price_4h_ago": {
+           "type": "string",
+           "description": "Price 4 hours ago.",
+           "example": "90.00"
+          },
+          "price_24h_ago": {
+           "type": "string",
+           "description": "Price 24 hours ago.",
+           "example": "85.00"
+          },
+          "current_price": {
+           "type": "string",
+           "description": "Current price.",
+           "example": "100.00"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ {
+  "title": "Payload",
+  "body": {
+   "content": {
+    "application/json": {
+     "schema": {
+      "type": "object",
+      "required": [
+       "type",
+       "timestamp",
+       "topics",
+       "data"
+      ],
+      "properties": {
+       "type": {
+        "type": "string",
+        "enum": [
+         "trending_assets"
+        ]
+       },
+       "timestamp": {
+        "type": "integer",
+        "format": "int64",
+        "example": 1234567890
+       },
+       "topics": {
+        "type": "array",
+        "description": "The concrete topic this message belongs to, e.g. `[\"trending_assets\"]` \u2014 even for `all` subscribers.",
+        "items": {
+         "type": "string",
+         "description": "Topic identifier. `all` is a wildcard alias for every stream (order-book\nexcluded). Order-book depth uses parameterized topics of the form\n`orderbook.{venue}.{pair}` (e.g. `orderbook.hyperliquid-spot.HYPE-USDC`,\n`orderbook.hyperliquid-perp.BTC-USD`); these are subscribable but not part\nof the fixed enum below and are never delivered to `all` subscribers.\n",
+         "enum": [
+          "all",
+          "price_candles",
+          "trending_assets",
+          "surging_assets",
+          "reference_prices"
+         ],
+         "example": "price_candles"
+        }
+       },
+       "data": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "description": "Trending asset with recent vs. historical volume metrics.",
+         "properties": {
+          "symbol": {
+           "type": "string",
+           "example": "SOL"
+          },
+          "address": {
+           "type": "string",
+           "example": "So11111111111111111111111111111111111111112"
+          },
+          "chain": {
+           "type": "string",
+           "example": "solana"
+          },
+          "market_cap": {
+           "type": "string",
+           "description": "Market capitalization in USD.",
+           "example": "50000000000"
+          },
+          "trending_ratio": {
+           "type": "string",
+           "description": "Recent volume divided by historical volume.",
+           "example": "1.5"
+          },
+          "recent_volume": {
+           "type": "string",
+           "description": "Recent trading volume.",
+           "example": "1000000"
+          },
+          "historical_volume": {
+           "type": "string",
+           "description": "Historical trading volume baseline.",
+           "example": "800000"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ }
+]

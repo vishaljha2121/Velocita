@@ -1,0 +1,11 @@
+Test project /private/tmp/velocita-full-audit.lYB4P5/release
+    Start 65: v2-archive-startup-tests
+1/3 Test #65: v2-archive-startup-tests ..............   Passed    0.04 sec
+    Start 84: v2-generation-startup-tests
+2/3 Test #84: v2-generation-startup-tests ...........   Passed    0.06 sec
+    Start 87: v2-snapshot-install-preflight-tests
+3/3 Test #87: v2-snapshot-install-preflight-tests ...   Passed    0.09 sec
+
+100% tests passed out of 3
+
+Total Test time (real) =   0.19 sec

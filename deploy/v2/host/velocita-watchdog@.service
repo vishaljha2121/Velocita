@@ -1,0 +1,21 @@
+# Loads the hardware watchdog driver %i at boot (system unit; install as root in
+# /etc/systemd/system/). Ubuntu's kernel blacklist names every watchdog driver,
+# and modules-load.d honors that list, so the driver never loads by itself; an
+# explicit `modprobe NAME` does. systemd (RuntimeWatchdogSec, see
+# velocita-watchdog.conf) opens /dev/watchdog as soon as it appears and resets
+# the host ~30 s after the kernel stops petting it (verified on nuc2, systemd
+# 249: state=active without a restart). M3 log findings 35-36.
+#   nuc1, nuc2: velocita-watchdog@iTCO_wdt.service   Pi: velocita-watchdog@bcm2835_wdt.service
+[Unit]
+Description=Load hardware watchdog driver %i
+DefaultDependencies=no
+Before=sysinit.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/sbin/modprobe %i
+
+[Install]
+WantedBy=sysinit.target

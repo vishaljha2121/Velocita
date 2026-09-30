@@ -1,0 +1,59 @@
+# Velocita V2 node image (M3). Native build on the target: x86-64 on the NUC,
+# ARM64 on the Pi. Same Ubuntu 26.04 toolchain the V2 gates already validated.
+#
+# The builder stage runs the FULL Release test suite: an image only exists if
+# every suite passed on this machine's architecture and kernel.
+#
+#   podman build -f deploy/v2/Containerfile -t localhost/velocita-v2:m3 .
+#
+# The shadow edge (nuc1 only) is a second target from the same tested build:
+#   podman build -f deploy/v2/Containerfile --target shadow -t localhost/velocita-v2-shadow:m3 .
+# The paper gateway (nuc1 only) runs from the voter image with
+# --entrypoint /usr/local/bin/velocita-v2-gateway (velocita-v2-gateway.service).
+
+FROM ubuntu:26.04 AS builder
+ARG DEBIAN_FRONTEND=noninteractive
+ARG BUILD_JOBS=3
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates cmake g++ git libbsd-dev ninja-build patch pkg-config python3 uuid-dev \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+COPY . .
+RUN cmake -S . -B /build -G Ninja -DCMAKE_BUILD_TYPE=Release -DAERON_HIDE_DEPRECATION_MESSAGE=ON \
+    && cmake --build /build --parallel "${BUILD_JOBS}" \
+    && ctest --test-dir /build --output-on-failure
+
+# Strategy edge: the Python edge (live True Markets reference prices -> rule
+# features) and the C++ submitter it spawns (also the operator's one-shot
+# --setup-only). Shadow records decisions; paper lets the kernel authorize them
+# for the paper gateway. No venue client here. Stdlib-only Python, no pip.
+FROM ubuntu:26.04 AS shadow
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates libstdc++6 libbsd0 libuuid1 python3 \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /build/velocita-v2-shadow-submitter /usr/local/bin/velocita-v2-shadow-submitter
+COPY --from=builder /src/model/src /opt/velocita-model/src
+# The shadow book's fills are costed from these measured quotes (never a guess).
+COPY --from=builder /src/docs/evidence/truemarkets_markup_2026-09-28/quotes_buy_sell_1631utc.json /opt/velocita-model/evidence/
+COPY --from=builder /build/_deps/aeron-src/LICENSE /usr/share/licenses/aeron/LICENSE
+ENV PYTHONPATH=/opt/velocita-model/src PYTHONDONTWRITEBYTECODE=1
+ENTRYPOINT ["python3", "-m", "velocita_model.cli", "shadow-edge"]
+
+# The voter image (default target: keep this stage last).
+FROM ubuntu:26.04
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libstdc++6 libbsd0 libuuid1 \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /build/velocita-v2-node /usr/local/bin/velocita-v2-node
+COPY --from=builder /build/velocita-v2-client /usr/local/bin/velocita-v2-client
+COPY --from=builder /build/velocita-v2-status /usr/local/bin/velocita-v2-status
+COPY --from=builder /build/velocita-v2-shadow-catalog /usr/local/bin/velocita-v2-shadow-catalog
+COPY --from=builder /build/velocita-v2-exporter /usr/local/bin/velocita-v2-exporter
+COPY --from=builder /build/velocita-v2-shadow-submitter /usr/local/bin/velocita-v2-shadow-submitter
+COPY --from=builder /build/velocita-v2-gateway /usr/local/bin/velocita-v2-gateway
+COPY --from=builder /build/_deps/aeron-src/LICENSE /usr/share/licenses/aeron/LICENSE
+COPY --from=builder /build/_deps/willemt_raft-src/LICENSE /usr/share/licenses/willemt-raft/LICENSE
+ENTRYPOINT ["/usr/local/bin/velocita-v2-node"]

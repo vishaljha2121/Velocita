@@ -1,0 +1,9 @@
+Test project /private/tmp/aeron-phase67-audit-build
+    Start 71: v2-result-obligation-tests
+1/2 Test #71: v2-result-obligation-tests ............   Passed    0.06 sec
+    Start 72: v2-snapshot-install-preflight-tests
+2/2 Test #72: v2-snapshot-install-preflight-tests ...   Passed    0.30 sec
+
+100% tests passed out of 2
+
+Total Test time (real) =   0.37 sec

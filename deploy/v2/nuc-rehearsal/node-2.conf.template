@@ -1,0 +1,43 @@
+# M3 rehearsal: voter 2 of a two-voter cluster, BOTH voters on the NUC.
+# Practice for deployment mechanics only: one host is not host fault tolerance.
+# Paths are as seen INSIDE the container (see velocita-v2-node@.service).
+#
+# Fill the placeholders with sed (Stage 5), never by hand-copying secrets:
+#   @INCARNATION@  32 hex digits, identical in both voter configs
+#   @CATALOG_ROOT@ printed by velocita-v2-shadow-catalog
+node_id = 2
+data_root = /var/lib/velocita-v2/node-2
+# First start only; switch to "recover" after the first successful start.
+startup = bootstrap
+cluster.incarnation = @INCARNATION@
+catalog.root = @CATALOG_ROOT@
+catalog.file = /etc/velocita/catalog.bin
+deployment_mode = laboratory
+
+# Voters talk over loopback on the NUC.
+voter.2.endpoint = 127.0.0.1:42202
+voter.1.endpoint = 127.0.0.1:42201
+voter.1.key_file = /run/velocita-secrets/link-1-2.key
+
+# Your Mac reaches the voters over Tailscale.
+ingress.endpoint = 100.72.127.102:42302
+
+# Operator caller 9 = CallerId 7; responses go to the Mac's Tailscale address.
+caller.9.caller_id = 7
+caller.9.key_file = /run/velocita-secrets/caller-9.key
+caller.9.response_endpoint = 100.91.80.64:42400
+
+# The shadow/paper stack on the NUC, as in the two- and three-host templates:
+# setup (operator band), strategy tick loop and paper gateway (outside it).
+caller.11.caller_id = 9
+caller.11.key_file = /run/velocita-secrets/caller-11.key
+caller.11.response_endpoint = 100.72.127.102:42411
+caller.12.caller_id = 21
+caller.12.key_file = /run/velocita-secrets/caller-12.key
+caller.12.response_endpoint = 100.72.127.102:42412
+caller.13.caller_id = 22
+caller.13.key_file = /run/velocita-secrets/caller-13.key
+caller.13.response_endpoint = 100.72.127.102:42413
+gateway.caller = 22
+
+history.max_wal_bytes = 1073741824

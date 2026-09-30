@@ -1,0 +1,11 @@
+--- src/v2_wal_arena.cpp	2026-09-22 20:28:52
++++ /private/tmp/f5-f6-parallel.IqHRl4/wal-no-latch.cpp	2026-09-22 20:35:20
+@@ -595,7 +595,7 @@
+             }
+         } catch (...) {
+             failure_ = std::current_exception();
+-            failed_.store(true, std::memory_order_release);
++            // Isolated mutant: no failure publication.
+             running_.store(false, std::memory_order_release);
+         }
+     });

@@ -1,3 +1,4 @@
+#include "v2_catalog_test_support.hpp"
 #include "velocita/v2/kernel.hpp"
 
 #include <cstddef>
@@ -59,11 +60,11 @@ velocita::v2::Command command(const std::uint64_t request_sequence,
 
 void test_publish_is_bounded_and_idempotent() {
     using namespace velocita::v2;
-    TradingState state;
+    TradingState state = catalog_test::state();
     ApplyScratch scratch;
     const auto publish = command(1, std::byte{0x31}, PublishPolicy{policy(10, 1, std::byte{0x21})});
 
-    const auto first = apply(state, publish, scratch);
+    const auto first = catalog_test::apply(state, publish, scratch);
     require(first.code == ApplyCode::applied &&
                 first.policy_lifecycle == PolicyLifecycle::proposed,
             "valid publication was not applied as proposed");
@@ -72,14 +73,14 @@ void test_publish_is_bounded_and_idempotent() {
     require(state.policy_count == 1 && state.receipt_count == 1,
             "publication and receipt were not retained atomically");
 
-    const auto duplicate = apply(state, publish, scratch);
+    const auto duplicate = catalog_test::apply(state, publish, scratch);
     require(duplicate == first, "exact duplicate did not return the retained outcome");
     require(state.state_version == 1 && state.policy_count == 1 && state.receipt_count == 1,
             "exact duplicate mutated authoritative state");
 
     auto conflicting = publish;
     conflicting.identity.payload_digest = digest(std::byte{0x32});
-    const auto conflict = apply(state, conflicting, scratch);
+    const auto conflict = catalog_test::apply(state, conflicting, scratch);
     require(conflict.code == ApplyCode::duplicate_conflict,
             "same request identity with different bytes was not rejected");
     require(state.state_version == 1 && state.policy_count == 1 && state.receipt_count == 1,
@@ -88,37 +89,37 @@ void test_publish_is_bounded_and_idempotent() {
 
 void test_policy_identity_is_immutable_and_versioned() {
     using namespace velocita::v2;
-    TradingState state;
+    TradingState state = catalog_test::state();
     ApplyScratch scratch;
 
-    require(apply(state,
+    require(catalog_test::apply(state,
                   command(1, std::byte{0x41},
                           PublishPolicy{policy(10, 2, std::byte{0x21})}),
                   scratch).code == ApplyCode::applied,
             "initial policy publication failed");
 
-    const auto same_identity_new_bytes = apply(
+    const auto same_identity_new_bytes = catalog_test::apply(
         state,
         command(2, std::byte{0x42}, PublishPolicy{policy(10, 2, std::byte{0x22})}),
         scratch);
     require(same_identity_new_bytes.code == ApplyCode::immutable_policy_conflict,
             "immutable policy identity accepted a different artifact digest");
 
-    const auto lower_version = apply(
+    const auto lower_version = catalog_test::apply(
         state,
         command(3, std::byte{0x43}, PublishPolicy{policy(10, 1, std::byte{0x23})}),
         scratch);
     require(lower_version.code == ApplyCode::non_monotonic_policy_version,
             "policy family accepted a regressing version");
     const auto retained_version = state.state_version;
-    const auto lower_version_retry = apply(
+    const auto lower_version_retry = catalog_test::apply(
         state,
         command(3, std::byte{0x43}, PublishPolicy{policy(10, 1, std::byte{0x23})}),
         scratch);
     require(lower_version_retry == lower_version && state.state_version == retained_version,
             "typed policy rejection was not retained byte-equivalently");
 
-    require(apply(state,
+    require(catalog_test::apply(state,
                   command(4, std::byte{0x44},
                           PublishPolicy{policy(10, 3, std::byte{0x24})}),
                   scratch).code == ApplyCode::applied,
@@ -129,23 +130,23 @@ void test_policy_identity_is_immutable_and_versioned() {
 
 void test_validate_activate_supersede_lifecycle() {
     using namespace velocita::v2;
-    TradingState state;
+    TradingState state = catalog_test::state();
     ApplyScratch scratch;
 
-    require(apply(state,
+    require(catalog_test::apply(state,
                   command(1, std::byte{0x51},
                           PublishPolicy{policy(10, 1, std::byte{0x21})}),
                   scratch).code == ApplyCode::applied,
             "policy publication failed");
 
-    const auto too_early = apply(
+    const auto too_early = catalog_test::apply(
         state,
         command(2, std::byte{0x52}, ActivatePolicy{PolicyId{10}, PolicyVersion{1}}),
         scratch);
     require(too_early.code == ApplyCode::invalid_policy_transition,
             "proposed policy activated without validation");
 
-    const auto validated = apply(
+    const auto validated = catalog_test::apply(
         state,
         command(3, std::byte{0x53}, ValidatePolicy{PolicyId{10}, PolicyVersion{1}}),
         scratch);
@@ -153,7 +154,7 @@ void test_validate_activate_supersede_lifecycle() {
                 validated.policy_lifecycle == PolicyLifecycle::validated,
             "policy validation transition failed");
 
-    const auto activated = apply(
+    const auto activated = catalog_test::apply(
         state,
         command(4, std::byte{0x54}, ActivatePolicy{PolicyId{10}, PolicyVersion{1}}),
         scratch);
@@ -161,25 +162,25 @@ void test_validate_activate_supersede_lifecycle() {
                 activated.policy_lifecycle == PolicyLifecycle::active,
             "validated policy did not activate");
 
-    require(apply(state,
+    require(catalog_test::apply(state,
                   command(5, std::byte{0x55},
                           PublishPolicy{policy(11, 1, std::byte{0x22})}),
                   scratch).code == ApplyCode::applied,
             "second policy publication failed");
-    require(apply(state,
+    require(catalog_test::apply(state,
                   command(6, std::byte{0x56},
                           ValidatePolicy{PolicyId{11}, PolicyVersion{1}}),
                   scratch).code == ApplyCode::applied,
             "second policy validation failed");
 
-    const auto scope_conflict = apply(
+    const auto scope_conflict = catalog_test::apply(
         state,
         command(7, std::byte{0x57}, ActivatePolicy{PolicyId{11}, PolicyVersion{1}}),
         scratch);
     require(scope_conflict.code == ApplyCode::active_policy_scope_conflict,
             "two policies became active for one account/instrument scope");
 
-    const auto superseded = apply(
+    const auto superseded = catalog_test::apply(
         state,
         command(8, std::byte{0x58}, SupersedePolicy{PolicyId{10}, PolicyVersion{1}}),
         scratch);
@@ -187,7 +188,7 @@ void test_validate_activate_supersede_lifecycle() {
                 superseded.policy_lifecycle == PolicyLifecycle::superseded,
             "active policy did not become superseded");
 
-    require(apply(state,
+    require(catalog_test::apply(state,
                   command(9, std::byte{0x59},
                           ActivatePolicy{PolicyId{11}, PolicyVersion{1}}),
                   scratch).code == ApplyCode::applied,
@@ -196,13 +197,13 @@ void test_validate_activate_supersede_lifecycle() {
 
 void test_invalid_input_and_capacity_fail_closed() {
     using namespace velocita::v2;
-    TradingState state;
+    TradingState state = catalog_test::state();
     ApplyScratch scratch;
 
     auto missing_identity = command(
         1, std::byte{0x61}, PublishPolicy{policy(10, 1, std::byte{0x21})});
     missing_identity.identity.caller_id = CallerId{};
-    const auto invalid_identity = apply(state, missing_identity, scratch);
+    const auto invalid_identity = catalog_test::apply(state, missing_identity, scratch);
     require(invalid_identity.code == ApplyCode::invalid_command &&
                 invalid_identity.contract_error == ContractError::invalid_identity,
             "missing command identity was not rejected with a typed reason");
@@ -210,7 +211,7 @@ void test_invalid_input_and_capacity_fail_closed() {
             "unidentifiable command was retained or mutated state");
 
     for (std::size_t index = 0; index < kMaxPolicies; ++index) {
-        const auto result = apply(
+        const auto result = catalog_test::apply(
             state,
             command(index + 1,
                     static_cast<std::byte>(0x70U + index),
@@ -223,7 +224,7 @@ void test_invalid_input_and_capacity_fail_closed() {
         require(result.code == ApplyCode::applied, "policy catalog filled too early");
     }
 
-    const auto full = apply(
+    const auto full = catalog_test::apply(
         state,
         command(kMaxPolicies + 1,
                 std::byte{0x6F},
@@ -234,7 +235,7 @@ void test_invalid_input_and_capacity_fail_closed() {
     require(state.policy_count == kMaxPolicies,
             "capacity rejection wrote beyond the policy catalog");
     const auto version_after_full = state.state_version;
-    require(apply(state,
+    require(catalog_test::apply(state,
                   command(kMaxPolicies + 1,
                           std::byte{0x6F},
                           PublishPolicy{policy(999, 1, std::byte{0x7F}, 999, 999)}),
@@ -245,11 +246,11 @@ void test_invalid_input_and_capacity_fail_closed() {
 
 void test_receipt_and_version_exhaustion_precede_business_mutation() {
     using namespace velocita::v2;
-    TradingState state;
+    TradingState state = catalog_test::state();
     ApplyScratch scratch;
 
     for (std::size_t index = 0; index < kMaxRequestReceipts; ++index) {
-        const auto rejected = apply(
+        const auto rejected = catalog_test::apply(
             state,
             command(index + 1,
                     static_cast<std::byte>((index % 250U) + 1U),
@@ -280,7 +281,7 @@ void test_receipt_and_version_exhaustion_precede_business_mutation() {
             pinned};
     }
 
-    const auto full = apply(
+    const auto full = catalog_test::apply(
         state,
         command(kMaxRequestReceipts + 1,
                 std::byte{0x7F},
@@ -289,9 +290,9 @@ void test_receipt_and_version_exhaustion_precede_business_mutation() {
     require(full.code == ApplyCode::receipt_capacity_exceeded && state.policy_count == 0,
             "new policy mutated state without space for its idempotency receipt");
 
-    TradingState version_exhausted;
+    TradingState version_exhausted = catalog_test::state();
     version_exhausted.state_version = std::numeric_limits<std::uint64_t>::max();
-    const auto exhausted = apply(
+    const auto exhausted = catalog_test::apply(
         version_exhausted,
         command(1, std::byte{0x71}, PublishPolicy{policy(1, 1, std::byte{0x21})}),
         scratch);

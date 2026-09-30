@@ -1,0 +1,6 @@
+case=quorum_committed leader_commit=1 leader_durable=1 donor_term=1 donor_vote=1 donor_commit=0 donor_durable=1 donor_applied=0 donor_suffix_records=1
+safe_refusal=missing_hard_state unchanged_lost_files=1 donor_restart_commit=0 donor_restart_durable=1 donor_reserved_results=1 authority_proof=absent repair_api=absent
+case=only_donor_durable leader_commit=0 leader_durable=0 donor_term=1 donor_vote=1 donor_commit=0 donor_durable=1 donor_applied=0 donor_suffix_records=1
+safe_refusal=missing_hard_state unchanged_lost_files=1 donor_restart_commit=0 donor_restart_durable=1 donor_reserved_results=1 authority_proof=absent repair_api=absent
+donor_images_identical=1 prior_quorum_outcomes_differ=1
+characterization=PASS repair_completion=UNIMPLEMENTED behavioral_repair_RED=NOT_CLAIMED

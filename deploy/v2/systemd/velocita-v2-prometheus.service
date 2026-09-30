@@ -1,0 +1,22 @@
+# NUC only. Scrapes both hosts over Tailscale; listens on 127.0.0.1 only.
+# 7 days / 1 GB retention, 512 MB memory cap.
+[Unit]
+Description=Velocita V2 Prometheus
+
+[Service]
+# (podman run creates the named volume on first use; podman 3.4 has no --ignore)
+ExecStart=/usr/bin/podman run --rm --replace --name velocita-v2-prometheus \
+    --network host --memory 512m \
+    -v velocita-v2-prometheus-data:/prometheus \
+    -v %h/src/aeron-raft-pi/deploy/v2/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro \
+    -v %h/src/aeron-raft-pi/deploy/v2/observability/rules:/etc/prometheus/rules:ro \
+    docker.io/prom/prometheus:v3.13.2 \
+    --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus \
+    --storage.tsdb.retention.time=7d --storage.tsdb.retention.size=1GB \
+    --web.listen-address=127.0.0.1:9090
+ExecStop=/usr/bin/podman stop -t 10 velocita-v2-prometheus
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

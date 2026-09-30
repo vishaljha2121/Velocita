@@ -1,0 +1,141 @@
+[  2%] Built target willemt_raft
+[  5%] Built target velocita_benchmark
+[  5%] Built target v2-metadata-persistence-model-tests
+[  8%] Built target v2-durable-quorum-tests
+[  8%] Building CXX object CMakeFiles/velocita_v2_contracts.dir/src/v2_local_generation.cpp.o
+[ 10%] Built target velocita_core
+[ 10%] Built target core-tests
+[ 10%] Built target benchmark-tests
+[ 13%] Built target velocita_metrics
+[ 16%] Built target metrics-tests
+[ 18%] Linking CXX static library libvelocita_v2_contracts.a
+[ 21%] Built target velocita_v2_contracts
+[ 21%] Linking CXX executable v2-value-contract-tests
+[ 21%] Built target velocita_v2_evaluator
+[ 24%] Linking CXX executable v2-executable-policy-contract-tests
+[ 24%] Linking CXX executable v2-contract-tests
+[ 24%] Linking CXX executable v2-action-template-contract-tests
+[ 24%] Linking CXX executable v2-executable-policy-codec-tests
+[ 27%] Built target velocita_v2_venue_simulator
+[ 27%] Linking CXX executable v2-payload-codec-tests
+[ 27%] Linking CXX executable v2-artifact-digest-tests
+[ 29%] Linking CXX executable v2-execution-catalog-tests
+[ 29%] Built target v2-action-template-contract-tests
+[ 29%] Built target v2-contract-tests
+[ 29%] Built target v2-executable-policy-codec-tests
+[ 29%] Built target v2-value-contract-tests
+[ 29%] Built target v2-executable-policy-contract-tests
+[ 29%] Built target v2-payload-codec-tests
+[ 29%] Building CXX object CMakeFiles/v2-local-generation-adversarial-tests.dir/tests/v2_local_generation_adversarial_tests.cpp.o
+[ 29%] Building CXX object CMakeFiles/v2-local-generation-tests.dir/tests/v2_local_generation_tests.cpp.o
+[ 29%] Built target v2-artifact-digest-tests
+[ 29%] Built target v2-execution-catalog-tests
+[ 29%] Linking CXX executable v2-authority-barrier-tests
+[ 29%] Linking CXX executable v2-static-identity-tests
+[ 29%] Linking CXX executable v2-incremental-digest-tests
+[ 35%] Built target velocita_v2_kernel
+[ 35%] Linking CXX executable v2-venue-wire-tests
+[ 35%] Linking CXX executable v2-venue-transport-tests
+[ 35%] Built target v2-authority-barrier-tests
+[ 35%] Built target v2-incremental-digest-tests
+[ 35%] Built target v2-static-identity-tests
+[ 35%] Linking CXX executable v2-venue-simulator-tests
+[ 35%] Built target v2-venue-wire-tests
+[ 37%] Built target v2-venue-transport-tests
+[ 37%] Linking CXX executable v2-lifecycle-reachability-tests
+[ 37%] Linking CXX executable v2-gateway-tests
+[ 37%] Built target v2-venue-simulator-tests
+[ 37%] Linking CXX executable v2-gateway-delivery-tests
+[ 40%] Linking CXX executable v2-metrics-tests
+[ 40%] Built target v2-lifecycle-reachability-tests
+[ 43%] Built target v2-gateway-tests
+[ 43%] Linking CXX executable v2-phase4-property-tests
+[ 51%] Built target velocita_v2_replication
+[ 51%] Built target v2-gateway-delivery-tests
+[ 51%] Built target v2-metrics-tests
+[ 51%] Built target v2-phase4-property-tests
+[ 51%] Linking CXX executable v2-layout-tests
+[ 51%] Linking CXX executable v2-rule-evaluator-tests
+[ 54%] Linking CXX executable v2-action-resolver-tests
+[ 54%] Linking CXX executable v2-decision-kernel-tests
+[ 54%] Linking CXX executable v2-catalog-binding-tests
+[ 54%] Linking CXX executable v2-authority-storage-failure-tests
+[ 54%] Built target v2-rule-evaluator-tests
+[ 56%] Built target v2-layout-tests
+[ 56%] Built target v2-action-resolver-tests
+[ 56%] Built target v2-decision-kernel-tests
+[ 56%] Built target v2-catalog-binding-tests
+[ 56%] Built target v2-authority-storage-failure-tests
+[ 56%] Linking CXX executable v2-gateway-authority-tests
+[ 56%] Linking CXX executable v2-authority-composition-tests
+[ 56%] Linking CXX executable v2-snapshot-store-bounds-tests
+[ 56%] Linking CXX executable v2-bound-metadata-persistence-model-tests
+[ 59%] Linking CXX executable v2-identity-startup-tests
+[ 59%] Linking CXX executable v2-kernel-startup-tests
+[ 59%] Built target v2-gateway-authority-tests
+[ 62%] Built target v2-authority-composition-tests
+[ 62%] Built target v2-snapshot-store-bounds-tests
+[ 62%] Built target v2-bound-metadata-persistence-model-tests
+[ 62%] Built target v2-identity-startup-tests
+[ 62%] Built target v2-kernel-startup-tests
+[ 64%] Linking CXX executable v2-bound-frame-tests
+[ 67%] Linking CXX executable v2-bound-peer-tests
+[ 67%] Linking CXX executable v2-bound-metadata-tests
+[ 67%] Linking CXX executable v2-result-ledger-tests
+[ 70%] Linking CXX executable v2-result-admission-tests
+[ 70%] Linking CXX executable v2-history-binding-tests
+[ 70%] Built target v2-bound-frame-tests
+[ 70%] Built target v2-bound-peer-tests
+[ 70%] Built target v2-bound-metadata-tests
+[ 70%] Built target v2-result-ledger-tests
+[ 70%] Built target v2-result-admission-tests
+[ 70%] Built target v2-history-binding-tests
+[ 70%] Linking CXX executable v2-outbound-mailbox-tests
+[ 70%] Linking CXX executable v2-result-admission-edge-tests
+[ 70%] Linking CXX executable v2-local-generation-tests
+[ 70%] Linking CXX executable v2-outbound-saturation-tests
+[ 70%] Linking CXX executable v2-retained-log-tests
+[ 70%] Linking CXX executable v2-wal-streaming-tests
+[ 72%] Built target v2-outbound-mailbox-tests
+[ 72%] Linking CXX executable v2-archive-segment-tests
+[ 72%] Built target v2-result-admission-edge-tests
+[ 72%] Built target v2-local-generation-tests
+[ 72%] Linking CXX executable v2-archive-segment-adversarial-tests
+[ 72%] Built target v2-retained-log-tests
+[ 75%] Built target v2-outbound-saturation-tests
+[ 75%] Built target v2-wal-streaming-tests
+[ 75%] Built target v2-archive-segment-tests
+[ 75%] Linking CXX executable v2-archive-file-tests
+[ 75%] Linking CXX executable v2-archive-file-io-tests
+[ 75%] Linking CXX executable v2-executable-policy-kernel-tests
+[ 75%] Linking CXX executable v2-risk-order-outbox-tests
+[ 75%] Built target v2-archive-segment-adversarial-tests
+[ 75%] Linking CXX executable v2-kernel-control-tests
+[ 75%] Linking CXX executable v2-kernel-policy-tests
+[ 78%] Linking CXX executable v2-local-generation-adversarial-tests
+[ 81%] Built target v2-archive-file-tests
+[ 81%] Built target v2-archive-file-io-tests
+[ 83%] Linking CXX executable v2-kernel-source-tests
+[ 86%] Built target v2-risk-order-outbox-tests
+[ 86%] Built target v2-executable-policy-kernel-tests
+[ 86%] Built target v2-kernel-policy-tests
+[ 89%] Built target v2-kernel-control-tests
+[ 89%] Linking CXX executable v2-kernel-codec-tests
+[ 89%] Built target v2-local-generation-adversarial-tests
+[ 89%] Linking CXX executable v2-state-snapshot-tests
+[ 89%] Linking CXX executable v2-model-replay-tests
+[ 89%] Linking CXX executable v2-replay-tests
+[ 89%] Built target v2-kernel-source-tests
+[ 91%] Built target v2-state-snapshot-tests
+[ 91%] Built target v2-kernel-codec-tests
+[ 94%] Linking CXX executable v2-wal-arena-tests
+[ 94%] Built target v2-model-replay-tests
+[ 94%] Linking CXX executable v2-spsc-ring-tests
+[ 94%] Linking CXX executable v2-replication-tests
+[ 97%] Linking CXX executable v2-snapshot-membership-tests
+[ 97%] Built target v2-replay-tests
+[ 97%] Built target v2-spsc-ring-tests
+[ 97%] Built target v2-wal-arena-tests
+[100%] Built target v2-snapshot-membership-tests
+[100%] Built target v2-replication-tests
+[100%] Built target velocita-all-tests

@@ -1,0 +1,8 @@
+2026-09-23, main independent focused source build/run.
+Command:
+c++ -std=c++20 -O1 -g -fsanitize=thread -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Itests -Ibuild/_deps/willemt_raft-src/include tests/v2_wal_maintenance_tests.cpp src/v2_wal_arena.cpp src/v2_bound_wal.cpp src/v2_bound_frame.cpp src/v2_static_identity.cpp src/v2_digest.cpp src/v2_kernel_codec.cpp src/v2_artifact_digest.cpp src/v2_authority_barrier.cpp src/v2_execution_catalog.cpp src/v2_payload.cpp src/storage.cpp -pthread -o /private/tmp/cp039-wal-maintenance-tsan
+/private/tmp/cp039-wal-maintenance-tsan
+Exit: 0
+Output: WAL maintenance tests passed
+No TSan report. Scope: this focused worker suite and directly compiled dependencies,
+not the entire ReplicatedKernel/archive transaction.

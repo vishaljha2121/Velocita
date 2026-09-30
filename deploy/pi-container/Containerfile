@@ -27,6 +27,7 @@ RUN apt-get update \
         ninja-build \
         patch \
         pkg-config \
+        python3 \
         uuid-dev \
     && rm -rf /var/lib/apt/lists/*
 

@@ -1,0 +1,2 @@
+node health tests passed
+tsan exit=0

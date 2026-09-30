@@ -1,0 +1,2 @@
+foreign_wal accepted=1 recovered_kill=9 unchanged_tree=1
+RED F5: foreign wal accepted under matching local sidecar

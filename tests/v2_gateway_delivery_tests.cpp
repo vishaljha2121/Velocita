@@ -1,3 +1,4 @@
+#include "v2_catalog_test_support.hpp"
 
 #include "velocita/v2/digest.hpp"
 #include "velocita/v2/gateway.hpp"
@@ -30,6 +31,23 @@ using velocita::v2::sim::SimulatedVenue;
 
 void require(const bool condition, const std::string& message) {
     if (!condition) throw std::runtime_error(message);
+}
+
+PreSendDecision test_evaluate_pre_send(
+    const TradingState& state, const EffectId effect_id,
+    const GatewayControlView& control, const VenueCapabilityView& venue,
+    const SendQuotaView& quota) {
+    return evaluate_delivery_candidate(state, effect_id, control, venue, quota,
+                             &catalog_test::standard_catalog());
+}
+
+DeliveryPlan test_plan_delivery(
+    const TradingState& state, const GatewayDeliveryState& delivery,
+    const GatewayEvidenceState& evidence, const GatewayControlView& control,
+    const VenueCapabilityView& venue, const SendQuotaView& quota,
+    const GatewayTimeouts& timeouts, const Tick now) {
+    return plan_delivery(state, delivery, evidence, control, venue, quota,
+                         timeouts, now, &catalog_test::standard_catalog());
 }
 
 Digest256 digest(const std::uint8_t marker) {
@@ -122,7 +140,7 @@ ExecutablePolicyArtifact executable_policy(const FeatureSchemaArtifact& schema) 
 }
 
 TradingState ready_state() {
-    TradingState state;
+    TradingState state = catalog_test::state();
     state.state_version = 2;
     state.strategy_mode = StrategyMode::normal;
     state.kill_epoch = KillEpoch{2};
@@ -137,14 +155,15 @@ TradingState ready_state() {
          PriceTicks::from_atoms(1), PriceTicks::from_atoms(100),
          QuantityLots::from_atoms(1), QuantityLots::from_atoms(10)},
         {kVenueCapabilitiesSchemaVersion, VenueId{9}, VenueCapabilitiesVersion{8},
-         kVenueDirectivePlaceLimit, kVenueTifGtc, 1},
+         kVenueDirectivePlaceLimit | kVenueDirectiveCancel, kVenueTifGtc, 1},
         1, 2};
     state.risk_account_count = 1;
     state.risk_accounts[0] = {
         AccountId{5}, InstrumentId{4}, RiskPolicyVersion{6}, RiskVersion{1},
         PositionVersion{1}, QuantityLots::from_atoms(4),
         QuantityLots::from_atoms(8), {}, MoneyMicros::from_atoms(4'000),
-        MoneyMicros::from_atoms(8'000), {}, {}, 1'000'000, 2'500};
+        MoneyMicros::from_atoms(8'000), {}, {}, 1'000'000, 2'500, {},
+        QuantityLots::from_atoms(1'000), true};
     return state;
 }
 
@@ -182,7 +201,7 @@ const GatewayEvidenceState no_evidence;
 
 
 struct Fixture {
-    TradingState state;
+    TradingState state = catalog_test::state();
     EffectId effect_id;
 };
 
@@ -198,11 +217,11 @@ Fixture one_authorized_submit() {
                            EvaluateDecisionFrame{DecisionId{20},
                                                  EvaluationMode::authoritative,
                                                  frame(1, digest(0x44), state)}};
-    require(apply(state, evaluate, scratch).code == ApplyCode::applied,
+    require(catalog_test::apply(state, evaluate, scratch).code == ApplyCode::applied,
             "planner fixture could not retain its decision");
     const Command authorize{{CallerId{1}, RequestSequence{2}, digest(0x52)},
                             AuthorizeDecision{DecisionId{20}}};
-    const auto submit = apply(state, authorize, scratch);
+    const auto submit = catalog_test::apply(state, authorize, scratch);
     require(submit.code == ApplyCode::applied,
             "planner fixture could not authorize its submit");
     return {state, submit.effect_id()};
@@ -225,7 +244,7 @@ GatewayControlView control_of(const TradingState& state) {
 
 GatewayDeliveryState running_gateway() {
     GatewayDeliveryState delivery;
-    const TradingState before_anything;
+    const TradingState before_anything = catalog_test::state();
     require(begin_gateway_recovery(delivery, before_anything, 0) == 0,
             "an empty cluster produced suspect effects");
     require(delivery.started && !delivery.recovering,
@@ -236,7 +255,7 @@ GatewayDeliveryState running_gateway() {
 void test_a_fresh_pending_effect_is_scheduled_once() {
     const auto fixture = one_authorized_submit();
     const auto delivery = running_gateway();
-    const auto plan = plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
+    const auto plan = test_plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                                     capable_venue(), SendQuotaView{4},
                                     GatewayTimeouts{10}, 0);
     require(plan.send_count == 1 && plan.to_send[0] == fixture.effect_id,
@@ -249,7 +268,7 @@ void test_an_outstanding_effect_is_not_resent() {
     const auto fixture = one_authorized_submit();
     auto delivery = running_gateway();
     require(record_send(delivery, fixture.effect_id, 0), "record_send failed");
-    const auto plan = plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
+    const auto plan = test_plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                                     capable_venue(), SendQuotaView{4},
                                     GatewayTimeouts{10}, 1);
     require(plan.send_count == 0,
@@ -263,7 +282,7 @@ void test_a_passed_deadline_is_ambiguous_and_not_also_a_retry() {
     const auto fixture = one_authorized_submit();
     auto delivery = running_gateway();
     require(record_send(delivery, fixture.effect_id, 0), "record_send failed");
-    const auto plan = plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
+    const auto plan = test_plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                                     capable_venue(), SendQuotaView{4},
                                     GatewayTimeouts{8}, 20);
     require(plan.ambiguous_count == 1 && plan.now_ambiguous[0] == fixture.effect_id,
@@ -282,7 +301,7 @@ void test_an_answered_effect_is_never_blindly_resent() {
     require(attempt != nullptr && !attempt->awaiting_response &&
                 !attempt->resend_permitted,
             "a venue response left the effect marked resendable");
-    const auto plan = plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
+    const auto plan = test_plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                                     capable_venue(), SendQuotaView{4},
                                     GatewayTimeouts{10}, 5);
     require(plan.send_count == 0,
@@ -295,7 +314,7 @@ void test_a_provably_unsent_effect_retries_under_its_own_identity() {
     require(record_send(delivery, fixture.effect_id, 0), "first record_send failed");
     require(record_unsent(delivery, fixture.effect_id),
             "record_unsent did not find the attempt");
-    const auto plan = plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
+    const auto plan = test_plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                                     capable_venue(), SendQuotaView{4},
                                     GatewayTimeouts{10}, 5);
     require(plan.send_count == 1 && plan.to_send[0] == fixture.effect_id,
@@ -314,7 +333,7 @@ void test_unsent_retries_are_bounded() {
     auto delivery = running_gateway();
     const GatewayTimeouts timeouts{10, 3};
     for (std::uint32_t round = 0; round < timeouts.max_send_attempts; ++round) {
-        const auto plan = plan_delivery(fixture.state, delivery, no_evidence,
+        const auto plan = test_plan_delivery(fixture.state, delivery, no_evidence,
                                         control_of(fixture.state), capable_venue(),
                                         SendQuotaView{4}, timeouts, round);
         require(plan.send_count == 1,
@@ -322,7 +341,7 @@ void test_unsent_retries_are_bounded() {
         require(record_send(delivery, fixture.effect_id, round), "record_send failed");
         require(record_unsent(delivery, fixture.effect_id), "record_unsent failed");
     }
-    const auto plan = plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
+    const auto plan = test_plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                                     capable_venue(), SendQuotaView{4}, timeouts, 9);
     require(plan.send_count == 0, "the retry bound did not stop scheduling");
     require(plan.ambiguous_count == 0,
@@ -332,7 +351,7 @@ void test_unsent_retries_are_bounded() {
 void test_quota_bounds_the_plan() {
     const auto fixture = one_authorized_submit();
     const auto delivery = running_gateway();
-    require(plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
+    require(test_plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                           capable_venue(), SendQuotaView{0}, GatewayTimeouts{10}, 0)
                     .send_count == 0,
             "a zero quota still produced sends");
@@ -342,7 +361,7 @@ void test_a_halted_cluster_plans_no_sends() {
     auto fixture = one_authorized_submit();
     fixture.state.strategy_mode = StrategyMode::halted;
     const auto delivery = running_gateway();
-    const auto plan = plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
+    const auto plan = test_plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                                     capable_venue(), SendQuotaView{4},
                                     GatewayTimeouts{10}, 0);
     require(plan.send_count == 0, "a halted cluster still planned new risk");
@@ -351,11 +370,11 @@ void test_a_halted_cluster_plans_no_sends() {
 void test_the_planner_only_schedules_what_the_guard_permits() {
     const auto fixture = one_authorized_submit();
     const auto delivery = running_gateway();
-    const auto plan = plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
+    const auto plan = test_plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                                     capable_venue(), SendQuotaView{4},
                                     GatewayTimeouts{10}, 0);
     for (std::size_t index = 0; index < plan.send_count; ++index) {
-        require(evaluate_pre_send(fixture.state, plan.to_send[index],
+        require(test_evaluate_pre_send(fixture.state, plan.to_send[index],
                                   control_of(fixture.state), capable_venue(),
                                   SendQuotaView{4})
                     .permitted(),
@@ -385,7 +404,7 @@ Fixture stranded_submit() {
     const Command report{{CallerId{1}, RequestSequence{3},
                           observation_fingerprint(unknown)},
                          ObserveOrderEvent{unknown}};
-    require(apply(fixture.state, report, scratch).code == ApplyCode::applied,
+    require(catalog_test::apply(fixture.state, report, scratch).code == ApplyCode::applied,
             "the stranded fixture could not report an unknown outcome");
     return fixture;
 }
@@ -695,7 +714,7 @@ ApplyResult submit_answer(TradingState& state, const VenueObservation& answer,
     const Command command{{CallerId{1}, RequestSequence{sequence},
                            observation_fingerprint(answer)},
                           ObserveOrderEvent{answer}};
-    return apply(state, command, scratch);
+    return catalog_test::apply(state, command, scratch);
 }
 
 const ClusterOrder& sole_order(const TradingState& state) {
@@ -738,7 +757,7 @@ void book_partial_fill(TradingState& state, const EffectId effect_id,
     const Command command{{CallerId{1}, RequestSequence{sequence},
                            observation_fingerprint(fill)},
                           ObserveFill{fill}};
-    const auto applied = apply(state, command, scratch);
+    const auto applied = catalog_test::apply(state, command, scratch);
     require(applied.code == ApplyCode::applied,
             "the partial-fill fixture was refused, code " +
                 std::to_string(static_cast<int>(applied.code)));
@@ -770,7 +789,7 @@ Fixture pending_cancel() {
     ApplyScratch scratch;
     const Command cancel{{CallerId{1}, RequestSequence{11}, digest(0x72)},
                          RequestCancel{order}};
-    const auto requested = apply(fixture.state, cancel, scratch);
+    const auto requested = catalog_test::apply(fixture.state, cancel, scratch);
     require(requested.code == ApplyCode::applied,
             "the cancel fixture could not authorize its cancel");
     require(sole_order(fixture.state).state == ClusterOrderState::cancel_pending,
@@ -815,7 +834,7 @@ Fixture silent_cancel_with_booked_fill(const std::int64_t booked) {
     ApplyScratch scratch;
     const Command cancel{{CallerId{1}, RequestSequence{5'203}, digest(0x7B)},
                          RequestCancel{sole_order(fixture.state).cluster_order_id}};
-    const auto requested = apply(fixture.state, cancel, scratch);
+    const auto requested = catalog_test::apply(fixture.state, cancel, scratch);
     require(requested.code == ApplyCode::applied,
             "the booked silent-cancel fixture could not authorize its cancel");
 
@@ -902,7 +921,7 @@ struct CommitBoundary {
         if (outcome == CommitOutcome::leadership_lost) {
             return std::nullopt;
         }
-        truth = apply(*state, command, scratch);
+        truth = catalog_test::apply(*state, command, scratch);
         if (outcome == CommitOutcome::result_lost) return std::nullopt;
         return truth;
     }
@@ -1067,7 +1086,7 @@ void test_simulator_evidence_survives_every_pre_ack_crash_cut() {
 
     ApplyScratch scratch;
     const Command first_command{abandoned_identity, ObserveFill{*fill}};
-    const auto first_result = apply(fixture.state, first_command, scratch);
+    const auto first_result = catalog_test::apply(fixture.state, first_command, scratch);
     require(first_result.code == ApplyCode::applied,
             "the crash fixture could not commit its fill");
     const auto position_after_commit =
@@ -1084,7 +1103,7 @@ void test_simulator_evidence_survives_every_pre_ack_crash_cut() {
     const Command retry{{CallerId{1}, RequestSequence{50'001},
                          observation_fingerprint(*fill)},
                         ObserveFill{*fill}};
-    const auto replayed = apply(fixture.state, retry, scratch);
+    const auto replayed = catalog_test::apply(fixture.state, retry, scratch);
     require(replayed.code == ApplyCode::already_applied &&
                 fixture.state.risk_accounts[0].position_quantity ==
                     position_after_commit,
@@ -1156,13 +1175,13 @@ void test_a_saturated_evidence_queue_stops_producing_more_evidence() {
     require(!record_evidence_obligation(evidence, overflow, fill, fixture.effect_id, 0),
             "a full evidence queue accepted one more obligation");
 
-    require(plan_delivery(fixture.state, delivery, evidence, control_of(fixture.state),
+    require(test_plan_delivery(fixture.state, delivery, evidence, control_of(fixture.state),
                           capable_venue(), SendQuotaView{4}, timeouts, 0)
                     .send_count == 0,
             "a saturated evidence queue still scheduled a send");
 
     require(record_send(delivery, fixture.effect_id, 0), "record_send failed");
-    require(plan_delivery(fixture.state, delivery, evidence, control_of(fixture.state),
+    require(test_plan_delivery(fixture.state, delivery, evidence, control_of(fixture.state),
                           capable_venue(), SendQuotaView{4}, timeouts,
                           timeouts.response_deadline)
                     .ambiguous_count == 0,
@@ -1170,7 +1189,7 @@ void test_a_saturated_evidence_queue_stops_producing_more_evidence() {
 
     require(discharge_evidence(evidence, queued.front()), "discharge failed");
     require(!evidence_queue_saturated(evidence), "the queue stayed saturated");
-    require(plan_delivery(fixture.state, delivery, evidence, control_of(fixture.state),
+    require(test_plan_delivery(fixture.state, delivery, evidence, control_of(fixture.state),
                           capable_venue(), SendQuotaView{4}, timeouts,
                           timeouts.response_deadline)
                     .ambiguous_count == 1,
@@ -1192,7 +1211,7 @@ void test_a_gateway_crash_cannot_produce_a_second_order() {
             auto before_crash = running_gateway();
             if (cut >= 1) {
                 const auto decision =
-                    evaluate_pre_send(state, fixture.effect_id, control_of(state),
+                    test_evaluate_pre_send(state, fixture.effect_id, control_of(state),
                                       capable_venue(), SendQuotaView{4});
                 require(decision.permitted(), "the guard refused the fixture" + where);
                 require(venue.send(*decision.effect, now) == SendOutcome::accepted,
@@ -1214,13 +1233,13 @@ void test_a_gateway_crash_cannot_produce_a_second_order() {
         require(!recovery_complete(delivery, state),
                 "recovery completed before anything had been established" + where);
 
-        require(plan_delivery(state, delivery, no_evidence, control_of(state), capable_venue(),
+        require(test_plan_delivery(state, delivery, no_evidence, control_of(state), capable_venue(),
                               SendQuotaView{4}, timeouts, now)
                         .send_count == 0,
                 "a restarted gateway scheduled a possibly-sent submit" + where);
 
         now += timeouts.response_deadline;
-        const auto plan = plan_delivery(state, delivery, no_evidence, control_of(state),
+        const auto plan = test_plan_delivery(state, delivery, no_evidence, control_of(state),
                                         capable_venue(), SendQuotaView{4}, timeouts,
                                         now);
         require(plan.send_count == 0 && plan.ambiguous_count == 1 &&
@@ -1244,7 +1263,7 @@ void test_a_gateway_crash_cannot_produce_a_second_order() {
                 "the barrier never lifted" + where);
         delivery.recovering = false;
 
-        require(plan_delivery(state, delivery, no_evidence, control_of(state), capable_venue(),
+        require(test_plan_delivery(state, delivery, no_evidence, control_of(state), capable_venue(),
                               SendQuotaView{4}, timeouts, now)
                         .send_count == 0,
                 "the suspect submit became resendable once recovery finished" + where);
@@ -1296,7 +1315,7 @@ void test_a_gateway_crash_cannot_produce_a_second_order() {
                     is_fill ? CommandBody{ObserveFill{observation}}
                             : CommandBody{ObserveOrderEvent{observation}}};
                 ApplyScratch scratch;
-                (void)apply(state, command, scratch);
+                (void)catalog_test::apply(state, command, scratch);
             }
             require(sole_order(state).state == ClusterOrderState::filled,
                     "the in-flight evidence did not resolve the restart" + where);
@@ -1318,7 +1337,7 @@ void test_an_incomplete_effect_does_not_deadlock_restart_recovery() {
             "a settled incomplete effect raised the startup recovery barrier");
     require(recovery_complete(delivery, fixture.state),
             "a settled incomplete effect made recovery impossible to complete");
-    require(plan_delivery(fixture.state, delivery, no_evidence,
+    require(test_plan_delivery(fixture.state, delivery, no_evidence,
                           control_of(fixture.state), capable_venue(),
                           SendQuotaView{4}, GatewayTimeouts{}, 17)
                     .send_count == 0,
@@ -1332,7 +1351,7 @@ void test_an_effect_becoming_incomplete_during_recovery_clears_the_barrier() {
     ApplyScratch scratch;
     const Command cancel{{CallerId{1}, RequestSequence{3}, digest(0x61)},
                          RequestCancel{order}};
-    const auto requested = apply(fixture.state, cancel, scratch);
+    const auto requested = catalog_test::apply(fixture.state, cancel, scratch);
     require(requested.code == ApplyCode::applied,
             "the recovery fixture could not request its cancel");
 
@@ -1373,12 +1392,12 @@ void test_recovery_blocks_new_risk_without_blocking_a_cancel() {
             "the startup scan did not find the pending cancel");
     require(delivery.recovering, "the startup scan did not raise the barrier");
 
-    require(plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
+    require(test_plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                           capable_venue(), SendQuotaView{4}, timeouts, 0)
                     .send_count == 0,
             "a suspect cancel was redelivered before its outcome was declared");
     const auto matured =
-        plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
+        test_plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                       capable_venue(), SendQuotaView{4}, timeouts,
                       timeouts.response_deadline);
     require(matured.ambiguous_count == 1 &&
@@ -1387,7 +1406,7 @@ void test_recovery_blocks_new_risk_without_blocking_a_cancel() {
     require(record_response(delivery, fixture.effect_id), "record_response failed");
 
     require(delivery.recovering, "the barrier lifted on its own");
-    require(plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
+    require(test_plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                           capable_venue(), SendQuotaView{4}, timeouts,
                           timeouts.response_deadline)
                     .send_count == 1,
@@ -1396,13 +1415,13 @@ void test_recovery_blocks_new_risk_without_blocking_a_cancel() {
     const auto submit_fixture = one_authorized_submit();
     auto barred = running_gateway();
     barred.recovering = true;
-    require(plan_delivery(submit_fixture.state, barred, no_evidence,
+    require(test_plan_delivery(submit_fixture.state, barred, no_evidence,
                           control_of(submit_fixture.state), capable_venue(),
                           SendQuotaView{4}, timeouts, 0)
                     .send_count == 0,
             "the recovery barrier let new risk through");
     barred.recovering = false;
-    require(plan_delivery(submit_fixture.state, barred, no_evidence,
+    require(test_plan_delivery(submit_fixture.state, barred, no_evidence,
                           control_of(submit_fixture.state), capable_venue(),
                           SendQuotaView{4}, timeouts, 0)
                     .send_count == 1,
@@ -1414,7 +1433,7 @@ void test_a_gateway_that_never_scanned_sends_nothing() {
     const auto fixture = one_authorized_submit();
     const GatewayDeliveryState never_started;
     require(!never_started.started, "a fresh gateway claimed to have started");
-    require(plan_delivery(fixture.state, never_started, no_evidence, control_of(fixture.state),
+    require(test_plan_delivery(fixture.state, never_started, no_evidence, control_of(fixture.state),
                           capable_venue(), SendQuotaView{4}, GatewayTimeouts{10}, 0)
                     .send_count == 0,
             "a gateway that never scanned replicated state sent anyway");
@@ -1494,12 +1513,12 @@ void test_a_replayed_synthetic_answer_is_caught_by_command_identity() {
                                    observation_fingerprint(answer)};
     ApplyScratch scratch;
     const Command command{identity, ObserveOrderEvent{answer}};
-    const auto first = apply(fixture.state, command, scratch);
+    const auto first = catalog_test::apply(fixture.state, command, scratch);
     require(first.code == ApplyCode::applied, "the reconciliation answer failed");
     const auto version_after_first = fixture.state.state_version;
     const auto settled = sole_order(fixture.state).state;
 
-    const auto replay = apply(fixture.state, command, scratch);
+    const auto replay = catalog_test::apply(fixture.state, command, scratch);
     require(replay.code == first.code && replay.state_version == first.state_version,
             "a replayed synthetic answer did not replay its original result");
     require(fixture.state.state_version == version_after_first,
@@ -1513,7 +1532,7 @@ void test_a_replayed_synthetic_answer_is_caught_by_command_identity() {
     const auto position = fixture.state.risk_accounts[0].position_quantity;
     const CommandIdentity fresh{CallerId{1}, RequestSequence{4'421},
                                 observation_fingerprint(answer)};
-    (void)apply(fixture.state, Command{fresh, ObserveOrderEvent{answer}}, scratch);
+    (void)catalog_test::apply(fixture.state, Command{fresh, ObserveOrderEvent{answer}}, scratch);
     require(fixture.state.risk_accounts[0].position_quantity == position,
             "re-adjudicating the same verdict moved the position");
 }
@@ -1567,11 +1586,11 @@ void test_a_denied_order_releases_its_reservation_and_frees_the_slot() {
     const Command evaluate{{CallerId{1}, RequestSequence{21}, digest(0x53)},
                            EvaluateDecisionFrame{DecisionId{21},
                                                  EvaluationMode::authoritative, next}};
-    require(apply(state, evaluate, scratch).code == ApplyCode::applied,
+    require(catalog_test::apply(state, evaluate, scratch).code == ApplyCode::applied,
             "a fresh decision was refused after reconciliation");
     const Command authorize{{CallerId{1}, RequestSequence{22}, digest(0x54)},
                             AuthorizeDecision{DecisionId{21}}};
-    require(apply(state, authorize, scratch).code == ApplyCode::applied,
+    require(catalog_test::apply(state, authorize, scratch).code == ApplyCode::applied,
             "the logical slot stayed blocked after reconciliation resolved it");
 }
 
@@ -1840,7 +1859,7 @@ void test_a_cancel_is_deliverable_in_every_strategy_mode() {
                             StrategyMode::halted}) {
         auto state = fixture.state;
         state.strategy_mode = mode;
-        const auto decision = evaluate_pre_send(state, fixture.effect_id,
+        const auto decision = test_evaluate_pre_send(state, fixture.effect_id,
                                                 control_of(state), capable_venue(),
                                                 SendQuotaView{4});
         require(decision.permitted(),
@@ -1857,7 +1876,7 @@ void test_a_silent_cancel_redelivers_before_it_reconciles() {
 
     require(record_send(delivery, fixture.effect_id, 0), "record_send failed");
     require(record_response(delivery, fixture.effect_id), "record_response failed");
-    const auto plan = plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
+    const auto plan = test_plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                                     capable_venue(), SendQuotaView{4}, timeouts, 5);
     require(plan.send_count == 1 && plan.to_send[0] == fixture.effect_id,
             "a silent cancel was not redelivered under its own identity");
@@ -1878,7 +1897,7 @@ void test_a_silent_cancel_redelivers_before_it_reconciles() {
             "an exhausted silent cancel was not scheduled for query");
     require(recon.to_query[0].need == ReconciliationNeed::cancel_unconfirmed,
             "a silent cancel was mistaken for a silent submission");
-    require(plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
+    require(test_plan_delivery(fixture.state, delivery, no_evidence, control_of(fixture.state),
                           capable_venue(), SendQuotaView{4}, timeouts, 9)
                     .send_count == 0,
             "cancel redelivery was unbounded");
@@ -1909,7 +1928,7 @@ void test_a_rejected_cancel_does_not_prove_the_order_is_live() {
     ApplyScratch scratch;
     const Command fresh_cancel{{CallerId{1}, RequestSequence{22}, digest(0x76)},
                                RequestCancel{sole_order(fixture.state).cluster_order_id}};
-    require(apply(fixture.state, fresh_cancel, scratch).code == ApplyCode::applied,
+    require(catalog_test::apply(fixture.state, fresh_cancel, scratch).code == ApplyCode::applied,
             "a fresh cancel could not be authorized after reconciliation");
 }
 
@@ -1957,7 +1976,7 @@ void test_states_reached_only_through_phase_five_survive_a_snapshot() {
         const auto encoded = encode_state_snapshot(state, bytes);
         require(encoded.error == StateSnapshotError::none,
                 std::string("state did not encode: ") + what);
-        TradingState restored;
+        TradingState restored = catalog_test::state();
         StateSnapshotScratch scratch;
         const auto decoded = decode_state_snapshot(
             {bytes.data(), encoded.bytes_written}, restored, scratch);
@@ -1965,6 +1984,8 @@ void test_states_reached_only_through_phase_five_survive_a_snapshot() {
                 std::string("state did not decode: ") + what);
         require(decoded.state_digest == encoded.state_digest,
                 std::string("state digest changed across a round trip: ") + what);
+        require(execution_catalog_bindings_valid(restored, catalog_test::standard_catalog()),
+                std::string("restored lifecycle lost its catalog binding: ") + what);
         std::array<std::byte, kMaxStateSnapshotBytes> again{};
         const auto reencoded = encode_state_snapshot(restored, again);
         require(reencoded.error == StateSnapshotError::none &&
@@ -2062,7 +2083,7 @@ void test_a_conflicted_order_keeps_accounting_valid_executions() {
         const Command command{{CallerId{1}, RequestSequence{9'503},
                                observation_fingerprint(execution)},
                               ObserveFill{execution}};
-        const auto booked = apply(fixture.state, command, fill_scratch);
+        const auto booked = catalog_test::apply(fixture.state, command, fill_scratch);
         require(booked.code == ApplyCode::applied,
                 "a valid execution that fits the retained reservation was "
                 "refused against a conflicted order, code " +
@@ -2112,7 +2133,7 @@ void test_a_conflicted_order_keeps_accounting_valid_executions() {
     const Command repeat{{CallerId{1}, RequestSequence{9'510},
                           observation_fingerprint(duplicate)},
                          ObserveFill{duplicate}};
-    (void)apply(fixture.state, repeat, scratch);
+    (void)catalog_test::apply(fixture.state, repeat, scratch);
     require(fixture.state.risk_accounts[0].position_quantity.atoms() ==
                 position_now,
             "a duplicate execution was booked twice against a conflicted order");
@@ -2121,7 +2142,7 @@ void test_a_conflicted_order_keeps_accounting_valid_executions() {
     const auto encoded = encode_state_snapshot(fixture.state, bytes);
     require(encoded.error == StateSnapshotError::none,
             "the conflicted-but-accounted state did not encode");
-    TradingState restored;
+    TradingState restored = catalog_test::state();
     StateSnapshotScratch snapshot_scratch;
     require(decode_state_snapshot({bytes.data(), encoded.bytes_written}, restored,
                                   snapshot_scratch)
@@ -2139,7 +2160,7 @@ ApplyResult acknowledge_gateway_results(TradingState& state,
     const Command command{{CallerId{1}, RequestSequence{command_sequence},
                            request_digest(command_sequence)},
                           AcknowledgeGatewayResults{RequestSequence{through}}};
-    return apply(state, command, scratch);
+    return catalog_test::apply(state, command, scratch);
 }
 
 bool has_receipt(const TradingState& state, const CallerId caller_id,
@@ -2178,7 +2199,7 @@ void test_gateway_acknowledgement_gates_venue_receipt_reclamation() {
                                 observation_fingerprint(rejected)},
                                ObserveOrderEvent{rejected}};
         if (cycle == 0) first_event = reject_command;
-        const auto rejected_result = apply(fixture.state, reject_command, scratch);
+        const auto rejected_result = catalog_test::apply(fixture.state, reject_command, scratch);
         if (rejected_result.code == ApplyCode::venue_event_capacity_exceeded) {
             blocked_event = rejected;
             capacity_reached = true;
@@ -2207,7 +2228,7 @@ void test_gateway_acknowledgement_gates_venue_receipt_reclamation() {
         const Command again{{CallerId{1}, RequestSequence{cancel_sequence},
                              request_digest(cancel_sequence)},
                             RequestCancel{order_id}};
-        if (apply(fixture.state, again, scratch).code != ApplyCode::applied) break;
+        if (catalog_test::apply(fixture.state, again, scratch).code != ApplyCode::applied) break;
     }
 
     require(capacity_reached,
@@ -2245,7 +2266,7 @@ void test_gateway_acknowledgement_gates_venue_receipt_reclamation() {
             "receipt reclamation regressed the order evidence coordinate");
 
     const auto before = fixture.state;
-    const auto replay = apply(fixture.state, first_event, scratch);
+    const auto replay = catalog_test::apply(fixture.state, first_event, scratch);
     require(replay.code == ApplyCode::request_expired,
             "a reclaimed command identity was re-executed");
     require(std::memcmp(&fixture.state.risk_accounts, &before.risk_accounts,
@@ -2277,7 +2298,7 @@ void test_conflicting_fill_keeps_exact_evidence_after_acknowledged_sweep() {
                            observation_fingerprint(fill)},
                           ObserveFill{fill}};
 
-    const auto conflict = apply(fixture.state, command, scratch);
+    const auto conflict = catalog_test::apply(fixture.state, command, scratch);
     require(conflict.code == ApplyCode::fill_quantity_conflict &&
                 sole_order(fixture.state).state == ClusterOrderState::conflict,
             "the overfill fixture did not retain a conflict");
@@ -2291,14 +2312,14 @@ void test_conflicting_fill_keeps_exact_evidence_after_acknowledged_sweep() {
             {CallerId{3}, RequestSequence{index}, request_digest(index)},
             SetStrategyMode{fixture.state.strategy_mode, fixture.state.kill_epoch,
                             fixture.state.executor_generation}};
-        require(apply(fixture.state, pressure, scratch).code ==
+        require(catalog_test::apply(fixture.state, pressure, scratch).code ==
                     ApplyCode::already_applied,
                 "receipt-pressure command was not admitted");
     }
 
     require(has_receipt(fixture.state, CallerId{1}, RequestSequence{3}),
             "an acknowledged conflicting fill lost its exact execution receipt");
-    require(apply(fixture.state, command, scratch) == conflict,
+    require(catalog_test::apply(fixture.state, command, scratch) == conflict,
             "a conflicting fill could not replay its exact retained result");
 }
 
@@ -2323,7 +2344,7 @@ void test_unacknowledged_full_fill_result_survives_group_and_receipt_sweeps() {
     const Command command{{CallerId{1}, RequestSequence{3},
                            observation_fingerprint(fill)},
                           ObserveFill{fill}};
-    const auto result = apply(fixture.state, command, scratch);
+    const auto result = catalog_test::apply(fixture.state, command, scratch);
     require(result.code == ApplyCode::applied,
             "the full-fill fixture did not apply");
 
@@ -2334,7 +2355,7 @@ void test_unacknowledged_full_fill_result_survives_group_and_receipt_sweeps() {
             EvaluateDecisionFrame{DecisionId{20'000 + index},
                                   EvaluationMode::authoritative,
                                   frame(1, evidence, fixture.state)}};
-        (void)apply(fixture.state, evaluate, scratch);
+        (void)catalog_test::apply(fixture.state, evaluate, scratch);
     }
     require(fixture.state.order_count == 0,
             "receipt test did not reclaim the resolved order group");
@@ -2344,14 +2365,14 @@ void test_unacknowledged_full_fill_result_survives_group_and_receipt_sweeps() {
             {CallerId{4}, RequestSequence{index}, request_digest(index)},
             SetStrategyMode{fixture.state.strategy_mode, fixture.state.kill_epoch,
                             fixture.state.executor_generation}};
-        (void)apply(fixture.state, pressure, scratch);
+        (void)catalog_test::apply(fixture.state, pressure, scratch);
     }
 
     require(has_receipt(fixture.state, CallerId{1}, RequestSequence{3}),
             "an unacknowledged applied fill result was reclaimed");
     const auto position_before =
         fixture.state.risk_accounts[0].position_quantity;
-    require(apply(fixture.state, command, scratch) == result &&
+    require(catalog_test::apply(fixture.state, command, scratch) == result &&
                 fixture.state.risk_accounts[0].position_quantity ==
                     position_before,
             "a lost full-fill result could not replay without moving position");
@@ -2373,7 +2394,7 @@ void test_gateway_ack_receipt_cannot_expire_an_uncommitted_sequence_gap() {
     const Command first{{CallerId{2}, RequestSequence{1},
                          observation_fingerprint(rejected)},
                         ObserveOrderEvent{rejected}};
-    require(apply(fixture.state, first, scratch).code == ApplyCode::applied,
+    require(catalog_test::apply(fixture.state, first, scratch).code == ApplyCode::applied,
             "the first evidence result did not commit");
 
     auto answer = reconciled(fixture.state, order.effect_id, 88, 0, 704);
@@ -2382,7 +2403,7 @@ void test_gateway_ack_receipt_cannot_expire_an_uncommitted_sequence_gap() {
                       ObserveOrderEvent{answer}};
     const Command ack{{CallerId{2}, RequestSequence{3}, request_digest(3)},
                       AcknowledgeGatewayResults{RequestSequence{1}}};
-    require(apply(fixture.state, ack, scratch).code == ApplyCode::applied,
+    require(catalog_test::apply(fixture.state, ack, scratch).code == ApplyCode::applied,
             "the acknowledgement above the sequence gap did not commit");
 
     for (std::uint64_t index = 1; index <= kMaxRequestReceipts + 8; ++index) {
@@ -2390,10 +2411,10 @@ void test_gateway_ack_receipt_cannot_expire_an_uncommitted_sequence_gap() {
             {CallerId{4}, RequestSequence{index}, request_digest(index)},
             SetStrategyMode{fixture.state.strategy_mode, fixture.state.kill_epoch,
                             fixture.state.executor_generation}};
-        (void)apply(fixture.state, pressure, scratch);
+        (void)catalog_test::apply(fixture.state, pressure, scratch);
     }
 
-    require(apply(fixture.state, gap, scratch).code == ApplyCode::applied,
+    require(catalog_test::apply(fixture.state, gap, scratch).code == ApplyCode::applied,
             "an acknowledgement command expired uncommitted evidence below it");
 }
 
@@ -2438,7 +2459,7 @@ Fixture mixed_identity_domain_watermark_fixture(
         const Command cancel{{CallerId{1}, RequestSequence{++request_sequence},
                               request_digest(request_sequence)},
                              RequestCancel{order_id}};
-        require(apply(fixture.state, cancel, scratch).code == ApplyCode::applied,
+        require(catalog_test::apply(fixture.state, cancel, scratch).code == ApplyCode::applied,
                 "the mixed-domain fixture could not request its next cancel");
     }
 
@@ -2471,7 +2492,7 @@ void test_a_fresh_fill_cannot_be_expired_by_gateway_authored_control_sequences()
 
     const auto position_before =
         fixture.state.risk_accounts[0].position_quantity;
-    const auto applied = apply(fixture.state, command, scratch);
+    const auto applied = catalog_test::apply(fixture.state, command, scratch);
     require(applied.code == ApplyCode::applied,
             "a fresh execution was discarded by a watermark from another "
             "identity domain, code " +
@@ -2516,9 +2537,9 @@ void test_the_guard_refuses_an_incoherent_control_snapshot() {
         const Command advance{{CallerId{1}, RequestSequence{40}, digest(0x61)},
                               AdvanceKillEpoch{KillEpoch{
                                   state.kill_epoch.value() + 1}}};
-        require(apply(state, advance, scratch).code == ApplyCode::applied,
+        require(catalog_test::apply(state, advance, scratch).code == ApplyCode::applied,
                 "the kill-epoch fixture could not advance");
-        require(!evaluate_pre_send(state, fixture.effect_id, stale, capable_venue(),
+        require(!test_evaluate_pre_send(state, fixture.effect_id, stale, capable_venue(),
                                    SendQuotaView{4})
                      .permitted(),
                 "a send was authorized against a kill epoch the supplied state "
@@ -2529,9 +2550,9 @@ void test_the_guard_refuses_an_incoherent_control_snapshot() {
         const Command advance{{CallerId{1}, RequestSequence{41}, digest(0x62)},
                               SetExecutorGeneration{ExecutorGeneration{
                                   state.executor_generation.value() + 1}}};
-        require(apply(state, advance, scratch).code == ApplyCode::applied,
+        require(catalog_test::apply(state, advance, scratch).code == ApplyCode::applied,
                 "the generation fixture could not advance");
-        require(!evaluate_pre_send(state, fixture.effect_id, stale, capable_venue(),
+        require(!test_evaluate_pre_send(state, fixture.effect_id, stale, capable_venue(),
                                    SendQuotaView{4})
                      .permitted(),
                 "a send was authorized against an executor generation the "
@@ -2542,9 +2563,9 @@ void test_the_guard_refuses_an_incoherent_control_snapshot() {
         const Command halt{{CallerId{1}, RequestSequence{42}, digest(0x63)},
                            SetStrategyMode{StrategyMode::halted, state.kill_epoch,
                                            state.executor_generation}};
-        require(apply(state, halt, scratch).code == ApplyCode::applied,
+        require(catalog_test::apply(state, halt, scratch).code == ApplyCode::applied,
                 "the halt fixture could not apply");
-        require(!evaluate_pre_send(state, fixture.effect_id, stale, capable_venue(),
+        require(!test_evaluate_pre_send(state, fixture.effect_id, stale, capable_venue(),
                                    SendQuotaView{4})
                      .permitted(),
                 "new risk was authorized against a strategy mode the supplied "
@@ -2596,7 +2617,7 @@ void test_repeated_cancel_cycles_cannot_starve_fill_capacity() {
         const Command again{{CallerId{1}, RequestSequence{cancel_sequence},
                              request_digest(cancel_sequence)},
                             RequestCancel{order_id}};
-        if (apply(fixture.state, again, scratch).code != ApplyCode::applied) break;
+        if (catalog_test::apply(fixture.state, again, scratch).code != ApplyCode::applied) break;
     }
 
     const auto events =
@@ -2633,7 +2654,7 @@ void test_repeated_cancel_cycles_cannot_starve_fill_capacity() {
     const Command command{{CallerId{1}, RequestSequence{++sequence},
                            observation_fingerprint(fill)},
                           ObserveFill{fill}};
-    const auto applied = apply(fixture.state, command, fill_scratch);
+    const auto applied = catalog_test::apply(fixture.state, command, fill_scratch);
     if (applied.code == ApplyCode::fill_capacity_exceeded ||
         applied.code == ApplyCode::venue_event_capacity_exceeded) {
         require(sole_order(fixture.state).state == ClusterOrderState::conflict,
@@ -2677,7 +2698,7 @@ void test_a_rejected_cancel_can_still_be_finally_reconciled() {
     const auto encoded = encode_state_snapshot(fixture.state, bytes);
     require(encoded.error == StateSnapshotError::none,
             "the resolved rejected-cancel state did not encode");
-    TradingState restored;
+    TradingState restored = catalog_test::state();
     StateSnapshotScratch scratch;
     require(decode_state_snapshot({bytes.data(), encoded.bytes_written}, restored,
                                   scratch)
@@ -2739,7 +2760,7 @@ void test_new_risk_is_still_refused_outside_normal() {
                             StrategyMode::reduce_only, StrategyMode::halted}) {
         auto state = fixture.state;
         state.strategy_mode = mode;
-        const auto decision = evaluate_pre_send(state, fixture.effect_id,
+        const auto decision = test_evaluate_pre_send(state, fixture.effect_id,
                                                 control_of(state), capable_venue(),
                                                 SendQuotaView{4});
         require(decision.refusal == PreSendRefusal::control_forbids_new_risk,
@@ -2968,7 +2989,7 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
 
     RunOutcome outcome;
     const auto submit = [&](const Command& command) {
-        const auto result = apply(state, command, scratch);
+        const auto result = catalog_test::apply(state, command, scratch);
         if (is_capacity_refusal(result.code)) {
             ++outcome.horizons.capacity_refusals[result.code];
         }
@@ -3197,7 +3218,7 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
         }
 
         const auto control = control_of(state);
-        const auto plan = plan_delivery(state, delivery, evidence, control, capable_venue(),
+        const auto plan = test_plan_delivery(state, delivery, evidence, control, capable_venue(),
                                         SendQuotaView{4}, timeouts, now);
 
         for (std::size_t index = 0; index < plan.ambiguous_count; ++index) {
@@ -3225,7 +3246,7 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
 
         for (std::size_t index = 0; index < plan.send_count; ++index) {
             const auto effect_id = plan.to_send[index];
-            const auto decision = evaluate_pre_send(state, effect_id, control,
+            const auto decision = test_evaluate_pre_send(state, effect_id, control,
                                                     capable_venue(), SendQuotaView{4});
             require(decision.permitted(),
                     "the planner scheduled an effect the guard refuses");
@@ -4068,7 +4089,7 @@ SlotAuthorization authorize_on_slot(TradingState& state, std::uint64_t& sequence
                           request_digest(request)},
                          RecordSourceEvent{SourceId{12}, SourceGeneration{1},
                                            SourceSequence{sequence}, evidence}};
-    auto code = apply(state, record, scratch).code;
+    auto code = catalog_test::apply(state, record, scratch).code;
     if (code != ApplyCode::applied) return {EffectId{}, code};
 
     auto next = frame(sequence, evidence, state);
@@ -4079,13 +4100,13 @@ SlotAuthorization authorize_on_slot(TradingState& state, std::uint64_t& sequence
                             request_digest(request)},
                            EvaluateDecisionFrame{id, EvaluationMode::authoritative,
                                                  next}};
-    code = apply(state, evaluate, scratch).code;
+    code = catalog_test::apply(state, evaluate, scratch).code;
     if (code != ApplyCode::applied) return {EffectId{}, code};
 
     const Command authorize{{CallerId{1}, RequestSequence{++request},
                              request_digest(request)},
                             AuthorizeDecision{id}};
-    const auto authorized = apply(state, authorize, scratch);
+    const auto authorized = catalog_test::apply(state, authorize, scratch);
     if (authorized.code != ApplyCode::applied) {
         return {EffectId{}, authorized.code};
     }
@@ -4099,7 +4120,7 @@ void rotate_multi_slot_policy(TradingState& state, std::uint64_t& request,
     const auto submit = [&](CommandBody body) {
         const auto identity = CommandIdentity{
             CallerId{1}, RequestSequence{++request}, request_digest(request)};
-        return apply(state, Command{identity, std::move(body)}, scratch).code;
+        return catalog_test::apply(state, Command{identity, std::move(body)}, scratch).code;
     };
 
     const auto next_policy = multi_slot_policy(version);
@@ -4134,7 +4155,7 @@ void conflict_the_order(TradingState& state, const ClusterOrderId order,
                                observation_fingerprint(observation)},
                               is_fill ? CommandBody{ObserveFill{observation}}
                                       : CommandBody{ObserveOrderEvent{observation}}};
-        return apply(state, command, scratch).code;
+        return catalog_test::apply(state, command, scratch).code;
     };
     const auto base = [&](const VenueObservationKind kind) {
         VenueObservation value;
@@ -4165,7 +4186,7 @@ void conflict_the_order(TradingState& state, const ClusterOrderId order,
     ApplyScratch scratch;
     const Command cancel{{CallerId{1}, RequestSequence{++request}, digest(0x7B)},
                          RequestCancel{order}};
-    const auto requested = apply(state, cancel, scratch);
+    const auto requested = catalog_test::apply(state, cancel, scratch);
     require(requested.code == ApplyCode::applied,
             "the slot fixture could not authorize its cancel");
 

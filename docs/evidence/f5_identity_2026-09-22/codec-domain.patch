@@ -1,0 +1,10 @@
+--- src/v2_static_identity.cpp	2026-09-22 15:50:14
++++ /private/tmp/f5-static-identity.TnVC6D/mutant_domain.cpp	2026-09-22 15:53:34
+@@ -38,7 +38,7 @@
+ constexpr std::size_t kVotersOffset = 76;
+ constexpr std::size_t kFixedBytesWithoutVoters = 112;
+ constexpr std::string_view kManifestDomain =
+-    "velocita.v2.cluster-manifest.v1";
++    "velocita.v2.cluster-manifest.v2";
+ constexpr std::string_view kAuthorityDomain =
+     "velocita.v2.authority-domain.v1";

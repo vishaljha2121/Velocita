@@ -11,6 +11,7 @@
 #include <stdexcept>
 #include <string>
 #include <variant>
+#include <vector>
 
 namespace {
 
@@ -154,6 +155,113 @@ void replace_command_digest(std::span<std::byte> frame) {
               frame.begin() + static_cast<std::ptrdiff_t>(digest_offset));
 }
 
+// Schema 9 changed only the ConfigureRiskLimits body and the admitted result
+// enums. For every other frame, rewriting the schema byte back to 8 and
+// resealing must reproduce the reviewed schema-8 golden exactly.
+std::string schema8_full_hash(std::span<const std::byte> frame,
+                              const std::size_t digest_input_offset) {
+    using namespace velocita::v2;
+    std::vector<std::byte> legacy(frame.begin(), frame.end());
+    legacy[digest_input_offset] = std::byte{8};
+    const auto digest_offset = legacy.size() - kDigestBytes;
+    const auto calculated = sha256_digest(std::span<const std::byte>(legacy).subspan(
+        digest_input_offset, digest_offset - digest_input_offset));
+    std::copy(calculated.bytes.begin(), calculated.bytes.end(),
+              legacy.begin() + static_cast<std::ptrdiff_t>(digest_offset));
+    return to_hex(sha256_digest(legacy));
+}
+
+void test_execution_catalog_install_has_independent_canonical_bytes() {
+    using namespace velocita::v2;
+    Digest256 root;
+    for (std::size_t index = 0; index < root.bytes.size(); ++index) {
+        root.bytes[index] = static_cast<std::byte>(0x80U + index);
+    }
+    const auto original = command(
+        0x0102030405060708ULL,
+        InstallExecutionCatalog{root, KillEpoch{0x1112131415161718ULL},
+                                ExecutorGeneration{0x2122232425262728ULL}});
+
+    std::array<std::byte, 140> expected{};
+    const std::array magic{std::byte{'V'}, std::byte{'2'}, std::byte{'K'},
+                           std::byte{'C'}};
+    std::copy(magic.begin(), magic.end(), expected.begin());
+    auto put = [&](std::size_t offset, std::uint64_t value,
+                   const std::size_t width) {
+        for (std::size_t index = 0; index < width; ++index) {
+            expected[offset + index] =
+                static_cast<std::byte>((value >> (index * 8U)) & 0xffU);
+        }
+    };
+    put(4, 96, 4);  // identity 48 + install body 48
+    put(8, kKernelCodecSchemaVersion, 2);
+    put(10, 20, 2);
+    put(12, 12, 8);
+    put(20, 0x0102030405060708ULL, 8);
+    expected[28] = std::byte{0x44};
+    std::copy(root.bytes.begin(), root.bytes.end(), expected.begin() + 60);
+    put(92, 0x1112131415161718ULL, 8);
+    put(100, 0x2122232425262728ULL, 8);
+    const auto expected_digest = sha256_digest(
+        std::span<const std::byte>{expected}.subspan(8, 100));
+    std::copy(expected_digest.bytes.begin(), expected_digest.bytes.end(),
+              expected.begin() + 108);
+
+    std::array<std::byte, kMaxKernelCommandBytes> actual{};
+    const auto encoded = encode_kernel_command(original, actual);
+    require(encoded.error == KernelCodecError::none &&
+                encoded.bytes_written == expected.size() &&
+                std::equal(expected.begin(), expected.end(), actual.begin()),
+            "InstallExecutionCatalog bytes differ from independent kind-20 oracle");
+
+    Command restored;
+    KernelCommandCodecScratch scratch;
+    require(decode_kernel_command({actual.data(), encoded.bytes_written}, restored,
+                                  scratch).error == KernelCodecError::none &&
+                std::holds_alternative<InstallExecutionCatalog>(restored.body) &&
+                std::get<InstallExecutionCatalog>(restored.body).catalog_root == root,
+            "InstallExecutionCatalog did not decode canonically");
+
+    auto invalid = original;
+    std::get<InstallExecutionCatalog>(invalid.body).catalog_root = {};
+    require(encode_kernel_command(invalid, actual).error ==
+                KernelCodecError::invalid_value,
+            "zero execution-catalog root was encoded");
+}
+
+void test_catalog_apply_codes_are_appended_and_canonical() {
+    using namespace velocita::v2;
+    constexpr std::uint8_t first = 62;
+    require(static_cast<std::uint8_t>(ApplyCode::reconciliation_required) == 61 &&
+                static_cast<std::uint8_t>(ApplyCode::catalog_not_installed) == first &&
+                static_cast<std::uint8_t>(ApplyCode::catalog_installation_blocked) ==
+                    first + 1 &&
+                static_cast<std::uint8_t>(ApplyCode::immutable_catalog_conflict) ==
+                    first + 2 &&
+                static_cast<std::uint8_t>(ApplyCode::catalog_row_not_found) ==
+                    first + 3 &&
+                static_cast<std::uint8_t>(ApplyCode::catalog_binding_mismatch) ==
+                    first + 4,
+            "catalog ApplyCode ordinals are not the approved append-only sequence");
+    for (const auto code : {ApplyCode::catalog_not_installed,
+                            ApplyCode::catalog_installation_blocked,
+                            ApplyCode::immutable_catalog_conflict,
+                            ApplyCode::catalog_row_not_found,
+                            ApplyCode::catalog_binding_mismatch}) {
+        ApplyResult result;
+        result.code = code;
+        std::array<std::byte, kKernelResultBytes> bytes{};
+        ApplyResult restored;
+        require(encode_kernel_result(result, bytes).error == KernelCodecError::none &&
+                    bytes[kKernelResultPayloadOffset] ==
+                        static_cast<std::byte>(static_cast<std::uint8_t>(code)) &&
+                    decode_kernel_result(bytes, restored).error ==
+                        KernelCodecError::none &&
+                    restored.code == code,
+                "catalog ApplyCode was not encoded and decoded canonically");
+    }
+}
+
 void test_every_command_alternative_round_trips_canonically() {
     using namespace velocita::v2;
     const std::array commands{
@@ -219,7 +327,7 @@ void test_command_identity_and_kind_are_explicit() {
     const std::array expected_prefix{
         std::byte{'V'}, std::byte{'2'}, std::byte{'K'}, std::byte{'C'},
         std::byte{104}, std::byte{0}, std::byte{0}, std::byte{0},
-        std::byte{7}, std::byte{0},
+        std::byte{9}, std::byte{0},
         std::byte{8}, std::byte{0},
         std::byte{12}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
@@ -229,10 +337,13 @@ void test_command_identity_and_kind_are_explicit() {
     const auto frame_hash = to_hex(encoded.frame_digest);
     const auto full_hash =
         to_hex(sha256_digest({bytes.data(), encoded.bytes_written}));
+    require(schema8_full_hash({bytes.data(), encoded.bytes_written}, kKernelCommandSchemaOffset) ==
+                "fa55af747a17df7a03daa48c43e3f982a05dfbd9b03f85e411728856810a9fcc",
+            "V9 changed more than the schema byte of the source command");
     require(frame_hash ==
-                "331636abe72ec39fb783b750c9471cfae6dbee7fe8f353f1d97ac8d2a2324165" &&
+                "3458d2bef8d979a9d7d8ab20d61c4cab5033ae6b9a967ad0d6bd14d947c6b8da" &&
                 full_hash ==
-                    "3ccea659ca9468349dea4f23b70455e23aea734e002a1932e08bb4240aa08fd0",
+                    "a20adaad8354630d8024d97273607f186262564550e38ddc15048c791c78f4f6",
             "source-command golden corpus changed: frame=" + frame_hash +
                 " full=" + full_hash);
     // Approved V5 migration changes only schema/digests for this old command.
@@ -270,9 +381,8 @@ void test_decision_kind_is_explicit_and_not_a_variant_ordinal() {
 
 void test_phase4_authorization_command_and_result_are_canonical_v4() {
     using namespace velocita::v2;
-    require(kKernelCodecSchemaVersion == 7,
-            "the native/synthetic observation origin did not move results to "
-            "schema V7");
+    require(kKernelCodecSchemaVersion == 9,
+            "position limits did not move the codec to schema V9");
 
     const auto original = command(44, AuthorizeDecision{DecisionId{21}});
     std::array<std::byte, kMaxKernelCommandBytes> command_bytes{};
@@ -349,10 +459,13 @@ void test_result_round_trip_is_canonical() {
             "canonical result did not round trip exactly");
     const auto frame_hash = to_hex(encoded.frame_digest);
     const auto full_hash = to_hex(sha256_digest(bytes));
+    require(schema8_full_hash(bytes, kKernelResultSchemaOffset) ==
+                "7e1cfff95c9f37025b1c3ccae5d5adb52399ed2dc7ca89427a9d41205d07c005",
+            "V9 changed more than the schema byte of the apply result");
     require(frame_hash ==
-                "d20eaba6c5703340f6356147abe90b850e1742c9d7fadd3b11f016a81515ff47" &&
+                "b54c30fe22cc9cd1410d2968bb4b4ff0d1e27782ed5ccb051498b647b698cf0f" &&
                 full_hash ==
-                    "277cb91ab3e73b53c638a93dbb17f53f05ca7cbdee40b58aa47244a43f3fc7f5",
+                    "1f101f02441fee3ded2e94600e3d5261c2d91aa2ad4987d7035cd30e35b3da8c",
             "apply-result golden corpus changed: frame=" + frame_hash +
                 " full=" + full_hash);
 }
@@ -691,6 +804,8 @@ void test_encode_bounds_and_invalid_values() {
 
 int main() {
     try {
+        test_execution_catalog_install_has_independent_canonical_bytes();
+        test_catalog_apply_codes_are_appended_and_canonical();
         test_every_command_alternative_round_trips_canonically();
         test_command_identity_and_kind_are_explicit();
         test_decision_kind_is_explicit_and_not_a_variant_ordinal();

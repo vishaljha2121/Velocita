@@ -205,11 +205,12 @@ void test_outcome_counters_classify_refusals() {
     observe(ApplyCode::fill_quantity_conflict);
     observe(ApplyCode::order_capacity_exceeded);
     observe(ApplyCode::stale_risk_state);
+    observe(ApplyCode::position_limit_exceeded);
     observe(ApplyCode::stale_control_generation);
     observe(ApplyCode::invalid_command);
     require(counters.applied == 1 && counters.duplicates == 1 &&
                 counters.conflicts == 3 && counters.capacity_refusals == 1 &&
-                counters.risk_refusals == 1 && counters.control_refusals == 1 &&
+                counters.risk_refusals == 2 && counters.control_refusals == 1 &&
                 counters.other_refusals == 1,
             "outcome classification did not separate the refusal families");
 }

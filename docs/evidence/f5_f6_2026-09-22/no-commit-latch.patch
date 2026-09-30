@@ -1,0 +1,11 @@
+--- src/v2_replication.cpp	2026-09-22 15:10:27
++++ /private/tmp/f5f6-integration.BeTkrZ/no-commit-latch.cpp	2026-09-22 15:11:43
+@@ -679,7 +679,7 @@
+         metadata_store_.save(next);
+         metadata_ = next;
+     } catch (...) {
+-        storage_failed_ = true;
++        // MUTANT: no commit failure latch.
+         throw;
+     }
+ }

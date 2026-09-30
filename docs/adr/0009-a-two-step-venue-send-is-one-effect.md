@@ -3,6 +3,18 @@
 Date: 2026-09-17
 Status: Accepted
 
+## Applicability amendment — 2026-09-21
+
+The decision below applies ONLY where prepare is verified incapable of submitting
+or activating a trade without a later signature. The captured True Markets MCP
+description explicitly allows direct submission by prepare; that surface does
+not satisfy this premise. Do not connect it to the existing helper unchanged.
+An ambiguous potentially submitting prepare must retain unknown exposure, not
+be classified as retryable pre-send failure. Submitted is not filled or final.
+An error or rate-limit label alone also does not prove absence of submission.
+ADR 0011 records the unresolved admission and settlement requirements. This
+amendment changes applicability, not canonical bytes or the generic helper.
+
 No byte contract change. No change to the reducer. This is about what the
 adapter owes the gateway.
 

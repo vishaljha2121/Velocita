@@ -1,0 +1,6 @@
+baseline           node protocol tests passed
+any_reason         node protocol tests failed: reason 0
+trailing_allowed   node protocol tests failed: trailing byte
+lane_unchecked     node protocol tests failed: unknown lane decoded
+oversize_ingress   node protocol tests failed: oversized ingress decoded
+digest_offset      node protocol tests failed: golden response did not decode to its fields

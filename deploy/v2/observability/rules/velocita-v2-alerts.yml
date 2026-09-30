@@ -1,0 +1,175 @@
+# M3a alert rules. Delivery (phone push/e-mail) is NOT configured yet: the owner
+# chooses the channel first (roadmap M3a). Grafana shows these as firing/pending.
+groups:
+  - name: velocita-v2
+    rules:
+      - alert: VelocitaVoterDown
+        expr: velocita_v2_up == 0 or up{job="velocita-v2"} == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "Voter on {{ $labels.host }} is not reporting"
+          description: "Its health page is unreadable or its exporter is unreachable. Two of three voters still commit; one more loss stops the cluster."
+      # Counted from scrape targets, not health pages, so a voter whose exporter
+      # vanished entirely still counts as missing.
+      - alert: VelocitaQuorumAtRisk
+        expr: count(up{job="velocita-v2"} == 1 and on(instance) velocita_v2_up == 1) < 3
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "Only {{ $value }} of 3 voters reporting"
+          description: "The cluster still commits with two voters, but one more loss stops it. Restore the missing voter."
+      - alert: VelocitaQuorumLost
+        expr: (count(up{job="velocita-v2"} == 1 and on(instance) velocita_v2_up == 1) or vector(0)) < 2
+        for: 30s
+        labels: {severity: critical}
+        annotations:
+          summary: "Fewer than 2 of 3 voters reporting: nothing can commit"
+          description: "A commit needs two durable copies. Nothing commits until a second voter returns."
+      - alert: VelocitaTelemetryStale
+        expr: velocita_v2_telemetry_age_seconds > 10
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "Voter {{ $labels.node }} health is {{ $value | humanizeDuration }} old"
+          description: "The owner loop stopped publishing: stalled, hung or restarting."
+      - alert: VelocitaVoterFailed
+        expr: velocita_v2_failed == 1
+        labels: {severity: critical}
+        annotations:
+          summary: "Voter {{ $labels.node }} latched a fatal failure"
+          description: "Fail-stop: it will not continue. Check its journal before restarting."
+      - alert: VelocitaNoLeader
+        expr: sum(velocita_v2_role{role="leader"}) == 0
+        for: 30s
+        labels: {severity: critical}
+        annotations:
+          summary: "No leader for 30s"
+          description: "No commits are possible. Usually a voter is down or the link is cut."
+      - alert: VelocitaElectionStorm
+        expr: increase(max(velocita_v2_term)[10m:10s]) > 3
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $value }} elections in 10 minutes"
+          description: "Repeated elections: slow disk, flaky link or a restart loop."
+      - alert: VelocitaCommitStalled
+        expr: (velocita_v2_log_index{kind="current"} - on(host,node) velocita_v2_log_index{kind="commit"}) > 0 and on(host,node) velocita_v2_role{role="leader"} == 1
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "Leader has had uncommitted entries for 2 minutes"
+          description: "Work is waiting for quorum: the other voter is probably unreachable."
+      - alert: VelocitaAuthRefusals
+        expr: increase(velocita_v2_auth_refusals_total[5m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "Voter {{ $labels.node }} refused unauthenticated frames"
+          description: "Forged, foreign or corrupted traffic reached a voter."
+      # From deploy/v2/secrets-presence.sh on each voter host (names only; it
+      # never reads a secret). Secrets live in RAM, so every reboot needs a push.
+      - alert: VelocitaSecretsMissing
+        expr: velocita_secret_present == 0
+        for: 30s
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.host }} is missing secret {{ $labels.secret }}: push it from the Mac"
+          description: "Secrets live only in RAM, so a reboot empties them and voter {{ $labels.node }} cannot start. On the Mac: tools/velocita-secrets push {{ $labels.secret }} velocitas@{{ $labels.ssh_host }} {{ $labels.path }} then on {{ $labels.host }}: systemctl --user reset-failed velocita-v2-node@{{ $labels.node }} && systemctl --user start velocita-v2-node@{{ $labels.node }}"
+      - alert: VelocitaSecretsCheckBroken
+        expr: velocita_secrets_config_ok == 0 or (time() - velocita_secrets_check_timestamp_seconds) > 120
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "Secrets check on {{ $labels.host }} is not working"
+          description: "Missing secrets would go unnoticed: the voter config is unreadable or names no key files, or the check stopped (systemctl --user status velocita-v2-secrets-check.timer)."
+      - alert: VelocitaSecretReloadRefused
+        expr: increase(velocita_v2_secret_reload_failures_total[10m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "A secret reload was refused on voter {{ $labels.node }}"
+          description: "Old keys are still in use; the push was incomplete or corrupt."
+      # The retained Raft log never evicts. Compaction reclaims only entries
+      # every voter holds (the compaction floor), so the log fills only while
+      # some voter is not keeping up. A full ordinary pool refuses every normal
+      # command (the shadow edge stops); the protected pool is the operator
+      # kill reserve.
+      - alert: VelocitaRaftLogFilling
+        expr: velocita_v2_retained_log_entries{pool="ordinary"} / velocita_v2_retained_log_capacity{pool="ordinary"} > 0.75
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }} Raft log is {{ $value | humanizePercentage }} full"
+          description: "Compaction only reclaims entries every voter holds, so a filling log means a voter is not keeping up (see the compaction floor). At 100% every normal command (the shadow edge) is refused. Restore the lagging voter."
+      - alert: VelocitaRaftLogFull
+        expr: velocita_v2_retained_log_entries{pool="ordinary"} >= velocita_v2_retained_log_capacity{pool="ordinary"}
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.host }} Raft log is full: normal commands are refused"
+          description: "The shadow edge cannot record decisions. Operator kill commands still use the protected reserve. Restore the voter pinning the compaction floor, or replace the cluster."
+      - alert: VelocitaVoterStranded
+        expr: velocita_v2_stranded_voters > 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.host }} leads a voter it cannot catch up"
+          description: "A voter is behind this leader's snapshot (it lost its storage, or compacted history it needs). It stays a quiet follower but cannot rejoin until repaired (snapshot install is M6). The cluster runs on the others with less redundancy."
+      - alert: VelocitaCompactionPauseLong
+        expr: velocita_v2_last_compaction_seconds > 0.5
+        labels: {severity: warning}
+        annotations:
+          summary: "Compaction on {{ $labels.host }} paused Raft for {{ $value }}s"
+          description: "Raft makes no progress on a node while it compacts. On a leader, pauses near the 1-2 s election timeout can cause elections; consider a higher history.compact_at_entries or faster storage."
+      - alert: VelocitaCompactionBlocked
+        expr: (velocita_v2_retained_log_entries{pool="ordinary"} / velocita_v2_retained_log_capacity{pool="ordinary"} > 0.5) and on(host, node) (changes(velocita_v2_compaction_floor[30m]) == 0)
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }} cannot compact: the floor has not moved for 30 minutes"
+          description: "Some voter is not acknowledging the log, so no voter may reclaim it and the log keeps filling. Find the lagging voter (log positions) and restore it."
+      - alert: VelocitaKillReserveLow
+        expr: velocita_v2_retained_log_entries{pool="protected"} / velocita_v2_retained_log_capacity{pool="protected"} > 0.5
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }} operator kill reserve {{ $value | humanizePercentage }} used"
+          description: "Each kill-path command (kill epoch, executor generation, strategy mode, mass cancel) permanently uses one of 64 reserved entries until compaction exists; submitter restarts use one each."
+      - alert: VelocitaDiskAlmostFull
+        expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.15
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }} root disk below 15% free"
+          description: "The WAL and archive refuse new work before a disk fills; free space."
+      - alert: VelocitaHostHot
+        expr: max by (host) (node_thermal_zone_temp) > 75
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }} at {{ $value }}°C"
+          description: "Sustained heat causes throttling: a slower, different machine."
+      - alert: VelocitaSoakFailures
+        expr: increase(velocita_soak_commands_total{result!="ok"}[10m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "Soak bot saw failed commands"
+          description: "A soak command timed out or was refused."
+      # Phase 2 paper-trading gateway. absent() also catches a gateway that was
+      # never started or whose metrics stopped being scraped.
+      - alert: VelocitaGatewayDown
+        expr: velocita_gateway_up == 0 or absent(velocita_gateway_up)
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "Paper gateway is down or not reporting"
+          description: "velocita_gateway_up is 0 or missing: no paper orders are sent and tick-to-trade is not measured. Check the gateway service and its journal."
+      - alert: VelocitaGatewayNewRiskStopped
+        expr: velocita_gateway_new_risk_stopped == 1
+        labels: {severity: critical}
+        annotations:
+          summary: "Paper gateway on {{ $labels.host }} stopped new risk"
+          description: "An unknown order outcome or a reconciliation mismatch stopped new risk: the gateway sends no risk-increasing order. Check the gateway journal for the order and the cause before resuming."
+      - alert: VelocitaGatewayUnknownOutcome
+        expr: increase(velocita_gateway_unknown_outcomes_total[10m]) > 0
+        labels: {severity: critical}
+        annotations:
+          summary: "Paper gateway on {{ $labels.host }} has an order with an unknown outcome"
+          description: "The gateway could not establish whether an order reached or filled at the venue, so its position may be wrong. New risk is stopped; check the gateway journal and reconcile against the venue."

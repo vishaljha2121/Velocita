@@ -1,0 +1,2 @@
+node health tests failed: published health did not read back exactly
+exit=1

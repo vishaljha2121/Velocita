@@ -21,16 +21,14 @@ set -Eeuo pipefail
 # Requires podman, git, sed and uname. It does NOT require a host C++ toolchain:
 # everything is built inside the container.
 #
-# BEFORE YOU TRUST A PASS, recompute the source root on the NUC and compare it
-# against the handoff or the acceptance record - not against the pin below,
-# which travels inside this tree and therefore agrees with a stale tree just as
-# happily as with the right one. That check has already caught a false green
-# caused by running in the wrong account's copy.
+# Compute the candidate with deploy/source-manifest.sh and supply its expected
+# root from an independently held review record. This NUC leg cannot close F7 by
+# itself; the same root still needs host, container, Pi, and mixed-replay proof.
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 export VELOCITA_V2_PI_GATE_LABEL='V2 Phase 6/7 replication and durability acceptance'
-export VELOCITA_EXPECTED_SOURCE_ROOT=543eb468167ed51dd8c918d8de356c7028dec736a9f223fe1618f5e40b83c14d
+: "${VELOCITA_EXPECTED_SOURCE_ROOT:?set the externally pinned candidate source root}"
 export VELOCITA_EXPECTED_HOST_MACHINE=x86_64
 export VELOCITA_EXPECTED_CONTAINER_ARCH=amd64
 export VELOCITA_V2_HOST_ENVIRONMENT=nuc-x86_64-linux-container

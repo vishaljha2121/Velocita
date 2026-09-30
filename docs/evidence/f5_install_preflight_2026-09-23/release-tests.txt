@@ -1,0 +1,153 @@
+Test project /private/tmp/velocita-full-audit.lYB4P5/release
+      Start  1: core-tests
+ 1/74 Test  #1: core-tests ..................................   Passed    0.01 sec
+      Start  2: metrics-tests
+ 2/74 Test  #2: metrics-tests ...............................   Passed    0.00 sec
+      Start  3: benchmark-tests
+ 3/74 Test  #3: benchmark-tests .............................   Passed    0.00 sec
+      Start  4: v2-contract-tests
+ 4/74 Test  #4: v2-contract-tests ...........................   Passed    0.00 sec
+      Start  5: v2-value-contract-tests
+ 5/74 Test  #5: v2-value-contract-tests .....................   Passed    0.00 sec
+      Start  6: v2-payload-codec-tests
+ 6/74 Test  #6: v2-payload-codec-tests ......................   Passed    0.00 sec
+      Start  7: v2-kernel-policy-tests
+ 7/74 Test  #7: v2-kernel-policy-tests ......................   Passed    0.00 sec
+      Start  8: v2-venue-wire-tests
+ 8/74 Test  #8: v2-venue-wire-tests .........................   Passed    0.00 sec
+      Start  9: v2-venue-transport-tests
+ 9/74 Test  #9: v2-venue-transport-tests ....................   Passed    0.00 sec
+      Start 10: v2-kernel-control-tests
+10/74 Test #10: v2-kernel-control-tests .....................   Passed    0.00 sec
+      Start 11: v2-kernel-source-tests
+11/74 Test #11: v2-kernel-source-tests ......................   Passed    0.00 sec
+      Start 12: v2-state-snapshot-tests
+12/74 Test #12: v2-state-snapshot-tests .....................   Passed    0.00 sec
+      Start 13: v2-kernel-codec-tests
+13/74 Test #13: v2-kernel-codec-tests .......................   Passed    0.00 sec
+      Start 14: v2-replay-tests
+14/74 Test #14: v2-replay-tests .............................   Passed    0.00 sec
+      Start 15: v2-model-replay-tests
+15/74 Test #15: v2-model-replay-tests .......................   Passed    0.23 sec
+      Start 16: v2-venue-simulator-tests
+16/74 Test #16: v2-venue-simulator-tests ....................   Passed    0.00 sec
+      Start 17: v2-spsc-ring-tests
+17/74 Test #17: v2-spsc-ring-tests ..........................   Passed    0.20 sec
+      Start 18: v2-wal-arena-tests
+18/74 Test #18: v2-wal-arena-tests ..........................   Passed    0.12 sec
+      Start 19: v2-replication-tests
+19/74 Test #19: v2-replication-tests ........................   Passed    1.87 sec
+      Start 20: v2-snapshot-membership-tests
+20/74 Test #20: v2-snapshot-membership-tests ................   Passed    0.15 sec
+      Start 21: v2-durable-quorum-tests
+21/74 Test #21: v2-durable-quorum-tests .....................   Passed    0.00 sec
+      Start 22: v2-gateway-tests
+22/74 Test #22: v2-gateway-tests ............................   Passed    0.00 sec
+      Start 23: v2-lifecycle-reachability-tests
+23/74 Test #23: v2-lifecycle-reachability-tests .............   Passed    0.03 sec
+      Start 24: v2-gateway-delivery-tests
+24/74 Test #24: v2-gateway-delivery-tests ...................   Passed    0.03 sec
+      Start 25: v2-metrics-tests
+25/74 Test #25: v2-metrics-tests ............................   Passed    0.00 sec
+      Start 26: v2-phase4-property-tests
+26/74 Test #26: v2-phase4-property-tests ....................   Passed    0.75 sec
+      Start 27: v2-rule-evaluator-tests
+27/74 Test #27: v2-rule-evaluator-tests .....................   Passed    0.00 sec
+      Start 28: v2-layout-tests
+28/74 Test #28: v2-layout-tests .............................   Passed    0.00 sec
+      Start 29: v2-decision-kernel-tests
+29/74 Test #29: v2-decision-kernel-tests ....................   Passed    0.00 sec
+      Start 30: v2-action-template-contract-tests
+30/74 Test #30: v2-action-template-contract-tests ...........   Passed    0.00 sec
+      Start 31: v2-action-resolver-tests
+31/74 Test #31: v2-action-resolver-tests ....................   Passed    0.00 sec
+      Start 32: v2-executable-policy-contract-tests
+32/74 Test #32: v2-executable-policy-contract-tests .........   Passed    0.00 sec
+      Start 33: v2-executable-policy-codec-tests
+33/74 Test #33: v2-executable-policy-codec-tests ............   Passed    0.00 sec
+      Start 34: v2-artifact-digest-tests
+34/74 Test #34: v2-artifact-digest-tests ....................   Passed    0.00 sec
+      Start 35: v2-execution-catalog-tests
+35/74 Test #35: v2-execution-catalog-tests ..................   Passed    0.00 sec
+      Start 36: v2-catalog-binding-tests
+36/74 Test #36: v2-catalog-binding-tests ....................   Passed    0.16 sec
+      Start 37: v2-authority-barrier-tests
+37/74 Test #37: v2-authority-barrier-tests ..................   Passed    0.00 sec
+      Start 38: v2-authority-storage-failure-tests
+38/74 Test #38: v2-authority-storage-failure-tests ..........   Passed    0.21 sec
+      Start 39: v2-gateway-authority-tests
+39/74 Test #39: v2-gateway-authority-tests ..................   Passed    0.00 sec
+      Start 40: v2-authority-composition-tests
+40/74 Test #40: v2-authority-composition-tests ..............   Passed    0.51 sec
+      Start 41: v2-snapshot-store-bounds-tests
+41/74 Test #41: v2-snapshot-store-bounds-tests ..............   Passed    0.14 sec
+      Start 42: v2-metadata-persistence-model-tests
+42/74 Test #42: v2-metadata-persistence-model-tests .........   Passed    0.01 sec
+      Start 43: v2-bound-metadata-persistence-model-tests
+43/74 Test #43: v2-bound-metadata-persistence-model-tests ...   Passed    0.29 sec
+      Start 44: v2-static-identity-tests
+44/74 Test #44: v2-static-identity-tests ....................   Passed    0.00 sec
+      Start 45: v2-identity-startup-tests
+45/74 Test #45: v2-identity-startup-tests ...................   Passed    0.19 sec
+      Start 46: v2-kernel-startup-tests
+46/74 Test #46: v2-kernel-startup-tests .....................   Passed    0.13 sec
+      Start 47: v2-bound-frame-tests
+47/74 Test #47: v2-bound-frame-tests ........................   Passed    0.11 sec
+      Start 48: v2-bound-peer-tests
+48/74 Test #48: v2-bound-peer-tests .........................   Passed    0.21 sec
+      Start 49: v2-bound-metadata-tests
+49/74 Test #49: v2-bound-metadata-tests .....................   Passed    0.11 sec
+      Start 50: v2-history-binding-tests
+50/74 Test #50: v2-history-binding-tests ....................   Passed    0.16 sec
+      Start 51: v2-result-ledger-tests
+51/74 Test #51: v2-result-ledger-tests ......................   Passed    0.12 sec
+      Start 52: v2-result-admission-tests
+52/74 Test #52: v2-result-admission-tests ...................   Passed    4.30 sec
+      Start 53: v2-result-admission-edge-tests
+53/74 Test #53: v2-result-admission-edge-tests ..............   Passed    0.24 sec
+      Start 54: v2-outbound-mailbox-tests
+54/74 Test #54: v2-outbound-mailbox-tests ...................   Passed    0.12 sec
+      Start 55: v2-outbound-saturation-tests
+55/74 Test #55: v2-outbound-saturation-tests ................   Passed    0.19 sec
+      Start 56: v2-log-saturation-tests
+56/74 Test #56: v2-log-saturation-tests .....................   Passed    3.57 sec
+      Start 57: v2-retained-log-tests
+57/74 Test #57: v2-retained-log-tests .......................   Passed    0.13 sec
+      Start 58: v2-wal-streaming-tests
+58/74 Test #58: v2-wal-streaming-tests ......................   Passed    0.16 sec
+      Start 59: v2-incremental-digest-tests
+59/74 Test #59: v2-incremental-digest-tests .................   Passed    0.01 sec
+      Start 60: v2-archive-segment-tests
+60/74 Test #60: v2-archive-segment-tests ....................   Passed    0.25 sec
+      Start 61: v2-archive-segment-adversarial-tests
+61/74 Test #61: v2-archive-segment-adversarial-tests ........   Passed    0.12 sec
+      Start 62: v2-archive-file-tests
+62/74 Test #62: v2-archive-file-tests .......................   Passed    0.12 sec
+      Start 63: v2-archive-file-io-tests
+63/74 Test #63: v2-archive-file-io-tests ....................   Passed    0.11 sec
+      Start 64: v2-local-generation-tests
+64/74 Test #64: v2-local-generation-tests ...................   Passed    0.00 sec
+      Start 65: v2-local-generation-adversarial-tests
+65/74 Test #65: v2-local-generation-adversarial-tests .......   Passed    0.00 sec
+      Start 66: v2-generation-startup-guard-tests
+66/74 Test #66: v2-generation-startup-guard-tests ...........   Passed    0.12 sec
+      Start 67: v2-generation-base-tests
+67/74 Test #67: v2-generation-base-tests ....................   Passed    0.12 sec
+      Start 68: v2-generation-base-files-tests
+68/74 Test #68: v2-generation-base-files-tests ..............   Passed    0.12 sec
+      Start 69: v2-generation-startup-tests
+69/74 Test #69: v2-generation-startup-tests .................   Passed    0.16 sec
+      Start 70: v2-generation-publication-model-tests
+70/74 Test #70: v2-generation-publication-model-tests .......   Passed    0.22 sec
+      Start 71: v2-result-obligation-tests
+71/74 Test #71: v2-result-obligation-tests ..................   Passed    0.12 sec
+      Start 72: v2-snapshot-install-preflight-tests
+72/74 Test #72: v2-snapshot-install-preflight-tests .........   Passed    0.11 sec
+      Start 73: v2-executable-policy-kernel-tests
+73/74 Test #73: v2-executable-policy-kernel-tests ...........   Passed    0.00 sec
+      Start 74: v2-risk-order-outbox-tests
+74/74 Test #74: v2-risk-order-outbox-tests ..................   Passed    0.01 sec
+
+100% tests passed out of 74
+
+Total Test time (real) =  16.12 sec

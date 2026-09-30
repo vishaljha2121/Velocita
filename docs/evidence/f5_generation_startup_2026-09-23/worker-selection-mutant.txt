@@ -1,0 +1,26 @@
+Mutation: in a private source copy, make the selected-selector equality refusal
+unreachable while retaining both operands:
+
+cp src/v2_identity_startup.cpp /private/tmp/generation_startup_worker/identity_selection_mutant.cpp
+perl -0pi -e 's/if \(selected\.selector != selection_\)/if (selected.selector != selection_ \&\& false)/' \
+  /private/tmp/generation_startup_worker/identity_selection_mutant.cpp
+
+The strict direct compile succeeded. Test output:
+
+artifact/stale token: valid successor did not stale the generation-1 token
+
+The independently readable, complete generation-2 successor therefore kills the
+specific stale-token equality mutant rather than relying on missing files.
+
+Compile/run command:
+c++ -std=c++20 -O2 -Wall -Wextra -Wpedantic -Werror \
+  -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Itests \
+  tests/v2_generation_startup_tests.cpp \
+  /private/tmp/generation_startup_worker/identity_selection_mutant.cpp \
+  src/v2_generation_base_files.cpp src/v2_generation_base.cpp \
+  src/v2_local_generation.cpp src/v2_bound_metadata.cpp src/v2_bound_frame.cpp \
+  src/v2_static_identity.cpp src/v2_digest.cpp src/v2_snapshot_store.cpp \
+  src/v2_state_snapshot.cpp -Lbuild-v2-release -lvelocita_v2_kernel \
+  -lvelocita_v2_evaluator -lvelocita_v2_contracts -lvelocita_core -pthread \
+  -o /private/tmp/generation_startup_worker/selection_mutant
+/private/tmp/generation_startup_worker/selection_mutant

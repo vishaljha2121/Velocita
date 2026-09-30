@@ -1,0 +1,59 @@
+tests/v2_result_ledger_tests.cpp:180:20: error: no member named 'can_reserve' in 'velocita::v2::ResultLedger'
+  180 |     require(ledger.can_reserve(ordinary), "fresh ordinary preflight refused capacity");
+      |             ~~~~~~ ^
+tests/v2_result_ledger_tests.cpp:182:21: error: no member named 'can_reserve' in 'velocita::v2::ResultLedger'
+  182 |     require(!ledger.can_reserve(too_many_ordinary), "ordinary preflight borrowed protected capacity");
+      |              ~~~~~~ ^
+tests/v2_result_ledger_tests.cpp:185:20: error: no member named 'can_reserve' in 'velocita::v2::ResultLedger'
+  185 |     require(ledger.can_reserve(all_control), "control preflight did not include spill capacity");
+      |             ~~~~~~ ^
+tests/v2_result_ledger_tests.cpp:188:21: error: no member named 'can_reserve' in 'velocita::v2::ResultLedger'
+  188 |     require(!ledger.can_reserve(oversized), "oversized new reservation plan accepted");
+      |              ~~~~~~ ^
+tests/v2_result_ledger_tests.cpp:199:20: error: no member named 'can_reserve' in 'velocita::v2::ResultLedger'
+  199 |     require(ledger.can_reserve(one_ordinary, release_one), "released ordinary slot not simulated");
+      |             ~~~~~~ ^
+tests/v2_result_ledger_tests.cpp:200:21: error: no member named 'can_reserve' in 'velocita::v2::ResultLedger'
+  200 |     require(!ledger.can_reserve(two_ordinary, release_one), "one released slot counted twice");
+      |              ~~~~~~ ^
+tests/v2_result_ledger_tests.cpp:211:21: error: no member named 'can_reserve' in 'velocita::v2::ResultLedger'
+  211 |     require(!ledger.can_reserve(one_ordinary, release_protected),
+      |              ~~~~~~ ^
+tests/v2_result_ledger_tests.cpp:214:20: error: no member named 'can_reserve' in 'velocita::v2::ResultLedger'
+  214 |     require(ledger.can_reserve(one_control, release_protected),
+      |             ~~~~~~ ^
+tests/v2_result_ledger_tests.cpp:216:20: error: no member named 'can_reserve' in 'velocita::v2::ResultLedger'
+  216 |     require(ledger.can_reserve(one_control, release_one),
+      |             ~~~~~~ ^
+tests/v2_result_ledger_tests.cpp:220:21: error: no member named 'can_reserve' in 'velocita::v2::ResultLedger'
+  220 |     require(!ledger.can_reserve({}, duplicate_release), "duplicate release handles accepted");
+      |              ~~~~~~ ^
+tests/v2_result_ledger_tests.cpp:221:21: error: no member named 'can_reserve' in 'velocita::v2::ResultLedger'
+  221 |     require(!ledger.can_reserve({}, std::array<ResultHandle, 1>{{{0, ordinary_handles[0].slot}}}),
+      |              ~~~~~~ ^
+tests/v2_result_ledger_tests.cpp:223:21: error: no member named 'can_reserve' in 'velocita::v2::ResultLedger'
+  223 |     require(!ledger.can_reserve({}, std::array<ResultHandle, 1>{{
+      |              ~~~~~~ ^
+tests/v2_result_ledger_tests.cpp:228:21: error: no member named 'can_reserve' in 'velocita::v2::ResultLedger'
+  228 |     require(!ledger.can_reserve({}, std::array<ResultHandle, 1>{{ordinary_handles[0]}}),
+      |              ~~~~~~ ^
+tests/v2_result_ledger_tests.cpp:231:21: error: no member named 'can_reserve' in 'velocita::v2::ResultLedger'
+  231 |     require(!ledger.can_reserve({}, std::array<ResultHandle, 1>{{ordinary_handles[1]}}),
+      |              ~~~~~~ ^
+tests/v2_result_ledger_tests.cpp:235:21: error: no member named 'can_reserve' in 'velocita::v2::ResultLedger'
+  235 |     require(!ledger.can_reserve({}, oversized_releases), "oversized release plan accepted");
+      |              ~~~~~~ ^
+tests/v2_result_ledger_tests.cpp:244:20: error: no member named 'can_reserve' in 'velocita::v2::ResultLedger'
+  244 |     require(ledger.can_reserve(two) && !ledger.can_reserve(three),
+      |             ~~~~~~ ^
+tests/v2_result_ledger_tests.cpp:244:48: error: no member named 'can_reserve' in 'velocita::v2::ResultLedger'
+  244 |     require(ledger.can_reserve(two) && !ledger.can_reserve(three),
+      |                                         ~~~~~~ ^
+tests/v2_result_ledger_tests.cpp:250:20: error: no member named 'can_reserve' in 'velocita::v2::ResultLedger'
+  250 |     require(ledger.can_reserve({}) && !ledger.can_reserve(std::array<bool, 1>{false}),
+      |             ~~~~~~ ^
+tests/v2_result_ledger_tests.cpp:250:47: error: no member named 'can_reserve' in 'velocita::v2::ResultLedger'
+  250 |     require(ledger.can_reserve({}) && !ledger.can_reserve(std::array<bool, 1>{false}),
+      |                                        ~~~~~~ ^
+fatal error: too many errors emitted, stopping now [-ferror-limit=]
+20 errors generated.

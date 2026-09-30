@@ -248,6 +248,8 @@ struct OrderEffect {
     SourceGeneration source_generation{};
     SourceSequence source_sequence{};
     Digest256 payload_digest{};
+
+    constexpr auto operator<=>(const OrderEffect&) const noexcept = default;
 };
 
 struct VenueObservation {

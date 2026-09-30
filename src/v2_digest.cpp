@@ -1,5 +1,6 @@
 #include "velocita/v2/digest.hpp"
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cstdint>
@@ -96,26 +97,46 @@ std::optional<std::uint8_t> hex_nibble(const char character) noexcept {
 
 }  // namespace
 
-Digest256 sha256_digest(const std::span<const std::byte> bytes) noexcept {
-    HashState state{
+Sha256::Sha256() noexcept
+    : state_{
         0x6A09E667U, 0xBB67AE85U, 0x3C6EF372U, 0xA54FF53AU,
         0x510E527FU, 0x9B05688CU, 0x1F83D9ABU, 0x5BE0CD19U,
-    };
+    } {}
 
+void Sha256::update(const std::span<const std::byte> bytes) noexcept {
+    // API precondition: cumulative input is less than 2^61 bytes, so the
+    // SHA-256 bit-length encoding below cannot overflow. Archive callers are
+    // independently bounded to 4 MiB.
+    total_bytes_ += static_cast<std::uint64_t>(bytes.size());
     std::size_t offset{};
+    if (buffered_ != 0) {
+        const auto copied = std::min(buffer_.size() - buffered_, bytes.size());
+        std::copy_n(bytes.begin(), copied, buffer_.begin() + buffered_);
+        buffered_ += copied;
+        offset += copied;
+        if (buffered_ != buffer_.size()) return;
+        process_block(state_, std::span<const std::byte, 64>{buffer_});
+        buffered_ = 0;
+    }
     while ((bytes.size() - offset) >= 64U) {
-        process_block(state, std::span<const std::byte, 64>{bytes.subspan(offset, 64U)});
+        process_block(state_, std::span<const std::byte, 64>{bytes.subspan(offset, 64U)});
         offset += 64U;
     }
-
-    std::array<std::byte, 128> tail{};
     const auto remaining = bytes.size() - offset;
-    for (std::size_t index = 0; index < remaining; ++index) {
-        tail[index] = bytes[offset + index];
+    if (remaining != 0) {
+        std::copy_n(bytes.begin() + static_cast<std::ptrdiff_t>(offset), remaining,
+                    buffer_.begin());
     }
-    tail[remaining] = std::byte{0x80};
-    const std::size_t padded_size = remaining < 56U ? 64U : 128U;
-    const auto bit_length = static_cast<std::uint64_t>(bytes.size()) * 8U;
+    buffered_ = remaining;
+}
+
+Digest256 Sha256::finish() const noexcept {
+    auto state = state_;
+    std::array<std::byte, 128> tail{};
+    std::copy_n(buffer_.begin(), buffered_, tail.begin());
+    tail[buffered_] = std::byte{0x80};
+    const std::size_t padded_size = buffered_ < 56U ? 64U : 128U;
+    const auto bit_length = total_bytes_ * 8U;
     for (std::size_t index = 0; index < 8U; ++index) {
         tail[padded_size - 1U - index] =
             static_cast<std::byte>((bit_length >> (index * 8U)) & 0xFFU);
@@ -133,6 +154,12 @@ Digest256 sha256_digest(const std::span<const std::byte> bytes) noexcept {
         }
     }
     return digest;
+}
+
+Digest256 sha256_digest(const std::span<const std::byte> bytes) noexcept {
+    Sha256 digest;
+    digest.update(bytes);
+    return digest.finish();
 }
 
 std::string to_hex(const Digest256& digest) {

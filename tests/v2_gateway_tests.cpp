@@ -1,3 +1,4 @@
+#include "v2_catalog_test_support.hpp"
 #include "velocita/v2/gateway.hpp"
 #include "velocita/v2/payload.hpp"
 
@@ -5,6 +6,7 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -17,6 +19,23 @@ using namespace velocita::v2;
 
 void require(const bool condition, const std::string& message) {
     if (!condition) throw std::runtime_error(message);
+}
+
+PreSendDecision test_evaluate_pre_send(
+    const TradingState& state, const EffectId effect_id,
+    const GatewayControlView& control, const VenueCapabilityView& venue,
+    const SendQuotaView& quota) {
+    return evaluate_delivery_candidate(state, effect_id, control, venue, quota,
+                             &catalog_test::standard_catalog());
+}
+
+DeliveryPlan test_plan_delivery(
+    const TradingState& state, const GatewayDeliveryState& delivery,
+    const GatewayEvidenceState& evidence, const GatewayControlView& control,
+    const VenueCapabilityView& venue, const SendQuotaView& quota,
+    const GatewayTimeouts& timeouts, const Tick now) {
+    return plan_delivery(state, delivery, evidence, control, venue, quota,
+                         timeouts, now, &catalog_test::standard_catalog());
 }
 
 Digest256 digest(const std::uint8_t marker) {
@@ -45,7 +64,7 @@ PreSendDecision deliver(const TradingState& state,
                         const VenueCapabilityView& venue,
                         const SendQuotaView& quota,
                         RecordingTransport& transport) {
-    auto decision = evaluate_pre_send(state, effect_id, control, venue, quota);
+    auto decision = test_evaluate_pre_send(state, effect_id, control, venue, quota);
     if (decision.permitted()) transport.send(*decision.effect);
     return decision;
 }
@@ -143,13 +162,13 @@ DecisionFrame frame() {
 }
 
 struct Fixture {
-    TradingState state;
+    TradingState state = catalog_test::state();
     EffectId effect_id;
     ClusterOrderId cluster_order_id;
 };
 
 Fixture authorized_submit() {
-    TradingState state;
+    TradingState state = catalog_test::state();
     state.strategy_mode = StrategyMode::normal;
     state.kill_epoch = KillEpoch{2};
     state.executor_generation = ExecutorGeneration{3};
@@ -163,7 +182,7 @@ Fixture authorized_submit() {
          PriceTicks::from_atoms(1), PriceTicks::from_atoms(100),
          QuantityLots::from_atoms(1), QuantityLots::from_atoms(10)},
         {kVenueCapabilitiesSchemaVersion, VenueId{9}, VenueCapabilitiesVersion{8},
-         kVenueDirectivePlaceLimit, kVenueTifGtc, 1},
+         kVenueDirectivePlaceLimit | kVenueDirectiveCancel, kVenueTifGtc, 1},
         1, 2};
     state.state_version = 2;
     state.source_count = 1;
@@ -176,25 +195,26 @@ Fixture authorized_submit() {
         AccountId{5}, InstrumentId{4}, RiskPolicyVersion{6}, RiskVersion{1},
         PositionVersion{1}, QuantityLots::from_atoms(4),
         QuantityLots::from_atoms(8), {}, MoneyMicros::from_atoms(4'000),
-        MoneyMicros::from_atoms(8'000), {}, {}, 1'000'000, 2'500};
+        MoneyMicros::from_atoms(8'000), {}, {}, 1'000'000, 2'500, {},
+        QuantityLots::from_atoms(1'000), true};
 
     ApplyScratch scratch;
     const Command evaluate{{CallerId{1}, RequestSequence{1}, digest(0x51)},
                            EvaluateDecisionFrame{DecisionId{20},
                                                  EvaluationMode::authoritative,
                                                  frame()}};
-    require(apply(state, evaluate, scratch).code == ApplyCode::applied,
+    require(catalog_test::apply(state, evaluate, scratch).code == ApplyCode::applied,
             "gateway fixture could not retain its decision");
     const Command authorize{{CallerId{1}, RequestSequence{2}, digest(0x52)},
                             AuthorizeDecision{DecisionId{20}}};
-    const auto submit = apply(state, authorize, scratch);
+    const auto submit = catalog_test::apply(state, authorize, scratch);
     require(submit.code == ApplyCode::applied,
             "gateway fixture could not authorize its submit");
     return {state, submit.effect_id(), submit.cluster_order_id()};
 }
 
-// The same fixture carried one step further: the submit is acknowledged so the
-// order rests, then a cancel is authorized against it. The emergency-lane tests
+// The same fixture carried one step further: a cancel is authorized while the
+// submit is still pending. The emergency-lane tests
 // need a RISK-REDUCING effect, and a cancel is the only operation that is one by
 // its identity alone.
 Fixture authorized_cancel() {
@@ -202,12 +222,117 @@ Fixture authorized_cancel() {
     ApplyScratch scratch;
     const Command cancel{{CallerId{1}, RequestSequence{3}, digest(0x53)},
                          RequestCancel{fixture.cluster_order_id}};
-    const auto result = apply(fixture.state, cancel, scratch);
+    const auto result = catalog_test::apply(fixture.state, cancel, scratch);
     require(result.code == ApplyCode::applied,
             "gateway fixture could not authorize its cancel");
     require(result.effect_id() != fixture.effect_id,
             "the cancel reused the submit's effect identity");
     return {fixture.state, result.effect_id(), fixture.cluster_order_id};
+}
+
+GatewayControlView matching_control(const TradingState& state);
+constexpr VenueCapabilityView capable_venue();
+constexpr SendQuotaView open_quota();
+
+VerifiedExecutionCatalog catalog_with_directives(const std::uint8_t directives) {
+    const std::array rows{catalog_test::row(
+        AccountId{5},
+        {kInstrumentExecutionProfileSchemaVersion, VenueId{9}, InstrumentId{4},
+         InstrumentSpecVersion{7}, MoneyMicros::from_atoms(100),
+         PriceTicks::from_atoms(1), PriceTicks::from_atoms(100),
+         QuantityLots::from_atoms(1), QuantityLots::from_atoms(10)},
+        {kVenueCapabilitiesSchemaVersion, VenueId{9}, VenueCapabilitiesVersion{8},
+         directives, kVenueTifGtc, 1})};
+    return catalog_test::catalog(rows);
+}
+
+void test_send_admission_requires_exact_catalog_context() {
+    const auto fixture = authorized_submit();
+    const auto control = matching_control(fixture.state);
+    require(evaluate_delivery_candidate(fixture.state, fixture.effect_id, control,
+                capable_venue(), open_quota()).refusal ==
+                    PreSendRefusal::payload_unreconstructable,
+            "missing catalog context authorized a send");
+    GatewayDeliveryState delivery;
+    delivery.started = true;
+    require(plan_delivery(fixture.state, delivery, {}, control,
+                capable_venue(), open_quota(), {}, Tick{1}).send_count == 0,
+            "delivery planning bypassed missing catalog context");
+    const auto wrong = catalog_with_directives(kVenueDirectivePlaceLimit);
+    require(evaluate_delivery_candidate(fixture.state, fixture.effect_id, control,
+                capable_venue(), open_quota(), &wrong).refusal ==
+                    PreSendRefusal::payload_unreconstructable,
+            "wrong catalog context authorized a send");
+}
+
+void test_send_admission_carries_historical_binding() {
+    auto fixture = authorized_submit();
+    fixture.state.active_executable_policy.instrument.instrument_spec_version =
+        InstrumentSpecVersion{99};
+    fixture.state.active_executable_policy.venue.venue_capabilities_version =
+        VenueCapabilitiesVersion{99};
+    const auto decision = test_evaluate_pre_send(
+        fixture.state, fixture.effect_id, matching_control(fixture.state),
+        capable_venue(), open_quota());
+    require(decision.permitted() &&
+                decision.catalog_root == fixture.state.execution_catalog_root &&
+                decision.instrument_spec_version == InstrumentSpecVersion{7} &&
+                decision.venue_capabilities_version == VenueCapabilitiesVersion{8},
+            "send admission borrowed binding metadata from the active policy");
+}
+
+void test_cancel_requires_catalog_operation_support() {
+    auto fixture = authorized_cancel();
+    const auto place_only = catalog_with_directives(kVenueDirectivePlaceLimit);
+    fixture.state.execution_catalog_root = place_only.root();
+    fixture.state.active_executable_policy.venue.directive_mask = kVenueDirectivePlaceLimit;
+    require(execution_catalog_bindings_valid(fixture.state, place_only),
+            "place-only cancel fixture contradicted its catalog");
+    const auto decision = evaluate_delivery_candidate(
+        fixture.state, fixture.effect_id, matching_control(fixture.state),
+        capable_venue(), open_quota(), &place_only);
+    require(decision.refusal == PreSendRefusal::unsupported_operation &&
+                !decision.effect.has_value(),
+            "catalog without cancel capability authorized a cancel");
+}
+
+void test_public_gateway_paths_reject_oversized_counts() {
+    const auto fixture = authorized_submit();
+    const auto control = matching_control(fixture.state);
+    GatewayDeliveryState attempts;
+    attempts.attempts[0].effect_id = fixture.effect_id;
+    for (const auto count : {attempts.attempts.size() + 1,
+                             std::numeric_limits<std::size_t>::max()}) {
+        attempts.attempt_count = count;
+        require(find_attempt(attempts, fixture.effect_id) == nullptr,
+                "find_attempt accepted an oversized attempt count");
+    }
+
+    for (const auto count : {fixture.state.outbox_effects.size() + 1,
+                             std::numeric_limits<std::size_t>::max()}) {
+        auto malformed = fixture.state;
+        malformed.outbox_effect_count = count;
+        require(test_evaluate_pre_send(malformed, fixture.effect_id, control,
+                    capable_venue(), open_quota()).refusal ==
+                        PreSendRefusal::payload_unreconstructable,
+                "pre-send accepted an oversized outbox count");
+        GatewayDeliveryState delivery;
+        delivery.started = true;
+        require(test_plan_delivery(malformed, delivery, {}, control,
+                    capable_venue(), {1, 0}, {}, Tick{1}).send_count == 0,
+                "delivery planning accepted an oversized outbox count");
+    }
+
+    GatewayDeliveryState started;
+    started.started = true;
+    GatewayEvidenceState evidence;
+    for (const auto count : {evidence.obligations.size() + 1,
+                             std::numeric_limits<std::size_t>::max()}) {
+        evidence.obligation_count = count;
+        require(test_plan_delivery(fixture.state, started, evidence, control,
+                    capable_venue(), {1, 0}, {}, Tick{1}).send_count == 0,
+                "delivery planning accepted an oversized evidence count");
+    }
 }
 
 // A control view confirmed against the leader AT `now`, with a lease that has
@@ -225,6 +350,44 @@ constexpr VenueCapabilityView capable_venue() {
 }
 
 constexpr SendQuotaView open_quota() { return {16, 4}; }
+
+void test_planner_preserves_emergency_cancel_capacity() {
+    const auto fixture = authorized_cancel();
+    GatewayDeliveryState delivery;
+    delivery.started = true;
+    auto control = matching_control(fixture.state);
+    control.now = control.confirmed_at + control.lease_bound + 1;
+    const auto plan = test_plan_delivery(fixture.state, delivery, {}, control,
+                                    capable_venue(), {0, 1}, {}, control.now);
+    require(plan.send_count == 1 && plan.to_send[0] == fixture.effect_id,
+            "planner lost emergency cancel capacity after the normal lane exhausted");
+    RecordingTransport transport;
+    require(deliver(fixture.state, plan.to_send[0], control, capable_venue(),
+                    {0, 1}, transport).permitted(),
+            "planned emergency cancel was not deliverable");
+    const auto expected = materialize_order_effect(fixture.state, fixture.effect_id);
+    require(expected.has_value() && transport.send_count() == 1 &&
+                transport.last() == encode_payload(*expected).bytes,
+            "planned emergency cancel did not deliver its canonical bytes");
+    require(test_plan_delivery(fixture.state, delivery, {}, control, capable_venue(),
+                          {0, 0}, {}, control.now).send_count == 0,
+            "planner sent a cancel without either quota lane");
+    const auto submit = authorized_submit();
+    require(test_plan_delivery(submit.state, delivery, {}, matching_control(submit.state),
+                          capable_venue(), {0, 8}, {}, kNow).send_count == 0,
+            "planner spent emergency quota on new risk");
+    const auto mixed = test_plan_delivery(fixture.state, delivery, {},
+                                     matching_control(fixture.state), capable_venue(),
+                                     {1, 1}, {}, kNow);
+    require(mixed.send_count == 2 && mixed.to_send[0] == submit.effect_id &&
+                mixed.to_send[1] == fixture.effect_id,
+            "planner did not preserve submit-then-cancel order across quota lanes");
+    const auto normal_only = test_plan_delivery(fixture.state, delivery, {},
+                                           matching_control(fixture.state), capable_venue(),
+                                           {1, 0}, {}, kNow);
+    require(normal_only.send_count == 1 && normal_only.to_send[0] == submit.effect_id,
+            "planner overspent its single normal quota unit");
+}
 
 void test_a_permitted_effect_is_sent_with_its_exact_canonical_bytes() {
     const auto fixture = authorized_submit();
@@ -246,13 +409,13 @@ void test_the_guard_reads_no_clock_and_mutates_nothing() {
     const auto fixture = authorized_submit();
     auto probe = fixture.state;
     static_assert(std::is_trivially_copyable_v<TradingState>);
-    const auto first = evaluate_pre_send(probe, fixture.effect_id,
+    const auto first = test_evaluate_pre_send(probe, fixture.effect_id,
                                          matching_control(probe), capable_venue(),
                                          open_quota());
     require(std::memcmp(&probe, &fixture.state, sizeof(TradingState)) == 0,
             "the pre-send guard mutated authoritative state");
 
-    const auto second = evaluate_pre_send(probe, fixture.effect_id,
+    const auto second = test_evaluate_pre_send(probe, fixture.effect_id,
                                           matching_control(probe), capable_venue(),
                                           open_quota());
     require(first.refusal == second.refusal &&
@@ -406,12 +569,7 @@ void test_the_emergency_lane_cannot_carry_new_risk() {
             "a risk-increasing effect was sent on the emergency lane");
 }
 
-void test_only_an_authoritative_read_renews_the_lease() {
-    // G-055 BINDS HERE, not at the refusal. A lease that any read could renew
-    // would lapse only when the gateway stopped running, which is the one case
-    // that needs no protection. What makes the bound mean something is that a
-    // gateway which cannot obtain an AUTHORITATIVE answer gets no renewal and
-    // therefore lapses on its own, without anyone having to notice or tell it.
+void test_boolean_authority_cannot_renew() {
     const auto fixture = authorized_submit();
     auto control = matching_control(fixture.state);
 
@@ -421,10 +579,10 @@ void test_only_an_authoritative_read_renews_the_lease() {
     AuthorityReading follower = authoritative;
     follower.authoritative = false;
 
-    require(renew_authority(control, authoritative, kNow + 10),
-            "an authoritative read did not renew the lease");
-    require(control.confirmed_at == kNow + 10,
-            "renewal did not move the confirmation time");
+    const auto original = control;
+    require(!renew_authority(control, authoritative, kNow + 10),
+            "local leader boolean still minted a fresh authority lease");
+    require(control == original, "boolean reading mutated gateway authority");
 
     // A follower's or deposed leader's copy renews nothing, and - the part that
     // matters - leaves the previous confirmation time exactly where it was.
@@ -441,11 +599,7 @@ void test_only_an_authoritative_read_renews_the_lease() {
             "a backwards tick moved the confirmation time");
 }
 
-void test_renewal_adopts_the_authority_it_confirmed() {
-    // The failure this rules out is worse than no renewal at all: refreshing the
-    // CLOCK while keeping the old generation would leave the gateway holding
-    // authority that looks fresh and is stale, which is precisely the state the
-    // lease exists to make impossible.
+void test_boolean_reading_cannot_promote_the_gateway() {
     const auto fixture = authorized_submit();
     auto control = matching_control(fixture.state);
 
@@ -455,16 +609,12 @@ void test_renewal_adopts_the_authority_it_confirmed() {
         ExecutorGeneration{fixture.state.executor_generation.value() + 1};
     promoted.kill_epoch = KillEpoch{fixture.state.kill_epoch.value() + 1};
 
-    require(renew_authority(control, promoted, kNow + 1), "renewal was refused");
-    require(control.executor_generation == promoted.executor_generation &&
-                control.kill_epoch == promoted.kill_epoch,
-            "renewal refreshed the clock but kept the old authority");
+    const auto before = control;
+    require(!renew_authority(control, promoted, kNow + 1) && control == before,
+            "boolean reading promoted the gateway or refreshed its authority");
 }
 
-void test_a_gateway_that_loses_the_cluster_stops_within_its_lease() {
-    // The property an operator actually cares about, stated end to end: after
-    // the last authoritative read, this gateway keeps sending for at most
-    // `lease_bound` ticks and then stops by itself. Nothing has to reach it.
+void test_candidate_cache_age_filter_is_not_send_authority() {
     const auto fixture = authorized_submit();
     auto control = matching_control(fixture.state);
     const AuthorityReading reading{true, fixture.state.executor_generation,
@@ -472,7 +622,9 @@ void test_a_gateway_that_loses_the_cluster_stops_within_its_lease() {
                                    fixture.state.strategy_mode};
 
     const Tick last_contact = kNow + 100;
-    require(renew_authority(control, reading, last_contact), "renewal was refused");
+    require(!renew_authority(control, reading, last_contact), "boolean renewal was accepted");
+    // Synthetic cache-age fixture only. Final dispatch requires a separate proof.
+    control.confirmed_at = last_contact;
 
     const auto sends_at = [&](const Tick when) {
         auto probe = control;
@@ -553,7 +705,7 @@ void test_the_gateway_can_send_nothing_the_cluster_did_not_author() {
 
     std::size_t permitted_count = 0;
     const auto probe = [&](const EffectId id) {
-        const auto decision = evaluate_pre_send(fixture.state, id,
+        const auto decision = test_evaluate_pre_send(fixture.state, id,
                                                 matching_control(fixture.state),
                                                 capable_venue(), open_quota());
         if (!decision.permitted()) return;
@@ -623,14 +775,14 @@ void test_the_gateway_can_send_nothing_the_cluster_did_not_author() {
     auto emptied = fixture.state;
     emptied.outbox_effect_count = 0;
     for (std::uint64_t candidate = 0; candidate < 1'024; ++candidate) {
-        require(!evaluate_pre_send(emptied, EffectId{candidate},
+        require(!test_evaluate_pre_send(emptied, EffectId{candidate},
                                    matching_control(emptied), capable_venue(),
                                    open_quota())
                      .permitted(),
                 "a gateway with an empty committed outbox still had something "
                 "to send");
     }
-    require(!evaluate_pre_send(emptied, fixture.effect_id, matching_control(emptied),
+    require(!test_evaluate_pre_send(emptied, fixture.effect_id, matching_control(emptied),
                                capable_venue(), open_quota())
                  .permitted(),
             "the authored effect survived the outbox it came from");
@@ -768,6 +920,11 @@ void test_gateway_local_delivery_states_are_never_read_from_the_cluster() {
 
 int main() {
     try {
+        test_planner_preserves_emergency_cancel_capacity();
+        test_send_admission_requires_exact_catalog_context();
+        test_send_admission_carries_historical_binding();
+        test_cancel_requires_catalog_operation_support();
+        test_public_gateway_paths_reject_oversized_counts();
         test_a_permitted_effect_is_sent_with_its_exact_canonical_bytes();
         test_the_guard_reads_no_clock_and_mutates_nothing();
         test_stale_control_authority_is_never_sent();
@@ -775,9 +932,9 @@ int main() {
     test_an_unconfigured_lease_is_expired_not_unlimited();
     test_a_cancel_survives_what_stops_new_risk();
     test_the_emergency_lane_cannot_carry_new_risk();
-    test_only_an_authoritative_read_renews_the_lease();
-    test_renewal_adopts_the_authority_it_confirmed();
-    test_a_gateway_that_loses_the_cluster_stops_within_its_lease();
+    test_boolean_authority_cannot_renew();
+    test_boolean_reading_cannot_promote_the_gateway();
+    test_candidate_cache_age_filter_is_not_send_authority();
     test_a_venue_that_cannot_represent_the_intent_is_refused_not_approximated();
         test_exhausted_quota_defers_rather_than_sending();
         test_the_gateway_can_send_nothing_the_cluster_did_not_author();

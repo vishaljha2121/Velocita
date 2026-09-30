@@ -1,0 +1,250 @@
+# promtool test rules deploy/v2/observability/rule-tests/velocita-v2-alerts.test.yml
+# Kept OUT of rules/: Prometheus loads every *.yml there as a rule file.
+# Hand-written series: nuc1 stays up, the Pi's exporter vanishes at 5m (target
+# down), nuc2's health page becomes unreadable at 10m (exporter up, up=0).
+rule_files:
+  - ../rules/velocita-v2-alerts.yml
+evaluation_interval: 10s
+tests:
+  - interval: 10s
+    input_series:
+      - series: 'up{job="velocita-v2",instance="100.72.127.102:9410",host="nuc1"}'
+        values: '1x180'
+      - series: 'velocita_v2_up{job="velocita-v2",instance="100.72.127.102:9410",host="nuc1",node="1"}'
+        values: '1x180'
+      - series: 'up{job="velocita-v2",instance="100.84.151.116:9410",host="pi"}'
+        values: '1x29 0x150'
+      - series: 'velocita_v2_up{job="velocita-v2",instance="100.84.151.116:9410",host="pi",node="2"}'
+        values: '1x29 _x150'
+      - series: 'up{job="velocita-v2",instance="100.85.36.22:9410",host="nuc2"}'
+        values: '1x180'
+      - series: 'velocita_v2_up{job="velocita-v2",instance="100.85.36.22:9410",host="nuc2",node="3"}'
+        values: '1x59 0x120'
+    alert_rule_test:
+      # All three reporting: neither quorum alert.
+      - eval_time: 4m
+        alertname: VelocitaQuorumAtRisk
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: VelocitaQuorumLost
+        exp_alerts: []
+      # Pi gone (2 of 3): at risk, not lost.
+      - eval_time: 8m
+        alertname: VelocitaQuorumAtRisk
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "Only 2 of 3 voters reporting"
+              description: "The cluster still commits with two voters, but one more loss stops it. Restore the missing voter."
+      - eval_time: 8m
+        alertname: VelocitaQuorumLost
+        exp_alerts: []
+      # nuc2's page unreadable too (1 of 3): lost, and still at risk.
+      - eval_time: 12m
+        alertname: VelocitaQuorumLost
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: "Fewer than 2 of 3 voters reporting: nothing can commit"
+              description: "A commit needs two durable copies. Nothing commits until a second voter returns."
+      - eval_time: 12m
+        alertname: VelocitaQuorumAtRisk
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "Only 1 of 3 voters reporting"
+              description: "The cluster still commits with two voters, but one more loss stops it. Restore the missing voter."
+
+  # Secrets presence: after a reboot the Pi's link key is missing; nuc1 has all.
+  # nuc1's check stops publishing at 5m (timer broken).
+  - interval: 10s
+    input_series:
+      - series: 'velocita_secret_present{job="node",host="nuc1",secret="link-1-2",path="/run/user/1003/velocita-secrets/link-1-2.key",node="1",ssh_host="nuc1"}'
+        values: '1x60'
+      - series: 'velocita_secret_present{job="node",host="pi",secret="link-1-2",path="/run/user/1004/velocita-secrets/link-1-2.key",node="2",ssh_host="vishalkapi"}'
+        values: '0x60'
+      - series: 'velocita_secrets_config_ok{job="node",host="pi"}'
+        values: '1x60'
+      - series: 'velocita_secrets_check_timestamp_seconds{job="node",host="nuc1"}'
+        values: '0+10x30 300x30'
+    alert_rule_test:
+      - eval_time: 20s
+        alertname: VelocitaSecretsMissing
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: VelocitaSecretsMissing
+        exp_alerts:
+          - exp_labels: {severity: critical, job: node, host: pi, secret: link-1-2, path: /run/user/1004/velocita-secrets/link-1-2.key, node: "2", ssh_host: vishalkapi}
+            exp_annotations:
+              summary: "pi is missing secret link-1-2: push it from the Mac"
+              description: "Secrets live only in RAM, so a reboot empties them and voter 2 cannot start. On the Mac: tools/velocita-secrets push link-1-2 velocitas@vishalkapi /run/user/1004/velocita-secrets/link-1-2.key then on pi: systemctl --user reset-failed velocita-v2-node@2 && systemctl --user start velocita-v2-node@2"
+      - eval_time: 4m
+        alertname: VelocitaSecretsCheckBroken
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: VelocitaSecretsCheckBroken
+        exp_alerts:
+          - exp_labels: {severity: warning, job: node, host: nuc1}
+            exp_annotations:
+              summary: "Secrets check on nuc1 is not working"
+              description: "Missing secrets would go unnoticed: the voter config is unreadable or names no key files, or the check stopped (systemctl --user status velocita-v2-secrets-check.timer)."
+
+  # Retained Raft log: nuc1's ordinary pool climbs from 6000 to 8128 (full at
+  # 14m); the Pi's kill reserve reaches 40 of 64 at 2m.
+  - interval: 1m
+    input_series:
+      - series: 'velocita_v2_retained_log_entries{job="velocita-v2",host="nuc1",node="1",pool="ordinary"}'
+        values: '6000+152x14 8128x6'
+      - series: 'velocita_v2_retained_log_capacity{job="velocita-v2",host="nuc1",node="1",pool="ordinary"}'
+        values: '8128x20'
+      - series: 'velocita_v2_retained_log_entries{job="velocita-v2",host="pi",node="2",pool="protected"}'
+        values: '4 4 40x18'
+      - series: 'velocita_v2_retained_log_capacity{job="velocita-v2",host="pi",node="2",pool="protected"}'
+        values: '64x20'
+    alert_rule_test:
+      # 6000/8128 = 73.8%: below the warning line.
+      - eval_time: 0m
+        alertname: VelocitaRaftLogFilling
+        exp_alerts: []
+      # From 1m (6152 = 75.7%) above 75%; firing after 5m of that; at 7m 7064/8128.
+      - eval_time: 7m
+        alertname: VelocitaRaftLogFilling
+        exp_alerts:
+          - exp_labels: {severity: warning, job: velocita-v2, host: nuc1, node: "1", pool: ordinary}
+            exp_annotations:
+              summary: "nuc1 Raft log is 86.91% full"
+              description: "Compaction only reclaims entries every voter holds, so a filling log means a voter is not keeping up (see the compaction floor). At 100% every normal command (the shadow edge) is refused. Restore the lagging voter."
+      - eval_time: 13m
+        alertname: VelocitaRaftLogFull
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: VelocitaRaftLogFull
+        exp_alerts:
+          - exp_labels: {severity: critical, job: velocita-v2, host: nuc1, node: "1", pool: ordinary}
+            exp_annotations:
+              summary: "nuc1 Raft log is full: normal commands are refused"
+              description: "The shadow edge cannot record decisions. Operator kill commands still use the protected reserve. Restore the voter pinning the compaction floor, or replace the cluster."
+      - eval_time: 1m
+        alertname: VelocitaKillReserveLow
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: VelocitaKillReserveLow
+        exp_alerts:
+          - exp_labels: {severity: warning, job: velocita-v2, host: pi, node: "2", pool: protected}
+            exp_annotations:
+              summary: "pi operator kill reserve 62.5% used"
+              description: "Each kill-path command (kill epoch, executor generation, strategy mode, mass cancel) permanently uses one of 64 reserved entries until compaction exists; submitter restarts use one each."
+
+  # Compaction: nuc2 leads a stranded voter from 2m; the Pi's last compaction
+  # paused 0.8 s; nuc1's floor stops moving at 10m with the log 60% full.
+  - interval: 1m
+    input_series:
+      - series: 'velocita_v2_stranded_voters{job="velocita-v2",host="nuc2",node="3"}'
+        values: '0 0 1x40'
+      - series: 'velocita_v2_last_compaction_seconds{job="velocita-v2",host="pi",node="2"}'
+        values: '0.1 0.1 0.8x40'
+      - series: 'velocita_v2_retained_log_entries{job="velocita-v2",host="nuc1",node="1",pool="ordinary"}'
+        values: '4900x60'
+      - series: 'velocita_v2_retained_log_capacity{job="velocita-v2",host="nuc1",node="1",pool="ordinary"}'
+        values: '8128x60'
+      - series: 'velocita_v2_compaction_floor{job="velocita-v2",host="nuc1",node="1"}'
+        values: '100+10x10 200x50'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: VelocitaVoterStranded
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: VelocitaVoterStranded
+        exp_alerts:
+          - exp_labels: {severity: critical, job: velocita-v2, host: nuc2, node: "3"}
+            exp_annotations:
+              summary: "nuc2 leads a voter it cannot catch up"
+              description: "A voter is behind this leader's snapshot (it lost its storage, or compacted history it needs). It stays a quiet follower but cannot rejoin until repaired (snapshot install is M6). The cluster runs on the others with less redundancy."
+      - eval_time: 1m
+        alertname: VelocitaCompactionPauseLong
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: VelocitaCompactionPauseLong
+        exp_alerts:
+          - exp_labels: {severity: warning, job: velocita-v2, host: pi, node: "2"}
+            exp_annotations:
+              summary: "Compaction on pi paused Raft for 0.8s"
+              description: "Raft makes no progress on a node while it compacts. On a leader, pauses near the 1-2 s election timeout can cause elections; consider a higher history.compact_at_entries or faster storage."
+      - eval_time: 30m
+        alertname: VelocitaCompactionBlocked
+        exp_alerts: []
+      - eval_time: 45m
+        alertname: VelocitaCompactionBlocked
+        exp_alerts:
+          - exp_labels: {job: velocita-v2, severity: warning, host: nuc1, node: "1", pool: ordinary}
+            exp_annotations:
+              summary: "nuc1 cannot compact: the floor has not moved for 30 minutes"
+              description: "Some voter is not acknowledging the log, so no voter may reclaim it and the log keeps filling. Find the lagging voter (log positions) and restore it."
+
+  # Paper gateway (node-exporter textfile, host nuc1): the process stops
+  # reporting up at 6m; new risk is stopped at 8m; one unknown outcome at 10m.
+  - interval: 1m
+    input_series:
+      - series: 'velocita_gateway_up{job="node",host="nuc1"}'
+        values: '1x5 0x24'
+      - series: 'velocita_gateway_new_risk_stopped{job="node",host="nuc1"}'
+        values: '0x7 1x22'
+      - series: 'velocita_gateway_unknown_outcomes_total{job="node",host="nuc1"}'
+        values: '0x9 1x20'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: VelocitaGatewayDown
+        exp_alerts: []
+      # Down since 6m: still pending at 7m (for: 2m).
+      - eval_time: 7m
+        alertname: VelocitaGatewayDown
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: VelocitaGatewayDown
+        exp_alerts:
+          - exp_labels: {severity: warning, job: node, host: nuc1}
+            exp_annotations:
+              summary: "Paper gateway is down or not reporting"
+              description: "velocita_gateway_up is 0 or missing: no paper orders are sent and tick-to-trade is not measured. Check the gateway service and its journal."
+      - eval_time: 7m
+        alertname: VelocitaGatewayNewRiskStopped
+        exp_alerts: []
+      # No pending period: fires on the first evaluation that sees 1.
+      - eval_time: 8m
+        alertname: VelocitaGatewayNewRiskStopped
+        exp_alerts:
+          - exp_labels: {severity: critical, job: node, host: nuc1}
+            exp_annotations:
+              summary: "Paper gateway on nuc1 stopped new risk"
+              description: "An unknown order outcome or a reconciliation mismatch stopped new risk: the gateway sends no risk-increasing order. Check the gateway journal for the order and the cause before resuming."
+      - eval_time: 9m
+        alertname: VelocitaGatewayUnknownOutcome
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: VelocitaGatewayUnknownOutcome
+        exp_alerts:
+          - exp_labels: {severity: critical, job: node, host: nuc1}
+            exp_annotations:
+              summary: "Paper gateway on nuc1 has an order with an unknown outcome"
+              description: "The gateway could not establish whether an order reached or filled at the venue, so its position may be wrong. New risk is stopped; check the gateway journal and reconcile against the venue."
+      # Resolves once the 10m window holds no increase.
+      - eval_time: 25m
+        alertname: VelocitaGatewayUnknownOutcome
+        exp_alerts: []
+
+  # No gateway metrics at all (never started, or not scraped): absent() fires.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="node",instance="100.72.127.102:9110",host="nuc1"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: VelocitaGatewayDown
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: VelocitaGatewayDown
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "Paper gateway is down or not reporting"
+              description: "velocita_gateway_up is 0 or missing: no paper orders are sent and tick-to-trade is not measured. Check the gateway service and its journal."

@@ -1,0 +1,248 @@
+"""Observability files: what Prometheus and Grafana load must be what we mean.
+
+Rule files: Prometheus globs `rule_files` at start. A promtool unit-test file
+left in the rules directory (it also ends in .yml) made Prometheus refuse to
+start after a reboot; it had been running on an older directory listing. Paths
+are resolved through the unit's own bind mounts, so a moved mount is checked too.
+
+Dashboards: the single dashboard was split into five. The pre-split panels are
+snapshotted in observability_pre_split_panels.json (taken from the generator's
+output before the split, not from the code under test), so a panel or query
+dropped by a later edit fails here.
+"""
+import contextlib
+import glob
+import importlib.util
+import io
+import json
+import pathlib
+import re
+import tempfile
+import unittest
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+CONFIG = ROOT / "deploy/v2/observability/prometheus.yml"
+UNIT = ROOT / "deploy/v2/systemd/velocita-v2-prometheus.service"
+OBS = ROOT / "deploy/v2/observability"
+DASHBOARD_DIR = OBS / "grafana/dashboards"
+GRAFANA_UNIT = ROOT / "deploy/v2/systemd/velocita-v2-grafana.service"
+PROVIDER = OBS / "grafana/provisioning/dashboards/velocita.yml"
+PRE_SPLIT = pathlib.Path(__file__).resolve().parent / "observability_pre_split_panels.json"
+OLD_UID = "velocita-v2-cluster"
+
+
+def rule_globs():
+    lines, globs, inside = CONFIG.read_text().splitlines(), [], False
+    for line in lines:
+        if re.match(r"^rule_files:\s*$", line):
+            inside = True
+        elif inside and re.match(r"^\s+-\s+", line):
+            globs.append(line.split("-", 1)[1].strip().strip("'\""))
+        elif inside and line.strip() and not line.startswith(" "):
+            inside = False
+    return globs
+
+
+def mounts(unit=UNIT):
+    """Container path -> repo path, from `-v %h/src/aeron-raft-pi/X:/Y:ro`."""
+    out = {}
+    for host, container in re.findall(r"-v %h/src/aeron-raft-pi/(\S+?):(/\S+?)(?::ro)?\s", unit.read_text()):
+        out[container] = ROOT / host
+    return out
+
+
+def top_level_keys(path):
+    return {m.group(1) for m in re.finditer(r"^([A-Za-z_]+):", path.read_text(), re.MULTILINE)}
+
+
+class RuleFilesAreRuleFiles(unittest.TestCase):
+    def test_every_loaded_file_is_a_rule_group_file(self):
+        globs = rule_globs()
+        self.assertTrue(globs, "prometheus.yml declares no rule_files")
+        loaded = []
+        for pattern in globs:
+            directory, name = pattern.rsplit("/", 1)
+            local = mounts().get(directory)
+            self.assertIsNotNone(local, f"{directory} is not mounted into the Prometheus container")
+            loaded += [pathlib.Path(p) for p in glob.glob(str(local / name))]
+        self.assertTrue(loaded, "the rule_files globs match nothing: no alerts would load")
+        for path in loaded:
+            self.assertEqual(top_level_keys(path), {"groups"},
+                             f"{path.relative_to(ROOT)} is loaded as rules but is not a rule-group file")
+
+
+
+def load_generator():
+    spec = importlib.util.spec_from_file_location("generate_dashboard", OBS / "generate_dashboard.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def dashboards():
+    """File name -> parsed dashboard, for every JSON file Grafana would load."""
+    return {p.name: json.loads(p.read_text()) for p in sorted(DASHBOARD_DIR.glob("*.json"))}
+
+
+def content_panels(dashboard):
+    return [p for p in dashboard["panels"] if p["type"] != "row"]
+
+
+def exprs(dashboard):
+    return [t["expr"] for p in content_panels(dashboard) for t in p.get("targets", [])]
+
+
+PAPER_METRICS = {
+    "velocita_gateway_up", "velocita_gateway_new_risk_stopped", "velocita_gateway_orders_sent_total",
+    "velocita_gateway_fills_total", "velocita_gateway_rejects_total", "velocita_gateway_unknown_outcomes_total",
+    "velocita_gateway_authority_requests_total", "velocita_gateway_stage_ms_bucket", "velocita_gateway_stage_ms_sum",
+    "velocita_gateway_stage_ms_count", "velocita_gateway_position_lots", "velocita_gateway_fees_usd_total",
+    "velocita_gateway_last_fill_timestamp_seconds",
+}
+PAPER_STAGES = {"decision_to_authorized", "authorized_to_proof", "proof_to_sent", "sent_to_fill", "fill_to_committed"}
+
+
+class DashboardsAreGeneratedAndLoadable(unittest.TestCase):
+    def test_committed_files_are_exactly_the_generator_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with contextlib.redirect_stdout(io.StringIO()):
+                load_generator().main(["generate_dashboard.py", tmp])
+            generated = {p.name: p.read_text() for p in pathlib.Path(tmp).glob("*.json")}
+        committed = {p.name: p.read_text() for p in DASHBOARD_DIR.glob("*.json")}
+        self.assertEqual(set(committed), set(generated), "a stale or missing dashboard file in grafana/dashboards")
+        for name in generated:
+            self.assertEqual(committed[name], generated[name], f"{name} is stale: rerun generate_dashboard.py")
+
+    def test_five_dashboards_with_unique_uids_titles_and_panel_ids(self):
+        boards = dashboards()
+        self.assertEqual(len(boards), 5)
+        uids = [d["uid"] for d in boards.values()]
+        titles = [d["title"] for d in boards.values()]
+        self.assertEqual(len(set(uids)), 5, uids)
+        self.assertEqual(len(set(titles)), 5, titles)
+        for name, d in boards.items():
+            self.assertTrue(re.fullmatch(r"[a-z0-9-]{1,40}", d["uid"]), f"{name}: uid {d['uid']!r}")
+            ids = [p["id"] for p in d["panels"]]
+            self.assertEqual(len(ids), len(set(ids)), f"{name}: duplicate panel ids")
+
+    def test_panels_fit_the_grid_without_overlapping(self):
+        for name, d in dashboards().items():
+            cells = {}
+            for p in d["panels"]:
+                g = p["gridPos"]
+                self.assertLessEqual(g["x"] + g["w"], 24, f"{name}: {p['title']} is wider than the page")
+                for x in range(g["x"], g["x"] + g["w"]):
+                    for y in range(g["y"], g["y"] + g["h"]):
+                        self.assertNotIn((x, y), cells, f"{name}: {p['title']} overlaps {cells.get((x, y))}")
+                        cells[(x, y)] = p["title"]
+
+    def test_every_dashboard_links_to_every_dashboard_in_one_order(self):
+        boards = dashboards()
+        expected = None
+        for name, d in boards.items():
+            urls = [link["url"] for link in d.get("links", [])]
+            expected = expected or urls
+            self.assertEqual(urls, expected, f"{name} has a different link bar")
+        self.assertEqual(sorted(expected), sorted(f"/d/{d['uid']}" for d in boards.values()))
+
+    def test_no_pre_split_panel_or_query_was_lost(self):
+        before = json.loads(PRE_SPLIT.read_text())["panels"]
+        self.assertEqual(len(before), 66)
+        after = {(p["type"], p["title"], tuple(t["expr"] for t in p.get("targets", [])))
+                 for d in dashboards().values() for p in content_panels(d)}
+        for panel in before:
+            self.assertIn((panel["type"], panel["title"], tuple(panel["exprs"])), after,
+                          f"pre-split panel {panel['title']!r} (row {panel['row']!r}) is gone or changed")
+        before_exprs = {e for panel in before for e in panel["exprs"]}
+        after_exprs = {e for d in dashboards().values() for e in exprs(d)}
+        self.assertEqual(before_exprs - after_exprs, set())
+
+    def test_overview_answers_cluster_health_at_a_glance(self):
+        overview = next(d for d in dashboards().values() if d["uid"] == OLD_UID)
+        types = {p["type"] for p in content_panels(overview)}
+        self.assertIn("alertlist", types)
+        for expr in ('max(velocita_v2_leader_id)', 'max(velocita_v2_term)', 'sum(velocita_v2_up)',
+                     'max(velocita_v2_log_index{kind="commit"})', 'max(velocita_shadow_submitter_ready)',
+                     'min by (host) (velocita_secret_present)', 'max(velocita_gateway_new_risk_stopped)'):
+            self.assertIn(expr, exprs(overview))
+        self.assertTrue(any("applied" in e for e in exprs(overview)), "no commit -> applied view on the overview")
+
+    def test_paper_dashboard_references_every_gateway_metric(self):
+        paper = next(d for d in dashboards().values() if d["uid"] == "velocita-v2-paper")
+        text = "\n".join(exprs(paper))
+        self.assertEqual(set(re.findall(r"\bvelocita_gateway_[a-z_]+", text)), PAPER_METRICS)
+        self.assertEqual(set(re.findall(r'stage="([a-z_]+)"', text)), PAPER_STAGES)
+        for label in ("side", "reason", "result"):
+            self.assertRegex(text, rf"by \({label}\)")
+        legends = {t.get("legendFormat", "") for p in content_panels(paper) for t in p.get("targets", [])}
+        self.assertIn("{{account}} {{instrument}}", legends)
+        self.assertTrue(any(p["type"] == "timeseries" and p["fieldConfig"]["defaults"]["custom"]["stacking"]["mode"] == "normal"
+                            and "stage_ms_sum" in "".join(t["expr"] for t in p["targets"]) for p in content_panels(paper)),
+                        "no stacked stage-latency panel")
+        self.assertTrue(any("histogram_quantile(0.99" in e and "stage_ms_bucket" in e for e in exprs(paper)))
+        fees = [p for p in content_panels(paper) if any("fees_usd_total" in t["expr"] for t in p.get("targets", []))]
+        self.assertTrue(fees)
+        for p in fees:
+            self.assertEqual(p["fieldConfig"]["defaults"]["unit"], "suffix:¢", p["title"])
+            self.assertTrue(all(t["expr"].startswith("100 * ") for t in p["targets"]), p["title"])
+
+    def test_new_risk_stopped_is_the_first_and_widest_paper_panel(self):
+        paper = next(d for d in dashboards().values() if d["uid"] == "velocita-v2-paper")
+        first = content_panels(paper)[0]
+        self.assertEqual(first["targets"][0]["expr"], "max(velocita_gateway_new_risk_stopped)")
+        self.assertEqual((first["gridPos"]["x"], first["gridPos"]["y"]), (0, 1))
+        same_line = [p for p in content_panels(paper) if p["gridPos"]["y"] == first["gridPos"]["y"]]
+        self.assertEqual(max(p["gridPos"]["w"] for p in same_line), first["gridPos"]["w"])
+        defaults = first["fieldConfig"]["defaults"]
+        self.assertEqual(defaults["mappings"][0]["options"]["1"]["text"], "NEW RISK STOPPED")
+        self.assertEqual([s for s in defaults["thresholds"]["steps"] if s["value"] == 1][0]["color"], "red")
+
+
+class GrafanaProvisioningLoadsEveryDashboard(unittest.TestCase):
+    def provider(self):
+        text = PROVIDER.read_text()
+        path = re.search(r"^\s+path:\s*(\S+)\s*$", text, re.MULTILINE).group(1)
+        deletion = re.search(r"^\s+disableDeletion:\s*(\S+)\s*$", text, re.MULTILINE).group(1)
+        return path, deletion == "true"
+
+    def test_provider_path_is_the_mounted_dashboard_directory(self):
+        path, _ = self.provider()
+        self.assertEqual(mounts(GRAFANA_UNIT).get(path), DASHBOARD_DIR,
+                         f"provider path {path} is not where the unit mounts grafana/dashboards")
+        self.assertEqual(len(re.findall(r"^\s+- name:", PROVIDER.read_text(), re.MULTILINE)), 1)
+
+    def test_former_single_dashboard_uid_is_still_provisioned(self):
+        # disableDeletion: true leaves a dashboard whose file disappeared in
+        # Grafana's database as an unprovisioned stale copy.
+        _, deletion_disabled = self.provider()
+        uids = {d["uid"] for d in dashboards().values()}
+        if deletion_disabled:
+            self.assertIn(OLD_UID, uids)
+
+    def test_home_dashboard_is_the_overview(self):
+        home = re.search(r"GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=(\S+)", GRAFANA_UNIT.read_text()).group(1)
+        directory, name = home.rsplit("/", 1)
+        self.assertEqual(mounts(GRAFANA_UNIT).get(directory), DASHBOARD_DIR)
+        self.assertIn(name, dashboards())
+        self.assertEqual(dashboards()[name]["uid"], OLD_UID)
+        self.assertIn("Overview", dashboards()[name]["title"])
+
+
+class GatewayAlertsAreDefinedAndTested(unittest.TestCase):
+    NAMES = ("VelocitaGatewayDown", "VelocitaGatewayNewRiskStopped", "VelocitaGatewayUnknownOutcome")
+
+    def test_each_gateway_alert_has_a_firing_and_a_quiet_rule_test(self):
+        rules = (OBS / "rules/velocita-v2-alerts.yml").read_text()
+        tests = (OBS / "rule-tests/velocita-v2-alerts.test.yml").read_text()
+        for name in self.NAMES:
+            self.assertIn(f"- alert: {name}\n", rules)
+            self.assertRegex(tests, rf"alertname: {name}\n\s+exp_alerts: \[\]")
+            self.assertRegex(tests, rf"alertname: {name}\n\s+exp_alerts:\n\s+- exp_labels:")
+        stopped = rules.split("- alert: VelocitaGatewayNewRiskStopped\n", 1)[1].split("- alert:", 1)[0]
+        self.assertIn("severity: critical", stopped)
+        self.assertNotIn("for:", stopped)
+        self.assertIn("journal", stopped)
+
+
+if __name__ == "__main__":
+    unittest.main()

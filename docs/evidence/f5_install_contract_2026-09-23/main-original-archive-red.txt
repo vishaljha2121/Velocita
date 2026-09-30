@@ -1,0 +1,2 @@
+archive_reclamation included=3 audited_index=1 snapshot_state_kill=2 retained_wal_record=0 retained_raw_bytes_anywhere=0 verified_archive_interface=absent
+RED F5/A14: compact removed the last raw committed command/identity bytes without verified archive coverage

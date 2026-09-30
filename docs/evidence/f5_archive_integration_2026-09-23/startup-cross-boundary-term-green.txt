@@ -1,0 +1,10 @@
+Command (direct focused link; fixed src/v2_replication.cpp overrides the stale library member):
+c++ -std=c++20 -O1 -DNDEBUG -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Itests -Ibuild/_deps/willemt_raft-src/include tests/v2_archive_startup_tests.cpp src/v2_replication.cpp -L/private/tmp/velocita-full-audit.lYB4P5/release -lvelocita_v2_replication -lvelocita_v2_kernel -lvelocita_v2_evaluator -lvelocita_v2_contracts -lvelocita_core -lwillemt_raft -pthread -o /private/tmp/cp038-boundary-green
+
+Command:
+/private/tmp/cp038-boundary-green
+
+Exit status: 0
+
+Exact output:
+archive startup regression tests passed

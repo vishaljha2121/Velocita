@@ -1,0 +1,17 @@
+.........................refusing non-canonical HTTPS auth origin
+refusing non-canonical HTTPS auth origin
+refusing non-canonical HTTPS auth origin
+refusing non-canonical HTTPS auth origin
+refusing non-canonical HTTPS auth origin
+.....mint failed: unsafe access_token
+.mint failed: no access_token in response
+..mint failed: unsafe access_token
+.......
+----------------------------------------------------------------------
+Ran 40 tests in 1.204s
+
+OK
+token written to /var/folders/lj/9xsh1_h90_lc_cmvn_3gk2b80000gn/T/tmplzn9l0p_/token
+expires in 136830076 minutes (12:46:39)
+token written to /var/folders/lj/9xsh1_h90_lc_cmvn_3gk2b80000gn/T/tmpsic7km_z/token
+expires in 136830076 minutes (12:46:39)

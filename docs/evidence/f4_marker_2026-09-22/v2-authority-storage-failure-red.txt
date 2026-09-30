@@ -1,0 +1,1 @@
+v2 authority storage failure test failed: storage-failed node accepted a follow-on authority operation

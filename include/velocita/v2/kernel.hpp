@@ -3,11 +3,13 @@
 #include "velocita/v2/action_resolver.hpp"
 #include "velocita/v2/artifact_digest.hpp"
 #include "velocita/v2/contracts.hpp"
+#include "velocita/v2/execution_catalog.hpp"
 
 #include <array>
 #include <compare>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <limits>
 #include <optional>
 #include <type_traits>
@@ -158,6 +160,12 @@ enum class ApplyCode : std::uint8_t {
     // A resume into a risk-increasing mode was refused because the cluster
     // cannot currently say what its exposure is. See G-059.
     reconciliation_required,
+    catalog_not_installed,
+    catalog_installation_blocked,
+    immutable_catalog_conflict,
+    catalog_row_not_found,
+    catalog_binding_mismatch,
+    position_limit_exceeded,
 };
 
 // The highest RequestSequence whose receipt this caller has had RECLAIMED.
@@ -207,7 +215,8 @@ struct SupersedePolicy {
 };
 
 // THE OPERATOR CALLER BAND. Control actions - kill epoch, executor generation,
-// strategy mode - are accepted only from a `CallerId` at or below this value.
+// strategy mode, catalog installation, risk limits - are accepted only from a
+// `CallerId` at or below this value.
 //
 // The reducer CANNOT verify a signature. G-066 keeps key material out of
 // replicated state and `apply` performs no I/O, so authentication is
@@ -337,10 +346,24 @@ struct ConfigureRiskLimits {
     MoneyMicros max_reserved_exposure{};
     std::uint32_t initial_margin_ppm{};
     std::uint32_t maximum_fee_ppm{};
+    // Bounds |position| after every open order on either side fills. Zero
+    // denies new exposure; it never means unlimited.
+    QuantityLots max_position_quantity{};
+    // False is long-only: a sell may only reduce a long position.
+    bool allow_short{};
+    // Non-zero reference into the operator's audit record of why the limits
+    // changed. Carried in the log only; the kernel does not interpret it.
+    std::uint32_t reason_code{};
 };
 
 struct AcknowledgeGatewayResults {
     RequestSequence acknowledged_through{};
+};
+
+struct InstallExecutionCatalog {
+    Digest256 catalog_root{};
+    KillEpoch expected_kill_epoch{};
+    ExecutorGeneration expected_executor_generation{};
 };
 
 [[nodiscard]] constexpr bool valid_risk_limits(const ConfigureRiskLimits& value) noexcept {
@@ -349,7 +372,8 @@ struct AcknowledgeGatewayResults {
            value.max_reserved_quantity >= value.max_order_quantity &&
            value.max_order_gross_notional.atoms() > 0 && value.max_reserved_exposure.atoms() > 0 &&
            value.initial_margin_ppm > 0 && value.initial_margin_ppm <= 1'000'000 &&
-           value.maximum_fee_ppm <= 1'000'000;
+           value.maximum_fee_ppm <= 1'000'000 &&
+           value.max_position_quantity.atoms() >= 0 && value.reason_code != 0;
 }
 
 using CommandBody = std::variant<PublishPolicy,
@@ -370,7 +394,8 @@ using CommandBody = std::variant<PublishPolicy,
                                  ObserveOrderEvent,
                                  RequestReplace,
                                  ConfigureRiskLimits,
-                                 AcknowledgeGatewayResults>;
+                                 AcknowledgeGatewayResults,
+                                 InstallExecutionCatalog>;
 
 struct Command {
     CommandIdentity identity{};
@@ -386,6 +411,10 @@ enum class ApplyResultDetailKind : std::uint8_t {
     risk_configuration = 5,
     // Appended, so every existing kind keeps its value.
     mass_cancel = 6,
+    // Carried by a `stale_risk_state` authorization refusal so the strategy can
+    // bind the account's current versions on its next frame. Words are
+    // {risk_version, position_version, position_quantity atoms}.
+    risk_state = 7,
 };
 
 // Three canonical 64-bit words are interpreted only through the explicit tag.
@@ -425,6 +454,14 @@ struct ApplyResultDetail {
         const std::uint64_t cancelled,
         const std::uint64_t skipped) noexcept {
         return {{{in_scope, cancelled, skipped}}};
+    }
+
+    [[nodiscard]] static constexpr ApplyResultDetail risk_state(
+        const RiskVersion risk_version,
+        const PositionVersion position_version,
+        const QuantityLots position_quantity) noexcept {
+        return {{{risk_version.value(), position_version.value(),
+                  static_cast<std::uint64_t>(position_quantity.atoms())}}};
     }
 
     [[nodiscard]] static constexpr ApplyResultDetail venue_event(
@@ -545,6 +582,22 @@ struct ApplyResult {
     }
     [[nodiscard]] constexpr std::uint64_t mass_skipped() const noexcept {
         return detail_kind == ApplyResultDetailKind::mass_cancel ? detail.words[2] : 0;
+    }
+
+    [[nodiscard]] constexpr RiskVersion current_risk_version() const noexcept {
+        return detail_kind == ApplyResultDetailKind::risk_state
+                   ? RiskVersion{detail.words[0]}
+                   : RiskVersion{};
+    }
+    [[nodiscard]] constexpr PositionVersion current_position_version() const noexcept {
+        return detail_kind == ApplyResultDetailKind::risk_state
+                   ? PositionVersion{detail.words[1]}
+                   : PositionVersion{};
+    }
+    [[nodiscard]] constexpr QuantityLots current_position_quantity() const noexcept {
+        return detail_kind == ApplyResultDetailKind::risk_state
+                   ? QuantityLots::from_atoms(static_cast<std::int64_t>(detail.words[2]))
+                   : QuantityLots{};
     }
 
     [[nodiscard]] constexpr EffectId event_effect_id() const noexcept {
@@ -683,6 +736,8 @@ struct RiskAccount {
     std::uint32_t initial_margin_ppm{};
     std::uint32_t maximum_fee_ppm{};
     QuantityLots position_quantity{};
+    QuantityLots max_position_quantity{};
+    bool allow_short{};
 
     constexpr auto operator<=>(const RiskAccount&) const noexcept = default;
 };
@@ -782,6 +837,7 @@ struct TradingState {
     std::uint64_t settled_incomplete_effect_count{};
     std::size_t caller_cursor_count{};
     std::array<CallerCursor, kMaxCallerCursors> caller_cursors{};
+    Digest256 execution_catalog_root{};
 };
 
 // Reserved for bounded temporary indexes/encoding buffers in later reducer
@@ -789,15 +845,47 @@ struct TradingState {
 // heap-backed scratch state.
 struct ApplyScratch final {};
 
+class CatalogDependencyUnavailable final : public std::exception {
+public:
+    const char* what() const noexcept override {
+        return "required execution catalog is unavailable";
+    }
+};
+
+[[nodiscard]] Digest256 required_execution_catalog(
+    const TradingState& state, const Command& command) noexcept;
+
+[[nodiscard]] bool execution_catalog_ready(
+    const Digest256& required_root, const VerifiedExecutionCatalog* catalog) noexcept;
+
+// Recovery-only semantic preflight, in addition to canonical snapshot validation.
+[[nodiscard]] bool execution_catalog_bindings_valid(
+    const TradingState& state, const VerifiedExecutionCatalog& catalog) noexcept;
+
 // Pure, bounded reconstruction from retained authorization evidence. Returns
 // no value for missing/inconsistent evidence or unsupported operations.
 // The returned value owns its data; no pointer into TradingState escapes.
 [[nodiscard]] std::optional<OrderEffect> materialize_order_effect(
     const TradingState& state, EffectId effect_id) noexcept;
 
+struct BoundOrderEffect {
+    OrderEffect effect{};
+    Digest256 catalog_root{};
+    InstrumentSpecVersion instrument_spec_version{};
+    VenueCapabilitiesVersion venue_capabilities_version{};
+
+    constexpr auto operator<=>(const BoundOrderEffect&) const noexcept = default;
+};
+
+// A local copied value, not an authenticated cross-process authority envelope.
+[[nodiscard]] std::optional<BoundOrderEffect> materialize_bound_order_effect(
+    const TradingState& state, EffectId effect_id,
+    const VerifiedExecutionCatalog& catalog) noexcept;
+
 [[nodiscard]] ApplyResult apply(TradingState& state,
                                 const Command& command,
-                                ApplyScratch& scratch) noexcept;
+                                ApplyScratch& scratch,
+                                const VerifiedExecutionCatalog* catalog = nullptr);
 
 [[nodiscard]] const PolicyRecord* find_policy(const TradingState& state,
                                               PolicyId policy_id,

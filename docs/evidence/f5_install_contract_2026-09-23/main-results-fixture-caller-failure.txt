@@ -1,0 +1,1 @@
+snapshot install result contract prerequisite failed: independent reducer rejected fixture command

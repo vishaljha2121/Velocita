@@ -2,6 +2,7 @@
 #include "velocita/v2/action_resolver.hpp"
 #include "velocita/v2/contracts.hpp"
 #include "velocita/v2/executable_policy.hpp"
+#include "velocita/v2/execution_catalog.hpp"
 #include "velocita/v2/kernel.hpp"
 #include "velocita/v2/kernel_codec.hpp"
 #include "velocita/v2/payload.hpp"
@@ -14,6 +15,13 @@ int main() {
     using namespace velocita::v2;
 
     std::cout << "target_cache_line_bytes=" << kTargetCacheLineBytes << '\n'
+              << "execution_catalog_context_size_bytes="
+              << sizeof(VerifiedExecutionCatalog) << '\n'
+              << "execution_catalog_context_alignment_bytes="
+              << alignof(VerifiedExecutionCatalog) << '\n'
+              << "execution_catalog_context_budget_bytes=16384\n"
+              << "execution_catalog_payload_budget_bytes="
+              << kMaxExecutionCatalogBytes << '\n'
               << "decision_frame_size_bytes=" << sizeof(DecisionFrame) << '\n'
               << "decision_frame_alignment_bytes=" << alignof(DecisionFrame) << '\n'
               << "decision_frame_budget_bytes="

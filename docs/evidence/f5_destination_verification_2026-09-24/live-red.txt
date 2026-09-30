@@ -1,0 +1,1 @@
+live archive verification test failed: configured two-host compaction never requested fresh destination verification

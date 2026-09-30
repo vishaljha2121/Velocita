@@ -1,0 +1,1 @@
+install history bridge contract: snapshot without archive or retained prefix did not refuse for missing history

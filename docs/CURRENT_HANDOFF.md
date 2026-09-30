@@ -1,11 +1,2492 @@
 # Current development handoff
 
-Updated: 2026-09-21
+Updated: 2026-09-27
 
 Purpose: compact working memory for the next agent session. Verify this file
 against Git before acting; do not reconstruct the project from chat history.
 
-## PHASE 9: THE VENUE TURNED OUT NOT TO BE AN EXCHANGE — 2026-09-21
+## PHASE 2 PAPER TRADING — PAUSED MID-IMPLEMENTATION — 2026-09-29 21:20 EDT (current)
+
+Start at `docs/PHASE2_PAPER_HANDOFF.md`, then ADRs 0015–0018. The work is split across
+per-agent copies in `~/.cache/velocita-work/`. Only the dashboard split is merged into this tree.
+Open P0 items:
+- mass-cancel result-detail admission (the kill path);
+- the gateway stream is unfinished.
+
+The live cluster is unchanged and healthy in shadow mode.
+
+## CP-061 — PHASE 1 SHADOW LOOP: SESSION LIBRARY DONE — 2026-09-28 (current)
+
+Owner approved Phase 1 (tick -> DecisionFrame -> replicated shadow decision,
+measured end to end) with real fees and no assumptions; demo program BTC trend
+SMA 125 (the only one the battery supports). TDD throughout.
+
+DONE: step 1, `NodeClientSession` + `AeronClientTransport`; client binary
+ported; Release 112/112 in ~/.cache/velocita-build/release (NOT /tmp).
+
+STEP 3 DONE (CP-062): `velocita-v2-shadow-submitter` + library; Release 114/114.
+DEPLOYMENT RULES found by the tests:
+1. Fresh cluster ceremony (operator client, in order): kill-epoch 1,
+   executor-generation 1, install-catalog ROOT 1 1 (normal lane). Only then can
+   any policy be published.
+2. The submitter needs its OWN caller route, e.g. `caller.11.caller_id = 9`
+   (operator band, for SetStrategyMode) with its own key and response port.
+   Sharing caller 9 with the operator client trips the replay fence (seen as
+   silent timeouts and fence_refusals on the leader).
+3. The live demo still needs an execution-catalog row whose units can carry a
+   real BTC price (the fixture row allows 1..100 ticks): decide before step 5.
+STEP 4 DONE (CP-063): `cli shadow-edge`; live Mac smoke 71/71 agreement.
+Two system findings: (a) tick-to-decision ~460 ms because follower durable
+acks wait for the 200 ms heartbeat (fix identified, not made); (b) unseeded
+rand() gave every voter identical election timeouts: FIXED in the node binary
+(needs a new image on every host). Release 115/115 x3.
+STEP 5 CODE DONE (CP-064): `velocita-v2-shadow-catalog --truemarkets-cbbtc`
+(root 167b67a7...7526; account 1, venue 20, instrument 1, spec 1, caps 1;
+$1 ticks, 0.00001 BTC lots, FOK, no post-only); caller.11 in every template;
+`Containerfile --target shadow`; `velocita-v2-shadow-edge.service`; dashboard
+row. Edge now drops True Markets' 1 s resends (finding 29). Live two-voter Mac
+rehearsal: 50/50 proposed + agreed, data age 0.3 s. Release 116/116.
+STEP 5 DEPLOYED (M3 log finding 31): live on nuc1 + Pi, incarnation
+8d1fd769..., 87/87 live ticks recorded + agreed, tick-to-decision ~356 ms.
+THREE VOTERS LIVE (M3 log finding 37): incarnation 8d9d7c95..., nuc2 leads;
+shadow edge on all three voters. nuc2 has watchdog + panic reboot (36).
+COMPACTION + SHADOW BOOK LIVE (CP-070..074, M3 log findings 40-42): fresh
+cluster 453345d0... on nuc1 + Pi + nuc2. Compaction is floor-gated (the lowest
+index every voter holds, carried on every append; V2 peer body version 2); a
+stranded voter can no longer disrupt the cluster; compacted voters can elect
+(willemt last-log-term fix). Shadow book: $1,000, tick and daily-close books
+at measured costs; promotion gate in docs/STRATEGY_PROMOTION_GATE.md.
+TRADING BUDGET: $25 total (owner, 2026-09-29). Paper and shadow books are sized
+to it; kernel limits $25/order, one open position, halt on unknown outcome.
+Phase 2 decisions (owner): separate velocita-v2-gateway process on nuc1; new
+node-protocol bytes approved outright; paper fills FOK at the TM reference
+price with measured costs.
+NEXT: Phase 2 paper trading (gateway + TrueMarkets simulator), owner-chosen
+2026-09-29. Deferred to the next phase by the owner: Raft pre-vote (every wifi
+drop forces one leadership change on rejoin; M3 log finding 43). Watch the
+first live compaction pause; then relax the 30 s tick throttle.
+EARLY DURABLE ACKS (CP-068): follower tells the leader what is newly durable
+without waiting for a heartbeat (`FollowerAckTracker`); Mac rehearsal
+tick-to-decision 374 -> 21.7 ms. Rolling upgrade in progress (images
+`:m3-ack`, previous kept as `:m3-pre-ack`; followers first, leader last).
+NEXT: finish the rollout and measure live; watchdog + panic reboot on nuc1
+and the Pi (the NUCs are on separate power, owner-confirmed); verify
+election bursts shrink (finding 28); shadow ledger + promotion gate
+(awaiting owner lgtm).
+
+HISTORY, step 2: shadow command builder (pure library, TDD against the real
+reducer via `catalog_test::apply`). Kernel facts it must honour, read this
+session:
+- policy: PublishPolicy (proposed) -> ValidatePolicy -> ActivatePolicy; versions
+  monotonic per policy id.
+- StageExecutablePolicy needs verified feature-schema and executable-policy
+  digests, templates whose instrument_spec_version / venue_capabilities_version
+  match, AND an execution-catalog row matching account, venue, instrument and
+  both versions with byte-identical profile and capabilities. The catalog is
+  bound into cluster identity at bootstrap: the live demo needs a catalog row
+  for its instrument (fixture row is venue 9 / instrument 4 / account 5).
+- ActivateExecutablePolicy(policy, version, executable digest) after staging.
+- SetStrategyMode(normal) needs the CURRENT kill epoch and executor generation
+  and an operator caller (<= 15).
+- RecordSourceEvent: per source, generation starts at 1 and sequences are
+  contiguous from 1; a restarted edge must use generation+1 (persist it).
+- EvaluateDecisionFrame(shadow) -> decision_code shadow_recorded, effective
+  no_action; non-authorizable decisions are swept, so a steady stream should
+  not wedge (prove with a long test before deploying).
+Then step 3: `velocita-v2-shadow-submitter` (session + builder, line protocol
+from the Python edge), step 4: Python shadow edge, step 5: deploy + Grafana.
+
+STEP 2 DONE (same day): `shadow_program.hpp` (`velocita_v2_node`):
+`shadow_setup` = Publish -> Validate -> Stage -> ActivateExecutable ->
+SetStrategyMode(normal); `shadow_tick` = RecordSourceEvent +
+EvaluateDecisionFrame(shadow). Units come only from the catalog row passed in.
+Payload digest = sha256 of the command encoded with a constant digest
+placeholder. 9 tests through the real reducer (incl. 5000-tick stream never
+wedges, generation restart, stale kill epoch refused, exact retry returns the
+retained result and leaves state unchanged, reused sequence with new content is
+duplicate_conflict, changed rule under same version is
+immutable_policy_conflict); 11 mutants killed by intended assertions (two
+first killed by the encoder instead, re-run with valid mutants). Note: exact
+retries return the ORIGINAL result (code applied), not already_applied.
+
+## CP-059 — THREE VOTERS; M4 READ-ONLY DATA APPROVED — 2026-09-27
+
+### Owner decisions this checkpoint
+
+- Topology: THREE voters, one per host: nuc1 (voter 1, 100.72.127.102), Pi
+  (voter 2, 100.84.151.116), nuc2 (voter 3, 100.85.36.22). A commit needs two
+  durable copies; any one voter may be lost. This supersedes CP-051's two-voter
+  MVP topology. The online snapshot installer is STILL deferred, because the
+  node never compacts: a returning voter always catches up from retained log.
+  Enabling auto-compaction with three voters requires the installer first.
+- M4: GET-only, credential-free calls to True Markets are approved, with order
+  sends mocked (simulator only). No keys, no POST, no `/orders` path.
+
+### What changed
+
+- Fixed: one unreachable follower stalled all peer traffic (`send_peers`), so a
+  three-voter cluster with two voters alive committed nothing. Per-peer hold;
+  RED-first node/mailbox tests, a real three-process Aeron scenario, five
+  mutants killed. Evidence `evidence/three_voter_2026-09-27/`. Release 111/111.
+- `deploy/v2/three-host/node-{1,2,3}.conf.template` + `v2-deploy-template-tests`.
+- Prometheus targets for nuc2, `VelocitaQuorumAtRisk` / `VelocitaQuorumLost`
+  alerts with a promtool test, dashboard retitled; host label `nuc` -> `nuc1`.
+- Soak bots send to 1, 3, 2 (NVMe first) and REQUIRE `VELOCITA_INCARNATION`.
+
+### Next
+
+1. Done: soak PASSED (zero elections in its window). Recurring elections are
+   wifi carrier loss every ~8 h 24 min per host (deployment log finding 24):
+   wire every voter before the three-voter soak. Owner: install the Mac key
+   for `vishal` on nuc1 (finding 25).
+2. nuc2 host prep: storage benchmark, `ufw` check, image copy from nuc1,
+   units, exporters; BIOS power-on + power-cut test; Ethernet if possible.
+3. Fresh three-host cluster (new incarnation), secrets `link-1-3`, `link-2-3`,
+   drills killing each voter in turn, then a three-voter soak.
+4. M4: read-only market-data collector into the non-sending shadow loop.
+
+CP-060 (2026-09-28): market-data recorder live on nuc1; research lab built;
+Minara REJECTED on a point-in-time universe (`evidence/minara_battery_2026-09-28/`);
+volume must be bought at the markup (`evidence/volume_strategy_2026-09-28/`).
+MARKUP STILL UNMEASURED. `tools/measure-markup.py` fixed this session: explicit
+User-Agent (Cloudflare 403'd Python's default), stale-keystroke flush and
+empty-code re-prompt, quote retries with a scrubbed reason, base asset resolved
+to the catalog contract address (bare "SOL" gave "resolve base asset: 404"),
+and a True Markets 30s reference close captured beside each quote. The owner's
+login succeeded twice; the quote call then failed (fixed). Latest state: True
+Markets stopped emailing login codes after about five requests in ~30 minutes
+(probable per-address throttle). Next: one attempt after an hour, output
+through `tee`; if no email, ask True Markets support.
+
+## CP-051 — E1 RE-SCOPED TO THE TWO-VOTER PILOT — 2026-09-24 (topology superseded by CP-059)
+
+This section is current status; lower checkpoints (including the CP-050 Claude
+handover below, whose workspace rules still apply) are an audit trail.
+
+### Owner decisions this checkpoint
+
+- MVP topology stays ONE voter per host: NUC + Pi, two voters, fail-closed.
+  The owner considered 2 voters on NUC + 1 on Pi; that is deferred until a
+  measured compute budget justifies it, and it would bring the online
+  installer back onto the critical path.
+- The online snapshot installer (stable facade, nonserving candidate, history
+  bridge activation, same-ledger reconciliation) is DEFERRED to the three-voter
+  release, not abandoned. Its CP-036/045 approvals remain valid for that work.
+
+Reason: with exactly two voters every commit needs both durable copies and
+compaction never passes commit, so an intact voter can always catch up from its
+own log. Falling behind the compacted prefix requires lost storage, which is the
+approved OFFLINE lost-voter repair, not an online install. Estimated installer
+cost was five to eight sessions for a scenario the pilot cannot reach.
+
+### What changed
+
+- New `tests/v2_two_voter_catchup_tests.cpp` (registered; Pi gate inventory
+  updated). Partitioned peer and unsynced-acknowledgement power-loss scenarios;
+  independent reducer oracle. Pins existing behavior (not RED-first); the
+  follower durable-ack clamp mutant fails the exact intended assertion.
+- The approved "no automatic leader no-op" cost is now asserted in a catch-up
+  trace: a healed old-term suffix waits for one current-term command.
+- `tests/v2_snapshot_catchup_red.cpp` stays a tracked, freshly reproduced RED
+  for the three-voter release. Do not delete it or count it as passing.
+- Evidence: `evidence/e1_two_voter_2026-09-24/`. Release 98/98; sanitizer in
+  `verification.txt` there. No production source changed.
+
+### Exit status after CP-051
+
+| Exit | Pilot (two voters) | Three-voter release |
+|---|---|---|
+| E1 | Native catch-up GREEN + mutation-covered; lost-storage repair still required before live canary (M6) | Online installer; lagger RED open |
+| E2 | Native local + fresh destination verification done; authenticated copy transport needs the node process (M2/M3) | Same |
+| E3 | Native worker persistence done; target measurements needed (M3) | Install-time drain of old jobs, with the installer |
+
+### Next
+
+Full machine sign-off runs for E1/E2/E3: `V2_E_EXIT_SIGNOFF_PLAN.md`.
+
+M2 design APPROVED (decisions C/D/E, 2026-09-24): `M2_NODE_PROCESS_REVIEW.md`; implement §5 in order.
+CP-053 progress: §5 steps 1 (envelope) and 2 (session fence + epoch file) DONE in
+`velocita_v2_node`, RED-first and mutation-covered; evidence `evidence/m2_*`.
+CP-054: step 3 config parser DONE (`evidence/m2_node_config_2026-09-24/`).
+CP-055: ingress/response codec DONE (`evidence/m2_node_protocol_2026-09-24/`).
+CP-056: step 4 V2Node owner loop DONE (`evidence/m2_node_loop_2026-09-24/`).
+CP-057: steps 5–6 DONE. Binaries `velocita-v2-node`/`-client`/`-status`; the
+two-process loopback exit test passes (`evidence/m2_node_process_2026-09-24/`).
+M2 exit met on one host.
+
+Owner decision on the secrets gaps (2026-09-24): MVP is a <= $20 canary, so
+DEFER to the next iteration: asymmetric caller signatures (voters can forge
+caller frames today), WireGuard confidentiality, key-generation tooling and
+persistent receiver epoch watermarks. IN SCOPE for MVP: secret rotation and
+fetching secrets from the owner's Mac instead of storing them on NUC/Pi disk.
+Design APPROVED (RAM-only push from Mac Keychain; SIGHUP overlap rotation): `M2_SECRETS_ROTATION_REVIEW.md`.
+CP-058: implemented and live-tested (`evidence/m2_rotation_2026-09-24/`); runbook in
+the review §5. Next: M3 NUC deployment (systemd unit with a RuntimeDirectory
+tmpfs, dedicated user), first real push from the Mac, then the E sign-off runs.
+Start M2, the startable V2 node: two local processes that start, restart,
+partition, rejoin and replay with no venue send capability. This is the book's
+first end-to-end milestone and is required before authenticated E2 transport,
+M3 deployment and M3a observability. In parallel, M5 venue-contract discovery
+(no venue calls authorized); the snapshot has only 53 bytes of headroom, so any
+new venue state needs a byte review first.
+
+## CLAUDE HANDOVER — CP-050 — 2026-09-24 (historical)
+
+This section was current status at CP-050; lower checkpoints are an audit trail. This is a
+documentation-only handoff after CP-049, not another implementation or gate.
+
+### Verify and preserve the actual workspace
+
+- Repo `/Users/vishaljha/aeron-raft-pi`, branch `v2/phase-5-corrections`, HEAD
+  `d44a4a964fc8c13279878e53d245ab56b921a824`. Verify before acting.
+- Extensive remediation is MODIFIED/UNTRACKED, not committed at that HEAD. A
+  checkout of HEAD alone loses the current implementation. Preserve EVERY existing
+  dirty/untracked path, not just the protected list. Do not reset, clean, stash,
+  switch branches or reconstruct from historical chat. No new commit/tag made.
+- Specifically protected: `model/`, `docs/README.md`,
+  `docs/MUST_CONFIRM_BEFORE_ADAPTER_CONNECT.md`,
+  `docs/V2_MODEL_AND_MARKET_DATA_EDGE_DESIGN.md`, and `docs/adr/0002-*`.
+  Never `git add .` or `git add -A`; any future staging is explicit-path only.
+- No AGENTS.md was found at the repository or checked ancestor roots at handoff;
+  check again. No code/test/build changes in CP-050. Test figures below are
+  verified saved CP-049 evidence, not freshly rerun in this handoff turn.
+
+### Read next, in order
+
+1. ADR0001 invariants, ADR0014 (current amendment plus applicable historical
+   decisions), ADR0006's new current-status amendment.
+2. `F5_INTEGRATED_INSTALL_CONTRACT_REVIEW.md` in full: decisions A–F APPROVED.
+3. `F5_INSTALL_HISTORY_BRIDGE_REVIEW.md` in full: bridge, candidate budget and
+   recovery direction APPROVED. Do not reopen these as new approval requests.
+4. `F5_GENERATION_STORAGE_REVIEW.md`, `F5_LOCAL_GENERATION_BYTE_REVIEW.md`, and
+   `F5_ARCHIVE_PUBLICATION_REVIEW.md` before touching those boundaries.
+5. `evidence/f5_writer_handoff_2026-09-24/{README.md,verification.txt}`;
+   CP-048 destination verification and CP-046 history recovery evidence as needed.
+6. `V2_NUC_PI_TRADING_ROADMAP.md` §2 and `evidence/V2_REMEDIATION_CHECKPOINTS.md`.
+
+### What actually exists, and what does not
+
+| Exit | Implemented native behavior | Outstanding closure requirement |
+|---|---|---|
+| E1: lagger catches up | Verified storage/layout, suffix/result inspection, cold history-bridge recovery | Actual online candidate/selection/activation preserving the SAME live ledger; real lagger still fails |
+| E2: compaction preserves evidence | Local archive pipeline and CP-048 fresh destination evidence gates actual reclamation/relevant restart | Authenticated copy/verification process, independent-host evidence and target gates |
+| E3: nonblocking persistence | Worker-backed hard state/suffix/compaction/history recovery; CP-049 serial target handoff | Actual install-time drain of ALL old jobs and generation activation; deployment measurements/gates |
+
+E1/E2/E3 and F5/F6/F7 remain OPEN. Existing host suites do not close these exits.
+Startable V2 node follows native E1/E3 integration. Authenticated process behavior
+necessarily requires that shell; do not demand proof of a nonexistent deployed
+transport before starting it, or call native simulation deployed acceptance.
+Pi testing is deferred until final gates, not waived. No device/venue action now.
+
+### Exact next work — one integration, not more unrelated helpers
+
+Reproduce `tests/v2_snapshot_catchup_red.cpp`: actual three-voter cluster,
+healthy peers compact through12, lagger stays applied0/commit0 after seven failed
+AppendEntries replies. Require its real catch-up to become GREEN. Do not replace
+it with a cold-start fixture, skip it, or count helper tests as E1 completion.
+
+1. Refactor ownership under the approved direction: stable facade keeps SAME
+   `ResultLedger` and serial worker; replaceable generation owns Raft callbacks,
+   state, stores, arenas, retained payloads and outbound traffic. Do not move/reset
+   the ledger, copy READY results into a new one, or let old outbound traffic escape.
+2. `VerifiedIdentityStartup` currently combines root lock, selected directory and
+   selection validation. Separate stable root ownership from VERIFIED NONSERVING
+   candidate ownership. No raw-path constructor, placement-new, repeated root-lock
+   recovery as a workaround, or shallow swapping of objects referenced by callbacks.
+   In particular `catalog_` references the owned startup token; jobs borrow stores,
+   and `CompactionJob` borrows the kernel itself. Preserve these lifetimes.
+3. Worker builds bounded destination-owned candidate with existing selector/base/
+   WAL formats, verified history and compatible suffix. Keep root archive unchanged
+   before selection. Missing `(A,S]` history lives in candidate WAL until selected
+   bridge recovery publishes it. Respect approved1GiB lab whole-WAL cap, archive
+   quotas,8192 live entries,1024 results, finite pinned replay interval and bounded
+   replay turns. No automatic deletion of candidates/old generations.
+4. Quiesce and revalidate full local tuple, leader evidence and obligation inventory.
+   Seal/submit old staging and drain ALL actual writes/jobs before selector change.
+   CP-049 switches writer targets only: it neither selects nor activates a kernel.
+   Keep both targets alive through acquired completion and apply old completions
+   before retiring arenas. Do not owner-thread stop/join/fsync to make tests pass.
+5. Durably select then activate and finish bridge recovery before serving. Before
+   selection old authority remains intact; once rename may have happened, uncertainty
+   stops and cold-recovers—never silently fall back. Preserve READY values/FIFO;
+   reconstruct exact covered RESERVED outcomes from verified history, retain
+   compatible uncommitted reservations, release divergent uncommitted obligations
+   only after selection, refuse committed divergence. ACK proves S, not suffix end.
+6. Test actual old-write stalls, changed final-validation inputs, full result
+   cohorts, selector write/sync/rename/activation cuts, retry and saturation. Use
+   reachable fixtures; approved review explains why committed-above-S cohort is
+   defensive rather than a proven healthy current live interleaving. Mutate each
+   decisive guard and verify the intended assertion, then run regressions.
+
+Native tests may explicitly simulate trusted authentication through a private
+fixture boundary. A public boolean or static-identity digest is not authentication.
+New material wire/durable/economic choices still require owner review BEFORE
+encoding. Existing approved meanings/layouts do not require another approval.
+
+### Verification and reproduction
+
+CP-049 saved final Release97/97 (28.92s); full C++ ASan+UBSan97/97 (286.92s), then
+freshly rebuilt focused2/2 after final test strengthening. Nonrecovering UB/halt,
+leaks off, Raft C uninstrumented. Focused TSan covers actual WAL source+test only,
+not support libraries/full process. Inventory97host/94V2; gate-manifest16 PASS.
+No fresh model corpus/target/RSS/latency evidence. `git diff --check` clean.
+
+```sh
+cd /Users/vishaljha/aeron-raft-pi
+cmake --build /private/tmp/velocita-full-audit.lYB4P5/release --target velocita-all-tests -j4
+ctest --test-dir /private/tmp/velocita-full-audit.lYB4P5/release --output-on-failure
+cmake --build /private/tmp/aeron-phase67-audit-build --target velocita-all-tests -j4
+ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir /private/tmp/aeron-phase67-audit-build --output-on-failure
+```
+
+Always build before CTest. Run Release/sanitizer tests SEQUENTIALLY: old fixtures
+share fixed temp names. Reconfigure if targets change. Both builds use offline
+pinned Raft at `/private/tmp/velocita-cp043.SaGIxe/raft-build-suffix`; inspect
+CMakeCache before reuse, and do not substitute upstream/unpatched Raft. If scratch
+is gone, reconstruct the pinned dependency/build settings from repo and evidence.
+
+To run the original RED after compiling against freshly built libraries, supply
+a NONEXISTENT child of a fresh temporary directory (not the mktemp directory
+itself). `/private/tmp/velocita-cp049-lagger` is a historical built executable,
+not a source of truth. Missing argument/existing-root refusal is not intended RED.
+Direct compile uses C++20, cacheline64, include/tests/pinned Raft includes, then
+replication/kernel/evaluator/contracts/core/willemt_raft static libraries in that
+order. See CP-049 evidence. Do not mutate shared production files for experiments.
+
+CP-049 draft preceded tests: do not relabel it as chronological TDD. Two later
+deterministic mutations separately prove the post-acquire submission recheck and
+completion-drain guard. Earlier scheduling-sensitive mutant was withdrawn.
+Continue genuinely RED-first. A test result cannot be its own oracle; never call
+a mutation killed by a harness/compile error a successful guard test.
+
+### Working agreement
+
+Lead owns architecture/correctness; maximum TWO bounded cheaper implementation/
+test agents if available, disjoint files, no overlapping kernel rewrites. Keep
+MVP scope: every task enables E1/E2/E3 or an existing launch requirement; defer
+nonessential additions rather than create new E-items. Keep handoff/checkpoint/
+CHANGELOG and affected ADRs current. Explain problem, importance, intuition,
+trade-offs and C++ ownership/memory/concurrency before any new approval request.
+Do not weaken safety to accelerate the schedule. `model/` must contain no trading,
+signing or submission capability; preserve its interlock. No perpetuals for MVP,
+new venue requests, credentials, tag changes or deployment authorized by handoff.
+
+## CP-049 — E1/E3 SERIAL WRITER TARGET HANDOFF — 2026-09-24 (historical)
+
+Branch/HEAD unchanged: `v2/phase-5-corrections` / `d44a4a9`; remediation
+UNCOMMITTED. This is a prerequisite inside the approved online installer, NOT
+E1/E3 closure. No facade/core replacement, candidate publication or live ledger
+reconciliation has landed in this increment. CP-048 native E2 remains intact.
+
+The existing serial `WalWriter` can hand off its borrowed segment/arena without
+an owner-thread stop/join/fsync. Owner admission pauses blocks and maintenance;
+worker finishes older blocks and syncs, waits for their completion queue to drain,
+then reports an exact generation/sequence result. Both generations must stay
+alive through acquired completion. Caller must seal/submit all old staging first:
+this queue fence cannot see unsubmitted records. Dequeuing a completion is NOT applying
+it to its arena. The owner must finish that accounting before retiring storage.
+The switch is NOT permission to publish a selector or resume consensus service.
+
+Main review found a draft race: worker pops an empty queue; owner submits an old
+block then publishes the switch; worker sees the switch and changes targets.
+It must recheck the submission queue AFTER acquiring the switch publication.
+Otherwise old descriptors can be read against the new arena. Permanent tests
+and direct mutations exercise this boundary and outstanding-completion fencing.
+Initial code preceded its new tests: report draft/mutation RED honestly, not a
+chronological test-first implementation. Two deterministic direct guard mutants
+now fail; an earlier scheduling-sensitive completion mutant is explicitly
+withdrawn and superseded by a two-idle-pass witness. Main also fixed the test
+waiter's double-consumption, unwind ordering and saturation payload oracle.
+Host Release97/97 and C++ ASan+UBSan97/97 pass; final strengthened test rebuild
+and focused sanitizer rerun are recorded in
+`evidence/f5_writer_handoff_2026-09-24/verification.txt`. Inventory97host/94V2;
+gate-manifest16 PASS. Focused TSan covers actual WAL source+test, support libraries
+uninstrumented. No whole-process TSan or target/RSS/latency acceptance. Sanitizer
+Raft C uninstrumented and leaks off, as before.
+
+NEXT remains the actual `tests/v2_snapshot_catchup_red.cpp` trace. Implement the
+approved stable facade retaining SAME ResultLedger and serial worker; isolated
+generation owns Raft/state/stores/outbound/retained payloads. Verified startup
+currently combines root lock and selected-directory authority and rejects an
+unselected candidate: do not bypass it with raw paths or reuse `recover()` as
+online preparation. Separate root ownership from nonserving verified candidate
+ownership before constructing a candidate core. Drain actual jobs that borrow
+stores/core, not just WAL descriptors. Prepare history bridge and captured result
+outcomes; final quiesce revalidates complete obligations/leader/local tuple;
+selector uncertainty stops and cold-recovers. Preserve READY FIFO, reconstruct
+covered RESERVED outcomes from verified history, preserve compatible uncommitted
+suffix; ACK only S. No new bytes, auth boolean, cleanup or fresh ledger approved.
+
+All E exits remain open. Authenticated process integration and target gates still
+follow native installation; Pi deferred, not waived. Max two Sol lanes; no new
+feature workstreams, protected-path/staging/commit/tag/device/venue changes.
+
+## CP-048 — FRESH DESTINATION VERIFICATION: NATIVE E2 — 2026-09-24 (historical)
+
+Branch/HEAD `v2/phase-5-corrections` / `d44a4a9`; remediation UNCOMMITTED.
+Owner approved fresh authenticated destination verification; persistent receipts
+are deferred. No new durable or transport bytes; exact authentication/envelope
+integration is still not implemented. Do not reopen this semantic approval.
+
+New private destination verifier reuses existing catalog/object/dependency checks
+and destination file/directory sync. It preserves original publisher identity;
+backup storage must be a separately owned namespace, not the other voter's own
+active archive. Pin the other configured voter in the same manifest. Its static
+identity digest is NOT authentication or physical-host independence: future
+transport must prove those and hold root ownership. Tests explicitly simulate
+that trusted boundary; there is no public raw mint/auth-success boolean.
+
+Native request/evidence includes exact catalog generation/digest, publisher,
+manifest, range, publication/current storage generations, pinned destination,
+attempt and challenge. Evidence is move-only/one-use. Actual two-host compaction
+waits AFTER acquired local archive/snapshot completion and BEFORE Raft prefix
+removal/WAL rewrite. Missing evidence retains history. Missing pin still refuses
+live compaction. Relevant cold live recovery refuses without a pin; with one,
+it remains nonserving until fresh destination evidence arrives. Mismatched pending
+completion latches closed; duplicate does not advance anything.
+
+Review caught a real draft replay gap: attempt1 can repeat after restart. Permanent
+RED reused a previous response and released recovery. Fix: cold getentropy32-byte
+nonce + domain-separated SHA256(nonce, nonwrapping attempt) for fresh challenges.
+Entropy failure refuses startup; no fallback. No order-path entropy/network/I/O.
+The entropy EIO test privately includes production code, not a production hook.
+
+Host witnesses exercise real WAL removal/restart, exact authored commands1..3 in
+backup, missing/payload-corrupt backup after deletion, all serving gates, stale
+attempt/prior-run response/duplicate, exact dependency/pin/catalog checks, one-use
+evidence, and separate real file/directory fsync EIO. Three direct mutants fail
+intended catalog-digest, recovery-gate and entropy-failure assertions. Main fixed
+two corruption fixtures to flip payload rather than header bytes.
+Evidence and final verified counts:
+`evidence/f5_destination_verification_2026-09-24/README.md` and `verification.txt`.
+Fresh final Release95/95 and C++ ASan+UBSan95/95; Raft C uninstrumented, leaks off,
+nonrecovering UB/halt. Gate-manifest16 PASS; diff check clean.
+Inventory95host/92V2; native sizes: replica124904 (+464), request184, evidence192.
+Not RSS/target budgets. Full archive verification currently repeats twice off-owner;
+optimization deferred, not a new work item. No fresh TSan/target/copy-transport proof.
+
+NEXT: actual E1/E3 online installer, with SAME ledger and serial persistence owner.
+One implementation owner for facade/generation-core switch; second agent tests
+old-write drain, exact result preservation and selector failure cuts. Approved
+history bridge remains required. Original `tests/v2_snapshot_catchup_red.cpp`
+freshly remains RED: compacted12/applied0/seven failed replies. Do not substitute
+another cold witness or rebuild/reset the ledger. Native E2 now supplies its
+verification boundary; authenticated copy service and NUC/Pi evidence still gate
+deployed E2. E1/E2/E3 and F5/F6/F7 NOT closed. Startable node follows native exits;
+deployed authentication/gates require process integration. Pi deferred, not waived.
+No extra feature items, protected-path/staging/commit/tag/device/venue changes.
+Two bounded Sol lanes implemented backend/tests; main integrated kernel, reviewed
+and corrected lifetime/freshness/oracle details, and owns final regression.
+
+## CP-047 — FIXED E1/E2/E3 PARALLEL SCOPE — 2026-09-24 (historical)
+
+Branch/HEAD unchanged: `v2/phase-5-corrections` / `d44a4a9`, remediation uncommitted.
+Owner requests parallel completion of existing E1/E2/E3 then startable V2 node;
+no extra feature items. Nonessential work stays next iteration. Max two agents,
+main owns architecture/correctness. This checkpoint is review/documentation only:
+no new C++, RED/GREEN runs or acceptance claim; CP-046 is last runtime evidence.
+
+Two bounded Sol reviews confirmed:
+- E1/E3 require ONE integrated stable-facade/generation-core implementation and
+  disjoint adversarial-test lane, not parallel conflicting kernel rewrites.
+  Same ResultLedger/handles/FIFO survive; Raft outbound traffic is generation-local
+  and must not leak across activation. Drain actual worker writes/completions
+  before swapping cores. Current jobs borrow store/segment/archive pointers and
+  compaction borrows the whole kernel: callback identity alone cannot prevent a
+  stale write or use-after-free. Facade/core is ALREADY approved, not a new choice.
+- E2 live independent-destination evidence remains unapproved in CP-038 §6.
+  Both compact and capability-consumption gates intentionally require laboratory
+  mode today. Preserve `test_two_host_mode_refuses_local_only_compaction`.
+
+OWNER REVIEW requested within existing E2: main recommends fresh authenticated
+destination verification at relevant restart and each reclamation, reusing exact
+existing archive bytes, rather than adding persistent receipt bytes for MVP.
+Backup worker must verify exact catalog/object/dependency set and destination
+file/directory durability. One-use native capability, identity/generation/attempt
+bound; no boolean/rsync/checksum-only proof. Failure retains history/stops required
+service. Explicit cost: backup availability and revalidation I/O. This changes
+recovery availability and MUST be approved; no semantics were encoded. Alternative:
+durable destination receipt with separately reviewed persistent bytes/trust rules.
+Detailed recommendation: top of `F5_ARCHIVE_PUBLICATION_REVIEW.md`.
+
+Native E1 work remains approved with exact RED `tests/v2_snapshot_catchup_red.cpp`;
+do not reopen its approved byte/ownership decisions. The E2 choice and concrete
+authentication/envelopes must be settled before implementing live backup authority.
+Node/process integration is required for deployed authenticated evidence, so host
+E proofs precede node work but cannot claim all deployed exits closed beforehand.
+Target acceptance remains later; Pi deferred, not waived. No extra feature scope,
+no protected-path/staging/commit/tag/device/venue changes. Roadmap and deferral doc
+updated; no numerical completion claim. E1/E2/E3 and F5/F6/F7 still OPEN.
+
+## CP-046 — APPROVED HISTORY BRIDGE: RECOVERY SIDE — 2026-09-24 (historical)
+
+Branch/HEAD `v2/phase-5-corrections` / `d44a4a9`; remediation UNCOMMITTED.
+Owner approved the history bridge, candidate budget and recovery approach in
+`F5_INSTALL_HISTORY_BRIDGE_REVIEW.md`. No new canonical bytes. This checkpoint
+implements selected-generation cold recovery, NOT online snapshot installation.
+
+Snapshot-covered unarchived WAL is separately accounted recovery debt. It no
+longer trips the live8192-entry quota, but the whole existing WAL must fit the
+positive configured cap (maximum1GiB). Consensus/admission/output/proofs remain
+quarantined. `flush_durability` submits one owned job to the serial writer; it
+validates the whole stream, preflights exact missing-history archive objects/bytes
+plus live-suffix reservation, then publishes bounded segments. Owner releases the
+fence only after acquiring and matching completion identity and unchanged state.
+No WAL deletion; live independent-copy rules unchanged. Recovery can take time:
+the two-voter deployment has no quorum while one voter is quarantined.
+
+Permanent witnesses:8193 covered records, complete archive payload reconstruction,
+subsequent commit/restart, paused worker before publication and after durable
+catalog/before completion, worker exception/retry, WAL-cap and object-quota refusal,
+partial archive overlap, five completion corruptions and valid/duplicate handling.
+Draft overlap failure was real: preflight counted already-archived rows again;
+fixed to account only `(A,S]` while validating all WAL. Three intended mutations
+fail tick-state, partial-catalog and completion-sequence assertions. Evidence:
+`evidence/f5_history_recovery_2026-09-24/README.md`.
+
+Native host sizes: recovery job8920 bytes, replica124440 bytes; not heap/RSS or
+target budgets. One segment's input is bounded, but descriptor/encoder/catalog
+scratch also exists. Corrected the review's linear-time claim: each publication
+re-verifies archive prefixes, so total verification I/O can grow superlinearly.
+Cold startup verification is synchronous; worker pumping is not a startup SLA.
+
+Fresh host Release93/93 and C++ ASan+UBSan93/93 (Raft C uninstrumented, leaks off,
+nonrecovering UB). Inventory93host/90V2 matches; gate-manifest16 PASS. Details in
+the evidence verification file. First parallel Release/sanitizer attempt
+collided in an older fixed-name temporary fixture; run those suites SEQUENTIALLY.
+An existing cold-result fixture now pumps the newly required recovery and async
+metadata completion before expecting its original exact retained result.
+
+NEXT exact RED remains `tests/v2_snapshot_catchup_red.cpp`: freshly rebuilt,
+compacted12/applied0/seven failed replies. Implement the actual native online
+transaction: stable facade retains SAME result ledger and serial persistence
+ownership; bounded worker builds destination-bound candidate WAL/history; drain
+actual old writes before selector publication; activate verified generation;
+recover bridge before serving and release only approved installed/result outcomes.
+No raw auth bypass, new transport bytes, independent-copy waiver, automatic
+deletion or new acceptance is approved. Do not call cold witnesses real catch-up.
+E1/E2/E3 and F5/F6/F7 remain OPEN. Pi deferred, not waived; NUC/ARM/Pi re-gates,
+independent destination evidence and target memory/timing still outstanding.
+Two bounded Sol workstreams plus main review/mutations; protected paths untouched.
+No staging, commit, tag, device, venue or deployment action.
+
+## CP-045 — E1 ARCHIVE/SELECTOR INTEGRATION REVIEW — 2026-09-24 (historical)
+
+Branch/HEAD `v2/phase-5-corrections` / `d44a4a9`, remediation UNCOMMITTED.
+No production changes. Original real lagger RED freshly rebuilt: compacted12,
+lagger applied0, seven failed append replies. E1 is NOT implemented or accepted.
+
+Found a missing integration decision: root-global archive catalog and runtime
+selector cannot be published atomically. Archive-first can make old selected
+history refuse recovery; selector-first with snapshot+suffix lacks audit prefix.
+Do not remove either existing refusal or stage unlisted objects in the live archive.
+
+RECOMMENDED, awaiting owner approval: isolate exact missing history in the new
+generation's existing bound WAL, keep root archive unchanged before selection,
+then publish archive coverage after selecting the self-contained new generation.
+Separate accounted snapshot-covered recovery work from the live8192-entry bound;
+propose1-GiB laboratory candidate-WAL budget plus exact existing archive-quota
+reservations. Consensus/admission stay gated until local archive completion;
+live independent-copy requirements still govern deletion. No new durable bytes.
+Full reasoning/costs/approval boundary: `F5_INSTALL_HISTORY_BRIDGE_REVIEW.md`.
+
+Three permanent cold-layout witnesses prove missing-history refusal, exact small
+WAL-overlap recovery, and current8193-covered-entry quota refusal. The last is
+CURRENT behavior, to change after the proposed accounted bridge is approved; it
+is not desired final E1 behavior. Two intended guard mutations fail. Main corrected
+the expected WAL oracle to authored records rather than a readback of fixture output.
+No witness implies authenticated transfer, online activation or result preservation.
+
+Rebuilt Release92/92 and C++ ASan+UBSan92/92 (Raft C uninstrumented, leaks off);
+final inventory/raw results are in
+`evidence/f5_install_bridge_review_2026-09-24/`. Previous CP-044 production stands.
+Protected paths untouched; no commit/tag/device/venue action. E1/E2/E3 and F5/F6/F7
+remain OPEN. NEXT: owner review of bridge ordering/accounting/storage cost; then
+integrate actual native catch-up with the same ledger and serial persistence owner.
+Do not reopen already approved CP-036 results/ACK semantics or implement another
+unconnected helper. Authentication transport remains separately unapproved.
+
+## CP-044 — COMPOSED ASYNC CRASH-IMAGE PROOF — 2026-09-24 (historical)
+
+Branch/HEAD unchanged: `v2/phase-5-corrections` / `d44a4a9`; remediation
+UNCOMMITTED. Test/evidence-only checkpoint; no production or canonical-byte
+changes. Actual metadata and WAL worker operations now share one durable-image
+model. Higher-term suffix replacement and subsequent commit:20 cuts per name
+schedule; standalone vote:5 cuts per schedule. Three schedules =>75 cuts, plus
+three committed-seed recoveries and six successful promise-producing baselines.
+
+Before recovery, assert exact authored WAL and metadata tuples. A malformed
+temporary metadata file can justify a typed startup refusal, never a missing
+active tuple or lost committed prefix. Clean images must recover. Two direct
+mutations fail intended vote-durability/committed-prefix checks. Review corrected
+fixture commitment, active-vs-temp loading, runtime path, and permissive oracles;
+these were harness issues, not newly discovered production defects.
+
+Rebuilt Release91/91 and C++ Debug ASan+UBSan91/91 (Raft C uninstrumented,
+leaks off); final verification results and scope:
+`evidence/f6_async_crash_model_2026-09-24/README.md` and `verification.txt`.
+Independent inventory91host/88V2; tools24+16. No target acceptance, venue/device
+action, staging, commit or tag changes. Protected paths remain untouched.
+
+NEXT: actual E1 lagger transfer/install, including delayed writes across active
+generation changes. The current-generation hard-state/suffix crash-model step
+is complete; do not implement another helper instead of real catch-up. E2
+independent-destination evidence and NUC/ARM/Pi memory/durability/timing gates
+remain. E1/E2/E3 and F5/F6/F7 acceptance stay OPEN; Pi deferred, not waived.
+Existing approvals stand; new material transport/byte choices need review.
+
+## CP-043 — ASYNC HARD STATE AND WHOLE-SUFFIX PERSISTENCE — 2026-09-23 (historical)
+
+Branch/HEAD: `v2/phase-5-corrections` / `d44a4a9`; remediation UNCOMMITTED.
+Owner approved all five CP-042 choices. Both hard state and runtime suffix
+rewrite now run on the serial WAL worker when start_writer is active. No new
+wire/economic/durable bytes. Deterministic no-worker mode remains explicit;
+live integration must start the worker, never join/inline-flush as fallback.
+
+One desired-vs-durable metadata fence withholds outbound/apply/proofs/new turns.
+Raft's optional whole-cut preparation hook selects suffix deletion before any
+pop. Drain staged work, rewrite once, validate exact completion, replay ONE
+owned32-KiB frame, consume exact grant, then release cells/RESERVED results.
+Unused replay grant and worker/identity failures latch closed. Runtime log clear
+is cold-only: ignored library callback errors do not make it resumable.
+
+Permanent host evidence includes actual metadata fsync-thread/pause/EIO tests,
+16 suffix conflict/term/staging/durability cells plus2 worker-failure/restarts,
+9 completion corruption/duplicate cases, self-vote callback error propagation,
+and a real authorized order/marker proof across metadata directory durability.
+Five direct-source mutations fail intended output/apply/identity/ownership/error
+checks. ReplicatedKernel124,416 bytes, one heap job168(bound256), inline retry32KiB;
+these are not whole-process memory or target latency measurements.
+
+Final rebuilt Release90/90(21.33s), C++ ASan+UBSan90/90(192.48s), focused
+hard-state TSan PASS, tools24+16 PASS. Nonrecovering UB/halt, leaks off, Raft C
+uninstrumented in the sanitizer build. No NUC/ARM/Pi or latency/RSS result.
+Evidence and final verification: `evidence/f6_async_persistence_2026-09-23/README.md`
+and its `verification.txt`. Four new registered tests; inventory90host/87V2.
+Sanitizer limits and fixture corrections are recorded, not silently reclassified.
+Two bounded Sol workstreams, main review/corrections/patch/mutations. Protected
+paths untouched; no staging/commit/tag/deployment/device/venue action.
+
+NEXT: finish composed asynchronous persistence/crash coverage (including delayed
+old writes at E1 activation), then actual E1 lagger transfer/install. Do not
+reimplement the completed worker callbacks or treat a helper as catch-up. E2
+independent-destination durable evidence and target re-gates/memory/timing remain.
+E1/E2/E3 acceptance and F5/F6/F7 OPEN; Pi deferred, not waived. See F6 review §9
+and ADR0014. Existing approvals stand; new material transport/byte choices still
+need the owner's plain-language plus C++ review before encoding.
+
+## CP-042 — ASYNC PERSISTENCE CONTINUATION REVIEW — 2026-09-23 (historical)
+
+Branch/HEAD unchanged: `v2/phase-5-corrections` / `d44a4a9`; remediation remains
+uncommitted. This checkpoint changes documentation ONLY. CP-041 evidence stands;
+no new build, test pass or implementation is claimed.
+
+NEXT: owner review of `F6_ASYNC_DURABILITY_FENCE_REVIEW.md` §8's five concrete
+choices. Direction was approved earlier; this exact continuation remains PROPOSED.
+Two bounded read-only Sol audits and main source inspection covered hard-state,
+periodic apply, outbound callbacks, suffix deletion and clear. Recommendations:
+one pending protocol turn; reuse existing mailboxes but withhold all output;
+dedicated pending status/before-apply fence; optional prepare-truncate hook inside
+Raft; one owned32-KiB retry frame; typed generation/sequence-bound job on existing
+serial WAL worker. No new wire/durable bytes or generic scheduler proposed.
+
+Do not replay a partially completed campaign or release per-entry suffix cells
+before one durable whole-cut rewrite. A higher-term conflicting append may need
+metadata THEN truncate, sequentially. Current clear ignores callback errors and
+snapshot load mutates term first: keep constructor clear cold-only, fail closed
+on runtime misuse, and leave real E1 activation to the approved installer path.
+Generation selection must drain jobs; ignoring a stale completion is insufficient.
+
+After approval: permanent paused-worker hard-state REDs -> minimum GREEN and
+guard mutations -> actual conflicting-suffix RED/GREEN -> composed failures and
+regression. Existing READY results readable; no new apply/results/proofs while
+pending. No owner-thread sync/join fallback in live mode. See §8 for costs,
+source-call matrix, native ownership/status choices and rejected alternatives.
+E1/E2/E3 and F5/F6/F7 remain OPEN. Protected paths unchanged; no staging,
+commit/tag/deployment/device/venue action. Pi still deferred, not waived.
+
+## CP-041 — COMPOSED COMPACTION CRASH MODEL — 2026-09-23 (historical)
+
+Verified branch/HEAD: `v2/phase-5-corrections` / `d44a4a9`; remediation
+UNCOMMITTED. CP-038 archive and CP-036 install approvals stand. No production
+source, canonical byte contract or hot memory layout changed this increment.
+Do not reconstruct current state from historical sections below.
+
+The actual laboratory archive → snapshot → WAL transaction passes243 modeled
+crash cuts: first compaction45/replacement36, each across three namespace
+schedules. Every image is inspected before recovery: exact old WAL must survive,
+or matching new snapshot/full archive/exact uncommitted suffix must already be
+durable. Refusal cannot mask invalid ordering. Accepted recovery compares the
+entire history by tuple AND command bytes; baseline must actually finish the
+cut and remove the WAL prefix. No deferral/no-op counted as completion.
+
+Selective independent WAL-name persistence matters because snapshot and WAL
+share a parent: a later directory sync hides a missing earlier sync in simpler
+models. Actual-source mutations prove sensitivity: omitted snapshot directory
+sync fails only the selective schedule; omitted WAL file sync and dropped first
+suffix record fail exact durable-image checks. Production source is unchanged.
+
+Two bounded Sol workstreams supplied implementation and independent review;
+main corrected draft catch/oracle/namespace/descriptor-lifetime problems,
+strengthened pre-recovery checks and ran all verification. Harness failures
+are explicitly NOT product REDs. A wrong drafted WAL filename and a recovery
+fixture directly beneath macOS's /tmp symlink were corrected, not production
+guards weakened. CP-040 cache-line128 standalone mutations against64 libraries
+were rerun at64; intended failures reproduce and the old evidence is annotated.
+
+Final rebuilt Release86/86(18.08s), C++ Debug ASan+UBSan86/86(241.77s),
+focused1/1 with243 cuts, tools40/40, independent inventory86host/83V2.
+UB halt/nonrecovering, leaks off, linked Raft C uninstrumented. No target,
+TSan, Python model-corpus, latency/RSS or device power-loss result.
+Evidence and commands: `evidence/f5_composed_persistence_2026-09-23/README.md`.
+Protected paths untouched; no stage/commit/tag/deployment/device/venue action.
+
+NEXT: E3 actual nonblocking hard-state and suffix-truncation persistence.
+The existing `tests/v2_async_hard_state_red.cpp` was freshly rebuilt against
+current libraries and failed for the intended reason in ALL three scenarios:
+campaign4/4, higher-term vote4/4, commit2/2 metadata syncs run on the Raft owner.
+Exact commands/output: `evidence/f5_composed_persistence_2026-09-23/next-hard-state-red.txt`.
+These are syscall counts, not latency claims or evidence of premature votes.
+
+Read `F6_ASYNC_DURABILITY_FENCE_REVIEW.md` and ADR0014 before adapting callbacks.
+Direction is approved; exact continuation/API and all-call-site proof still need
+work. Do NOT enqueue hard-state and simply return success: quarantine outgoing
+responses, application and authority until matching durable completion. Include
+runtime suffix truncation, not only the three metadata saves. Present genuinely
+new material contract choices with the owner's plain-language + C++ explanation
+before encoding. Then make actual E1 lagger transfer/install/activation work.
+
+CP-040's bounded composed host-model step is DONE; don't repeat it or count
+another helper as an exit. Broad E2 still needs independently authenticated
+destination durability and target gates. E1/E2/E3 and F5/F6/F7 remain OPEN.
+This is not phase acceptance; Pi deferred, not waived.
+
+## CP-040 — ARCHIVE PERSISTENCE FAULT VALIDATION — 2026-09-23 (historical)
+
+Verified branch/HEAD: `v2/phase-5-corrections` / `d44a4a9`; remediation remains
+UNCOMMITTED. CP-038 archive and CP-036 install approvals stand. This increment
+validates E2 local compaction under faults; it changes tests/build inventory/docs,
+NOT production behavior or canonical bytes. No new production defect established.
+
+Three permanent suites now exercise:
+
+1. Actual archive source with139 reached EIO sites across fresh dependency
+   creation, first/replacement publication and selected second-object failures.
+   Three interruption/short-write cases must successfully retry. Recovery checks
+   exact record identities and full command bytes, not just digests, and cannot
+   silently rewrite fault evidence or adopt an incomplete prefix.
+2. Actual archive source with124 modeled durable-image cuts. File bytes and
+   directory names persist separately; explicit-sync-only and eager-name
+   schedules cover fresh33/replacement29 boundaries each. Both direct-source
+   file-sync/directory-sync omission mutants fail at the intended assertion.
+3. Actual laboratory kernel compaction with nine snapshot/WAL syscall errors.
+   Two voters commit1..3; a locally durable uncommitted4 forces nonempty suffix
+   rewrite. Failure latches service closed; restart preserves archived tuples1..3,
+   kill_epoch3/applied3 and exact suffix4. Every configured fault must fire.
+
+Main rejected and corrected weak worker harnesses: missed syscall ordinals,
+retry tests that accepted another error, fresh fixtures destroyed before recovery,
+first-object faults mislabeled second-object, and fixed-yield false timeout.
+The timeout is retained as HARNESS failure, not a Raft defect. Test-only source
+objects replace global libc interposition. One worker improperly spawned a nested
+reviewer despite the two-worker limit; stopped/disclosed. No more agents active.
+
+Final rebuilt Release85/85(15.60s), C++ Debug ASan+UBSan85/85(228.88s), focused3/3,
+tools40/40; independent inventory85host/82V2. UB halt/nonrecovering, leaks off,
+Raft C uninstrumented. Evidence/commands/caveats:
+`evidence/f5_archive_faults_2026-09-23/README.md`. Partial source fingerprints are
+NOT a target pin. No new TSan/NUC/ARM/Pi or Python model result. Protected paths
+untouched; no stage/commit/tag/deployment/device/venue interaction.
+
+NEXT, still measured by the owner's three real exits:
+
+1. E2: complete the COMPOSED archive → snapshot → WAL durable-image sweep.
+   This increment's124 cuts are archive-only; nine integrated EIO cases are
+   not an end-to-end power-loss model. Preserve exact history/suffix or refuse,
+   never infer salvage/adopt orphans. Do not duplicate the completed local
+   syscall suite. Live reclamation separately requires approved/authenticated
+   independent-destination durable evidence; local capability is lab-only.
+2. E3: integrate the shared persistence fence into actual hard-state and suffix
+   truncation, still synchronous today; preserve no-premature-success behavior.
+3. E1: actual lagger transfer/install/activation under approved semantics.
+   Existing witnesses are not a working installer. New transport/destination
+   byte choices still require review before encoding.
+
+Broad E1/E2/E3 and F5/F6/F7 remain OPEN. No phase acceptance or live deployment
+claim. Pi deferred, not waived; target re-gates/independent-copy obligations stay.
+
+## CP-039 — REAL LOCAL ARCHIVE COMPACTION — 2026-09-23 (historical)
+
+Branch/HEAD verified `v2/phase-5-corrections` / `d44a4a9`; remediation remains
+UNCOMMITTED. CP-038's five archive decisions and CP-036 install decisions remain
+approved. Do not reconstruct work from the historical sections below.
+
+Implemented the real E2 laboratory path, not another disconnected codec:
+`ReplicatedKernel::compact()` is now an asynchronous pump. The owner captures
+bounded owned command/state copies; the existing WAL worker verifies the durable
+source, publishes immutable archive segments and the V2AC catalog, and saves and
+reloads the snapshot. The owner rechecks the fence and consumes a one-shot
+coverage capability before Raft releases its prefix. A second job rewrites WAL
+LAST. No borrowed retained-cell memory crosses to the worker. Pending work
+withholds authority/results and refuses protocol progress without owner-thread
+filesystem I/O or a join fallback. Cold destruction still joins for lifetime safety.
+
+Permanent integrated tests check exact independent command bytes in catalog-named
+segments before/after restart, not just digests or state. Unread results survive;
+successive cuts work; real two-voter pilot mode refuses local-only reclamation.
+Four high-level persistence interruption points recover; a parked worker cannot
+release authority/results or delete the WAL. This is NOT exhaustive syscall or
+device power-loss coverage. No independent-copy receipt/transport was invented.
+
+Corrections driven by REDs and independent review: underfilled cuts must defer
+without killing service when unfinished liabilities need the last object slot;
+cached catalog metadata is not permission to delete after a segment changes;
+startup rejects future publication generations, archive-ahead history and
+inconsistent cross-artifact terms. Archive publication packs up to four 4-MiB
+objects in one catalog transaction. All admitted command/marker liabilities
+reserve bytes AND packed objects; ordinary traffic retains the approved margin.
+Native constructor configuration defaults to laboratory 1GiB/4096 objects.
+
+Full ASan uncovered real worker-stack overflow in snapshot verification. Fixed
+save/load codec workspaces are heap-owned now; file read lookahead stays 65,588
+bytes. The allocation test now bounds total fixed decoder workspace, rather than
+mistaking relocated codec scratch for file-proportional allocation. TradingState
+and canonical bytes are unchanged. Peak process memory and target timings remain
+unmeasured. Snapshot decode can allocate/fail on the storage worker, not the hot
+reducer; failures latch service closed.
+
+Final rebuilt Release82/82 (18.44s), C++ ASan+UBSan82/82 (200.87s), focused7/7,
+tooling40/40 and independent inventory82 host/79 V2. UB halt/nonrecovering,
+leaks off, linked Raft C uninstrumented. Focused actual WAL-worker TSan passed;
+this is not whole-replica TSan coverage. Two consumer-bypass mutants plus one
+file-proportional-allocation mutant failed at their intended assertions.
+See `evidence/f5_archive_integration_2026-09-23/README.md` for commands, actual
+results and retained failed runs. Do not infer acceptance from old PASS records.
+Two bounded Sol workers; main reviewed integration, corrected ordering, ownership,
+quota and stack issues. Protected paths untouched; no stage/commit/tag/deployment,
+venue/device interaction. The Python model was not modified or rerun here.
+
+NEXT, measured by the owner's three exits:
+
+1. E2: systematically sweep actual archive dependency/segment/catalog,
+   snapshot and WAL publication write/sync/rename failures and crash images,
+   including incomplete namespaces. Preserve evidence; never auto-adopt or
+   delete orphans. Current four transaction checkpoints do not cover this.
+2. E3: extend the shared persistence fence to real hard-state/suffix-truncation
+   paths; they remain synchronous today. No helper-only or background-thread-only
+   closure claim.
+3. E1: actual lagger transfer/install/activation using the approved installer
+   semantics and preserved historical evidence. The existing contract witnesses
+   are not a working installer. Authenticated transport/destination proof remain
+   separate material reviews before new bytes are encoded.
+
+Broad E1/E2/E3 and F5/F6/F7 remain OPEN. Local-only reclamation cannot enable live
+two-host deployment. Pi remains deferred, not waived; NUC/ARM/Pi re-gates and
+independent-copy durability remain mandatory launch work.
+
+## IMPLEMENTING CP-038 — ARCHIVE CONTRACT APPROVED — 2026-09-23 (historical)
+
+Branch/HEAD verified v2/phase-5-corrections / d44a4a9; remediation UNCOMMITTED.
+Read `F5_ARCHIVE_CATALOG_BYTE_REVIEW.md` next: exact NEW bytes/names/bounds are
+APPROVED: owner explicitly approved all five points. CP-036 installer decisions
+remain approved; do not reopen either review.
+This review enables E2 actual evidence-preserving compaction/restart and E1
+historical replay. E3's shared fence is required for the actual transaction.
+Owner measures these finished behaviors, not helper/suite counts.
+
+Recommendation: one self-contained atomic-replaced local catalog, complete
+genesis prefix, no pages/chain/extra selector. Exact96-byte header +112-byte rows
++32-byte digest, max4096 rows/458880 bytes. Each row retains its own source
+storage generation; current native capability instead binds CURRENT storage and
+catalog generation/digest. Immutable segment/dependency files are never pruned;
+only current catalog index metadata is replaced. Fixed identity+execution-catalog
+dependencies reuse existing formats. New named v2-archive root child requires
+verified ownership/validation, not a loose startup allowlist exemption.
+
+Lab quota proposal:1GiB published logical segment bytes,4096objects; ordinary
+high-water subtracts16MiB/four rows WITH unfinished reservations. Separate fixed
+temp/catalog/dependency accounting reserve5120380 bytes. Backlog proposal counts
+both unconfirmed published objects AND unfinished liabilities: normal4/16MiB,
+hard5/20MiB. Underfilled cuts must recompute all remaining reservations before
+publication; otherwise retain WAL and defer the cut. These are starting limits,
+not measured live retention or physical filesystem-capacity guarantees.
+
+Catalog asserts LOCAL committed coverage only. Lab may use it; two-host/live
+reclamation refuses without separately authenticated destination-durable evidence.
+No placeholder backup bit/receipt bytes. This sequences the implementation; it
+does not remove live independent-copy/Pi requirements. Destination wire/receipts
+and live quota validation remain separate boundaries, honestly named in the sheet.
+
+Two Sol read-only reviewers challenged provenance and publication/quota math.
+Main rejected chain/pages/extra selector and added per-row generation, strict
+early-cut reaccounting and bounded orphan refusal. Both reviewed final sheet;
+no blocking contradiction found. No code/build/test/device/network changes;
+CP-037 remains last runtime evidence. Protected paths untouched, no stage/commit.
+
+NEXT: approval obtained; work directly from
+the original archive-loss RED toward real publication+compaction+restart, with
+F6 fence integration. No separate codec-only completion milestone. E1/E2/E3 and
+F5/F6/F7 remain OPEN. Pi deferred, not waived.
+
+## REMEDIATION CP-037 — INSTALL SEMANTICS APPROVED / CONTRACT WITNESSES — 2026-09-23 (historical)
+
+Branch/HEAD verified v2/phase-5-corrections / d44a4a9; remediation UNCOMMITTED.
+Owner explicitly approved all six CP-036 decisions after the plain-language/C++
+explanation. `F5_INTEGRATED_INSTALL_CONTRACT_REVIEW.md` records the approval;
+do not ask for those rules again. Archive publication/catalog/quota/receipt bytes
+and real transport framing remain separate unapproved contracts.
+
+Owner's current completion rule: count only E1 safe actual lagger catch-up,
+E2 actual compaction preserving verified historical evidence, E3 actual
+nonblocking persistence with no premature protocol success. Every additional
+task must name one of these exits or a separate approved launch requirement;
+otherwise defer it. See the roadmap section2 table. No helper/test count closes
+an exit. Both current contract witnesses support E1 only.
+
+Reachability correction: normal public propose/receive/tick apply through commit
+before returning, while install requires S>old applied. Thus S<local commit is
+not currently established as a healthy safe-boundary install case. Cold replay
+suppression is proved on a valid disk fixture; the committed-suffix result cohort
+is defensive future/intermediate behavior, not a reproduced current live bug.
+
+Implemented two permanent contract witness suites using two Sol workers and main
+independent corrections, runtime verification and build/gate integration. There is
+no live-install API to execute the flawed draft against. ACK overclaim is a
+deliberately wrong test policy, not a current production-install bug. Cold replay
+suppression is intentional restart behavior, not a defect to change globally.
+Do not fake an install method or change restart semantics to manufacture GREEN.
+
+Main rebuilt baseline Release74/74 (11.96s), and independently rebuilt/reran the
+original lagger RED (snapshot12, lagger0, seven retries) and archive-loss RED
+(snapshot3, original command bytes absent from retained WAL and all files).
+Raw logs: evidence/f5_install_contract_2026-09-23/. Final Release76/76 (12.64s),
+focused2/2, tooling40/40 and independent inventory76 host/73 V2. Main killed two
+direct production-source recovery mutants at the intended assertions. ACK negative
+policy reports commit20/applied20 after only boundary12 evidence. That is a
+test-only rejected policy, not a current production installer. Full rebuilt C++
+ASan+UBSan76/76 (155.31s); UB nonrecovering/halt, leaks off, Raft C uninstrumented.
+No model/TSan/target/latency/power-loss claim; git diff --check clean.
+
+Main rejected ACK fixture self-certification, fixed callback-address lifetime,
+required coherent divergent terms and real replacement/commit exchanges. Main
+also fixed result fixture's /tmp symlink path and unauthorized caller17; those
+setup failures are retained but are NOT product REDs. Production source unchanged.
+
+NEXT OUTCOME: E2 integrated publication-to-compaction/restart, with the smallest
+concrete archive catalog/provenance/quota review BEFORE encoding. Do not open
+another disconnected codec/helper milestone. The archive owner must feed the
+actual compaction guard and supply E1's historical replay evidence. In parallel,
+the shared F6 persistence fence must make real hard-state/truncation/selection
+operations satisfy E3, not merely move WAL appends. Return to actual E1 lagger
+activation using those dependencies. No archive format or authenticated wire is
+implicitly approved by CP-036. Explain any material review in chat as problem,
+importance, intuition, mechanism, trade-offs and C++ ownership/performance.
+
+F5/F6/F7 remain OPEN. Protected paths preserved; no stage/commit/tag/device/venue
+or deployment work. Pi remains deferred, not waived.
+
+## REVIEW CP-036 — INTEGRATED INSTALL CONTRACT — 2026-09-23 (historical)
+
+Branch/HEAD verified v2/phase-5-corrections / d44a4a9; remediation UNCOMMITTED.
+Read `F5_INTEGRATED_INSTALL_CONTRACT_REVIEW.md` next. Six remaining decisions
+are PROPOSED, not owner-approved. Two Sol read-only reviewers; main reconciled
+findings against code/contracts. No code, bytes, builds or runtime tests changed.
+CP-031 selector and CP-033 base seal/layout remain approved; do not reopen them.
+
+Two draft errors corrected with reasoning, NOT claimed as executed REDs:
+(1) activated ACK proves only snapshot S, never the retained local suffix end;
+otherwise unverified/divergent entries can be counted toward leader quorum.
+(2) RESERVED S<i<=max(S,captured commit) needs outcome capture during staged
+suffix apply; ordinary restoring replay suppresses notifications and would strand
+those handles. Only retained entries above that commit remain RESERVED.
+
+Recommend same live ledger/exact inventory, no separate durable install receipt;
+canonical snapshot transfer (four 16-KiB chunks max), defer actual wire envelope
+until authenticated transport is selected; async generation-fenced selection;
+finite pinned replay range rather than arbitrary8192 total historical records.
+Each cost, rejected shortcut and approval boundary is in the review. Missing
+archive publication/provenance formats and quotas remain genuine separate work.
+Independent-copy policy still gates live reclamation, not activation that keeps
+all old evidence. No cleanup or Pi waiver follows.
+
+NEXT: owner review, then permanent REDs for both counterexamples and integrated
+archive/async/staged-owner work. Do not manufacture approval from “proceed” or
+call simulated authentication live catch-up acceptance. Original lagger, archive
+loss and owner-fsync REDs and F5/F6/F7 remain OPEN. Last verified tests are CP-035,
+not rerun here. Protected paths untouched; no stage/commit/tag/venue/device action.
+
+## REMEDIATION CP-035 — READ-ONLY INSTALL PREFLIGHT / RESULT INVENTORY — 2026-09-23 (historical)
+
+Branch/HEAD v2/phase-5-corrections / d44a4a9; ALL remediation UNCOMMITTED.
+Owner requested two Sol implementation workers with main leading/verifying.
+Used two gpt-5.6-sol workers on disjoint native-only components. Main refined
+interfaces, corrected tests/reasoning, added a validator fix and independently
+reviewed/mutation-checked/integrated. No new wire/persistent/economic contract.
+
+Implemented `snapshot_install_preflight.hpp/.cpp`: read-only bounded classifier
+over caller-validated immutable records. Exact boundary tuple+payload required
+before describing retained suffix; preserve all entries above local commit too.
+Checks full local structure, term/snapshot consistency and live==durable tail;
+volatile tails require flush/retry, not omission. Old snapshot remains committed
+even with metadata commit0. Covered-only WAL prefixes and ordinary beyond-tail
+catch-up supported. Returns borrowed descriptive range, NOT installation/deletion/
+commit/authentication authority. Not wired into live install yet.
+
+Implemented `ResultLedger::visit_obligations`: validate native partition/links/
+counts/pool tags before callbacks; copy READY in take FIFO, RESERVED by slot.
+Exact original handle/binding/full result values, no mutable alias or allocation.
+Same ledger ownership/capacity/229400-byte size unchanged. Owner-thread only,
+callback non-reentrant, no revision/root/concurrent-change-detector claim.
+
+Preserved component runtime REDs (worker suffix logs explicitly transcribed),
+main occupied-pool validator RED/GREEN, five intended direct source mutants.
+Main corrected a false test oracle that rejected a valid snapshot beyond local
+tail; other floor/layout/evidence corrections are review-driven, not original REDs.
+Raw main rerun of original lagger integration remains RED: compacted12, lagger0,
+seven actual retries. This is not part of passing CTest or fixed by the helpers.
+
+Fresh Release74/74 (12.36s), full C++ ASan+UBSan74/74 (159.69s), then final rebuilt
+focused sanitizer2/2 (0.37s) for last test-only additions;
+tooling40/40, independent inventory74 host/71 V2. Nonrecovering UB/halt, leaks off,
+Raft C uninstrumented. Evidence: evidence/f5_install_preflight_2026-09-23/README.md.
+No target/model/TSan/latency/power-loss claim. Always build before CTest.
+
+NEXT: close the remaining material install/transfer/coverage/budget review before
+encoding or exposing live install. F5_SNAPSHOT_INSTALL_REVIEW.md sections5/7/9
+still contain pending choices; CP-031 selector and CP-033 seal/layout are approved
+and MUST NOT be re-requested. Draft section6 now correctly uses V2LG + closed base,
+not extra descriptor/receipt files or the superseded V2GS proposal. Then integrate
+staged owner, exact archive-backed historical results, SAME live ledger, suffix
+reattachment, writer quiesce, final tuple revalidation and one-way durable selection.
+Avoid more disconnected helper work as a substitute for that end-to-end path.
+
+Original archive-loss/catchup/owner-fsync REDs, archive publication, fenced repair,
+async owner fence and final gates remain open. F5/F6/F7 NOT CLOSED. Protected
+tracked paths clean, model untouched. No stage/commit/tag/source freeze/device/
+venue/credentials/deployment. Pi deferred, not waived.
+
+## REMEDIATION CP-034 — INITIAL GENERATION PUBLICATION / SELECTED STARTUP — 2026-09-23 (historical)
+
+Branch/HEAD v2/phase-5-corrections / d44a4a9; ALL remediation UNCOMMITTED.
+Owner approved CP-031 selector and CP-033 base/layout/startup contracts; this is
+their integration, not a new byte review. No implicit migration or voter reset.
+
+Implemented fresh empty-root genesis publication and selected cold recovery.
+VerifiedIdentityStartup holds root + generations + selected-runtime locks;
+directory() now routes existing kernel stores to selected runtime. Initial bound
+metadata, root identity, empty base and seal are durable before selector rename;
+final root sync/revalidation precedes returning ownership. No root metadata copy.
+Recovery validates final selector/base, current metadata and snapshot base floor.
+A valid successor makes an existing token stale. Temp selector is inspected as
+absent/valid/invalid for diagnosis, preserved, never promoted or authoritative.
+Malformed temp does not displace a valid final; actual inspection I/O fails closed.
+Interrupted nonempty setup and legacy roots stay stopped and untouched.
+
+IMPORTANT: token is cold ownership, NOT full-history/serving authority. Recovery
+can re-sync WAL before semantic admission. Existing ReplicatedKernel still checks
+full mutable WAL/commands/suffix/commit coverage before writable WAL open. Do not
+duplicate that decoder or claim the token alone proves voting safety. All users
+must freshly rebuild: token layout changed and ReplicatedKernel embeds it.
+
+Retained pre-integration routing RED and temporary-diagnostic stub RED. Native
+cut/floor/lock/evidence-preservation tests; actual startup syscall model sweeps
+26 persistence cuts + 26 EIO positions, short/EINTR writes and four checked output
+closes. Four direct guard mutants fail intended assertions. Model is genesis-only,
+not physical power-loss or snapshot-install evidence; snapshot floor fixtures are
+manually authored valid selected images. Two workers, main architecture/review.
+Release 72/72 (12.35s); full C++ ASan+UBSan 72/72 (151.83s), nonrecovering
+UB/halt, leaks off, Raft C uninstrumented. Always rebuilt before CTest.
+Tooling 40/40; independent inventory 72 host / 69 V2. Evidence:
+evidence/f5_generation_startup_2026-09-23/README.md. No target/model/TSan/latency claim.
+
+NEXT: integrate actual snapshot-generation installation with retained unknown
+suffix and READY/RESERVED result obligations. Review existing approved contracts
+and exact next RED in F5_SNAPSHOT_INSTALL_REVIEW.md and the snapshot-catchup
+reproducer; initial publication is NOT a reusable live replacement transaction.
+Transfer wire bytes/budgets and coverage details in that draft are still pending;
+present those remaining material choices before encoding, not the approved seal.
+Archive publication/reclamation, fenced repair and async owner fence also remain;
+preserve original archive-loss/catchup/owner-fsync REDs. F5/F6/F7 NOT CLOSED.
+Do not re-request approved selector/seal bytes. New material protocol/budget choices
+still need review. No source freeze, stage/commit/tag, device/venue, deployment or
+credentials. Protected tracked paths clean, model untouched. Pi deferred, not waived.
+
+## REMEDIATION CP-033 — APPROVED BASE SEAL / ON-DISK BASE VERIFICATION — 2026-09-23 (historical)
+
+Branch/HEAD v2/phase-5-corrections / d44a4a9; ALL remediation UNCOMMITTED.
+Owner APPROVED F5_GENERATION_STORAGE_REVIEW.md: exact 40-byte base seal/digest,
+fixed layout/root ownership, runtime snapshot floor/refusal, automatic migration
+deferred. CP-031 selector approval unchanged. No further byte approval needed for
+these named integrations; do not re-request the same decision.
+
+Implemented first dependencies, NOT the full startup transaction:
+- generation_base.hpp/.cpp: exact seal codec and semantic base validation; hashes
+  complete immutable bound snapshot plus canonical local identity/generation.
+  Positive snapshot coordinates, bound/canonical validity and catalog dependencies
+  required. Caller-owned fixed scratch, staged output, small summary, no I/O.
+- generation_base_files.hpp/.cpp: read-only root identity/final selector/canonical
+  generation/base verifier. Non-following bounded descriptor-relative reads,
+  owner-only single-link files, closed immutable namespace, full snapshot bytes
+  returned in caller buffer, selector/base digest binding, failure-atomic summary.
+  Caller retains trusted root ownership; result grants no startup/voting authority.
+
+New-component stub REDs retained (not historical production-defect claims).
+Literal Python golden independently recomputed by main; truncation/corruption,
+rehashed unsupported headers, validly framed foreign catalog dependency, zero
+coordinates, full snapshot bytes, symlink/hardlink/permissions, no temp/scan
+fallback, generation relabelling and unchanged-output tests. Six direct mutants
+fail intended assertions. Two bounded workers, main independent integration/review.
+Final Release 70/70 (12.01s), C++ ASan+UBSan 70/70 (155.68s) then rebuilt final
+focused 2/2 after test-only additions; tooling 40/40; independent inventory
+70 host / 67 V2. Nonrecovering UB/halt, leaks off, Raft C uninstrumented.
+Evidence: evidence/f5_generation_base_2026-09-23/README.md. No new target/model/
+TSan/latency or power-cut claim. All builds precede CTest; diff-check clean.
+
+NEXT: TDD the approved actual startup/publication transaction. Adapt existing
+VerifiedIdentityStartup ownership to root plus selected runtime directory; fresh
+bootstrap only, preserve/refuse nonempty legacy roots, no automatic migration.
+Validate complete mutable metadata/WAL/runtime snapshot before writable startup,
+enforce immutable snapshot floor, then test selector preparation/publication at
+every durable cut. CP-032 refusal stays active until this path replaces it safely.
+Current verifier does not validate mutable history, acquire long-lived locks,
+publish/select a generation, or implement the runtime floor. Do not treat it as
+a ready-to-start capability. Reuse existing formats; no generic storage framework.
+Then integrate snapshot install with unknown suffix/result obligations intact.
+
+Original archive-loss/catchup/owner-fsync REDs unchanged; archive publication,
+fenced repair, async owner fence and final gates still open. F5/F6/F7 NOT CLOSED.
+Protected tracked paths clean, model untouched. No staging, commit/tag, source
+freeze, device/venue, deployment or credentials. Pi deferred, not waived.
+
+## REMEDIATION CP-032 — GENERATION STARTUP GUARD / MINIMAL INTEGRATION REVIEW — 2026-09-23 (historical)
+
+Branch/HEAD v2/phase-5-corrections / d44a4a9; ALL remediation UNCOMMITTED.
+Owner requested the next item without overengineering. Exact CP-031 selector
+approval remains intact; no additional persistent bytes were encoded this turn.
+
+Fixed a transitional integration bypass by TDD: old-layout recover ignored a
+valid selector naming a missing generation. Recovery now refuses any selector,
+temporary selector or generations entry before identity/metadata resync; existing
+ownership tokens recheck too. Three descriptor-relative non-following stat calls,
+under held root ownership; ENOENT alone is absent, other errors fail closed.
+Bootstrap's generic unknown-content refusal is unchanged. No hot-path cost added.
+Healthy no-marker legacy identity startup remains compatible; this does not
+implement generation-aware startup, publication, migration or snapshot install.
+Trusted directories/cooperative locks remain assumptions, not hostile-writer fencing.
+
+Actual pre-guard production RED retained. Main expanded tests to 3 names x 3
+entry types, complete evidence preservation, zero pre-refusal checkpoints and
+existing-token refusal. Corrected a scope claim: the opaque-WAL fixture tests
+identity-boundary preservation, not full history validity. Independent review
+plus direct recover/token/no-follow mutants fail intended assertions.
+Fresh Release 68/68 (21.81s), focused startup 3/3, C++ Debug ASan+UBSan 68/68
+(163.04s), tooling 40/40; independent inventory 68 host / 65 V2. Built before
+CTest; nonrecovering UB/halt, leaks off, Raft C uninstrumented. No new target,
+model, TSan, latency or power-cut claim. Evidence:
+evidence/f5_generation_guard_2026-09-23/README.md.
+
+NEXT APPROVAL: F5_GENERATION_STORAGE_REVIEW.md. One consolidated PROPOSED
+integration contract: reuse existing formats, exact 40-byte immutable-base seal
+and digest, fixed generation layout, root-owned startup, seeded runtime snapshot
+with a no-below-base floor, and defer automatic legacy migration. No generic
+manifest database or repair framework. DO NOT encode these new bytes until the
+owner approves. Then TDD real generation preparation/selector publication/recovery
+at each durable cut, followed by snapshot integration; preserve unknown suffix
+and result obligations. No fallback or implicit voter reset.
+
+Archive publication/reclamation, snapshot catch-up, fenced repair, async owner
+fence and final gates remain open; original integration REDs unchanged. F5/F6/F7
+NOT CLOSED. Two bounded workers, main review/integration. Protected tracked paths
+clean; model untouched. No staging, commit/tag, device/venue or credentials.
+Pi deferred to final hardware stage, not waived. No live trading admission.
+
+## REMEDIATION CP-031 — APPROVED LOCAL-GENERATION CODEC — 2026-09-23 (historical)
+
+Branch/HEAD v2/phase-5-corrections / d44a4a9; ALL remediation UNCOMMITTED.
+Owner approved exact F5_LOCAL_GENERATION_BYTE_REVIEW.md after its explanation:
+160-byte selector, local/shared binding, strict sequence/generation rules,
+exclusive-directory/seal-last and atomic selector/no-fallback directions.
+Prepared-base format, concrete migration/root-layout integration, archive coverage,
+repair capacity/protocol and async continuation remain separate unresolved work.
+Owner asked if this closes all F: explicitly answered NO; approval/component
+GREEN must never be represented as end-to-end F5/F6/F7 closure.
+
+Implemented local_generation.hpp/.cpp: pure explicit-LE160-byte codec and pure
+value-transition checks. Fixed frame staging; no I/O/allocation, no startup or
+active selector switch. Native value56 bytes on host, never serialized directly.
+Encode/decode failure-atomic and overlap-safe as tested. Maximum counters can be
+decoded/recovered; further transition refuses. Generation gaps allowed, selection
+sequence gaps refused. Base digest remains opaque, not base verification.
+
+Worker component-stub RED and main independent literal-golden RED retained, then
+GREEN. Independent Python struct/hashlib golden, every truncation/byte corruption,
+resealed owner/manifest/reserved/shape failures, exact output tails,546 authored
+transition cells, final nonwrapping/max counters, overlap and allocation checks.
+Independent worker reviewed implementation; main direct owner/digest/sequence
+mutants fail intended assertions. No filesystem/power-cut proof claimed.
+
+Fresh Release67/67 (19.80s), C++ Debug ASan+UBSan67/67 (160.90s), tooling40/40,
+independent inventory67 host/64 V2. UBSan nonrecovering/halt, leaks off, Raft C
+uninstrumented; no new model/TSan/target/latency claim. Built before CTest. Evidence:
+evidence/f5_local_generation_2026-09-23/README.md. diff-check clean.
+
+Next: connect the selected-generation storage transaction, not more changes to
+approved selector bytes. Consolidate the remaining prepared-base/root-layout/
+bootstrap-migration contract for owner review before encoding those dependencies;
+then TDD selector publication/recovery at every durable cut, followed by snapshot
+integration. Preserve unknown suffix/result obligations; no directory-scan/temp/
+previous-generation fallback. Do not mistake codec success for safe activation.
+Archive publication/reclamation, snapshot catch-up, fenced repair, async owner
+fence and final acceptance gates still open; original integration REDs unchanged.
+
+At most TWO workers used; protected tracked paths clean, model/ untouched. No
+staging, commit/tag, source freeze, device, venue, deployment or credentials.
+Pi remains deferred to final hardware stage, not waived. No live trading admission.
+
+## REMEDIATION CP-030 — FOUR DIRECTIONS APPROVED / ARCHIVE FILE VERIFIER — 2026-09-23 (historical)
+
+Branch/HEAD v2/phase-5-corrections / d44a4a9; ALL remediation UNCOMMITTED.
+Owner approved all four CP-029 directions: durable archive coverage, transactional
+local generation, offline fenced two-voter repair with dedicated control headroom,
+and one pending async persistence fence. This is NOT approval of exact new bytes,
+filenames, numeric partitions/quotas or unresolved callback/repair protocols.
+Normal max TWO workers used; no new four-worker exception inferred. Protected
+tracked paths clean; model/ untouched. No staging/commit/tag or device/venue action.
+
+Implemented smallest existing-byte slice: read-only archive_file.hpp/.cpp around
+the approved CP-028 codec. Caller-owned buffer, no internal allocation; openat
+relative basename with nofollow/nonblock, regular single-link file, bounded length,
+short/EINTR read handling, EOF/post-stat checks, close-once, full codec validation
+before output metadata publication. No archive publication/coverage/commit/backup/
+deletion permission. Exclusive trusted directory/input and nonaliasing required;
+opened-fd verification does not promise pathname identity after return.
+
+Two new suites (filesystem plus main independent syscall shims), literal existing
+CP-028 golden and full bytes. Retained original implementation-stub RED, smallest
+GREEN, three direct guard mutants killed intended size-change/trailing/short-codec
+assertions. Main corrected wrong-guard fixture ordering, stat error classification
+and interruption handling; independent worker reviewed ownership/limits. Failing
+logs with generic assertions are not promoted to named production-bug evidence.
+
+Fresh Release65/65; full C++ Debug ASan+UBSan65/65 (155.23s), then rebuilt focused
+final2/2 after test diagnostic-text change. Nonrecovering UB/halt; leaks off; Raft
+C uninstrumented. Tooling40/40; independent inventory65 host/62 V2. No new model,
+TSan, target, latency or power-loss claim. Evidence/reproduction:
+evidence/f5_archive_file_2026-09-23/README.md. diff-check clean.
+
+NEXT OWNER BYTE REVIEW: F5_LOCAL_GENERATION_BYTE_REVIEW.md. Proposed 160-byte
+selector binds shared identity, local voter, nonwrapping generation/selection
+sequence, predecessor and immutable-base digest. Recommend exclusive generation
+mkdir with seal-last, atomic selector replacement and no fallback. Only standalone
+codec is next implementation slice after approval; prepared-base bytes, root-lock/
+genesis migration, archive catalog, transfer/repair and async glue stay separate.
+Main reviewed/corrected directory link-count assumption, immutable base versus
+mutable runtime snapshot and first-selection migration semantics. Question sent
+to owner; DO NOT infer approval until answered.
+
+CP-026 archive-loss/catchup REDs and CP-029 owner-fsync REDs remain open; no behavior
+changes to compact, snapshot install, repair or Raft callbacks. F5/F6/F7 OPEN.
+Pi deferred to final hardware stage, not waived. No live trading admission.
+
+## REMEDIATION CP-029 — FOUR-LANE CLOSURE REVIEW / NEW ASYNC REDS — 2026-09-23 (historical)
+
+Branch/HEAD v2/phase-5-corrections / d44a4a9; ALL remediation UNCOMMITTED.
+Owner requested four parallel agents for archive, install, repair and async.
+Runtime allowed four active including main: three bounded workers plus main on
+async/integration. This exception is TASK-ONLY; normal two-worker limit resumes.
+No production/CMake change, staging/commit/tag, device, venue or credential action.
+Protected tracked paths remain clean; untracked model/ untouched.
+
+READ NEXT: F5_F6_FOUR_LANE_CLOSURE_REVIEW.md and its four linked lane reviews.
+All new publication/coverage/selector/transfer/repair/async protocols remain
+PROPOSED. Parallel permission did not approve unspecified bytes or quotas. A/B
+and CP-028 codec approval remain intact. None of the four items is closed.
+
+New permanent tests outside CTest:
+- v2_async_hard_state_red.cpp: actual production BoundMetadataStore compiled behind
+  forwarding fsync observer. With WAL worker running, campaign/vote/commit still
+  perform4/4/2 syncs on owner. Each exits1 at intended owner-I/O assertion, after
+  real persisted tuple and protocol/state checks. Not premature-vote or latency
+  evidence; original checkpoint-only logs superseded by actual syscall logs.
+- lost_voter_repair_reachability.cpp: worker characterization, independently read,
+  strict-built and reproduced by main. Two byte-identical donor disks correspond
+  to different old quorum commit outcomes. Full unknown suffix must survive;
+  ordinary missing-hard-state refusal stays correct. This PASS is NOT repair GREEN.
+
+Shared design dependencies: destination-local generation distinct from archive/
+session/cluster identity; immutable prepared base versus mutable live WAL/metadata;
+no stale write/completion crossing selection; one selector, fail closed rather
+than fallback. Main corrected draft-only unsafe suffix splice, fabricated losing
+reservation results and archive checksum-as-commit permission; removed unnecessary
+new durable result FIFO and redundant selectors. Repair saturation can prevent a
+new-term barrier; reserved internal headroom is PROPOSED, not approved, and cannot
+retroactively solve existing-full histories. Async callback continuation and
+runtime suffix rewrite remain explicit implementation proof obligations.
+
+Fresh build then Release63/63,11.16s. No current full sanitizer/model/tool/target
+rerun; CP-028 results remain historical. diff-check clean. Evidence and exact
+commands: evidence/f5_f6_parallel_contracts_2026-09-23/README.md. CP-026 archive/
+catchup integration REDs remain open (last rerun CP-028). F5/F6/F7 OPEN.
+
+NEXT: owner review of shared generation/coverage/fenced-repair/one-pending-fence
+direction and capacity tradeoff; finalize exact minimal byte/budget sheets before
+production encoding. Then disjoint component TDD in parallel, single-owner
+replication integration, crash/stale-generation/saturation sweeps and fresh NUC
+gate. Pi deferred to final hardware stage, not waived. No automatic live admission.
+
+## REMEDIATION CP-028 — APPROVED PORTABLE ARCHIVE CODEC — 2026-09-23 (historical)
+
+Branch/HEAD v2/phase-5-corrections / d44a4a9; ALL remediation UNCOMMITTED.
+Owner approved the EXACT F5_ARCHIVE_SEGMENT_BYTE_REVIEW.md contract after CP-027:
+96-byte header / 32-byte record header, both domain-separated SHA-256 digests,
+4-MiB complete-object and 8,192-record caps. A/B policy remains approved. No new
+publication/coverage/quota, snapshot/install/repair or asynchronous fence contract
+is implied. Protected tracked paths remain clean; untracked model/ untouched.
+No staging, commit/tag, source freeze, target, venue or credential action.
+
+Implemented standalone archive codec plus 112-byte incremental SHA owner; existing
+one-shot digest API delegates with unchanged known bytes. Encoder uses bounded
+pull-source views, not per-record descriptors; decoder validates the entire stable
+input before any visitor. Preserve refused commands and failed authority attempts:
+marker gateway incarnation is not cluster incarnation, and requested catalog may
+legitimately mismatch. Current WAL admission semantics, NOT economic revalidation.
+
+Important API limits: input/output are caller-owned contiguous buffers; file-backed
+streaming/publication is NOT implemented. Immutable source/input and payload/output
+nonaliasing are preconditions. Preflight refusal leaves output unchanged; a later
+source failure leaves possible partial UNPUBLISHABLE bytes. Visitor refusal does
+not roll back earlier callbacks; destination metadata stays unchanged. Native host
+scratch 2,120, view 40, source 24, metadata 80 bytes; excludes caller buffers and
+other fixed stack work. No process RSS or target-latency claim.
+
+Two implementation workers, main integration and independent adversarial tests.
+Literal independent goldens, full payload assertions, truncation/byte corruption,
+resealed invalid coordinates/typed content, source/visitor failures and actual
+8,192-record / exact-4-MiB boundaries pass. Main direct source-copy mutations:
+seven archive guards and two SHA defects fail intended assertions. Initial new-
+component REDs were compile-only and worker-reported without retained raw logs;
+do NOT relabel them behavioral production REDs. Initial archive mutants raced
+worker edits and are excluded; final single-condition diffs were rerun on stable
+source. Evidence: evidence/f5_archive_codec_2026-09-23/README.md.
+
+Fresh final Release 63/63 (11.65s), C++ Debug ASan+UBSan 63/63 (161.37s), tooling
+40/40. Independent inventory 63 host / 60 V2. Nonrecovering UB + halt, leaks off,
+Raft C uninstrumented. Model109 is historical, not rerun. No target acceptance.
+
+Main rebuilt/reran BOTH CP-026 integration diagnostics: catch-up remains at 0
+after peers compact through 12; archive-loss still deletes the pinned raw command
+at 1. These remain RED, outside passing CTest. This codec is NOT wired to compact,
+does not certify commitment/durability/backup, and grants no deletion permission.
+F5/F6/F7 stay OPEN. Next required review slice: durable archive publication,
+dependency coverage and generation-bound reclamation capability with explicit
+quota/full behavior; then transactional snapshot catch-up and fenced repair.
+Do not reopen A/B or encode unspecified contracts. Preserve result obligations
+and unknown-commit suffixes per F5_COMPLETION_AND_NUC_PLAN.md. NUC shadow still
+needs the process/observability shell; live needs remaining authority/venue/target
+gates. Pi remains deferred until final hardware stage, not waived.
+
+## REMEDIATION CP-027 — A/B APPROVED, BOUND-METADATA MODEL / ARCHIVE BYTE REVIEW — 2026-09-23 (historical)
+
+Branch/HEAD v2/phase-5-corrections / d44a4a9; ALL remediation UNCOMMITTED.
+Owner approved CP-026 A/B: operator-fenced stopped-cluster repair after lost
+voting memory; immutable/no-auto-prune archives, fail-closed full behavior and
+independent live audit copies. Do NOT reopen those policy choices. No unspecified
+bytes/quotas/install/async protocol, source freeze, deployment or trading approved.
+Protected paths preserved; at most two workers, main review/integration.
+
+Implemented test-only port of persistence model to ACTUAL BoundMetadataStore;
+production save/load compiled behind POSIX shims, independent authored old/new
+tuples and packed/golden frame, distinct durable bytes and directory names. Sweeps
+14 absent-temp /21 existing-temp /15 short-write syscall cut paths; EIO sweeps on
+both normal paths. Main tightened model exception handling and added actual load
+cross-check of modeled power-loss image. Existing production ordering unchanged.
+Main direct file-sync-only and dir-sync-only mutants compile then fail the intended
+recovered-value assertions. These are retrospective mutations, NOT original REDs.
+New CTest+independent inventory:60 host/57 V2. Release60/60, C++ ASan+UBSan60/60,
+tooling40/40. UBSan nonrecovering/halt, leaks off, Raft C uninstrumented. Model109
+is historical, not rerun.
+Evidence/limits: `evidence/f6_bound_metadata_model_2026-09-23/README.md`.
+
+NEXT REVIEW: `F5_ARCHIVE_SEGMENT_BYTE_REVIEW.md`. Exact proposed portable archive
+codec:96-byte segment header+32 digest;32-byte record header+unchanged payload+32
+digest;4-MiB total/8192-record caps. Shared manifest binding; separate codec so hot
+scratch does not grow. Not encoded. This approval slice does NOT freeze global
+archive quotas/coverage publication, snapshot transfer/generation or repair bytes.
+Main corrected worker review: marker incarnation is gateway, not cluster; an
+admitted marker may request the wrong catalog and get no proof. Archive must retain
+that failed attempt, not retrospectively filter it. Digests do not prove commit,
+durability, independent backup or deletion permission. All offsets/reasons in sheet.
+
+CP-026 catch-up/archive-loss diagnostics remain RED and outside passing CTest.
+No archive/install/replacement GREEN, no async-hard-state closure, no new target/
+power-loss/latency claim. F5/F6/F7 remain open. Pi deferred, not waived. NUC shadow
+still needs the node/process shell and observable service wiring; live needs the
+remaining host/venue/authority gates. No staging, commit/tag or device action.
+
+## REMEDIATION CP-026 — F5 COMPLETION PLAN / TWO CURRENT REDS — 2026-09-23 (historical)
+
+Branch/HEAD v2/phase-5-corrections / d44a4a9; ALL remediation UNCOMMITTED.
+Owner asked to plan/parallelize remaining required work and reach NUC promptly.
+Two bounded workers added isolated diagnostics; main reviewed, independently
+compiled/ran both and recorded `F5_COMPLETION_AND_NUC_PLAN.md`. Protected paths
+preserved; no staging, commit/tag, freeze, target, venue or credential action.
+
+Current permanent REDs, deliberately outside passing CTest:
+- tests/v2_snapshot_catchup_red.cpp: intact lagger remains applied/commit0 after
+  healthy quorum commits/compacts12 authored entries and2000 routed retry rounds.
+  Explicit kill_epoch/state_version12 plus independent reducer-state oracle.
+- tests/v2_archive_reclamation_red.cpp: compact through3 removes the independently
+  pinned canonical command at1 from all fixture files; valid snapshot is not audit.
+  Presence-anywhere is ONLY a loss diagnostic, not a future verified-archive oracle.
+Both compile and fail at their intended assertions. Retained logs/provenance:
+`evidence/f5_completion_review_2026-09-23/README.md`. Old REDs kept as audit trail.
+
+Plan: archive component and snapshot generation/staging component in parallel;
+main integrates transfer, result ownership and reclamation; then safe replacement,
+F6 durable fences/model, frozen NUC gates and M2/M3 non-trading process deployment.
+M3a subsystem/machine observability remains required before live. Pi deferred,
+not waived; no automatic single-voter weakening. There is still no V2 node binary.
+
+Owner APPROVED material choices A/B after CP-026: operator-fenced stopped-
+cluster lost-hard-state repair instead of automatic online replacement; immutable
+archives/no automatic pruning, fail-closed fullness and independent-copy policy
+for live audit. Existing quota candidates remain unapproved, not measured sizing.
+Finalize the shared byte/budget sheet BEFORE encoding; do not reopen A/B.
+Do not interpret permission to parallelize as approval of unspecified contracts.
+
+Integration traps: pinned raft_begin_load_snapshot resets term/vote/membership
+and cannot preserve a suffix on the serving owner. Prepare a separate owner and
+generation, revalidate current hard state before durable selector switch, and
+never resume the old generation afterward. READY result FIFO must survive;
+covered RESERVED results need historical outcome reconstruction, not reapply to
+final snapshot. Proposed archive-assisted prefix replay preserves that contract.
+Unread READY values do NOT automatically pin raw log cells. Preserve unknown-
+commit suffix during repair; stale metadata commit is not a deletion watermark.
+
+Fresh build+Release59/59. No new sanitizer/model/tooling/target/performance claim;
+CP-025 sanitizer59/59/tools40 remain historical. No production behavior, new byte
+contract or acceptance guarantee changed. F5/F6/F7 remain OPEN. Next is the
+reviewed contract/design above, not automatic compaction or an unsafe bootstrap.
+
+## REMEDIATION CP-025 — APPROVED OUTBOUND/LOG BOUNDS INTEGRATED — 2026-09-23 (historical)
+
+Branch/HEAD v2/phase-5-corrections / d44a4a9; ALL remediation UNCOMMITTED.
+Owner approved all four CP-024 choices before implementation. Protected paths
+preserved; max two workers, main architecture/integration/review. No staging,
+commit/tag, source freeze, target, venue or credential action.
+
+Kernel outbound deque is gone. Four owned coalescing canonical-frame mailboxes
+per peer, same-kind replacement only, lower-term watermark, fair cursor, bounded
+copy-out. Small frames160 bytes/AppendEntries32768; approved16-entry prefix
+batching remains (do NOT reject a longer library suffix). Public dynamic egress
+removed from V2; test adapter alone decodes to PeerMessage. Unexpected encoding
+fault latches service/authority failure. Actual mailbox owner66680 bytes for TWO
+fixed remote slots even on the two-voter pilot. Earlier per-peer prototype was
+not deployed footprint. Frame-size arithmetic corrected by4 bytes; caps unchanged.
+
+Kernel retained map/vector owner is gone.8192 stable2048-byte cells;8128 ordinary,
+64 protected tokens using existing operator classifier; markers ordinary. Local
+typed refusal log_capacity_exhausted appended at8. Whole follower result/log
+preflight credits actual suffix pools without releasing them. CP-023 control-only
+fallback learns terms and responds for verified durable prefix; no partial batch
+admission on log/result pressure. Successful durable deletion precedes cell/handle
+release. WAL staging remains independently bounded/fallible, not an atomic batch
+disk transaction. No change to bytes, classifier, result quota or pinned Raft.
+
+Startup streams validation then restoration before writable WalSegment creation;
+committed records also consume log cells but produce no replay notifications.
+Oversized committed or marker-only uncommitted history refuses unchanged. Store
+constructor and suffix/prefix rewrite stream bounded blocks; rewrite reads its
+existing fd, not a newly opened/maybe missing path. Diagnostic vector readers
+remain; production callers no longer use them. Tail-by-tail rewrite can still be
+quadratic I/O. No allocation-free admission or whole-process memory claim.
+
+Permanent original growth REDs now GREEN/registered. New tests cover stalled-drain
+retry recovery, queued bytes across durable replacement, input/output aliasing,
+mixed-batch refusal, protected saturation, markers, exact full restart, unchanged
+oversized startup, modulo reuse, and suffix storage failure. Four main and five
+worker direct mutations hit intended assertions. Evidence/provenance caveats:
+`evidence/f5_capacity_integration_2026-09-23/README.md`. Worker new-component REDs
+were compile-only; worker WAL RED used unverified build archives and is NOT
+credited as current original RED. Main fresh materialization mutant covers it.
+
+Final fresh Release59/59, C++ ASan+UBSan59/59, tooling40/40; inventory59 host/56 V2.
+Sanitizer nonrecovering UB + halt, leaks off, Raft C uninstrumented. Model109 is
+CP-020 historical. Actual kernel inline91424; log owner64+16777216 cells+327680
+descriptors; result ledger229400; mailbox66680; library/scratch/allocator extra.
+
+NEXT: this closes the approved outbound/log ownership slice, NOT full F5/F6/F7.
+Admitted replacement, transactional snapshot install/catch-up and archive-before-
+last-copy reclamation remain OPEN and their material contracts need review.
+Never introduce automatic compact/deletion to escape fullness. Finite reserve
+does not guarantee quorum/emergency deadline or ordinary fill ingestion; live
+risk remains held. F6 bound-metadata model port/async fences and F7 frozen target
+gates remain. Pi deferred, not waived. M3a observability/process wiring before live.
+
+## REMEDIATION CP-024 — OUTBOUND/LOG REVIEW, APPROVAL PENDING — 2026-09-23 (historical)
+
+Branch/HEAD remain v2/phase-5-corrections / d44a4a9. ALL remediation UNCOMMITTED.
+Protected/dirty paths preserved. Two read-only workers; main owns review/tests/docs.
+No production change, staging, commit/tag, source freeze, target or venue action.
+
+Owner asked to tackle outbound/log saturation. Existing candidates were expressly
+unapproved; do not infer approval from the request to start. Detailed proposal:
+`F5_OUTBOUND_LOG_CAPACITY_REVIEW.md`. Review its four decisions before encoding.
+
+Three original behavioral REDs in tests/v2_outbound_log_capacity_red.cpp (NOT
+CTest yet):512 retained heartbeat replies;129 retry packets/542604 bytes for one
+peer while source log stays16;8129 ordinary retained entries after draining all
+earlier results. These establish growth beyond candidate thresholds, not breach
+of an already approved quota. Full source reasoning, logs, reproduction and
+prototype memory probe: `evidence/f5_capacity_review_2026-09-23/README.md`.
+
+Recommended, NOT implemented: four owned latest-per-kind mailboxes/remote peer,
+32-KiB AppendEntries plus three160-byte small cells; whole-message same-kind
+replacement, never lower term; fair drain and bounded copy-out. These are Raft
+packets, NOT replaceable trading outbox effects. Probe33336 native bytes/peer,
+plus separate egress/scratch. Retained log8192 entries,8128 ordinary/64 existing
+operator-control tokens,2048-byte cells (16 MiB backing); markers ordinary. Old
+independent16-MiB/256-KiB live-byte quota claims are superseded as nonbinding.
+Keep current Raft ring growth for MVP and explicitly budget its resize peak,
+rather than expand fork for allocation-free admission. No whole-process ceiling.
+
+Fullness stops admission, never evicts history. Reuse approved CP-023 follower
+control-only protocol for log pressure; preserve actual suffix ownership until
+durable deletion. Need bounded recovery/rewrite scratch too: current vector
+materialization defeats a slab-only memory claim. No automatic compact shortcut:
+archive-before-last-copy remains open.64 operator slots do not guarantee quorum,
+kill deadline or continued ordinary fill ingestion. Live deployment remains gated.
+
+Fresh build+Release54/54. Sanitizers/tools remain CP-023 historical; model remains
+CP-020 historical. Diagnostic/probe are outside CTest, no new GREEN or mutation
+claim. NEXT after owner approval: mailbox component+egress; fixed log+all admission
+paths; bounded recovery/rewrites; adversarial failure/mutation/full regressions.
+Detailed sequence in review §5. F5 install/archive/replacement, F6 async fences/
+bound-metadata model port and F7 targets remain OPEN. Pi deferred, not waived.
+
+## REMEDIATION CP-023 — RESULT RESERVATIONS INTEGRATED — 2026-09-23 (historical)
+
+Branch/HEAD remain v2/phase-5-corrections / d44a4a9. ALL remediation UNCOMMITTED.
+Preserve dirty/protected paths. Two workers maximum; main integrated and reviewed.
+No staging, commit/tag, source freeze, target, venue or credential action.
+
+Owner separately approved F5_ADMISSION_RESULT_REVIEW §8 after CP-022. Kernel now
+uses the approved1024-slot ledger (960 ordinary/64 protected), not a result deque.
+Both admission paths, startup reservations, pre-apply binding checks, publication,
+consumer take and durable suffix ownership are integrated. Markers emit no result;
+committed replay remains suppressed. Ready notifications survive compaction/terms.
+Native ledger229400 heap bytes, kernel91472 inline; optional per-log handle24
+native bytes. This is NOT a whole-process memory bound.
+
+Follower capacity planning is read-only and simulates actual released slot pools
+and remaining generations. No old reservation is freed before successful durable
+truncation. Single synchronous Raft owner means no interleaving consumer/admission;
+log_offer reserves before accepted log count advances. A failed offer cleans its
+unaccepted payload and handle. If capacity cannot fit the whole batch, process
+original term/prev without new entries, cap commit at min(advertised,prev), and
+reply only for verified durable prefix. This is valid control processing, not a
+no-mutation malformed-frame refusal. Local refusal is result_capacity_exhausted;
+fixed refusal/reserved/ready counters expose ownership.
+
+Original four CP-022 REDs reproduced on fresh pre-integration build, now GREEN
+and IN CTEST as v2-result-admission-tests (historical _red filename retained).
+New edge suite covers saturated prev mismatch, failed second tail rewrite with
+exact surviving reservations/restart identities, and actual-pool replacement.
+Five direct source-copy mutants fail intended assertions. The old WAL-reserve
+fixture now uses larger ordinary records to hit WAL pressure before result
+pressure; it still proves reserved blocks and now catches failed-offer slot leaks.
+Ledger-preflight worker's original RED was compile-only, NOT behavioral; the
+kernel's original four REDs are behavioral. Full evidence/reproduction/limitations:
+`evidence/f5_result_integration_2026-09-23/README.md`.
+
+Verification: fresh Release54/54, ASan+UBSan54/54, tooling40/40; independent
+inventory54 host/51 V2. See retained logs in that evidence directory. No new
+target/TSan/power-loss/performance claim; C++ ASan/UBSan excludes Raft C and leaks.
+Model109/109 remains CP-020 historical, not rerun. Protected tracked paths clean;
+model remains untracked/untouched.
+
+NEXT: do not reopen §7/§8 approval. Result ownership slice is integrated, NOT full
+F5 closure. Review remaining outbound and retained-log descriptor/byte/backing-RAM
+budgets and full policies in F5_F7_MVP_CLOSURE_PLAN §3 / admission review §4.
+Those candidate quotas are NOT approved. Need permanent saturation REDs and review
+of bounded control response ownership before encoding that protocol. Replacement
+voting admission/install/catch-up/archive, F6 bound-metadata persistence model port
+and async fences, F7 frozen targets remain OPEN. Pi deferred, not waived. Processes
+and M3a observability still precede live. No new venue/product scope.
+
+## REMEDIATION CP-022 — RESULT COMPONENT GREEN / INTEGRATION PENDING — 2026-09-23 (historical)
+
+Branch/HEAD remain v2/phase-5-corrections / d44a4a9. ALL remediation UNCOMMITTED;
+preserve dirty/protected paths. Two bounded workers; main independently reviewed,
+strengthened tests and rebuilt. No staging, tag, freeze, target or venue action.
+
+Owner-approved §7 ResultLedger is implemented as a STANDALONE component:1024
+slots (960 ordinary/64 protected), protected-first control allocation, generation-
+checked handles, exact identity/digest/term/index binding, ready FIFO retained until
+take. No allocation inside ledger operations. Native object229400 bytes, slot224,
+handle16; owner-thread only, handles scoped to ONE ledger. CommittedResult moved
+verbatim to a shared header. No wire/disk/economic or result-layout change.
+
+IMPORTANT: ReplicatedKernel still uses its growable result deque. No kernel
+result-bound or allocation-free apply claim. §8 follower control-only saturation
+protocol is awaiting separate owner approval; expressly excluded from §7 approval.
+Do not half-integrate only the leader path. Fullness must not hide newer terms,
+and header processing is not a no-mutation refusal: it can change term/leadership,
+truncate a conflicting uncommitted suffix and apply a verified committed prefix.
+
+Exact next REDs: tests/v2_result_admission_red.cpp, selectors leader, follower,
+recovery, oversized-recovery. All four CURRENTLY FAIL for the intended missing
+admission/reservation behavior; deliberately outside CTest. Replacement selector
+is baseline GREEN on old unbounded code, to preserve during ownership integration.
+After §8 approval, integrate both admission paths, retained-entry handles,
+pre-apply validation/publication, durable suffix transfer and startup reservations.
+Never release an old slot before its durable truncation succeeds.
+
+Basic signed peer-coordinate guards also landed: invalid terms/indices refuse
+before Raft mutation; term0 headers/replies remain valid. No new cross-field or
+transport-authentication guarantee. Main caught a vacuous stale-handle test and
+made reuse carry the SAME binding so only generation distinguishes ownership.
+Direct-copy publish/release/routing/coordinate mutants fail intended assertions.
+
+Evidence correction: peer worker's initial manually linked RED/GREEN used stale
+build archives, so those runs are NOT credited as verified-current original REDs.
+Fresh main builds and a direct guard-removal mutant supply current evidence; do
+not retroactively relabel the mutation as original TDD RED. Full details/logs:
+`evidence/f5_result_ledger_2026-09-23/README.md`.
+
+Fresh host Release52/52, Debug ASan+UBSan52/52, tools40/40; inventory52 host/49 V2.
+C++ instrumentation, UB halt, leaks off; Raft C NOT instrumented. Model109/109 is
+CP-020 historical, not rerun. No new TSan/target/power-loss/performance claim.
+F5 whole-node bounds/replacement/install/archive, F6 bound-metadata persistence
+model port/async fences and F7 frozen targets OPEN. Pi deferred, not waived.
+
+## REMEDIATION CP-021 — VERIFIED APPEND PREFIX / RESULT CONTRACT REVIEW — 2026-09-23 (historical)
+
+Branch/HEAD remain v2/phase-5-corrections / d44a4a9; ALL remediation UNCOMMITTED.
+Preserve dirty/protected paths. Two bounded review workers; main implemented and
+verified this increment. No commit/tag, source freeze, target, venue or credentials.
+
+F5 admission review found pinned raft_recv_appendentries caps commitment by the
+FULL local log, not the received batch. Added original synthetic ingress REDs:
+matching1..16 plus divergent17..20; a message verifying only1..16 with leader_commit20
+applied kill120 instead of kill16. Empty heartbeat variant also RED. Arithmetic
+RED accepted negative/overflowing prev. Permanent tests precede the fix.
+
+IMPORTANT CORRECTION: this is NOT an established honest-three-node divergence
+trace. Independent review could not produce that public scheduling witness;
+current sender backtracking eagerly deletes the mismatching suffix. Do not claim
+production split-brain or exhaustive unreachability. The receiver boundary still
+must be explicit before future shortened/capacity control processing.
+
+Smallest fix: V2 wrapper passes min(leader_commit, prev+count); bound-peer codec
+rejects prev/count arithmetic without room for the following signed64 index.
+Pinned fork/V1/bytes/economics unchanged. Tests assert kill, exact result identities,
+commit/apply/reply indices, subsequent repair/restart, lower commit, failed prev
+and empty-log heartbeat. Three direct-copy mutants fail at intended assertions.
+Original restart fixture needed tick(0) after flush to checkpoint commit, per the
+existing API; no production persistence behavior changed to make it pass.
+
+Fresh host Release51/51 and Debug ASan+UBSan51/51; C++ instrumentation, leaks off,
+UB halt, Raft C NOT instrumented. No new TSan/target/power-loss claim. Tools40 and
+model109 are CP-020 historical results, not rerun. Evidence and reproduction:
+`evidence/f5_verified_prefix_2026-09-23/README.md`. Protected tracked files clean;
+model remains untracked/untouched. No suite/inventory or native layout changes.
+
+OWNER APPROVED after CP-021: `F5_ADMISSION_RESULT_REVIEW.md` §7 result ledger
+only:1024 slots (960 ordinary/64 protected), every-replica reserve-before-accept,
+retain-until-take and explicit finite backpressure. Host layout proposal224 bytes
+per slot,229400 total allocation, excludes per-log handles and other ownership.
+The1024/64 result budget and three local ownership/backpressure choices ARE now
+approved; do not ask again. Owner requested the C++ implementation explainer
+FIRST; no ledger code has been implemented. Other budgets/protocols remain
+separate. Authority markers produce no result and need no result slot.
+
+Before integration resolve: full uncommitted suffix must be replaceable without
+speculative slot release or requiring impossible spare capacity; higher terms
+cannot be hidden by fullness; outbound control response ownership needs a bounded
+policy; a header-only Raft call can mutate term/log and is NOT a no-mutation
+capacity refusal. Existing typed peer wrapper also needs focused signed-coordinate
+REDs (negative terms/commit/reply indices, nonpositive entry terms); CP-021 covers
+prefix arithmetic only. Keep cases tied to precise observable behavior.
+
+F5 whole-node bounds/replacement/install/archive, F6 bound-metadata persistence
+model port/async fences and F7 final targets remain OPEN. Pi deferred, not waived;
+processes and M3a observability still precede live. No new venue/product scope.
+
+## REMEDIATION CP-020 — BOUND LOCAL HISTORY / CRASH-SAFE GENESIS — 2026-09-22 (historical)
+
+Branch/HEAD remain v2/phase-5-corrections / d44a4a9. ALL remediation UNCOMMITTED;
+preserve existing dirty/protected paths. At most TWO workers; main reviews and
+integrates. No commit/tag, source freeze, target, venue or credential action.
+
+Implemented the already-approved local portions of `F5_BOUND_FRAME_BYTE_REVIEW.md`:
+mandatory 112-byte bound metadata, block-v2 WAL containing bound records, bound
+local snapshots, metadata-FIRST/identity-LAST bootstrap and explicit retry/cut
+handling. Kernel stores require verified identity. No flat-WAL fallback: even an
+empty `v2-raft.wal` refuses. V1 storage remains unchanged. All selected records,
+including uncommitted and snapshot-covered entries, validate before writable WAL
+open. Foreign/unsupported artifacts throw typed errors, not optional fallback.
+
+Original current-source REDs preserved: foreign metadata accepted, foreign WAL/
+snapshot restored kill9 instead of kill1, missing hard state reset term1 to0,
+bootstrap published identity without hard state. New review-discovered REDs:
+complete corrupt block became empty history; metadata term below WAL/snapshot
+term accepted; duplicate snapshot-covered record accepted. Permanent tests now
+cover exact refusals, unchanged files and healthy recovery. Never count broad
+startup failure as sufficient proof. Evidence: `evidence/f5_local_history_2026-09-22/README.md`.
+
+Recovery checks retained index continuity/nondecreasing terms and snapshot overlap.
+Metadata term cannot trail retained history. BUT snapshot index may exceed the
+older metadata commit checkpoint: durable snapshot publication legitimately
+establishes that committed prefix. Rejecting it would break the existing volatile-
+follower snapshot case. Full nonzero corrupt WAL blocks now refuse unchanged;
+physical short tail still yields only the complete prefix, which must cover local
+commit. All-zero complete blocks end preallocation. No scanning beyond damage.
+
+Genesis retry follows the approved table; process cuts cover metadata creation,
+partial/complete writes, sync, rename, directory sync, then equivalent identity
+publication boundaries. Incomplete/foreign metadata temp stops recovery unchanged.
+Complete matching replacement temp is validated and retained, never promoted;
+a later legitimate save may replace it with its NEW tuple. This deliberately
+trades recovery availability for preserving ambiguous voting evidence.
+
+Host Release51/51; Debug ASan+UBSan51/51 (C++ instrumentation, UB halt, leaks off;
+Raft C is NOT instrumented; no full-program TSan/new target claim). Tools40/40,
+model109/109. Six isolated direct-compiled mutants fail at intended assertions.
+IMPORTANT F6 limitation: CP-014's syscall persistence model STILL tests the old
+generic MetadataStore, not new BoundMetadataStore. Its green result is historical
+algorithm evidence, NOT proof of the new routine. Port the model before claiming
+current V2 sync-sensitive acceptance. Process cuts do not model power loss.
+
+NEXT: finish F5 via `F5_F7_MVP_CLOSURE_PLAN.md`: whole-node byte/entry budgets and
+result reservation; admitted replacement plus transactional install/catch-up;
+verified archive before last-copy reclamation. Their detailed protocols/quotas
+are NOT approved by the local frame approval. Review `F5_ADMISSION_RESULT_REVIEW.md`
+before bounded-container implementation. In particular reserve results on EVERY
+replica, retain committed results across compaction/election, and reserve for the
+uncommitted suffix restored at startup (replayed committed results stay suppressed).
+Capacity refusal must not suppress higher-term handling. Do not silently invent
+credit/install/archive bytes or candidate constants. F5/F6/F7 remain OPEN;
+Pi deferred until the final gate, not waived. Processes/observability precede live.
+
+`V2_MESSAGE_MEMORY_ATLAS.md` now lives in docs, with CP-020 storage status updated.
+TradingState stays81,392; native ReplicatedKernel now91,504 inline bytes, excluding
+owned heaps. Do not confuse either with a whole-process memory ceiling.
+
+## REMEDIATION CP-019 — APPROVED FRAMING / PEER ADMISSION — 2026-09-22 (historical)
+
+Branch/HEAD remain v2/phase-5-corrections / d44a4a9. ALL remediation UNCOMMITTED;
+preserve dirty/protected paths and existing caches. No target, venue, credentials,
+source freeze, commit/tag action. At most TWO bounded workers; main owns review,
+integration/builds. User approved `F5_BOUND_FRAME_BYTE_REVIEW.md` in full after
+CP-018: bytes, limits, block-v2/no flat fallback, metadata-FIRST/identity-LAST
+bootstrap publication and retry table. Do not ask again for these choices.
+
+Implemented THIS checkpoint: common V2BF framing plus typed ordinary-peer codec
+and kernel admission. Public raw PeerMessage receive is REMOVED; callers supply
+bound bytes and inspect BoundFrameError. All four requests/replies validate before
+Raft mutation. Full inner shape is checked before vector allocation; route/member/
+candidate and canonical command/marker-domain validation precede mutable callbacks.
+The sender caps AppendEntries at sixteen entries. Forty queued entries converge
+on all three voters; this is per-message boundedness, NOT whole-node queue limits.
+
+Generic framing validates scope/layout/integrity, NOT metadata tuples, record
+coordinates or snapshot state. Local metadata/WAL/snapshot runtime codecs and
+genesis/recovery ordering are NOT integrated yet. Existing live stores still use
+old formats. Four standalone intended REDs remain: foreign metadata accepted;
+foreign WAL/snapshot restore kill9 instead of kill1; missing hard state restores
+participating term1 as term0. Their fresh outputs are in the CP-019 evidence.
+Foreign actual-kernel vote diagnostic is now GREEN (term0 stays0/exact refusal).
+
+TDD/evidence: original generic-frame and typed-peer stub REDs; independent golden
+recomputed using struct/hashlib; in-bounds aliasing fix reviewed by main; all-kind
+admission asserts unchanged files/state/protocol/outbound; malformed third entry
+allocation probe; isolated manifest/batch/preflight mutants fail for observable
+effects. No shared production source mutation or copied CMake caches. One catalog
+latch fixture was corrected to exercise the actual fault guard instead of failing
+in sender-identity setup. Real Cluster routes use actual source identities.
+
+Final host Release49/49, Debug ASan+UBSan49/49 (existing C++ scope, UB runtime halt,
+leaks off; no new Raft-C/TSan claim), tools40/40, passive model109/109. Inventory49
+(46 V2) matches independent gate list. `git diff --check` clean. Main integration
+builds and mutants use cacheline64; initial codec-only peer RED used128 and never
+constructed a kernel. Evidence: `evidence/f5_bound_peer_2026-09-22/README.md`.
+
+NEXT ALREADY-APPROVED work: retain metadata/missing-hard-state REDs, implement
+typed local codecs and metadata-first bootstrap/recover publication with exact
+retry/cut tests, then bind WAL block-v2 and snapshot recovery. Foreign/unsupported
+history must never become corrupt-tail/optional-snapshot fallback. No raw store
+bypass, no automatic adoption/reset of voting memory. Preserve current fixture
+guard intent when migrating legacy raw-history corruption setups.
+
+After that: `F5_F7_MVP_CLOSURE_PLAN.md`. Whole-node queues/result reservations,
+replacement fencing/install, verified archive and async persistence fences remain
+separate unapproved detailed contracts. Do not silently waive them for MVP or
+implement candidate quota numbers as approved constants. F5/F6/F7 remain OPEN;
+Pi deferred, not waived. Processes and M3a observability still precede live.
+
+## REMEDIATION CP-018 — PARALLEL F5 REDS / F6 WORKER FAILURE — 2026-09-22 (historical)
+
+Branch/HEAD remain v2/phase-5-corrections / d44a4a9. ALL remediation UNCOMMITTED;
+preserve dirty/protected paths and pre-existing caches. No venue, credentials,
+target, source freeze, commit/tag action. Owner requested parallel completion of
+all remaining F items with MVP focus. At most TWO workers; main reviews/integrates.
+Do not interpret that request as approval of unspecified bytes or reduced safety.
+
+Completed existing-contract F6 increment: WalWriter catches worker exceptions,
+publishes a permanent release/acquire error latch, joins even if the worker stopped
+itself, and refuses restart. Kernel owner service boundaries/is_leader check it.
+Main found a draft bypass: direct submit/poll could resume a failed writer and
+publish durability. Permanent `writer-retry` RED preceded submit refusal/poll
+rethrow fix. No new persisted/economic/peer bytes or async Raft callback semantics.
+
+Evidence honesty: worker did NOT capture original thread-crash RED before editing.
+Only main's polling-bypass case is original RED/GREEN; final isolated latch/owner-
+guard mutants are retrospective sensitivity checks. Worker also copied a CMake
+cache that redirected to the existing sanitized root; main discarded that result,
+checked flags and rebuilt real roots. Do not copy caches to simulate isolation.
+
+New standalone `tests/v2_history_identity_red.cpp`, outside passing CTest, records
+FIVE intended current-source REDs: foreign metadata accepted; foreign WAL/snapshot
+change recovered kill1->9; real foreign vote request changes term0->1; missing
+metadata restores participating voter's term1->0. Keep these until precise typed
+refusal/healthy-positive tests replace them. Original catch-up/archive REDs remain.
+
+Final rebuilt host Release47/47, Debug ASan+UBSan47/47 (existing C++ instrumentation,
+UB runtime halt, leaks off; no new Raft-C claim), tools40/40, passive model109/109.
+Focused TSan threaded-flush/writer-retry pass: test, WAL, replication and storage
+translation units instrumented; other archives not. Not full-program TSan.
+Evidence: `evidence/f5_f6_parallel_2026-09-22/README.md`. No target acceptance.
+
+OWNER APPROVED AFTER CP-018: `F5_BOUND_FRAME_BYTE_REVIEW.md` exact header/kind payloads,
+integrity, block v2, local/peer bounds and metadata-FIRST/identity-LAST bootstrap
+publication/retry table. Encoding/integration is now in progress, not accepted. All six identity SEMANTICS
+remain approved; do not ask again. Original metadata-first omission was caught
+in independent review; document now specifies durable initialization order rather
+than treating an identity-only directory as permission to invent voting memory.
+
+Execution/deferral plan: `F5_F7_MVP_CLOSURE_PLAN.md`. Whole-node budgets are candidate
+numbers, not approved constants. Define result reservation before making queues
+bounded; do not throw/drop after committed apply. Do not assume distributed credit
+messages are necessary without checking local admission/Raft retry alternatives.
+Archive/install bytes, replacement voting admission, quotas and concrete async
+fences still require review. F5/F6/F7 remain OPEN; Pi deferred to final stage, not
+waived. Processes and M3a detailed observability still precede live admission.
+
+## REVIEW CP-017 — HISTORY/PEER IDENTITY BINDING — 2026-09-22 (historical)
+
+Branch/HEAD remain v2/phase-5-corrections / d44a4a9; preserve the full uncommitted
+remediation tree, protected paths/model and pre-existing caches. REVIEW ONLY:
+no production/test changes, build, target action, commit/tag or new acceptance.
+Latest executed host baseline remains CP-016: Release/sanitized47/47, tools40/40,
+model109/109. It was not rerun for this documentation-only review.
+
+Owner APPROVED all six identity-binding recommendations after CP-017. Read
+`F5_HISTORY_PEER_IDENTITY_REVIEW.md` in full: semantics accepted, no new bytes
+frozen or implemented. Do not ask again for the six choices. Main and one
+independent agent inspected current storage, peer admission and replacement seams.
+
+Recommendations: use existing manifest_digest; bind local hard state/WAL records/
+snapshot wrappers to manifest+local voter; portable snapshot/archive content to
+shared manifest; validate all peer requests AND replies before Raft mutation;
+foreign/unsupported history is not a corrupt tail or snapshot fallback. Recommend
+record-level WAL wrappers and one active block-WAL format in fresh bound lineages,
+refusing legacy flat WAL rather than preferring one source silently. Removing
+that compatibility in fresh bound deployments is included in the owner approval;
+V1/history stay intact. Exact bytes and concrete recovery protocols remain open.
+
+Important admission distinction: static identity does not restore forgotten
+term/vote, prevent same-lineage rollback, authenticate peers or prove durability.
+Genesis bootstrap must not reset a previously participating voter. Replacement
+needs reviewed fencing/admission before normal Raft participation. Existing
+catch-up RED remains evidence, but the final fix must not copy its empty normal-
+voter bootstrap shortcut. Missing hard state with history needs a permanent RED.
+
+NEXT: exact storage/peer byte sheets and startup
+publication states before encoding. Preserve foreign-artifact/high-term-peer REDs
+before fixes. Archive/install generation formats, quantified budgets, async fences
+and target gates still require separate review. F5/F6 and live readiness OPEN.
+Corrected stale CP-015 status text in the two review docs; audit trail retained.
+
+F5 closure checklist: (1) implement approved history/peer binding after byte review;
+(2) bound whole-node queues, retained log bytes and owner work with control reserves;
+(3) safe replacement admission plus bounded crash-safe peer snapshot install/suffix
+catch-up; (4) verified audit archive before last-copy reclamation with bounded
+outage policy; (5) integrated RED/GREEN, mutants, saturation/recovery/crash evidence
+and checkpointed acceptance. Final frozen target validation is F7 (Pi deferred,
+not waived). F6 async persistence fences are a separate dependency, not closed by
+F5. Processes/observability/live admission remain later roadmap milestones.
+
+## REMEDIATION CP-016 — KERNEL REQUIRES VERIFIED STARTUP — 2026-09-22 (historical)
+
+Branch/HEAD remain v2/phase-5-corrections / d44a4a9. ALL remediation is UNCOMMITTED;
+preserve the full dirty tree, protected model/docs and pre-existing caches. No
+source freeze, commit/tag, target, credential or venue action.
+
+Completed the already-approved integration: ReplicatedKernel's raw/default
+constructor is REMOVED. Its only constructor consumes VerifiedIdentityStartup,
+revalidates moved ownership/name/identity BEFORE storage constructors, and retains
+the token as its FIRST member (destroyed LAST). ID, voters, catalog and authority
+domain derive solely from the token. Catalog is referenced from the owned token,
+not copied twice or borrowed from the caller. Token is not serving authority.
+
+A04 startup membership drift is now host GREEN: compacted three-voter history
+refuses a one-voter recovery with exact identity_mismatch, unchanged directory
+names/bytes, then healthy original-state recovery. This is in regular replication
+CTest as `identity-membership`, plus the standalone diagnostic. New kernel-startup
+suite pins moved token, changed path/file, writer/lock lifetime, three-voter quorum
+and corrupt-metadata unwind. CMake and independent gate inventory include it.
+
+Fixtures now explicitly bootstrap or recover; damaged history is planted AFTER
+identity provisioning. Missing catalog legitimately refuses earlier; genuine
+before-apply dependency cases use valid alternate-catalog startup and foreign-root
+installs. Main caught/copied-history bootstrap misuse; corrected tests still reach
+their old corruption refusal. Guard mutations are isolated source copies ONLY:
+ownership bypass creates files in replacement directory; self-only membership
+elects without quorum; removing before-apply catalog check advances apply/state.
+
+Evidence: `evidence/f5_kernel_startup_2026-09-22/README.md`, CP-016. Final rebuilt
+host Release47/47, Debug ASan+UBSan47/47 (UB halt/leaks off, existing C++ flags,
+no new Raft-C instrumentation), tools40/40, passive model109/109; inventory47
+total/44 V2. Original API RED, retained pre-fix A04 rerun, new GREEN and exact
+mutants retained with provenance. Later tests are not mislabeled original RED.
+
+NEXT: continue remaining F5/F6 under ADR0014. Identity-bound history/peer/install/
+archive frames and numerical budgets still need material review BEFORE encoding;
+the approved startup bytes/token do not require reapproval. Fresh current-source
+replacement-catchup and archival diagnostics still RED and retained. Design the
+shared-lineage envelopes/recovery boundary before layering replacement snapshot
+installation and archive-gated reclamation on it; preserve these REDs. F6 still
+requires bounded async persistence ownership, error reporting and Raft fences;
+do not turn sync callbacks into early-success callbacks.
+
+Explicit limit: stores still open by pathname. Revalidation catches ALREADY
+replaced names but cannot prevent later concurrent path substitution. Cooperative
+ownership and stable trusted paths are assumptions, not hostile same-UID fencing.
+Sidecar does not bind substituted foreign history or fence old executables.
+Startup-specific power-loss modeling and all final target evidence remain open.
+F5/F6, startable processes, M3a observability, frozen NUC/Pi gates and venue/live
+admission remain OPEN. Pi deferred, not waived.
+
+## REMEDIATION CP-015 — APPROVED IDENTITY CODEC + STARTUP OWNER — 2026-09-22 (historical)
+
+Branch/HEAD remain v2/phase-5-corrections / d44a4a9. ALL remediation is UNCOMMITTED;
+preserve the full dirty tree, protected model/docs and pre-existing caches. No
+source freeze, commit/tag, target, credential or venue action.
+
+OWNER APPROVED the exact `F5_STATIC_IDENTITY_BYTE_REVIEW.md` frame, hash domains,
+modes/epochs and max3 voter limit after CP-014. Do not ask again. Other storage/
+peer/archive/install bytes, numerical runtime budgets and concrete async Raft
+fences remain separate review boundaries under ADR0014.
+
+Implemented prerequisites:
+
+- StaticIdentity codec: exact116/120/124 bytes, bounded arrays/scratch, independent
+  literal/hash vectors, strict schema/mode/voter/digest validation, unchanged
+  outputs on failure. Verified identity derives shared manifest/authority digests;
+  local node ID is excluded from those but included in whole-file integrity.
+- VerifiedIdentityStartup: move-only retained directory-flock owner; explicit
+  bootstrap/recover; mandatory exact catalog before filesystem side effects;
+  no lockfile, bounded125-byte input, descriptor-relative startup I/O, no legacy
+  adoption or ambiguous-temp deletion. Valid complete temp can retry; partial
+  temp is preserved/refused. Effective-UID ownership/no other write permission.
+- Main caught visible-but-not-durable identity after interrupted rename. Matching
+  recovery now re-establishes file/directory/parent durability before returning
+  ownership; mismatches still refuse before those success-path fences. Retained
+  control-flow RED is not presented as a physical power-loss proof.
+
+IMPORTANT: ReplicatedKernel still has its OLD RAW CONSTRUCTOR and does NOT consume
+this token. A04 kernel membership diagnostic was rebuilt and remains RED (old
+three-voter history reopens as a one-voter leader). This checkpoint is standalone
+codec/startup GREEN, NOT a fixed kernel restart, full F5, or live readiness.
+
+Evidence: `evidence/f5_identity_2026-09-22/README.md`, CP-015. Final rebuilt host
+Release46/46, Debug ASan+UBSan46/46 (runtime UB halt, leaks off, existing C++ flags;
+no new Raft-C instrumentation), tools40/40, passive model109/109; inventory46
+total/43 V2. Original codec/startup/permission/recovery-fence REDs and isolated
+mutants retained. No shared production source was mutated for testing.
+
+EXACT NEXT: integrate token as FIRST ReplicatedKernel member and remove the public
+raw/default constructor. Derive node ID, canonical membership, catalog and F4
+authority domain solely from the token. Reject moved-from ownership before stores
+construct; retain lock until all stores/writer die. No additional approval needed
+for this already-approved integration. Keep catalog ownership stable without an
+unnecessary second catalog copy. Account for descriptor-versus-path storage I/O:
+an advisory inode lock does not defend later pathname replacement by an operator.
+
+Convert `tests/v2_f5_recovery_red.cpp` membership case into exact typed refusal
+plus unchanged-tree and healthy restart tests. Migrate fixtures EXPLICITLY: create
+identity before injecting damaged/unsupported history, or tests will pass for the
+wrong missing-identity reason. Missing catalog now fails earlier; retain genuine
+before-apply coverage with mismatched committed installs. Marker helpers must use
+derived domains, not an arbitrary injected digest. Preserve one/two/three voter
+lab coverage, never auto-shrink production quorum, never backfill legacy identity.
+
+Limits: trusted cooperative local ownership/parent chain, not hostile same-UID
+mutation or NFS lock proof. Process cuts do not discard OS cache; startup-specific
+persistence model and target evidence remain open. Sidecar does not bind foreign
+WAL/snapshot/history or fence old executables. F5/F6, processes, M3a observability,
+frozen NUC/Pi gates and venue/live admission remain open. Pi deferred, not waived.
+
+## REMEDIATION CP-014 — DIRECTION APPROVED, PERSISTENCE MODEL — 2026-09-22 (historical)
+
+Branch/HEAD still v2/phase-5-corrections / d44a4a9. All remediation remains
+UNCOMMITTED. Preserve the whole dirty tree, protected model/docs and pre-existing
+cache changes. No source freeze, commit/tag, target, credential or venue action.
+
+OWNER APPROVED ADR0014 / F5_F6_RECOVERY_DURABILITY_REVIEW direction after CP-013,
+including provisional atomic metadata replacement. Do NOT ask again for that
+direction. Exact new bytes, numerical budgets, archival retention and concrete
+asynchronous Raft fencing were not specified by that approval and remain review
+boundaries. No production bytes or behavior changed in CP-014.
+
+Completed test-only F6 prerequisite: v2-metadata-persistence-model-tests executes
+actual MetadataStore::save with isolated syscall shims, separate volatile/durable
+data and directory names, frozen power-cut state, boundary/short-write/failure
+sweeps and independent old/new tuple oracle. Materialized recovered bytes are
+also read by real MetadataStore::load. Removing ONLY file sync loses new contents;
+removing ONLY directory sync recovers the old tuple after acknowledged success.
+Main independently compiled both isolated production-call mutants; intended REDs
+and exact patches retained. This is new coverage of existing GREEN behavior, not
+a production RED/GREEN fix. Never mutate shared production source for mutants.
+
+Evidence: `evidence/f6_persistence_model_2026-09-22/README.md`, CP-014. Rebuilt host
+Release44/44, Debug ASan+UBSan44/44 (runtime UB halt/leaks off, existing C++ flags;
+Raft C not newly instrumented), tools40/40, passive model109/109. Independent gate
+inventory44 total/41 V2; diff check clean. No device/power-loss acceptance claim.
+Model excludes spontaneous writeback, partial persistence on failed sync, exhaustive
+sector tears and first-directory creation. F6/G-047 stay OPEN; stronger evidence,
+async fences/worker error reporting and target storage gates remain required.
+
+NEXT OWNER BYTE REVIEW: `F5_STATIC_IDENTITY_BYTE_REVIEW.md` (PROPOSED, no codec).
+One atomic local V2ID file, logically shared manifest + local voter binding;
+116/120/124 bytes for one/two/three voters. Proposal includes max3 voters, explicit
+lab/pilot mode, intended catalog root, semantic schemas/epochs and exact digest
+domains. Main and independent reviewer checked offsets and identity separation.
+Exact byte approval is required before encoding; bootstrap/fresh-lineage semantics
+are already approved. The two-voter production topology is unchanged.
+
+After byte approval: literal-vector/refusal codec REDs, then startup drift refusal
+BEFORE writable constructors, complete atomic bootstrap/recover and exclusive
+directory ownership. Recovery must not create a lockfile before mismatch refusal;
+concrete ownership mechanism remains an implementation review item. Convert CP-013
+membership diagnostic into exact refusal/unchanged-tree plus healthy restart tests.
+Do not call the sidecar full history binding: foreign same-schema WAL substitution
+still needs shared-domain storage/peer/snapshot/archive envelopes. Old executables
+can ignore a sidecar, so anti-rollback is also not solved by the file alone.
+
+Full F5/F6 remain OPEN. ADR0014 direction does not approve unspecified peer/install/
+archive bytes, capacity/full policies or async callbacks returning success early.
+F4 host composition remains CP-012; startable processes, M3a observability, frozen
+NUC/Pi gates and venue/live admission are still required. Pi deferred, not waived.
+
+## REMEDIATION CP-013 — PARALLEL F5/F6 FIRST FIXES — 2026-09-22 (historical)
+
+Branch/HEAD remain v2/phase-5-corrections / d44a4a9; all remediation remains
+UNCOMMITTED. Preserve the full dirty tree, protected files/model and pre-existing
+cache changes. No external contact, source freeze, credentials, commit or tag.
+
+Two bounded agents reviewed F5 and implemented F6; main reviewed both and added
+the snapshot-memory fix plus a missed self-vote failure guard. Completed under
+EXISTING contracts, without new persisted/economic bytes:
+
+- SnapshotStore reads at most65,522 bytes (existing canonical max + frame + one
+  lookahead), rather than allocating two file-sized buffers before validation.
+  Unsupported future framing/schema still refuses; supported corruption fallback
+  is retained. New v2-snapshot-store-bounds-tests and independent gate entry.
+- WAL flush and term/vote/commit metadata exceptions latch the node unusable.
+  Metadata cache updates only after save succeeds. Default-inert checkpoint
+  injection reaches before-write and after-rename cases through public APIs.
+- Pinned Raft ignores its self-vote callback return during election. Main RED
+  exposed a successful tick despite failed persistence; tick now rechecks the
+  latch immediately after raft_periodic. No pinned-fork or framing change.
+
+Evidence: `evidence/f5_f6_2026-09-22/README.md`, CP-013. Final rebuilt Release43/43,
+Debug ASan+UBSan43/43 (UB halt/leaks off; existing C++ flags), tools40/40,
+model109/109; inventory43 total/40 V2. Snapshot/owner-tick original REDs retained;
+agent original REDs were console-only, so main captured reruns of retained old
+binaries and independently compiled fresh isolated latch mutants. Vote-specific
+and post-rename cases are not claimed as original RED-first. No shared-source
+mutation or target acceptance in this increment.
+
+F5 remains OPEN. Standalone `tests/v2_f5_recovery_red.cpp` is intentionally outside
+CTest and reproduces membership drift, missing peer snapshot catch-up and exact
+command-history loss across BOTH WAL formats after compaction. Do not count these
+diagnostics as passing acceptance. The snapshot bound fix is not whole-node bounds.
+F6 remains OPEN: synchronous owner hard-state writes, sync-sensitive power-loss
+proof, background-writer exception reporting/fencing, broader log_offer/compact
+failure paths and target evidence. A background writer exception currently escapes
+its thread (source-traced), not the synchronous flush path just fixed.
+
+APPROVAL RECEIVED after CP-013: the owner approved
+`F5_F6_RECOVERY_DURABILITY_REVIEW.md` / ADR0014 direction, including provisional
+retention of atomic replacement versus the plan's two slots. Do not ask for this
+direction approval again. Read `F5_STATIC_IDENTITY_BYTE_REVIEW.md` next: the
+precise startup-binding layout remains proposed, not implemented.
+Exact manifest/snapshot/archive bytes, numerical budgets/full policies, retention
+policy and concrete async Raft fencing still require review before encoding.
+The next implementation after approval starts with static identity preflight;
+in parallel, build persistence-model evidence without returning success early
+from Raft persistence callbacks. Preserve one-voter lab semantics; no automatic
+production quorum shrink. F4 host composition remains CP-012 GREEN, not deployment
+acceptance. M3a observability and final NUC/Pi/venue gates remain required.
+
+## REMEDIATION CP-012 — F4 HOST COMPOSITION COMPLETE — 2026-09-22 (historical)
+
+Branch/HEAD remain `v2/phase-5-corrections` / `d44a4a9`. All remediation remains
+UNCOMMITTED; preserve the whole existing dirty tree and protected paths. No
+target, venue, credentials, commit, tag or source-freeze action occurred.
+
+F4's approved host-library path now composes: current-term durable marker apply
+creates one owned `AuthorityProof`; dequeue rechecks current term/controls/exact
+binding; `GatewayAuthority` accepts only its pending incarnation/sequence and
+expires from original request start; `dispatch_gateway_send` rechecks eligibility,
+known fences, exact prepared binding and final clock, consumes permission and
+records uncertainty/quota before invoking the synchronous transport callback.
+Replay/restart cannot mint a live proof. Occupied/lost results never block kill.
+Committed cancels retain emergency quota and stop-new-risk exception; stop-all
+blocks them. Unknown submits cannot retry merely because a new proof exists.
+
+Removed the dangerous renewal meaning: `renew_authority` now always refuses;
+`evaluate_pre_send` was renamed `evaluate_delivery_candidate` (no unsafe alias).
+It is candidate filtering, NOT send permission. Local `authoritative` role flags
+are diagnostic only. No new canonical bytes or economic state/schema change.
+
+Evidence: `evidence/f4_proof_2026-09-22/README.md`, CP-012. Final host Release
+42/42 and Debug ASan+UBSan42/42, tools40/40, passive model109/109; independent
+inventory42 total/39 V2. Sanitizers use runtime UB halt and leaks off; the C
+dependency is not newly instrumented. This is NOT a target acceptance gate.
+The original producer/consumer implementation lacked a preserved RED-first run;
+retrospective mutations are explicitly labeled. Boolean-renewal and composed
+transport stub REDs were retained. An agent's shared-source mutation contaminated
+an intermediate build; main restored/verified, reran mutations on isolated source
+copies, and rebuilt the final tree. Do not reuse intermediate build claims.
+
+Important limit: an already issued, unexpired proof can precede an unseen remote
+kill. Tests explicitly allow that bounded-observation window and retain in-flight
+ambiguity; quorum proof is not a future lock or external fence. Clock callback
+and admission inputs have one non-reentrant owner. No arbitrary-pause wall-clock
+venue cutoff is claimed. Production suspend-aware clock, fresh CSPRNG incarnation,
+authenticated IPC, static-domain provenance, operator activation/reconciliation,
+real sender, measured nonzero bound and target gates remain integration work.
+`GatewayAuthority` defaults to zero bound and closed latches. G-052..G-060 remain
+open for deployment; CP-012 closes the A01 host-library composition, not the pilot.
+
+NEXT: F5 read-only contract review before bytes/implementation: persisted static
+cluster/membership identity and authority-domain derivation; bounded message,
+result and retained-log budgets/backpressure; peer snapshot catch-up; archival
+evidence before last-copy reclamation. Start from audit A04/A07/A08/A14, ADR 0001,
+architecture/persistence contracts and the approved NUC/Pi roadmap. Present new
+identity/snapshot/archive byte or economic choices for owner review, then exact
+permanent REDs. Do not quietly add dynamic membership or weaken two-voter quorum.
+
+Roadmap addition requested by owner: M3a is now an explicit pre-live observability
+gate with execution-stage Grafana diagnostics, all subsystem/machine health,
+stale/unknown telemetry, tested alerts and runbooks. Define bounded reason metrics
+during fixes; deploy the read-only pipeline with processes, fault-drill it in
+shadow, never put scrape/formatting work or dashboards on the authority path.
+After F5/F6: startable node + separate gateway IPC, NUC/Pi shadow + M3a, F7 frozen
+target/operational gates, verified venue/economics and owner-approved live canary.
+Pi stays deferred to final gates, not waived before live deployment.
+
+## REMEDIATION CP-011 — F4 MARKER PREREQUISITE — 2026-09-22 (historical)
+
+Owner APPROVED type 101 / 186-byte schema-1 V2AB, domain equality and conservative
+drain admission, explicitly requesting careful availability proof. Do not ask for
+these approvals again. Branch/HEAD remain v2/phase-5-corrections / d44a4a9; all
+remediation is UNCOMMITTED and protected paths remain untouched.
+
+Implemented: standalone canonical marker codec; typed WAL/peer/pre-apply dispatch;
+replication-only apply; explicit configured domain; one pending local admission;
+on-demand highest-unapplied-marker drain from retained typed log history. No
+economic StateVersion, receipt, schema, TradingState or snapshot expansion.
+Historical markers do not require their effects to remain retained.
+
+Availability tests prove a higher-term leader with an old marker stays blocked
+without an automatic no-op, repeated fresh requests cannot append around it,
+and a real current-term command through EITHER normal or control lane commits
+and drains it. Lagging followers may retain A/B/C; removing C leaves B blocking.
+One-voter lab behavior differs: its pinned durability path can commit retained
+history directly. Do not generalize the multi-voter stall to all configurations.
+
+Review found and fixed two nearby bugs through REDs: persisted commit exceeded
+disk coverage when follower durability was zero; and failed suffix truncation
+released owned payload before Raft removed its entry. Clamp includes zero now;
+payload release follows storage success, and truncate/clear failure latches the
+node unusable. No blanket storage-failure completeness claim: log_offer and
+broader F6 error handling still need explicit coverage.
+
+Evidence: `evidence/f4_marker_2026-09-22/README.md` and checkpoint CP-011. Two new
+CTest suites; final rebuilt Release40/40, Debug ASan+UBSan40/40 (runtime UB halt,
+leaks disabled), offline tools40/40 and model109/109; inventory40 total/37 V2.
+Marker body144,
+frame186, fixed pending storage <=192 bytes outside TradingState. Drain lookup is
+O(retained unapplied suffix), constant auxiliary space; retained-history bound
+remains F5, not solved by one pending slot.
+
+EXACT NEXT RED: prove a healthy committed/applied marker yields exactly one
+owned, non-forgeable live result bound to the actual retained BoundOrderEffect
+and expected controls; before durable quorum, stale term/controls, replay/restart,
+missing dependency or abandoned request yields none. Install the live pending
+slot before apply can run; a full result slot must never block kill/apply.
+Then wire gateway request-start age/correlation/one-shot final admission and
+convert CP-009 partition/delayed-reply REDs into composed regressions. The old
+boolean renewal path STILL EXISTS; F4/A01 is NOT closed. Marker admission is
+explicitly NOT send permission, nor global per-correlation dedup after resolution.
+No authenticated IPC, real sender, production duration, target gate or source
+freeze. Pi remains deferred; no target/venue/commit/tag action this increment.
+
+## REMEDIATION CP-010 — F4 SEMANTICS APPROVED, BYTE REVIEW — 2026-09-22 (historical)
+
+The owner approved ADR 0013's direction, explicitly one freshly committed
+marker per new-risk send attempt. Do NOT ask for that semantic approval again.
+Read `F4_AUTHORITY_BARRIER_BYTE_REVIEW.md` next: exact bytes remain PROPOSED,
+not encoded. Recommendation: V2-local Raft entry type 101, schema-1 V2AB frame
+of 186 bytes, exact intent/control/catalog/domain binding. No business schema,
+TradingState or snapshot expansion; external IPC is not specified by this frame.
+
+Review also fixes the boundedness argument: one locally outstanding request is
+not one marker in retained history. A healthy lagging follower can retain many.
+Use a highest-retained-marker drain watermark; timeout/restart/term change must
+not allow another local append until the obligation applies or is overwritten.
+The library has no automatic leader no-op: old-term markers may need an ordinary
+current-term command to drain. Do not silently add a bridge entry or reject
+healthy follower history as corruption. Total retained-history bounds remain F5.
+
+Exact next step: owner byte/domain/drain-rule review, then the documented codec
+and composed RED-to-GREEN sequence. CP-009's two authority failures remain open.
+No F4 production code/bytes changed this increment; no new test-pass claim.
+CP-008 remains the last full host checkpoint. Preserve all uncommitted work,
+protected paths and existing cache changes; no targets/venues/commits/tags touched.
+
+## REMEDIATION CP-009 — F4 REVIEW — 2026-09-22 (historical; approval above supersedes)
+
+F4 has started at the required contract-review boundary. Read
+`F4_AUTHORITY_PROTOCOL_REVIEW.md` and proposed ADR 0013. Main reproduced A01 on
+the CP-008 catalog-bound tree, plus a delayed-reply freshness failure, with
+permanent audit sources in `evidence/f4_authority_2026-09-22/`. Both intentionally
+exit 1 at their named authority assertions; they are not passing CTest entries.
+
+Recommendation awaiting owner approval: one fresh quorum-committed,
+replication-only non-economic barrier per new-risk attempt; one-shot permission
+expires from gateway request start, not reply receipt. Keep committed-cancel
+exception, distinguish local stop-new-risk/stop-all, no automatic promotion,
+and state timing/in-flight limitations explicitly. Zero default live bound;
+no arbitrary production millisecond value selected. This reuses durable Raft
+commit rather than inventing ReadIndex in a library without correlated reads.
+Cost: another durable round trip/WAL entry; F5/F6 remain deployment dependencies.
+
+No F4 production code/bytes changed. Exact barrier type/body and IPC encoding
+need review AFTER the semantic choice and BEFORE serialization. Do not infer
+approval from this recommendation. Next work is owner review, then permanent
+composed RED-to-GREEN tests in the sequence specified in the review document.
+CP-008 below remains the implemented host checkpoint; all dirty/protected-path,
+no-live-sender and target-gate limitations remain unchanged. Existing generated
+Python cache changes observed at this takeover were not cleaned or overwritten.
+
+## REMEDIATION CP-008 — 2026-09-22 (implemented host checkpoint)
+
+Branch `v2/phase-5-corrections`, HEAD `d44a4a9`; all remediation is UNCOMMITTED.
+Preserve the existing audit/tooling/code/docs work and protected paths. Do not
+stage directories, touch protected model/, contact venues/targets, or move tags.
+
+The owner approved proceeding with the catalog integration. Implemented together:
+InstallExecutionCatalog kind 20, appended refusal codes 62..66, immutable 32-byte
+TradingState root, mandatory catalog context, and command/result/snapshot schema
+8. Do not replay schema-7 history under these semantics: preserve old directories
+and use the already-approved fresh pre-live lineage. OrderEffect bytes stay unchanged.
+
+Staging checks exact catalog profile/capabilities; authorization rechecks the
+historical row. Historical materialization returns copied root/spec/capability
+versions. Gateway pre-send/planning require explicit matching verified context,
+historical capability version and the operation bit, including cancel. Both
+unbound body encoders remain quarantined: no real venue mapping or live sender.
+
+Missing required artifact is a local node failure, never an ApplyCode. The
+pinned Raft optional before_apply hook executes BEFORE last_applied_idx changes;
+the original applylog callback was too late. Missing bytes latch serving closed.
+Recovery validates canonical snapshot structure AND retained metadata against
+catalog rows before publishing state. Root equality alone was insufficient;
+a permanent RED reproduced a correctly hashed contradictory instrument profile.
+Replication owns its catalog by const value; no caller-buffer lifetime dependency.
+
+Working evidence and current verification: `evidence/f3_binding_2026-09-22/README.md`
+and `evidence/V2_REMEDIATION_CHECKPOINTS.md` CP-008. Final rebuilt host Release
+38/38, ASan+UBSan 38/38 (runtime UB halt, leaks disabled), offline tools 40/40,
+passive model 109/109; independent inventory 38 total / 35 V2; diff check clean.
+The host budget is 81,392-byte
+TradingState (528 spare), 65,483-byte maximum snapshot (53 spare), plus a separate
+8,488-byte verified context. No budget increase was approved or taken.
+
+Remaining: full F3 needs reviewed real encoder/venue admission, F4 needs the
+authority/fencing protocol review, F5 needs identity/transfer/retention contracts,
+and F6/F7 remain partial. No live sender is authorized by local leader status or
+a catalog hash. Re-freeze and target gates are outstanding; Pi remains deferred
+to the final target stage. No target, venue, commit or tag operation this increment.
+Next design step after this host checkpoint: F4 authority contract review, keeping
+the F3 encoder quarantine explicit rather than fabricating venue evidence.
+
+## REMEDIATION F3/F6/F7 — 2026-09-21 (superseded by CP-008 above)
+
+Current checkpoint: `docs/evidence/V2_REMEDIATION_CHECKPOINTS.md`. Read it first,
+then the approved `docs/V2_NUC_PI_TRADING_ROADMAP.md` and full audit below.
+CP-007 adds the approved standalone catalog-v1 codec and owned verified context,
+with independent golden-byte review and main-agent boundary/mutation checks.
+Full F3 remains OPEN: root installation, mandatory reducer binding, snapshot
+root and artifact-readiness integration are not implemented. CP-006's F6/F7
+prerequisites also remain partial. `docs/F3_CATALOG_V1_BYTE_REVIEW.md` is APPROVED:
+16 metadata/version rows, 8 KiB artifact ceiling, exact identity/precision binding,
+account denomination consistency and five appended refusal codes. No catalog
+bytes, refusal ordinals or schema-8 semantics were encoded in CP-006. CP-007
+implements catalog schema 1 only; kernel/result/snapshot remain schema 7 and
+ApplyCode ordinals are unchanged. Do not ask for catalog-v1 approval again.
+F4's authority protocol and F5's identity/transfer/retention contracts still need
+design review before encoding. No live sender is authorized. Pi remains deferred
+to the final target-gate stage by owner instruction; no target was contacted.
+CP-007 verification: rebuilt Release 37/37; ASan+UBSan 37/37 with runtime halt on
+UB and leaks disabled; offline tooling 40/40 (16 gate-helper cases); passive model
+109/109. Main validated actual Release CTest inventory against the independent
+gate list (37 total / 34 V2), and directly compiled/passed the catalog suite with
+cache-line setting 128. Context is 8,488 bytes outside TradingState; maximum
+artifact is 8,076 bytes. Host settings are not target hardware measurements.
+Six targeted mutants were killed; one initially surviving rounding mutant led
+to a permanent exact-remainder test. Evidence: `evidence/f3_catalog_2026-09-21/`.
+Container image and all target gates remain unrun for this candidate.
+Base remains branch v2/phase-5-corrections, HEAD d44a4a9. Work is UNCOMMITTED;
+preserve all earlier audit/tooling/docs changes and protected model/ paths.
+F1 implements A02 (planner retains emergency cancel quota) and A06 (authorization
+refuses uninitialized control identities). Permanent regression tests preserve
+the RED cases. No wire/layout changes, live venue calls or deployment occurred.
+F2 is host-complete: A05 rejects malformed proposals before log admission; A10
+flushes distinct blocks once and retains retry ownership after write/sync failure;
+A11 atomically writes private token files and keeps bearer credentials off argv.
+CP-002 records permanent RED tests, review corrections and mutation kills.
+Rebuilt Release 36/36, ASan+UBSan 36/36 (leaks disabled, halt on UB), offline tools
+24/24, passive model 109/109; diff check clean. No target run or acceptance re-pin.
+F3/A03 immediate refusal increment is host GREEN (Release 36/36, ASan+UBSan
+36/36); CP-003 records evidence and limits. F3 itself remains OPEN.
+Owner approved the single immutable committed catalog per deployment lineage.
+Owner also approved the installation/recovery contract and fresh-lineage
+command/result/snapshot schema 7 -> 8 boundary. ADR 0012 records the decisions;
+`docs/F3_EXECUTION_METADATA_REVIEW.md` retains their detailed reasoning.
+Neither unbound body API can safely emit: market changes limit economics, and
+the limit API has only a caller-set verification flag with no committed catalog
+binding. Quarantine these APIs, preserve arithmetic/reducer/lifecycle utilities.
+Do not call this completed metadata binding. Catalog row bytes are now approved;
+transport envelope and TradingState/snapshot budget increases remain unapproved.
+A01 remains open: no live sender is authorized.
+CP-005: strict read-only recovery compatibility preflight is host GREEN. Unknown
+snapshot versions cannot fall through to replay; complete retained commands in
+both WAL layouts (including uncommitted suffixes) are checked before writable
+startup. Exact filename/byte preservation is tested. Rebuilt Release 36/36 and
+ASan+UBSan 36/36 (runtime halt-on-UB, leaks disabled); raw logs are under
+`docs/evidence/f3_recovery_2026-09-21/`. No target run or acceptance re-pin.
+Main independently killed five directly compiled guard mutants at their intended
+assertions; scoped subagent code review found no blocker. Keep schema
+constants at 7 until catalog-root semantics can switch coherently with version 8;
+do not create partially upgraded history. Missing local artifact bytes must not
+create replica-dependent economic refusals; old WAL must not be silently replayed
+into different outcomes. Next RED: valid catalog installation must persist its
+root exactly once and survive canonical snapshot round-trip; zero, conflicting,
+stale-control or economically nonempty installation must not change the root.
+Then mandatory exact-row authorization and missing-artifact readiness before
+EVERY Raft apply/index-advancement path. Implement these as one coherent
+schema-8 boundary; do not ship an intermediate version-8 history. The overall
+install/fresh-lineage decision is already approved; do not ask for it again.
+The checkpoint log records verification and the next RED; target acceptance
+remains OPEN. Approval beyond the contracts explicitly recorded above is still
+required for new material byte/economic choices. Keep the ADRs and checkpoint current.
+
+## Historical full-audit checkpoint — 2026-09-21 (superseded status)
+
+This records the audit before F1 implementation; see the current checkpoint above.
+Verified base: branch v2/phase-5-corrections, HEAD d44a4a964fc8c13279878e53d245ab56b921a824.
+Review/tooling changes are UNCOMMITTED. Preserve them and untracked model/;
+never stage directories wholesale. No production C++ changed in this audit.
+
+Read first:
+
+1. docs/evidence/V2_PHASE6_9_FULL_AUDIT_2026-09-21.md — consolidated findings,
+   severity, source anchors, proof limits and guarantee mapping.
+2. docs/evidence/phase6_9_audit_2026-09-21/README.md — ten reproducible RED runs,
+   sources, commands and observed output. These are NOT in the passing CTest count.
+3. docs/V2_NUC_PI_TRADING_ROADMAP.md — fix order F0–F7 and milestones M0–M7.
+4. Revised ADR 0011 and review notes on ADRs 0005/0006/0009/0010; ADR 0001
+   remains the governing architecture. ADR 0002 is protected and unchanged.
+
+Host verification: fresh isolated Release 36/36; rebuilt Debug ASan+UBSan 36/36
+with UBSAN_OPTIONS=halt_on_error=1 and leak detection explicitly disabled; tool
+regressions 9/9; passive model 109/109 with bytecode writes disabled. No new TSan,
+target hardware or venue run. Initial existing Release build directory was
+broken; its stale tests were not used. Fresh isolated build supplied the result.
+
+Confirmed findings: A01 stale leader renews sender after majority kill; A02
+planner loses emergency quota; A03 wire helpers drop limit/post-only and do not
+bind exact metadata; A04 persisted directory accepts changed quorum config;
+A05 malformed normal command poisons restart progress; A06 zero authority can
+authorize unmaterializable bytes; A07 replication queues/log are unbounded;
+A08 replacement voter cannot fetch compacted history; A09 synchronous metadata
+and missing hard-state cut evidence; A10 multi-block synchronous flush duplicates
+the first block; A11 token destination can remain 0644; A12 incomplete/stale
+gate manifest; A13 missing node/process/auth/venue integration; A14 compaction
+deletes the command history ADR 0007 relies on without a verified archive gate.
+
+The earlier provisional Phase 6/7 findings were independently checked here.
+Correction: atomic replacement is not inherently invalid, and loading the intact
+metadata file was intentional. The missing test is persistence cut coverage.
+No new mass-cancel RED was found in the reducer; the reserve defect is its planner.
+
+Phase 6/7 current-tree target acceptance is OPEN, including G-049's membership
+part; Phase 8/9 remain OPEN. Historical tags stay untouched. The partial gate
+recipe computes c62e995439e12d97b1683849e2cf675055c3b27bbeaa981b48cb78340c8c02f5;
+it omits shared dependencies and is not a deployment seal. Fix the manifest
+closure before re-pinning or asking the owner to run targets.
+
+Recommended next RED: promote gateway_probe.cpp into the gateway delivery suite
+to prove quota {normal=0, emergency=1} schedules the same cancel the guard admits.
+Then follow F1/F2. Do not wire a live sender while A01/A03 remain. User requested
+audit and planning this turn, not implementation of these newly found C++ defects.
+
+Deployment recommendation (NOT approval): one voter on NUC, one on Pi, both
+needed for quorum; separate NUC gateway; no automatic gateway promotion. An async
+question requested owner confirmation; until explicitly answered, keep it a
+proposal. Do not reinstall either OS or modify services/networking automatically.
+No new byte/economic/protocol contract is approved by this roadmap. No perps,
+native amend/overlap, netting, venue inquiries or real-money actions.
+
+### Historical review checkpoint (superseded)
+
+This checkpoint supersedes the historical Phase 9 narrative below. Base verified:
+branch v2/phase-5-corrections, d44a4a9. Current edits are uncommitted; inspect Git.
+model/ remains untracked and protected. No C++ or canonical bytes changed.
+
+Read revised ADR 0011, ADR 0009's applicability amendment, and the qualification
+above D-22..28. The MCP capture does not establish venue-wide capability absence.
+Expected output is not an enforceable bound; submitted is not filled. Live swap
+admission remains blocked pending verified execution and settlement contracts.
+
+Tooling: nine offline tests showed RED on the original scripts, then GREEN.
+Run python3 tests/test_readonly_tools.py. No auth, venue calls or trading occurred.
+measure-markup.py now captures unverified quote evidence only (exit 2); it does
+not estimate markup, infer units, or construct a sell. New byte choices still
+require owner approval. Do not restore guessed parsing to obtain a number.
+
+Audit: docs/evidence/V2_PHASE8_9_AUDIT_2026-09-21.md records pure seam coverage
+versus absent V2 process integration. No reachable mass-cancel bug was established.
+Phase 6/7 independent reviewer hit a usage limit before delivering findings:
+the report was subsequently found at docs/evidence/V2_PHASE6_7_AUDIT_2026-09-21.md.
+The parent source-checked authority-bit, synchronous metadata and hard-state
+coverage findings. G-040, G-043 and G-047 are reopened. Probe and gate claims
+remain provisional pending independent verification. Resume against ADR 0001, ADRs 0005/0006
+including amendments, architecture contracts, plan, and G-035..G-051. Trace
+durability, follower ACK clamping, recovery and snapshot claims through actual
+code and tests; mutation-check important guards. No new target acceptance claimed.
+
+Next: finish Phase 6/7 audit, strengthen protocol/error-path tooling tests, then
+resolve gateway topology before S1. Market inputs are DecisionFrame, execution
+evidence VenueObservation. No external book recommendation has been verified.
+
+### Historical handoff (superseded)
 
 This section supersedes every older one below it. Those remain as an audit trail
 and must not be read as current status.

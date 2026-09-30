@@ -1,0 +1,1 @@
+client asks lowest id first (pre-fix): 3/3 runs fail 'the follower was never asked: no redirect happened'

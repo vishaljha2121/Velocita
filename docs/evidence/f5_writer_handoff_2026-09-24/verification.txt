@@ -1,0 +1,43 @@
+CP-049, 2026-09-24; branch v2/phase-5-corrections / HEAD d44a4a9.
+Uncommitted remediation. No online installer or E-exit closure claim.
+
+Build BEFORE tests:
+cmake --build /private/tmp/velocita-full-audit.lYB4P5/release --target velocita-all-tests -j4
+ctest --test-dir /private/tmp/velocita-full-audit.lYB4P5/release --output-on-failure
+Host Release97/97 PASS. Final log release-tests.txt.
+
+cmake --build /private/tmp/aeron-phase67-audit-build --target velocita-all-tests -j4
+ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir /private/tmp/aeron-phase67-audit-build --output-on-failure
+C++ Debug ASan+UBSan97/97 PASS,286.92s. Raft C uninstrumented, leaks off,
+nonrecovering UB/halt. Release and sanitizer CTest run sequentially.
+
+After the full sanitizer run, the two new suites were strengthened with a
+deterministic completion-guard interleaving and full64-record tuple/payload
+comparison. Final production code is unchanged; final full Release and rebuilt
+focused ASan+UBSan reruns cover those additions. See sanitized-final-focused.txt.
+Do not imply the earlier full binary already contained later assertions.
+
+Independent gate inventory matches97host/94V2; Python gate-manifest16 PASS.
+No compiler warnings/errors in final build logs. git diff --check clean.
+
+Two direct mutants, actual src/v2_wal_arena.cpp compiled ahead of support libs:
+1. Remove post-acquire submissions recheck: forced empty-pop race creates malformed
+   complete WAL records. submission-race-mutant.txt records intended failure.
+2. Remove completion-ring empty guard: two parked idle passes fail exact assertion
+   "target switched while an old completion still owned its arena slot".
+   completion-drain-mutant.txt. Prior scheduling-sensitive result withdrawn.
+Baseline adversarial-green.txt. Initial implementation preceded these tests:
+these are post-draft mutation REDs, not chronological test-first evidence.
+
+Focused TSan PASS on test plus actual WAL source; support static libraries are
+uninstrumented. Not a whole-replication/full-process race proof. Original direct
+artifacts live under /private/tmp/velocita-cp048.rDj2EZ/wal-switch-*-mutant and
+wal-switch-tsan-{build,run}.txt; prefix is historical scratch naming only.
+
+Original actual lagger RED freshly compiled against current Release libraries:
+compacted12/applied0/commit0/seven failed replies, exit1 at expected missing
+snapshot-install assertion. Initial usage/root-preexistence refusals excluded.
+
+No target gates, independent physical hosts, live authentication/transport,
+Pi/NUC deployment, RSS or latency measurement, model corpus rerun, staging,
+commit or tag changes. Existing protected work preserved.

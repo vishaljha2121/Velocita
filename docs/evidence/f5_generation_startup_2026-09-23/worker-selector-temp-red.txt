@@ -1,0 +1,9 @@
+Direct current-production accessor-stub RED:
+
+RED: selector temporary diagnostic status was not retained
+
+The valid final selector still selected generation 1 and recovery succeeded,
+but the new accessor stub returned `absent` for a separately encoded, same-lineage
+valid selector temporary. The fixture did not promote, delete, or rewrite the
+temporary. This is a diagnostic-status RED, not an authority or availability
+change.

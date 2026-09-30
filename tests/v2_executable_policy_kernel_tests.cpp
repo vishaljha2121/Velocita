@@ -1,3 +1,4 @@
+#include "v2_catalog_test_support.hpp"
 #include "velocita/v2/kernel.hpp"
 
 #include <cstddef>
@@ -84,7 +85,7 @@ velocita::v2::StageExecutablePolicy bundle(const std::uint64_t version) {
                         PriceTicks::from_atoms(100), QuantityLots::from_atoms(1),
                         QuantityLots::from_atoms(10)};
     value.venue = {kVenueCapabilitiesSchemaVersion, VenueId{9},
-                   VenueCapabilitiesVersion{8}, kVenueDirectivePlaceLimit,
+                   VenueCapabilitiesVersion{8}, (kVenueDirectivePlaceLimit | kVenueDirectiveCancel),
                    kVenueTifGtc, 1};
     return value;
 }
@@ -125,22 +126,22 @@ velocita::v2::Command command(const std::uint64_t sequence,
 
 void test_atomic_stage_activate_and_replace() {
     using namespace velocita::v2;
-    TradingState state;
+    TradingState state = catalog_test::state();
     state.strategy_mode = StrategyMode::normal;
     ApplyScratch scratch;
 
-    require(apply(state, command(1, PublishPolicy{policy(1)}), scratch).code ==
+    require(catalog_test::apply(state, command(1, PublishPolicy{policy(1)}), scratch).code ==
                 ApplyCode::applied,
             "base policy publish failed");
-    require(apply(state, command(2, ValidatePolicy{PolicyId{10}, PolicyVersion{1}}),
+    require(catalog_test::apply(state, command(2, ValidatePolicy{PolicyId{10}, PolicyVersion{1}}),
                   scratch).code == ApplyCode::applied,
             "base policy validation failed");
     const auto first = bundle(1);
-    require(apply(state, command(3, first), scratch).code == ApplyCode::applied &&
+    require(catalog_test::apply(state, command(3, first), scratch).code == ApplyCode::applied &&
                 state.staged_executable_policy.present &&
                 !state.active_executable_policy.present,
             "complete executable bundle was not staged atomically");
-    require(apply(state,
+    require(catalog_test::apply(state,
                   command(4, ActivateExecutablePolicy{
                                  PolicyId{10}, PolicyVersion{1},
                                  first.executable_policy.artifact_digest}),
@@ -150,12 +151,12 @@ void test_atomic_stage_activate_and_replace() {
                 state.policies[0].lifecycle == PolicyLifecycle::active,
             "staged bundle did not acquire authority atomically");
 
-    require(apply(state,
+    require(catalog_test::apply(state,
                   command(5, RecordSourceEvent{SourceId{12}, SourceGeneration{1},
                                                SourceSequence{1}, digest(0x44)}),
                   scratch).code == ApplyCode::applied,
             "source fixture was not admitted");
-    const auto decision = apply(
+    const auto decision = catalog_test::apply(
         state,
         command(6, EvaluateDecisionFrame{DecisionId{20},
                                          EvaluationMode::authoritative,
@@ -172,7 +173,7 @@ void test_atomic_stage_activate_and_replace() {
 
     auto over_limit = frame(1);
     over_limit.features[0] = FeatureMicros::from_atoms(101);
-    const auto rejected = apply(
+    const auto rejected = catalog_test::apply(
         state,
         command(7, EvaluateDecisionFrame{DecisionId{21},
                                          EvaluationMode::authoritative,
@@ -185,17 +186,17 @@ void test_atomic_stage_activate_and_replace() {
                 state.decision_cold[1].proposal == EconomicActionProposal{},
             "resolver rejection created an effective or partial action");
 
-    require(apply(state, command(8, PublishPolicy{policy(2)}), scratch).code ==
+    require(catalog_test::apply(state, command(8, PublishPolicy{policy(2)}), scratch).code ==
                 ApplyCode::applied &&
-                apply(state,
+                catalog_test::apply(state,
                       command(9, ValidatePolicy{PolicyId{10}, PolicyVersion{2}}),
                       scratch).code == ApplyCode::applied,
             "replacement base policy did not reach validated state");
     const auto replacement = bundle(2);
-    require(apply(state, command(10, replacement), scratch).code ==
+    require(catalog_test::apply(state, command(10, replacement), scratch).code ==
                 ApplyCode::applied,
             "replacement bundle did not stage");
-    require(apply(state,
+    require(catalog_test::apply(state,
                   command(11, ActivateExecutablePolicy{
                                   PolicyId{10}, PolicyVersion{2},
                                   replacement.executable_policy.artifact_digest}),
@@ -206,7 +207,7 @@ void test_atomic_stage_activate_and_replace() {
                     PolicyVersion{2},
             "replacement activation did not supersede old authority");
 
-    require(apply(state,
+    require(catalog_test::apply(state,
                   command(12, SupersedePolicy{PolicyId{10}, PolicyVersion{2}}),
                   scratch).code == ApplyCode::applied &&
                 !state.active_executable_policy.present &&
@@ -216,25 +217,25 @@ void test_atomic_stage_activate_and_replace() {
 
 void test_digest_and_identity_fail_closed() {
     using namespace velocita::v2;
-    TradingState state;
+    TradingState state = catalog_test::state();
     ApplyScratch scratch;
-    require(apply(state, command(1, PublishPolicy{policy(1)}), scratch).code ==
+    require(catalog_test::apply(state, command(1, PublishPolicy{policy(1)}), scratch).code ==
                 ApplyCode::applied,
             "digest fixture publish failed");
-    require(apply(state,
+    require(catalog_test::apply(state,
                   command(2, ValidatePolicy{PolicyId{10}, PolicyVersion{1}}),
                   scratch).code == ApplyCode::applied,
             "digest fixture validation failed");
 
     auto corrupted = bundle(1);
     corrupted.feature_schema.artifact_digest.bytes[0] ^= std::byte{1};
-    require(apply(state, command(3, corrupted), scratch).code ==
+    require(catalog_test::apply(state, command(3, corrupted), scratch).code ==
                 ApplyCode::artifact_digest_mismatch &&
                 !state.staged_executable_policy.present,
             "digest mismatch partially staged authority");
 
     const auto valid = bundle(1);
-    require(apply(state,
+    require(catalog_test::apply(state,
                   command(4, ActivateExecutablePolicy{
                                  PolicyId{10}, PolicyVersion{1},
                                  valid.executable_policy.artifact_digest}),
@@ -242,14 +243,18 @@ void test_digest_and_identity_fail_closed() {
                 !state.active_executable_policy.present,
             "unstaged identity acquired authority");
 
-    require(apply(state, command(5, valid), scratch).code == ApplyCode::applied,
+    require(catalog_test::apply(state, command(5, valid), scratch).code == ApplyCode::applied,
             "valid bundle did not stage");
     auto changed_economics = valid;
     changed_economics.instrument.quote_micros_per_tick_lot =
         MoneyMicros::from_atoms(101);
-    require(apply(state, command(6, changed_economics), scratch).code ==
-                ApplyCode::executable_policy_identity_conflict,
-            "reused executable identity silently changed instrument economics");
+    // The same instrument-spec version is already committed by the immutable
+    // catalog to 100 quote micros per tick-lot.  This mutation must now fail at
+    // that stronger external binding before it can become a staged-identity
+    // conflict inside TradingState.
+    require(catalog_test::apply(state, command(6, changed_economics), scratch).code ==
+                ApplyCode::catalog_binding_mismatch,
+            "reused catalog version silently changed instrument economics");
 }
 
 void test_stage_rejection_reasons_and_fail_closed_decision() {
@@ -257,16 +262,16 @@ void test_stage_rejection_reasons_and_fail_closed_decision() {
     const auto expect_stage = [](StageExecutablePolicy candidate,
                                  const ApplyCode expected,
                                  const std::string& message) {
-        TradingState state;
+        TradingState state = catalog_test::state();
         ApplyScratch scratch;
-        require(apply(state, command(1, PublishPolicy{policy(1)}), scratch).code ==
+        require(catalog_test::apply(state, command(1, PublishPolicy{policy(1)}), scratch).code ==
                     ApplyCode::applied &&
-                    apply(state,
+                    catalog_test::apply(state,
                           command(2, ValidatePolicy{PolicyId{10},
                                                     PolicyVersion{1}}),
                           scratch).code == ApplyCode::applied,
                 "rejection fixture setup failed");
-        require(apply(state, command(3, std::move(candidate)), scratch).code ==
+        require(catalog_test::apply(state, command(3, std::move(candidate)), scratch).code ==
                         expected &&
                     !state.staged_executable_policy.present,
                 message);
@@ -300,33 +305,33 @@ void test_stage_rejection_reasons_and_fail_closed_decision() {
     expect_stage(unbound, ApplyCode::executable_policy_binding_failed,
                  "cross-scope executable bundle was staged");
 
-    TradingState proposed;
+    TradingState proposed = catalog_test::state();
     ApplyScratch proposed_scratch;
-    require(apply(proposed, command(1, PublishPolicy{policy(1)}),
+    require(catalog_test::apply(proposed, command(1, PublishPolicy{policy(1)}),
                   proposed_scratch).code == ApplyCode::applied &&
-                apply(proposed, command(2, bundle(1)), proposed_scratch).code ==
+                catalog_test::apply(proposed, command(2, bundle(1)), proposed_scratch).code ==
                     ApplyCode::invalid_policy_transition,
             "proposed base policy accepted executable authority");
 
-    TradingState no_executable;
+    TradingState no_executable = catalog_test::state();
     no_executable.strategy_mode = StrategyMode::normal;
     ApplyScratch no_executable_scratch;
-    require(apply(no_executable, command(1, PublishPolicy{policy(1)}),
+    require(catalog_test::apply(no_executable, command(1, PublishPolicy{policy(1)}),
                   no_executable_scratch).code == ApplyCode::applied &&
-                apply(no_executable,
+                catalog_test::apply(no_executable,
                       command(2, ValidatePolicy{PolicyId{10}, PolicyVersion{1}}),
                       no_executable_scratch).code == ApplyCode::applied &&
-                apply(no_executable,
+                catalog_test::apply(no_executable,
                       command(3, ActivatePolicy{PolicyId{10}, PolicyVersion{1}}),
                       no_executable_scratch).code == ApplyCode::applied &&
-                apply(no_executable,
+                catalog_test::apply(no_executable,
                       command(4, RecordSourceEvent{SourceId{12},
                                                    SourceGeneration{1},
                                                    SourceSequence{1},
                                                    digest(0x44)}),
                       no_executable_scratch).code == ApplyCode::applied,
             "fail-closed decision fixture setup failed");
-    const auto rejected = apply(
+    const auto rejected = catalog_test::apply(
         no_executable,
         command(5, EvaluateDecisionFrame{DecisionId{30},
                                          EvaluationMode::authoritative,
@@ -338,6 +343,42 @@ void test_stage_rejection_reasons_and_fail_closed_decision() {
             "base policy executed without matching executable authority");
 }
 
+void test_catalog_row_and_exact_capability_binding_fail_closed() {
+    using namespace velocita::v2;
+    const auto exercise = [](TradingState& state,
+                             const VerifiedExecutionCatalog& catalog,
+                             StageExecutablePolicy candidate) {
+        ApplyScratch scratch;
+        require(velocita::v2::apply(
+                    state, command(1, PublishPolicy{policy(1)}), scratch,
+                    &catalog).code == ApplyCode::applied &&
+                    velocita::v2::apply(
+                        state,
+                        command(2, ValidatePolicy{PolicyId{10}, PolicyVersion{1}}),
+                        scratch, &catalog).code == ApplyCode::applied,
+                "catalog binding fixture setup failed");
+        return velocita::v2::apply(state, command(3, std::move(candidate)),
+                                   scratch, &catalog);
+    };
+
+    const std::array unrelated_rows{catalog_test::row(
+        AccountId{6}, bundle(1).instrument, bundle(1).venue)};
+    const auto unrelated = catalog_test::catalog(unrelated_rows);
+    auto missing = catalog_test::state(unrelated);
+    require(exercise(missing, unrelated, bundle(1)).code ==
+                    ApplyCode::catalog_row_not_found &&
+                !missing.staged_executable_policy.present,
+            "stage accepted a catalog with no exact account row");
+
+    auto substituted = bundle(1);
+    substituted.venue.supports_post_only = 0;
+    auto exact = catalog_test::state();
+    require(exercise(exact, catalog_test::standard_catalog(), substituted).code ==
+                    ApplyCode::catalog_binding_mismatch &&
+                !exact.staged_executable_policy.present,
+            "stage accepted substituted capabilities under the same version");
+}
+
 }  // namespace
 
 int main() {
@@ -345,6 +386,7 @@ int main() {
         test_atomic_stage_activate_and_replace();
         test_digest_and_identity_fail_closed();
         test_stage_rejection_reasons_and_fail_closed_decision();
+        test_catalog_row_and_exact_capability_binding_fail_closed();
         std::cout << "all V2 executable-policy kernel tests passed\n";
         return 0;
     } catch (const std::exception& error) {

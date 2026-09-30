@@ -1,3 +1,4 @@
+#include "v2_catalog_test_support.hpp"
 // An exhaustive inventory of the order lifecycle states the reducer can actually
 // reach, and what every observation does in each one.
 //
@@ -165,7 +166,7 @@ ExecutablePolicyArtifact executable_policy(const FeatureSchemaArtifact& schema) 
 }
 
 TradingState origin() {
-    TradingState state;
+    TradingState state = catalog_test::state();
     state.state_version = 2;
     state.strategy_mode = StrategyMode::normal;
     state.kill_epoch = KillEpoch{2};
@@ -180,14 +181,15 @@ TradingState origin() {
          PriceTicks::from_atoms(1), PriceTicks::from_atoms(100),
          QuantityLots::from_atoms(1), QuantityLots::from_atoms(10)},
         {kVenueCapabilitiesSchemaVersion, VenueId{9}, VenueCapabilitiesVersion{8},
-         kVenueDirectivePlaceLimit, kVenueTifGtc, 1},
+         (kVenueDirectivePlaceLimit | kVenueDirectiveCancel), kVenueTifGtc, 1},
         1, 2};
     state.risk_account_count = 1;
     state.risk_accounts[0] = {
         AccountId{5}, InstrumentId{4}, RiskPolicyVersion{6}, RiskVersion{1},
         PositionVersion{1}, QuantityLots::from_atoms(4),
         QuantityLots::from_atoms(8), {}, MoneyMicros::from_atoms(4'000),
-        MoneyMicros::from_atoms(8'000), {}, {}, 1'000'000, 2'500};
+        MoneyMicros::from_atoms(8'000), {}, {}, 1'000'000, 2'500, {},
+        QuantityLots::from_atoms(1'000), true};
     state.source_count = 1;
     state.sources[0] = {SourceId{12}, SourceGeneration{1}, SourceSequence{1}};
     state.source_event_count = 1;
@@ -254,6 +256,8 @@ struct Signature {
     std::array<std::byte, kMaxStateSnapshotBytes> buffer{};
     const auto encoded = encode_state_snapshot(state, buffer);
     if (encoded.error != StateSnapshotError::none) return {};
+    require(execution_catalog_bindings_valid(state, catalog_test::standard_catalog()),
+            "reachable lifecycle state contradicted its execution catalog");
     return {buffer.begin(),
             buffer.begin() + static_cast<std::ptrdiff_t>(encoded.bytes_written)};
 }
@@ -423,15 +427,15 @@ Reachable explore(const std::size_t depth_limit) {
                            EvaluateDecisionFrame{DecisionId{20},
                                                  EvaluationMode::authoritative,
                                                  frame(seed)}};
-    require(apply(seed, evaluate, scratch).code == ApplyCode::applied,
+    require(catalog_test::apply(seed, evaluate, scratch).code == ApplyCode::applied,
             "reachability seed could not evaluate");
     const Command authorize{{CallerId{1}, RequestSequence{++counter}, digest(0x52)},
                             AuthorizeDecision{DecisionId{20}}};
-    require(apply(seed, authorize, scratch).code == ApplyCode::applied,
+    require(catalog_test::apply(seed, authorize, scratch).code == ApplyCode::applied,
             "reachability seed could not authorize");
 
     struct Node {
-        TradingState state;
+        TradingState state = catalog_test::state();
         std::uint64_t counter;
         std::string path;
         std::size_t depth;
@@ -453,7 +457,7 @@ Reachable explore(const std::size_t depth_limit) {
             auto next = node.state;
             ApplyScratch step_scratch;
             const auto before = canonical_bytes(next);
-            const auto result = apply(next, step.command, step_scratch);
+            const auto result = catalog_test::apply(next, step.command, step_scratch);
             // Record every STATE-CHANGING result, not only `applied`.
             //
             // The reducer deliberately mutates on some refusal paths -

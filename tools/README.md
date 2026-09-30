@@ -1,5 +1,48 @@
 # Operator tools
 
+## Review correction and quote capture — 2026-09-21
+
+The historical token-safety claim below is conditional on an inert prepare step;
+it is NOT established for MCP prepare, which advertises direct submission.
+Local method/path allowlists remain mandatory. Do not infer token permissions
+from the absence of a signing key.
+
+`python3 tools/measure-markup.py owner@example.com 25 100 500` is now an
+owner-operated raw quote capture, NOT a markup measurement. It never prints
+login responses or guesses quote units. Exit 2 means capture succeeded but the
+measurement contract is unverified; exit 1 is failure. Review output for privacy
+before sharing. No signing or trading call is allowlisted.
+
+`mcp-tools.py` retains complete paginated schema result pages. `mcp-read.py`
+has a local read-only allowlist. `roundtrip-cost.py` produces indicative Jupiter
+comparisons, not a True Markets lower bound; it refuses invalid sizes and will
+not overwrite an existing roundtrip.json. The unverified HYPE mint was removed.
+
+Offline checks: `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*tools.py'`.
+
+### Token handling after F2 remediation
+
+Mint only to a directory owned by the current user with no group/other mode
+permissions (normally 0700). Existing directories are checked, not silently
+chmodded. Missing components are created private. Relative paths are allowed;
+parent traversal and symlink components/destinations are refused. The only alias
+exceptions are verified root-owned macOS `/var` and `/tmp` system links.
+
+The token is validated before replacement, written through a private 0600
+exclusive temporary file, synced and atomically renamed through an open parent
+directory descriptor. An invalid response or write/sync/rename failure leaves
+the previous token in place. This is not a guarantee against power loss of the
+directory rename, privileged/same-user attackers, or copies of an older token
+that was previously readable. Rotate previously exposed tokens separately.
+
+Auth uses only `https://api.truemarkets.co`; arbitrary `TM_BASE` origins are
+refused before key access. Curl user config and redirects are disabled. The
+probe's exact path allowlist is read-only, and bearer credentials go through
+stdin, never argv. Raw probe response files can still contain private venue
+data: review before sharing. JWT shape/claims checks do not establish token
+permissions or cryptographically verify venue signatures. These tests use only
+dummy secrets; no auth or venue call is part of verification.
+
 Two scripts, and the split between them is the point. See ADR 0010.
 
 ```
@@ -19,13 +62,13 @@ exists in a temporary 0600 file for as long as `openssl` needs it, and the token
 is written with 0600 created before the first byte so it is never briefly
 world-readable.
 
-A HOLDER OF THE TOKEN CANNOT PLACE AN ORDER. Completing a DeFi order needs the
-key to sign payloads that `POST /orders` hands back, and the token is not the
-key. That is a structural property rather than a rule these scripts follow.
+The earlier claim that a token holder cannot place an order is withdrawn:
+the MCP direct-prepare surface invalidated that inference. Token scope is still
+unverified. Local read-only allowlists, not possession of a token rather than a
+key, enforce these tools' request boundary.
 
-Both scripts refuse state-changing paths anyway, using the same over-broad
-fragment list `model/`'s `ReadOnlyHttp` uses - a false refusal costs one line, a
-false permit costs an order.
+The mint tool can only POST to the fixed auth endpoint. The probe can only GET
+its declared candidate paths. `model/` remains untouched and structurally passive.
 
 ## When the token expires
 

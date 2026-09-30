@@ -1,0 +1,11 @@
+--- src/v2_identity_startup.cpp	2026-09-22 15:58:51
++++ /private/tmp/f5-startup.PYWcEs/no-binding.cpp	2026-09-22 16:01:00
+@@ -140,7 +140,7 @@
+     if (VerifiedStaticIdentity::decode(std::span{bytes}.first(count), identity) !=
+         StaticIdentityCodecError::none)
+         refuse(Code::invalid_file, "identity frame invalid or unsupported");
+-    if (identity.value() != expected) refuse(Code::identity_mismatch, "stored identity differs from requested lineage or voter");
++    (void)expected;
+     if (resync) sync(input.value);
+     return identity;
+ }

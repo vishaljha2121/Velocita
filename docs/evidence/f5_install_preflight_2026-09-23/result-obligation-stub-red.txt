@@ -1,0 +1,109 @@
+In file included from tests/v2_result_obligation_tests.cpp:1:
+In file included from include/velocita/v2/result_ledger.hpp:3:
+In file included from include/velocita/v2/committed_result.hpp:3:
+In file included from include/velocita/v2/kernel.hpp:3:
+In file included from include/velocita/v2/action_resolver.hpp:3:
+In file included from include/velocita/v2/action_template.hpp:3:
+In file included from include/velocita/v2/contracts.hpp:4:
+include/velocita/v2/layout.hpp:6:2: error: "VELOCITA_TARGET_CACHE_LINE_SIZE must describe the deployment target"
+    6 | #error "VELOCITA_TARGET_CACHE_LINE_SIZE must describe the deployment target"
+      |  ^
+include/velocita/v2/layout.hpp:12:5: error: use of undeclared identifier 'VELOCITA_TARGET_CACHE_LINE_SIZE'
+   12 |     VELOCITA_TARGET_CACHE_LINE_SIZE;
+      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+include/velocita/v2/layout.hpp:63:15: error: static assertion expression is not an integral constant expression
+   63 | static_assert(kTargetCacheLineBytes >= alignof(std::max_align_t));
+      |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+include/velocita/v2/layout.hpp:63:15: note: initializer of 'kTargetCacheLineBytes' is unknown
+include/velocita/v2/layout.hpp:11:30: note: declared here
+   11 | inline constexpr std::size_t kTargetCacheLineBytes =
+      |                              ^
+include/velocita/v2/layout.hpp:64:15: error: static assertion expression is not an integral constant expression
+   64 | static_assert(is_power_of_two(kTargetCacheLineBytes));
+      |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+include/velocita/v2/layout.hpp:64:31: note: initializer of 'kTargetCacheLineBytes' is unknown
+   64 | static_assert(is_power_of_two(kTargetCacheLineBytes));
+      |                               ^
+include/velocita/v2/layout.hpp:11:30: note: declared here
+   11 | inline constexpr std::size_t kTargetCacheLineBytes =
+      |                              ^
+In file included from tests/v2_result_obligation_tests.cpp:1:
+In file included from include/velocita/v2/result_ledger.hpp:3:
+In file included from include/velocita/v2/committed_result.hpp:3:
+In file included from include/velocita/v2/kernel.hpp:3:
+In file included from include/velocita/v2/action_resolver.hpp:3:
+In file included from include/velocita/v2/action_template.hpp:3:
+include/velocita/v2/contracts.hpp:215:30: error: constexpr variable 'kDecisionFrameArenaSlotStrideBytes' must be initialized by a constant expression
+  215 | inline constexpr std::size_t kDecisionFrameArenaSlotStrideBytes =
+      |                              ^
+  216 |     round_up_to_cache_line(sizeof(DecisionFrame));
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+include/velocita/v2/layout.hpp:21:27: note: initializer of 'kTargetCacheLineBytes' is unknown
+   21 |     return ((bytes - 1) / kTargetCacheLineBytes + 1) * kTargetCacheLineBytes;
+      |                           ^
+include/velocita/v2/contracts.hpp:216:5: note: in call to 'round_up_to_cache_line(432)'
+  216 |     round_up_to_cache_line(sizeof(DecisionFrame));
+      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+include/velocita/v2/layout.hpp:11:30: note: declared here
+   11 | inline constexpr std::size_t kTargetCacheLineBytes =
+      |                              ^
+In file included from tests/v2_result_obligation_tests.cpp:1:
+In file included from include/velocita/v2/result_ledger.hpp:3:
+In file included from include/velocita/v2/committed_result.hpp:3:
+include/velocita/v2/kernel.hpp:744:30: error: constexpr variable 'kDecisionRecordHotArenaSlotStrideBytes' must be initialized by a constant expression
+  744 | inline constexpr std::size_t kDecisionRecordHotArenaSlotStrideBytes =
+      |                              ^
+  745 |     round_up_to_cache_line(sizeof(DecisionRecordHot));
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+include/velocita/v2/layout.hpp:21:27: note: initializer of 'kTargetCacheLineBytes' is unknown
+   21 |     return ((bytes - 1) / kTargetCacheLineBytes + 1) * kTargetCacheLineBytes;
+      |                           ^
+include/velocita/v2/kernel.hpp:745:5: note: in call to 'round_up_to_cache_line(64)'
+  745 |     round_up_to_cache_line(sizeof(DecisionRecordHot));
+      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+include/velocita/v2/layout.hpp:11:30: note: declared here
+   11 | inline constexpr std::size_t kTargetCacheLineBytes =
+      |                              ^
+In file included from tests/v2_result_obligation_tests.cpp:1:
+In file included from include/velocita/v2/result_ledger.hpp:3:
+In file included from include/velocita/v2/committed_result.hpp:3:
+include/velocita/v2/kernel.hpp:746:30: error: constexpr variable 'kDecisionRecordColdArenaSlotStrideBytes' must be initialized by a constant expression
+  746 | inline constexpr std::size_t kDecisionRecordColdArenaSlotStrideBytes =
+      |                              ^
+  747 |     round_up_to_cache_line(sizeof(DecisionRecordCold));
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+include/velocita/v2/layout.hpp:21:27: note: initializer of 'kTargetCacheLineBytes' is unknown
+   21 |     return ((bytes - 1) / kTargetCacheLineBytes + 1) * kTargetCacheLineBytes;
+      |                           ^
+include/velocita/v2/kernel.hpp:747:5: note: in call to 'round_up_to_cache_line(584)'
+  747 |     round_up_to_cache_line(sizeof(DecisionRecordCold));
+      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+include/velocita/v2/layout.hpp:11:30: note: declared here
+   11 | inline constexpr std::size_t kTargetCacheLineBytes =
+      |                              ^
+In file included from tests/v2_result_obligation_tests.cpp:1:
+In file included from include/velocita/v2/result_ledger.hpp:3:
+In file included from include/velocita/v2/committed_result.hpp:3:
+include/velocita/v2/kernel.hpp:755:15: error: static assertion expression is not an integral constant expression
+  755 | static_assert(kDecisionRecordHotArenaSlotStrideBytes == kTargetCacheLineBytes,
+      |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+include/velocita/v2/kernel.hpp:755:15: note: initializer of 'kDecisionRecordHotArenaSlotStrideBytes' is not a constant expression
+include/velocita/v2/kernel.hpp:744:30: note: declared here
+  744 | inline constexpr std::size_t kDecisionRecordHotArenaSlotStrideBytes =
+      |                              ^
+tests/v2_result_obligation_tests.cpp:48:44: error: no member named 'invalid_strategy' in 'velocita::v2::ContractError'
+   48 |     result.contract_error = ContractError::invalid_strategy;
+      |                                            ^~~~~~~~~~~~~~~~
+tests/v2_result_obligation_tests.cpp:50:48: error: no member named 'installed' in 'velocita::v2::PolicyLifecycle'
+   50 |     result.policy_lifecycle = PolicyLifecycle::installed;
+      |                                                ^~~~~~~~~
+tests/v2_result_obligation_tests.cpp:58:44: error: no member named 'enter_long' in 'velocita::v2::Directive'
+   58 |     result.proposed_directive = Directive::enter_long;
+      |                                            ^~~~~~~~~~
+tests/v2_result_obligation_tests.cpp:59:45: error: no member named 'enter_short' in 'velocita::v2::Directive'
+   59 |     result.effective_directive = Directive::enter_short;
+      |                                             ^~~~~~~~~~~
+tests/v2_result_obligation_tests.cpp:63:59: error: no member named 'risk_refused' in 'velocita::v2::ActionResolutionCode'
+   63 |     result.action_resolution_code = ActionResolutionCode::risk_refused;
+      |                                                           ^~~~~~~~~~~~
+13 errors generated.

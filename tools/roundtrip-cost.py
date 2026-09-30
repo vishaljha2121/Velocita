@@ -8,7 +8,10 @@ WHY THIS NUMBER DECIDES THE ARCHITECTURE. On a swap venue capital recycles - a
 round trip returns your money minus costs - so the cap on lifetime volume is not
 capital but the LOSS BUDGET:
 
-    max_volume = loss_budget / round_trip_cost_fraction
+    idealized_two_leg_volume = 2 * loss_budget / round_trip_cost_fraction
+
+These sequential indicative quotes are not executions or a True Markets cost
+bound. They omit intervening market movement and the impact of our own buy.
 
 Halving the cost per round trip doubles the volume the same budget buys. So the
 question "which asset, at which size" is worth measuring rather than guessing.
@@ -16,6 +19,7 @@ question "which asset, at which size" is worth measuring rather than guessing.
 from __future__ import annotations
 
 import json
+from decimal import Decimal, InvalidOperation
 import sys
 import time
 import urllib.error
@@ -47,7 +51,7 @@ def quote(input_mint, output_mint, amount, slippage_bps=50):
 
 def round_trip(symbol, mint, usd):
     """Buy `usd` of the token, then sell every unit back. Report the loss."""
-    amount_in = int(usd * 10 ** USDC_DECIMALS)
+    amount_in = int(Decimal(str(usd)) * 10 ** USDC_DECIMALS)
     buy = quote(USDC, mint, amount_in)
     if "outAmount" not in buy:
         return {"symbol": symbol, "usd": usd, "error": buy.get("error"), "detail": buy}
@@ -81,9 +85,16 @@ def main(argv):
         "JTO":   "jtojtomepa8beP8AuQc6eXt5FriJwfFMwQx2v2f9mCL",
         "DRIFT": "DriFtupJYLTosbwoN8koMbEYSx54aFAVLddWsbksjwg7",
         "W":     "85VBFQZC9TZkfaptBWjvUw7YbZjy52A6mjtPGjstQAmQ",
-        "HYPE":  "98sMhvDwGxo3KpSCcVDKAYPFXFvmR1Mh5gWxb3WMh5g",
     }
-    sizes = [float(x) for x in (argv or ["25", "100", "500", "2000"])]
+    try:
+        exact = [Decimal(x) for x in (argv or ["25", "100", "500", "2000"])]
+        if any(not x.is_finite() or x <= 0 or x > 1000000000 or
+               x * 1000000 != (x * 1000000).to_integral_value() for x in exact):
+            raise ValueError("invalid size")
+    except (InvalidOperation, ValueError):
+        print("sizes must be positive finite USDC amounts with at most six decimals")
+        return 1
+    sizes = [float(x) for x in exact]
 
     rows = []
     for symbol, mint in targets.items():
@@ -99,9 +110,9 @@ def main(argv):
                       f"hops={row['buy_hops']}/{row['sell_hops']}")
             time.sleep(0.4)
 
-    with open("roundtrip.json", "w") as handle:
+    with open("roundtrip.json", "x") as handle:
         json.dump(rows, handle, indent=2)
-    return 0
+    return int(any("error" in row for row in rows))
 
 
 if __name__ == "__main__":

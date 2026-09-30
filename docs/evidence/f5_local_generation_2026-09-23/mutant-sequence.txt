@@ -1,0 +1,1 @@
+local generation adversarial: transition matrix differs from authored arithmetic

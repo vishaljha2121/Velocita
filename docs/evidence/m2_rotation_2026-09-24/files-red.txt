@@ -1,0 +1,2 @@
+node file tests failed: missing file not reported
+exit=1

@@ -1,0 +1,1 @@
+V2 replication test failed: follower persisted committed index beyond zero local durability

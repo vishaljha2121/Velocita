@@ -1,0 +1,9 @@
+Test project /private/tmp/velocita-full-audit.lYB4P5/release
+    Start 73: v2-snapshot-install-ack-contract-tests
+1/2 Test #73: v2-snapshot-install-ack-contract-tests .......   Passed    0.27 sec
+    Start 74: v2-snapshot-install-results-contract-tests
+2/2 Test #74: v2-snapshot-install-results-contract-tests ...   Passed    0.25 sec
+
+100% tests passed out of 2
+
+Total Test time (real) =   0.53 sec

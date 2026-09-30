@@ -1,0 +1,12 @@
+--- src/v2_replication.cpp	2026-09-22 16:11:31
++++ /private/tmp/f5-kernel-token.hV7xxL/replication-self-quorum.cpp	2026-09-22 16:20:49
+@@ -40,8 +40,7 @@
+                                    MetadataCheckpoints metadata_checkpoints)
+     : startup_(take_startup(std::move(startup))),
+       node_id_(startup_.identity().value().local_node_id),
+-      members_(startup_.identity().value().voters.begin(),
+-               startup_.identity().value().voters.begin() + startup_.identity().value().voter_count),
++      members_({node_id_}),
+       catalog_(startup_.catalog()),
+       authority_domain_(startup_.identity().authority_domain()),
+       // V2's own file names. V1 and V2 share this storage layer and share its

@@ -1,0 +1,11 @@
+--- src/v2_local_generation.cpp	2026-09-23 15:02:17
++++ /private/tmp/local-generation-mutants.DKPgOP/owner.cpp	2026-09-23 15:05:20
+@@ -123,7 +123,7 @@
+         return LocalGenerationError::digest_mismatch;
+     if (!equal_digest(input.subspan(16, 32), identity.manifest_digest()))
+         return LocalGenerationError::foreign_manifest;
+-    if (get<std::uint32_t>(input, 48) !=
++    if (false && get<std::uint32_t>(input, 48) !=
+         static_cast<std::uint32_t>(identity.value().local_node_id))
+         return LocalGenerationError::wrong_owner;
+ 

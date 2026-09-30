@@ -1,0 +1,14 @@
+Superseded harness failure; NOT a product RED.
+
+Initial command used a fixed 10,000-yield polling loop and did not compile the
+actual SnapshotStore/WalSegment sources through the syscall hooks.
+
+Exit status: 1
+
+Exact output:
+selected compaction phase was not reached: retained=4 applied=3 commit=3 durable=4
+
+Review showed that this did not prove synchronous compaction refusal. The final
+harness uses a steady-clock deadline, asserts `compaction_pending()` immediately
+after the first call, and compiles the actual production source objects through
+the no-throw fault wrappers. That corrected harness reaches all selected calls.

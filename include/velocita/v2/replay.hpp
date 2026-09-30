@@ -31,6 +31,7 @@ struct ReplayApplyResult {
     std::span<const std::byte> command_bytes,
     ApplyScratch& apply_scratch,
     KernelCommandCodecScratch& codec_scratch,
-    std::span<std::byte> result_output) noexcept;
+    std::span<std::byte> result_output,
+    const VerifiedExecutionCatalog* catalog = nullptr);
 
 }  // namespace velocita::v2

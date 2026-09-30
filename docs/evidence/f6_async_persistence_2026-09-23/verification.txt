@@ -1,0 +1,65 @@
+CP-043 host verification, 2026-09-23; branch v2/phase-5-corrections, HEAD d44a4a9.
+Uncommitted tree. No target source pin or hardware acceptance claimed.
+
+Release (build succeeded before CTest):
+cmake --build /private/tmp/velocita-full-audit.lYB4P5/release --target velocita-all-tests -j4
+ctest --test-dir /private/tmp/velocita-full-audit.lYB4P5/release --output-on-failure
+90/90 PASS, 21.33 seconds.
+
+C++ Debug ASan+UBSan (build succeeded before CTest):
+cmake --build /private/tmp/aeron-phase67-audit-build --target velocita-all-tests -j4
+ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir /private/tmp/aeron-phase67-audit-build --output-on-failure
+90/90 PASS, 192.48 seconds.
+CMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer
+Raft C uninstrumented; leaks disabled. Not a target acceptance gate.
+
+Both configured offline with:
+-DFETCHCONTENT_SOURCE_DIR_WILLEMT_RAFT=/private/tmp/velocita-cp043.SaGIxe/raft-build-suffix
+The fresh dependency was reconstructed from the preserved clean base; applying
+the former patch reproduced its reviewed hashes before extending/regenerating it.
+Final patch applied to a separate fresh base yielded:
+raft.h e87bb5a2f8ebe1b8733668ff9263630e1395bd045afbbf889caa41601d0cb790
+raft_server.c 84f7e3d3187b9af40b38fc2d73b715dce9af64215f45ac07ca216b9d7020a14a
+raft_log.c 8aa916dd1fbf41b800e85a7a732878bf24aa3c51506a3e7e20d530751cddb386
+
+Independent inventory:90 host /87 V2, exact match with gate's separately listed
+v2_required_tests plus core-tests, metrics-tests, benchmark-tests. Validated via
+ctest --show-only=json-v1 and deploy/validate-ctest-inventory.py.
+
+Tool regressions:
+python3 -m unittest discover -s tests -p 'test_*tools.py' =>24 PASS
+python3 -m unittest discover -s tests -p 'test_gate_manifest.py' =>16 PASS
+These are not the passive Python model corpus, which was not rerun.
+
+RED artifacts were built before the implementation and retained in:
+/private/tmp/velocita-cp043.SaGIxe/{hard-state-red,suffix-red,raft-red}
+hard-state-red scenario NEW_ROOT: election4/4, vote4/4, commit2/2 owner syncs;
+each exits1 at the intended no-owner-fsync assertion. suffix-red and raft-red
+exit1 at owner rewrite and ignored self-vote-error assertions respectively.
+Raw logs retain the output; later reruns use those preserved original binaries,
+not current headers combined with old object layouts.
+
+Direct mutation recipe (cache-line64, never128):
+c++ -std=c++20 -O1 -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Itests -I/private/tmp/velocita-cp043.SaGIxe/raft-build-suffix/include TEST MUTANT_SOURCE LIBRARIES -o OUTPUT
+LIBRARIES, in order, from the Release directory above:
+libvelocita_v2_replication.a libvelocita_v2_kernel.a libvelocita_v2_evaluator.a
+libvelocita_v2_contracts.a libvelocita_core.a libwillemt_raft.a
+Outbound/apply mutants compile actual tests/v2_async_persistence_tests.cpp plus
+the mutated replication source; that test privately compiles actual metadata
+through its forwarding fsync observer. Sequence mutant includes its one-line
+mutated actual replication source in the private completion suite. Raft mutants
+compile the selected C source with cc -O1 and link that object before the Raft
+archive, using the same patched headers. All five exit1 at intended assertions;
+see mutation-*.txt. No production source was modified in place for mutation.
+
+Focused TSan recipe:
+c++ -fsanitize=thread -g -std=c++20 -O1 -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Itests -I/private/tmp/velocita-cp043.SaGIxe/raft-build-suffix/include tests/v2_async_persistence_tests.cpp src/v2_replication.cpp src/v2_wal_arena.cpp LIBRARIES -o /private/tmp/velocita-cp043.SaGIxe/async-tsan
+TSAN_OPTIONS=halt_on_error=1 /private/tmp/velocita-cp043.SaGIxe/async-tsan
+Exit0: async persistence fence tests passed; no TSan diagnostic.
+Actual replication/metadata/WAL and fixture are instrumented; other linked
+components are not. This is focused concurrency evidence, not full-tree TSan.
+
+Native measurement:
+v2-persistence-completion-tests => job168 / replica124416 / retry_buffer32768 bytes.
+No allocation latency, total RSS, NUC/ARM64/Pi, venue, live process or physical
+power-loss result. git diff --check passes. No staging/commit/tag/device action.

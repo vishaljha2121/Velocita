@@ -1,5 +1,15 @@
 # True Markets MCP servers: tool schemas read from the servers
 
+## Evidence qualification — 2026-09-21
+
+The historical capture below is preserved, not refreshed. Its collector truncated
+tool descriptions, printed input schemas only, and did not follow pagination.
+It is evidence of the advertised MCP inputs captured on that date, not a complete
+REST contract, output contract, or proof of venue-wide capability absence.
+The word "verbatim" below describes stored output, not an unmodified server body.
+Missing price/cancel tools do not establish that every venue interface lacks them.
+The collector now retains complete result pages; no fresh venue call was made.
+
 Captured 2026-09-18 by `tools/mcp-tools.py`, which speaks only `initialize` and
 `tools/list` and refuses `tools/call` outright. Nothing here was traded, quoted
 or authenticated; `tools/list` is served to an anonymous client.

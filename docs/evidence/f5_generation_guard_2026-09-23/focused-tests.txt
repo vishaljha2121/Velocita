@@ -1,0 +1,11 @@
+Test project /private/tmp/velocita-full-audit.lYB4P5/release
+    Start 45: v2-identity-startup-tests
+1/3 Test #45: v2-identity-startup-tests ...........   Passed    0.03 sec
+    Start 46: v2-kernel-startup-tests
+2/3 Test #46: v2-kernel-startup-tests .............   Passed    0.01 sec
+    Start 66: v2-generation-startup-guard-tests
+3/3 Test #66: v2-generation-startup-guard-tests ...   Passed    0.02 sec
+
+100% tests passed out of 3
+
+Total Test time (real) =   0.07 sec

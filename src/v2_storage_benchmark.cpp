@@ -11,13 +11,16 @@
 // the deployment targets are a Pi and a NUC.
 
 #include "velocita/v2/wal_arena.hpp"
+#include "velocita/v2/bound_wal.hpp"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <iostream>
 #include <numeric>
+#include <stdexcept>
 #include <vector>
 
 namespace {
@@ -25,17 +28,44 @@ namespace {
 using namespace velocita::v2;
 using Clock = std::chrono::steady_clock;
 
+const VerifiedStaticIdentity& benchmark_identity() {
+    static const auto result = [] {
+        StaticIdentity value;
+        value.incarnation[0] = std::byte{1};
+        value.catalog_root.bytes[0] = std::byte{1};
+        value.voter_count = 1;
+        value.voters[0] = 1;
+        value.local_node_id = 1;
+        std::array<std::byte, kMaxStaticIdentityBytes> bytes{};
+        const auto encoded = encode_static_identity(value, bytes);
+        VerifiedStaticIdentity verified;
+        if (encoded.error != StaticIdentityCodecError::none ||
+            VerifiedStaticIdentity::decode(std::span{bytes}.first(encoded.bytes_written), verified) !=
+                StaticIdentityCodecError::none)
+            throw std::runtime_error("benchmark identity fixture refused");
+        return verified;
+    }();
+    return result;
+}
+
 std::vector<std::byte> command_sized_record(const std::uint64_t index) {
     velocita::WalRecord value;
     value.index = index;
     value.term = 1;
     value.entry_id = static_cast<std::int32_t>(index);
     value.entry_type = 0;
-    // Representative of a real canonical command frame rather than a token
-    // payload; a benchmark on 8-byte records would measure the framing, not the
-    // work.
-    value.payload.assign(512, std::byte{0x5A});
-    return velocita::encode_wal_record(value);
+    Command command;
+    command.identity = {CallerId{1}, RequestSequence{index}, {}};
+    // Never all-zero: the codec refuses a zero payload digest, and a digest
+    // derived from index alone wrapped to zero at record 256.
+    command.identity.payload_digest.bytes[0] = static_cast<std::byte>(index);
+    command.identity.payload_digest.bytes[1] = std::byte{0x5a};
+    command.body = AdvanceKillEpoch{KillEpoch{index}};
+    std::array<std::byte, kMaxKernelCommandBytes> payload{};
+    const auto encoded = encode_kernel_command(command, payload);
+    if (encoded.error != KernelCodecError::none) throw std::runtime_error("benchmark command refused");
+    value.payload.assign(payload.begin(), payload.begin() + static_cast<std::ptrdiff_t>(encoded.bytes_written));
+    return encode_bound_wal_record(value, benchmark_identity());
 }
 
 struct Summary {
@@ -67,6 +97,8 @@ int main() {
                       "velocita-v2-storage-benchmark";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root);
+    std::filesystem::create_directory(root / "inline");
+    std::filesystem::create_directory(root / "threaded");
 
     constexpr std::uint64_t kRecords = 2000;
 
@@ -76,7 +108,7 @@ int main() {
     inline_samples.reserve(kRecords);
     {
         WalBlockArena arena;
-        WalSegment segment(root / "inline");
+        WalSegment segment(root / "inline", benchmark_identity());
         for (std::uint64_t index = 1; index <= kRecords; ++index) {
             const auto record = command_sized_record(index);
             const auto start = Clock::now();
@@ -97,7 +129,7 @@ int main() {
     std::uint64_t refusals = 0;
     {
         WalBlockArena arena;
-        WalSegment segment(root / "threaded");
+        WalSegment segment(root / "threaded", benchmark_identity());
         WalWriter writer(segment, arena);
         writer.start();
         for (std::uint64_t index = 1; index <= kRecords; ++index) {

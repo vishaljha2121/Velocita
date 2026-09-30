@@ -1,0 +1,13 @@
+diff --git a/src/v2_bound_frame.cpp b/private/tmp/f5-bound-peer.3d2CC0/no-manifest.cpp
+index 04f43bc..a491133 100644
+--- a/src/v2_bound_frame.cpp
++++ b/private/tmp/f5-bound-peer.3d2CC0/no-manifest.cpp
+@@ -125,8 +125,6 @@ BoundFrameError decode_bound_frame(
+     const auto digest = calculate(input.first(digest_offset), scratch);
+     if (!digest_equal(input.subspan(digest_offset, digest.bytes.size()), digest))
+         return BoundFrameError::digest_mismatch;
+-    if (!std::equal(identity.manifest_digest().bytes.begin(), identity.manifest_digest().bytes.end(), input.begin() + 16))
+-        return BoundFrameError::foreign_manifest;
+     const auto owner = static_cast<std::int32_t>(get32(input, 48));
+     if (owner != (local(actual_kind) ? identity.value().local_node_id : 0))
+         return BoundFrameError::wrong_owner;

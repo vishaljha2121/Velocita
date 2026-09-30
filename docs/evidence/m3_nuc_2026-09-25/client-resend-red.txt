@@ -1,0 +1,3 @@
+node process tests failed: client flooded the leader's log with 6 copies of one request during an outage
+evidence kept in "/private/var/folders/lj/9xsh1_h90_lc_cmvn_3gk2b80000gn/T/v2-node-process-9HimBa"
+exit=1

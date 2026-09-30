@@ -1,0 +1,25 @@
+tests/v2_async_hard_state_red.cpp:83:5: error: reference to 'Command' is ambiguous
+   83 |     Command command;
+      |     ^
+include/velocita/wire.hpp:34:8: note: candidate found by name lookup is 'velocita::Command'
+   34 | struct Command {
+      |        ^
+include/velocita/v2/kernel.hpp:389:8: note: candidate found by name lookup is 'velocita::v2::Command'
+  389 | struct Command {
+      |        ^
+tests/v2_async_hard_state_red.cpp:84:5: error: use of undeclared identifier 'command'
+   84 |     command.identity.caller_id = CallerId{1};
+      |     ^~~~~~~
+tests/v2_async_hard_state_red.cpp:85:5: error: use of undeclared identifier 'command'
+   85 |     command.identity.request_sequence = RequestSequence{1};
+      |     ^~~~~~~
+tests/v2_async_hard_state_red.cpp:86:5: error: use of undeclared identifier 'command'
+   86 |     command.identity.payload_digest.bytes[0] = std::byte{1};
+      |     ^~~~~~~
+tests/v2_async_hard_state_red.cpp:87:5: error: use of undeclared identifier 'command'
+   87 |     command.body = AdvanceKillEpoch{KillEpoch{1}};
+      |     ^~~~~~~
+tests/v2_async_hard_state_red.cpp:89:48: error: use of undeclared identifier 'command'
+   89 |     const auto encoded = encode_kernel_command(command, bytes);
+      |                                                ^~~~~~~
+6 errors generated.

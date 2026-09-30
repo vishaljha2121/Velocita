@@ -1,0 +1,2 @@
+ordinary_log_candidate=8128 actual_log_end=8129 ready_results=1
+draining results does not bound retained ordinary log ownership

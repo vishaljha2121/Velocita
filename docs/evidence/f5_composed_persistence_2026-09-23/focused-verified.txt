@@ -1,0 +1,42 @@
+cmake --build /private/tmp/velocita-full-audit.lYB4P5/release --target v2-compaction-persistence-model-tests -j4 && ctest --test-dir /private/tmp/velocita-full-audit.lYB4P5/release --output-on-failure -V -R '^v2-compaction-persistence-model-tests$'
+Exit: 0
+
+[ 10%] Built target willemt_raft
+[ 20%] Built target velocita_v2_contracts
+[ 30%] Built target velocita_core
+[ 40%] Built target velocita_v2_evaluator
+[ 50%] Built target velocita_v2_kernel
+[ 90%] Built target velocita_v2_replication
+[ 90%] Built target v2-compaction-model-archive
+[ 90%] Built target v2-compaction-model-io
+[100%] Built target v2-compaction-persistence-model-tests
+UpdateCTestConfiguration  from :/private/tmp/velocita-full-audit.lYB4P5/release/DartConfiguration.tcl
+Parse Config file:/private/tmp/velocita-full-audit.lYB4P5/release/DartConfiguration.tcl
+Test project /private/tmp/velocita-full-audit.lYB4P5/release
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 69
+    Start 69: v2-compaction-persistence-model-tests
+
+69: Test command: /private/tmp/velocita-full-audit.lYB4P5/release/v2-compaction-persistence-model-tests
+69: Working Directory: /private/tmp/velocita-full-audit.lYB4P5/release
+69: Test timeout computed to be: 1500
+69: composed persistence model replacement=0 schedule=0 cuts=45
+69: composed persistence model replacement=0 schedule=1 cuts=45
+69: composed persistence model replacement=0 schedule=2 cuts=45
+69: composed persistence model replacement=1 schedule=0 cuts=36
+69: composed persistence model replacement=1 schedule=1 cuts=36
+69: composed persistence model replacement=1 schedule=2 cuts=36
+69: composed archive/snapshot/WAL persistence model passed 243 cuts
+1/1 Test #69: v2-compaction-persistence-model-tests ...   Passed    2.88 sec
+
+The following tests passed:
+	v2-compaction-persistence-model-tests
+
+100% tests passed out of 1
+
+Total Test time (real) =   2.88 sec

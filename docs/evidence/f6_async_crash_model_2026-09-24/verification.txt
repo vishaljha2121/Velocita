@@ -1,0 +1,55 @@
+CP-044 host verification, 2026-09-24.
+Branch v2/phase-5-corrections, HEAD d44a4a9; uncommitted remediation.
+No deployment pin or target acceptance claim.
+
+Build before CTest:
+cmake --build /private/tmp/velocita-full-audit.lYB4P5/release --target velocita-all-tests -j4
+ctest --test-dir /private/tmp/velocita-full-audit.lYB4P5/release --output-on-failure
+Release91/91 PASS,14.94 seconds.
+
+cmake --build /private/tmp/aeron-phase67-audit-build --target velocita-all-tests -j4
+ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir /private/tmp/aeron-phase67-audit-build --output-on-failure
+C++ Debug ASan+UBSan91/91 PASS,182.09 seconds.
+Flags include -fno-sanitize-recover=undefined and -fno-omit-frame-pointer.
+Raft C remains uninstrumented; leak detection disabled. No new TSan run.
+
+Final indentation-only edit followed by rebuilding/rerunning the focused suite
+in both configurations; raw final-focused logs accompany this record.
+
+Both builds configured offline with the CP-043 verified pinned Raft source:
+/private/tmp/velocita-cp043.SaGIxe/raft-build-suffix
+No dependency patch or production source changed this checkpoint.
+
+Independent inventory:91host/88V2. Compared CTest JSON names with the separately
+maintained v2_required_tests in deploy/pi-container/run-phase2-kernel-gate-inside.sh,
+plus core-tests, metrics-tests, benchmark-tests; exact set match.
+python3 -m unittest discover -s tests -p 'test_*tools.py' =>24 PASS
+python3 -m unittest discover -s tests -p 'test_gate_manifest.py' =>16 PASS
+Not a rerun of the passive Python model corpus.
+
+Focused model:75 reached post-event cuts (three schedules times20 composed+5
+ballot), plus3 zero-event seed recoveries and6 successful baselines.
+Hooked objects: actual src/v2_bound_metadata.cpp and src/v2_wal_arena.cpp,
+force-including tests/v2_compaction_persistence_model_hooks.hpp. These are linked
+before the unchanged production static libraries. No C++ object-layout mutation.
+
+Direct-source negative controls (not historical product REDs):
+Scratch /private/tmp/velocita-cp044.sxpuMh
+1. metadata-no-dirsync.cpp: remove only the store's fsync(directory_fd).
+2. wal-no-rewrite-sync.cpp: remove only SegmentRewriteWriter::finish file sync.
+Compile each with:
+c++ -std=c++20 -O1 -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -I/private/tmp/velocita-cp043.SaGIxe/raft-build-suffix/include -include tests/v2_compaction_persistence_model_hooks.hpp -c MUTANT.cpp -o MUTANT.o
+Link the freshly built model-test object, one mutant object, and the other
+normal hooked object before these Release libraries in order:
+libvelocita_v2_replication.a libvelocita_v2_kernel.a libvelocita_v2_evaluator.a
+libvelocita_v2_contracts.a libvelocita_core.a libwillemt_raft.a
+Both exit1 at intended assertions, not compiler/unrelated test failures:
+- metadata: granted ballot lacks exact durable term/vote tuple
+- WAL: crash image lost or changed committed prefix1 (schedule0,cut11)
+The unmodified binary passes the same permanent suite.
+
+Harness development failures are not relabeled as product defects. The retained
+harness-first-run.txt shows the temp-sensitive metadata loader mistake; subsequent
+review also corrected commitment setup, selected-runtime path and exact oracles.
+No NUC/ARM64/Pi, physical power cut, RSS or latency measurement in this turn.
+git diff --check clean. Protected paths untouched; no staging/commit/tag action.

@@ -1,0 +1,313 @@
+// velocita-v2-client: authenticated operator client for the M2 node.
+//
+//   velocita-v2-client --caller-key-id N --caller-id N (--key-file FILE | --key-stdin)
+//       --incarnation HEX32 --session-file FILE --response-endpoint HOST:PORT
+//       --node ID=HOST:PORT [--node ...] --aeron-dir DIR --sequence N
+//       [--timeout-ms N] COMMAND
+//
+// COMMAND: kill-epoch VALUE | executor-generation VALUE
+//          | install-catalog ROOT_HEX64 EXPECTED_KILL_EPOCH EXPECTED_EXECUTOR_GENERATION
+//          | strategy-mode normal|no_new_risk|cancel_only|reduce_only|halted
+//                EXPECTED_KILL_EPOCH EXPECTED_EXECUTOR_GENERATION
+//          | risk-limits KEY=VALUE... (every field; see shadow_submitter.hpp)
+//
+// --dry-run parses the command and prints what would be sent, then exits 0;
+// risk-limits always prints its summary (lots, dollars) before sending.
+//
+// Output: "COMMITTED sequence=.. index=.. term=.. code=.. code_name=.. state_version=..
+// kill_epoch=.. executor_generation=.. strategy_mode=.. [risk_version=..] from=.."
+// or "REFUSED reason=.. leader=..". Exit codes: 0 committed+applied, 1 committed
+// with another code, 3 timeout, 4 refused, 64 usage. Operator control and risk
+// configuration only: nothing here proposes or authorizes an order.
+//
+// --key-stdin reads 32 or 64 raw bytes: the first secret signs, and responses
+// verify under either (rotation overlap). --key-file follows the node's
+// rotation layout: FILE signs; FILE.next / FILE.previous are also accepted.
+
+#include "velocita/aeron_runtime.hpp"
+#include "velocita/v2/aeron_node_transport.hpp"
+#include "velocita/v2/node_files.hpp"
+#include "velocita/v2/node_client.hpp"
+#include "velocita/v2/node_protocol.hpp"
+#include "velocita/v2/session_fence.hpp"
+#include "velocita/v2/shadow_submitter.hpp"
+
+#include "FragmentAssembler.h"
+
+#include <algorithm>
+#include <charconv>
+#include <initializer_list>
+#include <chrono>
+#include <deque>
+#include <filesystem>
+#include <iostream>
+#include <map>
+#include <optional>
+#include <string>
+#include <thread>
+#include <vector>
+#include <unistd.h>
+
+namespace {
+
+using namespace velocita::v2;
+using Clock = std::chrono::steady_clock;
+
+struct Usage final : std::runtime_error {
+    using std::runtime_error::runtime_error;
+};
+
+std::uint64_t number(const std::string& text, const char* what) {
+    try {
+        std::size_t used = 0;
+        const auto value = std::stoull(text, &used);
+        if (used != text.size()) throw Usage(std::string("invalid ") + what);
+        return value;
+    } catch (const Usage&) {
+        throw;
+    } catch (...) {
+        throw Usage(std::string("invalid ") + what);
+    }
+}
+
+Endpoint endpoint(const std::string& text) {
+    const auto colon = text.rfind(':');
+    if (colon == std::string::npos) throw Usage("endpoint needs HOST:PORT: " + text);
+    const auto port = number(text.substr(colon + 1), "port");
+    if (port == 0 || port > 65535) throw Usage("invalid port: " + text);
+    return {text.substr(0, colon), static_cast<std::uint16_t>(port)};
+}
+
+struct Arguments {
+    std::int32_t caller_key_id{};
+    std::uint64_t caller_id{};
+    std::filesystem::path key_file, session_file, aeron_dir;
+    bool key_stdin{};
+    bool dry_run{};
+    std::string summary;                    // printed before sending
+    std::array<std::byte, 16> incarnation{};
+    Endpoint response_endpoint;
+    std::map<std::int32_t, Endpoint> nodes;
+    std::vector<std::int32_t> order;  // --node order: the first is asked first
+    std::uint64_t sequence{};
+    std::uint64_t timeout_ms{10000};
+    std::uint64_t kill_epoch{};
+    CommandBody body{};                     // the operator command to send
+    ProposeLane lane{ProposeLane::control};  // kill-path reserve only for control commands
+    Digest256 digest{};                     // its payload digest
+};
+
+Digest256 payload_digest(std::uint64_t kill_epoch) {
+    std::string domain = "velocita.v2-client.advance-kill-epoch";
+    std::vector<std::byte> bytes;
+    for (const char c : domain) bytes.push_back(static_cast<std::byte>(c));
+    for (int b = 0; b < 8; ++b) bytes.push_back(static_cast<std::byte>((kill_epoch >> (8 * b)) & 0xff));
+    return sha256_digest(bytes);
+}
+
+// Domain-separated digest of an operator verb and its arguments as typed.
+Digest256 verb_digest(const std::string& verb, std::initializer_list<std::string> args) {
+    std::string text = "velocita.v2-client." + verb;
+    for (const auto& arg : args) text += " " + arg;
+    std::vector<std::byte> bytes;
+    for (const char c : text) bytes.push_back(static_cast<std::byte>(c));
+    return sha256_digest(bytes);
+}
+
+Arguments parse(int argc, char** argv) {
+    Arguments a;
+    bool have_incarnation = false;
+    int i = 1;
+    for (; i < argc; ++i) {
+        const std::string key = argv[i];
+        if (key.rfind("--", 0) != 0) break;
+        if (key == "--key-stdin") {
+            a.key_stdin = true;
+            continue;
+        }
+        if (key == "--dry-run") {
+            a.dry_run = true;
+            continue;
+        }
+        if (i + 1 >= argc) throw Usage("missing value for " + key);
+        const std::string value = argv[++i];
+        if (key == "--caller-key-id") a.caller_key_id = static_cast<std::int32_t>(number(value, "caller key id"));
+        else if (key == "--caller-id") a.caller_id = number(value, "caller id");
+        else if (key == "--key-file") a.key_file = value;
+        else if (key == "--session-file") a.session_file = value;
+        else if (key == "--aeron-dir") a.aeron_dir = value;
+        else if (key == "--response-endpoint") a.response_endpoint = endpoint(value);
+        else if (key == "--sequence") a.sequence = number(value, "sequence");
+        else if (key == "--timeout-ms") a.timeout_ms = number(value, "timeout");
+        else if (key == "--node") {
+            const auto eq = value.find('=');
+            if (eq == std::string::npos) throw Usage("--node needs ID=HOST:PORT");
+            const auto id = static_cast<std::int32_t>(number(value.substr(0, eq), "node id"));
+            if (!a.nodes.emplace(id, endpoint(value.substr(eq + 1))).second) throw Usage("duplicate --node id");
+            a.order.push_back(id);
+        } else if (key == "--incarnation") {
+            if (value.size() != 32) throw Usage("incarnation must be 32 lowercase hex digits");
+            for (std::size_t b = 0; b < 16; ++b)
+                a.incarnation[b] = static_cast<std::byte>(std::stoi(value.substr(2 * b, 2), nullptr, 16));
+            have_incarnation = true;
+        } else {
+            throw Usage("unknown argument " + key);
+        }
+    }
+    if (i >= argc) throw Usage("missing command");
+    const std::string verb = argv[i];
+    if (verb == "kill-epoch" && i + 2 == argc) {
+        a.kill_epoch = number(argv[i + 1], "kill epoch");
+        a.body = AdvanceKillEpoch{KillEpoch{a.kill_epoch}};
+        a.digest = payload_digest(a.kill_epoch);
+    } else if (verb == "executor-generation" && i + 2 == argc) {
+        const auto generation = number(argv[i + 1], "executor generation");
+        if (generation == 0) throw Usage("executor generation must be positive");
+        a.body = SetExecutorGeneration{ExecutorGeneration{generation}};
+        a.digest = verb_digest(verb, {argv[i + 1]});
+    } else if (verb == "install-catalog" && i + 4 == argc) {
+        InstallExecutionCatalog install;
+        const std::string root = argv[i + 1];
+        if (root.size() != 64) throw Usage("catalog root must be 64 hex digits");
+        for (std::size_t b = 0; b < 32; ++b) {
+            unsigned v = 0;
+            const auto r = std::from_chars(root.data() + 2 * b, root.data() + 2 * b + 2, v, 16);
+            if (r.ec != std::errc{} || r.ptr != root.data() + 2 * b + 2) throw Usage("catalog root must be hex");
+            install.catalog_root.bytes[b] = static_cast<std::byte>(v);
+        }
+        install.expected_kill_epoch = KillEpoch{number(argv[i + 2], "expected kill epoch")};
+        install.expected_executor_generation = ExecutorGeneration{number(argv[i + 3], "expected executor generation")};
+        a.body = install;
+        // Operator-only in the reducer, but not a kill-path command: the control
+        // lane's reserve is for halting and reducing risk.
+        a.lane = ProposeLane::normal;
+        a.digest = verb_digest(verb, {argv[i + 1], argv[i + 2], argv[i + 3]});
+    } else if (verb == "strategy-mode" && i + 4 == argc) {
+        const auto mode = parse_strategy_mode(argv[i + 1]);
+        if (!mode) throw Usage("strategy mode must be normal, no_new_risk, cancel_only, reduce_only or halted");
+        a.body = SetStrategyMode{*mode, KillEpoch{number(argv[i + 2], "expected kill epoch")},
+                                 ExecutorGeneration{number(argv[i + 3], "expected executor generation")}};
+        a.digest = verb_digest(verb, {argv[i + 1], argv[i + 2], argv[i + 3]});
+        a.summary = std::string("STRATEGY-MODE ") + argv[i + 1] + " expected kill epoch " + argv[i + 2] +
+                    ", executor generation " + argv[i + 3] + "\n";
+    } else if (verb == "risk-limits") {
+        const std::vector<std::string> words(argv + i + 1, argv + argc);
+        const auto parsed = parse_risk_limits_verb(words);
+        if (!parsed.limits) throw Usage("risk-limits: " + parsed.error);
+        a.body = *parsed.limits;
+        // Not a kill-path command: raising limits must not spend the control reserve.
+        a.lane = ProposeLane::normal;
+        a.digest = verb_digest(verb, {risk_limits_canonical(*parsed.limits)});
+        a.summary = describe_risk_limits(*parsed.limits);
+    } else {
+        throw Usage("command must be: kill-epoch VALUE | executor-generation VALUE | "
+                    "install-catalog ROOT EXPECTED_KILL_EPOCH EXPECTED_EXECUTOR_GENERATION | "
+                    "strategy-mode MODE EXPECTED_KILL_EPOCH EXPECTED_EXECUTOR_GENERATION | risk-limits KEY=VALUE...");
+    }
+    if (a.dry_run) return a;
+    if (a.key_stdin == !a.key_file.empty()) throw Usage("give exactly one of --key-file or --key-stdin");
+    if (a.caller_key_id <= 0 || a.caller_id == 0 || a.session_file.empty() ||
+        a.aeron_dir.empty() || !have_incarnation || a.response_endpoint.port == 0 || a.nodes.empty() ||
+        a.sequence == 0 || (verb == "kill-epoch" && a.kill_epoch == 0))
+        throw Usage("missing required argument");
+    return a;
+}
+
+// Deterministic per (value): a retry carries a byte-identical identity.
+int run(const Arguments& a) {
+    std::cout << a.summary << std::flush;
+    if (a.dry_run) {
+        std::cout << "DRY-RUN not sent" << std::endl;
+        return 0;
+    }
+    // Signing secret first, then any others accepted for responses.
+    std::vector<AuthSecret> secrets;
+    if (a.key_stdin) {
+        std::array<std::byte, 2 * kAuthSecretBytes + 1> raw{};
+        std::size_t length = 0;
+        while (length < raw.size()) {
+            const auto got = ::read(STDIN_FILENO, raw.data() + length, raw.size() - length);
+            if (got <= 0) break;
+            length += static_cast<std::size_t>(got);
+        }
+        if (length != kAuthSecretBytes && length != 2 * kAuthSecretBytes)
+            throw Usage("--key-stdin needs exactly 32 or 64 bytes");
+        for (std::size_t at = 0; at < length; at += kAuthSecretBytes)
+            secrets.push_back(*AuthSecret::from_bytes(std::span(raw).subspan(at, kAuthSecretBytes)));
+        volatile std::byte* cursor = raw.data();
+        for (std::size_t i = 0; i < raw.size(); ++i) cursor[i] = std::byte{0};
+    } else {
+        auto loaded = load_secret_set(a.key_file);
+        if (!loaded.secrets) throw Usage("key file refused: " + loaded.failed_file.string());
+        secrets.push_back(std::move(loaded.secrets->current));
+        if (loaded.secrets->next) secrets.push_back(std::move(*loaded.secrets->next));
+        if (loaded.secrets->previous) secrets.push_back(std::move(*loaded.secrets->previous));
+    }
+    auto epoch = advance_session_epoch_file(a.session_file);
+    if (epoch.error == SessionEpochError::missing) epoch = create_session_epoch_file(a.session_file);
+    if (epoch.error != SessionEpochError::none) throw Usage("client session epoch refused");
+
+    const Command command{{CallerId{a.caller_id}, RequestSequence{a.sequence}, a.digest}, a.body};
+
+    velocita::AeronRuntime aeron(a.aeron_dir.string());
+    AeronClientTransport transport(aeron, a.nodes, a.response_endpoint);
+    std::vector<ClientRoute> routes;
+    for (const auto id : a.order) {
+        auto ingress = AuthKey::derive(secrets.front(), {AuthRole::ingress, a.caller_key_id, id}, a.incarnation);
+        if (!ingress) throw Usage("invalid caller or node id");
+        std::vector<AuthKey> responses;
+        for (const auto& secret : secrets) {
+            auto response = AuthKey::derive(secret, {AuthRole::response, id, a.caller_key_id}, a.incarnation);
+            if (!response) throw Usage("invalid caller or node id");
+            responses.push_back(std::move(*response));
+        }
+        routes.push_back(ClientRoute{id, std::move(*ingress), std::move(responses)});
+    }
+    NodeClientSession session(epoch.epoch, std::move(routes), transport);
+    if (!session.submit(command, a.lane, Clock::now(), std::chrono::milliseconds(a.timeout_ms)))
+        throw Usage("command did not encode");
+    while (true) {
+        const auto outcome = session.pump(Clock::now());
+        switch (outcome.state) {
+        case SubmitState::committed:
+            std::cout << "COMMITTED sequence=" << a.sequence << " index=" << outcome.index
+                      << " term=" << outcome.term << " code=" << static_cast<int>(outcome.result.code)
+                      << " code_name=" << apply_code_name(outcome.result.code)
+                      << " state_version=" << outcome.result.state_version
+                      << " kill_epoch=" << outcome.result.kill_epoch.value()
+                      << " executor_generation=" << outcome.result.executor_generation.value()
+                      << " strategy_mode=" << static_cast<int>(outcome.result.strategy_mode);
+            if (outcome.result.detail_kind == ApplyResultDetailKind::risk_configuration)
+                std::cout << " risk_version=" << outcome.result.detail.words[2];
+            std::cout << " from=" << outcome.from
+                      << " latency_ms=" << std::chrono::duration_cast<std::chrono::milliseconds>(
+                             *outcome.committed - *outcome.first_send).count() << std::endl;
+            return outcome.result.code == ApplyCode::applied ? 0 : 1;
+        case SubmitState::refused:
+            std::cout << "REFUSED reason=" << static_cast<int>(outcome.refusal_reason)
+                      << " leader=" << outcome.leader_hint << std::endl;
+            return 4;
+        case SubmitState::timed_out:
+            std::cout << "TIMEOUT sequence=" << a.sequence << std::endl;
+            return 3;
+        case SubmitState::pending:
+        case SubmitState::idle:
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+    try {
+        return run(parse(argc, argv));
+    } catch (const Usage& error) {
+        std::cerr << "velocita-v2-client: " << error.what() << std::endl;
+        return 64;
+    } catch (const std::exception& error) {
+        std::cerr << "velocita-v2-client FAILED: " << error.what() << std::endl;
+        return 2;
+    }
+}

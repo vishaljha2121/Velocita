@@ -65,9 +65,9 @@ set(VELOCITA_RAFT_PATCH ${CMAKE_CURRENT_SOURCE_DIR}/deploy/patches/0001-raft-dur
 set(VELOCITA_RAFT_PATCH_STAMP ${willemt_raft_SOURCE_DIR}/.velocita-durable-quorum-applied)
 file(SHA256 ${VELOCITA_RAFT_PATCH} VELOCITA_RAFT_PATCH_SHA256)
 set(VELOCITA_RAFT_EXPECTED_H_SHA256
-    "63b950cc7aa6dd10af41f0a291804d4b85cd3a25de43973aa1a8a9b446fc360b")
+    "e87bb5a2f8ebe1b8733668ff9263630e1395bd045afbbf889caa41601d0cb790")
 set(VELOCITA_RAFT_EXPECTED_SERVER_SHA256
-    "3604fff1269195814b5f58ff7d2d90bc6589a86f58e8b5553e70fb78781d3e8c")
+    "2d4c9c13f85573302c1c6b93460cd6437378f59328464b433d3b042909215642")
 if(EXISTS ${VELOCITA_RAFT_PATCH_STAMP})
     file(READ ${VELOCITA_RAFT_PATCH_STAMP} VELOCITA_RAFT_PATCH_STAMP_CONTENT)
     string(FIND "${VELOCITA_RAFT_PATCH_STAMP_CONTENT}" "RAFT_COMMIT=${RAFT_COMMIT}\n" VELOCITA_RAFT_STAMP_COMMIT)
@@ -139,9 +139,8 @@ elseif(NOT EXISTS ${VELOCITA_RAFT_PATCH_STAMP})
     # CHECK THE RESULT, do not merely record it.
     #
     # `patch` exiting zero says the hunks were placed, not that they were placed
-    # where the review put them. The patch carries ZERO CONTEXT, so every hunk
-    # applies by line number alone and a source that differs from the pinned
-    # commit by even one line can absorb it silently into working, wrong code.
+    # where the review put them. Zero-context hunks are position-sensitive;
+    # verify exact resulting content against the reviewed source hashes too.
     #
     # This is the branch that matters: a first configure on a clean machine -
     # every container gate, and both physical targets - takes it. Recording the
@@ -165,6 +164,14 @@ elseif(NOT EXISTS ${VELOCITA_RAFT_PATCH_STAMP})
         "RAFT_H_SHA256=${VELOCITA_RAFT_H_SHA256}\n"
         "RAFT_SERVER_SHA256=${VELOCITA_RAFT_SERVER_SHA256}\n")
     message(STATUS "Applied the pinned raft durability patch")
+endif()
+
+# The async suffix hook also changes raft_log.c. Check it against the reviewed
+# content independently of any stamp supplied with a prepatched dependency.
+file(SHA256 ${willemt_raft_SOURCE_DIR}/src/raft_log.c VELOCITA_RAFT_LOG_SHA256)
+if(NOT VELOCITA_RAFT_LOG_SHA256 STREQUAL
+   "8aa916dd1fbf41b800e85a7a732878bf24aa3c51506a3e7e20d530751cddb386")
+    message(FATAL_ERROR "unreviewed pinned raft_log.c: ${VELOCITA_RAFT_LOG_SHA256}")
 endif()
 
 add_library(willemt_raft STATIC
@@ -217,8 +224,12 @@ target_link_libraries(velocita_metrics PUBLIC velocita_core)
 target_compile_options(velocita_metrics PRIVATE -Wall -Wextra -Wpedantic)
 
 add_library(velocita_v2_contracts
+    src/v2_local_generation.cpp
+    src/v2_authority_barrier.cpp
+    src/v2_static_identity.cpp
     src/v2_artifact_digest.cpp
     src/v2_digest.cpp
+    src/v2_execution_catalog.cpp
     src/v2_wire.cpp
     src/v2_payload.cpp
 )
@@ -245,7 +256,14 @@ target_include_directories(velocita_v2_venue_simulator PUBLIC include)
 target_link_libraries(velocita_v2_venue_simulator PUBLIC velocita_v2_contracts)
 target_compile_options(velocita_v2_venue_simulator PRIVATE -Wall -Wextra -Wpedantic)
 
+add_library(velocita_v2_paper_venue src/v2_paper_venue.cpp)
+target_include_directories(velocita_v2_paper_venue PUBLIC include)
+target_link_libraries(velocita_v2_paper_venue PUBLIC velocita_v2_contracts PRIVATE velocita_v2_venue_simulator)
+target_compile_options(velocita_v2_paper_venue PRIVATE -Wall -Wextra -Wpedantic)
+
 add_library(velocita_v2_kernel
+    src/v2_gateway_authority.cpp
+    src/v2_gateway_dispatch.cpp
     src/v2_gateway.cpp
     src/v2_kernel.cpp
     src/v2_kernel_codec.cpp
@@ -262,7 +280,23 @@ target_compile_options(velocita_v2_kernel PRIVATE -Wall -Wextra -Wpedantic)
 # velocita_core's payload-generic storage/wire layers; V1's RaftNode is left
 # untouched so its accepted gates stay valid.
 add_library(velocita_v2_replication
+    src/v2_generation_base.cpp
+    src/v2_generation_base_files.cpp
+    src/v2_archive_file.cpp
+    src/v2_archive_segment.cpp
+    src/v2_archive_catalog.cpp
+    src/v2_archive_store.cpp
+    src/v2_archive_destination.cpp
+    src/v2_bound_frame.cpp
+    src/v2_bound_metadata.cpp
+    src/v2_bound_wal.cpp
+    src/v2_bound_peer.cpp
+    src/v2_identity_startup.cpp
     src/v2_replication.cpp
+    src/v2_result_ledger.cpp
+    src/v2_snapshot_install_preflight.cpp
+    src/v2_outbound_mailbox.cpp
+    src/v2_retained_log.cpp
     src/v2_snapshot_store.cpp
     src/v2_wal_arena.cpp
 )
@@ -270,6 +304,81 @@ target_include_directories(velocita_v2_replication PUBLIC include)
 target_link_libraries(velocita_v2_replication
     PUBLIC velocita_v2_kernel velocita_core)
 target_compile_options(velocita_v2_replication PRIVATE -Wall -Wextra -Wpedantic)
+
+# M2 node-process pieces: authenticated transport envelope, session fence,
+# configuration and the node owner loop. Never links a venue library.
+add_library(velocita_v2_node
+    src/v2_auth_envelope.cpp
+    src/v2_session_fence.cpp
+    src/v2_node_config.cpp
+    src/v2_node_protocol.cpp
+    src/v2_node.cpp
+    src/v2_node_client.cpp
+    src/v2_gateway_link.cpp
+    src/v2_shadow_program.cpp
+    src/v2_shadow_submitter.cpp
+    src/v2_election_jitter.cpp
+    src/v2_node_files.cpp
+    src/v2_node_health.cpp
+    src/v2_node_metrics_text.cpp
+)
+target_include_directories(velocita_v2_node PUBLIC include)
+target_link_libraries(velocita_v2_node PUBLIC velocita_v2_replication)
+target_compile_options(velocita_v2_node PRIVATE -Wall -Wextra -Wpedantic)
+
+# M2 node binaries. The node must never link a venue library: checked below.
+add_library(velocita_v2_node_aeron src/v2_aeron_node_transport.cpp)
+target_include_directories(velocita_v2_node_aeron PUBLIC include)
+target_link_libraries(velocita_v2_node_aeron PUBLIC velocita_v2_node velocita_aeron)
+target_compile_options(velocita_v2_node_aeron PRIVATE -Wall -Wextra -Wpedantic)
+
+# Phase 2 gateway: a separate process that links the venue seam. The node
+# interlock below keeps every venue library out of the voter binaries.
+add_library(velocita_v2_gateway_loop src/v2_gateway_loop.cpp)
+target_include_directories(velocita_v2_gateway_loop PUBLIC include)
+target_link_libraries(velocita_v2_gateway_loop PUBLIC velocita_v2_node velocita_v2_venue_simulator)
+target_compile_options(velocita_v2_gateway_loop PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(velocita-v2-gateway src/v2_gateway_main.cpp)
+target_link_libraries(velocita-v2-gateway PRIVATE velocita_v2_gateway_loop velocita_v2_paper_venue
+    velocita_v2_node_aeron Threads::Threads)
+target_compile_options(velocita-v2-gateway PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(velocita-v2-shadow-submitter src/v2_shadow_submitter_main.cpp)
+target_link_libraries(velocita-v2-shadow-submitter PRIVATE velocita_v2_node_aeron Threads::Threads)
+target_compile_options(velocita-v2-shadow-submitter PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(velocita-v2-node src/v2_node_main.cpp)
+target_link_libraries(velocita-v2-node PRIVATE velocita_v2_node_aeron Threads::Threads)
+target_compile_options(velocita-v2-node PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(velocita-v2-client src/v2_client_main.cpp)
+target_link_libraries(velocita-v2-client PRIVATE velocita_v2_node_aeron Threads::Threads)
+target_compile_options(velocita-v2-client PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(velocita-v2-status src/v2_status_main.cpp)
+target_link_libraries(velocita-v2-status PRIVATE velocita_v2_node)
+target_compile_options(velocita-v2-status PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(velocita-v2-exporter src/v2_exporter_main.cpp)
+target_link_libraries(velocita-v2-exporter PRIVATE velocita_v2_node)
+target_compile_options(velocita-v2-exporter PRIVATE -Wall -Wextra -Wpedantic)
+
+# Non-trading M3 shadow catalog writer (test fixture catalog; not a venue contract).
+add_executable(velocita-v2-shadow-catalog tests/v2_shadow_catalog_main.cpp)
+target_include_directories(velocita-v2-shadow-catalog PRIVATE tests)
+target_link_libraries(velocita-v2-shadow-catalog PRIVATE velocita_v2_node)
+target_compile_options(velocita-v2-shadow-catalog PRIVATE -Wall -Wextra -Wpedantic)
+
+# Structural interlock: no venue simulator/transport code may reach the node.
+foreach(velocita_node_target IN ITEMS velocita_v2_node velocita_v2_node_aeron velocita-v2-node velocita-v2-client)
+    get_target_property(velocita_node_links ${velocita_node_target} LINK_LIBRARIES)
+    foreach(velocita_node_link IN LISTS velocita_node_links)
+        if(velocita_node_link MATCHES "venue")
+            message(FATAL_ERROR "${velocita_node_target} links venue library ${velocita_node_link}")
+        endif()
+    endforeach()
+endforeach()
 
 add_executable(v2-storage-benchmark src/v2_storage_benchmark.cpp)
 target_link_libraries(v2-storage-benchmark PRIVATE velocita_v2_replication Threads::Threads)
@@ -497,6 +606,440 @@ if(BUILD_TESTING)
     target_compile_options(v2-artifact-digest-tests PRIVATE
         -Wall -Wextra -Wpedantic)
     add_test(NAME v2-artifact-digest-tests COMMAND v2-artifact-digest-tests)
+
+    add_executable(v2-execution-catalog-tests
+        tests/v2_execution_catalog_tests.cpp
+        tests/v2_execution_catalog_adversarial.cpp)
+    target_link_libraries(v2-execution-catalog-tests PRIVATE velocita_v2_contracts)
+    target_compile_options(v2-execution-catalog-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-execution-catalog-tests COMMAND v2-execution-catalog-tests)
+
+    add_executable(v2-catalog-binding-tests tests/v2_catalog_binding_tests.cpp
+        tests/v2_catalog_replication_tests.cpp)
+    target_link_libraries(v2-catalog-binding-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-catalog-binding-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-catalog-binding-tests COMMAND v2-catalog-binding-tests)
+
+    add_executable(v2-authority-barrier-tests tests/v2_authority_barrier_tests.cpp)
+    target_link_libraries(v2-authority-barrier-tests PRIVATE velocita_v2_contracts)
+    target_compile_options(v2-authority-barrier-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-authority-barrier-tests COMMAND v2-authority-barrier-tests)
+
+    add_executable(v2-authority-storage-failure-tests tests/v2_authority_storage_failure_tests.cpp)
+    target_link_libraries(v2-authority-storage-failure-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-authority-storage-failure-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-authority-storage-failure-tests COMMAND v2-authority-storage-failure-tests)
+
+    add_executable(v2-gateway-authority-tests tests/v2_gateway_authority_tests.cpp)
+    target_link_libraries(v2-gateway-authority-tests PRIVATE velocita_v2_kernel)
+    target_compile_options(v2-gateway-authority-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-gateway-authority-tests COMMAND v2-gateway-authority-tests)
+
+    add_executable(v2-authority-composition-tests tests/v2_authority_composition_tests.cpp)
+    target_link_libraries(v2-authority-composition-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-authority-composition-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-authority-composition-tests COMMAND v2-authority-composition-tests)
+
+    add_executable(v2-snapshot-store-bounds-tests tests/v2_snapshot_store_bounds_tests.cpp)
+    target_link_libraries(v2-snapshot-store-bounds-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-snapshot-store-bounds-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-snapshot-store-bounds-tests COMMAND v2-snapshot-store-bounds-tests)
+
+    add_executable(v2-metadata-persistence-model-tests tests/v2_metadata_persistence_model_tests.cpp)
+    target_include_directories(v2-metadata-persistence-model-tests PRIVATE include)
+    target_compile_options(v2-metadata-persistence-model-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-metadata-persistence-model-tests COMMAND v2-metadata-persistence-model-tests)
+
+    add_executable(v2-bound-metadata-persistence-model-tests tests/v2_bound_metadata_persistence_model_tests.cpp)
+    target_link_libraries(v2-bound-metadata-persistence-model-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-bound-metadata-persistence-model-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-bound-metadata-persistence-model-tests COMMAND v2-bound-metadata-persistence-model-tests)
+
+    add_executable(v2-static-identity-tests tests/v2_static_identity_tests.cpp)
+    target_link_libraries(v2-static-identity-tests PRIVATE velocita_v2_contracts)
+    target_compile_options(v2-static-identity-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-static-identity-tests COMMAND v2-static-identity-tests)
+
+    add_executable(v2-identity-startup-tests tests/v2_identity_startup_tests.cpp)
+    target_link_libraries(v2-identity-startup-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-identity-startup-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-identity-startup-tests COMMAND v2-identity-startup-tests)
+
+    add_executable(v2-kernel-startup-tests tests/v2_kernel_startup_tests.cpp)
+    target_link_libraries(v2-kernel-startup-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-kernel-startup-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-kernel-startup-tests COMMAND v2-kernel-startup-tests)
+
+    add_executable(v2-bound-frame-tests tests/v2_bound_frame_tests.cpp)
+    target_link_libraries(v2-bound-frame-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-bound-frame-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-bound-frame-tests COMMAND v2-bound-frame-tests)
+
+    add_executable(v2-bound-peer-tests tests/v2_bound_peer_tests.cpp)
+    target_link_libraries(v2-bound-peer-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-bound-peer-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-bound-peer-tests COMMAND v2-bound-peer-tests)
+
+    add_executable(v2-bound-metadata-tests tests/v2_bound_metadata_tests.cpp)
+    target_link_libraries(v2-bound-metadata-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-bound-metadata-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-bound-metadata-tests COMMAND v2-bound-metadata-tests)
+
+    add_executable(v2-history-binding-tests tests/v2_history_binding_tests.cpp)
+    target_link_libraries(v2-history-binding-tests PRIVATE velocita_v2_replication Threads::Threads)
+    target_compile_options(v2-history-binding-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-history-binding-tests COMMAND v2-history-binding-tests)
+
+    add_executable(v2-result-ledger-tests tests/v2_result_ledger_tests.cpp)
+    target_link_libraries(v2-result-ledger-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-result-ledger-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-result-ledger-tests COMMAND v2-result-ledger-tests)
+
+    add_executable(v2-result-admission-tests tests/v2_result_admission_red.cpp)
+    target_link_libraries(v2-result-admission-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-result-admission-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-result-admission-tests COMMAND v2-result-admission-tests)
+
+    add_executable(v2-result-admission-edge-tests tests/v2_result_admission_edges.cpp)
+    target_link_libraries(v2-result-admission-edge-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-result-admission-edge-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-result-admission-edge-tests COMMAND v2-result-admission-edge-tests)
+
+    add_executable(v2-outbound-mailbox-tests tests/v2_outbound_mailbox_tests.cpp)
+    target_link_libraries(v2-outbound-mailbox-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-outbound-mailbox-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-outbound-mailbox-tests COMMAND v2-outbound-mailbox-tests)
+
+    add_executable(v2-outbound-saturation-tests tests/v2_outbound_log_capacity_red.cpp)
+    target_link_libraries(v2-outbound-saturation-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-outbound-saturation-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-outbound-saturation-tests COMMAND v2-outbound-saturation-tests)
+    add_test(NAME v2-log-saturation-tests COMMAND ${CMAKE_COMMAND} -E env
+        CAPACITY_REVIEW_CASE=log $<TARGET_FILE:v2-outbound-saturation-tests>)
+
+    add_executable(v2-retained-log-tests tests/v2_retained_log_tests.cpp)
+    target_link_libraries(v2-retained-log-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-retained-log-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-retained-log-tests COMMAND v2-retained-log-tests)
+
+    add_executable(v2-wal-streaming-tests tests/v2_wal_streaming_tests.cpp)
+    target_link_libraries(v2-wal-streaming-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-wal-streaming-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-wal-streaming-tests COMMAND v2-wal-streaming-tests)
+
+    add_executable(v2-incremental-digest-tests tests/v2_incremental_digest_tests.cpp)
+    target_link_libraries(v2-incremental-digest-tests PRIVATE velocita_v2_contracts)
+    target_compile_options(v2-incremental-digest-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-incremental-digest-tests COMMAND v2-incremental-digest-tests)
+
+    add_executable(v2-archive-segment-tests tests/v2_archive_segment_tests.cpp)
+    foreach(archive_suite IN ITEMS archive-catalog archive-store wal-maintenance archive-compaction compaction-fence archive-startup archive-persistence-model archive-publication-fault compaction-io-fault)
+        string(REPLACE "-" "_" archive_suite_file "${archive_suite}")
+        add_executable(v2-${archive_suite}-tests tests/v2_${archive_suite_file}_tests.cpp)
+        target_link_libraries(v2-${archive_suite}-tests PRIVATE velocita_v2_replication)
+        target_compile_options(v2-${archive_suite}-tests PRIVATE -Wall -Wextra -Wpedantic)
+        add_test(NAME v2-${archive_suite}-tests COMMAND v2-${archive_suite}-tests)
+    endforeach()
+    target_link_libraries(v2-archive-segment-tests PRIVATE velocita_v2_replication)
+    add_library(v2-compaction-fault-io OBJECT src/v2_snapshot_store.cpp src/v2_wal_arena.cpp)
+    target_link_libraries(v2-compaction-fault-io PRIVATE velocita_v2_replication)
+    target_compile_options(v2-compaction-fault-io PRIVATE
+        -include "${CMAKE_CURRENT_SOURCE_DIR}/tests/v2_compaction_fault_hooks.hpp"
+        -Wall -Wextra -Wpedantic)
+    target_sources(v2-compaction-io-fault-tests PRIVATE $<TARGET_OBJECTS:v2-compaction-fault-io>)
+    add_library(v2-compaction-model-archive OBJECT src/v2_archive_store.cpp)
+    target_compile_definitions(v2-compaction-model-archive PRIVATE COMPACTION_MODEL_ARCHIVE=1)
+    add_library(v2-compaction-model-io OBJECT src/v2_snapshot_store.cpp src/v2_wal_arena.cpp)
+    foreach(model_io_target IN ITEMS v2-compaction-model-archive v2-compaction-model-io)
+        target_link_libraries(${model_io_target} PRIVATE velocita_v2_replication)
+        target_compile_options(${model_io_target} PRIVATE
+            -include "${CMAKE_CURRENT_SOURCE_DIR}/tests/v2_compaction_persistence_model_hooks.hpp"
+            -Wall -Wextra -Wpedantic)
+    endforeach()
+    add_executable(v2-compaction-persistence-model-tests
+        tests/v2_compaction_persistence_model_tests.cpp
+        $<TARGET_OBJECTS:v2-compaction-model-archive>
+        $<TARGET_OBJECTS:v2-compaction-model-io>)
+    target_link_libraries(v2-compaction-persistence-model-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-compaction-persistence-model-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-compaction-persistence-model-tests COMMAND v2-compaction-persistence-model-tests)
+    add_executable(v2-async-persistence-tests tests/v2_async_persistence_tests.cpp)
+    target_link_libraries(v2-async-persistence-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-async-persistence-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-async-persistence-tests COMMAND v2-async-persistence-tests)
+    set_tests_properties(v2-async-persistence-tests PROPERTIES TIMEOUT 60)
+    add_executable(v2-async-suffix-tests tests/v2_async_suffix_tests.cpp)
+    target_link_libraries(v2-async-suffix-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-async-suffix-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-async-suffix-tests COMMAND v2-async-suffix-tests)
+    set_tests_properties(v2-async-suffix-tests PROPERTIES TIMEOUT 60)
+    add_executable(v2-raft-persistence-tests tests/v2_raft_persistence_tests.cpp)
+    target_link_libraries(v2-raft-persistence-tests PRIVATE willemt_raft)
+    target_compile_options(v2-raft-persistence-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-raft-persistence-tests COMMAND v2-raft-persistence-tests)
+    add_executable(v2-persistence-completion-tests tests/v2_persistence_completion_tests.cpp)
+    target_link_libraries(v2-persistence-completion-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-persistence-completion-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-persistence-completion-tests COMMAND v2-persistence-completion-tests)
+    set_tests_properties(v2-persistence-completion-tests PROPERTIES TIMEOUT 60)
+    add_library(v2-async-model-io OBJECT src/v2_bound_metadata.cpp src/v2_wal_arena.cpp)
+    target_link_libraries(v2-async-model-io PRIVATE velocita_v2_replication)
+    target_compile_options(v2-async-model-io PRIVATE
+        -include "${CMAKE_CURRENT_SOURCE_DIR}/tests/v2_compaction_persistence_model_hooks.hpp"
+        -Wall -Wextra -Wpedantic)
+    add_executable(v2-async-persistence-model-tests
+        tests/v2_async_persistence_model_tests.cpp
+        $<TARGET_OBJECTS:v2-async-model-io>)
+    target_link_libraries(v2-async-persistence-model-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-async-persistence-model-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-async-persistence-model-tests COMMAND v2-async-persistence-model-tests)
+    set_tests_properties(v2-async-persistence-model-tests PROPERTIES TIMEOUT 180)
+    target_compile_options(v2-archive-segment-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-archive-segment-tests COMMAND v2-archive-segment-tests)
+
+    add_executable(v2-archive-segment-adversarial-tests tests/v2_archive_segment_adversarial_tests.cpp)
+    target_link_libraries(v2-archive-segment-adversarial-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-archive-segment-adversarial-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-archive-segment-adversarial-tests COMMAND v2-archive-segment-adversarial-tests)
+
+    add_executable(v2-archive-file-tests tests/v2_archive_file_tests.cpp)
+    target_link_libraries(v2-archive-file-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-archive-file-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-archive-file-tests COMMAND v2-archive-file-tests)
+
+    add_executable(v2-archive-file-io-tests tests/v2_archive_file_io_tests.cpp)
+    target_link_libraries(v2-archive-file-io-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-archive-file-io-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-archive-file-io-tests COMMAND v2-archive-file-io-tests)
+
+    add_executable(v2-local-generation-tests tests/v2_local_generation_tests.cpp)
+    target_link_libraries(v2-local-generation-tests PRIVATE velocita_v2_contracts)
+    target_compile_options(v2-local-generation-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-local-generation-tests COMMAND v2-local-generation-tests)
+
+    add_executable(v2-local-generation-adversarial-tests tests/v2_local_generation_adversarial_tests.cpp)
+    target_link_libraries(v2-local-generation-adversarial-tests PRIVATE velocita_v2_contracts)
+    target_compile_options(v2-local-generation-adversarial-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-local-generation-adversarial-tests COMMAND v2-local-generation-adversarial-tests)
+
+    add_executable(v2-generation-startup-guard-tests tests/v2_generation_startup_guard_tests.cpp)
+    target_link_libraries(v2-generation-startup-guard-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-generation-startup-guard-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-generation-startup-guard-tests COMMAND v2-generation-startup-guard-tests)
+
+    add_executable(v2-generation-base-tests tests/v2_generation_base_tests.cpp)
+    target_link_libraries(v2-generation-base-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-generation-base-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-generation-base-tests COMMAND v2-generation-base-tests)
+
+    add_executable(v2-generation-base-files-tests tests/v2_generation_base_files_tests.cpp)
+    target_link_libraries(v2-generation-base-files-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-generation-base-files-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-generation-base-files-tests COMMAND v2-generation-base-files-tests)
+
+    add_executable(v2-generation-startup-tests tests/v2_generation_startup_tests.cpp)
+    target_link_libraries(v2-generation-startup-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-generation-startup-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-generation-startup-tests COMMAND v2-generation-startup-tests)
+
+    add_executable(v2-generation-publication-model-tests tests/v2_generation_publication_model_tests.cpp)
+    target_link_libraries(v2-generation-publication-model-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-generation-publication-model-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-generation-publication-model-tests COMMAND v2-generation-publication-model-tests)
+
+    add_executable(v2-result-obligation-tests tests/v2_result_obligation_tests.cpp)
+    target_link_libraries(v2-result-obligation-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-result-obligation-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-result-obligation-tests COMMAND v2-result-obligation-tests)
+
+    add_executable(v2-snapshot-install-preflight-tests tests/v2_snapshot_install_preflight_tests.cpp)
+    target_link_libraries(v2-snapshot-install-preflight-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-snapshot-install-preflight-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-snapshot-install-preflight-tests COMMAND v2-snapshot-install-preflight-tests)
+
+    add_executable(v2-install-history-bridge-contract-tests tests/v2_install_history_bridge_contract_tests.cpp)
+    target_link_libraries(v2-install-history-bridge-contract-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-install-history-bridge-contract-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-install-history-bridge-contract-tests COMMAND v2-install-history-bridge-contract-tests)
+
+    foreach(switch_suite IN ITEMS wal-target-switch wal-target-switch-adversarial)
+        string(REPLACE "-" "_" switch_source ${switch_suite})
+        add_executable(v2-${switch_suite}-tests tests/v2_${switch_source}_tests.cpp)
+        target_link_libraries(v2-${switch_suite}-tests PRIVATE velocita_v2_replication)
+        target_compile_options(v2-${switch_suite}-tests PRIVATE -Wall -Wextra -Wpedantic)
+        add_test(NAME v2-${switch_suite}-tests COMMAND v2-${switch_suite}-tests)
+        set_tests_properties(v2-${switch_suite}-tests PROPERTIES TIMEOUT 30)
+    endforeach()
+
+    add_executable(v2-history-recovery-tests tests/v2_history_recovery_tests.cpp)
+    target_link_libraries(v2-history-recovery-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-history-recovery-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-history-recovery-tests COMMAND v2-history-recovery-tests)
+    set_tests_properties(v2-history-recovery-tests PROPERTIES TIMEOUT 120)
+
+    add_executable(v2-auth-envelope-tests tests/v2_auth_envelope_tests.cpp)
+    target_link_libraries(v2-auth-envelope-tests PRIVATE velocita_v2_node)
+    target_compile_options(v2-auth-envelope-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-auth-envelope-tests COMMAND v2-auth-envelope-tests)
+
+    add_executable(v2-session-fence-tests tests/v2_session_fence_tests.cpp)
+    target_link_libraries(v2-session-fence-tests PRIVATE velocita_v2_node)
+    target_compile_options(v2-session-fence-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-session-fence-tests COMMAND v2-session-fence-tests)
+
+    # Compiles the production source itself with persistence syscalls redirected.
+    add_executable(v2-session-epoch-persistence-model-tests
+        tests/v2_session_epoch_persistence_model_tests.cpp)
+    target_link_libraries(v2-session-epoch-persistence-model-tests PRIVATE velocita_v2_contracts)
+    target_compile_options(v2-session-epoch-persistence-model-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-session-epoch-persistence-model-tests COMMAND v2-session-epoch-persistence-model-tests)
+
+    add_executable(v2-node-config-tests tests/v2_node_config_tests.cpp)
+    target_link_libraries(v2-node-config-tests PRIVATE velocita_v2_node)
+    target_compile_options(v2-node-config-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-node-config-tests COMMAND v2-node-config-tests)
+
+    add_executable(v2-deploy-template-tests tests/v2_deploy_template_tests.cpp)
+    target_link_libraries(v2-deploy-template-tests PRIVATE velocita_v2_node)
+    target_compile_options(v2-deploy-template-tests PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_definitions(v2-deploy-template-tests PRIVATE VELOCITA_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    add_test(NAME v2-deploy-template-tests COMMAND v2-deploy-template-tests)
+
+    add_executable(v2-node-protocol-tests tests/v2_node_protocol_tests.cpp)
+    target_link_libraries(v2-node-protocol-tests PRIVATE velocita_v2_node)
+    target_compile_options(v2-node-protocol-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-node-protocol-tests COMMAND v2-node-protocol-tests)
+
+    add_executable(v2-election-jitter-tests tests/v2_election_jitter_tests.cpp)
+    target_link_libraries(v2-election-jitter-tests PRIVATE velocita_v2_node)
+    target_compile_options(v2-election-jitter-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-election-jitter-tests COMMAND v2-election-jitter-tests)
+
+    add_executable(v2-shadow-submitter-tests tests/v2_shadow_submitter_tests.cpp)
+    target_link_libraries(v2-shadow-submitter-tests PRIVATE velocita_v2_node)
+    target_compile_options(v2-shadow-submitter-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-shadow-submitter-tests COMMAND v2-shadow-submitter-tests)
+
+    add_executable(v2-shadow-program-tests tests/v2_shadow_program_tests.cpp)
+    target_link_libraries(v2-shadow-program-tests PRIVATE velocita_v2_node)
+    target_compile_options(v2-shadow-program-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-shadow-program-tests COMMAND v2-shadow-program-tests)
+
+    add_executable(v2-follower-ack-tests tests/v2_follower_ack_tests.cpp)
+    target_link_libraries(v2-follower-ack-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-follower-ack-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-follower-ack-tests COMMAND v2-follower-ack-tests)
+
+    add_executable(v2-shadow-catalog-tests tests/v2_shadow_catalog_tests.cpp)
+    target_include_directories(v2-shadow-catalog-tests PRIVATE tests)
+    target_link_libraries(v2-shadow-catalog-tests PRIVATE velocita_v2_node)
+    target_compile_options(v2-shadow-catalog-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-shadow-catalog-tests COMMAND v2-shadow-catalog-tests)
+
+    add_executable(v2-node-client-tests tests/v2_node_client_tests.cpp)
+    target_link_libraries(v2-node-client-tests PRIVATE velocita_v2_node Threads::Threads)
+    target_compile_options(v2-node-client-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-node-client-tests COMMAND v2-node-client-tests)
+    set_tests_properties(v2-node-client-tests PROPERTIES TIMEOUT 180)
+
+    add_executable(v2-paper-venue-tests tests/v2_paper_venue_tests.cpp)
+    target_link_libraries(v2-paper-venue-tests PRIVATE velocita_v2_kernel velocita_v2_paper_venue)
+    target_compile_options(v2-paper-venue-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-paper-venue-tests COMMAND v2-paper-venue-tests)
+
+    add_executable(v2-gateway-protocol-tests tests/v2_gateway_protocol_tests.cpp)
+    target_link_libraries(v2-gateway-protocol-tests PRIVATE velocita_v2_gateway_loop)
+    target_compile_options(v2-gateway-protocol-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-gateway-protocol-tests COMMAND v2-gateway-protocol-tests)
+
+    add_executable(v2-gateway-node-tests tests/v2_gateway_node_tests.cpp)
+    target_link_libraries(v2-gateway-node-tests PRIVATE velocita_v2_gateway_loop velocita_v2_paper_venue Threads::Threads)
+    target_compile_options(v2-gateway-node-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-gateway-node-tests COMMAND v2-gateway-node-tests)
+    set_tests_properties(v2-gateway-node-tests PROPERTIES TIMEOUT 300)
+
+    add_executable(v2-node-tests tests/v2_node_tests.cpp)
+    target_link_libraries(v2-node-tests PRIVATE velocita_v2_node Threads::Threads)
+    target_compile_options(v2-node-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-node-tests COMMAND v2-node-tests)
+    set_tests_properties(v2-node-tests PROPERTIES TIMEOUT 180)
+
+    add_executable(v2-node-files-tests tests/v2_node_files_tests.cpp)
+    target_link_libraries(v2-node-files-tests PRIVATE velocita_v2_node)
+    target_compile_options(v2-node-files-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-node-files-tests COMMAND v2-node-files-tests)
+
+    add_executable(v2-node-health-tests tests/v2_node_health_tests.cpp)
+    target_link_libraries(v2-node-health-tests PRIVATE velocita_v2_node Threads::Threads)
+    target_compile_options(v2-node-health-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-node-health-tests COMMAND v2-node-health-tests)
+
+    # M2 exit: real node/client/status processes over loopback UDP.
+    add_executable(v2-node-process-tests tests/v2_node_process_tests.cpp)
+    target_link_libraries(v2-node-process-tests PRIVATE velocita_v2_node Threads::Threads)
+    target_compile_options(v2-node-process-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_dependencies(v2-node-process-tests velocita-v2-node velocita-v2-client velocita-v2-status)
+    add_test(NAME v2-node-process-tests COMMAND v2-node-process-tests
+        $<TARGET_FILE:velocita-v2-node> $<TARGET_FILE:velocita-v2-client> $<TARGET_FILE:velocita-v2-status>
+        $<TARGET_FILE:velocita-v2-shadow-submitter>)
+    set_tests_properties(v2-node-process-tests PROPERTIES TIMEOUT 300)
+
+    # The Mac-side secrets tool (Keychain + SSH are faked; no real secret is used).
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME v2-secrets-presence-tests
+        COMMAND ${Python3_EXECUTABLE} -m unittest tests/test_secrets_presence.py
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    add_test(NAME v2-observability-layout-tests
+        COMMAND ${Python3_EXECUTABLE} -m unittest tests/test_observability_layout.py
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Alert rule unit tests, only where promtool is installed (not on the Mac by default).
+    find_program(VELOCITA_PROMTOOL promtool)
+    if(VELOCITA_PROMTOOL)
+        add_test(NAME v2-observability-rule-tests
+            COMMAND ${VELOCITA_PROMTOOL} test rules velocita-v2-alerts.test.yml
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/deploy/v2/observability/rule-tests)
+    endif()
+
+    add_test(NAME v2-secrets-tool-tests
+        COMMAND ${Python3_EXECUTABLE} -m unittest tests/test_secrets_tool.py
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+    # Keeps the storage benchmark runnable: it silently rotted once (M3 finding 11).
+    add_test(NAME v2-storage-benchmark-smoke-tests COMMAND v2-storage-benchmark)
+    set_tests_properties(v2-storage-benchmark-smoke-tests PROPERTIES TIMEOUT 120)
+
+    add_executable(v2-node-metrics-text-tests tests/v2_node_metrics_text_tests.cpp)
+    target_link_libraries(v2-node-metrics-text-tests PRIVATE velocita_v2_node)
+    target_compile_options(v2-node-metrics-text-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-node-metrics-text-tests COMMAND v2-node-metrics-text-tests)
+
+    add_executable(v2-two-voter-catchup-tests tests/v2_two_voter_catchup_tests.cpp)
+    target_link_libraries(v2-two-voter-catchup-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-two-voter-catchup-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-two-voter-catchup-tests COMMAND v2-two-voter-catchup-tests)
+    set_tests_properties(v2-two-voter-catchup-tests PROPERTIES TIMEOUT 120)
+
+    add_executable(v2-archive-destination-tests tests/v2_archive_destination_tests.cpp)
+    target_link_libraries(v2-archive-destination-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-archive-destination-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-archive-destination-tests COMMAND v2-archive-destination-tests)
+
+    add_executable(v2-archive-live-verification-tests tests/v2_archive_live_verification_tests.cpp)
+    target_link_libraries(v2-archive-live-verification-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-archive-live-verification-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-archive-live-verification-tests COMMAND v2-archive-live-verification-tests)
+
+    add_executable(v2-snapshot-install-ack-contract-tests tests/v2_snapshot_install_ack_contract_tests.cpp)
+    target_link_libraries(v2-snapshot-install-ack-contract-tests PRIVATE willemt_raft)
+    target_compile_options(v2-snapshot-install-ack-contract-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-snapshot-install-ack-contract-tests COMMAND v2-snapshot-install-ack-contract-tests)
+
+    add_executable(v2-snapshot-install-results-contract-tests tests/v2_snapshot_install_results_contract_tests.cpp)
+    target_link_libraries(v2-snapshot-install-results-contract-tests PRIVATE velocita_v2_replication)
+    target_compile_options(v2-snapshot-install-results-contract-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-snapshot-install-results-contract-tests COMMAND v2-snapshot-install-results-contract-tests)
 
     add_executable(v2-executable-policy-kernel-tests
         tests/v2_executable_policy_kernel_tests.cpp)

@@ -9,7 +9,7 @@
 
 namespace velocita::v2 {
 
-inline constexpr std::uint16_t kKernelCodecSchemaVersion = 7;
+inline constexpr std::uint16_t kKernelCodecSchemaVersion = 9;
 inline constexpr std::size_t kKernelCommandMagicBytes = 4;
 inline constexpr std::size_t kKernelCommandLengthBytes = 4;
 inline constexpr std::size_t kKernelCommandSchemaBytes = 2;
@@ -20,6 +20,7 @@ inline constexpr std::size_t kKernelCommandPayloadOffset = 12;
 inline constexpr std::size_t kKernelCommandDigestInputOffset =
     kKernelCommandSchemaOffset;
 inline constexpr std::size_t kKernelCommandIdentityBytes = 48;
+inline constexpr std::size_t kInstallExecutionCatalogBodyBytes = 48;
 inline constexpr std::size_t kInstrumentExecutionProfileEncodedBytes = 66;
 inline constexpr std::size_t kVenueCapabilitiesEncodedBytes = 21;
 inline constexpr std::size_t kMaxKernelCommandBodyBytes =
@@ -60,6 +61,7 @@ enum class KernelCommandKind : std::uint16_t {
     // Appended. Kinds are tagged by explicit value, not by variant index, so
     // every existing command keeps its number and no encoded bytes change.
     request_mass_cancel = 19,
+    install_execution_catalog = 20,
 };
 
 enum class KernelCodecError : std::uint8_t {

@@ -1,0 +1,16 @@
+Direct current-production RED, compiled from the unchanged CP-033 startup source:
+
+RED: bootstrap still routes mutable stores to the deployment root
+
+Command:
+c++ -std=c++20 -O2 -Wall -Wextra -Wpedantic -Werror \
+  -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Itests \
+  tests/v2_generation_startup_tests.cpp src/v2_identity_startup.cpp \
+  src/v2_bound_metadata.cpp src/v2_bound_frame.cpp src/v2_static_identity.cpp \
+  src/v2_digest.cpp -Lbuild-v2-release -lvelocita_v2_contracts \
+  -lvelocita_core -pthread -o /private/tmp/generation_startup_worker/red
+/private/tmp/generation_startup_worker/red
+
+This is a behavioral production RED: the existing bootstrap succeeded, retained
+its ownership token, and then failed the assertion that mutable storage must be
+routed to v2-generations/g-0000000000000001. It is not a power-loss claim.

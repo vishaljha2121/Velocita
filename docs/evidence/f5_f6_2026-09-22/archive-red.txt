@@ -1,0 +1,2 @@
+audit_archive included=4 audited_index=3 retained_segment=0 retained_legacy=0 archive_interface=absent
+RED F5/A14: compaction reclaimed the exact command without a verified archive handoff

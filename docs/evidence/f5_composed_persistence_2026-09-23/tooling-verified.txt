@@ -1,0 +1,20 @@
+python3 -m unittest discover -s tests -p 'test_*.py'
+Exit: 0
+
+.........................refusing non-canonical HTTPS auth origin
+refusing non-canonical HTTPS auth origin
+refusing non-canonical HTTPS auth origin
+refusing non-canonical HTTPS auth origin
+refusing non-canonical HTTPS auth origin
+.....mint failed: unsafe access_token
+.mint failed: no access_token in response
+..mint failed: unsafe access_token
+.......
+----------------------------------------------------------------------
+Ran 40 tests in 1.227s
+
+OK
+token written to /var/folders/lj/9xsh1_h90_lc_cmvn_3gk2b80000gn/T/tmppl9mog2g/token
+expires in 136829691 minutes (12:46:39)
+token written to /var/folders/lj/9xsh1_h90_lc_cmvn_3gk2b80000gn/T/tmp9ng3irlk/token
+expires in 136829691 minutes (12:46:39)

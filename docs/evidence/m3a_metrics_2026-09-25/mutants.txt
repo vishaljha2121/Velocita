@@ -1,0 +1,3 @@
+unknown_as_zeros   node metrics text tests failed: an unknown voter rendered samples other than up=0
+age_unclamped      node metrics text tests failed: future stamp not clamped to zero age
+role_off_by_one    node metrics text tests failed: missing or wrong line: velocita_v2_role{host="pi",node="2",role="none"} 0

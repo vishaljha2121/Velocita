@@ -33,35 +33,24 @@ namespace {
 }
 
 [[nodiscard]] PreSendDecision refuse(const PreSendRefusal reason) noexcept {
-    return {reason, std::nullopt};
+    return {reason, std::nullopt, {}, {}, {}};
 }
 
 }  // namespace
 
-bool renew_authority(GatewayControlView& control, const AuthorityReading& reading,
-                     const Tick now) noexcept {
-    // A non-authoritative read is not a weaker renewal, it is none: the cached
-    // confirmation time must stay exactly where it was, or a partitioned
-    // gateway polling a follower would hold its lease open forever.
-    if (!reading.authoritative) return false;
-    // Time running backwards is not evidence of freshness. Refusing rather than
-    // clamping, because a tick that moved backwards means the caller's clock is
-    // wrong and extending authority on it is the one thing not to do.
-    if (now < control.confirmed_at) return false;
-
-    control.executor_generation = reading.executor_generation;
-    control.kill_epoch = reading.kill_epoch;
-    control.strategy_mode = reading.strategy_mode;
-    control.confirmed_at = now;
-    control.now = now;
-    return true;
+bool renew_authority(GatewayControlView&, const AuthorityReading&, Tick) noexcept {
+    // Compatibility refusal only: a local role bit cannot mint quorum evidence.
+    return false;
 }
 
-PreSendDecision evaluate_pre_send(const TradingState& state,
+PreSendDecision evaluate_delivery_candidate(const TradingState& state,
                                   const EffectId effect_id,
                                   const GatewayControlView& control,
                                   const VenueCapabilityView& venue,
-                                  const SendQuotaView& quota) noexcept {
+                                  const SendQuotaView& quota,
+                                  const VerifiedExecutionCatalog* catalog) noexcept {
+    if (state.outbox_effect_count > state.outbox_effects.size())
+        return refuse(PreSendRefusal::payload_unreconstructable);
     const OutboxEffectRecord* record = nullptr;
     for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
         if (state.outbox_effects[index].effect_id == effect_id) {
@@ -78,11 +67,22 @@ PreSendDecision evaluate_pre_send(const TradingState& state,
         return refuse(PreSendRefusal::effect_not_deliverable);
     }
 
-    // Canonical payload carries the authority needed by the remaining checks.
-    auto effect = materialize_order_effect(state, effect_id);
-    if (!effect.has_value()) {
+    // The payload and its historical metadata come from one immutable catalog
+    // binding. A bare effect is reconstruction evidence, not send authority.
+    if (catalog == nullptr) {
         return refuse(PreSendRefusal::payload_unreconstructable);
     }
+    auto binding = materialize_bound_order_effect(state, effect_id, *catalog);
+    if (!binding.has_value()) return refuse(PreSendRefusal::payload_unreconstructable);
+    auto effect = binding->effect;
+    const auto* row = catalog->lookup(effect.account_id, effect.venue_id,
+        effect.instrument_id, binding->instrument_spec_version,
+        binding->venue_capabilities_version);
+    if (row == nullptr) return refuse(PreSendRefusal::payload_unreconstructable);
+    const auto required_operation = effect.operation == EffectOperation::submit
+        ? kVenueDirectivePlaceLimit : kVenueDirectiveCancel;
+    if ((row->capabilities.directive_mask & required_operation) == 0)
+        return refuse(PreSendRefusal::unsupported_operation);
 
     // Matching stale cache/effect values are insufficient: verify current replicated
     // authority first. Generation precedes epoch for deterministic refusal priority.
@@ -96,13 +96,13 @@ PreSendDecision evaluate_pre_send(const TradingState& state,
         return refuse(PreSendRefusal::control_forbids_new_risk);
     }
 
-    if (effect->executor_generation != control.executor_generation) {
+    if (effect.executor_generation != control.executor_generation) {
         return refuse(PreSendRefusal::stale_executor_generation);
     }
-    if (effect->kill_epoch != control.kill_epoch) {
+    if (effect.kill_epoch != control.kill_epoch) {
         return refuse(PreSendRefusal::stale_kill_epoch);
     }
-    if (!control_permits(*effect, control.strategy_mode)) {
+    if (!control_permits(effect, control.strategy_mode)) {
         return refuse(PreSendRefusal::control_forbids_new_risk);
     }
 
@@ -118,12 +118,13 @@ PreSendDecision evaluate_pre_send(const TradingState& state,
     // exposure - not to stop closing it. Refusing cancels here would trap risk
     // at precisely the moment the operator most needs it gone, which inverts
     // what the lease is for.
-    const bool reducing = reduces_risk(effect->operation);
+    const bool reducing = reduces_risk(effect.operation);
     if (!reducing && !control.lease_is_live()) {
         return refuse(PreSendRefusal::authority_lease_expired);
     }
 
-    if (!venue_can_represent(*effect, venue)) {
+    if (venue.capabilities_version != binding->venue_capabilities_version ||
+        !venue_can_represent(effect, venue)) {
         return refuse(PreSendRefusal::venue_cannot_represent_intent);
     }
 
@@ -135,7 +136,9 @@ PreSendDecision evaluate_pre_send(const TradingState& state,
         return refuse(PreSendRefusal::quota_exhausted);
     }
 
-    return {PreSendRefusal::none, std::move(effect)};
+    return {PreSendRefusal::none, effect, binding->catalog_root,
+            binding->instrument_spec_version,
+            binding->venue_capabilities_version};
 }
 
 }  // namespace velocita::v2
@@ -144,6 +147,7 @@ namespace velocita::v2 {
 
 const DeliveryAttempt* find_attempt(const GatewayDeliveryState& delivery,
                                     const EffectId effect_id) noexcept {
+    if (delivery.attempt_count > delivery.attempts.size()) return nullptr;
     for (std::size_t index = 0; index < delivery.attempt_count; ++index) {
         if (delivery.attempts[index].effect_id == effect_id) {
             return &delivery.attempts[index];
@@ -377,8 +381,13 @@ DeliveryPlan plan_delivery(const TradingState& state,
                            const VenueCapabilityView& venue,
                            const SendQuotaView& quota,
                            const GatewayTimeouts& timeouts,
-                           const Tick now) noexcept {
+                           const Tick now,
+                           const VerifiedExecutionCatalog* catalog) noexcept {
     DeliveryPlan plan;
+
+    if (state.outbox_effect_count > state.outbox_effects.size() ||
+        delivery.attempt_count > delivery.attempts.size() ||
+        evidence.obligation_count > evidence.obligations.size()) return plan;
 
     // Sends and ambiguity declarations both generate evidence that must be retained.
     if (evidence_queue_saturated(evidence)) return plan;
@@ -396,8 +405,9 @@ DeliveryPlan plan_delivery(const TradingState& state,
     }
 
     // Arena order is authorization order.
-    std::uint32_t budget = quota.normal_lane_remaining;
-    for (std::size_t index = 0; index < state.outbox_effect_count && budget != 0;
+    auto remaining = quota;
+    for (std::size_t index = 0; index < state.outbox_effect_count &&
+         (remaining.normal_lane_remaining != 0 || remaining.emergency_lane_remaining != 0);
          ++index) {
         const auto effect_id = state.outbox_effects[index].effect_id;
 
@@ -421,12 +431,16 @@ DeliveryPlan plan_delivery(const TradingState& state,
             continue;
         }
 
-        const auto decision = evaluate_pre_send(state, effect_id, control, venue,
-                                                SendQuotaView{budget});
+        const auto decision = evaluate_delivery_candidate(state, effect_id, control, venue,
+                                                remaining, catalog);
         if (!decision.permitted()) continue;
 
         plan.to_send[plan.send_count++] = effect_id;
-        --budget;
+        if (remaining.normal_lane_remaining != 0) {
+            --remaining.normal_lane_remaining;
+        } else {
+            --remaining.emergency_lane_remaining;
+        }
     }
     return plan;
 }

@@ -1,0 +1,4 @@
+metadata-model path=absent-temp events=14
+metadata-model path=existing-temp events=21
+metadata-model path=short-write events=15
+bound metadata persistence ordering model passed

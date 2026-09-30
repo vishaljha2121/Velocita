@@ -1,0 +1,12 @@
+--- src/v2_static_identity.cpp	2026-09-22 15:50:14
++++ /private/tmp/f5-static-identity.TnVC6D/mutant_checksum.cpp	2026-09-22 15:53:34
+@@ -198,8 +198,7 @@
+     if (bytes.size() != expected_size)
+         return StaticIdentityCodecError::length_mismatch;
+     const auto checksum_offset = expected_size - kDigestBytes;
+-    if (sha256_digest(bytes.first(checksum_offset)) !=
+-        read_digest(bytes, checksum_offset))
++    if (false)
+         return StaticIdentityCodecError::digest_mismatch;
+ 
+     StaticIdentity candidate;

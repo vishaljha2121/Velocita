@@ -1,0 +1,11 @@
+baseline                   node config tests passed
+duplicates_allowed         node config tests failed: duplicate key: refused config still produced a value
+inline_hash_allowed        node config tests failed: inline comment inside a path value: refused config still produced a value
+dotdot_allowed             node config tests failed: dot-dot path component: refused config still produced a value
+self_key_allowed           node config tests failed: self voter has a key file: refused config still produced a value
+duplicate_caller_id        node config tests failed: two keys map to one CallerId: refused config still produced a value
+voter_count_unbounded      node config tests failed: more voters than the static identity allows: refused config still produced a value
+control_bytes_allowed      node config tests failed: carriage return: wrong error code 7
+leading_zero_allowed       node config tests failed: leading zero: refused config still produced a value
+ingress_collision_allowed  node config tests failed: ingress shares the peer endpoint: refused config still produced a value
+follows_symlinks           node config tests failed: symlinked config followed

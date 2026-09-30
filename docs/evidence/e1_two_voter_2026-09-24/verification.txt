@@ -1,0 +1,16 @@
+CP-051, 2026-09-24; branch v2/phase-5-corrections / HEAD d44a4a9. Uncommitted remediation.
+
+Release: cmake --build /private/tmp/velocita-full-audit.lYB4P5/release --target velocita-all-tests -j4
+         ctest --test-dir /private/tmp/velocita-full-audit.lYB4P5/release   -> 98/98 PASS (release-tests.txt)
+Sanitized: ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1
+         ctest --test-dir /private/tmp/aeron-phase67-audit-build            -> 98/98 PASS, 270.35s, run ALONE (sanitized-tests.txt)
+An earlier sanitizer run (98/98, 306.37s) overlapped a Release CTest by mistake; it is not counted.
+Raft C uninstrumented, leaks off, nonrecovering UB/halt, as in CP-049.
+
+Mutation: follower durable-ack clamp removed in a scratch copy of src/v2_replication.cpp,
+compiled directly ahead of support libraries. Baseline PASS; mutant fails
+"leader counted a staged, unsynced peer acknowledgement toward quorum" (clamp-mutant.txt/.diff).
+
+Three-voter lagger RED freshly reproduced: compacted12/applied0/commit0/seven failed replies, exit1.
+python3 tests/test_gate_manifest.py OK. git diff --check clean on touched paths.
+No production source change, no target gates, NUC/Pi, network, venue, staging, commit or tag.

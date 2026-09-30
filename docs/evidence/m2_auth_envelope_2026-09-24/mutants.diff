@@ -1,0 +1,28 @@
+=== route_check
+182d181
+<     if (parsed.header.route != key.route_) return AuthEnvelopeError::route_mismatch;
+=== tag_prefix_only
+189c189
+<     for (std::size_t i = 0; i < kAuthTagBytes; ++i)
+---
+>     for (std::size_t i = 0; i < 1; ++i)
+=== tag_excludes_body
+185c185
+<     mac.update(input.first(signed_bytes));
+---
+>     mac.update(input.first(kAuthHeaderBytes));
+=== derive_drops_incarnation
+125c125
+<     mac.update(info);
+---
+>     mac.update(std::span(info).first(kDeriveDomain.size() + 10));
+=== zero_epoch_allowed
+86c86
+<     if (epoch == 0 || sequence == 0) return AuthEnvelopeError::invalid_counter;
+---
+>     if (sequence == 0) return AuthEnvelopeError::invalid_counter;
+=== peer_self_route
+65c65
+<            route.recipient > 0 && !(route.role == AuthRole::peer && route.sender == route.recipient);
+---
+>            route.recipient > 0;

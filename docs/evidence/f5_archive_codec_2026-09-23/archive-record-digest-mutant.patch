@@ -1,0 +1,11 @@
+--- src/v2_archive_segment.cpp	2026-09-23 13:06:50
++++ /private/tmp/v2-archive-final-mutants.btbp7c/record-digest.cpp	2026-09-23 13:09:01
+@@ -183,7 +183,7 @@
+         const auto calculated = record_digest(header, payload, identity.manifest_digest());
+         const auto encoded_digest = input.subspan(
+             offset + kArchiveRecordHeaderBytes + payload_size, kArchiveDigestBytes);
+-        if (!digest_matches(encoded_digest, calculated))
++        if (false && !digest_matches(encoded_digest, calculated))
+             return ArchiveSegmentError::digest_mismatch;
+         if (visitor != nullptr && !visitor(record, visitor_context))
+             return ArchiveSegmentError::visitor_refused;

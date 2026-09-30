@@ -1,0 +1,2 @@
+heartbeat_requests=512 queued_responses=512
+outbound heartbeat replies exceed the proposed per-peer descriptor bound

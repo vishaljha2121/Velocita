@@ -1,0 +1,1 @@
+PASS: independent required inventory matches 51 host suites (48 V2)

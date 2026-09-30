@@ -1,0 +1,2 @@
+foreign_metadata accepted=1 recovered_kill=1 unchanged_tree=1
+RED F5: foreign metadata accepted under matching local sidecar

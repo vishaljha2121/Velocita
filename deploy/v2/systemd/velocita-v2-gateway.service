@@ -1,0 +1,54 @@
+# Velocita V2 paper gateway (Phase 2): claims the cluster's authorized order
+# effects and fills them against the True Markets SIMULATOR (--venue paper: FOK
+# at the reference price with the measured costs). No venue key exists on this
+# host and this unit mounts none. nuc1 only, as the `velocitas` user.
+#
+# Caller key 13 = CallerId 22, outside the operator band; the node configs name
+# it with `gateway.caller = 22`. Nodes and incarnation come from the edge's
+# ~/velocita-v2/shadow/shadow.env (VELOCITA_INCARNATION, VELOCITA_NODES).
+# Secret: %t/velocita-secrets/caller-13.key, pushed from the Mac; the single-file
+# mount pins the key it started with, so restart after rotating caller-13.
+# Arming: new risk needs BOTH --allow-new-risk and a non-zero --freshness-ms (the
+# oldest authority proof the gateway will act on). Set
+#   VELOCITA_GATEWAY_RISK_ARGS=--freshness-ms 2000 --allow-new-risk
+# in shadow.env to arm; unset, the gateway only reconciles and cancels. It never
+# re-arms itself after a fence (term, kill epoch, generation, mode) or an unknown
+# outcome: restart this unit after checking the journal.
+# Metrics: a textfile in ~/velocita-v2/textfile, served by node-exporter (:9110)
+# like the edge's, so Prometheus needs no new target.
+[Unit]
+Description=Velocita V2 paper gateway (simulator only; never a venue)
+After=network-online.target velocita-v2-node@1.service
+AssertPathExists=%t/velocita-secrets/caller-13.key
+AssertPathExists=%h/velocita-v2/shadow/shadow.env
+
+[Service]
+EnvironmentFile=%h/velocita-v2/shadow/shadow.env
+ExecStartPre=/usr/bin/mkdir -p %h/velocita-v2/gateway/state %h/velocita-v2/textfile
+ExecStart=/usr/bin/podman run --rm --replace --name velocita-v2-gateway \
+    --network host --userns=keep-id \
+    --read-only --security-opt no-new-privileges --cap-drop all \
+    --pids-limit 64 --memory 256m --log-driver journald \
+    --shm-size 256m -e AERON_TERM_BUFFER_LENGTH=1048576 \
+    -v %h/velocita-v2/config/catalog.bin:/etc/velocita/catalog.bin:ro \
+    -v %h/velocita-v2/gateway/state:/state \
+    -v %h/velocita-v2/textfile:/textfile \
+    -v %t/velocita-secrets/caller-13.key:/run/velocita-secrets/caller-13.key:ro \
+    --entrypoint /usr/local/bin/velocita-v2-gateway localhost/velocita-v2:m3 \
+    --venue paper --catalog /etc/velocita/catalog.bin \
+    --caller-key-id 13 --caller-id 22 --key-file /run/velocita-secrets/caller-13.key \
+    --incarnation ${VELOCITA_INCARNATION} \
+    --session-file /state/gateway.session --state-file /state/gateway.state \
+    --response-endpoint 100.72.127.102:42413 \
+    $VELOCITA_NODES \
+    --aeron-dir /dev/shm/velocita-gateway-aeron \
+    --metrics-textfile /textfile/velocita-gateway.prom \
+    $VELOCITA_GATEWAY_RISK_ARGS
+ExecStop=/usr/bin/podman stop -t 15 velocita-v2-gateway
+# 64 = usage/configuration refusal: restarting cannot fix it.
+RestartPreventExitStatus=64
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

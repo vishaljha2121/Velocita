@@ -1,5 +1,6 @@
 #include "velocita/v2/venue_wire.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <iostream>
@@ -98,8 +99,6 @@ InstrumentExecutionProfile profile_with(const std::int64_t quote_micros_per_tick
 }
 
 void test_the_spec_must_agree_with_the_replicated_contract() {
-    // G-062, and the reason this check exists at all.
-    //
     // The cluster's `InstrumentExecutionProfile` carries
     // `quote_micros_per_tick_lot`, which is the PRODUCT of tick size and lot
     // size - enough to compute notional, which is what risk needs. It is NOT
@@ -107,10 +106,8 @@ void test_the_spec_must_agree_with_the_replicated_contract() {
     // the adapter must carry tick and lot itself, from venue metadata that is
     // not replicated.
     //
-    // That creates two sources for one economic fact, and the only safe thing to
-    // do with two sources is make them prove each other. tick x lot must
-    // reproduce the replicated product exactly, or one of them is wrong and
-    // sending either would be a guess with money attached.
+    // This checks only that tick x lot reproduces the replicated product. It
+    // does not bind either factor or authorize order bytes.
 
     // 1 tick = 0.01 quote (10,000 micros); 1 lot = 0.001 base (1e5 atoms at 8dp).
     // product = 10,000 * 1e5 / 1e8 = 10 quote micros per tick-lot.
@@ -208,101 +205,92 @@ VenueOrderSchema verified_schema() {
     return schema;
 }
 
-std::string body_of(const OrderBodyResult& result, const std::span<const char> buffer) {
-    require(result.error == OrderBodyError::none, "the body was refused");
-    return std::string(buffer.data(), result.bytes_written);
+void require_refusal_preserves_output(const OrderBodyResult result,
+                                      const OrderBodyError expected,
+                                      const std::span<const char> out,
+                                      const char sentinel,
+                                      const std::string& message) {
+    require(result.error == expected, message);
+    require(result.bytes_written == 0, message + ": refusal reported bytes");
+    require(std::all_of(out.begin(), out.end(), [sentinel](const char byte) {
+                return byte == sentinel;
+            }),
+            message + ": refusal changed caller output");
 }
 
-void test_a_market_body_matches_the_documented_shape() {
+void test_market_lowering_is_quarantined_without_an_approved_market_intent() {
     const auto spec = spec_for(10'000, 100'000, 8);
-    std::array<char, kMaxOrderRequestBytes> out{};
-    const auto result = encode_market_order_body(
-        limit_submit(), spec, asset_symbol("BTC"), asset_symbol("USDC"), out);
-    require(body_of(result, out) ==
-                R"({"base_asset":"BTC","quote_asset":"USDC","qty":"0.003",)"
-                R"("side":"buy","qty_unit":"base","type":"market"})",
-            "the market body did not match the documented shape");
-}
-
-void test_a_limit_body_is_refused_until_the_schema_is_verified() {
-    // THE MOST IMPORTANT REFUSAL IN THE ADAPTER, and it protects against a
-    // failure that looks like success.
-    //
-    // The create-order request schema does not render on the venue's docs, so
-    // the price field name is unknown. Many APIs ignore fields they do not
-    // recognise - so a guessed name that the venue drops turns this LIMIT order
-    // into a MARKET order. It crosses the spread, pays taker fees on every
-    // quote, inverts the maker economics the whole project is built on, and
-    // reports success while doing it.
-    //
-    // Nothing here can detect that after the fact. The only defence is refusing
-    // to send until somebody confirms the name.
-    const auto spec = spec_for(10'000, 100'000, 8);
-    std::array<char, kMaxOrderRequestBytes> out{};
-
-    VenueOrderSchema unverified = verified_schema();
-    unverified.verified = false;
-    const auto refused = encode_limit_order_body(limit_submit(), spec,
-                                                 asset_symbol("BTC"),
-                                                 asset_symbol("USDC"), unverified, out);
-    require(refused.error == OrderBodyError::schema_unverified,
-            "a limit order encoded against an unverified schema");
-    require(refused.bytes_written == 0,
-            "a refused limit body still wrote bytes, so a partial request could "
-            "reach the venue");
-
-    // Verified, and the price lands where the schema says it does.
-    const auto encoded = encode_limit_order_body(limit_submit(), spec,
-                                                 asset_symbol("BTC"),
-                                                 asset_symbol("USDC"),
-                                                 verified_schema(), out);
-    require(body_of(encoded, out) ==
-                R"({"base_asset":"BTC","quote_asset":"USDC","qty":"0.003",)"
-                R"("side":"buy","qty_unit":"base","type":"limit","price":"2.5"})",
-            "the limit body did not carry the converted price under the "
-            "schema's own field name");
-}
-
-void test_unsafe_metadata_is_refused_rather_than_escaped() {
-    // An asset symbol is alphanumeric on every venue. Anything else means the
-    // metadata is wrong, and escaping it would carry a corrupt symbol into a
-    // live order and let the venue decide what it meant.
-    const auto spec = spec_for(10'000, 100'000, 8);
-    std::array<char, kMaxOrderRequestBytes> out{};
-    for (const auto* hostile : {"BT\"C", "BT\\C", "BT C", ""}) {
-        const auto result = encode_market_order_body(
-            limit_submit(), spec, asset_symbol(hostile), asset_symbol("USDC"), out);
-        require(result.error == OrderBodyError::unsafe_text,
-                std::string("an unsafe asset symbol was accepted: ") + hostile);
+    for (const auto price : {PriceTicks::from_atoms(250), PriceTicks::from_atoms(0)}) {
+        auto effect = limit_submit();
+        effect.price = price;
+        effect.post_only = PostOnlyMode::required;
+        std::array<char, kMaxOrderRequestBytes> out;
+        out.fill('M');
+        require_refusal_preserves_output(
+            encode_market_order_body(effect, spec, asset_symbol("BTC"),
+                                     asset_symbol("USDC"), out),
+            OrderBodyError::unsupported_operation, out, 'M',
+            "existing limit intent was lowered to an unapproved market order");
     }
 }
 
-void test_a_body_refuses_rather_than_writing_a_prefix() {
+void test_limit_lowering_refuses_unbound_metadata_and_capabilities() {
     const auto spec = spec_for(10'000, 100'000, 8);
-    std::array<char, 24> tiny{};
-    const auto result = encode_market_order_body(
-        limit_submit(), spec, asset_symbol("BTC"), asset_symbol("USDC"), tiny);
-    require(result.error == OrderBodyError::output_too_small,
-            "a body too long for the buffer was not refused");
-    require(result.bytes_written == 0,
-            "a refused body reported bytes, which a caller could send");
+    auto factor_alias = spec_for(100'000, 10'000, 8);
+    require(spec_agrees_with_profile(spec, profile_with(10)) &&
+                spec_agrees_with_profile(factor_alias, profile_with(10)),
+            "same-product fixture did not demonstrate the arithmetic alias");
+    auto wrong_instrument = spec;
+    wrong_instrument.instrument_id = InstrumentId{999};
+    auto wrong_venue = spec;
+    wrong_venue.venue_id = VenueId{999};
+
+    auto ordinary = limit_submit();
+    auto post_only = ordinary;
+    post_only.post_only = PostOnlyMode::required;
+    auto immediate = ordinary;
+    immediate.time_in_force = TimeInForce::immediate_or_cancel;
+    auto fill_or_kill = ordinary;
+    fill_or_kill.time_in_force = TimeInForce::fill_or_kill;
+    auto legacy_post_only = ordinary;
+    legacy_post_only.time_in_force = TimeInForce::post_only;
+    VenueOrderSchema unverified_schema = verified_schema();
+    unverified_schema.verified = false;
+
+    for (const auto& candidate_spec : {spec, factor_alias, wrong_instrument, wrong_venue}) {
+        for (const auto& effect :
+             {ordinary, post_only, immediate, fill_or_kill, legacy_post_only}) {
+            for (const auto& schema : {verified_schema(), unverified_schema}) {
+                std::array<char, kMaxOrderRequestBytes> out;
+                out.fill('L');
+                require_refusal_preserves_output(
+                    encode_limit_order_body(effect, candidate_spec,
+                                            asset_symbol("BTC"),
+                                            asset_symbol("USDC"), schema, out),
+                    OrderBodyError::schema_unverified, out, 'L',
+                    "schema boolean authorized metadata or capability not bound to the effect");
+            }
+        }
+    }
 }
 
 void test_only_a_submit_becomes_an_order_body() {
-    // A cancel has its own endpoint and its own two-step signing flow. Encoding
-    // one as a create-order body would place a NEW order in order to cancel one.
+    // Non-submit operations have no approved representation at either helper.
     const auto spec = spec_for(10'000, 100'000, 8);
     std::array<char, kMaxOrderRequestBytes> out{};
     auto cancel = limit_submit();
     cancel.operation = EffectOperation::cancel;
-    require(encode_market_order_body(cancel, spec, asset_symbol("BTC"),
-                                     asset_symbol("USDC"), out)
-                    .error == OrderBodyError::unsupported_operation,
-            "a cancel was encoded as a create-order body");
-    require(encode_limit_order_body(cancel, spec, asset_symbol("BTC"),
-                                    asset_symbol("USDC"), verified_schema(), out)
-                    .error == OrderBodyError::unsupported_operation,
-            "a cancel was encoded as a create-order body");
+    out.fill('C');
+    require_refusal_preserves_output(
+        encode_market_order_body(cancel, spec, asset_symbol("BTC"),
+                                 asset_symbol("USDC"), out),
+        OrderBodyError::unsupported_operation, out, 'C',
+        "a cancel was encoded as a market create-order body");
+    require_refusal_preserves_output(
+        encode_limit_order_body(cancel, spec, asset_symbol("BTC"),
+                                asset_symbol("USDC"), verified_schema(), out),
+        OrderBodyError::unsupported_operation, out, 'C',
+        "a cancel was encoded as a limit create-order body");
 }
 
 }  // namespace
@@ -313,10 +301,8 @@ int main() {
         test_rendering_refuses_rather_than_truncating();
         test_the_spec_must_agree_with_the_replicated_contract();
         test_price_and_quantity_convert_through_the_spec_exactly();
-        test_a_market_body_matches_the_documented_shape();
-        test_a_limit_body_is_refused_until_the_schema_is_verified();
-        test_unsafe_metadata_is_refused_rather_than_escaped();
-        test_a_body_refuses_rather_than_writing_a_prefix();
+        test_market_lowering_is_quarantined_without_an_approved_market_intent();
+        test_limit_lowering_refuses_unbound_metadata_and_capabilities();
         test_only_a_submit_becomes_an_order_body();
         std::cout << "all V2 venue wire tests passed\n";
         return 0;

@@ -1,0 +1,19 @@
+F3 recovery preflight: observed RED output before production fixes.
+Base HEAD d44a4a9 plus the pre-existing uncommitted F1/F2/F3 work.
+
+$ /private/tmp/velocita-full-audit.lYB4P5/release/v2-replication-tests unsupported-snapshot
+exit=1
+V2 replication test failed: unsupported snapshot schema fell through to full-WAL replay
+
+$ /private/tmp/velocita-full-audit.lYB4P5/release/v2-replication-tests unsupported-segment-suffix
+exit=1
+V2 replication test failed: unsupported command schema in uncommitted segment suffix started
+
+$ /private/tmp/velocita-full-audit.lYB4P5/release/v2-replication-tests unsupported-legacy-suffix
+exit=1
+V2 replication test failed: unsupported command schema in uncommitted legacy suffix started
+
+After the first three fixes, before moving schema recognition ahead of the size bound:
+$ /private/tmp/velocita-full-audit.lYB4P5/release/v2-replication-tests unsupported-oversized-snapshot
+exit=1
+V2 replication test failed: oversized future snapshot was classified as current-schema corruption

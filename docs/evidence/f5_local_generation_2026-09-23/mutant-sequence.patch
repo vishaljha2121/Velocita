@@ -1,0 +1,11 @@
+--- src/v2_local_generation.cpp	2026-09-23 15:02:17
++++ /private/tmp/local-generation-mutants.DKPgOP/sequence.cpp	2026-09-23 15:05:21
+@@ -144,7 +144,7 @@
+     if (validate_value(old_value) != LocalGenerationError::none ||
+         validate_value(new_value) != LocalGenerationError::none ||
+         old_value.selection_sequence == std::numeric_limits<std::uint64_t>::max() ||
+-        new_value.selection_sequence != old_value.selection_sequence + 1 ||
++        (false && new_value.selection_sequence != old_value.selection_sequence + 1) ||
+         new_value.generation <= old_value.generation ||
+         new_value.previous_generation != old_value.generation)
+         return LocalGenerationError::invalid_transition;

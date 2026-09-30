@@ -1,0 +1,10 @@
+--- src/v2_gateway_authority.cpp	2026-09-22 14:33:10
++++ /private/tmp/f4-proof-mutations.e8D7Tj/no-correlation.cpp	2026-09-22 14:42:25
+@@ -114,7 +114,6 @@
+                           value.binding.effect.kill_epoch == expected.control.kill_epoch &&
+                           value.strategy_mode == expected.control.strategy_mode;
+     if (!fresh || !coordinates || !controls ||
+-        value.request != expected.request ||
+         !same_binding(value.binding, expected.binding)) {
+         pending_.reset();
+         return false;

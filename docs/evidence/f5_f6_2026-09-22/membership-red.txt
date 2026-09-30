@@ -1,0 +1,2 @@
+membership_drift node=3 became_single_voter_leader=1
+RED F5/A04: unchanged durable directory accepted a different static membership

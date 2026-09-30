@@ -1,0 +1,2 @@
+retained_entries=16 largest_peer_descriptors=129 largest_peer_encoded_bytes=542604
+retry copies exceed the proposed per-peer outbound byte bound

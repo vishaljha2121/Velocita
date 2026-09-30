@@ -1,0 +1,7 @@
+baseline                   auth envelope tests passed
+route_check                auth envelope tests failed: reflected frame not refused by route
+tag_prefix_only            auth envelope tests failed: bit flip accepted at byte 39
+tag_excludes_body          auth envelope tests failed: golden peer envelope did not verify
+derive_drops_incarnation   auth envelope tests failed: derived key differs from the Python oracle
+zero_epoch_allowed         auth envelope tests failed: epoch zero
+peer_self_route            auth envelope tests failed: peer self-route accepted

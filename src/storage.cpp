@@ -113,8 +113,9 @@ std::uint32_t crc32(std::span<const std::byte> bytes) {
     return ~crc;
 }
 
-MetadataStore::MetadataStore(std::filesystem::path data_dir, std::string file_name)
-    : path_(std::move(data_dir) / std::move(file_name)) {
+MetadataStore::MetadataStore(std::filesystem::path data_dir, std::string file_name,
+                             const MetadataCheckpoints checkpoints)
+    : path_(std::move(data_dir) / std::move(file_name)), checkpoints_(checkpoints) {
     std::filesystem::create_directories(path_.parent_path());
 }
 
@@ -162,10 +163,20 @@ void MetadataStore::save(const PersistentMetadata& metadata) const {
         throw io_error("open", temporary);
     }
     try {
-        write_all(fd, bytes, temporary);
+        checkpoints_(MetadataCheckpoint::before_write);
+        if (checkpoints_.observe) {
+            const auto midpoint = bytes.size() / 2;
+            write_all(fd, std::span<const std::byte>(bytes).first(midpoint), temporary);
+            checkpoints_(MetadataCheckpoint::partial_write);
+            write_all(fd, std::span<const std::byte>(bytes).subspan(midpoint), temporary);
+        } else {
+            write_all(fd, bytes, temporary);
+        }
+        checkpoints_(MetadataCheckpoint::file_written);
         if (::fsync(fd) != 0) {
             throw io_error("fsync", temporary);
         }
+        checkpoints_(MetadataCheckpoint::file_synced);
         if (::close(fd) != 0) {
             throw io_error("close", temporary);
         }
@@ -176,7 +187,9 @@ void MetadataStore::save(const PersistentMetadata& metadata) const {
     if (::rename(temporary.c_str(), path_.c_str()) != 0) {
         throw io_error("rename", path_);
     }
+    checkpoints_(MetadataCheckpoint::file_renamed);
     fsync_directory(path_.parent_path());
+    checkpoints_(MetadataCheckpoint::directory_synced);
 }
 
 WriteAheadLog::WriteAheadLog(std::filesystem::path data_dir, std::string file_name)

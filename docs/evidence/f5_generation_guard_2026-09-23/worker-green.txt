@@ -1,0 +1,20 @@
+F5 generation startup guard worker GREEN
+Date: 2026-09-23
+
+Command:
+c++ -std=c++20 -O2 -Wall -Wextra -Wpedantic -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Itests tests/v2_generation_startup_guard_tests.cpp src/v2_identity_startup.cpp src/v2_local_generation.cpp /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_replication.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_kernel.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_contracts.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_core.a /private/tmp/velocita-full-audit.lYB4P5/release/libwillemt_raft.a -pthread -o /private/tmp/v2-generation-startup-guard-green && /private/tmp/v2-generation-startup-guard-green
+
+Exit: 0
+Output:
+v2 generation startup guard tests passed
+
+Scope: a read-only O(1) cold-start refusal for the three reserved generation
+layout names, after the deployment root lock/name check and before recovery
+resync. This neither decodes/selects a generation nor changes legacy recovery.
+
+Existing-suite direct regression command substituted the current
+src/v2_identity_startup.cpp against the same fresh libraries and ran
+tests/v2_identity_startup_tests.cpp.
+Exit: 0
+Output:
+identity startup tests passed

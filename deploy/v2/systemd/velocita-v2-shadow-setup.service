@@ -1,0 +1,45 @@
+# OPERATOR, one shot: installs the strategy edge's rule program in the cluster
+# (PublishPolicy, ValidatePolicy, StageExecutablePolicy, ActivateExecutablePolicy)
+# and sets strategy mode normal. Caller key 11 = CallerId 9, operator band.
+# Never enabled; run by hand:  systemctl --user start velocita-v2-shadow-setup
+#
+# The program is generated with the edge's own program arguments (kept equal to
+# velocita-v2-shadow-edge.service's by tests/test_secrets_presence.py), so the
+# policy installed is the one the edge's frames name. Run it BEFORE starting the
+# edge on a new cluster. caller-11.key is the voter's own copy in the RAM secrets
+# directory; only this one-shot container mounts it, never the tick loop.
+# Own session and state files: sharing the tick loop's would skip its source generation.
+# Output (journal): "SETUP generation=.. kill_epoch=K executor_generation=E strategy_mode=1".
+[Unit]
+Description=Velocita V2 strategy setup (operator, one shot)
+After=network-online.target
+AssertPathExists=%t/velocita-secrets/caller-11.key
+AssertPathExists=%h/velocita-v2/shadow/shadow.env
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/velocita-v2/shadow/shadow.env
+ExecStartPre=/usr/bin/mkdir -p %h/velocita-v2/shadow/state
+ExecStartPre=/usr/bin/podman run --rm --replace --name velocita-v2-shadow-program \
+    --network none --userns=keep-id --read-only --security-opt no-new-privileges --cap-drop all \
+    -v %h/velocita-v2/shadow/state:/state \
+    localhost/velocita-v2-shadow:m3 \
+    --usd-per-tick 1 --catalog-root ${VELOCITA_CATALOG_ROOT} --catalog-row 1,20,1,1,1 \
+    --order-quantity-lots 25 --max-notional-micros 25000000 --time-in-force fok --post-only prohibited \
+    --program-out /state/trend.program --program-only
+ExecStart=/usr/bin/podman run --rm --replace --name velocita-v2-shadow-setup \
+    --network host --userns=keep-id \
+    --read-only --security-opt no-new-privileges --cap-drop all \
+    --pids-limit 32 --memory 256m --log-driver journald \
+    --shm-size 256m -e AERON_TERM_BUFFER_LENGTH=1048576 \
+    -v %h/velocita-v2/config/catalog.bin:/etc/velocita/catalog.bin:ro \
+    -v %h/velocita-v2/shadow/state:/state \
+    -v %t/velocita-secrets/caller-11.key:/run/velocita-secrets/caller-11.key:ro \
+    --entrypoint /usr/local/bin/velocita-v2-shadow-submitter localhost/velocita-v2-shadow:m3 \
+    --setup-only --program /state/trend.program --catalog /etc/velocita/catalog.bin \
+    --caller-key-id 11 --caller-id 9 --key-file /run/velocita-secrets/caller-11.key \
+    --incarnation ${VELOCITA_INCARNATION} \
+    --session-file /state/setup.session --state-file /state/setup.state \
+    --response-endpoint 100.72.127.102:42411 \
+    $VELOCITA_NODES \
+    --aeron-dir /dev/shm/velocita-setup-aeron

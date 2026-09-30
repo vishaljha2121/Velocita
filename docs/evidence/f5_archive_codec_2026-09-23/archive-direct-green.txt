@@ -1,0 +1,1 @@
+archive adversarial tests passed; sizeof(Sha256)=112 scratch=2120 record_view=40 source=24 metadata=80

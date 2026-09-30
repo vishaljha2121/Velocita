@@ -1,0 +1,2 @@
+missing_hard_state previous_term=1 recovered_term=0
+RED F5/F6: missing hard state reset a participating voter's term and vote

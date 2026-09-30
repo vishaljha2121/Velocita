@@ -1,0 +1,11 @@
+--- src/v2_bound_metadata.cpp
++++ no-file-sync.cpp
+@@ -248,7 +248,7 @@
+             write_all(fd, bytes);
+         }
+         checkpoints_(MetadataCheckpoint::file_written);
+-        if (::fsync(fd) != 0) throw io("fsync bound metadata temporary");
++        // Mutation: omit only file-content durability.
+         checkpoints_(MetadataCheckpoint::file_synced);
+         close_checked(fd, "close bound metadata temporary");
+         fd = -1;

@@ -1,0 +1,19 @@
+Test project /private/tmp/velocita-full-audit.lYB4P5/release
+    Start 41: v2-snapshot-store-bounds-tests
+1/7 Test #41: v2-snapshot-store-bounds-tests ...   Passed    0.01 sec
+    Start 60: v2-archive-catalog-tests
+2/7 Test #60: v2-archive-catalog-tests .........   Passed    0.00 sec
+    Start 61: v2-archive-store-tests
+3/7 Test #61: v2-archive-store-tests ...........   Passed    1.18 sec
+    Start 62: v2-wal-maintenance-tests
+4/7 Test #62: v2-wal-maintenance-tests .........   Passed    0.00 sec
+    Start 63: v2-archive-compaction-tests
+5/7 Test #63: v2-archive-compaction-tests ......   Passed    0.03 sec
+    Start 64: v2-compaction-fence-tests
+6/7 Test #64: v2-compaction-fence-tests ........   Passed    0.04 sec
+    Start 65: v2-archive-startup-tests
+7/7 Test #65: v2-archive-startup-tests .........   Passed    0.04 sec
+
+100% tests passed out of 7
+
+Total Test time (real) =   1.31 sec

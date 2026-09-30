@@ -1,0 +1,2 @@
+async persistence model schedule=0 cuts=20
+async persistence model: new-term WAL became durable before matching term metadata

@@ -1,0 +1,52 @@
+CP-048, 2026-09-24. Branch v2/phase-5-corrections / HEAD d44a4a9.
+Approved native fresh-destination verification; remediation uncommitted.
+
+Final builds before tests, Release and sanitizer run SEQUENTIALLY because older
+fixtures share fixed temporary directory names:
+cmake --build /private/tmp/velocita-full-audit.lYB4P5/release --target velocita-all-tests -j4
+ctest --test-dir /private/tmp/velocita-full-audit.lYB4P5/release --output-on-failure
+Release95/95 PASS,19.98 seconds.
+
+cmake --build /private/tmp/aeron-phase67-audit-build --target velocita-all-tests -j4
+ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir /private/tmp/aeron-phase67-audit-build --output-on-failure
+C++ Debug ASan+UBSan95/95 PASS,274.21 seconds.
+Nonrecovering UB/halt; leaks off; pinned Raft C remains uninstrumented.
+Final reruns include actual entropy-failure injection, not the earlier test binary.
+No new compiler warnings/errors in final build logs. Offline pinned Raft source:
+/private/tmp/velocita-cp043.SaGIxe/raft-build-suffix.
+
+Independent gate list vs CTest JSON:95host/92V2, exact name-set equality.
+python3 -m unittest discover -s tests -p 'test_gate_manifest.py':16 PASS.
+git diff --check: clean.
+Native layout compiled fresh: kernel124904/request184/evidence192 bytes.
+Not total allocations/RSS or target memory/timing acceptance.
+
+Actual integration RED: skeleton request API, old two-host compaction behavior,
+freshly built => exit1 no verification request. GREEN now removes real WAL only
+after exact evidence and quarantines subsequent recovery until fresh verification.
+Restart replay RED: constant-session draft => exit1 old response released barrier.
+Fresh cold nonce plus per-attempt challenge => permanent witness GREEN.
+
+Direct scratch mutants, cacheline64/C++20/O1, built against current dependencies:
+- remove catalog-digest equality: exit1 stale request minted evidence (mutation2).
+- remove common backup-recovery gate: exit1 recovery served without fresh evidence.
+- ignore entropy failure/continue zero seed: exit1 entropy error started a node.
+The live suite includes actual replication.cpp privately only to interpose the
+entropy syscall; backend suite includes store/verifier privately for fsync EIO.
+Production APIs expose no raw minting or fault-injection switch.
+
+Includes: include, tests, pinned Raft include path above. Static libraries from
+Release build in order: libvelocita_v2_replication.a libvelocita_v2_kernel.a
+libvelocita_v2_evaluator.a libvelocita_v2_contracts.a libvelocita_core.a
+libwillemt_raft.a. Mutant unit/test placed before static libraries; no CMake-source
+mutation tricks. Exact temporary sources/binaries/logs preserved in
+/private/tmp/velocita-cp048.rDj2EZ and /private/tmp/velocita-cp047-e2.
+
+Original tests/v2_snapshot_catchup_red.cpp freshly rebuilt against current code:
+exit1 compacted12/applied0/seven failed replies. No E1 closure claim.
+
+No authenticated remote copy/service, physical host independence, real disk power
+cuts, target gate, fresh TSan, Python model corpus, RSS or latency evidence this
+turn. Native simulated transport/separate local directories only. E1/E2/E3 and
+F5/F6/F7 acceptance still OPEN. Pi deferred, not waived. No staging/commit/tag,
+device/venue/credential/deployment action; protected paths untouched.

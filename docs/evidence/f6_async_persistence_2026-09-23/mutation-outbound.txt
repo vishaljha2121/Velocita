@@ -1,0 +1,1 @@
+async persistence fence test: protocol output was readable before metadata directory durability

@@ -138,96 +138,8 @@ std::size_t render_quantity(const QuantityLots quantity,
 
 namespace {
 
-// SAFE MEANS ALPHANUMERIC, and the restriction is deliberate rather than lazy.
-// Asset symbols are alphanumeric on every venue; a field name likewise. Anything
-// else means the metadata is wrong, and refusing says so - whereas escaping
-// would carry a corrupt symbol into a live order and let the venue decide what
-// it meant.
-[[nodiscard]] bool json_safe(const char* text, const std::size_t length) noexcept {
-    if (length == 0) return false;
-    for (std::size_t i = 0; i < length; ++i) {
-        const auto c = text[i];
-        const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-                        (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.';
-        if (!ok) return false;
-    }
-    return true;
-}
-
-// Append, refusing rather than truncating. Every caller checks, and a single
-// failed append poisons the whole body - which is what keeps a partial write
-// from ever reaching a venue.
-struct Appender {
-    std::span<char> out;
-    std::size_t written{};
-    bool overflowed{};
-
-    void put(const char* text, const std::size_t length) noexcept {
-        if (overflowed) return;
-        if (written + length > out.size()) {
-            overflowed = true;
-            return;
-        }
-        for (std::size_t i = 0; i < length; ++i) out[written++] = text[i];
-    }
-    void put(const std::string_view text) noexcept { put(text.data(), text.size()); }
-};
-
-[[nodiscard]] bool append_decimal_field(Appender& appender, const std::string_view name,
-                                        const std::int64_t atoms,
-                                        const std::uint8_t decimals) noexcept {
-    std::array<char, kMaxDecimalTextBytes> text{};
-    const auto length = render_decimal(atoms, decimals, text);
-    if (length == 0) return false;
-    appender.put("\"");
-    appender.put(name);
-    appender.put("\":\"");
-    appender.put(text.data(), length);
-    appender.put("\"");
-    return true;
-}
-
 [[nodiscard]] OrderBodyResult body_failure(const OrderBodyError error) noexcept {
     return {error, 0};
-}
-
-// The documented fields, shared by both order types.
-[[nodiscard]] OrderBodyResult begin_body(Appender& appender, const OrderEffect& effect,
-                                         const VenueInstrumentSpec& spec,
-                                         const AssetSymbol& base,
-                                         const AssetSymbol& quote) noexcept {
-    if (!json_safe(base.text.data(), base.length) ||
-        !json_safe(quote.text.data(), quote.length)) {
-        return body_failure(OrderBodyError::unsafe_text);
-    }
-    if (effect.quantity.atoms() <= 0) {
-        return body_failure(OrderBodyError::unrepresentable_value);
-    }
-    std::int64_t base_atoms = 0;
-    if (spec.lot_base_atoms <= 0 ||
-        __builtin_mul_overflow(effect.quantity.atoms(), spec.lot_base_atoms,
-                               &base_atoms)) {
-        return body_failure(OrderBodyError::unrepresentable_value);
-    }
-
-    appender.put("{\"base_asset\":\"");
-    appender.put(base.text.data(), base.length);
-    appender.put("\",\"quote_asset\":\"");
-    appender.put(quote.text.data(), quote.length);
-    appender.put("\",");
-    if (!append_decimal_field(appender, "qty", base_atoms, spec.base_decimals)) {
-        return body_failure(OrderBodyError::unrepresentable_value);
-    }
-    appender.put(",\"side\":\"");
-    appender.put(effect.side == Side::buy ? "buy" : "sell");
-    appender.put("\"");
-    return {OrderBodyError::none, 0};
-}
-
-[[nodiscard]] OrderBodyResult finish_body(Appender& appender) noexcept {
-    appender.put("}");
-    if (appender.overflowed) return body_failure(OrderBodyError::output_too_small);
-    return {OrderBodyError::none, appender.written};
 }
 
 }  // namespace
@@ -240,70 +152,32 @@ AssetSymbol asset_symbol(const std::string_view text) noexcept {
     return symbol;
 }
 
-OrderBodyResult encode_market_order_body(const OrderEffect& effect,
-                                         const VenueInstrumentSpec& spec,
-                                         const AssetSymbol base,
-                                         const AssetSymbol quote,
-                                         const std::span<char> out) noexcept {
-    if (effect.operation != EffectOperation::submit) {
-        return body_failure(OrderBodyError::unsupported_operation);
-    }
-    Appender appender{out};
-    if (const auto started = begin_body(appender, effect, spec, base, quote);
-        started.error != OrderBodyError::none) {
-        return started;
-    }
-    // `qty_unit` is BASE here rather than the quickstart's "quote", because the
-    // cluster authorizes a quantity of the instrument and not a spend. The
-    // quickstart's example buys five dollars of BTC; nothing in V2 can express
-    // that, and pretending otherwise would let a price move change the size of
-    // an order the reducer already sized.
-    appender.put(",\"qty_unit\":\"base\",\"type\":\"market\"");
-    return finish_body(appender);
+OrderBodyResult encode_market_order_body(const OrderEffect&,
+                                         const VenueInstrumentSpec&,
+                                         const AssetSymbol,
+                                         const AssetSymbol,
+                                         const std::span<char>) noexcept {
+    // OrderEffect has no approved market/swap intent. Treating its zero price as
+    // permission to cross would fabricate economics the replicated decision did
+    // not authorize, while treating its positive price as disposable would erase
+    // a limit. Keep the public seam fail-closed until such an intent is approved.
+    return body_failure(OrderBodyError::unsupported_operation);
 }
 
 OrderBodyResult encode_limit_order_body(const OrderEffect& effect,
-                                        const VenueInstrumentSpec& spec,
-                                        const AssetSymbol base,
-                                        const AssetSymbol quote,
-                                        const VenueOrderSchema& schema,
-                                        const std::span<char> out) noexcept {
+                                        const VenueInstrumentSpec&,
+                                        const AssetSymbol,
+                                        const AssetSymbol,
+                                        const VenueOrderSchema&,
+                                        const std::span<char>) noexcept {
     if (effect.operation != EffectOperation::submit) {
         return body_failure(OrderBodyError::unsupported_operation);
     }
-    // THE REFUSAL THAT MATTERS. See `VenueOrderSchema`: a guessed price field
-    // that the venue ignores turns this limit order into a market order, which
-    // pays taker fees on every quote and looks like it worked.
-    if (!schema.verified) return body_failure(OrderBodyError::schema_unverified);
-    if (!json_safe(schema.price_field.data(), schema.price_field_length) ||
-        !json_safe(schema.base_qty_unit.data(), schema.base_qty_unit_length)) {
-        return body_failure(OrderBodyError::unsafe_text);
-    }
-    if (effect.price.atoms() <= 0) {
-        return body_failure(OrderBodyError::unrepresentable_value);
-    }
-    std::int64_t quote_micros = 0;
-    if (spec.tick_quote_micros <= 0 ||
-        __builtin_mul_overflow(effect.price.atoms(), spec.tick_quote_micros,
-                               &quote_micros)) {
-        return body_failure(OrderBodyError::unrepresentable_value);
-    }
-
-    Appender appender{out};
-    if (const auto started = begin_body(appender, effect, spec, base, quote);
-        started.error != OrderBodyError::none) {
-        return started;
-    }
-    appender.put(",\"qty_unit\":\"");
-    appender.put(schema.base_qty_unit.data(), schema.base_qty_unit_length);
-    appender.put("\",\"type\":\"limit\",");
-    if (!append_decimal_field(
-            appender,
-            std::string_view(schema.price_field.data(), schema.price_field_length),
-            quote_micros, 6)) {
-        return body_failure(OrderBodyError::unrepresentable_value);
-    }
-    return finish_body(appender);
+    // VenueOrderSchema::verified cannot bind this metadata and capability set to
+    // the exact authorized effect or to an immutable catalog version. Product
+    // agreement is arithmetic evidence only: different tick/lot factors can
+    // share a product while producing different price and quantity bytes.
+    return body_failure(OrderBodyError::schema_unverified);
 }
 
 }  // namespace velocita::v2

@@ -1,3 +1,4 @@
+#include "v2_catalog_test_support.hpp"
 #include "velocita/v2/kernel.hpp"
 
 #include <cstddef>
@@ -51,7 +52,7 @@ void test_resuming_normal_requires_reconciliation() {
     // quantity - a healthy resting order is not a reason to stay halted, and
     // treating it as one would make the rule unusable and then ignored.
     const auto with_order_in = [](const ClusterOrderState order_state) {
-        TradingState state;
+        TradingState state = catalog_test::state();
         state.strategy_mode = StrategyMode::halted;
         state.order_count = 1;
         state.orders[0].state = order_state;
@@ -60,7 +61,7 @@ void test_resuming_normal_requires_reconciliation() {
 
     const auto resume = [](TradingState& state) {
         ApplyScratch scratch;
-        return apply(state,
+        return catalog_test::apply(state,
                      Command{CommandIdentity{CallerId{9}, RequestSequence{1},
                                              digest(std::byte{0x31})},
                              SetStrategyMode{StrategyMode::normal, state.kill_epoch,
@@ -103,7 +104,7 @@ void test_resuming_normal_requires_reconciliation() {
         auto state = with_order_in(ClusterOrderState::conflict);
         state.strategy_mode = StrategyMode::normal;
         ApplyScratch scratch;
-        const auto outcome = apply(
+        const auto outcome = catalog_test::apply(
             state,
             Command{CommandIdentity{CallerId{9}, RequestSequence{1},
                                     digest(std::byte{0x32})},
@@ -122,7 +123,7 @@ void test_resuming_normal_requires_reconciliation() {
         state.strategy_mode = StrategyMode::normal;
         ApplyScratch scratch;
         const auto outcome =
-            apply(state,
+            catalog_test::apply(state,
                   Command{CommandIdentity{CallerId{9}, RequestSequence{1},
                                           digest(std::byte{0x33})},
                           AdvanceKillEpoch{KillEpoch{1}}},
@@ -157,20 +158,32 @@ void test_control_authority_is_reserved_to_operator_callers() {
     require(kMaxOperatorCallerId > 0,
             "the operator caller band is empty, so nothing can ever issue control");
 
+    // Risk limits are operator authority too: a strategy that could raise its
+    // own cap would make every limit advisory.
+    const ConfigureRiskLimits limits{AccountId{5}, InstrumentId{4},
+                                     RiskPolicyVersion{6}, RiskVersion{0},
+                                     KillEpoch{}, ExecutorGeneration{},
+                                     QuantityLots::from_atoms(4),
+                                     QuantityLots::from_atoms(8),
+                                     MoneyMicros::from_atoms(4'000),
+                                     MoneyMicros::from_atoms(8'000),
+                                     1'000'000, 2'500, QuantityLots::from_atoms(4),
+                                     false, 1};
     for (const auto& body : std::initializer_list<CommandBody>{
              AdvanceKillEpoch{KillEpoch{1}},
              SetExecutorGeneration{ExecutorGeneration{1}},
-             SetStrategyMode{StrategyMode::normal, KillEpoch{}, ExecutorGeneration{}}}) {
-        TradingState state;
+             SetStrategyMode{StrategyMode::normal, KillEpoch{}, ExecutorGeneration{}},
+             limits}) {
+        TradingState state = catalog_test::state();
         ApplyScratch scratch;
         const auto unauthorized =
-            apply(state, control_from(kMaxOperatorCallerId + 1, 1, body), scratch);
+            catalog_test::apply(state, control_from(kMaxOperatorCallerId + 1, 1, body), scratch);
         require(unauthorized.code == ApplyCode::unauthorized_control,
                 "a control command from a non-operator caller was not refused");
 
         // Refused means NOTHING MOVED - not even the request receipt, or a
         // replay of the same command would come back as a completed action.
-        TradingState untouched;
+        TradingState untouched = catalog_test::state();
         require(std::memcmp(&state, &untouched, sizeof(TradingState)) == 0,
                 "a refused control command still mutated authoritative state");
     }
@@ -178,14 +191,23 @@ void test_control_authority_is_reserved_to_operator_callers() {
     // The same command from inside the band is accepted, so the refusal above
     // is about the caller and not about the command being malformed.
     {
-        TradingState state;
+        TradingState state = catalog_test::state();
         ApplyScratch scratch;
-        const auto allowed = apply(
+        const auto allowed = catalog_test::apply(
             state, control_from(kMaxOperatorCallerId, 1, AdvanceKillEpoch{KillEpoch{1}}),
             scratch);
         require(allowed.code == ApplyCode::applied,
                 "a control command from an operator caller was refused");
         require(state.kill_epoch.value() == 1, "the accepted kill epoch did not take");
+    }
+    {
+        TradingState state = catalog_test::state();
+        ApplyScratch scratch;
+        const auto allowed = catalog_test::apply(
+            state, control_from(kMaxOperatorCallerId, 1, limits), scratch);
+        require(allowed.code == ApplyCode::applied && state.risk_account_count == 1 &&
+                    state.risk_accounts[0].max_position_quantity == limits.max_position_quantity,
+                "risk limits from an operator caller were refused");
     }
 
     // A REFUSAL THAT CANNOT BE ENCODED IS NOT A REFUSAL AN OPERATOR EVER SEES.
@@ -196,9 +218,9 @@ void test_control_authority_is_reserved_to_operator_callers() {
     // those two lists is silent - it was caught here by a compiler warning
     // about an unhandled switch, which is luck rather than coverage.
     {
-        TradingState state;
+        TradingState state = catalog_test::state();
         ApplyScratch scratch;
-        const auto refused = apply(
+        const auto refused = catalog_test::apply(
             state,
             control_from(kMaxOperatorCallerId + 1, 1, AdvanceKillEpoch{KillEpoch{1}}),
             scratch);
@@ -219,28 +241,22 @@ void test_control_authority_is_reserved_to_operator_callers() {
 
     // And an ordinary command from a high caller is untouched by any of this.
     {
-        TradingState state;
+        TradingState state = catalog_test::state();
         ApplyScratch scratch;
-        const auto ordinary = apply(
+        const auto ordinary = catalog_test::apply(
             state,
             control_from(kMaxOperatorCallerId + 1, 1,
-                         ConfigureRiskLimits{AccountId{5}, InstrumentId{4},
-                                             RiskPolicyVersion{6}, RiskVersion{0},
-                                             KillEpoch{}, ExecutorGeneration{},
-                                             QuantityLots::from_atoms(4),
-                                             QuantityLots::from_atoms(8),
-                                             MoneyMicros::from_atoms(4'000),
-                                             MoneyMicros::from_atoms(8'000),
-                                             1'000'000, 2'500}),
+                         RecordSourceEvent{SourceId{12}, SourceGeneration{1},
+                                           SourceSequence{1}, digest(std::byte{0x44})}),
             scratch);
-        require(ordinary.code != ApplyCode::unauthorized_control,
+        require(ordinary.code == ApplyCode::applied && state.source_count == 1,
                 "the operator reservation leaked onto an ordinary command");
     }
 }
 
 void test_boot_and_kill_epoch_are_fail_safe() {
     using namespace velocita::v2;
-    TradingState state;
+    TradingState state = catalog_test::state();
     ApplyScratch scratch;
     require(state.strategy_mode == StrategyMode::halted && state.kill_epoch.value() == 0 &&
                 state.executor_generation.value() == 0,
@@ -250,14 +266,14 @@ void test_boot_and_kill_epoch_are_fail_safe() {
         1,
         std::byte{0x11},
         SetStrategyMode{StrategyMode::normal, KillEpoch{0}, ExecutorGeneration{0}});
-    const auto normal_result = apply(state, normal, scratch);
+    const auto normal_result = catalog_test::apply(state, normal, scratch);
     require(normal_result.code == ApplyCode::applied &&
                 normal_result.strategy_mode == StrategyMode::normal,
             "generation-matched mode transition was rejected");
-    require(apply(state, normal, scratch) == normal_result && state.state_version == 1,
+    require(catalog_test::apply(state, normal, scratch) == normal_result && state.state_version == 1,
             "exact mode-command retry did not return its retained result");
 
-    const auto killed = apply(
+    const auto killed = catalog_test::apply(
         state,
         command(2, std::byte{0x12}, AdvanceKillEpoch{KillEpoch{1}}),
         scratch);
@@ -266,7 +282,7 @@ void test_boot_and_kill_epoch_are_fail_safe() {
                 state.strategy_mode == StrategyMode::halted,
             "kill-epoch advance did not atomically halt trading authority");
 
-    const auto stale_resume = apply(
+    const auto stale_resume = catalog_test::apply(
         state,
         command(3,
                 std::byte{0x13},
@@ -278,7 +294,7 @@ void test_boot_and_kill_epoch_are_fail_safe() {
                 state.strategy_mode == StrategyMode::halted,
             "stale pre-kill command reopened trading authority");
 
-    const auto matched_resume = apply(
+    const auto matched_resume = catalog_test::apply(
         state,
         command(4,
                 std::byte{0x14},
@@ -293,18 +309,18 @@ void test_boot_and_kill_epoch_are_fail_safe() {
 
 void test_kill_epoch_never_regresses() {
     using namespace velocita::v2;
-    TradingState state;
+    TradingState state = catalog_test::state();
     ApplyScratch scratch;
 
-    require(apply(state,
+    require(catalog_test::apply(state,
                   command(1, std::byte{0x21}, AdvanceKillEpoch{KillEpoch{4}}),
                   scratch).code == ApplyCode::applied,
             "initial kill-epoch advance failed");
-    const auto equal = apply(
+    const auto equal = catalog_test::apply(
         state,
         command(2, std::byte{0x22}, AdvanceKillEpoch{KillEpoch{4}}),
         scratch);
-    const auto regressed = apply(
+    const auto regressed = catalog_test::apply(
         state,
         command(3, std::byte{0x23}, AdvanceKillEpoch{KillEpoch{3}}),
         scratch);
@@ -316,10 +332,10 @@ void test_kill_epoch_never_regresses() {
 
 void test_executor_generation_advance_removes_new_risk_authority() {
     using namespace velocita::v2;
-    TradingState state;
+    TradingState state = catalog_test::state();
     ApplyScratch scratch;
 
-    require(apply(state,
+    require(catalog_test::apply(state,
                   command(1,
                           std::byte{0x31},
                           SetStrategyMode{StrategyMode::normal,
@@ -328,7 +344,7 @@ void test_executor_generation_advance_removes_new_risk_authority() {
                   scratch).code == ApplyCode::applied,
             "normal-mode setup failed");
 
-    const auto promoted = apply(
+    const auto promoted = catalog_test::apply(
         state,
         command(2,
                 std::byte{0x32},
@@ -340,7 +356,7 @@ void test_executor_generation_advance_removes_new_risk_authority() {
                 state.strategy_mode == StrategyMode::no_new_risk,
             "executor promotion retained unsafe new-risk authority");
 
-    const auto stale_resume = apply(
+    const auto stale_resume = catalog_test::apply(
         state,
         command(3,
                 std::byte{0x33},
@@ -351,7 +367,7 @@ void test_executor_generation_advance_removes_new_risk_authority() {
     require(stale_resume.code == ApplyCode::stale_control_generation,
             "pre-promotion mode command was accepted");
 
-    const auto matched_resume = apply(
+    const auto matched_resume = catalog_test::apply(
         state,
         command(4,
                 std::byte{0x34},
@@ -363,13 +379,13 @@ void test_executor_generation_advance_removes_new_risk_authority() {
                 state.strategy_mode == StrategyMode::normal,
             "current executor generation could not restore configured mode");
 
-    const auto equal = apply(
+    const auto equal = catalog_test::apply(
         state,
         command(5,
                 std::byte{0x35},
                 SetExecutorGeneration{ExecutorGeneration{1}}),
         scratch);
-    const auto regressed = apply(
+    const auto regressed = catalog_test::apply(
         state,
         command(6,
                 std::byte{0x36},
@@ -383,7 +399,7 @@ void test_executor_generation_advance_removes_new_risk_authority() {
 
 void test_invalid_mode_is_typed_and_retained() {
     using namespace velocita::v2;
-    TradingState state;
+    TradingState state = catalog_test::state();
     ApplyScratch scratch;
     const auto invalid = command(
         1,
@@ -391,12 +407,12 @@ void test_invalid_mode_is_typed_and_retained() {
         SetStrategyMode{static_cast<StrategyMode>(255),
                         KillEpoch{0},
                         ExecutorGeneration{0}});
-    const auto first = apply(state, invalid, scratch);
+    const auto first = catalog_test::apply(state, invalid, scratch);
     require(first.code == ApplyCode::invalid_command &&
                 first.contract_error == ContractError::invalid_enum &&
                 state.strategy_mode == StrategyMode::halted,
             "unknown strategy mode was accepted or misclassified");
-    require(apply(state, invalid, scratch) == first && state.state_version == 1,
+    require(catalog_test::apply(state, invalid, scratch) == first && state.state_version == 1,
             "invalid identified control command was not retained exactly");
 }
 

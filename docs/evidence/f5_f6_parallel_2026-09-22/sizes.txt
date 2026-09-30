@@ -1,0 +1,2 @@
+command_max=1789 result_canonical=128 state_snapshot_max=65483 native_committed_result=176 block_payload=4064
+proposed_record_max=1901 two_records=3802 proposed_local_snapshot_max=65587 proposed_peer_max=29084

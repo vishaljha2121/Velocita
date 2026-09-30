@@ -1,0 +1,1 @@
+incremental digest tests passed; sizeof(Sha256)=112

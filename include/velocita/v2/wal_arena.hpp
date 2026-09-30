@@ -2,6 +2,7 @@
 
 #include "velocita/storage.hpp"
 #include "velocita/v2/kernel_codec.hpp"
+#include "velocita/v2/bound_wal.hpp"
 #include "velocita/v2/spsc_ring.hpp"
 #include "velocita/v2/storage_checkpoint.hpp"
 
@@ -9,6 +10,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <exception>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <thread>
@@ -64,9 +67,10 @@ inline constexpr std::size_t kWalBlockPayloadBytes =
 // here so growing the command budget fails the BUILD rather than silently
 // refusing records at runtime, which would look like backpressure and would not
 // be.
-inline constexpr std::size_t kWalRecordHeaderBytes = 44;
+inline constexpr std::size_t kWalRecordHeaderBytes = 112;
 static_assert(kMaxKernelCommandBytes + kWalRecordHeaderBytes <= kWalBlockPayloadBytes,
               "a canonical command frame must fit in one WAL block");
+static_assert(2 * kMaxBoundWalRecordBytes <= kWalBlockPayloadBytes);
 // Fixed capacity. The arena is a bounded budget, not a queue that grows: when it
 // is full, admission is refused, which is the only behaviour that cannot lose an
 // entry that is not yet durable.
@@ -164,7 +168,7 @@ public:
     // log. Never lowers the index.
     void seed_durable_index(std::uint64_t index) noexcept;
 
-    // Caller has joined/drained the writer and durably removed the suffix.
+    // Caller has exclusively drained the writer and durably removed the suffix.
     void rewind_durable_index(std::uint64_t surviving_index);
 
     [[nodiscard]] std::size_t sealed_count() const noexcept;
@@ -173,6 +177,8 @@ public:
     [[nodiscard]] std::uint64_t generation_of(std::size_t slot) const noexcept;
 
 private:
+    friend class WalSegment;
+
     struct Block {
         BlockState state{BlockState::durable};
         std::uint64_t generation{};
@@ -206,8 +212,8 @@ private:
                                                  std::uint64_t sequence,
                                                  std::span<const std::byte> payload);
 
-// Validates framing and checksum. Absent means the block is torn, truncated or
-// corrupt - never a guess at what it might have contained.
+// Low-level framing: incompatible versions throw. Nullopt alone is NOT a recovery
+// decision; the segment reader distinguishes zero preallocation from corruption.
 struct DecodedBlock {
     std::uint64_t generation{};
     std::uint64_t sequence{};
@@ -224,7 +230,8 @@ struct DecodedBlock {
 // stride and syncs once per drain rather than once per record.
 class WalSegment {
 public:
-    explicit WalSegment(std::filesystem::path data_dir, StorageCheckpoints checkpoints = {});
+    explicit WalSegment(std::filesystem::path data_dir, const VerifiedStaticIdentity& identity,
+                        StorageCheckpoints checkpoints = {});
     ~WalSegment();
     WalSegment(const WalSegment&) = delete;
     WalSegment& operator=(const WalSegment&) = delete;
@@ -241,10 +248,18 @@ public:
                      std::span<const std::byte> payload);
     void sync();
 
-    // Records recovered from the segment, in order, stopping at the first block
-    // that does not verify. Everything after a torn block is unreachable by
-    // definition, so reading past it would be inventing history.
+    // Recover complete bound records before zero preallocation or a physical
+    // short tail. A full corrupt/unsupported/foreign block refuses, never skips.
     [[nodiscard]] std::vector<WalRecord> read_records() const;
+
+    // Startup preflight must not create a segment before deciding compatibility.
+    [[nodiscard]] static std::vector<WalRecord> read_existing_records(
+        const std::filesystem::path& data_dir, const VerifiedStaticIdentity& identity);
+    // Production recovery path. The callback is synchronous and each record is
+    // valid only for the call; scanning retains no more than one decoded block.
+    static void visit_existing_records(
+        const std::filesystem::path& data_dir, const VerifiedStaticIdentity& identity,
+        const std::function<void(const WalRecord&)>& visitor);
 
     // Rewrite the segment to exactly the records that survive a filter, as
     // fresh blocks. Both are rare (truncation on a leader change, discard after
@@ -260,9 +275,10 @@ public:
 
 private:
     void reserve_through(std::uint64_t offset);
-    void rewrite(const std::vector<WalRecord>& records);
+    void rewrite_filtered(std::uint64_t boundary, bool keep_before_boundary);
 
     std::filesystem::path path_;
+    VerifiedStaticIdentity identity_;
     StorageCheckpoints checkpoints_;
     int fd_{-1};
     std::uint64_t next_offset_{0};
@@ -308,7 +324,16 @@ struct WalMetrics {
 // option rather than an assumption.
 class WalWriter {
 public:
-    WalWriter(WalSegment& segment, const WalBlockArena& arena);
+    struct TargetSwitchCompletion {
+        std::uint64_t previous_generation{};
+        std::uint64_t generation{};
+        std::uint64_t sequence{};
+        bool succeeded{};
+    };
+
+    WalWriter(WalSegment& segment, const WalBlockArena& arena,
+              std::uint64_t generation = 0,
+              StorageCheckpoints checkpoints = {});
     ~WalWriter();
     WalWriter(const WalWriter&) = delete;
     WalWriter& operator=(const WalWriter&) = delete;
@@ -319,6 +344,31 @@ public:
     // Owner side: collect a finished block, to be applied to the arena.
     [[nodiscard]] bool take_completion(BlockDescriptor& descriptor) noexcept;
 
+    // One owner-fenced maintenance job, serialized on the SAME WAL writer.
+    // Context stays alive and exclusively worker-accessible until completion;
+    // take_maintenance_completion() acquires its writes back to the owner.
+    // The protocol owner must drain staged blocks before submitting and pause
+    // all further submissions until completion. No synchronous fallback.
+    [[nodiscard]] bool submit_maintenance(void (*run)(void*), void* context) noexcept;
+    [[nodiscard]] bool take_maintenance_completion() noexcept;
+
+    // Caller must first seal and submit ALL old staging blocks; the writer
+    // cannot discover records never handed to its queue.
+    // Serial generation handoff. Once admitted, new block and maintenance
+    // submissions pause. The worker drains and syncs every older block, then
+    // waits for the owner to acquire their completions, then changes its target
+    // without an owner-thread join or filesystem call.
+    // Both old and new targets must outlive the acquired switch completion.
+    // This completion is process-local writer ownership only: it is not durable
+    // selector publication, generation activation, or permission to retire an
+    // old arena before the owner has applied every dequeued block completion.
+    [[nodiscard]] bool submit_target_switch(
+        std::uint64_t expected_generation, std::uint64_t next_generation,
+        std::uint64_t sequence, WalSegment& next_segment,
+        const WalBlockArena& next_arena) noexcept;
+    [[nodiscard]] bool take_target_switch_completion(
+        TargetSwitchCompletion& completion) noexcept;
+
     // Writer side: one pass. Writes every submitted block, syncs ONCE, then
     // publishes completions. The single sync per pass is the whole economy of
     // the design, and publishing only after it is what makes a completion mean
@@ -328,18 +378,42 @@ public:
     void start();
     void stop();
 
+    // A worker failure is permanent for this writer. The owner observes the
+    // latch at its next boundary and must stop serving from ambiguous storage.
+    [[nodiscard]] bool failed() const noexcept {
+        return failed_.load(std::memory_order_acquire);
+    }
+    void rethrow_failure() const;
+
     [[nodiscard]] std::uint64_t blocks_written() const noexcept {
         return blocks_written_.load(std::memory_order_acquire);
     }
 
 private:
-    WalSegment& segment_;
-    const WalBlockArena& arena_;
+    WalSegment* segment_{};
+    const WalBlockArena* arena_{};
+    std::uint64_t target_generation_{};
+    std::atomic<std::uint64_t> target_switch_sequence_{0};
     SpscRing<BlockDescriptor, 64> submissions_;
     SpscRing<BlockDescriptor, 64> completions_;
     std::atomic<std::uint64_t> blocks_written_{0};
     std::atomic<bool> running_{false};
+    std::exception_ptr failure_;
+    std::atomic<bool> failed_{false};
     std::thread thread_;
+    void (*maintenance_run_)(void*){};
+    void* maintenance_context_{};
+    // idle -> queued -> completed -> idle; failure is the writer's permanent latch.
+    std::atomic<unsigned> maintenance_state_{0};
+    WalSegment* switch_segment_{};
+    const WalBlockArena* switch_arena_{};
+    std::uint64_t switch_expected_generation_{};
+    std::uint64_t switch_generation_{};
+    std::uint64_t switch_sequence_{};
+    TargetSwitchCompletion switch_completion_{};
+    // idle -> queued -> completed -> idle.
+    std::atomic<unsigned> switch_state_{0};
+    StorageCheckpoints checkpoints_{};
 };
 
 }  // namespace velocita::v2

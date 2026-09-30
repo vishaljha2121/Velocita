@@ -1,38 +1,35 @@
-Gate a voter's own quorum contribution on its durable index
+Gate local quorum on durability and application on explicit prerequisites
 
-Phase 7 makes the write-ahead log asynchronous, which splits two numbers that
-used to be the same: the highest log index this node HOLDS, and the highest
-index whose bytes are on stable storage. Raft's safety argument is stated in
-terms of the second; this implementation assumes the first.
+Pinned willemt/raft delta: optional durable_idx and before_apply hooks.
+Null callbacks preserve historical behavior for those optional hooks.
+CP-043 adds native RAFT_ERR_PERSIST_PENDING=-9, propagated before the applied
+index advances, and propagates candidate self-vote callback errors before
+RequestVote emission. Correct callback-error propagation deliberately changes
+the failed-self-vote path; it does not claim V1 is byte-for-byte unchanged.
+Optional log_prepare_truncate runs once before whole-suffix deletion; a pending
+return leaves the existing pop loop untouched. Null hook preserves the old path.
+Permanent regression: tests/v2_raft_persistence_tests.cpp.
 
-Two places assume it, and both concern the node's OWN contribution rather than a
-peer's - a peer's durability is already reported by its append-entries response,
-so only the local side is missing:
+CP-070 (M3 log finding 40): raft_send_appendentries_all no longer abandons the
+remaining peers at the first failing one, and a peer behind the snapshot gets
+an empty append at the snapshot point from the periodic heartbeat, so it stays
+a quiet follower instead of campaigning and deposing a healthy leader.
+Permanent regression: the stranded-voter test in tests/v2_replication_tests.cpp.
 
-  * raft_recv_appendentries_response starts its quorum count at `votes = 1`,
-    counting the leader unconditionally. There is no setter for one's own match
-    index, so an application cannot correct this from outside.
-  * raft_recv_entry commits immediately when there is a single voting node,
-    because a quorum of one is always already satisfied.
+CP-073 (M3 log finding 41): raft_get_last_log_term falls back to the snapshot term
+when the log is compacted to its end, as the voter side already does; before,
+such a candidate advertised term 0 and no voter would ever elect it.
+Permanent regression: the compacted-election test in tests/v2_replication_tests.cpp.
 
-A single voting node also needs commit to advance LATER, once durability catches
-up: at raft_recv_entry time the entry has only just been staged, and nothing
-else would ever revisit it. That re-check goes in raft_periodic, which such a
-deployment already ticks.
+The patch is generated against the RAFT_COMMIT base using zero-context diffs.
+CMake verifies exact patched source hashes; do not edit generated build sources
+as the only record of a fork change.
 
-The callback is OPTIONAL. When it is NULL the behaviour is byte-for-byte as
-before, so existing users - including this repository's V1 node - are unaffected
-and need no change.
-
-Base commit is pinned by RAFT_COMMIT in CMakeLists.txt. Regenerate this patch by
-diffing a clean checkout of that commit against the modified tree; do not hand-
-edit it.
-
-diff --git a/include/raft.h b/include/raft.h
-index 620fa30..de7f752 100644
 --- a/include/raft.h
 +++ b/include/raft.h
-@@ -267,0 +268,22 @@ typedef int (
+@@ -22,0 +23 @@ typedef enum {
++    RAFT_ERR_PERSIST_PENDING=-9,
+@@ -267,0 +269,22 @@ typedef int (
 +/** Callback for asking the application how much of the log is DURABLE.
 + *
 + * Return the highest log index whose bytes are known to be on stable storage.
@@ -55,15 +52,60 @@ index 620fa30..de7f752 100644
 +    void *user_data
 +    );
 +
-@@ -423,0 +446,3 @@ typedef struct
+@@ -345,0 +369,20 @@ typedef int (
++/** Callback for checking an entry immediately before finite-state-machine
++ * application.
++ *
++ * This callback runs before Raft advances last_applied_idx. Returning a
++ * non-zero value prevents both the index advance and the applylog callback.
++ * OPTIONAL. When NULL, application behavior is unchanged.
++ * @param[in] raft The Raft server making this callback
++ * @param[in] user_data User data that is passed from Raft server
++ * @param[in] entry The next committed entry
++ * @param[in] entry_idx The index that would be applied
++ * @return 0 to apply; non-zero to stop application */
++typedef int (
++*func_before_apply_f
++)   (
++    raft_server_t* raft,
++    void *user_data,
++    raft_entry_t *entry,
++    raft_index_t entry_idx
++    );
++
+@@ -382,0 +426,8 @@ typedef struct
++    /** Optional whole-suffix prerequisite, before any log_pop or memory deletion.
++     * Return RAFT_ERR_PERSIST_PENDING to retry the original input after durable
++     * preparation. Returning zero permits the existing deletion loop. */
++    int (*log_prepare_truncate)(raft_server_t*, void*, raft_index_t);
++
++    /** Callback immediately before application advances. Optional; see above. */
++    func_before_apply_f before_apply;
++
+@@ -423,0 +475,3 @@ typedef struct
 +    /** Callback for the local node's durable log index. Optional; see above. */
 +    func_durable_idx_f durable_idx;
 +
-diff --git a/src/raft_server.c b/src/raft_server.c
-index aefa218..76f7e37 100644
+--- a/src/raft_log.c
++++ b/src/raft_log.c
+@@ -231,0 +232,9 @@ int log_delete(log_t* me_, raft_index_t idx)
++    if (me->count && idx <= me->base + me->count &&
++        me->cb && me->cb->log_prepare_truncate)
++    {
++        int e = me->cb->log_prepare_truncate(me->raft,
++            raft_get_udata(me->raft), idx);
++        if (0 != e)
++            return e;
++    }
++
 --- a/src/raft_server.c
 +++ b/src/raft_server.c
-@@ -221,0 +222,11 @@ void raft_become_follower(raft_server_t* me_)
+@@ -191 +191,3 @@ int raft_become_candidate(raft_server_t* me_)
+-    raft_vote(me_, me->node);
++    e = raft_vote(me_, me->node);
++    if (0 != e)
++        return e;
+@@ -221,0 +224,11 @@ void raft_become_follower(raft_server_t* me_)
 +/* How much of our own log is durable. Without the callback the log is treated
 + * as durable on append, which is what a synchronous log gives and is what every
 + * existing user expects. */
@@ -75,7 +117,7 @@ index aefa218..76f7e37 100644
 +    return me->cb.durable_idx(me_, raft_get_udata(me_));
 +}
 +
-@@ -233,0 +245,44 @@ int raft_periodic(raft_server_t* me_, int msec_since_last_period)
+@@ -233,0 +247,44 @@ int raft_periodic(raft_server_t* me_, int msec_since_last_period)
 +    /* A single voting node is its own quorum, so its commit index follows its
 +     * durability directly. This cannot be done once at append time: with an
 +     * asynchronous log the entry has only been staged by then, and nothing
@@ -120,7 +162,7 @@ index aefa218..76f7e37 100644
 +        }
 +    }
 +
-@@ -358 +413,7 @@ int raft_recv_appendentries_response(raft_server_t* me_,
+@@ -358 +415,7 @@ int raft_recv_appendentries_response(raft_server_t* me_,
 -            int i, votes = 1;
 +            /* Count ourselves only for an entry we have actually made
 +             * durable. Counting unconditionally lets a leader form a quorum
@@ -129,15 +171,65 @@ index aefa218..76f7e37 100644
 +            if (point <= raft_local_durable_idx(me_))
 +                votes = 1;
 +
-@@ -766 +827,3 @@ int raft_recv_entry(raft_server_t* me_,
+@@ -766 +829,3 @@ int raft_recv_entry(raft_server_t* me_,
 -    /* if we're the only node, we can consider the entry committed */
 +    /* if we're the only node, we can consider the entry committed - but only
 +     * as far as the log is durable. raft_periodic advances it the rest of the
 +     * way once the writer catches up. */
-@@ -768 +831,5 @@ int raft_recv_entry(raft_server_t* me_,
+@@ -768 +833,5 @@ int raft_recv_entry(raft_server_t* me_,
 -        raft_set_commit_idx(me_, raft_get_current_idx(me_));
 +    {
 +        raft_index_t durable = raft_local_durable_idx(me_);
 +        raft_index_t current = raft_get_current_idx(me_);
 +        raft_set_commit_idx(me_, durable < current ? durable : current);
 +    }
+@@ -830,0 +900,7 @@ int raft_apply_entry(raft_server_t* me_)
++    if (me->cb.before_apply)
++    {
++        int e = me->cb.before_apply(me_, me->udata, ety, log_idx);
++        if (0 != e)
++            return e;
++    }
++
+@@ -938,0 +1015,16 @@ int raft_send_appendentries(raft_server_t* me_, raft_node_t* node)
++/* A peer behind the snapshot cannot be served until a snapshot is installed,
++ * but it must still hear from its leader: silent, it campaigns, and its higher
++ * terms depose a healthy leader again and again. An empty append at the
++ * snapshot point resets its election timer; its log check refuses it. Sent only
++ * from the periodic heartbeat so a refusal cannot trigger an immediate resend. */
++static int raft_send_snapshot_point_heartbeat(raft_server_t* me_, raft_node_t* node)
++{
++    raft_server_private_t* me = (raft_server_private_t*)me_;
++    msg_appendentries_t ae = {};
++    ae.term = me->current_term;
++    ae.leader_commit = raft_get_commit_idx(me_);
++    ae.prev_log_idx = me->snapshot_last_idx;
++    ae.prev_log_term = me->snapshot_last_term;
++    return me->cb.send_appendentries(me_, me->udata, node, &ae);
++}
++
+@@ -942 +1034 @@ int raft_send_appendentries_all(raft_server_t* me_)
+-    int i, e;
++    int i, e, first = 0;
+@@ -949,0 +1042 @@ int raft_send_appendentries_all(raft_server_t* me_)
++        /* One peer's failure must not starve the peers after it of heartbeats. */
+@@ -951,2 +1044,4 @@ int raft_send_appendentries_all(raft_server_t* me_)
+-        if (0 != e)
+-            return e;
++        if (RAFT_ERR_NEEDS_SNAPSHOT == e)
++            (void)raft_send_snapshot_point_heartbeat(me_, me->nodes[i]);
++        if (0 != e && 0 == first)
++            first = e;
+@@ -955 +1050 @@ int raft_send_appendentries_all(raft_server_t* me_)
+-    return 0;
++    return first;
+--- a/src/raft_server_properties.c
++++ b/src/raft_server_properties.c
+@@ -217,0 +218 @@ raft_term_t raft_get_last_log_term(raft_server_t* me_)
++    raft_server_private_t* me = (raft_server_private_t*)me_;
+@@ -223,0 +225,5 @@ raft_term_t raft_get_last_log_term(raft_server_t* me_)
++        /* A log compacted to its end keeps its last term only in the
++         * snapshot. Returning 0 here made such a candidate unelectable: every
++         * voter (which does fall back to the snapshot term) saw it as behind. */
++        if (me->snapshot_last_idx == current_idx)
++            return me->snapshot_last_term;

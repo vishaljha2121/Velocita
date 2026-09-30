@@ -1,0 +1,1 @@
+RED: sealed genesis base cannot be read through the final selector

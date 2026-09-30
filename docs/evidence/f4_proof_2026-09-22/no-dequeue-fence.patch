@@ -1,0 +1,10 @@
+--- src/v2_replication.cpp	2026-09-22 14:34:17
++++ /private/tmp/f4-proof-mutations.e8D7Tj/no-dequeue-fence.cpp	2026-09-22 14:44:21
+@@ -500,6 +500,7 @@
+ }
+ 
+ bool ReplicatedKernel::authority_proof_is_current(const AuthorityProofView& proof) const noexcept {
++    return true;
+     if (raft_is_leader(server_) == 0 || raft_get_current_term(server_) != proof.term ||
+         raft_get_commit_idx(server_) < proof.barrier_index ||
+         raft_get_last_applied_idx(server_) < proof.barrier_index ||

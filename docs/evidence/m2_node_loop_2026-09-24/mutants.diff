@@ -1,0 +1,28 @@
+=== caller_mismatch_removed
+249,251c249
+<         if (command.identity.caller_id.value() != caller.caller_id) {
+<             response.reason = static_cast<std::uint8_t>(IngressRefusal::caller_mismatch);
+<         } else if (!ready()) {
+---
+>         if (!ready()) {
+=== peer_fence_ignored
+149,150c149
+<         if (link.fence.admit(verified.header.session_epoch, verified.header.sequence) !=
+<             SessionFence::Decision::accept) {
+---
+>         if (false) {
+=== busy_frames_dropped
+117,118c117,118
+<         if (link.pending.empty()) link.pending.assign(body.begin(), body.end());
+<         return false;
+---
+>         link.pending.clear();
+>         return true;
+=== stash_dropped
+188d187
+<             link.stash.assign(bytes.begin(), bytes.end());
+=== leader_hint_removed
+262c262
+<                     response.leader_id = outcome.leader_id;
+---
+>                     (void)outcome.leader_id;

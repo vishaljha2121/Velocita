@@ -1,0 +1,5 @@
+TRANSCRIBED DIRECT TOOL OUTPUT
+command compile exit: 0
+command test exit: 0
+
+snapshot install preflight tests passed

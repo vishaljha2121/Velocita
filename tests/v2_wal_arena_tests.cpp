@@ -1,4 +1,6 @@
 #include "velocita/v2/wal_arena.hpp"
+#include "velocita/v2/bound_wal.hpp"
+#include "v2_identity_test_support.hpp"
 
 #include <filesystem>
 #include <iostream>
@@ -22,6 +24,130 @@ std::vector<std::byte> record(const std::size_t size, const std::uint8_t marker)
         bytes[i] = static_cast<std::byte>(marker ^ static_cast<std::uint8_t>(i));
     }
     return bytes;
+}
+
+const VerifiedStaticIdentity& wal_identity() {
+    static const auto value = identity_test::verified_identity(
+        identity_test::identity(1, {1, 2, 3}));
+    return value;
+}
+
+std::vector<std::byte> command_payload(const std::uint64_t sequence) {
+    Command command;
+    command.identity = {CallerId{1}, RequestSequence{sequence}, {}};
+    command.identity.payload_digest.bytes[0] = static_cast<std::byte>(sequence);
+    command.body = AdvanceKillEpoch{KillEpoch{sequence}};
+    std::array<std::byte, kMaxKernelCommandBytes> bytes{};
+    const auto encoded = encode_kernel_command(command, bytes);
+    require(encoded.error == KernelCodecError::none, "command fixture encode failed");
+    return {bytes.begin(), bytes.begin() + static_cast<std::ptrdiff_t>(encoded.bytes_written)};
+}
+
+std::vector<std::byte> bound_record(const std::uint64_t index, const std::int64_t term = 7) {
+    return encode_bound_wal_record(
+        {index, term, static_cast<std::int32_t>(index), 0, command_payload(index)},
+        wal_identity());
+}
+
+void test_bound_record_codec_and_lineage_refusals() {
+    const auto bytes = bound_record(7, 3);
+    const auto decoded = decode_bound_wal_record(bytes, wal_identity());
+    require(decoded.index == 7 && decoded.term == 3 && decoded.entry_id == 7 &&
+                decoded.entry_type == 0 && decoded.payload == command_payload(7),
+            "bound WAL codec changed record semantics");
+
+    const auto expect = [&](const VerifiedStaticIdentity& identity, BoundFrameError expected,
+                            const char* context) {
+        try {
+            (void)decode_bound_wal_record(bytes, identity);
+        } catch (const BoundWalError& error) {
+            require(error.code() == expected, context);
+            return;
+        }
+        throw std::runtime_error(context);
+    };
+    expect(identity_test::verified_identity(identity_test::identity(2, {1, 2, 3})),
+           BoundFrameError::wrong_owner, "wrong-owner WAL error was not typed");
+    expect(identity_test::verified_identity(identity_test::identity(1, {1, 2, 3},
+               catalog_test::standard_catalog(), 0xBC)),
+           BoundFrameError::foreign_manifest, "foreign-manifest WAL error was not typed");
+
+    auto partial = bytes;
+    partial.pop_back();
+    try {
+        (void)decode_bound_wal_records(partial, wal_identity());
+    } catch (const BoundWalError& error) {
+        require(error.code() == BoundFrameError::length_mismatch,
+                "partial inner record error was not typed");
+        return;
+    }
+    throw std::runtime_error("partial inner record was accepted");
+}
+
+void test_independent_bound_wal_golden_and_block_version() {
+    const auto hex = [](std::string_view text) {
+        std::vector<std::byte> bytes;
+        for (std::size_t at = 0; at < text.size(); at += 2)
+            bytes.push_back(std::byte(std::stoul(std::string(text.substr(at, 2)), nullptr, 16)));
+        return bytes;
+    };
+    const auto identity_bytes = hex(
+        "563249447c000000010000000102030405060708090a0b0c0d0e0f10"
+        "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"
+        "0900090001000100010001000101030011000000010100000100010011000000"
+        "a6326543a7df7e9c89692344318dadf2f97dc3f06b3dabfacdcd3875fb29334d");
+    VerifiedStaticIdentity identity;
+    require(VerifiedStaticIdentity::decode(identity_bytes, identity) == StaticIdentityCodecError::none,
+            "golden WAL identity failed");
+    // Independently calculated with Python struct/hashlib/zlib, not this codec.
+    const auto golden = hex(
+        "5632424601000200d40000007c0000003ce5d6e3e9a886ab694852a129348bbe9413c2b55077a84804efa3cd645cc3e0"
+        "1100000000000000070000000000000003000000000000000700000000000000"
+        "56324b433800000009000600010000000000000001000000000000000100000000000000000000000000000000000000000000000000000000000000"
+        "01000000000000007ebfc094cb08c72268b6e92acc835d5b5bbee17c517e564750290c1a437a118b"
+        "bce2fbc0c7f096b94faa89f62932f716e6f283cfdbc2a182abb0cd832564ac95");
+    require(encode_bound_wal_record({7, 3, 7, 0, command_payload(1)}, identity) == golden,
+            "bound WAL encoder disagrees with independent golden");
+    const auto decoded = decode_bound_wal_record(golden, identity);
+    require(decoded.index == 7 && decoded.term == 3 && decoded.entry_id == 7 &&
+            decoded.entry_type == 0 && decoded.payload == command_payload(1), "golden WAL fields changed");
+    const auto block = frame_block(1, 1, golden);
+    // tools/v2_schema_goldens.py "WAL block crc".
+    require(block[4] == std::byte{2} && block[28] == std::byte{0x04} &&
+            block[29] == std::byte{0x19} && block[30] == std::byte{0x12} && block[31] == std::byte{0x1d},
+            "block-v2 version/independent CRC changed");
+    for (const auto version : {1, 3}) {
+        auto foreign_version = block;
+        foreign_version[4] = std::byte(version);
+        bool refused{};
+        try { (void)decode_block(foreign_version); }
+        catch (const BoundWalError& error) { refused = error.code() == BoundFrameError::unsupported_schema; }
+        require(refused, "unsupported WAL block version collapsed to ordinary corrupt tail");
+    }
+}
+
+void test_complete_corruption_is_not_an_empty_segment(const std::filesystem::path& root) {
+    std::filesystem::create_directories(root);
+    auto bytes = frame_block(1, 1, bound_record(1));
+    bytes[kWalBlockHeaderBytes + 60] ^= std::byte{1};
+    const auto path = root / "v2-wal-blocks.bin";
+    {
+        std::ofstream output(path, std::ios::binary);
+        output.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    }
+    bool refused{};
+    try { (void)WalSegment::read_existing_records(root, wal_identity()); }
+    catch (const BoundWalError& error) { refused = error.code() == BoundFrameError::invalid_payload; }
+    require(refused, "a complete corrupt WAL block was accepted as an empty segment");
+    refused = false;
+    try { WalSegment segment(root, wal_identity()); }
+    catch (const BoundWalError& error) { refused = error.code() == BoundFrameError::invalid_payload; }
+    require(refused, "writable open accepted a complete corrupt WAL block");
+    std::ifstream input(path, std::ios::binary);
+    std::vector<std::byte> after(bytes.size());
+    input.read(reinterpret_cast<char*>(after.data()), after.size());
+    require(after == bytes && std::filesystem::file_size(path) == bytes.size(),
+            "corrupt block refusal changed diagnostic evidence");
 }
 
 // Stand-in for the writer: takes the next sealed block, frames it, and reports
@@ -264,15 +390,7 @@ void test_the_durable_index_does_not_advance_before_the_sync(
     // What distinguishes correct from incorrect is the INDEX at that instant.
     std::filesystem::create_directories(root);
 
-    const auto staged_record = [](const std::uint64_t index) {
-        velocita::WalRecord value;
-        value.index = index;
-        value.term = 1;
-        value.entry_id = static_cast<std::int32_t>(index);
-        value.entry_type = 0;
-        value.payload = record(64, static_cast<std::uint8_t>(0x70 + index));
-        return velocita::encode_wal_record(value);
-    };
+    const auto staged_record = [](const std::uint64_t index) { return bound_record(index, 1); };
 
     struct Observation {
         WalBlockArena* arena;
@@ -285,7 +403,7 @@ void test_the_durable_index_does_not_advance_before_the_sync(
     arena.seal_open_block();
 
     Observation seen{&arena, 0, 0};
-    WalSegment segment(root, {[](StorageCheckpoint at, void* context) {
+    WalSegment segment(root, wal_identity(), {[](StorageCheckpoint at, void* context) {
                                   if (at != StorageCheckpoint::before_file_sync) return;
                                   auto& observation = *static_cast<Observation*>(context);
                                   ++observation.calls;
@@ -308,6 +426,167 @@ void test_the_durable_index_does_not_advance_before_the_sync(
             "the durable index did not advance after a successful sync");
 }
 
+void test_synchronous_flush_writes_each_sealed_block_once_in_order(
+    const std::filesystem::path& root) {
+    std::filesystem::create_directories(root);
+    WalBlockArena arena;
+    for (std::uint64_t index = 1; index <= 3; ++index) {
+        require(arena.stage(bound_record(index), index) ==
+                    StageOutcome::staged,
+                "multi-block fixture stage refused");
+        arena.seal_open_block();
+    }
+    require(arena.sealed_count() == 3,
+            "multi-block fixture did not seal three distinct blocks");
+
+    struct Observation {
+        WalBlockArena* arena;
+        std::size_t sync_calls{};
+        std::uint64_t durable_at_sync{};
+    } seen{&arena};
+    WalSegment segment(root, wal_identity(), {[](StorageCheckpoint at, void* context) {
+                                  if (at != StorageCheckpoint::before_file_sync) return;
+                                  auto& observation =
+                                      *static_cast<Observation*>(context);
+                                  ++observation.sync_calls;
+                                  observation.durable_at_sync =
+                                      observation.arena->durable_index();
+                              },
+                              &seen});
+    require(segment.flush(arena) == 3,
+            "synchronous batch did not flush every sealed block");
+    require(seen.sync_calls == 1 && seen.durable_at_sync == 0,
+            "synchronous batch did not use one sync before all durable progress");
+    require(arena.sealed_count() == 0,
+            "synchronous batch left a sealed block behind");
+    require(arena.durable_index() == 3,
+            "synchronous batch did not advance durability through its last record");
+
+    const auto recovered = segment.read_records();
+    require(recovered.size() == 3,
+            "synchronous batch recovered the wrong record count");
+    for (std::size_t offset = 0; offset < recovered.size(); ++offset) {
+        const auto expected_index = static_cast<std::uint64_t>(offset + 1);
+        require(recovered[offset].index == expected_index,
+                "synchronous batch duplicated or reordered a record");
+        require(recovered[offset].payload == command_payload(expected_index),
+                "synchronous batch changed distinct record bytes");
+    }
+}
+
+void test_failed_synchronous_batch_can_retry_without_duplicates(
+    const std::filesystem::path& root) {
+    std::filesystem::create_directories(root);
+    WalBlockArena arena;
+    for (std::uint64_t index = 1; index <= 2; ++index) {
+        require(arena.stage(bound_record(index), index) ==
+                    StageOutcome::staged,
+                "retry fixture stage refused");
+        arena.seal_open_block();
+    }
+
+    bool fail_once = true;
+    WalSegment segment(root, wal_identity(), {[](StorageCheckpoint at, void* context) {
+                                  auto& armed = *static_cast<bool*>(context);
+                                  if (at == StorageCheckpoint::before_file_sync && armed) {
+                                      armed = false;
+                                      throw std::runtime_error("injected sync failure");
+                                  }
+                              },
+                              &fail_once});
+    bool failed = false;
+    try {
+        (void)segment.flush(arena);
+    } catch (const std::runtime_error& error) {
+        failed = std::string(error.what()) == "injected sync failure";
+    }
+    require(failed, "synchronous batch did not exercise the injected sync failure");
+    require(arena.sealed_count() == 2 && arena.durable_index() == 0,
+            "failed synchronous batch released or lost staged blocks");
+
+    require(segment.flush(arena) == 2,
+            "synchronous batch could not retry after a sync failure");
+    const auto recovered = segment.read_records();
+    require(recovered.size() == 2 && recovered[0].index == 1 &&
+                recovered[1].index == 2,
+            "retry duplicated, lost, or reordered synchronous WAL records");
+    require(recovered[0].payload == command_payload(1) &&
+                recovered[1].payload == command_payload(2),
+            "retry changed synchronous WAL record bytes");
+    require(arena.durable_index() == 2,
+            "retry did not advance durability through the batch");
+}
+
+void test_failed_second_block_write_can_retry_without_duplicates(
+    const std::filesystem::path& root) {
+    std::filesystem::create_directories(root);
+    WalBlockArena arena;
+    for (std::uint64_t index = 1; index <= 3; ++index) {
+        require(arena.stage(bound_record(index), index) ==
+                    StageOutcome::staged,
+                "write-failure fixture stage refused");
+        arena.seal_open_block();
+    }
+
+    std::size_t writes = 0;
+    WalSegment segment(root, wal_identity(), {[](StorageCheckpoint at, void* context) {
+                                  if (at != StorageCheckpoint::before_block_write) return;
+                                  auto& count = *static_cast<std::size_t*>(context);
+                                  if (++count == 2) {
+                                      throw std::runtime_error("injected second-block write failure");
+                                  }
+                              },
+                              &writes});
+    bool failed = false;
+    try {
+        (void)segment.flush(arena);
+    } catch (const std::runtime_error& error) {
+        failed = std::string(error.what()) ==
+                 "injected second-block write failure";
+    }
+    require(failed, "synchronous batch did not fail on the second block write");
+    require(arena.sealed_count() == 3 && arena.durable_index() == 0,
+            "failed block write released or lost staged blocks");
+
+    require(segment.flush(arena) == 3,
+            "synchronous batch could not retry after a block write failure");
+    const auto recovered = segment.read_records();
+    require(recovered.size() == 3,
+            "write-failure retry recovered the wrong record count");
+    for (std::size_t offset = 0; offset < recovered.size(); ++offset) {
+        const auto expected = static_cast<std::uint64_t>(offset + 1);
+        require(recovered[offset].index == expected &&
+                    recovered[offset].payload == command_payload(expected),
+                "write-failure retry duplicated, reordered, or changed record bytes");
+    }
+    require(arena.durable_index() == 3,
+            "write-failure retry did not advance durability through the batch");
+}
+
+void test_synchronous_flush_refuses_submitted_writer_work(
+    const std::filesystem::path& root) {
+    std::filesystem::create_directories(root);
+    WalBlockArena arena;
+    require(arena.stage(bound_record(1), 1) ==
+                StageOutcome::staged,
+            "mixed-owner fixture stage refused");
+    arena.seal_open_block();
+    require(arena.next_unsubmitted().has_value(),
+            "mixed-owner fixture did not submit its block");
+
+    WalSegment segment(root, wal_identity());
+    bool refused = false;
+    try {
+        (void)segment.flush(arena);
+    } catch (const std::logic_error& error) {
+        refused = std::string(error.what()) ==
+                  "synchronous WAL flush cannot mix with submitted writer work";
+    }
+    require(refused, "synchronous flush silently mixed with writer-owned work");
+    require(segment.read_records().empty() && arena.durable_index() == 0,
+            "mixed-owner refusal wrote or credited WAL bytes");
+}
+
 void test_preallocated_space_does_not_read_back_as_data(
     const std::filesystem::path& root) {
     // Preallocation extends the file well past the write frontier. That space
@@ -317,22 +596,14 @@ void test_preallocated_space_does_not_read_back_as_data(
     // REAL records, not arbitrary bytes. The framing tests above only exercise
     // the block layer, so they pass on any payload; this one walks the whole
     // path back out through the record decoder and needs records that decode.
-    const auto staged_record = [](const std::uint64_t index) {
-        velocita::WalRecord value;
-        value.index = index;
-        value.term = 1;
-        value.entry_id = static_cast<std::int32_t>(index);
-        value.entry_type = 0;
-        value.payload = record(64, static_cast<std::uint8_t>(0x40 + index));
-        return velocita::encode_wal_record(value);
-    };
+    const auto staged_record = [](const std::uint64_t index) { return bound_record(index, 1); };
 
     WalBlockArena arena;
     require(arena.stage(staged_record(1), 1) == StageOutcome::staged, "stage failed");
     arena.seal_open_block();
 
     {
-        WalSegment segment(root);
+        WalSegment segment(root, wal_identity());
         require(segment.flush(arena) == 1, "flush wrote nothing");
     }
 
@@ -340,7 +611,7 @@ void test_preallocated_space_does_not_read_back_as_data(
     require(size > kWalBlockBytes,
             "the segment was not preallocated beyond the block it wrote");
 
-    WalSegment reopened(root);
+    WalSegment reopened(root, wal_identity());
     const auto records = reopened.read_records();
     require(records.size() == 1,
             "recovery read " + std::to_string(records.size()) +
@@ -356,7 +627,7 @@ void test_preallocated_space_does_not_read_back_as_data(
     more.seal_open_block();
     require(reopened.flush(more) == 1, "second flush wrote nothing");
 
-    WalSegment again(root);
+    WalSegment again(root, wal_identity());
     const auto both = again.read_records();
     require(both.size() == 2,
             "appending after a reopen lost or duplicated a record: got " +
@@ -372,11 +643,9 @@ void test_rewrite_crashes_preserve_one_complete_history(const std::filesystem::p
         std::filesystem::create_directories(dir);
         {
             WalBlockArena arena;
-            WalSegment segment(dir);
+            WalSegment segment(dir, wal_identity());
             for (std::uint64_t index = 1; index <= 3; ++index) {
-                velocita::WalRecord value{index, 1, static_cast<std::int32_t>(index), 0,
-                    record(3000, static_cast<std::uint8_t>(index))};
-                require(arena.stage(velocita::encode_wal_record(value), index) == StageOutcome::staged,
+                require(arena.stage(bound_record(index, 1), index) == StageOutcome::staged,
                         "rewrite fixture stage refused");
                 arena.seal_open_block();
                 segment.flush(arena);
@@ -386,7 +655,7 @@ void test_rewrite_crashes_preserve_one_complete_history(const std::filesystem::p
         const auto child = ::fork();
         require(child >= 0, "fork failed");
         if (child == 0) {
-            WalSegment segment(dir, {[](StorageCheckpoint at, void* context) {
+            WalSegment segment(dir, wal_identity(), {[](StorageCheckpoint at, void* context) {
                 if (at == *static_cast<StorageCheckpoint*>(context)) ::_exit(77);
             }, &selected});
             segment.discard_through(1);
@@ -395,14 +664,14 @@ void test_rewrite_crashes_preserve_one_complete_history(const std::filesystem::p
         int status = 0;
         require(::waitpid(child, &status, 0) == child && WIFEXITED(status), "child failed");
         require(WEXITSTATUS(status) == 77, "rewrite checkpoint was not exercised");
-        const auto recovered = WalSegment(dir).read_records();
+        const auto recovered = WalSegment(dir, wal_identity()).read_records();
         const bool old = recovered.size() == 3 && recovered[0].index == 1 &&
                          recovered[1].index == 2 && recovered[2].index == 3;
         const bool replaced = recovered.size() == 2 && recovered[0].index == 2 &&
                               recovered[1].index == 3;
         require(old || replaced, "rewrite crash recovered a mixed/duplicated history");
         for (const auto& value : recovered)
-            require(value.payload == record(3000, static_cast<std::uint8_t>(value.index)),
+            require(value.payload == command_payload(value.index),
                     "rewrite crash changed record bytes");
     }
 }
@@ -411,6 +680,8 @@ void test_rewrite_crashes_preserve_one_complete_history(const std::filesystem::p
 
 int main() {
     try {
+        test_bound_record_codec_and_lineage_refusals();
+        test_independent_bound_wal_golden_and_block_version();
         test_framing_round_trips_exactly();
         test_a_record_never_straddles_a_block();
         test_a_record_larger_than_a_block_is_refused_not_split();
@@ -423,6 +694,15 @@ int main() {
             const auto root = std::filesystem::temp_directory_path() /
                               "velocita-v2-wal-arena-tests";
             std::filesystem::remove_all(root);
+            test_synchronous_flush_writes_each_sealed_block_once_in_order(
+                root / "multi-block-flush");
+            test_complete_corruption_is_not_an_empty_segment(root / "corrupt-complete");
+            test_failed_synchronous_batch_can_retry_without_duplicates(
+                root / "multi-block-retry");
+            test_failed_second_block_write_can_retry_without_duplicates(
+                root / "multi-block-write-retry");
+            test_synchronous_flush_refuses_submitted_writer_work(
+                root / "mixed-writer-ownership");
             test_rewrite_crashes_preserve_one_complete_history(root / "rewrite");
             test_the_durable_index_does_not_advance_before_the_sync(root / "presync");
             test_preallocated_space_does_not_read_back_as_data(root);

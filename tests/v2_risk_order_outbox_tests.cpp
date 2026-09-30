@@ -1,3 +1,4 @@
+#include "v2_catalog_test_support.hpp"
 #include "velocita/v2/replay.hpp"
 #include "velocita/v2/state_snapshot.hpp"
 #include "velocita/v2/payload.hpp"
@@ -129,12 +130,15 @@ velocita::v2::TradingState ready_state(
     const velocita::v2::FeatureMicros feature =
         velocita::v2::FeatureMicros::from_atoms(11),
     const velocita::v2::MarketDataStatus market_status =
-        velocita::v2::MarketDataStatus::ready) {
+        velocita::v2::MarketDataStatus::ready,
+    const velocita::v2::KillEpoch kill_epoch = velocita::v2::KillEpoch{2},
+    const velocita::v2::ExecutorGeneration executor_generation =
+        velocita::v2::ExecutorGeneration{3}) {
     using namespace velocita::v2;
-    TradingState state;
+    TradingState state = catalog_test::state();
     state.strategy_mode = StrategyMode::normal;
-    state.kill_epoch = KillEpoch{2};
-    state.executor_generation = ExecutorGeneration{3};
+    state.kill_epoch = kill_epoch;
+    state.executor_generation = executor_generation;
     state.policy_count = 1;
     state.policies[0] = {policy(), PolicyLifecycle::active};
     const auto schema = feature_schema();
@@ -147,7 +151,7 @@ velocita::v2::TradingState ready_state(
          PriceTicks::from_atoms(1), PriceTicks::from_atoms(100),
          QuantityLots::from_atoms(1), QuantityLots::from_atoms(10)},
         {kVenueCapabilitiesSchemaVersion, VenueId{9},
-         VenueCapabilitiesVersion{8}, kVenueDirectivePlaceLimit, kVenueTifGtc,
+         VenueCapabilitiesVersion{8}, (kVenueDirectivePlaceLimit | kVenueDirectiveCancel), kVenueTifGtc,
          1},
         1,
         2};
@@ -161,7 +165,8 @@ velocita::v2::TradingState ready_state(
         AccountId{5}, InstrumentId{4}, RiskPolicyVersion{6}, RiskVersion{1},
         PositionVersion{1}, QuantityLots::from_atoms(4),
         QuantityLots::from_atoms(8), {}, MoneyMicros::from_atoms(4'000),
-        MoneyMicros::from_atoms(8'000), {}, {}, 1'000'000, 2'500};
+        MoneyMicros::from_atoms(8'000), {}, {}, 1'000'000, 2'500, {},
+        QuantityLots::from_atoms(1'000), true};
 
     auto decision_frame = frame();
     decision_frame.features[0] = feature;
@@ -170,7 +175,7 @@ velocita::v2::TradingState ready_state(
     const Command decision{{CallerId{1}, RequestSequence{1}, digest(0x51)},
                            EvaluateDecisionFrame{DecisionId{20}, mode,
                                                  decision_frame}};
-    const auto result = apply(state, decision, scratch);
+    const auto result = catalog_test::apply(state, decision, scratch);
     require(result.code == ApplyCode::applied,
             "Phase 3 fixture command was not retained");
     return state;
@@ -245,7 +250,7 @@ velocita::v2::ApplyResult evaluate_at_feature(
     const std::uint64_t request) {
     using namespace velocita::v2;
     const auto evidence = digest(static_cast<std::uint8_t>(0x40 + (source_sequence % 0x30)));
-    const auto admitted = apply(state,
+    const auto admitted = catalog_test::apply(state,
                                 {{CallerId{7}, RequestSequence{request}, digest(0x21)},
                                  RecordSourceEvent{SourceId{12}, SourceGeneration{1},
                                                    SourceSequence{source_sequence},
@@ -269,7 +274,7 @@ velocita::v2::ApplyResult evaluate_at_feature(
     value.features[0] = FeatureMicros::from_atoms(feature_atoms);
     value.position_version = state.risk_accounts[0].position_version;
     value.risk_version = state.risk_accounts[0].risk_version;
-    return apply(state,
+    return catalog_test::apply(state,
                  {{CallerId{8}, RequestSequence{request},
                    digest(static_cast<std::uint8_t>(1 + decision_id.value() % 255))},
                   EvaluateDecisionFrame{decision_id, EvaluationMode::authoritative,
@@ -282,6 +287,41 @@ velocita::v2::Command authorize(const std::uint64_t request,
     using namespace velocita::v2;
     return {{CallerId{1}, RequestSequence{request}, digest(marker)},
             AuthorizeDecision{DecisionId{20}}};
+}
+
+void test_authorization_requires_initialized_execution_authority() {
+    using namespace velocita::v2;
+    ApplyScratch scratch;
+    const std::array<std::pair<KillEpoch, ExecutorGeneration>, 3> incomplete{{
+        {KillEpoch{}, ExecutorGeneration{}},
+        {KillEpoch{}, ExecutorGeneration{3}},
+        {KillEpoch{2}, ExecutorGeneration{}},
+    }};
+    for (std::size_t index = 0; index < incomplete.size(); ++index) {
+        auto state = ready_state(EvaluationMode::authoritative,
+                                 FeatureMicros::from_atoms(11),
+                                 MarketDataStatus::ready,
+                                 incomplete[index].first,
+                                 incomplete[index].second);
+        const auto before = state;
+
+        const auto refused = catalog_test::apply(
+            state, authorize(2 + index, static_cast<std::uint8_t>(0x52 + index)),
+            scratch);
+
+        require(refused.code == ApplyCode::stale_control_generation,
+                "incomplete execution authority authorized an outbound effect");
+        require(state.reservation_count == before.reservation_count &&
+                    state.order_count == before.order_count &&
+                    state.outbox_effect_count == before.outbox_effect_count &&
+                    state.risk_accounts[0].reserved_quantity ==
+                        before.risk_accounts[0].reserved_quantity &&
+                    state.risk_accounts[0].reserved_margin ==
+                        before.risk_accounts[0].reserved_margin &&
+                    state.risk_accounts[0].reserved_fee ==
+                        before.risk_accounts[0].reserved_fee,
+                "incomplete-authority refusal partially created risk or outbox state");
+    }
 }
 
 velocita::v2::Command observe_fill(
@@ -404,7 +444,7 @@ velocita::v2::ApplyResult evaluate_new_decision(
     const Command record{{CallerId{7}, RequestSequence{request}, digest(0x21)},
                          RecordSourceEvent{SourceId{12}, SourceGeneration{1},
                                            SourceSequence{source_sequence}, evidence}};
-    const auto admitted = apply(state, record, scratch);
+    const auto admitted = catalog_test::apply(state, record, scratch);
     require(admitted.code == ApplyCode::applied,
             "source event admission failed");
     if (history != nullptr) history->push_back(record);
@@ -420,7 +460,7 @@ velocita::v2::ApplyResult evaluate_new_decision(
                            EvaluateDecisionFrame{decision_id,
                                                  EvaluationMode::authoritative, value}};
     if (history != nullptr) history->push_back(evaluate);
-    return apply(state, evaluate, scratch);
+    return catalog_test::apply(state, evaluate, scratch);
 }
 
 velocita::v2::Command authorize_decision(const std::uint64_t request,
@@ -513,7 +553,7 @@ void test_submit_authorization_is_atomic_and_idempotent() {
     auto state = ready_state();
     ApplyScratch scratch;
     const auto command = authorize(2, 0x52);
-    const auto outcome = apply(state, command, scratch);
+    const auto outcome = catalog_test::apply(state, command, scratch);
 
     require(outcome.code == ApplyCode::applied &&
                 outcome.cluster_order_id() != ClusterOrderId{} &&
@@ -542,12 +582,12 @@ void test_submit_authorization_is_atomic_and_idempotent() {
                 outcome.reserved_exposure() == MoneyMicros::from_atoms(2'206),
             "authorization did not use the reviewed conservative formula");
 
-    const auto replay = apply(state, command, scratch);
+    const auto replay = catalog_test::apply(state, command, scratch);
     require(replay == outcome && state.reservation_count == 1 &&
                 state.order_count == 1 && state.outbox_effect_count == 1,
             "request replay changed economics or lost retained identities");
 
-    const auto conflict = apply(state, authorize(2, 0x53), scratch);
+    const auto conflict = catalog_test::apply(state, authorize(2, 0x53), scratch);
     require(conflict.code == ApplyCode::duplicate_conflict &&
                 state.reservation_count == 1 && state.order_count == 1 &&
                 state.outbox_effect_count == 1,
@@ -562,7 +602,7 @@ void test_risk_and_capacity_fail_before_economic_mutation() {
     insufficient.risk_accounts[0].max_reserved_exposure =
         MoneyMicros::from_atoms(2'205);
     const auto insufficient_before = insufficient;
-    require(apply(insufficient, authorize(2, 0x61), scratch).code ==
+    require(catalog_test::apply(insufficient, authorize(2, 0x61), scratch).code ==
                 ApplyCode::insufficient_risk_capacity,
             "insufficient risk was not rejected");
     require_economics_unchanged(insufficient_before, insufficient,
@@ -571,7 +611,7 @@ void test_risk_and_capacity_fail_before_economic_mutation() {
     auto stale = ready_state();
     stale.risk_accounts[0].risk_version = RiskVersion{2};
     const auto stale_before = stale;
-    require(apply(stale, authorize(2, 0x62), scratch).code ==
+    require(catalog_test::apply(stale, authorize(2, 0x62), scratch).code ==
                 ApplyCode::stale_risk_state,
             "stale risk version was not rejected");
     require_economics_unchanged(stale_before, stale,
@@ -580,7 +620,7 @@ void test_risk_and_capacity_fail_before_economic_mutation() {
     auto full = ready_state();
     full.outbox_effect_count = kMaxOutboxEffects;
     const auto full_before = full;
-    require(apply(full, authorize(2, 0x63), scratch).code ==
+    require(catalog_test::apply(full, authorize(2, 0x63), scratch).code ==
                 ApplyCode::outbox_capacity_exceeded,
             "full outbox did not fail closed");
     require_economics_unchanged(full_before, full,
@@ -593,7 +633,7 @@ void test_non_authoritative_decisions_cannot_create_economics() {
 
     auto shadow = ready_state(EvaluationMode::shadow);
     const auto shadow_before = shadow;
-    require(apply(shadow, authorize(2, 0x71), scratch).code ==
+    require(catalog_test::apply(shadow, authorize(2, 0x71), scratch).code ==
                 ApplyCode::decision_not_authorizable,
             "shadow decision entered authorization");
     require_economics_unchanged(shadow_before, shadow,
@@ -602,7 +642,7 @@ void test_non_authoritative_decisions_cannot_create_economics() {
     auto no_action = ready_state(EvaluationMode::authoritative,
                                  FeatureMicros::from_atoms(10));
     const auto no_action_before = no_action;
-    require(apply(no_action, authorize(2, 0x72), scratch).code ==
+    require(catalog_test::apply(no_action, authorize(2, 0x72), scratch).code ==
                 ApplyCode::decision_not_authorizable,
             "no-action decision entered authorization");
     require_economics_unchanged(no_action_before, no_action,
@@ -612,7 +652,7 @@ void test_non_authoritative_decisions_cannot_create_economics() {
                                 FeatureMicros::from_atoms(11),
                                 MarketDataStatus::stale);
     const auto rejected_before = rejected;
-    require(apply(rejected, authorize(2, 0x73), scratch).code ==
+    require(catalog_test::apply(rejected, authorize(2, 0x73), scratch).code ==
                 ApplyCode::decision_not_authorizable,
             "rejected decision entered authorization");
     require_economics_unchanged(rejected_before, rejected,
@@ -623,14 +663,14 @@ void test_partial_fills_conserve_risk_position_and_identity() {
     using namespace velocita::v2;
     auto state = ready_state();
     ApplyScratch scratch;
-    const auto authorization = apply(state, authorize(2, 0x81), scratch);
+    const auto authorization = catalog_test::apply(state, authorize(2, 0x81), scratch);
     require(authorization.code == ApplyCode::applied,
             "fill fixture was not authorized");
 
     const auto first_command = observe_fill(
         1, 0x82, authorization.cluster_order_id(), authorization.effect_id(),
         ExecutionId{101});
-    const auto first = apply(state, first_command, scratch);
+    const auto first = catalog_test::apply(state, first_command, scratch);
     require(first.code == ApplyCode::applied &&
                 first.execution_id() == ExecutionId{101} &&
                 first.filled_quantity() == QuantityLots::from_atoms(1),
@@ -663,14 +703,14 @@ void test_partial_fills_conserve_risk_position_and_identity() {
             "partial fill broke reservation/order/outbox conservation");
 
     const auto after_first = state;
-    require(apply(state, first_command, scratch) == first &&
+    require(catalog_test::apply(state, first_command, scratch) == first &&
                 state.risk_accounts[0] == after_first.risk_accounts[0] &&
                 state.reservations[0] == after_first.reservations[0] &&
                 state.orders[0] == after_first.orders[0] &&
                 state.outbox_effects[0] == after_first.outbox_effects[0],
             "same request replay applied a partial fill twice");
 
-    const auto duplicate = apply(
+    const auto duplicate = catalog_test::apply(
         state,
         observe_fill(2, 0x82, authorization.cluster_order_id(),
                      authorization.effect_id(), ExecutionId{101}),
@@ -681,7 +721,7 @@ void test_partial_fills_conserve_risk_position_and_identity() {
             "same execution under a new request duplicated economics");
 
     const auto conflict_before = state;
-    const auto conflict = apply(
+    const auto conflict = catalog_test::apply(
         state,
         observe_fill(3, 0x83, authorization.cluster_order_id(),
                      authorization.effect_id(), ExecutionId{101}, 2),
@@ -692,7 +732,7 @@ void test_partial_fills_conserve_risk_position_and_identity() {
                 state.reservations[0] == conflict_before.reservations[0],
             "conflicting duplicate execution changed economics");
 
-    const auto terminal = apply(
+    const auto terminal = catalog_test::apply(
         state,
         observe_fill(4, 0x84, authorization.cluster_order_id(),
                      authorization.effect_id(), ExecutionId{102}),
@@ -716,7 +756,7 @@ void test_fill_replay_and_snapshot_are_byte_identical() {
     using namespace velocita::v2;
     auto direct = ready_state();
     ApplyScratch direct_scratch;
-    const auto authorization = apply(direct, authorize(2, 0x91), direct_scratch);
+    const auto authorization = catalog_test::apply(direct, authorize(2, 0x91), direct_scratch);
     const auto fill = observe_fill(
         1, 0x92, authorization.cluster_order_id(), authorization.effect_id(),
         ExecutionId{201});
@@ -724,11 +764,11 @@ void test_fill_replay_and_snapshot_are_byte_identical() {
 
     std::array<std::byte, kMaxKernelCommandBytes> command_bytes{};
     const auto encoded_command = encode_kernel_command(fill, command_bytes);
-    const auto direct_result = apply(direct, fill, direct_scratch);
+    const auto direct_result = catalog_test::apply(direct, fill, direct_scratch);
     ApplyScratch replay_scratch;
     KernelCommandCodecScratch codec_scratch;
     std::array<std::byte, kKernelResultBytes> result_bytes{};
-    const auto replay_result = apply_encoded_kernel_command(
+    const auto replay_result = catalog_test::replay(
         replayed, {command_bytes.data(), encoded_command.bytes_written},
         replay_scratch, codec_scratch, result_bytes);
     require(encoded_command.error == KernelCodecError::none &&
@@ -751,7 +791,7 @@ void test_fill_replay_and_snapshot_are_byte_identical() {
                            replay_bytes.begin()),
             "fill replay did not reconstruct byte-identical economics");
 
-    TradingState restored;
+    TradingState restored = catalog_test::state();
     StateSnapshotScratch snapshot_scratch;
     const auto decoded = decode_state_snapshot(
         {direct_bytes.data(), direct_snapshot.bytes_written}, restored,
@@ -776,9 +816,9 @@ void test_fill_failures_are_atomic_and_bounded() {
     ApplyScratch scratch;
 
     auto overfill = ready_state();
-    const auto overfill_auth = apply(overfill, authorize(2, 0xa1), scratch);
+    const auto overfill_auth = catalog_test::apply(overfill, authorize(2, 0xa1), scratch);
     const auto overfill_before = overfill;
-    require(apply(overfill,
+    require(catalog_test::apply(overfill,
                   observe_fill(1, 0xa2, overfill_auth.cluster_order_id(),
                                overfill_auth.effect_id(), ExecutionId{301}, 3),
                   scratch)
@@ -788,11 +828,11 @@ void test_fill_failures_are_atomic_and_bounded() {
                                 "overfill partially mutated economics");
 
     auto overflow = ready_state();
-    const auto overflow_auth = apply(overflow, authorize(2, 0xa3), scratch);
+    const auto overflow_auth = catalog_test::apply(overflow, authorize(2, 0xa3), scratch);
     overflow.risk_accounts[0].position_quantity = QuantityLots::from_atoms(
         std::numeric_limits<std::int64_t>::max());
     const auto overflow_before = overflow;
-    require(apply(overflow,
+    require(catalog_test::apply(overflow,
                   observe_fill(1, 0xa4, overflow_auth.cluster_order_id(),
                                overflow_auth.effect_id(), ExecutionId{302}),
                   scratch)
@@ -802,7 +842,7 @@ void test_fill_failures_are_atomic_and_bounded() {
                                 "position overflow partially mutated economics");
 
     auto full = ready_state();
-    const auto full_auth = apply(full, authorize(2, 0xa5), scratch);
+    const auto full_auth = catalog_test::apply(full, authorize(2, 0xa5), scratch);
     for (std::size_t index = 0; index < kMaxVenueEventReceipts; ++index) {
         ApplyResult retained;
         retained.code = ApplyCode::applied;
@@ -817,7 +857,7 @@ void test_fill_failures_are_atomic_and_bounded() {
             {CallerId{9}, RequestSequence{index + 1}, digest(0xb0)}, retained};
     }
     const auto full_before = full;
-    require(apply(full,
+    require(catalog_test::apply(full,
                   observe_fill(1, 0xa6, full_auth.cluster_order_id(),
                                full_auth.effect_id(), ExecutionId{401}),
                   scratch)
@@ -831,10 +871,10 @@ void test_cancel_and_unknown_remain_risk_bearing_until_evidence() {
     using namespace velocita::v2;
     auto state = ready_state();
     ApplyScratch scratch;
-    const auto submit = apply(state, authorize(2, 0xc1), scratch);
+    const auto submit = catalog_test::apply(state, authorize(2, 0xc1), scratch);
     const auto risk_before_cancel = state.risk_accounts[0];
 
-    const auto cancel = apply(
+    const auto cancel = catalog_test::apply(
         state, request_cancel(1, 0xc2, submit.cluster_order_id()), scratch);
     require(cancel.code == ApplyCode::applied &&
                 cancel.cluster_order_id() == submit.cluster_order_id() &&
@@ -846,7 +886,7 @@ void test_cancel_and_unknown_remain_risk_bearing_until_evidence() {
                 state.risk_accounts[0] == risk_before_cancel,
             "cancel intent released risk or failed to create one committed effect");
 
-    const auto unknown = apply(
+    const auto unknown = catalog_test::apply(
         state,
         observe_order_event(1, 0xc3, VenueObservationKind::effect_unknown,
                             submit.cluster_order_id(), cancel.effect_id(), 301),
@@ -859,11 +899,11 @@ void test_cancel_and_unknown_remain_risk_bearing_until_evidence() {
             "unknown cancel submission released or changed reserved economics");
 
     auto cancelled = ready_state();
-    const auto cancelled_submit = apply(cancelled, authorize(2, 0xc4), scratch);
-    const auto cancelled_intent = apply(
+    const auto cancelled_submit = catalog_test::apply(cancelled, authorize(2, 0xc4), scratch);
+    const auto cancelled_intent = catalog_test::apply(
         cancelled, request_cancel(1, 0xc5, cancelled_submit.cluster_order_id()),
         scratch);
-    const auto accepted_cancel = apply(
+    const auto accepted_cancel = catalog_test::apply(
         cancelled,
         observe_order_event(1, 0xc6, VenueObservationKind::cancelled,
                             cancelled_submit.cluster_order_id(),
@@ -887,14 +927,14 @@ void test_fill_cancel_race_consumes_one_reservation() {
     using namespace velocita::v2;
     auto state = ready_state();
     ApplyScratch scratch;
-    const auto submit = apply(state, authorize(2, 0xd1), scratch);
-    require(apply(state,
+    const auto submit = catalog_test::apply(state, authorize(2, 0xd1), scratch);
+    require(catalog_test::apply(state,
                   observe_fill(1, 0xd2, submit.cluster_order_id(),
                                submit.effect_id(), ExecutionId{501}),
                   scratch)
                     .code == ApplyCode::applied,
             "race fixture partial fill failed");
-    const auto cancel = apply(
+    const auto cancel = catalog_test::apply(
         state, request_cancel(1, 0xd3, submit.cluster_order_id()), scratch);
     require(cancel.code == ApplyCode::applied &&
                 state.orders[0].state == ClusterOrderState::cancel_pending &&
@@ -902,7 +942,7 @@ void test_fill_cancel_race_consumes_one_reservation() {
                     QuantityLots::from_atoms(1),
             "cancel race did not preserve residual risk");
 
-    require(apply(state,
+    require(catalog_test::apply(state,
                   observe_fill(2, 0xd4, submit.cluster_order_id(),
                                submit.effect_id(), ExecutionId{502}),
                   scratch)
@@ -914,7 +954,7 @@ void test_fill_cancel_race_consumes_one_reservation() {
                 state.risk_accounts[0].reserved_quantity == QuantityLots{},
             "fill racing cancel did not consume exactly the residual reservation");
 
-    require(apply(state,
+    require(catalog_test::apply(state,
                   observe_order_event(1, 0xd5,
                                       VenueObservationKind::cancelled,
                                       submit.cluster_order_id(),
@@ -932,8 +972,8 @@ void test_delayed_observations_cannot_regress_order_knowledge() {
     using namespace velocita::v2;
     ApplyScratch scratch;
     auto filled = ready_state();
-    const auto submit = apply(filled, authorize(2, 0x41), scratch);
-    require(apply(filled, observe_fill(1, 0x42, submit.cluster_order_id(),
+    const auto submit = catalog_test::apply(filled, authorize(2, 0x41), scratch);
+    require(catalog_test::apply(filled, observe_fill(1, 0x42, submit.cluster_order_id(),
                                       submit.effect_id(), ExecutionId{801}, 2),
                   scratch).code == ApplyCode::applied,
             "terminal observation fixture failed");
@@ -941,7 +981,7 @@ void test_delayed_observations_cannot_regress_order_knowledge() {
                             VenueObservationKind::effect_unknown,
                             VenueObservationKind::order_rejected}) {
         auto candidate = filled;
-        const auto result = apply(candidate, observe_order_event(
+        const auto result = catalog_test::apply(candidate, observe_order_event(
             1, 0x43, kind, submit.cluster_order_id(), submit.effect_id(), 802), scratch);
         require(result.code == ApplyCode::venue_observation_not_applicable &&
                     candidate.orders[0] == filled.orders[0] &&
@@ -952,12 +992,12 @@ void test_delayed_observations_cannot_regress_order_knowledge() {
     }
 
     auto partial = ready_state();
-    const auto partial_submit = apply(partial, authorize(2, 0x44), scratch);
-    require(apply(partial, observe_fill(1, 0x45, partial_submit.cluster_order_id(),
+    const auto partial_submit = catalog_test::apply(partial, authorize(2, 0x44), scratch);
+    require(catalog_test::apply(partial, observe_fill(1, 0x45, partial_submit.cluster_order_id(),
                                        partial_submit.effect_id(), ExecutionId{803}),
                   scratch).code == ApplyCode::applied, "partial fixture failed");
     const auto before = partial;
-    static_cast<void>(apply(partial, observe_order_event(
+    static_cast<void>(catalog_test::apply(partial, observe_order_event(
         1, 0x46, VenueObservationKind::order_acknowledged,
         partial_submit.cluster_order_id(), partial_submit.effect_id(), 804), scratch));
     require(partial.orders[0] == before.orders[0] &&
@@ -965,12 +1005,12 @@ void test_delayed_observations_cannot_regress_order_knowledge() {
             "late submit ack erased partial-fill knowledge");
 
     auto cancelling = ready_state();
-    const auto cancel_submit = apply(cancelling, authorize(2, 0x47), scratch);
-    require(apply(cancelling, request_cancel(1, 0x48,
+    const auto cancel_submit = catalog_test::apply(cancelling, authorize(2, 0x47), scratch);
+    require(catalog_test::apply(cancelling, request_cancel(1, 0x48,
                                             cancel_submit.cluster_order_id()),
                   scratch).code == ApplyCode::applied, "cancel fixture failed");
     const auto cancel_before = cancelling;
-    static_cast<void>(apply(cancelling, observe_order_event(
+    static_cast<void>(catalog_test::apply(cancelling, observe_order_event(
         1, 0x49, VenueObservationKind::order_acknowledged,
         cancel_submit.cluster_order_id(), cancel_submit.effect_id(), 805), scratch));
     require(cancelling.orders[0] == cancel_before.orders[0] &&
@@ -986,14 +1026,14 @@ void test_authorization_rechecks_current_controls() {
         auto state = ready_state();
         state.strategy_mode = mode;
         const auto before = state;
-        require(apply(state, authorize(2, 0x61), scratch).code ==
+        require(catalog_test::apply(state, authorize(2, 0x61), scratch).code ==
                     ApplyCode::stale_control_generation,
                 "old actionable decision bypassed current risk controls");
         require_economics_unchanged(before, state, "control refusal mutated economics");
     }
     auto stale = ready_state();
     stale.kill_epoch = KillEpoch{stale.kill_epoch.value() + 1};
-    require(apply(stale, authorize(2, 0x62), scratch).code ==
+    require(catalog_test::apply(stale, authorize(2, 0x62), scratch).code ==
                 ApplyCode::stale_control_generation,
             "decision from a previous kill epoch was authorized");
 
@@ -1003,12 +1043,12 @@ void test_authorization_rechecks_current_controls() {
     // unconditional refusal keeps the original intent - stale controls cannot
     // slip a replacement through - without asserting a check that no longer runs.
     auto replacement = ready_state();
-    const auto submit = apply(replacement, authorize(2, 0x63), scratch);
+    const auto submit = catalog_test::apply(replacement, authorize(2, 0x63), scratch);
     append_replacement_decision(replacement, DecisionId{21}, 12, 3);
     replacement.executor_generation = ExecutorGeneration{
         replacement.executor_generation.value() + 1};
     const auto before = replacement;
-    require(apply(replacement, request_replace(1, 0x64,
+    require(catalog_test::apply(replacement, request_replace(1, 0x64,
                   submit.cluster_order_id(), DecisionId{21}), scratch).code ==
                 ApplyCode::replacement_not_supported,
             "replacement was not refused under a changed executor generation");
@@ -1023,7 +1063,7 @@ void test_authorization_requires_current_latest_intent() {
     auto superseded_slot = ready_state();
     append_submit_decision(superseded_slot, DecisionId{21}, 12, 2);
     const auto superseded_before = superseded_slot;
-    const auto superseded = apply(
+    const auto superseded = catalog_test::apply(
         superseded_slot, authorize_decision(2, 0x65, DecisionId{20}), scratch);
     require(superseded.code == ApplyCode::decision_not_authorizable,
             "an older same-slot proposal remained authorizable after a newer intent");
@@ -1035,10 +1075,10 @@ void test_authorization_requires_current_latest_intent() {
     const Command supersede{
         {CallerId{6}, RequestSequence{1}, digest(0x66)},
         SupersedePolicy{PolicyId{10}, PolicyVersion{1}}};
-    require(apply(retired_policy, supersede, scratch).code == ApplyCode::applied,
+    require(catalog_test::apply(retired_policy, supersede, scratch).code == ApplyCode::applied,
             "policy-retirement fixture failed");
     const auto retired_before = retired_policy;
-    const auto retired = apply(
+    const auto retired = catalog_test::apply(
         retired_policy, authorize_decision(2, 0x67, DecisionId{20}), scratch);
     require(retired.code == ApplyCode::decision_not_authorizable,
             "a decision outlived the active executable policy that produced it");
@@ -1051,13 +1091,13 @@ void test_cancel_effect_refuses_submit_ack_and_repeated_unknown() {
     using namespace velocita::v2;
     auto state = ready_state();
     ApplyScratch scratch;
-    const auto submit = apply(state, authorize(2, 0x68), scratch);
-    const auto cancel = apply(
+    const auto submit = catalog_test::apply(state, authorize(2, 0x68), scratch);
+    const auto cancel = catalog_test::apply(
         state, request_cancel(1, 0x69, submit.cluster_order_id()), scratch);
     require(cancel.code == ApplyCode::applied, "cancel-event fixture failed");
 
     const auto before_wrong_ack = state;
-    const auto wrong_ack = apply(
+    const auto wrong_ack = catalog_test::apply(
         state,
         observe_order_event(1, 0x6a, VenueObservationKind::order_acknowledged,
                             submit.cluster_order_id(), cancel.effect_id(), 806),
@@ -1070,7 +1110,7 @@ void test_cancel_effect_refuses_submit_ack_and_repeated_unknown() {
                 state.risk_accounts[0] == before_wrong_ack.risk_accounts[0],
             "refusing a mismatched cancel acknowledgement mutated lifecycle or risk");
 
-    const auto first_unknown = apply(
+    const auto first_unknown = catalog_test::apply(
         state,
         observe_order_event(2, 0x6b, VenueObservationKind::effect_unknown,
                             submit.cluster_order_id(), cancel.effect_id(), 807),
@@ -1080,7 +1120,7 @@ void test_cancel_effect_refuses_submit_ack_and_repeated_unknown() {
                 state.outbox_effects[1].state == OutboxState::unknown,
             "first unknown observation did not retain unresolved cancel risk");
     const auto after_first_unknown = state;
-    const auto repeated_unknown = apply(
+    const auto repeated_unknown = catalog_test::apply(
         state,
         observe_order_event(3, 0x6c, VenueObservationKind::effect_unknown,
                             submit.cluster_order_id(), cancel.effect_id(), 808),
@@ -1102,8 +1142,8 @@ void test_fill_proves_only_the_submit_effect_it_names() {
     // submit outcome was previously unknown, a partial fill must therefore
     // advance the order to partially_filled and acknowledge that submit.
     auto unknown_submit = ready_state();
-    const auto submit = apply(unknown_submit, authorize(2, 0x6d), scratch);
-    require(apply(unknown_submit,
+    const auto submit = catalog_test::apply(unknown_submit, authorize(2, 0x6d), scratch);
+    require(catalog_test::apply(unknown_submit,
                   observe_order_event(1, 0x6e,
                                       VenueObservationKind::effect_unknown,
                                       submit.cluster_order_id(),
@@ -1114,7 +1154,7 @@ void test_fill_proves_only_the_submit_effect_it_names() {
                     ClusterOrderState::submission_unknown &&
                 unknown_submit.outbox_effects[0].state == OutboxState::unknown,
             "submit-unknown fixture failed");
-    require(apply(unknown_submit,
+    require(catalog_test::apply(unknown_submit,
                   observe_fill(1, 0x6f, submit.cluster_order_id(),
                                submit.effect_id(), ExecutionId{810}),
                   scratch)
@@ -1130,11 +1170,11 @@ void test_fill_proves_only_the_submit_effect_it_names() {
     // naming the historical submit remains valid, but it must leave the cancel
     // unknown until cancel-specific evidence arrives.
     auto unknown_cancel = ready_state();
-    const auto cancel_submit = apply(unknown_cancel, authorize(2, 0x70), scratch);
-    const auto cancel = apply(
+    const auto cancel_submit = catalog_test::apply(unknown_cancel, authorize(2, 0x70), scratch);
+    const auto cancel = catalog_test::apply(
         unknown_cancel,
         request_cancel(1, 0x71, cancel_submit.cluster_order_id()), scratch);
-    require(apply(unknown_cancel,
+    require(catalog_test::apply(unknown_cancel,
                   observe_order_event(1, 0x72,
                                       VenueObservationKind::effect_unknown,
                                       cancel_submit.cluster_order_id(),
@@ -1147,7 +1187,7 @@ void test_fill_proves_only_the_submit_effect_it_names() {
             "cancel-unknown fixture failed");
 
     const auto before_wrong_effect = unknown_cancel;
-    require(apply(unknown_cancel,
+    require(catalog_test::apply(unknown_cancel,
                   observe_fill(1, 0x73, cancel_submit.cluster_order_id(),
                                cancel.effect_id(), ExecutionId{812}),
                   scratch)
@@ -1162,7 +1202,7 @@ void test_fill_proves_only_the_submit_effect_it_names() {
                     before_wrong_effect.outbox_effects[1],
             "refusing a fill scoped to cancel changed lifecycle state");
 
-    require(apply(unknown_cancel,
+    require(catalog_test::apply(unknown_cancel,
                   observe_fill(2, 0x74, cancel_submit.cluster_order_id(),
                                cancel_submit.effect_id(), ExecutionId{813}),
                   scratch)
@@ -1194,7 +1234,7 @@ void test_authorization_reserves_completion_and_cancel_capacity() {
             {CallerId{9}, RequestSequence{index + 1}, digest(0x70)}, retained};
     }
     const auto event_before = event_pressure;
-    require(apply(event_pressure, authorize(2, 0x71), scratch).code ==
+    require(catalog_test::apply(event_pressure, authorize(2, 0x71), scratch).code ==
                 ApplyCode::venue_event_capacity_exceeded,
             "authorization consumed venue identity capacity needed for completion");
     require_economics_unchanged(
@@ -1220,7 +1260,7 @@ void test_authorization_reserves_completion_and_cancel_capacity() {
                                    LogicalOrderSlot{
                                        static_cast<std::uint16_t>(index + 1)});
         }
-        const auto submitted = apply(
+        const auto submitted = catalog_test::apply(
             outbox_pressure,
             authorize_decision(2 + index, 0x72, decision), scratch);
         require(submitted.code == ApplyCode::applied,
@@ -1230,7 +1270,7 @@ void test_authorization_reserves_completion_and_cancel_capacity() {
     append_submit_decision(outbox_pressure, DecisionId{28}, 11, 1,
                            LogicalOrderSlot{9});
     const auto ninth_before = outbox_pressure;
-    require(apply(outbox_pressure,
+    require(catalog_test::apply(outbox_pressure,
                   authorize_decision(10, 0x73, DecisionId{28}), scratch).code ==
                 ApplyCode::outbox_capacity_exceeded,
             "authorization consumed the last cancel headroom in the outbox");
@@ -1239,7 +1279,7 @@ void test_authorization_reserves_completion_and_cancel_capacity() {
         "outbox cancel-headroom refusal mutated economics");
 
     for (std::size_t index = 0; index < order_ids.size(); ++index) {
-        const auto cancelled = apply(
+        const auto cancelled = catalog_test::apply(
             outbox_pressure,
             request_cancel(index + 1, 0x74, order_ids[index]), scratch);
         require(cancelled.code == ApplyCode::applied,
@@ -1249,7 +1289,7 @@ void test_authorization_reserves_completion_and_cancel_capacity() {
     require(outbox_pressure.outbox_effect_count == kMaxOutboxEffects,
             "cancel-reserve fixture did not consume the bounded outbox");
 
-    require(apply(outbox_pressure,
+    require(catalog_test::apply(outbox_pressure,
                   observe_order_event(1, 0x75,
                                       VenueObservationKind::order_rejected,
                                       order_ids[0], cancel_ids[0], 1'900),
@@ -1263,12 +1303,12 @@ void test_authorization_reserves_completion_and_cancel_capacity() {
     // first. The arena-pressure guarantee this test exists for is unchanged - the
     // reconciliation is an observation and allocates no outbox slot - it just
     // takes one more step to reach.
-    require(apply(outbox_pressure,
+    require(catalog_test::apply(outbox_pressure,
                   request_cancel(9, 0x76, order_ids[0]), scratch).code ==
                 ApplyCode::order_not_cancellable,
             "a fresh cancel was authorized before reconciliation established "
             "whether the order was still working");
-    require(apply(outbox_pressure,
+    require(catalog_test::apply(outbox_pressure,
                   observe_order_event(2, 0x77,
                                       VenueObservationKind::order_reconciled,
                                       order_ids[0], cancel_ids[0], 1'901),
@@ -1276,7 +1316,7 @@ void test_authorization_reserves_completion_and_cancel_capacity() {
             "reconciliation could not report the order still working");
     // A fresh request identity: the refused attempt above retained its receipt,
     // so re-presenting the same identity would correctly return that refusal.
-    const auto retried = apply(
+    const auto retried = catalog_test::apply(
         outbox_pressure, request_cancel(10, 0x78, order_ids[0]), scratch);
     require(retried.code == ApplyCode::applied &&
                 retried.effect_id() != cancel_ids[0] &&
@@ -1286,14 +1326,14 @@ void test_authorization_reserves_completion_and_cancel_capacity() {
 
 void test_caller_prefix_registration_is_atomic_and_bounded() {
     using namespace velocita::v2;
-    TradingState state;
+    TradingState state = catalog_test::state();
     ApplyScratch scratch;
     for (std::uint64_t caller = 1; caller <= kMaxCallerCursors; ++caller) {
         const Command invalid{
             {CallerId{caller}, RequestSequence{1},
              digest(static_cast<std::uint8_t>(0x80 + caller))},
             AuthorizeDecision{DecisionId{}}};
-        require(apply(state, invalid, scratch).code == ApplyCode::invalid_command,
+        require(catalog_test::apply(state, invalid, scratch).code == ApplyCode::invalid_command,
                 "caller-registration fixture was not admitted");
         require(state.caller_cursor_count == caller &&
                     state.caller_cursors[caller - 1].caller_id == CallerId{caller} &&
@@ -1305,7 +1345,7 @@ void test_caller_prefix_registration_is_atomic_and_bounded() {
     const Command ninth{
         {CallerId{kMaxCallerCursors + 1}, RequestSequence{1}, digest(0x99)},
         AuthorizeDecision{DecisionId{}}};
-    require(apply(state, ninth, scratch).code ==
+    require(catalog_test::apply(state, ninth, scratch).code ==
                 ApplyCode::receipt_capacity_exceeded,
             "a ninth stable caller escaped the bounded cursor arena");
     require(state.state_version == before.state_version &&
@@ -1318,14 +1358,14 @@ void test_invalid_observation_refusal_is_canonical_state() {
     using namespace velocita::v2;
     auto state = ready_state();
     ApplyScratch scratch;
-    const auto submit = apply(state, authorize(2, 0x9a), scratch);
+    const auto submit = catalog_test::apply(state, authorize(2, 0x9a), scratch);
     auto invalid = observe_fill(1, 0x9b, submit.cluster_order_id(),
                                 submit.effect_id(), ExecutionId{901});
     auto& observation = std::get<ObserveFill>(invalid.body).observation;
     observation.execution_id = {};
     invalid.identity.payload_digest = observation_fingerprint(observation);
 
-    const auto refused = apply(state, invalid, scratch);
+    const auto refused = catalog_test::apply(state, invalid, scratch);
     require(refused.code == ApplyCode::invalid_command &&
                 refused.contract_error == ContractError::invalid_identity,
             "malformed fill did not produce the intended typed refusal");
@@ -1343,12 +1383,12 @@ void test_decision_retry_retains_original_authorization_after_fill() {
     using namespace velocita::v2;
     ApplyScratch scratch;
     auto state = ready_state();
-    const auto submit = apply(state, authorize(2, 0x81), scratch);
-    require(apply(state, observe_fill(1, 0x82, submit.cluster_order_id(),
+    const auto submit = catalog_test::apply(state, authorize(2, 0x81), scratch);
+    require(catalog_test::apply(state, observe_fill(1, 0x82, submit.cluster_order_id(),
                   submit.effect_id(), ExecutionId{1001}, 2), scratch).code ==
                 ApplyCode::applied, "decision retry fixture fill failed");
     const auto before = state;
-    const auto retry = apply(state, authorize(3, 0x83), scratch);
+    const auto retry = catalog_test::apply(state, authorize(3, 0x83), scratch);
     require(retry.code == ApplyCode::already_applied &&
                 retry.cluster_order_id() == submit.cluster_order_id() &&
                 retry.effect_id() == submit.effect_id() &&
@@ -1367,8 +1407,8 @@ void test_cancel_fill_final_evidence_permutations() {
         do {
             auto state = ready_state();
             ApplyScratch scratch;
-            const auto submit = apply(state, authorize(2, 0x71), scratch);
-            const auto cancel = apply(state,
+            const auto submit = catalog_test::apply(state, authorize(2, 0x71), scratch);
+            const auto cancel = catalog_test::apply(state,
                 request_cancel(1, 0x72, submit.cluster_order_id()), scratch);
             auto final = observe_order_event(2, 0x75,
                 VenueObservationKind::cancel_reconciled,
@@ -1394,7 +1434,7 @@ void test_cancel_fill_final_evidence_permutations() {
                 auto command = commands[step];
                 command.identity.request_sequence =
                     RequestSequence{state.state_version + 500};
-                const auto result = apply(state, command, scratch);
+                const auto result = catalog_test::apply(state, command, scratch);
                 if (step == 0) {
                     require(result.code == ApplyCode::applied, "permutation lost actual fill");
                     fill_seen = true;
@@ -1409,7 +1449,7 @@ void test_cancel_fill_final_evidence_permutations() {
                 std::array<std::byte, kMaxStateSnapshotBytes> bytes{};
                 const auto encoded = encode_state_snapshot(state, bytes);
                 require(encoded.error == StateSnapshotError::none, "permutation snapshot failed");
-                TradingState restored;
+                TradingState restored = catalog_test::state();
                 StateSnapshotScratch snapshot_scratch;
                 require(decode_state_snapshot({bytes.data(), encoded.bytes_written}, restored,
                     snapshot_scratch).error == StateSnapshotError::none,
@@ -1425,7 +1465,7 @@ void test_cancel_fill_final_evidence_permutations() {
             // expired rather than executed.
             final.identity.request_sequence =
                 RequestSequence{state.state_version + 1'000};
-            const auto final_result = apply(state, final, scratch);
+            const auto final_result = catalog_test::apply(state, final, scratch);
             // `venue_observation_not_applicable` joins the accepted set because
             // `cancel_reconciled` is a SYNTHETIC observation: it no longer holds
             // a place in the venue's sequence domain, so a re-presentation after
@@ -1456,12 +1496,12 @@ void test_cancel_before_earlier_fill_does_not_lose_fill_evidence() {
     using namespace velocita::v2;
     auto state = ready_state();
     ApplyScratch scratch;
-    const auto submit = apply(state, authorize(2, 0xf1), scratch);
-    const auto cancel = apply(state,
+    const auto submit = catalog_test::apply(state, authorize(2, 0xf1), scratch);
+    const auto cancel = catalog_test::apply(state,
         request_cancel(1, 0xf2, submit.cluster_order_id()), scratch);
     require(cancel.code == ApplyCode::applied, "late-fill cancel fixture failed");
     // Venue order: fill at 1601, cancellation at 1602. Delivery is reversed.
-    require(apply(state, observe_order_event(1, 0xf3, VenueObservationKind::cancelled,
+    require(catalog_test::apply(state, observe_order_event(1, 0xf3, VenueObservationKind::cancelled,
         submit.cluster_order_id(), cancel.effect_id(), 1602), scratch).code ==
             ApplyCode::applied, "late-fill cancellation fixture failed");
     require(state.orders[0].state == ClusterOrderState::reconciling &&
@@ -1470,13 +1510,13 @@ void test_cancel_before_earlier_fill_does_not_lose_fill_evidence() {
     std::array<std::byte, kMaxStateSnapshotBytes> pending_snapshot{};
     const auto pending = encode_state_snapshot(state, pending_snapshot);
     require(pending.error == StateSnapshotError::none, "pending reconciliation snapshot failed");
-    TradingState restored;
+    TradingState restored = catalog_test::state();
     StateSnapshotScratch snapshot_scratch;
     require(decode_state_snapshot({pending_snapshot.data(), pending.bytes_written},
         restored, snapshot_scratch).error == StateSnapshotError::none,
         "pending reconciliation restore failed");
     state = restored;
-    const auto late_fill = apply(state, observe_fill(1, 0xf4,
+    const auto late_fill = catalog_test::apply(state, observe_fill(1, 0xf4,
         submit.cluster_order_id(), submit.effect_id(), ExecutionId{1601}), scratch);
     require(late_fill.code == ApplyCode::applied &&
                 state.risk_accounts[0].position_quantity == QuantityLots::from_atoms(1) &&
@@ -1492,7 +1532,7 @@ void test_cancel_before_earlier_fill_does_not_lose_fill_evidence() {
     evidence.quantity = QuantityLots::from_atoms(2);
     proof.identity.payload_digest = observation_fingerprint(evidence);
     const auto before = state;
-    require(apply(state, proof, scratch).code == ApplyCode::venue_observation_not_applicable,
+    require(catalog_test::apply(state, proof, scratch).code == ApplyCode::venue_observation_not_applicable,
             "unseen fills were inferred from a reconciliation total");
     require_economics_unchanged(before, state, "mismatched reconciliation released risk");
     proof.identity.request_sequence = RequestSequence{3};
@@ -1504,9 +1544,9 @@ void test_cancel_before_earlier_fill_does_not_lose_fill_evidence() {
     require(encoded_command.error == KernelCodecError::none, "reconciliation command did not encode");
     KernelCommandCodecScratch codec_scratch;
     std::array<std::byte, kKernelResultBytes> result_bytes{};
-    const auto replay = apply_encoded_kernel_command(replayed,
+    const auto replay = catalog_test::replay(replayed,
         {command_bytes.data(), encoded_command.bytes_written}, scratch, codec_scratch, result_bytes);
-    const auto reconciled = apply(state, proof, scratch);
+    const auto reconciled = catalog_test::apply(state, proof, scratch);
     require(replay.error == ReplayError::none && replay.apply_result == reconciled,
             "reconciliation canonical replay diverged");
     require(reconciled.code == ApplyCode::applied &&
@@ -1515,7 +1555,7 @@ void test_cancel_before_earlier_fill_does_not_lose_fill_evidence() {
                 state.risk_accounts[0].reserved_quantity == QuantityLots{} &&
                 state.risk_accounts[0].position_quantity == QuantityLots::from_atoms(1),
             "matching final evidence did not close residual accounting");
-    require(apply(state, proof, scratch) == reconciled,
+    require(catalog_test::apply(state, proof, scratch) == reconciled,
             "reconciliation retry did not retain its outcome");
     std::array<std::byte, kMaxStateSnapshotBytes> direct_bytes{}, replay_bytes{};
     const auto direct_snapshot = encode_state_snapshot(state, direct_bytes);
@@ -1533,7 +1573,7 @@ void test_cancel_before_earlier_fill_does_not_lose_fill_evidence() {
     // retry must not move economics a second time.
     const auto before_retry = state;
     proof.identity.request_sequence = RequestSequence{4};
-    const auto retried = apply(state, proof, scratch);
+    const auto retried = catalog_test::apply(state, proof, scratch);
     require(retried.code != ApplyCode::venue_event_identity_conflict,
             "a synthetic final proof was refused on a venue sequence identity");
     require(state.orders[0].state == before_retry.orders[0].state &&
@@ -1552,7 +1592,7 @@ void test_cancel_before_earlier_fill_does_not_lose_fill_evidence() {
     proof.identity.request_sequence = RequestSequence{5};
     evidence.quantity = QuantityLots::from_atoms(-1);
     proof.identity.payload_digest = observation_fingerprint(evidence);
-    const auto invalid = apply(state, proof, scratch);
+    const auto invalid = catalog_test::apply(state, proof, scratch);
     require(invalid.code == ApplyCode::invalid_command &&
                 invalid.contract_error == ContractError::non_canonical_value,
             "negative final filled quantity was accepted");
@@ -1564,13 +1604,13 @@ void test_fill_cannot_reuse_an_order_event_identity() {
     using namespace velocita::v2;
     auto state = ready_state();
     ApplyScratch scratch;
-    const auto submit = apply(state, authorize(2, 0xd1), scratch);
-    require(apply(state, observe_order_event(1, 0xd2,
+    const auto submit = catalog_test::apply(state, authorize(2, 0xd1), scratch);
+    require(catalog_test::apply(state, observe_order_event(1, 0xd2,
         VenueObservationKind::order_acknowledged, submit.cluster_order_id(),
         submit.effect_id(), 1401), scratch).code == ApplyCode::applied,
         "shared identity acknowledgement fixture failed");
     const auto before = state;
-    require(apply(state, observe_fill(1, 0xd3, submit.cluster_order_id(),
+    require(catalog_test::apply(state, observe_fill(1, 0xd3, submit.cluster_order_id(),
         submit.effect_id(), ExecutionId{1401}), scratch).code ==
             ApplyCode::venue_event_identity_conflict,
         "fill reused a retained acknowledgement venue/session/sequence");
@@ -1578,12 +1618,12 @@ void test_fill_cannot_reuse_an_order_event_identity() {
     std::array<std::byte, kMaxStateSnapshotBytes> bytes{};
     const auto encoded = encode_state_snapshot(before, bytes);
     require(encoded.error == StateSnapshotError::none, "shared identity snapshot failed");
-    TradingState restored;
+    TradingState restored = catalog_test::state();
     StateSnapshotScratch snapshot_scratch;
     require(decode_state_snapshot({bytes.data(), encoded.bytes_written}, restored,
                 snapshot_scratch).error == StateSnapshotError::none,
             "shared identity restore failed");
-    require(apply(restored, observe_fill(1, 0xd3, submit.cluster_order_id(),
+    require(catalog_test::apply(restored, observe_fill(1, 0xd3, submit.cluster_order_id(),
         submit.effect_id(), ExecutionId{1401}), scratch).code ==
             ApplyCode::venue_event_identity_conflict,
         "shared identity conflict disappeared after restore");
@@ -1593,15 +1633,15 @@ void test_order_event_cannot_reuse_a_fill_identity() {
     using namespace velocita::v2;
     auto state = ready_state();
     ApplyScratch scratch;
-    const auto submit = apply(state, authorize(2, 0xe1), scratch);
-    require(apply(state, observe_fill(1, 0xe2, submit.cluster_order_id(),
+    const auto submit = catalog_test::apply(state, authorize(2, 0xe1), scratch);
+    require(catalog_test::apply(state, observe_fill(1, 0xe2, submit.cluster_order_id(),
         submit.effect_id(), ExecutionId{1501}), scratch).code == ApplyCode::applied,
         "reverse shared identity fill fixture failed");
-    const auto cancel = apply(state,
+    const auto cancel = catalog_test::apply(state,
         request_cancel(1, 0xe3, submit.cluster_order_id()), scratch);
     require(cancel.code == ApplyCode::applied, "reverse shared identity cancel fixture failed");
     const auto before = state;
-    require(apply(state, observe_order_event(1, 0xe4,
+    require(catalog_test::apply(state, observe_order_event(1, 0xe4,
         VenueObservationKind::cancelled, submit.cluster_order_id(),
         cancel.effect_id(), 1501), scratch).code == ApplyCode::venue_event_identity_conflict,
         "cancel evidence reused a fill venue/session/sequence and released risk");
@@ -1609,27 +1649,27 @@ void test_order_event_cannot_reuse_a_fill_identity() {
     std::array<std::byte, kMaxStateSnapshotBytes> bytes{};
     const auto encoded = encode_state_snapshot(before, bytes);
     require(encoded.error == StateSnapshotError::none, "fill identity snapshot failed");
-    TradingState restored;
+    TradingState restored = catalog_test::state();
     StateSnapshotScratch snapshot_scratch;
     require(decode_state_snapshot({bytes.data(), encoded.bytes_written}, restored,
                 snapshot_scratch).error == StateSnapshotError::none,
             "fill identity snapshot restore failed");
     auto event = observe_order_event(1, 0xe4, VenueObservationKind::cancelled,
         submit.cluster_order_id(), cancel.effect_id(), 1501);
-    require(apply(restored, event, scratch).code == ApplyCode::venue_event_identity_conflict,
+    require(catalog_test::apply(restored, event, scratch).code == ApplyCode::venue_event_identity_conflict,
             "fill stream identity disappeared after restore");
     auto other_fill = observe_fill(2, 0xe5, submit.cluster_order_id(),
         submit.effect_id(), ExecutionId{1502});
     auto& observation = std::get<ObserveFill>(other_fill.body).observation;
     observation.venue_sequence = VenueSequence{1501};
     other_fill.identity.payload_digest = observation_fingerprint(observation);
-    require(apply(restored, other_fill, scratch).code == ApplyCode::venue_event_identity_conflict,
+    require(catalog_test::apply(restored, other_fill, scratch).code == ApplyCode::venue_event_identity_conflict,
             "different execution reused one fill stream identity");
     auto& event_observation = std::get<ObserveOrderEvent>(event.body).observation;
     event_observation.venue_session_id = VenueSessionId{3};
     event.identity.request_sequence = RequestSequence{2};
     event.identity.payload_digest = observation_fingerprint(event_observation);
-    require(apply(restored, event, scratch).code == ApplyCode::applied,
+    require(catalog_test::apply(restored, event, scratch).code == ApplyCode::applied,
             "same sequence in a different venue session falsely conflicted");
 }
 
@@ -1637,16 +1677,16 @@ void test_fill_digest_cannot_hide_changed_economics() {
     using namespace velocita::v2;
     auto state = ready_state();
     ApplyScratch scratch;
-    const auto submit = apply(state, authorize(2, 0xb1), scratch);
+    const auto submit = catalog_test::apply(state, authorize(2, 0xb1), scratch);
     const auto first = observe_fill(1, 0xb2, submit.cluster_order_id(),
         submit.effect_id(), ExecutionId{1301}, 1);
-    require(apply(state, first, scratch).code == ApplyCode::applied,
+    require(catalog_test::apply(state, first, scratch).code == ApplyCode::applied,
             "fingerprint fixture fill failed");
     auto changed = first;
     changed.identity.request_sequence = RequestSequence{2};
     std::get<ObserveFill>(changed.body).observation.quantity = QuantityLots::from_atoms(2);
     const auto before = state;
-    const auto outcome = apply(state, changed, scratch);
+    const auto outcome = catalog_test::apply(state, changed, scratch);
     require(outcome.code != ApplyCode::already_applied && outcome.code != ApplyCode::applied,
             "copied caller digest hid changed fill quantity as an accepted duplicate");
     require_economics_unchanged(before, state, "changed fill mutated economics");
@@ -1654,39 +1694,39 @@ void test_fill_digest_cannot_hide_changed_economics() {
                 state.receipt_count == before.receipt_count,
             "bad fingerprint consumed admission state");
     changed.identity.request_sequence = first.identity.request_sequence;
-    require(apply(state, changed, scratch).code == ApplyCode::invalid_command,
+    require(catalog_test::apply(state, changed, scratch).code == ApplyCode::invalid_command,
             "same-request lookup bypassed fingerprint verification");
     auto wrong_wrapper = first;
     wrong_wrapper.body = ObserveOrderEvent{std::get<ObserveFill>(first.body).observation};
-    require(apply(state, wrong_wrapper, scratch).code == ApplyCode::invalid_command,
+    require(catalog_test::apply(state, wrong_wrapper, scratch).code == ApplyCode::invalid_command,
             "wrong observation command wrapper bypassed admission validation");
     changed.identity.request_sequence = RequestSequence{2};
     changed.identity.payload_digest = observation_fingerprint(
         std::get<ObserveFill>(changed.body).observation);
-    require(apply(state, changed, scratch).code == ApplyCode::fill_identity_conflict,
+    require(catalog_test::apply(state, changed, scratch).code == ApplyCode::fill_identity_conflict,
             "valid fingerprint concealed conflicting execution content");
     state = ready_state();
-    require(apply(state, authorize(2, 0xb1), scratch).code == ApplyCode::applied,
+    require(catalog_test::apply(state, authorize(2, 0xb1), scratch).code == ApplyCode::applied,
             "event fingerprint submit fixture failed");
     auto event = observe_order_event(1, 0xb3, VenueObservationKind::order_acknowledged,
         submit.cluster_order_id(), submit.effect_id(), 1302);
-    const auto accepted_event = apply(state, event, scratch);
+    const auto accepted_event = catalog_test::apply(state, event, scratch);
     require(accepted_event.code == ApplyCode::applied,
             "event fingerprint fixture failed");
     std::array<std::byte, kMaxStateSnapshotBytes> snapshot{};
     const auto encoded = encode_state_snapshot(state, snapshot);
     require(encoded.error == StateSnapshotError::none, "fingerprint snapshot failed");
-    TradingState restored;
+    TradingState restored = catalog_test::state();
     StateSnapshotScratch snapshot_scratch;
     require(decode_state_snapshot({snapshot.data(), encoded.bytes_written}, restored,
                 snapshot_scratch).error == StateSnapshotError::none,
             "fingerprint snapshot restore failed");
     state = restored;
-    require(apply(state, event, scratch) == accepted_event,
+    require(catalog_test::apply(state, event, scratch) == accepted_event,
             "verified request receipt did not survive restore");
     auto retry_event = event;
     retry_event.identity.request_sequence = RequestSequence{9};
-    require(apply(state, retry_event, scratch).code == ApplyCode::already_applied,
+    require(catalog_test::apply(state, retry_event, scratch).code == ApplyCode::already_applied,
             "verified venue-event fingerprint did not survive restore");
     // Mutated to another NATIVE kind on purpose. The venue's sequence domain is
     // what this case is about, and only a native observation belongs to it: the
@@ -1695,14 +1735,14 @@ void test_fill_digest_cannot_hide_changed_economics() {
     auto changed_event = event;
     std::get<ObserveOrderEvent>(changed_event.body).observation.kind =
         VenueObservationKind::order_rejected;
-    require(apply(state, changed_event, scratch).code == ApplyCode::invalid_command,
+    require(catalog_test::apply(state, changed_event, scratch).code == ApplyCode::invalid_command,
             "same-request event lookup bypassed fingerprint verification");
     changed_event.identity.request_sequence = RequestSequence{2};
-    require(apply(state, changed_event, scratch).code == ApplyCode::invalid_command,
+    require(catalog_test::apply(state, changed_event, scratch).code == ApplyCode::invalid_command,
             "cross-request event lookup bypassed fingerprint verification");
     changed_event.identity.payload_digest = observation_fingerprint(
         std::get<ObserveOrderEvent>(changed_event.body).observation);
-    require(apply(state, changed_event, scratch).code == ApplyCode::venue_event_identity_conflict,
+    require(catalog_test::apply(state, changed_event, scratch).code == ApplyCode::venue_event_identity_conflict,
             "valid fingerprint concealed conflicting venue-event content");
 
     // And the counterpart. A SYNTHETIC observation carrying the same number is
@@ -1717,7 +1757,7 @@ void test_fill_digest_cannot_hide_changed_economics() {
     synthetic_event.identity.request_sequence = RequestSequence{3};
     synthetic_event.identity.payload_digest =
         observation_fingerprint(synthetic_observation);
-    require(apply(state, synthetic_event, scratch).code !=
+    require(catalog_test::apply(state, synthetic_event, scratch).code !=
                 ApplyCode::venue_event_identity_conflict,
             "a gateway-authored observation was refused on a venue sequence it "
             "never owned");
@@ -1727,8 +1767,8 @@ void test_cancel_effect_can_be_reconstructed() {
     using namespace velocita::v2;
     auto state = ready_state();
     ApplyScratch scratch;
-    const auto submit = apply(state, authorize(2, 0xa1), scratch);
-    const auto cancel = apply(state,
+    const auto submit = catalog_test::apply(state, authorize(2, 0xa1), scratch);
+    const auto cancel = catalog_test::apply(state,
         request_cancel(1, 0xa2, submit.cluster_order_id()), scratch);
     require(cancel.code == ApplyCode::applied, "cancel reconstruction fixture failed");
     require(materialize_order_effect(state, cancel.effect_id()).has_value(),
@@ -1752,7 +1792,7 @@ void test_cancel_effect_can_be_reconstructed() {
         std::array<std::byte, kMaxStateSnapshotBytes> bytes{};
         const auto encoded = encode_state_snapshot(state, bytes);
         require(encoded.error == StateSnapshotError::none, "cancel snapshot failed");
-        TradingState restored;
+        TradingState restored = catalog_test::state();
         StateSnapshotScratch snapshot_scratch;
         require(decode_state_snapshot({bytes.data(), encoded.bytes_written}, restored,
                     snapshot_scratch).error == StateSnapshotError::none,
@@ -1762,13 +1802,13 @@ void test_cancel_effect_can_be_reconstructed() {
                 "cancel bytes changed across snapshot restore");
     };
     verify();
-    require(apply(state, observe_fill(1, 0xa3, submit.cluster_order_id(),
+    require(catalog_test::apply(state, observe_fill(1, 0xa3, submit.cluster_order_id(),
         submit.effect_id(), ExecutionId{1201}, 1), scratch).code == ApplyCode::applied,
         "cancel reconstruction fill failed");
     require(state.reservations[0].remaining_quantity == QuantityLots::from_atoms(1),
             "cancel normalized quantity incorrectly removed residual risk");
     verify();
-    require(apply(state, observe_order_event(1, 0xa4, VenueObservationKind::cancelled,
+    require(catalog_test::apply(state, observe_order_event(1, 0xa4, VenueObservationKind::cancelled,
         submit.cluster_order_id(), cancel.effect_id(), 1202), scratch).code ==
             ApplyCode::applied, "cancel reconstruction completion failed");
     state.executor_generation = ExecutorGeneration{99};
@@ -1783,13 +1823,13 @@ void test_outbox_reconstructs_full_immutable_payload() {
     using namespace velocita::v2;
     ApplyScratch scratch;
     auto state = ready_state();
-    const auto submit = apply(state, authorize(2, 0x91), scratch);
+    const auto submit = catalog_test::apply(state, authorize(2, 0x91), scratch);
     // The second effect is a cancel rather than a replace: direct replacement is
     // refused, so a submit/cancel pair is the only way one order accumulates two
     // effects. The test still proves what it was written to prove - that every
     // retained effect reconstructs its exact historical bytes regardless of how
     // live state moves afterwards.
-    const auto cancel = apply(state,
+    const auto cancel = catalog_test::apply(state,
         request_cancel(1, 0x92, submit.cluster_order_id()), scratch);
     require(cancel.code == ApplyCode::applied, "outbox fixture cancel failed");
     std::array<std::vector<std::byte>, 2> expected;
@@ -1848,7 +1888,7 @@ void test_outbox_reconstructs_full_immutable_payload() {
         const auto encoded = encode_state_snapshot(candidate, snapshot);
         require(encoded.error == StateSnapshotError::none,
                 "lifecycle snapshot encoding failed");
-        TradingState decoded;
+        TradingState decoded = catalog_test::state();
         StateSnapshotScratch decode_scratch;
         require(decode_state_snapshot({snapshot.data(), encoded.bytes_written},
                     decoded, decode_scratch).error == StateSnapshotError::none,
@@ -1861,12 +1901,12 @@ void test_outbox_reconstructs_full_immutable_payload() {
         }
     };
     verify(state);
-    require(apply(state, observe_order_event(2, 0x94,
+    require(catalog_test::apply(state, observe_order_event(2, 0x94,
         VenueObservationKind::effect_unknown, submit.cluster_order_id(),
         cancel.effect_id(), 1100), scratch).code == ApplyCode::applied,
         "outbox fixture unknown observation failed");
     verify(state);
-    require(apply(state, observe_order_event(1, 0x93,
+    require(catalog_test::apply(state, observe_order_event(1, 0x93,
         VenueObservationKind::cancelled, submit.cluster_order_id(),
         cancel.effect_id(), 1101), scratch).code == ApplyCode::applied,
         "outbox fixture cancellation failed");
@@ -1877,7 +1917,7 @@ void test_outbox_reconstructs_full_immutable_payload() {
     std::array<std::byte, kMaxStateSnapshotBytes> bytes{};
     const auto encoded = encode_state_snapshot(state, bytes);
     require(encoded.error == StateSnapshotError::none, "outbox snapshot failed");
-    TradingState restored;
+    TradingState restored = catalog_test::state();
     StateSnapshotScratch snapshot_scratch;
     require(decode_state_snapshot({bytes.data(), encoded.bytes_written}, restored,
                 snapshot_scratch).error == StateSnapshotError::none,
@@ -1916,14 +1956,14 @@ void test_request_replace_fails_closed_without_economics() {
     using namespace velocita::v2;
     auto state = ready_state();
     ApplyScratch scratch;
-    const auto submit = apply(state, authorize(2, 0xe1), scratch);
+    const auto submit = catalog_test::apply(state, authorize(2, 0xe1), scratch);
     require(submit.code == ApplyCode::applied, "submit fixture did not authorize");
     append_replacement_decision(state, DecisionId{21}, 12, 3);
 
     const auto before = state;
     const auto command = request_replace(
         1, 0xe2, submit.cluster_order_id(), DecisionId{21});
-    const auto refused = apply(state, command, scratch);
+    const auto refused = catalog_test::apply(state, command, scratch);
 
     require(refused.code == ApplyCode::replacement_not_supported,
             "RequestReplace did not return the typed unsupported refusal");
@@ -1943,13 +1983,13 @@ void test_request_replace_fails_closed_without_economics() {
     const auto encoded = encode_state_snapshot(state, snapshot);
     require(encoded.error == StateSnapshotError::none,
             "state after refused replacement failed snapshot invariants");
-    TradingState restored;
+    TradingState restored = catalog_test::state();
     StateSnapshotScratch snapshot_scratch;
     require(decode_state_snapshot({snapshot.data(), encoded.bytes_written},
                                   restored, snapshot_scratch)
                     .error == StateSnapshotError::none,
             "refused-replacement snapshot did not decode");
-    const auto repeated = apply(restored, command, scratch);
+    const auto repeated = catalog_test::apply(restored, command, scratch);
     require(repeated.code == ApplyCode::replacement_not_supported &&
                 restored.outbox_effect_count == before.outbox_effect_count,
             "replacement refusal did not hold after snapshot restore");
@@ -1963,23 +2003,23 @@ void test_fresh_submit_cannot_bypass_unresolved_cancelled_slot() {
     using namespace velocita::v2;
     auto state = ready_state();
     ApplyScratch scratch;
-    const auto submit = apply(state, authorize(2, 0xf1), scratch);
+    const auto submit = catalog_test::apply(state, authorize(2, 0xf1), scratch);
     require(submit.code == ApplyCode::applied, "submit fixture did not authorize");
 
-    const auto fill = apply(
+    const auto fill = catalog_test::apply(
         state,
         observe_fill(1, 0xf2, submit.cluster_order_id(), submit.effect_id(),
                      ExecutionId{801}),
         scratch);
     require(fill.code == ApplyCode::applied, "partial fill fixture failed");
 
-    const auto cancel = apply(
+    const auto cancel = catalog_test::apply(
         state, request_cancel(1, 0xf3, submit.cluster_order_id()), scratch);
     require(cancel.code == ApplyCode::applied &&
                 state.orders[0].state == ClusterOrderState::cancel_pending &&
                 state.reservations[0].state != ReservationState::released,
             "cancel fixture did not leave a risk-bearing cancel-pending order");
-    require(apply(state,
+    require(catalog_test::apply(state,
                   observe_order_event(1, 0xf4, VenueObservationKind::cancelled,
                                       submit.cluster_order_id(),
                                       cancel.effect_id(), 902),
@@ -1991,7 +2031,7 @@ void test_fresh_submit_cannot_bypass_unresolved_cancelled_slot() {
 
     append_submit_decision(state, DecisionId{22}, 11, 2);
     const auto occupied = state;
-    const auto blocked = apply(state, authorize_decision(3, 0xf5, DecisionId{22}),
+    const auto blocked = catalog_test::apply(state, authorize_decision(3, 0xf5, DecisionId{22}),
                                scratch);
 
     require(blocked.code == ApplyCode::order_slot_occupied,
@@ -2014,11 +2054,11 @@ void test_fresh_submit_cannot_bypass_unresolved_cancelled_slot() {
     evidence.venue_order_id = VenueOrderId{70};
     evidence.quantity = state.reservations[0].filled_quantity;
     proof.identity.payload_digest = observation_fingerprint(evidence);
-    require(apply(state, proof, scratch).code == ApplyCode::applied &&
+    require(catalog_test::apply(state, proof, scratch).code == ApplyCode::applied &&
                 state.reservations[0].state == ReservationState::released,
             "final cancel reconciliation did not release the residual hold");
 
-    const auto admitted = apply(state, authorize_decision(4, 0xf7, DecisionId{22}),
+    const auto admitted = catalog_test::apply(state, authorize_decision(4, 0xf7, DecisionId{22}),
                                 scratch);
     require(admitted.code == ApplyCode::applied &&
                 state.order_count == occupied.order_count + 1,
@@ -2056,11 +2096,11 @@ void test_completed_requote_cycles_do_not_exhaust_bounded_arenas() {
                     "requote cycle could not retain a decision: "
                     "bounded decision arena was not reclaimed");
         }
-        const auto submit = apply(
+        const auto submit = catalog_test::apply(
             state, authorize_decision(request++, 0xb0, decision), scratch);
         require(submit.code == ApplyCode::applied,
                 "requote cycle could not authorize: bounded arena was not reclaimed");
-        const auto fill = apply(
+        const auto fill = catalog_test::apply(
             state,
             observe_fill(request++, 0xb1, submit.cluster_order_id(),
                          submit.effect_id(), ExecutionId{execution++}, 2),
@@ -2093,10 +2133,10 @@ void test_sweep_preserves_records_an_unresolved_effect_still_needs() {
     //
     // Note a fill cannot leave a SUBMIT effect unknown: being filled is proof the
     // order existed at the venue, and the kernel correctly resolves it.
-    const auto stranded = apply(state, authorize_decision(2, 0xc0, DecisionId{20}),
+    const auto stranded = catalog_test::apply(state, authorize_decision(2, 0xc0, DecisionId{20}),
                                 scratch);
     require(stranded.code == ApplyCode::applied, "stranded fixture failed");
-    require(apply(state,
+    require(catalog_test::apply(state,
                   observe_order_event(1, 0xc1,
                                       VenueObservationKind::order_acknowledged,
                                       stranded.cluster_order_id(),
@@ -2104,10 +2144,10 @@ void test_sweep_preserves_records_an_unresolved_effect_still_needs() {
                   scratch)
                     .code == ApplyCode::applied,
             "stranded fixture acknowledgement failed");
-    const auto stranded_cancel = apply(
+    const auto stranded_cancel = catalog_test::apply(
         state, request_cancel(1, 0xc2, stranded.cluster_order_id()), scratch);
     require(stranded_cancel.code == ApplyCode::applied, "stranded cancel failed");
-    require(apply(state,
+    require(catalog_test::apply(state,
                   observe_fill(3, 0xc3, stranded.cluster_order_id(),
                                stranded.effect_id(), ExecutionId{4'900}, 2),
                   scratch)
@@ -2130,7 +2170,7 @@ void test_sweep_preserves_records_an_unresolved_effect_still_needs() {
         require(evaluate_new_decision(state, scratch, decision, cycle + 1, request++)
                         .code == ApplyCode::applied,
                 "requote around a stranded effect could not retain a decision");
-        const auto submit = apply(
+        const auto submit = catalog_test::apply(
             state, authorize_decision(request++, 0xc3, decision), scratch);
         require(submit.code == ApplyCode::applied,
                 "requote around a stranded effect could not authorize");
@@ -2141,7 +2181,7 @@ void test_sweep_preserves_records_an_unresolved_effect_still_needs() {
                             order.cluster_order_id,
                     "compaction broke order/reservation pairing mid-cycle");
         }
-        require(apply(state,
+        require(catalog_test::apply(state,
                       observe_fill(request++, 0xc4, submit.cluster_order_id(),
                                    submit.effect_id(), ExecutionId{execution++}, 2),
                       scratch)
@@ -2176,7 +2216,7 @@ void test_conflicted_orders_are_never_swept() {
     require(evaluate_at_feature(state, scratch, DecisionId{30}, 16, 2, 3).code ==
                 ApplyCode::applied,
             "conflict fixture decision failed");
-    const auto conflicted = apply(state, authorize_decision(4, 0xd0, DecisionId{30}),
+    const auto conflicted = catalog_test::apply(state, authorize_decision(4, 0xd0, DecisionId{30}),
                                   scratch);
     require(conflicted.code == ApplyCode::applied, "conflict fixture failed");
     state.orders[0].state = ClusterOrderState::conflict;
@@ -2194,11 +2234,11 @@ void test_conflicted_orders_are_never_swept() {
                                     request++)
                         .code == ApplyCode::applied,
                 "slot-2 requote decision was not retained");
-        const auto submit = apply(
+        const auto submit = catalog_test::apply(
             state, authorize_decision(request++, 0xd1, decision), scratch);
         require(submit.code == ApplyCode::applied,
                 "slot-2 requote could not authorize beside a conflicted order");
-        require(apply(state,
+        require(catalog_test::apply(state,
                       observe_fill(request++, 0xd2, submit.cluster_order_id(),
                                    submit.effect_id(), ExecutionId{execution++}, 2,
                                    Side::sell, 11),
@@ -2242,10 +2282,10 @@ void test_sweep_preserves_reservation_index_pairing() {
                             .code == ApplyCode::applied,
                     "pairing fixture could not retain a decision");
         }
-        const auto submit = apply(
+        const auto submit = catalog_test::apply(
             state, authorize_decision(request++, 0xe0, decision), scratch);
         require(submit.code == ApplyCode::applied, "pairing fixture authorize failed");
-        require(apply(state,
+        require(catalog_test::apply(state,
                       observe_fill(request++, 0xe1, submit.cluster_order_id(),
                                    submit.effect_id(), ExecutionId{execution++}, 2),
                       scratch)
@@ -2276,10 +2316,10 @@ void test_reclaimed_decision_retains_identity_and_authorization() {
                                          request++).code == ApplyCode::applied,
                     "identity fixture evaluation failed");
         }
-        const auto submit = apply(state, authorize_decision(request++, 0xb0, decision), scratch);
+        const auto submit = catalog_test::apply(state, authorize_decision(request++, 0xb0, decision), scratch);
         require(submit.code == ApplyCode::applied, "identity fixture authorization failed");
         if (cycle == 0) original = submit;
-        require(apply(state, observe_fill(request++, 0xb1, submit.cluster_order_id(),
+        require(catalog_test::apply(state, observe_fill(request++, 0xb1, submit.cluster_order_id(),
                     submit.effect_id(), ExecutionId{3000 + cycle}, 2), scratch).code ==
                     ApplyCode::applied, "identity fixture fill failed");
     }
@@ -2289,7 +2329,7 @@ void test_reclaimed_decision_retains_identity_and_authorization() {
     std::array<std::byte, kMaxStateSnapshotBytes> bytes{};
     const auto encoded = encode_state_snapshot(state, bytes);
     require(encoded.error == StateSnapshotError::none, "identity fixture snapshot failed");
-    TradingState restored;
+    TradingState restored = catalog_test::state();
     StateSnapshotScratch snapshot_scratch;
     require(decode_state_snapshot({bytes.data(), encoded.bytes_written}, restored,
                 snapshot_scratch).error == StateSnapshotError::none,
@@ -2299,7 +2339,7 @@ void test_reclaimed_decision_retains_identity_and_authorization() {
         const auto orders = candidate->order_count;
         const auto decisions = candidate->decision_count;
         const auto effects = candidate->outbox_effect_count;
-        const auto retry = apply(*candidate, authorize_decision(request, 0xb0, DecisionId{20}), scratch);
+        const auto retry = catalog_test::apply(*candidate, authorize_decision(request, 0xb0, DecisionId{20}), scratch);
         auto expected = original;
         expected.code = ApplyCode::already_applied;
         expected.state_version = retry.state_version;
@@ -2307,7 +2347,7 @@ void test_reclaimed_decision_retains_identity_and_authorization() {
                 "reclaimed decision retry lost its original authorization receipt");
         const Command same{{CallerId{8}, RequestSequence{request + 1}, digest(0x51)},
             EvaluateDecisionFrame{DecisionId{20}, EvaluationMode::authoritative, frame()}};
-        require(apply(*candidate, same, scratch).code == ApplyCode::already_applied,
+        require(catalog_test::apply(*candidate, same, scratch).code == ApplyCode::already_applied,
                 "reclaimed decision evaluation was admitted a second time");
         require(evaluate_new_decision(*candidate, scratch, DecisionId{20}, 21,
                     request + 2).code == ApplyCode::decision_id_conflict,
@@ -2318,7 +2358,7 @@ void test_reclaimed_decision_retains_identity_and_authorization() {
         // A genuinely fresh identity still works and has exactly one materializable effect.
         require(evaluate_new_decision(*candidate, scratch, DecisionId{40}, 22,
                     request + 3).code == ApplyCode::applied, "fresh decision was blocked");
-        const auto fresh = apply(*candidate,
+        const auto fresh = catalog_test::apply(*candidate,
             authorize_decision(request + 4, 0xb2, DecisionId{40}), scratch);
         require(fresh.code == ApplyCode::applied && fresh.effect_id() != original.effect_id() &&
                     materialize_order_effect(*candidate, fresh.effect_id()).has_value(),
@@ -2341,12 +2381,13 @@ velocita::v2::Command configure_risk(const velocita::v2::TradingState& state,
                                     const std::uint64_t request) {
     using namespace velocita::v2;
     const auto& risk = state.risk_accounts[0];
-    return {{CallerId{19}, RequestSequence{request}, digest(0xe2)},
+    return {{CallerId{kMaxOperatorCallerId}, RequestSequence{request}, digest(0xe2)},
         ConfigureRiskLimits{risk.account_id, risk.instrument_id, risk.risk_policy_version,
             risk.risk_version, state.kill_epoch, state.executor_generation,
             risk.max_order_quantity, risk.max_reserved_quantity,
             risk.max_order_gross_notional, risk.max_reserved_exposure,
-            risk.initial_margin_ppm, risk.maximum_fee_ppm}};
+            risk.initial_margin_ppm, risk.maximum_fee_ppm,
+            risk.max_position_quantity, risk.allow_short, 1}};
 }
 
 void test_risk_configuration_codec_and_restore() {
@@ -2355,18 +2396,23 @@ void test_risk_configuration_codec_and_restore() {
     auto command = configure_risk(state, 1);
     std::array<std::byte, kMaxKernelCommandBytes> bytes{}, again{};
     const auto encoded = encode_kernel_command(command, bytes);
-    require(encoded.error == KernelCodecError::none && encoded.bytes_written == 180,
-            "risk configuration lacks its canonical 88-byte body");
-    require(bytes[8] == std::byte{7} && bytes[10] == std::byte{17},
-            "risk configuration schema/kind is not V7/17");
+    require(encoded.error == KernelCodecError::none && encoded.bytes_written == 193,
+            "risk configuration lacks its canonical 101-byte body");
+    require(bytes[8] == std::byte{9} && bytes[10] == std::byte{17},
+            "risk configuration schema/kind is not V9/17");
     std::vector<std::byte> expected;
+    const auto put = [&](const std::uint64_t value, const unsigned width) {
+        for (unsigned shift = 0; shift < width; shift += 8)
+            expected.push_back(static_cast<std::byte>((value >> shift) & 0xff));
+    };
     for (const std::uint64_t value : {5ULL, 4ULL, 6ULL, 1ULL, 2ULL, 3ULL, 4ULL, 8ULL, 4000ULL, 8000ULL})
-        for (unsigned shift = 0; shift < 64; shift += 8)
-            expected.push_back(static_cast<std::byte>((value >> shift) & 0xff));
-    for (const std::uint32_t value : {1'000'000U, 2'500U})
-        for (unsigned shift = 0; shift < 32; shift += 8)
-            expected.push_back(static_cast<std::byte>((value >> shift) & 0xff));
-    require(std::equal(expected.begin(), expected.end(), bytes.begin() + 60),
+        put(value, 64);
+    for (const std::uint32_t value : {1'000'000U, 2'500U}) put(value, 32);
+    put(1'000, 64);  // max_position_quantity
+    put(1, 8);       // allow_short
+    put(1, 32);      // reason_code
+    require(expected.size() == 101 &&
+                std::equal(expected.begin(), expected.end(), bytes.begin() + 60),
             "risk configuration canonical field order or integer widths changed");
     Command decoded;
     KernelCommandCodecScratch codec_scratch;
@@ -2387,12 +2433,32 @@ void test_risk_configuration_codec_and_restore() {
                 KernelCodecError::invalid_value && encode_kernel_command(decoded, again).error ==
                 KernelCodecError::none && again == bytes,
             "malformed configuration passed semantic validation or changed decode destination");
+    // Each appended field is validated on decode, not only on encode: a byte
+    // the encoder can never produce must not be admitted from the log.
+    const auto reject_body = [&](const std::size_t offset, const std::vector<std::byte>& patch,
+                                 const std::string& what) {
+        auto corrupt = bytes;
+        std::copy(patch.begin(), patch.end(), corrupt.begin() + 60 + static_cast<std::ptrdiff_t>(offset));
+        const auto resealed = sha256_digest(std::span<const std::byte>{corrupt.data() + 8,
+            encoded.bytes_written - kDigestBytes - 8});
+        std::copy(resealed.bytes.begin(), resealed.bytes.end(),
+            corrupt.begin() + static_cast<std::ptrdiff_t>(encoded.bytes_written - kDigestBytes));
+        require(decode_kernel_command({corrupt.data(), encoded.bytes_written}, decoded, codec_scratch).error ==
+                    KernelCodecError::invalid_value, what);
+    };
+    reject_body(96, {std::byte{2}}, "allow_short outside {0,1} was decoded");
+    reject_body(96, {std::byte{0xff}}, "allow_short 0xff was decoded");
+    reject_body(97, {std::byte{}, std::byte{}, std::byte{}, std::byte{}},
+                "a zero reason_code was decoded");
+    reject_body(88, {std::byte{0xff}, std::byte{0xff}, std::byte{0xff}, std::byte{0xff},
+                     std::byte{0xff}, std::byte{0xff}, std::byte{0xff}, std::byte{0xff}},
+                "a negative max_position_quantity was decoded");
     auto old = bytes;
-    old[8] = std::byte{4};
+    old[8] = std::byte{8};
     require(decode_kernel_command({old.data(), encoded.bytes_written}, decoded, codec_scratch).error ==
-                KernelCodecError::unsupported_schema, "V4 command was reinterpreted");
+                KernelCodecError::unsupported_schema, "V8 command was reinterpreted as V9");
     ApplyScratch scratch;
-    const auto configured = apply(state, command, scratch);
+    const auto configured = catalog_test::apply(state, command, scratch);
     std::array<std::byte, kKernelResultBytes> result_bytes{};
     ApplyResult restored_result;
     const auto result_encoded = encode_kernel_result(configured, result_bytes);
@@ -2404,27 +2470,27 @@ void test_risk_configuration_codec_and_restore() {
             "configuration result lost scope or resulting version");
     std::array<std::byte, kMaxStateSnapshotBytes> snapshot{};
     const auto saved = encode_state_snapshot(state, snapshot);
-    TradingState restored;
+    TradingState restored = catalog_test::state();
     StateSnapshotScratch snapshot_scratch;
     require(saved.error == StateSnapshotError::none, "cfg: encode failed");
     const auto restore_outcome = decode_state_snapshot({snapshot.data(), saved.bytes_written}, restored, snapshot_scratch);
     require(restore_outcome.error == StateSnapshotError::none,
             "cfg: decode failed code=" +
                 std::to_string(static_cast<int>(restore_outcome.error)));
-    const auto retried_config = apply(restored, command, scratch);
+    const auto retried_config = catalog_test::apply(restored, command, scratch);
     require(retried_config == configured,
             "cfg: retry differed code=" + std::to_string(static_cast<int>(retried_config.code)));
     require(restored.risk_accounts == state.risk_accounts, "cfg: ledger differed");
-    snapshot[8] = std::byte{4};
+    snapshot[8] = std::byte{8};
     require(decode_state_snapshot({snapshot.data(), saved.bytes_written}, restored, snapshot_scratch).error ==
-                StateSnapshotError::unsupported_schema, "V4 snapshot was reinterpreted as V5");
+                StateSnapshotError::unsupported_schema, "V8 snapshot was reinterpreted as V9");
 }
 
 void test_risk_configuration_updates_preserve_economics() {
     using namespace velocita::v2;
     auto state = ready_state();
     ApplyScratch scratch;
-    const auto submit = apply(state, authorize(2, 0x91), scratch);
+    const auto submit = catalog_test::apply(state, authorize(2, 0x91), scratch);
     require(submit.code == ApplyCode::applied, "configuration live-order fixture failed");
     const auto old = state.risk_accounts[0];
     const auto effect_before = encode_payload(*materialize_order_effect(state, submit.effect_id())).bytes;
@@ -2432,12 +2498,19 @@ void test_risk_configuration_updates_preserve_economics() {
     auto& body = std::get<ConfigureRiskLimits>(update.body);
     body.max_order_quantity = QuantityLots::from_atoms(1);
     body.max_order_gross_notional = MoneyMicros::from_atoms(1);
-    const auto changed = apply(state, update, scratch);
+    require(old.allow_short && old.max_position_quantity == QuantityLots::from_atoms(1'000),
+            "fixture drifted: the update below must change both position fields");
+    body.max_position_quantity = QuantityLots::from_atoms(7);
+    body.allow_short = false;
+    const auto changed = catalog_test::apply(state, update, scratch);
     require(changed.code == ApplyCode::applied && state.risk_accounts[0].risk_version == RiskVersion{2},
             "risk configuration update did not advance exactly one version");
     require(state.risk_accounts[0].max_order_quantity == body.max_order_quantity &&
                 state.risk_accounts[0].max_order_gross_notional == body.max_order_gross_notional,
             "prospective per-order cap update was ignored");
+    require(state.risk_accounts[0].max_position_quantity == QuantityLots::from_atoms(7) &&
+                !state.risk_accounts[0].allow_short,
+            "position cap or short permission update was not stored");
     require(state.risk_accounts[0].reserved_quantity == old.reserved_quantity &&
                 state.risk_accounts[0].reserved_margin == old.reserved_margin &&
                 state.risk_accounts[0].reserved_fee == old.reserved_fee &&
@@ -2446,21 +2519,21 @@ void test_risk_configuration_updates_preserve_economics() {
                 state.order_count == 1 && state.outbox_effect_count == 1 &&
                 encode_payload(*materialize_order_effect(state, submit.effect_id())).bytes == effect_before,
             "configuration rewrote balances or a historical effect");
-    require(apply(state, update, scratch) == changed &&
+    require(catalog_test::apply(state, update, scratch) == changed &&
                 state.risk_accounts[0].risk_version == RiskVersion{2},
             "same-request retry advanced risk version twice");
     update.identity.request_sequence = RequestSequence{2};
-    require(apply(state, update, scratch).code == ApplyCode::stale_risk_state,
+    require(catalog_test::apply(state, update, scratch).code == ApplyCode::stale_risk_state,
             "fresh stale update overwrote a newer version");
-    const auto refuse = [&](auto change, const ApplyCode expected) {
+    const auto refuse = [&](auto change, const ApplyCode expected, const std::string& label = {}) {
         auto candidate = state;
         auto command = configure_risk(candidate, 3);
         change(std::get<ConfigureRiskLimits>(command.body));
-        require(apply(candidate, command, scratch).code == expected &&
+        require(catalog_test::apply(candidate, command, scratch).code == expected &&
                     candidate.risk_accounts == state.risk_accounts &&
                     candidate.orders == state.orders && candidate.reservations == state.reservations &&
                     candidate.outbox_effects == state.outbox_effects,
-                "configuration refusal changed economics or returned the wrong code");
+                "configuration refusal changed economics or returned the wrong code " + label);
     };
     refuse([](auto& c) { c.max_reserved_quantity = QuantityLots::from_atoms(1); }, ApplyCode::insufficient_risk_capacity);
     refuse([](auto& c) { c.max_reserved_exposure = MoneyMicros::from_atoms(1); }, ApplyCode::insufficient_risk_capacity);
@@ -2474,6 +2547,9 @@ void test_risk_configuration_updates_preserve_economics() {
     refuse([](auto& c) { c.initial_margin_ppm = 0; }, ApplyCode::invalid_command);
     refuse([](auto& c) { c.maximum_fee_ppm = 1'000'001; }, ApplyCode::invalid_command);
     refuse([](auto& c) { c.initial_margin_ppm = 1'000'001; }, ApplyCode::invalid_command);
+    refuse([](auto& c) { c.max_position_quantity = QuantityLots::from_atoms(-1); }, ApplyCode::invalid_command,
+           "(negative position cap)");
+    refuse([](auto& c) { c.reason_code = 0; }, ApplyCode::invalid_command, "(zero reason code)");
     refuse([](auto& c) { c.account_id = AccountId{}; }, ApplyCode::invalid_command);
     refuse([](auto& c) { c.instrument_id = InstrumentId{}; }, ApplyCode::invalid_command);
     refuse([](auto& c) { c.expected_risk_version = RiskVersion{99}; }, ApplyCode::stale_risk_state);
@@ -2481,7 +2557,7 @@ void test_risk_configuration_updates_preserve_economics() {
     refuse([](auto& c) { c.expected_executor_generation = ExecutorGeneration{99}; }, ApplyCode::stale_control_generation);
     auto exhausted = state;
     exhausted.risk_accounts[0].risk_version = RiskVersion{std::numeric_limits<std::uint64_t>::max()};
-    require(apply(exhausted, configure_risk(exhausted, 3), scratch).code == ApplyCode::risk_version_exhausted,
+    require(catalog_test::apply(exhausted, configure_risk(exhausted, 3), scratch).code == ApplyCode::risk_version_exhausted,
             "configuration risk version wrapped");
     auto quiet = ready_state();
     quiet.risk_accounts[0].position_quantity = QuantityLots::from_atoms(3);
@@ -2491,7 +2567,7 @@ void test_risk_configuration_updates_preserve_economics() {
     new_rates.initial_margin_ppm = 100'000;
     new_rates.maximum_fee_ppm = 0;
     new_rates.max_reserved_exposure = MoneyMicros::from_atoms(500);
-    require(apply(quiet, rates, scratch).code == ApplyCode::applied &&
+    require(catalog_test::apply(quiet, rates, scratch).code == ApplyCode::applied &&
                 quiet.risk_accounts[0].position_quantity == QuantityLots::from_atoms(3) &&
                 quiet.risk_accounts[0].initial_margin_ppm == 100'000 &&
                 quiet.risk_accounts[0].maximum_fee_ppm == 0 &&
@@ -2519,20 +2595,20 @@ void test_risk_configuration_admission_and_capacity() {
     KernelCommandCodecScratch codec_scratch;
     const auto encoded = encode_kernel_command(configuration, command_bytes);
     require(encoded.error == KernelCodecError::none, "configuration admission encode failed");
-    const auto configured = apply(state, configuration, scratch);
+    const auto configured = catalog_test::apply(state, configuration, scratch);
     require(configured.code == ApplyCode::applied &&
-                apply_encoded_kernel_command(replayed, {command_bytes.data(), encoded.bytes_written},
+                catalog_test::replay(replayed, {command_bytes.data(), encoded.bytes_written},
                     scratch, codec_scratch, result_bytes).apply_result == configured &&
                 replayed.risk_accounts == state.risk_accounts,
             "encoded configuration replay diverged from direct admission");
     const auto update = configure_risk(state, 2);
-    require(apply(state, update, scratch).code == ApplyCode::applied &&
+    require(catalog_test::apply(state, update, scratch).code == ApplyCode::applied &&
                 state.risk_accounts[0].risk_version == RiskVersion{2},
             "fresh no-op configuration did not advance exactly one version");
-    require(apply(state, authorize(2, 0xf1), scratch).code == ApplyCode::stale_risk_state,
+    require(catalog_test::apply(state, authorize(2, 0xf1), scratch).code == ApplyCode::stale_risk_state,
             "configuration failed to invalidate an old decision's risk version");
     require(evaluate_new_decision(state, scratch, DecisionId{21}, 2, 3).code == ApplyCode::applied &&
-                apply(state, authorize_decision(4, 0xf2, DecisionId{21}), scratch).code == ApplyCode::applied,
+                catalog_test::apply(state, authorize_decision(4, 0xf2, DecisionId{21}), scratch).code == ApplyCode::applied,
             "fresh authorization did not use command-configured risk limits");
     require(state.risk_accounts[0].reserved_margin.atoms() > 0 &&
                 state.risk_accounts[0].reserved_margin.atoms() <
@@ -2540,20 +2616,20 @@ void test_risk_configuration_admission_and_capacity() {
             "hold budget was treated as gross notional");
     auto duplicate = configuration;
     duplicate.identity.payload_digest = digest(0xff);
-    require(apply(state, duplicate, scratch).code == ApplyCode::duplicate_conflict,
+    require(catalog_test::apply(state, duplicate, scratch).code == ApplyCode::duplicate_conflict,
             "configuration request accepted a conflicting payload digest");
     for (std::uint64_t i = 1; i < kMaxRiskAccounts; ++i) {
         auto create = configuration;
         create.identity.request_sequence = RequestSequence{10 + i};
         std::get<ConfigureRiskLimits>(create.body).account_id = AccountId{5 + i};
-        require(apply(state, create, scratch).code == ApplyCode::applied,
+        require(catalog_test::apply(state, create, scratch).code == ApplyCode::applied,
                 "risk account capacity filled prematurely");
     }
     auto full = configuration;
     full.identity.request_sequence = RequestSequence{20};
     std::get<ConfigureRiskLimits>(full.body).account_id = AccountId{99};
     const auto accounts = state.risk_accounts;
-    require(apply(state, full, scratch).code == ApplyCode::risk_account_capacity_exceeded &&
+    require(catalog_test::apply(state, full, scratch).code == ApplyCode::risk_account_capacity_exceeded &&
                 state.risk_accounts == accounts, "full risk arena mutated on refused creation");
     auto receipts_full = state;
     // Receipts are now reclaimable (architecture 8.6), so a filler of default
@@ -2574,7 +2650,7 @@ void test_risk_configuration_admission_and_capacity() {
             {CallerId{40}, RequestSequence{index + 1}, digest(0x77)}, pinned};
     }
     receipts_full.receipt_count = kMaxRequestReceipts;
-    require(apply(receipts_full, configure_risk(receipts_full, 21), scratch).code ==
+    require(catalog_test::apply(receipts_full, configure_risk(receipts_full, 21), scratch).code ==
                 ApplyCode::receipt_capacity_exceeded && receipts_full.risk_accounts == accounts,
             "configuration committed without room for its receipt");
 }
@@ -2619,7 +2695,7 @@ void test_serial_replacement_across_a_risk_limit_update() {
     // property and the one the outbox depends on.
     std::vector<Command> history;
     const auto admitted = [&](const Command& command) {
-        const auto outcome = apply(state, command, scratch);
+        const auto outcome = catalog_test::apply(state, command, scratch);
         history.push_back(command);
         return outcome;
     };
@@ -2759,7 +2835,7 @@ void test_serial_replacement_across_a_risk_limit_update() {
     const auto encoded = encode_state_snapshot(state, snapshot);
     require(encoded.error == StateSnapshotError::none,
             "serial replacement state failed snapshot invariants");
-    TradingState restored;
+    TradingState restored = catalog_test::state();
     StateSnapshotScratch snapshot_scratch;
     require(decode_state_snapshot({snapshot.data(), encoded.bytes_written}, restored,
                                   snapshot_scratch)
@@ -2790,7 +2866,7 @@ void test_serial_replacement_across_a_risk_limit_update() {
         const auto encoded_command = encode_kernel_command(command, command_bytes);
         require(encoded_command.error == KernelCodecError::none,
                 "serial lifecycle command did not encode canonically");
-        require(apply_encoded_kernel_command(
+        require(catalog_test::replay(
                     replayed, {command_bytes.data(), encoded_command.bytes_written},
                     replay_scratch, codec_scratch, result_bytes)
                         .error == ReplayError::none,
@@ -2834,16 +2910,16 @@ void test_reclamation_during_cancellation_preserves_the_recovery_path() {
     auto state = ready_state();
     ApplyScratch scratch;
 
-    const auto submit = apply(state, authorize(2, 0x81), scratch);
+    const auto submit = catalog_test::apply(state, authorize(2, 0x81), scratch);
     require(submit.code == ApplyCode::applied, "stuck-slot fixture failed");
     const auto submit_bytes =
         encode_payload(*materialize_order_effect(state, submit.effect_id())).bytes;
-    const auto cancel = apply(
+    const auto cancel = catalog_test::apply(
         state, request_cancel(1, 0x82, submit.cluster_order_id()), scratch);
     require(cancel.code == ApplyCode::applied, "stuck-slot cancel failed");
     const auto cancel_bytes =
         encode_payload(*materialize_order_effect(state, cancel.effect_id())).bytes;
-    require(apply(state,
+    require(catalog_test::apply(state,
                   observe_order_event(1, 0x83, VenueObservationKind::cancelled,
                                       submit.cluster_order_id(), cancel.effect_id(),
                                       3100),
@@ -2900,7 +2976,7 @@ void test_reclamation_during_cancellation_preserves_the_recovery_path() {
     evidence.venue_order_id = VenueOrderId{70};
     evidence.quantity = state.reservations[0].filled_quantity;
     proof.identity.payload_digest = observation_fingerprint(evidence);
-    require(apply(state, proof, scratch).code == ApplyCode::applied &&
+    require(catalog_test::apply(state, proof, scratch).code == ApplyCode::applied &&
                 state.reservations[0].state == ReservationState::released,
             "a stuck slot could not be reconciled while the arenas were full");
     // The orphaned submit effect is recorded as `incomplete` - outcome never
@@ -2962,7 +3038,7 @@ void test_risk_configuration_respects_every_unresolved_order_state() {
 
     const auto blocked_in = [&](const char* what, auto&& reach_state) {
         auto state = ready_state();
-        const auto submit = apply(state, authorize(2, 0x91), scratch);
+        const auto submit = catalog_test::apply(state, authorize(2, 0x91), scratch);
         require(submit.code == ApplyCode::applied, "unresolved-state fixture failed");
         reach_state(state, submit);
         require(state.reservations[0].state != ReservationState::released,
@@ -2973,7 +3049,7 @@ void test_risk_configuration_respects_every_unresolved_order_state() {
         auto& body = std::get<ConfigureRiskLimits>(rates.body);
         body.risk_policy_version = RiskPolicyVersion{7};
         body.initial_margin_ppm = 500'000;
-        require(apply(state, rates, scratch).code ==
+        require(catalog_test::apply(state, rates, scratch).code ==
                     ApplyCode::risk_reconfiguration_blocked,
                 std::string{what} + ": rate change was admitted over unresolved risk");
         require(state.risk_accounts == before.risk_accounts &&
@@ -2988,7 +3064,7 @@ void test_risk_configuration_respects_every_unresolved_order_state() {
         auto policy_only = configure_risk(state, 2);
         std::get<ConfigureRiskLimits>(policy_only.body).risk_policy_version =
             RiskPolicyVersion{7};
-        require(apply(state, policy_only, scratch).code ==
+        require(catalog_test::apply(state, policy_only, scratch).code ==
                     ApplyCode::risk_reconfiguration_blocked,
                 std::string{what} + ": policy-version bump was admitted");
 
@@ -2997,7 +3073,7 @@ void test_risk_configuration_respects_every_unresolved_order_state() {
         auto caps = configure_risk(state, 3);
         std::get<ConfigureRiskLimits>(caps.body).max_order_quantity =
             QuantityLots::from_atoms(3);
-        require(apply(state, caps, scratch).code == ApplyCode::applied,
+        require(catalog_test::apply(state, caps, scratch).code == ApplyCode::applied,
                 std::string{what} + ": prospective cap change was refused");
         require(state.risk_accounts[0].reserved_margin ==
                         before.risk_accounts[0].reserved_margin &&
@@ -3011,14 +3087,14 @@ void test_risk_configuration_respects_every_unresolved_order_state() {
         auto shrink = configure_risk(state, 4);
         std::get<ConfigureRiskLimits>(shrink.body).max_reserved_exposure =
             MoneyMicros::from_atoms(1);
-        require(apply(state, shrink, scratch).code ==
+        require(catalog_test::apply(state, shrink, scratch).code ==
                     ApplyCode::insufficient_risk_capacity,
                 std::string{what} + ": aggregate cap below the hold was admitted");
         return state;
     };
 
     blocked_in("cancel_pending", [&](TradingState& state, const ApplyResult& submit) {
-        require(apply(state, request_cancel(1, 0x92, submit.cluster_order_id()),
+        require(catalog_test::apply(state, request_cancel(1, 0x92, submit.cluster_order_id()),
                       scratch)
                         .code == ApplyCode::applied,
                 "cancel_pending fixture failed");
@@ -3026,7 +3102,7 @@ void test_risk_configuration_respects_every_unresolved_order_state() {
 
     blocked_in("submission_unknown", [&](TradingState& state,
                                          const ApplyResult& submit) {
-        require(apply(state,
+        require(catalog_test::apply(state,
                       observe_order_event(1, 0x93,
                                           VenueObservationKind::effect_unknown,
                                           submit.cluster_order_id(),
@@ -3038,10 +3114,10 @@ void test_risk_configuration_respects_every_unresolved_order_state() {
     });
 
     blocked_in("reconciling", [&](TradingState& state, const ApplyResult& submit) {
-        const auto cancel = apply(
+        const auto cancel = catalog_test::apply(
             state, request_cancel(1, 0x94, submit.cluster_order_id()), scratch);
         require(cancel.code == ApplyCode::applied &&
-                    apply(state,
+                    catalog_test::apply(state,
                           observe_order_event(1, 0x95,
                                               VenueObservationKind::cancelled,
                                               submit.cluster_order_id(),
@@ -3060,8 +3136,8 @@ void test_risk_configuration_respects_every_unresolved_order_state() {
 
     // Once the risk is genuinely resolved, rates become configurable again.
     auto resolved = ready_state();
-    const auto submit = apply(resolved, authorize(2, 0x96), scratch);
-    require(apply(resolved,
+    const auto submit = catalog_test::apply(resolved, authorize(2, 0x96), scratch);
+    require(catalog_test::apply(resolved,
                   observe_fill(1, 0x97, submit.cluster_order_id(),
                                submit.effect_id(), ExecutionId{4'300}, 2),
                   scratch)
@@ -3072,7 +3148,7 @@ void test_risk_configuration_respects_every_unresolved_order_state() {
     auto& body = std::get<ConfigureRiskLimits>(rates.body);
     body.risk_policy_version = RiskPolicyVersion{7};
     body.initial_margin_ppm = 500'000;
-    require(apply(resolved, rates, scratch).code == ApplyCode::applied,
+    require(catalog_test::apply(resolved, rates, scratch).code == ApplyCode::applied,
             "rate change was refused after the hold was released");
     require(resolved.risk_accounts[0].position_quantity ==
                 QuantityLots::from_atoms(2),
@@ -3111,10 +3187,10 @@ void test_two_sided_slots_requote_independently() {
                 ApplyCode::applied,
             "bid decision was not retained");
 
-    const auto ask = apply(state, authorize_decision(5, 0xa1, DecisionId{30}),
+    const auto ask = catalog_test::apply(state, authorize_decision(5, 0xa1, DecisionId{30}),
                            scratch);
     require(ask.code == ApplyCode::applied, "ask slot did not authorize");
-    const auto bid = apply(state, authorize_decision(6, 0xa2, DecisionId{31}),
+    const auto bid = catalog_test::apply(state, authorize_decision(6, 0xa2, DecisionId{31}),
                            scratch);
     require(bid.code == ApplyCode::applied,
             "bid slot was blocked by the occupied ask slot");
@@ -3146,14 +3222,14 @@ void test_two_sided_slots_requote_independently() {
         const auto before = state;
         // Same request identity: receipt deduplication returns the original
         // result verbatim, before authorization logic is reached at all.
-        require(apply(state, authorize_decision(5, 0xa1, DecisionId{30}), scratch) ==
+        require(catalog_test::apply(state, authorize_decision(5, 0xa1, DecisionId{30}), scratch) ==
                     ask,
                 "ask request retry did not return its retained result");
         // Different request identity, same decision: authorization recognises the
         // decision was already consumed and replays its identities rather than
         // creating a second order on the slot.
         const auto replayed =
-            apply(state, authorize_decision(9, 0xa3, DecisionId{30}), scratch);
+            catalog_test::apply(state, authorize_decision(9, 0xa3, DecisionId{30}), scratch);
         require(replayed.code == ApplyCode::already_applied &&
                     replayed.cluster_order_id() == ask.cluster_order_id() &&
                     replayed.effect_id() == ask.effect_id(),
@@ -3164,10 +3240,10 @@ void test_two_sided_slots_requote_independently() {
     }
 
     // Cancel and reconcile the ask while the bid keeps quoting.
-    const auto cancel = apply(
+    const auto cancel = catalog_test::apply(
         state, request_cancel(1, 0xa4, ask.cluster_order_id()), scratch);
     require(cancel.code == ApplyCode::applied, "ask cancel failed");
-    require(apply(state,
+    require(catalog_test::apply(state,
                   observe_order_event(1, 0xa5, VenueObservationKind::cancelled,
                                       ask.cluster_order_id(), cancel.effect_id(),
                                       5100),
@@ -3191,7 +3267,7 @@ void test_two_sided_slots_requote_independently() {
     evidence.venue_order_id = VenueOrderId{70};
     evidence.quantity = QuantityLots{};
     proof.identity.payload_digest = observation_fingerprint(evidence);
-    require(apply(state, proof, scratch).code == ApplyCode::applied,
+    require(catalog_test::apply(state, proof, scratch).code == ApplyCode::applied,
             "ask reconciliation failed while the bid was live");
 
     // Only the ask's risk was released; the bid's hold is untouched.
@@ -3212,7 +3288,7 @@ void test_two_sided_slots_requote_independently() {
     // (architecture 8.6), and this caller has already reached 9. A lower
     // sequence is now correctly refused as expired rather than executed, which
     // is exactly the protection the watermark exists to give.
-    const auto requote = apply(state, authorize_decision(10, 0xa7, DecisionId{32}),
+    const auto requote = catalog_test::apply(state, authorize_decision(10, 0xa7, DecisionId{32}),
                                scratch);
     require(requote.code == ApplyCode::applied &&
                 requote.cluster_order_id() != ask.cluster_order_id(),
@@ -3225,7 +3301,7 @@ void test_two_sided_slots_requote_independently() {
     const auto encoded = encode_state_snapshot(state, snapshot);
     require(encoded.error == StateSnapshotError::none,
             "two-sided state failed snapshot invariants");
-    TradingState restored;
+    TradingState restored = catalog_test::state();
     StateSnapshotScratch snapshot_scratch;
     require(decode_state_snapshot({snapshot.data(), encoded.bytes_written}, restored,
                                   snapshot_scratch)
@@ -3290,7 +3366,7 @@ void test_unauthorizable_decisions_do_not_fill_the_arena() {
     altered.source_sequence = SourceSequence{1};
     altered.venue_sequence = VenueSequence{1};
     altered.raw_evidence_digest = digest(0x44);
-    const auto conflicting = apply(
+    const auto conflicting = catalog_test::apply(
         state,
         {{CallerId{8}, RequestSequence{900}, digest(0xEE)},
          EvaluateDecisionFrame{DecisionId{101}, EvaluationMode::authoritative,
@@ -3306,7 +3382,7 @@ void test_superseded_slot_decisions_are_reclaimed() {
     ApplyScratch scratch;
 
     // Occupy slot 1 so no later actionable decision for it can be authorized.
-    const auto submit = apply(state, authorize(2, 0x51), scratch);
+    const auto submit = catalog_test::apply(state, authorize(2, 0x51), scratch);
     require(submit.code == ApplyCode::applied, "supersession fixture failed");
 
     // Each of these is authorizable in shape and targets the occupied slot, so
@@ -3370,7 +3446,7 @@ void test_an_expired_request_is_refused_never_re_executed() {
     ApplyScratch scratch;
 
     // Authorize once, then age its receipt out by driving unrelated traffic.
-    const auto submit = apply(state, authorize(2, 0x61), scratch);
+    const auto submit = catalog_test::apply(state, authorize(2, 0x61), scratch);
     require(submit.code == ApplyCode::applied, "expiry fixture failed");
     const auto orders_after_submit = state.order_count;
 
@@ -3385,7 +3461,7 @@ void test_an_expired_request_is_refused_never_re_executed() {
     // Re-present the original request identity. Whatever the kernel answers, it
     // must not create a second order: that is the property, and the answer is
     // secondary.
-    const auto replayed = apply(state, authorize(2, 0x61), scratch);
+    const auto replayed = catalog_test::apply(state, authorize(2, 0x61), scratch);
     require(state.order_count == orders_after_submit,
             "re-presenting an aged request created a second order");
     // Three acceptable answers, all safe. The receipt may have survived, in
@@ -3401,7 +3477,7 @@ void test_an_expired_request_is_refused_never_re_executed() {
 
     // A request BELOW its caller's watermark that was never seen must be refused
     // rather than treated as fresh, or expiry would silently permit replay.
-    const auto never_seen = apply(state, authorize(1, 0x62), scratch);
+    const auto never_seen = catalog_test::apply(state, authorize(1, 0x62), scratch);
     require(never_seen.code == ApplyCode::request_expired,
             "a request below the caller watermark was treated as fresh");
     require(state.order_count == orders_after_submit,
@@ -3427,14 +3503,14 @@ void test_resolved_orders_release_venue_identity_capacity() {
         require(evaluate_at_feature(state, scratch, decision, 11, sequence++, request++)
                     .code == ApplyCode::applied,
                 "sustained venue-identity fixture could not evaluate");
-        const auto submit = apply(
+        const auto submit = catalog_test::apply(
             state, authorize_decision(request++, 0x63, decision), scratch);
         require(submit.code == ApplyCode::applied,
                 "sustained venue-identity fixture could not authorize cycle " +
                     std::to_string(cycle) + " with code " +
                     std::to_string(static_cast<int>(submit.code)));
         const auto fill_request = request++;
-        const auto filled = apply(
+        const auto filled = catalog_test::apply(
             state,
             observe_fill(fill_request, 0x64, submit.cluster_order_id(),
                          submit.effect_id(), ExecutionId{execution++}, 2,
@@ -3448,7 +3524,7 @@ void test_resolved_orders_release_venue_identity_capacity() {
         const Command acknowledge{
             {CallerId{2}, RequestSequence{ack_request}, digest(0x65)},
             AcknowledgeGatewayResults{RequestSequence{fill_request}}};
-        require(apply(state, acknowledge, scratch).code == ApplyCode::applied,
+        require(catalog_test::apply(state, acknowledge, scratch).code == ApplyCode::applied,
                 "sustained venue-identity fixture could not acknowledge its fill");
         ++completed;
     }
@@ -3468,12 +3544,12 @@ void test_resolved_orders_release_venue_identity_capacity() {
 
 void test_gateway_acknowledgement_can_drain_a_full_receipt_arena() {
     using namespace velocita::v2;
-    TradingState state;
+    TradingState state = catalog_test::state();
     ApplyScratch scratch;
 
     for (std::uint64_t sequence = 1; sequence <= kMaxRequestReceipts;
          ++sequence) {
-        const auto refused = apply(
+        const auto refused = catalog_test::apply(
             state,
             observe_fill(sequence, 0x67, ClusterOrderId{91}, EffectId{92},
                          ExecutionId{10'000 + sequence}),
@@ -3489,7 +3565,7 @@ void test_gateway_acknowledgement_can_drain_a_full_receipt_arena() {
         {CallerId{2}, RequestSequence{kMaxRequestReceipts + 1}, digest(0x68)},
         AcknowledgeGatewayResults{
             RequestSequence{kMaxRequestReceipts + 1}}};
-    require(apply(state, invalid, scratch).code ==
+    require(catalog_test::apply(state, invalid, scratch).code ==
                 ApplyCode::receipt_capacity_exceeded &&
                 state.state_version == version_before_invalid &&
                 state.receipt_count == kMaxRequestReceipts,
@@ -3498,7 +3574,7 @@ void test_gateway_acknowledgement_can_drain_a_full_receipt_arena() {
     const Command acknowledge{
         {CallerId{2}, RequestSequence{kMaxRequestReceipts + 1}, digest(0x69)},
         AcknowledgeGatewayResults{RequestSequence{kMaxRequestReceipts}}};
-    require(apply(state, acknowledge, scratch).code == ApplyCode::applied,
+    require(catalog_test::apply(state, acknowledge, scratch).code == ApplyCode::applied,
             "a full receipt arena refused the acknowledgement needed to drain it");
     require(state.receipt_count < kMaxRequestReceipts,
             "the acknowledgement advanced but released no receipt capacity");
@@ -3508,7 +3584,7 @@ void test_acknowledged_duplicate_fills_do_not_exhaust_receipts() {
     using namespace velocita::v2;
     auto state = ready_state();
     ApplyScratch scratch;
-    const auto submit = apply(state, authorize(2, 0x69), scratch);
+    const auto submit = catalog_test::apply(state, authorize(2, 0x69), scratch);
     require(submit.code == ApplyCode::applied,
             "duplicate-fill fixture could not authorize");
 
@@ -3516,14 +3592,14 @@ void test_acknowledged_duplicate_fills_do_not_exhaust_receipts() {
     const auto original = observe_fill(
         request++, 0x6a, submit.cluster_order_id(), submit.effect_id(),
         ExecutionId{9'900}, 1, Side::buy, 11);
-    require(apply(state, original, scratch).code == ApplyCode::applied,
+    require(catalog_test::apply(state, original, scratch).code == ApplyCode::applied,
             "duplicate-fill fixture could not book its first fill");
     const auto acknowledge = [&](const std::uint64_t through) {
         const auto sequence = request++;
         const Command command{
             {CallerId{2}, RequestSequence{sequence}, digest(0x6b)},
             AcknowledgeGatewayResults{RequestSequence{through}}};
-        return apply(state, command, scratch).code;
+        return catalog_test::apply(state, command, scratch).code;
     };
     require(acknowledge(original.identity.request_sequence.value()) ==
                 ApplyCode::applied,
@@ -3533,7 +3609,7 @@ void test_acknowledged_duplicate_fills_do_not_exhaust_receipts() {
          duplicate < kMaxRequestReceipts + 16; ++duplicate) {
         auto replay = original;
         replay.identity.request_sequence = RequestSequence{request++};
-        const auto result = apply(state, replay, scratch);
+        const auto result = catalog_test::apply(state, replay, scratch);
         require(result.code == ApplyCode::already_applied,
                 "acknowledged duplicate fills exhausted receipt capacity");
         require(acknowledge(replay.identity.request_sequence.value()) ==
@@ -3541,7 +3617,7 @@ void test_acknowledged_duplicate_fills_do_not_exhaust_receipts() {
                 "duplicate-fill acknowledgement could not drain receipts");
     }
 
-    const auto final = apply(
+    const auto final = catalog_test::apply(
         state,
         observe_fill(request++, 0x6c, submit.cluster_order_id(),
                      submit.effect_id(), ExecutionId{9'901}, 1, Side::buy, 11),
@@ -3591,9 +3667,9 @@ void test_a_resting_order_the_venue_does_not_hold_is_resolved() {
     // could be queried forever and never resolved.
     auto state = ready_state();
     ApplyScratch scratch;
-    const auto submit = apply(state, authorize(2, 0xf1), scratch);
+    const auto submit = catalog_test::apply(state, authorize(2, 0xf1), scratch);
     require(submit.code == ApplyCode::applied, "submit fixture did not authorize");
-    require(apply(state,
+    require(catalog_test::apply(state,
                   observe_order_event(1, 0xf2, VenueObservationKind::order_acknowledged,
                                       submit.cluster_order_id(), submit.effect_id(), 901),
                   scratch)
@@ -3602,7 +3678,7 @@ void test_a_resting_order_the_venue_does_not_hold_is_resolved() {
     require(state.orders[0].state == ClusterOrderState::live,
             "the fixture order is not resting");
 
-    const auto answered = apply(
+    const auto answered = catalog_test::apply(
         state,
         reconciled_absent(2, 0xf7, submit.cluster_order_id(), submit.effect_id(), 902),
         scratch);
@@ -3618,15 +3694,15 @@ void test_a_resting_order_the_venue_does_not_hold_is_resolved() {
     // a confirmation, not an excuse to move something that is fine.
     auto healthy = ready_state();
     ApplyScratch other;
-    const auto held = apply(healthy, authorize(2, 0xe1), other);
-    require(apply(healthy,
+    const auto held = catalog_test::apply(healthy, authorize(2, 0xe1), other);
+    require(catalog_test::apply(healthy,
                   observe_order_event(1, 0xe2, VenueObservationKind::order_acknowledged,
                                       held.cluster_order_id(), held.effect_id(), 801),
                   other)
                     .code == ApplyCode::applied,
             "the second fixture could not be acknowledged");
     const auto before = healthy;
-    require(apply(healthy,
+    require(catalog_test::apply(healthy,
                   observe_order_event(2, 0xe3, VenueObservationKind::order_reconciled,
                                       held.cluster_order_id(), held.effect_id(), 802),
                   other)
@@ -3658,13 +3734,13 @@ void test_an_unrequested_venue_cancellation_is_evidence_not_noise() {
     // one.
     auto state = ready_state();
     ApplyScratch scratch;
-    const auto submit = apply(state, authorize(2, 0xf1), scratch);
+    const auto submit = catalog_test::apply(state, authorize(2, 0xf1), scratch);
     require(submit.code == ApplyCode::applied, "submit fixture did not authorize");
 
     // The venue must have ACKNOWLEDGED the order first. Cancelling something the
     // venue never admitted to holding is not an out-of-band action, it is an
     // inapplicable event, and refusing it proves nothing about this case.
-    require(apply(state,
+    require(catalog_test::apply(state,
                   observe_order_event(1, 0xf2, VenueObservationKind::order_acknowledged,
                                       submit.cluster_order_id(), submit.effect_id(), 901),
                   scratch)
@@ -3674,7 +3750,7 @@ void test_an_unrequested_venue_cancellation_is_evidence_not_noise() {
             "the fixture order is not resting at the venue");
 
     const auto before = state;
-    const auto outcome = apply(
+    const auto outcome = catalog_test::apply(
         state,
         observe_order_event(2, 0xf4, VenueObservationKind::cancelled,
                             submit.cluster_order_id(), submit.effect_id(), 902),
@@ -3713,7 +3789,7 @@ void test_an_unrequested_venue_cancellation_is_evidence_not_noise() {
     const Command resume{{CallerId{9}, RequestSequence{77}, digest(0x5A)},
                          SetStrategyMode{StrategyMode::normal, state.kill_epoch,
                                          state.executor_generation}};
-    require(apply(state, resume, scratch).code == ApplyCode::reconciliation_required,
+    require(catalog_test::apply(state, resume, scratch).code == ApplyCode::reconciliation_required,
             "trading could resume while an order's fate was unknown");
 }
 
@@ -3742,7 +3818,7 @@ void test_mass_cancel_pulls_every_cancellable_order_in_scope() {
     for (std::uint64_t slot = 1; slot <= 3; ++slot) {
         const DecisionId decision{20 + slot};
         append_submit_decision(state, decision, 11, 1, LogicalOrderSlot{static_cast<std::uint16_t>(slot)});
-        const auto authorized = apply(
+        const auto authorized = catalog_test::apply(
             state, authorize_decision(40 + slot, static_cast<std::uint8_t>(0x90 + slot),
                                       decision),
             scratch);
@@ -3753,7 +3829,7 @@ void test_mass_cancel_pulls_every_cancellable_order_in_scope() {
     require(state.order_count == 3, "the fixture did not produce three orders");
 
     const auto before_effects = state.outbox_effect_count;
-    const auto outcome = apply(state, mass_cancel(state, 90, 0xA1, MassCancelScope::all),
+    const auto outcome = catalog_test::apply(state, mass_cancel(state, 90, 0xA1, MassCancelScope::all),
                                scratch);
     require(outcome.code == ApplyCode::applied,
             "a mass cancel over three live orders was refused");
@@ -3777,6 +3853,104 @@ void test_mass_cancel_pulls_every_cancellable_order_in_scope() {
     }
 }
 
+// The kill path's answer has to leave the reducer: a committed mass-cancel
+// result must encode for the operator, and a replica retaining its receipt must
+// still snapshot, restore and answer an exact retry identically.
+void test_mass_cancel_result_survives_codec_snapshot_and_retry() {
+    using namespace velocita::v2;
+    for (const std::uint64_t orders : {std::uint64_t{0}, std::uint64_t{2}}) {
+        auto state = ready_state();
+        ApplyScratch scratch;
+        for (std::uint64_t slot = 1; slot <= orders; ++slot) {
+            const DecisionId decision{20 + slot};
+            append_submit_decision(state, decision, 11, 1,
+                                   LogicalOrderSlot{static_cast<std::uint16_t>(slot)});
+            require(catalog_test::apply(state, authorize_decision(40 + slot,
+                        static_cast<std::uint8_t>(0x90 + slot), decision), scratch).code ==
+                        ApplyCode::applied, "mass-cancel codec fixture could not authorize");
+        }
+        // Every fixture order is live and in scope for `all`, so each is cancelled.
+        const std::array<std::uint64_t, 3> expected{orders, orders, 0};
+        const auto command = mass_cancel(state, 90, 0xA5, MassCancelScope::all);
+        const auto outcome = catalog_test::apply(state, command, scratch);
+        const auto context = " (" + std::to_string(orders) + " orders)";
+        require(outcome.code == ApplyCode::applied &&
+                    outcome.detail_kind == ApplyResultDetailKind::mass_cancel &&
+                    outcome.detail.words == expected,
+                "mass-cancel fixture did not report its in-scope/cancelled/skipped counts" + context);
+
+        std::array<std::byte, kKernelResultBytes> result_bytes{};
+        const auto encoded = encode_kernel_result(outcome, result_bytes);
+        ApplyResult decoded;
+        require(encoded.error == KernelCodecError::none &&
+                    decode_kernel_result({result_bytes.data(), encoded.bytes_written}, decoded).error ==
+                        KernelCodecError::none && decoded == outcome,
+                "a committed mass-cancel result did not round-trip the result codec" + context);
+
+        std::array<std::byte, kMaxStateSnapshotBytes> first{}, second{};
+        const auto saved = encode_state_snapshot(state, first);
+        require(saved.error == StateSnapshotError::none,
+                "state retaining a mass-cancel receipt did not snapshot" + context);
+        TradingState restored = catalog_test::state();
+        StateSnapshotScratch snapshot_scratch;
+        require(decode_state_snapshot({first.data(), saved.bytes_written}, restored,
+                                      snapshot_scratch).error == StateSnapshotError::none,
+                "a mass-cancel snapshot did not restore" + context);
+        const auto again = encode_state_snapshot(restored, second);
+        require(again.error == StateSnapshotError::none && again.bytes_written == saved.bytes_written &&
+                    std::equal(first.begin(), first.begin() + static_cast<std::ptrdiff_t>(saved.bytes_written),
+                               second.begin()),
+                "a restored mass-cancel snapshot was not byte-identical" + context);
+        const auto version = restored.state_version;
+        require(catalog_test::apply(restored, command, scratch) == outcome &&
+                    restored.state_version == version,
+                "a restored replica answered the exact mass-cancel retry differently" + context);
+    }
+}
+
+void test_mass_cancel_detail_is_validated_by_both_codecs() {
+    using namespace velocita::v2;
+    ApplyResult result;
+    result.code = ApplyCode::applied;
+    result.detail_kind = ApplyResultDetailKind::mass_cancel;
+    result.detail = ApplyResultDetail::mass_cancel(3, 2, 1);
+    const auto retaining = [](const ApplyResult& retained_result) {
+        TradingState value = catalog_test::state();
+        value.state_version = 5;
+        value.caller_cursor_count = 1;
+        value.caller_cursors[0] = {CallerId{1}, {}, {}};
+        value.receipt_count = 1;
+        value.receipts[0] = {{CallerId{1}, RequestSequence{77}, digest(0x32)}, retained_result};
+        return value;
+    };
+    std::array<std::byte, kKernelResultBytes> bytes{};
+    std::array<std::byte, kMaxStateSnapshotBytes> snapshot{};
+    require(encode_kernel_result(result, bytes).error == KernelCodecError::none &&
+                encode_state_snapshot(retaining(result), snapshot).error == StateSnapshotError::none,
+            "a valid mass-cancel detail was refused");
+    const auto refused = [&](auto change, const std::string& what) {
+        auto invalid = result;
+        change(invalid);
+        require(encode_kernel_result(invalid, bytes).error == KernelCodecError::invalid_value,
+                "result codec accepted " + what);
+        require(encode_state_snapshot(retaining(invalid), snapshot).error ==
+                    StateSnapshotError::invalid_state,
+                "snapshot accepted " + what);
+    };
+    // The reducer emits this detail only on `applied`, and every in-scope order
+    // is exactly one of cancelled or skipped.
+    refused([](ApplyResult& r) { r.code = ApplyCode::outbox_capacity_exceeded; },
+            "a mass-cancel detail on a refusal");
+    refused([](ApplyResult& r) { r.detail.words[1] = 3; }, "cancelled + skipped above in-scope");
+    refused([](ApplyResult& r) { r.detail.words[2] = 0; }, "cancelled + skipped below in-scope");
+    refused([](ApplyResult& r) {
+                r.detail = ApplyResultDetail::mass_cancel(kMaxClusterOrders + 1, kMaxClusterOrders + 1, 0);
+            }, "more orders in scope than the order arena holds");
+    refused([](ApplyResult& r) {
+                r.detail = ApplyResultDetail::mass_cancel(1, std::numeric_limits<std::uint64_t>::max(), 2);
+            }, "a wrapping cancelled + skipped");
+}
+
 void test_mass_cancel_skips_the_uncancellable_without_failing() {
     using namespace velocita::v2;
     // An already-filled order is not a FAILURE of a mass cancel, it is simply
@@ -3789,10 +3963,10 @@ void test_mass_cancel_skips_the_uncancellable_without_failing() {
     auto state = ready_state();
     ApplyScratch scratch;
     append_submit_decision(state, DecisionId{21}, 11, 1, LogicalOrderSlot{1});
-    const auto first = apply(state, authorize_decision(41, 0x91, DecisionId{21}), scratch);
+    const auto first = catalog_test::apply(state, authorize_decision(41, 0x91, DecisionId{21}), scratch);
     require(first.code == ApplyCode::applied, "fixture order one failed");
     append_submit_decision(state, DecisionId{22}, 11, 1, LogicalOrderSlot{2});
-    const auto second = apply(state, authorize_decision(42, 0x92, DecisionId{22}), scratch);
+    const auto second = catalog_test::apply(state, authorize_decision(42, 0x92, DecisionId{22}), scratch);
     require(second.code == ApplyCode::applied, "fixture order two failed");
 
     // Put the first beyond cancelling, by hand: the point under test is the
@@ -3803,7 +3977,7 @@ void test_mass_cancel_skips_the_uncancellable_without_failing() {
         }
     }
 
-    const auto outcome = apply(state, mass_cancel(state, 90, 0xA2, MassCancelScope::all),
+    const auto outcome = catalog_test::apply(state, mass_cancel(state, 90, 0xA2, MassCancelScope::all),
                                scratch);
     require(outcome.code == ApplyCode::applied,
             "a mass cancel refused because one order was already filled");
@@ -3836,7 +4010,7 @@ void test_mass_cancel_refuses_rather_than_half_finishing() {
     for (std::uint64_t slot = 1; slot <= 3; ++slot) {
         const DecisionId decision{20 + slot};
         append_submit_decision(state, decision, 11, 1, LogicalOrderSlot{static_cast<std::uint16_t>(slot)});
-        require(apply(state, authorize_decision(40 + slot,
+        require(catalog_test::apply(state, authorize_decision(40 + slot,
                                                 static_cast<std::uint8_t>(0x90 + slot),
                                                 decision),
                       scratch)
@@ -3848,7 +4022,7 @@ void test_mass_cancel_refuses_rather_than_half_finishing() {
     state.outbox_effect_count = state.outbox_effects.size() - 1;
 
     const auto snapshot = state;
-    const auto outcome = apply(state, mass_cancel(state, 90, 0xA3, MassCancelScope::all),
+    const auto outcome = catalog_test::apply(state, mass_cancel(state, 90, 0xA3, MassCancelScope::all),
                                scratch);
     require(outcome.code == ApplyCode::outbox_capacity_exceeded,
             "a mass cancel that could not fit was not refused");
@@ -3872,7 +4046,7 @@ void test_mass_cancel_is_fenced_like_every_other_control_action() {
     auto state = ready_state();
     ApplyScratch scratch;
     append_submit_decision(state, DecisionId{21}, 11, 1, LogicalOrderSlot{1});
-    require(apply(state, authorize_decision(41, 0x91, DecisionId{21}), scratch).code ==
+    require(catalog_test::apply(state, authorize_decision(41, 0x91, DecisionId{21}), scratch).code ==
                 ApplyCode::applied,
             "fixture order failed");
 
@@ -3880,7 +4054,7 @@ void test_mass_cancel_is_fenced_like_every_other_control_action() {
     std::get<RequestMassCancel>(stale.body).expected_kill_epoch =
         KillEpoch{state.kill_epoch.value() + 1};
     const auto snapshot = state;
-    require(apply(state, stale, scratch).code == ApplyCode::stale_control_generation,
+    require(catalog_test::apply(state, stale, scratch).code == ApplyCode::stale_control_generation,
             "a mass cancel against a stale kill epoch was applied");
     require_economics_unchanged(snapshot, state,
                                 "a stale-fenced mass cancel still changed economics");
@@ -3890,19 +4064,442 @@ void test_mass_cancel_is_fenced_like_every_other_control_action() {
     }
 }
 
+void test_authorization_requires_the_installed_catalog_context() {
+    using namespace velocita::v2;
+    const auto attempt = [](const VerifiedExecutionCatalog* catalog) {
+        auto state = ready_state();
+        const auto before_version = state.state_version;
+        ApplyScratch scratch;
+        bool unavailable = false;
+        try {
+            (void)velocita::v2::apply(state, authorize(2, 0xf8), scratch, catalog);
+        } catch (const CatalogDependencyUnavailable&) {
+            unavailable = true;
+        }
+        require(unavailable && state.state_version == before_version &&
+                    state.reservation_count == 0 && state.order_count == 0 &&
+                    state.outbox_effect_count == 0,
+                "missing or wrong catalog context reached authorization mutation");
+    };
+
+    attempt(nullptr);
+    const auto fixture = ready_state();
+    const std::array other_rows{catalog_test::row(
+        AccountId{6}, fixture.active_executable_policy.instrument,
+        fixture.active_executable_policy.venue)};
+    const auto other = catalog_test::catalog(other_rows);
+    attempt(&other);
+}
+
+void test_bound_effect_keeps_historical_catalog_versions() {
+    using namespace velocita::v2;
+    auto state = ready_state();
+    ApplyScratch scratch;
+    const auto authorization = catalog_test::apply(state, authorize(2, 0xf9), scratch);
+    require(authorization.code == ApplyCode::applied,
+            "historical binding fixture did not authorize");
+    require(execution_catalog_bindings_valid(state, catalog_test::standard_catalog()),
+            "reachable authorized state failed catalog recovery validation");
+    for (unsigned corruption = 0; corruption < 6; ++corruption) {
+        auto changed = state;
+        auto& proposal = changed.decision_cold[0].proposal;
+        switch (corruption) {
+            case 0: changed.active_executable_policy.instrument.maximum_price =
+                        PriceTicks::from_atoms(101); break;
+            case 1: changed.active_executable_policy.venue.supports_post_only = 0; break;
+            case 2: proposal.instrument_spec_version = InstrumentSpecVersion{99}; break;
+            case 3: proposal.notional = MoneyMicros::from_atoms(1); break;
+            case 4: proposal.time_in_force = TimeInForce::fill_or_kill; break;
+            case 5: proposal.quantity = QuantityLots::from_atoms(11);
+                    proposal.notional = MoneyMicros::from_atoms(proposal.price.atoms() * 1100);
+                    break;
+        }
+        require(!execution_catalog_bindings_valid(changed, catalog_test::standard_catalog()),
+                "catalog recovery validation accepted contradictory retained metadata");
+    }
+
+    const auto bound = materialize_bound_order_effect(
+        state, authorization.effect_id(), catalog_test::standard_catalog());
+    require(bound.has_value() && bound->catalog_root == state.execution_catalog_root &&
+                bound->instrument_spec_version == InstrumentSpecVersion{7} &&
+                bound->venue_capabilities_version == VenueCapabilitiesVersion{8},
+            "bound effect omitted its retained catalog identity");
+
+    std::array<std::byte, kMaxStateSnapshotBytes> bytes{};
+    const auto encoded = encode_state_snapshot(state, bytes);
+    TradingState restored;
+    StateSnapshotScratch snapshot_scratch;
+    require(encoded.error == StateSnapshotError::none &&
+                decode_state_snapshot({bytes.data(), encoded.bytes_written}, restored,
+                                      snapshot_scratch).error ==
+                    StateSnapshotError::none,
+            "historical binding fixture did not survive snapshot restore");
+    const auto restored_bound = materialize_bound_order_effect(
+        restored, authorization.effect_id(), catalog_test::standard_catalog());
+    require(restored_bound.has_value() &&
+                restored_bound->catalog_root == bound->catalog_root &&
+                restored_bound->instrument_spec_version ==
+                    bound->instrument_spec_version &&
+                restored_bound->venue_capabilities_version ==
+                    bound->venue_capabilities_version,
+            "snapshot restore changed historical catalog binding");
+
+    // Historical binding comes from the retained cold proposal, never from a
+    // subsequently changed active-policy projection.
+    state.active_executable_policy.instrument.instrument_spec_version =
+        InstrumentSpecVersion{99};
+    state.active_executable_policy.venue.venue_capabilities_version =
+        VenueCapabilitiesVersion{99};
+    const auto after_policy_change = materialize_bound_order_effect(
+        state, authorization.effect_id(), catalog_test::standard_catalog());
+    require(after_policy_change.has_value() &&
+                after_policy_change->instrument_spec_version ==
+                    InstrumentSpecVersion{7} &&
+                after_policy_change->venue_capabilities_version ==
+                    VenueCapabilitiesVersion{8},
+            "materialization borrowed versions from changed active policy");
+
+    const std::array missing_rows{catalog_test::row(
+        AccountId{6}, restored.active_executable_policy.instrument,
+        restored.active_executable_policy.venue)};
+    const auto missing = catalog_test::catalog(missing_rows);
+    require(!materialize_bound_order_effect(
+                 restored, authorization.effect_id(), missing).has_value(),
+            "bound effect accepted a catalog with the wrong installed root");
+    restored.execution_catalog_root = missing.root();
+    require(!materialize_bound_order_effect(
+                 restored, authorization.effect_id(), missing).has_value(),
+            "bound effect accepted a matching root with no historical row");
+}
+
+// ---------------------------------------------------------------------------
+// Position limits. The oracle below is written from the contract, in 128-bit
+// arithmetic, and never consults the reducer: P is the signed position, R the
+// open quantity on BOTH sides, q the proposal quantity.
+enum class PositionExpectation { allowed, refused, overflow };
+
+PositionExpectation expected_position_outcome(const velocita::v2::Side side,
+                                              const std::int64_t position,
+                                              const std::int64_t reserved,
+                                              const std::int64_t quantity,
+                                              const std::int64_t maximum,
+                                              const bool allow_short) {
+    const __int128 p = position, r = reserved, q = quantity, m = maximum;
+    if (side == velocita::v2::Side::buy) {
+        const __int128 after = p + r + q;
+        if (after > std::numeric_limits<std::int64_t>::max()) return PositionExpectation::overflow;
+        return after <= m ? PositionExpectation::allowed : PositionExpectation::refused;
+    }
+    const __int128 after = p - r - q;
+    if (after < std::numeric_limits<std::int64_t>::min()) return PositionExpectation::overflow;
+    const __int128 floor = allow_short ? -m : 0;
+    return after >= floor ? PositionExpectation::allowed : PositionExpectation::refused;
+}
+
+void test_position_limit_matrix() {
+    using namespace velocita::v2;
+    struct Case {
+        const char* name;
+        Side side;
+        std::int64_t position;
+        std::int64_t reserved;
+        std::int64_t maximum;
+        bool allow_short;
+    };
+    constexpr auto kMax = std::numeric_limits<std::int64_t>::max();
+    constexpr auto kMin = std::numeric_limits<std::int64_t>::min();
+    const std::array<Case, 22> cases{{
+        {"flat buy inside the cap", Side::buy, 0, 0, 10, false},
+        {"buy lands exactly on the cap", Side::buy, 6, 2, 10, false},
+        {"buy one lot over the cap", Side::buy, 7, 2, 10, false},
+        {"open orders alone push a buy over", Side::buy, 0, 3, 4, false},
+        {"zero cap refuses a flat buy", Side::buy, 0, 0, 0, true},
+        {"zero cap still lets a short cover", Side::buy, -4, 0, 0, true},
+        {"long above a lowered cap cannot add", Side::buy, 6, 0, 3, false},
+        {"short buy inside the cap", Side::buy, -4, 0, 10, true},
+        {"long-only sell reduces a long", Side::sell, 5, 0, 10, false},
+        {"long-only sell lands exactly flat", Side::sell, 2, 0, 10, false},
+        {"long-only sell would go short", Side::sell, 1, 0, 10, false},
+        {"long-only flat sell", Side::sell, 0, 0, 10, false},
+        {"open buys count against a sell too", Side::sell, 4, 3, 10, false},
+        {"long above a lowered cap may reduce", Side::sell, 6, 0, 3, false},
+        {"shorting allowed inside the cap", Side::sell, 0, 0, 10, true},
+        {"short lands exactly on the cap", Side::sell, -8, 0, 10, true},
+        {"short one lot past the cap", Side::sell, -9, 0, 10, true},
+        {"zero cap refuses shorting even when allowed", Side::sell, 0, 0, 0, true},
+        {"zero cap long-only reducing sell", Side::sell, 3, 0, 0, false},
+        {"buy overflow", Side::buy, kMax - 1, 0, 10, false},
+        {"sell overflow", Side::sell, kMin + 1, 0, 10, true},
+        {"open orders plus quantity overflow", Side::buy, kMax - 3, 2, kMax, false},
+    }};
+    for (const auto& c : cases) {
+        auto state = ready_state();
+        auto& risk = state.risk_accounts[0];
+        risk.position_quantity = QuantityLots::from_atoms(c.position);
+        risk.reserved_quantity = QuantityLots::from_atoms(c.reserved);
+        risk.max_position_quantity = QuantityLots::from_atoms(c.maximum);
+        risk.allow_short = c.allow_short;
+        state.decision_cold[0].proposal.side = c.side;
+        const auto quantity = state.decision_cold[0].proposal.quantity.atoms();
+        const auto expected = expected_position_outcome(c.side, c.position, c.reserved,
+                                                        quantity, c.maximum, c.allow_short);
+        const auto before = state;
+        ApplyScratch scratch;
+        const auto outcome = catalog_test::apply(state, authorize(2, 0x93), scratch);
+        const std::string context = std::string("position case '") + c.name + "'";
+        if (expected == PositionExpectation::allowed) {
+            require(outcome.code == ApplyCode::applied, context + " was refused");
+            require(state.risk_accounts[0].reserved_quantity.atoms() == c.reserved + quantity &&
+                        state.order_count == before.order_count + 1,
+                    context + " did not reserve exactly the proposal quantity");
+            continue;
+        }
+        require(outcome.code == (expected == PositionExpectation::overflow
+                                     ? ApplyCode::risk_arithmetic_overflow
+                                     : ApplyCode::position_limit_exceeded),
+                context + " returned code " + std::to_string(static_cast<int>(outcome.code)));
+        require_economics_unchanged(before, state, context + " mutated economics");
+        require(state.risk_accounts == before.risk_accounts &&
+                    state.reservations == before.reservations && state.orders == before.orders &&
+                    state.outbox_effects == before.outbox_effects,
+                context + " left a partial reservation behind");
+    }
+}
+
+// The conservative rule is only conservative if the OTHER side's open quantity
+// really is counted. Shown with two live orders from the real path: a resting
+// buy must shrink what a long-only account may sell.
+// Unreachable through admitted commands or snapshots; guards the negation of a
+// corrupt in-memory cap, which would be undefined for INT64_MIN.
+void test_negative_position_cap_fails_closed() {
+    using namespace velocita::v2;
+    auto state = ready_state();
+    state.risk_accounts[0].max_position_quantity =
+        QuantityLots::from_atoms(std::numeric_limits<std::int64_t>::min());
+    state.risk_accounts[0].allow_short = true;
+    state.decision_cold[0].proposal.side = Side::sell;
+    const auto before = state;
+    ApplyScratch scratch;
+    require(catalog_test::apply(state, authorize(2, 0x99), scratch).code == ApplyCode::invalid_command,
+            "a negative position cap did not fail closed");
+    require_economics_unchanged(before, state, "negative-cap refusal mutated economics");
+}
+
+void test_position_limit_counts_open_orders_on_both_sides() {
+    using namespace velocita::v2;
+    auto state = two_sided_state();
+    state.risk_accounts[0].position_quantity = QuantityLots::from_atoms(3);
+    state.risk_accounts[0].allow_short = false;
+    state.risk_accounts[0].max_position_quantity = QuantityLots::from_atoms(10);
+    ApplyScratch scratch;
+    require(evaluate_at_feature(state, scratch, DecisionId{31}, 16, 2, 2).code == ApplyCode::applied &&
+                state.decision_cold[state.decision_count - 1].proposal.side == Side::buy,
+            "fixture drifted: the rich feature no longer selects the buy slot");
+    require(catalog_test::apply(state, authorize_decision(3, 0x94, DecisionId{31}), scratch).code ==
+                ApplyCode::applied, "the resting buy was not authorized");
+    require(evaluate_at_feature(state, scratch, DecisionId{32}, 11, 3, 4).code == ApplyCode::applied &&
+                state.decision_cold[state.decision_count - 1].proposal.side == Side::sell,
+            "fixture drifted: the floor feature no longer selects the sell slot");
+    const auto& risk = state.risk_accounts[0];
+    const auto sell_quantity = state.decision_cold[state.decision_count - 1].proposal.quantity.atoms();
+    const auto expected = expected_position_outcome(
+        Side::sell, risk.position_quantity.atoms(), risk.reserved_quantity.atoms(), sell_quantity,
+        risk.max_position_quantity.atoms(), risk.allow_short);
+    const auto ignoring_buys = expected_position_outcome(
+        Side::sell, risk.position_quantity.atoms(), 0, sell_quantity,
+        risk.max_position_quantity.atoms(), risk.allow_short);
+    require(expected == PositionExpectation::refused && ignoring_buys == PositionExpectation::allowed,
+            "fixture no longer separates both-sides counting from same-side counting");
+    const auto before = state;
+    require(catalog_test::apply(state, authorize_decision(5, 0x95, DecisionId{32}), scratch).code ==
+                ApplyCode::position_limit_exceeded,
+            "a sell ignored the open buy when checking the long-only floor");
+    require_economics_unchanged(before, state, "position refusal mutated economics");
+}
+
+// A frame bound to explicit versions, as a strategy would build it from the
+// refusal it just received rather than from a peek at replicated state.
+velocita::v2::ApplyResult evaluate_bound_decision(
+    velocita::v2::TradingState& state, velocita::v2::ApplyScratch& scratch,
+    const velocita::v2::DecisionId decision_id, const std::uint64_t source_sequence,
+    const std::uint64_t request, const velocita::v2::RiskVersion risk_version,
+    const velocita::v2::PositionVersion position_version) {
+    using namespace velocita::v2;
+    const auto evidence = digest(static_cast<std::uint8_t>(0x40 + (source_sequence % 0x30)));
+    require(catalog_test::apply(state, {{CallerId{7}, RequestSequence{request}, digest(0x21)},
+                RecordSourceEvent{SourceId{12}, SourceGeneration{1},
+                                  SourceSequence{source_sequence}, evidence}}, scratch).code ==
+                ApplyCode::applied, "source event admission failed");
+    auto value = frame();
+    value.venue_sequence = VenueSequence{source_sequence};
+    value.source_sequence = SourceSequence{source_sequence};
+    value.raw_evidence_digest = evidence;
+    value.risk_version = risk_version;
+    value.position_version = position_version;
+    return catalog_test::apply(state, {{CallerId{8}, RequestSequence{request},
+                digest(static_cast<std::uint8_t>(1 + decision_id.value() % 255))},
+            EvaluateDecisionFrame{decision_id, EvaluationMode::authoritative, value}}, scratch);
+}
+
+void test_lowered_cap_is_reduce_only_and_stale_refusal_resyncs() {
+    using namespace velocita::v2;
+    auto state = ready_state();
+    state.risk_accounts[0].position_quantity = QuantityLots::from_atoms(6);
+    ApplyScratch scratch;
+    auto lower = configure_risk(state, 1);
+    std::get<ConfigureRiskLimits>(lower.body).max_position_quantity = QuantityLots::from_atoms(3);
+    std::get<ConfigureRiskLimits>(lower.body).allow_short = false;
+    const auto lowered = catalog_test::apply(state, lower, scratch);
+    require(lowered.code == ApplyCode::applied &&
+                state.risk_accounts[0].max_position_quantity == QuantityLots::from_atoms(3) &&
+                !state.risk_accounts[0].allow_short &&
+                state.risk_accounts[0].position_quantity == QuantityLots::from_atoms(6),
+            "a cap below the current position was refused or rewrote the position");
+
+    // The fixture decision was bound to risk version 1; the account is now at 2.
+    const auto current = state.risk_accounts[0];
+    require(current.risk_version != state.decision_cold[0].frame.risk_version,
+            "fixture drifted: the old decision is not stale");
+    const auto before = state;
+    const auto stale_command = authorize(2, 0x96);
+    const auto stale = catalog_test::apply(state, stale_command, scratch);
+    require(stale.code == ApplyCode::stale_risk_state, "stale decision was not refused as stale");
+    require_economics_unchanged(before, state, "stale refusal mutated economics");
+    require(stale.detail_kind == ApplyResultDetailKind::risk_state &&
+                stale.detail.words == std::array<std::uint64_t, 3>{
+                    current.risk_version.value(), current.position_version.value(), 6},
+            "stale refusal did not carry the account's current versions and position");
+    require(stale.decision_id == DecisionId{20}, "stale refusal lost its decision identity");
+
+    std::array<std::byte, kKernelResultBytes> encoded_result{};
+    const auto encoded = encode_kernel_result(stale, encoded_result);
+    ApplyResult decoded;
+    require(encoded.error == KernelCodecError::none &&
+                decode_kernel_result({encoded_result.data(), encoded.bytes_written}, decoded).error ==
+                    KernelCodecError::none && decoded == stale,
+            "the re-sync detail did not survive the canonical result codec");
+
+    std::array<std::byte, kMaxStateSnapshotBytes> snapshot{};
+    const auto saved = encode_state_snapshot(state, snapshot);
+    TradingState restored = catalog_test::state();
+    StateSnapshotScratch snapshot_scratch;
+    require(saved.error == StateSnapshotError::none &&
+                decode_state_snapshot({snapshot.data(), saved.bytes_written}, restored,
+                                      snapshot_scratch).error == StateSnapshotError::none,
+            "state retaining a re-sync detail did not round-trip");
+    require(catalog_test::apply(restored, stale_command, scratch) == stale,
+            "a restored replica answered the stale retry differently");
+
+    // Bind exactly what the refusal said, then trade against the lowered cap.
+    require(evaluate_bound_decision(state, scratch, DecisionId{21}, 2, 3, stale.current_risk_version(),
+                                    stale.current_position_version()).code == ApplyCode::applied,
+            "re-synced decision was not evaluated");
+    const auto buy_before = state;
+    const auto limited = catalog_test::apply(state, authorize_decision(4, 0x97, DecisionId{21}), scratch);
+    require(limited.code == ApplyCode::position_limit_exceeded,
+            "a long above its lowered cap was allowed to add");
+    require_economics_unchanged(buy_before, state, "reduce-only buy refusal mutated economics");
+    ApplyResult limited_decoded;
+    const auto limited_encoded = encode_kernel_result(limited, encoded_result);
+    require(limited_encoded.error == KernelCodecError::none &&
+                decode_kernel_result({encoded_result.data(), limited_encoded.bytes_written},
+                                     limited_decoded).error == KernelCodecError::none &&
+                limited_decoded == limited,
+            "a position-limit refusal did not survive the canonical result codec");
+    require(encode_state_snapshot(state, snapshot).error == StateSnapshotError::none,
+            "state retaining a position-limit refusal did not encode");
+
+    state.decision_cold[state.decision_count - 1].proposal.side = Side::sell;
+    const auto reserved_before = state.risk_accounts[0].reserved_quantity;
+    const auto quantity = state.decision_cold[state.decision_count - 1].proposal.quantity;
+    require(catalog_test::apply(state, authorize_decision(5, 0x98, DecisionId{21}), scratch).code ==
+                    ApplyCode::applied &&
+                state.risk_accounts[0].reserved_quantity.atoms() ==
+                    reserved_before.atoms() + quantity.atoms(),
+            "a reducing sell was refused under a lowered cap");
+}
+
+// Only the position moved (as a fill would move it): the detail must report
+// the account's position version, not the one the decision was bound to.
+void test_stale_position_resync_reports_current_position() {
+    using namespace velocita::v2;
+    auto state = ready_state();
+    state.risk_accounts[0].position_version = PositionVersion{5};
+    state.risk_accounts[0].position_quantity = QuantityLots::from_atoms(-2);
+    const auto current = state.risk_accounts[0];
+    require(state.decision_cold[0].frame.risk_version == current.risk_version &&
+                state.decision_cold[0].frame.position_version != current.position_version,
+            "fixture drifted: only the position version should be stale");
+    ApplyScratch scratch;
+    const auto stale = catalog_test::apply(state, authorize(2, 0x9a), scratch);
+    require(stale.code == ApplyCode::stale_risk_state &&
+                stale.detail_kind == ApplyResultDetailKind::risk_state &&
+                stale.detail.words == std::array<std::uint64_t, 3>{
+                    current.risk_version.value(), 5,
+                    static_cast<std::uint64_t>(std::int64_t{-2})},
+            "a stale position refusal did not report the current position version and quantity");
+}
+
+void test_risk_state_detail_is_validated_by_both_codecs() {
+    using namespace velocita::v2;
+    ApplyResult result;
+    result.code = ApplyCode::stale_risk_state;
+    result.decision_id = DecisionId{20};
+    result.detail_kind = ApplyResultDetailKind::risk_state;
+    result.detail = ApplyResultDetail::risk_state(RiskVersion{3}, PositionVersion{4},
+                                                  QuantityLots::from_atoms(-5));
+    std::array<std::byte, kKernelResultBytes> bytes{};
+    const auto encoded = encode_kernel_result(result, bytes);
+    ApplyResult decoded;
+    require(encoded.error == KernelCodecError::none &&
+                decode_kernel_result({bytes.data(), encoded.bytes_written}, decoded).error ==
+                    KernelCodecError::none &&
+                decoded.current_position_quantity() == QuantityLots::from_atoms(-5),
+            "a short position did not survive the re-sync detail");
+    // Minimal canonical state: one registered caller and one retained receipt.
+    const auto retaining = [](const ApplyResult& retained_result) {
+        TradingState value = catalog_test::state();
+        value.state_version = 5;
+        value.caller_cursor_count = 1;
+        value.caller_cursors[0] = {CallerId{1}, {}, {}};
+        value.receipt_count = 1;
+        value.receipts[0] = {{CallerId{1}, RequestSequence{77}, digest(0x31)}, retained_result};
+        return value;
+    };
+    auto state = retaining(result);
+    std::array<std::byte, kMaxStateSnapshotBytes> snapshot{};
+    const auto retained = encode_state_snapshot(state, snapshot);
+    require(retained.error == StateSnapshotError::none,
+            "snapshot refused a valid retained re-sync detail, error " +
+                std::to_string(static_cast<int>(retained.error)));
+    const auto refused = [&](auto change, const std::string& what) {
+        auto invalid = result;
+        change(invalid);
+        require(encode_kernel_result(invalid, bytes).error == KernelCodecError::invalid_value,
+                "result codec accepted " + what);
+        const auto invalid_state = retaining(invalid);
+        require(encode_state_snapshot(invalid_state, snapshot).error == StateSnapshotError::invalid_state,
+                "snapshot accepted " + what);
+    };
+    refused([](ApplyResult& r) { r.code = ApplyCode::applied; }, "a re-sync detail on a non-stale code");
+    refused([](ApplyResult& r) { r.detail.words[0] = 0; }, "a zero risk version");
+    refused([](ApplyResult& r) { r.detail.words[1] = 0; }, "a zero position version");
+    refused([](ApplyResult& r) { r.decision_id = DecisionId{}; }, "a re-sync detail with no decision");
+}
+
 int main() {
     try {
         {
             using namespace velocita::v2;
-            TradingState state;
+            TradingState state = catalog_test::state();
             ApplyScratch scratch;
             const Command configure{{CallerId{1}, RequestSequence{1}, digest(0xe1)},
                 ConfigureRiskLimits{AccountId{5}, InstrumentId{4}, RiskPolicyVersion{6},
                     RiskVersion{}, KillEpoch{}, ExecutorGeneration{},
                     QuantityLots::from_atoms(4), QuantityLots::from_atoms(8),
                     MoneyMicros::from_atoms(4'000), MoneyMicros::from_atoms(8'000),
-                    1'000'000, 2'500}};
-            const auto configured = apply(state, configure, scratch);
+                    1'000'000, 2'500, QuantityLots::from_atoms(1'000), true, 1}};
+            const auto configured = catalog_test::apply(state, configure, scratch);
             require(configured.code == ApplyCode::applied && state.risk_account_count == 1 &&
                         state.risk_accounts[0].risk_version == RiskVersion{1} &&
                         state.risk_accounts[0].position_version == PositionVersion{1} &&
@@ -3910,9 +4507,18 @@ int main() {
                         state.receipt_count == 1 && state.order_count == 0 &&
                         state.reservation_count == 0 && state.outbox_effect_count == 0,
                     "replicated risk configuration did not atomically initialize an empty ledger");
+            require(state.risk_accounts[0].max_position_quantity == QuantityLots::from_atoms(1'000) &&
+                        state.risk_accounts[0].allow_short,
+                    "a new risk account did not store its position cap and short permission");
         }
         test_risk_configuration_updates_preserve_economics();
         test_risk_configuration_codec_and_restore();
+        test_position_limit_matrix();
+        test_position_limit_counts_open_orders_on_both_sides();
+        test_negative_position_cap_fails_closed();
+        test_lowered_cap_is_reduce_only_and_stale_refusal_resyncs();
+        test_stale_position_resync_reports_current_position();
+        test_risk_state_detail_is_validated_by_both_codecs();
         test_risk_configuration_admission_and_capacity();
         test_serial_replacement_across_a_risk_limit_update();
         test_reclamation_during_cancellation_preserves_the_recovery_path();
@@ -3949,6 +4555,7 @@ int main() {
         test_invalid_observation_refusal_is_canonical_state();
         test_decision_retry_retains_original_authorization_after_fill();
         test_submit_authorization_is_atomic_and_idempotent();
+        test_authorization_requires_initialized_execution_authority();
         test_risk_and_capacity_fail_before_economic_mutation();
         test_non_authoritative_decisions_cannot_create_economics();
         test_partial_fills_conserve_risk_position_and_identity();
@@ -3959,9 +4566,13 @@ int main() {
         test_a_resting_order_the_venue_does_not_hold_is_resolved();
         test_an_unrequested_venue_cancellation_is_evidence_not_noise();
         test_mass_cancel_pulls_every_cancellable_order_in_scope();
+        test_mass_cancel_result_survives_codec_snapshot_and_retry();
+        test_mass_cancel_detail_is_validated_by_both_codecs();
         test_mass_cancel_skips_the_uncancellable_without_failing();
         test_mass_cancel_refuses_rather_than_half_finishing();
         test_mass_cancel_is_fenced_like_every_other_control_action();
+        test_authorization_requires_the_installed_catalog_context();
+        test_bound_effect_keeps_historical_catalog_versions();
         std::cout << "all V2 risk/order/outbox tests passed\n";
         return 0;
     } catch (const std::exception& error) {

@@ -1,0 +1,7 @@
+Test project /private/tmp/velocita-full-audit.lYB4P5/release
+    Start 74: v2-async-persistence-model-tests
+1/1 Test #74: v2-async-persistence-model-tests ...   Passed    0.56 sec
+
+100% tests passed out of 1
+
+Total Test time (real) =   0.56 sec

@@ -5,7 +5,27 @@ Status: Accepted. Approved by the project owner before anything was built.
 
 No byte contract change. This is about who can sign.
 
+## Review qualification — 2026-09-21
+
+The collector must not trade, but holding only a token does not prove that
+property for an interface that can submit during prepare without another signing
+step. Token scope remains unverified; enforce least-privilege allowlists and
+keep model/ credential-free. Do not infer MCP/REST permission equivalence.
+The mint tool's 0600 claim is also false for an existing 0644 destination:
+O_CREAT's mode does not chmod it. An offline dummy-token probe reproduces this.
+The full Phase 6–9 audit records secure-output and argv-secret fixes required
+before credentialed use. No real credentials were used by the audit.
+
 ## Context
+
+F2 security remediation, 2026-09-21: the mint output now requires a private,
+current-user-owned directory and uses descriptor-relative no-follow traversal,
+exclusive 0600 temporary creation and atomic replacement. It rejects malformed
+responses before replacing an existing token. Auth origin is fixed; curl config
+and redirects are disabled; bearer tokens reach the read-only probe via stdin,
+not argv. Offline regression and original-code mutation evidence are in CP-002.
+These changes close local handling defects, not the still-unverified token scope.
+They neither rotate already-exposed credentials nor authorize venue use.
 
 Market data on this venue requires a JWT (D-16). The asset catalog does not
 (D-11). Minting a JWT requires the EC P-256 API key.

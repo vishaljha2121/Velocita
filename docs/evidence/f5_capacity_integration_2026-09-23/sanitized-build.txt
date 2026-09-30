@@ -1,0 +1,234 @@
+[  6%] Built target willemt_raft
+[  6%] Building CXX object CMakeFiles/velocita_benchmark.dir/src/benchmark.cpp.o
+[  6%] Building CXX object CMakeFiles/v2-metadata-persistence-model-tests.dir/tests/v2_metadata_persistence_model_tests.cpp.o
+[  6%] Building CXX object CMakeFiles/v2-durable-quorum-tests.dir/tests/v2_durable_quorum_tests.cpp.o
+[  6%] Building CXX object CMakeFiles/velocita_v2_contracts.dir/src/v2_authority_barrier.cpp.o
+[  9%] Building CXX object CMakeFiles/velocita_v2_contracts.dir/src/v2_static_identity.cpp.o
+[  9%] Building CXX object CMakeFiles/velocita_v2_contracts.dir/src/v2_artifact_digest.cpp.o
+[  9%] Building CXX object CMakeFiles/velocita_v2_contracts.dir/src/v2_digest.cpp.o
+[  9%] Building CXX object CMakeFiles/velocita_core.dir/src/benchmark_timing.cpp.o
+[ 12%] Linking CXX executable v2-durable-quorum-tests
+[ 12%] Built target v2-durable-quorum-tests
+[ 12%] Building CXX object CMakeFiles/velocita_v2_contracts.dir/src/v2_execution_catalog.cpp.o
+[ 12%] Building CXX object CMakeFiles/velocita_v2_contracts.dir/src/v2_wire.cpp.o
+[ 15%] Building CXX object CMakeFiles/velocita_v2_contracts.dir/src/v2_payload.cpp.o
+[ 18%] Building CXX object CMakeFiles/velocita_core.dir/src/client_recovery.cpp.o
+[ 18%] Building CXX object CMakeFiles/velocita_core.dir/src/client_routing.cpp.o
+[ 18%] Linking CXX static library libvelocita_benchmark.a
+[ 18%] Built target velocita_benchmark
+[ 18%] Building CXX object CMakeFiles/velocita_core.dir/src/counter_fsm.cpp.o
+[ 18%] Building CXX object CMakeFiles/velocita_core.dir/src/raft_node.cpp.o
+[ 18%] Building CXX object CMakeFiles/velocita_core.dir/src/storage.cpp.o
+[ 21%] Building CXX object CMakeFiles/velocita_core.dir/src/wire.cpp.o
+[ 21%] Linking CXX static library libvelocita_v2_contracts.a
+[ 21%] Linking CXX executable v2-metadata-persistence-model-tests
+[ 21%] Built target velocita_v2_contracts
+[ 21%] Built target v2-metadata-persistence-model-tests
+[ 21%] Building CXX object CMakeFiles/v2-contract-tests.dir/tests/v2_contract_tests.cpp.o
+[ 21%] Building CXX object CMakeFiles/velocita_v2_evaluator.dir/src/v2_rule_evaluator.cpp.o
+[ 21%] Building CXX object CMakeFiles/v2-value-contract-tests.dir/tests/v2_value_contract_tests.cpp.o
+[ 21%] Building CXX object CMakeFiles/v2-payload-codec-tests.dir/tests/v2_payload_codec_tests.cpp.o
+[ 21%] Building CXX object CMakeFiles/velocita_v2_venue_simulator.dir/src/v2_venue_simulator.cpp.o
+[ 21%] Building CXX object CMakeFiles/velocita_v2_evaluator.dir/src/v2_action_resolver.cpp.o
+[ 21%] Building CXX object CMakeFiles/velocita_v2_venue_simulator.dir/src/v2_venue_transport.cpp.o
+[ 21%] Building CXX object CMakeFiles/v2-action-template-contract-tests.dir/tests/v2_action_template_contract_tests.cpp.o
+[ 21%] Linking CXX static library libvelocita_v2_evaluator.a
+[ 21%] Linking CXX executable v2-value-contract-tests
+[ 24%] Linking CXX executable v2-contract-tests
+[ 24%] Built target velocita_v2_evaluator
+[ 24%] Built target v2-value-contract-tests
+[ 24%] Linking CXX executable v2-payload-codec-tests
+[ 24%] Building CXX object CMakeFiles/velocita_v2_venue_simulator.dir/src/v2_venue_wire.cpp.o
+[ 24%] Building CXX object CMakeFiles/v2-executable-policy-contract-tests.dir/tests/v2_executable_policy_contract_tests.cpp.o
+[ 24%] Linking CXX static library libvelocita_core.a
+[ 24%] Building CXX object CMakeFiles/v2-executable-policy-codec-tests.dir/tests/v2_executable_policy_codec_tests.cpp.o
+[ 24%] Built target v2-contract-tests
+[ 24%] Built target v2-payload-codec-tests
+[ 27%] Building CXX object CMakeFiles/v2-artifact-digest-tests.dir/tests/v2_artifact_digest_tests.cpp.o
+[ 27%] Built target velocita_core
+[ 27%] Building CXX object CMakeFiles/v2-execution-catalog-tests.dir/tests/v2_execution_catalog_tests.cpp.o
+[ 27%] Building CXX object CMakeFiles/v2-authority-barrier-tests.dir/tests/v2_authority_barrier_tests.cpp.o
+[ 27%] Building CXX object CMakeFiles/v2-static-identity-tests.dir/tests/v2_static_identity_tests.cpp.o
+[ 27%] Linking CXX executable v2-action-template-contract-tests
+[ 27%] Built target v2-action-template-contract-tests
+[ 27%] Building CXX object CMakeFiles/v2-execution-catalog-tests.dir/tests/v2_execution_catalog_adversarial.cpp.o
+[ 27%] Linking CXX static library libvelocita_v2_venue_simulator.a
+[ 27%] Built target velocita_v2_venue_simulator
+[ 30%] Building CXX object CMakeFiles/velocita_v2_kernel.dir/src/v2_gateway_authority.cpp.o
+[ 30%] Linking CXX executable v2-executable-policy-contract-tests
+[ 30%] Linking CXX executable v2-artifact-digest-tests
+[ 30%] Linking CXX executable v2-executable-policy-codec-tests
+[ 30%] Built target v2-executable-policy-contract-tests
+[ 30%] Built target v2-artifact-digest-tests
+[ 30%] Built target v2-executable-policy-codec-tests
+[ 30%] Building CXX object CMakeFiles/velocita_v2_kernel.dir/src/v2_gateway_dispatch.cpp.o
+[ 33%] Building CXX object CMakeFiles/core-tests.dir/tests/core_tests.cpp.o
+[ 33%] Building CXX object CMakeFiles/velocita_metrics.dir/src/shared_metrics.cpp.o
+[ 33%] Linking CXX executable v2-authority-barrier-tests
+[ 33%] Building CXX object CMakeFiles/velocita_v2_kernel.dir/src/v2_gateway.cpp.o
+[ 33%] Built target v2-authority-barrier-tests
+[ 33%] Building CXX object CMakeFiles/benchmark-tests.dir/tests/benchmark_tests.cpp.o
+[ 33%] Linking CXX executable v2-execution-catalog-tests
+[ 33%] Linking CXX executable v2-static-identity-tests
+[ 33%] Built target v2-execution-catalog-tests
+[ 33%] Built target v2-static-identity-tests
+[ 33%] Building CXX object CMakeFiles/v2-venue-wire-tests.dir/tests/v2_venue_wire_tests.cpp.o
+[ 36%] Building CXX object CMakeFiles/v2-venue-transport-tests.dir/tests/v2_venue_transport_tests.cpp.o
+[ 36%] Building CXX object CMakeFiles/velocita_v2_kernel.dir/src/v2_kernel.cpp.o
+[ 36%] Building CXX object CMakeFiles/velocita_v2_kernel.dir/src/v2_kernel_codec.cpp.o
+[ 39%] Building CXX object CMakeFiles/velocita_v2_kernel.dir/src/v2_metrics.cpp.o
+[ 39%] Linking CXX static library libvelocita_metrics.a
+[ 39%] Linking CXX executable benchmark-tests
+[ 39%] Built target velocita_metrics
+[ 39%] Built target benchmark-tests
+[ 39%] Building CXX object CMakeFiles/v2-venue-simulator-tests.dir/tests/v2_venue_simulator_tests.cpp.o
+[ 39%] Building CXX object CMakeFiles/v2-rule-evaluator-tests.dir/tests/v2_rule_evaluator_tests.cpp.o
+[ 39%] Linking CXX executable v2-venue-wire-tests
+[ 39%] Built target v2-venue-wire-tests
+[ 39%] Building CXX object CMakeFiles/v2-action-resolver-tests.dir/tests/v2_action_resolver_tests.cpp.o
+[ 39%] Linking CXX executable v2-venue-transport-tests
+[ 39%] Building CXX object CMakeFiles/velocita_v2_kernel.dir/src/v2_replay.cpp.o
+[ 39%] Built target v2-venue-transport-tests
+[ 39%] Building CXX object CMakeFiles/velocita_v2_kernel.dir/src/v2_state_snapshot.cpp.o
+[ 39%] Linking CXX executable core-tests
+[ 39%] Built target core-tests
+[ 39%] Building CXX object CMakeFiles/metrics-tests.dir/tests/metrics_tests.cpp.o
+[ 39%] Linking CXX executable v2-rule-evaluator-tests
+[ 39%] Built target v2-rule-evaluator-tests
+[ 39%] Linking CXX executable v2-action-resolver-tests
+[ 39%] Built target v2-action-resolver-tests
+[ 39%] Linking CXX executable v2-venue-simulator-tests
+[ 39%] Built target v2-venue-simulator-tests
+[ 39%] Linking CXX static library libvelocita_v2_kernel.a
+[ 39%] Built target velocita_v2_kernel
+[ 39%] Linking CXX executable metrics-tests
+[ 39%] Building CXX object CMakeFiles/v2-kernel-policy-tests.dir/tests/v2_kernel_policy_tests.cpp.o
+[ 42%] Building CXX object CMakeFiles/v2-risk-order-outbox-tests.dir/tests/v2_risk_order_outbox_tests.cpp.o
+[ 42%] Building CXX object CMakeFiles/v2-replay-tests.dir/tests/v2_replay_tests.cpp.o
+[ 48%] Building CXX object CMakeFiles/v2-kernel-codec-tests.dir/tests/v2_kernel_codec_tests.cpp.o
+[ 48%] Building CXX object CMakeFiles/v2-state-snapshot-tests.dir/tests/v2_state_snapshot_tests.cpp.o
+[ 48%] Building CXX object CMakeFiles/v2-kernel-control-tests.dir/tests/v2_kernel_control_tests.cpp.o
+[ 48%] Building CXX object CMakeFiles/v2-kernel-source-tests.dir/tests/v2_kernel_source_tests.cpp.o
+[ 48%] Built target metrics-tests
+[ 51%] Building CXX object CMakeFiles/v2-model-replay-tests.dir/tests/v2_model_replay_tests.cpp.o
+[ 54%] Linking CXX executable v2-kernel-policy-tests
+[ 54%] Linking CXX executable v2-kernel-source-tests
+[ 54%] Linking CXX executable v2-kernel-control-tests
+[ 54%] Linking CXX executable v2-replay-tests
+[ 54%] Built target v2-kernel-source-tests
+[ 54%] Built target v2-kernel-policy-tests
+[ 54%] Built target v2-kernel-control-tests
+[ 54%] Building CXX object CMakeFiles/v2-gateway-tests.dir/tests/v2_gateway_tests.cpp.o
+[ 54%] Built target v2-replay-tests
+[ 54%] Building CXX object CMakeFiles/v2-lifecycle-reachability-tests.dir/tests/v2_lifecycle_reachability_tests.cpp.o
+[ 54%] Linking CXX executable v2-state-snapshot-tests
+[ 54%] Building CXX object CMakeFiles/v2-gateway-delivery-tests.dir/tests/v2_gateway_delivery_tests.cpp.o
+[ 54%] Building CXX object CMakeFiles/velocita_v2_replication.dir/src/v2_bound_frame.cpp.o
+[ 54%] Built target v2-state-snapshot-tests
+[ 54%] Linking CXX executable v2-kernel-codec-tests
+[ 54%] Building CXX object CMakeFiles/v2-metrics-tests.dir/tests/v2_metrics_tests.cpp.o
+[ 54%] Built target v2-kernel-codec-tests
+[ 54%] Building CXX object CMakeFiles/v2-phase4-property-tests.dir/tests/v2_phase4_property_tests.cpp.o
+[ 57%] Building CXX object CMakeFiles/velocita_v2_replication.dir/src/v2_bound_metadata.cpp.o
+[ 57%] Linking CXX executable v2-risk-order-outbox-tests
+[ 57%] Linking CXX executable v2-model-replay-tests
+[ 57%] Built target v2-risk-order-outbox-tests
+[ 57%] Building CXX object CMakeFiles/v2-layout-tests.dir/tests/v2_layout_tests.cpp.o
+[ 57%] Linking CXX executable v2-metrics-tests
+[ 57%] Built target v2-model-replay-tests
+[ 57%] Building CXX object CMakeFiles/v2-decision-kernel-tests.dir/tests/v2_decision_kernel_tests.cpp.o
+[ 57%] Built target v2-metrics-tests
+[ 60%] Linking CXX executable v2-gateway-tests
+[ 63%] Building CXX object CMakeFiles/v2-gateway-authority-tests.dir/tests/v2_gateway_authority_tests.cpp.o
+[ 63%] Built target v2-gateway-tests
+[ 66%] Building CXX object CMakeFiles/v2-executable-policy-kernel-tests.dir/tests/v2_executable_policy_kernel_tests.cpp.o
+[ 66%] Linking CXX executable v2-phase4-property-tests
+[ 66%] Built target v2-phase4-property-tests
+[ 66%] Building CXX object CMakeFiles/velocita_v2_replication.dir/src/v2_bound_wal.cpp.o
+[ 69%] Linking CXX executable v2-lifecycle-reachability-tests
+[ 69%] Building CXX object CMakeFiles/velocita_v2_replication.dir/src/v2_bound_peer.cpp.o
+[ 69%] Linking CXX executable v2-layout-tests
+[ 69%] Built target v2-lifecycle-reachability-tests
+[ 69%] Building CXX object CMakeFiles/velocita_v2_replication.dir/src/v2_identity_startup.cpp.o
+[ 69%] Built target v2-layout-tests
+[ 69%] Building CXX object CMakeFiles/velocita_v2_replication.dir/src/v2_replication.cpp.o
+[ 69%] Linking CXX executable v2-gateway-authority-tests
+[ 69%] Linking CXX executable v2-decision-kernel-tests
+[ 69%] Built target v2-gateway-authority-tests
+[ 72%] Building CXX object CMakeFiles/velocita_v2_replication.dir/src/v2_result_ledger.cpp.o
+[ 72%] Built target v2-decision-kernel-tests
+[ 72%] Building CXX object CMakeFiles/velocita_v2_replication.dir/src/v2_outbound_mailbox.cpp.o
+[ 72%] Linking CXX executable v2-executable-policy-kernel-tests
+[ 72%] Built target v2-executable-policy-kernel-tests
+[ 72%] Building CXX object CMakeFiles/velocita_v2_replication.dir/src/v2_retained_log.cpp.o
+[ 72%] Building CXX object CMakeFiles/velocita_v2_replication.dir/src/v2_snapshot_store.cpp.o
+[ 72%] Building CXX object CMakeFiles/velocita_v2_replication.dir/src/v2_wal_arena.cpp.o
+[ 72%] Linking CXX executable v2-gateway-delivery-tests
+[ 72%] Built target v2-gateway-delivery-tests
+[ 75%] Linking CXX static library libvelocita_v2_replication.a
+[ 75%] Built target velocita_v2_replication
+[ 75%] Building CXX object CMakeFiles/v2-spsc-ring-tests.dir/tests/v2_spsc_ring_tests.cpp.o
+[ 75%] Building CXX object CMakeFiles/v2-wal-arena-tests.dir/tests/v2_wal_arena_tests.cpp.o
+[ 75%] Building CXX object CMakeFiles/v2-snapshot-store-bounds-tests.dir/tests/v2_snapshot_store_bounds_tests.cpp.o
+[ 75%] Building CXX object CMakeFiles/v2-authority-storage-failure-tests.dir/tests/v2_authority_storage_failure_tests.cpp.o
+[ 78%] Building CXX object CMakeFiles/v2-replication-tests.dir/tests/v2_replication_tests.cpp.o
+[ 78%] Building CXX object CMakeFiles/v2-snapshot-membership-tests.dir/tests/v2_snapshot_membership_tests.cpp.o
+[ 78%] Building CXX object CMakeFiles/v2-authority-composition-tests.dir/tests/v2_authority_composition_tests.cpp.o
+[ 78%] Building CXX object CMakeFiles/v2-catalog-binding-tests.dir/tests/v2_catalog_binding_tests.cpp.o
+[ 78%] Linking CXX executable v2-spsc-ring-tests
+[ 78%] Built target v2-spsc-ring-tests
+[ 78%] Building CXX object CMakeFiles/v2-identity-startup-tests.dir/tests/v2_identity_startup_tests.cpp.o
+[ 81%] Building CXX object CMakeFiles/v2-catalog-binding-tests.dir/tests/v2_catalog_replication_tests.cpp.o
+[ 81%] Linking CXX executable v2-snapshot-store-bounds-tests
+[ 84%] Linking CXX executable v2-wal-arena-tests
+[ 84%] Built target v2-snapshot-store-bounds-tests
+[ 84%] Building CXX object CMakeFiles/v2-kernel-startup-tests.dir/tests/v2_kernel_startup_tests.cpp.o
+[ 87%] Linking CXX executable v2-snapshot-membership-tests
+[ 87%] Built target v2-wal-arena-tests
+[ 87%] Building CXX object CMakeFiles/v2-bound-frame-tests.dir/tests/v2_bound_frame_tests.cpp.o
+[ 87%] Linking CXX executable v2-authority-storage-failure-tests
+[ 87%] Built target v2-snapshot-membership-tests
+[ 87%] Building CXX object CMakeFiles/v2-bound-peer-tests.dir/tests/v2_bound_peer_tests.cpp.o
+[ 87%] Built target v2-authority-storage-failure-tests
+[ 90%] Building CXX object CMakeFiles/v2-bound-metadata-tests.dir/tests/v2_bound_metadata_tests.cpp.o
+[ 90%] Linking CXX executable v2-identity-startup-tests
+[ 90%] Built target v2-identity-startup-tests
+[ 90%] Building CXX object CMakeFiles/v2-history-binding-tests.dir/tests/v2_history_binding_tests.cpp.o
+[ 90%] Linking CXX executable v2-bound-frame-tests
+[ 90%] Built target v2-bound-frame-tests
+[ 90%] Building CXX object CMakeFiles/v2-result-ledger-tests.dir/tests/v2_result_ledger_tests.cpp.o
+[ 90%] Linking CXX executable v2-bound-metadata-tests
+[ 90%] Linking CXX executable v2-catalog-binding-tests
+[ 90%] Built target v2-bound-metadata-tests
+[ 90%] Built target v2-catalog-binding-tests
+[ 90%] Linking CXX executable v2-replication-tests
+[ 90%] Linking CXX executable v2-kernel-startup-tests
+[ 90%] Building CXX object CMakeFiles/v2-result-admission-tests.dir/tests/v2_result_admission_red.cpp.o
+[ 90%] Building CXX object CMakeFiles/v2-result-admission-edge-tests.dir/tests/v2_result_admission_edges.cpp.o
+[ 90%] Built target v2-replication-tests
+[ 90%] Built target v2-kernel-startup-tests
+[ 93%] Linking CXX executable v2-authority-composition-tests
+[ 93%] Building CXX object CMakeFiles/v2-outbound-mailbox-tests.dir/tests/v2_outbound_mailbox_tests.cpp.o
+[ 93%] Building CXX object CMakeFiles/v2-outbound-saturation-tests.dir/tests/v2_outbound_log_capacity_red.cpp.o
+[ 93%] Built target v2-authority-composition-tests
+[ 93%] Building CXX object CMakeFiles/v2-retained-log-tests.dir/tests/v2_retained_log_tests.cpp.o
+[ 93%] Linking CXX executable v2-bound-peer-tests
+[ 93%] Linking CXX executable v2-result-ledger-tests
+[ 93%] Built target v2-result-ledger-tests
+[ 93%] Built target v2-bound-peer-tests
+[ 93%] Building CXX object CMakeFiles/v2-wal-streaming-tests.dir/tests/v2_wal_streaming_tests.cpp.o
+[ 93%] Linking CXX executable v2-retained-log-tests
+[ 93%] Built target v2-retained-log-tests
+[ 93%] Linking CXX executable v2-outbound-mailbox-tests
+[ 93%] Built target v2-outbound-mailbox-tests
+[ 93%] Linking CXX executable v2-wal-streaming-tests
+[ 93%] Built target v2-wal-streaming-tests
+[ 93%] Linking CXX executable v2-history-binding-tests
+[ 93%] Built target v2-history-binding-tests
+[ 93%] Linking CXX executable v2-result-admission-edge-tests
+[ 96%] Linking CXX executable v2-result-admission-tests
+[ 96%] Built target v2-result-admission-edge-tests
+[100%] Linking CXX executable v2-outbound-saturation-tests
+[100%] Built target v2-result-admission-tests
+[100%] Built target v2-outbound-saturation-tests
+[100%] Built target velocita-all-tests

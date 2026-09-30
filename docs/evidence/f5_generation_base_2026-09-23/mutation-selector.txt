@@ -1,0 +1,1 @@
+selector digest did not bind the base seal

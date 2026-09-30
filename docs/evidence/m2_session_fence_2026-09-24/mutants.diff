@@ -1,0 +1,36 @@
+=== no_stale_epoch
+20d19
+<     if (session_epoch < epoch_) return Decision::stale_epoch;
+=== replay_allows_equal
+21c21
+<     if (session_epoch == epoch_ && sequence <= sequence_) return Decision::replayed_sequence;
+---
+>     if (session_epoch == epoch_ && sequence < sequence_) return Decision::replayed_sequence;
+=== sequencer_wraps
+28c28
+<     if (epoch_ == 0 || issued_ == std::numeric_limits<std::uint64_t>::max()) return std::nullopt;
+---
+>     if (epoch_ == 0) return std::nullopt;
+=== no_crc_check
+147c147
+<         if (stored_crc != crc32_checksum(std::span(bytes).first(12)) || counter == 0)
+---
+>         if (counter == 0)
+=== no_exhaustion
+149d148
+<         if (counter == std::numeric_limits<std::uint64_t>::max()) return {SessionEpochError::exhausted, 0};
+=== no_dir_sync_after_rename
+96c96
+<     return sync(directory) ? SessionEpochError::none : SessionEpochError::io_failure;
+---
+>     return SessionEpochError::none;
+=== no_file_sync_before_rename
+91c91
+<     if (!write_all(output.get(), bytes) || !sync(output.get()) || !output.close())
+---
+>     if (!write_all(output.get(), bytes) || !output.close())
+=== no_dir_sync_on_create
+111c111
+<         if (!write_all(output.get(), bytes) || !sync(output.get()) || !output.close() || !sync(directory.get()))
+---
+>         if (!write_all(output.get(), bytes) || !sync(output.get()) || !output.close())

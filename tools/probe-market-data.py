@@ -20,6 +20,7 @@ import json
 import pathlib
 import subprocess
 import sys
+import re
 
 BASE = "https://api.truemarkets.co"
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -70,17 +71,35 @@ CANDIDATES = [
     "/v1/market-cap/latest",
 ]
 
+TOKEN_SEGMENT = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def validate_token(token: str) -> None:
+    parts = token.split(".")
+    if len(parts) != 3 or any(not TOKEN_SEGMENT.fullmatch(part) for part in parts):
+        raise SystemExit("token is not a safe three-segment JWT")
+
+
+def validate_path(path: str) -> None:
+    if path not in CANDIDATES or not path.startswith("/"):
+        raise SystemExit(f"refusing unapproved probe path: {path!r}")
+
 
 def get(path: str, token: str) -> tuple[str, bytes]:
+    validate_path(path)
+    validate_token(token)
     segments = [s for s in path.lower().split("?")[0].split("/") if s]
     for segment in segments:
         if segment in FORBIDDEN_SEGMENTS:
             raise SystemExit(f"refusing {path}: path segment {segment!r} is state-changing")
+    # Keep the bearer out of argv/process listings. Curl reads this one header
+    # from stdin as config; the token is restricted to JWT-safe characters above.
+    config = f'header = "authorization: Bearer {token}"\n'
     result = subprocess.run(
-        ["curl", "-sS", "-m", "20", "-w", "\n%{http_code}",
-         "-H", f"user-agent: {UA}", "-H", f"authorization: Bearer {token}",
-         "-H", "accept: application/json", BASE + path],
-        capture_output=True, check=False)
+        ["curl", "--disable", "-sS", "-m", "20", "--max-redirs", "0",
+         "-w", "\n%{http_code}", "-H", f"user-agent: {UA}",
+         "-H", "accept: application/json", "--config", "-", BASE + path],
+        input=config.encode(), capture_output=True, check=False)
     raw = result.stdout
     body, _, status = raw.rpartition(b"\n")
     return status.decode().strip(), body
@@ -97,7 +116,9 @@ def main() -> int:
     # is almost certainly the KEY JSON handed over by mistake - which would send
     # private key material in an Authorization header, and produce a curl
     # failure that looks like a network problem rather than an operator error.
-    if token.startswith("{") or "\n" in token or token.count(".") != 2:
+    try:
+        validate_token(token)
+    except SystemExit:
         raise SystemExit(
             f"{token_file} does not look like a token.\n"
             "If this is the API key JSON, mint a token from it first:\n"

@@ -1,0 +1,1 @@
+verified batch end overrode the leader's lower commit

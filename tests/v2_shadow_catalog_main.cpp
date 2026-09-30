@@ -1,0 +1,40 @@
+// velocita-v2-shadow-catalog: writes a SHADOW execution catalog and prints its root.
+//
+//   velocita-v2-shadow-catalog [--truemarkets-cbbtc] OUTPUT_FILE
+//
+// Without a profile it writes the test FIXTURE (fictional venue 9, prices
+// 1..100 ticks). --truemarkets-cbbtc writes the True Markets cbBTC/USDC row
+// (v2_shadow_catalog_rows.hpp) so shadow decisions can price real BTC.
+// Neither is a venue contract: the real catalog comes from M5 closure.
+
+#include "v2_catalog_test_support.hpp"
+#include "v2_shadow_catalog_rows.hpp"
+
+#include <fstream>
+#include <iostream>
+#include <string_view>
+#include <vector>
+
+int main(int argc, char** argv) {
+    const bool truemarkets = argc == 3 && std::string_view(argv[1]) == "--truemarkets-cbbtc";
+    if (argc != 2 && !truemarkets) {
+        std::cerr << "usage: velocita-v2-shadow-catalog [--truemarkets-cbbtc] OUTPUT_FILE\n";
+        return 64;
+    }
+    const char* output = argv[argc - 1];
+    const auto& catalog = truemarkets ? shadow_catalog::truemarkets_catalog() : catalog_test::standard_catalog();
+    std::vector<std::byte> bytes(velocita::v2::kMaxExecutionCatalogBytes);
+    const auto encoded = catalog.encode(bytes);
+    if (encoded.error != velocita::v2::ExecutionCatalogError::none) {
+        std::cerr << "catalog did not encode\n";
+        return 2;
+    }
+    std::ofstream out(output, std::ios::binary | std::ios::trunc);
+    out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(encoded.bytes_written));
+    if (!out) {
+        std::cerr << "cannot write " << output << "\n";
+        return 2;
+    }
+    std::cout << "catalog.root = " << velocita::v2::to_hex(catalog.root()) << "\n";
+    return 0;
+}

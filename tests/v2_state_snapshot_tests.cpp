@@ -1,5 +1,6 @@
 #include "velocita/v2/digest.hpp"
 #include "velocita/v2/state_snapshot.hpp"
+#include "v2_catalog_test_support.hpp"
 
 #include <algorithm>
 #include <array>
@@ -10,6 +11,7 @@
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -78,6 +80,7 @@ velocita::v2::TradingState populated_state() {
     state.strategy_mode = StrategyMode::reduce_only;
     state.kill_epoch = KillEpoch{4};
     state.executor_generation = ExecutorGeneration{8};
+    state.execution_catalog_root = catalog_test::standard_catalog().root();
 
     state.policy_count = 1;
     state.policies[0] = PolicyRecord{policy(), PolicyLifecycle::active};
@@ -142,7 +145,8 @@ velocita::v2::TradingState phase4_state() {
         QuantityLots::from_atoms(8), QuantityLots::from_atoms(2),
         MoneyMicros::from_atoms(10'000), MoneyMicros::from_atoms(20'000),
         MoneyMicros::from_atoms(8'400), MoneyMicros::from_atoms(21),
-        1'000'000, 2'500};
+        1'000'000, 2'500, QuantityLots::from_atoms(-3),
+        QuantityLots::from_atoms(10), true};
     state.reservation_count = 1;
     state.reservations[0] = {
         ClusterOrderId{31}, QuantityLots::from_atoms(2), {},
@@ -216,7 +220,7 @@ velocita::v2::TradingState overfill_conflict_state() {
     const Command command{
         {CallerId{33}, RequestSequence{1}, observation_fingerprint(observation)},
         ObserveFill{observation}};
-    const auto refused = apply(state, command, scratch);
+    const auto refused = catalog_test::apply(state, command, scratch);
     require(refused.code == ApplyCode::fill_quantity_conflict &&
                 state.orders[0].state == ClusterOrderState::conflict &&
                 state.orders[0].last_evidence_state_version ==
@@ -311,7 +315,8 @@ void test_snapshot_rejects_unbacked_risk_aggregates() {
     require(encoded.error == StateSnapshotError::none, "risk fixture did not encode");
     // These fixed-width arenas are the snapshot suffix. Locate risk fields from
     // their canonical layout, not C++ object offsets or a byte-pattern search.
-    const auto risk_offset = encoded.bytes_written - kDigestBytes -
+    // The trailing execution catalog root follows the arenas.
+    const auto risk_offset = encoded.bytes_written - kDigestBytes - kDigestBytes -
         (2 + original.outbox_effect_count * kStateSnapshotOutboxEffectBytes) -
         (2 + original.order_count * kStateSnapshotClusterOrderBytes) -
         (2 + original.reservation_count * kStateSnapshotRiskReservationBytes) -
@@ -339,6 +344,56 @@ void test_snapshot_rejects_unbacked_risk_aggregates() {
         require(encode_state_snapshot(invalid, after).error == StateSnapshotError::invalid_state,
                 "snapshot encoder accepted an unbacked aggregate hold");
     }
+}
+
+void test_snapshot_position_limit_fields_are_canonical() {
+    using namespace velocita::v2;
+    const auto original = phase4_state();
+    std::array<std::byte, kMaxStateSnapshotBytes> storage{};
+    const auto encoded = encode_state_snapshot(original, storage);
+    require(encoded.error == StateSnapshotError::none, "position fixture did not encode");
+    const auto risk_offset = encoded.bytes_written - kDigestBytes - kDigestBytes -
+        (2 + original.outbox_effect_count * kStateSnapshotOutboxEffectBytes) -
+        (2 + original.order_count * kStateSnapshotClusterOrderBytes) -
+        (2 + original.reservation_count * kStateSnapshotRiskReservationBytes) -
+        original.risk_account_count * kStateSnapshotRiskAccountBytes;
+    const auto at = [&](const std::size_t offset) {
+        return storage.begin() + static_cast<std::ptrdiff_t>(risk_offset + offset);
+    };
+    // Record layout: ... position(104) max_position(112) allow_short(120).
+    std::vector<std::byte> expected;
+    for (const std::int64_t value : {std::int64_t{-3}, std::int64_t{10}})
+        for (unsigned shift = 0; shift < 64; shift += 8)
+            expected.push_back(static_cast<std::byte>(
+                (static_cast<std::uint64_t>(value) >> shift) & 0xff));
+    expected.push_back(std::byte{1});
+    require(kStateSnapshotRiskAccountBytes == 121 && std::equal(expected.begin(), expected.end(), at(104)),
+            "risk account position fields are not at their canonical offsets");
+
+    const auto rejected = [&](const std::size_t offset, const std::vector<std::byte>& patch,
+                              const std::string& what) {
+        auto corrupt = storage;
+        std::copy(patch.begin(), patch.end(),
+                  corrupt.begin() + static_cast<std::ptrdiff_t>(risk_offset + offset));
+        replace_integrity_digest({corrupt.data(), encoded.bytes_written});
+        auto destination = populated_state();
+        const auto untouched = destination;
+        StateSnapshotScratch scratch;
+        require(decode_state_snapshot({corrupt.data(), encoded.bytes_written}, destination,
+                                      scratch).error == StateSnapshotError::invalid_state,
+                "snapshot accepted " + what);
+        require(destination.risk_accounts == untouched.risk_accounts &&
+                    destination.state_version == untouched.state_version,
+                "rejected snapshot changed destination: " + what);
+    };
+    rejected(120, {std::byte{2}}, "allow_short 2");
+    rejected(120, {std::byte{0xff}}, "allow_short 0xff");
+    rejected(112, std::vector<std::byte>(8, std::byte{0xff}), "a negative position cap");
+
+    auto negative = original;
+    negative.risk_accounts[0].max_position_quantity = QuantityLots::from_atoms(-1);
+    require(encode_state_snapshot(negative, storage).error == StateSnapshotError::invalid_state,
+            "snapshot encoder accepted a negative position cap");
 }
 
 void test_snapshot_reservation_ownership_and_sum_overflow() {
@@ -422,8 +477,8 @@ void test_empty_snapshot_has_canonical_layout() {
 
     const std::array expected_prefix{
         std::byte{'V'}, std::byte{'2'}, std::byte{'S'}, std::byte{'T'},
-        std::byte{63}, std::byte{0}, std::byte{0}, std::byte{0},
-        std::byte{7}, std::byte{0},
+        std::byte{95}, std::byte{0}, std::byte{0}, std::byte{0},
+        std::byte{9}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{5}};
@@ -434,9 +489,17 @@ void test_empty_snapshot_has_canonical_layout() {
     require(std::equal(encoded.state_digest.bytes.begin(), encoded.state_digest.bytes.end(),
                        storage.begin() + static_cast<std::ptrdiff_t>(digest_offset)),
             "returned digest differs from framed digest");
+    // Schema 9 changed only the risk account record, which an empty state has
+    // none of: with the schema byte rewritten to 8 the reviewed V8 digest holds.
+    auto legacy = storage;
+    legacy[kStateSnapshotSchemaOffset] = std::byte{8};
+    require(to_hex(sha256_digest({legacy.data() + kStateSnapshotDigestInputOffset,
+                                  digest_offset - kStateSnapshotDigestInputOffset})) ==
+                "8cc6fdeb97eecd7643512047f336e7fba464d9805688ecb0ad9abb70c7df8d68",
+            "V9 changed more than the schema byte of the empty snapshot");
     const auto hash = to_hex(encoded.state_digest);
     require(hash ==
-                "4745fb92763197e0e191daa7bdf1854cc4eb4c9d0ae37123df3f5c2366cfd73c",
+                "ab1e3731b7edc9f6bcc2c0d463842fa9d4e9e9717572cb7a3bcbd84f58290349",
             "empty state golden digest changed: " + hash);
     // V6 empty-payload size guard.
     //
@@ -452,8 +515,53 @@ void test_empty_snapshot_has_canonical_layout() {
                 kStateSnapshotPayloadOffset + kStateSnapshotEmptyPayloadBytes +
                     kDigestBytes,
             "empty snapshot length does not match the declared empty payload");
-    require(kStateSnapshotEmptyPayloadBytes == 63,
+    require(kStateSnapshotEmptyPayloadBytes == 95,
             "V6 empty snapshot header grew without review");
+}
+
+void test_execution_catalog_root_is_appended_and_round_trips() {
+    using namespace velocita::v2;
+    TradingState state;
+    for (std::size_t index = 0; index < state.execution_catalog_root.bytes.size();
+         ++index) {
+        state.execution_catalog_root.bytes[index] =
+            static_cast<std::byte>(0xa0U + index);
+    }
+    std::array<std::byte, kMaxStateSnapshotBytes> storage{};
+    const auto encoded = encode_state_snapshot(state, storage);
+    require(encoded.error == StateSnapshotError::none,
+            "catalog-root snapshot did not encode");
+    const auto root_offset = encoded.bytes_written - kDigestBytes - kDigestBytes;
+    require(std::equal(state.execution_catalog_root.bytes.begin(),
+                       state.execution_catalog_root.bytes.end(),
+                       storage.begin() + static_cast<std::ptrdiff_t>(root_offset)),
+            "catalog root was not appended at the end of the snapshot payload");
+
+    TradingState restored;
+    StateSnapshotScratch scratch;
+    require(decode_state_snapshot({storage.data(), encoded.bytes_written}, restored,
+                                  scratch).error == StateSnapshotError::none &&
+                restored.execution_catalog_root == state.execution_catalog_root,
+            "catalog root did not survive snapshot round trip");
+
+    auto malformed = storage;
+    malformed[root_offset + 7] ^= std::byte{1};
+    restored.execution_catalog_root = digest(0x55);
+    require(decode_state_snapshot({malformed.data(), encoded.bytes_written}, restored,
+                                  scratch).error ==
+                    StateSnapshotError::digest_mismatch &&
+                restored.execution_catalog_root == digest(0x55),
+            "malformed catalog-root bytes were accepted or partially published");
+}
+
+void test_rootless_economic_state_is_not_snapshotable() {
+    using namespace velocita::v2;
+    auto state = populated_state();
+    state.execution_catalog_root = {};
+    std::array<std::byte, kMaxStateSnapshotBytes> storage{};
+    require(encode_state_snapshot(state, storage).error ==
+                StateSnapshotError::invalid_state,
+            "snapshot accepted economic state without an execution-catalog root");
 }
 
 void test_round_trip_is_canonical_and_excludes_unused_capacity() {
@@ -506,9 +614,8 @@ void test_round_trip_is_canonical_and_excludes_unused_capacity() {
 
 void test_phase4_state_survives_canonical_snapshot() {
     using namespace velocita::v2;
-    require(kStateSnapshotSchemaVersion == 7,
-            "the native/synthetic observation origin did not move snapshots to "
-            "V7");
+    require(kStateSnapshotSchemaVersion == 9,
+            "position limits did not move snapshots to V9");
     const auto original = phase4_state();
     std::array<std::byte, kMaxStateSnapshotBytes> storage{};
     const auto encoded = encode_state_snapshot(original, storage);
@@ -849,6 +956,7 @@ void test_declared_maximum_is_exact_and_encodable() {
     using namespace velocita::v2;
     TradingState state;
     state.state_version = kMaxRequestReceipts;
+    state.execution_catalog_root = digest(0xc2);
 
     state.policy_count = kMaxPolicies;
     for (std::size_t index = 0; index < state.policy_count; ++index) {
@@ -991,7 +1099,10 @@ void test_declared_maximum_is_exact_and_encodable() {
 
 int main() {
     try {
+        test_execution_catalog_root_is_appended_and_round_trips();
+        test_rootless_economic_state_is_not_snapshotable();
         test_snapshot_rejects_unbacked_risk_aggregates();
+        test_snapshot_position_limit_fields_are_canonical();
         test_snapshot_reservation_ownership_and_sum_overflow();
         test_empty_snapshot_has_canonical_layout();
         test_round_trip_is_canonical_and_excludes_unused_capacity();

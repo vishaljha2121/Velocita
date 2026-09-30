@@ -1,0 +1,11 @@
+--- src/v2_snapshot_store.cpp	2026-09-22 15:04:03
++++ /private/tmp/f5-bounds.Dej2L0/unbounded-mutant.cpp	2026-09-22 15:04:53
+@@ -129,7 +129,7 @@
+     // One lookahead byte detects oversized/trailing files without a file-sized
+     // allocation or a size-query/read race. Recovery is cold, bounded work.
+     constexpr auto maximum_file = kHeaderBytes + kMaxStateSnapshotBytes + kChecksumBytes;
+-    std::array<std::byte, maximum_file + 1> storage{};
++    std::vector<std::byte> storage(static_cast<std::size_t>(std::filesystem::file_size(path_)));
+     input.read(reinterpret_cast<char*>(storage.data()), storage.size());
+     const std::span<const std::byte> bytes(storage.data(),
+                                           static_cast<std::size_t>(input.gcount()));

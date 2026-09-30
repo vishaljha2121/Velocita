@@ -206,6 +206,7 @@ void observe_outcome(OutcomeCounters& counters, const ApplyResult& result) noexc
         case ApplyCode::risk_account_not_found:
         case ApplyCode::risk_reconfiguration_blocked:
         case ApplyCode::risk_version_exhausted:
+        case ApplyCode::position_limit_exceeded:
             ++counters.risk_refusals;
             return;
         case ApplyCode::stale_control_generation:

@@ -1,0 +1,89 @@
+# Velocita model research configuration (example).
+#
+# Every value marked confidence = "unverified" is a placeholder that MUST be
+# confirmed against official True Markets documentation before any conclusion
+# drawn from it is treated as evidence. See
+# docs/MUST_CONFIRM_BEFORE_ADAPTER_CONNECT.md for the exact list.
+#
+# This file cannot contain a credential. Any key resembling one (private_key,
+# mnemonic, api_secret, wallet, signer, live_trading, ...) causes the loader to
+# refuse to start.
+
+[source]
+venue      = "truemarkets"
+chain      = "UNVERIFIED"          # confirm: which chain the DeFi pairs settle on
+source_id  = 1                     # cluster SourceId; must be non-zero
+venue_id   = 1                     # cluster VenueId
+account_id = 1                     # cluster AccountId (research account scope)
+confidence = "unverified"
+
+# Endpoints are intentionally absent rather than guessed. A wrong URL that
+# happens to return JSON is worse than no URL: it produces plausible data.
+# book_url     = ""
+# trades_url   = ""
+# metadata_url = ""
+
+reference_sources    = []          # confirm a legitimate independent price source
+poll_interval_ms     = 500
+reconnect_backoff_ms = [250, 500, 1000, 2000, 5000, 15000, 30000]
+
+[[pair]]
+pair_id            = "PLACEHOLDER-A/USDC"
+base               = "PLACEHOLDER-A"
+quote              = "USDC"
+venue_symbol       = "UNVERIFIED"
+instrument_id      = 1
+tick_size          = "0.0001"      # UNVERIFIED
+lot_size           = "0.01"        # UNVERIFIED
+min_notional_quote = "1.00"        # UNVERIFIED
+maker_fee_bps      = "0"           # UNVERIFIED - a wrong fee inverts every conclusion
+taker_fee_bps      = "0"           # UNVERIFIED
+gas_cost_quote     = "0.00"        # UNVERIFIED - on-chain cost per fill, amortised
+confidence         = "unverified"
+enabled            = false         # stays false until the fields above are confirmed
+
+[[pair]]
+pair_id            = "PLACEHOLDER-B/USDC"
+base               = "PLACEHOLDER-B"
+quote              = "USDC"
+venue_symbol       = "UNVERIFIED"
+instrument_id      = 2
+tick_size          = "0.0001"
+lot_size           = "0.01"
+min_notional_quote = "1.00"
+maker_fee_bps      = "0"
+taker_fee_bps      = "0"
+gas_cost_quote     = "0.00"
+confidence         = "unverified"
+enabled            = false
+
+[strategy]
+account_equity_quote      = "20.00"
+reserve_fraction          = "0.50"   # half the account is not deployable until costs are measured
+quote_sizes_quote         = ["1", "2", "5", "10"]
+primary_quote_size_quote  = "1"      # the 20 USDC budget makes 1 the only serious research size
+max_inventory_quote       = "5.00"
+base_half_spread_bps      = "15"
+min_half_spread_bps       = "5"
+max_half_spread_bps       = "150"
+vol_spread_multiplier     = "1.5"
+inventory_skew_bps_at_limit = "20"
+max_market_data_age_ms    = 2000
+markout_horizons_ms       = [100, 1000, 5000, 30000, 60000, 300000]
+queue_assumptions         = ["optimistic", "base", "conservative"]
+
+# Study boundaries. These stop the simulator; they are not live-trading
+# protection and must never be described as such.
+daily_drawdown_limit_quote = "0.50"
+total_drawdown_limit_quote = "1.00"
+equity_floor_quote         = "19.00"
+
+[runtime]
+database_path      = "var/research.db"
+report_directory   = "var/reports"
+log_directory      = "var/logs"
+retention_days     = 30
+health_interval_s  = 30
+max_cpu_percent    = 85.0
+max_disk_percent   = 90.0
+max_clock_offset_ms = 250.0

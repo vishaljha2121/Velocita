@@ -148,6 +148,21 @@ order size imposed by cost. Small-notional, high-turnover quoting becomes
 economically possible rather than arithmetically dead.
 
 WHAT REMAINS OPEN is the fee schedule, which is now the ONLY unknown cost term.
+
+OWNER OBSERVATION 2026-09-28 14:58:37 UTC (web app, unfunded account, SOL buy
+screen, order NOT placed): headline $118.09; "$10 ~= 0.08467759 SOL" (exactly
+$10 / 118.095, a display conversion, not a routed quote); "Fees $0.00". Same
+minute: Binance SOLUSDT 1m open 118.17 / close 117.98; True Markets history
+118.14 (14:57) and 117.88 (14:58). The displayed price is inside the market's
+range: no visible markup at minute resolution (about +/-10 bp). The execution
+cost (route price vs display) is STILL UNMEASURED; it needs a routed quote
+(`tools/measure-markup.py`, blocked by login-email throttling) or a funded
+quote screen, or an owner-authorized real round trip.
+
+MEASURED 2026-09-28 15:21 UTC (`evidence/truemarkets_markup_2026-09-28/`): routed
+quotes for $25 / $100 / $500 SOL buys each carry a FLAT 1 % FEE in USDC; the
+route price after the fee is at market (about +/-5 bp of Binance). All-in about
+100 bp per side. The DeFi fee is no longer unknown for buys; sells unmeasured.
 It is also the one that decides whether turnover is cheap or self-defeating: a
 10 bps taker fee on both legs costs 20 bps of a 26 bps spread, while a zero or
 rebated maker fee makes volume generation nearly free. Question 4 in
@@ -188,6 +203,24 @@ prints, stated trade direction, venue event timestamps, and rate limits.
 WHAT IT COSTS. Without sequence numbers, gaps are invisible - and invisible gaps
 become "results". Without rate limits, collector cadence is a guess that risks a
 ban.
+
+PARTLY RESOLVED 2026-09-28 BY A LIVE READ (`evidence/truemarkets_marketdata_2026-09-28/`).
+Public REST price endpoints exist and answer without credentials:
+`GET /v1/defi/market/prices` (latest OHLC per interval, NO timestamp),
+`/prices/history` and `/prices/range` (timestamped). They are reference prices,
+not executable quotes. Still open: rate limits, WebSocket sequence numbers,
+public trade prints, and whether the `orderbook` channel needs authentication.
+
+WEBSOCKET, SAME DAY. The AsyncAPI schemas are embedded in the docs site's JS
+(saved as `websocket-asyncapi-schemas.json` in that evidence folder). Subscribe is
+`{"type":"subscribe","topics":[...]}`; all channels are documented public.
+Live: `reference_prices` (~1/s, BTC|USD and ETH|USD only, Coinbase+Kraken BBOs
+with per-source timestamps), `price_candles` (~2/s, 353 symbols incl. Robinhood
+tokens and hypercore-perp, ~177 KiB/message), `trending_assets` (volume ratio and
+market cap), `surging_assets`. `orderbook.{venue}.{pair}` topics are ACCEPTED for
+any syntactically valid name, including the docs' own example
+`orderbook.hyperliquid-spot.HYPE-USDC`, but delivered NOTHING in 25-45 s on every
+variant tried. Acceptance does not mean a book exists. Order books: still OPEN.
 
 ---
 
@@ -626,6 +659,27 @@ another market entirely.
 
 An earlier note in the feasibility evidence claimed HYPE was not on True Markets.
 That was wrong and is corrected there; the project owner spotted it.
+
+## Review correction governing D-22 through D-28 — 2026-09-21
+
+The original observations below remain an audit trail. These corrections override
+their stronger conclusions; ADR 0011 now carries the corrected design reasoning.
+
+- D-22: MCP input discovery does not close the REST schema question in D-3.
+  The capture is incomplete for outputs, description tails and pagination.
+- D-23: no captured MCP tool advertises priced orders/cancel/book. Venue-wide
+  absence and RFQ routing are unverified; neither follows from this inventory.
+- D-24/25: explicit denomination and chain are proposed encoder requirements,
+  not shipped mitigations. Chain is a string with described examples, not an
+  enum proving other routes impossible. PURR execution remains unverified.
+- D-26: potentially submitting prepare invalidates the helper's inert-prepare
+  premise. Unknown submission retains risk; balances alone cannot attribute it.
+- D-27: retain the observed errors, but do not infer universal endpoint behavior
+  or rate-limit semantics from a finite sequence of responses.
+- D-28: no advertised input bound is not proof that signed payloads lack one.
+  Checking expected output is insufficient: execution must enforce the bound.
+  No captured output schema proves absence of a quote ID. Direct submission is
+  not a fill, and uncertain execution must not be marked completed.
 
 ## D-22. The order schema was never behind a broken page - it is published as an MCP tool
 

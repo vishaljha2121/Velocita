@@ -1,3 +1,4 @@
+#include "v2_catalog_test_support.hpp"
 #include "velocita/v2/action_resolver.hpp"
 #include "velocita/v2/digest.hpp"
 #include "velocita/v2/replay.hpp"
@@ -175,6 +176,31 @@ StageExecutablePolicy executable_bundle_command(const PolicyArtifact& base) {
 // would have authenticated - see `kMaxOperatorCallerId`. The number is otherwise
 // arbitrary.
 constexpr CallerId kFixtureOperator{7};
+
+const VerifiedExecutionCatalog& model_catalog() {
+    static const auto result = [] {
+        std::array<ExecutionCatalogRow, 4> rows;
+        std::size_t index{};
+        for (std::uint64_t account = 1; account <= 2; ++account)
+            for (std::uint64_t instrument = 1; instrument <= 2; ++instrument)
+                rows[index++] = catalog_test::row(AccountId{account},
+                    {1, VenueId{1}, InstrumentId{instrument}, InstrumentSpecVersion{1},
+                     MoneyMicros::from_atoms(10), PriceTicks::from_atoms(1),
+                     PriceTicks::from_atoms(100), QuantityLots::from_atoms(1),
+                     QuantityLots::from_atoms(10)},
+                    {1, VenueId{1}, VenueCapabilitiesVersion{1}, kVenueDirectivePlaceLimit,
+                     kVenueTifGtc, 1});
+        return catalog_test::catalog(rows);
+    }();
+    return result;
+}
+
+ReplayApplyResult replay_model_fixture(TradingState& state, std::span<const std::byte> bytes,
+    ApplyScratch& scratch, KernelCommandCodecScratch& codec_scratch,
+    std::span<std::byte> output) {
+    return apply_encoded_kernel_command(state, bytes, scratch, codec_scratch, output,
+                                         &model_catalog());
+}
 
 Command new_command(const std::uint64_t sequence,
                     const std::uint64_t marker,
@@ -990,7 +1016,8 @@ ApplyResult model_new_command(ModelState& state,
                                  std::is_same_v<T, RequestReplace> ||
                                  std::is_same_v<T, ConfigureRiskLimits> ||
                                  std::is_same_v<T, RequestMassCancel> ||
-                                 std::is_same_v<T, AcknowledgeGatewayResults>) {
+                                 std::is_same_v<T, AcknowledgeGatewayResults> ||
+                                 std::is_same_v<T, InstallExecutionCatalog>) {
                 // This generator covers Phase 1-3 only. A complete independent
                 // Phase 4 model remains an acceptance requirement.
                 return model_result(state, ApplyCode::invalid_command, version);
@@ -1036,7 +1063,7 @@ ApplyResult model_apply(ModelState& state, const Command& command) {
 }
 
 TradingState materialize(const ModelState& model) {
-    TradingState result;
+    TradingState result = catalog_test::state(model_catalog());
     result.state_version = model.state_version;
     result.strategy_mode = model.strategy_mode;
     result.kill_epoch = model.kill_epoch;
@@ -1097,7 +1124,7 @@ ExpectedRun compare_production_to_model(const std::uint64_t seed,
                                         const std::vector<Record>& records,
                                         Coverage& coverage) {
     ExpectedRun expected;
-    TradingState production;
+    TradingState production = catalog_test::state(model_catalog());
     ModelState model;
     ApplyScratch apply_scratch;
     KernelCommandCodecScratch codec_scratch;
@@ -1105,7 +1132,7 @@ ExpectedRun compare_production_to_model(const std::uint64_t seed,
     for (std::size_t step = 0; step < records.size(); ++step) {
         const auto model_result = model_apply(model, records[step].command);
         coverage.observe(model_result);
-        const auto replayed = apply_encoded_kernel_command(
+        const auto replayed = replay_model_fixture(
             production, {records[step].bytes.data(), records[step].size},
             apply_scratch, codec_scratch, expected.results[step]);
         require(replayed.error == ReplayError::none,
@@ -1143,7 +1170,7 @@ ExpectedRun compare_production_to_model(const std::uint64_t seed,
     require(snapshot.error == StateSnapshotError::none,
             "final production state did not encode");
     expected.final_snapshot_size = snapshot.bytes_written;
-    expected.final_digest = snapshot.state_digest;
+    expected.final_digest = catalog_test::schema7_projection(production);
     return expected;
 }
 
@@ -1152,12 +1179,12 @@ void compare_snapshot_suffixes(const std::uint64_t seed,
                                const ExpectedRun& expected) {
     constexpr std::array<std::size_t, 6> cuts{0, 1, 8, 32, 64, 95};
     for (const auto cut : cuts) {
-        TradingState prefix;
+        TradingState prefix = catalog_test::state(model_catalog());
         ApplyScratch prefix_apply_scratch;
         KernelCommandCodecScratch prefix_codec_scratch;
         std::array<std::byte, kKernelResultBytes> ignored{};
         for (std::size_t step = 0; step < cut; ++step) {
-            const auto applied = apply_encoded_kernel_command(
+            const auto applied = replay_model_fixture(
                 prefix, {records[step].bytes.data(), records[step].size},
                 prefix_apply_scratch, prefix_codec_scratch, ignored);
             require(applied.error == ReplayError::none,
@@ -1168,7 +1195,7 @@ void compare_snapshot_suffixes(const std::uint64_t seed,
         const auto snapshot = encode_state_snapshot(prefix, snapshot_bytes);
         require(snapshot.error == StateSnapshotError::none,
                 "generated prefix did not snapshot");
-        TradingState restored;
+        TradingState restored = catalog_test::state(model_catalog());
         StateSnapshotScratch snapshot_scratch;
         const auto decoded = decode_state_snapshot(
             {snapshot_bytes.data(), snapshot.bytes_written}, restored,
@@ -1180,7 +1207,7 @@ void compare_snapshot_suffixes(const std::uint64_t seed,
         KernelCommandCodecScratch suffix_codec_scratch;
         for (std::size_t step = cut; step < records.size(); ++step) {
             std::array<std::byte, kKernelResultBytes> actual{};
-            const auto applied = apply_encoded_kernel_command(
+            const auto applied = replay_model_fixture(
                 restored, {records[step].bytes.data(), records[step].size},
                 suffix_apply_scratch, suffix_codec_scratch, actual);
             require(applied.error == ReplayError::none &&
@@ -1262,7 +1289,7 @@ void test_generated_model_and_snapshot_replay() {
 
     std::cout << "generated histories=" << kSeedCount
               << " commands_per_history=" << kHistoryLength
-              << " snapshot_cuts_per_history=6 corpus_digest=" << actual << '\n';
+              << " snapshot_cuts_per_history=6 schema7_projection_corpus_digest=" << actual << '\n';
 }
 
 }  // namespace

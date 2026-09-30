@@ -1,0 +1,16 @@
+[ 10%] Built target willemt_raft
+[ 30%] Built target velocita_v2_contracts
+[ 50%] Built target velocita_core
+[ 50%] Built target velocita_v2_evaluator
+[ 70%] Built target velocita_v2_kernel
+[100%] Built target velocita_v2_replication
+[100%] Building CXX object CMakeFiles/v2-archive-file-tests.dir/tests/v2_archive_file_tests.cpp.o
+[100%] Linking CXX executable v2-archive-file-tests
+[100%] Built target v2-archive-file-tests
+[ 10%] Built target willemt_raft
+[ 30%] Built target velocita_v2_contracts
+[ 50%] Built target velocita_core
+[ 50%] Built target velocita_v2_evaluator
+[ 70%] Built target velocita_v2_kernel
+[100%] Built target velocita_v2_replication
+[100%] Built target v2-archive-file-io-tests

@@ -1,0 +1,12 @@
+--- src/v2_gateway_authority.cpp	2026-09-22 14:33:10
++++ /private/tmp/f4-proof-mutations.e8D7Tj/reusable-proof.cpp	2026-09-22 14:42:25
+@@ -138,8 +138,7 @@
+     }
+     const AuthorityProofView permission = *accepted_;
+     const Tick started_at = accepted_started_at_;
+-    accepted_.reset();  // Consume before any caller can hand bytes to transport.
+-    accepted_started_at_ = 0;
++    // MUTANT: leave accepted permission reusable.
+ 
+     if (now < started_at || now - started_at > freshness_bound_ ||
+         !valid_control(current) || current.strategy_mode != StrategyMode::normal ||

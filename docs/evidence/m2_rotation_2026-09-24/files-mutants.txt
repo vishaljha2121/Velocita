@@ -1,0 +1,2 @@
+baseline                   node file tests passed
+invalid_optional_skipped   node file tests failed: a torn .next did not refuse the whole set

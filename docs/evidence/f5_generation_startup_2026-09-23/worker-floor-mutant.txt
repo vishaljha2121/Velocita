@@ -1,0 +1,26 @@
+Mutation: in a private source copy, replace the snapshot-kind floor guard body
+with an unconditional return, disabling every runtime snapshot floor check.
+
+Source-copy command:
+cp src/v2_identity_startup.cpp /private/tmp/generation_startup_worker/identity_floor_mutant.cpp
+perl -0pi -e 's/if \(base\.kind != GenerationBaseKind::snapshot\) return;/return;/' \
+  /private/tmp/generation_startup_worker/identity_floor_mutant.cpp
+
+The strict direct compile succeeded. Test output:
+
+snapshot floor: generation startup unexpectedly succeeded
+
+The mutant exited nonzero at the missing/older/corrupt snapshot refusal group.
+
+Compile/run command:
+c++ -std=c++20 -O2 -Wall -Wextra -Wpedantic -Werror \
+  -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Itests \
+  tests/v2_generation_startup_tests.cpp \
+  /private/tmp/generation_startup_worker/identity_floor_mutant.cpp \
+  src/v2_generation_base_files.cpp src/v2_generation_base.cpp \
+  src/v2_local_generation.cpp src/v2_bound_metadata.cpp src/v2_bound_frame.cpp \
+  src/v2_static_identity.cpp src/v2_digest.cpp src/v2_snapshot_store.cpp \
+  src/v2_state_snapshot.cpp -Lbuild-v2-release -lvelocita_v2_kernel \
+  -lvelocita_v2_evaluator -lvelocita_v2_contracts -lvelocita_core -pthread \
+  -o /private/tmp/generation_startup_worker/floor_mutant
+/private/tmp/generation_startup_worker/floor_mutant

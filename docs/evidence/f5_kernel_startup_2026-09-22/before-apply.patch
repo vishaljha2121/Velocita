@@ -1,0 +1,13 @@
+--- src/v2_replication.cpp	2026-09-22 16:11:31
++++ /private/tmp/velocita-f5-before-apply-mutant.OcUbZI/v2_replication.cpp	2026-09-22 16:17:59
+@@ -775,9 +775,7 @@
+         self.validate_log_payload(entry->type, bytes);
+         if (entry->type == kAuthorityBarrierEntryType) return 0;
+         const auto decoded = decode_kernel_command(bytes, command, *self.codec_scratch_);
+-        if (decoded.error != KernelCodecError::none ||
+-            !execution_catalog_ready(required_execution_catalog(self.state_, command),
+-                                     &self.catalog_)) {
++        if (decoded.error != KernelCodecError::none) {
+             self.catalog_dependency_failed_ = true;
+             return RAFT_ERR_SHUTDOWN;
+         }

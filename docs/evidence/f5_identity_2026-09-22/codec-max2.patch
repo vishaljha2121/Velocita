@@ -1,0 +1,11 @@
+--- src/v2_static_identity.cpp	2026-09-22 15:50:14
++++ /private/tmp/f5-static-identity.TnVC6D/mutant_max2.cpp	2026-09-22 15:53:34
+@@ -101,7 +101,7 @@
+         value.storage_lineage_epoch != 1)
+         return StaticIdentityCodecError::unsupported_schema;
+     if (value.quorum_durability_mode != 1 || value.voter_count == 0 ||
+-        value.voter_count > kMaxStaticVoters)
++        value.voter_count > 2)
+         return StaticIdentityCodecError::invalid_value;
+     if (value.deployment_mode != DeploymentMode::laboratory &&
+         value.deployment_mode != DeploymentMode::two_host_pilot)

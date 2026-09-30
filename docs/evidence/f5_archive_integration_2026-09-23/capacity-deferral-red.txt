@@ -1,0 +1,8 @@
+2026-09-23: permanent actual ReplicatedKernel early-cut regression.
+Rebuilt v2-compaction-fence-tests, then executed it before the deferred outcome fix.
+Fixture: one-object budget, two committed control records, one durable not-yet-applied
+control record. All three fit one packed object; an early cut would require two.
+Observed exit 1:
+replica storage failure; restart required evidence="/tmp/v2-compaction-fence-Vq85xY"
+Wrong behavior: safe pre-write capacity refusal became a permanent writer failure.
+Expected: no publication/reclamation, owner resumes, larger packed cut succeeds.

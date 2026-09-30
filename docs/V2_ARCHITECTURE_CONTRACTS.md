@@ -12,6 +12,17 @@ Execution plan:
 
 ## 1. Purpose
 
+Review-status override — 2026-09-21: historical Phase 6/7 completion prose does
+not establish current acceptance. The full audit at
+`evidence/V2_PHASE6_9_FULL_AUDIT_2026-09-21.md` records reproduced stale-role
+authority renewal, lost emergency quota, unsafe wire lowering, missing persisted
+membership and peer snapshot install, unbounded replication retention, and
+hard-state evidence/ownership gaps. Local leadership is insufficient for sender
+authority even in-process. Snapshot restore from one's own disk is not replacement
+catch-up; asynchronous WAL bodies do not make metadata I/O asynchronous.
+The original requirements below remain requirements. Proposed remedies and
+two-host topology are in `V2_NUC_PI_TRADING_ROADMAP.md`, not newly approved bytes.
+
 This document defines the boundary that V2 code must obey. It tells an
 implementer what is authoritative, which messages cross each boundary, which
 state must survive replay, and what failure means. It intentionally precedes
@@ -243,9 +254,16 @@ hold, account, instrument, order, command, policy, and position versions.
 ### 8.1 Replicated risk-limit configuration (B1, approved 2026-09-09)
 
 This is the authoritative reference for later operator/user documentation.
-`ConfigureRiskLimits` replaces all six settings for one `(AccountId, InstrumentId)`
+`ConfigureRiskLimits` replaces all eight settings for one `(AccountId, InstrumentId)`
 in one reducer transition. It does not configure a venue account, authenticate an
 operator, import external positions, or send an external effect.
+
+Operator-only (P2.1, 2026-09-29). `ConfigureRiskLimits` joins the control set
+gated by `is_operator_caller` (CallerId 1..15, `kMaxOperatorCallerId`). A command from any
+other caller returns `unauthorized_control` before receipt lookup and leaves no
+trace: no receipt, no StateVersion advance, state byte-identical. A strategy that
+could raise its own cap would make every limit advisory. It is not a control-lane
+command (`control_eligible`): it may not spend the kill reserve.
 
 - `max_order_quantity`: per-order quantity ceiling, positive and no larger than
   `max_reserved_quantity`, the positive aggregate reserved-quantity ceiling.
@@ -254,7 +272,34 @@ operator, import external positions, or send an external effect.
   hold budget, NOT aggregate gross order notional. There is deliberately no
   comparison requiring per-order gross notional to be below this hold budget.
 - `initial_margin_ppm`: 1 through 1,000,000; `maximum_fee_ppm`: 0 through 1,000,000.
-  All arithmetic is checked; invalid settings are refused, never clamped.
+- `max_position_quantity`: zero or positive bound on |position| after every open
+  order fills. Zero denies new exposure; it never means unlimited.
+- `allow_short`: false is long-only (a sell may only reduce a long position).
+- `reason_code`: non-zero reference into the operator's audit record of why the
+  limits changed. Carried in the replicated log only; the kernel neither stores
+  nor interprets it.
+
+All arithmetic is checked; invalid settings are refused, never clamped.
+
+Position rule, checked at `AuthorizeDecision` after the per-order and aggregate
+caps and before any mutation. With P = signed position, R = `reserved_quantity`
+(ALL open orders, both sides) and q = proposal quantity: a buy is allowed iff
+P + R + q <= `max_position_quantity`; a sell iff P - R - q >= (`allow_short` ?
+-`max_position_quantity` : 0). Otherwise `position_limit_exceeded` (ApplyCode 67);
+checked-arithmetic failure is `risk_arithmetic_overflow`. Counting R on both sides
+is deliberately conservative: either resting order may fill first, so netting them
+would admit a position past the cap. A cap below the current position is accepted
+and makes the account reduce-only (adding refused, reducing allowed); it is never
+a reason to refuse the configuration.
+
+Strategy re-sync. An `AuthorizeDecision` refused with `stale_risk_state` carries
+result detail tag 7 (`risk_state`): words {current RiskVersion, current
+PositionVersion, position quantity atoms as u64}. The strategy binds these on its
+next frame instead of guessing. The detail is admitted only on `stale_risk_state`
+with non-zero versions and a decision ID, by both the result codec and the
+snapshot's retained-receipt validation. An exact retry of the same request
+returns the retained result, so its versions are those current at the first
+refusal; a strategy wanting fresh versions sends a new request.
 
 Creation requires an absent key and `expected_risk_version = 0`; it initializes
 RiskVersion and PositionVersion to 1 and all economic balances to zero. This is
@@ -263,7 +308,8 @@ Update requires exact expected/current RiskVersion equality; the kernel advances
 by exactly one, including fresh-request no-op updates. Overflow refuses rather
 than wrapping. There is no delete/reset command and no caller-chosen next version.
 Expected kill epoch and executor generation must match current state; configuration
-is allowed while halted. Matching generations do not replace operator authentication.
+is allowed while halted. Matching generations do not replace operator authentication;
+the operator caller band above is the reducer's half of it.
 
 Updates preserve position, reserved quantity, reserved margin/fees, and
 PositionVersion. Caps are prospective: changing per-order caps neither cancels
@@ -278,7 +324,7 @@ require a matching policy deployment before new authorization can resume.
 The single reducer owner validates a complete local candidate before assigning
 it to TradingState; receipt capacity is checked before this commit. Other threads
 must not read mutable TradingState concurrently. This is transaction atomicity,
-not an 88-byte CPU atomic store or a durability claim. A mask/patch could also be
+not a 101-byte CPU atomic store or a durability claim. A mask/patch could also be
 atomic, but full replacement avoids partial-update semantics on an infrequent
 control path. The configuration cannot carry balance fields at all.
 
@@ -287,19 +333,45 @@ Same-request/different-digest retries conflict; fresh stale updates refuse.
 Admitted refusals can retain receipts and advance global StateVersion without
 changing risk configuration or economics. Account/receipt capacity exhaustion
 fails closed. New typed outcomes append `risk_account_capacity_exceeded`,
-`risk_version_exhausted`, and `risk_reconfiguration_blocked`; existing outcomes
-cover invalid settings, stale control/risk state, arithmetic overflow and
-insufficient capacity.
+`risk_version_exhausted`, `risk_reconfiguration_blocked` and (P2.1)
+`position_limit_exceeded`; existing outcomes cover invalid settings, stale
+control/risk state, arithmetic overflow and insufficient capacity. Metrics count
+`position_limit_exceeded` as a risk refusal.
 
-Canonical kernel schema V5 command kind 17 has an 88-byte little-endian body:
+Canonical kernel schema V9 command kind 17 has a 101-byte little-endian body:
 account ID, instrument ID, risk-policy version, expected risk version, expected
 kill epoch, expected executor generation (six u64); two quantities and two money
-limits (four i64, in the order listed above); margin ppm and fee ppm (two u32).
-With existing identity/framing/digest this is 180 bytes. Result detail tag 5 uses
-the existing three u64 words for account ID, instrument ID and resulting risk
-version. Snapshot schema V5 retains this new receipt variant; V4 is not silently
-reinterpreted and no migration is supplied. OrderEffect bytes and schema remain
-unchanged. No risk-account capacity or resident-state layout increase is required.
+limits (four i64, in the order listed above); margin ppm and fee ppm (two u32);
+then `max_position_quantity` (i64), `allow_short` (u8, only 0 or 1; anything else
+decodes as `invalid_value`) and `reason_code` (u32). With existing
+identity/framing/digest this is 193 bytes; the 1,789-byte command maximum is
+unchanged. Result detail tag 5 uses the existing three u64 words for account ID,
+instrument ID and resulting risk version. OrderEffect bytes and schema remain
+unchanged.
+
+Snapshot schema V9 appends `max_position_quantity` (i64, validated >= 0) and
+`allow_short` (u8, validated 0/1) to each risk-account record: 112 -> 121 bytes.
+The resident `RiskAccount` grows 112 -> 128 bytes (its 128-byte budget), so
+TradingState grows 64 bytes; see the budget figures in 10.18.14.
+
+No dual-version reader (recorded deviation). Deterministic Speed recommends that
+a reader accept one previous version during a rolling upgrade. V9 does not: V8
+commands, results and snapshots are refused as `unsupported_schema`, and the
+static cluster identity binds both schemas, so a V9 binary refuses a V8 manifest
+at startup and a mixed V8/V9 cluster cannot form. A V8 replica would otherwise
+decode an 88-byte ConfigureRiskLimits body and diverge on the first one. The
+deployment is a fresh cluster; there is no upgrade path.
+
+Book alignment (Deterministic Speed ch. 49 limit records: scope, units, effective
+log index, authorizer, reason, expiry, previous hash). Scope is (account,
+instrument); units are typed fixed point (`QuantityLots`, `MoneyMicros`, ppm);
+the effective index is the committing log entry; the authorizer is the operator
+`CallerId` in the retained receipt identity; the reason is `reason_code`, whose
+text lives in the operator's audit record; "previous" is the
+`expected_risk_version` compare-and-set. Deviations: NO expiry (routine limits
+only, no temporary override path, and no snapshot budget for one); four-eyes
+approval lives in operator tooling before submission (ch. 18), not in the
+reducer; pending orders are counted on both sides (conservative).
 
 ### 8.2 Resolved versus acknowledged (approved 2026-09-09)
 
@@ -2792,6 +2864,202 @@ writer stall, hard-state torn-write refusal, snapshot durability before
 reclamation, and a power-cut sweep. Guards are tested by mutation as well as by
 assertion.
 
+#### 10.18.10 F2 admission and synchronous batch corrections
+
+Canonical decoding precedes admission on both proposal lanes. Malformed normal
+input returns existing `refused`; malformed control input retains its lane-specific
+refusal. No reducer work is performed speculatively. Committed/recovered bytes
+still decode strictly; this is neither corrupt-history repair nor Byzantine peer
+validation. The extra bounded decode is the cost of not journaling poison.
+
+The synchronous segment helper owns a snapshot of each sealed descriptor exactly
+once, without advancing the async submission cursor. It refuses already-submitted
+writer work, writes all blocks, syncs once and only then completes them in order.
+Write/sync failure preserves the sealed blocks and restores the append frontier.
+This retains retry semantics and prevents reusing memory before durability.
+It does not alter the async protocol or block bytes. Tests and remaining limits
+are recorded in `evidence/V2_REMEDIATION_CHECKPOINTS.md`, CP-002.
+
+#### 10.18.11 F3 unbound request-body APIs are quarantined
+
+Neither a raw `OrderEffect` plus gateway-supplied metadata nor a local `verified`
+flag proves economic binding. The market helper now always refuses; the reducer
+has no authorized market/swap operation. The unbound limit helper also refuses
+submits until a reviewed binding interface exists. Refusals leave output intact.
+The exact decimal utilities remain usable arithmetic, not permission to send.
+Matching tick-size times lot-size does not prove either factor, asset routing or
+venue capability. The owner subsequently approved the single immutable committed
+catalog direction and subsequently the installation/recovery contract in
+`docs/F3_EXECUTION_METADATA_REVIEW.md` (ADR 0012), then the canonical catalog-v1
+contract in `docs/F3_CATALOG_V1_BYTE_REVIEW.md`. The separate-process binding
+envelope remains unfrozen; no TradingState/snapshot budget increase is approved.
+No command/effect/snapshot bytes have changed in the refusal/preflight increments.
+In particular,
+artifact absence must be a node dependency failure, never a replica-dependent
+economic answer; compatibility must not reinterpret historical authorizations.
+
+#### 10.18.12 F3 recovery compatibility precedes writable startup
+
+Before creating its writable segment/writer, ReplicatedKernel loads the snapshot
+and decodes complete retained commands in both WAL stores. This includes the
+uncommitted suffix and snapshot-covered overlap. The former can commit later;
+the latter must not hide a mixed-schema directory. This is structural validation,
+not speculative reducer application. Unsupported snapshot frame/state versions
+throw rather than disappear into full-log replay. State-schema recognition precedes
+the current schema's size ceiling, since a future schema may legitimately be larger.
+Supported-schema corruption may still recover from a complete valid WAL; absent
+committed history continues to refuse. An incompatible directory retains its
+diagnostic files and bytes. Startup assumes exclusive directory ownership.
+
+The approved version-8 command/result/snapshot boundary must land together with
+catalog-root semantics. Constants remain 7 until then: stamping the partial
+implementation as version 8 would produce a second kind of incompatible history
+inside that version. ADR 0012 records the fresh-lineage rollout; CP-005 records
+the preflight RED/GREEN evidence. This does not establish artifact availability,
+bounded replication history, replacement-voter transfer or live gateway authority.
+
+#### 10.18.13 F3 catalog-v1 canonical ownership boundary
+
+The approved standalone codec admits 1..16 rows sorted by exact five-field key
+(account, venue, instrument, instrument-spec version, capability version). It
+rejects duplicate/unsorted keys rather than normalizing them, because a committed
+root must identify one canonical representation. The independent byte contract
+and digest domain are in `F3_CATALOG_V1_BYTE_REVIEW.md`. Hashing is over explicit
+little-endian fields and length-prefixed text, never C++ padding.
+
+Validation checks account quote/network consistency, repeated-version facts,
+exact positive precision factors and existing profile/capability constraints.
+The factor product uses signed 128-bit arithmetic: two positive signed-64 factors
+fit; both zero remainder and the expected quotient are required. Truncation must
+not hide fractional economics. A valid hash cannot excuse invalid structure.
+
+Encoding stages in bounded scratch before publishing bytes, so refusal cannot
+partially overwrite output and output may alias the input rows. Decoding checks
+into a candidate and assigns only after successful validation/root comparison.
+The verified context OWNS its fixed-size rows; destroying the artifact buffer
+does not invalidate lookups. A returned row pointer borrows from that context:
+the future process owner must publish it as const and keep it alive for the
+lineage. Replacing/destroying the context invalidates those views; fixed storage
+alone does not preserve semantic identity.
+
+Host layout at cache-line settings 64 and 128: context 8,488 bytes, alignment 8,
+below its separate 16 KiB ceiling. Maximum artifact 8,076 bytes fits 8 KiB.
+TradingState and snapshot are unchanged. Validation has at most 120 cross-row
+pairs (O(n^2), n<=16); lookup scans at most 16 rows. Codec/context use no heap,
+files or network. These fixed bounds do not measure deployment latency and do
+not include temporary codec stack scratch in the resident-context number.
+
+CP-007 proves the standalone codec, not committed metadata binding. Kernel and
+snapshot schemas remain 7 until the approved coherent schema-8 integration.
+Catalog integrity is not venue truth or authority to send. Unbound request-body
+APIs remain quarantined; real encoder/venue admission and F4 authority remain open.
+
+#### 10.18.14 F3 immutable installation and dependency-before-apply boundary
+
+CP-008 implements the approved schema-8 boundary (command, result and snapshot
+together). Install kind 20 carries root32 + expected kill epoch u64 + expected
+executor generation u64. It is operator-only, first installs while halted and
+before economic configuration, and never replaces an installed root. Same-root
+retry obeys ordinary identity/control rules. Codes 62..66 are appended; previous
+kind numbers and OrderEffect bytes are unchanged. Old schema-7 storage is retained
+as evidence, not migrated or replayed as this lineage.
+
+The replica owns a const 8,488-byte verified catalog; a borrowed row pointer is
+valid only during that owner's lifetime. Reducer calls receive explicit context.
+Installed-root commands require the matching artifact before any reducer work;
+first install requires it only when deterministic admission permits installation.
+Local absence throws a node dependency error, never a replicated refusal code.
+The optional pinned Raft before_apply hook checks before the library increments
+its applied index. Wrapper-only or applylog-only checks miss indirect apply paths
+or run too late. Failure latches authority/proposal/peer/apply service closed;
+diagnostic reads and draining the writer are not permission to execute.
+
+Staging compares complete profile/capability values with the exact five-field
+row; authorization rechecks that binding after sweep-before-borrow. Historical
+materialization uses the retained proposal, not latest policy, and copies the
+root and versions beside OrderEffect. It checks notional, bounds and supported
+proposal semantics. Gateway admission requires that binding, the historical
+runtime capability version and the effect's operation bit. It cannot use the
+legacy bare materializer to bypass metadata checks. Cancel price/quantity remain
+canonical zero; the original proposal supplies historical instrument identity.
+
+Snapshot prepublication validates both canonical structure and catalog semantics.
+Checks cover staged/active bundles, proposed decisions and retained effects;
+root equality alone does not prove metadata membership. The bounded startup walk
+is O(decisions*rows + effects*(receipts+decisions+rows) + policies), with fixed
+arena bounds. It is not added to every apply. Ordinary row lookup scans <=16 rows;
+no filesystem, network or heap-dependent decision is introduced into apply.
+
+Measured host TradingState 81,392 bytes left 528 under 80 KiB and maximum
+encoded snapshot 65,483 left 53 under 64 KiB at CP-050. After P2.1 (B1 position
+limits, 2026-09-29): TradingState 81,456 bytes leaves 464 under 80 KiB (layout
+tripwire lowered 512 -> 448), and the maximum encoded snapshot 65,519 leaves 17
+under 64 KiB, measured identically at cache lines 64 and 128. The snapshot budget
+now has room for almost nothing: any further per-record growth must be paid for. Context is separate, and temporary codec
+scratch is not included in its resident size. No budget expansion or latency
+claim is made. Real encoder/venue admission, authority protocol F4 and target
+gates remain open. Evidence: `evidence/f3_binding_2026-09-22/README.md`.
+
+#### 10.18.15 Snapshot-covered history debt is not live log capacity (CP-046)
+
+Owner-approved amendment: `F5_INSTALL_HISTORY_BRIDGE_REVIEW.md` and ADR0014.
+The root archive catalog and active generation selector are independent durable
+heads. Keep missing audit history in the candidate's existing identity-bound WAL
+so the selected generation is self-contained before publishing archive coverage.
+No new durable encoding or weakened missing-history refusal is authorized.
+
+The implemented cold-recovery side distinguishes historical `(A,S]` from live
+suffix `(S,D]`: archived cut A, snapshot S, durable end D. The entire retained WAL
+must fit the configured positive cap (maximum1GiB); only the suffix uses the
+existing8192-entry live capacity. Archive publication preflights exact missing
+history objects/bytes plus conservative suffix reservation. Already archived
+overlap is validated but never charged twice. Failure preserves WAL and refuses
+service, not historical evidence. Independent-copy rules still govern deletion.
+
+During recovery the node does not advance consensus, admit requests, or release
+output/authority. One serial worker owns publication; the owner acquires and
+checks its generation/sequence/cut and unchanged durable coordinates before
+clearing quarantine. Cold validation remains synchronous, and no online activation
+or whole-process memory/latency bound follows. Reverification per archive segment
+can reread growing prefixes: bounded resident batches do not imply linear I/O.
+For two voters this quarantine removes quorum until recovery finishes.
+
+Actual peer catch-up, candidate selection, same live result-ledger preservation
+and draining old-generation writes across activation remain unimplemented here.
+Host evidence and explicit limitations:
+`evidence/f5_history_recovery_2026-09-24/README.md`. F5/F6 and E1/E2/E3 remain open.
+
+#### 10.18.16 Fresh independent evidence before live reclamation (CP-048)
+
+Owner approved fresh authenticated destination verification instead of persistent
+backup receipts for MVP. Native two-host compaction can prepare local archive and
+snapshot, but retains WAL/log ownership until exact destination evidence is
+consumed with current local coverage. Cold recovery relying on reclaimed history
+must reacquire that evidence before serving. No pin or missing/corrupt backup
+cannot silently downgrade the deployment to local-only evidence.
+
+The destination verifies the source-published immutable catalog/object/dependency
+set, syncs files and namespace, and binds evidence to pinned destination identity,
+publisher/manifest, exact catalog generation/digest/range, publication/current
+storage generations, attempt and fresh challenge. Values are move-only and
+one-use; no caller boolean mints authority. File integrity and a destination
+identity digest do not authenticate a remote host: that is the trusted transport
+owner's obligation, not established by a local-directory test.
+
+Nonwrapping per-process counters still repeat across restart. A fresh32-byte
+cold getentropy nonce, failing closed on error, derives domain-separated
+per-attempt256-bit challenges. Replay of an old response is rejected even if
+catalog and counters match. This local handshake state never enters the reducer,
+commands or persisted catalog. No wire bytes are frozen here.
+
+Trade-off: backup outage/reverification cost can delay compaction and relevant
+startup. Owner APIs copy bounded native values and validate acquired evidence;
+destination sync/read/network work stays off-owner. Current verifier repeats a
+complete archive check twice; no latency or whole-process memory claim. Preserve
+the conservative checks for MVP. Evidence/limits:
+`evidence/f5_destination_verification_2026-09-24/README.md`. E1/E3 activation,
+authenticated process integration and target acceptance remain open.
+
 ## 11. Execution authority and kill contract
 
 Every sender tracks a committed `ExecutorGeneration` and `KillEpoch`. It rejects
@@ -2805,8 +3073,135 @@ new-risk effects carrying older values. Promotion of a standby requires:
 
 Normal traffic and emergency traffic have separate bounded quota lanes.
 Emergency behavior is limited to pre-authorized stop/cancel/reconcile actions.
+The delivery planner must carry both remaining counts to the pre-send guard,
+not stop scanning when normal quota alone reaches zero. It spends normal quota
+first and emergency quota only for a permitted cancel after normal quota is
+exhausted, preserving authorization order. This is local bounded scheduling,
+not a new replicated field or permission to bypass evidence backpressure.
+New submit authorization also requires nonzero kill epoch and executor generation:
+zero denotes bootstrap, whereas canonical effect bytes require initialized
+authority. Refusing before creating a reservation/order/effect prevents stranded
+risk. Ordinary command receipt/version bookkeeping still occurs on refusal.
 Failure to contact the Decision/OMS authority causes the executor to stop new
 risk before its authority lease expires.
+
+### 11.1 F4 — approved protocol implemented at the host-library boundary
+
+CP-009 reproduces stale-leader renewal and arrival-time freshness on the current
+catalog-bound tree. See `F4_AUTHORITY_PROTOCOL_REVIEW.md` and ADR 0013.
+The owner approved a one-shot, current-term committed replication-only barrier
+per new-risk attempt, with expiry anchored at gateway request start and final
+transport-owner validation. It reuses commit machinery but adds WAL/latency cost.
+The durable type/body is separately approved below; no IPC layout or production
+freshness bound is approved here.
+Local leader status is diagnostic, not renewal evidence. Quorum proof is not
+external fencing or revocation of in-flight requests. Existing cancel exceptions,
+timing limitations and unchanged no-automatic-promotion policy are part of that
+approval; G-052..G-060 remain open for deployment. CP-011 implements the marker
+prerequisite and CP-012 composes owned proof issuance/consumption with final
+transport admission. `F4_AUTHORITY_BARRIER_BYTE_REVIEW.md` records approved type
+101 and a 186-byte frame with exact intent/control/catalog/domain expectations and
+retained-marker drain admission: lagging followers may retain multiple markers,
+but local issuance waits for the highest unapplied marker to drain or be removed.
+Old-term markers may require an ordinary current-term command to unblock because
+the library has no automatic leader no-op (the one-voter lab path differs).
+The owner approved these bytes/domain/drain details. CP-011 tests both normal
+and control commands unblocking a multi-voter old-term drain without producing
+an economic result for the marker. The current implementation derives the drain
+by scanning retained typed entries at owner boundaries, outside pre-removal Raft
+callbacks. This does not bound total log history: F5 retains identity/retention
+responsibility. Marker admission alone is not fresh authority for a live send.
+
+CP-012's producer result is fixed-size, owned and constructible only by the
+replication owner; replay never creates it. Dequeue revalidates term, controls,
+deliverability and the entire historical BoundOrderEffect. GatewayAuthority is
+noncopyable, defaults closed with a zero freshness bound, and matches exact
+incarnation/sequence/request/binding. Its original request tick is never replaced
+by arrival time; subtraction-based age checks avoid deadline-addition overflow.
+Observing changed controls/term or regressed time invalidates outstanding work.
+
+Final `dispatch_gateway_send` checks current delivery/retry/evidence/quota
+eligibility, complete prepared binding and known fences. A second clock sample
+checks time spent preparing/validating, then one-shot consumption and uncertainty
+recording precede the transport callback. Owner inputs are stable and callbacks
+non-reentrant; arbitrary-pause wall-clock or venue-acceptance bounds are NOT
+proven. A copied proof cannot recreate a consumed private permission. A transport
+throw remains possibly sent, never automatic proof-unsent.
+
+The old `renew_authority` compatibility function always returns false and cannot
+alter control freshness. `evaluate_delivery_candidate` replaces the misleading
+`evaluate_pre_send` name: its boolean result is not live authorization. Committed
+cancels need no fresh proof but retain exact binding, known controls, stop-all,
+retry/evidence limits and actual quota consumption. Stop-new-risk does not kill
+the emergency lane. No automatic activation is added.
+
+Host F4 evidence: `evidence/f4_proof_2026-09-22/README.md`. The explicit test of an
+unseen remote kill after a prior proof allows one still-fresh attempt; observing
+the kill later stops new risk but cannot undo bytes already handed off. Persisted
+domain provenance (F5), authenticated IPC/operator re-enable, production clock,
+real adapter/fencing, timing measurement and target gates remain open.
+
+### 11.2 Phase 2 — node<->gateway protocol and the gateway process
+
+Owner decisions (2026-09-29): the gateway is a separate process (one per venue,
+on nuc1); new node-protocol bytes are approved outright; halt on unknown. The
+gateway never changes a position: it submits what the venue reports as
+`ObserveFill` / `ObserveOrderEvent` commands under its own non-operator caller.
+
+Node side. `gateway.caller = <CallerId>` names the one caller whose gateway
+requests a voter serves; it must be a configured caller outside the operator
+band. Two requests ride the existing authenticated ingress envelope, with a
+first body byte outside the lane range (so `decode_ingress` refuses them):
+state read (0x10, 26 bytes) and authority (0x11, 212 bytes: the header plus the
+canonical 186-byte barrier frame). Both are served only by the current leader;
+a follower answers `not_leader` with its leader hint, a busy kernel
+`persistence_busy`. A state read returns the leader's APPLIED state as
+`encode_state_snapshot` bytes in at most three 24 KiB chunks, each carrying the
+responder, leader, term, applied index, authority domain, total length and the
+SHA-256 of the whole snapshot; the gateway reassembles only chunks with an
+identical header from one responder, checks the digest, then decodes. An
+authority request is proposed with `propose_authority_barrier`; the node holds
+one pending slot, answers the proof from `take_authority_proof()` only if its
+request equals the pending barrier, and abandons the barrier (answering
+`authority_lost` or `not_leader`) on leadership loss or after 5 s. Exact
+layouts are in `node_protocol.hpp`.
+
+Every gateway response echoes a correlation: the request id and SHA-256 over
+`"velocita.v2.gateway-request.1"` and the exact request body. The body carries a
+fresh 128-bit per-process incarnation (entropy from `getentropy`), so no
+response can correlate with another process's request.
+
+WHAT PROVES A PROOF IS GENUINE. `GatewayLink` constructs an `AuthorityProof`
+only from an `authority_granted` frame whose envelope MAC verified under the
+response key derived from this gateway caller's secret for route (response,
+issuing voter -> gateway key, cluster incarnation), that passed that voter's
+session fence, whose correlation equals the link's single pending authority
+request, and whose decoded barrier equals that request's barrier (same process
+incarnation, sequence, effect, digest, controls, catalog root and authority
+domain) with issuer id equal to the authenticated sender; the voter emits such
+a frame only from `take_authority_proof()` for that barrier. The MAC key is
+symmetric: this defends against the network and every other caller, not
+against a compromised gateway host, which already holds send capability.
+`GatewayAuthority::accept` then applies its own freshness, highwater and
+binding checks, and `dispatch_gateway_send` consumes the permission once.
+
+Gateway side. `GatewayLoop` (one non-blocking step, injected clock, bounded
+arenas) reads state, plans with `plan_delivery`, requests one proof per
+risk-increasing send, dispatches through `dispatch_gateway_send`, and turns
+venue reports into evidence obligations whose command digest is the
+observation fingerprint. Committed cancels use the library's committed-cancel
+exception. Startup is the only activation: if the first read finds unsettled
+effects (possibly sent by a previous process), or `--allow-new-risk` is absent,
+or the freshness bound is zero (the ADR 0013 default), new risk stays stopped.
+A term, kill-epoch, generation or mode change, an unknown outcome, a refused
+evidence command, an inconsistent or exhausted reconciliation, or an order in
+`conflict` stops new risk, and nothing in the process re-enables it: an
+operator restarts the gateway. Venue reports are acknowledged to the venue only
+after their command committed.
+
+Not closed by this section: G-052 external single-sender fencing (two gateway
+processes for one venue are not prevented), a measured live freshness bound,
+and automatic re-activation after a leader change (deliberately absent).
 
 ## 12. Persistence, replay, and snapshot contract
 
@@ -2842,6 +3237,210 @@ atomic under the declared storage contract, and WAL prefixes are reclaimable
 only after the replacement snapshot is durable and verified.
 
 ## 13. Thread and process ownership
+
+CP-049 implementation note (approved CP-036/045 direction, not a new byte
+contract): the serial writer now supports a process-local target handoff. The
+owner seals/submits ALL old staging before release-publishing one request and pauses new
+blocks/maintenance. The worker must acquire that request and THEN recheck the
+submission queue: an empty pop before acquiring it is not a drain proof. Every
+older write must be synced and its completion dequeued before targets change.
+The owner must additionally apply those dequeued completions before retiring the
+old arena. Both borrowed target objects remain alive through acquired switch
+completion; the new target remains alive for subsequent writes. No pointer in
+this protocol owns storage by itself.
+
+The response binds previous/next storage generation, operation sequence and
+success. Generation and successful-operation sequence advance without wrap;
+wrong expected generation returns failure without rebinding. Admission and
+completion polling perform bounded native operations, not filesystem calls or
+thread joins. The worker can wait for disk or owner completion drain indefinitely;
+this is responsiveness, not a completion-time/availability guarantee. Shutdown
+may join, but online switching may not use shutdown as its fence. Existing
+maintenance must finish and have its completion acquired before a switch can be
+admitted. This is only a writer-lifetime boundary: selector publication, final
+Raft/ledger revalidation and prepared-generation authority still belong to the
+unimplemented online installer. No E1/E3 acceptance follows from this component.
+
+CP-013 remediation note (2026-09-22): SnapshotStore input is bounded by the
+existing canonical maximum plus framing/lookahead before allocation proportional
+to input. This closes one cold-recovery allocation surface, not whole-node
+boundedness. Flush and metadata failures now latch the V2 owner closed; cache
+publication follows successful persistence, and tick checks the latch even if
+the pinned Raft self-vote path swallows a callback error. No new bytes/schema.
+F5 identity/queues/archive/snapshot-install and F6 async hard-state/durability
+model remain open. The owner approved `F5_F6_RECOVERY_DURABILITY_REVIEW.md` /
+ADR0014 direction after CP-013, not unspecified new bytes or capacities. The exact
+`F5_STATIC_IDENTITY_BYTE_REVIEW.md` contract was approved after CP-014; it addresses
+startup drift binding, not yet identity-bound history/peer traffic. These increments do not replace the
+guarantees below.
+
+CP-014 adds a restricted persistence-ordering model of actual metadata save/load;
+removing either file sync or directory sync fails independent recovered-value
+checks. It is not physical power-loss evidence, exhaustive writeback/tear coverage
+or asynchronous hard-state implementation. See `evidence/f6_persistence_model_2026-09-22/README.md`.
+
+CP-015 implements that identity codec and a move-only directory owner. Matching
+recovery validates then re-establishes publication durability before issuing the
+token. CP-016 removes the raw ReplicatedKernel constructor: a consumed token is
+the first member, checked before stores and destroyed after every store/writer.
+Static ID/voters/catalog/domain derive only from it. The catalog reference points
+into the owned token, avoiding both caller-lifetime dependence and a second copy.
+A04 startup drift is host GREEN; exact refusal preserves history and a healthy
+same-identity restart restores it. Advisory locks and pre-open inode checks do not
+prevent later hostile pathname replacement; trusted stable paths remain required.
+See `evidence/f5_kernel_startup_2026-09-22/README.md`. Token ownership is not quorum
+authority; foreign-history binding, full F5 and device proof remain open.
+
+CP-018: background WAL errors are captured and release/acquire-published to owner
+service guards. Worker stop always joins; failure is permanent and neither restart
+nor direct polling can resume publication. This closes an exception/ownership
+boundary, not asynchronous Raft hard-state fencing. Observation is at owner API
+boundaries, not instantaneous cancellation of previously emitted traffic. Focused
+thread tests/mutants and full host regression are recorded in
+`evidence/f5_f6_parallel_2026-09-22/README.md`. Exact history/peer framing and new
+genesis publication order remain PROPOSED in `F5_BOUND_FRAME_BYTE_REVIEW.md`.
+
+CP-019 supersedes that proposal status: the owner approved the complete byte
+sheet. Common framing and the ordinary-peer boundary are implemented; local
+storage and genesis integration are not yet implemented. The only public peer
+receive API accepts bound bytes, never a raw PeerMessage. Framing checks lengths
+before hashing, then integrity/manifest/owner before publishing an input-borrowed
+view. Typed peer preflight walks the ENTIRE bounded entry layout before the
+shared V1 decoder may allocate entry vectors. All four message types, including
+replies, then pass route/member/candidate and canonical payload/domain checks
+before any Raft callback. This prevents foreign traffic changing term/vote/log;
+it does not authenticate a malicious sender who knows the public manifest.
+
+The sender copies at most sixteen entries into one batch; the whole encoded frame
+is at most 32 KiB. In the pinned Raft implementation an acknowledgement advances
+next_idx only through the received prefix and triggers another send for a retained
+suffix. A three-node forty-entry backlog test pins complete convergence through
+this boundary. These are per-message limits, NOT queue/log/order count limits.
+The kernel owns one cold-allocated 65,613-byte framing scratch (largest approved
+local frame plus digest domain); TradingState is unchanged. Successful peer decode
+still allocates bounded entry vectors. Whole-node queues, log retention and owner
+work budgets remain open; this is not an allocation-free gateway claim.
+
+Generic bound-frame decoding checks framing and scope only. Metadata tuples,
+record coordinates, snapshot state/catalog and crash-publication transitions need
+their typed storage consumers. No generic codec result may be treated as verified
+recoverable history. See `evidence/f5_bound_peer_2026-09-22/README.md` for the
+independent golden, preflight allocation probe, admission/batch mutants and limits.
+
+CP-020 integrates the approved local consumers: bound metadata is mandatory,
+WAL block version2 contains only bound canonical records, and local snapshots
+carry the same verified manifest plus local owner. Legacy flat-WAL presence is
+incompatible even when empty; V1 codecs remain unchanged. Recovery validates ALL
+complete selected records before writable open, not merely the suffix it applies.
+Metadata term covers every log/snapshot term; retained indices are contiguous,
+terms nondecreasing and the snapshot overlap consistent. Snapshot index can exceed
+the older metadata commit checkpoint because a durable snapshot itself establishes
+that committed prefix. This does not permit term/vote rollback or prove that an
+entire same-node directory has not been rolled back externally.
+
+Genesis publishes zero metadata first and immutable identity last. Complete exact
+genesis temps follow the reviewed retry table; partial/foreign/ambiguous artifacts
+refuse unchanged. Recovery never resumes genesis or promotes a metadata temp.
+Complete matching replacement temps may be overwritten by a later newly requested
+save only after validation. Full nonzero corrupt WAL blocks refuse, preserving
+evidence; physical short tails yield only the complete prefix and cannot excuse
+missing committed history. Supported snapshot corruption may replay only when
+the remaining log proves coverage. Unsupported/foreign snapshots never fallback.
+
+Independent review caught an oversized-future-snapshot regression and a complete-
+corrupt-block overwrite hazard; both have permanent tests. Six isolated mutations
+verify intended refusal guards. Host51/51 Release/sanitized is not target, latency
+or power-loss proof. At CP-020 the CP-014 syscall model still exercised generic
+MetadataStore, not the new bound store. CP-027 supplies a separate actual bound
+save/load model with independent tuple expectations and intended sync-only mutation
+failures. This closes that model-port gap, not asynchronous hard-state or physical
+power-loss acceptance. Evidence: `evidence/f5_local_history_2026-09-22/README.md`
+and `evidence/f6_bound_metadata_model_2026-09-23/README.md`.
+
+CP-021 additionally enforces the receiver's verified-prefix commitment boundary:
+V2 passes min(leader_commit, previous_log_index+entry_count) to pinned Raft,
+whose own cap incorrectly relies on its full local log for this boundary. Empty
+heartbeats cover previous_log_index only; failed prefix verification still cannot
+advance commit, and a lower leader commit remains lower. Prefix arithmetic is
+validated before mutation; canonical/V1/fork bytes are unchanged. Synthetic
+ingress tests expose unchecked-tail apply without the guard; independent review
+did NOT establish an honest current-sender execution reaching that divergent-tail
+shape, because backtracking truncates. Retain this qualification rather than
+turning boundary hardening into an unsupported production incident claim.
+Evidence: `evidence/f5_verified_prefix_2026-09-23/README.md`.
+
+Bounded result ownership and1024/64 capacity are approved in
+`F5_ADMISSION_RESULT_REVIEW.md` §7. After separate §8 approval, CP-023 replaces the
+kernel deque with per-entry reservations and retained-ready delivery. Full followers
+process term/prev without new entries and cap commitment at min(advertised,prev);
+this can mutate state and is NOT malformed-input/no-mutation refusal. Read-only
+whole-batch capacity/generation simulation relies on synchronous single-owner
+callbacks; successful durable deletion releases actual suffix slot ownership before
+replacement offers reserve. Recovery reserves retained uncommitted entries before
+writable storage opens. Evidence: `evidence/f5_result_integration_2026-09-23/README.md`.
+Every result-producing command needs a reservation; authority markers do not.
+Ready notifications survive elections/compaction until taken. Replacing a full
+uncommitted suffix requires a prepared ownership transfer AFTER successful durable
+truncation, not premature release or an impossible demand for spare slots. This
+was implemented for result ownership in CP-023, without closing node-wide bounds.
+
+CP-025 implements owner-approved outbound/log contracts in
+`F5_OUTBOUND_LOG_CAPACITY_REVIEW.md`. Four same-kind coalescing owned frame slots
+per peer replace retry accumulation; persistent fair draining and lower-term
+watermarks preserve bounded transport ownership without synthesizing replies.
+Kernel egress copies into a caller-owned bounded span; dynamic decoding is a
+test adapter. Borrowed append payloads are encoded synchronously into owned bytes,
+including bounded staging for input/output alias safety. Max16-entry prefix sends
+continue to advance a longer Raft suffix; coalescing is packet loss/retry, never
+trading-effect cancellation or log deletion.
+
+Retained log owns8192 stable2048-byte cells,8128 ordinary/64 protected actual-pool
+tokens. Existing operator classifier only; authority markers ordinary. Whole
+follower admission plans log/result ownership before mutating Raft; reusable
+suffix credit becomes actual only after successful durable removal. Insufficient
+space uses the approved term/prev-only response path. Committed retained history
+also counts at startup. Full-history vector materialization is removed from
+production recovery/rewrites; bounded scanning preserves bytes and fd/durability
+ordering. Ready results remain separately owned until consumed.
+
+Actual mailbox66680 bytes/node includes BOTH remote-peer sets even on two voters;
+log payload16777216 + descriptors327680 + owner64 bytes; kernel inline91424 is not
+total footprint. Existing library ring has a separately budgeted resize peak.
+No allocation-free admission, emergency deadline, continuous fill ingestion,
+target performance or process-RSS guarantee is implied. Archive/install/replacement
+and safe prefix reclamation remain open; NEVER delete history to escape fullness.
+Evidence/limitations: `evidence/f5_capacity_integration_2026-09-23/README.md`.
+
+CP-026 completion review: `F5_COMPLETION_AND_NUC_PLAN.md` (recommendations, not
+new accepted bytes). Current-source peer catch-up and archive-loss REDs remain.
+Install must preserve READY result values and settle covered RESERVED obligations;
+snapshot receipts alone do not prove historical per-entry outcomes. Staging files
+is not selecting a generation: after durable active selection, old-owner rollback
+is forbidden. The proposed offline replacement mode does not authorize genesis
+bootstrap after lost hard state. No acceptance scope is reduced.
+
+After CP-026 the owner approved offline fenced repair and the immutable/no-auto-
+prune, fail-closed archive policy. The exact standalone portable codec in
+`F5_ARCHIVE_SEGMENT_BYTE_REVIEW.md` was approved after CP-027 and implemented at
+CP-028, not snapshot/install/coverage bytes.
+Archive parsing must not retrospectively filter canonical commands that refused
+or authority requests that yielded no proof. Gateway-process incarnation is not
+cluster incarnation; requested catalog/effect/epochs remain historical evidence.
+
+CP-028 uses a 96-byte segment header and 32-byte record headers with two levels
+of domain-separated SHA-256, capped at 4 MiB and 8,192 records per object. The
+encoder pulls one immutable record at a time; it does not require a descriptor
+array proportional to record count. The decoder validates the entire immutable
+span before invoking any visitor. Both run in linear bytes/records with fixed
+codec scratch, but the caller currently supplies the entire contiguous buffer;
+file-backed streaming and durable publication are separate unfinished work.
+Preflight refusal leaves encoder output unchanged. Second-pass source failure can
+leave partial unpublishable bytes; visitor refusal can leave a consumed prefix,
+never success metadata. Input stability and nonaliasing are explicit caller
+preconditions. This is neither a transaction over applied commands nor a
+commit/durability certificate. Component GREEN cannot release a retained-log
+cell; the archive-loss and peer-catch-up integration REDs remain open.
+Proof and API details: `evidence/f5_archive_codec_2026-09-23/README.md`.
 
 - one Raft owner thread owns protocol state and the trading reducer;
 - one persistence owner handles sealed WAL blocks and reports durability

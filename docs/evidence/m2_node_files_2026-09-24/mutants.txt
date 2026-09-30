@@ -1,0 +1,4 @@
+baseline             node file tests passed
+group_other_allowed  node file tests failed: secret readable by others accepted, mode 416
+size_unchecked       node file tests failed: long secret accepted
+follows_symlinks     node file tests failed: symlinked secret followed

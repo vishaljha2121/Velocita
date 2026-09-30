@@ -1,0 +1,40 @@
+=== duplicates_allowed
+302c302
+<             if (!draft.seen.emplace(key, line_number).second) fail(Code::duplicate_key, line_number, key);
+---
+>             draft.seen.emplace(key, line_number);
+=== inline_hash_allowed
+304c304
+<             if (value.empty() || value.find('#') != std::string_view::npos)
+---
+>             if (value.empty())
+=== dotdot_allowed
+73d72
+<         if (part == "..") return std::nullopt;
+=== self_key_allowed
+234d233
+<     if (d.voter_keys.contains(*d.node_id)) inconsistent("voter." + std::to_string(*d.node_id) + ".key_file");
+=== duplicate_caller_id
+246d245
+<         if (!caller_values.insert(*value).second) inconsistent("caller." + std::to_string(id) + ".caller_id");
+=== voter_count_unbounded
+233d232
+<     if (d.voter_endpoints.size() > kMaxStaticVoters) inconsistent("voter");
+=== control_bytes_allowed
+292c292
+<                 !std::all_of(line.begin(), line.end(), printable))
+---
+>                 false)
+=== leading_zero_allowed
+36c36
+<     if (text.empty() || text.size() > 20 || (text.size() > 1 && text.front() == '0')) return std::nullopt;
+---
+>     if (text.empty() || text.size() > 20) return std::nullopt;
+=== ingress_collision_allowed
+243d242
+<     if (endpoints.contains(*d.ingress)) inconsistent("ingress.endpoint");
+=== follows_symlinks
+315c315
+<     const int fd = ::open(file.c_str(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+---
+>     const int fd = ::open(file.c_str(), O_RDONLY | O_CLOEXEC);

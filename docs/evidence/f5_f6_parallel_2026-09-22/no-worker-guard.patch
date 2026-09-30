@@ -1,0 +1,20 @@
+--- src/v2_replication.cpp	2026-09-22 20:22:22
++++ /private/tmp/f5-f6-parallel.IqHRl4/replication-no-worker-guard.cpp	2026-09-22 20:35:54
+@@ -303,7 +303,7 @@
+ }
+ 
+ void ReplicatedKernel::require_usable() const {
+-    if (storage_failed_ || (writer_ && writer_->failed()))
++    if (storage_failed_)
+         throw std::runtime_error("replica storage failure; restart required");
+     if (catalog_dependency_failed_ ||
+         !execution_catalog_ready(state_.execution_catalog_root, &catalog_))
+@@ -311,7 +311,7 @@
+ }
+ 
+ bool ReplicatedKernel::is_leader() const {
+-    return !storage_failed_ && (!writer_ || !writer_->failed()) && !catalog_dependency_failed_ &&
++    return !storage_failed_ && !catalog_dependency_failed_ &&
+         execution_catalog_ready(state_.execution_catalog_root, &catalog_) &&
+         raft_is_leader(server_) != 0;
+ }

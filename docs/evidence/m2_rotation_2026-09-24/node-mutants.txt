@@ -1,0 +1,5 @@
+baseline                 node tests passed
+accept_only_current      node tests failed: timed out waiting for commit during rotation step: new secrets accepted
+previous_not_accepted    node tests failed: timed out waiting for commit during rotation step: mixed promotion
+send_with_next           node tests failed: timed out waiting for commit during rotation step: one voter accepts the new secrets
+reload_ignores_missing   node tests failed: incomplete reload threw instead of refusing

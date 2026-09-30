@@ -1,0 +1,60 @@
+--- src/v2_archive_segment.cpp	2026-09-23 13:06:50
++++ /private/tmp/v2-archive-main-mutants.xzABU9/ordinal.cpp	2026-09-23 13:06:58
+@@ -42,7 +42,7 @@
+ }
+ 
+ void hash_ascii(Sha256& hash, const std::string_view text) noexcept {
+-    hash.update(std::as_bytes(std::span{text.data(), text.size()}));
++    hash.update(std::as_bytes(std::span{text}));
+ }
+ 
+ bool digest_matches(const std::span<const std::byte> encoded,
+@@ -170,7 +170,7 @@
+         const auto record_size = kArchiveRecordHeaderBytes + payload_size + kArchiveDigestBytes;
+         if (record_size > records_end - offset) return ArchiveSegmentError::truncated;
+         if (first_index > std::numeric_limits<std::uint64_t>::max() - ordinal ||
+-            index != first_index + ordinal || term <= 0 ||
++            false || term <= 0 ||
+             (ordinal != 0 && term < previous_term))
+             return ArchiveSegmentError::invalid_coordinates;
+         if ((ordinal == 0 && term != first_term) ||
+@@ -222,7 +222,6 @@
+               identity.manifest_digest().bytes.end(), segment.begin() + 56);
+ 
+     std::size_t offset = kArchiveSegmentHeaderBytes;
+-    std::int64_t previous_term{};
+     for (std::uint32_t ordinal = 0; ordinal < source.count; ++ordinal) {
+         ArchiveRecordView record;
+         if (!source.record_at(source.context, ordinal, record))
+@@ -233,7 +232,6 @@
+         if (payload_error != ArchiveSegmentError::none) return {payload_error, 0, {}};
+         if (record.index != validated.first_index + ordinal || record.term <= 0 ||
+             (ordinal == 0 && record.term != validated.first_term) ||
+-            (ordinal != 0 && record.term < previous_term) ||
+             (ordinal + 1 == source.count && record.term != validated.last_term))
+             return {ArchiveSegmentError::invalid_coordinates, 0, {}};
+         const auto record_size = kArchiveRecordHeaderBytes + record.payload.size() +
+@@ -257,7 +255,6 @@
+                   segment.begin() + static_cast<std::ptrdiff_t>(
+                       offset + kArchiveRecordHeaderBytes + record.payload.size()));
+         offset += record_size;
+-        previous_term = record.term;
+     }
+     if (offset != validated.total_bytes - kArchiveDigestBytes)
+         return {ArchiveSegmentError::source_read_failed, 0, {}};
+@@ -289,9 +286,7 @@
+     const auto count = static_cast<std::uint32_t>(get(input, 12, 4));
+     if (count == 0) return {ArchiveSegmentError::invalid_coordinates};
+     if (count > kMaxArchiveRecords) return {ArchiveSegmentError::capacity_exceeded};
+-    if (get(input, 88, 4) != 0)
+-        return {ArchiveSegmentError::unsupported_schema};
+-    if (get(input, 92, 4) != 0)
++    if (get(input, 88, 4) != 0 || get(input, 92, 4) != 0)
+         return {ArchiveSegmentError::nonzero_reserved};
+     if (!std::equal(identity.manifest_digest().bytes.begin(),
+                     identity.manifest_digest().bytes.end(), input.begin() + 56))
+@@ -339,3 +334,4 @@
+ }
+ 
+ } // namespace velocita::v2
++

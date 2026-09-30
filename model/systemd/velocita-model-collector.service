@@ -1,0 +1,71 @@
+# Passive market-data research collector.
+#
+# The hardening below is not decoration. This unit runs unattended on a Pi that
+# also hosts a Raft voter, and the sandbox is what makes "this process cannot
+# trade" an operating-system fact rather than only a code review conclusion:
+# no network write path to a wallet, no writable home, no new privileges.
+
+[Unit]
+Description=Velocita model - passive market-data research collector
+Documentation=file:/opt/velocita-model/docs/V2_MODEL_AND_MARKET_DATA_EDGE_DESIGN.md
+After=network-online.target chronyd.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=velocita
+Group=velocita
+WorkingDirectory=/opt/velocita-model
+Environment=PYTHONPATH=/opt/velocita-model/src
+Environment=PYTHONUNBUFFERED=1
+
+# NOTE: `collect` is not implemented yet - it is blocked on confirming the
+# venue's market-data endpoints and whether resting limit orders exist at all.
+# The unit is written now so the operating contract is reviewable, and it exits
+# non-zero with an explanation rather than pretending to collect.
+#
+# The interlock runs first. If the static audit finds a trading-capable symbol
+# anywhere in the tree, the unit fails to start rather than collecting anyway.
+ExecStartPre=/usr/bin/python3 -m velocita_model.cli verify
+ExecStart=/usr/bin/python3 -m velocita_model.cli collect /opt/velocita-model/config/research.toml
+
+Restart=on-failure
+RestartSec=15s
+# Give the store time to checkpoint the WAL on a clean stop, so a power loss
+# immediately afterwards cannot lose an unmerged tail.
+TimeoutStopSec=60s
+KillSignal=SIGTERM
+
+# Resource ceilings. The Raft voter on this host must keep its CPU budget; a
+# research collector that starves consensus is a worse outcome than a gap in the
+# research data, and the gap is recorded honestly either way.
+CPUQuota=40%
+MemoryMax=512M
+Nice=10
+IOSchedulingClass=idle
+
+# Sandbox
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadWritePaths=/var/lib/velocita-model
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=velocita-model
+
+[Install]
+WantedBy=multi-user.target

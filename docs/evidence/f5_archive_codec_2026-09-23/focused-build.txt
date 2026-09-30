@@ -1,0 +1,41 @@
+[ 16%] Built target willemt_raft
+[ 25%] Building CXX object CMakeFiles/velocita_v2_contracts.dir/src/v2_digest.cpp.o
+[ 25%] Building CXX object CMakeFiles/velocita_v2_contracts.dir/src/v2_static_identity.cpp.o
+[ 25%] Building CXX object CMakeFiles/velocita_v2_contracts.dir/src/v2_authority_barrier.cpp.o
+[ 25%] Building CXX object CMakeFiles/velocita_v2_contracts.dir/src/v2_artifact_digest.cpp.o
+[ 25%] Building CXX object CMakeFiles/velocita_v2_contracts.dir/src/v2_execution_catalog.cpp.o
+[ 41%] Built target velocita_core
+[ 50%] Linking CXX static library libvelocita_v2_contracts.a
+[ 50%] Built target velocita_v2_contracts
+[ 50%] Built target velocita_v2_evaluator
+[ 50%] Building CXX object CMakeFiles/velocita_v2_kernel.dir/src/v2_gateway_authority.cpp.o
+[ 50%] Building CXX object CMakeFiles/velocita_v2_kernel.dir/src/v2_gateway.cpp.o
+[ 50%] Building CXX object CMakeFiles/velocita_v2_kernel.dir/src/v2_kernel.cpp.o
+[ 58%] Building CXX object CMakeFiles/velocita_v2_kernel.dir/src/v2_kernel_codec.cpp.o
+[ 58%] Building CXX object CMakeFiles/velocita_v2_kernel.dir/src/v2_gateway_dispatch.cpp.o
+[ 66%] Building CXX object CMakeFiles/velocita_v2_kernel.dir/src/v2_metrics.cpp.o
+[ 66%] Building CXX object CMakeFiles/velocita_v2_kernel.dir/src/v2_replay.cpp.o
+[ 66%] Building CXX object CMakeFiles/velocita_v2_kernel.dir/src/v2_state_snapshot.cpp.o
+[ 66%] Linking CXX static library libvelocita_v2_kernel.a
+[ 66%] Built target velocita_v2_kernel
+[ 66%] Building CXX object CMakeFiles/velocita_v2_replication.dir/src/v2_archive_segment.cpp.o
+[ 66%] Building CXX object CMakeFiles/velocita_v2_replication.dir/src/v2_bound_frame.cpp.o
+[ 66%] Building CXX object CMakeFiles/velocita_v2_replication.dir/src/v2_bound_wal.cpp.o
+[ 66%] Building CXX object CMakeFiles/velocita_v2_replication.dir/src/v2_identity_startup.cpp.o
+[ 75%] Building CXX object CMakeFiles/velocita_v2_replication.dir/src/v2_bound_metadata.cpp.o
+[ 75%] Building CXX object CMakeFiles/velocita_v2_replication.dir/src/v2_bound_peer.cpp.o
+[ 83%] Building CXX object CMakeFiles/velocita_v2_replication.dir/src/v2_result_ledger.cpp.o
+[ 83%] Building CXX object CMakeFiles/velocita_v2_replication.dir/src/v2_replication.cpp.o
+[ 83%] Building CXX object CMakeFiles/velocita_v2_replication.dir/src/v2_outbound_mailbox.cpp.o
+[ 83%] Building CXX object CMakeFiles/velocita_v2_replication.dir/src/v2_retained_log.cpp.o
+[ 83%] Building CXX object CMakeFiles/velocita_v2_replication.dir/src/v2_snapshot_store.cpp.o
+[ 83%] Building CXX object CMakeFiles/velocita_v2_replication.dir/src/v2_wal_arena.cpp.o
+[ 91%] Linking CXX static library libvelocita_v2_replication.a
+[ 91%] Built target velocita_v2_replication
+[ 91%] Building CXX object CMakeFiles/v2-archive-segment-adversarial-tests.dir/tests/v2_archive_segment_adversarial_tests.cpp.o
+[100%] Linking CXX executable v2-archive-segment-adversarial-tests
+[100%] Built target v2-archive-segment-adversarial-tests
+[ 66%] Built target velocita_v2_contracts
+[ 66%] Building CXX object CMakeFiles/v2-incremental-digest-tests.dir/tests/v2_incremental_digest_tests.cpp.o
+[100%] Linking CXX executable v2-incremental-digest-tests
+[100%] Built target v2-incremental-digest-tests

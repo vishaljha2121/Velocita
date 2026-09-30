@@ -1,0 +1,6 @@
+== baseline
+two-voter catch-up tests passed
+exit=0
+== mutant
+two-voter catch-up tests failed: leader counted a staged, unsynced peer acknowledgement toward quorum
+exit=1

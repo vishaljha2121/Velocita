@@ -1,0 +1,5 @@
+value_in_argv          FAIL: test_write_sends_value_on_stdin_never_in_argv (tests.test_secrets_tool.KeychainTransportTests.test_write
+no_tmpfs_check         FAIL: test_push_sends_bytes_on_stdin_and_checks_tmpfs (tests.test_secrets_tool.RemoteTransportTests.test_push_
+stale_next_kept        FAIL: test_full_rotation_cycle_keeps_hosts_in_sync (tests.test_secrets_tool.WorkflowTests.test_full_rotation_c
+tty_allowed            FAIL: test_client_key_refuses_terminal_and_writes_raw_bytes (tests.test_secrets_tool.WorkflowTests.test_client
+begin_over_previous    FAIL: test_rotation_steps_refuse_out_of_order (tests.test_secrets_tool.WorkflowTests.test_rotation_steps_refus

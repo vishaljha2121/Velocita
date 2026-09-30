@@ -1,0 +1,11 @@
+--- src/v2_digest.cpp	2026-09-23 12:58:09
++++ /private/tmp/v2-incremental-digest-mutants.43XQvF/length.cpp	2026-09-23 12:59:00
+@@ -136,7 +136,7 @@
+     std::copy_n(buffer_.begin(), buffered_, tail.begin());
+     tail[buffered_] = std::byte{0x80};
+     const std::size_t padded_size = buffered_ < 56U ? 64U : 128U;
+-    const auto bit_length = total_bytes_ * 8U;
++    const auto bit_length = static_cast<std::uint64_t>(buffered_) * 8U;
+     for (std::size_t index = 0; index < 8U; ++index) {
+         tail[padded_size - 1U - index] =
+             static_cast<std::byte>((bit_length >> (index * 8U)) & 0xFFU);

@@ -1,0 +1,9 @@
+Test project /private/tmp/aeron-phase67-audit-build
+    Start 67: v2-generation-base-tests
+1/2 Test #67: v2-generation-base-tests .........   Passed    0.25 sec
+    Start 68: v2-generation-base-files-tests
+2/2 Test #68: v2-generation-base-files-tests ...   Passed    0.08 sec
+
+100% tests passed out of 2
+
+Total Test time (real) =   0.33 sec

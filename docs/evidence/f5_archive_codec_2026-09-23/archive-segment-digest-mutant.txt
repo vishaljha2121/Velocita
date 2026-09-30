@@ -1,0 +1,1 @@
+archive adversarial tests failed: segment digest footer corruption accepted

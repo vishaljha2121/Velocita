@@ -1,0 +1,2 @@
+snapshot-catchup trace: leader=3 healthy_peer=2 lagger=1 compacted_through=12 lagger_applied=0 lagger_commit=0 append_deliveries=7 failed_append_replies=7
+snapshot catch-up test failed: lagging voter could not cross the compacted prefix via snapshot install

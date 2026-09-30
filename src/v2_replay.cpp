@@ -7,7 +7,8 @@ ReplayApplyResult apply_encoded_kernel_command(
     const std::span<const std::byte> command_bytes,
     ApplyScratch& apply_scratch,
     KernelCommandCodecScratch& codec_scratch,
-    const std::span<std::byte> result_output) noexcept {
+    const std::span<std::byte> result_output,
+    const VerifiedExecutionCatalog* catalog) {
     if (result_output.size() < kKernelResultBytes) {
         return {.error = ReplayError::result_output_too_small};
     }
@@ -22,7 +23,7 @@ ReplayApplyResult apply_encoded_kernel_command(
         };
     }
 
-    const auto applied = apply(state, codec_scratch.candidate, apply_scratch);
+    const auto applied = apply(state, codec_scratch.candidate, apply_scratch, catalog);
     const auto encoded = encode_kernel_result(applied, result_output);
     if (encoded.error != KernelCodecError::none) {
         // The output size was preflighted and apply() only returns values from

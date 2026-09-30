@@ -1,0 +1,11 @@
+apiVersion: 1
+providers:
+  - name: Velocita V2
+    orgId: 1
+    folder: Velocita
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/dashboards

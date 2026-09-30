@@ -1,0 +1,1 @@
+result obligation tests failed: READY binding lost command identity, digest, term or index

@@ -195,17 +195,24 @@ Phase 11 strategy/model validation and controlled canary
 
 ## 6. Replication and availability semantics — Phase 6
 
-- [x] **G-035 — Apply after commit only.** A command invokes the authoritative
+Current-candidate override (2026-09-21): Phase 6/7 runtime guarantees are open
+for acceptance, not all absent in code. The previous NUC PASS covers an ancestor,
+the current manifest omits dependencies, and concrete authority/config/recovery
+defects remain. See evidence/V2_PHASE6_9_FULL_AUDIT_2026-09-21.md and
+V2_NUC_PI_TRADING_ROADMAP.md. Historical closure prose below is retained as an
+audit trail, not current status. G-041 remains a truthful failure-domain statement.
+
+- [ ] **G-035 — Apply after commit only.** A command invokes the authoritative
   reducer only after the configured Raft commit condition is satisfied.
-- [x] **G-036 — Stable retry across routing and leadership.** Follower routing,
+- [ ] **G-036 — Stable retry across routing and leadership.** Follower routing,
   lost responses, and leader changes preserve the original request identity.
-- [x] **G-037 — Leader-crash cut-point safety.** A crash before commit creates no
+- [ ] **G-037 — Leader-crash cut-point safety.** A crash before commit creates no
   effect; a crash after commit preserves and redelivers the same effect identity.
-- [x] **G-038 — Quorum loss fails closed.** Loss of quorum prevents new
+- [ ] **G-038 — Quorum loss fails closed.** Loss of quorum prevents new
   authoritative risk decisions and risk-increasing outbox creation.
-- [x] **G-039 — Replica convergence.** Healthy voters converge on commit index,
+- [ ] **G-039 — Replica convergence.** Healthy voters converge on commit index,
   applied index, state digest, policy identity, and outbox watermark.
-- [x] **G-040 — Snapshot install preserves authority.** A restarted or replaced
+- [ ] **G-040 — Snapshot install preserves authority.** A restarted or replaced
   voter recovers all safety and dedup state before participating normally.
 - [x] **G-041 — Honest failure domain.** Three voters on one Pi are process-fault
   exercises, not host fault tolerance; host-failure continuity requires voters
@@ -231,30 +238,63 @@ Phase 11 strategy/model validation and controlled canary
 
 ## 7. Durability, bounded memory, snapshot, and compaction — Phase 7
 
-- [x] **G-042 — Quorum-durable success.** A successful decision means durable
+CP-028 host component update (2026-09-23): the approved portable archive codec
+validates bounded canonical history against shared identity, both digests and
+exact coordinates before any visitor. It preserves refused/no-proof attempts.
+This does NOT close G-040/G-043/G-047/G-049: no durable archive publisher,
+coverage-gated reclamation, remote install/repair or asynchronous fence was added.
+The original archive-loss/catch-up integration REDs remain open. Component proof
+and limits: evidence/f5_archive_codec_2026-09-23/README.md.
+
+CP-027 host update (2026-09-23): the actual identity-bound metadata store now has
+its own sync-sensitive save/load model, with independent old/new tuple expectations
+and file-sync-only/directory-sync-only mutants failing the intended oracle. The
+old generic model was not evidence for this implementation. Model limits, raw
+results and provenance: evidence/f6_bound_metadata_model_2026-09-23/README.md.
+G-047 remains open for complete protocol/target acceptance; G-043's async owner
+requirement is not satisfied by a passing synchronous persistence test.
+
+CP-025 host update (2026-09-23): result/outbound/retained-log ownership is now
+bounded across local admission, follower batches and startup; production WAL
+recovery/rewrites stream bounded blocks. Exact limits, availability caveats and
+59-suite host evidence: evidence/f5_capacity_integration_2026-09-23/README.md.
+This does NOT close G-040/G-043/G-047/G-049 globally: remote install/replacement,
+archive-before-last-copy, remaining protocol/owner-work bounds and current target
+acceptance still require their own evidence. No whole-process RSS ceiling claimed.
+
+Review override (2026-09-21): G-040, G-043, G-047 and G-049 have substantive gaps;
+other Phase 6/7 runtime items await current-candidate target acceptance. Older closure
+prose is historical. Local snapshot restart is not peer snapshot installation.
+MetadataStore::save still synchronously flushes hard state on the owner thread.
+The hard-state test checks intact-file loading and corrupt-file refusal, not
+power cuts across atomic replacement. See docs/evidence/V2_PHASE6_7_AUDIT_2026-09-21.md.
+A local leader role does not prove authority under partition; G-038's write-quorum
+safety is not proof of linearizable gateway reads.
+
+- [ ] **G-042 — Quorum-durable success.** A successful decision means durable
   under the declared quorum policy, never merely present in process RAM.
-- [x] **G-043 — Owner loop does not synchronously wait on routine disk I/O.**
+- [ ] **G-043 — Owner loop does not synchronously wait on routine disk I/O.**
   Fixed-capacity staging and a persistence owner move batched writes/flushes off
   the consensus owner loop while durability acknowledgement remains explicit.
-- [x] **G-044 — Safe block ownership.** WAL arena blocks have single-writer
+- [ ] **G-044 — Safe block ownership.** WAL arena blocks have single-writer
   ownership, generation-safe reuse, release/acquire publication, and no record
   straddling an invalid boundary.
-- [x] **G-045 — Backpressure before corruption.** Writer stall, disk full, or a
+- [ ] **G-045 — Backpressure before corruption.** Writer stall, disk full, or a
   full arena causes bounded refusal/backpressure; live data is not overwritten.
-- [x] **G-046 — Torn/corrupt data detection.** Framing, length, generation, and
+- [ ] **G-046 — Torn/corrupt data detection.** Framing, length, generation, and
   checksums identify torn or corrupt suffixes and recover only according to an
   explicit valid-prefix policy.
-- [x] **G-047 — Hard-state recovery.** Term/vote and other required hard state
+- [ ] **G-047 — Hard-state recovery.** Term/vote and other required hard state
   survive a cut through a tested atomic/two-slot recovery protocol.
-- [x] **G-048 — Snapshot-before-reclaim.** Snapshot bytes and metadata become
+- [ ] **G-048 — Snapshot-before-reclaim.** Snapshot bytes and metadata become
   durable before WAL segments or state needed for recovery are reclaimed.
-- [x] **G-049 — Complete compacted state.** Snapshot/compaction retains policy,
+- [ ] **G-049 — Complete compacted state.** Snapshot/compaction retains policy,
   risk, reservation, order, fill, receipt, outbox, unknown, fencing, source, and
   reconciliation state required for equivalent continuation.
-- [x] **G-050 — No acknowledged effect disappears.** Process crash or power cut
+- [ ] **G-050 — No acknowledged effect disappears.** Process crash or power cut
   cannot recover behind the last response acknowledged under the declared
   durability contract.
-- [x] **G-051 — V1/V2 storage isolation.** V2 storage cannot be mistaken for or
+- [ ] **G-051 — V1/V2 storage isolation.** V2 storage cannot be mistaken for or
   destructively migrated from a V1 format without an explicit migration tool.
 
   Phase 7 closes G-042 through G-050. G-051 is the one that does not close, and
@@ -354,6 +394,22 @@ Phase 11 strategy/model validation and controlled canary
   gate remains a carried Phase 5 obligation.
 
 ## 8. Execution fencing, kill, and emergency risk reduction — Phase 8
+
+Full-audit override (2026-09-21): A01 reproduces a stale leader renewing authority
+after majority kill. A02 reproduces the delivery planner dropping emergency quota
+even though its guard permits the cancel. The mechanisms do not yet compose;
+the missing loop is not the only remaining work. See the consolidated audit.
+
+Remediation override (2026-09-22, CP-012): A02's quota composition is host GREEN
+(F1); A01's boolean-renewal path now refuses and request-correlated, one-shot
+authority composes through final host transport handoff (F4). Partition, delay,
+known-fence, retry and unseen-change-window tests are retained in
+`evidence/f4_proof_2026-09-22/`. Older renewal claims below are historical, not
+current send authority. Do not close deployment checkboxes: external fencing,
+authenticated process/activation boundaries, measured clock/timing and target
+gates are still absent. A valid prior proof is not a lock against future remote
+kill, and in-flight bytes are not recalled. Observability is now roadmap M3a,
+an explicit pre-live health/diagnostics/alert gate, not permission to send.
 
 - [ ] **G-052 — Logically single active sender.** Only the externally fenced
   executor generation for a venue/account can send normal risk-increasing effects.
@@ -679,6 +735,10 @@ Phase 11 strategy/model validation and controlled canary
   is a sequencing decision rather than an omission.
 
 ## 9. TrueMarkets adapter boundary — Phase 9
+
+Full-audit override (2026-09-21): wire helpers can lower a post-only limit intent
+to market and fail to bind exact metadata. Existing token files can remain 0644
+after mint. These are reproduced pre-integration blockers, not live incidents.
 
 - [ ] **G-061 — Official-contract implementation.** Authentication, clocks,
   identifiers, idempotency, order lifecycle, status semantics, limits,

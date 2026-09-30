@@ -1,0 +1,1 @@
+archive adversarial tests failed: bad record digest hidden by valid outer digest

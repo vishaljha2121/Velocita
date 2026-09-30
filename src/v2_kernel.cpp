@@ -423,7 +423,8 @@ template <std::size_t WordCount>
 [[nodiscard]] ApplyResult apply_stage_executable_policy(
     TradingState& state,
     const StageExecutablePolicy& command,
-    const std::uint64_t next_version) noexcept {
+    const std::uint64_t next_version,
+    const VerifiedExecutionCatalog& catalog) noexcept {
     const auto policy_id = command.executable_policy.policy_id;
     const auto policy_version = command.executable_policy.policy_version;
     const auto schema_digest = verify_artifact_digest(command.feature_schema);
@@ -490,6 +491,19 @@ template <std::size_t WordCount>
                           next_version, policy_id, policy_version,
                           policy->lifecycle);
         }
+    }
+
+    const auto* row = catalog.lookup(policy->artifact.account_id,
+        command.instrument.venue_id, command.instrument.instrument_id,
+        command.instrument.instrument_spec_version,
+        command.venue.venue_capabilities_version);
+    if (row == nullptr) {
+        return result(state, ApplyCode::catalog_row_not_found, next_version,
+                      policy_id, policy_version, policy->lifecycle);
+    }
+    if (row->instrument != command.instrument || row->capabilities != command.venue) {
+        return result(state, ApplyCode::catalog_binding_mismatch, next_version,
+                      policy_id, policy_version, policy->lifecycle);
     }
 
     if (same_executable_bundle_contents(state.active_executable_policy, command) ||
@@ -1303,6 +1317,48 @@ std::size_t settle_orphaned_effects(TradingState& state,
     return dropped;
 }
 
+struct ReceiptAdmissionAvailability {
+    bool receipt_available{};
+    bool caller_available{};
+};
+
+// Pure preflight equivalent of the ordinary full-arena sweep below.  Besides
+// dropping the same unpinned receipts, sweep_expired_receipts registers their
+// callers while cursor capacity remains.  Simulate that small identity set so
+// catalog dependency checks do not require an artifact for an install that the
+// reducer must refuse before it can commit the root.
+[[nodiscard]] ReceiptAdmissionAvailability receipt_admission_after_sweep(
+    const TradingState& state, const CallerId command_caller) noexcept {
+    std::array<CallerId, kMaxCallerCursors> callers{};
+    auto caller_count = state.caller_cursor_count;
+    for (std::size_t index = 0; index < caller_count; ++index) {
+        callers[index] = state.caller_cursors[index].caller_id;
+    }
+    const auto has_caller = [&](const CallerId caller) noexcept {
+        return std::find(callers.begin(), callers.begin() +
+            static_cast<std::ptrdiff_t>(caller_count), caller) !=
+            callers.begin() + static_cast<std::ptrdiff_t>(caller_count);
+    };
+
+    auto kept = state.receipt_count;
+    if (state.receipt_count == state.receipts.size()) {
+        kept = 0;
+        for (std::size_t index = 0; index < state.receipt_count; ++index) {
+            const auto& receipt = state.receipts[index];
+            if (receipt_is_pinned(state, receipt)) {
+                ++kept;
+                continue;
+            }
+            if (!has_caller(receipt.identity.caller_id) &&
+                caller_count < callers.size()) {
+                callers[caller_count++] = receipt.identity.caller_id;
+            }
+        }
+    }
+    return {kept < state.receipts.size(),
+            has_caller(command_caller) || caller_count < callers.size()};
+}
+
 // Source-event receipts have their own watermark already: SourceCursor holds the
 // highest admitted sequence per source, and admission independently refuses a
 // regression. The receipt only distinguishes an exact redelivery (retained
@@ -1792,7 +1848,8 @@ std::size_t settle_orphaned_effects(TradingState& state,
 [[nodiscard]] ApplyResult apply_authorize_decision(
     TradingState& state,
     const AuthorizeDecision& command,
-    const std::uint64_t next_version) noexcept {
+    const std::uint64_t next_version,
+    const VerifiedExecutionCatalog& catalog) noexcept {
     if (command.decision_id.value() == 0) {
         return authorization_result(state, ApplyCode::invalid_command,
                                     next_version, command.decision_id);
@@ -1862,6 +1919,30 @@ std::size_t settle_orphaned_effects(TradingState& state,
                                     next_version, command.decision_id);
     }
 
+    const auto* row = catalog.lookup(cold.proposal.account_id,
+        cold.proposal.venue_id, cold.proposal.instrument_id,
+        cold.proposal.instrument_spec_version, cold.proposal.venue_capabilities_version);
+    if (row == nullptr) {
+        return authorization_result(state, ApplyCode::catalog_row_not_found,
+                                    next_version, command.decision_id);
+    }
+    if (row->instrument != state.active_executable_policy.instrument ||
+        row->capabilities != state.active_executable_policy.venue) {
+        return authorization_result(state, ApplyCode::catalog_binding_mismatch,
+                                    next_version, command.decision_id);
+    }
+
+    // Zero is the uninitialized bootstrap value, not execution authority. An
+    // effect carrying either zero cannot pass the public OrderEffect contract,
+    // so authorizing it would reserve risk and create outbox work that the
+    // gateway can never materialize. Refuse before creating new economic state;
+    // the operator must establish both monotonic controls first.
+    if (state.kill_epoch.value() == 0 ||
+        state.executor_generation.value() == 0) {
+        return authorization_result(state, ApplyCode::stale_control_generation,
+                                    next_version, command.decision_id);
+    }
+
     const auto existing_order_index =
         find_order_by_decision(state, command.decision_id);
     if (existing_order_index != state.order_count) {
@@ -1896,8 +1977,12 @@ std::size_t settle_orphaned_effects(TradingState& state,
     if (risk->risk_policy_version != cold.proposal.risk_policy_version ||
         risk->risk_version != cold.frame.risk_version ||
         risk->position_version != cold.frame.position_version) {
-        return authorization_result(state, ApplyCode::stale_risk_state,
-                                    next_version, command.decision_id);
+        auto stale = authorization_result(state, ApplyCode::stale_risk_state,
+                                          next_version, command.decision_id);
+        stale.detail = ApplyResultDetail::risk_state(
+            risk->risk_version, risk->position_version, risk->position_quantity);
+        stale.detail_kind = ApplyResultDetailKind::risk_state;
+        return stale;
     }
     if (risk->initial_margin_ppm == 0 ||
         risk->max_order_quantity.atoms() <= 0 ||
@@ -1905,6 +1990,7 @@ std::size_t settle_orphaned_effects(TradingState& state,
         risk->max_order_gross_notional.atoms() <= 0 ||
         risk->max_reserved_exposure.atoms() <= 0 ||
         risk->reserved_quantity.atoms() < 0 ||
+        risk->max_position_quantity.atoms() < 0 ||
         risk->reserved_margin.atoms() < 0 || risk->reserved_fee.atoms() < 0) {
         return authorization_result(state, ApplyCode::invalid_command,
                                     next_version, command.decision_id);
@@ -1937,6 +2023,24 @@ std::size_t settle_orphaned_effects(TradingState& state,
         cold.proposal.notional > risk->max_order_gross_notional ||
         *next_total_exposure > risk->max_reserved_exposure) {
         return authorization_result(state, ApplyCode::insufficient_risk_capacity,
+                                    next_version, command.decision_id);
+    }
+
+    // Open quantity is counted against BOTH sides: either resting order may
+    // fill first, so netting them would admit a position past the cap.
+    const bool buying = cold.proposal.side == Side::buy;
+    const auto extreme = buying
+        ? risk->position_quantity.checked_add(*next_quantity)
+        : risk->position_quantity.checked_sub(*next_quantity);
+    if (!extreme) {
+        return authorization_result(state, ApplyCode::risk_arithmetic_overflow,
+                                    next_version, command.decision_id);
+    }
+    const auto floor = risk->allow_short
+        ? QuantityLots::from_atoms(-risk->max_position_quantity.atoms())
+        : QuantityLots{};
+    if (buying ? *extreme > risk->max_position_quantity : *extreme < floor) {
+        return authorization_result(state, ApplyCode::position_limit_exceeded,
                                     next_version, command.decision_id);
     }
 
@@ -3271,6 +3375,10 @@ enum class CancelDisposition : std::uint8_t {
     configured.max_reserved_exposure = command.max_reserved_exposure;
     configured.initial_margin_ppm = command.initial_margin_ppm;
     configured.maximum_fee_ppm = command.maximum_fee_ppm;
+    // Deliberately not refused when below the current position: the account
+    // becomes reduce-only, which is what an operator lowering a cap means.
+    configured.max_position_quantity = command.max_position_quantity;
+    configured.allow_short = command.allow_short;
     // All possible refusals precede this non-throwing commit. apply() has already
     // reserved receipt capacity; the single owner publishes the result afterward.
     if (existing != nullptr) *existing = configured;
@@ -3303,9 +3411,42 @@ enum class CancelDisposition : std::uint8_t {
     return result(state, ApplyCode::applied, next_version);
 }
 
+[[nodiscard]] ApplyCode catalog_installation_code(
+    const TradingState& state, const InstallExecutionCatalog& command) noexcept {
+    if (command.catalog_root.is_zero()) return ApplyCode::invalid_command;
+    if (command.expected_kill_epoch.value() == 0 ||
+        command.expected_executor_generation.value() == 0 ||
+        command.expected_kill_epoch != state.kill_epoch ||
+        command.expected_executor_generation != state.executor_generation)
+        return ApplyCode::stale_control_generation;
+    if (!state.execution_catalog_root.is_zero())
+        return state.execution_catalog_root == command.catalog_root
+            ? ApplyCode::already_applied : ApplyCode::immutable_catalog_conflict;
+    if (state.strategy_mode != StrategyMode::halted || state.policy_count != 0 ||
+        state.active_executable_policy.present || state.staged_executable_policy.present ||
+        state.decision_count != 0 || state.risk_account_count != 0 ||
+        state.reservation_count != 0 || state.order_count != 0 || state.outbox_effect_count != 0)
+        return ApplyCode::catalog_installation_blocked;
+    return ApplyCode::applied;
+}
+
 [[nodiscard]] ApplyResult apply_new_command(TradingState& state,
                                             const Command& command,
-                                            const std::uint64_t next_version) noexcept {
+                                            const std::uint64_t next_version,
+                                            const VerifiedExecutionCatalog* catalog) noexcept {
+    if (const auto* body = std::get_if<InstallExecutionCatalog>(&command.body)) {
+        const auto code = catalog_installation_code(state, *body);
+        if (code == ApplyCode::applied) state.execution_catalog_root = body->catalog_root;
+        return result(state, code, next_version);
+    }
+    if (state.execution_catalog_root.is_zero() &&
+        (std::holds_alternative<PublishPolicy>(command.body) ||
+         std::holds_alternative<StageExecutablePolicy>(command.body) ||
+         std::holds_alternative<ConfigureRiskLimits>(command.body) ||
+         std::holds_alternative<EvaluateDecisionFrame>(command.body) ||
+         std::holds_alternative<AuthorizeDecision>(command.body))) {
+        return result(state, ApplyCode::catalog_not_installed, next_version);
+    }
     if (const auto* body = std::get_if<PublishPolicy>(&command.body)) {
         return apply_publish(state, *body, next_version);
     }
@@ -3334,13 +3475,13 @@ enum class CancelDisposition : std::uint8_t {
         return apply_evaluate_decision(state, command.identity, *body, next_version);
     }
     if (const auto* body = std::get_if<StageExecutablePolicy>(&command.body)) {
-        return apply_stage_executable_policy(state, *body, next_version);
+        return apply_stage_executable_policy(state, *body, next_version, *catalog);
     }
     if (const auto* body = std::get_if<ActivateExecutablePolicy>(&command.body)) {
         return apply_activate_executable_policy(state, *body, next_version);
     }
     if (const auto* body = std::get_if<AuthorizeDecision>(&command.body)) {
-        return apply_authorize_decision(state, *body, next_version);
+        return apply_authorize_decision(state, *body, next_version, *catalog);
     }
     if (const auto* body = std::get_if<ObserveFill>(&command.body)) {
         return apply_observe_fill(state, command.identity, *body, next_version);
@@ -3371,6 +3512,29 @@ enum class CancelDisposition : std::uint8_t {
 }
 
 }  // namespace
+
+bool execution_catalog_ready(const Digest256& required_root,
+                             const VerifiedExecutionCatalog* catalog) noexcept {
+    return required_root.is_zero() ||
+        (catalog != nullptr && catalog->row_count() != 0 && catalog->root() == required_root);
+}
+
+Digest256 required_execution_catalog(const TradingState& state,
+                                     const Command& command) noexcept {
+    if (!state.execution_catalog_root.is_zero()) return state.execution_catalog_root;
+    const auto* install = std::get_if<InstallExecutionCatalog>(&command.body);
+    if (install == nullptr || !present(command.identity) ||
+        !is_operator_caller(command.identity.caller_id) ||
+        find_receipt(state, command.identity) != nullptr) return {};
+    const auto* cursor = find_caller_cursor(state, command.identity.caller_id);
+    if (cursor != nullptr && command.identity.request_sequence <= cursor->expired_below) return {};
+    if (state.state_version == std::numeric_limits<std::uint64_t>::max()) return {};
+    const auto admission = receipt_admission_after_sweep(
+        state, command.identity.caller_id);
+    if (!admission.receipt_available || !admission.caller_available) return {};
+    return catalog_installation_code(state, *install) == ApplyCode::applied
+        ? install->catalog_root : Digest256{};
+}
 
 std::optional<OrderEffect> materialize_order_effect(
     const TradingState& state, const EffectId effect_id) noexcept {
@@ -3448,6 +3612,84 @@ std::optional<OrderEffect> materialize_order_effect(
     return value;
 }
 
+namespace {
+bool proposal_matches_catalog(const EconomicActionProposal& proposal,
+                              const VerifiedExecutionCatalog& catalog) noexcept {
+    if (validate(proposal) != ContractError::none) return false;
+    const auto* row = catalog.lookup(proposal.account_id, proposal.venue_id,
+        proposal.instrument_id, proposal.instrument_spec_version,
+        proposal.venue_capabilities_version);
+    if (row == nullptr) return false;
+    const auto operation = proposal.directive == Directive::place_limit ? kVenueDirectivePlaceLimit
+        : proposal.directive == Directive::cancel ? kVenueDirectiveCancel
+        : proposal.directive == Directive::replace ? kVenueDirectiveReplace : 0;
+    if (operation == 0 || (row->capabilities.directive_mask & operation) == 0) return false;
+    if (proposal.directive == Directive::cancel) return true;
+    const auto tif = proposal.time_in_force == TimeInForce::good_til_cancel ? kVenueTifGtc
+        : proposal.time_in_force == TimeInForce::immediate_or_cancel ? kVenueTifIoc
+        : proposal.time_in_force == TimeInForce::fill_or_kill ? kVenueTifFok : 0;
+    if (tif == 0 || (row->capabilities.time_in_force_mask & tif) == 0 ||
+        (proposal.post_only == PostOnlyMode::required && !row->capabilities.supports_post_only) ||
+        proposal.price < row->instrument.minimum_price ||
+        proposal.price > row->instrument.maximum_price ||
+        proposal.quantity < row->instrument.minimum_quantity ||
+        proposal.quantity > row->instrument.maximum_quantity) return false;
+    const auto one_lot = row->instrument.quote_micros_per_tick_lot.checked_multiply(proposal.price.atoms());
+    const auto notional = one_lot ? one_lot->checked_multiply(proposal.quantity.atoms()) : std::nullopt;
+    return notional && *notional == proposal.notional;
+}
+} // namespace
+
+bool execution_catalog_bindings_valid(const TradingState& state,
+                                      const VerifiedExecutionCatalog& catalog) noexcept {
+    if (!execution_catalog_ready(state.execution_catalog_root, &catalog) ||
+        state.policy_count > state.policies.size() ||
+        state.decision_count > state.decision_hot.size() ||
+        state.outbox_effect_count > state.outbox_effects.size()) return false;
+    if (state.execution_catalog_root.is_zero()) {
+        return state.policy_count == 0 && !state.active_executable_policy.present &&
+            !state.staged_executable_policy.present && state.decision_count == 0 &&
+            state.risk_account_count == 0 && state.reservation_count == 0 &&
+            state.order_count == 0 && state.outbox_effect_count == 0;
+    }
+    for (const auto* bundle : {&state.active_executable_policy, &state.staged_executable_policy}) {
+        if (!bundle->present) continue;
+        const auto* policy = find_policy(state, bundle->executable_policy.policy_id,
+                                         bundle->executable_policy.policy_version);
+        if (policy == nullptr) return false;
+        const auto* row = catalog.lookup(policy->artifact.account_id,
+            bundle->instrument.venue_id, bundle->instrument.instrument_id,
+            bundle->instrument.instrument_spec_version,
+            bundle->venue.venue_capabilities_version);
+        if (row == nullptr || row->instrument != bundle->instrument ||
+            row->capabilities != bundle->venue) return false;
+    }
+    for (std::size_t i = 0; i < state.decision_count; ++i) {
+        if (state.decision_hot[i].action_resolution_code == ActionResolutionCode::proposed &&
+            !proposal_matches_catalog(state.decision_cold[i].proposal, catalog)) return false;
+    }
+    for (std::size_t i = 0; i < state.outbox_effect_count; ++i) {
+        if (!materialize_bound_order_effect(state, state.outbox_effects[i].effect_id, catalog))
+            return false;
+    }
+    return true;
+}
+
+std::optional<BoundOrderEffect> materialize_bound_order_effect(
+    const TradingState& state, const EffectId effect_id,
+    const VerifiedExecutionCatalog& catalog) noexcept {
+    if (state.execution_catalog_root.is_zero() ||
+        !execution_catalog_ready(state.execution_catalog_root, &catalog)) return std::nullopt;
+    const auto effect = materialize_order_effect(state, effect_id);
+    if (!effect) return std::nullopt;
+    const auto index = find_decision_index(state, effect->decision_id);
+    if (index >= state.decision_count) return std::nullopt;
+    const auto& proposal = state.decision_cold[index].proposal;
+    if (!proposal_matches_catalog(proposal, catalog)) return std::nullopt;
+    return BoundOrderEffect{*effect, state.execution_catalog_root,
+        proposal.instrument_spec_version, proposal.venue_capabilities_version};
+}
+
 const PolicyRecord* find_policy(const TradingState& state,
                                 const PolicyId policy_id,
                                 const PolicyVersion policy_version) noexcept {
@@ -3473,7 +3715,12 @@ const SourceCursor* find_source_cursor(const TradingState& state,
 
 ApplyResult apply(TradingState& state,
                   const Command& command,
-                  ApplyScratch&) noexcept {
+                  ApplyScratch&,
+                  const VerifiedExecutionCatalog* catalog) {
+    // Dependency failure is outside the replicated result domain and precedes
+    // even receipt reclamation. Raft must make this check before its index moves.
+    if (!execution_catalog_ready(required_execution_catalog(state, command), catalog))
+        throw CatalogDependencyUnavailable{};
     if (!present(command.identity)) {
         return result(state, ApplyCode::invalid_command,
                       state.state_version,
@@ -3494,7 +3741,9 @@ ApplyResult apply(TradingState& state,
     // refusal, which is exactly the confusion an audit of a kill cannot afford.
     if (std::holds_alternative<AdvanceKillEpoch>(command.body) ||
         std::holds_alternative<SetExecutorGeneration>(command.body) ||
-        std::holds_alternative<SetStrategyMode>(command.body)) {
+        std::holds_alternative<SetStrategyMode>(command.body) ||
+        std::holds_alternative<InstallExecutionCatalog>(command.body) ||
+        std::holds_alternative<ConfigureRiskLimits>(command.body)) {
         if (!is_operator_caller(command.identity.caller_id)) {
             return result(state, ApplyCode::unauthorized_control, state.state_version);
         }
@@ -3575,7 +3824,7 @@ ApplyResult apply(TradingState& state,
                          RequestSequence{}};
     }
     const auto next_version = state.state_version + 1;
-    const auto outcome = apply_new_command(state, command, next_version);
+    const auto outcome = apply_new_command(state, command, next_version, catalog);
 
     state.state_version = next_version;
     state.receipts[state.receipt_count] = RequestReceipt{command.identity, outcome};

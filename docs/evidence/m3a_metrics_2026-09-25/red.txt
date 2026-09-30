@@ -1,0 +1,2 @@
+node metrics text tests failed: missing or wrong line: velocita_v2_up{host="pi",node="2"} 1
+exit=1

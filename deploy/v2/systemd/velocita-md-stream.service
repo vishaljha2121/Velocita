@@ -1,0 +1,27 @@
+# Records the True Markets public market-data WebSocket (M4, read-only, no keys)
+# into ~/velocita-md/stream.db, and publishes monitoring metrics through the
+# node-exporter textfile directory. The model source is mounted read-only; the
+# container holds no secrets and has no route to anything but its own
+# allowlisted endpoint in code. Python 3.12 image because the host's 3.10 lacks
+# tomllib. nuc1 only.
+[Unit]
+Description=Velocita market-data stream recorder (True Markets, read-only)
+After=network-online.target
+
+[Service]
+ExecStartPre=/usr/bin/mkdir -p %h/velocita-md %h/velocita-v2/textfile
+ExecStart=/usr/bin/podman run --rm --replace --name velocita-md-stream \
+    --network host --userns=keep-id --read-only --cap-drop all \
+    --security-opt no-new-privileges --memory 256m --pids-limit 32 \
+    -v %h/src/aeron-raft-pi/model:/model:ro \
+    -v %h/velocita-md:/data \
+    -v %h/velocita-v2/textfile:/textfile \
+    -e PYTHONPATH=/model/src -e PYTHONDONTWRITEBYTECODE=1 \
+    docker.io/library/python:3.12-slim \
+    python -m velocita_model.cli stream --db /data/stream.db --textfile /textfile/velocita-md.prom
+ExecStop=/usr/bin/podman stop -t 10 velocita-md-stream
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

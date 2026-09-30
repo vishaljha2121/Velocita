@@ -1,0 +1,10 @@
+case=none success=1 reads=43 closes=1
+case=read-EINTR success=1 reads=44 closes=1
+case=open-EINTR success=1 reads=43 closes=1
+case=stat-EINTR success=1 reads=43 closes=1
+case=EOF-EINTR success=1 reads=44 closes=1
+case=read-EIO success=0 reads=2 closes=1
+case=early-EOF success=0 reads=2 closes=1
+case=trailing success=0 reads=43 closes=1
+case=size-change success=1 reads=43 closes=1
+archive file syscall boundary: changed or failed file accepted

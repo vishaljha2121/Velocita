@@ -1,0 +1,9 @@
+--- src/storage.cpp	2026-09-21 17:10:15
++++ /private/tmp/velocita-f6-model.7b2G8u/storage-no-directory-fsync.cpp	2026-09-22 15:28:44
+@@ -188,7 +188,6 @@
+         throw io_error("rename", path_);
+     }
+     checkpoints_(MetadataCheckpoint::file_renamed);
+-    fsync_directory(path_.parent_path());
+     checkpoints_(MetadataCheckpoint::directory_synced);
+ }

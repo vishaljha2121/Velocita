@@ -1,0 +1,422 @@
+[
+  {
+    "symbol": "SOL",
+    "usd_size": "10",
+    "requested_at": "2026-09-28T16:31:46.647100+00:00",
+    "received_at": "2026-09-28T16:31:47.079113+00:00",
+    "request": {
+      "chain": "solana",
+      "side": "buy",
+      "base_asset": "So11111111111111111111111111111111111111112",
+      "qty": "10",
+      "qty_unit": "quote"
+    },
+    "reference_30s_close": "119.96733911226",
+    "reference_30s_close_after": "119.96733911226",
+    "quote": {
+      "base_asset": "So11111111111111111111111111111111111111112",
+      "quote_asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "order_side": "buy",
+      "qty": "10",
+      "qty_out": "0.08253443",
+      "fee": "0.1",
+      "fee_asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "quote_id": "2269bb9d-45c1-4f81-845c-0debb3ae52e3",
+      "issues": [
+        {
+          "balance": {
+            "actual": "0",
+            "expected": "10"
+          },
+          "message": "Insufficient balance"
+        }
+      ]
+    },
+    "omitted": "payloads (unsigned transaction, signing organization id, wallet address)"
+  },
+  {
+    "symbol": "SOL",
+    "usd_size": "10",
+    "requested_at": "2026-09-28T16:31:48.247400+00:00",
+    "received_at": "2026-09-28T16:31:48.451658+00:00",
+    "request": {
+      "chain": "solana",
+      "side": "sell",
+      "base_asset": "So11111111111111111111111111111111111111112",
+      "qty": "0.083356",
+      "qty_unit": "base"
+    },
+    "reference_30s_close": "119.96733911226",
+    "reference_30s_close_after": "119.96733911226",
+    "quote": {
+      "base_asset": "So11111111111111111111111111111111111111112",
+      "quote_asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "order_side": "sell",
+      "qty": "0.083356",
+      "qty_out": "9.902819",
+      "fee": "0.100028",
+      "fee_asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "quote_id": "1b0c6d92-0240-41a5-86d0-907786f83a29",
+      "issues": [
+        {
+          "balance": {
+            "actual": "0",
+            "expected": "0.083356"
+          },
+          "message": "Insufficient balance"
+        }
+      ]
+    },
+    "omitted": "payloads (unsigned transaction, signing organization id, wallet address)"
+  },
+  {
+    "symbol": "SOL",
+    "usd_size": "25",
+    "requested_at": "2026-09-28T16:31:49.659114+00:00",
+    "received_at": "2026-09-28T16:31:50.102590+00:00",
+    "request": {
+      "chain": "solana",
+      "side": "buy",
+      "base_asset": "So11111111111111111111111111111111111111112",
+      "qty": "25",
+      "qty_unit": "quote"
+    },
+    "reference_30s_close": "119.96733911226",
+    "reference_30s_close_after": "119.96733911226",
+    "quote": {
+      "base_asset": "So11111111111111111111111111111111111111112",
+      "quote_asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "order_side": "buy",
+      "qty": "25",
+      "qty_out": "0.20633117",
+      "fee": "0.25",
+      "fee_asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "quote_id": "2dae2384-b83d-4ea6-ba3d-819b86e5d0e6",
+      "issues": [
+        {
+          "balance": {
+            "actual": "0",
+            "expected": "25"
+          },
+          "message": "Insufficient balance"
+        }
+      ]
+    },
+    "omitted": "payloads (unsigned transaction, signing organization id, wallet address)"
+  },
+  {
+    "symbol": "SOL",
+    "usd_size": "25",
+    "requested_at": "2026-09-28T16:31:51.233710+00:00",
+    "received_at": "2026-09-28T16:31:51.411116+00:00",
+    "request": {
+      "chain": "solana",
+      "side": "sell",
+      "base_asset": "So11111111111111111111111111111111111111112",
+      "qty": "0.208390",
+      "qty_unit": "base"
+    },
+    "reference_30s_close": "119.96733911226",
+    "reference_30s_close_after": "119.96733911226",
+    "quote": {
+      "base_asset": "So11111111111111111111111111111111111111112",
+      "quote_asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "order_side": "sell",
+      "qty": "0.20839",
+      "qty_out": "24.752144",
+      "fee": "0.250021",
+      "fee_asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "quote_id": "6e131038-eebd-4ab4-8a19-6ead1195d400",
+      "issues": [
+        {
+          "balance": {
+            "actual": "0",
+            "expected": "0.20839"
+          },
+          "message": "Insufficient balance"
+        }
+      ]
+    },
+    "omitted": "payloads (unsigned transaction, signing organization id, wallet address)"
+  },
+  {
+    "symbol": "SOL",
+    "usd_size": "100",
+    "requested_at": "2026-09-28T16:31:52.553253+00:00",
+    "received_at": "2026-09-28T16:31:52.926513+00:00",
+    "request": {
+      "chain": "solana",
+      "side": "buy",
+      "base_asset": "So11111111111111111111111111111111111111112",
+      "qty": "100",
+      "qty_unit": "quote"
+    },
+    "reference_30s_close": "119.952893269571",
+    "reference_30s_close_after": "119.952893269571",
+    "quote": {
+      "base_asset": "So11111111111111111111111111111111111111112",
+      "quote_asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "order_side": "buy",
+      "qty": "100",
+      "qty_out": "0.825268899",
+      "fee": "1",
+      "fee_asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "quote_id": "e9f35580-6234-4260-94ae-856955955200",
+      "issues": [
+        {
+          "balance": {
+            "actual": "0",
+            "expected": "100"
+          },
+          "message": "Insufficient balance"
+        }
+      ]
+    },
+    "omitted": "payloads (unsigned transaction, signing organization id, wallet address)"
+  },
+  {
+    "symbol": "SOL",
+    "usd_size": "100",
+    "requested_at": "2026-09-28T16:31:54.188508+00:00",
+    "received_at": "2026-09-28T16:31:54.468023+00:00",
+    "request": {
+      "chain": "solana",
+      "side": "sell",
+      "base_asset": "So11111111111111111111111111111111111111112",
+      "qty": "0.833660",
+      "qty_unit": "base"
+    },
+    "reference_30s_close": "119.952893269571",
+    "reference_30s_close_after": "119.952893269571",
+    "quote": {
+      "base_asset": "So11111111111111111111111111111111111111112",
+      "quote_asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "order_side": "sell",
+      "qty": "0.83366",
+      "qty_out": "99.017654",
+      "fee": "1.000178",
+      "fee_asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "quote_id": "a04fe7d4-e0f6-4cbb-93f2-2910e063dc6a",
+      "issues": [
+        {
+          "balance": {
+            "actual": "0",
+            "expected": "0.83366"
+          },
+          "message": "Insufficient balance"
+        }
+      ]
+    },
+    "omitted": "payloads (unsigned transaction, signing organization id, wallet address)"
+  },
+  {
+    "symbol": "CBBTC",
+    "usd_size": "10",
+    "requested_at": "2026-09-28T16:31:55.870040+00:00",
+    "received_at": "2026-09-28T16:31:56.501371+00:00",
+    "request": {
+      "chain": "base",
+      "side": "buy",
+      "base_asset": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "qty": "10",
+      "qty_unit": "quote"
+    },
+    "reference_30s_close": "84088.9518761515",
+    "reference_30s_close_after": "84088.9518761515",
+    "quote": {
+      "base_asset": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "quote_asset": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "order_side": "buy",
+      "qty": "10",
+      "qty_out": "0.00011758",
+      "fee": "0.1",
+      "fee_asset": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "quote_id": "c7a51e65-d8a5-411f-a2cc-de2813b722f4",
+      "issues": [
+        {
+          "balance": {
+            "actual": "0",
+            "expected": "10"
+          },
+          "message": "Insufficient balance"
+        }
+      ]
+    },
+    "omitted": "payloads (unsigned transaction, signing organization id, wallet address)"
+  },
+  {
+    "symbol": "CBBTC",
+    "usd_size": "10",
+    "requested_at": "2026-09-28T16:31:57.778884+00:00",
+    "received_at": "2026-09-28T16:31:58.055910+00:00",
+    "request": {
+      "chain": "base",
+      "side": "sell",
+      "base_asset": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "qty": "0.000118",
+      "qty_unit": "base"
+    },
+    "reference_30s_close": "84088.9518761515",
+    "reference_30s_close_after": "84088.9518761515",
+    "quote": {
+      "base_asset": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "quote_asset": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "order_side": "sell",
+      "qty": "0.000118",
+      "qty_out": "9.80099",
+      "fee": "0.099153",
+      "fee_asset": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "quote_id": "ae01519f-edca-43be-b932-2f2706cef73b",
+      "issues": [
+        {
+          "balance": {
+            "actual": "0",
+            "expected": "0.000118"
+          },
+          "message": "Insufficient balance"
+        }
+      ]
+    },
+    "omitted": "payloads (unsigned transaction, signing organization id, wallet address)"
+  },
+  {
+    "symbol": "CBBTC",
+    "usd_size": "25",
+    "requested_at": "2026-09-28T16:31:59.247303+00:00",
+    "received_at": "2026-09-28T16:31:59.832729+00:00",
+    "request": {
+      "chain": "base",
+      "side": "buy",
+      "base_asset": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "qty": "25",
+      "qty_unit": "quote"
+    },
+    "reference_30s_close": "84088.9518761515",
+    "reference_30s_close_after": "84088.9518761515",
+    "quote": {
+      "base_asset": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "quote_asset": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "order_side": "buy",
+      "qty": "25",
+      "qty_out": "0.00029413",
+      "fee": "0.25",
+      "fee_asset": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "quote_id": "f3bc7407-29bb-4bc3-a986-3580941a945f",
+      "issues": [
+        {
+          "balance": {
+            "actual": "0",
+            "expected": "25"
+          },
+          "message": "Insufficient balance"
+        }
+      ]
+    },
+    "omitted": "payloads (unsigned transaction, signing organization id, wallet address)"
+  },
+  {
+    "symbol": "CBBTC",
+    "usd_size": "25",
+    "requested_at": "2026-09-28T16:32:00.989425+00:00",
+    "received_at": "2026-09-28T16:32:01.261425+00:00",
+    "request": {
+      "chain": "base",
+      "side": "sell",
+      "base_asset": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "qty": "0.000297",
+      "qty_unit": "base"
+    },
+    "reference_30s_close": "84088.9518761515",
+    "reference_30s_close_after": "84088.9518761515",
+    "quote": {
+      "base_asset": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "quote_asset": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "order_side": "sell",
+      "qty": "0.000297",
+      "qty_out": "24.66557",
+      "fee": "0.249521",
+      "fee_asset": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "quote_id": "bc68337c-b598-4585-9087-254236121c29",
+      "issues": [
+        {
+          "balance": {
+            "actual": "0",
+            "expected": "0.000297"
+          },
+          "message": "Insufficient balance"
+        }
+      ]
+    },
+    "omitted": "payloads (unsigned transaction, signing organization id, wallet address)"
+  },
+  {
+    "symbol": "CBBTC",
+    "usd_size": "100",
+    "requested_at": "2026-09-28T16:32:02.411923+00:00",
+    "received_at": "2026-09-28T16:32:02.989379+00:00",
+    "request": {
+      "chain": "base",
+      "side": "buy",
+      "base_asset": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "qty": "100",
+      "qty_unit": "quote"
+    },
+    "reference_30s_close": "84088.9518761515",
+    "reference_30s_close_after": "84088.9518761515",
+    "quote": {
+      "base_asset": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "quote_asset": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "order_side": "buy",
+      "qty": "100",
+      "qty_out": "0.00117655",
+      "fee": "1",
+      "fee_asset": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "quote_id": "a787b3c3-0468-4056-8e98-ddaf2ebada7e",
+      "issues": [
+        {
+          "balance": {
+            "actual": "0",
+            "expected": "100"
+          },
+          "message": "Insufficient balance"
+        }
+      ]
+    },
+    "omitted": "payloads (unsigned transaction, signing organization id, wallet address)"
+  },
+  {
+    "symbol": "CBBTC",
+    "usd_size": "100",
+    "requested_at": "2026-09-28T16:32:04.151378+00:00",
+    "received_at": "2026-09-28T16:32:04.477946+00:00",
+    "request": {
+      "chain": "base",
+      "side": "sell",
+      "base_asset": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "qty": "0.001189",
+      "qty_unit": "base"
+    },
+    "reference_30s_close": "84088.9518761515",
+    "reference_30s_close_after": "84088.9518761515",
+    "quote": {
+      "base_asset": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "quote_asset": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "order_side": "sell",
+      "qty": "0.001189",
+      "qty_out": "98.741265",
+      "fee": "0.998941",
+      "fee_asset": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "quote_id": "c3dba29d-7aee-48a1-aa2e-2974ea18a6bb",
+      "issues": [
+        {
+          "balance": {
+            "actual": "0",
+            "expected": "0.001189"
+          },
+          "message": "Insufficient balance"
+        }
+      ]
+    },
+    "omitted": "payloads (unsigned transaction, signing organization id, wallet address)"
+  }
+]

@@ -1,0 +1,13 @@
+diff --git a/src/v2_bound_peer.cpp b/private/tmp/f5-bound-peer.3d2CC0/no-preflight.cpp
+index 650ed6d..67b5fd2 100644
+--- a/src/v2_bound_peer.cpp
++++ b/private/tmp/f5-bound-peer.3d2CC0/no-preflight.cpp
+@@ -78,8 +78,6 @@ BoundFrameError decode_bound_peer(std::span<const std::byte> input,
+     BoundFrameView view;
+     const auto framing = decode_bound_frame(input, BoundFrameKind::peer, receiver, view, scratch);
+     if (framing != Error::none) return framing;
+-    const auto shape = preflight(view.payload);
+-    if (shape != Error::none) return shape;
+     PeerMessage candidate;
+     try {
+         candidate = decode_peer_message(view.payload);

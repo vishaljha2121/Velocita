@@ -1,3 +1,4 @@
+#include "v2_catalog_test_support.hpp"
 // Generated Phase 4 property corpus.
 //
 // The Phase 4 gate is stated as a property, not as agreement with a second
@@ -137,7 +138,7 @@ void require_snapshot_round_trip(const TradingState& state,
     const auto encoded = encode_state_snapshot(state, bytes);
     require(encoded.error == StateSnapshotError::none,
             where + ": state failed canonical snapshot invariants");
-    TradingState restored;
+    TradingState restored = catalog_test::state();
     StateSnapshotScratch scratch;
     require(decode_state_snapshot({bytes.data(), encoded.bytes_written}, restored,
                                   scratch)
@@ -237,7 +238,7 @@ ExecutablePolicyArtifact corpus_executable_policy(
 }
 
 TradingState bootstrap_state() {
-    TradingState state;
+    TradingState state = catalog_test::state();
     // The bundle records the StateVersions at which it was staged and activated,
     // and validation requires both to be at or below the current version. A
     // bootstrap that declares them while sitting at version zero describes a
@@ -258,7 +259,7 @@ TradingState bootstrap_state() {
          PriceTicks::from_atoms(1), PriceTicks::from_atoms(100),
          QuantityLots::from_atoms(1), QuantityLots::from_atoms(10)},
         {kVenueCapabilitiesSchemaVersion, VenueId{9},
-         VenueCapabilitiesVersion{8}, kVenueDirectivePlaceLimit, kVenueTifGtc, 1},
+         VenueCapabilitiesVersion{8}, (kVenueDirectivePlaceLimit | kVenueDirectiveCancel), kVenueTifGtc, 1},
         1,
         2};
     // The source cursor is deliberately NOT pre-registered: a zero sequence is
@@ -351,7 +352,7 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
         // committed_directive_index is that StateVersion at authorization time.
         // A replay that skipped refusals would authorize at a different version
         // and diverge on bytes for reasons unrelated to the reducer.
-        const auto outcome = apply(state, command, scratch);
+        const auto outcome = catalog_test::apply(state, command, scratch);
         history.push_back(command);
         ++coverage.total;
         if (outcome.code == ApplyCode::applied) ++coverage.applied;
@@ -370,14 +371,17 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
     // Create the risk account through B1 rather than by hand.
     {
         const Command create{
-            {CallerId{19}, RequestSequence{request++}, digest(0xe2)},
+            {CallerId{kMaxOperatorCallerId}, RequestSequence{request++}, digest(0xe2)},
+            // A position cap far above anything the corpus can reach, so this
+            // ledger oracle is not also silently a position-limit oracle.
             ConfigureRiskLimits{AccountId{5}, InstrumentId{4}, RiskPolicyVersion{6},
                                 RiskVersion{}, state.kill_epoch,
                                 state.executor_generation,
                                 QuantityLots::from_atoms(4),
                                 QuantityLots::from_atoms(8),
                                 MoneyMicros::from_atoms(4'000),
-                                MoneyMicros::from_atoms(8'000), 1'000'000, 2'500}};
+                                MoneyMicros::from_atoms(8'000), 1'000'000, 2'500,
+                                QuantityLots::from_atoms(1'000'000), true, 1}};
         require(admit(create, "risk account creation").code == ApplyCode::applied,
                 "corpus could not create its risk account");
         coverage.configured = true;
@@ -657,7 +661,7 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
                             "native replacement was admitted by the corpus");
                 } else {
                     const auto& risk = state.risk_accounts[0];
-                    admit({{CallerId{19}, RequestSequence{request++}, digest(0xE00 + request)},
+                    admit({{CallerId{kMaxOperatorCallerId}, RequestSequence{request++}, digest(0xE00 + request)},
                            ConfigureRiskLimits{risk.account_id, risk.instrument_id,
                                                risk.risk_policy_version,
                                                risk.risk_version, state.kill_epoch,
@@ -667,7 +671,9 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
                                                risk.max_order_gross_notional,
                                                risk.max_reserved_exposure,
                                                risk.initial_margin_ppm,
-                                               risk.maximum_fee_ppm}},
+                                               risk.maximum_fee_ppm,
+                                               risk.max_position_quantity,
+                                               risk.allow_short, 1}},
                           "risk reconfiguration");
                 }
                 break;
@@ -712,7 +718,7 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
         const auto encoded = encode_kernel_command(command, command_bytes);
         require(encoded.error == KernelCodecError::none,
                 "corpus command did not encode canonically");
-        require(apply_encoded_kernel_command(
+        require(catalog_test::replay(
                     replayed, {command_bytes.data(), encoded.bytes_written},
                     replay_scratch, codec_scratch, result_bytes)
                         .error == ReplayError::none,

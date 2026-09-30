@@ -1,0 +1,37 @@
+CP-041 direct actual-source mutations; production source and shared build untouched.
+Unmodified source:243 modeled cuts, Release86/86. Cache-line definition64 matches
+the linked Release objects and libraries. Test TU is the final CMake object, not
+a separately guessed ABI. Each mutant replaces only its named implementation
+object; other hooked objects and the actual replication library are unchanged.
+
+Mutations:
+snapshot-no-directory-sync.cpp: replace only SnapshotStore::save's
+  const int synced = ::fsync(directory);
+with const int synced = 0;
+wal-no-file-sync.cpp: omit only SegmentRewriteWriter::finish's platform-selected
+replacement WAL fsync/fdatasync, keeping truncate, rename and directory sync.
+wal-drop-first-suffix.cpp: both keep-after-boundary predicates change > boundary
+to > boundary + 1, incorrectly dropping the durable first suffix entry.
+
+snapshot-no-directory-sync.cpp
+c++ -std=c++20 -O1 -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Ibuild/_deps/willemt_raft-src/include -include tests/v2_compaction_persistence_model_hooks.hpp -c /private/tmp/velocita-cp041-mutations.sF2tXj/snapshot-no-directory-sync.cpp -o /private/tmp/velocita-cp041-mutations.sF2tXj/snapshot-no-directory-sync.cpp.o && c++ /private/tmp/velocita-full-audit.lYB4P5/release/CMakeFiles/v2-compaction-persistence-model-tests.dir/tests/v2_compaction_persistence_model_tests.cpp.o /private/tmp/velocita-full-audit.lYB4P5/release/CMakeFiles/v2-compaction-model-archive.dir/src/v2_archive_store.cpp.o /private/tmp/velocita-cp041-mutations.sF2tXj/snapshot-no-directory-sync.cpp.o /private/tmp/velocita-full-audit.lYB4P5/release/CMakeFiles/v2-compaction-model-io.dir/src/v2_wal_arena.cpp.o /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_replication.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_kernel.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_evaluator.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_contracts.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_core.a /private/tmp/velocita-full-audit.lYB4P5/release/libwillemt_raft.a -o /private/tmp/velocita-cp041-mutations.sF2tXj/snapshot-no-directory-sync.cpp.test && /private/tmp/velocita-cp041-mutations.sF2tXj/snapshot-no-directory-sync.cpp.test
+Exit: 1
+composed persistence model: new WAL became durable before the matching snapshot namespace
+composed persistence model replacement=0 schedule=0 cuts=44
+composed persistence model replacement=0 schedule=1 cuts=44
+
+wal-no-file-sync.cpp
+c++ -std=c++20 -O1 -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Ibuild/_deps/willemt_raft-src/include -include tests/v2_compaction_persistence_model_hooks.hpp -c /private/tmp/velocita-cp041-mutations.sF2tXj/wal-no-file-sync.cpp -o /private/tmp/velocita-cp041-mutations.sF2tXj/wal-no-file-sync.cpp.o && c++ /private/tmp/velocita-full-audit.lYB4P5/release/CMakeFiles/v2-compaction-persistence-model-tests.dir/tests/v2_compaction_persistence_model_tests.cpp.o /private/tmp/velocita-full-audit.lYB4P5/release/CMakeFiles/v2-compaction-model-archive.dir/src/v2_archive_store.cpp.o /private/tmp/velocita-cp041-mutations.sF2tXj/wal-no-file-sync.cpp.o /private/tmp/velocita-full-audit.lYB4P5/release/CMakeFiles/v2-compaction-model-io.dir/src/v2_snapshot_store.cpp.o /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_replication.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_kernel.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_evaluator.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_contracts.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_core.a /private/tmp/velocita-full-audit.lYB4P5/release/libwillemt_raft.a -o /private/tmp/velocita-cp041-mutations.sF2tXj/wal-no-file-sync.cpp.test && /private/tmp/velocita-cp041-mutations.sF2tXj/wal-no-file-sync.cpp.test
+Exit: 1
+composed persistence model: durable WAL image lost or changed exact prefix/suffix
+
+wal-drop-first-suffix.cpp
+c++ -std=c++20 -O1 -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Ibuild/_deps/willemt_raft-src/include -include tests/v2_compaction_persistence_model_hooks.hpp -c /private/tmp/velocita-cp041-mutations.sF2tXj/wal-drop-first-suffix.cpp -o /private/tmp/velocita-cp041-mutations.sF2tXj/wal-drop-first-suffix.cpp.o && c++ /private/tmp/velocita-full-audit.lYB4P5/release/CMakeFiles/v2-compaction-persistence-model-tests.dir/tests/v2_compaction_persistence_model_tests.cpp.o /private/tmp/velocita-full-audit.lYB4P5/release/CMakeFiles/v2-compaction-model-archive.dir/src/v2_archive_store.cpp.o /private/tmp/velocita-cp041-mutations.sF2tXj/wal-drop-first-suffix.cpp.o /private/tmp/velocita-full-audit.lYB4P5/release/CMakeFiles/v2-compaction-model-io.dir/src/v2_snapshot_store.cpp.o /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_replication.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_kernel.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_evaluator.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_contracts.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_core.a /private/tmp/velocita-full-audit.lYB4P5/release/libwillemt_raft.a -o /private/tmp/velocita-cp041-mutations.sF2tXj/wal-drop-first-suffix.cpp.test && /private/tmp/velocita-cp041-mutations.sF2tXj/wal-drop-first-suffix.cpp.test
+Exit: 1
+composed persistence model: durable WAL image lost or changed exact prefix/suffix
+
+The first mutant passes the first two schedules before the selective-WAL
+schedule finds new WAL with an old/absent snapshot; an all-lazy/all-eager-only
+model would have missed it. The two WAL mutants fail at exact durable history,
+not merely a status enum. These are three targeted mutations, NOT proof every
+guard or filesystem schedule has been exhaustively tested.

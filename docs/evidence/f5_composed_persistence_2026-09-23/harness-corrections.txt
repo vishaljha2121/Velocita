@@ -1,0 +1,36 @@
+CP-041 test-development corrections, NOT production REDs.
+
+Main and independent Sol review found draft correctness blockers before accepting
+a GREEN: constructor and post-recovery oracles shared one catch, which swallowed
+bad accepted recovery as refusal; eager rename added the destination without
+removing source; replacement expected only post-seed WAL while archive starts1;
+completion equated not-pending with success; write-only FD could not be pread.
+Final test separates refusal from assertions, models rename as one name delta,
+captures complete authored/pre-cut history, requires returned cut, opens a read
+alias for synced write-only descriptors and pins inode lifetime.
+
+Main also added pre-recovery ordering assertions, strict catalog decoding,
+exact record cardinality, independently encoded command preconditions, directory
+names in evidence images, all-eager absolute-path creation, and a lifetime guard
+that joins worker before model destruction. Failure images are never overwritten.
+
+Observed unsuccessful development runs:
+1. Exit1: baseline did not traverse actual archive, snapshot and WAL publication.
+   The draft had changed the known WAL name to raft.wal; actual source uses
+   v2-wal-blocks.bin. The trace sentinel caught this hook/schedule coverage bug.
+   Final routing uses the exact production basename.
+2. Exit1: successful transaction has no restartable durable image:
+   deployment parent must already exist and be accessible.
+   Materialized node root directly under macOS /tmp hit the intended no-follow
+   parent check (/tmp is a symlink). Recovery now uses a child of the owned real
+   temporary directory. Production startup was not weakened.
+3. Main corrected -Wsign-compare warnings in fixture index comparisons.
+
+No production source changed. Do not report these harness failures as fixed
+storage defects. Permanent negative controls are the three source mutants in
+mutations.txt; ordinary unmodified source is GREEN.
+
+Additional prior-evidence correction:
+CP-040 standalone mutations had cache-line128 vs linked library64. Rerun at64
+still kills both at the intended assertion; prior evidence file now preserves
+the mismatch and corrected commands. Mixed-definition builds are superseded.

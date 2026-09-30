@@ -4,7 +4,87 @@ Date: 2026-09-15
 Status: Accepted
 Implements: Phase 7.
 
+## Current implementation status — 2026-09-24 (CP-050 handoff)
+
+This supersedes implementation-status statements below, not the retained audit
+history. CP-043 moved live term/vote/commit saves and conflicting-suffix replacement
+onto the serial WAL worker when `start_writer()` is active. Protocol/apply/output
+fences wait for exact acquired completions; explicit cold/manual paths do not
+establish a nonblocking live-loop claim. CP-044 added composed durable-image
+evidence. Worker exceptions now latch failure rather than escaping the thread.
+See `../evidence/f6_async_persistence_2026-09-23/README.md` and
+`../evidence/f6_async_crash_model_2026-09-24/README.md` for limits and corrections
+to the historical NULL-hook/self-vote claims. Do not reimplement synchronous
+metadata removal as though those changes were absent.
+
+CP-049 adds a native serial target handoff after old writes/completions drain;
+it is NOT online generation installation. The installer must preserve actual job
+lifetimes and same result ledger, publish the selector durably and handle uncertain
+selection without fallback. It remains unimplemented. Approved direction and
+remaining work are in ADR0014 and the top `../CURRENT_HANDOFF.md` handover.
+Current source has not received new target acceptance; E3 is not closed by host
+component tests. This amendment changes no bytes or protocol/quorum decision.
+
+## Historical review status — 2026-09-21
+
+The WAL writer is asynchronous; term/vote/commit metadata saves still synchronously
+fsync on the owner thread. The reported microbenchmark is not an end-to-end
+owner-loop bound. Hard-state atomic replacement can be valid, but its persistence
+cut matrix is missing; corrupt-file refusal is not that proof. The fixed staging
+arena does not bound the replication queues or retained log map. Current-tree
+target acceptance is open. See the full Phase 6–9 audit; do not remove durability
+fences or weaken G-043 to restore a phase-complete label.
+
+F3 recovery prerequisite, 2026-09-21: compatibility validation now precedes the
+writable WAL open. An unsupported snapshot version is not ordinary corruption
+eligible for replay fallback. A shared read-only segment reader lets refusal
+preserve the directory inventory as well as existing bytes. This changes no WAL
+framing or durability arithmetic; ADR 0012 and CP-005 record scope and evidence.
+
 ## Context
+
+CP-013 correction, 2026-09-22: exceptions from synchronous WAL flush and
+term/vote/commit metadata persistence now latch the V2 node unusable. Persist a
+candidate metadata tuple before publishing its in-memory cache. A post-rename
+failure can expose a new named file while Raft has not accepted the callback;
+continuing from either assumption is unsafe. Tests check service refusal, not
+merely that the first operation threw. Main also found that the pinned election
+path ignores its self-vote callback error; owner tick now checks the latch even
+after a zero raft_periodic return. No persistent bytes or V1 behavior changed.
+
+This does not make hard state asynchronous or prove power-loss durability.
+Background WalWriter exceptions still escape its thread instead of reporting a
+structured owner error (source-traced). ADR0014 and the F5/F6 review
+separate that protocol from these existing-contract fixes; two-slot versus atomic
+replace remains an explicit plan decision, not silently amended by host tests.
+The owner subsequently approved the provisional atomic-replacement direction;
+the evidence and final plan amendment remain required, not presumed complete.
+
+CP-014, 2026-09-22: a test-only model now executes real metadata save/load with
+separate volatile/durable inode bytes and directory publication. Sync-only source
+mutants fail independent recovered-value assertions, unlike CP-006 process exits.
+This supports the approved provisional choice but does not finalize the plan
+amendment: spontaneous writeback, failed-sync partial persistence, exhaustive
+sector tears and first-directory creation are outside this model, and target
+evidence remains open. See `../evidence/f6_persistence_model_2026-09-22/README.md`.
+
+CP-027, 2026-09-23: the model now has a separate suite for the actual V2
+identity-bound metadata implementation. Authored old/new tuples and the real
+save/load path are checked with file/name durability separated; main's isolated
+file-sync-only and directory-sync-only mutants fail the recovered-value oracle.
+The old suite alone did not prove the new implementation. No production order,
+format or sync changed. This remains a restricted model, not asynchronous Raft
+completion or target power-loss acceptance; atomic replacement stays provisional.
+See `../evidence/f6_bound_metadata_model_2026-09-23/README.md`.
+
+F2 remediation, 2026-09-21: the synchronous segment helper now snapshots distinct
+sealed descriptors, refuses blocks already submitted to an async writer, and
+completes only after the batch sync. Failed write/sync leaves arena ownership
+unchanged and rolls back the file append frontier for retry. A consuming iterator
+was rejected because its advanced submission cursor would strand failed work.
+This fixes the helper's duplicate-front bug; it does not remove synchronous
+metadata or establish the missing target/hard-state guarantees. CP-002 records
+the permanent failure, retry and mutation evidence.
 
 `WriteAheadLog::append` opened, wrote, fsynced and closed PER RECORD, from inside
 a Raft log callback and therefore from inside the owner loop. Every proposal paid
@@ -124,6 +204,23 @@ revisited for followers specifically - it would remain correct for a single
 voter.
 
 ## A note on how two of these were found
+
+### 2026-09-21 review: process cuts are not power cuts
+
+F6 now adds deterministic process termination around metadata temporary-file
+write, file sync, rename and directory sync. The parent observes the old complete
+named frame before rename and the new complete frame after rename; a half-written
+temporary cannot become the named state. Default-inert callbacks add no persisted
+bytes and leave the production one-write path unchanged.
+
+This does not close G-047 or the owner-thread blocking finding. `_exit` leaves
+the operating system and its dirty page cache alive. Direct mutants removing
+only file fsync or only directory fsync, while retaining callbacks, BOTH SURVIVE.
+An earlier mutant removing directory sync AND its checkpoint died because the
+checkpoint was absent; that result is withdrawn as durability-guard evidence.
+The matrix proves atomic visibility under process failure, not power-loss
+survival. A storage persistence model and target evidence remain necessary;
+observing a callback is not proof that a syscall ran or that a device honored it.
 
 The first version of the durability test asserted `commit <= durable` after every
 tick, while the harness flushed on every tick. It passed - and it passed with the

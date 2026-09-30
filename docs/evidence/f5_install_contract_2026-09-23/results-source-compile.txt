@@ -1,0 +1,10 @@
+Command:
+c++ -std=c++20 -Wall -Wextra -Wpedantic -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Itests -Ibuild/_deps/willemt_raft-src/include -c tests/v2_snapshot_install_results_contract_tests.cpp -o /private/tmp/v2_snapshot_install_results_contract_tests.o
+
+Result:
+exit=0
+/private/tmp/v2_snapshot_install_results_contract_tests.o: Mach-O 64-bit object arm64
+
+This proves source compilation only. It is not a linked runtime result or an F5
+acceptance claim. The main integration owner will link and run the registered
+suite with the freshly rebuilt production libraries.

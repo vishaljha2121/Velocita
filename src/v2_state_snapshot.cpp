@@ -181,6 +181,12 @@ private:
         case ApplyCode::venue_event_expired:
         case ApplyCode::unauthorized_control:
         case ApplyCode::reconciliation_required:
+        case ApplyCode::catalog_not_installed:
+        case ApplyCode::catalog_installation_blocked:
+        case ApplyCode::immutable_catalog_conflict:
+        case ApplyCode::catalog_row_not_found:
+        case ApplyCode::catalog_binding_mismatch:
+        case ApplyCode::position_limit_exceeded:
             return true;
     }
     return false;
@@ -245,7 +251,9 @@ private:
            value == ApplyResultDetailKind::authorization ||
            value == ApplyResultDetailKind::fill ||
            value == ApplyResultDetailKind::venue_event ||
-           value == ApplyResultDetailKind::risk_configuration;
+           value == ApplyResultDetailKind::risk_configuration ||
+           value == ApplyResultDetailKind::mass_cancel ||
+           value == ApplyResultDetailKind::risk_state;
 }
 
 [[nodiscard]] constexpr bool known(const ReservationState value) noexcept {
@@ -298,6 +306,20 @@ private:
     if (value.detail_kind == ApplyResultDetailKind::risk_configuration) {
         return value.detail.words[0] != 0 && value.detail.words[1] != 0 &&
                value.detail.words[2] != 0;
+    }
+    if (value.detail_kind == ApplyResultDetailKind::mass_cancel) {
+        // Emitted only on `applied`; every in-scope order is exactly one of
+        // cancelled or skipped, and scope is bounded by the order arena.
+        const auto in_scope = value.mass_in_scope();
+        const auto cancelled = value.mass_cancelled();
+        return value.code == ApplyCode::applied && in_scope <= kMaxClusterOrders &&
+               cancelled <= in_scope && value.mass_skipped() == in_scope - cancelled;
+    }
+    if (value.detail_kind == ApplyResultDetailKind::risk_state) {
+        return value.code == ApplyCode::stale_risk_state &&
+               value.current_risk_version().value() != 0 &&
+               value.current_position_version().value() != 0 &&
+               value.decision_id.value() != 0;
     }
     const bool accepted = value.code == ApplyCode::applied ||
                           value.code == ApplyCode::already_applied;
@@ -354,6 +376,15 @@ private:
         state.order_count > state.orders.size() ||
         state.outbox_effect_count > state.outbox_effects.size() ||
         state.caller_cursor_count > state.caller_cursors.size()) {
+        return false;
+    }
+
+    const bool has_economic_state =
+        state.policy_count != 0 || state.active_executable_policy.present ||
+        state.staged_executable_policy.present || state.decision_count != 0 ||
+        state.risk_account_count != 0 || state.reservation_count != 0 ||
+        state.order_count != 0 || state.outbox_effect_count != 0;
+    if (has_economic_state && state.execution_catalog_root.is_zero()) {
         return false;
     }
 
@@ -584,7 +615,8 @@ private:
             risk.max_reserved_exposure.atoms() <= 0 ||
             risk.reserved_margin.atoms() < 0 || risk.reserved_fee.atoms() < 0 ||
             risk.initial_margin_ppm == 0 || risk.initial_margin_ppm > 1'000'000 ||
-            risk.maximum_fee_ppm > 1'000'000) {
+            risk.maximum_fee_ppm > 1'000'000 ||
+            risk.max_position_quantity.atoms() < 0) {
             return false;
         }
         for (std::size_t prior = 0; prior < index; ++prior) {
@@ -1081,6 +1113,8 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
         writer.integral(risk.initial_margin_ppm);
         writer.integral(risk.maximum_fee_ppm);
         writer.integral(risk.position_quantity.atoms());
+        writer.integral(risk.max_position_quantity.atoms());
+        writer.integral(static_cast<std::uint8_t>(risk.allow_short));
     }
 
     writer.integral(static_cast<std::uint16_t>(state.reservation_count));
@@ -1119,6 +1153,7 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
         writer.integral(static_cast<std::uint8_t>(effect.state));
         writer.integral(static_cast<std::uint8_t>(effect.operation));
     }
+    writer.digest(state.execution_catalog_root);
 }
 
 [[nodiscard]] PolicyRecord read_policy(Reader& reader) noexcept {
@@ -1520,6 +1555,11 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
         risk.maximum_fee_ppm = reader.integral<std::uint32_t>();
         risk.position_quantity =
             QuantityLots::from_atoms(reader.integral<std::int64_t>());
+        risk.max_position_quantity =
+            QuantityLots::from_atoms(reader.integral<std::int64_t>());
+        const auto allow_short = reader.integral<std::uint8_t>();
+        if (allow_short > 1) return false;
+        risk.allow_short = allow_short == 1;
     }
 
     state.reservation_count = reader.integral<std::uint16_t>();
@@ -1572,6 +1612,7 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
         effect.operation =
             static_cast<EffectOperation>(reader.integral<std::uint8_t>());
     }
+    state.execution_catalog_root = reader.digest();
     return reader.finished() && valid_state(state);
 }
 
@@ -1632,6 +1673,13 @@ DecodeStateSnapshotResult decode_state_snapshot(
         return {StateSnapshotError::invalid_magic, {}};
     }
 
+    // A different schema can have a different size bound. Do not classify it
+    // as corrupt current-schema state and permit a storage-level replay fallback.
+    if (read_u16(snapshot, kStateSnapshotSchemaOffset) !=
+        kStateSnapshotSchemaVersion) {
+        return {StateSnapshotError::unsupported_schema, {}};
+    }
+
     const auto payload_bytes = read_u32(snapshot, kStateSnapshotMagicBytes);
     if (payload_bytes > kMaxStateSnapshotPayloadBytes) {
         return {StateSnapshotError::length_mismatch, {}};
@@ -1644,11 +1692,6 @@ DecodeStateSnapshotResult decode_state_snapshot(
     }
     if (snapshot.size() != expected_size) {
         return {StateSnapshotError::length_mismatch, {}};
-    }
-
-    if (read_u16(snapshot, kStateSnapshotSchemaOffset) !=
-        kStateSnapshotSchemaVersion) {
-        return {StateSnapshotError::unsupported_schema, {}};
     }
 
     const auto digest_offset = expected_size - kDigestBytes;

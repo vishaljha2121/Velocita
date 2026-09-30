@@ -39,18 +39,8 @@ struct VenueCapabilityView {
 
 using Tick = std::uint64_t;
 
-// Disposable control cache; evaluate_pre_send verifies it against replicated state.
-//
-// THE LEASE IS WHAT GENERATION FENCING CANNOT DO. Comparing this cache against
-// cluster state only helps a gateway that can still READ the cluster. One that
-// is partitioned keeps believing its last good answer indefinitely, and nothing
-// bounded how long it may act on it - so the fence protects against a gateway
-// that knows it was superseded and not against one that cannot find out.
-//
-// `confirmed_at` is when this view was last confirmed against an authoritative
-// read, `lease_bound` is how stale that is allowed to get, and `now` is the
-// caller's tick. Time is a PARAMETER, not a clock read: the guard stays pure,
-// and a test can place the gateway at any point in the lease without waiting.
+// Disposable control/age cache for candidate planning, never send authority.
+// Only GatewayAuthority's request-correlated proof can authorize new-risk handoff.
 struct GatewayControlView {
     ExecutorGeneration executor_generation{};
     KillEpoch kill_epoch{};
@@ -72,14 +62,7 @@ struct GatewayControlView {
     constexpr auto operator<=>(const GatewayControlView&) const noexcept = default;
 };
 
-// What an authoritative read of the cluster yielded.
-//
-// `authoritative` is the entire point and is deliberately the first field: a
-// follower's copy, or a deposed leader's, is stale by definition, and Phase 6
-// made the gateway carry that evidence alongside the data precisely so it could
-// not be dropped on the floor here. This is the same question
-// `CommittedOutboxView::authoritative` answers, narrowed to the control fields
-// so the guard stays free of the replication layer.
+// Legacy diagnostic reading. Its boolean cannot establish quorum authority.
 struct AuthorityReading {
     bool authoritative{};
     ExecutorGeneration executor_generation{};
@@ -89,18 +72,8 @@ struct AuthorityReading {
     constexpr auto operator<=>(const AuthorityReading&) const noexcept = default;
 };
 
-// Renew the control cache from a read. Returns whether it renewed.
-//
-// THIS IS WHERE THE LEASE BINDS. The refusal in `evaluate_pre_send` is only the
-// consequence; what gives the bound meaning is that a gateway which cannot
-// obtain an authoritative answer gets NO RENEWAL and lapses on its own, with
-// nobody having to notice or reach it. A lease any read could renew would
-// expire only when the process stopped, which is the one case needing no
-// protection.
-//
-// Renewal adopts the authority it confirmed, not merely the time. Refreshing
-// the clock while keeping the old generation would leave the gateway holding
-// authority that looks fresh and is stale - worse than not renewing at all.
+// Fail-closed compatibility shim: always false and leaves the cache unchanged.
+// Retained to prevent an old caller silently acquiring different grant semantics.
 [[nodiscard]] bool renew_authority(GatewayControlView& control,
                                    const AuthorityReading& reading,
                                    Tick now) noexcept;
@@ -138,24 +111,29 @@ struct SendQuotaView {
     return false;
 }
 
-// Refusal carries no payload; permission carries the reconstructed canonical effect.
+// Candidate eligibility only. A populated payload is NOT send permission.
 struct PreSendDecision {
     PreSendRefusal refusal{PreSendRefusal::none};
     std::optional<OrderEffect> effect{};
+    Digest256 catalog_root{};
+    InstrumentSpecVersion instrument_spec_version{};
+    VenueCapabilitiesVersion venue_capabilities_version{};
 
     [[nodiscard]] constexpr bool permitted() const noexcept {
         return refusal == PreSendRefusal::none && effect.has_value();
     }
 };
 
-// Pure, bounded, allocation-free. Refusal precedence: identity/deliverability,
+// Pure, bounded, allocation-free candidate check, not the final-send boundary.
+// Refusal precedence: identity/deliverability,
 // canonical payload, current authority, venue capability, quota.
-[[nodiscard]] PreSendDecision evaluate_pre_send(
+[[nodiscard]] PreSendDecision evaluate_delivery_candidate(
     const TradingState& state,
     EffectId effect_id,
     const GatewayControlView& control,
     const VenueCapabilityView& venue,
-    const SendQuotaView& quota) noexcept;
+    const SendQuotaView& quota,
+    const VerifiedExecutionCatalog* catalog = nullptr) noexcept;
 
 // Gateway-local and non-durable; restart rebuilds through reconciliation.
 struct DeliveryAttempt {
@@ -277,7 +255,8 @@ struct EvidencePlan {
                                          const VenueCapabilityView& venue,
                                          const SendQuotaView& quota,
                                          const GatewayTimeouts& timeouts,
-                                         Tick now) noexcept;
+                                         Tick now,
+                                         const VerifiedExecutionCatalog* catalog = nullptr) noexcept;
 
 [[nodiscard]] bool record_send(GatewayDeliveryState& delivery, EffectId effect_id,
                                Tick now) noexcept;

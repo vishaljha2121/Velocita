@@ -1,0 +1,4 @@
+1517c1517
+<         if (response.success != 0 && reported > durable) reported = durable;
+---
+>         (void)durable;

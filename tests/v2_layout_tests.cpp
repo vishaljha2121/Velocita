@@ -77,7 +77,9 @@ void test_integrated_executable_policy_capacity_is_bounded() {
     // Phase 4 deliberately consumes the Phase 3 reserve without raising the
     // provisional 80-KiB ceiling. Keep enough explicit slack to make padding
     // or an accidental field addition visible before canonical integration.
-    require(kTradingStateObjectBudgetBytes - sizeof(TradingState) >= 512,
+    // 448, not 512: the P2.1 risk fields (max_position_quantity, allow_short)
+    // grew RiskAccount 112 -> 128 bytes x 4 accounts, leaving 464 free.
+    require(kTradingStateObjectBudgetBytes - sizeof(TradingState) >= 448,
             "Phase 4 in-memory authorization exhausted state headroom");
     static_assert(kMaxFeatureSchemaPayloadBytes <=
                   kFeatureSchemaArtifactPayloadBudgetBytes);

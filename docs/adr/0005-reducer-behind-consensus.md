@@ -4,7 +4,34 @@ Date: 2026-09-15
 Status: Accepted
 Implements: Phase 6, guarantees G-035 through G-041.
 
+## Review status — 2026-09-21
+
+Implementation/acceptance is incomplete; see the full Phase 6–9 audit. A local
+leader-role sample is NOT sufficient for gateway renewal, even in-process: a
+partitioned old leader still returns true after a majority commits kill.
+Read-index/quorum-confirmed authority is a live gate, not an optional stricter
+variant. Local snapshot restore also does not close replacement-voter install,
+and membership comes from startup arguments rather than persisted identity.
+These findings qualify the historical implementation claims below; no new
+protocol is approved by this review note.
+
 ## Context
+
+F2 remediation, 2026-09-21: both proposal lanes now validate canonical command
+bytes before Raft/WAL admission. Malformed normal input returns the existing
+`refused` status; malformed control input retains `not_a_control_command`.
+This is structural admission validation, not speculative reducer execution.
+State-dependent economic decisions still occur only after commit. Replay keeps
+its strict decoder and refuses already-corrupt history; admission validation is
+not a repair mechanism or Byzantine-peer protocol. See CP-002 in the remediation
+checkpoint audit for RED, restart and mutation evidence.
+
+F3 recovery prerequisite, 2026-09-21 (ADR 0012): retained WAL commands are also
+decoded before writable startup, including uncommitted entries and snapshot
+overlap. Unsupported snapshot versions refuse rather than fall through to replay.
+This validates representation only; the single post-commit apply call remains
+the only economic mutation path. The approved catalog-root/schema-8 transition
+is not yet implemented, and current schema-7 bytes are unchanged by this guard.
 
 ADR 0001 puts the deterministic reducer at the centre and everything untestable
 outside it. Phase 6 places it behind Raft without coupling domain logic to the

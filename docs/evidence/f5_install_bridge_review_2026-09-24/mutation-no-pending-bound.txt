@@ -1,0 +1,1 @@
+install history bridge contract: snapshot-covered streaming history did not reach the current archive quota refusal

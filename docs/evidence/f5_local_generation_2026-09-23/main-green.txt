@@ -1,0 +1,3 @@
+transition cells=546 terminal counters recoverable, not advanceable
+native value bytes=56 wire bytes=160
+local generation independent bytes and adversarial checks passed

@@ -1,0 +1,19 @@
+=== any_reason
+16c16
+<     return (reason >= 2 && reason <= 9) || (reason >= 64 && reason <= 67);
+---
+>     return true;
+=== trailing_allowed
+94d93
+<     if (input.size() != size) return NodeProtocolError::length_mismatch;
+=== lane_unchecked
+59d58
+<     if (lane > 1) return NodeProtocolError::invalid_lane;
+=== oversize_ingress
+57d56
+<     if (input.size() > kMaxIngressBodyBytes) return NodeProtocolError::command_too_large;
+=== digest_offset
+98c98
+<     std::copy(input.begin() + 9, input.begin() + 41, decoded.correlation.payload_digest.bytes.begin());
+---
+>     std::copy(input.begin() + 8, input.begin() + 40, decoded.correlation.payload_digest.bytes.begin());

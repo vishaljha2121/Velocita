@@ -1,0 +1,23 @@
+=== accept_only_current
+19,20c19
+<     for (const auto* secret : {&set.current, set.next ? &*set.next : nullptr,
+<                                set.previous ? &*set.previous : nullptr}) {
+---
+>     for (const auto* secret : {&set.current}) {
+=== previous_not_accepted
+19,20c19
+<     for (const auto* secret : {&set.current, set.next ? &*set.next : nullptr,
+<                                set.previous ? &*set.previous : nullptr}) {
+---
+>     for (const auto* secret : {&set.current, set.next ? &*set.next : nullptr}) {
+=== send_with_next
+80c80,81
+<         auto send = derive(found->second.current, {AuthRole::peer, node_id_, peer}, incarnation_);
+---
+>         auto send = derive(found->second.next ? *found->second.next : found->second.current,
+>                            {AuthRole::peer, node_id_, peer}, incarnation_);
+=== reload_ignores_missing
+79c79
+<         if (found == secrets.voters.end()) return std::nullopt;
+---
+>         if (found == secrets.voters.end()) continue;

@@ -1,0 +1,11 @@
+--- src/v2_archive_segment.cpp	2026-09-23 13:06:50
++++ /private/tmp/v2-archive-final-mutants.btbp7c/first-pass.cpp	2026-09-23 13:09:16
+@@ -319,7 +319,7 @@
+         return {ArchiveSegmentError::digest_mismatch};
+     const auto pass_one = validate_record_region(input, records_end, count, first_index,
+         first_term, last_term, identity, scratch, nullptr, nullptr);
+-    if (pass_one != ArchiveSegmentError::none) return {pass_one};
++    (void)pass_one;
+     const auto pass_two = validate_record_region(input, records_end, count, first_index,
+         first_term, last_term, identity, scratch, visitor, visitor_context);
+     if (pass_two != ArchiveSegmentError::none) return {pass_two};

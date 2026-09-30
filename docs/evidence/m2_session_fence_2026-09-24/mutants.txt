@@ -1,0 +1,12 @@
+# unit test (tests/v2_session_fence_tests.cpp)
+baseline                     session fence tests passed
+no_stale_epoch               session fence tests failed: fence decision differs at step 6
+replay_allows_equal          session fence tests failed: fence decision differs at step 3
+sequencer_wraps              session fence tests failed: sequencer wrapped after exhaustion
+no_crc_check                 session fence tests failed: bit flip accepted at byte 4
+no_exhaustion                session fence tests failed: exhausted counter wrapped or changed
+# crash model (tests/v2_session_epoch_persistence_model_tests.cpp)
+baseline                     session epoch persistence model passed 15 crash cuts
+no_dir_sync_after_rename     session epoch persistence model failed: epoch 2 reissued after crash; highest returned was 4 (cut -1)
+no_file_sync_before_rename   session epoch persistence model failed: a returned epoch left no durable, valid epoch file (cut -1)
+no_dir_sync_on_create        session epoch persistence model failed: a returned epoch left no durable, valid epoch file (cut 3)

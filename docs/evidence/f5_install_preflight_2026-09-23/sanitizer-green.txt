@@ -1,0 +1,7 @@
+TRANSCRIBED DIRECT TOOL OUTPUT
+command compile exit: 0
+command test exit: 0
+ASAN_OPTIONS=detect_leaks=0
+UBSAN_OPTIONS=halt_on_error=1
+
+snapshot install preflight tests passed

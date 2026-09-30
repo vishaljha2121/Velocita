@@ -1,0 +1,98 @@
+[
+  {
+    "requested_at": "2026-09-28T15:21:31.011424+00:00",
+    "received_at": "2026-09-28T15:21:31.512784+00:00",
+    "request": {
+      "chain": "solana",
+      "side": "buy",
+      "base_asset": "So11111111111111111111111111111111111111112",
+      "qty": "25",
+      "qty_unit": "quote"
+    },
+    "reference_30s_close": "117.743125853519",
+    "quote": {
+      "base_asset": "So11111111111111111111111111111111111111112",
+      "quote_asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "order_side": "buy",
+      "qty": "25",
+      "qty_out": "0.21027964",
+      "fee": "0.25",
+      "fee_asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "quote_id": "ebf27ae7-0e2c-48c2-a4a9-c60862df4044",
+      "issues": [
+        {
+          "balance": {
+            "actual": "0",
+            "expected": "25"
+          },
+          "message": "Insufficient balance"
+        }
+      ]
+    },
+    "omitted": "payloads (unsigned Solana transaction, signing organization id and wallet address)"
+  },
+  {
+    "requested_at": "2026-09-28T15:21:32.632528+00:00",
+    "received_at": "2026-09-28T15:21:33.145344+00:00",
+    "request": {
+      "chain": "solana",
+      "side": "buy",
+      "base_asset": "So11111111111111111111111111111111111111112",
+      "qty": "100",
+      "qty_unit": "quote"
+    },
+    "reference_30s_close": "117.743125853519",
+    "quote": {
+      "base_asset": "So11111111111111111111111111111111111111112",
+      "quote_asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "order_side": "buy",
+      "qty": "100",
+      "qty_out": "0.841142519",
+      "fee": "1",
+      "fee_asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "quote_id": "7d3ef85b-64f3-4397-bec3-4a4fc10426c4",
+      "issues": [
+        {
+          "balance": {
+            "actual": "0",
+            "expected": "100"
+          },
+          "message": "Insufficient balance"
+        }
+      ]
+    },
+    "omitted": "payloads (unsigned Solana transaction, signing organization id and wallet address)"
+  },
+  {
+    "requested_at": "2026-09-28T15:21:34.210884+00:00",
+    "received_at": "2026-09-28T15:21:34.645089+00:00",
+    "request": {
+      "chain": "solana",
+      "side": "buy",
+      "base_asset": "So11111111111111111111111111111111111111112",
+      "qty": "500",
+      "qty_unit": "quote"
+    },
+    "reference_30s_close": "117.743125853519",
+    "quote": {
+      "base_asset": "So11111111111111111111111111111111111111112",
+      "quote_asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "order_side": "buy",
+      "qty": "500",
+      "qty_out": "4.208386269",
+      "fee": "5",
+      "fee_asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "quote_id": "49df86c9-64b8-49df-aa0b-a44c07c46bed",
+      "issues": [
+        {
+          "balance": {
+            "actual": "0",
+            "expected": "500"
+          },
+          "message": "Insufficient balance"
+        }
+      ]
+    },
+    "omitted": "payloads (unsigned Solana transaction, signing organization id and wallet address)"
+  }
+]

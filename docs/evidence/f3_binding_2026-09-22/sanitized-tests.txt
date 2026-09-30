@@ -1,0 +1,608 @@
+Start testing: Sep 22 12:33 EDT
+----------------------------------------------------------
+1/38 Testing: core-tests
+1/38 Test: core-tests
+Command: "/private/tmp/aeron-phase67-audit-build/core-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"core-tests" start time: Sep 22 12:33 EDT
+Output:
+----------------------------------------------------------
+all core tests passed
+<end of output>
+Test time =   0.11 sec
+----------------------------------------------------------
+Test Passed.
+"core-tests" end time: Sep 22 12:33 EDT
+"core-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/38 Testing: metrics-tests
+2/38 Test: metrics-tests
+Command: "/private/tmp/aeron-phase67-audit-build/metrics-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"metrics-tests" start time: Sep 22 12:33 EDT
+Output:
+----------------------------------------------------------
+all metrics tests passed
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"metrics-tests" end time: Sep 22 12:33 EDT
+"metrics-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/38 Testing: benchmark-tests
+3/38 Test: benchmark-tests
+Command: "/private/tmp/aeron-phase67-audit-build/benchmark-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"benchmark-tests" start time: Sep 22 12:33 EDT
+Output:
+----------------------------------------------------------
+benchmark tests passed
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"benchmark-tests" end time: Sep 22 12:33 EDT
+"benchmark-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/38 Testing: v2-contract-tests
+4/38 Test: v2-contract-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-contract-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-contract-tests" start time: Sep 22 12:33 EDT
+Output:
+----------------------------------------------------------
+all V2 contract tests passed
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"v2-contract-tests" end time: Sep 22 12:33 EDT
+"v2-contract-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+5/38 Testing: v2-value-contract-tests
+5/38 Test: v2-value-contract-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-value-contract-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-value-contract-tests" start time: Sep 22 12:33 EDT
+Output:
+----------------------------------------------------------
+all V2 value-contract tests passed
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"v2-value-contract-tests" end time: Sep 22 12:33 EDT
+"v2-value-contract-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+6/38 Testing: v2-payload-codec-tests
+6/38 Test: v2-payload-codec-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-payload-codec-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-payload-codec-tests" start time: Sep 22 12:33 EDT
+Output:
+----------------------------------------------------------
+all V2 payload-codec tests passed
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"v2-payload-codec-tests" end time: Sep 22 12:33 EDT
+"v2-payload-codec-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+7/38 Testing: v2-kernel-policy-tests
+7/38 Test: v2-kernel-policy-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-kernel-policy-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-kernel-policy-tests" start time: Sep 22 12:33 EDT
+Output:
+----------------------------------------------------------
+all V2 kernel policy tests passed
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"v2-kernel-policy-tests" end time: Sep 22 12:33 EDT
+"v2-kernel-policy-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+8/38 Testing: v2-venue-wire-tests
+8/38 Test: v2-venue-wire-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-venue-wire-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-venue-wire-tests" start time: Sep 22 12:33 EDT
+Output:
+----------------------------------------------------------
+all V2 venue wire tests passed
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"v2-venue-wire-tests" end time: Sep 22 12:33 EDT
+"v2-venue-wire-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+9/38 Testing: v2-venue-transport-tests
+9/38 Test: v2-venue-transport-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-venue-transport-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-venue-transport-tests" start time: Sep 22 12:33 EDT
+Output:
+----------------------------------------------------------
+all V2 venue transport tests passed
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"v2-venue-transport-tests" end time: Sep 22 12:33 EDT
+"v2-venue-transport-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+10/38 Testing: v2-kernel-control-tests
+10/38 Test: v2-kernel-control-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-kernel-control-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-kernel-control-tests" start time: Sep 22 12:33 EDT
+Output:
+----------------------------------------------------------
+all V2 kernel control tests passed
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"v2-kernel-control-tests" end time: Sep 22 12:33 EDT
+"v2-kernel-control-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+11/38 Testing: v2-kernel-source-tests
+11/38 Test: v2-kernel-source-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-kernel-source-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-kernel-source-tests" start time: Sep 22 12:33 EDT
+Output:
+----------------------------------------------------------
+all V2 kernel source tests passed
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"v2-kernel-source-tests" end time: Sep 22 12:33 EDT
+"v2-kernel-source-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+12/38 Testing: v2-state-snapshot-tests
+12/38 Test: v2-state-snapshot-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-state-snapshot-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-state-snapshot-tests" start time: Sep 22 12:33 EDT
+Output:
+----------------------------------------------------------
+all V2 state snapshot tests passed
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"v2-state-snapshot-tests" end time: Sep 22 12:33 EDT
+"v2-state-snapshot-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+13/38 Testing: v2-kernel-codec-tests
+13/38 Test: v2-kernel-codec-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-kernel-codec-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-kernel-codec-tests" start time: Sep 22 12:33 EDT
+Output:
+----------------------------------------------------------
+all V2 kernel codec tests passed
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"v2-kernel-codec-tests" end time: Sep 22 12:33 EDT
+"v2-kernel-codec-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+14/38 Testing: v2-replay-tests
+14/38 Test: v2-replay-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-replay-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-replay-tests" start time: Sep 22 12:33 EDT
+Output:
+----------------------------------------------------------
+all V2 replay tests passed
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"v2-replay-tests" end time: Sep 22 12:33 EDT
+"v2-replay-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+15/38 Testing: v2-model-replay-tests
+15/38 Test: v2-model-replay-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-model-replay-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-model-replay-tests" start time: Sep 22 12:33 EDT
+Output:
+----------------------------------------------------------
+generated histories=32 commands_per_history=96 snapshot_cuts_per_history=6 schema7_projection_corpus_digest=ed3732db95453b12dfdaf9d15a616a302be4c94bfc0a78d5fafe38b8b8aa5eca
+all V2 generated model/replay tests passed
+<end of output>
+Test time =   5.61 sec
+----------------------------------------------------------
+Test Passed.
+"v2-model-replay-tests" end time: Sep 22 12:33 EDT
+"v2-model-replay-tests" time elapsed: 00:00:05
+----------------------------------------------------------
+
+16/38 Testing: v2-venue-simulator-tests
+16/38 Test: v2-venue-simulator-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-venue-simulator-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-venue-simulator-tests" start time: Sep 22 12:33 EDT
+Output:
+----------------------------------------------------------
+all V2 venue simulator tests passed
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"v2-venue-simulator-tests" end time: Sep 22 12:33 EDT
+"v2-venue-simulator-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+17/38 Testing: v2-spsc-ring-tests
+17/38 Test: v2-spsc-ring-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-spsc-ring-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-spsc-ring-tests" start time: Sep 22 12:33 EDT
+Output:
+----------------------------------------------------------
+all V2 SPSC ring tests passed
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"v2-spsc-ring-tests" end time: Sep 22 12:33 EDT
+"v2-spsc-ring-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+18/38 Testing: v2-wal-arena-tests
+18/38 Test: v2-wal-arena-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-wal-arena-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-wal-arena-tests" start time: Sep 22 12:33 EDT
+Output:
+----------------------------------------------------------
+all V2 WAL arena tests passed
+<end of output>
+Test time =   0.29 sec
+----------------------------------------------------------
+Test Passed.
+"v2-wal-arena-tests" end time: Sep 22 12:33 EDT
+"v2-wal-arena-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+19/38 Testing: v2-replication-tests
+19/38 Test: v2-replication-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-replication-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-replication-tests" start time: Sep 22 12:33 EDT
+Output:
+----------------------------------------------------------
+all V2 replication tests passed
+<end of output>
+Test time =  10.61 sec
+----------------------------------------------------------
+Test Passed.
+"v2-replication-tests" end time: Sep 22 12:33 EDT
+"v2-replication-tests" time elapsed: 00:00:10
+----------------------------------------------------------
+
+20/38 Testing: v2-snapshot-membership-tests
+20/38 Test: v2-snapshot-membership-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-snapshot-membership-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-snapshot-membership-tests" start time: Sep 22 12:33 EDT
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.09 sec
+----------------------------------------------------------
+Test Passed.
+"v2-snapshot-membership-tests" end time: Sep 22 12:33 EDT
+"v2-snapshot-membership-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+21/38 Testing: v2-durable-quorum-tests
+21/38 Test: v2-durable-quorum-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-durable-quorum-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-durable-quorum-tests" start time: Sep 22 12:33 EDT
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"v2-durable-quorum-tests" end time: Sep 22 12:33 EDT
+"v2-durable-quorum-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+22/38 Testing: v2-gateway-tests
+22/38 Test: v2-gateway-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-gateway-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-gateway-tests" start time: Sep 22 12:33 EDT
+Output:
+----------------------------------------------------------
+all V2 gateway tests passed
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"v2-gateway-tests" end time: Sep 22 12:33 EDT
+"v2-gateway-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+23/38 Testing: v2-lifecycle-reachability-tests
+23/38 Test: v2-lifecycle-reachability-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-lifecycle-reachability-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-lifecycle-reachability-tests" start time: Sep 22 12:33 EDT
+Output:
+----------------------------------------------------------
+all V2 lifecycle reachability checks passed
+<end of output>
+Test time =   0.92 sec
+----------------------------------------------------------
+Test Passed.
+"v2-lifecycle-reachability-tests" end time: Sep 22 12:33 EDT
+"v2-lifecycle-reachability-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+24/38 Testing: v2-gateway-delivery-tests
+24/38 Test: v2-gateway-delivery-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-gateway-delivery-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-gateway-delivery-tests" start time: Sep 22 12:33 EDT
+Output:
+----------------------------------------------------------
+  P1-5 probe: 40 cycles, 18 venue events consumed, order cancel_pending
+all V2 gateway delivery tests passed
+<end of output>
+Test time =   1.07 sec
+----------------------------------------------------------
+Test Passed.
+"v2-gateway-delivery-tests" end time: Sep 22 12:33 EDT
+"v2-gateway-delivery-tests" time elapsed: 00:00:01
+----------------------------------------------------------
+
+25/38 Testing: v2-metrics-tests
+25/38 Test: v2-metrics-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-metrics-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-metrics-tests" start time: Sep 22 12:33 EDT
+Output:
+----------------------------------------------------------
+all V2 metrics tests passed
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"v2-metrics-tests" end time: Sep 22 12:33 EDT
+"v2-metrics-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+26/38 Testing: v2-phase4-property-tests
+26/38 Test: v2-phase4-property-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-phase4-property-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-phase4-property-tests" start time: Sep 22 12:33 EDT
+Output:
+----------------------------------------------------------
+phase 4 property corpus: 24 seeds, 220 steps each, 3255/4277 commands admitted
+all V2 Phase 4 property tests passed
+<end of output>
+Test time =  18.99 sec
+----------------------------------------------------------
+Test Passed.
+"v2-phase4-property-tests" end time: Sep 22 12:34 EDT
+"v2-phase4-property-tests" time elapsed: 00:00:18
+----------------------------------------------------------
+
+27/38 Testing: v2-rule-evaluator-tests
+27/38 Test: v2-rule-evaluator-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-rule-evaluator-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-rule-evaluator-tests" start time: Sep 22 12:34 EDT
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.10 sec
+----------------------------------------------------------
+Test Passed.
+"v2-rule-evaluator-tests" end time: Sep 22 12:34 EDT
+"v2-rule-evaluator-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+28/38 Testing: v2-layout-tests
+28/38 Test: v2-layout-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-layout-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-layout-tests" start time: Sep 22 12:34 EDT
+Output:
+----------------------------------------------------------
+all V2 layout tests passed
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"v2-layout-tests" end time: Sep 22 12:34 EDT
+"v2-layout-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+29/38 Testing: v2-decision-kernel-tests
+29/38 Test: v2-decision-kernel-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-decision-kernel-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-decision-kernel-tests" start time: Sep 22 12:34 EDT
+Output:
+----------------------------------------------------------
+all V2 decision kernel tests passed
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"v2-decision-kernel-tests" end time: Sep 22 12:34 EDT
+"v2-decision-kernel-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+30/38 Testing: v2-action-template-contract-tests
+30/38 Test: v2-action-template-contract-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-action-template-contract-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-action-template-contract-tests" start time: Sep 22 12:34 EDT
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"v2-action-template-contract-tests" end time: Sep 22 12:34 EDT
+"v2-action-template-contract-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+31/38 Testing: v2-action-resolver-tests
+31/38 Test: v2-action-resolver-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-action-resolver-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-action-resolver-tests" start time: Sep 22 12:34 EDT
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"v2-action-resolver-tests" end time: Sep 22 12:34 EDT
+"v2-action-resolver-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+32/38 Testing: v2-executable-policy-contract-tests
+32/38 Test: v2-executable-policy-contract-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-executable-policy-contract-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-executable-policy-contract-tests" start time: Sep 22 12:34 EDT
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"v2-executable-policy-contract-tests" end time: Sep 22 12:34 EDT
+"v2-executable-policy-contract-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+33/38 Testing: v2-executable-policy-codec-tests
+33/38 Test: v2-executable-policy-codec-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-executable-policy-codec-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-executable-policy-codec-tests" start time: Sep 22 12:34 EDT
+Output:
+----------------------------------------------------------
+all V2 executable-policy codec tests passed
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"v2-executable-policy-codec-tests" end time: Sep 22 12:34 EDT
+"v2-executable-policy-codec-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+34/38 Testing: v2-artifact-digest-tests
+34/38 Test: v2-artifact-digest-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-artifact-digest-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-artifact-digest-tests" start time: Sep 22 12:34 EDT
+Output:
+----------------------------------------------------------
+all V2 artifact-digest tests passed
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"v2-artifact-digest-tests" end time: Sep 22 12:34 EDT
+"v2-artifact-digest-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+35/38 Testing: v2-execution-catalog-tests
+35/38 Test: v2-execution-catalog-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-execution-catalog-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-execution-catalog-tests" start time: Sep 22 12:34 EDT
+Output:
+----------------------------------------------------------
+v2_execution_catalog_tests: PASS
+<end of output>
+Test time =   0.07 sec
+----------------------------------------------------------
+Test Passed.
+"v2-execution-catalog-tests" end time: Sep 22 12:34 EDT
+"v2-execution-catalog-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+36/38 Testing: v2-catalog-binding-tests
+36/38 Test: v2-catalog-binding-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-catalog-binding-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-catalog-binding-tests" start time: Sep 22 12:34 EDT
+Output:
+----------------------------------------------------------
+v2_catalog_binding_tests: PASS
+<end of output>
+Test time =   0.14 sec
+----------------------------------------------------------
+Test Passed.
+"v2-catalog-binding-tests" end time: Sep 22 12:34 EDT
+"v2-catalog-binding-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+37/38 Testing: v2-executable-policy-kernel-tests
+37/38 Test: v2-executable-policy-kernel-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-executable-policy-kernel-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-executable-policy-kernel-tests" start time: Sep 22 12:34 EDT
+Output:
+----------------------------------------------------------
+all V2 executable-policy kernel tests passed
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"v2-executable-policy-kernel-tests" end time: Sep 22 12:34 EDT
+"v2-executable-policy-kernel-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+38/38 Testing: v2-risk-order-outbox-tests
+38/38 Test: v2-risk-order-outbox-tests
+Command: "/private/tmp/aeron-phase67-audit-build/v2-risk-order-outbox-tests"
+Directory: /private/tmp/aeron-phase67-audit-build
+"v2-risk-order-outbox-tests" start time: Sep 22 12:34 EDT
+Output:
+----------------------------------------------------------
+all V2 risk/order/outbox tests passed
+<end of output>
+Test time =   0.19 sec
+----------------------------------------------------------
+Test Passed.
+"v2-risk-order-outbox-tests" end time: Sep 22 12:34 EDT
+"v2-risk-order-outbox-tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Sep 22 12:34 EDT

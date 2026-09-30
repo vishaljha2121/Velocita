@@ -41,7 +41,8 @@ inline constexpr std::size_t kMaxDecimalTextBytes = 24;
 [[nodiscard]] std::size_t render_decimal(std::int64_t atoms, std::uint8_t decimals,
                                          std::span<char> out) noexcept;
 
-// Venue-side instrument metadata, which is NOT replicated and must not be.
+// Venue-side instrument metadata. Its current local shape is not an authority
+// to send: the approved binding and version placement are still under review.
 //
 // The replicated `InstrumentExecutionProfile` carries
 // `quote_micros_per_tick_lot` - the PRODUCT of tick size and lot size. That is
@@ -49,8 +50,8 @@ inline constexpr std::size_t kMaxDecimalTextBytes = 24;
 // which is price and quantity SEPARATELY, so the factors have to come from
 // somewhere and the only place they exist is the venue's own catalog.
 //
-// That leaves two sources for one economic fact. See `spec_agrees_with_profile`
-// for what is done about it.
+// That leaves two sources for one arithmetic fact. See
+// `spec_agrees_with_profile` for the limited product-consistency check.
 struct VenueInstrumentSpec {
     VenueId venue_id{};
     InstrumentId instrument_id{};
@@ -64,12 +65,14 @@ struct VenueInstrumentSpec {
     constexpr auto operator<=>(const VenueInstrumentSpec&) const noexcept = default;
 };
 
-// DO THE TWO SOURCES PROVE EACH OTHER?
+// DO THE TWO SOURCES HAVE THE SAME NOTIONAL PRODUCT?
 //
 // tick x lot must reproduce the replicated `quote_micros_per_tick_lot` exactly.
 // If they disagree, one of them is wrong - and there is no way to tell which
 // from here, so sending either would be a guess with money attached. The
-// adapter refuses instead.
+// adapter's arithmetic check refuses instead. Passing this check does NOT bind
+// the factors, metadata identity, catalog version, or venue capabilities to an
+// OrderEffect and therefore is not authorization to render or send an order.
 //
 // Exactness is required, not closeness. A product that does not land on a whole
 // number of quote micros cannot be represented by the replicated contract at
@@ -109,23 +112,11 @@ struct AssetSymbol {
 
 [[nodiscard]] AssetSymbol asset_symbol(std::string_view text) noexcept;
 
-// FIELD NAMES THE VENUE HAS NOT DOCUMENTED, carried explicitly so that not
-// knowing them is a state the code can be in rather than a gap somebody fills
-// with a plausible guess.
-//
-// As of 2026-09-17 the create-order request schema does not render on
-// `docs.truemarkets.co`; only the market-order example does. So the price field
-// name, and whether `qty_unit` accepts a base-denominated quantity, are
-// UNKNOWN.
-//
-// WHY A GUESS HERE IS WORSE THAN A REFUSAL. Many APIs ignore fields they do not
-// recognise. If the price field is guessed wrong and ignored, a LIMIT order
-// silently becomes a MARKET order - it crosses the spread and pays taker fees on
-// every quote, which inverts the maker economics this project exists to capture,
-// and it does so while appearing to work. That is the single most expensive
-// failure available at this boundary and it is invisible from our side.
+// Legacy local schema description, retained for API compatibility only. Names
+// and a boolean cannot prove venue support or bind metadata to committed intent.
+// Neither value of `verified` enables the quarantined request-body encoders.
 struct VenueOrderSchema {
-    // Set only when these names came from the venue, never from inference.
+    // Not an execution capability or authorization token.
     bool verified{};
     std::array<char, kMaxVenueFieldBytes> price_field{};
     std::uint8_t price_field_length{};
@@ -156,15 +147,15 @@ struct OrderBodyResult {
     std::size_t bytes_written{};
 };
 
-// Encode the documented market-order body:
-//   {"base_asset":..,"quote_asset":..,"qty":..,"qty_unit":"base","side":..,
-//    "type":"market"}
+// Quarantined: OrderEffect has no approved market/swap intent, so this always
+// refuses with unsupported_operation and leaves `out` unchanged.
 [[nodiscard]] OrderBodyResult encode_market_order_body(
     const OrderEffect& effect, const VenueInstrumentSpec& spec,
     AssetSymbol base, AssetSymbol quote, std::span<char> out) noexcept;
 
-// Encode a limit-order body. REFUSES unless the schema is verified, for the
-// reason given on `VenueOrderSchema`.
+// Quarantined: non-submit operations refuse as unsupported_operation; submit
+// refuses as schema_unverified because this API cannot bind exact metadata and
+// capabilities to the authorized effect. Every refusal leaves `out` unchanged.
 [[nodiscard]] OrderBodyResult encode_limit_order_body(
     const OrderEffect& effect, const VenueInstrumentSpec& spec,
     AssetSymbol base, AssetSymbol quote, const VenueOrderSchema& schema,

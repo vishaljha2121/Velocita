@@ -1,0 +1,42 @@
+Independent main-agent direct-compilation mutation checks.
+Workspace production sources were never mutated; copies live under /private/tmp/velocita-f3-main-mutation.mMh405.
+Linked the final rebuilt Release test object and current static libraries; no CMake mutation rebuild.
+Each compile exited 0; each test below exited 1 at its intended assertion.
+
+SNAPSHOT STATE-SCHEMA GUARD
+Change: disable only `decoded.error == StateSnapshotError::unsupported_schema` throw.
+$ c++ -std=c++20 -O1 -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Ibuild/_deps/willemt_raft-src/include /private/tmp/velocita-f3-main-mutation.mMh405/snapshot_mutant.cpp /private/tmp/velocita-full-audit.lYB4P5/release/CMakeFiles/v2-replication-tests.dir/tests/v2_replication_tests.cpp.o /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_replication.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_kernel.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_evaluator.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_contracts.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_core.a /private/tmp/velocita-full-audit.lYB4P5/release/libwillemt_raft.a -o /private/tmp/velocita-f3-main-mutation.mMh405/snapshot-mutant
+$ TMPDIR=/private/tmp/velocita-f3-main-mutation.mMh405 /private/tmp/velocita-f3-main-mutation.mMh405/snapshot-mutant unsupported-snapshot
+V2 replication test failed: unsupported snapshot schema fell through to full-WAL replay
+
+WAL-GUARD
+$ c++ -std=c++20 -O1 -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Ibuild/_deps/willemt_raft-src/include /private/tmp/velocita-f3-main-mutation.mMh405/wal-guard.cpp /private/tmp/velocita-full-audit.lYB4P5/release/CMakeFiles/v2-replication-tests.dir/tests/v2_replication_tests.cpp.o /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_replication.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_kernel.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_evaluator.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_contracts.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_core.a /private/tmp/velocita-full-audit.lYB4P5/release/libwillemt_raft.a -o /private/tmp/velocita-f3-main-mutation.mMh405/wal-guard
+$ TMPDIR=/private/tmp/velocita-f3-main-mutation.mMh405 /private/tmp/velocita-f3-main-mutation.mMh405/wal-guard unsupported-segment-suffix
+exit=1
+V2 replication test failed: unsupported command schema in uncommitted segment suffix started
+
+EARLY-WRITE
+$ c++ -std=c++20 -O1 -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Ibuild/_deps/willemt_raft-src/include /private/tmp/velocita-f3-main-mutation.mMh405/early-write.cpp /private/tmp/velocita-full-audit.lYB4P5/release/CMakeFiles/v2-replication-tests.dir/tests/v2_replication_tests.cpp.o /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_replication.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_kernel.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_evaluator.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_contracts.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_core.a /private/tmp/velocita-full-audit.lYB4P5/release/libwillemt_raft.a -o /private/tmp/velocita-f3-main-mutation.mMh405/early-write
+$ TMPDIR=/private/tmp/velocita-f3-main-mutation.mMh405 /private/tmp/velocita-f3-main-mutation.mMh405/early-write snapshot-preflight-readonly
+exit=1
+V2 replication test failed: snapshot incompatibility opened or changed writable storage
+
+FRAME-GUARD
+$ c++ -std=c++20 -O1 -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Ibuild/_deps/willemt_raft-src/include /private/tmp/velocita-f3-main-mutation.mMh405/frame-guard.cpp /private/tmp/velocita-full-audit.lYB4P5/release/CMakeFiles/v2-replication-tests.dir/tests/v2_replication_tests.cpp.o /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_replication.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_kernel.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_evaluator.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_contracts.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_core.a /private/tmp/velocita-full-audit.lYB4P5/release/libwillemt_raft.a -o /private/tmp/velocita-f3-main-mutation.mMh405/frame-guard
+$ TMPDIR=/private/tmp/velocita-f3-main-mutation.mMh405 /private/tmp/velocita-f3-main-mutation.mMh405/frame-guard snapshot-preflight-readonly
+exit=1
+V2 replication test failed: unsupported snapshot frame version started
+
+SCHEMA-ORDER
+$ c++ -std=c++20 -O1 -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Ibuild/_deps/willemt_raft-src/include /private/tmp/velocita-f3-main-mutation.mMh405/schema-order.cpp /private/tmp/velocita-full-audit.lYB4P5/release/CMakeFiles/v2-replication-tests.dir/tests/v2_replication_tests.cpp.o /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_replication.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_kernel.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_evaluator.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_contracts.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_core.a /private/tmp/velocita-full-audit.lYB4P5/release/libwillemt_raft.a -o /private/tmp/velocita-f3-main-mutation.mMh405/schema-order
+$ TMPDIR=/private/tmp/velocita-f3-main-mutation.mMh405 /private/tmp/velocita-f3-main-mutation.mMh405/schema-order unsupported-oversized-snapshot
+exit=1
+V2 replication test failed: oversized future snapshot was classified as current-schema corruption
+
+Mutation definitions:
+wal-guard: remove only validate_history(records) and validate_history(legacy_records) calls.
+early-write: construct WalSegment immediately before snapshots_.load(), while keeping all validation.
+frame-guard: disable only the outer frame-version mismatch throw.
+schema-order: move the canonical schema check below current-version payload length validation.
+
+The delegated agent provided tests and scoped code review; these five mutation results were established by the main agent, not the delegated unfinished mutation attempt.

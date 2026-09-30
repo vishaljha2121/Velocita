@@ -1,0 +1,26 @@
+CP-041 next-step REDs: actual metadata fsync remains on protocol owner.
+These are existing known E3/F6 failures, NOT introduced by the new crash model.
+Not registered as expected-green CTest suites. All three check real persistence
+and emitted protocol effects before failing the no-owner-I/O assertion.
+
+c++ -std=c++20 -O1 -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Ibuild/_deps/willemt_raft-src/include tests/v2_async_hard_state_red.cpp /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_replication.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_kernel.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_evaluator.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_contracts.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_core.a /private/tmp/velocita-full-audit.lYB4P5/release/libwillemt_raft.a -o /private/tmp/velocita-cp041-mutations.sF2tXj/async-hard-state-red
+Compile exit: 0
+
+/private/tmp/velocita-cp041-mutations.sF2tXj/async-hard-state-red election /private/tmp/velocita-cp041-mutations.sF2tXj/next-red-election
+Exit: 1
+async-hard-state scenario=election metadata_sync_calls=4 owner_metadata_sync_calls=4 persisted_term=1 persisted_vote=1 persisted_commit=0
+async hard-state diagnostic: RED F6/A09: running WAL writer did not remove hard-state fsync from the Raft owner
+
+/private/tmp/velocita-cp041-mutations.sF2tXj/async-hard-state-red vote /private/tmp/velocita-cp041-mutations.sF2tXj/next-red-vote
+Exit: 1
+async hard-state diagnostic: RED F6/A09: running WAL writer did not remove hard-state fsync from the Raft owner
+async-hard-state scenario=vote metadata_sync_calls=4 owner_metadata_sync_calls=4 persisted_term=7 persisted_vote=2 persisted_commit=0
+
+/private/tmp/velocita-cp041-mutations.sF2tXj/async-hard-state-red commit /private/tmp/velocita-cp041-mutations.sF2tXj/next-red-commit
+Exit: 1
+async hard-state diagnostic: RED F6/A09: running WAL writer did not remove hard-state fsync from the Raft owner
+async-hard-state scenario=commit metadata_sync_calls=2 owner_metadata_sync_calls=2 persisted_term=1 persisted_vote=-1 persisted_commit=1
+
+These observations are syscall counts, not timing measurements. The current
+synchronous path is not shown to grant premature success; the pending task is
+removing owner-thread I/O WITHOUT weakening persistence-before-output semantics.

@@ -6,6 +6,19 @@ Updated: 2026-09-10
 
 ## Purpose, and how this differs from V2.1
 
+2026-09-24 scope lock (CP-047): while closing E1/E2/E3 and building the startable
+node, do not add feature workstreams. Existing roadmap deferrals stand: archive
+pruning/tiering/compression, concurrent installs, generalized storage backends,
+automatic gateway failover and unmeasured micro-optimizations wait for the next
+iteration and their stated triggers. Growing-prefix archive reverification is
+known; optimize only if measured recovery time prevents the declared pilot, not
+as a prerequisite invented during integration. Original safety/backup/authentication
+requirements and target gates are NOT deferred by this scope lock. Persistent
+remote receipts are deferred by the CP-048 owner approval of fresh authenticated
+destination verification in `F5_ARCHIVE_PUBLICATION_REVIEW.md`. Revisit only if
+measured restart/reclamation availability or revalidation cost requires it; do not
+replace fresh verification with a cached boolean while receipts are deferred.
+
 `V2_1_PERFORMANCE_OPTIMIZATION_SCOPE.md` holds work that makes V2 FASTER without
 changing what it can do. This document holds work that changes WHAT IT CAN DO:
 availability defects, coverage gaps, and functional limits that were consciously

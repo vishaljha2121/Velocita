@@ -1,0 +1,32 @@
+CommandIdentity=48
+ApplyResult=112
+CommittedResult=176
+CommittedResult.identity=0
+CommittedResult.result=48
+CommittedResult.term=160
+CommittedResult.index=168
+LedgerSlot=224 align=8
+LedgerSlot.result=0
+LedgerSlot.canonical_command_digest=176
+LedgerSlot.generation=208
+LedgerSlot.next=216
+LedgerSlot.state=218
+LedgerSlot.pool=219
+LedgerHandle=16 align=8
+LedgerHandle.generation=0
+LedgerHandle.slot=8
+LedgerHeader=24 align=8
+LedgerHeader.next_generation=0
+LedgerHeader.ordinary_free_head=8
+LedgerHeader.control_free_head=10
+LedgerHeader.ready_head=12
+LedgerHeader.ready_tail=14
+LedgerHeader.ordinary_free_count=16
+LedgerHeader.control_free_count=18
+LedgerHeader.ready_count=20
+slots1024=229376
+ordinary960=215040
+control64=14336
+ResultLedger=229400 align=8
+ResultLedger.header=0
+ResultLedger.slots=24

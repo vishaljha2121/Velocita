@@ -1,0 +1,16 @@
+--- src/v2_replication.cpp	2026-09-22 14:34:17
++++ /private/tmp/f4-proof-mutations.e8D7Tj/premature-proof.cpp	2026-09-22 14:50:33
+@@ -536,6 +536,13 @@
+ 
+ std::optional<AuthorityProof> ReplicatedKernel::take_authority_proof() {
+     require_usable();
++    if (pending_authority_barrier_) {
++        const auto& pending = *pending_authority_barrier_;
++        const auto binding = materialize_bound_order_effect(state_, pending.request.effect_id, catalog_);
++        if (binding) return AuthorityProof(AuthorityProofView{pending.request, *binding,
++            node_id_, pending.term, pending.index, pending.index,
++            state_.state_version, state_.strategy_mode});
++    }
+     revoke_stale_authority();
+     if (!authority_proof_) return std::nullopt;
+     auto result = std::move(authority_proof_);

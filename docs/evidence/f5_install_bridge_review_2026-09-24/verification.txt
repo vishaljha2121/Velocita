@@ -1,0 +1,46 @@
+CP-045, 2026-09-24. Branch v2/phase-5-corrections, HEAD d44a4a9.
+Uncommitted test/review changes only; no production behavior or accepted bytes changed.
+
+Fresh build before tests:
+cmake -S . -B /private/tmp/velocita-full-audit.lYB4P5/release
+cmake --build /private/tmp/velocita-full-audit.lYB4P5/release --target velocita-all-tests -j4
+ctest --test-dir /private/tmp/velocita-full-audit.lYB4P5/release --output-on-failure
+Release92/92 PASS,15.50 seconds.
+
+cmake -S . -B /private/tmp/aeron-phase67-audit-build
+cmake --build /private/tmp/aeron-phase67-audit-build --target velocita-all-tests -j4
+ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir /private/tmp/aeron-phase67-audit-build --output-on-failure
+C++ Debug ASan+UBSan92/92 PASS,189.39 seconds.
+Nonrecovering UB; leak detection off. Raft C remains uninstrumented.
+Both caches use offline pinned Raft from /private/tmp/velocita-cp043.SaGIxe/raft-build-suffix.
+
+Independent CTest JSON/gate list:92host/89V2 exact name-set match.
+python3 -m unittest discover -s tests -p 'test_gate_manifest.py' =>16 PASS.
+Earlier rebuilt focused archive-startup/generation-startup/install-preflight:3/3.
+No fresh passive Python model, TSan, target gate, RSS or timing measurement.
+
+Original lagger RED, freshly built (not a stale executable):
+c++ -std=c++20 -O1 -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Itests -I/private/tmp/velocita-cp043.SaGIxe/raft-build-suffix/include tests/v2_snapshot_catchup_red.cpp LIBRARIES -o /private/tmp/velocita-cp045.fcaqSy/lagger-red
+/private/tmp/velocita-cp045.fcaqSy/lagger-red /private/tmp/velocita-cp045.fcaqSy/lagger-root
+Exit1: compacted12, lagger applied0/commit0, seven append deliveries/failed replies.
+The fixture directory was new; existing user storage was not modified.
+
+Direct-source guard mutations:
+Copy src/v2_replication.cpp to separate scratch files, remove respectively:
+- only the missing archive/WAL-prefix condition;
+- only the pending > kRetainedLogEntries refusal in archive_admission.
+Compile each with C++20/O1/cacheline64 and the same include paths, then link the
+new contract-test CMake object plus mutant object before LIBRARIES below.
+Both exit1 at the intended assertion; raw mutation logs retained.
+Production sources were not edited for mutations.
+
+LIBRARIES, from /private/tmp/velocita-full-audit.lYB4P5/release, in order:
+libvelocita_v2_replication.a libvelocita_v2_kernel.a libvelocita_v2_evaluator.a
+libvelocita_v2_contracts.a libvelocita_core.a libwillemt_raft.a
+
+The passing witnesses establish cold-layout behavior, not crash durability:
+RawWalFixture authors bound blocks through ordinary file writes. It is not a
+power-cut model, authenticated import or live selector transaction. Negative
+controls establish sensitivity of CURRENT guards, not desired E1 closure.
+git diff --check clean. Protected paths untouched, model/ still pre-existing
+untracked. No staging, commit, tag, deployment, venue or physical device action.

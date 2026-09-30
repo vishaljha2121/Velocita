@@ -1,0 +1,9 @@
+Test project /private/tmp/aeron-phase67-audit-build
+    Start 62: v2-archive-file-tests
+1/2 Test #62: v2-archive-file-tests ............   Passed    0.68 sec
+    Start 63: v2-archive-file-io-tests
+2/2 Test #63: v2-archive-file-io-tests .........   Passed    0.06 sec
+
+100% tests passed out of 2
+
+Total Test time (real) =   0.74 sec

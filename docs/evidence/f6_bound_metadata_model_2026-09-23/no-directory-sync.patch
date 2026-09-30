@@ -1,0 +1,11 @@
+--- src/v2_bound_metadata.cpp
++++ no-directory-sync.cpp
+@@ -256,7 +256,7 @@
+                        kV2MetadataFileName) != 0)
+             throw io("rename bound metadata");
+         checkpoints_(MetadataCheckpoint::file_renamed);
+-        if (::fsync(directory_fd) != 0) throw io("fsync metadata directory");
++        // Mutation: omit only directory-publication durability.
+         checkpoints_(MetadataCheckpoint::directory_synced);
+         close_checked(directory_fd, "close metadata directory");
+     } catch (...) {

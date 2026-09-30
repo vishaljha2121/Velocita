@@ -1,0 +1,18 @@
+2026-09-23 main verification.
+python3 -m unittest discover -s tests -p 'test_*.py'
+Ran 40 tests in 1.063s
+OK
+Exit 0. Auth/token fixture messages came from tests; no live authentication.
+
+ctest --test-dir /private/tmp/velocita-full-audit.lYB4P5/release --show-only=json-v1
+Inventory saved to /private/tmp/cp039-ctest-inventory.json.
+Parsed the literal independent v2_required_tests array from
+deploy/pi-container/run-phase2-kernel-gate-inside.sh: 79 distinct V2 names.
+Invoked deploy/validate-ctest-inventory.py --inventory above --expected
+core-tests metrics-tests benchmark-tests plus those 79 literal names.
+Exit 0, no diagnostic: exact 82-test inventory, no missing/unexpected/disabled/
+skip-conditioned tests. The gate script itself was NOT executed or sourced.
+
+git diff --check: exit 0.
+shasum -a 256 -c docs/evidence/f5_archive_integration_2026-09-23/focused-source.sha256:
+all 16 diagnostic fingerprints matched; this is not a full gate pin.

@@ -1,0 +1,42 @@
+# Velocita V2 voter %i as a rootless podman container (podman 3.4: no quadlet).
+# Install as the `velocitas` user in ~/.config/systemd/user/.
+#
+# Host layout (owned by velocitas):
+#   ~/velocita-v2/config/node-%i.conf, catalog.bin   read-only into the container
+#   ~/velocita-v2/data/                               WAL, snapshots, health page
+#   %t/velocita-secrets/  (= /run/user/<uid>, tmpfs)  secrets pushed from the Mac
+#
+# --userns=keep-id runs the process as velocitas' own uid inside the container,
+# so the node's "secret file owned by me" check sees the pushed files correctly.
+#
+# Aeron's message buffers live in RAM (/dev/shm), not the data volume: on the
+# Pi's SD card their constant write-back competed with the voter's own syncs
+# (M3 finding 13). 1 MiB terms are ample for the 32,836-byte largest frame.
+
+[Unit]
+Description=Velocita V2 voter %i
+After=network-online.target
+# No secrets pushed yet (fresh boot) -> do not start; this is intended fail-closed.
+AssertPathExists=%t/velocita-secrets
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/podman run --rm --replace --name velocita-v2-node-%i \
+    --network host --userns=keep-id \
+    --read-only --security-opt no-new-privileges --cap-drop all \
+    --pids-limit 128 --memory 1g --log-driver journald \
+    --shm-size 256m -e AERON_TERM_BUFFER_LENGTH=1048576 \
+    -v %h/velocita-v2/config:/etc/velocita:ro \
+    -v %h/velocita-v2/data:/var/lib/velocita-v2 \
+    -v %t/velocita-secrets:/run/velocita-secrets:ro \
+    localhost/velocita-v2:m3 --config /etc/velocita/node-%i.conf --aeron-dir /dev/shm/velocita-aeron
+ExecStop=/usr/bin/podman stop -t 15 velocita-v2-node-%i
+# 64 = configuration/usage refusal (for example bootstrap into an existing
+# directory): restarting cannot fix it, so do not loop.
+RestartPreventExitStatus=64
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

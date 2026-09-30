@@ -1,3 +1,4 @@
+#include "v2_catalog_test_support.hpp"
 #include "velocita/v2/digest.hpp"
 #include "velocita/v2/replay.hpp"
 #include "velocita/v2/state_snapshot.hpp"
@@ -147,7 +148,7 @@ EncodedResult apply_record(velocita::v2::TradingState& state,
                            velocita::v2::KernelCommandCodecScratch& codec_scratch) {
     using namespace velocita::v2;
     EncodedResult encoded_result;
-    const auto replayed = apply_encoded_kernel_command(
+    const auto replayed = catalog_test::replay(
         state, {command.bytes.data(), command.size}, apply_scratch, codec_scratch,
         encoded_result.bytes);
     require(replayed.error == ReplayError::none,
@@ -161,7 +162,7 @@ void test_snapshot_plus_suffix_equals_full_byte_replay() {
     constexpr std::size_t cut = 6;
     const auto records = corpus();
 
-    TradingState full;
+    TradingState full = catalog_test::state();
     ApplyScratch full_apply_scratch;
     KernelCommandCodecScratch full_codec_scratch;
     std::array<EncodedResult, 12> full_results{};
@@ -179,7 +180,7 @@ void test_snapshot_plus_suffix_equals_full_byte_replay() {
             apply_record(full, records[index], full_apply_scratch, full_codec_scratch);
     }
 
-    TradingState restored;
+    TradingState restored = catalog_test::state();
     StateSnapshotScratch snapshot_scratch;
     const auto restored_result = decode_state_snapshot(
         {midpoint_bytes.data(), midpoint_size}, restored, snapshot_scratch);
@@ -220,7 +221,7 @@ void test_snapshot_plus_suffix_equals_full_byte_replay() {
     // was outside it, so the corpus's caller moved into the band. The commands,
     // their order and the reducer are unchanged; what moved is the identity
     // every command carries, and the receipts that record it.
-    require(final_digest ==
+    require(to_hex(catalog_test::schema7_projection(full)) ==
                 "3be6f42d0748bb6fa7b549febf59ffd6da70363865748e430340f32a38c9359d",
             "replay corpus final state changed without reviewed migration: " +
                 final_digest);
@@ -229,12 +230,12 @@ void test_snapshot_plus_suffix_equals_full_byte_replay() {
 void test_replay_preflight_failure_does_not_mutate_state() {
     using namespace velocita::v2;
     const auto record = corpus()[0];
-    TradingState state;
+    TradingState state = catalog_test::state();
     ApplyScratch apply_scratch;
     KernelCommandCodecScratch codec_scratch;
     std::array<std::byte, 8> too_small{};
 
-    const auto rejected = apply_encoded_kernel_command(
+    const auto rejected = catalog_test::replay(
         state, {record.bytes.data(), record.size}, apply_scratch, codec_scratch,
         too_small);
     require(rejected.error == ReplayError::result_output_too_small &&
@@ -244,7 +245,7 @@ void test_replay_preflight_failure_does_not_mutate_state() {
     auto corrupt = record;
     corrupt.bytes[20] ^= std::byte{1};
     std::array<std::byte, kKernelResultBytes> result_bytes{};
-    const auto invalid = apply_encoded_kernel_command(
+    const auto invalid = catalog_test::replay(
         state, {corrupt.bytes.data(), corrupt.size}, apply_scratch, codec_scratch,
         result_bytes);
     require(invalid.error == ReplayError::command_decode_failed &&

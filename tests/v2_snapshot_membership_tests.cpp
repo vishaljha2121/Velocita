@@ -1,4 +1,5 @@
 #include "velocita/v2/replication.hpp"
+#include "v2_identity_test_support.hpp"
 
 #include <algorithm>
 #include <array>
@@ -48,14 +49,17 @@ struct Cluster {
     std::set<std::int32_t> blocked;
 
     explicit Cluster(std::filesystem::path directory) : root(std::move(directory)) {
-        open(1);
-        open(2);
-        open(3);
+        open(1, true);
+        open(2, true);
+        open(3, true);
     }
 
-    void open(const std::int32_t id) {
+    void open(const std::int32_t id, const bool bootstrap = false) {
+        auto startup = bootstrap
+            ? identity_test::bootstrap(root / std::to_string(id), id, members)
+            : identity_test::recover(root / std::to_string(id), id, members);
         nodes.push_back(std::make_unique<ReplicatedKernel>(
-            id, root / std::to_string(id), members));
+            std::move(startup)));
     }
 
     ReplicatedKernel& node(const std::int32_t id) {
@@ -73,13 +77,13 @@ struct Cluster {
             }
         }
         nodes.erase(std::remove(nodes.begin(), nodes.end(), nullptr), nodes.end());
-        open(id);
+        open(id, false);
     }
 
     void route() {
         std::vector<PeerMessage> messages;
         for (auto& sender : nodes) {
-            while (auto message = sender->take_outbound_message()) {
+            while (auto message = identity_test::take_outbound_message(*sender)) {
                 messages.push_back(std::move(*message));
             }
         }
@@ -90,8 +94,8 @@ struct Cluster {
             }
             for (auto& recipient : nodes) {
                 if (recipient->status().node_id == message.recipient_id) {
-                    recipient->receive_peer(velocita::decode_peer_message(
-                        velocita::encode_peer_message(message)));
+                    identity_test::deliver_peer(*recipient, message,
+                        node(message.sender_id).static_identity());
                     break;
                 }
             }
@@ -145,7 +149,7 @@ void test_snapshot_restores_three_voter_membership(
     auto& before_restart = cluster.node(1);
     const auto before = before_restart.status();
     require(before.commit_index > 1, "fixture did not produce a compactable prefix");
-    const auto included = before_restart.compact();
+    const auto included = identity_test::complete_compaction(before_restart);
     require(included > 1, "snapshot did not include more than one committed entry");
 
     // A restarted voter must retain all three voters while loading the snapshot.

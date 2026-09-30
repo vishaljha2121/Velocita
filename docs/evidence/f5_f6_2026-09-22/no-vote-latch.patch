@@ -1,0 +1,11 @@
+--- src/v2_replication.cpp	2026-09-22 15:10:27
++++ /private/tmp/f5f6-integration.BeTkrZ/no-vote-latch.cpp	2026-09-22 15:11:43
+@@ -911,7 +911,7 @@
+         self.metadata_ = next;
+         return 0;
+     } catch (const std::exception& error) {
+-        self.storage_failed_ = true;
++        // MUTANT: no vote failure latch.
+         self.callback_error_ = error.what();
+         return RAFT_ERR_SHUTDOWN;
+     }

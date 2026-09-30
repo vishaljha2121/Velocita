@@ -1,0 +1,11 @@
+--- src/v2_archive_segment.cpp	2026-09-23 13:06:50
++++ /private/tmp/v2-archive-final-mutants.btbp7c/ordinal.cpp	2026-09-23 13:09:08
+@@ -170,7 +170,7 @@
+         const auto record_size = kArchiveRecordHeaderBytes + payload_size + kArchiveDigestBytes;
+         if (record_size > records_end - offset) return ArchiveSegmentError::truncated;
+         if (first_index > std::numeric_limits<std::uint64_t>::max() - ordinal ||
+-            index != first_index + ordinal || term <= 0 ||
++            false || term <= 0 ||
+             (ordinal != 0 && term < previous_term))
+             return ArchiveSegmentError::invalid_coordinates;
+         if ((ordinal == 0 && term != first_term) ||

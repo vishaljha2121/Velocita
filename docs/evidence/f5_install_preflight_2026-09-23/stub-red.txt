@@ -1,0 +1,5 @@
+TRANSCRIBED DIRECT TOOL OUTPUT
+command compile exit: 0
+command test exit: 1
+
+snapshot install preflight tests failed: exact boundary did not preserve the complete unknown suffix

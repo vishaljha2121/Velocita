@@ -1,0 +1,1 @@
+v2 static identity test failure: manifest digest differs from independent hash

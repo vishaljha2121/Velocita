@@ -1,0 +1,1 @@
+snapshot bounds failed: snapshot loader allocated beyond the canonical file bound before refusal

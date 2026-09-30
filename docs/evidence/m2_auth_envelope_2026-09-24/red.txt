@@ -1,0 +1,2 @@
+auth envelope tests failed: RFC 4231 case 1
+exit=1

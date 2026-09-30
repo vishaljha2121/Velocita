@@ -1,0 +1,2 @@
+foreign_vote before_term=0 after_term=1
+RED F5: a real foreign-lineage vote request changed local term

@@ -1,0 +1,20 @@
+Strict direct current-source suite:
+
+v2 generation startup tests passed
+
+The suite compiled the current changed startup and base-file sources directly;
+no stale startup/base-file archive was linked. It covers valid, malformed and
+foreign selector temporaries as diagnostics while retaining the final selection,
+plus temp-only refusal and a complete valid successor staling an older token.
+
+Command:
+c++ -std=c++20 -O2 -Wall -Wextra -Wpedantic -Werror \
+  -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Itests \
+  tests/v2_generation_startup_tests.cpp src/v2_identity_startup.cpp \
+  src/v2_generation_base_files.cpp src/v2_generation_base.cpp \
+  src/v2_local_generation.cpp src/v2_bound_metadata.cpp src/v2_bound_frame.cpp \
+  src/v2_static_identity.cpp src/v2_digest.cpp src/v2_snapshot_store.cpp \
+  src/v2_state_snapshot.cpp -Lbuild-v2-release -lvelocita_v2_kernel \
+  -lvelocita_v2_evaluator -lvelocita_v2_contracts -lvelocita_core -pthread \
+  -o /private/tmp/generation_startup_worker/temp_green
+/private/tmp/generation_startup_worker/temp_green

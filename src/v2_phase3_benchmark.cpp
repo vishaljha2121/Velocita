@@ -154,24 +154,26 @@ Command command(const std::uint64_t sequence, CommandBody body) {
 bool prepare(TradingState& state,
              ApplyScratch& scratch,
              const PolicyArtifact& policy,
-             const StageExecutablePolicy& bundle) {
+             const StageExecutablePolicy& bundle,
+             const VerifiedExecutionCatalog& catalog) {
+    state.execution_catalog_root = catalog.root();
     state.strategy_mode = StrategyMode::normal;
-    return apply(state, command(1, PublishPolicy{policy}), scratch).code ==
+    return apply(state, command(1, PublishPolicy{policy}), scratch, &catalog).code ==
                ApplyCode::applied &&
            apply(state,
                  command(2, ValidatePolicy{policy.policy_id,
                                            policy.policy_version}),
-                 scratch).code == ApplyCode::applied &&
-           apply(state, command(3, bundle), scratch).code == ApplyCode::applied &&
+                 scratch, &catalog).code == ApplyCode::applied &&
+           apply(state, command(3, bundle), scratch, &catalog).code == ApplyCode::applied &&
            apply(state,
                  command(4, ActivateExecutablePolicy{
                                 policy.policy_id, policy.policy_version,
                                 bundle.executable_policy.artifact_digest}),
-                 scratch).code == ApplyCode::applied &&
+                 scratch, &catalog).code == ApplyCode::applied &&
            apply(state,
                  command(5, RecordSourceEvent{SourceId{1}, SourceGeneration{1},
                                               SourceSequence{1}, digest(3)}),
-                 scratch).code == ApplyCode::applied;
+                 scratch, &catalog).code == ApplyCode::applied;
 }
 
 }  // namespace
@@ -203,7 +205,25 @@ int main() {
 
     TradingState state;
     ApplyScratch scratch;
-    if (!prepare(state, scratch, policy, bundle)) {
+    ExecutionCatalogRow row;
+    row.account_id = policy.account_id;
+    row.instrument = bundle.instrument;
+    row.capabilities = bundle.venue;
+    row.tick_quote_micros = bundle.instrument.quote_micros_per_tick_lot.atoms();
+    row.lot_base_atoms = 1;
+    row.encoder_family_id = 1;
+    row.encoder_schema_version = 1;
+    row.network_identity = {{{'n'}}, 1};
+    row.base_asset_identity = {{{'b'}}, 1};
+    row.quote_asset_identity = {{{'q'}}, 1};
+    row.routing_key = {{{'r'}}, 1};
+    std::array<std::byte, kMaxExecutionCatalogBytes> catalog_bytes{};
+    const auto image = encode_execution_catalog(std::span{&row, 1}, catalog_bytes);
+    VerifiedExecutionCatalog catalog;
+    if (image.error != ExecutionCatalogError::none ||
+        VerifiedExecutionCatalog::decode(std::span{catalog_bytes}.first(image.bytes_written),
+            image.root, catalog) != ExecutionCatalogError::none ||
+        !prepare(state, scratch, policy, bundle, catalog)) {
         std::cerr << "could not prepare authoritative reducer benchmark fixture\n";
         return 1;
     }
@@ -226,7 +246,7 @@ int main() {
                             EvaluateDecisionFrame{DecisionId{index + 1},
                                                   EvaluationMode::authoritative,
                                                   current_frame}),
-                    scratch);
+                    scratch, &catalog);
                 decision_high_watermark =
                     std::max(decision_high_watermark, state.decision_count);
                 receipt_high_watermark =

@@ -1,0 +1,7 @@
+baseline                 node tests passed
+caller_mismatch_removed  node tests failed: timed out waiting for mismatch refusal
+peer_fence_ignored       node tests failed: replayed authentic frame was not refused by the session fence
+busy_frames_dropped      node tests failed: busy follower is not holding the frame
+stash_dropped            node tests failed: stashed envelope was not the first frame offered after backpressure cleared
+leader_hint_removed      node tests failed: follower did not redirect to the actual leader
+

@@ -1,0 +1,14 @@
+F5 generation base component worker GREEN
+Date: 2026-09-23
+
+Command:
+c++ -std=c++20 -O2 -Wall -Wextra -Wpedantic -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Itests tests/v2_generation_base_tests.cpp src/v2_generation_base.cpp /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_replication.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_kernel.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_evaluator.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_contracts.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_core.a /private/tmp/velocita-full-audit.lYB4P5/release/libwillemt_raft.a -pthread -o /private/tmp/v2-generation-base-green && /private/tmp/v2-generation-base-green
+
+Exit: 0
+Output:
+v2 generation base tests passed
+
+Scope: standalone exact 40-byte seal codec/validator only. It validates the full
+bound snapshot, canonical state and catalog dependencies and returns a compact
+summary. No filesystem, publication, selector activation or startup integration
+is claimed.

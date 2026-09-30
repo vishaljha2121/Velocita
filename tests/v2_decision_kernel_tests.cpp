@@ -1,3 +1,4 @@
+#include "v2_catalog_test_support.hpp"
 #include "velocita/v2/kernel.hpp"
 #include "velocita/v2/rule_evaluator.hpp"
 
@@ -140,7 +141,7 @@ velocita::v2::VenueCapabilities venue_capabilities() {
 
 velocita::v2::TradingState ready_state() {
     using namespace velocita::v2;
-    TradingState state;
+    TradingState state = catalog_test::state();
     state.strategy_mode = StrategyMode::normal;
     state.policy_count = 1;
     state.policies[0] = PolicyRecord{policy(), PolicyLifecycle::active};
@@ -172,7 +173,7 @@ void test_success_is_retained_hot_and_cold() {
     auto state = ready_state();
     ApplyScratch scratch;
     const auto command = evaluate(1, 100, std::byte{0x31}, frame());
-    const auto outcome = apply(state, command, scratch);
+    const auto outcome = catalog_test::apply(state, command, scratch);
 
     require(outcome.code == ApplyCode::applied &&
                 outcome.decision_code == DecisionCode::action &&
@@ -189,7 +190,7 @@ void test_success_is_retained_hot_and_cold() {
                 state.decision_cold[0].proposal.notional ==
                     MoneyMicros::from_atoms(1'100),
             "exact economic proposal was not retained in the cold record");
-    require(apply(state, command, scratch) == outcome && state.decision_count == 1,
+    require(catalog_test::apply(state, command, scratch) == outcome && state.decision_count == 1,
             "exact command retry did not return the retained decision");
 }
 
@@ -199,20 +200,20 @@ void test_rejection_precedence_is_stable() {
 
     auto invalid = frame();
     invalid.account_id = AccountId{};
-    TradingState empty;
-    require(apply(empty, evaluate(1, 1, std::byte{0x41}, invalid), scratch)
+    TradingState empty = catalog_test::state();
+    require(catalog_test::apply(empty, evaluate(1, 1, std::byte{0x41}, invalid), scratch)
                 .decision_code == DecisionCode::invalid_frame,
             "frame validation did not precede policy resolution");
 
     auto missing_policy = frame();
-    require(apply(empty, evaluate(2, 2, std::byte{0x42}, missing_policy), scratch)
+    require(catalog_test::apply(empty, evaluate(2, 2, std::byte{0x42}, missing_policy), scratch)
                 .decision_code == DecisionCode::policy_not_found,
             "missing policy did not precede later checks");
 
     auto scoped = ready_state();
     auto wrong_account = frame();
     wrong_account.account_id = AccountId{99};
-    require(apply(scoped, evaluate(1, 3, std::byte{0x43}, wrong_account), scratch)
+    require(catalog_test::apply(scoped, evaluate(1, 3, std::byte{0x43}, wrong_account), scratch)
                 .decision_code == DecisionCode::account_scope_mismatch,
             "account scope did not precede source evaluation");
 
@@ -221,7 +222,7 @@ void test_rejection_precedence_is_stable() {
     no_source.source_event_count = 0;
     auto too_early = frame();
     too_early.event_time_ns = 50;
-    require(apply(no_source, evaluate(1, 4, std::byte{0x44}, too_early), scratch)
+    require(catalog_test::apply(no_source, evaluate(1, 4, std::byte{0x44}, too_early), scratch)
                 .decision_code == DecisionCode::source_not_admitted,
             "source admission did not precede event-time validity");
 }
@@ -231,7 +232,7 @@ void test_control_authority_suppresses_after_rule_evaluation() {
     auto state = ready_state();
     state.strategy_mode = StrategyMode::no_new_risk;
     ApplyScratch scratch;
-    const auto outcome = apply(state, evaluate(1, 5, std::byte{0x51}, frame()), scratch);
+    const auto outcome = catalog_test::apply(state, evaluate(1, 5, std::byte{0x51}, frame()), scratch);
     require(outcome.decision_code == DecisionCode::control_suppressed &&
                 outcome.proposed_directive == Directive::place_limit &&
                 outcome.effective_directive == Directive::no_action,
@@ -246,14 +247,14 @@ void test_full_rejection_precedence_and_rule_outcomes() {
 
     auto inactive = ready_state();
     inactive.policies[0].lifecycle = PolicyLifecycle::validated;
-    require(apply(inactive, evaluate(1, 10, std::byte{0x61}, frame()), scratch)
+    require(catalog_test::apply(inactive, evaluate(1, 10, std::byte{0x61}, frame()), scratch)
                 .decision_code == DecisionCode::policy_not_active,
             "inactive policy was not rejected before scope checks");
 
     auto instrument = frame();
     instrument.instrument_id = InstrumentId{99};
     auto instrument_state = ready_state();
-    require(apply(instrument_state,
+    require(catalog_test::apply(instrument_state,
                   evaluate(1, 11, std::byte{0x62}, instrument), scratch)
                 .decision_code == DecisionCode::instrument_scope_mismatch,
             "instrument scope precedence changed");
@@ -261,14 +262,14 @@ void test_full_rejection_precedence_and_rule_outcomes() {
     auto schema = frame();
     schema.feature_schema_id = FeatureSchemaId{99};
     auto schema_state = ready_state();
-    require(apply(schema_state, evaluate(1, 12, std::byte{0x63}, schema), scratch)
+    require(catalog_test::apply(schema_state, evaluate(1, 12, std::byte{0x63}, schema), scratch)
                 .decision_code == DecisionCode::feature_schema_mismatch,
             "feature-schema scope precedence changed");
 
     auto evidence = frame();
     evidence.raw_evidence_digest = digest(std::byte{0x7f});
     auto evidence_state = ready_state();
-    require(apply(evidence_state,
+    require(catalog_test::apply(evidence_state,
                   evaluate(1, 13, std::byte{0x64}, evidence), scratch)
                 .decision_code == DecisionCode::source_evidence_mismatch,
             "source-evidence precedence changed");
@@ -276,14 +277,14 @@ void test_full_rejection_precedence_and_rule_outcomes() {
     auto early = frame();
     early.event_time_ns = 99;
     auto early_state = ready_state();
-    require(apply(early_state, evaluate(1, 14, std::byte{0x65}, early), scratch)
+    require(catalog_test::apply(early_state, evaluate(1, 14, std::byte{0x65}, early), scratch)
                 .decision_code == DecisionCode::policy_not_yet_valid,
             "policy lower validity bound changed");
 
     auto expired = frame();
     expired.event_time_ns = 201;
     auto expired_state = ready_state();
-    require(apply(expired_state,
+    require(catalog_test::apply(expired_state,
                   evaluate(1, 15, std::byte{0x66}, expired), scratch)
                 .decision_code == DecisionCode::policy_expired,
             "policy upper validity bound changed");
@@ -291,13 +292,13 @@ void test_full_rejection_precedence_and_rule_outcomes() {
     auto stale = frame();
     stale.market_data_status = MarketDataStatus::stale;
     auto stale_state = ready_state();
-    require(apply(stale_state, evaluate(1, 16, std::byte{0x67}, stale), scratch)
+    require(catalog_test::apply(stale_state, evaluate(1, 16, std::byte{0x67}, stale), scratch)
                 .decision_code == DecisionCode::market_data_not_ready,
             "market readiness precedence changed");
 
     auto unavailable_state = ready_state();
     unavailable_state.policies[0].artifact.rules[0].feature_index = 1;
-    require(apply(unavailable_state,
+    require(catalog_test::apply(unavailable_state,
                   evaluate(1, 17, std::byte{0x68}, frame()), scratch)
                 .decision_code == DecisionCode::feature_unavailable,
             "missing evaluated feature did not fail closed");
@@ -305,7 +306,7 @@ void test_full_rejection_precedence_and_rule_outcomes() {
     auto no_match = frame();
     no_match.features[0] = FeatureMicros::from_atoms(10);
     auto no_match_state = ready_state();
-    const auto no_match_result = apply(
+    const auto no_match_result = catalog_test::apply(
         no_match_state, evaluate(1, 18, std::byte{0x69}, no_match), scratch);
     require(no_match_result.decision_code == DecisionCode::no_rule_matched &&
                 no_match_result.effective_directive == Directive::no_action,
@@ -316,7 +317,7 @@ void test_full_rejection_precedence_and_rule_outcomes() {
     halted.source_count = 0;
     halted.source_event_count = 0;
     const auto halted_result =
-        apply(halted, evaluate(1, 19, std::byte{0x6a}, frame()), scratch);
+        catalog_test::apply(halted, evaluate(1, 19, std::byte{0x6a}, frame()), scratch);
     require(halted_result.decision_code == DecisionCode::control_halted &&
                 halted_result.rules_visited == 0,
             "categorical halt did not precede source and rule work");
@@ -327,7 +328,7 @@ void test_shadow_identity_and_capacity_are_fail_closed() {
     ApplyScratch scratch;
 
     auto shadow_state = ready_state();
-    const auto shadow = apply(
+    const auto shadow = catalog_test::apply(
         shadow_state,
         evaluate(1, 30, std::byte{0x71}, frame(), EvaluationMode::shadow),
         scratch);
@@ -338,22 +339,22 @@ void test_shadow_identity_and_capacity_are_fail_closed() {
 
     auto identity_state = ready_state();
     const auto original = evaluate(1, 31, std::byte{0x72}, frame());
-    require(apply(identity_state, original, scratch).code == ApplyCode::applied,
+    require(catalog_test::apply(identity_state, original, scratch).code == ApplyCode::applied,
             "decision identity fixture did not apply");
     const auto same_economic_decision =
         evaluate(2, 31, std::byte{0x72}, frame());
-    require(apply(identity_state, same_economic_decision, scratch).code ==
+    require(catalog_test::apply(identity_state, same_economic_decision, scratch).code ==
                 ApplyCode::already_applied,
             "same decision provenance was not idempotent across request IDs");
     const auto conflict = evaluate(3, 31, std::byte{0x73}, frame());
-    require(apply(identity_state, conflict, scratch).code ==
+    require(catalog_test::apply(identity_state, conflict, scratch).code ==
                 ApplyCode::decision_id_conflict &&
                 identity_state.decision_count == 1,
             "conflicting DecisionId mutated retained decision state");
 
     auto full = ready_state();
     for (std::size_t index = 0; index < kMaxDecisionRecords; ++index) {
-        const auto outcome = apply(
+        const auto outcome = catalog_test::apply(
             full, evaluate(index + 1, index + 1,
                            static_cast<std::byte>(0x80 + index), frame()), scratch);
         require(outcome.code == ApplyCode::applied,
@@ -371,7 +372,7 @@ void test_shadow_identity_and_capacity_are_fail_closed() {
             LogicalOrderSlot{static_cast<std::uint16_t>(index + 1)};
     }
     const auto retained_last = full.decision_hot.back();
-    const auto rejected = apply(
+    const auto rejected = catalog_test::apply(
         full, evaluate(kMaxDecisionRecords + 1, kMaxDecisionRecords + 1,
                        std::byte{0xf0}, frame()), scratch);
     require(rejected.code == ApplyCode::decision_capacity_exceeded &&

@@ -1,0 +1,21 @@
+--- src/v2_gateway_authority.cpp	2026-09-22 14:33:10
++++ /private/tmp/f4-proof-mutations.e8D7Tj/no-freshness.cpp	2026-09-22 14:42:25
+@@ -96,8 +96,7 @@
+     }
+     const Pending expected = *pending_;
+     const auto& value = proof.view();
+-    const bool fresh = now >= expected.started_at &&
+-                       now - expected.started_at <= freshness_bound_;
++    const bool fresh = true;
+     const bool coordinates = value.issuer_id > 0 && value.term > 0 &&
+                              value.barrier_index > 0 &&
+                              value.applied_index >= value.barrier_index &&
+@@ -141,7 +140,7 @@
+     accepted_.reset();  // Consume before any caller can hand bytes to transport.
+     accepted_started_at_ = 0;
+ 
+-    if (now < started_at || now - started_at > freshness_bound_ ||
++    if (
+         !valid_control(current) || current.strategy_mode != StrategyMode::normal ||
+         current.executor_generation != permission.request.expected_executor_generation ||
+         current.kill_epoch != permission.request.expected_kill_epoch ||

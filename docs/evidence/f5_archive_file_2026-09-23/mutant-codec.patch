@@ -1,0 +1,11 @@
+--- src/v2_archive_file.cpp	2026-09-23 14:15:57
++++ /private/tmp/archive-file-mutants.gOY4CU/codec/src/v2_archive_file.cpp	2026-09-23 14:17:44
+@@ -115,7 +115,7 @@
+     ArchiveSegmentMetadata decoded;
+     const auto codec = decode_archive_segment(buffer.first(length), expected_identity,
+                                               nullptr, nullptr, scratch, decoded);
+-    if (codec.error != ArchiveSegmentError::none)
++    if (false && codec.error != ArchiveSegmentError::none)
+         return fail(ArchiveFileError::codec_failed, codec.error, offset);
+     destination = decoded;
+     return {ArchiveFileError::none, ArchiveSegmentError::none, offset};

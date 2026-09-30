@@ -1,0 +1,49 @@
+CP-046, 2026-09-24. Branch v2/phase-5-corrections, HEAD d44a4a9.
+Uncommitted owner-approved selected-generation history recovery implementation.
+
+Fresh full builds, tests sequential (older fixtures share fixed temporary paths):
+cmake --build /private/tmp/velocita-full-audit.lYB4P5/release --target velocita-all-tests -j4
+ctest --test-dir /private/tmp/velocita-full-audit.lYB4P5/release --output-on-failure
+Release93/93 PASS,19.52 seconds.
+
+cmake --build /private/tmp/aeron-phase67-audit-build --target velocita-all-tests -j4
+ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir /private/tmp/aeron-phase67-audit-build --output-on-failure
+C++ Debug ASan+UBSan93/93 PASS,274.56 seconds.
+UB nonrecovering/halt, leaks off; pinned Raft C uninstrumented. Host only.
+Both caches use offline Raft /private/tmp/velocita-cp043.SaGIxe/raft-build-suffix.
+No new build warnings in final build logs.
+
+ctest --test-dir /private/tmp/velocita-full-audit.lYB4P5/release --show-only=json-v1
+Compared names against independent v2_required_tests in
+deploy/pi-container/run-phase2-kernel-gate-inside.sh:93host/90V2, exact set match.
+python3 -m unittest discover -s tests -p 'test_gate_manifest.py':16 PASS.
+git diff --check: clean.
+
+Completion suite native size report: job168 history_job8920 replica124440
+retry_buffer32768 bytes. This is not total allocation/RSS/target memory.
+
+RED and mutations compiled directly with C++20/O1/cacheline64, include paths
+include, tests, /private/tmp/velocita-cp043.SaGIxe/raft-build-suffix/include.
+Libraries from Release build, in order:
+libvelocita_v2_replication.a libvelocita_v2_kernel.a libvelocita_v2_evaluator.a
+libvelocita_v2_contracts.a libvelocita_core.a libwillemt_raft.a
+Mutant translation unit linked before its ordinary static library. Completion
+suite includes its scratch replication.cpp directly. No production mutant edits.
+
+recovery-red.cpp freshly linked before behavior change: exit1 intended8193 quota.
+Partial-overlap draft: exit1 conflict; fixed and retained permanent witness.
+Final history baseline and completion baseline: PASS.
+Missing persistence gate, paused-only: exit1 tick mutated fenced owner state.
+Missing full-plan quota guard: exit1 partial catalog publication assertion.
+Missing completion sequence guard: exit1 corruption-not-latched in sequence case.
+Original tests/v2_snapshot_catchup_red.cpp freshly linked after final production:
+exit1 compacted12/applied0/seven failed append replies. E1 not closed.
+
+Intermediate failed Release/sanitizer logs retained, not acceptance evidence.
+Parallel run collided in old fixed-name replication fixture; result fixture also
+needed newly required history and asynchronous commit completion pumps.
+
+No fresh TSan, Python model corpus, target gates, storage performance or RSS.
+No live install, peer authentication, independent-copy authority, WAL deletion,
+staging, commit, tag, device, venue or deployment operation. Protected paths
+untouched. See README for exact coverage and availability/complexity limits.

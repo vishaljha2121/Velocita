@@ -1,0 +1,1 @@
+snapshot install result contract prerequisite failed: cold recovery did not install S and apply exactly S<i<=C

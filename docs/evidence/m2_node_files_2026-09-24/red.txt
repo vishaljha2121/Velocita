@@ -1,0 +1,2 @@
+node file tests failed: private 32-byte secret refused
+exit=1

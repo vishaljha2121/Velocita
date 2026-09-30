@@ -1,0 +1,24 @@
+Commands:
+c++ -std=c++20 -O1 -DNDEBUG -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Itests -include tests/v2_compaction_fault_hooks.hpp -c src/v2_snapshot_store.cpp -o /private/tmp/cp040-snapshot.o
+c++ -std=c++20 -O1 -DNDEBUG -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Itests -include tests/v2_compaction_fault_hooks.hpp -c src/v2_wal_arena.cpp -o /private/tmp/cp040-wal.o
+c++ -std=c++20 -O1 -DNDEBUG -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Itests -Ibuild/_deps/willemt_raft-src/include tests/v2_compaction_io_fault_tests.cpp src/v2_replication.cpp /private/tmp/cp040-snapshot.o /private/tmp/cp040-wal.o -L/private/tmp/velocita-full-audit.lYB4P5/release -lvelocita_v2_replication -lvelocita_v2_kernel -lvelocita_v2_evaluator -lvelocita_v2_contracts -lvelocita_core -lwillemt_raft -pthread -o /private/tmp/cp040-io-faults
+/private/tmp/cp040-io-faults
+
+Exit status: 0
+
+Exact output:
+integrated compaction I/O fault tests passed
+
+Covered injected EIO returns without throwing through a C/noexcept boundary:
+- snapshot write, file fsync, checked close, rename, and directory fsync;
+- WAL rewrite pwrite, file sync, rename, and directory fsync.
+
+Every case used a committed prefix through3 plus an exact durable uncommitted
+suffix at4. The initial compact call entered the asynchronous transaction. The
+selected syscall fired on the storage worker, completion latched the replica,
+leadership/result service refused, and cold restart recovered semantic state at
+applied3/kill_epoch3. The authoritative catalog and named segment retained exact
+records1..3; the WAL retained the exact captured index4 tuple and payload.
+
+This is deterministic EIO-return coverage. It is not a process-cut or power-loss
+claim; process interruption cases remain separate work.

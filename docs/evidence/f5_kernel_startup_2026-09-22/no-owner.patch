@@ -1,0 +1,11 @@
+--- src/v2_replication.cpp	2026-09-22 16:11:31
++++ /private/tmp/f5-kernel-token.hV7xxL/replication-no-owner.cpp	2026-09-22 16:19:25
+@@ -8,7 +8,7 @@
+ namespace {
+ 
+ VerifiedIdentityStartup take_startup(VerifiedIdentityStartup&& startup) {
+-    startup.validate_ownership();
++    // Isolated mutant: bypass ownership revalidation.
+     return std::move(startup);
+ }
+ 

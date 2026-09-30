@@ -1,0 +1,37 @@
+CP-040 sync-class mutation checks; production files and shared build never modified.
+CP-041 correction, 2026-09-23:
+The historical commands below used cache-line128 against Release libraries built
+with64. Treat those mixed-definition builds as superseded, not clean evidence.
+Recompiled each current mutant with the library's actual64 definition; both
+still fail at the intended durability assertion. Production source is unchanged.
+The CMake baseline/focused suite also uses64 and passed124 modeled cuts.
+
+c++ -std=c++20 -O1 -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Ibuild/_deps/willemt_raft-src/include -DARCHIVE_STORE_IMPLEMENTATION='"/private/tmp/cp040-archive-no-file-sync.cpp"' tests/v2_archive_persistence_model_tests.cpp /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_replication.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_kernel.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_evaluator.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_contracts.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_core.a /private/tmp/velocita-full-audit.lYB4P5/release/libwillemt_raft.a -o /private/tmp/velocita-cp041-mutations.sF2tXj/cp040-no-file-sync && /private/tmp/velocita-cp041-mutations.sF2tXj/cp040-no-file-sync
+Exit: 1
+archive persistence model: successful publication had no restartable durable evidence
+
+c++ -std=c++20 -O1 -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Ibuild/_deps/willemt_raft-src/include -DARCHIVE_STORE_IMPLEMENTATION='"/private/tmp/cp040-archive-no-directory-sync.cpp"' tests/v2_archive_persistence_model_tests.cpp /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_replication.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_kernel.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_evaluator.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_contracts.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_core.a /private/tmp/velocita-full-audit.lYB4P5/release/libwillemt_raft.a -o /private/tmp/velocita-cp041-mutations.sF2tXj/cp040-no-directory-sync && /private/tmp/velocita-cp041-mutations.sF2tXj/cp040-no-directory-sync
+Exit: 1
+archive persistence model: successful publication had no restartable durable evidence
+
+Unmodified model: focused-verified.txt, 124 cuts, exit0.
+Each mutant is a separate copy of src/v2_archive_store.cpp with only the following
+two statements inserted at the start of sync_fd:
+  struct stat info{};
+  if (::fstat(fd, &info) == 0 && S_ISREG(info.st_mode)) return true;
+The second mutant uses S_ISDIR instead of S_ISREG.
+These remove ALL syncs of a file class, not each individual sync site.
+
+Both initial rebuild attempts omitted -Ibuild/_deps/willemt_raft-src/include:
+fatal error: 'raft.h' file not found
+Exit1 at compilation is NOT a mutation kill. Corrected commands/results below.
+
+file
+c++ -std=c++20 -O1 -DVELOCITA_TARGET_CACHE_LINE_SIZE=128 -Iinclude -Ibuild/_deps/willemt_raft-src/include -DARCHIVE_STORE_IMPLEMENTATION='"/private/tmp/cp040-archive-no-file-sync.cpp"' tests/v2_archive_persistence_model_tests.cpp /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_replication.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_kernel.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_evaluator.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_contracts.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_core.a /private/tmp/velocita-full-audit.lYB4P5/release/libwillemt_raft.a -o /private/tmp/cp040-no-file-sync && /private/tmp/cp040-no-file-sync
+Exit: 1
+archive persistence model: successful publication had no restartable durable evidence
+
+directory
+c++ -std=c++20 -O1 -DVELOCITA_TARGET_CACHE_LINE_SIZE=128 -Iinclude -Ibuild/_deps/willemt_raft-src/include -DARCHIVE_STORE_IMPLEMENTATION='"/private/tmp/cp040-archive-no-directory-sync.cpp"' tests/v2_archive_persistence_model_tests.cpp /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_replication.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_kernel.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_evaluator.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_v2_contracts.a /private/tmp/velocita-full-audit.lYB4P5/release/libvelocita_core.a /private/tmp/velocita-full-audit.lYB4P5/release/libwillemt_raft.a -o /private/tmp/cp040-no-directory-sync && /private/tmp/cp040-no-directory-sync
+Exit: 1
+archive persistence model: successful publication had no restartable durable evidence

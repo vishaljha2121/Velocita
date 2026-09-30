@@ -34,11 +34,16 @@ evidence_dir="$evidence_root/$run_id"
 image=${VELOCITA_PI_CI_IMAGE:-localhost/velocita-pi-ci:v2-source-admission}
 cache_volume=${VELOCITA_V2_SOURCE_PI_CACHE_VOLUME:-velocita-v2-source-pi-ci-cache}
 build_jobs=${BUILD_JOBS:-2}
-expected_source_root=${VELOCITA_EXPECTED_SOURCE_ROOT:-0282782ed53a1727a92acaf6c830f5a0651554e40cc70861d8eb15d7373f32b8}
+expected_source_root=${VELOCITA_EXPECTED_SOURCE_ROOT:-}
 expected_host_machine=${VELOCITA_EXPECTED_HOST_MACHINE:-aarch64}
 expected_container_arch=${VELOCITA_EXPECTED_CONTAINER_ARCH:-arm64}
 host_environment=${VELOCITA_V2_HOST_ENVIRONMENT:-raspberry-pi-arm64-container}
 require_clean_pi_power=${VELOCITA_REQUIRE_CLEAN_PI_POWER:-1}
+
+[[ $expected_source_root =~ ^[0-9a-f]{64}$ ]] || {
+    printf 'VELOCITA_EXPECTED_SOURCE_ROOT must be an externally pinned SHA-256 root.\n' >&2
+    exit 64
+}
 
 mkdir -p "$evidence_dir"
 exec > >(tee "$evidence_dir/wrapper.log") 2>&1

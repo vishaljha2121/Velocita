@@ -15,10 +15,12 @@ UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
 
 
 def rpc(url, method, params=None, session=None, rid=1):
-    if method == "tools/call":
+    if method not in {"initialize", "notifications/initialized", "tools/list"}:
         raise SystemExit("refusing: this probe never calls a tool")
-    body = json.dumps({"jsonrpc": "2.0", "id": rid,
-                       "method": method, "params": params or {}}).encode()
+    message = {"jsonrpc": "2.0", "method": method, "params": params or {}}
+    if not method.startswith("notifications/"):
+        message["id"] = rid
+    body = json.dumps(message).encode()
     req = urllib.request.Request(url, data=body, method="POST")
     req.add_header("content-type", "application/json")
     req.add_header("accept", "application/json, text/event-stream")
@@ -58,21 +60,29 @@ def main(url):
     doc = parse(raw)
     print("server:", json.dumps(doc.get("result", {}).get("serverInfo", {})))
 
-    if session:
-        rpc(url, "notifications/initialized", session=session)
-    code, _, raw = rpc(url, "tools/list", session=session, rid=2)
-    print("tools/list -> http", code)
-    if code != 200:
-        print(raw[:400].decode("utf-8", "replace"))
+    if "error" in doc or not isinstance(doc.get("result"), dict):
         return 1
-    tools = parse(raw).get("result", {}).get("tools", [])
-    print("%d tools\n" % len(tools))
-    for t in tools:
-        print("--- " + t["name"])
-        desc = (t.get("description") or "").strip().replace("\n", " ")
-        print("    " + desc[:300])
-        print("    schema: " + json.dumps(t.get("inputSchema", {}), indent=6))
-    return 0
+    rpc(url, "notifications/initialized", session=session)
+    cursor, seen = None, set()
+    for page in range(100):
+        code, _, raw = rpc(url, "tools/list", {"cursor": cursor} if cursor else {},
+                           session=session, rid=page + 2)
+        if code != 200:
+            return 1
+        try:
+            result = parse(raw)["result"]
+            if not isinstance(result["tools"], list):
+                return 1
+            print(json.dumps(result, indent=2))
+            cursor = result.get("nextCursor")
+            if cursor is None:
+                return 0
+            if not isinstance(cursor, str) or not cursor or cursor in seen:
+                return 1
+            seen.add(cursor)
+        except (ValueError, KeyError, TypeError):
+            return 1
+    return 1
 
 
 if __name__ == "__main__":

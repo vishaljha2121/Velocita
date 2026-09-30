@@ -5,6 +5,16 @@ the standing rule that a new material byte contract is reviewed first.
 
 Supersedes nothing. Constrains Phase 8's remaining work.
 
+## Review qualification — 2026-09-21
+
+The original "log is the audit" argument requires retained history: Phase 7
+compaction deletes covered WAL records without a verified archive boundary.
+A state snapshot does not retain the full sequence of emergency actions. Keep
+the no-side-door rule, but complete audit retention before claiming G-060/G-072.
+The out-of-band-cancellation amendment below was subsequently corrected by
+ADR 0008; read it as historical reasoning, not the current applicability rule.
+See the consolidated Phase 6–9 audit A14 and the NUC/Pi roadmap.
+
 ## Context
 
 Phase 8 gave the emergency path two mechanisms and no cargo. A reserved send
@@ -126,3 +136,23 @@ command. That is a reviewed fixture change and must be recorded as one.
 
 The control lane's admission check must learn `RequestMassCancel`, or the
 operation this ADR adds will be refused by the lane built to carry it.
+
+## Amendment — 2026-09-30: the mass-cancel result must be encodable
+
+Before CP-075, `ApplyResultDetailKind::mass_cancel` was admitted by neither the kernel-result
+codec nor the snapshot's retained-receipt check. A committed mass cancel therefore fail-stopped
+every voter:
+- the operator's node failed to encode the committed result;
+- every node's snapshot and health encoding refused the retained receipt;
+- recovery replays the entry, so the cluster would crash-loop.
+
+The kill command was the one command that stopped the cluster without flattening it. Both codecs
+now admit the detail under constraints derived from `apply_request_mass_cancel`:
+- the code is `applied`;
+- `cancelled <= in_scope <= kMaxClusterOrders`;
+- `skipped == in_scope - cancelled`.
+
+A three-voter consensus test (`mass-cancel-commit`) commits one, answers it, and restarts a node
+from its own files. Lesson: every `ApplyResultDetailKind` needs a round trip through both codecs
+and a snapshot the moment it is added. A detail kind that only `apply()` has seen is untested
+where it matters.

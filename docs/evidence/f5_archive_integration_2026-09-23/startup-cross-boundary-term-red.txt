@@ -1,0 +1,19 @@
+Command (direct focused link; current src/v2_replication.cpp overrides the stale library member):
+c++ -std=c++20 -O1 -DNDEBUG -DVELOCITA_TARGET_CACHE_LINE_SIZE=64 -Iinclude -Itests -Ibuild/_deps/willemt_raft-src/include tests/v2_archive_startup_tests.cpp src/v2_replication.cpp -L/private/tmp/velocita-full-audit.lYB4P5/release -lvelocita_v2_replication -lvelocita_v2_kernel -lvelocita_v2_evaluator -lvelocita_v2_contracts -lvelocita_core -lwillemt_raft -pthread -o /private/tmp/cp038-boundary-red
+
+Command:
+/private/tmp/cp038-boundary-red
+
+Exit status: 1
+
+Exact output:
+archive-wal-suffix-term: startup served archive term two followed by WAL suffix term one
+archive-snapshot-bridge-term: startup served archive term two below snapshot term one through a WAL bridge
+2 archive startup regression(s) failed
+
+Both fixtures use codec-produced valid archive, snapshot, metadata, and WAL bytes.
+The archive terminal term is 2 while the immediately following retained suffix
+and the later snapshot boundary have term 1. Before the constructor fix, startup
+accepted the decreasing combined history. The snapshot-bridge trace reaches the
+immediate WAL-boundary guard first after the fix; it does not independently
+execute the defensive archive-to-snapshot comparison.

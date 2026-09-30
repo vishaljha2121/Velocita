@@ -1,0 +1,1 @@
+retained log tests failed: ordinary entry borrowed protected capacity

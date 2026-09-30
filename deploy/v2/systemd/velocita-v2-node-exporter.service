@@ -1,0 +1,24 @@
+# Host metrics (CPU, memory, disk latency, temperature, network) on the
+# Tailscale address, port 9110 (9100 may already be used by an older exporter).
+# Also serves ~/velocita-v2/textfile/*.prom (the soak bot's metrics).
+[Unit]
+Description=Velocita host metrics (node-exporter)
+
+[Service]
+EnvironmentFile=%h/.config/velocita/host.env
+ExecStartPre=/usr/bin/mkdir -p %h/velocita-v2/textfile
+ExecStart=/usr/bin/podman run --rm --replace --name velocita-v2-node-exporter \
+    --network host --pid host --read-only --cap-drop all --security-opt no-new-privileges \
+    --memory 128m \
+    -v /proc:/host/proc:ro -v /sys:/host/sys:ro -v /:/rootfs:ro \
+    -v %h/velocita-v2/textfile:/textfile:ro \
+    docker.io/prom/node-exporter:v1.10.2 \
+    --path.procfs=/host/proc --path.sysfs=/host/sys --path.rootfs=/rootfs \
+    --collector.textfile.directory=/textfile \
+    --web.listen-address=${VELOCITA_TAILSCALE_IP}:9110
+ExecStop=/usr/bin/podman stop -t 5 velocita-v2-node-exporter
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

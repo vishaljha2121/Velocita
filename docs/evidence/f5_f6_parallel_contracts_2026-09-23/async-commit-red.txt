@@ -1,0 +1,2 @@
+async-hard-state scenario=commit file_syncs=1 owner_file_syncs=1 persisted_term=1 persisted_vote=-1 persisted_commit=1
+async hard-state diagnostic: RED F6/A09: running WAL writer did not remove hard-state fsync from the Raft owner

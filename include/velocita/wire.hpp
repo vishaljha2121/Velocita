@@ -82,6 +82,9 @@ struct AppendEntries {
     std::int64_t previous_log_term{};
     std::int64_t leader_commit{};
     std::vector<PeerLogEntry> entries;
+    // V2 only (the V1 codec ignores it): the lowest index every voter holds,
+    // below which any voter may compact without stranding another.
+    std::int64_t compaction_floor{};
 };
 
 struct AppendEntriesResponse {

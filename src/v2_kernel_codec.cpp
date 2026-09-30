@@ -190,6 +190,12 @@ private:
         case ApplyCode::venue_event_expired:
         case ApplyCode::unauthorized_control:
         case ApplyCode::reconciliation_required:
+        case ApplyCode::catalog_not_installed:
+        case ApplyCode::catalog_installation_blocked:
+        case ApplyCode::immutable_catalog_conflict:
+        case ApplyCode::catalog_row_not_found:
+        case ApplyCode::catalog_binding_mismatch:
+        case ApplyCode::position_limit_exceeded:
             return true;
     }
     return false;
@@ -247,6 +253,7 @@ private:
         case KernelCommandKind::configure_risk_limits:
         case KernelCommandKind::acknowledge_gateway_results:
         case KernelCommandKind::request_mass_cancel:
+        case KernelCommandKind::install_execution_catalog:
             return true;
     }
     return false;
@@ -342,6 +349,11 @@ private:
         return body->acknowledged_through.value() != 0 &&
                body->acknowledged_through < command.identity.request_sequence;
     }
+    if (const auto* body = std::get_if<InstallExecutionCatalog>(&command.body)) {
+        return !body->catalog_root.is_zero() &&
+               body->expected_kill_epoch.value() != 0 &&
+               body->expected_executor_generation.value() != 0;
+    }
     return false;
 }
 
@@ -351,7 +363,9 @@ private:
            value == ApplyResultDetailKind::authorization ||
            value == ApplyResultDetailKind::fill ||
            value == ApplyResultDetailKind::venue_event ||
-           value == ApplyResultDetailKind::risk_configuration;
+           value == ApplyResultDetailKind::risk_configuration ||
+           value == ApplyResultDetailKind::mass_cancel ||
+           value == ApplyResultDetailKind::risk_state;
 }
 
 [[nodiscard]] bool valid_detail(const ApplyResult& result) noexcept {
@@ -362,6 +376,20 @@ private:
     if (result.detail_kind == ApplyResultDetailKind::risk_configuration) {
         return result.detail.words[0] != 0 && result.detail.words[1] != 0 &&
                result.detail.words[2] != 0;
+    }
+    if (result.detail_kind == ApplyResultDetailKind::mass_cancel) {
+        // Emitted only on `applied`; every in-scope order is exactly one of
+        // cancelled or skipped, and scope is bounded by the order arena.
+        const auto in_scope = result.mass_in_scope();
+        const auto cancelled = result.mass_cancelled();
+        return result.code == ApplyCode::applied && in_scope <= kMaxClusterOrders &&
+               cancelled <= in_scope && result.mass_skipped() == in_scope - cancelled;
+    }
+    if (result.detail_kind == ApplyResultDetailKind::risk_state) {
+        return result.code == ApplyCode::stale_risk_state &&
+               result.current_risk_version().value() != 0 &&
+               result.current_position_version().value() != 0 &&
+               result.decision_id.value() != 0;
     }
     const bool accepted = result.code == ApplyCode::applied ||
                           result.code == ApplyCode::already_applied;
@@ -464,7 +492,10 @@ private:
     if (std::holds_alternative<ConfigureRiskLimits>(body)) {
         return KernelCommandKind::configure_risk_limits;
     }
-    return KernelCommandKind::acknowledge_gateway_results;
+    if (std::holds_alternative<AcknowledgeGatewayResults>(body)) {
+        return KernelCommandKind::acknowledge_gateway_results;
+    }
+    return KernelCommandKind::install_execution_catalog;
 }
 
 [[nodiscard]] std::size_t body_size(const CommandBody& body) noexcept {
@@ -507,8 +538,11 @@ private:
         return kVenueObservationPayloadBytes;
     }
     if (std::holds_alternative<RequestReplace>(body)) return 16;
-    if (std::holds_alternative<ConfigureRiskLimits>(body)) return 88;
+    if (std::holds_alternative<ConfigureRiskLimits>(body)) return 101;
     if (std::holds_alternative<AcknowledgeGatewayResults>(body)) return 8;
+    if (std::holds_alternative<InstallExecutionCatalog>(body)) {
+        return kInstallExecutionCatalogBodyBytes;
+    }
     const auto& value = std::get<EvaluateDecisionFrame>(body);
     return sizeof(std::uint64_t) + sizeof(std::uint8_t) +
            kDecisionFramePayloadFixedBytes +
@@ -739,9 +773,17 @@ void write_body(Writer& writer, const CommandBody& body) noexcept {
         writer.integral(value->max_reserved_exposure.atoms());
         writer.integral(value->initial_margin_ppm);
         writer.integral(value->maximum_fee_ppm);
+        writer.integral(value->max_position_quantity.atoms());
+        writer.integral(static_cast<std::uint8_t>(value->allow_short));
+        writer.integral(value->reason_code);
     } else if (const auto* value =
                    std::get_if<AcknowledgeGatewayResults>(&body)) {
         writer.integral(value->acknowledged_through.value());
+    } else if (const auto* value =
+                   std::get_if<InstallExecutionCatalog>(&body)) {
+        writer.digest(value->catalog_root);
+        writer.integral(value->expected_kill_epoch.value());
+        writer.integral(value->expected_executor_generation.value());
     }
 }
 
@@ -1057,23 +1099,37 @@ void write_body(Writer& writer, const CommandBody& body) noexcept {
                 ClusterOrderId{reader.integral<std::uint64_t>()},
                 DecisionId{reader.integral<std::uint64_t>()}};
             return true;
-        case KernelCommandKind::configure_risk_limits:
-            body = ConfigureRiskLimits{
-                AccountId{reader.integral<std::uint64_t>()},
-                InstrumentId{reader.integral<std::uint64_t>()},
-                RiskPolicyVersion{reader.integral<std::uint64_t>()},
-                RiskVersion{reader.integral<std::uint64_t>()},
-                KillEpoch{reader.integral<std::uint64_t>()},
-                ExecutorGeneration{reader.integral<std::uint64_t>()},
-                QuantityLots::from_atoms(reader.integral<std::int64_t>()),
-                QuantityLots::from_atoms(reader.integral<std::int64_t>()),
-                MoneyMicros::from_atoms(reader.integral<std::int64_t>()),
-                MoneyMicros::from_atoms(reader.integral<std::int64_t>()),
-                reader.integral<std::uint32_t>(), reader.integral<std::uint32_t>()};
+        case KernelCommandKind::configure_risk_limits: {
+            ConfigureRiskLimits value;
+            value.account_id = AccountId{reader.integral<std::uint64_t>()};
+            value.instrument_id = InstrumentId{reader.integral<std::uint64_t>()};
+            value.risk_policy_version = RiskPolicyVersion{reader.integral<std::uint64_t>()};
+            value.expected_risk_version = RiskVersion{reader.integral<std::uint64_t>()};
+            value.expected_kill_epoch = KillEpoch{reader.integral<std::uint64_t>()};
+            value.expected_executor_generation =
+                ExecutorGeneration{reader.integral<std::uint64_t>()};
+            value.max_order_quantity = QuantityLots::from_atoms(reader.integral<std::int64_t>());
+            value.max_reserved_quantity = QuantityLots::from_atoms(reader.integral<std::int64_t>());
+            value.max_order_gross_notional = MoneyMicros::from_atoms(reader.integral<std::int64_t>());
+            value.max_reserved_exposure = MoneyMicros::from_atoms(reader.integral<std::int64_t>());
+            value.initial_margin_ppm = reader.integral<std::uint32_t>();
+            value.maximum_fee_ppm = reader.integral<std::uint32_t>();
+            value.max_position_quantity = QuantityLots::from_atoms(reader.integral<std::int64_t>());
+            const auto allow_short = reader.integral<std::uint8_t>();
+            value.reason_code = reader.integral<std::uint32_t>();
+            if (allow_short > 1) return false;
+            value.allow_short = allow_short == 1;
+            body = value;
             return true;
+        }
         case KernelCommandKind::acknowledge_gateway_results:
             body = AcknowledgeGatewayResults{
                 RequestSequence{reader.integral<std::uint64_t>()}};
+            return true;
+        case KernelCommandKind::install_execution_catalog:
+            body = InstallExecutionCatalog{
+                reader.digest(), KillEpoch{reader.integral<std::uint64_t>()},
+                ExecutorGeneration{reader.integral<std::uint64_t>()}};
             return true;
     }
     return false;

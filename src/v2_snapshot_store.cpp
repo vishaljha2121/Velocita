@@ -1,178 +1,217 @@
 #include "velocita/v2/snapshot_store.hpp"
 
-#include "velocita/storage.hpp"
-
 #include <algorithm>
 #include <array>
-#include <cstring>
+#include <cerrno>
 #include <fcntl.h>
-#include <fstream>
-#include <stdexcept>
+#include <limits>
+#include <memory>
 #include <span>
 #include <string>
-#include <system_error>
+#include <sys/stat.h>
 #include <unistd.h>
-#include <vector>
+#include <utility>
 
 namespace velocita::v2 {
 namespace {
+constexpr std::size_t kCoordinatesBytes = 16;
 
-// "VSN2". A distinct magic from V1's WAL1/MTA1 so a V1 file can never be read as
-// a V2 snapshot, and the version is separate from the CANONICAL state schema
-// carried inside the payload - the framing and the economics version
-// independently.
-constexpr std::uint32_t kSnapshotMagic = 0x324E5356U;
-constexpr std::uint16_t kSnapshotFrameVersion = 1;
-// Frame layout, by offset. Stated as fields rather than as one number so that
-// changing the frame fails the BUILD instead of silently under-reserving - the
-// previous form asserted 34 by hand and nothing tied it to what was written.
-constexpr std::size_t kMagicOffset = 0;
-constexpr std::size_t kVersionOffset = kMagicOffset + 4;
-constexpr std::size_t kIndexOffset = kVersionOffset + 2;
-constexpr std::size_t kTermOffset = kIndexOffset + 8;
-constexpr std::size_t kLengthOffset = kTermOffset + 8;
-constexpr std::size_t kReservedOffset = kLengthOffset + 8;
-constexpr std::size_t kHeaderBytes = kReservedOffset + 4;
-constexpr std::size_t kChecksumBytes = 4;
-static_assert(kHeaderBytes == 34, "the V2 snapshot frame header is 34 bytes");
-
-void write_le(std::span<std::byte> out, const std::size_t offset,
-              const std::uint64_t value, const std::size_t width) {
-    for (std::size_t i = 0; i < width; ++i) {
-        out[offset + i] = static_cast<std::byte>((value >> (i * 8U)) & 0xFFU);
-    }
+void put64(std::span<std::byte> out, std::size_t at, std::uint64_t value) noexcept {
+    for (std::size_t i = 0; i < 8; ++i)
+        out[at + i] = static_cast<std::byte>(value >> (8U * i));
 }
-
-std::uint64_t read_le64(const std::vector<std::byte>& bytes, std::size_t& offset) {
-    std::uint64_t value = 0;
-    for (std::size_t i = 0; i < 8; ++i) {
-        value |= static_cast<std::uint64_t>(
-                     static_cast<unsigned char>(bytes[offset + i]))
-                 << (i * 8U);
-    }
-    offset += 8;
+std::uint64_t get64(std::span<const std::byte> input, std::size_t at) noexcept {
+    std::uint64_t value{};
+    for (std::size_t i = 0; i < 8; ++i)
+        value |= static_cast<std::uint64_t>(std::to_integer<std::uint8_t>(input[at + i]))
+                 << (8U * i);
     return value;
 }
+[[noreturn]] void incompatible(BoundFrameError code, const char* message) {
+    throw SnapshotStoreError(code, message);
+}
+bool optional_corruption(BoundFrameError error) noexcept {
+    switch (error) {
+        case BoundFrameError::truncated:
+        case BoundFrameError::length_mismatch:
+        case BoundFrameError::capacity_exceeded:
+        case BoundFrameError::nonzero_reserved:
+        case BoundFrameError::digest_mismatch:
+        case BoundFrameError::invalid_payload:
+            return true;
+        default: return false;
+    }
+}
+void write_all(int fd, std::span<const std::byte> bytes) {
+    while (!bytes.empty()) {
+        const auto count = ::write(fd, bytes.data(), bytes.size());
+        if (count < 0 && errno == EINTR) continue;
+        if (count <= 0) throw std::runtime_error("snapshot write failed");
+        bytes = bytes.subspan(static_cast<std::size_t>(count));
+    }
+}
+void close_checked(int& fd, const char* message) {
+    const int closing = std::exchange(fd, -1);
+    if (::close(closing) != 0) throw std::runtime_error(message);
+}
+} // namespace
 
-}  // namespace
-
-SnapshotStore::SnapshotStore(std::filesystem::path data_dir, StorageCheckpoints checkpoints)
-    : checkpoints_(checkpoints), path_(std::move(data_dir) / "v2-snapshot.bin") {}
+SnapshotStore::SnapshotStore(std::filesystem::path data_dir,
+                             const VerifiedStaticIdentity& identity,
+                             StorageCheckpoints checkpoints)
+    : identity_(identity), checkpoints_(checkpoints),
+      path_(std::move(data_dir) / "v2-snapshot.bin") {
+    if (!identity_.valid()) incompatible(BoundFrameError::invalid_identity,
+                                         "snapshot store requires verified identity");
+}
 
 void SnapshotStore::save(const TradingState& state,
-                         const std::uint64_t last_included_index,
-                         const std::int64_t last_included_term) const {
-    std::array<std::byte, kMaxStateSnapshotBytes> payload{};
-    const auto encoded = encode_state_snapshot(state, payload);
-    if (encoded.error != StateSnapshotError::none) {
-        throw std::runtime_error("refusing to persist a state the canonical "
-                                 "encoder rejects");
-    }
+                         std::uint64_t last_included_index,
+                         std::int64_t last_included_term) const {
+    if (last_included_index == 0 ||
+        last_included_index > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()) ||
+        last_included_term <= 0)
+        incompatible(BoundFrameError::invalid_payload,
+                     "snapshot coordinates must be positive and representable");
 
-    // Sized once and written by offset, rather than reserved and pushed. The
-    // size is exact either way, but only this form lets the compiler see that:
-    // GCC 15 cannot prove the push_back path never reallocates and reports a
-    // -Wfree-nonheap-object on the reallocation it cannot rule out.
-    std::vector<std::byte> bytes(kHeaderBytes + encoded.bytes_written + kChecksumBytes,
-                                 std::byte{0});
-    write_le(bytes, kMagicOffset, kSnapshotMagic, 4);
-    write_le(bytes, kVersionOffset, kSnapshotFrameVersion, 2);
-    write_le(bytes, kIndexOffset, last_included_index, 8);
-    write_le(bytes, kTermOffset, static_cast<std::uint64_t>(last_included_term), 8);
-    write_le(bytes, kLengthOffset, encoded.bytes_written, 8);
-    // kReservedOffset stays zero.
-    std::copy(payload.begin(),
-              payload.begin() + static_cast<std::ptrdiff_t>(encoded.bytes_written),
-              bytes.begin() + static_cast<std::ptrdiff_t>(kHeaderBytes));
-    // COVERS EVERYTHING BUT ITSELF. The trailing field is part of the buffer
-    // now that the frame is sized up front, so the span has to stop short of it
-    // - checksumming the zeroed field would silently change the frame's bytes.
-    const auto covered = std::span<const std::byte>(bytes).first(
-        kHeaderBytes + encoded.bytes_written);
-    write_le(bytes, kHeaderBytes + encoded.bytes_written, crc32(covered), kChecksumBytes);
+    // Cold/worker I/O: keep bounded codec workspaces off the worker stack.
+    struct SaveWorkspace {
+        std::array<std::byte, kMaxStateSnapshotBytes> canonical{};
+        std::array<std::byte, kCoordinatesBytes + kMaxStateSnapshotBytes> payload{};
+        std::array<std::byte, kMaxBoundSnapshotBytes> frame{};
+        BoundFrameScratch scratch{};
+    };
+    const auto workspace = std::make_unique<SaveWorkspace>();
+    auto& [canonical, payload, frame, scratch] = *workspace;
+    const auto encoded = encode_state_snapshot(state, canonical);
+    if (encoded.error != StateSnapshotError::none)
+        incompatible(BoundFrameError::invalid_payload,
+                     "refusing to persist a state rejected by the canonical codec");
+
+    put64(payload, 0, last_included_index);
+    put64(payload, 8, static_cast<std::uint64_t>(last_included_term));
+    std::copy(canonical.begin(), canonical.begin() +
+                  static_cast<std::ptrdiff_t>(encoded.bytes_written),
+              payload.begin() + static_cast<std::ptrdiff_t>(kCoordinatesBytes));
+
+    const auto framed = encode_bound_frame(
+        BoundFrameKind::snapshot, identity_,
+        std::span<const std::byte>{payload}.first(kCoordinatesBytes + encoded.bytes_written),
+        frame, scratch);
+    if (framed.error != BoundFrameError::none)
+        incompatible(framed.error, "snapshot bound-frame encoding failed");
 
     const auto temporary = path_.string() + ".tmp";
-    const int fd = ::open(temporary.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    struct stat named{};
+    const bool existed = ::lstat(temporary.c_str(), &named) == 0;
+    if (!existed && errno != ENOENT) throw std::runtime_error("snapshot temp stat failed");
+    if (existed && (!S_ISREG(named.st_mode) || named.st_nlink != 1))
+        throw std::runtime_error("snapshot temp is not a singly-linked regular file");
+    int flags = O_WRONLY | O_CLOEXEC | O_NOFOLLOW;
+    if (!existed) flags |= O_CREAT | O_EXCL;
+    int fd = ::open(temporary.c_str(), flags, 0644);
     if (fd < 0) throw std::runtime_error("cannot open " + temporary);
     try {
-        std::size_t written = 0;
-        while (written < bytes.size()) {
-            const auto result =
-                ::write(fd, bytes.data() + written, bytes.size() - written);
-            if (result <= 0) throw std::runtime_error("snapshot write failed");
-            written += static_cast<std::size_t>(result);
-        }
+        struct stat opened{};
+        if (::fstat(fd, &opened) != 0 || !S_ISREG(opened.st_mode) || opened.st_nlink != 1 ||
+            (existed && (opened.st_dev != named.st_dev || opened.st_ino != named.st_ino)))
+            throw std::runtime_error("snapshot temp changed during checked open");
+        if (existed && ::ftruncate(fd, 0) != 0)
+            throw std::runtime_error("snapshot temp truncate failed");
+        write_all(fd, std::span<const std::byte>{frame}.first(framed.bytes_written));
         if (::fsync(fd) != 0) throw std::runtime_error("snapshot fsync failed");
-        if (::close(fd) != 0) throw std::runtime_error("snapshot close failed");
+        close_checked(fd, "snapshot close failed");
     } catch (...) {
-        ::close(fd);
+        if (fd >= 0) ::close(fd);
         throw;
     }
-    if (::rename(temporary.c_str(), path_.c_str()) != 0) {
+    if (::rename(temporary.c_str(), path_.c_str()) != 0)
         throw std::runtime_error("snapshot rename failed");
-    }
     checkpoints_(StorageCheckpoint::file_renamed);
-    // The rename is only durable once the DIRECTORY is synced. Without this a
-    // crash can leave the old snapshot visible after `save` returned, and the
-    // caller has already reclaimed the log prefix on the strength of it.
-    const int dir = ::open(path_.parent_path().c_str(), O_RDONLY);
-    if (dir < 0) throw std::runtime_error("snapshot directory open failed");
-    const int synced = ::fsync(dir);
-    ::close(dir);
+    const int directory = ::open(path_.parent_path().c_str(), O_RDONLY);
+    if (directory < 0) throw std::runtime_error("snapshot directory open failed");
+    const int synced = ::fsync(directory);
+    ::close(directory);
     if (synced != 0) throw std::runtime_error("snapshot directory fsync failed");
     checkpoints_(StorageCheckpoint::directory_synced);
 }
 
 std::optional<StoredSnapshot> SnapshotStore::load() const {
-    std::ifstream input(path_, std::ios::binary);
-    if (!input) return std::nullopt;
-    const std::string raw((std::istreambuf_iterator<char>(input)),
-                          std::istreambuf_iterator<char>());
-    std::vector<std::byte> bytes(raw.size());
-    for (std::size_t i = 0; i < raw.size(); ++i) {
-        bytes[i] = static_cast<std::byte>(static_cast<unsigned char>(raw[i]));
+    struct LoadWorkspace {
+        std::array<std::byte, kMaxBoundSnapshotBytes + 1> storage{};
+        BoundFrameScratch scratch{};
+        StateSnapshotScratch state_scratch{};
+        StoredSnapshot result{};
+    };
+    const auto workspace = std::make_unique<LoadWorkspace>();
+    auto& [storage, scratch, state_scratch, result] = *workspace;
+    const int flags = O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK;
+    int fd = ::open(path_.c_str(), flags);
+    if (fd < 0) {
+        if (errno == ENOENT) return std::nullopt;
+        throw std::runtime_error("snapshot open failed");
     }
-    if (bytes.size() < kHeaderBytes + 4) return std::nullopt;
-
-    std::size_t offset = 0;
-    std::uint32_t magic = 0;
-    for (std::size_t i = 0; i < 4; ++i) {
-        magic |= static_cast<std::uint32_t>(
-                     static_cast<unsigned char>(bytes[offset + i]))
-                 << (i * 8U);
+    std::size_t count{};
+    try {
+        struct stat status{};
+        if (::fstat(fd, &status) != 0 || !S_ISREG(status.st_mode) || status.st_nlink != 1)
+            throw std::runtime_error("snapshot is not a singly-linked regular file");
+        while (count < storage.size()) {
+            const auto got = ::read(fd, storage.data() + count, storage.size() - count);
+            if (got < 0 && errno == EINTR) continue;
+            if (got < 0) throw std::runtime_error("snapshot read failed");
+            if (got == 0) break;
+            count += static_cast<std::size_t>(got);
+        }
+        close_checked(fd, "snapshot close failed");
+    } catch (...) {
+        if (fd >= 0) ::close(fd);
+        throw;
     }
-    offset += 4;
-    if (magic != kSnapshotMagic) return std::nullopt;
-    const auto frame_version =
-        static_cast<std::uint16_t>(static_cast<unsigned char>(bytes[offset]) |
-                                   (static_cast<unsigned char>(bytes[offset + 1]) << 8U));
-    offset += 2;
-    if (frame_version != kSnapshotFrameVersion) return std::nullopt;
+    const auto bytes = std::span<const std::byte>{storage}.first(count);
 
-    StoredSnapshot result;
-    result.last_included_index = read_le64(bytes, offset);
-    result.last_included_term = static_cast<std::int64_t>(read_le64(bytes, offset));
-    const auto payload_bytes = read_le64(bytes, offset);
-    offset += 4;
-    if (payload_bytes > bytes.size() || offset + payload_bytes + 4 != bytes.size()) {
+    // Once any bytes exist, an unrecognized wrapper is incompatible rather than
+    // an optional snapshot. In particular this rejects the former VSN2 framing.
+    if (count < 4 || bytes[0] != std::byte{'V'} || bytes[1] != std::byte{'2'} ||
+        bytes[2] != std::byte{'B'} || bytes[3] != std::byte{'F'})
+        incompatible(BoundFrameError::invalid_magic,
+                     "recovery refused: snapshot framing is legacy or unknown");
+
+    BoundFrameView view{};
+    const auto admitted = decode_bound_frame(bytes, BoundFrameKind::snapshot,
+                                              identity_, view, scratch);
+    if (admitted != BoundFrameError::none) {
+        // Preserve the pre-V2BF rule: a recognizable future canonical schema is
+        // incompatible even when its declared outer length exceeds today's cap.
+        constexpr std::size_t canonical_offset = kBoundFrameHeaderBytes + kCoordinatesBytes;
+        if (admitted == BoundFrameError::capacity_exceeded &&
+            count > canonical_offset) {
+            const auto probe = decode_state_snapshot(bytes.subspan(canonical_offset),
+                                                     result.state, state_scratch);
+            if (probe.error == StateSnapshotError::unsupported_schema)
+                incompatible(BoundFrameError::unsupported_schema,
+                             "recovery refused: unsupported snapshot state schema");
+        }
+        if (optional_corruption(admitted)) return std::nullopt;
+        incompatible(admitted, "recovery refused: incompatible or foreign snapshot");
+    }
+    if (view.payload.size() < kCoordinatesBytes) return std::nullopt;
+
+    const auto index = get64(view.payload, 0);
+    const auto term_bits = get64(view.payload, 8);
+    if (index == 0 || index > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()) ||
+        term_bits == 0 || term_bits > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
         return std::nullopt;
-    }
 
-    std::uint32_t stored = 0;
-    for (std::size_t i = 0; i < 4; ++i) {
-        stored |= static_cast<std::uint32_t>(static_cast<unsigned char>(
-                      bytes[bytes.size() - 4 + i]))
-                  << (i * 8U);
-    }
-    const std::span<const std::byte> covered(bytes.data(), bytes.size() - 4);
-    if (stored != crc32(covered)) return std::nullopt;
-
-    StateSnapshotScratch scratch;
-    const std::span<const std::byte> payload(bytes.data() + offset, payload_bytes);
-    const auto decoded = decode_state_snapshot(payload, result.state, scratch);
+    result.last_included_index = index;
+    result.last_included_term = static_cast<std::int64_t>(term_bits);
+    const auto decoded = decode_state_snapshot(view.payload.subspan(kCoordinatesBytes),
+                                                result.state, state_scratch);
+    if (decoded.error == StateSnapshotError::unsupported_schema)
+        incompatible(BoundFrameError::unsupported_schema,
+                     "recovery refused: unsupported snapshot state schema");
     if (decoded.error != StateSnapshotError::none) return std::nullopt;
     result.state_digest = decoded.state_digest;
     return result;
 }
-
-}  // namespace velocita::v2
+} // namespace velocita::v2

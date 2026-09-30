@@ -60,7 +60,7 @@ fi
 
 root_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 if [[ -n $(git -C "$root_dir" status --porcelain -- \
-    CMakeLists.txt include/velocita/v2 src/v2_\* tests/v2_\*) ]]; then
+    CMakeLists.txt include src tests deploy) ]]; then
     printf 'Commit the V2 kernel source before creating cross-platform evidence.\n' >&2
     exit 65
 fi
@@ -75,6 +75,11 @@ build_jobs=${BUILD_JOBS:-2}
 expected_source_root=${VELOCITA_EXPECTED_SOURCE_ROOT:-}
 gate_label=${VELOCITA_V2_CONTAINER_GATE_LABEL:-V2 Phase 2 development}
 gate_environment=${VELOCITA_V2_CONTAINER_ENVIRONMENT:-arm64-linux-container}
+
+[[ $expected_source_root =~ ^[0-9a-f]{64}$ ]] || {
+    printf 'VELOCITA_EXPECTED_SOURCE_ROOT must be an externally pinned SHA-256 root.\n' >&2
+    exit 64
+}
 
 aeron_commit=$(sed -n 's/^set(AERON_COMMIT "\([0-9a-f]*\)".*/\1/p' "$root_dir/CMakeLists.txt")
 raft_commit=$(sed -n 's/^set(RAFT_COMMIT "\([0-9a-f]*\)".*/\1/p' "$root_dir/CMakeLists.txt")
