@@ -626,3 +626,52 @@ No venue, credential or trading action. Started 2026-09-25.
     network stall, turned into many terms by the missing pre-vote
     (finding 43). Consequence for paper trading: the gateway stops new risk
     on every election and stays stopped until restarted (manual on day 1).
+
+48. **Paper trading data corrupted; paper paused for a clean reset
+    (2026-09-30 19:45 EDT).** Four problems compounded. None of them lost
+    or mis-booked a committed kernel fact: the kernel still holds exactly one
+    25-lot buy and one fill, consistent on all voters. But the paper record
+    (dashboards, edge book, venue view) is no longer trustworthy.
+
+    a. **Edge crash loop from 14:58:40, 393 restarts.**
+       - The TrueMarkets market-data websocket refused the handshake with
+         `HTTP/1.1 503 Service Unavailable`, 4 times.
+       - `run_once` does not catch `ProtocolError` from `socket.open()`, so
+         the edge process exited and systemd restarted it every ~44 s.
+    b. **The loop became permanent: source generation gap.**
+       - Every submitter start claims the next source generation. The kernel
+         requires the generation to be exactly the cursor + 1
+         (`source_generation_gap`, ApplyCode 14).
+       - Starts that died before committing an event skipped generations, so
+         every later start (generation 400, 401, ...) was refused:
+         `ERROR reason=source code=14`, then exit 3.
+       - The edge then hit a `BrokenPipeError` writing the next tick and
+         crashed again.
+       - No shadow or paper decisions were made after 14:58. Reproduced by
+         hand with one TICK line against the standalone submitter.
+       - The edge also discards the text of submitter ERROR replies (it only
+         counts them), which is why the cause was invisible from the metrics.
+    c. **Gateway restarts reset the paper venue.**
+       - The venue holds balances only in process memory: $25 and 0 BTC on
+         every start, while the kernel holds 25 lots. The owner's manual
+         resume ran with stand-in balances (`--paper-base-lots 25
+         --paper-quote-usd 3`).
+       - The last-fill gauge restarted at 0, so "time since last fill" showed
+         56.7 years. The panel is fixed in commit `1c42431`.
+    d. **Election bursts** (finding 47; the term reached 191) stopped the
+       gateway repeatedly.
+
+    Memory note: md-stream sits at 99.7 % of its 256 MB cap and Grafana at
+    95.6 % of 512 MB. Neither caused this; to be investigated.
+
+    **Action:** paper is paused. The edge is in shadow mode and the gateway is
+    stopped (the edge unit is stopped while the fixes land).
+
+    **Fixes in progress:**
+    - pre-vote (47);
+    - venue persistence, startup reconciliation and automatic re-arm (c);
+    - edge resilience to market-data errors, submitter error logging and a
+      source-generation re-sync (a, b).
+
+    Then ONE fresh cluster with a flat start, a 12-lot clip, and reset
+    ledgers and dashboards.
