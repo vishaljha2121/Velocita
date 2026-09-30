@@ -340,3 +340,41 @@ Carried over:
   - it restarted itself at UTC midnight as designed; the journal only logs when a run ends;
   - BTC reference price 83,430.
 - **Disk:** Pi root 78% used.
+
+## 7. Volume strategies and the live path — in progress (2026-09-30 afternoon)
+
+Paper trading is LIVE on the fresh cluster: incarnation `5ebc6359…`, trend strategy,
+one 25-lot position held (M3_DEPLOYMENT_LOG finding 44).
+
+**Owner decisions** (2026-09-30):
+- Objective: TrueMarkets leaderboard VOLUME.
+- Loss budget: $10–12 per week at most. Losing is acceptable if it buys a
+  leaderboard placing.
+- Rapid round trips are acceptable: "tm is chill". This overrides the 9/28
+  "every trade needs a stated reason" rule.
+- Plan: backtest every candidate on the same battery as the trend strategy,
+  paper-test today, and consider live in a couple of days only if there is
+  an edge.
+
+**Three agents in git worktrees** (base commit `f1ef5ce`). Each keeps
+`AGENT_PROGRESS.md` at its worktree root. Resume an agent by messaging it,
+or read its checkpoint and continue by hand.
+
+| Worktree (under `.claude/worktrees/`) | Work |
+|---|---|
+| `agent-a8868440527afb9cb` | Research. Candidates: A pure churn, B trend-gated churn, C hold-and-rotate, D dip scalp, E trend / buy-and-hold baselines. Battery: in-sample permutation, walk-forward, walk-forward permutation and random-walk tests at the live execution model (30 s ticks, one lost re-sync tick after each fill, FOK at the measured 110/123 bp, $25 capital). Output: `docs/evidence/volume_battery_2026-09-30/`. |
+| `agent-a559cc81a7b1dd453` | Paper enablement. `--strategy {trend,churn,trend_churn,rotate,dip}` edge features, volume metrics (gateway and edge), the weekly loss-cap stop, the dashboard row, and a runbook section. |
+| `agent-ab5ee37fcf8763fe2` | Live path. `docs/LIVE_TRADING_JOURNEY.md`, a new ADR for live execution and key custody, and a mock-only `TrueMarketsVenue` with a test signer and fault tests. No network and no keys. |
+
+**Book guidance sent to the agents:**
+- ch52: the honesty rule (label every result's evidence class); fees charged
+  at each fill; capital limits; a research ledger with a held-back period;
+  forward testing as an information purchase.
+- ch57: an isolated signer that inspects each operation, rejects replays,
+  keeps an audit log and never exposes the key.
+- ch19: rate limits enforced before sending; deduplication.
+- ch25: the definition of wash trading.
+
+**Merge rule:** review each worktree's diff against `f1ef5ce`, then merge by
+file into the main tree. Run the full ctest and the model tests before any
+deploy.
