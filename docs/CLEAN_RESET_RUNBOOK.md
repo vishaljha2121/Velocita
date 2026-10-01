@@ -23,6 +23,9 @@ is 1003 on the NUCs and 1004 on the Pi.
   Otherwise `._*` files break the tests that glob `*.json` and `*.service`.
 - **The Mac runs zsh, which doesn't split `$VAR` into words.** Use the arrays shown below.
   `~` inside quotes doesn't expand; use `$HOME`.
+- **Never stream images or binaries over ssh stdout.** The hosts' login shells inject terminal
+  escape codes into the stream. Copy files with `scp` (for example `podman save -o FILE`, then
+  `scp`, then `podman load -i FILE`).
 - **Delete a build log before rebuilding.** Killing `podman build` leaves the container's
   test step running, and it keeps writing into the old log.
 - **After any host reboot, push the keys again** (step 0). `/run/user` is wiped on boot, and
@@ -69,14 +72,16 @@ Disk space: the Pi needs a few GB free, so check `df -h /`. Old images can be re
 
 ## 2. Build the images on all three hosts (in parallel)
 
-Use `J=3` on the Pi and `J=4` on the NUCs. nuc1 also builds the shadow (edge) image.
+Builds use the pinned toolchain image (`docs/TOOLCHAIN.md`). Each host must already have
+`localhost/velocita-dev:current` with the ID recorded for its architecture in
+`deploy/v2/TOOLCHAIN.env`; `build-image.sh` refuses to build otherwise (exit 64). The script
+mounts the compiler cache, runs the full test suite and labels the image with its source
+commit and toolchain ID.
 
     for h in nuc1 nuc2 vishalkapi; do
-      J=4; [ $h = vishalkapi ] && J=3
-      CC="-v \$HOME/.cache/velocita-ccache:/ccache"      # compiler cache: only changed files recompile
-      B="podman build $CC --build-arg BUILD_JOBS=$J -f deploy/v2/Containerfile -t localhost/velocita-v2:NEW ."
-      [ $h = nuc1 ] && B="$B && podman build $CC --build-arg BUILD_JOBS=$J --target shadow -f deploy/v2/Containerfile -t localhost/velocita-v2-shadow:NEW ."
-      ssh -f -n velocitas@$h "mkdir -p ~/.cache/velocita-ccache; cd ~/src/aeron-raft-pi && rm -f ~/build.log ~/build.rc && setsid nohup sh -c '($B) > ~/build.log 2>&1; echo \$? > ~/build.rc' </dev/null >/dev/null 2>&1 &"
+      B="deploy/v2/build-image.sh voter NEW"
+      [ $h = nuc1 ] && B="$B && deploy/v2/build-image.sh shadow NEW"
+      ssh -f -n velocitas@$h "cd ~/src/aeron-raft-pi && rm -f ~/build.log ~/build.rc && setsid nohup sh -c '($B) > ~/build.log 2>&1; echo \$? > ~/build.rc' </dev/null >/dev/null 2>&1 &"
     done
 
 Replace `NEW` with a tag such as `m3-p4`.
@@ -84,8 +89,11 @@ Replace `NEW` with a tag such as `m3-p4`.
 Follow a build with `ssh velocitas@HOST 'tail -f ~/build.log'`.
 
 **Done:** `ssh velocitas@HOST 'cat ~/build.rc; grep "tests passed" ~/build.log | tail -1'`
-must show `0` and `100% tests passed`. Every build runs the full test suite in the container,
-as root.
+must show `0` and `100% tests passed`.
+
+**Provenance:**
+`podman image inspect localhost/velocita-v2:NEW --format '{{index .Labels "org.velocita.source_commit"}}'`
+must equal the shipped commit.
 
 ## 3. Stop everything and retire the old cluster
 
