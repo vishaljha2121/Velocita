@@ -175,6 +175,7 @@ No venue, credential or trading action. Started 2026-09-25.
     when the link returns: a brief election, never a safety issue. With two
     voters the cluster is unavailable during a partition anyway. PreVote would
     remove the disruption; deferred (a Raft library change needs its own review).
+    Implemented in CP-076; see finding 47.
 
 11. **The storage benchmark had rotted.** Its per-record `payload_digest` set
     only byte 0 to `index % 256`, so record 256 had an all-zero digest, which the
@@ -555,7 +556,7 @@ No venue, credential or trading action. Started 2026-09-25.
     saw 0 errors. The seeded election jitter (CP-063) is correct but cannot
     prevent this; the standard fix is Raft pre-vote (thesis section 9.6): a
     candidate first asks whether it could win, without raising its term, and
-    voters that still hear a leader say no.
+    voters that still hear a leader say no. Implemented in CP-076 (finding 47).
 
 44. **Phase 2 deployed; first paper trade (CP-075, 2026-09-30).** A fresh
     cluster was created from tag `v2-cp075-phase2-paper` (commit `5f20fdb`).
@@ -607,7 +608,7 @@ No venue, credential or trading action. Started 2026-09-25.
     `OOMKilled=true`). They run the same submitter/Aeron client as the edge,
     which has 512 MB. Both units are now 512 MB.
 
-47. **Election bursts on the new cluster (open).** The term went 2 → 8 → 23 → 49
+47. **Election bursts on the new cluster (fixed in code by CP-076; not yet deployed).** The term went 2 → 8 → 23 → 49
     in three bursts of 15–45 s, at 11:50:30, 12:06:30 and 12:10:00:
     - +6 while the setup container was OOM-killed;
     - +15 while Prometheus, Grafana and md-stream restarted on nuc1;
@@ -626,3 +627,25 @@ No venue, credential or trading action. Started 2026-09-25.
     network stall, turned into many terms by the missing pre-vote
     (finding 43). Consequence for paper trading: the gateway stops new risk
     on every election and stays stopped until restarted (manual on day 1).
+
+    By 2026-09-30 evening the term had reached 191 (from 49 in 6 h). Owner
+    decision: pre-vote only, election timeouts unchanged.
+
+    **Fix (CP-076, 2026-10-01): Raft pre-vote** in the pinned willemt patch,
+    enabled on every V2 voter; ADR 0006 amendment has the rules.
+    - A voter whose election timer expires asks for pre-votes for term + 1
+      and does not raise or persist its own term. An isolated voter therefore
+      stays at the cluster term however long the drop lasts, and on reconnect
+      simply follows the leader: no step-down, no election.
+    - Peers grant only if they have not heard from a leader within the election
+      timeout and the asker's log is at least as up-to-date. A real leader loss
+      still elects: in 200 lab seeds the successor led 1.04-3.32 s after the
+      last heartbeat (median 1.32 s).
+    - The V2 peer body version is now 3 (one pre-vote byte on vote messages).
+      A version-2 voter and a version-3 voter refuse each other's frames, so
+      deploy it as a fresh cluster (planned) or a stop-all/start-all restart,
+      never rolling.
+    - Expected live effect: a wifi drop of one voter costs no election. A drop
+      of the LEADER still costs exactly one election (the gateway still stops
+      new risk then). Alert on any term increase to check this after deploy.
+    - Not covered: one-way link failures (no CheckQuorum in willemt).

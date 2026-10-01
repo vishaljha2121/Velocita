@@ -210,6 +210,28 @@ inline void deliver_declared_peer(Receiver& receiver, const velocita::PeerMessag
     deliver_peer(receiver, raw, declared_sender_identity(raw, receiver.static_identity()));
 }
 
+// With pre-vote an expired election timer only asks; it raises no term. Grant
+// the pre-vote from `peer` so the node campaigns for real, which is where its
+// term and self-vote reach hard state. Other outbound messages are discarded.
+template <typename Node>
+inline void grant_prevote(Node& node, const std::int32_t peer) {
+    while (auto message = take_outbound_message(node)) {
+        const auto* request = std::get_if<velocita::RequestVote>(&message->payload);
+        if (request == nullptr || !request->prevote || message->recipient_id != peer) continue;
+        velocita::RequestVoteResponse grant{request->term, true};
+        grant.prevote = true;
+        deliver_declared_peer(node, velocita::PeerMessage{peer, message->sender_id, grant});
+        return;
+    }
+    throw std::runtime_error("fixture: no pre-vote request to grant");
+}
+
+template <typename Node>
+inline void campaign(Node& node, const std::int32_t peer) {
+    node.tick(10'000);
+    grant_prevote(node, peer);
+}
+
 inline VerifiedIdentityStartup bootstrap(const std::filesystem::path& path, std::int32_t id,
     std::vector<std::int32_t> members,
     const VerifiedExecutionCatalog& catalog = catalog_test::standard_catalog(),

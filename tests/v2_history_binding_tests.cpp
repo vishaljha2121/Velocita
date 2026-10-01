@@ -129,7 +129,7 @@ void missing_hard_state_and_legacy_flat(const std::filesystem::path& root) {
     std::int64_t term{};
     {
         ReplicatedKernel node(identity_test::bootstrap(directory, 1, {1, 2}));
-        node.tick(2000);
+        identity_test::campaign(node, 2);
         term = identity_test::metadata_store(directory).load().term;
         require(term > 0, "fixture voter did not persist a term");
     }

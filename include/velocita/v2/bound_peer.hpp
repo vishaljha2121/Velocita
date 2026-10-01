@@ -33,10 +33,12 @@ struct PeerMessageView {
     BorrowedPeerPayload payload;
 };
 
-// V2 peer bodies are the V1 layout with version 2 and, for AppendEntries, an
-// 8-byte trailer carrying the leader's compaction floor. The V1 codec itself is
-// unchanged; a V1 body is refused.
-inline constexpr std::uint16_t kBoundPeerBodyVersion = 2;
+// V2 peer bodies are the V1 layout with version 3 and a trailer: for
+// AppendEntries 8 bytes carrying the leader's compaction floor, for RequestVote
+// and its reply 1 byte carrying the pre-vote flag. The V1 codec itself is
+// unchanged. Any other version, V1 or the version 2 that predates pre-vote, is
+// refused: a vote without the flag would be read as a real one.
+inline constexpr std::uint16_t kBoundPeerBodyVersion = 3;
 
 // Canonical V2 body without semantic validation: fixtures use it to reach the
 // decoder with malformed content.

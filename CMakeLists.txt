@@ -65,9 +65,9 @@ set(VELOCITA_RAFT_PATCH ${CMAKE_CURRENT_SOURCE_DIR}/deploy/patches/0001-raft-dur
 set(VELOCITA_RAFT_PATCH_STAMP ${willemt_raft_SOURCE_DIR}/.velocita-durable-quorum-applied)
 file(SHA256 ${VELOCITA_RAFT_PATCH} VELOCITA_RAFT_PATCH_SHA256)
 set(VELOCITA_RAFT_EXPECTED_H_SHA256
-    "e87bb5a2f8ebe1b8733668ff9263630e1395bd045afbbf889caa41601d0cb790")
+    "d349e211c21de8c4d07b1a59da7f06f95a139a53dcc38ee7e11319e25483b222")
 set(VELOCITA_RAFT_EXPECTED_SERVER_SHA256
-    "2d4c9c13f85573302c1c6b93460cd6437378f59328464b433d3b042909215642")
+    "447eec995dc31639de1059b36f2c384a8a4be3217df6b1daeac45ae94215bb57")
 if(EXISTS ${VELOCITA_RAFT_PATCH_STAMP})
     file(READ ${VELOCITA_RAFT_PATCH_STAMP} VELOCITA_RAFT_PATCH_STAMP_CONTENT)
     string(FIND "${VELOCITA_RAFT_PATCH_STAMP_CONTENT}" "RAFT_COMMIT=${RAFT_COMMIT}\n" VELOCITA_RAFT_STAMP_COMMIT)
@@ -166,13 +166,23 @@ elseif(NOT EXISTS ${VELOCITA_RAFT_PATCH_STAMP})
     message(STATUS "Applied the pinned raft durability patch")
 endif()
 
-# The async suffix hook also changes raft_log.c. Check it against the reviewed
-# content independently of any stamp supplied with a prepatched dependency.
-file(SHA256 ${willemt_raft_SOURCE_DIR}/src/raft_log.c VELOCITA_RAFT_LOG_SHA256)
-if(NOT VELOCITA_RAFT_LOG_SHA256 STREQUAL
-   "8aa916dd1fbf41b800e85a7a732878bf24aa3c51506a3e7e20d530751cddb386")
-    message(FATAL_ERROR "unreviewed pinned raft_log.c: ${VELOCITA_RAFT_LOG_SHA256}")
-endif()
+# The patch also changes raft_log.c (async suffix hook), raft_private.h
+# (pre-vote state) and raft_server_properties.c (compacted last-log term). Check
+# them against the reviewed content independently of any stamp supplied with a
+# prepatched dependency.
+foreach(VELOCITA_RAFT_PINNED
+        "src/raft_log.c=8aa916dd1fbf41b800e85a7a732878bf24aa3c51506a3e7e20d530751cddb386"
+        "include/raft_private.h=b14235a494d786c392bee873b7477c7cba785a28a07b8ef5adb1ee0037247c6b"
+        "src/raft_server_properties.c=aadbe22fbe88eaa0bb70152528932fb5b4920446667b553876d3eacd3fee7c1c")
+    string(REPLACE "=" ";" VELOCITA_RAFT_PINNED "${VELOCITA_RAFT_PINNED}")
+    list(GET VELOCITA_RAFT_PINNED 0 VELOCITA_RAFT_PINNED_FILE)
+    list(GET VELOCITA_RAFT_PINNED 1 VELOCITA_RAFT_PINNED_SHA256)
+    file(SHA256 ${willemt_raft_SOURCE_DIR}/${VELOCITA_RAFT_PINNED_FILE} VELOCITA_RAFT_FOUND_SHA256)
+    if(NOT VELOCITA_RAFT_FOUND_SHA256 STREQUAL VELOCITA_RAFT_PINNED_SHA256)
+        message(FATAL_ERROR
+            "unreviewed pinned ${VELOCITA_RAFT_PINNED_FILE}: ${VELOCITA_RAFT_FOUND_SHA256}")
+    endif()
+endforeach()
 
 add_library(willemt_raft STATIC
     ${willemt_raft_SOURCE_DIR}/src/raft_log.c

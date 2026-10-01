@@ -120,6 +120,76 @@ void compaction_floor_tests() {
                 BoundFrameError::invalid_payload,
             "the allocation-free encoder accepted a negative floor");
 }
+// The pre-vote flag rides as a one-byte trailer on both vote bodies (body
+// version 3). A version-2 body, which is exactly what a voter without
+// pre-vote sends, is refused rather than read as a real vote.
+void prevote_wire_tests() {
+    auto sender = context(1);
+    auto receiver = context(2);
+    BoundFrameScratch scratch;
+    std::array<std::byte, kMaxBoundPeerBytes> bytes{};
+    for (const bool flag : {false, true}) {
+        RequestVote vote{7, 1, 3, 2};
+        vote.prevote = flag;
+        RequestVoteResponse reply{8, true};
+        reply.prevote = flag;
+        for (const PeerMessage& message : {PeerMessage{1, 2, vote}, PeerMessage{1, 2, reply}}) {
+            for (const bool view : {false, true}) {
+                const auto encoded = view
+                    ? encode_bound_peer(PeerMessageView{1, 2, std::holds_alternative<RequestVote>(message.payload)
+                          ? BorrowedPeerPayload{vote} : BorrowedPeerPayload{reply}}, sender, bytes, scratch)
+                    : encode_bound_peer(message, sender, bytes, scratch);
+                require(encoded.error == BoundFrameError::none, "vote encode refused");
+                PeerMessage decoded;
+                require(decode_bound_peer(std::span{bytes}.first(encoded.bytes_written), receiver, decoded,
+                                          scratch) == BoundFrameError::none, "vote decode refused");
+                if (const auto* got = std::get_if<RequestVote>(&decoded.payload))
+                    require(got->prevote == flag && got->term == 7 && got->last_log_index == 3,
+                            "the pre-vote flag did not survive a RequestVote round trip");
+                else
+                    require(std::get<RequestVoteResponse>(decoded.payload).prevote == flag &&
+                                std::get<RequestVoteResponse>(decoded.payload).vote_granted,
+                            "the pre-vote flag did not survive a vote reply round trip");
+                // The view encoder writes the same body as the owning one.
+                const auto inner = encode_bound_peer_body(message);
+                require(std::equal(inner.begin(), inner.end(),
+                                   bytes.begin() + static_cast<std::ptrdiff_t>(kBoundFrameHeaderBytes)),
+                        "the encoders disagree about the vote body");
+            }
+        }
+    }
+    // Sizes: the version-2 bodies plus one trailer byte; the version is 3.
+    RequestVote prevote{7, 1, 3, 2};
+    prevote.prevote = true;
+    RequestVoteResponse granted{7, true};
+    granted.prevote = true;
+    const auto vote_body = encode_bound_peer_body(PeerMessage{1, 2, prevote});
+    const auto reply_body = encode_bound_peer_body(PeerMessage{1, 2, granted});
+    require(vote_body.size() == 49 && reply_body.size() == 26, "vote bodies are not 48+1 and 25+1 bytes");
+    require(vote_body[4] == std::byte{3} && vote_body[5] == std::byte{0} && vote_body[48] == std::byte{1} &&
+                reply_body[25] == std::byte{1},
+            "the vote bodies do not carry version 3 and the flag trailer");
+    // What a voter without pre-vote sends: version 2, no vote trailer.
+    for (const PeerMessage& old : {PeerMessage{1, 2, RequestVote{7, 1, 3, 2}},
+                                   PeerMessage{1, 2, RequestVoteResponse{7, true}},
+                                   PeerMessage{1, 2, AppendEntriesResponse{7, true, 3, 1}}}) {
+        auto body = encode_peer_message(old);
+        body[4] = std::byte{2};
+        refused(frame(body, sender), BoundFrameError::invalid_payload);
+    }
+    PeerMessage old_append{1, 2, AppendEntries{7, 0, 0, 0, {{7, 1, 0, command()}}}};
+    auto old_body = encode_bound_peer_body(old_append);
+    old_body[4] = std::byte{2};
+    refused(frame(old_body, sender), BoundFrameError::invalid_payload);
+    // A vote body without its trailer, or with a non-canonical flag, is refused.
+    for (auto body : {vote_body, reply_body}) {
+        auto shortened = body;
+        shortened.pop_back();
+        refused(frame(shortened, sender), BoundFrameError::invalid_payload);
+        body.back() = std::byte{2};
+        refused(frame(body, sender), BoundFrameError::invalid_payload);
+    }
+}
 void codec_tests() {
     auto sender = context(1);
     auto receiver = context(2);
@@ -548,6 +618,7 @@ int main() {
             "unknown bound peer test selector");
         if (test == "all" || test == "codec") codec_tests();
         if (test == "all" || test == "codec") compaction_floor_tests();
+        if (test == "all" || test == "codec") prevote_wire_tests();
         if (test == "all" || test == "admission") admission_tests();
         if (test == "all" || test == "batch") bounded_batch_progress();
         if (test == "all" || test == "prefix") verified_prefix_limits_commit(false);

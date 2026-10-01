@@ -69,11 +69,16 @@ struct RequestVote {
     std::int32_t candidate_id{};
     std::int64_t last_log_index{};
     std::int64_t last_log_term{};
+    // V2 only (the V1 codec ignores it): a pre-vote asks whether the candidate
+    // COULD win `term` and changes no state on either side.
+    bool prevote{};
 };
 
 struct RequestVoteResponse {
     std::int64_t term{};
     bool vote_granted{};
+    // V2 only: echoes the request, so a pre-vote grant is never counted as a vote.
+    bool prevote{};
 };
 
 struct AppendEntries {

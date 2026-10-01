@@ -24,8 +24,10 @@ Error preflight(std::span<const std::byte> bytes) noexcept {
         bytes[5] != std::byte{kBoundPeerBodyVersion >> 8U}) return Error::invalid_payload;
     const auto kind = std::to_integer<unsigned>(bytes[6]) |
         (std::to_integer<unsigned>(bytes[7]) << 8);
-    if (kind == 1) return bytes.size() == 48 ? Error::none : Error::invalid_payload;
-    if (kind == 2) return bytes.size() == 25 ? Error::none : Error::invalid_payload;
+    // Vote bodies end in the pre-vote flag, canonical 0 or 1.
+    if (kind == 1 || kind == 2)
+        return bytes.size() == (kind == 1 ? 49U : 26U) &&
+                std::to_integer<unsigned>(bytes.back()) <= 1 ? Error::none : Error::invalid_payload;
     if (kind == 4) return bytes.size() == 41 ? Error::none : Error::invalid_payload;
     if (kind != 3 || bytes.size() < 52) return Error::invalid_payload;
     const auto count = u32(bytes, 48);
@@ -158,6 +160,10 @@ std::vector<std::byte> encode_bound_peer_body(const PeerMessage& message) {
     if (const auto* append = std::get_if<AppendEntries>(&message.payload)) {
         const auto bits = static_cast<std::uint64_t>(append->compaction_floor);
         for (unsigned i = 0; i < 8; ++i) body.push_back(static_cast<std::byte>(bits >> (8U * i)));
+    } else if (const auto* vote = std::get_if<RequestVote>(&message.payload)) {
+        body.push_back(std::byte{static_cast<unsigned char>(vote->prevote)});
+    } else if (const auto* reply = std::get_if<RequestVoteResponse>(&message.payload)) {
+        body.push_back(std::byte{static_cast<unsigned char>(reply->prevote)});
     }
     return body;
 }
@@ -170,10 +176,11 @@ BoundFrameError decode_bound_peer(std::span<const std::byte> input,
     const auto shape = preflight(view.payload);
     if (shape != Error::none) return shape;
     // Preflight fixed the shape: strip the V2 trailer and hand the V1 decoder
-    // its own version, then restore the floor.
-    const bool append = (std::to_integer<unsigned>(view.payload[6]) |
-                         (std::to_integer<unsigned>(view.payload[7]) << 8)) == 3;
-    std::vector<std::byte> body(view.payload.begin(), view.payload.end() - (append ? 8 : 0));
+    // its own version, then restore the trailer's field.
+    const auto kind = std::to_integer<unsigned>(view.payload[6]) |
+                      (std::to_integer<unsigned>(view.payload[7]) << 8);
+    const std::size_t trailer = kind == 3 ? 8 : (kind == 1 || kind == 2) ? 1 : 0;
+    std::vector<std::byte> body(view.payload.begin(), view.payload.end() - static_cast<std::ptrdiff_t>(trailer));
     body[4] = std::byte{kWireVersion & 0xFFU};
     body[5] = std::byte{kWireVersion >> 8U};
     PeerMessage candidate;
@@ -187,6 +194,10 @@ BoundFrameError decode_bound_peer(std::span<const std::byte> input,
         for (unsigned i = 0; i < 8; ++i)
             bits |= std::uint64_t{std::to_integer<unsigned>(view.payload[view.payload.size() - 8 + i])} << (8U * i);
         entries->compaction_floor = static_cast<std::int64_t>(bits);
+    } else if (auto* vote = std::get_if<RequestVote>(&candidate.payload)) {
+        vote->prevote = view.payload.back() == std::byte{1};
+    } else if (auto* reply = std::get_if<RequestVoteResponse>(&candidate.payload)) {
+        reply->prevote = view.payload.back() == std::byte{1};
     }
     const auto semantics = validate(candidate, receiver, true);
     if (semantics != Error::none) return semantics;
@@ -209,8 +220,8 @@ BoundFrameEncodeResult encode_bound_peer(const PeerMessageView& message,
     const auto semantics = validate(message, sender);
     if (semantics != Error::none) return {semantics, 0};
     std::size_t inner_size = 16;
-    if (std::holds_alternative<RequestVote>(message.payload)) inner_size += 32;
-    else if (std::holds_alternative<RequestVoteResponse>(message.payload)) inner_size += 9;
+    if (std::holds_alternative<RequestVote>(message.payload)) inner_size += 32 + 1;
+    else if (std::holds_alternative<RequestVoteResponse>(message.payload)) inner_size += 9 + 1;
     else if (const auto* append = std::get_if<BorrowedAppendEntries>(&message.payload)) {
         inner_size += 36 + 8;  // + the compaction-floor trailer
         for (const auto& entry : append->entries) inner_size += 20 + entry.payload.size();
@@ -234,9 +245,10 @@ BoundFrameEncodeResult encode_bound_peer(const PeerMessageView& message,
     if (const auto* vote = std::get_if<RequestVote>(&message.payload)) {
         put(inner, at, vote->term); put(inner, at, vote->candidate_id);
         put(inner, at, std::uint32_t{}); put(inner, at, vote->last_log_index);
-        put(inner, at, vote->last_log_term);
+        put(inner, at, vote->last_log_term); put(inner, at, std::uint8_t(vote->prevote));
     } else if (const auto* vote = std::get_if<RequestVoteResponse>(&message.payload)) {
         put(inner, at, vote->term); put(inner, at, std::uint8_t(vote->vote_granted));
+        put(inner, at, std::uint8_t(vote->prevote));
     } else if (const auto* append = std::get_if<BorrowedAppendEntries>(&message.payload)) {
         put(inner, at, append->term); put(inner, at, append->previous_log_index);
         put(inner, at, append->previous_log_term); put(inner, at, append->leader_commit);
