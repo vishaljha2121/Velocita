@@ -3,6 +3,7 @@
 #include "velocita/v2/digest.hpp"
 
 #include <algorithm>
+#include <limits>
 
 namespace velocita::v2::paper {
 namespace {
@@ -322,7 +323,115 @@ QueryResult PaperVenue::query(const ClusterOrderId order, const Tick now) noexce
     return result;
 }
 
+void PaperVenue::record_committed(const sim::CommittedEvidence& evidence) noexcept {
+    ledger_.committed_through = std::max(ledger_.committed_through, evidence.index);
+    const auto& observation = evidence.observation;
+    if (observation.kind != VenueObservationKind::fill) return;
+    const auto add = [](std::int64_t& total, const std::int64_t value) noexcept {
+        if (value > 0 && total <= std::numeric_limits<std::int64_t>::max() - value) total += value;
+    };
+    add(ledger_.fee_micros_total, observation.fee.atoms());
+    add(observation.side == Side::buy ? ledger_.volume_micros_buy : ledger_.volume_micros_sell,
+        evidence.notional_micros);
+    ledger_.last_fill_wall_seconds = std::max(ledger_.last_fill_wall_seconds, evidence.wall_seconds);
+}
+
+void PaperVenue::read_book(sim::VenueBook& out) const noexcept {
+    out = {};
+    out.available = configured_;
+    out.base = balances_.base;
+    out.quote = balances_.quote;
+    out.quote_known = true;
+    out.unacknowledged_reports = scheduled_count_;
+    for (std::size_t index = 0; index < scheduled_count_; ++index) {
+        const auto order = scheduled_[index].observation.cluster_order_id;
+        const auto listed = std::span(out.pending_orders).first(out.pending_order_count);
+        if (std::find(listed.begin(), listed.end(), order) != listed.end()) continue;
+        out.pending_orders[out.pending_order_count++] = order;  // 128 reports fit 128 ids
+    }
+    out.committed_through = ledger_.committed_through;
+    out.fee_micros_total = ledger_.fee_micros_total;
+    out.volume_micros_buy = ledger_.volume_micros_buy;
+    out.volume_micros_sell = ledger_.volume_micros_sell;
+    out.last_fill_wall_seconds = ledger_.last_fill_wall_seconds;
+}
+
+void PaperVenue::capture(PaperVenueImage& out) const noexcept {
+    out.venue_id = config_.spec.venue_id;
+    out.instrument_id = config_.spec.instrument_id;
+    out.random_state = random_state_;
+    out.venue_sequence = venue_sequence_;
+    out.venue_order_counter = venue_order_counter_;
+    out.execution_counter = execution_counter_;
+    out.ordinal = ordinal_;
+    out.balances = balances_;
+    out.ledger = ledger_;
+    out.order_count = order_count_;
+    out.orders = orders_;
+    out.report_count = scheduled_count_;
+    out.reports = {};
+    for (std::size_t index = 0; index < scheduled_count_; ++index) {
+        const auto& entry = scheduled_[index];
+        out.reports[index] = {entry.ordinal, entry.observation, entry.withheld};
+    }
+}
+
+bool PaperVenue::restore(const PaperVenueImage& image) noexcept {
+    const auto sided = [](const Side side) noexcept { return side == Side::buy || side == Side::sell; };
+    bool sound = configured_ && image.venue_id == config_.spec.venue_id &&
+                 image.instrument_id == config_.spec.instrument_id &&
+                 image.order_count <= kMaxPaperOrders && image.report_count <= kMaxPaperObservations &&
+                 image.balances.quote.atoms() >= 0 && image.balances.base.atoms() >= 0 &&
+                 image.balances.fees_paid.atoms() >= 0 && image.ledger.committed_through >= 0 &&
+                 image.ledger.fee_micros_total >= 0 && image.ledger.volume_micros_buy >= 0 &&
+                 image.ledger.volume_micros_sell >= 0 && image.ledger.last_fill_wall_seconds >= 0;
+    for (std::size_t index = 0; sound && index < image.order_count; ++index) {
+        const auto& order = image.orders[index];
+        sound = order.cluster_order_id.value() != 0 && order.venue_order_id.value() != 0 &&
+                order.venue_order_id.value() <= image.venue_order_counter && sided(order.side) &&
+                order.quantity.atoms() > 0 && order.fee.atoms() >= 0;
+        for (std::size_t other = 0; sound && other < index; ++other)
+            sound = image.orders[other].cluster_order_id != order.cluster_order_id;
+    }
+    for (std::size_t index = 0; sound && index < image.report_count; ++index) {
+        const auto& report = image.reports[index];
+        const auto kind = report.observation.kind;
+        sound = report.ordinal != 0 && report.ordinal <= image.ordinal &&
+                report.observation.venue_id == config_.spec.venue_id &&
+                report.observation.venue_sequence.value() <= image.venue_sequence &&
+                (kind == VenueObservationKind::order_acknowledged ||
+                 kind == VenueObservationKind::order_rejected || kind == VenueObservationKind::fill);
+    }
+    if (!sound) return false;
+    random_state_ = image.random_state;
+    venue_sequence_ = image.venue_sequence;
+    venue_order_counter_ = image.venue_order_counter;
+    execution_counter_ = image.execution_counter;
+    ordinal_ = image.ordinal;
+    balances_ = image.balances;
+    ledger_ = image.ledger;
+    order_count_ = image.order_count;
+    orders_ = image.orders;
+    scheduled_count_ = image.report_count;
+    scheduled_ = {};
+    for (std::size_t index = 0; index < image.report_count; ++index) {
+        const auto& report = image.reports[index];
+        scheduled_[index] = {0, report.ordinal, report.observation, false, report.withheld};
+    }
+    last_faults_ = {};
+    last_reject_ = PaperRejectReason::none;
+    return true;
+}
+
 namespace {
+
+void book_read(void* context, sim::VenueBook& out) {
+    static_cast<const PaperVenue*>(context)->read_book(out);
+}
+
+void book_committed(void* context, const sim::CommittedEvidence& evidence) {
+    static_cast<PaperVenue*>(context)->record_committed(evidence);
+}
 
 SendOutcome transport_send(void* context, const OrderEffect& effect, const Tick now) {
     return static_cast<PaperVenue*>(context)->send(effect, now);
@@ -356,6 +465,10 @@ sim::VenueTransport paper_venue_transport(PaperVenue& venue) noexcept {
     transport.session_fn = &transport_session;
     transport.context = &venue;
     return transport;
+}
+
+sim::VenueBookSource paper_venue_book(PaperVenue& venue) noexcept {
+    return {&book_read, &book_committed, &venue};
 }
 
 }  // namespace velocita::v2::paper

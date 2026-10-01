@@ -266,7 +266,7 @@ target_include_directories(velocita_v2_venue_simulator PUBLIC include)
 target_link_libraries(velocita_v2_venue_simulator PUBLIC velocita_v2_contracts)
 target_compile_options(velocita_v2_venue_simulator PRIVATE -Wall -Wextra -Wpedantic)
 
-add_library(velocita_v2_paper_venue src/v2_paper_venue.cpp)
+add_library(velocita_v2_paper_venue src/v2_paper_venue.cpp src/v2_paper_venue_store.cpp)
 target_include_directories(velocita_v2_paper_venue PUBLIC include)
 target_link_libraries(velocita_v2_paper_venue PUBLIC velocita_v2_contracts PRIVATE velocita_v2_venue_simulator)
 target_compile_options(velocita_v2_paper_venue PRIVATE -Wall -Wextra -Wpedantic)
@@ -968,6 +968,16 @@ if(BUILD_TESTING)
     target_compile_options(v2-paper-venue-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-paper-venue-tests COMMAND v2-paper-venue-tests)
 
+    add_executable(v2-paper-venue-state-tests tests/v2_paper_venue_state_tests.cpp)
+    target_link_libraries(v2-paper-venue-state-tests PRIVATE velocita_v2_paper_venue)
+    target_compile_options(v2-paper-venue-state-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-paper-venue-state-tests COMMAND v2-paper-venue-state-tests)
+
+    add_executable(v2-gateway-reconciliation-tests tests/v2_gateway_reconciliation_tests.cpp)
+    target_link_libraries(v2-gateway-reconciliation-tests PRIVATE velocita_v2_gateway_loop)
+    target_compile_options(v2-gateway-reconciliation-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-gateway-reconciliation-tests COMMAND v2-gateway-reconciliation-tests)
+
     add_executable(v2-truemarkets-wire-tests tests/v2_truemarkets_wire_tests.cpp)
     target_link_libraries(v2-truemarkets-wire-tests PRIVATE velocita_v2_truemarkets_venue)
     target_compile_options(v2-truemarkets-wire-tests PRIVATE -Wall -Wextra -Wpedantic)
@@ -1002,6 +1012,34 @@ if(BUILD_TESTING)
                     -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/check_gateway_refusal.cmake)
     endforeach()
 
+    # Paper-state refusals: decided from the arguments and the file alone, before
+    # any key, Aeron directory or network; a refused file is never rewritten.
+    set(velocita_paper_garbage "${CMAKE_CURRENT_BINARY_DIR}/paper-state-garbage.bin")
+    foreach(velocita_usage IN ITEMS
+            "no-state-file|--venue paper needs --paper-state-file||--venue;paper"
+            "base-lots|replaced by the persisted paper state||--venue;paper;--paper-base-lots;25"
+            "missing-file|the first start needs --paper-state-init||--venue;paper;--paper-state-file;${CMAKE_CURRENT_BINARY_DIR}/absent-paper.state"
+            "corrupt-file|not a paper state file|1|--venue;paper;--paper-state-file;${velocita_paper_garbage}"
+            "init-over-file|never replace a file|1|--venue;paper;--paper-state-file;${velocita_paper_garbage};--paper-state-init;--paper-quote-usd;25"
+            "quote-on-restart|applies only to the first start||--venue;paper;--paper-state-file;${velocita_paper_garbage};--paper-quote-usd;3"
+            "adopt-without-cost|needs --paper-adopt-cost-micros||--venue;paper;--paper-state-file;${velocita_paper_garbage};--paper-adopt-position;--paper-quote-usd;25")
+        string(REPLACE "|" ";" velocita_usage_parts "${velocita_usage}")
+        list(GET velocita_usage_parts 0 velocita_usage_name)
+        list(GET velocita_usage_parts 1 velocita_usage_expect)
+        list(GET velocita_usage_parts 2 velocita_usage_garbage)
+        list(SUBLIST velocita_usage_parts 3 -1 velocita_usage_args)
+        string(REPLACE ";" "," velocita_usage_args "${velocita_usage_args}")
+        set(velocita_usage_garbage_arg "")
+        if(velocita_usage_garbage)
+            set(velocita_usage_garbage_arg "-DGARBAGE_FILE=${velocita_paper_garbage}")
+        endif()
+        add_test(NAME v2-gateway-paper-state-refuses-${velocita_usage_name}
+            COMMAND ${CMAKE_COMMAND} -DBINARY=$<TARGET_FILE:velocita-v2-gateway>
+                    "-DARGS=${velocita_usage_args}" "-DEXPECT=${velocita_usage_expect}" ${velocita_usage_garbage_arg}
+                    -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/check_gateway_usage.cmake)
+        set_tests_properties(v2-gateway-paper-state-refuses-${velocita_usage_name} PROPERTIES RESOURCE_LOCK paper-garbage)
+    endforeach()
+
     add_executable(v2-gateway-protocol-tests tests/v2_gateway_protocol_tests.cpp)
     target_link_libraries(v2-gateway-protocol-tests PRIVATE velocita_v2_gateway_loop)
     target_compile_options(v2-gateway-protocol-tests PRIVATE -Wall -Wextra -Wpedantic)
@@ -1011,7 +1049,7 @@ if(BUILD_TESTING)
     target_link_libraries(v2-gateway-node-tests PRIVATE velocita_v2_gateway_loop velocita_v2_paper_venue Threads::Threads)
     target_compile_options(v2-gateway-node-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-gateway-node-tests COMMAND v2-gateway-node-tests)
-    set_tests_properties(v2-gateway-node-tests PROPERTIES TIMEOUT 300)
+    set_tests_properties(v2-gateway-node-tests PROPERTIES TIMEOUT 600)
 
     add_executable(v2-node-tests tests/v2_node_tests.cpp)
     target_link_libraries(v2-node-tests PRIVATE velocita_v2_node Threads::Threads)

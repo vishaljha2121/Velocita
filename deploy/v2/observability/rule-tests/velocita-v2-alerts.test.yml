@@ -216,7 +216,7 @@ tests:
           - exp_labels: {severity: critical, job: node, host: nuc1}
             exp_annotations:
               summary: "Paper gateway on nuc1 stopped new risk"
-              description: "An unknown order outcome or a reconciliation mismatch stopped new risk: the gateway sends no risk-increasing order. Check the gateway journal for the order and the cause before resuming."
+              description: "A stop that does not re-arm by itself (unknown outcome, conflict, refused evidence, control change, reconciliation mismatch) holds new risk: the gateway sends no risk-increasing order. Check the gateway journal (STOP cause=...) for the order and the cause; restart the gateway to resume."
       - eval_time: 9m
         alertname: VelocitaGatewayUnknownOutcome
         exp_alerts: []
@@ -231,6 +231,48 @@ tests:
       - eval_time: 25m
         alertname: VelocitaGatewayUnknownOutcome
         exp_alerts: []
+
+  # Automatic re-arm (ADR 0019 step 2): a fence stops new risk at 2m and the
+  # gateway awaits its re-arm until 5m (re-armed at 6m); a second fence at 8m
+  # never re-arms. A reconciliation mismatch appears at 20m.
+  - interval: 1m
+    input_series:
+      - series: 'velocita_gateway_new_risk_stopped{job="node",host="nuc1"}'
+        values: '0x1 1x3 0x1 1x30'
+      - series: 'velocita_gateway_stop_cause{job="node",host="nuc1",cause="awaiting_arm"}'
+        values: '0x1 1x3 0x1 1x30'
+      - series: 'velocita_gateway_reconciliation_mismatch{job="node",host="nuc1"}'
+        values: '0x19 1x10'
+    alert_rule_test:
+      # Awaiting a re-arm is not a critical page.
+      - eval_time: 3m
+        alertname: VelocitaGatewayNewRiskStopped
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: VelocitaGatewayAwaitingRearm
+        exp_alerts: []
+      - eval_time: 17m
+        alertname: VelocitaGatewayAwaitingRearm
+        exp_alerts: []
+      # Awaiting since 8m: fires at 18m (for: 10m).
+      - eval_time: 18m
+        alertname: VelocitaGatewayAwaitingRearm
+        exp_alerts:
+          - exp_labels: {severity: warning, job: node, host: nuc1, cause: awaiting_arm}
+            exp_annotations:
+              summary: "Paper gateway on nuc1 has waited 10 minutes to re-arm"
+              description: "New risk is stopped only by the arming check (a fence that has not stayed quiet, an order still open, or a reconciliation that is not yet comparable). Check elections and the gateway journal."
+      - eval_time: 19m
+        alertname: VelocitaGatewayReconciliationMismatch
+        exp_alerts: []
+      # No pending period: fires on the first evaluation that sees 1.
+      - eval_time: 20m
+        alertname: VelocitaGatewayReconciliationMismatch
+        exp_alerts:
+          - exp_labels: {severity: critical, job: node, host: nuc1}
+            exp_annotations:
+              summary: "Paper gateway on nuc1: venue book and kernel position disagree"
+              description: "At a comparable cut the paper venue's base differs from the kernel's committed position (velocita_gateway_reconciliation_position_lots by source). New risk stays stopped until a restart. Follow the break workflow (runbook 5.3); never edit paper.state or the kernel to make them agree."
 
   # No gateway metrics at all (never started, or not scraped): absent() fires.
   - interval: 1m

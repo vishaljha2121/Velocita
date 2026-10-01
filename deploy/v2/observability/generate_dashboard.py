@@ -121,8 +121,9 @@ ROLE_MAP = [{"type": "value", "options": {"0": {"text": "none"}, "1": {"text": "
 READY_MAP = [{"type": "value", "options": {"0": {"text": "NOT READY"}, "1": {"text": "READY"}}}]
 GATEWAY_UP_MAP = [{"type": "value", "options": {"0": {"text": "DOWN"}, "1": {"text": "UP"}}}]
 NEW_RISK_MAP = [{"type": "value", "options": {"0": {"text": "NEW RISK ALLOWED"}, "1": {"text": "NEW RISK STOPPED"}}}]
-NEW_RISK_HELP = ("1 = the gateway halted new risk after an unknown order outcome or a failed reconciliation. It sends "
-                 "no risk-increasing order until an operator has checked the gateway journal.")
+NEW_RISK_HELP = ("1 = the gateway sends no risk-increasing order. After an election it re-arms by itself once the "
+                 "cluster is quiet and the venue reconciles; after an unknown outcome, a conflict, a control change "
+                 "or a reconciliation mismatch only a restart (after checking the gateway journal) re-arms it.")
 
 
 # ---------------------------------------------------------------------------
@@ -520,6 +521,37 @@ def paper_now_row():
     advance(6)
 
 
+RECONCILIATION_MAP = [{"type": "value", "options": {"0": {"text": "MATCH"}, "1": {"text": "MISMATCH"}}}]
+
+
+def rearm_row():
+    row("Stops, automatic re-arms and reconciliation")
+    stat("Venue vs kernel", 'max(velocita_gateway_reconciliation_mismatch)', 0, 6, h=4,
+         steps=(("green", None), ("red", 1)), mappings=RECONCILIATION_MAP,
+         description="1 = at a comparable cut the paper venue's base differed from the kernel's position (zero-lot "
+                     "tolerance). New risk stays stopped until a restart. Alert: VelocitaGatewayReconciliationMismatch.")
+    stat("Compared position (lots)", 'max by (source) (velocita_gateway_reconciliation_position_lots)', 6, 6, h=4,
+         legend="{{source}}", steps=(("blue", None),),
+         description="Kernel and venue position at the last comparable cut; frozen at the values of a mismatch.")
+    stat("Re-arms (range)", 'sum(increase(velocita_gateway_rearms_total[$__range]))', 12, 4, h=4, decimals=0,
+         steps=(("blue", None),), description="Automatic re-arms after a fence (election or state-read gap).")
+    stat("Since clean reconciliation",
+         'time() - (max(velocita_gateway_reconciliation_last_match_timestamp_seconds) > 0)', 16, 8, h=4, unit="s",
+         steps=(("green", None), ("orange", 300)),
+         description="Seconds since the venue's book last matched the kernel at a comparable cut. 'unknown' = none "
+                     "since the gateway started (a cut is comparable only with no order open).")
+    advance(4)
+    series("Stops by cause (per hour)", [
+        ('sum by (cause) (increase(velocita_gateway_stops_total[1h]))', "{{cause}}"),
+    ], 0, 12, stack=True, description="fence re-arms by itself after the quiet period; every other cause holds new "
+                                      "risk until the gateway is restarted (runbook 5.3).")
+    series("Why new risk is stopped now", [
+        ('max by (cause) (velocita_gateway_stop_cause) > 0', "{{cause}}"),
+    ], 12, 12, description="1 per active cause. awaiting_arm = only the arming check is pending (quiet period, an "
+                           "open order, or a cut not yet comparable). Alert: VelocitaGatewayAwaitingRearm after 10 m.")
+    advance(8)
+
+
 def tick_to_trade_row():
     row("Tick to trade: decision -> authorized -> proof -> sent -> fill -> committed")
     stat("Tick to trade, mean (range)", ' + '.join(f'({_stage_mean(s, "$__range")})' for s in STAGES),
@@ -657,6 +689,7 @@ def volume_row():
 def paper():
     start()
     paper_now_row()
+    rearm_row()
     tick_to_trade_row()
     orders_row()
     position_row()

@@ -8,6 +8,7 @@
 #include "velocita/v2/gateway_loop.hpp"
 #include "velocita/v2/node.hpp"
 #include "velocita/v2/paper_venue.hpp"
+#include "velocita/v2/paper_venue_store.hpp"
 #include "velocita/v2/venue_simulator.hpp"
 #include "velocita/v2/venue_transport.hpp"
 
@@ -510,12 +511,40 @@ struct CountingVenue {
     sim::VenueTransport transport() { return {&send, &poll, &acknowledge, &query, &session, this}; }
 };
 
+// A venue book that lags the venue's reports: it shows balances at once but
+// never the reports it still owns (a real venue's balance endpoint can run
+// ahead of its execution feed). The gateway must then rely on committed order
+// state alone to know a cut is not yet comparable.
+struct LaggingBook {
+    sim::VenueBookSource inner{};
+    static void read(void* self, sim::VenueBook& out) {
+        auto& book = *static_cast<LaggingBook*>(self);
+        book.inner.read_fn(book.inner.context, out);
+        out.unacknowledged_reports = 0;
+        out.pending_order_count = 0;
+    }
+    static void committed(void* self, const sim::CommittedEvidence& evidence) {
+        auto& book = *static_cast<LaggingBook*>(self);
+        if (book.inner.committed_fn) book.inner.committed_fn(book.inner.context, evidence);
+    }
+    sim::VenueBookSource source() { return {&read, &committed, this}; }
+};
+
+struct VenueChoice {
+    std::optional<std::filesystem::path> durable_state;  // paper venue persisted in this file
+    paper::PaperFaultPolicy paper_faults = paper::PaperFaultPolicy::clean();
+    bool lagging_book{};
+};
+
 // The whole gateway process in-process: link, loop and a simulated venue.
 struct Gateway {
     GatewayClient client;
     GatewayLink link;
     sim::SimulatedVenue venue;
     std::unique_ptr<paper::PaperVenue> paper_venue;
+    std::unique_ptr<paper::DurablePaperVenue> durable_venue;
+    sim::VenueBookSource book{};
+    LaggingBook lagging{};
     CountingVenue counting;
     GatewayLoop loop;
 
@@ -554,19 +583,71 @@ struct Gateway {
         if (g_paper) value.venue.supports_post_only = value.venue.supports_good_til_cancel = false;
         return value;
     }
+    sim::VenueTransport pick(const VenueChoice& choice) {
+        sim::VenueTransport transport;
+        if (choice.durable_state) {
+            auto opened = paper::DurablePaperVenue::open(*choice.durable_state, paper_config(), choice.paper_faults,
+                                                         kIncarnation);
+            require(opened.error == paper::PaperStateError::none,
+                    std::string("fixture paper state refused: ") + paper::describe(opened.error));
+            durable_venue = std::move(opened.venue);
+            book = durable_venue->book();
+            transport = durable_venue->transport();
+        } else if (g_paper) {
+            paper_venue = std::make_unique<paper::PaperVenue>(paper_config(), choice.paper_faults, 1);
+            book = paper::paper_venue_book(*paper_venue);
+            transport = paper::paper_venue_transport(*paper_venue);
+        } else {
+            book = sim::simulated_venue_book(venue);
+            transport = sim::simulated_venue_transport(venue);
+        }
+        if (choice.lagging_book) {
+            lagging.inner = book;
+            book = lagging.source();
+        }
+        return transport;
+    }
     Gateway(Cluster& cluster, sim::FaultPolicy faults = sim::FaultPolicy::clean(),
-            GatewayLoopConfig loop_config = config(), GatewayLinkTiming timing = {})
+            GatewayLoopConfig loop_config = config(), GatewayLinkTiming timing = {}, const VenueChoice& choice = {})
         : client{},
           link((client.network = &cluster.network, 1), process_incarnation(0x40),
                gateway_routes(cluster.voters, caller_seed(kGatewayKey)), client, timing),
           venue(7, faults, VenueId{9}),
-          counting{g_paper ? paper::paper_venue_transport(*(paper_venue = std::make_unique<paper::PaperVenue>(
-                                 paper_config(), paper::PaperFaultPolicy::clean(), 1)))
-                           : sim::simulated_venue_transport(venue),
-                   {}},
+          counting{pick(choice), {}},
           loop(with_view(loop_config), link, fixture_catalog(), counting.transport(),
-               {&loop_clock, &wall_clock, nullptr}) {}
+               {&loop_clock, &wall_clock, nullptr}, book) {}
 };
+
+// A new, flat paper account for the fixture row, persisted in FILE.
+void create_fresh_paper_state(const std::filesystem::path& file) {
+    const auto fresh = paper::fresh_paper_state(Gateway::paper_config(), kIncarnation,
+                                                MoneyMicros::from_atoms(25'000'000));
+    require(fresh.error.empty() && paper::create_paper_state(file, *fresh.state) == paper::PaperStateError::none,
+            "fixture paper state could not be created");
+}
+
+std::uint64_t stops(const GatewayMetrics& metrics, GatewayStopCause cause) {
+    return metrics.stops[static_cast<std::size_t>(cause)];
+}
+
+std::uint64_t stops_other_than(const GatewayMetrics& metrics, GatewayStopCause cause) {
+    std::uint64_t total = 0;
+    for (std::size_t i = 0; i < metrics.stops.size(); ++i)
+        if (i != static_cast<std::size_t>(cause)) total += metrics.stops[i];
+    return total;
+}
+
+std::vector<GatewayEvent> drain(GatewayLoop& loop) {
+    std::array<GatewayEvent, kMaxGatewayEvents> out{};
+    const auto count = loop.drain_events(out);
+    return {out.begin(), out.begin() + static_cast<std::ptrdiff_t>(count)};
+}
+
+std::int64_t highest_term(Cluster& cluster) {
+    std::int64_t term = 0;
+    for (auto& [id, node] : cluster.nodes) term = std::max(term, node->status().replica.term);
+    return term;
+}
 
 std::uint64_t authority(const GatewayMetrics& metrics, GatewayAuthorityResult result) {
     return metrics.authority[static_cast<std::size_t>(result)];
@@ -1018,6 +1099,382 @@ void paper_venue_fill_books_position_and_measured_fee() {
     require(metrics.last_fill_timestamp_seconds > 0, "last fill timestamp not set");
 }
 
+// --- Fences, automatic re-arm and startup reconciliation ---------------------
+
+struct PaperFixture {
+    PaperFixture() { g_paper = true; }
+    ~PaperFixture() { g_paper = false; }
+};
+
+GatewayLoopConfig quiet_config(Tick quiet) {
+    auto value = Gateway::config();
+    value.rearm_quiet = quiet;
+    return value;
+}
+
+// ADR 0019 step 2: an election stops new risk; once the cluster has been
+// quiet for the configured period and the venue's book reconciles, the gateway
+// re-arms by itself. A decision authorized while it was stopped was never sent
+// by anyone, so it does not block the re-arm, and it is then sent exactly once
+// under a fresh proof.
+void fence_rearms_after_the_quiet_period_and_then_delivers_once() {
+    PaperFixture paper;
+    Base base("v2-gw-rearm");
+    Cluster cluster(base.path, {1, 2, 3});
+    Caller op{kOperatorKey, kOperator}, strategy{kStrategyKey, kStrategy};
+    prepare_cluster(cluster, op, strategy);
+    constexpr Tick kQuiet = 1500;
+    Gateway gateway(cluster, sim::FaultPolicy::clean(), quiet_config(kQuiet));
+    start(cluster, gateway);
+    const auto opening = drain(gateway.loop);
+    require(opening.size() == 1 && opening[0].kind == GatewayEventKind::armed,
+            "the gateway did not log one startup arm");
+
+    std::int64_t last_term = highest_term(cluster);
+    Tick last_term_change = 0, rearmed_at = 0;
+    cluster.on_round = [&] {
+        gateway.loop.step();
+        if (const auto term = highest_term(cluster); term != last_term) {
+            last_term = term;
+            last_term_change = steady_ms();
+        }
+        // A re-arm is the first armed step after the loop counted its fence stop
+        // (a stop and a re-arm inside one step still counts).
+        if (rearmed_at == 0 && stops(gateway.loop.metrics(), GatewayStopCause::fence) != 0 &&
+            !gateway.loop.new_risk_stopped())
+            rearmed_at = steady_ms();
+    };
+    cluster.stop(cluster.elect());
+    cluster.run_until([&] { return stops(gateway.loop.metrics(), GatewayStopCause::fence) != 0; },
+                      "the election to stop new risk");
+    require(stops(gateway.loop.metrics(), GatewayStopCause::fence) == 1, "the election was not counted as a fence");
+    const auto effect = authorize(cluster, strategy);  // committed while the gateway is stopped
+    cluster.run_until([&] { return rearmed_at != 0; }, "the automatic re-arm", 60'000);
+
+    // The oracle is the test's own view of the last term change, not the loop's.
+    require(rearmed_at >= last_term_change + kQuiet,
+            "re-armed " + std::to_string(rearmed_at - last_term_change) + " ms after the last term change, "
+            "inside the " + std::to_string(kQuiet) + " ms quiet period");
+    const auto leader = cluster.elect();
+    cluster.run_until([&] {
+        const auto* risk = account(cluster.state_of(leader));
+        return risk && risk->position_quantity.atoms() == kOrderLots && gateway.loop.evidence().obligation_count == 0;
+    }, "the order authorized during the fence to fill after the re-arm");
+    cluster.run(1500);
+    require(gateway.counting.sends.size() == 1 && gateway.counting.sends[0].effect_id == effect,
+            "the effect was not sent exactly once after the re-arm");
+    const auto& metrics = gateway.loop.metrics();
+    require(metrics.rearms == 1 && stops_other_than(metrics, GatewayStopCause::fence) == 0,
+            "expected one re-arm and no stop other than the fence");
+    const auto events = drain(gateway.loop);
+    bool stopped = false, rearmed = false;
+    for (const auto& event : events) {
+        stopped |= event.kind == GatewayEventKind::stopped && event.cause == GatewayStopCause::fence;
+        rearmed |= event.kind == GatewayEventKind::rearmed && stopped;
+    }
+    require(stopped && rearmed, "the fence stop and the re-arm were not logged in order");
+}
+
+// A state read that times out is a fence too: the gateway saw nothing of what
+// happened meanwhile. No term changes here; the re-arm follows the quiet period.
+void a_timed_out_state_read_is_a_fence_that_rearms() {
+    PaperFixture paper;
+    Base base("v2-gw-gap");
+    Cluster cluster(base.path, {1, 2});
+    Caller op{kOperatorKey, kOperator}, strategy{kStrategyKey, kStrategy};
+    prepare_cluster(cluster, op, strategy);
+    const auto term = highest_term(cluster);
+    Gateway gateway(cluster, sim::FaultPolicy::clean(), quiet_config(300));
+    start(cluster, gateway);
+    cluster.network.gateway_ingress = [](std::int32_t, std::span<const std::byte>) { return false; };
+    cluster.run_until([&] { return gateway.loop.new_risk_stopped(); }, "a state-read gap to stop new risk");
+    cluster.network.gateway_ingress = {};
+    cluster.run_until([&] { return !gateway.loop.new_risk_stopped(); }, "the re-arm after the gap", 60'000);
+    const auto& metrics = gateway.loop.metrics();
+    require(highest_term(cluster) == term, "an election happened; this test is about a read gap alone");
+    require(stops(metrics, GatewayStopCause::fence) == 1 && stops_other_than(metrics, GatewayStopCause::fence) == 0 &&
+                metrics.rearms == 1,
+            "the read gap was not one fence stop followed by one re-arm");
+}
+
+// Kill epoch, generation and mode are the operator's controls: a change stops
+// new risk and only a new process arms it again, however quiet the cluster.
+void a_control_change_latches_until_an_operator_restart() {
+    PaperFixture paper;
+    Base base("v2-gw-control");
+    Cluster cluster(base.path, {1, 2});
+    Caller op{kOperatorKey, kOperator}, strategy{kStrategyKey, kStrategy};
+    prepare_cluster(cluster, op, strategy);
+    Gateway gateway(cluster, sim::FaultPolicy::clean(), quiet_config(200));
+    start(cluster, gateway);
+    require(cluster.commit(op, SetStrategyMode{StrategyMode::no_new_risk, KillEpoch{1}, ExecutorGeneration{1}},
+                           ProposeLane::control).code == ApplyCode::applied, "mode no_new_risk");
+    cluster.run_until([&] { return gateway.loop.new_risk_stopped(); }, "the mode change to stop new risk");
+    require(cluster.commit(op, SetStrategyMode{StrategyMode::normal, KillEpoch{1}, ExecutorGeneration{1}},
+                           ProposeLane::control).code == ApplyCode::applied, "mode normal");
+    cluster.run(4000);  // many quiet periods
+    const auto& metrics = gateway.loop.metrics();
+    require(gateway.loop.new_risk_stopped(), "a strategy-mode change re-armed without an operator restart");
+    require(stops(metrics, GatewayStopCause::control_change) == 1 && metrics.rearms == 0 &&
+                metrics.stop_active[static_cast<std::size_t>(GatewayStopCause::control_change)],
+            "the control change is not the recorded, active cause");
+
+    // The operator's restart: a new process arms on a clean reconciliation.
+    Gateway restarted(cluster, sim::FaultPolicy::clean(), quiet_config(200));
+    start(cluster, restarted);
+}
+
+void without_allow_new_risk_the_gateway_never_arms() {
+    PaperFixture paper;
+    Base base("v2-gw-unarmed");
+    Cluster cluster(base.path, {1, 2});
+    Caller op{kOperatorKey, kOperator}, strategy{kStrategyKey, kStrategy};
+    prepare_cluster(cluster, op, strategy);
+    auto config = quiet_config(100);
+    config.allow_new_risk = false;
+    Gateway gateway(cluster, sim::FaultPolicy::clean(), config);
+    cluster.on_round = [&] { gateway.loop.step(); };
+    cluster.run_until([&] { return gateway.loop.metrics().reconciliation == BookVerdict::match; },
+                      "a clean reconciliation");
+    cluster.run(2000);
+    require(gateway.loop.new_risk_stopped() && gateway.loop.metrics().not_configured,
+            "a gateway without --allow-new-risk armed");
+}
+
+// The live break (2026-09-30): a restarted gateway whose venue reset to flat
+// while the kernel holds the position. It must stay stopped, say so, and show
+// both values; it must never "fix" either side.
+void a_restart_beside_a_held_position_with_a_reset_venue_is_a_mismatch() {
+    PaperFixture paper;
+    Base base("v2-gw-mismatch");
+    Cluster cluster(base.path, {1, 2});
+    Caller op{kOperatorKey, kOperator}, strategy{kStrategyKey, kStrategy};
+    prepare_cluster(cluster, op, strategy);
+    const auto leader = cluster.elect();
+    {
+        Gateway first(cluster);
+        start(cluster, first);
+        (void)authorize(cluster, strategy);
+        cluster.run_until([&] {
+            const auto* risk = account(cluster.state_of(leader));
+            return risk && risk->position_quantity.atoms() == kOrderLots && first.loop.evidence().obligation_count == 0;
+        }, "the first process's fill");
+        cluster.run(500);
+    }
+    Gateway restarted(cluster, sim::FaultPolicy::clean(), quiet_config(100));  // in-memory venue: flat again
+    cluster.on_round = [&] { restarted.loop.step(); };
+    cluster.run_until([&] { return restarted.loop.metrics().reconciliation_mismatch; }, "the mismatch", 20'000);
+    cluster.run(2000);
+    const auto& metrics = restarted.loop.metrics();
+    require(restarted.loop.new_risk_stopped(), "a gateway beside a mismatched venue armed");
+    require(metrics.reconciliation_kernel_lots == kOrderLots && metrics.reconciliation_venue_lots == 0,
+            "the exported values are not the kernel's 2 lots and the venue's 0");
+    require(stops(metrics, GatewayStopCause::reconciliation_mismatch) == 1 && metrics.rearms == 0,
+            "the mismatch is not the counted stop cause");
+    require(restarted.paper_venue->balances().base.atoms() == 0 &&
+                account(cluster.state_of(leader))->position_quantity.atoms() == kOrderLots,
+            "the mismatch was resolved by editing one side");
+    const auto text = render_gateway_metrics(metrics);
+    require(text.find("velocita_gateway_reconciliation_mismatch 1\n") != std::string::npos,
+            "the mismatch gauge is not exported");
+    bool logged = false;
+    for (const auto& event : drain(restarted.loop))
+        logged |= event.kind == GatewayEventKind::reconciliation_mismatch && event.kernel_lots == kOrderLots &&
+                  event.venue_lots == 0;
+    require(logged, "the mismatch was not logged with both values");
+}
+
+// The persisted venue: a restarted gateway finds the venue's base equal to the
+// kernel's position, arms, and publishes the fill totals of the earlier process.
+void a_restart_with_the_persisted_venue_reconciles_and_keeps_its_fill_record() {
+    PaperFixture paper;
+    Base base("v2-gw-persist");
+    Cluster cluster(base.path, {1, 2});
+    Caller op{kOperatorKey, kOperator}, strategy{kStrategyKey, kStrategy};
+    prepare_cluster(cluster, op, strategy);
+    const auto leader = cluster.elect();
+    const auto file = base.path / "paper.state";
+    create_fresh_paper_state(file);
+    double first_fill_at = 0;
+    {
+        Gateway first(cluster, sim::FaultPolicy::clean(), Gateway::config(), {}, {file});
+        start(cluster, first);
+        (void)authorize(cluster, strategy);
+        cluster.run_until([&] {
+            const auto* risk = account(cluster.state_of(leader));
+            return risk && risk->position_quantity.atoms() == kOrderLots && first.loop.evidence().obligation_count == 0;
+        }, "the first process's fill");
+        cluster.run(500);
+        first_fill_at = first.loop.metrics().last_fill_timestamp_seconds;
+    }
+    Gateway restarted(cluster, sim::FaultPolicy::clean(), Gateway::config(), {}, {file});
+    // Published before the first read: the totals come from the venue's file.
+    // 100 micros x 11 ticks x 2 lots = 2,200 notional; ceil(2,200 x 115 bp) = 26.
+    const auto& opening = restarted.loop.metrics();
+    require(opening.fee_micros_total == 26 && opening.volume_micros_buy == 2'200 &&
+                opening.last_fill_timestamp_seconds == first_fill_at && first_fill_at > 0,
+            "the restarted gateway did not publish the persisted fill totals and last-fill time");
+    start(cluster, restarted);
+    require(restarted.loop.metrics().reconciliation_kernel_lots == kOrderLots &&
+                restarted.loop.metrics().reconciliation_venue_lots == kOrderLots,
+            "the restarted gateway armed without comparing 2 lots on both sides");
+}
+
+// A crash after the fill committed but before the venue's acknowledgement was
+// written: the venue still owns the reports, redelivers them, the kernel
+// answers already_applied (the position does not move twice), and only then
+// does the cut reconcile.
+void a_restart_between_commit_and_acknowledge_redelivers_then_arms() {
+    PaperFixture paper;
+    Base base("v2-gw-redeliver");
+    Cluster cluster(base.path, {1, 2});
+    Caller op{kOperatorKey, kOperator}, strategy{kStrategyKey, kStrategy};
+    prepare_cluster(cluster, op, strategy);
+    const auto leader = cluster.elect();
+    const auto file = base.path / "paper.state";
+    const auto before_ack = base.path / "paper.state.before-ack";
+    create_fresh_paper_state(file);
+    {
+        Gateway first(cluster, sim::FaultPolicy::clean(), Gateway::config(), {}, {file});
+        start(cluster, first);
+        cluster.on_round = [&] {
+            first.loop.step();
+            if (first.counting.sends.size() == 1 && !std::filesystem::exists(before_ack))
+                std::filesystem::copy_file(file, before_ack);  // the send is durable; nothing acknowledged yet
+        };
+        (void)authorize(cluster, strategy);
+        cluster.run_until([&] {
+            const auto* risk = account(cluster.state_of(leader));
+            return risk && risk->position_quantity.atoms() == kOrderLots && first.loop.evidence().obligation_count == 0;
+        }, "the first process's fill");
+        cluster.run(300);
+    }
+    std::filesystem::copy_file(before_ack, file, std::filesystem::copy_options::overwrite_existing);
+    Gateway restarted(cluster, sim::FaultPolicy::clean(), Gateway::config(), {}, {file});
+    cluster.on_round = [&] { restarted.loop.step(); };
+    cluster.run_until([&] { return restarted.loop.phase() == GatewayPhase::running; }, "the first read");
+    require(restarted.loop.new_risk_stopped(), "armed while the venue still owned unacknowledged reports");
+    cluster.run_until([&] { return !restarted.loop.new_risk_stopped(); }, "the re-delivered reports to reconcile");
+    require(account(cluster.state_of(leader))->position_quantity.atoms() == kOrderLots,
+            "the re-delivered fill moved the position twice");
+    require(restarted.durable_venue->venue().pending_observation_count() == 0 &&
+                restarted.durable_venue->venue().balances().base.atoms() == kOrderLots,
+            "the venue did not release the committed reports");
+    require(restarted.loop.metrics().fee_micros_total == 26,
+            "the re-delivered fill was not counted exactly once in the fee total");
+}
+
+// First start of a persisted venue beside an existing position: the operator
+// adopts it once, with an explicit cost basis, and the gateway then reconciles.
+void an_adopted_position_reconciles_and_arms() {
+    PaperFixture paper;
+    Base base("v2-gw-adopt");
+    Cluster cluster(base.path, {1, 2});
+    Caller op{kOperatorKey, kOperator}, strategy{kStrategyKey, kStrategy};
+    prepare_cluster(cluster, op, strategy);
+    const auto leader = cluster.elect();
+    {
+        Gateway first(cluster);  // an in-memory venue: the pre-persistence world
+        start(cluster, first);
+        (void)authorize(cluster, strategy);
+        cluster.run_until([&] {
+            const auto* risk = account(cluster.state_of(leader));
+            return risk && risk->position_quantity.atoms() == kOrderLots && first.loop.evidence().obligation_count == 0;
+        }, "the pre-persistence fill");
+        cluster.run(300);
+    }
+    const auto& state = cluster.state_of(leader);
+    const auto file = base.path / "paper.state";
+    const auto adopted = paper::adopted_paper_state(
+        Gateway::paper_config(), kIncarnation, MoneyMicros::from_atoms(25'000'000),
+        account(state)->position_quantity, MoneyMicros::from_atoms(2'226),
+        cluster.node(leader).status().replica.applied_index, state.state_version);
+    require(adopted.error.empty() && paper::create_paper_state(file, *adopted.state) == paper::PaperStateError::none,
+            "adoption failed");
+    Gateway restarted(cluster, sim::FaultPolicy::clean(), Gateway::config(), {}, {file});
+    start(cluster, restarted);
+    require(restarted.durable_venue->venue().balances().quote.atoms() == 25'000'000 - 2'226,
+            "the adopted quote is not funding minus the cost basis");
+}
+
+// The continuous check (every read, armed or not) beside a venue whose balance
+// runs ahead of its reports: while the order is open in committed state the
+// cut is not comparable, so the early balance is never called a break.
+void a_venue_balance_ahead_of_an_open_order_is_not_a_mismatch() {
+    PaperFixture paper;
+    Base base("v2-gw-ahead");
+    Cluster cluster(base.path, {1, 2});
+    Caller op{kOperatorKey, kOperator}, strategy{kStrategyKey, kStrategy};
+    prepare_cluster(cluster, op, strategy);
+    const auto leader = cluster.elect();
+    VenueChoice choice;
+    choice.lagging_book = true;
+    choice.paper_faults.delay_permille = 1000;
+    choice.paper_faults.delay_ticks = 1200;
+    Gateway gateway(cluster, sim::FaultPolicy::clean(), Gateway::config(), {}, choice);
+    start(cluster, gateway);
+    std::uint64_t ahead_reads = 0;
+    cluster.on_round = [&] {
+        gateway.loop.step();
+        // The test's own view: the venue holds the lots, the kernel does not yet.
+        sim::VenueBook book;
+        gateway.book.read_fn(gateway.book.context, book);
+        const auto* risk = account(cluster.state_of(leader));
+        if (book.base.atoms() == kOrderLots && risk && risk->position_quantity.atoms() == 0) ++ahead_reads;
+    };
+    (void)authorize(cluster, strategy);
+    cluster.run_until([&] {
+        const auto* risk = account(cluster.state_of(leader));
+        return risk && risk->position_quantity.atoms() == kOrderLots && gateway.loop.evidence().obligation_count == 0;
+    }, "the delayed fill to commit");
+    cluster.run(500);
+    require(ahead_reads > 100, "the fixture never held the venue's balance ahead of the kernel");
+    require(!gateway.loop.metrics().reconciliation_mismatch && !gateway.loop.new_risk_stopped(),
+            "a venue balance ahead of an open order was called a mismatch");
+}
+
+// An election while an order is in flight at a venue whose balance runs ahead
+// of its reports: the book shows the bought lots before the kernel does. The
+// gateway must wait for the order to settle in committed state (never call it
+// a mismatch, never re-arm early), then re-arm.
+void an_election_during_an_in_flight_order_rearms_only_after_it_settles() {
+    PaperFixture paper;
+    Base base("v2-gw-inflight");
+    Cluster cluster(base.path, {1, 2, 3});
+    Caller op{kOperatorKey, kOperator}, strategy{kStrategyKey, kStrategy};
+    prepare_cluster(cluster, op, strategy);
+    VenueChoice choice;
+    choice.lagging_book = true;
+    choice.paper_faults.delay_permille = 1000;
+    choice.paper_faults.delay_ticks = 1200;  // reports due 1.2 s after the send, inside the 2 s deadline
+    Gateway gateway(cluster, sim::FaultPolicy::clean(), quiet_config(300), {}, choice);
+    start(cluster, gateway);
+    bool leader_stopped = false;
+    Tick filled_at = 0, rearmed_at = 0;
+    cluster.on_round = [&] {
+        gateway.loop.step();
+        if (gateway.counting.sends.size() == 1 && !leader_stopped) {
+            leader_stopped = true;
+            cluster.stop(cluster.leader());
+        }
+        if (!leader_stopped) return;
+        if (const auto current = cluster.leader(); current != 0 && filled_at == 0) {
+            const auto* risk = account(cluster.state_of(current));
+            if (risk && risk->position_quantity.atoms() == kOrderLots) filled_at = steady_ms();
+        }
+        if (gateway.loop.new_risk_stopped() == false && rearmed_at == 0 &&
+            stops(gateway.loop.metrics(), GatewayStopCause::fence) != 0)
+            rearmed_at = steady_ms();
+    };
+    (void)authorize(cluster, strategy);
+    cluster.run_until([&] { return rearmed_at != 0 || gateway.loop.metrics().reconciliation_mismatch; },
+                      "the re-arm after the in-flight order", 60'000);
+    require(!gateway.loop.metrics().reconciliation_mismatch,
+            "the venue's early balance was called a mismatch while the order was still open");
+    require(filled_at != 0 && rearmed_at >= filled_at, "re-armed before the in-flight order's fill committed");
+    require(gateway.counting.sends.size() == 1, "the in-flight order was sent again");
+}
+
 }  // namespace
 
 int main() {
@@ -1033,6 +1490,22 @@ int main() {
         {"gateway_started_with_an_unsettled_effect_never_sends_it", gateway_started_with_an_unsettled_effect_never_sends_it},
         {"effect_for_another_catalog_row_is_not_sent", effect_for_another_catalog_row_is_not_sent},
         {"paper_venue_fill_books_position_and_measured_fee", paper_venue_fill_books_position_and_measured_fee},
+        {"fence_rearms_after_the_quiet_period_and_then_delivers_once",
+         fence_rearms_after_the_quiet_period_and_then_delivers_once},
+        {"a_timed_out_state_read_is_a_fence_that_rearms", a_timed_out_state_read_is_a_fence_that_rearms},
+        {"a_control_change_latches_until_an_operator_restart", a_control_change_latches_until_an_operator_restart},
+        {"without_allow_new_risk_the_gateway_never_arms", without_allow_new_risk_the_gateway_never_arms},
+        {"a_restart_beside_a_held_position_with_a_reset_venue_is_a_mismatch",
+         a_restart_beside_a_held_position_with_a_reset_venue_is_a_mismatch},
+        {"a_restart_with_the_persisted_venue_reconciles_and_keeps_its_fill_record",
+         a_restart_with_the_persisted_venue_reconciles_and_keeps_its_fill_record},
+        {"a_restart_between_commit_and_acknowledge_redelivers_then_arms",
+         a_restart_between_commit_and_acknowledge_redelivers_then_arms},
+        {"an_adopted_position_reconciles_and_arms", an_adopted_position_reconciles_and_arms},
+        {"a_venue_balance_ahead_of_an_open_order_is_not_a_mismatch",
+         a_venue_balance_ahead_of_an_open_order_is_not_a_mismatch},
+        {"an_election_during_an_in_flight_order_rearms_only_after_it_settles",
+         an_election_during_an_in_flight_order_rearms_only_after_it_settles},
     };
     const char* only = std::getenv("GATEWAY_TEST");
     int failures = 0;

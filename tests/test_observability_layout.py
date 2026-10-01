@@ -98,6 +98,9 @@ PAPER_METRICS = {
     "velocita_gateway_authority_requests_total", "velocita_gateway_stage_ms_bucket", "velocita_gateway_stage_ms_sum",
     "velocita_gateway_stage_ms_count", "velocita_gateway_position_lots", "velocita_gateway_fees_usd_total",
     "velocita_gateway_last_fill_timestamp_seconds", "velocita_gateway_volume_usd_total",
+    "velocita_gateway_reconciliation_mismatch", "velocita_gateway_reconciliation_position_lots",
+    "velocita_gateway_rearms_total", "velocita_gateway_reconciliation_last_match_timestamp_seconds",
+    "velocita_gateway_stops_total", "velocita_gateway_stop_cause",
 }
 # The edge's paper book (model/.../shadow/paper_book.py), shown in the volume row.
 PAPER_BOOK_METRICS = {
@@ -254,7 +257,8 @@ class GrafanaProvisioningLoadsEveryDashboard(unittest.TestCase):
 
 
 class GatewayAlertsAreDefinedAndTested(unittest.TestCase):
-    NAMES = ("VelocitaGatewayDown", "VelocitaGatewayNewRiskStopped", "VelocitaGatewayUnknownOutcome")
+    NAMES = ("VelocitaGatewayDown", "VelocitaGatewayNewRiskStopped", "VelocitaGatewayUnknownOutcome",
+             "VelocitaGatewayAwaitingRearm", "VelocitaGatewayReconciliationMismatch")
 
     def test_each_gateway_alert_has_a_firing_and_a_quiet_rule_test(self):
         rules = (OBS / "rules/velocita-v2-alerts.yml").read_text()
@@ -267,6 +271,9 @@ class GatewayAlertsAreDefinedAndTested(unittest.TestCase):
         self.assertIn("severity: critical", stopped)
         self.assertNotIn("for:", stopped)
         self.assertIn("journal", stopped)
+        mismatch = rules.split("- alert: VelocitaGatewayReconciliationMismatch\n", 1)[1].split("- alert:", 1)[0]
+        self.assertIn("severity: critical", mismatch)
+        self.assertNotIn("for:", mismatch)
 
 
 if __name__ == "__main__":

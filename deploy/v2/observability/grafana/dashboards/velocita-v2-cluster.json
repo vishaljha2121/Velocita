@@ -1034,7 +1034,7 @@
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "1 = the gateway halted new risk after an unknown order outcome or a failed reconciliation. It sends no risk-increasing order until an operator has checked the gateway journal.",
+   "description": "1 = the gateway sends no risk-increasing order. After an election it re-arms by itself once the cluster is quiet and the venue reconciles; after an unknown outcome, a conflict, a control change or a reconciliation mismatch only a restart (after checking the gateway journal) re-arms it.",
    "gridPos": {
     "h": 4,
     "w": 4,
