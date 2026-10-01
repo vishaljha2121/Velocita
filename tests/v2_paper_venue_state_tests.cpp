@@ -406,14 +406,32 @@ void durable_venue_writes_before_it_answers_and_restart_reproduces_it() {
             "the reopened venue's book lost the base, the cut, the fill ledger or the owned reports");
 }
 
+// Blocks every write under SUB by swapping the directory for a plain file of
+// the same name: creating "SUB/x" then fails with ENOTDIR even for root (a
+// read-only chmod does not stop root, and the image builds run its tests as root).
+struct WriteBlock {
+    std::filesystem::path sub;
+    std::filesystem::path held;
+    void block() {
+        std::filesystem::rename(sub, held);
+        std::ofstream(sub) << "blocked";
+    }
+    void unblock() {
+        std::filesystem::remove(sub);
+        std::filesystem::rename(held, sub);
+    }
+};
+
 void failed_write_latches_the_venue_and_the_file_stays_truthful() {
     TempDir dir;
-    const auto file = dir.path / "paper.state";
+    WriteBlock writes{dir.path / "state", dir.path / "state.held"};
+    std::filesystem::create_directories(writes.sub);
+    const auto file = writes.sub / "paper.state";
     const auto fresh = fresh_paper_state(config(), kIncarnation, MoneyMicros::from_atoms(kFunding));
     require(create_paper_state(file, *fresh.state) == PaperStateError::none, "create failed");
     auto opened = DurablePaperVenue::open(file, config(), PaperFaultPolicy::clean(), kIncarnation);
     const auto transport = opened.venue->transport();
-    require(::chmod(dir.path.c_str(), 0500) == 0, "chmod failed");
+    writes.block();
     // Executed in memory, not on disk: on disk it never happened, so the
     // answer is ambiguous and nothing of it may be released.
     require(transport.send(effect(1, Side::buy), 10) == SendOutcome::ambiguous,
@@ -424,7 +442,7 @@ void failed_write_latches_the_venue_and_the_file_stays_truthful() {
             "a failed venue answered a query");
     require(transport.send(effect(2, Side::buy), 1'000) == SendOutcome::pre_send_failure,
             "a failed venue accepted another send");
-    ::chmod(dir.path.c_str(), 0700);
+    writes.unblock();
     auto reopened = DurablePaperVenue::open(file, config(), PaperFaultPolicy::clean(), kIncarnation);
     require(reopened.error == PaperStateError::none, "reopen after a failed write failed");
     require(reopened.venue->venue().balances().quote.atoms() == kFunding &&
@@ -437,11 +455,11 @@ void failed_write_latches_the_venue_and_the_file_stays_truthful() {
     // written answers nothing rather than a fact the file does not hold.
     const auto healthy = reopened.venue->transport();
     require(healthy.send(effect(5, Side::buy), 20) == SendOutcome::accepted, "order 5 refused");
-    require(::chmod(dir.path.c_str(), 0500) == 0, "chmod failed");
+    writes.block();
     require(healthy.query(ClusterOrderId{2'005}, 30).outcome == QueryOutcome::unavailable,
             "a query whose state could not be written still answered");
     require(reopened.venue->failed(), "the failed query write did not latch the venue");
-    ::chmod(dir.path.c_str(), 0700);
+    writes.unblock();
 }
 
 void open_refuses_another_cluster_another_venue_and_never_resets() {
