@@ -35,12 +35,28 @@ set(AERON_INSTALL_TARGETS OFF CACHE BOOL "" FORCE)
 set(BUILD_AERON_ARCHIVE_API OFF CACHE BOOL "" FORCE)
 set(BUILD_AERON_DRIVER ON CACHE BOOL "" FORCE)
 
+# A dependency supplied as a local copy (FETCHCONTENT_SOURCE_DIR_*: the velocita-dev
+# toolchain image, a developer cache) must be the pinned commit. Refuse anything
+# else: a stale or wrong copy would otherwise build silently.
+find_package(Git QUIET)
+function(velocita_require_pinned_checkout name dir commit)
+    if(NOT GIT_FOUND OR NOT EXISTS "${dir}/.git")
+        message(FATAL_ERROR "${name}: ${dir} is not a git checkout, so the pinned commit ${commit} cannot be verified")
+    endif()
+    execute_process(COMMAND "${GIT_EXECUTABLE}" -c "safe.directory=${dir}" -C "${dir}" rev-parse HEAD
+        OUTPUT_VARIABLE head RESULT_VARIABLE rc OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    if(NOT rc EQUAL 0 OR NOT head STREQUAL "${commit}")
+        message(FATAL_ERROR "${name}: ${dir} is at '${head}', not the pinned ${commit}")
+    endif()
+endfunction()
+
 FetchContent_Declare(
     aeron
     GIT_REPOSITORY https://github.com/aeron-io/aeron.git
     GIT_TAG ${AERON_COMMIT}
 )
 FetchContent_MakeAvailable(aeron)
+velocita_require_pinned_checkout(aeron "${aeron_SOURCE_DIR}" "${AERON_COMMIT}")
 
 FetchContent_Declare(
     willemt_raft
@@ -51,6 +67,7 @@ FetchContent_GetProperties(willemt_raft)
 if(NOT willemt_raft_POPULATED)
     FetchContent_Populate(willemt_raft)
 endif()
+velocita_require_pinned_checkout(willemt_raft "${willemt_raft_SOURCE_DIR}" "${RAFT_COMMIT}")
 
 # PINNED FORK. Phase 7 splits "appended" from "durable", and upstream counts a
 # leader's own vote before its bytes are on disk - see

@@ -1,33 +1,35 @@
 # Velocita V2 node image (M3). Native build on the target: x86-64 on the NUC,
-# ARM64 on the Pi. Same Ubuntu 26.04 toolchain the V2 gates already validated.
+# ARM64 on the Pi.
 #
 # The builder stage runs the FULL Release test suite: an image only exists if
 # every suite passed on this machine's architecture and kernel.
 #
-#   podman build -f deploy/v2/Containerfile -t localhost/velocita-v2:m3 .
+# TOOLCHAIN: the builder is the pinned velocita-dev image (deploy/v2/Containerfile.dev;
+# docs/TOOLCHAIN.md): compiler, tools and the Aeron and willemt/raft sources at their
+# pinned commits are baked in, so this build installs nothing and downloads nothing.
+# Build through deploy/v2/build-image.sh, which checks the dev image is the recorded
+# toolchain for this architecture and stamps the source commit and toolchain ID
+# into the image labels (book ch56: a release records what built it).
 #
-# Faster rebuilds: mount a persistent compiler cache (ccache) from the host:
-#   mkdir -p ~/.cache/velocita-ccache
-#   podman build -v ~/.cache/velocita-ccache:/ccache -f deploy/v2/Containerfile -t ... .
-# Only translation units whose preprocessed input changed are recompiled; the
-# rest (including Aeron and willemt/raft) come from the cache. The image is still
-# built from this exact source tree in a clean /build, and the FULL test suite
-# still runs (BUILD_JOBS tests at a time). Without the -v mount the cache is empty.
+#   deploy/v2/build-image.sh voter  <TAG>      # localhost/velocita-v2:<TAG>
+#   deploy/v2/build-image.sh shadow <TAG>      # localhost/velocita-v2-shadow:<TAG>
+#
+# Faster rebuilds: the script mounts a persistent compiler cache (ccache) from the
+# host at /ccache. Only translation units whose preprocessed input changed are
+# recompiled. The image is still built from this exact source tree in a clean
+# /build, and the FULL test suite still runs (BUILD_JOBS tests at a time).
 # Measured on nuc2 (2026-10-01): 513 s cold/serial -> 420 s warm cache -> 296 s warm
 # cache + parallel tests; warm-cache binaries byte-identical to the cold build's.
 #
-# The shadow edge (nuc1 only) is a second target from the same tested build:
-#   podman build -f deploy/v2/Containerfile --target shadow -t localhost/velocita-v2-shadow:m3 .
 # The paper gateway (nuc1 only) runs from the voter image with
 # --entrypoint /usr/local/bin/velocita-v2-gateway (velocita-v2-gateway.service).
 
-FROM ubuntu:26.04 AS builder
-ARG DEBIAN_FRONTEND=noninteractive
+# Runtime base: the same Ubuntu 26.04 index digest the toolchain is built on.
+ARG BASE=docker.io/library/ubuntu@sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78
+ARG DEV_IMAGE=localhost/velocita-dev:current
+
+FROM ${DEV_IMAGE} AS builder
 ARG BUILD_JOBS=3
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        ca-certificates ccache cmake g++ git libbsd-dev ninja-build patch pkg-config python3 uuid-dev \
-    && rm -rf /var/lib/apt/lists/*
 # content: a rebuilt compiler binary is never mistaken for the cached one.
 # basedir /: every build uses the same /src and /build paths, so hits are exact.
 ENV CCACHE_DIR=/ccache CCACHE_BASEDIR=/ CCACHE_COMPILERCHECK=content CCACHE_MAXSIZE=5G
@@ -36,6 +38,9 @@ COPY . .
 RUN mkdir -p /ccache && ccache --zero-stats \
     && cmake -S . -B /build -G Ninja -DCMAKE_BUILD_TYPE=Release -DAERON_HIDE_DEPRECATION_MESSAGE=ON \
         -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+        -DFETCHCONTENT_FULLY_DISCONNECTED=ON \
+        -DFETCHCONTENT_SOURCE_DIR_AERON=/opt/velocita-deps/aeron \
+        -DFETCHCONTENT_SOURCE_DIR_WILLEMT_RAFT=/opt/velocita-deps/willemt-raft \
     && cmake --build /build --parallel "${BUILD_JOBS}" \
     && ccache --show-stats \
     && ctest --test-dir /build --output-on-failure --parallel "${BUILD_JOBS}"
@@ -44,7 +49,9 @@ RUN mkdir -p /ccache && ccache --zero-stats \
 # features) and the C++ submitter it spawns (also the operator's one-shot
 # --setup-only). Shadow records decisions; paper lets the kernel authorize them
 # for the paper gateway. No venue client here. Stdlib-only Python, no pip.
-FROM ubuntu:26.04 AS shadow
+FROM ${BASE} AS shadow
+ARG SOURCE_COMMIT=unknown
+ARG TOOLCHAIN_ID=unknown
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates libstdc++6 libbsd0 libuuid1 python3 \
@@ -53,12 +60,15 @@ COPY --from=builder /build/velocita-v2-shadow-submitter /usr/local/bin/velocita-
 COPY --from=builder /src/model/src /opt/velocita-model/src
 # The shadow book's fills are costed from these measured quotes (never a guess).
 COPY --from=builder /src/docs/evidence/truemarkets_markup_2026-09-28/quotes_buy_sell_1631utc.json /opt/velocita-model/evidence/
-COPY --from=builder /build/_deps/aeron-src/LICENSE /usr/share/licenses/aeron/LICENSE
+COPY --from=builder /opt/velocita-deps/aeron/LICENSE /usr/share/licenses/aeron/LICENSE
 ENV PYTHONPATH=/opt/velocita-model/src PYTHONDONTWRITEBYTECODE=1
+LABEL org.velocita.source_commit="${SOURCE_COMMIT}" org.velocita.toolchain_image_id="${TOOLCHAIN_ID}"
 ENTRYPOINT ["python3", "-m", "velocita_model.cli", "shadow-edge"]
 
 # The voter image (default target: keep this stage last).
-FROM ubuntu:26.04
+FROM ${BASE}
+ARG SOURCE_COMMIT=unknown
+ARG TOOLCHAIN_ID=unknown
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libstdc++6 libbsd0 libuuid1 \
@@ -70,6 +80,7 @@ COPY --from=builder /build/velocita-v2-shadow-catalog /usr/local/bin/velocita-v2
 COPY --from=builder /build/velocita-v2-exporter /usr/local/bin/velocita-v2-exporter
 COPY --from=builder /build/velocita-v2-shadow-submitter /usr/local/bin/velocita-v2-shadow-submitter
 COPY --from=builder /build/velocita-v2-gateway /usr/local/bin/velocita-v2-gateway
-COPY --from=builder /build/_deps/aeron-src/LICENSE /usr/share/licenses/aeron/LICENSE
-COPY --from=builder /build/_deps/willemt_raft-src/LICENSE /usr/share/licenses/willemt-raft/LICENSE
+COPY --from=builder /opt/velocita-deps/aeron/LICENSE /usr/share/licenses/aeron/LICENSE
+COPY --from=builder /opt/velocita-deps/willemt-raft/LICENSE /usr/share/licenses/willemt-raft/LICENSE
+LABEL org.velocita.source_commit="${SOURCE_COMMIT}" org.velocita.toolchain_image_id="${TOOLCHAIN_ID}"
 ENTRYPOINT ["/usr/local/bin/velocita-v2-node"]
