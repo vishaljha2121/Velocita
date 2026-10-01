@@ -4,6 +4,7 @@
 #include "velocita/v2/digest.hpp"
 #include "velocita/v2/kernel_codec.hpp"
 
+#include <limits>
 #include <stdexcept>
 #include <string_view>
 
@@ -226,6 +227,15 @@ RiskView resync_risk_view(const RiskView& current, const ApplyResult& authorizat
     if (words[0] == 0 || words[1] == 0) return current;
     return {RiskVersion{words[0]}, PositionVersion{words[1]},
             QuantityLots::from_atoms(static_cast<std::int64_t>(words[2]))};
+}
+
+std::optional<SourceGeneration> resync_source_generation(SourceId source, const ApplyResult& recorded) noexcept {
+    // source_cursor_id() is zero unless the result carries the source_state report.
+    if (recorded.code != ApplyCode::source_generation_gap || recorded.source_cursor_id() != source)
+        return std::nullopt;
+    const auto cursor = recorded.source_cursor_generation().value();
+    if (cursor == std::numeric_limits<std::uint64_t>::max()) return std::nullopt;
+    return SourceGeneration{cursor + 1};
 }
 
 }  // namespace velocita::v2

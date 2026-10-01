@@ -28,7 +28,13 @@
 //           paper adds: risk_version=R position_version=P authorization=NAME|none|withheld [resync=1 position_lots=Q]
 // Timestamps are wall-clock nanoseconds (comparable with the edge on the same host).
 // Exit: 0 at end of input (or setup done); 2 setup refused; 3 a command could not be committed
-// within the timeout (restart: the next run is a new source generation); 64 usage.
+// within the timeout, or was refused (restart: the next run is a new source generation); 64 usage.
+// Source re-sync: starts that end before committing leave the state file's generation ahead
+// of the kernel. A source_generation_gap refusal reports the kernel's cursor; the tick is
+// retried once on the generation after it (sequence 1), persisted first, and stderr gets
+// RESYNC source=S refused_generation=G cursor_generation=C cursor_sequence=Q generation=N.
+// Any other source refusal (regression, sequence gap) prints ERROR and exits 3: it means the
+// kernel holds events this state never reserved, so the submitter does not leapfrog them.
 
 #include "velocita/aeron_runtime.hpp"
 #include "velocita/v2/aeron_node_transport.hpp"
@@ -286,7 +292,7 @@ int run(const Arguments& a) {
               << " mode=" << (a.paper ? "paper" : "shadow") << " caller_id=" << a.caller_id << std::endl;
     RiskView view{RiskVersion{a.risk_version}, PositionVersion{a.position_version}, std::nullopt};
 
-    std::uint64_t source_sequence = 0;
+    std::uint64_t generation = start.generation, source_sequence = 0;
     std::string line;
     while (std::getline(std::cin, line)) {
         const auto t_read = wall_ns();
@@ -302,8 +308,6 @@ int run(const Arguments& a) {
         ShadowTick tick;
         bool exits_only = false;
         tick.source = parsed.source;
-        tick.generation = SourceGeneration{start.generation};
-        tick.sequence = SourceSequence{source_sequence + 1};
         try {
             tick.event_time_ns = static_cast<std::int64_t>(number(f.at("event_ns"), "event_ns"));
             tick.receive_time_ns = static_cast<std::int64_t>(number(f.at("receive_ns"), "receive_ns"));
@@ -327,18 +331,38 @@ int run(const Arguments& a) {
             continue;  // nothing was sent; the source sequence is unused
         }
         ++source_sequence;
-        if (sequence + kCommandsPerTick >= reserved) {
-            reserved = sequence + kReserve;
-            if (const auto e = extend_reservation(a.state_file, a.incarnation, start.generation, reserved); !e.empty())
-                throw std::runtime_error("reservation: " + e);
-        }
-        const DecisionId decision{(start.generation << 32) | source_sequence};
         const FrameBinding binding = a.paper
             ? FrameBinding{EvaluationMode::authoritative, view.risk_version, view.position_version}
             : FrameBinding{};
-        const auto commands = shadow_tick(program, tick, caller, sequence, decision, binding);
-        sequence += 2;
-        const auto source = commit(session, commands[0], ProposeLane::normal, total);
+        DecisionId decision;
+        std::array<Command, 2> commands;
+        std::optional<SubmitOutcome> source;
+        for (bool resynced = false;; resynced = true) {
+            if (sequence + kCommandsPerTick >= reserved) {
+                reserved = sequence + kReserve;
+                if (const auto e = extend_reservation(a.state_file, a.incarnation, generation, reserved); !e.empty())
+                    throw std::runtime_error("reservation: " + e);
+            }
+            tick.generation = SourceGeneration{generation};
+            tick.sequence = SourceSequence{source_sequence};
+            decision = DecisionId{(generation << 32) | source_sequence};
+            commands = shadow_tick(program, tick, caller, sequence, decision, binding);
+            sequence += 2;
+            source = commit(session, commands[0], ProposeLane::normal, total);
+            if (resynced || !source || source->state != SubmitState::committed) break;
+            const auto next = resync_source_generation(parsed.source, source->result);
+            if (!next) break;
+            // Persisted before use: the state file must never name a generation below one in use,
+            // or the next start would be refused as a regression, which does not re-sync.
+            if (const auto e = extend_reservation(a.state_file, a.incarnation, next->value(), reserved); !e.empty())
+                throw std::runtime_error("re-sync: " + e);
+            std::cerr << "RESYNC source=" << parsed.source.value() << " refused_generation=" << generation
+                      << " cursor_generation=" << source->result.source_cursor_generation().value()
+                      << " cursor_sequence=" << source->result.source_cursor_sequence().value()
+                      << " generation=" << next->value() << std::endl;
+            generation = next->value();
+            source_sequence = 1;
+        }
         const auto t_source = wall_ns();
         if (!source || source->state != SubmitState::committed || source->result.code != ApplyCode::applied) {
             std::cout << "ERROR id=" << f["id"] << " reason=source code="

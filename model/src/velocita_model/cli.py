@@ -259,24 +259,31 @@ def cmd_shadow_edge(args: argparse.Namespace) -> int:
                 return None
             return self.inner.recv_text()
 
-    backoff = 1.0
+    failures = 0
     while True:
         today = _datetime.now(_tz.utc).date()
-        bars = load_binance_daily_api({"X": args.history_pair}, today - _timedelta(days=args.history_days),
-                                      today - _timedelta(days=1), Path(args.history_cache) / str(today))
+        try:
+            bars = load_binance_daily_api({"X": args.history_pair}, today - _timedelta(days=args.history_days),
+                                          today - _timedelta(days=1), Path(args.history_cache) / str(today))
+        except (OSError, ValueError) as error:  # unreachable or malformed history: wait, never exit
+            failures += 1
+            print(f"edge: history unavailable: {type(error).__name__}: {error}", file=sys.stderr, flush=True)
+            _time.sleep(edge.backoff_delay(failures))
+            continue
         closes = [(d, c) for d, c in zip(bars.dates, bars.close[0]) if c is not None]
         source = edge.FeatureSource(args.strategy, args.value, closes=closes,
                                     usd_per_tick=Decimal(args.usd_per_tick), symbol=args.symbol,
                                     min_interval_ns=int(args.min_tick_interval_s * 1_000_000_000),
                                     params=params if args.strategy in volume.STRATEGIES else None, window=window)
+        same_day = lambda day=today: _datetime.now(_tz.utc).date() == day
         result = edge.run_once(lambda: DayBoundSocket(today), submitter, source, textfile=args.textfile,
                                shadow_recorded_code=args.shadow_recorded_code, metrics=metrics, ledger=book,
-                               paper_book=paper_book)
+                               paper_book=paper_book, reconnect=None if args.once else same_day)
         print(f"edge run ended: {result.reason} decisions={result.decisions} errors={result.errors}", flush=True)
         if args.once:
             return 0 if result.decisions else 1
-        backoff = 1.0 if result.decisions else min(backoff * 2, 60.0)
-        _time.sleep(backoff)
+        failures = 0 if result.decisions else failures + 1
+        _time.sleep(edge.backoff_delay(max(failures, 1)))
 
 
 def _sha256_text(text: str) -> str:

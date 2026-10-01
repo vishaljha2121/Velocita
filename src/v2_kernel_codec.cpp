@@ -365,7 +365,8 @@ private:
            value == ApplyResultDetailKind::venue_event ||
            value == ApplyResultDetailKind::risk_configuration ||
            value == ApplyResultDetailKind::mass_cancel ||
-           value == ApplyResultDetailKind::risk_state;
+           value == ApplyResultDetailKind::risk_state ||
+           value == ApplyResultDetailKind::source_state;
 }
 
 [[nodiscard]] bool valid_detail(const ApplyResult& result) noexcept {
@@ -384,6 +385,13 @@ private:
         const auto cancelled = result.mass_cancelled();
         return result.code == ApplyCode::applied && in_scope <= kMaxClusterOrders &&
                cancelled <= in_scope && result.mass_skipped() == in_scope - cancelled;
+    }
+    if (result.detail_kind == ApplyResultDetailKind::source_state) {
+        // A source with no cursor reports 0/0; one with a cursor has both.
+        return result.code == ApplyCode::source_generation_gap &&
+               result.source_cursor_id().value() != 0 &&
+               (result.source_cursor_generation().value() == 0) ==
+                   (result.source_cursor_sequence().value() == 0);
     }
     if (result.detail_kind == ApplyResultDetailKind::risk_state) {
         return result.code == ApplyCode::stale_risk_state &&

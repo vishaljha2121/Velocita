@@ -809,6 +809,20 @@ template <std::size_t WordCount>
                   command.source_sequence);
 }
 
+[[nodiscard]] ApplyResult source_generation_gap(
+    const TradingState& state,
+    const std::uint64_t next_version,
+    const RecordSourceEvent& command,
+    const SourceCursor* cursor) noexcept {
+    auto value = result(state, ApplyCode::source_generation_gap, next_version);
+    value.detail = ApplyResultDetail::source_state(
+        command.source_id,
+        cursor != nullptr ? cursor->generation : SourceGeneration{},
+        cursor != nullptr ? cursor->sequence : SourceSequence{});
+    value.detail_kind = ApplyResultDetailKind::source_state;
+    return value;
+}
+
 [[nodiscard]] ApplyResult apply_record_source_event(
     TradingState& state,
     const RecordSourceEvent& command,
@@ -844,8 +858,7 @@ template <std::size_t WordCount>
     auto* cursor = find_source_cursor_mutable(state, command.source_id);
     if (cursor == nullptr) {
         if (command.source_generation.value() != 1) {
-            return source_result(
-                state, ApplyCode::source_generation_gap, next_version, command);
+            return source_generation_gap(state, next_version, command, cursor);
         }
         if (command.source_sequence.value() != 1) {
             return source_result(
@@ -865,8 +878,7 @@ template <std::size_t WordCount>
         }
     } else {
         if (command.source_generation.value() != cursor->generation.value() + 1) {
-            return source_result(
-                state, ApplyCode::source_generation_gap, next_version, command);
+            return source_generation_gap(state, next_version, command, cursor);
         }
         if (command.source_sequence.value() != 1) {
             return source_result(
