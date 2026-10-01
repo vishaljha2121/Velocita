@@ -1,0 +1,25 @@
+# Nightly market-data housekeeping on nuc1 (docs/MD_ARCHIVE_RUNBOOK.md), run by
+# velocita-md-archive.timer. Archives each complete UTC day of stream.db to
+# ~/velocita-md/archive/stream-YYYY-MM-DD.sqlite.gz (+ .sha256), then deletes a
+# day's rows only once the Mac has acknowledged a verified copy and the day is
+# outside the 3-day local window. Safe beside a running md-stream (WAL: one read
+# transaction, then short bounded deletes). Same image and mounts as
+# velocita-md-stream; no network, no secrets. Exit 3 = a day is blocked (see
+# the journal and velocita_md_archive_blocked_days).
+[Unit]
+Description=Velocita market-data archive and acknowledged prune (nightly)
+
+[Service]
+Type=oneshot
+ExecStartPre=/usr/bin/mkdir -p %h/velocita-md/archive/tmp %h/velocita-v2/textfile
+ExecStart=/usr/bin/podman run --rm --replace --name velocita-md-archive \
+    --network none --userns=keep-id --read-only --cap-drop all \
+    --security-opt no-new-privileges --memory 512m --pids-limit 16 \
+    -v %h/src/aeron-raft-pi/model:/model:ro \
+    -v %h/velocita-md:/data \
+    -v %h/velocita-v2/textfile:/textfile \
+    -e PYTHONPATH=/model/src -e PYTHONDONTWRITEBYTECODE=1 -e SQLITE_TMPDIR=/data/archive/tmp \
+    docker.io/library/python:3.12-slim \
+    python -m velocita_model.cli md-archive --db /data/stream.db --archive-dir /data/archive \
+    --textfile /textfile/velocita-md-archive.prom --prune --retention-days 3 --keep-archives-days 7
+TimeoutStartSec=3h
