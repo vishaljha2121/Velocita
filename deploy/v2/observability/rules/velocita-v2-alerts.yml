@@ -190,6 +190,22 @@ groups:
         annotations:
           summary: "Paper gateway on {{ $labels.host }} has an order with an unknown outcome"
           description: "The gateway could not establish whether an order reached or filled at the venue, so its position may be wrong. New risk is stopped; check the gateway journal and reconcile against the venue."
+      # The Pi 5 browned out on 2026-09-30/10-01 (4 under-voltage events; boots ended with
+      # no shutdown; M3 finding 52). The firmware raises this flag when the supply sags.
+      - alert: VelocitaPiUndervoltage
+        expr: max_over_time(node_hwmon_in_lcrit_alarm_volts{chip=~".*raspberrypi_hwmon"}[5m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }} power supply sagged below spec (under-voltage)"
+          description: "The Pi 5 needs a 5 V / 5 A USB-C supply (official 27 W). Under-voltage under load causes brownouts: silent freezes or resets. Check the supply and cable."
+      # Any reboot is worth knowing about: a watchdog or brownout reset is otherwise silent,
+      # and a rebooted voter waits for its keys (secrets live in /run).
+      - alert: VelocitaHostRebooted
+        expr: changes(node_boot_time_seconds[30m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }} rebooted in the last 30 minutes"
+          description: "Check why (journalctl -b -1) and whether its voter came back; after a reboot the keys in /run are gone, so push them again (CLEAN_RESET_RUNBOOK.md step 0)."
       # md-stream silently recorded nothing for ~43 h (2026-09-28 20:36 .. 09-30 16:06 UTC,
       # M3 finding 50) while its process looked alive: alert on the counter, not on up.
       - alert: VelocitaMdStreamSilent

@@ -772,3 +772,29 @@ No venue, credential or trading action. Started 2026-09-25.
     - sell at $118.37, fee $0.0928;
     - venue cash $24.806845, equal to the hand computation;
     - reconciled at 0 lots, 0 unknown outcomes.
+
+52. **The Pi browned out; hardware watchdog armed (2026-10-01).** The persistent journal shows
+    the earlier "unexplained" Pi reboot more fully:
+    - **Boots that ended with no shutdown and no kernel message:**
+      - boot -2 ended 2026-09-30 23:11 UTC;
+      - boot -1 ended 2026-10-01 02:10 UTC, after which the Pi stayed down about 4 h;
+      - boots -4 and -3 lasted seconds to about 1 minute each.
+    - **Under-voltage:** boot -1 logged `hwmon: Undervoltage detected!` 4 times.
+    - **Reading:** this is the signature of an inadequate supply. A Pi 5 needs 5 V / 5 A over
+      USB-C (the official 27 W supply), and it browns out under load.
+
+    **Fixed (by the owner, on the Pi, as root):**
+    - systemd now pets the hardware watchdog: `RuntimeWatchdogSec=30s`,
+      `RebootWatchdogSec=2min`; the watchdog state is `active` with a 30 s timeout.
+    - Panic settings: `kernel.panic = 10`, `kernel.panic_on_oops = 1`. The Pi kernel has no
+      `softlockup_panic`; the hardware watchdog covers hard hangs.
+    - `velocitas` can now read the system journal (group `systemd-journal`).
+
+    **New alerts (rule-tested):**
+    - `VelocitaPiUndervoltage`, from the firmware's `node_hwmon_in_lcrit_alarm_volts`;
+    - `VelocitaHostRebooted`, from `changes(node_boot_time_seconds[30m])`.
+
+    **Still the owner's:**
+    - check the Pi's power supply;
+    - a reboot still leaves the voter waiting for its keys, which live in `/run`;
+    - alerts reach no one outside Grafana.

@@ -403,3 +403,45 @@ tests:
             exp_annotations:
               summary: "md-stream on nuc1 has recorded no reference prices for 15 minutes"
               description: "The market-data recorder is hung, stopped or disconnected, so research data has a gap. On nuc1: journalctl --user -u velocita-md-stream; systemctl --user restart velocita-md-stream."
+
+  # A Pi whose supply sags once: fires while the sag is inside the 5-minute window,
+  # quiet before and after.
+  - interval: 1m
+    input_series:
+      - series: 'node_hwmon_in_lcrit_alarm_volts{job="node",host="pi",chip="soc_107c000000:firmware_raspberrypi_hwmon",sensor="in0"}'
+        values: '0x10 1 0x20'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: VelocitaPiUndervoltage
+        exp_alerts: []
+      - eval_time: 13m
+        alertname: VelocitaPiUndervoltage
+        exp_alerts:
+          - exp_labels: {severity: warning, job: node, host: pi, chip: "soc_107c000000:firmware_raspberrypi_hwmon", sensor: in0}
+            exp_annotations:
+              summary: "pi power supply sagged below spec (under-voltage)"
+              description: "The Pi 5 needs a 5 V / 5 A USB-C supply (official 27 W). Under-voltage under load causes brownouts: silent freezes or resets. Check the supply and cable."
+      - eval_time: 25m
+        alertname: VelocitaPiUndervoltage
+        exp_alerts: []
+
+  # A host whose boot time moves (a reboot): fires for 30 minutes, then clears.
+  - interval: 1m
+    input_series:
+      - series: 'node_boot_time_seconds{job="node",host="pi"}'
+        values: '1000x20 5000x50'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: VelocitaHostRebooted
+        exp_alerts: []
+      - eval_time: 25m
+        alertname: VelocitaHostRebooted
+        exp_alerts:
+          - exp_labels: {severity: warning, job: node, host: pi}
+            exp_annotations:
+              summary: "pi rebooted in the last 30 minutes"
+              description: "Check why (journalctl -b -1) and whether its voter came back; after a reboot the keys in /run are gone, so push them again (CLEAN_RESET_RUNBOOK.md step 0)."
+      - eval_time: 65m
+        alertname: VelocitaHostRebooted
+        exp_alerts: []
+
