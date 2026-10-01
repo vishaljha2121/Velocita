@@ -698,3 +698,32 @@ No venue, credential or trading action. Started 2026-09-25.
 
     Then ONE fresh cluster with a flat start, a 12-lot clip, and reset
     ledgers and dashboards.
+
+49. **Clean reset with pre-vote; churn paper trading live (2026-10-01).**
+    Tag `v2-cp078-reset2` (commit `660372b`): CP-076 pre-vote, CP-077 edge resilience and
+    source re-sync, CP-078 persisted paper venue and automatic re-arm.
+
+    Images, each with 138/138 tests passing inside its build:
+    - nuc1 `23433890a9d5` (shadow image `8560d87bcc9b`);
+    - Pi `96f71410e47d`;
+    - nuc2 `2d2c2980edd4`.
+
+    The previous images are kept as `:m3-pre-p3`. Cluster `5ebc6359` is retired.
+
+    The new cluster `f63eafc2…`:
+    - elected at **term 1** (the earlier clean bootstrap needed term 2);
+    - ceremony at indexes 1–3;
+    - setup installed **churn**: policy 22 v1, phase of 60 s, 12-lot FOK clip;
+    - risk limits at index 9: order, reserved and position caps all 12 lots, $25 caps,
+      long-only, reason 20261001;
+    - paper venue initialised fresh ($25, 0 BTC);
+    - gateway `ARMED kernel_lots=0 venue_lots=0`.
+
+    First round trip, within minutes of paper mode:
+    - buy 12 lots at about $83,803, notional $10.0564, fee $0.1156;
+    - sell at about $83,917, $10.0700, fee $0.1208;
+    - venue cash $24.777190, which equals the hand computation;
+    - the venue and the kernel reconcile at 0 lots;
+    - 0 unknown outcomes and 0 errors.
+
+    The exact reset procedure is now `docs/CLEAN_RESET_RUNBOOK.md`.
