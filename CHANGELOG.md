@@ -13,6 +13,51 @@ release-engineering work.
 
 ## [V2] - In development
 
+### Edge resilience, source re-sync, persisted paper venue, automatic re-arm — 2026-10-01 (CP-077, CP-078)
+
+These fix M3_DEPLOYMENT_LOG finding 48 (paper data corrupted). They were built by parallel
+agents in worktrees; the reviewer finished their last verification runs and merged them.
+Merged main passes the full ctest, the model tests and the repo Python tests. Pre-vote
+(CP-076) is listed separately. **Not yet deployed:** it needs the fresh-cluster reset.
+
+**CP-077: edge and source re-sync**
+- **Kernel:** a `source_generation_gap` refusal now carries `ApplyResultDetailKind::source_state`
+  (8) = {source_id, cursor generation, cursor sequence}, with both cursor values 0 when there is
+  no cursor. Both codecs admit it only for that code. The rule itself is unchanged: the
+  generation must be cursor + 1.
+- **Submitter:** on that refusal it persists cursor.generation + 1 and retries the tick once.
+  Regressions and sequence gaps still fail closed.
+- **Edge:**
+  - Market-data errors (handshake 5xx, connection, timeout, protocol) reconnect with jittered
+    exponential backoff, 1–60 s, keeping the same submitter. They never exit the process.
+  - It checks the submitter is alive before every write.
+  - Submitter ERROR replies are logged verbatim and counted
+    (`velocita_shadow_submitter_errors_total{reason,code}`).
+  - New metrics: `velocita_shadow_market_data_connected`,
+    `velocita_shadow_market_data_errors_total{kind}`.
+- **Proof:** a real-process test reproduces the incident (`ERROR … reason=source code=14`) and
+  recovers from it.
+
+**CP-078: gateway**
+- **Persistence:** the paper venue state lives in `/state/paper.state`: magic, version, length,
+  payload, SHA-256. It is written atomically before every answer, and a corrupt or foreign
+  file is refused.
+- **Reconciliation:** at every committed read, the venue's base is compared with the kernel's
+  position at zero-lot tolerance. A mismatch latches new risk, and both values are exported.
+- **Automatic re-arm** happens only after fence stops (term or leader change, state-read gap),
+  after a quiet period (default 30 s) and a matching reconciliation.
+  - Kill epoch, generation or mode changes, unknown outcomes, conflicts, refused evidence and
+    mismatches latch until an operator restart.
+  - Stops and re-arms are counted by cause.
+- **First start:** a one-shot `--paper-state-init` (flat), or `--paper-adopt-position` when a
+  position already exists.
+- **Persisted counters:** last fill time, fees and volume.
+- **Alerts:**
+  - New: `VelocitaGatewayReconciliationMismatch` (critical) and `VelocitaGatewayAwaitingRearm`
+    (warning, after 10 m).
+  - `VelocitaGatewayNewRiskStopped` no longer pages for a stop that is only awaiting re-arm.
+  - Rule tests pass under promtool v3.13.2 (26 rules).
+
 ### Raft pre-vote — 2026-10-01 (CP-076)
 
 Fixes the election bursts of M3 log findings 43 and 47 (term 49 -> 191 in 6 h on
