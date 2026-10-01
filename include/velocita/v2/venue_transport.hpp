@@ -2,6 +2,7 @@
 
 #include "velocita/v2/venue_simulator.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -137,5 +138,56 @@ struct TwoStepSend {
 // ways and the two compared, which is the only way the seam's transparency is a
 // fact rather than a claim.
 [[nodiscard]] VenueTransport simulated_venue_transport(SimulatedVenue& venue) noexcept;
+
+// The venue's own account at one instant, for reconciliation against committed
+// kernel state (ch50: compare at one cut). Only the venue answers this; the
+// gateway never derives it from what it sent.
+inline constexpr std::size_t kMaxVenueBookPendingOrders = 128;
+
+struct VenueBook {
+    bool available{};
+    QuantityLots base{};
+    MoneyMicros quote{};
+    bool quote_known{};
+    // Reports the venue still owns: the kernel may not have booked them yet.
+    std::size_t unacknowledged_reports{};
+    // Distinct orders those reports name. Truncated means "cannot compare".
+    std::size_t pending_order_count{};
+    bool pending_orders_truncated{};
+    std::array<ClusterOrderId, kMaxVenueBookPendingOrders> pending_orders{};
+    // Highest kernel log index at which evidence this venue released was
+    // committed before being acknowledged. A kernel read applied below it is
+    // older than the venue's own record and is not yet comparable.
+    std::int64_t committed_through{};
+    // Running totals of committed fills that outlive a gateway process
+    // (a durable venue only; zero otherwise).
+    std::int64_t fee_micros_total{};
+    std::int64_t volume_micros_buy{};
+    std::int64_t volume_micros_sell{};
+    double last_fill_wall_seconds{};
+};
+
+// Evidence the kernel committed, handed to the venue's book just before the
+// matching acknowledge so a durable venue records both in one write.
+struct CommittedEvidence {
+    std::int64_t index{};
+    VenueObservation observation{};
+    std::int64_t notional_micros{};  // fills only; 0 when unknown
+    double wall_seconds{};
+};
+
+struct VenueBookSource {
+    void (*read_fn)(void* context, VenueBook& out){};
+    void (*committed_fn)(void* context, const CommittedEvidence& evidence){};  // optional
+    void* context{};
+
+    [[nodiscard]] bool present() const noexcept { return read_fn != nullptr; }
+};
+
+static_assert(std::is_trivially_copyable_v<VenueBookSource>);
+
+// Test and lab venue: base is the signed sum of its executions, pending orders
+// are those its undelivered or unacknowledged reports name.
+[[nodiscard]] VenueBookSource simulated_venue_book(SimulatedVenue& venue) noexcept;
 
 }  // namespace velocita::v2::sim

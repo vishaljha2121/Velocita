@@ -1,6 +1,6 @@
 # Paper trading runbook (Phase 2)
 
-Updated: 2026-09-29. Paper means the kernel authorizes orders and the paper
+Updated: 2026-10-01. Paper means the kernel authorizes orders and the paper
 gateway fills them against the True Markets simulator. Nothing here reaches a
 venue, and no venue key exists on any host. The owner's whole budget is $25;
 this runbook is not an approval to trade live (the canary is gated separately,
@@ -129,6 +129,53 @@ up by one.
 
 ## 5. Gateway, then paper
 
+### 5.1 The paper venue's state file (first start only)
+
+The paper venue keeps its balances, its known orders and the reports it has not
+yet seen acknowledged in `~/velocita-v2/gateway/state/paper.state` (`/state/paper.state`
+in the container). Every change is written (temporary file, fsync, rename) before
+the answer that depends on it, so a restarted gateway answers exactly as the one
+before it: same cash, same base, same duplicates and queries. The file is bound to
+the cluster's incarnation; a fresh cluster needs a fresh file. The unit never
+creates it, and refuses to start (exit 64, no restart loop) when it is missing,
+torn or corrupt. A corrupt file is never replaced or edited: move it aside and
+treat it as a reconciliation break (section 5.3).
+
+First start on a fresh (flat) cluster, as a one-shot with the unit's own
+arguments plus the bootstrap flags (it reads committed state once, writes the
+file, prints `PAPER_STATE created ... mode=fresh`, and exits without trading):
+
+    systemctl --user stop velocita-v2-gateway
+    ExecStart=$(systemctl --user show -p ExecStart --value velocita-v2-gateway)   # copy the podman line
+    # run that podman line by hand, with `--name velocita-v2-gateway-init` and, at the end:
+    #     --paper-state-init --paper-quote-usd 25
+    systemctl --user start velocita-v2-gateway
+
+It refuses if the kernel holds any lots on the row (use adoption) or an order on
+the row is not terminal. `--paper-quote-usd` is accepted only with a bootstrap
+flag; on a normal start it is refused, because the balance is the file's.
+
+**Adopting a position that already exists** (a cluster that traded before the
+venue was persisted). The bootstrap reads the kernel's committed position for the
+row and writes base = that position, quote = funding minus the cost basis you
+state, recorded in the file as an adoption (lots, cost, applied index, state
+version):
+
+    ... --paper-adopt-position --paper-quote-usd 25 --paper-adopt-cost-micros <COST>
+
+COST is what the held lots cost in micro-dollars, fees included (from the paper
+book or the gateway journal's fills: notional + buy fee). It refuses when the
+kernel is flat, when COST exceeds the funding, or when an order on the row is
+open. Moving off the old stand-in flags: the gateway that ran with
+`--paper-base-lots 25 --paper-quote-usd 3` is equivalent to adopting 25 lots
+with COST = 22,000,000 (25 - 3 dollars). Stop the unit, run the adoption once
+with `--paper-quote-usd 25 --paper-adopt-cost-micros <COST>`, then REMOVE
+`--paper-base-lots` and `--paper-quote-usd` from `VELOCITA_GATEWAY_RISK_ARGS`
+(both are refused on a normal start) and start the unit. Check the first
+`ARMED new_risk ... kernel_lots=25 venue_lots=25` line.
+
+### 5.2 Start
+
     systemctl --user enable --now velocita-v2-gateway
     # shadow.env: VELOCITA_MODE_ARGS=--mode paper
     systemctl --user restart velocita-v2-shadow-edge
@@ -147,6 +194,51 @@ Watch: `velocita_paper_authorizations_total{code}`, `velocita_paper_risk_version
 `velocita_paper_position_version`, `velocita_paper_resyncs_total`, beside the
 existing `velocita_shadow_*` series (names unchanged).
 
+### 5.3 When the gateway stops new risk, and when it re-arms by itself
+
+The gateway arms new risk only at a committed read where (a) the paper venue's
+base equals the kernel's position for the row, to the lot, (b) no order on the
+row is open and no venue report or gateway evidence is uncommitted, (c) the read
+is not older than anything the gateway or the venue already saw committed, and
+(d) `--allow-new-risk` and `--freshness-ms` are set. This check runs at startup
+and on every state read (about every 250 ms), not only after a stop.
+
+| Stop cause (`STOP new_risk cause=`) | What it is | Re-arms by itself? |
+|---|---|---|
+| `fence` | term or leader change, or a state read that timed out | yes: after `--rearm-quiet-ms` (default 30 s) with no further term change, and only through the check above |
+| `unknown_outcome` | a send whose outcome could not be established | no: restart after reconciling the order |
+| `conflict`, `reconciliation_exhausted` | the cluster holds a conflict, or a query ran out of attempts | no |
+| `refused_evidence` | the kernel refused a venue report | no |
+| `control_change` | kill epoch, executor generation or strategy mode changed | no: these are the operator's controls; restart the gateway after the change |
+| `reconciliation_mismatch` | the venue's book disagrees with the kernel at a comparable cut | no: see below |
+| `capacity`, `corrupt_state`, `wrong_cluster`, `authority` | sequences or evidence queue exhausted; corrupt state; wrong cluster; clock or control regression | no |
+
+What re-arm does NOT do: it never re-sends an order whose outcome is unknown,
+never resolves a mismatch, never clears a latched cause, and never re-arms while
+an order on the row is open (an election mid-order re-arms only after the fill
+commits). An effect authorized while the gateway was stopped and never sent is
+sent once, under a fresh proof, after the re-arm.
+
+**Reconciliation mismatch** (`RECONCILIATION mismatch kernel_lots=K venue_lots=V`,
+alert `VelocitaGatewayReconciliationMismatch`, gauge
+`velocita_gateway_reconciliation_mismatch`): new risk stays stopped and both
+values stay on `velocita_gateway_reconciliation_position_lots{source}`. Follow the
+book's break workflow (ch50): keep the journal and a copy of `paper.state`,
+find the missing or extra event, and close it with evidence. Do not edit the file
+or the kernel to make the numbers agree. For paper, the closing actions are a
+kernel correction through the operator path, or (only if the venue side is shown
+wrong) moving the file aside and adopting the kernel's position with section 5.1.
+
+Series: `velocita_gateway_stops_total{cause}`, `velocita_gateway_rearms_total`,
+`velocita_gateway_stop_cause{cause}` (1 per active cause; `awaiting_arm` = only
+the check above is pending; `not_configured` = never arms),
+`velocita_gateway_reconciliation_verdict{verdict}`,
+`velocita_gateway_reconciliation_last_match_timestamp_seconds`,
+`velocita_gateway_venue_base_lots`, `velocita_gateway_venue_quote_usd`.
+`velocita_gateway_fees_usd_total`, `velocita_gateway_volume_usd_total{side}` and
+`velocita_gateway_last_fill_timestamp_seconds` are read from `paper.state` at
+start (they survive restarts); every other gateway counter is per process.
+
 ## 6. Halting
 
 | Need | Command (operator client) | Effect |
@@ -154,7 +246,7 @@ existing `velocita_shadow_*` series (names unchanged).
 | stop new orders | `strategy-mode halted K E` | control lane; frames record `control_halted`, nothing is sent for authorization |
 | stop new orders, keep evaluating | `strategy-mode no_new_risk K E` (or `reduce_only`, `cancel_only`) | every place-limit proposal, exits included, is `control_suppressed` |
 | hard stop | `kill-epoch K+1` | halts AND makes every earlier decision unauthorizable |
-| resume | `strategy-mode normal K E` (after a kill: the new K) or re-run setup | refused while any order's outcome is unknown |
+| resume | `strategy-mode normal K E` (after a kill: the new K) or re-run setup | refused while any order's outcome is unknown; then restart the gateway (a mode, kill-epoch or generation change latches its new-risk stop, section 5.3) |
 | stop proposing entirely | `systemctl --user stop velocita-v2-shadow-edge` | no frames at all |
 
 K and E are the current kill epoch and executor generation (every `COMMITTED`
@@ -258,9 +350,9 @@ that a TICK line gains ` exits_only=1` while the buy stop of section 7.4 is on;
 the restart adds the paper book and its series. The gateway's
 `velocita_gateway_volume_usd_total{side}` needs the voter image rebuilt
 (`podman build -f deploy/v2/Containerfile -t localhost/velocita-v2:m3 .`) and
-`systemctl --user restart velocita-v2-gateway`. Restart the gateway **only while
-flat**: its paper venue starts again at $25 quote and 0 base (a sell while long
-would be killed `insufficient_base`) unless it is given `--paper-base-lots`.
+`systemctl --user restart velocita-v2-gateway`. The paper venue's balances are
+persisted (section 5.1), so a restart while long keeps the position; the restarted
+gateway arms only after its startup reconciliation matches.
 
 ### 7.3 Install one strategy
 

@@ -105,6 +105,45 @@ struct PaperOrder {
     FeeMicros fee{};
 };
 
+// What the kernel has committed of this venue's evidence: the log index the
+// last acknowledged report was committed at, and running fill totals that
+// outlive a gateway process.
+struct PaperCommittedLedger {
+    std::int64_t committed_through{};
+    std::int64_t fee_micros_total{};
+    std::int64_t volume_micros_buy{};
+    std::int64_t volume_micros_sell{};
+    double last_fill_wall_seconds{};
+
+    constexpr bool operator==(const PaperCommittedLedger&) const noexcept = default;
+};
+
+// A report the venue still owns. Delivery marks and due ticks are not durable:
+// a restored venue offers every owned report again, at once, in schedule order.
+struct PaperOwnedReport {
+    std::uint64_t ordinal{};
+    VenueObservation observation{};
+    bool withheld{};
+};
+
+// Everything the venue answers from. Restoring it reproduces every later
+// answer (send, duplicate, query, poll) of the venue it was captured from.
+struct PaperVenueImage {
+    VenueId venue_id{};
+    InstrumentId instrument_id{};
+    std::uint64_t random_state{};
+    std::uint64_t venue_sequence{};
+    std::uint64_t venue_order_counter{};
+    std::uint64_t execution_counter{};
+    std::uint64_t ordinal{};
+    PaperBalances balances{};
+    PaperCommittedLedger ledger{};
+    std::size_t order_count{};
+    std::array<PaperOrder, kMaxPaperOrders> orders{};
+    std::size_t report_count{};
+    std::array<PaperOwnedReport, kMaxPaperObservations> reports{};
+};
+
 // quote_micros_per_tick_lot * price * quantity, in the action resolver's
 // multiplication order. No value on overflow or a non-positive input.
 [[nodiscard]] std::optional<MoneyMicros> paper_notional(
@@ -147,6 +186,16 @@ public:
     }
     [[nodiscard]] const PaperOrder* find_order(ClusterOrderId order) const noexcept;
 
+    // Kernel-committed evidence, recorded before its acknowledge (same write).
+    void record_committed(const sim::CommittedEvidence& evidence) noexcept;
+    [[nodiscard]] PaperCommittedLedger ledger() const noexcept { return ledger_; }
+    void read_book(sim::VenueBook& out) const noexcept;
+
+    void capture(PaperVenueImage& out) const noexcept;
+    // False (venue unchanged) for an image of another venue or instrument, or
+    // one that breaks a capacity, balance or identity invariant.
+    [[nodiscard]] bool restore(const PaperVenueImage& image) noexcept;
+
 private:
     struct Scheduled {
         Tick due{};
@@ -174,6 +223,7 @@ private:
     std::uint64_t execution_counter_{};
     std::uint64_t ordinal_{};
     PaperBalances balances_{};
+    PaperCommittedLedger ledger_{};
     PaperFaults last_faults_{};
     PaperRejectReason last_reject_{PaperRejectReason::none};
     std::size_t order_count_{};
@@ -182,7 +232,8 @@ private:
     std::array<Scheduled, kMaxPaperObservations> scheduled_{};
 };
 
-// Trivially copyable handle; the venue must outlive every copy.
+// Trivially copyable handles; the venue must outlive every copy.
 [[nodiscard]] sim::VenueTransport paper_venue_transport(PaperVenue& venue) noexcept;
+[[nodiscard]] sim::VenueBookSource paper_venue_book(PaperVenue& venue) noexcept;
 
 }  // namespace velocita::v2::paper

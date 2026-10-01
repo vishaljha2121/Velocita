@@ -75,8 +75,8 @@ void GatewayStageHistogram::observe(double ms) noexcept {
 }
 
 GatewayLoop::GatewayLoop(GatewayLoopConfig config, GatewayLink& link, const VerifiedExecutionCatalog& catalog,
-                         sim::VenueTransport venue, GatewayClock clock)
-    : config_(config), link_(link), catalog_(catalog), venue_(venue), clock_(clock),
+                         sim::VenueTransport venue, GatewayClock clock, sim::VenueBookSource book)
+    : config_(config), link_(link), catalog_(catalog), venue_(venue), clock_(clock), book_(book),
       evidence_(std::make_unique<GatewayEvidenceState>()), quota_(config.quota_per_second),
       next_sequence_(config.first_sequence) {
     if (config_.caller.value() == 0 || is_operator_caller(config_.caller))
@@ -89,9 +89,183 @@ GatewayLoop::GatewayLoop(GatewayLoopConfig config, GatewayLink& link, const Veri
     if (!clock_.monotonic_ms || !clock_.wall_seconds || !venue_.send_fn || !venue_.poll_fn ||
         !venue_.acknowledge_fn || !venue_.query_fn || !venue_.session_fn)
         throw std::invalid_argument("the gateway loop needs a clock and a complete venue transport");
+    // A durable venue's committed-fill totals outlive the process; publish
+    // them from the first render rather than restarting at zero.
+    if (book_.present()) {
+        sim::VenueBook opening{};
+        book_.read_fn(book_.context, opening);
+        metrics_.fee_micros_total = opening.fee_micros_total;
+        metrics_.volume_micros_buy = opening.volume_micros_buy;
+        metrics_.volume_micros_sell = opening.volume_micros_sell;
+        metrics_.last_fill_timestamp_seconds = opening.last_fill_wall_seconds;
+    }
+    metrics_.not_configured = !config_.allow_new_risk || config_.freshness_bound == 0;
 }
 
 GatewayLoop::~GatewayLoop() = default;
+
+std::size_t GatewayLoop::drain_events(std::span<GatewayEvent> out) noexcept {
+    const auto count = std::min(out.size(), event_count_);
+    std::copy_n(events_.begin(), count, out.begin());
+    std::copy(events_.begin() + static_cast<std::ptrdiff_t>(count),
+              events_.begin() + static_cast<std::ptrdiff_t>(event_count_), events_.begin());
+    event_count_ -= count;
+    return count;
+}
+
+void GatewayLoop::push(const GatewayEvent& event) noexcept {
+    if (event_count_ == events_.size()) {
+        ++metrics_.events_dropped;
+        return;
+    }
+    events_[event_count_++] = event;
+}
+
+void GatewayLoop::stop(const GatewayStopCause cause) noexcept {
+    const auto index = static_cast<std::size_t>(cause);
+    const auto bit = std::uint32_t{1} << index;
+    const bool fresh = rearmable(cause) ? !fence_pending_ : (latched_ & bit) == 0;
+    if (rearmable(cause))
+        fence_pending_ = true;
+    else
+        latched_ |= bit;
+    if (authority_) authority_->stop_new_risk();
+    if (!fresh) return;
+    ++metrics_.stops[index];
+    push({GatewayEventKind::stopped, cause, term_, seen_index_, {}, {}, {}});
+}
+
+void GatewayLoop::note_authority(const bool was_stopped) noexcept {
+    if (!was_stopped && authority_ && authority_->new_risk_stopped()) stop(GatewayStopCause::authority);
+}
+
+BookComparison compare_venue_book(const TradingState& state, const AccountId account, const InstrumentId instrument,
+                                  const sim::VenueBook& venue, const BookCut& cut) noexcept {
+    BookComparison result;
+    for (std::size_t i = 0; i < state.risk_account_count; ++i)
+        if (state.risk_accounts[i].account_id == account && state.risk_accounts[i].instrument_id == instrument)
+            result.kernel_lots = state.risk_accounts[i].position_quantity.atoms();
+    result.venue_lots = venue.base.atoms();
+    if (!venue.available) return result;
+    result.verdict = BookVerdict::not_comparable;
+    // Cut order before values (ch50): a read older than what this process or
+    // the venue already knows committed cannot show a break.
+    if (cut.applied_index < cut.seen_index || cut.applied_index < venue.committed_through) return result;
+    if (venue.pending_orders_truncated) return result;
+    for (std::size_t i = 0; i < venue.pending_order_count; ++i) {
+        const auto order = venue.pending_orders[i];
+        bool held = false;
+        for (std::size_t j = 0; j < state.order_count && !held; ++j) held = state.orders[j].cluster_order_id == order;
+        if (!held) {
+            result.verdict = BookVerdict::mismatch;
+            result.kind = BookBreak::unknown_order;
+            result.order = order;
+            return result;
+        }
+    }
+    if (venue.unacknowledged_reports != 0 || cut.evidence_pending != 0 || cut.open_orders != 0) return result;
+    if (result.kernel_lots != result.venue_lots) {
+        result.verdict = BookVerdict::mismatch;
+        result.kind = BookBreak::position;
+        return result;
+    }
+    result.verdict = BookVerdict::match;
+    return result;
+}
+
+const char* describe(const GatewayStopCause cause) noexcept {
+    switch (cause) {
+    case GatewayStopCause::fence: return "fence";
+    case GatewayStopCause::unknown_outcome: return "unknown_outcome";
+    case GatewayStopCause::conflict: return "conflict";
+    case GatewayStopCause::refused_evidence: return "refused_evidence";
+    case GatewayStopCause::control_change: return "control_change";
+    case GatewayStopCause::reconciliation_mismatch: return "reconciliation_mismatch";
+    case GatewayStopCause::reconciliation_exhausted: return "reconciliation_exhausted";
+    case GatewayStopCause::capacity: return "capacity";
+    case GatewayStopCause::corrupt_state: return "corrupt_state";
+    case GatewayStopCause::wrong_cluster: return "wrong_cluster";
+    case GatewayStopCause::authority: return "authority";
+    case GatewayStopCause::count: break;
+    }
+    return "unknown";
+}
+
+const char* describe(const BookVerdict verdict) noexcept {
+    switch (verdict) {
+    case BookVerdict::match: return "match";
+    case BookVerdict::not_comparable: return "not_comparable";
+    case BookVerdict::mismatch: return "mismatch";
+    case BookVerdict::unavailable: return "unavailable";
+    case BookVerdict::count: break;
+    }
+    return "unknown";
+}
+
+std::size_t GatewayLoop::open_orders(const TradingState& state) const noexcept {
+    std::size_t open = 0;
+    for (std::size_t i = 0; i < state.order_count; ++i) {
+        const auto& order = state.orders[i];
+        if (order.state == ClusterOrderState::filled || order.state == ClusterOrderState::cancelled ||
+            order.state == ClusterOrderState::rejected)
+            continue;
+        const auto binding = materialize_bound_order_effect(state, order.effect_id, catalog_);
+        if (binding && !serves(*binding)) continue;
+        // Authorized but provably never handed to the venue by this process:
+        // it cannot have moved the venue's balance. A prior process's
+        // unsettled effect is a recovery suspect and so is never "unsent".
+        if (order.state == ClusterOrderState::dispatch_authorized) {
+            const auto* record_of = outbox(state, order.effect_id);
+            const DeliveryAttempt* attempt = nullptr;
+            for (std::size_t j = 0; j < delivery_.attempt_count; ++j)
+                if (delivery_.attempts[j].effect_id == order.effect_id) attempt = &delivery_.attempts[j];
+            const bool unsent = !attempt || (attempt->resend_permitted && !attempt->awaiting_response &&
+                                             !attempt->from_recovery);
+            if (record_of && record_of->state == OutboxState::pending && unsent) continue;
+        }
+        ++open;
+    }
+    return open;
+}
+
+void GatewayLoop::gate(const TradingState& state, const StateReading& reading, const Tick now) {
+    sim::VenueBook book{};
+    if (book_.present()) book_.read_fn(book_.context, book);
+    const auto open = open_orders(state);
+    const BookCut cut{reading.applied_index, seen_index_, evidence_->obligation_count, open};
+    const auto comparison = compare_venue_book(state, config_.account, config_.instrument, book, cut);
+    metrics_.reconciliation = comparison.verdict;
+    metrics_.venue_book_known = book.available;
+    metrics_.venue_base_lots = book.base.atoms();
+    metrics_.venue_quote_micros = book.quote_known ? book.quote.atoms() : 0;
+    const auto mismatch_bit = std::uint32_t{1} << static_cast<std::size_t>(GatewayStopCause::reconciliation_mismatch);
+    const bool frozen = (latched_ & mismatch_bit) != 0;
+    if (!frozen && (comparison.verdict == BookVerdict::match || comparison.verdict == BookVerdict::mismatch)) {
+        metrics_.reconciliation_kernel_lots = comparison.kernel_lots;
+        metrics_.reconciliation_venue_lots = comparison.venue_lots;
+    }
+    if (comparison.verdict == BookVerdict::mismatch) {
+        if (!frozen) {
+            metrics_.reconciliation_mismatch = true;
+            push({GatewayEventKind::reconciliation_mismatch, GatewayStopCause::reconciliation_mismatch, reading.term,
+                  reading.applied_index, comparison.kernel_lots, comparison.venue_lots, comparison.order});
+        }
+        stop(GatewayStopCause::reconciliation_mismatch);
+        return;
+    }
+    if (comparison.verdict == BookVerdict::match)
+        metrics_.reconciliation_last_match_seconds = clock_.wall_seconds(clock_.context);
+    if (!authority_->new_risk_stopped()) return;
+    if (latched_ != 0 || !config_.allow_new_risk || config_.freshness_bound == 0) return;
+    if (fence_pending_ && now < last_fence_at_ + config_.rearm_quiet) return;
+    if (comparison.verdict != BookVerdict::match) return;
+    authority_->activate_after_reconciliation();
+    const auto kind = fence_pending_ ? GatewayEventKind::rearmed : GatewayEventKind::armed;
+    if (fence_pending_) ++metrics_.rearms;
+    fence_pending_ = false;
+    push({kind, GatewayStopCause::count, reading.term, reading.applied_index, comparison.kernel_lots,
+          comparison.venue_lots, {}});
+}
 
 bool GatewayLoop::new_risk_stopped() const noexcept { return !authority_ || authority_->new_risk_stopped(); }
 bool GatewayLoop::all_transport_stopped() const noexcept { return !authority_ || authority_->all_transport_stopped(); }
@@ -106,13 +280,9 @@ bool GatewayLoop::serves(const BoundOrderEffect& binding) const noexcept {
            binding.instrument_spec_version == config_.instrument_spec_version;
 }
 
-void GatewayLoop::stop_new_risk() noexcept {
-    if (authority_) authority_->stop_new_risk();
-}
-
 std::optional<RequestSequence> GatewayLoop::take_sequence() noexcept {
     if (next_sequence_ >= config_.sequence_limit) {
-        stop_new_risk();
+        stop(GatewayStopCause::capacity);
         return std::nullopt;
     }
     return RequestSequence{next_sequence_++};
@@ -190,12 +360,21 @@ void GatewayLoop::step() {
     if (phase_ == GatewayPhase::running) poll_venue(now);
     if (!link_.busy() && phase_ != GatewayPhase::halted) choose(now);
     metrics_.new_risk_stopped = new_risk_stopped();
+    for (std::size_t i = 0; i < metrics_.stop_active.size(); ++i)
+        metrics_.stop_active[i] = (latched_ >> i) & 1U;
+    metrics_.stop_active[static_cast<std::size_t>(GatewayStopCause::fence)] = fence_pending_;
+    metrics_.awaiting_arm = metrics_.new_risk_stopped && latched_ == 0 && !metrics_.not_configured;
 }
 
 void GatewayLoop::on_state(const LinkOutcome& outcome, Tick now) {
     last_state_at_ = now;
     if (outcome.status != LinkStatus::done) {
-        if (outcome.status == LinkStatus::refused && outcome.refusal_reason == 0) stop_new_risk();
+        if (outcome.status == LinkStatus::refused && outcome.refusal_reason == 0) stop(GatewayStopCause::corrupt_state);
+        if (outcome.status == LinkStatus::timed_out && authority_) {
+            // A state-read gap: whatever happened meanwhile was not observed.
+            last_fence_at_ = now;
+            stop(GatewayStopCause::fence);
+        }
         return;
     }
     const auto& state = link_.state();
@@ -203,26 +382,44 @@ void GatewayLoop::on_state(const LinkOutcome& outcome, Tick now) {
     if (state.execution_catalog_root != catalog_.root() || reading.authority_domain.is_zero() ||
         (authority_ && reading.authority_domain != authority_domain_)) {
         // Not the cluster this process was configured for: send nothing more.
+        stop(GatewayStopCause::wrong_cluster);
         if (authority_) authority_->stop_all_transport();
         phase_ = GatewayPhase::halted;
         return;
     }
+    const auto previous = control_;
     control_ = {state.executor_generation, state.kill_epoch, state.strategy_mode, state_requested_at_,
                 config_.lease_bound, now};
-    term_ = reading.term;
     if (!authority_) {
+        term_ = reading.term;
+        leader_ = reading.leader_id;
         authority_domain_ = reading.authority_domain;
         authority_ = std::make_unique<GatewayAuthority>(link_.incarnation(), authority_domain_,
                                                         config_.freshness_bound);
         authority_->observe_fence(control_, term_);
-        const auto suspects = begin_gateway_recovery(delivery_, state, now);
-        // Startup is the deliberate activation; a prior process may have sent
-        // any unsettled effect, so their presence keeps new risk stopped.
+        // A prior process may have sent any unsettled effect: those are
+        // recovery suspects, and the arming gate waits until they settle.
+        (void)begin_gateway_recovery(delivery_, state, now);
+        // Transport (cancels, evidence) is live from the first read; new risk
+        // waits for the arming gate below.
         authority_->activate_after_reconciliation();
-        if (suspects != 0 || !config_.allow_new_risk || config_.freshness_bound == 0) authority_->stop_new_risk();
+        authority_->stop_new_risk();
         phase_ = GatewayPhase::running;
     } else {
+        // Kill epoch, generation and mode are operator controls: a change
+        // latches. A term or leader change is a fence and may re-arm.
+        const bool control_changed = control_.executor_generation != previous.executor_generation ||
+                                     control_.kill_epoch != previous.kill_epoch ||
+                                     control_.strategy_mode != previous.strategy_mode;
+        const bool fenced = reading.term != term_ || reading.leader_id != leader_;
+        term_ = reading.term;
+        leader_ = reading.leader_id;
+        if (fenced) last_fence_at_ = now;
+        const bool was_stopped = authority_->new_risk_stopped();
         authority_->observe_fence(control_, term_);
+        if (control_changed) stop(GatewayStopCause::control_change);
+        if (fenced) stop(GatewayStopCause::fence);
+        if (!control_changed && !fenced) note_authority(was_stopped);
     }
     if (delivery_.recovering && recovery_complete(delivery_, state)) delivery_.recovering = false;
     (void)reclaim_delivery_attempts(delivery_, state);
@@ -234,7 +431,7 @@ void GatewayLoop::on_state(const LinkOutcome& outcome, Tick now) {
     for (std::size_t i = 0; i < state.outbox_effect_count; ++i)
         conflict |= state.outbox_effects[i].state == OutboxState::conflict;
     if (conflict && !authority_->new_risk_stopped()) ++at(metrics_.rejects, GatewayReject::reconciliation_conflict);
-    if (conflict) stop_new_risk();
+    if (conflict) stop(GatewayStopCause::conflict);
 
     metrics_.position_count = std::min(state.risk_account_count, metrics_.positions.size());
     for (std::size_t i = 0; i < metrics_.position_count; ++i)
@@ -242,6 +439,8 @@ void GatewayLoop::on_state(const LinkOutcome& outcome, Tick now) {
                                  state.risk_accounts[i].position_quantity.atoms()};
     have_state_ = true;
     state_dirty_ = false;
+    gate(state, reading, now);
+    seen_index_ = std::max(seen_index_, reading.applied_index);
 }
 
 void GatewayLoop::on_authority(LinkOutcome& outcome, Tick now) {
@@ -252,11 +451,14 @@ void GatewayLoop::on_authority(LinkOutcome& outcome, Tick now) {
              outcome.status == LinkStatus::timed_out ? GatewayAuthorityResult::timed_out : GatewayAuthorityResult::refused);
         return;
     }
+    const bool was_stopped = authority_->new_risk_stopped();
     if (!authority_->accept(*outcome.proof, now)) {
         authority_->abandon_request();
         ++at(metrics_.authority, GatewayAuthorityResult::rejected);
+        note_authority(was_stopped);
         return;
     }
+    seen_index_ = std::max(seen_index_, outcome.proof->view().applied_index);
     ++at(metrics_.authority, GatewayAuthorityResult::granted);
     if (auto* mark = marks(prepared_.effect.effect_id, true)) {
         if (mark->first_deliverable != 0 && now >= mark->first_deliverable)
@@ -269,6 +471,7 @@ void GatewayLoop::on_authority(LinkOutcome& outcome, Tick now) {
     if (!dispatch_gateway_send(*authority_, link_.state(), prepared_, control_, term_, config_.venue, quota_,
                                delivery_, *evidence_, config_.timeouts, catalog_, boundary)) {
         ++at(metrics_.rejects, GatewayReject::dispatch_refused);
+        note_authority(was_stopped);
         return;
     }
     const auto sent_at = clock_.monotonic_ms(clock_.context);
@@ -296,7 +499,7 @@ void GatewayLoop::on_authority(LinkOutcome& outcome, Tick now) {
         ++at(metrics_.rejects, GatewayReject::rate_limited);
         break;
     case sim::SendOutcome::ambiguous:
-        stop_new_risk();  // halt on unknown; the deadline turns it into effect_unknown
+        stop(GatewayStopCause::unknown_outcome);  // the deadline turns it into effect_unknown
         break;
     }
 }
@@ -311,26 +514,34 @@ void GatewayLoop::on_command(const LinkOutcome& outcome, Tick now) {
     const auto* obligation = find_obligation(*evidence_, in_flight_identity_);
     if (!obligation) return;
     if (outcome.status == LinkStatus::refused) {
-        stop_new_risk();  // a final refusal of evidence is a configuration fault
+        stop(GatewayStopCause::refused_evidence);  // a final refusal of evidence is a configuration fault
         return;
     }
     if (outcome.status != LinkStatus::done) return;  // plan_evidence retries the same identity
     const auto observation = obligation->observation;
     (void)discharge_evidence(*evidence_, in_flight_identity_);
     state_dirty_ = true;
+    seen_index_ = std::max(seen_index_, outcome.index);
     if (!accepted_code(outcome.result.code)) {
         // Evidence the reducer refused stays owned by the venue (not acknowledged).
         ++at(metrics_.rejects, GatewayReject::kernel_refused);
-        stop_new_risk();
+        stop(GatewayStopCause::refused_evidence);
         return;
     }
+    const bool fill = observation.kind == VenueObservationKind::fill;
+    const auto notional = fill ? fill_notional(observation) : std::nullopt;
+    const auto wall = clock_.wall_seconds(clock_.context);
+    // The venue records the commit and releases the report in one durable
+    // write, so its fill totals and committed cut survive a restart exactly.
+    if (book_.committed_fn)
+        book_.committed_fn(book_.context, {outcome.index, observation, notional.value_or(0), wall});
     venue_.acknowledge(observation);
-    if (observation.kind != VenueObservationKind::fill) return;
+    if (!fill) return;
     ++(observation.side == Side::buy ? metrics_.fills_buy : metrics_.fills_sell);
     metrics_.fee_micros_total += observation.fee.atoms();
-    if (const auto notional = fill_notional(observation))
+    if (notional)
         (observation.side == Side::buy ? metrics_.volume_micros_buy : metrics_.volume_micros_sell) += *notional;
-    metrics_.last_fill_timestamp_seconds = clock_.wall_seconds(clock_.context);
+    metrics_.last_fill_timestamp_seconds = wall;
     for (auto& mark : fill_marks_) {
         if (mark.sequence != in_flight_identity_.request_sequence) continue;
         if (now >= mark.polled_at)
@@ -368,7 +579,7 @@ void GatewayLoop::poll_venue(Tick now) {
         if (duplicate) continue;  // one obligation; acknowledging it releases every copy
         const auto sequence = next_sequence_;
         if (!record(observation, now)) {
-            stop_new_risk();
+            stop(GatewayStopCause::capacity);
             continue;
         }
         (void)record_response(delivery_, observation.effect_id);
@@ -454,7 +665,7 @@ bool GatewayLoop::deliver(Tick now) {
             ++metrics_.unknown_outcomes;
         }
         (void)record_response(delivery_, effect);
-        stop_new_risk();
+        stop(GatewayStopCause::unknown_outcome);
     }
     if (plan.ambiguous_count != 0) return false;
 
@@ -481,8 +692,12 @@ bool GatewayLoop::deliver(Tick now) {
             return true;
         }
         if (authority_->new_risk_stopped()) continue;
+        const bool was_stopped = authority_->new_risk_stopped();
         const auto barrier = authority_->begin_request(*binding, control_, now);
-        if (!barrier) continue;
+        if (!barrier) {
+            note_authority(was_stopped);
+            continue;
+        }
         if (!link_.request_authority(*barrier, now, std::min(config_.request_timeout, config_.freshness_bound))) {
             authority_->abandon_request();
             continue;
@@ -519,7 +734,7 @@ bool GatewayLoop::reconcile(Tick now) {
                                             watermark, config_.timeouts);
     if (answer.inconsistent) {
         ++at(metrics_.rejects, GatewayReject::reconciliation_conflict);
-        stop_new_risk();
+        stop(GatewayStopCause::conflict);
         return true;
     }
     switch (disposition) {
@@ -533,12 +748,12 @@ bool GatewayLoop::reconcile(Tick now) {
         auto observation = synthetic(kind, target.cluster_order_id, target.effect_id, *sequence);
         observation.venue_order_id = known ? answer.venue_order_id : VenueOrderId{};
         observation.quantity = known ? answer.filled_quantity : QuantityLots{};
-        if (!record(observation, now)) stop_new_risk();
+        if (!record(observation, now)) stop(GatewayStopCause::capacity);
         return true;
     }
     case QueryDisposition::exhausted:
         ++at(metrics_.rejects, GatewayReject::reconciliation_exhausted);
-        stop_new_risk();
+        stop(GatewayStopCause::reconciliation_exhausted);
         return true;
     case QueryDisposition::incomplete:
     case QueryDisposition::unavailable:
@@ -623,6 +838,42 @@ std::string render_gateway_metrics(const GatewayMetrics& m) {
         << '\n';
     type("velocita_gateway_last_fill_timestamp_seconds", "gauge", "Wall-clock time the last fill committed (0: none).");
     out << "velocita_gateway_last_fill_timestamp_seconds " << number(m.last_fill_timestamp_seconds) << '\n';
+
+    constexpr auto kCauses = static_cast<std::size_t>(GatewayStopCause::count);
+    type("velocita_gateway_stops_total", "counter", "New-risk stops by cause; a cause counts when it newly applies.");
+    for (std::size_t i = 0; i < kCauses; ++i)
+        out << "velocita_gateway_stops_total{cause=\"" << describe(static_cast<GatewayStopCause>(i)) << "\"} "
+            << m.stops[i] << '\n';
+    type("velocita_gateway_rearms_total", "counter", "Automatic re-arms of new risk after a fence.");
+    out << "velocita_gateway_rearms_total " << m.rearms << '\n';
+    type("velocita_gateway_stop_cause", "gauge",
+         "1 for each cause currently holding new risk stopped; awaiting_arm = only the arming gate is left.");
+    for (std::size_t i = 0; i < kCauses; ++i)
+        out << "velocita_gateway_stop_cause{cause=\"" << describe(static_cast<GatewayStopCause>(i)) << "\"} "
+            << (m.stop_active[i] ? 1 : 0) << '\n';
+    out << "velocita_gateway_stop_cause{cause=\"awaiting_arm\"} " << (m.awaiting_arm ? 1 : 0) << '\n'
+        << "velocita_gateway_stop_cause{cause=\"not_configured\"} " << (m.not_configured ? 1 : 0) << '\n';
+    type("velocita_gateway_reconciliation_mismatch", "gauge",
+         "1 once the venue's book disagreed with committed state at one cut; latched until restart.");
+    out << "velocita_gateway_reconciliation_mismatch " << (m.reconciliation_mismatch ? 1 : 0) << '\n';
+    type("velocita_gateway_reconciliation_position_lots", "gauge",
+         "Position compared at the last comparable cut (frozen at a mismatch), by source.");
+    out << "velocita_gateway_reconciliation_position_lots{source=\"kernel\"} " << m.reconciliation_kernel_lots << '\n'
+        << "velocita_gateway_reconciliation_position_lots{source=\"venue\"} " << m.reconciliation_venue_lots << '\n';
+    type("velocita_gateway_reconciliation_verdict", "gauge", "1 for the verdict of the last committed read.");
+    for (std::size_t i = 0; i < static_cast<std::size_t>(BookVerdict::count); ++i)
+        out << "velocita_gateway_reconciliation_verdict{verdict=\"" << describe(static_cast<BookVerdict>(i)) << "\"} "
+            << (static_cast<std::size_t>(m.reconciliation) == i ? 1 : 0) << '\n';
+    type("velocita_gateway_reconciliation_last_match_timestamp_seconds", "gauge",
+         "Wall-clock time of the last clean reconciliation (0: none in this process).");
+    out << "velocita_gateway_reconciliation_last_match_timestamp_seconds "
+        << number(m.reconciliation_last_match_seconds) << '\n';
+    if (m.venue_book_known) {
+        type("velocita_gateway_venue_base_lots", "gauge", "The venue's own base balance, in lots.");
+        out << "velocita_gateway_venue_base_lots " << m.venue_base_lots << '\n';
+        type("velocita_gateway_venue_quote_usd", "gauge", "The venue's own quote balance (micros / 1e6).");
+        out << "velocita_gateway_venue_quote_usd " << number(static_cast<double>(m.venue_quote_micros) / 1e6) << '\n';
+    }
     return out.str();
 }
 

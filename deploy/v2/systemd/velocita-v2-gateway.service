@@ -11,9 +11,19 @@
 # Arming: new risk needs BOTH --allow-new-risk and a non-zero --freshness-ms (the
 # oldest authority proof the gateway will act on). Set
 #   VELOCITA_GATEWAY_RISK_ARGS=--freshness-ms 2000 --allow-new-risk
-# in shadow.env to arm; unset, the gateway only reconciles and cancels. It never
-# re-arms itself after a fence (term, kill epoch, generation, mode) or an unknown
-# outcome: restart this unit after checking the journal.
+# in shadow.env to arm; unset, the gateway only reconciles and cancels.
+# Re-arm: after a fence (term or leader change, a timed-out state read) it
+# re-arms by itself once the cluster has been quiet for --rearm-quiet-ms
+# (default 30000, set it in VELOCITA_GATEWAY_RISK_ARGS) AND the paper venue's
+# base equals the kernel's position with no order open. Any other stop (unknown
+# outcome, conflict, refused evidence, kill epoch / generation / mode change,
+# reconciliation mismatch) holds until this unit is restarted after checking the
+# journal (STOP cause=... lines).
+# Paper state: /state/paper.state (the venue's balances, orders and owned
+# reports), rewritten durably before every answer, so a restart keeps the
+# position and cash. The unit never creates it: the FIRST start is a one-shot
+# run with --paper-state-init (or --paper-adopt-position), runbook section 5.
+# A missing, torn or corrupt file stops the unit (exit 64, no restart loop).
 # Metrics: a textfile in ~/velocita-v2/textfile, served by node-exporter (:9110)
 # like the edge's, so Prometheus needs no new target.
 [Unit]
@@ -39,6 +49,7 @@ ExecStart=/usr/bin/podman run --rm --replace --name velocita-v2-gateway \
     --caller-key-id 13 --caller-id 22 --key-file /run/velocita-secrets/caller-13.key \
     --incarnation ${VELOCITA_INCARNATION} \
     --session-file /state/gateway.session --state-file /state/gateway.state \
+    --paper-state-file /state/paper.state \
     --response-endpoint 100.72.127.102:42413 \
     $VELOCITA_NODES \
     --aeron-dir /dev/shm/velocita-gateway-aeron \

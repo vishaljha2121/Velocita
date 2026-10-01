@@ -158,6 +158,10 @@ public:
     [[nodiscard]] const std::vector<SimulatedExecution>& executions() const noexcept {
         return executions_;
     }
+    // Every observation the venue still owns (not yet acknowledged).
+    [[nodiscard]] const std::vector<ScheduledObservation>& owned_observations() const noexcept {
+        return scheduled_;
+    }
     [[nodiscard]] std::uint64_t seed() const noexcept { return seed_; }
 
 private:

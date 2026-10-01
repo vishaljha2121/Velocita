@@ -161,12 +161,29 @@ groups:
         annotations:
           summary: "Paper gateway is down or not reporting"
           description: "velocita_gateway_up is 0 or missing: no paper orders are sent and tick-to-trade is not measured. Check the gateway service and its journal."
+      # A fence (election, state-read gap) re-arms by itself and shows as
+      # awaiting_arm; it pages only through VelocitaGatewayAwaitingRearm if it
+      # lasts. A gateway too old to export the cause still pages (unless keeps
+      # the alert when the right-hand series is absent).
       - alert: VelocitaGatewayNewRiskStopped
-        expr: velocita_gateway_new_risk_stopped == 1
+        expr: velocita_gateway_new_risk_stopped == 1 unless on(job, host) velocita_gateway_stop_cause{cause="awaiting_arm"} == 1
         labels: {severity: critical}
         annotations:
           summary: "Paper gateway on {{ $labels.host }} stopped new risk"
-          description: "An unknown order outcome or a reconciliation mismatch stopped new risk: the gateway sends no risk-increasing order. Check the gateway journal for the order and the cause before resuming."
+          description: "A stop that does not re-arm by itself (unknown outcome, conflict, refused evidence, control change, reconciliation mismatch) holds new risk: the gateway sends no risk-increasing order. Check the gateway journal (STOP cause=...) for the order and the cause; restart the gateway to resume."
+      - alert: VelocitaGatewayAwaitingRearm
+        expr: velocita_gateway_stop_cause{cause="awaiting_arm"} == 1
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Paper gateway on {{ $labels.host }} has waited 10 minutes to re-arm"
+          description: "New risk is stopped only by the arming check (a fence that has not stayed quiet, an order still open, or a reconciliation that is not yet comparable). Check elections and the gateway journal."
+      - alert: VelocitaGatewayReconciliationMismatch
+        expr: velocita_gateway_reconciliation_mismatch == 1
+        labels: {severity: critical}
+        annotations:
+          summary: "Paper gateway on {{ $labels.host }}: venue book and kernel position disagree"
+          description: "At a comparable cut the paper venue's base differs from the kernel's committed position (velocita_gateway_reconciliation_position_lots by source). New risk stays stopped until a restart. Follow the break workflow (runbook 5.3); never edit paper.state or the kernel to make them agree."
       - alert: VelocitaGatewayUnknownOutcome
         expr: increase(velocita_gateway_unknown_outcomes_total[10m]) > 0
         labels: {severity: critical}

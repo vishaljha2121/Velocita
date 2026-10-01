@@ -60,7 +60,33 @@ VenueSessionId seam_session(void* context) {
     return static_cast<SimulatorSeam*>(context)->venue->session();
 }
 
+void simulated_book_read(void* context, VenueBook& out) {
+    const auto& venue = *static_cast<const SimulatedVenue*>(context);
+    out = {};
+    out.available = true;
+    std::int64_t base = 0;
+    for (const auto& execution : venue.executions())
+        base += execution.side == Side::buy ? execution.quantity.atoms() : -execution.quantity.atoms();
+    out.base = QuantityLots::from_atoms(base);
+    const auto& owned = venue.owned_observations();
+    out.unacknowledged_reports = owned.size();
+    for (const auto& entry : owned) {
+        const auto order = entry.observation.cluster_order_id;
+        const auto listed = std::span(out.pending_orders).first(out.pending_order_count);
+        if (std::find(listed.begin(), listed.end(), order) != listed.end()) continue;
+        if (out.pending_order_count == out.pending_orders.size()) {
+            out.pending_orders_truncated = true;
+            break;
+        }
+        out.pending_orders[out.pending_order_count++] = order;
+    }
+}
+
 }  // namespace
+
+VenueBookSource simulated_venue_book(SimulatedVenue& venue) noexcept {
+    return {&simulated_book_read, nullptr, &venue};
+}
 
 SendOutcome resolve_two_step_send(const TwoStepSend& steps,
                                   const OrderEffect& effect) noexcept {

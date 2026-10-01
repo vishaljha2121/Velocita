@@ -9,14 +9,30 @@
 //       --metrics-textfile PATH [--arm-live-venue --signer-endpoint PATH]
 //       [--freshness-ms N --allow-new-risk] [--catalog-root HEX64]
 //       [--catalog-row ACCOUNT,VENUE,INSTRUMENT,SPEC,CAPS] [--lease-ms N] [--timeout-ms N]
-//       [--state-interval-ms N] [--buy-fee-bps N] [--sell-fee-bps N] [--paper-quote-usd N]
-//       [--paper-base-lots N]
+//       [--state-interval-ms N] [--buy-fee-bps N] [--sell-fee-bps N] [--rearm-quiet-ms N]
+//       [--paper-state-file FILE [--paper-state-init --paper-quote-usd N
+//                                 | --paper-adopt-position --paper-adopt-cost-micros N --paper-quote-usd N]]
 //
 // The catalog root comes from the cluster's committed state (or must equal
 // --catalog-root); the row defaults to the one the active executable policy
 // binds. New risk needs BOTH --allow-new-risk and a nonzero --freshness-ms;
-// otherwise it only reconciles and cancels. Any unknown outcome or conflict
-// stops new risk until a restart.
+// otherwise it only reconciles and cancels. New risk arms only at a committed
+// read where the venue's book matches the kernel's position (zero lots), with
+// no order open. A fence (term or leader change, timed-out read) re-arms after
+// --rearm-quiet-ms (default 30000) through the same check; any other stop
+// (unknown outcome, conflict, refused evidence, control change, mismatch)
+// holds until a restart.
+//
+// --venue paper needs --paper-state-file: the venue's balances, orders and
+// owned reports, rewritten durably before every answer. A missing file is
+// refused; the FIRST start creates it with exactly one of
+//   --paper-state-init      a flat account funded with --paper-quote-usd
+//                           (refused unless the kernel is flat on the row);
+//   --paper-adopt-position  base = the kernel's committed position, quote =
+//                           --paper-quote-usd minus --paper-adopt-cost-micros
+//                           (the position's cost, fees included);
+// then exits 0 (PAPER_STATE line) without trading. Both refuse an existing file.
+// stdout: STOP cause=..., ARMED/REARMED ..., RECONCILIATION mismatch ... lines.
 // --venue truemarkets needs --arm-live-venue AND --signer-endpoint, and is then
 // still refused because no build compiles a live venue transport (ADR 0019).
 // stdout: READY ..., then NEW_RISK stopped=0|1 on every change.
@@ -26,7 +42,7 @@
 #include "velocita/v2/aeron_node_transport.hpp"
 #include "velocita/v2/gateway_loop.hpp"
 #include "velocita/v2/node_files.hpp"
-#include "velocita/v2/paper_venue.hpp"
+#include "velocita/v2/paper_venue_store.hpp"
 #include "velocita/v2/shadow_submitter.hpp"
 #include "velocita/v2/truemarkets_venue.hpp"
 #include "velocita/v2/venue_simulator.hpp"
@@ -98,11 +114,70 @@ struct Arguments {
     std::optional<std::array<std::uint64_t, 5>> row;  // account, venue, instrument, spec version, capabilities version
     std::uint64_t freshness_ms{};  // zero (the ADR 0013 default): never new risk
     std::uint64_t lease_ms{2000}, timeout_ms{3000}, state_interval_ms{250};
-    std::uint64_t buy_fee_bps{115}, sell_fee_bps{120}, paper_quote_usd{25}, paper_base_lots{0};
+    std::uint64_t buy_fee_bps{115}, sell_fee_bps{120};
+    std::optional<std::uint64_t> paper_quote_usd;
+    std::optional<std::uint64_t> paper_adopt_cost_micros;
+    std::filesystem::path paper_state_file;
+    bool paper_state_init{}, paper_adopt_position{};
+    std::uint64_t rearm_quiet_ms{30'000};
     bool allow_new_risk{};
     bool arm_live_venue{};
     std::string signer_endpoint;
 };
+
+// Every paper-state refusal that needs no cluster happens here, before any
+// key file, Aeron directory or network is touched. A torn or corrupt file is
+// refused (exit 64), never replaced: replacing it would reset the balances.
+void check_paper_state(const Arguments& a) {
+    const bool bootstrap = a.paper_state_init || a.paper_adopt_position;
+    if (a.venue != "paper") {
+        if (!a.paper_state_file.empty() || bootstrap || a.paper_quote_usd || a.paper_adopt_cost_micros)
+            throw Usage("--paper-* options apply only to --venue paper");
+        return;
+    }
+    if (a.paper_state_file.empty()) throw Usage("--venue paper needs --paper-state-file");
+    if (a.paper_state_init && a.paper_adopt_position)
+        throw Usage("--paper-state-init and --paper-adopt-position are exclusive");
+    if (a.paper_adopt_position != a.paper_adopt_cost_micros.has_value())
+        throw Usage("--paper-adopt-position needs --paper-adopt-cost-micros, and only it takes one");
+    if (bootstrap != a.paper_quote_usd.has_value())
+        throw Usage(bootstrap ? "the first start needs --paper-quote-usd (the account's funding)"
+                              : "--paper-quote-usd applies only to the first start; the balance is in the paper "
+                                "state file. Remove it (runbook section 5)");
+    const auto existing = paper::load_paper_state(a.paper_state_file);
+    if (bootstrap) {
+        if (existing.error != paper::PaperStateError::missing)
+            throw Usage("paper state refused: --paper-state-init/--paper-adopt-position never replace a file (" +
+                        std::string(paper::describe(existing.error == paper::PaperStateError::none
+                                                        ? paper::PaperStateError::exists
+                                                        : existing.error)) + ")");
+        return;
+    }
+    if (existing.error == paper::PaperStateError::missing)
+        throw Usage("paper state refused: " + std::string(paper::describe(existing.error)) +
+                    "; the first start needs --paper-state-init or --paper-adopt-position (runbook section 5)");
+    if (existing.error != paper::PaperStateError::none)
+        throw Usage("paper state refused: " + std::string(paper::describe(existing.error)));
+}
+
+// Served-row orders that are not terminal: a bootstrap beside one could not
+// say what the venue holds.
+std::size_t unresolved_orders(const TradingState& state, const VerifiedExecutionCatalog& catalog,
+                              const ExecutionCatalogRow& row) {
+    std::size_t count = 0;
+    for (std::size_t i = 0; i < state.order_count; ++i) {
+        const auto& order = state.orders[i];
+        if (order.state == ClusterOrderState::filled || order.state == ClusterOrderState::cancelled ||
+            order.state == ClusterOrderState::rejected)
+            continue;
+        const auto binding = materialize_bound_order_effect(state, order.effect_id, catalog);
+        if (binding && (binding->effect.account_id != row.account_id ||
+                        binding->effect.instrument_id != row.instrument.instrument_id))
+            continue;
+        ++count;
+    }
+    return count;
+}
 
 Arguments parse(int argc, char** argv) {
     Arguments a;
@@ -116,6 +191,17 @@ Arguments parse(int argc, char** argv) {
             a.arm_live_venue = true;
             continue;
         }
+        if (key == "--paper-state-init") {
+            a.paper_state_init = true;
+            continue;
+        }
+        if (key == "--paper-adopt-position") {
+            a.paper_adopt_position = true;
+            continue;
+        }
+        if (key == "--paper-base-lots")
+            throw Usage("--paper-base-lots is replaced by the persisted paper state: adopt the position once with "
+                        "--paper-adopt-position (runbook section 5)");
         if (i + 1 >= argc) throw Usage("missing value for " + key);
         const std::string value = argv[++i];
         if (key == "--key-file") a.key_file = value;
@@ -149,7 +235,9 @@ Arguments parse(int argc, char** argv) {
         else if (key == "--buy-fee-bps") a.buy_fee_bps = number(value, "buy fee bps");
         else if (key == "--sell-fee-bps") a.sell_fee_bps = number(value, "sell fee bps");
         else if (key == "--paper-quote-usd") a.paper_quote_usd = number(value, "paper quote usd");
-        else if (key == "--paper-base-lots") a.paper_base_lots = number(value, "paper base lots");
+        else if (key == "--paper-adopt-cost-micros") a.paper_adopt_cost_micros = number(value, "adoption cost micros");
+        else if (key == "--paper-state-file") a.paper_state_file = value;
+        else if (key == "--rearm-quiet-ms") a.rearm_quiet_ms = number(value, "re-arm quiet period");
         else if (key == "--node") {
             const auto eq = value.find('=');
             if (eq == std::string::npos) throw Usage("--node needs ID=HOST:PORT");
@@ -171,6 +259,7 @@ Arguments parse(int argc, char** argv) {
     if (a.arm_live_venue || !a.signer_endpoint.empty()) {
         if (a.venue != "truemarkets") throw Usage("--arm-live-venue and --signer-endpoint apply only to --venue truemarkets");
     }
+    check_paper_state(a);
     if (a.key_file.empty() || a.session_file.empty() || a.state_file.empty() || a.aeron_dir.empty() ||
         a.catalog.empty() || a.metrics_textfile.empty() || !a.have_incarnation || a.nodes.empty() ||
         a.response_endpoint.port == 0 || a.caller_key_id <= 0 || a.caller_id == 0 ||
@@ -210,10 +299,23 @@ void write_metrics(const std::filesystem::path& file, const std::string& text) {
 // venue is the VenueTransport seam and the capability view returned here.
 struct Venue {
     std::unique_ptr<sim::SimulatedVenue> simulated;
-    std::unique_ptr<paper::PaperVenue> paper;
+    std::unique_ptr<paper::DurablePaperVenue> paper;
     sim::VenueTransport transport{};
+    sim::VenueBookSource book{};
     VenueCapabilityView capabilities{};
 };
+
+paper::PaperVenueConfig paper_config(const Arguments& a, const ExecutionCatalogRow& row) {
+    paper::PaperVenueConfig config;
+    config.spec = {row.instrument.venue_id, row.instrument.instrument_id, row.tick_quote_micros, row.lot_base_atoms,
+                   row.base_decimals};
+    config.profile = row.instrument;
+    config.buy_fee_bps = static_cast<std::uint32_t>(a.buy_fee_bps);
+    config.sell_fee_bps = static_cast<std::uint32_t>(a.sell_fee_bps);
+    config.latency = 1;
+    if (!paper::valid(config)) throw Usage("paper venue refused its configuration (spec/profile disagree?)");
+    return config;
+}
 
 Venue make_venue(const Arguments& a, const ExecutionCatalogRow& row) {
     Venue venue;
@@ -222,22 +324,18 @@ Venue make_venue(const Arguments& a, const ExecutionCatalogRow& row) {
     if (a.venue == "simulated") {
         venue.simulated = std::make_unique<sim::SimulatedVenue>(1, sim::FaultPolicy::clean(), row.capabilities.venue_id);
         venue.transport = sim::simulated_venue_transport(*venue.simulated);
+        venue.book = sim::simulated_venue_book(*venue.simulated);
         venue.capabilities.supports_post_only = true;
         venue.capabilities.supports_good_til_cancel = true;
         return venue;
     }
-    paper::PaperVenueConfig config;
-    config.spec = {row.instrument.venue_id, row.instrument.instrument_id, row.tick_quote_micros, row.lot_base_atoms,
-                   row.base_decimals};
-    config.profile = row.instrument;
-    config.buy_fee_bps = static_cast<std::uint32_t>(a.buy_fee_bps);
-    config.sell_fee_bps = static_cast<std::uint32_t>(a.sell_fee_bps);
-    config.quote_balance = MoneyMicros::from_atoms(static_cast<std::int64_t>(a.paper_quote_usd) * 1'000'000);
-    config.base_balance = QuantityLots::from_atoms(static_cast<std::int64_t>(a.paper_base_lots));
-    config.latency = 1;
-    if (!paper::valid(config)) throw Usage("paper venue refused its configuration (spec/profile disagree?)");
-    venue.paper = std::make_unique<paper::PaperVenue>(config, paper::PaperFaultPolicy::clean(), 1);
-    venue.transport = paper::paper_venue_transport(*venue.paper);
+    auto opened = paper::DurablePaperVenue::open(a.paper_state_file, paper_config(a, row),
+                                                 paper::PaperFaultPolicy::clean(), a.incarnation);
+    if (opened.error != paper::PaperStateError::none)
+        throw Usage("paper state refused: " + std::string(paper::describe(opened.error)));
+    venue.paper = std::move(opened.venue);
+    venue.transport = venue.paper->transport();
+    venue.book = venue.paper->book();
     // Fill-or-kill only: no post-only, no resting orders.
     venue.capabilities.supports_post_only = false;
     venue.capabilities.supports_good_til_cancel = false;
@@ -250,6 +348,34 @@ const ExecutionCatalogRow& venue_row(const VerifiedExecutionCatalog& catalog, co
                                      InstrumentSpecVersion{key[3]}, VenueCapabilitiesVersion{key[4]});
     if (!row) throw Usage("--catalog-row names no row of the verified catalog");
     return *row;
+}
+
+// One journal line per stop (with its cause), arm, re-arm and reconciliation break.
+void report_events(GatewayLoop& loop) {
+    std::array<GatewayEvent, kMaxGatewayEvents> events{};
+    const auto count = loop.drain_events(events);
+    for (std::size_t i = 0; i < count; ++i) {
+        const auto& e = events[i];
+        switch (e.kind) {
+        case GatewayEventKind::stopped:
+            std::cout << "STOP new_risk cause=" << describe(e.cause)
+                      << " rearmable=" << (rearmable(e.cause) ? 1 : 0) << " term=" << e.term << std::endl;
+            break;
+        case GatewayEventKind::armed:
+        case GatewayEventKind::rearmed:
+            std::cout << (e.kind == GatewayEventKind::armed ? "ARMED" : "REARMED") << " new_risk term=" << e.term
+                      << " applied_index=" << e.applied_index << " kernel_lots=" << e.kernel_lots
+                      << " venue_lots=" << e.venue_lots << std::endl;
+            break;
+        case GatewayEventKind::reconciliation_mismatch:
+            std::cout << "RECONCILIATION mismatch kernel_lots=" << e.kernel_lots << " venue_lots=" << e.venue_lots
+                      << " unknown_order=" << e.order.value() << " term=" << e.term
+                      << " applied_index=" << e.applied_index
+                      << " (new risk stays stopped; resolve by the break workflow, never by editing a file)"
+                      << std::endl;
+            break;
+        }
+    }
 }
 
 int run(const Arguments& a) {
@@ -325,6 +451,45 @@ int run(const Arguments& a) {
     }
     const auto& row = venue_row(catalog.catalog, key);
 
+    if (a.paper_state_init || a.paper_adopt_position) {
+        const auto& state = link.state();
+        std::int64_t held = 0;
+        for (std::size_t i = 0; i < state.risk_account_count; ++i)
+            if (state.risk_accounts[i].account_id == row.account_id &&
+                state.risk_accounts[i].instrument_id == row.instrument.instrument_id)
+                held = state.risk_accounts[i].position_quantity.atoms();
+        if (const auto open = unresolved_orders(state, catalog.catalog, row); open != 0)
+            throw Usage("paper bootstrap refused: " + std::to_string(open) +
+                        " order(s) on the row are not terminal; resolve them first");
+        const auto funding = MoneyMicros::from_atoms(static_cast<std::int64_t>(*a.paper_quote_usd) * 1'000'000);
+        paper::PaperBootstrap bootstrap;
+        if (a.paper_state_init) {
+            if (held != 0)
+                throw Usage("paper bootstrap refused: the kernel holds " + std::to_string(held) +
+                            " lots on the row; use --paper-adopt-position");
+            bootstrap = paper::fresh_paper_state(paper_config(a, row), a.incarnation, funding);
+        } else {
+            bootstrap = paper::adopted_paper_state(
+                paper_config(a, row), a.incarnation, funding, QuantityLots::from_atoms(held),
+                MoneyMicros::from_atoms(static_cast<std::int64_t>(*a.paper_adopt_cost_micros)),
+                first->reading.applied_index, state.state_version);
+        }
+        if (!bootstrap.error.empty()) throw Usage("paper bootstrap refused: " + bootstrap.error);
+        if (const auto error = paper::create_paper_state(a.paper_state_file, *bootstrap.state);
+            error != paper::PaperStateError::none)
+            throw Usage("paper bootstrap refused: " + std::string(paper::describe(error)));
+        const auto& made = *bootstrap.state;
+        std::cout << "PAPER_STATE created file=" << a.paper_state_file.string()
+                  << " mode=" << (made.origin.adopted ? "adopted" : "fresh")
+                  << " base_lots=" << made.venue.balances.base.atoms()
+                  << " quote_micros=" << made.venue.balances.quote.atoms()
+                  << " funding_micros=" << made.origin.funding.atoms()
+                  << " cost_micros=" << made.origin.adopted_cost.atoms()
+                  << " applied_index=" << first->reading.applied_index
+                  << " state_version=" << state.state_version << std::endl;
+        return 0;
+    }
+
     auto venue = make_venue(a, row);
     GatewayLoopConfig config;
     config.caller = CallerId{a.caller_id};
@@ -339,7 +504,9 @@ int run(const Arguments& a) {
     config.state_interval = a.state_interval_ms;
     config.request_timeout = a.timeout_ms;
     config.allow_new_risk = a.allow_new_risk;
-    GatewayLoop loop(config, link, catalog.catalog, venue.transport, {&monotonic_ms, &wall_seconds, nullptr});
+    config.rearm_quiet = a.rearm_quiet_ms;
+    GatewayLoop loop(config, link, catalog.catalog, venue.transport, {&monotonic_ms, &wall_seconds, nullptr},
+                     venue.book);
 
     std::cout << "READY gateway caller=" << a.caller_id << " venue=" << a.venue << " row=" << key[0] << ',' << key[1] << ',' << key[2] << ',' << key[3] << ',' << key[4]
               << " first_sequence=" << start.first_sequence << " session_epoch=" << epoch.epoch
@@ -356,6 +523,10 @@ int run(const Arguments& a) {
             reserved = next;
             loop.extend_sequence_limit(reserved);
         }
+        report_events(loop);
+        if (venue.paper && venue.paper->failed())
+            throw std::runtime_error("paper state write failed; the venue answers nothing more (restart reloads "
+                                     "the last durable state)");
         if (reported_stop != loop.new_risk_stopped()) {
             reported_stop = loop.new_risk_stopped();
             std::cout << "NEW_RISK stopped=" << (*reported_stop ? 1 : 0) << std::endl;
