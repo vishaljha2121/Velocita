@@ -747,3 +747,28 @@ No venue, credential or trading action. Started 2026-09-25.
     - two days archived, about 350 MB gzip each;
     - nothing pruned, because there is no Mac ack yet and retention is 3 days;
     - the first pass took 4 min 58 s against the 5.25 GB live db.
+
+51. **SOL churn, 24-hour paper run (started 2026-10-01 14:47:30 EDT).**
+    - **Cluster:** fresh cluster `5f84937433eceef456f37acea7436241` on the two-row True Markets
+      catalog (root `3b8b7f79…`: cbBTC = account 1 / instrument 1, SOL = account 2 /
+      instrument 2). Voter images unchanged. Edge image `5181f353d8e5` (138/138 passed in
+      its build). The Pi was leader at term 1.
+    - **Strategy:** churn on 60 s phases, 8 lots = 0.08 SOL (about $9.47).
+    - **Prices:** the Solana spot 30 s candle close (`--price-source candles --price-chain
+      solana`; the feed also lists a hypercore-perp SOL, which is ignored).
+    - **Fees:** SOL's measured costs, 100 / 98 bp.
+    - **Risk limits (account 2):** order, reserved and position caps 8 lots, $25 caps,
+      long-only.
+    - **Weekly loss cap:** raised to $25 at the owner's request, so only the $25 capital
+      bounds the 24 h run.
+
+    **Prediction:**
+    - about $101 of volume per $1 lost;
+    - buys stop when cash cannot cover a clip plus its fee (about $9.57), after about
+      $15.4 of loss and about $1,550 of volume, within about 3 h.
+
+    **First round trip:**
+    - buy at $118.44, fee $0.0948;
+    - sell at $118.37, fee $0.0928;
+    - venue cash $24.806845, equal to the hand computation;
+    - reconciled at 0 lots, 0 unknown outcomes.
