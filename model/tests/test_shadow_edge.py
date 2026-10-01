@@ -104,6 +104,57 @@ class ProgramFile(unittest.TestCase):
         self.assertIn(f"policy.model_digest = {expected}\n", text)
 
 
+def candles(rows, ts_s: int) -> str:
+    """A price_candles message: True Markets stamps the message, not each candle."""
+    return json.dumps({"type": "price_candles", "timestamp": ts_s, "topics": ["price_candles"],
+                       "data": [{"symbol": sym, "chain": chain, "interval": iv, "close": close,
+                                 "open": close, "high": close, "low": close, "address": "x", "asset_id": "y"}
+                                for sym, chain, iv, close in rows]})
+
+
+class CandleTicks(unittest.TestCase):
+    """SOL has no reference_prices row on True Markets; its price is the 30 s candle
+    close of the chain we trade (spot on solana), never the perp listed beside it."""
+
+    def source(self) -> edge.FeatureSource:
+        return edge.FeatureSource("trend", 125, closes=history(200), usd_per_tick=Decimal("0.01"), symbol="SOL",
+                                  price_source="candles", price_chain="solana")
+
+    def test_the_spot_30s_close_is_the_tick(self) -> None:
+        ts = 1_784_548_800  # 2026-07-20 12:00:00 UTC, the day after the last close
+        raw = candles([("SOL", "hypercore-perp", "30s", "118.445"),
+                       ("SOL", "solana", "1h", "117.000"),
+                       ("SOL", "solana", "30s", "118.578198444149"),
+                       ("HYPE", "solana", "30s", "40.0")], ts)
+        tick = self.source().tick(raw, receive_ns=ts * NS + 2 * NS, tick_id=3)
+        self.assertIsNotNone(tick)
+        self.assertEqual(tick.features[-1], 11_857)          # floor(118.578198 / 0.01)
+        self.assertEqual(tick.event_ns, ts * NS)             # the message's own stamp
+        self.assertEqual(tick.age_ns, 2 * NS)
+        closes = [c for _, c in history(200)] + [118.578198444149]
+        bars = DailyBars(tuple(date(2026, 1, 1) + timedelta(days=i) for i in range(201)), ("SOL",), (tuple(closes),), None)
+        self.assertEqual(tick.features[:4], list(rules.features(bars, 0, 200, rules.trend(125)[1])))
+
+    def test_only_the_traded_chain_counts(self) -> None:
+        ts = 1_784_548_800
+        f = self.source()
+        self.assertIsNone(f.tick(candles([("SOL", "hypercore-perp", "30s", "118.445")], ts), receive_ns=ts * NS, tick_id=1))
+        self.assertIsNone(f.tick(candles([("SOL", "solana", "4h", "118.0")], ts), receive_ns=ts * NS, tick_id=2))
+        self.assertIsNone(f.tick(reference("118.5", "2026-07-20T12:00:00Z", symbol="SOL"), receive_ns=ts * NS, tick_id=3))
+
+    def test_a_restamped_message_is_a_resend(self) -> None:
+        ts = 1_784_548_800
+        f = self.source()
+        self.assertIsNotNone(f.tick(candles([("SOL", "solana", "30s", "118.5")], ts), receive_ns=ts * NS, tick_id=1))
+        self.assertIsNone(f.tick(candles([("SOL", "solana", "30s", "118.6")], ts), receive_ns=ts * NS + 1, tick_id=2))
+        self.assertEqual(f.last_outcome, "resend")
+
+    def test_candles_need_a_chain(self) -> None:
+        with self.assertRaises(ValueError):
+            edge.FeatureSource("trend", 125, closes=history(200), usd_per_tick=Decimal("0.01"), symbol="SOL",
+                               price_source="candles")
+
+
 class Ticks(unittest.TestCase):
     def test_tick_from_a_reference_message(self) -> None:
         f = edge.FeatureSource("trend", 125, closes=history(200), usd_per_tick=Decimal("0.01"))

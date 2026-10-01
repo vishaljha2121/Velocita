@@ -60,8 +60,8 @@ ShadowProgram btc_trend(MoneyMicros cap) {
 }
 
 // Ceremony, setup and one uptrend tick at PRICE_TICKS through the reducer.
-ApplyResult decide(ShadowProgram program, std::int64_t price_ticks, EconomicActionProposal* proposal = nullptr) {
-    const auto& catalog = shadow_catalog::truemarkets_catalog();
+ApplyResult decide(ShadowProgram program, std::int64_t price_ticks, EconomicActionProposal* proposal = nullptr,
+                   const VerifiedExecutionCatalog& catalog = shadow_catalog::truemarkets_catalog()) {
     TradingState state{};
     ApplyScratch scratch;
     std::uint64_t sequence = 1;
@@ -131,6 +131,64 @@ void resting_order_modes_are_refused() {
             "a GTC order was proposed to an RFQ venue");
 }
 
+
+// SOL/USDC on Solana. Identities are the venue's own, from the recorded quotes
+// (docs/evidence/truemarkets_markup_2026-09-28/quotes_buy_sell_1631utc.json:
+// base_asset So111...112, quote_asset EPjF...Dt1v); SOL has 9 decimals (the
+// native/wrapped SOL mint), USDC 6. Units chosen here: a tick is $0.01 per SOL,
+// a lot is 0.01 SOL = 10,000,000 atoms, so $0.01 x 0.01 = $0.0001 = 100 micros.
+void the_sol_row_carries_the_venue_units() {
+    const auto row = shadow_catalog::truemarkets_sol_row();
+    // Solana holdings are their own account: one account, one network, one quote asset.
+    require(row.instrument.instrument_id == InstrumentId{2} && row.account_id == AccountId{2} &&
+                row.instrument.venue_id == VenueId{20},
+            "the SOL row is not account 2, venue 20, instrument 2");
+    require(row.base_decimals == 9, "SOL has 9 decimals");
+    require(row.tick_quote_micros == 10'000 && row.lot_base_atoms == 10'000'000, "SOL tick or lot size differs");
+    require(row.instrument.quote_micros_per_tick_lot == MoneyMicros::from_atoms(100),
+            "the SOL money factor does not follow from the tick and lot");
+    require(text_of(row.network_identity) == "solana" &&
+                text_of(row.base_asset_identity) == "So11111111111111111111111111111111111111112" &&
+                text_of(row.quote_asset_identity) == "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "the SOL identities are not the venue's Solana mints");
+    require(row.capabilities.time_in_force_mask == kVenueTifFok && row.capabilities.supports_post_only == 0,
+            "SOL capabilities claim more than an RFQ venue offers");
+}
+
+void the_two_row_catalog_holds_both_and_leaves_the_btc_catalog_alone() {
+    const auto& both = shadow_catalog::truemarkets_two_row_catalog();
+    require(both.row_count() == 2, "the two-row catalog does not hold cbBTC and SOL");
+    require(both.root() != shadow_catalog::truemarkets_catalog().root(),
+            "the two-row catalog has the cbBTC-only root");
+    require(shadow_catalog::truemarkets_catalog().row_count() == 1,
+            "adding SOL changed the cbBTC-only catalog (its root is deployed)");
+}
+
+ShadowProgram sol_churn(MoneyMicros cap) {
+    auto p = btc_trend(cap);
+    p.policy_id = PolicyId{22};
+    p.row = shadow_catalog::truemarkets_sol_row();
+    p.order_quantity = QuantityLots::from_atoms(8);  // 0.08 SOL
+    return p;
+}
+
+void a_real_sol_price_resolves_to_a_bounded_buy() {
+    const auto& both = shadow_catalog::truemarkets_two_row_catalog();
+    EconomicActionProposal buy{};
+    // SOL at $117.00 is 11,700 ticks; 8 lots = 0.08 SOL costs 0.08 x $117.00 = $9.36
+    // (100 micros x 11,700 x 8 = 9,360,000).
+    const auto result = decide(sol_churn(MoneyMicros::from_atoms(25'000'000)), 11'700, &buy, both);
+    require(result.action_resolution_code == ActionResolutionCode::proposed,
+            "a real SOL price was not proposed: resolution " +
+                std::to_string(static_cast<int>(result.action_resolution_code)));
+    require(buy.side == Side::buy && buy.price == PriceTicks::from_atoms(11'700) &&
+                buy.quantity == QuantityLots::from_atoms(8) && buy.notional == MoneyMicros::from_atoms(9'360'000),
+            "the proposal is not a $9.36 buy of 0.08 SOL at $117.00");
+    require(decide(sol_churn(MoneyMicros::from_atoms(9'350'000)), 11'700, nullptr, both).action_resolution_code ==
+                ActionResolutionCode::notional_cap_exceeded,
+            "a $9.36 SOL clip passed a $9.35 cap");
+}
+
 }  // namespace
 
 int main() {
@@ -139,6 +197,9 @@ int main() {
         a_real_btc_price_resolves_to_a_bounded_buy();
         the_notional_cap_binds_in_dollars();
         resting_order_modes_are_refused();
+        the_sol_row_carries_the_venue_units();
+        the_two_row_catalog_holds_both_and_leaves_the_btc_catalog_alone();
+        a_real_sol_price_resolves_to_a_bounded_buy();
         std::cout << "shadow catalog tests passed\n";
         return 0;
     } catch (const std::exception& error) {

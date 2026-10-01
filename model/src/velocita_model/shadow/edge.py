@@ -138,7 +138,16 @@ class Tick:
 class FeatureSource:
     def __init__(self, strategy: str, value: int, *, closes: Sequence[tuple[date, float]], usd_per_tick: Decimal,
                  symbol: str = "BTC|USD", min_interval_ns: int = 0, params: volume.Params | None = None,
-                 window: volume.MinuteWindow | None = None) -> None:
+                 window: volume.MinuteWindow | None = None, price_source: str = "reference",
+                 price_chain: str | None = None) -> None:
+        # "reference": a reference_prices mid (BTC, ETH). "candles": the 30 s candle
+        # close of PRICE_CHAIN (SOL has no reference row; the feed also lists a perp).
+        if price_source not in ("reference", "candles"):
+            raise ValueError(f"unknown price source {price_source!r}")
+        if price_source == "candles" and not price_chain:
+            raise ValueError("candle prices need the chain that is traded")
+        self.price_source = price_source
+        self.price_chain = price_chain
         self.program, self.settings = strategy_program(strategy, value, params)
         self.feature_names = feature_names(strategy)
         spec = volume.STRATEGIES.get(strategy)
@@ -167,16 +176,33 @@ class FeatureSource:
             message = json.loads(raw)
         except ValueError:
             return "other", None
-        if message.get("type") != "reference_prices":
-            return "other", None
-        row = next((r for r in message.get("data") or () if isinstance(r, dict) and r.get("symbol") == self.symbol), None)
-        if row is None:
-            return "other", None
-        try:
-            mid = Decimal(row["mid_price"])
-            event_ns = rfc3339_ns(row["timestamp"])
-        except (KeyError, ValueError, TypeError, InvalidOperation):
-            return "other", None
+        if self.price_source == "candles":
+            if message.get("type") != "price_candles":
+                return "other", None
+            row = next((r for r in message.get("data") or () if isinstance(r, dict) and r.get("symbol") == self.symbol
+                        and r.get("chain") == self.price_chain and r.get("interval") == "30s"), None)
+            if row is None:
+                return "other", None
+            try:
+                mid = Decimal(row["close"])
+                stamp = message["timestamp"]  # the message is stamped, not the candle
+                if not isinstance(stamp, int) or isinstance(stamp, bool) or stamp <= 0:
+                    raise ValueError("candle message without a whole-second stamp")
+                event_ns = stamp * 1_000_000_000
+            except (KeyError, ValueError, TypeError, InvalidOperation):
+                return "other", None
+        else:
+            if message.get("type") != "reference_prices":
+                return "other", None
+            row = next((r for r in message.get("data") or () if isinstance(r, dict) and r.get("symbol") == self.symbol),
+                       None)
+            if row is None:
+                return "other", None
+            try:
+                mid = Decimal(row["mid_price"])
+                event_ns = rfc3339_ns(row["timestamp"])
+            except (KeyError, ValueError, TypeError, InvalidOperation):
+                return "other", None
         if self.window is not None:
             self.window.observe(event_ns, mid)  # every new observation, throttled or not
         # The venue re-sends its last price every second between ~12 s refreshes:

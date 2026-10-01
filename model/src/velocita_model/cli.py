@@ -251,6 +251,9 @@ def cmd_shadow_edge(args: argparse.Namespace) -> int:
     if not submitter and not args.program_only:
         print("shadow-edge needs the submitter command after --", file=sys.stderr)
         return 64
+    if args.price_source == "candles" and not args.price_chain:
+        print("shadow-edge: --price-source candles needs --price-chain (the traded chain)", file=sys.stderr)
+        return 64
     account, venue, instrument, spec, caps = (int(x) for x in args.catalog_row.split(","))
     catalog = edge.CatalogRow(args.catalog_root, account, venue, instrument, spec, caps)
     params = volume.Params(args.period_s, args.exit_window_s, args.window_min, args.enter_below_bps,
@@ -324,11 +327,13 @@ def cmd_shadow_edge(args: argparse.Namespace) -> int:
         source = edge.FeatureSource(args.strategy, args.value, closes=closes,
                                     usd_per_tick=Decimal(args.usd_per_tick), symbol=args.symbol,
                                     min_interval_ns=int(args.min_tick_interval_s * 1_000_000_000),
-                                    params=params if args.strategy in volume.STRATEGIES else None, window=window)
+                                    params=params if args.strategy in volume.STRATEGIES else None, window=window,
+                                    price_source=args.price_source, price_chain=args.price_chain)
         same_day = lambda day=today: _datetime.now(_tz.utc).date() == day
         result = edge.run_once(lambda: DayBoundSocket(today), submitter, source, textfile=args.textfile,
                                shadow_recorded_code=args.shadow_recorded_code, metrics=metrics, ledger=book,
-                               paper_book=paper_book, reconnect=None if args.once else same_day)
+                               paper_book=paper_book, reconnect=None if args.once else same_day,
+                               topics=("price_candles",) if args.price_source == "candles" else ("reference_prices",))
         print(f"edge run ended: {result.reason} decisions={result.decisions} errors={result.errors}", flush=True)
         if args.once:
             return 0 if result.decisions else 1
@@ -451,6 +456,9 @@ def build_parser() -> argparse.ArgumentParser:
     edge_parser.add_argument("--exit-above-bps", type=int, default=10, help="dip: sell above the average by this much")
     edge_parser.add_argument("--symbol", default="BTC|USD")
     edge_parser.add_argument("--history-pair", default="BTCUSDT")
+    edge_parser.add_argument("--price-source", choices=("reference", "candles"), default="reference",
+                             help="reference_prices mid (BTC, ETH) or the 30 s candle close (SOL)")
+    edge_parser.add_argument("--price-chain", default=None, help="with --price-source candles: the traded chain")
     edge_parser.add_argument("--history-days", type=int, default=400)
     edge_parser.add_argument("--history-cache", type=Path, default=Path.home() / ".cache" / "velocita-shadow")
     edge_parser.add_argument("--usd-per-tick", required=True, help="the catalog row's USD per price tick")
