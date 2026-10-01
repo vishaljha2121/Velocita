@@ -185,6 +185,56 @@ def cmd_stream(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_md_archive(args: argparse.Namespace) -> int:
+    """Nightly housekeeping for stream.db (docs/MD_ARCHIVE_RUNBOOK.md). Exit 0
+    when every day is archived or waiting normally, 3 when a day is blocked
+    (corrupt archive, ack for other bytes, late rows), 1 on error."""
+    import sqlite3
+
+    from .storage import md_archive as mda
+
+    policy = mda.Policy(retention_days=args.retention_days, keep_archives_days=args.keep_archives_days,
+                        grace_s=args.grace_s, max_days=args.max_days, batch_rows=args.batch_rows)
+    archiver = mda.Archiver(args.db, args.archive_dir, policy=policy)
+    blocked = False
+    try:
+        with mda.RunLock(args.archive_dir):
+            if args.compact:
+                archiver.compact(quiet_s=args.quiet_s)
+                print(f"md-archive: compacted {args.db}")
+                return 0
+            ok = False
+            try:
+                for day in archiver.archive():
+                    print(f"md-archive: archived {day}")
+                if args.prune:
+                    for day, outcome in sorted(archiver.prune().items()):
+                        print(f"md-archive: prune {day}: {outcome}")
+                        blocked |= outcome in mda.BLOCKED_REASONS
+                    for day in archiver.remove_old_archives():
+                        print(f"md-archive: removed acknowledged archive {day}")
+                ok = True
+            finally:
+                if args.textfile:
+                    mda.write_atomic(Path(args.textfile), archiver.metrics(ok=ok).encode("utf-8"))
+    except (mda.ArchiveError, sqlite3.Error) as error:
+        print(f"md-archive: {error}", file=sys.stderr)
+        return 1
+    return 3 if blocked else 0
+
+
+def cmd_md_restore(args: argparse.Namespace) -> int:
+    from .storage import md_archive as mda
+
+    try:
+        added = mda.restore(args.archives, args.into)
+    except mda.ArchiveError as error:
+        print(f"md-restore: {error}", file=sys.stderr)
+        return 1
+    print(f"md-restore: {added} market_message rows added to {args.into}")
+    return 0
+
+
 def cmd_shadow_edge(args: argparse.Namespace) -> int:
     """Live reference prices -> rule features -> the C++ submitter. In shadow
     mode decisions are only recorded; in paper mode (the submitter's --mode
@@ -360,6 +410,30 @@ def build_parser() -> argparse.ArgumentParser:
     stream_parser.add_argument("--duration", type=float, default=0, help="seconds; 0 runs until stopped")
     stream_parser.add_argument("--uat", action="store_true", help="use the UAT sandbox host")
     stream_parser.set_defaults(handler=cmd_stream)
+
+    archive_parser = sub.add_parser(
+        "md-archive", help="archive complete UTC days of stream.db; with --prune delete days the Mac acknowledged")
+    archive_parser.add_argument("--db", type=Path, required=True)
+    archive_parser.add_argument("--archive-dir", type=Path, required=True)
+    archive_parser.add_argument("--textfile", type=Path, default=None, help="Prometheus textfile (atomic replace)")
+    archive_parser.add_argument("--prune", action="store_true",
+                                help="delete verified, acknowledged days older than --retention-days")
+    archive_parser.add_argument("--retention-days", type=int, default=3)
+    archive_parser.add_argument("--keep-archives-days", type=int, default=7,
+                                help="acknowledged, pruned archives older than this are removed from this host")
+    archive_parser.add_argument("--grace-s", type=int, default=600, help="archive a day this long after it ends")
+    archive_parser.add_argument("--max-days", type=int, default=10, help="days archived per run")
+    archive_parser.add_argument("--batch-rows", type=int, default=5000, help="rows per delete transaction")
+    archive_parser.add_argument("--compact", action="store_true",
+                                help="VACUUM stream.db (STOP velocita-md-stream first); nothing else runs")
+    archive_parser.add_argument("--quiet-s", type=int, default=120,
+                                help="--compact refuses if a row arrived within this many seconds")
+    archive_parser.set_defaults(handler=cmd_md_archive)
+
+    restore_parser = sub.add_parser("md-restore", help="merge archived days into a research SQLite database")
+    restore_parser.add_argument("--into", type=Path, required=True)
+    restore_parser.add_argument("archives", type=Path, nargs="+", help="stream-YYYY-MM-DD.sqlite.gz (sidecar beside it)")
+    restore_parser.set_defaults(handler=cmd_md_restore)
 
     edge_parser = sub.add_parser(
         "shadow-edge", help="live ticks -> rule features -> the C++ submitter (shadow, or paper: never a venue)")

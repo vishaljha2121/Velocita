@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Nightly pull of nuc1's market-data archives to this Mac (tools/md-backup-pull).
+  21:30 local (US Eastern: 01:30 UTC in summer, 02:30 in winter) is after nuc1's
+  00:30 UTC archive timer. A Mac asleep at 21:30 runs the job on wake; a Mac that
+  was off catches up on the next run (every pending day is pulled).
+  Install (docs/MD_ARCHIVE_RUNBOOK.md): replace __REPO__ and __HOME__, copy to
+  ~/Library/LaunchAgents, then launchctl bootstrap gui/$(id -u) <that file>.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.velocita.md-backup</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>__REPO__/tools/md-backup-pull</string>
+    <string>--host</string>
+    <string>velocitas@nuc1</string>
+    <string>--local-dir</string>
+    <string>__HOME__/velocita-backups/md</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>21</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/velocita-md-backup.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/velocita-md-backup.log</string>
+</dict>
+</plist>

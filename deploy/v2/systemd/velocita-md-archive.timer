@@ -1,0 +1,13 @@
+# 00:30 UTC: the previous UTC day ended 30 minutes ago (md-archive waits 10).
+# The Mac's pull (deploy/mac/com.velocita.md-backup.plist) runs after this.
+# Persistent: a run missed while nuc1 was down happens at the next boot.
+[Unit]
+Description=Velocita market-data archive, nightly after the UTC day ends
+
+[Timer]
+OnCalendar=*-*-* 00:30:00 UTC
+Persistent=true
+AccuracySec=1m
+
+[Install]
+WantedBy=timers.target

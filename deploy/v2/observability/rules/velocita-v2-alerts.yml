@@ -190,3 +190,30 @@ groups:
         annotations:
           summary: "Paper gateway on {{ $labels.host }} has an order with an unknown outcome"
           description: "The gateway could not establish whether an order reached or filled at the venue, so its position may be wrong. New risk is stopped; check the gateway journal and reconcile against the venue."
+      # Market-data archive on nuc1 (velocita-md-archive.timer; docs/MD_ARCHIVE_RUNBOOK.md).
+      # The textfile is rewritten once a night, so ages are computed here from
+      # timestamps rather than read from a value that froze at the last run.
+      - alert: VelocitaMdBackupNotAcked
+        expr: velocita_md_archive_oldest_unacked_day_end_timestamp_seconds > 0 and (time() - velocita_md_archive_oldest_unacked_day_end_timestamp_seconds) > 2 * 86400
+        labels: {severity: warning}
+        annotations:
+          summary: "Market data on {{ $labels.host }} has waited over 2 days for the Mac's backup"
+          description: "An archived day has no acknowledgement from the Mac, so its rows stay in stream.db and the database keeps growing. On the Mac: read ~/Library/Logs/velocita-md-backup.log, then run tools/md-backup-pull by hand."
+      - alert: VelocitaMdStreamDbLarge
+        expr: velocita_md_stream_db_bytes > 8e9
+        labels: {severity: warning}
+        annotations:
+          summary: "stream.db on {{ $labels.host }} is larger than 8 GB"
+          description: "Retention keeps about 5 days (~5.5 GB). Check VelocitaMdBackupNotAcked and the velocita-md-archive journal. If most of the file is free pages (velocita_md_stream_db_free_bytes), compact it with md-stream stopped (runbook)."
+      - alert: VelocitaMdArchiveFailing
+        expr: velocita_md_archive_last_run_ok == 0 or (time() - velocita_md_archive_last_run_timestamp_seconds) > 26 * 3600 or absent(velocita_md_archive_last_run_timestamp_seconds)
+        labels: {severity: warning}
+        annotations:
+          summary: "The nightly market-data archive is failing or not running"
+          description: "Nothing new is archived or pruned, so stream.db grows about 1.1 GB a day. On nuc1: systemctl --user status velocita-md-archive.timer and journalctl --user -u velocita-md-archive."
+      - alert: VelocitaMdArchiveBlocked
+        expr: velocita_md_archive_blocked_days > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "Market-data prune on {{ $labels.host }} is blocked: {{ $labels.reason }}"
+          description: "A day's rows are held in stream.db because its archive does not verify, the Mac acknowledged different bytes, or rows arrived after it was archived. Nothing is deleted until an operator resolves it (runbook)."

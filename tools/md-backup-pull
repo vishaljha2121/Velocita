@@ -1,0 +1,204 @@
+#!/usr/bin/env python3
+"""md-backup-pull: copy nuc1's market-data archives to this Mac, verify them,
+and only then acknowledge them so nuc1 may delete the rows.
+
+For each `stream-YYYY-MM-DD.sqlite.gz` on nuc1 that is not yet acknowledged or
+not yet here: fetch it with `ssh HOST cat FILE` (never rsync: macOS openrsync
+silently writes nothing to these hosts), check its sha256 against nuc1's
+sidecar, fsync it into --local-dir, re-read it from disk, and write
+`acked/stream-YYYY-MM-DD.ack` on nuc1 (temp file + mv). A file that fails any
+check is deleted locally and never acknowledged.
+
+Safe to run any time and as often as wanted: a run that cannot reach nuc1
+changes nothing, and the next run catches up every pending day.
+Exit: 0 all done, 1 some day failed (see output), 2 nuc1 unreachable.
+Stdlib only; runs on macOS /usr/bin/python3 (3.9). docs/MD_ARCHIVE_RUNBOOK.md.
+"""
+from __future__ import annotations
+
+import argparse
+import fcntl
+import hashlib
+import os
+import re
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+SSH = ("ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=20", "-o", "ServerAliveInterval=15",
+       "-o", "ServerAliveCountMax=4")
+SHA = re.compile(r"[0-9a-f]{64}")
+DAY = r"(\d{4}-\d{2}-\d{2})"
+SIDECAR_LINE = re.compile(rf"^stream-{DAY}\.sqlite\.gz\.sha256:(.*)$")
+ACK_LINE = re.compile(rf"^acked/stream-{DAY}\.ack:(.*)$")
+REMOTE_DIR = re.compile(r"[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*")
+CHUNK = 1 << 20
+
+
+class Unreachable(Exception):
+    pass
+
+
+def archive_name(day: str) -> str:
+    return f"stream-{day}.sqlite.gz"
+
+
+def digest_line(text: str, name: str) -> str | None:
+    """`<sha256>  <name>` or a bare sha256; a line naming another file is refused."""
+    words = text.split()
+    if not words or not SHA.fullmatch(words[0]) or len(words) > 2:
+        return None
+    if len(words) == 2 and words[1].lstrip("*") != name:
+        return None
+    return words[0]
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(CHUNK), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def fsync_dir(path: Path) -> None:
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+class Remote:
+    def __init__(self, host: str, directory: str, run=subprocess.run) -> None:
+        self.host, self.dir, self.run = host, directory, run
+
+    def _ssh(self, command: str, data: bytes = b"", stdout=subprocess.PIPE):
+        return self.run([*SSH, self.host, command], input=data, stdout=stdout, stderr=subprocess.PIPE)
+
+    def listing(self) -> tuple[dict, dict]:
+        """(day -> sidecar sha256, day -> acknowledged sha256). Only names this
+        tool would itself produce are accepted; everything else is ignored."""
+        result = self._ssh(f"cd {self.dir} && {{ grep -H . stream-*.sqlite.gz.sha256 acked/stream-*.ack "
+                           f"2>/dev/null; true; }}")
+        if result.returncode != 0:
+            raise Unreachable((result.stderr or b"").decode("utf-8", "replace").strip()
+                              or f"ssh exited {result.returncode}")
+        sidecars, acks = {}, {}
+        for line in result.stdout.decode("utf-8", "replace").splitlines():
+            for pattern, table in ((SIDECAR_LINE, sidecars), (ACK_LINE, acks)):
+                match = pattern.match(line)
+                if match:
+                    sha = digest_line(match.group(2), archive_name(match.group(1)))
+                    if sha is not None:
+                        table[match.group(1)] = sha
+        return sidecars, acks
+
+    def fetch(self, day: str, dest: Path) -> str | None:
+        with open(dest, "wb") as handle:
+            result = self._ssh(f"cat {self.dir}/{archive_name(day)}", stdout=handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if result.returncode != 0:
+            return (result.stderr or b"").decode("utf-8", "replace").strip() or f"ssh exited {result.returncode}"
+        return None
+
+    def ack(self, day: str, sha: str) -> str | None:
+        tmp, final = f"acked/.tmp-stream-{day}.ack", f"acked/stream-{day}.ack"
+        result = self._ssh(f"cd {self.dir} && mkdir -p acked && cat > {tmp} && mv -f {tmp} {final}",
+                           data=f"{sha}  {archive_name(day)}\n".encode("ascii"))
+        if result.returncode != 0:
+            return (result.stderr or b"").decode("utf-8", "replace").strip() or f"ssh exited {result.returncode}"
+        return None
+
+
+def write_sidecar(local: Path, name: str, sha: str) -> None:
+    """sha256sum format, so `shasum -a 256 -c` and md-restore both read it."""
+    tmp = local / f".part-{name}.sha256"
+    with open(tmp, "w", encoding="ascii") as handle:
+        handle.write(f"{sha}  {name}\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(tmp, local / f"{name}.sha256")
+    fsync_dir(local)
+
+
+def pull_day(remote: Remote, local: Path, day: str, sha: str, acked: bool, say) -> bool:
+    name = archive_name(day)
+    copy = local / name
+    if copy.exists():
+        if acked:
+            return True
+        if sha256_file(copy) != sha:
+            say(f"{day}: FAILED local {copy} differs from nuc1's sidecar; not overwritten, not acknowledged")
+            return False
+        if not (local / f"{name}.sha256").exists():
+            write_sidecar(local, name, sha)
+    else:
+        part = local / f".part-{name}"
+        error = remote.fetch(day, part)
+        got = None if error else sha256_file(part)
+        if got != sha:
+            part.unlink()
+            say(f"{day}: FAILED " + (f"fetch: {error}" if error else f"sha256 {got} != sidecar {sha}")
+                + "; not acknowledged")
+            return False
+        os.replace(part, copy)
+        write_sidecar(local, name, sha)
+        if sha256_file(copy) != sha:  # what is on disk now, not what passed through
+            copy.unlink()
+            say(f"{day}: FAILED stored copy does not re-read as {sha}; removed, not acknowledged")
+            return False
+        say(f"{day}: copied and verified {copy}")
+    if not acked:
+        error = remote.ack(day, sha)
+        if error:
+            say(f"{day}: FAILED acknowledgement on nuc1: {error} (the verified copy is kept; retried next run)")
+            return False
+        say(f"{day}: acknowledged {sha}")
+    return True
+
+
+def main(argv=None, run=subprocess.run, sleep=time.sleep, out=sys.stdout) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    parser.add_argument("--host", default="velocitas@nuc1")
+    parser.add_argument("--remote-dir", default="velocita-md/archive", help="relative to the remote home")
+    parser.add_argument("--local-dir", type=Path, default=Path.home() / "velocita-backups" / "md")
+    parser.add_argument("--attempts", type=int, default=3, help="tries to reach nuc1 (the Mac may just have woken)")
+    parser.add_argument("--retry-wait", type=float, default=60.0)
+    args = parser.parse_args(argv)
+    if not REMOTE_DIR.fullmatch(args.remote_dir) or ".." in args.remote_dir.split("/"):
+        parser.error("--remote-dir must be a plain path relative to the remote home")
+
+    def say(message: str) -> None:
+        print(f"{time.strftime('%Y-%m-%dT%H:%M:%S%z')} md-backup-pull: {message}", file=out, flush=True)
+
+    args.local_dir.mkdir(parents=True, exist_ok=True)
+    with open(args.local_dir / ".lock", "w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            say("another run holds the lock")
+            return 1
+        for stale in args.local_dir.glob(".part-*"):
+            stale.unlink()
+        remote = Remote(args.host, args.remote_dir, run)
+        for attempt in range(1, args.attempts + 1):
+            try:
+                sidecars, acks = remote.listing()
+                break
+            except Unreachable as error:
+                say(f"cannot list {args.host}:{args.remote_dir} (attempt {attempt}/{args.attempts}): {error}")
+                if attempt == args.attempts:
+                    return 2
+                sleep(args.retry_wait)
+        ok = True
+        for day in sorted(sidecars):
+            ok &= pull_day(remote, args.local_dir, day, sidecars[day], acks.get(day) == sidecars[day], say)
+        say(f"{len(sidecars)} archive(s) on {args.host}; {'all verified and acknowledged' if ok else 'SOME FAILED'}")
+        return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
