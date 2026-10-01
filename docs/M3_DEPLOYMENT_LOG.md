@@ -727,3 +727,23 @@ No venue, credential or trading action. Started 2026-09-25.
     - 0 unknown outcomes and 0 errors.
 
     The exact reset procedure is now `docs/CLEAN_RESET_RUNBOOK.md`.
+
+50. **md-stream recorded nothing for ~43.5 h without alerting (found 2026-10-01).** The first
+    nightly archive run archived 2026-09-28 and 2026-09-30 and nothing for 2026-09-29.
+    `market_message` row ids are contiguous across the gap:
+    - last row 2026-09-28 20:36 UTC (id 96,731);
+    - next row 2026-09-30 16:06 UTC (id 96,732), the moment md-stream was restarted during
+      the Phase 2 deploy.
+
+    The process had restarted at 2026-09-28 16:37 EDT and then wrote nothing while its unit
+    stayed `active`. The recording rate is otherwise steady at about 12,000 messages an hour.
+    There was no alert, because nothing watched the counters, only `up`.
+
+    **Fix:** `VelocitaMdStreamSilent` (warning) fires when no reference price is recorded for
+    10 minutes and that holds for 5 minutes, or the series is absent. Rule-tested and
+    mutation-checked. Root cause of the hang: not yet investigated.
+
+    The archive itself behaved correctly:
+    - two days archived, about 350 MB gzip each;
+    - nothing pruned, because there is no Mac ack yet and retention is 3 days;
+    - the first pass took 4 min 58 s against the 5.25 GB live db.

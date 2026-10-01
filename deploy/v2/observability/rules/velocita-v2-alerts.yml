@@ -190,6 +190,15 @@ groups:
         annotations:
           summary: "Paper gateway on {{ $labels.host }} has an order with an unknown outcome"
           description: "The gateway could not establish whether an order reached or filled at the venue, so its position may be wrong. New risk is stopped; check the gateway journal and reconcile against the venue."
+      # md-stream silently recorded nothing for ~43 h (2026-09-28 20:36 .. 09-30 16:06 UTC,
+      # M3 finding 50) while its process looked alive: alert on the counter, not on up.
+      - alert: VelocitaMdStreamSilent
+        expr: increase(velocita_md_messages_total{type="reference_prices"}[10m]) == 0 or absent(velocita_md_messages_total{type="reference_prices"})
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "md-stream on nuc1 has recorded no reference prices for 15 minutes"
+          description: "The market-data recorder is hung, stopped or disconnected, so research data has a gap. On nuc1: journalctl --user -u velocita-md-stream; systemctl --user restart velocita-md-stream."
       # Market-data archive on nuc1 (velocita-md-archive.timer; docs/MD_ARCHIVE_RUNBOOK.md).
       # The textfile is rewritten once a night, so ages are computed here from
       # timestamps rather than read from a value that froze at the last run.

@@ -385,3 +385,21 @@ tests:
             exp_annotations:
               summary: "The nightly market-data archive is failing or not running"
               description: "Nothing new is archived or pruned, so stream.db grows about 1.1 GB a day. On nuc1: systemctl --user status velocita-md-archive.timer and journalctl --user -u velocita-md-archive."
+
+  # md-stream records steadily for 20 minutes, then its counter stops moving:
+  # quiet while it records, fires once 10 minutes of silence have held for 5 minutes.
+  - interval: 1m
+    input_series:
+      - series: 'velocita_md_messages_total{job="node",host="nuc1",type="reference_prices"}'
+        values: '0+30x20 600x40'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: VelocitaMdStreamSilent
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: VelocitaMdStreamSilent
+        exp_alerts:
+          - exp_labels: {severity: warning, job: node, host: nuc1, type: reference_prices}
+            exp_annotations:
+              summary: "md-stream on nuc1 has recorded no reference prices for 15 minutes"
+              description: "The market-data recorder is hung, stopped or disconnected, so research data has a gap. On nuc1: journalctl --user -u velocita-md-stream; systemctl --user restart velocita-md-stream."
