@@ -12,7 +12,9 @@
 # Only translation units whose preprocessed input changed are recompiled; the
 # rest (including Aeron and willemt/raft) come from the cache. The image is still
 # built from this exact source tree in a clean /build, and the FULL test suite
-# still runs. Without the -v mount the cache is empty and the build is unchanged.
+# still runs (BUILD_JOBS tests at a time). Without the -v mount the cache is empty.
+# Measured on nuc2 (2026-10-01): 513 s cold/serial -> 420 s warm cache -> 296 s warm
+# cache + parallel tests; warm-cache binaries byte-identical to the cold build's.
 #
 # The shadow edge (nuc1 only) is a second target from the same tested build:
 #   podman build -f deploy/v2/Containerfile --target shadow -t localhost/velocita-v2-shadow:m3 .
@@ -36,7 +38,7 @@ RUN mkdir -p /ccache && ccache --zero-stats \
         -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
     && cmake --build /build --parallel "${BUILD_JOBS}" \
     && ccache --show-stats \
-    && ctest --test-dir /build --output-on-failure
+    && ctest --test-dir /build --output-on-failure --parallel "${BUILD_JOBS}"
 
 # Strategy edge: the Python edge (live True Markets reference prices -> rule
 # features) and the C++ submitter it spawns (also the operator's one-shot

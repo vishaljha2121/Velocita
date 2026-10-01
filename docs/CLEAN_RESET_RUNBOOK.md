@@ -73,9 +73,10 @@ Use `J=3` on the Pi and `J=4` on the NUCs. nuc1 also builds the shadow (edge) im
 
     for h in nuc1 nuc2 vishalkapi; do
       J=4; [ $h = vishalkapi ] && J=3
-      B="podman build --build-arg BUILD_JOBS=$J -f deploy/v2/Containerfile -t localhost/velocita-v2:NEW ."
-      [ $h = nuc1 ] && B="$B && podman build --build-arg BUILD_JOBS=$J --target shadow -f deploy/v2/Containerfile -t localhost/velocita-v2-shadow:NEW ."
-      ssh -f -n velocitas@$h "cd ~/src/aeron-raft-pi && rm -f ~/build.log ~/build.rc && setsid nohup sh -c '($B) > ~/build.log 2>&1; echo \$? > ~/build.rc' </dev/null >/dev/null 2>&1 &"
+      CC="-v \$HOME/.cache/velocita-ccache:/ccache"      # compiler cache: only changed files recompile
+      B="podman build $CC --build-arg BUILD_JOBS=$J -f deploy/v2/Containerfile -t localhost/velocita-v2:NEW ."
+      [ $h = nuc1 ] && B="$B && podman build $CC --build-arg BUILD_JOBS=$J --target shadow -f deploy/v2/Containerfile -t localhost/velocita-v2-shadow:NEW ."
+      ssh -f -n velocitas@$h "mkdir -p ~/.cache/velocita-ccache; cd ~/src/aeron-raft-pi && rm -f ~/build.log ~/build.rc && setsid nohup sh -c '($B) > ~/build.log 2>&1; echo \$? > ~/build.rc' </dev/null >/dev/null 2>&1 &"
     done
 
 Replace `NEW` with a tag such as `m3-p4`.
