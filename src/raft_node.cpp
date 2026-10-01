@@ -258,13 +258,14 @@ void RaftNode::receive_peer(const PeerMessage& message) {
 #endif
     if (const auto* value = std::get_if<RequestVote>(&message.payload)) {
         if (value->candidate_id != message.sender_id) throw std::runtime_error("vote candidate does not match sender");
-        msg_requestvote_t request{value->term, value->candidate_id, value->last_log_index, value->last_log_term};
+        // V1 never enables pre-vote and its wire has no flag: always a real vote.
+        msg_requestvote_t request{value->term, value->candidate_id, value->last_log_index, value->last_log_term, 0};
         msg_requestvote_response_t response{};
         result = raft_recv_requestvote(server_, sender, &request, &response);
         outbound_messages_.push_back({node_id_, message.sender_id,
                                       RequestVoteResponse{response.term, response.vote_granted != 0}});
     } else if (const auto* value = std::get_if<RequestVoteResponse>(&message.payload)) {
-        msg_requestvote_response_t response{value->term, value->vote_granted ? 1 : 0};
+        msg_requestvote_response_t response{value->term, value->vote_granted ? 1 : 0, 0};
         result = raft_recv_requestvote_response(server_, sender, &response);
     } else if (const auto* value = std::get_if<AppendEntries>(&message.payload)) {
         std::vector<raft_entry_t> entries(value->entries.size());

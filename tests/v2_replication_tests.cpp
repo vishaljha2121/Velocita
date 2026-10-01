@@ -7,12 +7,14 @@
 
 #include <array>
 #include <chrono>
+#include <cstdlib>
 #include <condition_variable>
 #include <filesystem>
 #include <fcntl.h>
 #include <mutex>
 #include <thread>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -268,6 +270,11 @@ struct Cluster {
     // cannot be reached, which is the realistic failure and the one that must
     // fail closed.
     std::set<std::int32_t> partitioned;
+    // Sees every message before any filtering; `drop` then filters further.
+    std::function<void(const PeerMessage&)> observe;
+    std::function<bool(const PeerMessage&)> drop;
+    // Election safety: at most one leader per term, over the whole run.
+    std::map<std::int64_t, std::int32_t> leader_of_term;
     std::uint8_t lineage_tag{};
 
     Cluster(std::filesystem::path directory, const std::size_t voters,
@@ -318,8 +325,10 @@ struct Cluster {
             }
         }
         for (const auto& message : messages) {
+            if (observe) observe(message);
             if (partitioned.count(message.sender_id) != 0) continue;
             if (partitioned.count(message.recipient_id) != 0) continue;
+            if (drop && drop(message)) continue;
             for (auto& recipient : nodes) {
                 if (recipient->status().node_id != message.recipient_id) continue;
                 // Through the wire codec, so a message that could not survive
@@ -329,6 +338,25 @@ struct Cluster {
                 break;
             }
         }
+        check_one_leader_per_term();
+    }
+
+    void check_one_leader_per_term() {
+        for (const auto& candidate : nodes) {
+            if (!candidate->is_leader()) continue;
+            const auto status = candidate->status();
+            const auto [seen, fresh] = leader_of_term.emplace(status.term, status.node_id);
+            require(fresh || seen->second == status.node_id,
+                    "two leaders in term " + std::to_string(status.term) + ": " +
+                        std::to_string(seen->second) + " and " + std::to_string(status.node_id));
+        }
+    }
+
+    void step() {
+        for (auto& candidate : nodes) candidate->flush_durability();
+        for (auto& candidate : nodes) candidate->tick(10);
+        route();
+        check_durability_invariant();
     }
 
     // THE DURABILITY INVARIANT, checked after every single tick of every test
@@ -3251,6 +3279,383 @@ void test_marker_snapshot_covers_volatile_committed_prefix(const std::filesystem
 
 }  // namespace
 
+// --- pre-vote (Raft thesis 9.6; M3 log findings 43 and 47) -------------------
+//
+// A voter that times out first asks whether it COULD win the next term. Only a
+// majority of yes answers lets it raise its term, and a voter that still hears
+// its leader says no. An isolated voter therefore cannot climb terms and depose
+// a healthy leader when it returns.
+
+bool is_prevote_request(const PeerMessage& message) {
+    const auto* vote = std::get_if<velocita::RequestVote>(&message.payload);
+    return vote != nullptr && vote->prevote;
+}
+
+std::vector<velocita::RequestVoteResponse> drain_vote_replies(
+    ReplicatedKernel& node, std::vector<velocita::RequestVote>* requests = nullptr) {
+    std::vector<velocita::RequestVoteResponse> replies;
+    while (auto message = identity_test::take_outbound_message(node)) {
+        if (const auto* reply = std::get_if<velocita::RequestVoteResponse>(&message->payload))
+            replies.push_back(*reply);
+        else if (const auto* request = std::get_if<velocita::RequestVote>(&message->payload);
+                 request != nullptr && requests != nullptr)
+            requests->push_back(*request);
+    }
+    return replies;
+}
+
+velocita::RequestVote vote_request(const std::int32_t candidate, const std::int64_t term,
+                                   const std::int64_t last_index, const std::int64_t last_term,
+                                   const bool prevote) {
+    velocita::RequestVote vote{term, candidate, last_index, last_term};
+    vote.prevote = prevote;
+    return vote;
+}
+
+// Voter 2 of {1,2,3} holding entries 1..3 of term 1 from leader 1. With
+// `silence`, it then hears nothing for 2.1 s, longer than any randomized
+// election timeout (1-2 s), so it no longer has a leader.
+std::vector<velocita::RequestVote> follower_of_term_one(ReplicatedKernel& node, const bool silence) {
+    identity_test::deliver_declared_peer(node, PeerMessage{1, 2, three_entries(1)});
+    node.flush_durability();
+    std::vector<velocita::RequestVote> sent;
+    (void)drain_vote_replies(node, &sent);
+    for (int elapsed = 0; silence && elapsed < 2100; elapsed += 10) {
+        node.tick(10);
+        node.flush_durability();
+        (void)drain_vote_replies(node, &sent);
+    }
+    return sent;
+}
+
+velocita::RequestVoteResponse only_reply(ReplicatedKernel& node, const char* what,
+                                        const bool prevote = true) {
+    node.flush_durability();
+    const auto replies = drain_vote_replies(node);
+    require(replies.size() == 1, std::string(what) + ": expected one vote reply, got " +
+                                     std::to_string(replies.size()));
+    require(replies[0].prevote == prevote, std::string(what) + ": the reply's pre-vote flag is wrong");
+    return replies[0];
+}
+
+void test_a_timed_out_follower_only_asks_and_a_prevote_grant_changes_nothing(
+    const std::filesystem::path& root) {
+    ReplicatedKernel node(identity_test::bootstrap(root / "node", 2, {1, 2, 3}));
+    const auto sent = follower_of_term_one(node, true);
+    require(!sent.empty(), "fixture: the follower never timed out");
+    for (const auto& request : sent) {
+        require(request.prevote, "a timed-out follower sent a real vote request");
+        require(request.term == 2 && request.candidate_id == 2 && request.last_log_index == 3 &&
+                    request.last_log_term == 1,
+                "a timed-out follower's pre-vote did not propose term 2 for its own log");
+    }
+    require(node.status().term == 1 && node.status().role == "follower",
+            "asking for pre-votes changed the asker's term or role");
+
+    const auto before = directory_image(root / "node");
+    identity_test::deliver_declared_peer(node, PeerMessage{3, 2, vote_request(3, 2, 3, 1, true)});
+    const auto granted = only_reply(node, "up-to-date pre-vote");
+    require(granted.vote_granted && granted.term == 2,
+            "a leaderless voter refused an up-to-date pre-vote");
+    require(node.status().term == 1 && node.status().role == "follower",
+            "granting a pre-vote changed the grantor's term or role");
+    require(directory_image(root / "node") == before, "granting a pre-vote wrote the grantor's storage");
+
+    // The vote itself is still free: a real term-2 candidate gets it, and then
+    // the pre-vote's candidate cannot.
+    identity_test::deliver_declared_peer(node, PeerMessage{1, 2, vote_request(1, 2, 3, 1, false)});
+    const auto real = only_reply(node, "real vote", false);
+    require(real.vote_granted && real.term == 2,
+            "a pre-vote grant consumed the grantor's real vote");
+    require(node.status().term == 2 && directory_image(root / "node") != before,
+            "fixture: a real vote did not reach hard state, so the image proves nothing");
+    identity_test::deliver_declared_peer(node, PeerMessage{3, 2, vote_request(3, 2, 3, 1, false)});
+    require(!only_reply(node, "second real vote", false).vote_granted, "a voter voted twice in term 2");
+}
+
+void test_a_voter_that_hears_its_leader_refuses_prevotes(const std::filesystem::path& root) {
+    {
+        ReplicatedKernel node(identity_test::bootstrap(root / "node", 2, {1, 2, 3}));
+        (void)follower_of_term_one(node, false);
+        identity_test::deliver_declared_peer(node, PeerMessage{3, 2, vote_request(3, 2, 3, 1, true)});
+        require(!only_reply(node, "pre-vote while led").vote_granted,
+                "a follower that just heard its leader granted a pre-vote");
+        require(node.status().term == 1 && node.status().leader_id == 1,
+                "a refused pre-vote changed the follower's term or leader");
+    }
+    {
+        // Its own expired timer is the voter's verdict on the leader: from the
+        // moment it asks, it grants others who have also lost that leader.
+        ReplicatedKernel node(identity_test::bootstrap(root / "asker", 2, {1, 2, 3}));
+        (void)follower_of_term_one(node, false);
+        std::vector<velocita::RequestVote> asked;
+        for (int elapsed = 0; elapsed < 2100 && asked.empty(); elapsed += 10) {
+            node.tick(10);
+            node.flush_durability();
+            (void)drain_vote_replies(node, &asked);
+        }
+        require(!asked.empty(), "fixture: the follower never timed out");
+        identity_test::deliver_declared_peer(node, PeerMessage{3, 2, vote_request(3, 2, 3, 1, true)});
+        require(only_reply(node, "pre-vote after own timeout").vote_granted,
+                "a voter that gave up on its leader still refused a pre-vote in its leader's name");
+    }
+    Cluster cluster(root / "cluster", 3);
+    auto& leader = cluster.elect();
+    const auto status = leader.status();
+    const auto asker = status.node_id == 1 ? 2 : 1;
+    const auto log = cluster.node(asker).status();
+    identity_test::deliver_peer(leader,
+        PeerMessage{asker, status.node_id,
+                    vote_request(asker, status.term + 1, log.current_index, status.term, true)},
+        cluster.node(asker).static_identity());
+    std::vector<velocita::RequestVoteResponse> replies;
+    while (auto message = identity_test::take_outbound_message(leader))
+        if (const auto* reply = std::get_if<velocita::RequestVoteResponse>(&message->payload))
+            replies.push_back(*reply);
+    require(replies.size() == 1 && replies[0].prevote, "the leader did not answer the pre-vote as one");
+    require(!replies[0].vote_granted, "the leader granted a pre-vote");
+    require(leader.is_leader() && leader.status().term == status.term,
+            "a pre-vote request unseated the leader or changed its term");
+}
+
+void test_a_stale_log_cannot_win_a_prevote(const std::filesystem::path& root) {
+    ReplicatedKernel node(identity_test::bootstrap(root / "node", 2, {1, 2, 3}));
+    (void)follower_of_term_one(node, true);
+    // The voter holds 1..3 of term 1 (the fixture delivered them): a log ending
+    // earlier, or in an older term, is behind it.
+    // The last one proposes the voter's own term: no newer term to win.
+    for (const auto& stale : {vote_request(3, 2, 2, 1, true), vote_request(3, 2, 0, 0, true),
+                              vote_request(3, 2, 9, 0, true), vote_request(3, 1, 3, 1, true)}) {
+        identity_test::deliver_declared_peer(node, PeerMessage{3, 2, stale});
+        require(!only_reply(node, "stale pre-vote").vote_granted,
+                "a pre-vote from a log behind the voter's was granted (last " +
+                    std::to_string(stale.last_log_index) + "/" + std::to_string(stale.last_log_term) + ")");
+    }
+    identity_test::deliver_declared_peer(node, PeerMessage{3, 2, vote_request(3, 2, 3, 1, true)});
+    require(only_reply(node, "equal log").vote_granted, "fixture: an equal log was refused too");
+    require(node.status().term == 1, "a pre-vote changed the voter's term");
+}
+
+// A pre-candidate counts a grant only for the term it proposed and only while
+// its round is open; a refusal from a newer term teaches it that term.
+void test_a_prevote_round_counts_only_its_own_grants(const std::filesystem::path& root) {
+    ReplicatedKernel node(identity_test::bootstrap(root / "node", 2, {1, 2, 3}));
+    require(!follower_of_term_one(node, true).empty(), "fixture: the follower never timed out");
+    const auto grant = [](const std::int64_t term) {
+        velocita::RequestVoteResponse value{term, true};
+        value.prevote = true;
+        return value;
+    };
+    const auto expect = [&](const std::string_view role, const std::int64_t term, const char* what) {
+        node.flush_durability();
+        (void)drain_vote_replies(node);
+        const auto status = node.status();
+        require(status.role == role && status.term == term,
+                std::string(what) + ": now " + std::string(status.role) + " in term " +
+                    std::to_string(status.term));
+    };
+    // One grant is a majority of three with our own: only term 2 may count.
+    identity_test::deliver_declared_peer(node, PeerMessage{1, 2, grant(3)});
+    expect("follower", 1, "a grant for a term the node never proposed started an election");
+
+    velocita::AppendEntries heartbeat{};
+    heartbeat.term = 1;
+    heartbeat.previous_log_index = 3;
+    heartbeat.previous_log_term = 1;
+    identity_test::deliver_declared_peer(node, PeerMessage{1, 2, heartbeat});
+    identity_test::deliver_declared_peer(node, PeerMessage{3, 2, grant(2)});
+    expect("follower", 1, "a grant arriving after the leader returned started an election");
+
+    (void)follower_of_term_one(node, true);
+    velocita::RequestVoteResponse refusal{5, false};
+    refusal.prevote = true;
+    identity_test::deliver_declared_peer(node, PeerMessage{3, 2, refusal});
+    expect("follower", 5, "a refusal from term 5 did not bring the pre-candidate to term 5");
+
+    for (int elapsed = 0; elapsed < 2100; elapsed += 10) {
+        node.tick(10);
+        node.flush_durability();
+        (void)drain_vote_replies(node);
+    }
+    identity_test::deliver_declared_peer(node, PeerMessage{1, 2, grant(6)});
+    expect("candidate", 6, "fixture: a grant for the proposed term did not start the election");
+}
+
+void test_an_isolated_voter_rejoins_without_raising_the_term(const std::filesystem::path& root) {
+    Cluster cluster(root, 3);
+    auto& leader = cluster.elect();
+    const auto leader_id = leader.status().node_id;
+    const auto term = leader.status().term;
+    const auto isolated = leader_id == 1 ? 2 : 1;
+    std::size_t prevotes = 0;
+    cluster.observe = [&](const PeerMessage& message) {
+        if (message.sender_id == isolated && is_prevote_request(message)) ++prevotes;
+    };
+    // 10 s alone: five or more election timeouts, like the wifi drops of finding 43.
+    cluster.partitioned.insert(isolated);
+    for (int round = 0; round < 1000; ++round) {
+        cluster.step();
+        const auto status = cluster.node(isolated).status();
+        require(status.term == term && status.role == "follower",
+                "the isolated voter became " + std::string(status.role) + " in term " +
+                    std::to_string(status.term) + " (cluster term " + std::to_string(term) + ")");
+    }
+    require(prevotes >= 10, "fixture: the isolated voter did not keep timing out (" +
+                                std::to_string(prevotes) + " pre-votes)");
+    cluster.partitioned.clear();
+    cluster.settle(400);
+    for (const auto id : cluster.members)
+        require(cluster.node(id).status().term == term,
+                "voter " + std::to_string(id) + " left term " + std::to_string(term) + " after the rejoin");
+    require(cluster.leader() == &leader, "the rejoining voter unseated the healthy leader");
+    require(cluster.node(isolated).status().leader_id == leader_id,
+            "the rejoined voter does not follow the leader");
+    const auto result = cluster.commit(command_from(kMaxOperatorCallerId + 1, 1,
+                                                    SetStrategyMode{StrategyMode::normal, {}, {}}));
+    require(result.term == term, "the command committed in another term");
+    cluster.settle(30);
+    require(cluster.node(isolated).status().commit_index == result.index,
+            "the rejoined voter did not catch up");
+}
+
+void test_a_lost_leader_is_replaced_within_bounded_time(const std::filesystem::path& root) {
+    Cluster cluster(root, 3);
+    auto& old = cluster.elect();
+    const auto old_id = old.status().node_id;
+    const auto term = old.status().term;
+    cluster.partitioned.insert(old_id);
+    // A follower times out within 2 s of the last heartbeat; each split
+    // pre-vote or vote costs at most another 2 s. 8 s allows three splits.
+    ReplicatedKernel* successor = nullptr;
+    int elapsed = 0;
+    for (; elapsed < 8000 && successor == nullptr; elapsed += 10) {
+        cluster.step();
+        for (const auto id : cluster.members)
+            if (id != old_id && cluster.node(id).is_leader()) successor = &cluster.node(id);
+    }
+    require(successor != nullptr, "no new leader within 8 s of losing the old one");
+    if (std::getenv("VELOCITA_TEST_SEED") != nullptr)
+        std::cout << "prevote-leader-loss: new leader after " << elapsed << " ms, term "
+                  << successor->status().term << "\n";
+    require(successor->status().term > term, "the new leader did not raise the term");
+    const auto before = successor->status().commit_index;
+    require(successor->propose(encoded(command_from(kMaxOperatorCallerId + 1, 1,
+                                                    SetStrategyMode{StrategyMode::normal, {}, {}})))
+                    .status == ProposeStatus::admitted,
+            "the new leader refused a command");
+    cluster.settle(100);
+    require(successor->status().commit_index > before, "the new leader could not commit");
+    cluster.partitioned.clear();
+    cluster.settle(300);
+    require(cluster.leader() == successor && !old.is_leader() &&
+                old.status().leader_id == successor->status().node_id,
+            "the old leader did not step down and follow after the partition healed");
+}
+
+void test_a_stale_voter_never_campaigns_and_the_complete_log_wins(const std::filesystem::path& root) {
+    Cluster cluster(root, 3);
+    auto& leader = cluster.elect();
+    const auto leader_id = leader.status().node_id;
+    const auto term = leader.status().term;
+    const auto stale = leader_id == 1 ? 2 : 1;
+    const auto fresh = 6 - leader_id - stale;
+    cluster.partitioned.insert(stale);
+    std::int64_t committed = 0;
+    for (std::uint64_t sequence = 1; sequence <= 3; ++sequence)
+        committed = cluster.commit(command_from(kMaxOperatorCallerId + 1, sequence,
+                                                SetStrategyMode{StrategyMode::normal, {}, {}})).index;
+    require(cluster.node(stale).status().current_index < committed,
+            "fixture: the stale voter is not behind");
+
+    // The leader is lost and the stale voter returns. For 6 s the complete
+    // voter's own requests are dropped, so only the stale one can campaign.
+    cluster.partitioned = {leader_id};
+    std::size_t asked = 0;
+    cluster.observe = [&](const PeerMessage& message) {
+        if (message.sender_id == stale && message.recipient_id == fresh && is_prevote_request(message))
+            ++asked;
+    };
+    cluster.drop = [&](const PeerMessage& message) {
+        return message.sender_id == fresh &&
+            std::holds_alternative<velocita::RequestVote>(message.payload);
+    };
+    for (int round = 0; round < 600; ++round) {
+        cluster.step();
+        const auto status = cluster.node(stale).status();
+        require(status.role == "follower" && status.term == term,
+                "a voter missing committed entries won a pre-vote: now " + std::string(status.role) +
+                    " in term " + std::to_string(status.term));
+        require(cluster.node(fresh).status().term == term, "a pre-vote raised the complete voter's term");
+    }
+    require(asked >= 3, "fixture: the stale voter never asked (" + std::to_string(asked) + ")");
+
+    cluster.drop = nullptr;
+    ReplicatedKernel* successor = nullptr;
+    for (int round = 0; round < 800 && successor == nullptr; ++round) {
+        cluster.step();
+        for (const auto id : {stale, fresh})
+            if (cluster.node(id).is_leader()) successor = &cluster.node(id);
+    }
+    require(successor == &cluster.node(fresh), "the voter holding every committed entry did not win");
+    // It may not know they are committed until it commits in its own term.
+    require(successor->status().current_index >= committed, "the new leader lacks a committed entry");
+    require(successor->propose(encoded(command_from(kMaxOperatorCallerId + 1, 4,
+                                                    SetStrategyMode{StrategyMode::normal, {}, {}})))
+                    .status == ProposeStatus::admitted,
+            "the new leader refused a command");
+    cluster.settle(100);
+    require(successor->status().commit_index > committed, "the new leader could not commit");
+    require(cluster.node(stale).status().state_digest == successor->status().state_digest &&
+                cluster.node(stale).status().commit_index == successor->status().commit_index,
+            "the stale voter did not converge on the new leader");
+}
+
+// Random single-voter partitions (the leader included) while commands flow.
+// Checked every step: one leader per term, and the majority-durable invariant.
+// Checked here: every voter applies the same term at every committed index.
+void test_prevote_keeps_elections_and_commits_safe_under_partitions(const std::filesystem::path& root) {
+    Cluster cluster(root, 3);
+    (void)cluster.elect();
+    std::map<std::int64_t, std::int64_t> committed;
+    const auto record = [&] {
+        for (auto& node : cluster.nodes)
+            while (auto result = node->take_committed_result()) {
+                const auto [seen, fresh] = committed.emplace(result->index, result->term);
+                require(fresh || seen->second == result->term,
+                        "voters committed different entries at index " + std::to_string(result->index));
+            }
+    };
+    std::uint64_t sequence = 0;
+    for (int phase = 0; phase < 16; ++phase) {
+        cluster.partitioned.clear();
+        if (const auto cut = std::rand() % 4; cut != 0) cluster.partitioned.insert(cut);
+        const auto rounds = 50 + std::rand() % 300;
+        for (int round = 0; round < rounds; ++round) {
+            if (round % 25 == 0)
+                for (auto& node : cluster.nodes)
+                    if (node->is_leader())
+                        (void)node->propose(encoded(command_from(kMaxOperatorCallerId + 1, ++sequence,
+                            SetStrategyMode{StrategyMode::normal, {}, {}})));
+            cluster.step();
+            record();
+        }
+    }
+    cluster.partitioned.clear();
+    cluster.settle(600);
+    record();
+    (void)cluster.commit(command_from(kMaxOperatorCallerId + 1, ++sequence,
+                                      SetStrategyMode{StrategyMode::normal, {}, {}}));
+    cluster.settle(50);
+    record();
+    require(committed.size() >= 5,
+            "fixture: only " + std::to_string(committed.size()) + " entries committed");
+    const auto reference = cluster.nodes.front()->status();
+    for (const auto& node : cluster.nodes)
+        require(node->status().commit_index == reference.commit_index &&
+                    node->status().state_digest == reference.state_digest,
+                "voters did not converge after the partitions healed");
+}
+
 int main(int argc, char** argv) {
     try {
         const auto root = std::filesystem::temp_directory_path() /
@@ -3336,11 +3741,32 @@ int main(int argc, char** argv) {
             else if (name == "unsupported-legacy-suffix")
                 test_an_incompatible_uncommitted_legacy_suffix_refuses_without_touching_storage(
                     fresh("unsupported-legacy-suffix"));
+            else if (name == "stranded-voter")
+                test_a_voter_behind_the_leaders_snapshot_does_not_stop_the_cluster(fresh("stranded-voter"));
+            else if (name == "prevote-grant")
+                test_a_timed_out_follower_only_asks_and_a_prevote_grant_changes_nothing(fresh("prevote-grant"));
+            else if (name == "prevote-sticky")
+                test_a_voter_that_hears_its_leader_refuses_prevotes(fresh("prevote-sticky"));
+            else if (name == "prevote-stale-log")
+                test_a_stale_log_cannot_win_a_prevote(fresh("prevote-stale-log"));
+            else if (name == "prevote-round")
+                test_a_prevote_round_counts_only_its_own_grants(fresh("prevote-round"));
+            else if (name == "prevote-isolated")
+                test_an_isolated_voter_rejoins_without_raising_the_term(fresh("prevote-isolated"));
+            else if (name == "prevote-leader-loss")
+                test_a_lost_leader_is_replaced_within_bounded_time(fresh("prevote-leader-loss"));
+            else if (name == "prevote-stale-voter")
+                test_a_stale_voter_never_campaigns_and_the_complete_log_wins(fresh("prevote-stale-voter"));
+            else if (name == "prevote-safety")
+                test_prevote_keeps_elections_and_commits_safe_under_partitions(fresh("prevote-safety"));
             else if (name == "identity-membership")
                 test_membership_drift_refuses_before_recovery_and_preserves_history(
                     fresh("identity-membership"));
             else throw std::runtime_error("unknown correction test: " + name);
         };
+        // Election timeouts come from rand(); a sweep reruns a test per seed.
+        if (const char* seed = std::getenv("VELOCITA_TEST_SEED"))
+            std::srand(static_cast<unsigned>(std::stoul(seed)));
         if (argc == 2) {
             corrections(argv[1]);
             std::cout << argv[1] << " passed\n";
@@ -3426,6 +3852,15 @@ int main(int argc, char** argv) {
         // Last on purpose: willemt draws election timeouts from the process-wide
         // rand(), so a test added earlier would reseed every later test's timing.
         test_a_committed_mass_cancel_is_answerable_and_recoverable(fresh("mass-cancel-commit"));
+
+        test_a_timed_out_follower_only_asks_and_a_prevote_grant_changes_nothing(fresh("prevote-grant"));
+        test_a_voter_that_hears_its_leader_refuses_prevotes(fresh("prevote-sticky"));
+        test_a_stale_log_cannot_win_a_prevote(fresh("prevote-stale-log"));
+        test_a_prevote_round_counts_only_its_own_grants(fresh("prevote-round"));
+        test_an_isolated_voter_rejoins_without_raising_the_term(fresh("prevote-isolated"));
+        test_a_lost_leader_is_replaced_within_bounded_time(fresh("prevote-leader-loss"));
+        test_a_stale_voter_never_campaigns_and_the_complete_log_wins(fresh("prevote-stale-voter"));
+        test_prevote_keeps_elections_and_commits_safe_under_partitions(fresh("prevote-safety"));
 
         std::filesystem::remove_all(root);
         std::cout << "all V2 replication tests passed\n";

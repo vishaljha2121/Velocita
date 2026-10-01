@@ -234,6 +234,35 @@ void test_previous_term_entry_is_not_committed_by_recheck() {
 
 } // namespace
 
+// Pre-vote at five voters (V2 runs at most three, where one grant is already
+// a majority): a grant counts only in the round that asked for it.
+void test_prevote_grants_do_not_carry_over_between_rounds() {
+    Durability state;
+    raft_cbs_t cbs = callbacks();
+    raft_server_t* raft = raft_new();
+    require(raft != nullptr, "raft_new failed");
+    raft_set_callbacks(raft, &cbs, &state);
+    raft_add_node(raft, nullptr, 1, 1);
+    for (int id = 2; id <= 5; ++id) raft_add_node(raft, nullptr, id, 0);
+    raft_set_prevote(raft, 1);
+    msg_requestvote_response_t grant{1, 1, 1};
+    require(raft_periodic(raft, 2000) == 0, "first pre-vote round failed");
+    require(raft_recv_requestvote_response(raft, raft_get_node(raft, 2), &grant) == 0,
+            "first grant refused");
+    require(raft_is_follower(raft) && raft_get_current_term(raft) == 0,
+            "two of five pre-votes started an election");
+    require(raft_periodic(raft, 2000) == 0, "second pre-vote round failed");
+    require(raft_recv_requestvote_response(raft, raft_get_node(raft, 3), &grant) == 0,
+            "second grant refused");
+    require(raft_is_follower(raft) && raft_get_current_term(raft) == 0,
+            "a grant from an earlier pre-vote round was counted again");
+    require(raft_recv_requestvote_response(raft, raft_get_node(raft, 4), &grant) == 0,
+            "third grant refused");
+    require(raft_is_candidate(raft) && raft_get_current_term(raft) == 1,
+            "three of five pre-votes in one round did not start the election");
+    raft_free(raft);
+}
+
 int main() {
     test_before_apply_refusal_preserves_index_and_skips_applylog();
     test_periodic_auto_apply_honors_before_apply();
@@ -242,5 +271,6 @@ int main() {
     test_peer_ack_before_local_flush_is_reconsidered();
     test_null_callback_preserves_synchronous_behavior();
     test_previous_term_entry_is_not_committed_by_recheck();
+    test_prevote_grants_do_not_carry_over_between_rounds();
     return 0;
 }

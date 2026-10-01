@@ -291,6 +291,10 @@ ReplicatedKernel::ReplicatedKernel(VerifiedIdentityStartup startup,
     // on disk.
     table.durable_idx = &ReplicatedKernel::durable_idx;
     raft_set_callbacks(server_, &table, this);
+    // The V2 peer wire carries the pre-vote flags (body version 3), so a voter
+    // cut off by a network drop cannot raise its term and depose a healthy
+    // leader when it returns (M3 log findings 43 and 47).
+    raft_set_prevote(server_, 1);
 
     if (raft_add_node(server_, nullptr, node_id_, 1) == nullptr) {
         throw std::runtime_error("failed to add Raft member " + std::to_string(node_id_));
@@ -1509,16 +1513,17 @@ PeerReceiveResult ReplicatedKernel::receive_peer(std::span<const std::byte> boun
     int result = 0;
     if (const auto* value = std::get_if<RequestVote>(&message.payload)) {
         msg_requestvote_t request{value->term, value->candidate_id, value->last_log_index,
-                                  value->last_log_term};
+                                  value->last_log_term, value->prevote ? 1 : 0};
         msg_requestvote_response_t response{};
         result = raft_recv_requestvote(server_, sender, &request, &response);
         if (result == 0) {
             (void)queue_outbound(
                 {node_id_, message.sender_id,
-                 RequestVoteResponse{response.term, response.vote_granted != 0}});
+                 RequestVoteResponse{response.term, response.vote_granted != 0, response.prevote != 0}});
         }
     } else if (const auto* value = std::get_if<RequestVoteResponse>(&message.payload)) {
-        msg_requestvote_response_t response{value->term, value->vote_granted ? 1 : 0};
+        msg_requestvote_response_t response{value->term, value->vote_granted ? 1 : 0,
+                                            value->prevote ? 1 : 0};
         result = raft_recv_requestvote_response(server_, sender, &response);
     } else if (const auto* value = std::get_if<AppendEntries>(&message.payload)) {
         std::vector<raft_entry_t> entries(value->entries.size());
@@ -1750,7 +1755,7 @@ int ReplicatedKernel::send_request_vote(raft_server_t*, void* user_data, raft_no
     return self.queue_outbound(
         {self.node_id_, raft_node_get_id(node),
          RequestVote{message->term, message->candidate_id, message->last_log_idx,
-                     message->last_log_term}});
+                     message->last_log_term, message->prevote != 0}});
 }
 
 int ReplicatedKernel::send_append_entries(raft_server_t*, void* user_data,

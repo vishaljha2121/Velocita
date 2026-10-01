@@ -250,7 +250,7 @@ void election_case(const PausePoint point, const std::filesystem::path& root) {
     node.start_writer();
     const auto old = identity_test::metadata_store(root).load();
     fence.arm();
-    node.tick(10'000);
+    identity_test::campaign(node, 2);
     node.flush_durability();
     fence.await_worker_or_fail("election");
     assert_quarantined(node, node.status(), false);
@@ -323,7 +323,7 @@ void response_case(const PeerPayload& payload, const char* label,
     ReplicatedKernel node(identity_test::bootstrap(root, 1, {1, 2}), {}, fence.checkpoints());
     ReleaseOnExit release{&fence};
     node.start_writer();
-    node.tick(10'000);
+    identity_test::campaign(node, 2);
     pump(node, [&] { return !node.persistence_pending(); },
          "response fixture did not finish its candidate transition");
     while (identity_test::take_outbound_message(node)) {}
@@ -406,7 +406,7 @@ void sync_failure_case(const std::size_t failed_call,
         node.start_writer();
         fence.inject_sync_failure(failed_call);
         const auto before = node.status();
-        node.tick(10'000);
+        identity_test::campaign(node, 2);
         bool failed{};
         const auto deadline = std::chrono::steady_clock::now() + 5s;
         while (!failed && std::chrono::steady_clock::now() < deadline) {

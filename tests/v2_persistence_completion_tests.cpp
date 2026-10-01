@@ -175,7 +175,7 @@ void corrupt_case(const PersistenceFenceTestAccess::Fault fault) {
     AutomaticRoot root;
     ReplicatedKernel node(identity_test::bootstrap(root.path, 1, {1, 2}));
     node.start_writer();
-    node.tick(10'000);
+    identity_test::campaign(node, 2);
     require(node.persistence_pending(), "election did not stage hard state");
     node.flush_durability();
     await_completion(node);
@@ -203,7 +203,7 @@ void duplicate_case() {
     AutomaticRoot root;
     ReplicatedKernel node(identity_test::bootstrap(root.path, 1, {1, 2}));
     node.start_writer();
-    node.tick(10'000);
+    identity_test::campaign(node, 2);
     node.flush_durability();
     await_completion(node);
     require(PersistenceFenceTestAccess::accept(node), "valid completion was refused");

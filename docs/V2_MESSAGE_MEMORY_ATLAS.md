@@ -885,12 +885,12 @@ Offsets here start at the **inner peer body**. Add56 for absolute offsets inside
 | Offset | Bytes | Tag / value | Meaning |
 |---|---|---|---|
 | 0 | 4 | PER1 | Magic |
-| 4 | 2 | 1 | Inner wire version |
+| 4 | 2 | 3 in V2 bound bodies (1 in V1) | Inner wire version; any other value is refused |
 | 6 | 2 | 1 request_vote;2 vote_response;3 append_entries;4 append_response | PeerMessageType |
 | 8 | 4 | — | Sender node ID (i32) |
 | 12 | 4 | — | Recipient node ID (i32) |
 
-### 10.3 RequestVote — inner48; complete bound136
+### 10.3 RequestVote — inner49; complete bound137
 
 Candidate → configured voter. Candidate ID must equal sender.
 
@@ -901,8 +901,9 @@ Candidate → configured voter. Candidate ID must equal sender.
 | 28 | 4 | 0 | Reserved |
 | 32 | 8 | — | Last log index (i64) |
 | 40 | 8 | — | Last log term (i64) |
+| 48 | 1 | Canonical0/1 | Pre-vote: term is the proposed term; no state changes at the receiver |
 
-### 10.4 RequestVoteResponse — inner25; complete bound113
+### 10.4 RequestVoteResponse — inner26; complete bound114
 
 Voter → candidate; replies need the same lineage verification as requests.
 
@@ -910,6 +911,7 @@ Voter → candidate; replies need the same lineage verification as requests.
 |---|---|---|---|
 | 16 | 8 | — | Term (i64) |
 | 24 | 1 | Canonical0/1 | Vote granted |
+| 25 | 1 | Canonical0/1 | Pre-vote (echoes the request) |
 
 ### 10.5 AppendEntries — inner52+Σ(20+Lᵢ); bound140+Σ(20+Lᵢ)
 

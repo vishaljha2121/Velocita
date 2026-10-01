@@ -116,11 +116,12 @@ void require_protocol_closed(ReplicatedKernel& node, const AuthorityBarrier& req
 void elect_with_one_remote_vote(ReplicatedKernel& node) {
     for (int attempt = 0; attempt < 100 && !node.is_leader(); ++attempt) {
         node.tick(100);
-        const auto term = node.status().term;
         while (auto outbound = identity_test::take_outbound_message(node)) {
-            if (!std::holds_alternative<velocita::RequestVote>(outbound->payload)) continue;
-            identity_test::deliver_declared_peer(node, velocita::PeerMessage{
-                1, 2, velocita::RequestVoteResponse{term, true}});
+            const auto* request = std::get_if<velocita::RequestVote>(&outbound->payload);
+            if (request == nullptr) continue;
+            velocita::RequestVoteResponse grant{request->term, true};
+            grant.prevote = request->prevote;
+            identity_test::deliver_declared_peer(node, velocita::PeerMessage{1, 2, grant});
             break;
         }
     }
@@ -379,8 +380,10 @@ void test_failed_term_vote_persist_latches_node(const std::filesystem::path& roo
                               catalog_test::standard_catalog(), lineage_tag),
                           {}, {fail_before_metadata_write, &failure});
     bool election_failed = false;
+    node.tick(10'000);
+    require(!failure.observed, "a pre-vote round wrote term/vote metadata");
     try {
-        node.tick(10'000);
+        identity_test::grant_prevote(node, 1);
     } catch (const std::runtime_error&) {
         election_failed = true;
     }
@@ -421,11 +424,14 @@ void test_failed_self_vote_is_reported_by_tick(const std::filesystem::path& root
                               root, 2, {1, 2, 3},
                               catalog_test::standard_catalog(), lineage_tag),
                           {}, {fail_before_metadata_write, &failure});
+    // With pre-vote the campaign, and so the self-vote, starts in the owner
+    // call that delivers the deciding grant; that call must report the failure.
+    node.tick(10'000);
     bool refused = false;
-    try { node.tick(10'000); }
+    try { identity_test::grant_prevote(node, 1); }
     catch (const std::runtime_error&) { refused = true; }
     require(failure.observed, "self-vote fixture missed the metadata failure");
-    require(refused, "self-vote persistence failure was swallowed by owner tick");
+    require(refused, "self-vote persistence failure was swallowed by its owner call");
     require_protocol_closed(node, marker(23, domain), "self-vote metadata failure");
 }
 

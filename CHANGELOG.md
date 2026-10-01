@@ -13,6 +13,19 @@ release-engineering work.
 
 ## [V2] - In development
 
+### Raft pre-vote — 2026-10-01 (CP-076)
+
+Fixes the election bursts of M3 log findings 43 and 47 (term 49 -> 191 in 6 h on
+wifi). Patch 0001 adds optional pre-vote to the pinned willemt/raft (off by
+default; V2 enables it): a timed-out voter asks for term + 1 without raising its
+own, and peers that still hear a leader, or hold a more up-to-date log, refuse.
+An isolated voter no longer deposes a healthy leader when it returns. Pinned
+digests: patch 2212859a..., raft.h d349e211..., raft_server.c 447eec99...;
+raft_private.h and raft_server_properties.c are now pinned too. **The V2 peer body
+version moves to 3**: deploy as a fresh cluster (or stop all voters, upgrade, start
+all). Fresh pristine clone: `~/.cache/velocita-deps/willemt-raft-cp076`. ADR 0006
+amendment.
+
 ### Phase 2 paper trading: limits, gateway, paper venue, dashboards — 2026-09-30 (CP-075)
 
 Built by parallel agents in per-owner repo copies, reviewed and merged by hand.

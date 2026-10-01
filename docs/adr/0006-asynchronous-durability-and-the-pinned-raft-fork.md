@@ -231,3 +231,71 @@ owner loop decides when the disk happens and a test can withhold it.
 The power-cut sweep found the fatal-recovered-commit-index defect and the
 64 KiB-per-record write amplification on its first run. Both had been present,
 green, and invisible to three hand-picked durability points.
+
+## Amendment, 2026-10-01: pre-vote in the pinned fork (CP-076)
+
+PROBLEM. M3 log findings 43 and 47: a voter cut off by a wifi drop kept timing
+out and raising its own term; on reconnect its higher term made the healthy
+leader step down (through the append-entries response, not only the vote). The
+live cluster went from term 49 to 191 in six hours, and every election makes the
+paper gateway stop new risk. The owner chose pre-vote only; election timeouts
+are unchanged.
+
+DECISION. Patch 0001 gains an optional pre-vote (Raft thesis 9.6), enabled by
+`raft_set_prevote` and OFF by default, so V1 and every raw-library user keep the
+old behaviour. V2 enables it for every voter.
+
+- An expired election timer (as follower or as candidate) opens a pre-vote round
+  for `current_term + 1`. The node stays a follower, forgets its old leader, and
+  touches no term, vote or log: nothing is persisted.
+- A voter grants only if the proposed term is newer than its own, it has not
+  heard from a leader within the election timeout (`current_leader` with
+  `timeout_elapsed < election_timeout`, the rule upstream already applied to
+  real votes; a leader is its own `current_leader` and resets its timer at each
+  heartbeat, so it always refuses), and the asker's log is at least as
+  up-to-date (the real vote's comparison, now shared). Granting changes nothing.
+- Only a majority of grants for exactly the proposed term, received while the
+  round is open, starts the real election. A valid append from the current
+  leader closes the round.
+- A REFUSAL that carries a newer term brings the asker to that term, as in etcd.
+  This never inflates a term (the term already exists at the refuser), and it is
+  required for liveness: a node holding the most up-to-date log but a stale term
+  would otherwise be refused forever on term alone while it refuses everyone
+  else on log grounds.
+
+SAFETY. Pre-vote is advisory. Election safety still rests entirely on real
+RequestVote and on durable term/vote; a pre-vote can only delay or suppress an
+election. The durable-quorum gate, the follower ack clamp and early durable acks
+are untouched: pre-vote changes no term, so an ack's term check is unaffected.
+The log comparison uses the held log, exactly as the real vote does.
+
+NO CHECKQUORUM. willemt has none and this change adds none. A leader cut off
+from a majority stays leader in its own eyes until it hears a higher term;
+followers that stop hearing it elect a successor, because their stickiness
+expires. The remaining gap is a one-way failure in which a leader's heartbeats
+arrive but nothing it sends back does: followers keep refusing pre-votes and the
+cluster cannot commit until the link heals. Heartbeats already suppress election
+timers in that case, so this is not new with pre-vote; CheckQuorum would close it.
+
+WIRE. `msg_requestvote_t` and `msg_requestvote_response_t` gain a trailing
+`prevote` flag. The V2 peer body version goes from 2 to 3: RequestVote is 48 + 1
+bytes and its reply 25 + 1, the extra byte the canonical flag (0 or 1). Any other
+body version is refused, so a voter without pre-vote and one with it refuse
+each other's frames rather than read a pre-vote as a real vote. Deploy as a fresh
+cluster or a stop-all, upgrade-all, start-all restart; storage formats are
+unchanged.
+
+PINS. Patch 0001 now also changes `raft_private.h`; it, `raft_log.c` and
+`raft_server_properties.c` are checked against reviewed digests independently of
+the stamp (the last was patched but unpinned before). A patch change needs a
+fresh pristine clone: `~/.cache/velocita-deps/willemt-raft-cp076`.
+
+EVIDENCE. Pre-vote tests in `tests/v2_replication_tests.cpp` (grant changes no
+hard state; leader stickiness; stale log; a round counts only its own grants; an
+isolated voter rejoins without raising the term; leader loss replaced within 8 s;
+a stale voter never campaigns; random partitions keep one leader per term and
+identical committed entries), a five-voter round test in
+`tests/v2_durable_quorum_tests.cpp`, and codec tests in
+`tests/v2_bound_peer_tests.cpp`. Each rule was mutation-checked. The
+seed-dependent failure of the stranded-voter test (6 of 30 seeds before) no
+longer occurs: it was the same term inflation.

@@ -60,7 +60,8 @@ void encoder_bytes_and_borrowing() {
         {1, 2, RequestVote{7, 1, 4, 3}}, {1, 2, RequestVoteResponse{7, true}},
         {1, 2, AppendEntriesResponse{7, false, 4, 1}},
     }};
-    const std::array<std::size_t, 3> expected_sizes{{136, 113, 129}};
+    // 88 bytes of framing around inner bodies of 48+1, 25+1 (pre-vote flag) and 41.
+    const std::array<std::size_t, 3> expected_sizes{{137, 114, 129}};
     std::size_t small_index{};
     for (const auto& message : small) {
         const auto owned = encode_bound_peer(message, sender, first, first_scratch);
