@@ -22,14 +22,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+import random
+import re
 import select
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_DOWN, Decimal, InvalidOperation
 from typing import Callable, Iterable, Sequence
 
+from ..adapters.websocket import HandshakeRefused, ProtocolError
 from ..collectors.market_stream import publish
 from ..contracts.enums import PredicateOperator
 from ..research import rules
@@ -220,6 +224,7 @@ def parse_decision(line: str) -> dict[str, int | str]:
 
 
 _BUCKETS_MS = (1, 2, 5, 10, 20, 50, 100, 250, 500, 1000, 2500)
+_SUBMITTER_REASONS = frozenset({"bad_tick", "source", "decision", "authorization", "setup"})
 
 
 @dataclass
@@ -253,6 +258,19 @@ class EdgeMetrics:
     risk_version: int | None = None
     position_version: int | None = None
     position_lots: int | None = None
+    market_data_connected: int = 0
+    market_data_errors: dict[str, int] = field(default_factory=dict)
+    submitter_errors: dict[tuple[str, str], int] = field(default_factory=dict)
+
+    def observe_submitter_error(self, line: str) -> None:
+        """Any reply that is not a DECISION. Labels are bounded: the submitter's
+        reason vocabulary (else `other`) and an ApplyCode-sized number (else `none`)."""
+        self.errors += 1
+        fields = dict(part.split("=", 1) for part in line.split()[1:] if "=" in part)
+        reason, code = fields.get("reason", ""), fields.get("code", "")
+        key = (reason if reason in _SUBMITTER_REASONS else "other",
+               code if re.fullmatch(r"-?\d{1,3}", code) else "none")
+        self.submitter_errors[key] = self.submitter_errors.get(key, 0) + 1
 
     def observe_message(self, outcome: str, tick: Tick | None, usd_per_tick: Decimal) -> None:
         self.messages[outcome] = self.messages.get(outcome, 0) + 1
@@ -347,6 +365,14 @@ class EdgeMetrics:
                         f"velocita_paper_position_version {self.position_version}"]
             if self.position_lots is not None:
                 out += ["# TYPE velocita_paper_position_lots gauge", f"velocita_paper_position_lots {self.position_lots}"]
+        out += ["# TYPE velocita_shadow_market_data_connected gauge",
+                f"velocita_shadow_market_data_connected {self.market_data_connected}",
+                "# TYPE velocita_shadow_market_data_errors_total counter"]
+        out += [f'velocita_shadow_market_data_errors_total{{kind="{k}"}} {n}'
+                for k, n in sorted(self.market_data_errors.items())]
+        out.append("# TYPE velocita_shadow_submitter_errors_total counter")
+        out += [f'velocita_shadow_submitter_errors_total{{reason="{r}",code="{c}"}} {n}'
+                for (r, c), n in sorted(self.submitter_errors.items())]
         return "\n".join(out) + "\n"
 
 
@@ -359,6 +385,31 @@ def _read_line(process: subprocess.Popen, timeout_s: float) -> str | None:
     return line.rstrip("\n") if line else None
 
 
+BACKOFF_CAP_S = 60.0
+# What a market-data connection can fail with. WebSocketRefused (a topic or
+# endpoint outside the read-only contract) is a configuration error and is not
+# here: retrying cannot fix it.
+MARKET_DATA_ERRORS = (ProtocolError, OSError, UnicodeDecodeError)
+
+
+def backoff_delay(failures: int, jitter: Callable[[], float] = random.random) -> float:
+    """Seconds to wait after FAILURES (>= 1) consecutive failures: 1, 2, 4 ... s
+    capped at BACKOFF_CAP_S, jittered into the step's upper half so restarts
+    spread out but never retry at once."""
+    step = min(BACKOFF_CAP_S, 2.0 ** min(failures - 1, 16))
+    return step * (0.5 + 0.5 * jitter())
+
+
+def market_data_error_kind(error: BaseException) -> str:
+    if isinstance(error, HandshakeRefused):
+        return "http_5xx" if error.status is not None and 500 <= error.status <= 599 else "handshake"
+    if isinstance(error, TimeoutError):
+        return "timeout"
+    if isinstance(error, OSError):
+        return "connection"
+    return "protocol"
+
+
 @dataclass
 class RunResult:
     decisions: int = 0
@@ -369,20 +420,81 @@ class RunResult:
 def run_once(socket_factory: Callable[[], object], submitter_argv: Sequence[str], source: FeatureSource, *,
              textfile: str | None, shadow_recorded_code: int, clock_ns: Callable[[], int] = time.time_ns,
              metrics: EdgeMetrics | None = None, reply_timeout_s: float = 60.0,
-             topics: Iterable[str] = ("reference_prices",), ledger=None, paper_book=None) -> RunResult:
-    """One submitter process and one market-data connection, until either ends.
-    PAPER_BOOK (paper mode only) books the kernel-confirmed fills and sets the
-    TICK line's buy stop."""
+             topics: Iterable[str] = ("reference_prices",), ledger=None, paper_book=None,
+             reconnect: Callable[[], bool] | None = None, sleep: Callable[[float], None] | None = None,
+             jitter: Callable[[], float] = random.random) -> RunResult:
+    """One submitter process, until it ends or market data does. A market-data
+    failure never raises: while RECONNECT() holds, the connection is reopened
+    after `backoff_delay` with the same submitter; without RECONNECT, or once it
+    is false, the run ends. PAPER_BOOK (paper mode only) books the
+    kernel-confirmed fills and sets the TICK line's buy stop."""
     metrics = metrics or EdgeMetrics(shadow_recorded_code)
     metrics.feature_names = source.feature_names
+    sleep = sleep or time.sleep
     result = RunResult()
     last_price: Decimal | None = None
     paper = False
+    recorded_code = shadow_recorded_code
+    next_id = 0
 
     def rendered() -> str:
         text = metrics.render(now_ns=clock_ns())
         text = text + ledger.render(last_price) if ledger is not None and last_price is not None else text
         return text + paper_book.render() if paper and paper_book is not None else text
+
+    def published() -> None:
+        if textfile:
+            publish(rendered(), textfile)
+
+    def forward(raw: str) -> str | None:
+        """One market-data message through the submitter: why the submitter
+        ended, or None while it still answers."""
+        nonlocal next_id, last_price
+        receive_ns = clock_ns()
+        next_id += 1
+        tick = source.tick(raw, receive_ns=receive_ns, tick_id=next_id)
+        metrics.observe_message(source.last_outcome, tick, source.usd_per_tick)
+        if tick is None:
+            return None
+        stop = paper_book.gate(tick.event_ns, tick.features[-1]) if paper and paper_book is not None else None
+        tick.exits_only = stop is not None
+        if process.poll() is not None:
+            return f"submitter exited with code {process.returncode}"
+        try:
+            process.stdin.write(tick.line() + "\n")
+            process.stdin.flush()
+        except OSError as error:
+            return f"submitter closed its input ({type(error).__name__}; exit code {process.poll()})"
+        metrics.ticks += 1
+        reply = _read_line(process, reply_timeout_s)
+        if reply is None:
+            code = process.poll()
+            return "submitter stopped answering" if code is None else f"submitter exited with code {code}"
+        if reply.startswith("DECISION "):
+            decision = parse_decision(reply)
+            metrics.observe(decision, tick_receive_ns=tick.receive_ns,
+                            expected_rule=tick.expected_rule, age_ns=tick.age_ns)
+            result.decisions += 1
+            # The book moves only on what the cluster recorded AND sized:
+            # a stale or refused decision would not have been an order.
+            rule = int(decision["rule"])
+            last_price = Decimal(tick.features[-1]) * source.usd_per_tick
+            if (ledger is not None and int(decision["decision_code"]) == recorded_code
+                    and int(decision.get("resolution", 0)) == PROPOSED and rule < len(source.program)):
+                ledger.observe(tick.event_ns, last_price, source.program[rule].action.value)
+            if paper and paper_book is not None:
+                action = source.program[rule].action.value if rule < len(source.program) else None
+                paper_book.observe(tick.event_ns, tick.features[-1], action=action,
+                                   authorization=str(decision.get("authorization", "none")),
+                                   resync_position=int(decision["position_lots"]) if int(
+                                       decision.get("resync", 0)) else None, stop=stop)
+        else:
+            print(f"edge: submitter replied: {reply}", file=sys.stderr, flush=True)
+            metrics.observe_submitter_error(reply)
+            result.errors += 1
+        published()
+        return None
+
     process = subprocess.Popen(list(submitter_argv), stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
                                bufsize=1)
     metrics.submitter_starts += 1
@@ -396,66 +508,56 @@ def run_once(socket_factory: Callable[[], object], submitter_argv: Sequence[str]
         paper = " mode=paper" in f" {ready}"
         recorded_code = ACTION if paper else shadow_recorded_code
         metrics.paper = metrics.paper or paper
-        socket = socket_factory()
-        socket.open()
-        socket.subscribe(list(topics))
-        next_id = 0
-        try:
-            while True:
-                raw = socket.recv_text()
-                if raw is None:
-                    result.reason = "market data ended"
-                    break
-                receive_ns = clock_ns()
-                next_id += 1
-                tick = source.tick(raw, receive_ns=receive_ns, tick_id=next_id)
-                metrics.observe_message(source.last_outcome, tick, source.usd_per_tick)
-                if tick is None:
-                    continue
-                stop = paper_book.gate(tick.event_ns, tick.features[-1]) if paper and paper_book is not None else None
-                tick.exits_only = stop is not None
-                process.stdin.write(tick.line() + "\n")
-                process.stdin.flush()
-                metrics.ticks += 1
-                reply = _read_line(process, reply_timeout_s)
-                if reply is None:
-                    result.reason = "submitter stopped answering"
-                    break
-                if reply.startswith("DECISION "):
-                    decision = parse_decision(reply)
-                    metrics.observe(decision, tick_receive_ns=tick.receive_ns,
-                                    expected_rule=tick.expected_rule, age_ns=tick.age_ns)
-                    result.decisions += 1
-                    # The book moves only on what the cluster recorded AND sized:
-                    # a stale or refused decision would not have been an order.
-                    rule = int(decision["rule"])
-                    last_price = Decimal(tick.features[-1]) * source.usd_per_tick
-                    if (ledger is not None and int(decision["decision_code"]) == recorded_code
-                            and int(decision.get("resolution", 0)) == PROPOSED and rule < len(source.program)):
-                        ledger.observe(tick.event_ns, last_price, source.program[rule].action.value)
-                    if paper and paper_book is not None:
-                        action = source.program[rule].action.value if rule < len(source.program) else None
-                        paper_book.observe(tick.event_ns, tick.features[-1], action=action,
-                                           authorization=str(decision.get("authorization", "none")),
-                                           resync_position=int(decision["position_lots"]) if int(
-                                               decision.get("resync", 0)) else None, stop=stop)
-                else:
-                    metrics.errors += 1
-                    result.errors += 1
-                if textfile:
-                    publish(rendered(), textfile)
-        finally:
-            socket.close()
+        failures = 0
+        while True:
+            socket, error = None, None
+            try:
+                socket = socket_factory()
+                socket.open()
+                socket.subscribe(list(topics))
+                metrics.market_data_connected = 1
+                published()
+                while True:
+                    raw = socket.recv_text()
+                    if raw is None:
+                        break
+                    failures = 0
+                    ended = forward(raw)
+                    if ended:
+                        result.reason = ended
+                        return result
+            except MARKET_DATA_ERRORS as caught:
+                error = caught
+            finally:
+                metrics.market_data_connected = 0
+                if socket is not None:
+                    try:
+                        socket.close()
+                    except OSError:
+                        pass
+            again = reconnect is not None and reconnect()
+            kind = market_data_error_kind(error) if error is not None else "closed"
+            if error is not None or again:  # a clean end with no reconnect is the day ending
+                metrics.market_data_errors[kind] = metrics.market_data_errors.get(kind, 0) + 1
+                what = f"{type(error).__name__}: {error}" if error is not None else "the server closed the stream"
+                print(f"edge: market data {kind}: {what}", file=sys.stderr, flush=True)
+            if not again:
+                result.reason = "market data ended" if error is None else f"market data {kind}: {error}"
+                return result
+            failures += 1
+            published()
+            sleep(backoff_delay(failures, jitter))
     finally:
         metrics.submitter_ready = 0
-        if process.stdin:
-            process.stdin.close()
-        if process.stdout:
-            process.stdout.close()
+        metrics.market_data_connected = 0
+        for stream in (process.stdin, process.stdout):
+            try:
+                if stream:
+                    stream.close()
+            except OSError:
+                pass  # a broken pipe still holding an unsent tick
         try:
             process.wait(timeout=30)
         except subprocess.TimeoutExpired:
             process.kill()
-        if textfile:
-            publish(rendered(), textfile)
-    return result
+        published()

@@ -6,15 +6,19 @@ tested) for the feature vector; hand-written program text.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import io
 import json
 import sys
 import textwrap
+import time
 import unittest
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Callable
 
 from velocita_model.research import rules
 from velocita_model.research.bars import DailyBars
@@ -446,6 +450,256 @@ class LedgerFromCommittedDecisions(unittest.TestCase):
             text = textfile.read_text()
             self.assertIn('velocita_shadow_book_trades_total{timing="tick"} 1\n', text)
             self.assertIn('velocita_shadow_book_position{timing="tick"} 1\n', text)
+
+
+class Backoff(unittest.TestCase):
+    """Hand-computed: 2^(n-1) s capped at 60 s, jittered into its upper half."""
+
+    def test_the_delay_doubles_from_one_second_and_is_capped(self) -> None:
+        top = [edge.backoff_delay(n, lambda: 1.0) for n in range(1, 9)]
+        self.assertEqual(top, [1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 60.0, 60.0])
+        self.assertEqual(edge.backoff_delay(10_000, lambda: 1.0), 60.0)
+
+    def test_jitter_never_waits_less_than_half_the_step(self) -> None:
+        self.assertEqual([edge.backoff_delay(n, lambda: 0.0) for n in (1, 3, 7)], [0.5, 2.0, 30.0])
+        self.assertEqual(edge.backoff_delay(2, lambda: 0.5), 1.5)
+
+
+class SubmitterErrorLabels(unittest.TestCase):
+    def test_reason_and_code_are_taken_from_the_reply_and_bounded(self) -> None:
+        metrics = edge.EdgeMetrics(shadow_recorded_code=17)
+        for line in ("ERROR id=1 reason=source code=14", "ERROR id=2 reason=source code=14",
+                     "ERROR id=3 reason=bad_tick", "ERROR id=4 reason=decision",
+                     'ERROR id=5 reason=x"} 1 code=14', "ERROR id=6 reason=source code=123456789",
+                     "something unexpected"):
+            metrics.observe_submitter_error(line)
+        self.assertEqual(metrics.errors, 7)
+        text = metrics.render(now_ns=0)
+        self.assertIn('velocita_shadow_submitter_errors_total{reason="source",code="14"} 2\n', text)
+        self.assertIn('velocita_shadow_submitter_errors_total{reason="bad_tick",code="none"} 1\n', text)
+        self.assertIn('velocita_shadow_submitter_errors_total{reason="decision",code="none"} 1\n', text)
+        self.assertIn('velocita_shadow_submitter_errors_total{reason="other",code="14"} 1\n', text)
+        self.assertIn('velocita_shadow_submitter_errors_total{reason="source",code="none"} 1\n', text)
+        self.assertIn('velocita_shadow_submitter_errors_total{reason="other",code="none"} 1\n', text)
+        self.assertIn("velocita_shadow_errors_total 7\n", text)
+
+
+def _scripted(connections: list) -> Callable[[], object]:
+    """A socket factory over CONNECTIONS, one entry per connection: an
+    exception is raised by open(); a list is what that connection delivers
+    before the server closes it (an exception in it is raised by that recv, a
+    callable is called for the message)."""
+    script = connections
+
+    class Socket:
+        def __init__(self) -> None:
+            self.plan = script.pop(0)
+
+        def open(self) -> None:
+            if isinstance(self.plan, BaseException):
+                raise self.plan
+
+        def subscribe(self, topics) -> None: ...
+
+        def recv_text(self):
+            if not self.plan:
+                return None
+            item = self.plan.pop(0)
+            if isinstance(item, BaseException):
+                raise item
+            return item() if callable(item) else item
+
+        def close(self) -> None: ...
+
+    return Socket
+
+
+class MarketDataOutages(unittest.TestCase):
+    """Finding 48: a refused handshake (HTTP 503) killed the edge. Every
+    market-data failure is now a counted reconnect with the submitter kept."""
+
+    def test_refusals_and_drops_reconnect_with_one_submitter_and_bounded_backoff(self) -> None:
+        from velocita_model.adapters.websocket import HandshakeRefused, ProtocolError
+        with TemporaryDirectory() as d:
+            fake = Path(d) / "fake_submitter.py"
+            fake.write_text(FAKE_SUBMITTER)
+            textfile = Path(d) / "shadow.prom"
+            seen_connected: list[bool] = []
+
+            def while_connected() -> str:
+                seen_connected.append("velocita_shadow_market_data_connected 1\n" in textfile.read_text())
+                return reference("401.0", "2026-07-20T12:00:02Z")
+
+            connections = [HandshakeRefused(503, "handshake refused: 'HTTP/1.1 503 Service Unavailable'"),
+                           HandshakeRefused(503, "handshake refused: 'HTTP/1.1 503 Service Unavailable'"),
+                           ConnectionResetError("reset by peer"),
+                           [reference("400.0", "2026-07-20T12:00:01Z"), TimeoutError("timed out")],
+                           ProtocolError("frame exceeds the configured bound"),
+                           [while_connected],
+                           [reference("402.0", "2026-07-20T12:00:03Z")]]
+            sleeps: list[float] = []
+            stderr = io.StringIO()
+            source = edge.FeatureSource("trend", 125, closes=history(200), usd_per_tick=Decimal("0.01"))
+            with contextlib.redirect_stderr(stderr):
+                result = edge.run_once(_scripted(connections), [sys.executable, str(fake)], source,
+                                       textfile=str(textfile), shadow_recorded_code=14,
+                                       clock_ns=iter(range(10**18, 10**18 + 10**9, 10**6)).__next__,
+                                       reconnect=lambda: bool(connections), sleep=sleeps.append,
+                                       jitter=lambda: 1.0)
+            text = textfile.read_text()
+            # Three prices over three connections and one submitter (the fake's
+            # source sequence would restart with a new process).
+            self.assertEqual(result.decisions, 3)
+            self.assertIn("velocita_shadow_submitter_starts_total 1\n", text)
+            self.assertIn('velocita_shadow_decisions_total{decision_code="14"} 3\n', text)
+            self.assertIn('velocita_shadow_market_data_errors_total{kind="http_5xx"} 2\n', text)
+            self.assertIn('velocita_shadow_market_data_errors_total{kind="connection"} 1\n', text)
+            self.assertIn('velocita_shadow_market_data_errors_total{kind="timeout"} 1\n', text)
+            self.assertIn('velocita_shadow_market_data_errors_total{kind="protocol"} 1\n', text)
+            self.assertIn('velocita_shadow_market_data_errors_total{kind="closed"} 1\n', text)
+            self.assertIn("velocita_shadow_market_data_connected 0\n", text)
+            self.assertEqual(seen_connected, [True])
+            # Consecutive failures 1, 2, 3 wait 1, 2, 4 s; a delivered price resets the count.
+            self.assertEqual(sleeps, [1.0, 2.0, 4.0, 1.0, 2.0, 1.0])
+            self.assertEqual(result.reason, "market data ended")
+            self.assertIn("HTTP/1.1 503 Service Unavailable", stderr.getvalue())
+
+    def test_without_reconnect_a_refused_handshake_ends_the_run_without_raising(self) -> None:
+        from velocita_model.adapters.websocket import HandshakeRefused
+        with TemporaryDirectory() as d:
+            fake = Path(d) / "fake_submitter.py"
+            fake.write_text(FAKE_SUBMITTER)
+            source = edge.FeatureSource("trend", 125, closes=history(200), usd_per_tick=Decimal("0.01"))
+            with contextlib.redirect_stderr(io.StringIO()):
+                result = edge.run_once(_scripted([HandshakeRefused(503, "handshake refused")]),
+                                       [sys.executable, str(fake)], source, textfile=None, shadow_recorded_code=14)
+            self.assertEqual(result.decisions, 0)
+            self.assertIn("http_5xx", result.reason)
+
+
+EXITING_SUBMITTER = textwrap.dedent('''
+    import sys
+    print("READY generation=400 first_sequence=1 mode=shadow caller_id=21", flush=True)
+    for line in sys.stdin:
+        if line.startswith("TICK"):
+            f = dict(p.split("=", 1) for p in line.split()[1:])
+            print(f"ERROR id={f['id']} reason=source code=14", flush=True)
+            sys.exit(3)
+''')
+
+DEAF_SUBMITTER = textwrap.dedent('''
+    import os, time
+    print("READY generation=1 first_sequence=1 mode=shadow caller_id=21", flush=True)
+    os.close(0)
+    time.sleep(2)
+''')
+
+
+class SubmitterEnds(unittest.TestCase):
+    def _run(self, script: str, messages: list) -> tuple[edge.RunResult, str, str]:
+        with TemporaryDirectory() as d:
+            fake = Path(d) / "submitter.py"
+            fake.write_text(script)
+            textfile = Path(d) / "shadow.prom"
+            source = edge.FeatureSource("trend", 125, closes=history(200), usd_per_tick=Decimal("0.01"))
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                result = edge.run_once(_scripted([messages]), [sys.executable, str(fake)], source,
+                                       textfile=str(textfile), shadow_recorded_code=14,
+                                       clock_ns=iter(range(10**18, 10**18 + 10**9, 10**6)).__next__)
+            return result, textfile.read_text(), stderr.getvalue()
+
+    def test_an_exited_submitter_is_not_written_to_and_its_reply_is_logged(self) -> None:
+        def after_exit() -> str:
+            time.sleep(0.5)  # the submitter has exited by the time this price arrives
+            return reference("401.0", "2026-07-20T12:00:02Z")
+
+        result, text, stderr = self._run(EXITING_SUBMITTER, [reference("400.0", "2026-07-20T12:00:01Z"),
+                                                             after_exit, reference("402.0", "2026-07-20T12:00:03Z")])
+        self.assertEqual(result.reason, "submitter exited with code 3")
+        self.assertIn("velocita_shadow_ticks_total 1\n", text)
+        self.assertIn('velocita_shadow_submitter_errors_total{reason="source",code="14"} 1\n', text)
+        self.assertIn("ERROR id=1 reason=source code=14\n", stderr)
+
+    def test_a_closed_submitter_input_ends_the_run_instead_of_raising(self) -> None:
+        def after_close() -> str:
+            time.sleep(0.5)  # the submitter has closed its input by now
+            return reference("400.0", "2026-07-20T12:00:01Z")
+
+        result, text, _ = self._run(DEAF_SUBMITTER, [after_close])
+        self.assertTrue(result.reason.startswith("submitter closed its input"), result.reason)
+        self.assertIn("velocita_shadow_ticks_total 0\n", text)
+
+
+class _Stop(BaseException):
+    """Ends the edge's endless loop from inside a test."""
+
+
+class EdgeCommandSurvivesOutages(unittest.TestCase):
+    """The incident through the command itself: a history fetch failure and
+    two 503 handshakes, then prices, with one submitter start throughout."""
+
+    def test_the_command_keeps_running_and_keeps_its_submitter(self) -> None:
+        from datetime import datetime, timezone
+        from unittest import mock
+
+        from velocita_model import cli
+        from velocita_model.adapters import websocket
+        from velocita_model.research import bars as bars_module
+        now = datetime.now(timezone.utc)
+        today = now.date()
+        days = [today - timedelta(days=200 - i) for i in range(200)]  # ends yesterday
+        loads: list[int] = []
+
+        def load(*_args, **_kwargs):
+            loads.append(1)
+            if len(loads) == 1:
+                raise OSError("history host unreachable")
+            return DailyBars(tuple(days), ("X",), (tuple(100.0 + i for i in range(200)),), None)
+
+        stamp = lambda s: now.replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%S") + f".{s:06d}Z"
+        refused = websocket.HandshakeRefused(503, "handshake refused: 'HTTP/1.1 503 Service Unavailable'")
+        plans = [refused, refused, [reference("400.0", stamp(1)), reference("401.0", stamp(2))]]
+
+        class Market:
+            def __init__(self, host: str, path: str) -> None:
+                if not plans:
+                    raise _Stop()
+                self.plan = plans.pop(0)
+
+            def open(self) -> None:
+                if isinstance(self.plan, BaseException):
+                    raise self.plan
+
+            def subscribe(self, topics) -> None: ...
+            def recv_text(self): return self.plan.pop(0) if self.plan else None
+            def close(self) -> None: ...
+
+        with TemporaryDirectory() as d:
+            fake = Path(d) / "fake_submitter.py"
+            fake.write_text(FAKE_SUBMITTER)
+            textfile = Path(d) / "shadow.prom"
+            args = cli.build_parser().parse_args(CommandLine.ARGS + [
+                "--program-out", str(Path(d) / "trend.program"), "--textfile", str(textfile),
+                "--history-cache", d, "--", sys.executable, str(fake)])
+            sleeps: list[float] = []
+            with mock.patch.object(bars_module, "load_binance_daily_api", load), \
+                    mock.patch.object(websocket, "ReadOnlyMarketSocket", Market), \
+                    mock.patch("time.sleep", sleeps.append), contextlib.redirect_stderr(io.StringIO()) as err, \
+                    contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaises(_Stop):
+                    args.handler(args)
+            text = textfile.read_text()
+        self.assertEqual(len(loads), 2, "the failed history fetch was not retried")
+        self.assertIn("history host unreachable", err.getvalue())
+        self.assertIn("velocita_shadow_submitter_starts_total 1\n", text)
+        self.assertIn('velocita_shadow_decisions_total{decision_code="14"} 2\n', text)
+        self.assertIn('velocita_shadow_market_data_errors_total{kind="http_5xx"} 2\n', text)
+        self.assertIn('velocita_shadow_market_data_errors_total{kind="closed"} 1\n', text)
+        # History, two refusals, the closed stream. (subprocess.wait polls
+        # time.sleep in steps of at most 50 ms; a backoff is never under 0.5 s.)
+        backoffs = [s for s in sleeps if s >= 0.5]
+        self.assertTrue(len(backoffs) == 4 and all(s <= 60 for s in backoffs), backoffs)
 
 
 if __name__ == "__main__":

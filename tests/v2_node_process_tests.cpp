@@ -702,6 +702,60 @@ void shadow_submitter_scenario(Harness& h, const std::string& submitter) {
             "a halted cluster still offered a paper decision for authorization: " + after_halt);
     const int status2 = second.finish();
     require(WIFEXITED(status2) && WEXITSTATUS(status2) == 0, "restarted submitter did not exit cleanly");
+
+    // Finding 48: starts that end before committing anything each claim a
+    // generation, so the state file runs ahead of the kernel. The next start is
+    // refused as a generation gap and re-bases from the kernel's own report: one
+    // past the last generation that committed, which is the paper run's.
+    const std::uint64_t committed = std::stoull(word(again, "generation"));
+    constexpr std::uint64_t kDeadStarts = 3;
+    for (std::uint64_t i = 0; i < kDeadStarts; ++i) {
+        const auto log = h.root / ("dead-" + std::to_string(i) + ".log");
+        Piped dead(args, log);
+        const auto line = dead.line(std::chrono::seconds(60));
+        require(line.rfind("READY ", 0) == 0 && word(line, "generation") == std::to_string(committed + 1 + i),
+                "a dead start did not claim the next generation: " + line + " " + read_file(log));
+        const int code = dead.finish();
+        require(WIFEXITED(code) && WEXITSTATUS(code) == 0, "a start with no input did not exit cleanly");
+    }
+    const auto rebase_tick = [&](Piped& p, int id, std::uint64_t generation, std::uint64_t source_seq) {
+        std::ostringstream digest;
+        digest << std::hex;
+        for (int i = 0; i < 32; ++i) digest << (i == 0 ? "d" : "0") << (i == 31 ? (id % 16) : (i == 30 ? id / 16 % 16 : 0));
+        p.send("TICK id=" + std::to_string(id) + " event_ns=" + std::to_string(2000 + id) + " receive_ns=" +
+               std::to_string(2010 + id) + " age_ns=10 features=50000,0,0,0,11 evidence=" + digest.str());
+        const auto line = p.line(std::chrono::seconds(60));
+        require(line.rfind("DECISION ", 0) == 0 && word(line, "source_seq") == std::to_string(source_seq) &&
+                    word(line, "decision") == std::to_string((generation << 32) | source_seq),
+                "tick " + std::to_string(id) + " was not recorded on generation " + std::to_string(generation) +
+                    " sequence " + std::to_string(source_seq) + ": " + line);
+    };
+    const auto rebased = committed + 1;
+    {
+        const auto log = h.root / "submitter-ahead.log";
+        Piped ahead(args, log);
+        const auto line = ahead.line(std::chrono::seconds(60));
+        require(line.rfind("READY ", 0) == 0 && word(line, "generation") == std::to_string(committed + kDeadStarts + 1),
+                "the start after the dead ones did not claim the generation past them: " + line);
+        rebase_tick(ahead, 28, rebased, 1);
+        rebase_tick(ahead, 29, rebased, 2);
+        const int code = ahead.finish();
+        require(WIFEXITED(code) && WEXITSTATUS(code) == 0, "the re-based submitter did not exit cleanly");
+        require(read_file(log).find("RESYNC source=41") != std::string::npos,
+                "the re-sync was not reported on stderr: " + read_file(log));
+    }
+    {
+        const auto log = h.root / "submitter-after-rebase.log";
+        Piped after(args, log);
+        const auto line = after.line(std::chrono::seconds(60));
+        require(line.rfind("READY ", 0) == 0 && word(line, "generation") == std::to_string(rebased + 1),
+                "the re-based generation was not persisted: " + line);
+        rebase_tick(after, 30, rebased + 1, 1);
+        const int code = after.finish();
+        require(WIFEXITED(code) && WEXITSTATUS(code) == 0, "the start after the re-base did not exit cleanly");
+        require(read_file(log).find("RESYNC") == std::string::npos,
+                "a start on the persisted generation re-synced again: " + read_file(log));
+    }
     // The retained pools hold exactly the log above the snapshot.
     std::this_thread::sleep_for(std::chrono::milliseconds(300));  // one health publish interval
     for (const int node : h.voters) {

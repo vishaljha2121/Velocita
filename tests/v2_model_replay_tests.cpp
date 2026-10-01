@@ -535,9 +535,18 @@ ApplyResult model_source_event(ModelState& state,
     }
 
     auto* cursor = model_source(state, command.source_id);
+    // A generation gap reports the cursor instead of the refused event.
+    const auto generation_gap = [&] {
+        auto value = model_result(state, ApplyCode::source_generation_gap, version);
+        value.detail_kind = ApplyResultDetailKind::source_state;
+        value.detail.words = {command.source_id.value(),
+                              cursor == nullptr ? 0 : cursor->generation.value(),
+                              cursor == nullptr ? 0 : cursor->sequence.value()};
+        return value;
+    };
     if (cursor == nullptr) {
         if (command.source_generation != SourceGeneration{1}) {
-            return source_result(ApplyCode::source_generation_gap);
+            return generation_gap();
         }
         if (command.source_sequence != SourceSequence{1}) {
             return source_result(ApplyCode::source_sequence_gap);
@@ -553,7 +562,7 @@ ApplyResult model_source_event(ModelState& state,
         }
     } else {
         if (command.source_generation.value() != cursor->generation.value() + 1) {
-            return source_result(ApplyCode::source_generation_gap);
+            return generation_gap();
         }
         if (command.source_sequence != SourceSequence{1}) {
             return source_result(ApplyCode::source_sequence_gap);
@@ -1283,8 +1292,12 @@ void test_generated_model_and_snapshot_replay() {
     // changed, which is the whole of the difference - the generator, the
     // distribution and the reducer are untouched. The coverage assertions above
     // still hold, which is what makes that claim checkable rather than asserted.
+    // RE-PINNED 2026-10-01 (finding 48): a source_generation_gap result now
+    // carries the source_state cursor report instead of the refused event's
+    // identity. The model states that rule independently and every command's
+    // result still matches it byte for byte; only retained gap receipts moved.
     require(actual ==
-                "ed3732db95453b12dfdaf9d15a616a302be4c94bfc0a78d5fafe38b8b8aa5eca",
+                "36b6f2884ea71f1cf0a4b33f50c62f6d18f12b0186fcdb6e5c489560f17e4986",
             "generated replay corpus changed without review: " + actual);
 
     std::cout << "generated histories=" << kSeedCount

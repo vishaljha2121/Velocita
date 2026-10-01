@@ -253,7 +253,8 @@ private:
            value == ApplyResultDetailKind::venue_event ||
            value == ApplyResultDetailKind::risk_configuration ||
            value == ApplyResultDetailKind::mass_cancel ||
-           value == ApplyResultDetailKind::risk_state;
+           value == ApplyResultDetailKind::risk_state ||
+           value == ApplyResultDetailKind::source_state;
 }
 
 [[nodiscard]] constexpr bool known(const ReservationState value) noexcept {
@@ -314,6 +315,13 @@ private:
         const auto cancelled = value.mass_cancelled();
         return value.code == ApplyCode::applied && in_scope <= kMaxClusterOrders &&
                cancelled <= in_scope && value.mass_skipped() == in_scope - cancelled;
+    }
+    if (value.detail_kind == ApplyResultDetailKind::source_state) {
+        // A source with no cursor reports 0/0; one with a cursor has both.
+        return value.code == ApplyCode::source_generation_gap &&
+               value.source_cursor_id().value() != 0 &&
+               (value.source_cursor_generation().value() == 0) ==
+                   (value.source_cursor_sequence().value() == 0);
     }
     if (value.detail_kind == ApplyResultDetailKind::risk_state) {
         return value.code == ApplyCode::stale_risk_state &&

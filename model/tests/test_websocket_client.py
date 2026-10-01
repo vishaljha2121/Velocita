@@ -124,6 +124,29 @@ class HandshakeRefusals(unittest.TestCase):
     def test_non_upgrade_response(self) -> None:
         self._open_against(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n", "handshake refused")
 
+    def test_a_503_is_refused_with_its_status_and_the_socket_is_closed(self) -> None:
+        client_side, server_side = socket.socketpair()
+
+        def server() -> None:
+            request = b""
+            while b"\r\n\r\n" not in request:
+                request += server_side.recv(4096)
+            server_side.sendall(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n")
+
+        thread = threading.Thread(target=server)
+        thread.start()
+        try:
+            with self.assertRaises(ws.HandshakeRefused) as refused:
+                ws.ReadOnlyMarketSocket("api.truemarkets.co", "/v1/defi/market",
+                                        connect=lambda: client_side, timeout_s=5).open()
+            self.assertEqual(refused.exception.status, 503)
+            self.assertIsInstance(refused.exception, ws.ProtocolError)
+            self.assertEqual(client_side.fileno(), -1, "a refused handshake leaked its socket")
+        finally:
+            thread.join(timeout=10)
+            client_side.close()
+            server_side.close()
+
 
 class LoopbackSession(unittest.TestCase):
     """A scripted server on a socket pair: handshake, ping, a fragmented text

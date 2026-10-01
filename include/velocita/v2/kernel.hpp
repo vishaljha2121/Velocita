@@ -415,6 +415,10 @@ enum class ApplyResultDetailKind : std::uint8_t {
     // bind the account's current versions on its next frame. Words are
     // {risk_version, position_version, position_quantity atoms}.
     risk_state = 7,
+    // Carried only by a `source_generation_gap` refusal so a submitter whose
+    // state ran ahead can re-base on the next generation. Words are {source_id,
+    // cursor generation, cursor sequence}; both zero when the source has none.
+    source_state = 8,
 };
 
 // Three canonical 64-bit words are interpreted only through the explicit tag.
@@ -462,6 +466,13 @@ struct ApplyResultDetail {
         const QuantityLots position_quantity) noexcept {
         return {{{risk_version.value(), position_version.value(),
                   static_cast<std::uint64_t>(position_quantity.atoms())}}};
+    }
+
+    [[nodiscard]] static constexpr ApplyResultDetail source_state(
+        const SourceId id,
+        const SourceGeneration cursor_generation,
+        const SourceSequence cursor_sequence) noexcept {
+        return {{{id.value(), cursor_generation.value(), cursor_sequence.value()}}};
     }
 
     [[nodiscard]] static constexpr ApplyResultDetail venue_event(
@@ -598,6 +609,18 @@ struct ApplyResult {
         return detail_kind == ApplyResultDetailKind::risk_state
                    ? QuantityLots::from_atoms(static_cast<std::int64_t>(detail.words[2]))
                    : QuantityLots{};
+    }
+
+    [[nodiscard]] constexpr SourceId source_cursor_id() const noexcept {
+        return detail_kind == ApplyResultDetailKind::source_state ? SourceId{detail.words[0]} : SourceId{};
+    }
+    [[nodiscard]] constexpr SourceGeneration source_cursor_generation() const noexcept {
+        return detail_kind == ApplyResultDetailKind::source_state ? SourceGeneration{detail.words[1]}
+                                                                  : SourceGeneration{};
+    }
+    [[nodiscard]] constexpr SourceSequence source_cursor_sequence() const noexcept {
+        return detail_kind == ApplyResultDetailKind::source_state ? SourceSequence{detail.words[2]}
+                                                                  : SourceSequence{};
     }
 
     [[nodiscard]] constexpr EffectId event_effect_id() const noexcept {

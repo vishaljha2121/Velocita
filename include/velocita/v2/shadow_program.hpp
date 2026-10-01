@@ -109,4 +109,12 @@ struct RiskView {
 // A report carrying a zero version is ignored: zero is never a live version.
 [[nodiscard]] RiskView resync_risk_view(const RiskView& current, const ApplyResult& authorization) noexcept;
 
+// The generation SOURCE's next event must use after its RecordSourceEvent was
+// refused as a generation gap: one past the cursor the kernel reported (1 when
+// it has none). nullopt for any other result. Only a gap is re-based: a
+// regression means the kernel holds events this submitter's state never
+// reserved (a rolled-back state file or a second writer), so it fails closed.
+[[nodiscard]] std::optional<SourceGeneration> resync_source_generation(SourceId source,
+                                                                       const ApplyResult& recorded) noexcept;
+
 }  // namespace velocita::v2

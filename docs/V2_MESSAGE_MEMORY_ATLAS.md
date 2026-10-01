@@ -724,7 +724,7 @@ Reducer/replay → result codec → caller or gateway evidence tracker. Standalo
 | 37 | 1 | 1–5 | StrategyMode |
 | 38 | 8 | — | KillEpoch |
 | 46 | 8 | — | ExecutorGeneration |
-| 54 | 1 | 0–6 | ApplyResultDetailKind |
+| 54 | 1 | 0–8 | ApplyResultDetailKind |
 | 55 | 8 | — | Detail word0 |
 | 63 | 8 | — | Detail word1 |
 | 71 | 8 | — | Detail word2 |
@@ -751,6 +751,8 @@ The three detail words share bytes; these are alternatives, not additional field
 | 4 | VenueId | VenueSessionId | VenueSequence | EffectId / ObservationOrigin (native1,synthetic2) |
 | 5 | AccountId | InstrumentId | Resulting RiskVersion | No added risk balances |
 | 6 | In-scope count | Cancelled count | Skipped count | No added per-order array |
+| 7 | Account RiskVersion | Account PositionVersion | Position quantity lots | `stale_risk_state` only |
+| 8 | SourceId | Cursor SourceGeneration | Cursor SourceSequence (both 0: no cursor) | `source_generation_gap` only |
 
 Source: [write_result_payload](/Users/vishaljha/aeron-raft-pi/src/v2_kernel_codec.cpp:1109), [ApplyResult/accessors](/Users/vishaljha/aeron-raft-pi/include/velocita/v2/kernel.hpp:454).
 

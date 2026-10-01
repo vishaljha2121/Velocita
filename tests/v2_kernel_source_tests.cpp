@@ -1,5 +1,9 @@
 #include "v2_catalog_test_support.hpp"
 #include "velocita/v2/kernel.hpp"
+#include "velocita/v2/kernel_codec.hpp"
+#include "velocita/v2/state_snapshot.hpp"
+
+#include <array>
 
 #include <cstddef>
 #include <cstdint>
@@ -199,6 +203,135 @@ void test_source_capacities_fail_before_cursor_mutation() {
             "source-event receipt overflow advanced the cursor");
 }
 
+// The expected cursor is what this test committed, written by hand: never read
+// back from the refusal under test.
+void test_generation_gap_reports_the_source_cursor() {
+    using namespace velocita::v2;
+    TradingState state = catalog_test::state();
+    ApplyScratch scratch;
+
+    const auto unbootstrapped = catalog_test::apply(state, source_command(1, 0x51, 6, 3, 1, 0xe1), scratch);
+    require(unbootstrapped.code == ApplyCode::source_generation_gap &&
+                unbootstrapped.detail_kind == ApplyResultDetailKind::source_state &&
+                unbootstrapped.detail.words == std::array<std::uint64_t, 3>{6, 0, 0},
+            "a gap on a source with no cursor did not report the empty cursor");
+
+    require(catalog_test::apply(state, source_command(2, 0x52, 6, 1, 1, 0xe2), scratch).code ==
+                    ApplyCode::applied &&
+                catalog_test::apply(state, source_command(3, 0x53, 6, 1, 2, 0xe3), scratch).code ==
+                    ApplyCode::applied,
+            "source setup failed");
+    const auto before = state;
+    const auto ahead_command = source_command(4, 0x54, 6, 5, 1, 0xe4);
+    const auto ahead = catalog_test::apply(state, ahead_command, scratch);
+    require(ahead.code == ApplyCode::source_generation_gap &&
+                ahead.detail_kind == ApplyResultDetailKind::source_state &&
+                ahead.detail.words == std::array<std::uint64_t, 3>{6, 1, 2} &&
+                ahead.source_cursor_id() == SourceId{6} &&
+                ahead.source_cursor_generation() == SourceGeneration{1} &&
+                ahead.source_cursor_sequence() == SourceSequence{2},
+            "a generation gap did not report the source's current cursor");
+    const auto* cursor = find_source_cursor(state, SourceId{6});
+    require(state.source_count == before.source_count && state.source_event_count == before.source_event_count &&
+                cursor != nullptr && cursor->generation == SourceGeneration{1} &&
+                cursor->sequence == SourceSequence{2},
+            "a reported gap changed source state");
+
+    // Every other source refusal still names the refused event, not the cursor.
+    const auto conflict = catalog_test::apply(state, source_command(5, 0x55, 6, 1, 1, 0xe5), scratch);
+    const auto sequence_gap = catalog_test::apply(state, source_command(6, 0x56, 6, 1, 4, 0xe6), scratch);
+    require(conflict.code == ApplyCode::source_event_conflict &&
+                conflict.detail_kind == ApplyResultDetailKind::source &&
+                sequence_gap.code == ApplyCode::source_sequence_gap &&
+                sequence_gap.detail_kind == ApplyResultDetailKind::source &&
+                sequence_gap.detail.words == std::array<std::uint64_t, 3>{6, 1, 4},
+            "a refusal other than a generation gap carried the cursor report");
+
+    // Re-based exactly as the report says: one past the cursor, sequence 1.
+    require(catalog_test::apply(state, source_command(7, 0x57, 6, 2, 1, 0xe7), scratch).code == ApplyCode::applied,
+            "the generation after the reported cursor was refused");
+    const auto regression = catalog_test::apply(state, source_command(8, 0x58, 6, 1, 3, 0xe8), scratch);
+    require(regression.code == ApplyCode::source_generation_regression &&
+                regression.detail_kind == ApplyResultDetailKind::source &&
+                regression.detail.words == std::array<std::uint64_t, 3>{6, 1, 3},
+            "a generation regression carried the cursor report");
+
+    // The retained answer is the cursor at refusal time, on this replica and on
+    // one restored from a snapshot, even though the cursor has moved since.
+    require(catalog_test::apply(state, ahead_command, scratch) == ahead,
+            "the exact retry of a reported gap answered differently");
+    std::array<std::byte, kKernelResultBytes> encoded_result{};
+    const auto encoded = encode_kernel_result(ahead, encoded_result);
+    ApplyResult decoded;
+    require(encoded.error == KernelCodecError::none &&
+                decode_kernel_result({encoded_result.data(), encoded.bytes_written}, decoded).error ==
+                    KernelCodecError::none &&
+                decoded == ahead,
+            "the cursor report did not survive the canonical result codec");
+    std::array<std::byte, kMaxStateSnapshotBytes> snapshot{};
+    const auto saved = encode_state_snapshot(state, snapshot);
+    TradingState restored = catalog_test::state();
+    StateSnapshotScratch snapshot_scratch;
+    require(saved.error == StateSnapshotError::none &&
+                decode_state_snapshot({snapshot.data(), saved.bytes_written}, restored, snapshot_scratch).error ==
+                    StateSnapshotError::none,
+            "state retaining a cursor report did not round-trip");
+    require(catalog_test::apply(restored, ahead_command, scratch) == ahead,
+            "a restored replica answered the gap retry differently");
+}
+
+void test_source_state_detail_is_validated_by_both_codecs() {
+    using namespace velocita::v2;
+    ApplyResult result;
+    result.code = ApplyCode::source_generation_gap;
+    result.detail_kind = ApplyResultDetailKind::source_state;
+    result.detail = ApplyResultDetail::source_state(SourceId{41}, SourceGeneration{2}, SourceSequence{9});
+    const auto retaining = [](const ApplyResult& retained_result) {
+        TradingState value = catalog_test::state();
+        value.state_version = 5;
+        value.caller_cursor_count = 1;
+        value.caller_cursors[0] = {CallerId{1}, {}, {}};
+        value.receipt_count = 1;
+        value.receipts[0] = {{CallerId{1}, RequestSequence{77}, digest(0x31)}, retained_result};
+        return value;
+    };
+    std::array<std::byte, kKernelResultBytes> bytes{};
+    std::array<std::byte, kMaxStateSnapshotBytes> snapshot{};
+    const auto admitted = [&](const ApplyResult& value, const std::string& what) {
+        ApplyResult decoded;
+        const auto encoded = encode_kernel_result(value, bytes);
+        require(encoded.error == KernelCodecError::none &&
+                    decode_kernel_result({bytes.data(), encoded.bytes_written}, decoded).error ==
+                        KernelCodecError::none &&
+                    decoded == value,
+                "result codec refused " + what);
+        const auto state = retaining(value);
+        require(encode_state_snapshot(state, snapshot).error == StateSnapshotError::none,
+                "snapshot refused " + what);
+    };
+    admitted(result, "a cursor report");
+    auto empty = result;
+    empty.detail.words = {41, 0, 0};
+    admitted(empty, "the report of a source with no cursor");
+
+    const auto refused = [&](auto change, const std::string& what) {
+        auto invalid = result;
+        change(invalid);
+        require(encode_kernel_result(invalid, bytes).error == KernelCodecError::invalid_value,
+                "result codec accepted " + what);
+        const auto state = retaining(invalid);
+        require(encode_state_snapshot(state, snapshot).error == StateSnapshotError::invalid_state,
+                "snapshot accepted " + what);
+    };
+    refused([](ApplyResult& r) { r.code = ApplyCode::source_generation_regression; },
+            "a cursor report on a generation regression");
+    refused([](ApplyResult& r) { r.code = ApplyCode::source_sequence_gap; }, "a cursor report on a sequence gap");
+    refused([](ApplyResult& r) { r.code = ApplyCode::applied; }, "a cursor report on an applied event");
+    refused([](ApplyResult& r) { r.detail.words[0] = 0; }, "a cursor report without a source");
+    refused([](ApplyResult& r) { r.detail.words[1] = 0; }, "a cursor with a sequence but no generation");
+    refused([](ApplyResult& r) { r.detail.words[2] = 0; }, "a cursor with a generation but no sequence");
+}
+
 }  // namespace
 
 int main() {
@@ -208,6 +341,8 @@ int main() {
         test_gaps_and_regressions_fail_closed();
         test_source_event_requires_identity_and_digest();
         test_source_capacities_fail_before_cursor_mutation();
+        test_generation_gap_reports_the_source_cursor();
+        test_source_state_detail_is_validated_by_both_codecs();
         std::cout << "all V2 kernel source tests passed\n";
         return 0;
     } catch (const std::exception& error) {

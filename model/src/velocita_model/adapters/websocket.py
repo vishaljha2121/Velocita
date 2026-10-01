@@ -47,6 +47,15 @@ class ProtocolError(RuntimeError):
     """The peer broke RFC 6455 or exceeded a bound; the connection is unusable."""
 
 
+class HandshakeRefused(ProtocolError):
+    """The server answered the upgrade with something other than 101; STATUS is
+    its HTTP status code, or None when the status line did not parse."""
+
+    def __init__(self, status: int | None, message: str) -> None:
+        super().__init__(message)
+        self.status = status
+
+
 class WebSocketRefused(RuntimeError):
     """The client declined an endpoint or topic outside the read-only contract."""
 
@@ -194,6 +203,13 @@ class ReadOnlyMarketSocket:
 
     def open(self) -> None:
         sock = self._connect()
+        try:
+            self._handshake(sock)
+        except BaseException:
+            sock.close()
+            raise
+
+    def _handshake(self, sock: socket.socket) -> None:
         sock.settimeout(self._timeout_s)
         key = base64.b64encode(os.urandom(16)).decode("ascii")
         sock.sendall((f"GET {self._path} HTTP/1.1\r\nHost: {self._host}\r\nUpgrade: websocket\r\n"
@@ -210,7 +226,8 @@ class ReadOnlyMarketSocket:
         head, _, rest = response.partition(b"\r\n\r\n")
         lines = head.decode("iso-8859-1").split("\r\n")
         if not lines[0].startswith("HTTP/1.1 101"):
-            raise ProtocolError(f"handshake refused: {lines[0]!r}")
+            status = lines[0].split(" ", 2)[1] if lines[0].count(" ") >= 1 else ""
+            raise HandshakeRefused(int(status) if status.isdigit() else None, f"handshake refused: {lines[0]!r}")
         headers = {k.strip().lower(): v.strip() for k, _, v in (line.partition(":") for line in lines[1:])}
         if headers.get("sec-websocket-accept") != accept_key(key):
             raise ProtocolError("handshake accept key mismatch")

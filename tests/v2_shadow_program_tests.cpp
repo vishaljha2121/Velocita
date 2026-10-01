@@ -3,6 +3,7 @@
 #include "velocita/v2/state_snapshot.hpp"
 
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -217,6 +218,49 @@ void a_restarted_edge_continues_on_the_next_generation() {
     const auto [source, decision] = h.tick(1, 11, 2);
     require(source.code == ApplyCode::applied && decision.decision_code == DecisionCode::shadow_recorded,
             "generation 2 did not continue the source");
+}
+
+// Starts that died before committing anything left the submitter's generation
+// ahead of the kernel's cursor. The cursor is (2, 3) by construction here.
+void a_submitter_ahead_of_the_kernel_rebases_one_past_the_reported_cursor() {
+    Harness h;
+    (void)h.setup();
+    for (int i = 0; i < 2; ++i) require(h.tick(1, 11, 1).first.code == ApplyCode::applied, "generation 1 refused");
+    h.source_sequence = 0;
+    for (int i = 0; i < 3; ++i) require(h.tick(1, 11, 2).first.code == ApplyCode::applied, "generation 2 refused");
+    h.source_sequence = 0;
+    const auto refused = h.tick(1, 11, 7).first;
+    require(refused.code == ApplyCode::source_generation_gap, "a generation five ahead was not refused as a gap");
+    const auto next = resync_source_generation(SourceId{41}, refused);
+    require(next == SourceGeneration{3}, "the re-based generation is not one past the committed generation 2");
+    h.source_sequence = 0;
+    const auto [source, decision] = h.tick(1, 11, next->value());
+    require(source.code == ApplyCode::applied && decision.decision_code == DecisionCode::shadow_recorded,
+            "the re-based generation did not continue the source");
+}
+
+void only_a_reported_gap_for_this_source_moves_the_generation() {
+    ApplyResult gap;
+    gap.code = ApplyCode::source_generation_gap;
+    gap.detail_kind = ApplyResultDetailKind::source_state;
+    gap.detail = ApplyResultDetail::source_state(SourceId{41}, SourceGeneration{2}, SourceSequence{9});
+    require(resync_source_generation(SourceId{41}, gap) == SourceGeneration{3}, "a reported gap was not adopted");
+    auto r = gap;
+    r.detail.words = {41, 0, 0};
+    require(resync_source_generation(SourceId{41}, r) == SourceGeneration{1},
+            "a source the kernel has never seen did not restart at generation 1");
+    r = gap;
+    r.detail.words[0] = 42;
+    require(!resync_source_generation(SourceId{41}, r), "another source's cursor was adopted");
+    r = gap;
+    r.code = ApplyCode::source_generation_regression;
+    require(!resync_source_generation(SourceId{41}, r), "a regression moved the generation");
+    r = gap;
+    r.detail_kind = ApplyResultDetailKind::source;  // the refused event's own identity, not the cursor
+    require(!resync_source_generation(SourceId{41}, r), "a gap without the cursor report moved the generation");
+    r = gap;
+    r.detail.words[1] = std::numeric_limits<std::uint64_t>::max();
+    require(!resync_source_generation(SourceId{41}, r), "a generation past the last one was produced");
 }
 
 void a_stale_control_view_does_not_enable_the_strategy() {
@@ -534,6 +578,8 @@ int main() {
         a_hold_rule_proposes_no_action();
         a_long_stream_never_wedges_the_bounded_state();
         a_restarted_edge_continues_on_the_next_generation();
+        a_submitter_ahead_of_the_kernel_rebases_one_past_the_reported_cursor();
+        only_a_reported_gap_for_this_source_moves_the_generation();
         a_stale_control_view_does_not_enable_the_strategy();
         setup_is_idempotent_under_exact_retry();
         a_reused_sequence_with_different_content_is_a_conflict();

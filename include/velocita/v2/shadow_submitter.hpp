@@ -42,8 +42,9 @@ struct SubmitterStart {
                                                    const std::array<std::byte, 16>& incarnation,
                                                    std::uint64_t reserve);
 
-// Raises the reserved high-water mark to RESERVED_THROUGH (exclusive) before
-// sequences below it are used. Empty string on success.
+// Records GENERATION (the current one, or the one a source re-sync moved to)
+// and raises the reserved high-water mark to RESERVED_THROUGH (exclusive)
+// before sequences below it are used. Empty string on success.
 [[nodiscard]] std::string extend_reservation(const std::filesystem::path& file,
                                              const std::array<std::byte, 16>& incarnation,
                                              std::uint64_t generation, std::uint64_t reserved_through);
