@@ -2448,6 +2448,129 @@
      "sort": "desc"
     }
    }
+  },
+  {
+   "type": "stat",
+   "title": "Gross P&L this week (before fees)",
+   "id": 45,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Net P&L plus fees: the realized price-move result of this week's closed round trips, before the paper venue's fees. Positive = the strategy's timing made money before costs. ISO week to date (UTC, from Monday 00:00), from the edge's paper book: fills the kernel's position confirmed, costed at the paper venue's fees.",
+   "gridPos": {
+    "h": 8,
+    "w": 6,
+    "x": 0,
+    "y": 82
+   },
+   "targets": [
+    {
+     "expr": "max(velocita_paper_week_pnl_usd) + max(velocita_paper_week_fees_usd)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": 0
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 2
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "P&L this week: gross, fees, net",
+   "id": 46,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Net = gross - fees. ISO week to date; all three restart at 0 each Monday 00:00 UTC.",
+   "gridPos": {
+    "h": 8,
+    "w": 18,
+    "x": 6,
+    "y": 82
+   },
+   "targets": [
+    {
+     "expr": "max(velocita_paper_week_pnl_usd) + max(velocita_paper_week_fees_usd)",
+     "legendFormat": "gross (before fees)",
+     "refId": "A"
+    },
+    {
+     "expr": "-max(velocita_paper_week_fees_usd)",
+     "legendFormat": "fees",
+     "refId": "B"
+    },
+    {
+     "expr": "max(velocita_paper_week_pnl_usd)",
+     "legendFormat": "net",
+     "refId": "C"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
   }
  ],
  "templating": {

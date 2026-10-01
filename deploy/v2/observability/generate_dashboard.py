@@ -630,6 +630,8 @@ def gauge(title, expr, x, w, unit="percent", h=6, description="", maximum=100, s
 
 WEEK_VOLUME = 'max(velocita_paper_week_volume_usd)'
 WEEK_LOSS = 'max(velocita_paper_week_loss_usd)'
+WEEK_PNL = 'max(velocita_paper_week_pnl_usd)'
+WEEK_FEES = 'max(velocita_paper_week_fees_usd)'
 
 
 def volume_row():
@@ -683,6 +685,18 @@ def volume_row():
     series("Fees, last 7 days (cents)", [
         ('100 * sum(increase(velocita_gateway_fees_usd_total[7d]))', "gateway, rolling 7 days"),
     ], 12, 12, unit=CENTS, description="Venue-reported paper fees over a rolling week, in US cents.")
+    advance(8)
+    # Gross = net + fees: what the price moves alone did, before the venue's fees.
+    stat("Gross P&L this week (before fees)", f'{WEEK_PNL} + {WEEK_FEES}', 0, 6, unit="currencyUSD", h=8,
+         decimals=2, steps=(("red", None), ("green", 0)),
+         description="Net P&L plus fees: the realized price-move result of this week's closed round trips, before "
+                     "the paper venue's fees. Positive = the strategy's timing made money before costs. " + week)
+    series("P&L this week: gross, fees, net", [
+        (f'{WEEK_PNL} + {WEEK_FEES}', "gross (before fees)"),
+        (f'-{WEEK_FEES}', "fees"),
+        (WEEK_PNL, "net"),
+    ], 6, 18, unit="currencyUSD",
+           description="Net = gross - fees. ISO week to date; all three restart at 0 each Monday 00:00 UTC.")
     advance(8)
 
 
