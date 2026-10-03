@@ -445,3 +445,46 @@ tests:
         alertname: VelocitaHostRebooted
         exp_alerts: []
 
+  # Alertmanager's scrape fails: critical after 2 minutes. (It cannot be pushed
+  # by the thing that is down; Grafana shows it.)
+  - interval: 1m
+    input_series:
+      - series: 'up{job="alertmanager",host="nuc1",instance="127.0.0.1:9093"}'
+        values: '1x5 0x10'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: VelocitaAlertmanagerDown
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: VelocitaAlertmanagerDown
+        exp_alerts:
+          - exp_labels: {severity: critical, job: alertmanager, host: nuc1, instance: "127.0.0.1:9093"}
+            exp_annotations:
+              summary: "Alertmanager is down: no alert reaches the phone"
+              description: "On nuc1: systemctl --user status velocita-v2-alertmanager and journalctl --user -u velocita-v2-alertmanager. A missing ~/.config/velocita/ntfy-publish-token stops it from starting."
+
+  # Two failed notifications: fires while they are inside the 15-minute window,
+  # and clears once they leave it.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="alertmanager",host="nuc1",instance="127.0.0.1:9093"}'
+        values: '1x60'
+      - series: 'alertmanager_notifications_failed_total{job="alertmanager",host="nuc1",instance="127.0.0.1:9093",integration="webhook"}'
+        values: '0x10 2x50'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: VelocitaAlertDeliveryFailing
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: VelocitaAlertDeliveryFailing
+        exp_alerts:
+          - exp_labels: {severity: warning, job: alertmanager, host: nuc1, instance: "127.0.0.1:9093", integration: webhook}
+            exp_annotations:
+              summary: "Alertmanager failed to deliver 2 notification(s) in 15 minutes"
+              description: "ntfy refused or was unreachable. On nuc1: systemctl --user status velocita-ntfy; a 401/403 in the Alertmanager journal means the publish token or its access entry is wrong (runbook, First install)."
+      - eval_time: 40m
+        alertname: VelocitaAlertDeliveryFailing
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: VelocitaAlertmanagerDown
+        exp_alerts: []

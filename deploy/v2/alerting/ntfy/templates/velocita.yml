@@ -1,0 +1,17 @@
+# Alertmanager webhook -> one short phone notification. Used as ?template=velocita.
+# Priority 5 (urgent) breaks through Focus when the topic is set to do so in the
+# app; 3 is a normal push; 2 is quiet (resolved).
+title: |
+  {{- if eq .status "firing" }}
+  {{- if eq (first .alerts).labels.severity "critical" }}🚨{{ else }}⚠️{{ end }} {{ (first .alerts).labels.alertname }}{{ if gt (len .alerts) 1 }} (+{{ len (rest .alerts) }} more){{ end }}
+  {{- else }}✅ Resolved: {{ (first .alerts).labels.alertname }}
+  {{- end }}
+message: |
+  {{- range .alerts }}
+  {{ if .labels.host }}[{{ .labels.host }}] {{ end }}{{ .annotations.summary }}
+  {{- if eq .status "firing" }}
+  {{ .annotations.description }}
+  {{- end }}
+  {{ end }}
+priority: |
+  {{- if eq .status "firing" }}{{ if eq (first .alerts).labels.severity "critical" }}5{{ else }}3{{ end }}{{ else }}2{{ end }}

@@ -1,5 +1,7 @@
-# M3a alert rules. Delivery (phone push/e-mail) is NOT configured yet: the owner
-# chooses the channel first (roadmap M3a). Grafana shows these as firing/pending.
+# M3a alert rules. Delivery: Prometheus -> Alertmanager -> self-hosted ntfy ->
+# phone (docs/ALERT_DELIVERY_RUNBOOK.md). Grafana also shows them as firing/pending.
+# severity: critical is an urgent push repeated hourly; warning is a normal push
+# repeated every 4 hours.
 groups:
   - name: velocita-v2
     rules:
@@ -242,3 +244,19 @@ groups:
         annotations:
           summary: "Market-data prune on {{ $labels.host }} is blocked: {{ $labels.reason }}"
           description: "A day's rows are held in stream.db because its archive does not verify, the Mac acknowledged different bytes, or rows arrived after it was archived. Nothing is deleted until an operator resolves it (runbook)."
+      # The delivery path itself. These two cannot reach the phone when they
+      # fire for the reason they describe; Grafana shows them, and the external
+      # heartbeat (runbook) is what notices a dead nuc1.
+      - alert: VelocitaAlertmanagerDown
+        expr: up{job="alertmanager"} == 0 or absent(up{job="alertmanager"})
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "Alertmanager is down: no alert reaches the phone"
+          description: "On nuc1: systemctl --user status velocita-v2-alertmanager and journalctl --user -u velocita-v2-alertmanager. A missing ~/.config/velocita/ntfy-publish-token stops it from starting."
+      - alert: VelocitaAlertDeliveryFailing
+        expr: increase(alertmanager_notifications_failed_total[15m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "Alertmanager failed to deliver {{ $value | printf \"%.0f\" }} notification(s) in 15 minutes"
+          description: "ntfy refused or was unreachable. On nuc1: systemctl --user status velocita-ntfy; a 401/403 in the Alertmanager journal means the publish token or its access entry is wrong (runbook, First install)."

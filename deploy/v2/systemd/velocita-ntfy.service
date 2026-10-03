@@ -1,0 +1,21 @@
+# nuc1 only. Self-hosted ntfy: the phone push channel for alerts, on the
+# Tailscale address, port 2586. Accounts and tokens live in the data volume
+# (docs/ALERT_DELIVERY_RUNBOOK.md, "First install").
+[Unit]
+Description=Velocita ntfy (alert push)
+
+[Service]
+EnvironmentFile=%h/.config/velocita/host.env
+ExecStart=/usr/bin/podman run --rm --replace --name velocita-ntfy \
+    --network host --memory 128m --read-only --cap-drop all --security-opt no-new-privileges \
+    -v velocita-ntfy-data:/var/lib/ntfy \
+    -v %h/src/aeron-raft-pi/deploy/v2/alerting/ntfy/server.yml:/etc/ntfy/server.yml:ro \
+    -v %h/src/aeron-raft-pi/deploy/v2/alerting/ntfy/templates:/etc/ntfy/templates:ro \
+    -e NTFY_BASE_URL=${VELOCITA_NTFY_BASE_URL} -e NTFY_LISTEN_HTTP=${VELOCITA_TAILSCALE_IP}:2586 \
+    docker.io/binwiederhier/ntfy:v2.25.0 serve
+ExecStop=/usr/bin/podman stop -t 10 velocita-ntfy
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
