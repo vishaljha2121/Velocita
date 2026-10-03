@@ -771,7 +771,7 @@ if(BUILD_TESTING)
     add_test(NAME v2-incremental-digest-tests COMMAND v2-incremental-digest-tests)
 
     add_executable(v2-archive-segment-tests tests/v2_archive_segment_tests.cpp)
-    foreach(archive_suite IN ITEMS archive-catalog archive-store wal-maintenance archive-compaction compaction-fence archive-startup archive-persistence-model archive-publication-fault compaction-io-fault)
+    foreach(archive_suite IN ITEMS archive-catalog archive-store archive-scrub wal-maintenance archive-compaction compaction-fence archive-startup archive-persistence-model archive-publication-fault compaction-io-fault)
         string(REPLACE "-" "_" archive_suite_file "${archive_suite}")
         add_executable(v2-${archive_suite}-tests tests/v2_${archive_suite_file}_tests.cpp)
         target_link_libraries(v2-${archive_suite}-tests PRIVATE velocita_v2_replication)

@@ -488,3 +488,30 @@ tests:
       - eval_time: 40m
         alertname: VelocitaAlertmanagerDown
         exp_alerts: []
+
+  # One election every 30 minutes: never a storm, but recurring after the
+  # fourth. A single election in six hours is not.
+  - interval: 1m
+    input_series:
+      - series: 'velocita_v2_term{job="velocita-v2",host="nuc1"}'
+        values: '1x30 2x30 3x30 4x30 5x30 6x400'
+      - series: 'velocita_v2_term{job="velocita-v2",host="nuc2"}'
+        values: '1x30 2x30 3x30 4x30 5x30 6x400'
+    alert_rule_test:
+      - eval_time: 100m
+        alertname: VelocitaElectionsRecurring
+        exp_alerts: []
+      - eval_time: 100m
+        alertname: VelocitaElectionStorm
+        exp_alerts: []
+      - eval_time: 130m
+        alertname: VelocitaElectionsRecurring
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "4 elections in 6 hours"
+              description: "A healthy cluster holds one term for days. Look for what repeats: compaction pauses (VelocitaCompactionPauseLong), a host that reboots, or a link that drops. Each election fences the gateway for 30 s."
+      - eval_time: 520m
+        alertname: VelocitaElectionsRecurring
+        exp_alerts: []
+

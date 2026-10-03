@@ -54,6 +54,15 @@ groups:
         annotations:
           summary: "{{ $value }} elections in 10 minutes"
           description: "Repeated elections: slow disk, flaky link or a restart loop."
+      # The slow version of a storm: one election per compaction never reaches
+      # the storm's rate (finding 53: 64 elections in two days, no alert).
+      - alert: VelocitaElectionsRecurring
+        # An exact count: increase() extrapolates and would turn 3 into more than 3.
+        expr: max(velocita_v2_term) - min_over_time(max(velocita_v2_term)[6h:1m]) > 3
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $value | printf \"%.0f\" }} elections in 6 hours"
+          description: "A healthy cluster holds one term for days. Look for what repeats: compaction pauses (VelocitaCompactionPauseLong), a host that reboots, or a link that drops. Each election fences the gateway for 30 s."
       - alert: VelocitaCommitStalled
         expr: (velocita_v2_log_index{kind="current"} - on(host,node) velocita_v2_log_index{kind="commit"}) > 0 and on(host,node) velocita_v2_role{role="leader"} == 1
         for: 2m

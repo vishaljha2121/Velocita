@@ -551,3 +551,49 @@ and test-only persistence modeling can proceed in
 parallel. F5/F6 remain open until their contracts, permanent adversarial tests,
 meaningful mutations and final target evidence exist. Two-voter NUC/Pi topology,
 no automatic promotion and the required observability gate are unchanged.
+
+## Amendment 2026-10-03 (CP-079): the compaction path verifies the archive incrementally
+
+**What was observed** (M3 deployment log, finding 53). Every compaction called
+`ArchiveStore::verify_current()` twice, once before and once after publishing. Each call reread,
+re-hashed and fsynced **every** archived segment. The text above already said that "archive
+reverification can reread growing prefixes, so total I/O is not proven linear"; in production it
+was quadratic.
+- With one segment per compaction and a compaction every ~32 minutes, the pause grew by about
+  45 ms per archived segment on nuc1: 0.8 s on day 0, 4.8 s after 90 compactions.
+- Past the 1–2 s election timeout, most compactions caused an election (term 1 → 65 in 48 hours).
+
+**Decision.** The archive check is split in three:
+
+| Check | What it does | Cost | Where it runs |
+|---|---|---|---|
+| `verify_layout` | The directory is ours; the dependency files and catalog on disk equal memory; the directory holds exactly the catalog's files; **every catalogued segment is an owned regular file of the catalogued length** (a stat, no read). | one stat per segment | every compaction, before and after publishing |
+| `verify_incremental` | `verify_layout`, plus a **rotating scrub**: reread, re-hash and fsync `kArchiveScrubSegmentsPerVerify` (2) segments, continuing from where the last call stopped. | constant | every compaction, before publishing |
+| `verify_current` | `verify_layout`, plus every segment's bytes. | linear in the archive | startup (`open` already does this), and history recovery, where the voter is not serving consensus |
+
+A new segment is still read back and compared in full before its catalog row is published. That
+is unchanged.
+
+**What is given up, and why it is acceptable.**
+- **Before:** a silent change of an old segment's *contents*, at the same length, was found at the
+  next compaction.
+- **Now:** it is found when the scrub reaches that segment, which is within
+  `ceil(segments / 2)` compactions, or at the next start, whichever is first.
+  - With 90 segments, that is about one day.
+  - At the catalog's ceiling of 4,096 segments, it is about 43 days.
+- **Still found at the next compaction:** a missing, truncated, extended, re-permissioned,
+  hard-linked or replaced-by-symlink segment, and any unexpected file.
+- **Why the delay costs nothing in safety.** The log prefix an old segment covers was reclaimed
+  when that segment was published. Finding its corruption one compaction later, instead of some
+  compactions later, recovers nothing on this node either way: the repair is the same (the other
+  voters' archives). What the check provides is *detection*, and detection is kept, on a bounded
+  delay.
+
+**Not addressed here.**
+- The compaction's base cost remains: reading the WAL back, saving and reloading the snapshot, and
+  rewriting the WAL. It was 0.2–1.0 s per host on day 0.
+- All three voters compact at the same log index, so they pause together.
+- The archive is never pruned: at one segment per compaction it reaches the 4,096-row catalog
+  ceiling in about 85 days at the current tick rate, after which compaction defers and the
+  retained log fills. An archive retention or offload decision is needed before then.
+

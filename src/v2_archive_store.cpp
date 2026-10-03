@@ -151,6 +151,12 @@ bool owned_segment_name(int directory, const std::string &name) noexcept {
          S_ISREG(info.st_mode) && info.st_nlink == 1 &&
          info.st_uid == ::geteuid() && (info.st_mode & 07777) == 0600;
 }
+bool owned_segment_of_length(int directory, const std::string &name,
+                             std::uint32_t length) noexcept {
+  struct stat info{};
+  return ::fstatat(directory, name.c_str(), &info, AT_SYMLINK_NOFOLLOW) == 0 &&
+         good_file_stat(info, length);
+}
 bool resync_name(int directory, const std::string &name) noexcept {
   int fd;
   do {
@@ -189,6 +195,8 @@ struct ArchiveStore::State {
   std::size_t count{};
   Digest256 catalog_digest{};
   std::uint64_t logical_bytes{};
+  // Next catalog row the rotating scrub rereads (verify_incremental).
+  std::size_t scrub_next{};
   std::vector<std::byte> identity_bytes;
   std::vector<std::byte> execution_bytes;
   bool failed{};
@@ -429,7 +437,12 @@ ArchiveStoreError ArchiveStore::open(const std::filesystem::path &path,
   }
 }
 
-ArchiveStoreError ArchiveStore::verify_current() noexcept {
+// Everything about the archive that can be checked without reading segment
+// contents: the directory is still ours, the dependency files and the catalog
+// on disk equal what this store holds, the directory holds exactly the
+// catalog's files, and every catalogued segment is an owned regular file of the
+// catalogued length. Its cost is one stat per segment, not one read and fsync.
+ArchiveStoreError ArchiveStore::verify_layout() noexcept {
   try {
     if (!state_) return ArchiveStoreError::invalid_argument;
     auto& s = *state_;
@@ -475,10 +488,28 @@ ArchiveStoreError ArchiveStore::verify_current() noexcept {
         return ArchiveStoreError::unexpected_entry;
     }
     if (names != allowed.size()) return ArchiveStoreError::unexpected_entry;
+    for (std::size_t i = 0; i < s.count; ++i)
+      if (!owned_segment_of_length(s.directory, segment_name_for(s.rows[i].segment_digest),
+                                   s.rows[i].segment_file_length))
+        return ArchiveStoreError::segment_failed;
+    if (!resync_name(s.directory, identity_name) || !resync_name(s.directory, execution_name) ||
+        (s.header.generation && !resync_name(s.directory, catalog_name)) ||
+        !sync_fd(s.directory) || !sync_fd(s.root)) return ArchiveStoreError::publication_failed;
+    return ArchiveStoreError::none;
+  } catch (...) { return ArchiveStoreError::publication_failed; }
+}
+
+// Rereads COUNT catalogued segments starting at row FIRST (wrapping), checks
+// each against its catalog row and digests, and resyncs it.
+ArchiveStoreError ArchiveStore::verify_segments(const std::size_t first, const std::size_t count) noexcept {
+  try {
+    if (!state_) return ArchiveStoreError::invalid_argument;
+    auto& s = *state_;
+    if (count > s.count) return ArchiveStoreError::invalid_argument;
     auto segment = std::make_unique<std::array<std::byte, kMaxArchiveSegmentBytes>>();
     ArchiveSegmentScratch scratch;
-    for (std::size_t i = 0; i < s.count; ++i) {
-      const auto& row = s.rows[i];
+    for (std::size_t n = 0; n < count; ++n) {
+      const auto& row = s.rows[(first + n) % s.count];
       const auto name = segment_name_for(row.segment_digest);
       ArchiveSegmentMetadata metadata;
       if (!owned_segment_name(s.directory, name)) return ArchiveStoreError::segment_failed;
@@ -492,11 +523,31 @@ ArchiveStoreError ArchiveStore::verify_current() noexcept {
           terminal != row.terminal_record_digest || !owned_segment_name(s.directory, name) ||
           !resync_name(s.directory, name)) return ArchiveStoreError::segment_failed;
     }
-    if (!resync_name(s.directory, identity_name) || !resync_name(s.directory, execution_name) ||
-        (s.header.generation && !resync_name(s.directory, catalog_name)) ||
-        !sync_fd(s.directory) || !sync_fd(s.root)) return ArchiveStoreError::publication_failed;
     return ArchiveStoreError::none;
   } catch (...) { return ArchiveStoreError::publication_failed; }
+}
+
+// The whole archive: layout, then every segment's bytes. Linear in the bytes
+// archived, so it runs where a voter is not serving consensus (history
+// recovery), never on the compaction path.
+ArchiveStoreError ArchiveStore::verify_current() noexcept {
+  if (const auto layout = verify_layout(); layout != ArchiveStoreError::none) return layout;
+  return verify_segments(0, state_->count);
+}
+
+// The compaction path's check. Its cost does not grow with the archive: the
+// layout, plus a rotating scrub that rereads kArchiveScrubSegmentsPerVerify
+// segments per call, so every segment is still reread once every
+// ceil(count / kArchiveScrubSegmentsPerVerify) calls (ADR 0014, 2026-10-03).
+ArchiveStoreError ArchiveStore::verify_incremental() noexcept {
+  if (const auto layout = verify_layout(); layout != ArchiveStoreError::none) return layout;
+  auto& s = *state_;
+  if (s.count == 0) return ArchiveStoreError::none;
+  const auto count = std::min(kArchiveScrubSegmentsPerVerify, s.count);
+  const auto first = s.scrub_next % s.count;
+  if (const auto scrubbed = verify_segments(first, count); scrubbed != ArchiveStoreError::none) return scrubbed;
+  s.scrub_next = (first + count) % s.count;
+  return ArchiveStoreError::none;
 }
 
 ArchivePublishResult
@@ -510,7 +561,7 @@ ArchiveStore::publish(const ArchivePublicationContext &c,
       return result;
     }
     auto &s = *state_;
-    if (const auto checked = verify_current(); checked != ArchiveStoreError::none) {
+    if (const auto checked = verify_incremental(); checked != ArchiveStoreError::none) {
       s.failed = true;
       result.error = checked;
       return result;
@@ -718,7 +769,9 @@ ArchiveStore::publish(const ArchivePublicationContext &c,
     s.header = header;
     s.catalog_digest = ce.catalog_digest;
     s.logical_bytes += total_bytes;
-    if (const auto checked = verify_current(); checked != ArchiveStoreError::none) {
+    // Each new segment was reread and resynced above; the layout check
+    // confirms the published catalog and directory around them.
+    if (const auto checked = verify_layout(); checked != ArchiveStoreError::none) {
       result.error = checked;
       return result;
     }

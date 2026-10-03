@@ -13,6 +13,17 @@ release-engineering work.
 
 ## [V2] - In development
 
+### Alert delivery; compaction no longer rereads the whole archive — 2026-10-03 (CP-079)
+
+- **Alert delivery.** Prometheus → Alertmanager → self-hosted ntfy on nuc1 → phone
+  (`docs/ALERT_DELIVERY_RUNBOOK.md`). Two rules watch the delivery path.
+- **Compaction (M3 finding 53).** Each compaction reread and fsynced every archived segment,
+  twice, so its pause grew with the cluster's age: 0.8 s → 4.8 s on nuc1 in two days, and 64
+  elections. The compaction path now checks the archive's layout and rereads two segments per
+  compaction in rotation. The full reread remains at startup and in history recovery (ADR 0014
+  amendment). No wire or storage format change.
+- **New alert:** `VelocitaElectionsRecurring`.
+
 ### Edge resilience, source re-sync, persisted paper venue, automatic re-arm — 2026-10-01 (CP-077, CP-078)
 
 These fix M3_DEPLOYMENT_LOG finding 48 (paper data corrupted). They were built by parallel

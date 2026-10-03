@@ -798,3 +798,49 @@ No venue, credential or trading action. Started 2026-09-25.
     - check the Pi's power supply;
     - a reboot still leaves the voter waiting for its keys, which live in `/run`;
     - alerts reach no one outside Grafana.
+
+53. **Compaction pauses grew with the archive until most compactions caused an election (found
+    2026-10-03, by the first alert delivered to a phone).** Alert delivery (Alertmanager and
+    self-hosted ntfy, `docs/ALERT_DELIVERY_RUNBOOK.md`) went live on 2026-10-03. The first real
+    alerts it delivered were three `VelocitaCompactionPauseLong` warnings, which had been firing
+    unseen in Grafana.
+
+    **Measured** (Prometheus, 48 hours from the reset on 2026-10-01):
+
+    | | Day 0 | After 90 compactions |
+    |---|---|---|
+    | nuc1 pause | 0.8 s | 4.8 s |
+    | Pi pause | 1.1 s | 3.7–3.9 s |
+    | nuc2 pause | 0.2 s | 1.7 s |
+
+    - The log grows about 3,840 entries an hour, so a compaction runs every ~32 minutes (not
+      every 8.5 h, as estimated before the SOL candle source, which ticks faster).
+    - The term went from 1 to 65; 30 of those elections were in the last 14 hours.
+    - The gateway fenced 47 times and re-armed 48 times.
+    - `VelocitaElectionStorm` never fired: it needs more than 3 elections in 10 minutes, and
+      these came one per compaction.
+
+    **Cause.** `ArchiveStore::publish` called `verify_current()` before and after each
+    publication, and that rereads, re-hashes and fsyncs every archived segment. One segment is
+    added per compaction and none is ever removed, so each compaction did work proportional to
+    the cluster's age. ADR 0014 had recorded this as "not proven linear".
+
+    **Fix (CP-079; ADR 0014 amendment 2026-10-03).** The compaction path now checks the layout
+    (a stat per segment) and rereads two segments per compaction in rotation. The full reread
+    stays at startup and in history recovery. `tests/v2_archive_scrub_tests.cpp`: 11 tests; 8
+    of 10 mutations killed. The two survivors are checks that were already unpinned before this
+    change: the post-publish layout check, and the terminal-digest comparison, which the
+    segment's own digest already covers.
+
+    **New alert:** `VelocitaElectionsRecurring` (more than 3 elections in 6 hours).
+
+    **Also found the same day:**
+    - `velocita-md-archive.timer` had never been enabled on nuc1 (the 2026-10-01 run was
+      manual). Enabled.
+    - The SOL churn run (finding 51) ended at its capital stop: $1,567.94 of volume for −$15.59.
+      The prediction was about $1,550 for −$15.40.
+
+    **Open:**
+    - the base compaction pause (0.2–1.0 s) and the fact that all voters compact together;
+    - the archive is never pruned (about 85 days to the catalog ceiling at this tick rate).
+

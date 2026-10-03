@@ -17,6 +17,8 @@ class ArchiveDestinationVerifier;
 
 inline constexpr std::uint64_t kDefaultArchiveLogicalByteLimit = 1ULL << 30;
 inline constexpr std::size_t kMaxArchiveDirectoryEntries = 4102;
+// Segments the compaction path rereads per verification (rotating scrub).
+inline constexpr std::size_t kArchiveScrubSegmentsPerVerify = 2;
 
 enum class ArchiveStoreError : std::uint8_t {
     none,
@@ -135,7 +137,10 @@ private:
     friend class ReplicatedKernel;
     friend class ArchiveDestinationVerifier;
     friend struct ArchiveStoreTestAccess;
+    [[nodiscard]] ArchiveStoreError verify_layout() noexcept;
+    [[nodiscard]] ArchiveStoreError verify_segments(std::size_t first, std::size_t count) noexcept;
     [[nodiscard]] ArchiveStoreError verify_current() noexcept;
+    [[nodiscard]] ArchiveStoreError verify_incremental() noexcept;
     [[nodiscard]] ArchivePublishResult publish(
         const ArchivePublicationContext& context,
         const ArchiveRecordSource& records) noexcept;

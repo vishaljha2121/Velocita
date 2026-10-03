@@ -1400,7 +1400,7 @@ void ReplicatedKernel::persist_compaction(void* context) {
         if (published.error != ArchiveStoreError::none) throw std::runtime_error("archive publication refused");
         job.coverage = std::move(published.capability);
     } else {
-        if (self.archive_.verify_current() != ArchiveStoreError::none)
+        if (self.archive_.verify_incremental() != ArchiveStoreError::none)
             throw std::runtime_error("previously published archive evidence no longer verifies");
         job.coverage = self.archive_.coverage_for_reclamation(job.publication.storage_generation, job.cut);
     }
