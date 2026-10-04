@@ -1,4 +1,5 @@
-# NUC only. Scrapes both hosts over Tailscale; listens on 127.0.0.1 only.
+# nuc1 only. Scrapes all three hosts over Tailscale and sends firing alerts to
+# Alertmanager on this host; listens on 127.0.0.1 only.
 # 7 days / 1 GB retention, 512 MB memory cap.
 [Unit]
 Description=Velocita V2 Prometheus

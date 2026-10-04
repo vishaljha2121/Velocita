@@ -113,8 +113,9 @@ struct ActionTemplate {
     constexpr auto operator<=>(const ActionTemplate&) const noexcept = default;
 };
 
-// This is an exact requested action, not a risk-approved order. Phase 4 must
-// verify current risk state and atomically reserve before creating an effect.
+// This is an exact requested action, not a risk-approved order.
+// AuthorizeDecision verifies the current risk state and atomically reserves
+// before it creates an effect.
 struct EconomicActionProposal {
     std::uint16_t schema_version{};
     DecisionId decision_id{};

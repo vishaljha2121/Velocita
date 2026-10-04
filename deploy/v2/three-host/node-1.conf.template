@@ -6,9 +6,11 @@
 #   @INCARNATION@  32 hex digits, a NEW value, identical in all three voter configs
 #   @CATALOG_ROOT@ printed by velocita-v2-shadow-catalog
 #
-# The node never compacts its log, so a returning voter always catches up from
-# retained entries. Enabling compaction needs the online snapshot installer
-# first (three-voter release; tests/v2_snapshot_catchup_red.cpp).
+# The node compacts its log once it retains 2,048 entries (the default of
+# history.compact_at_entries), but never above the index every voter holds
+# durably, so a voter that keeps up always catches up from retained entries. A
+# voter that falls behind a compacted prefix stays a quiet follower and needs a
+# manual repair: the online snapshot installer does not exist yet (M6).
 node_id = 1
 data_root = /var/lib/velocita-v2/node-1
 # First start only; switch to "recover" after the first successful start.

@@ -27,8 +27,8 @@ inline constexpr std::size_t kDecisionFrameObjectBudgetBytes = 448;
 inline constexpr std::size_t kPolicyArtifactObjectBudgetBytes = 1024;
 inline constexpr std::size_t kRuleEvaluationObjectBudgetBytes = 16;
 // Phase 3D adds one active and one staged executable-policy bundle plus exact
-// proposals in cold decision records. The 80-KiB ceiling remains provisional
-// until the deferred NUC gate confirms the same capacity on both targets.
+// proposals in cold decision records. The 80-KiB ceiling is asserted against
+// sizeof(TradingState) at compile time, on x86-64 and ARM64 alike.
 inline constexpr std::size_t kTradingStateObjectBudgetBytes = 80U * 1024U;
 inline constexpr std::size_t kDecisionRecordHotBudgetBytes = 64;
 inline constexpr std::size_t kDecisionRecordColdBudgetBytes = 640;

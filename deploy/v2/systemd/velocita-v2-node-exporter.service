@@ -1,6 +1,7 @@
 # Host metrics (CPU, memory, disk latency, temperature, network) on the
 # Tailscale address, port 9110 (9100 may already be used by an older exporter).
-# Also serves ~/velocita-v2/textfile/*.prom (the soak bot's metrics).
+# Also serves ~/velocita-v2/textfile/*.prom: on nuc1 the edge's, the gateway's,
+# md-stream's and md-archive's metrics; on every host the secrets check's.
 [Unit]
 Description=Velocita host metrics (node-exporter)
 

@@ -39,8 +39,9 @@ scrape_configs:
       - targets: ["100.85.36.22:9410"]
         labels: {host: nuc2}
 
-  # Host metrics (CPU, memory, disk latency, temperature, network) plus the
-  # soak bot's textfile metrics on nuc1.
+  # Host metrics (CPU, memory, disk latency, temperature, network) plus each
+  # host's textfile metrics: the secrets check everywhere, and on nuc1 the edge,
+  # the gateway, md-stream and md-archive.
   - job_name: node
     scrape_interval: 10s
     sample_limit: 20000

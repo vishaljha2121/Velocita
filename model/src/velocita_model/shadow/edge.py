@@ -161,8 +161,9 @@ class FeatureSource:
         self.usd_per_tick = usd_per_tick
         self.symbol = symbol
         self.last_event_ns = -1  # newest observation forwarded
-        # Each forwarded tick costs two retained Raft log entries and nothing
-        # reclaims the log yet, so the forwarding rate is a budget.
+        # Each forwarded tick costs two Raft log entries. Compaction reclaims
+        # them, but every compaction pauses the voters and adds an archive
+        # segment, so the forwarding rate is still a budget.
         self.min_interval_ns = min_interval_ns
         self.last_forward_ns: int | None = None
         self.last_outcome = ""  # what the last message was: tick, resend, other or no_history
