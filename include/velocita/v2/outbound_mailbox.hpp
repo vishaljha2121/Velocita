@@ -1,3 +1,4 @@
+// Bounded queue of outbound peer frames.
 #pragma once
 
 #include "velocita/v2/bound_peer.hpp"
@@ -37,7 +38,6 @@ struct OutboundMailboxCounters {
     std::uint64_t stale_term_refusals{};
 };
 
-// Borrows identity for its full lifetime. Identity must remain immutable and valid.
 class OutboundMailboxes final {
 public:
     explicit OutboundMailboxes(const VerifiedStaticIdentity& identity) noexcept;
@@ -46,14 +46,10 @@ public:
     OutboundMailboxes(OutboundMailboxes&&) = delete;
     OutboundMailboxes& operator=(OutboundMailboxes&&) = delete;
 
-    // Owning convenience input is allocation-free for the three small message kinds.
     [[nodiscard]] OutboundEnqueueResult enqueue(
         const PeerMessage& message, BoundFrameScratch& scratch) noexcept;
     [[nodiscard]] OutboundEnqueueResult enqueue(
         const PeerMessageView& message, BoundFrameScratch& scratch) noexcept;
-    // Takes the next frame whose recipient is not in HELD. A held peer's frames
-    // stay queued and keep coalescing, so one unreachable peer cannot stall the
-    // others.
     [[nodiscard]] OutboundTakeResult take(
         std::span<std::byte> output, std::span<const std::int32_t> held = {}) noexcept;
 
@@ -82,4 +78,4 @@ private:
     std::uint8_t cursor_{};
 };
 
-} // namespace velocita::v2
+}

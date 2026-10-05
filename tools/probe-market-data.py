@@ -26,40 +26,14 @@ BASE = "https://api.truemarkets.co"
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/140.0 Safari/537.36")
 
-# Forbidden path SEGMENTS, compared segment by segment rather than as
-# substrings.
-#
-# Substring matching was wrong here and the failure was instructive: `/order`
-# matched `/v1/market-data/orderbook`, so the probe refused to read an ORDER
-# BOOK - market data whose whole purpose is to be read, and which cannot place
-# anything. Over-broad is the right instinct for this list, but "over-broad"
-# should mean "more segments than strictly necessary", not "any path that starts
-# with the same letters".
-#
-# `orders` stays on the list even though GET /orders would merely LIST orders.
-# That is a standing project rule and it is kept deliberately: this tool has no
-# business reading the order book of record, and a path check that reasons about
-# intent is a path check that gets argued with.
 FORBIDDEN_SEGMENTS = frozenset({
     "orders", "order", "trade", "trades", "execute", "submit", "cancel",
     "withdraw", "deposit", "transfer", "approve", "swap", "sign", "signature",
     "transaction", "transactions",
 })
 
-# TWO 404 SHAPES DISTINGUISH TWO DIFFERENT FACTS, and reading them apart is what
-# makes this probe worth running:
-#
-#   {"type":"not_found",...,"request_id":...}  the prefix ROUTES to the API and
-#                                              this path is not one it serves
-#   Not Found (plain text)                     the edge does not route this at
-#                                              all; nothing reached the API
-#
-# The first round established that only `/v1/conductor/*`, `/v1/account/*` and
-# `/v1/defi/market*` route. `/v1/market-data/*` does not exist on this host at
-# all, despite the documentation describing a market-data service - so the
-# candidates below stay inside the namespaces that answer.
 CANDIDATES = [
-    "/v1/conductor/assets",          # control: a probe where all 404 proves nothing
+    "/v1/conductor/assets",
     "/v1/prices",
     "/v1/prices/current",
     "/v1/prices/candles",
@@ -92,8 +66,6 @@ def get(path: str, token: str) -> tuple[str, bytes]:
     for segment in segments:
         if segment in FORBIDDEN_SEGMENTS:
             raise SystemExit(f"refusing {path}: path segment {segment!r} is state-changing")
-    # Keep the bearer out of argv/process listings. Curl reads this one header
-    # from stdin as config; the token is restricted to JWT-safe characters above.
     config = f'header = "authorization: Bearer {token}"\n'
     result = subprocess.run(
         ["curl", "--disable", "-sS", "-m", "20", "--max-redirs", "0",
@@ -112,10 +84,6 @@ def main() -> int:
     token_file = pathlib.Path(sys.argv[1])
     token = token_file.read_text().strip()
 
-    # A JWT is three dot-separated base64url segments on one line. Anything else
-    # is almost certainly the KEY JSON handed over by mistake - which would send
-    # private key material in an Authorization header, and produce a curl
-    # failure that looks like a network problem rather than an operator error.
     try:
         validate_token(token)
     except SystemExit:

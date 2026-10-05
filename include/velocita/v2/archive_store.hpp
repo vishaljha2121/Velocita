@@ -1,3 +1,4 @@
+// The on-disk archive of compacted Raft log history and its verification.
 #pragma once
 
 #include "velocita/v2/archive_catalog.hpp"
@@ -17,7 +18,6 @@ class ArchiveDestinationVerifier;
 
 inline constexpr std::uint64_t kDefaultArchiveLogicalByteLimit = 1ULL << 30;
 inline constexpr std::size_t kMaxArchiveDirectoryEntries = 4102;
-// Segments the compaction path rereads per verification (rotating scrub).
 inline constexpr std::size_t kArchiveScrubSegmentsPerVerify = 2;
 
 enum class ArchiveStoreError : std::uint8_t {
@@ -50,7 +50,6 @@ struct ArchivePublicationContext {
     std::uint32_t remaining_pending_records{};
 };
 
-// Process-local, nonserializable evidence. Only ArchiveStore can mint it.
 class ArchiveCoverageCapability final {
 public:
     ArchiveCoverageCapability() noexcept = default;
@@ -89,7 +88,6 @@ struct ArchiveWalBridgeResult {
     std::uint64_t published_bytes{};
 };
 
-// Cold-start/worker-only synchronous filesystem owner. Not owner-thread safe.
 class ArchiveStore final {
 public:
     ArchiveStore() noexcept;
@@ -107,8 +105,6 @@ public:
         const VerifiedExecutionCatalog& execution_catalog,
         const ArchiveStoreConfig& config, ArchiveStore& destination) noexcept;
 
-    // Cold startup validation/resync without content mutation. A missing archive is reported as none and
-    // leaves PRESENT false; the caller decides whether retained history permits it.
     [[nodiscard]] static ArchiveStoreError verify_existing(
         const std::filesystem::path& verified_startup_root,
         const VerifiedStaticIdentity& identity,
@@ -144,10 +140,6 @@ private:
     [[nodiscard]] ArchivePublishResult publish(
         const ArchivePublicationContext& context,
         const ArchiveRecordSource& records) noexcept;
-    // Worker-only post-selection bridge. Publishes existing canonical archive
-    // segments/catalog rows from the selected generation's WAL without deleting
-    // WAL bytes or minting reclamation authority. The entire bridge and suffix
-    // reservation are preflighted before the first catalog mutation.
     [[nodiscard]] ArchiveWalBridgeResult publish_wal_bridge(
         const std::filesystem::path& selected_runtime_directory,
         const ArchivePublicationContext& context,
@@ -172,4 +164,4 @@ private:
     std::unique_ptr<State> state_;
 };
 
-} // namespace velocita::v2
+}

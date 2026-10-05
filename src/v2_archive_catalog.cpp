@@ -132,7 +132,7 @@ Digest256 digest_body(std::span<const std::byte> body) noexcept {
     return hash.finish();
 }
 
-} // namespace
+}
 
 ArchiveCatalogEncodeResult encode_archive_catalog(
     const ArchiveCatalogHeader& header, std::span<const ArchiveCatalogRow> rows,
@@ -197,14 +197,11 @@ ArchiveCatalogError decode_archive_catalog(
 
     ArchiveCatalogHeader candidate{get(input, 56, 8), get(input, 64, 8),
         get(input, 72, 8), get(input, 80, 8), geti64(input, 88)};
-    // Pass one validates directly from immutable input without changing caller state.
     std::uint64_t previous_last{};
     std::int64_t previous_term{};
     for (std::size_t i = 0; i < count; ++i) {
         const auto row = read_row(input.subspan(kArchiveCatalogHeaderBytes +
             i * kArchiveCatalogRowBytes, kArchiveCatalogRowBytes));
-        // Per-row checks are duplicated here because whole-catalog validation cannot
-        // require a 4096-row stack allocation.
         constexpr auto max = static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
         if (row.first_index == 0 || row.first_index > max || row.last_index < row.first_index ||
             row.last_index > max || row.predecessor_term < 0 || row.last_term <= 0 ||
@@ -230,7 +227,6 @@ ArchiveCatalogError decode_archive_catalog(
             candidate.observed_current_term < previous_term)))
         return ArchiveCatalogError::invalid_coordinates;
 
-    // Pass two performs the bounded caller-owned copy only after validation succeeds.
     for (std::size_t i = 0; i < count; ++i)
         destination_rows[i] = read_row(input.subspan(kArchiveCatalogHeaderBytes +
             i * kArchiveCatalogRowBytes, kArchiveCatalogRowBytes));
@@ -239,4 +235,4 @@ ArchiveCatalogError decode_archive_catalog(
     return ArchiveCatalogError::none;
 }
 
-} // namespace velocita::v2
+}

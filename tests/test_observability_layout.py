@@ -44,7 +44,6 @@ def rule_globs():
 
 
 def mounts(unit=UNIT):
-    """Container path -> repo path, from `-v %h/src/aeron-raft-pi/X:/Y:ro`."""
     out = {}
     for host, container in re.findall(r"-v %h/src/aeron-raft-pi/(\S+?):(/\S+?)(?::ro)?\s", unit.read_text()):
         out[container] = ROOT / host
@@ -71,7 +70,6 @@ class RuleFilesAreRuleFiles(unittest.TestCase):
                              f"{path.relative_to(ROOT)} is loaded as rules but is not a rule-group file")
 
 
-
 def load_generator():
     spec = importlib.util.spec_from_file_location("generate_dashboard", OBS / "generate_dashboard.py")
     module = importlib.util.module_from_spec(spec)
@@ -80,7 +78,6 @@ def load_generator():
 
 
 def dashboards():
-    """File name -> parsed dashboard, for every JSON file Grafana would load."""
     return {p.name: json.loads(p.read_text()) for p in sorted(DASHBOARD_DIR.glob("*.json"))}
 
 
@@ -102,7 +99,6 @@ PAPER_METRICS = {
     "velocita_gateway_rearms_total", "velocita_gateway_reconciliation_last_match_timestamp_seconds",
     "velocita_gateway_stops_total", "velocita_gateway_stop_cause",
 }
-# The edge's paper book (model/.../shadow/paper_book.py), shown in the volume row.
 PAPER_BOOK_METRICS = {
     "velocita_paper_week_volume_usd", "velocita_paper_week_fees_usd", "velocita_paper_week_pnl_usd",
     "velocita_paper_week_loss_usd", "velocita_paper_weekly_loss_cap_usd", "velocita_paper_expected_week_volume_usd",
@@ -240,8 +236,6 @@ class GrafanaProvisioningLoadsEveryDashboard(unittest.TestCase):
         self.assertEqual(len(re.findall(r"^\s+- name:", PROVIDER.read_text(), re.MULTILINE)), 1)
 
     def test_former_single_dashboard_uid_is_still_provisioned(self):
-        # disableDeletion: true leaves a dashboard whose file disappeared in
-        # Grafana's database as an unprovisioned stale copy.
         _, deletion_disabled = self.provider()
         uids = {d["uid"] for d in dashboards().values()}
         if deletion_disabled:

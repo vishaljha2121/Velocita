@@ -1,3 +1,4 @@
+// Frames that bind a payload to the cluster's static identity.
 #pragma once
 
 #include "velocita/v2/static_identity.hpp"
@@ -38,8 +39,6 @@ struct BoundFrameEncodeResult {
     std::size_t bytes_written{};
 };
 
-// Caller-owned scratch must not alias input/output. Payload views borrow INPUT,
-// never scratch; framing validation does not validate kind-specific semantics.
 struct BoundFrameScratch {
     std::array<std::byte, kMaxBoundSnapshotBytes + 26> bytes{};
 };
@@ -57,4 +56,4 @@ struct BoundFrameView {
     const VerifiedStaticIdentity& identity, BoundFrameView& destination,
     BoundFrameScratch& scratch) noexcept;
 
-} // namespace velocita::v2
+}

@@ -8,9 +8,9 @@
 namespace velocita {
 namespace {
 
-constexpr std::uint32_t kCommandMagic = 0x31444D43U;   // CMD1 on little-endian hosts
-constexpr std::uint32_t kResponseMagic = 0x31505352U;  // RSP1
-constexpr std::uint32_t kPeerMagic = 0x31524550U;      // PER1
+constexpr std::uint32_t kCommandMagic = 0x31444D43U;
+constexpr std::uint32_t kResponseMagic = 0x31505352U;
+constexpr std::uint32_t kPeerMagic = 0x31524550U;
 constexpr std::uint32_t kMaxPeerEntries = 4096;
 constexpr std::uint32_t kMaxPeerPayload = 8U * 1024U * 1024U;
 
@@ -64,7 +64,7 @@ PeerMessageType payload_type(const PeerPayload& payload) {
     return PeerMessageType::append_entries_response;
 }
 
-}  // namespace
+}
 
 std::vector<std::byte> encode_command(const Command& command) {
     const auto fixed = encode_command_fixed(command);
@@ -330,4 +330,4 @@ std::string to_string(ResponseStatus status) {
     return "unknown";
 }
 
-}  // namespace velocita
+}

@@ -21,7 +21,6 @@ INT64_MIN: Final = -(2**63)
 INT64_MAX: Final = 2**63 - 1
 UINT64_MAX: Final = 2**64 - 1
 
-# Declared scales. `atoms = value * scale`.
 PRICE_TICKS_SCALE: Final = 1
 QUANTITY_LOTS_SCALE: Final = 1
 MONEY_MICROS_SCALE: Final = 1_000_000
@@ -46,7 +45,6 @@ def check_uint64(value: int, what: str = "identity") -> int:
 
 
 def present(value: int, what: str = "identity") -> int:
-    """Identity fields are non-zero in every C++ `validate()`; zero means absent."""
     check_uint64(value, what)
     if value == 0:
         raise ContractViolation(ContractError.invalid_identity, f"{what} is zero")
@@ -54,12 +52,7 @@ def present(value: int, what: str = "identity") -> int:
 
 
 def _round_scaled(scaled: Decimal, mode: RoundingMode, what: str) -> int:
-    """Round an exactly-scaled Decimal to an integer under an explicit mode.
-
-    The three modes reproduce the C++ `FixedPoint::rescale` behaviour, which is
-    magnitude-based (symmetric about zero) rather than floor/ceil-based.
-    """
-    integral = int(scaled.to_integral_value(rounding="ROUND_DOWN"))  # toward zero
+    integral = int(scaled.to_integral_value(rounding="ROUND_DOWN"))
     remainder = scaled - Decimal(integral)
     if remainder == 0 or mode == RoundingMode.toward_zero:
         return integral
@@ -80,17 +73,6 @@ def to_atoms(
     exact: bool = False,
     what: str = "value",
 ) -> int:
-    """Convert a research-side number to canonical integer atoms.
-
-    `exact=True` refuses any value that is not exactly representable at `scale`.
-    Use it for anything an operator typed (fees, thresholds, caps). Leave it
-    False for measured market statistics, where rounding is expected and the
-    mode is what must be pinned.
-
-    Floats are accepted but routed through `repr()` so the conversion is the
-    shortest decimal that round-trips, not the full binary expansion. Prefer
-    passing `Decimal` or `str` for anything that ends up in a policy artifact.
-    """
     if isinstance(value, float):
         value = Decimal(repr(value))
     try:
@@ -111,7 +93,6 @@ def to_atoms(
 
 
 def from_atoms(atoms: int, scale: int) -> Decimal:
-    """Inverse of `to_atoms`, for reports and human-readable output only."""
     return Decimal(atoms) / Decimal(scale)
 
 

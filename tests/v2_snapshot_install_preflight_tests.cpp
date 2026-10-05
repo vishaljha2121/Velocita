@@ -208,14 +208,13 @@ void supplied_evidence_is_checked_even_without_a_local_boundary() {
                 SnapshotInstallPreflightError::committed_conflict,
             "different entry type at the committed boundary was accepted");
 
-    // The descriptor span is not a certificate of full local history.
     const std::array missing_first{entry(2, 1), entry(3, 1)};
     const auto no_prefix = preflight_snapshot_suffix(local(missing_first, 0, 0, 0), 4, 1, nullptr);
     require(no_prefix.error == SnapshotInstallPreflightError::history_gap,
             "genesis view missing index one was accepted as complete");
 }
 
-} // namespace
+}
 
 int main() {
     try {

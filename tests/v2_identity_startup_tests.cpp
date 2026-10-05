@@ -374,7 +374,6 @@ void test_bootstrap_ambiguous_metadata_and_foreign_identity_temp() {
     refused([&] { (void)VerifiedIdentityStartup::bootstrap(dir, value, catalog); },
             IdentityStartupErrorCode::unexpected_contents);
     require(image(dir) == before, "ambiguous metadata was overwritten");
-    // Recovery selects final, validates but never promotes an exact matching temp.
     { auto owner = VerifiedIdentityStartup::recover(dir, value, catalog); }
     require(image(dir) == before, "recovery consumed the metadata temp");
     std::filesystem::remove(runtime / "v2-metadata.bin.tmp");
@@ -388,7 +387,7 @@ void test_bootstrap_ambiguous_metadata_and_foreign_identity_temp() {
             IdentityStartupErrorCode::unexpected_contents);
     require(image(dir) == before, "bootstrap adopted foreign identity temp over healthy metadata");
 }
-} // namespace
+}
 
 int main() {
     try {

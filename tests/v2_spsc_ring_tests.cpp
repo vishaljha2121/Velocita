@@ -28,8 +28,6 @@ void test_it_refuses_when_full_rather_than_overwriting() {
     }
     require(ring.size() == 4, "the ring did not fill");
 
-    // FULL MEANS FULL. Overwriting would discard a block whose bytes are not
-    // yet on disk, which is the one thing the storage layer must never do.
     require(!ring.push({99, 990}), "a full ring accepted another entry");
 
     Entry out{};
@@ -55,7 +53,6 @@ void test_it_wraps_without_losing_entries() {
     SpscRing<Entry, 4> ring;
     std::uint64_t pushed = 0;
     std::uint64_t popped = 0;
-    // Many more entries than the capacity, so the indices wrap repeatedly.
     for (int round = 0; round < 1000; ++round) {
         if (ring.push({pushed, pushed})) ++pushed;
         Entry out{};
@@ -68,10 +65,6 @@ void test_it_wraps_without_losing_entries() {
 }
 
 void test_it_carries_every_entry_across_a_real_thread_boundary() {
-    // The ordering claims in the header are about two threads. Asserting them
-    // on one thread would be asserting nothing, so this runs a genuine
-    // producer and consumer and checks that every entry arrives exactly once,
-    // in order, with its payload intact.
     constexpr std::uint64_t kEntries = 200'000;
     SpscRing<Entry, 1024> ring;
     std::atomic<bool> producer_done{false};
@@ -105,7 +98,7 @@ void test_it_carries_every_entry_across_a_real_thread_boundary() {
     require(!corrupted, "an entry was observed before it was fully written");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

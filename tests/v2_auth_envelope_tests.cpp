@@ -9,15 +9,11 @@
 #include <string_view>
 #include <vector>
 
-// Oracles are independent of the code under test: RFC 4231 vectors for HMAC,
-// and tests/v2_auth_envelope_goldens.py (Python hmac/hashlib/struct) for key
-// derivation and complete envelopes.
-
 namespace velocita::v2 {
 struct AuthEnvelopeAccess {
     static std::span<const std::byte, 32> key(const AuthKey& key) { return key.key_; }
 };
-}  // namespace velocita::v2
+}
 
 namespace {
 
@@ -184,7 +180,6 @@ void keys_bind_route_role_secret_and_incarnation() {
             "foreign cluster incarnation not refused by tag");
 }
 
-// Structural checks run before any tag work and name the exact reason.
 void structural_refusals_name_their_reason() {
     const auto verifier = key(AuthRole::peer, 1, 2);
     const auto expect = [&](std::size_t at, std::byte value, AuthEnvelopeError error, const char* what) {
@@ -242,7 +237,7 @@ void maximum_body_round_trips() {
             "maximum envelope did not round-trip");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

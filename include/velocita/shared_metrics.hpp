@@ -1,3 +1,4 @@
+// V1: shared-memory metrics.
 #pragma once
 
 #include "velocita/raft_node.hpp"
@@ -192,4 +193,4 @@ private:
 [[nodiscard]] std::optional<MetricsSnapshot> read_shared_metrics(
     const std::filesystem::path& path);
 
-}  // namespace velocita
+}

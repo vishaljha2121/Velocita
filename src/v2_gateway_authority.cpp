@@ -24,7 +24,7 @@ bool valid_control(const GatewayControlView& control) noexcept {
            control.kill_epoch.value() != 0 && valid_mode(control.strategy_mode);
 }
 
-}  // namespace
+}
 
 GatewayAuthority::GatewayAuthority(std::array<std::byte, 16> incarnation,
                                    Digest256 authority_domain,
@@ -138,7 +138,7 @@ bool GatewayAuthority::consume(const BoundOrderEffect& binding,
     }
     const AuthorityProofView permission = *accepted_;
     const Tick started_at = accepted_started_at_;
-    accepted_.reset();  // Consume before any caller can hand bytes to transport.
+    accepted_.reset();
     accepted_started_at_ = 0;
 
     if (now < started_at || now - started_at > freshness_bound_ ||
@@ -173,9 +173,6 @@ void GatewayAuthority::observe_fence(const GatewayControlView& control,
     if (term <= 0 || (term_highwater_ > 0 && term < term_highwater_)) {
         invalidate = true;
     } else if (term > term_highwater_) {
-        // An observer may seed the initial term while idle. Once work exists,
-        // even the first observed positive term is new information that the
-        // un-termed request did not bind, so it cannot be silently adopted.
         invalidate = term_highwater_ != 0 || pending_.has_value() ||
             accepted_.has_value();
         term_highwater_ = term;
@@ -219,11 +216,9 @@ void GatewayAuthority::stop_all_transport() noexcept {
 }
 
 void GatewayAuthority::activate_after_reconciliation() noexcept {
-    // Trusted owner action after external fencing/reconciliation. It clears
-    // local stop latches, but deliberately preserves all observed highwaters.
     drop_permission();
     stop_all_transport_ = false;
     stop_new_risk_ = false;
 }
 
-}  // namespace velocita::v2
+}

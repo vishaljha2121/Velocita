@@ -1,8 +1,4 @@
-// velocita-v2-status: prints one node's disposable health page as key=value.
-// Read-only diagnostics; nothing here grants authority. Exit 1 if unreadable.
-//
-//   velocita-v2-status HEALTH_FILE
-
+// velocita-v2-status: prints a voter's health page.
 #include "velocita/v2/node_health.hpp"
 
 #include <iostream>

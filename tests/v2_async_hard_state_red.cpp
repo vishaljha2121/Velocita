@@ -1,4 +1,3 @@
-// Current-API diagnostic, outside CTest until the async fence contract is approved.
 #include "velocita/v2/replication.hpp"
 #include "v2_identity_test_support.hpp"
 
@@ -32,7 +31,7 @@ struct TraceScope {
     explicit TraceScope(SyncTrace& trace) { active_trace.store(&trace); }
     ~TraceScope() { active_trace.store(nullptr); }
 };
-} // namespace
+}
 
 int observed_metadata_fsync(int fd) {
     if (auto* trace = active_trace.load()) {
@@ -42,8 +41,6 @@ int observed_metadata_fsync(int fd) {
     return ::fsync(fd);
 }
 
-// Compile the real store behind one syscall shim. Checkpoint counts alone would
-// still pass if a callback moved threads while the actual fsync did not.
 #define fsync observed_metadata_fsync
 #include "../src/v2_bound_metadata.cpp"
 #undef fsync
@@ -110,7 +107,6 @@ void commit(const std::filesystem::path& root) {
     require(node.propose(std::span{bytes}.first(encoded.bytes_written)).status ==
                 ProposeStatus::admitted, "fixture command was not admitted");
     node.flush_durability();
-    // Fixture-only join makes WAL durability deterministic, not a latency test.
     node.stop_writer();
     node.start_writer();
     require(node.durable_index() == 1, "non-vacuity: WAL did not become durable");
@@ -122,7 +118,7 @@ void commit(const std::filesystem::path& root) {
             "non-vacuity: durable committed command was not checkpointed/applied");
     verify_owner_free("commit", trace, metadata);
 }
-}  // namespace
+}
 
 int main(int argc, char** argv) {
     try {

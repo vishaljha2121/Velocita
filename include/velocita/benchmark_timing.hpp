@@ -1,3 +1,4 @@
+// V1: stage timestamps for benchmark traces.
 #pragma once
 
 #include <cstddef>
@@ -61,4 +62,4 @@ private:
     std::uint64_t collision_count_{};
 };
 
-}  // namespace velocita
+}

@@ -72,8 +72,6 @@ Image exercise(const std::filesystem::path& root, bool leader_flush) {
                 "fixture did not admit exactly the authored first command");
         if (leader_flush) first->flush_durability();
 
-        // Deliver only messages advertising commit zero. Stop before a later
-        // leader heartbeat can communicate a newly learned quorum decision.
         for (int round = 0; round < 20; ++round) {
             first->tick(100);
             while (auto message = identity_test::take_outbound_message(*first)) {
@@ -121,8 +119,6 @@ Image exercise(const std::filesystem::path& root, bool leader_flush) {
                   << " donor_suffix_records=" << records.size() << '\n';
     }
 
-    // Model loss of one participating voter's hard state without deleting the
-    // evidence file. No bootstrap, metadata reconstruction or repair API is used.
     std::filesystem::rename(identity_test::runtime_directory(lost) /
                                 kV2MetadataFileName,
                             root / "quarantined-lost-metadata.bin");
@@ -153,7 +149,7 @@ Image exercise(const std::filesystem::path& root, bool leader_flush) {
                  " donor_reserved_results=1 authority_proof=absent repair_api=absent\n";
     return donor_before;
 }
-} // namespace
+}
 
 int main(int argc, char** argv) {
     try {

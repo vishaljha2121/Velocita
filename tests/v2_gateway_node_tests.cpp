@@ -1,7 +1,3 @@
-// The gateway against real V2Node owner loops over an in-process fake network.
-// Callers follow the Phase 2 plan: operator CallerId 9 (key 11), strategy 21
-// (key 12), gateway 22 (key 13). Expectations come from fixture constants and
-// from the voters' own kernels, never from the gateway code under test.
 #include "v2_catalog_test_support.hpp"
 
 #include "velocita/v2/gateway_dispatch.hpp"
@@ -67,11 +63,8 @@ Tick steady_ms() {
         std::chrono::duration_cast<std::chrono::milliseconds>(SteadyClock::now().time_since_epoch()).count());
 }
 
-// --- Fixture economics: buy 2 lots at 11 ticks, account 5 / venue 9 / instrument 4.
 constexpr std::int64_t kOrderLots = 2;
 
-// The paper variant binds the same row key to a fill-or-kill, no-post-only
-// venue, as the True Markets row does.
 const VerifiedExecutionCatalog& paper_catalog() {
     static const auto value = [] {
         const std::array rows{catalog_test::row(AccountId{5},
@@ -84,7 +77,7 @@ const VerifiedExecutionCatalog& paper_catalog() {
     }();
     return value;
 }
-bool g_paper = false;  // which fixture economics the next cluster uses
+bool g_paper = false;
 const VerifiedExecutionCatalog& fixture_catalog() { return g_paper ? paper_catalog() : catalog_test::standard_catalog(); }
 
 PolicyArtifact policy_artifact() {
@@ -171,8 +164,6 @@ DecisionFrame decision_frame() {
     return value;
 }
 
-// --- Network -----------------------------------------------------------------
-
 struct Network;
 
 struct FakeTransport final : NodeTransport {
@@ -198,13 +189,12 @@ std::uint8_t body_kind(std::span<const std::byte> envelope) {
 
 struct Network {
     std::map<std::int32_t, FakeTransport> transports;
-    std::map<std::int32_t, std::deque<Bytes>> responses;  // caller key id -> frames
+    std::map<std::int32_t, std::deque<Bytes>> responses;
     std::set<std::int32_t> down;
-    // Gateway fault hooks: return false to drop the frame.
     std::function<bool(std::int32_t node, std::span<const std::byte>)> gateway_ingress = {};
     std::function<bool(std::span<const std::byte>)> gateway_response = {};
     bool duplicate_gateway_responses{};
-    std::vector<Bytes> gateway_tap;  // every gateway response frame offered
+    std::vector<Bytes> gateway_tap;
 
     FakeTransport& at(std::int32_t id) {
         auto& transport = transports[id];
@@ -279,7 +269,6 @@ NodeSecrets secrets_for(std::int32_t id, const std::vector<std::int32_t>& voters
     return secrets;
 }
 
-// A synchronous test caller for operator and strategy commands.
 struct Caller {
     Caller(std::int32_t key, std::uint64_t caller) : key_id(key), caller_id(caller) {}
     std::int32_t key_id{};
@@ -304,7 +293,6 @@ struct Caller {
         require(framed.error == NodeProtocolError::none, "fixture ingress did not encode");
         return seal(node, std::span(body).first(framed.bytes_written), caller_seed(key_id));
     }
-    // Verified, fenced body of one response frame.
     std::optional<std::pair<std::int32_t, Bytes>> open(const Bytes& frame) {
         AuthRoute route;
         if (peek_auth_route(frame, route) != AuthEnvelopeError::none || route.role != AuthRole::response) return std::nullopt;
@@ -372,7 +360,6 @@ struct Cluster {
         run_until([&] { return leader() != 0; }, "a ready leader");
         return leader();
     }
-    // Commit one command through the leader and return the reducer's result.
     ApplyResult commit(Caller& caller, CommandBody body, ProposeLane lane = ProposeLane::normal) {
         const Command command{{CallerId{caller.caller_id}, RequestSequence{caller.next_sequence++},
                                digest(caller.caller_id * 1000 + caller.next_sequence)}, std::move(body)};
@@ -397,7 +384,7 @@ struct Cluster {
                                 "committed result did not decode");
                         return result;
                     }
-                    if (response.kind == ResponseKind::refused) round = 4000;  // retry through the new leader
+                    if (response.kind == ResponseKind::refused) round = 4000;
                 }
             }
         }
@@ -420,7 +407,6 @@ struct Base {
     ~Base() { std::error_code ignored; std::filesystem::remove_all(path, ignored); }
 };
 
-// The operator ceremony and a recorded source event; no decision yet.
 void prepare_cluster(Cluster& cluster, Caller& operator_caller, Caller& strategy) {
     require(cluster.commit(operator_caller, AdvanceKillEpoch{KillEpoch{1}}, ProposeLane::control).code == ApplyCode::applied,
             "kill epoch");
@@ -442,7 +428,7 @@ void prepare_cluster(Cluster& cluster, Caller& operator_caller, Caller& strategy
     limits.max_order_gross_notional = MoneyMicros::from_atoms(4'000);
     limits.max_reserved_exposure = MoneyMicros::from_atoms(8'000);
     limits.initial_margin_ppm = 1'000'000;
-    limits.maximum_fee_ppm = g_paper ? 15'000 : 2'500;  // the paper venue charges 115 bp
+    limits.maximum_fee_ppm = g_paper ? 15'000 : 2'500;
     limits.max_position_quantity = QuantityLots::from_atoms(100);
     limits.allow_short = false;
     limits.reason_code = 1;
@@ -459,8 +445,6 @@ void prepare_cluster(Cluster& cluster, Caller& operator_caller, Caller& strategy
                     .code == ApplyCode::applied, "source event");
 }
 
-// The decision and its authorization, after the gateway is already running: a
-// gateway that starts with an unsettled effect must treat it as possibly sent.
 EffectId authorize(Cluster& cluster, Caller& strategy) {
     const auto evaluated =
         cluster.commit(strategy, EvaluateDecisionFrame{DecisionId{20}, EvaluationMode::authoritative, decision_frame()});
@@ -489,7 +473,6 @@ std::array<std::byte, 16> process_incarnation(std::uint8_t seed) {
 Tick loop_clock(void*) noexcept { return steady_ms(); }
 double wall_clock(void*) noexcept { return 1'000'000.0 + static_cast<double>(steady_ms()) / 1000.0; }
 
-// Counts every send that reaches the venue seam: the oracle for "sent once".
 struct CountingVenue {
     sim::VenueTransport inner{};
     std::vector<OrderEffect> sends;
@@ -511,10 +494,6 @@ struct CountingVenue {
     sim::VenueTransport transport() { return {&send, &poll, &acknowledge, &query, &session, this}; }
 };
 
-// A venue book that lags the venue's reports: it shows balances at once but
-// never the reports it still owns (a real venue's balance endpoint can run
-// ahead of its execution feed). The gateway must then rely on committed order
-// state alone to know a cut is not yet comparable.
 struct LaggingBook {
     sim::VenueBookSource inner{};
     static void read(void* self, sim::VenueBook& out) {
@@ -531,12 +510,11 @@ struct LaggingBook {
 };
 
 struct VenueChoice {
-    std::optional<std::filesystem::path> durable_state;  // paper venue persisted in this file
+    std::optional<std::filesystem::path> durable_state;
     paper::PaperFaultPolicy paper_faults = paper::PaperFaultPolicy::clean();
     bool lagging_book{};
 };
 
-// The whole gateway process in-process: link, loop and a simulated venue.
 struct Gateway {
     GatewayClient client;
     GatewayLink link;
@@ -618,7 +596,6 @@ struct Gateway {
                {&loop_clock, &wall_clock, nullptr}, book) {}
 };
 
-// A new, flat paper account for the fixture row, persisted in FILE.
 void create_fresh_paper_state(const std::filesystem::path& file) {
     const auto fresh = paper::fresh_paper_state(Gateway::paper_config(), kIncarnation,
                                                 MoneyMicros::from_atoms(25'000'000));
@@ -672,14 +649,11 @@ const ClusterOrder* order_of(const TradingState& state, EffectId effect) {
     return nullptr;
 }
 
-// Starts stepping GATEWAY every round and waits until it has activated.
 void start(Cluster& cluster, Gateway& gateway) {
     cluster.on_round = [&] { gateway.loop.step(); };
     cluster.run_until([&] { return gateway.loop.phase() == GatewayPhase::running && !gateway.loop.new_risk_stopped(); },
                       "the gateway to activate on a clean cluster");
 }
-
-// ---------------------------------------------------------------------------
 
 void authorized_order_is_delivered_once_and_its_fill_moves_the_position() {
     Base base("v2-gw-e2e");
@@ -695,7 +669,7 @@ void authorized_order_is_delivered_once_and_its_fill_moves_the_position() {
         const auto* risk = account(cluster.state_of(leader));
         return risk && risk->position_quantity.atoms() == kOrderLots && gateway.loop.evidence().obligation_count == 0;
     }, "the fill to commit and move the position");
-    cluster.run(3000);  // long enough for any duplicate send, ack and heartbeat
+    cluster.run(3000);
 
     require(gateway.counting.sends.size() == 1 && gateway.counting.sends[0].effect_id == effect,
             "the venue received " + std::to_string(gateway.counting.sends.size()) + " sends, not the one effect once");
@@ -714,7 +688,6 @@ void authorized_order_is_delivered_once_and_its_fill_moves_the_position() {
             "metrics disagree with one send, one fill, one proof");
     require(!gateway.loop.new_risk_stopped() && metrics.unknown_outcomes == 0, "a clean run stopped new risk");
     require(metrics.position_count == 1 && metrics.positions[0].lots == kOrderLots, "position metric");
-    // Two evidence commands (ack, fill) preceded the acknowledgement that retires them.
     const auto* producer = cursor(cluster.state_of(leader), kGateway);
     require(producer && producer->gateway_results_acknowledged_through.value() >= 2,
             "the gateway never acknowledged its committed evidence");
@@ -723,7 +696,6 @@ void authorized_order_is_delivered_once_and_its_fill_moves_the_position() {
             "stage histograms did not record the one order");
 }
 
-// Raw gateway request envelope from any caller, for refusal tests.
 Bytes gateway_request(Caller& caller, std::int32_t node, GatewayRequestKind kind, std::uint64_t id) {
     std::array<std::byte, kGatewayAuthorityRequestBytes> body{};
     const auto encoded = encode_gateway_request({kind, process_incarnation(1), id, {}}, body);
@@ -768,7 +740,7 @@ void an_idle_gateway_proposes_nothing_after_acknowledging_its_evidence() {
 
     const auto sequences_used = gateway.loop.next_sequence();
     const auto state_version = cluster.state_of(leader).state_version;
-    cluster.run(3000);  // ten acknowledgement intervals with nothing new to acknowledge
+    cluster.run(3000);
     require(gateway.loop.next_sequence() == sequences_used,
             "an idle gateway used " + std::to_string(gateway.loop.next_sequence() - sequences_used) +
                 " request sequences: it is acknowledging its own acknowledgements");
@@ -794,7 +766,6 @@ void node_refuses_wrong_caller_follower_and_unconfigured_gateway() {
         require(redirect && redirect->reason == static_cast<std::uint8_t>(ProposeStatus::not_leader) &&
                     redirect->leader_id == leader, "a follower served state or did not name the leader");
 
-        // Malformed: a state-read kind with a trailing byte.
         std::array<std::byte, 27> body{};
         require(encode_gateway_request({GatewayRequestKind::state_read, process_incarnation(1), 3, {}}, body).error ==
                     NodeProtocolError::none, "fixture");
@@ -803,8 +774,6 @@ void node_refuses_wrong_caller_follower_and_unconfigured_gateway() {
         require(malformed && malformed->reason == static_cast<std::uint8_t>(IngressRefusal::malformed_command),
                 "a malformed gateway request was not refused as malformed");
 
-        // The leader serves the configured gateway: the reassembled snapshot is
-        // exactly the leader's applied state (its own canonical digest).
         GatewayClient client;
         client.network = &cluster.network;
         GatewayLink link(1, process_incarnation(0x50), gateway_routes(cluster.voters, caller_seed(kGatewayKey)), client);
@@ -858,7 +827,7 @@ void leader_change_during_authority_request_sends_nothing() {
         if (body_kind(envelope) != static_cast<std::uint8_t>(GatewayRequestKind::authority) || node != old_leader)
             return true;
         stop_requested = true;
-        return false;  // the barrier never reaches the old leader
+        return false;
     };
     cluster.on_round = [&] {
         gateway.loop.step();
@@ -876,8 +845,6 @@ void leader_change_during_authority_request_sends_nothing() {
 }
 
 void lost_and_duplicated_responses_still_deliver_exactly_once() {
-    // Mode 2: the same request resent every millisecond while its barrier is
-    // pending, so resends reach the node before and after the proof exists.
     for (const int mode : {0, 1, 2}) {
         const bool duplicate = mode == 1;
         Base base(mode == 0 ? "v2-gw-lost" : mode == 1 ? "v2-gw-dup" : "v2-gw-resend");
@@ -918,7 +885,6 @@ void lost_and_duplicated_responses_still_deliver_exactly_once() {
     }
 }
 
-// Pumps LINK until its request settles.
 LinkOutcome settle(Cluster& cluster, GatewayLink& link) {
     std::optional<LinkOutcome> outcome;
     cluster.run_until([&] {
@@ -963,7 +929,6 @@ void forged_replayed_mismatched_and_stale_proofs_are_refused() {
     const auto barrier = authority.begin_request(*binding, control_of(link.state(), start), start);
     require(barrier.has_value(), "begin_request refused a healthy fixture");
 
-    // Genuine proof, captured on the wire for the forgeries below.
     cluster.network.gateway_tap.clear();
     require(link.request_authority(*barrier, steady_ms(), 5000), "authority request");
     auto granted = settle(cluster, link);
@@ -973,26 +938,25 @@ void forged_replayed_mismatched_and_stale_proofs_are_refused() {
     require(!genuine.empty(), "no grant frame on the wire");
     const auto body = std::span<const std::byte>(genuine).subspan(kAuthHeaderBytes, kResponseAuthorityGrantedBytes);
 
-    // A second request; every forged answer to it must be refused.
     require(link.request_authority(*barrier, steady_ms(), 400), "second authority request");
     const auto pending_body = [&] {
         std::array<std::byte, kGatewayAuthorityRequestBytes> bytes{};
         (void)encode_gateway_request({GatewayRequestKind::authority, incarnation, 3, *barrier}, bytes);
         return bytes;
     }();
-    const auto pending_correlation = gateway_correlation(pending_body);  // link ids: 1 state, 2, 3
+    const auto pending_correlation = gateway_correlation(pending_body);
     cluster.network.gateway_ingress = [](std::int32_t, std::span<const std::byte>) { return false; };
     const auto before = link.counters();
     auto& inbox = cluster.network.responses[kGatewayKey];
-    inbox.push_back(genuine);  // replay: stale sequence
+    inbox.push_back(genuine);
     ResponseCorrelation ignored;
     AuthorityProofView view;
     require(decode_authority_granted(body, ignored, view) == NodeProtocolError::none, "captured grant decodes");
     std::array<std::byte, kResponseAuthorityGrantedBytes> forged{};
     require(encode_authority_granted(pending_correlation, view, forged).error == NodeProtocolError::none, "forge");
-    inbox.push_back(seal_response(kWrongSeed, leader, 1'000'000, forged));  // right bytes, wrong key
+    inbox.push_back(seal_response(kWrongSeed, leader, 1'000'000, forged));
     auto other = view;
-    other.request.request_sequence += 1;  // authentic key, correlated, but a different barrier
+    other.request.request_sequence += 1;
     std::array<std::byte, kResponseAuthorityGrantedBytes> mismatched{};
     require(encode_authority_granted(pending_correlation, other, mismatched).error == NodeProtocolError::none, "forge 2");
     inbox.push_back(seal_response(caller_seed(kGatewayKey), leader, 1'000'001, mismatched));
@@ -1009,8 +973,6 @@ void forged_replayed_mismatched_and_stale_proofs_are_refused() {
     require(after.uncorrelated >= before.uncorrelated + 1, "the uncorrelated grant was not refused");
     cluster.network.gateway_ingress = {};
 
-    // Stale after a kill-epoch advance: the genuine proof must not survive it.
-    // (A new session: the forgeries above advanced this link's fence past the node.)
     require(cluster.commit(op, AdvanceKillEpoch{KillEpoch{2}}, ProposeLane::control).code == ApplyCode::applied,
             "kill epoch advance");
     GatewayLink fresh(2, process_incarnation(0x70), gateway_routes(cluster.voters, caller_seed(kGatewayKey)), client);
@@ -1043,7 +1005,7 @@ void unknown_outcome_stops_new_risk_and_is_committed() {
     prepare_cluster(cluster, op, strategy);
     const auto leader = cluster.elect();
     sim::FaultPolicy lossy;
-    lossy.loss_permille = 1000;  // accepted, but no report ever arrives
+    lossy.loss_permille = 1000;
     Gateway gateway(cluster, lossy);
     start(cluster, gateway);
     const auto effect = authorize(cluster, strategy);
@@ -1061,7 +1023,6 @@ void unknown_outcome_stops_new_risk_and_is_committed() {
             "the kernel never recorded the effect as unknown");
 }
 
-// A new process cannot know whether a prior one sent an unsettled effect.
 void gateway_started_with_an_unsettled_effect_never_sends_it() {
     Base base("v2-gw-restart");
     Cluster cluster(base.path, {1, 2});
@@ -1079,14 +1040,13 @@ void gateway_started_with_an_unsettled_effect_never_sends_it() {
             "the startup suspect was never declared unknown to the cluster");
 }
 
-// A gateway serves one catalog row; an effect bound to another is never sent.
 void effect_for_another_catalog_row_is_not_sent() {
     Base base("v2-gw-row");
     Cluster cluster(base.path, {1, 2});
     Caller op{kOperatorKey, kOperator}, strategy{kStrategyKey, kStrategy};
     prepare_cluster(cluster, op, strategy);
     auto config = Gateway::config();
-    config.account = AccountId{6};  // the fixture effect binds account 5
+    config.account = AccountId{6};
     Gateway gateway(cluster, sim::FaultPolicy::clean(), config);
     start(cluster, gateway);
     (void)authorize(cluster, strategy);
@@ -1115,20 +1075,15 @@ void paper_venue_fill_books_position_and_measured_fee() {
     require(gateway.counting.sends.size() == 1 && gateway.counting.sends[0].effect_id == effect &&
                 gateway.counting.sends[0].time_in_force == TimeInForce::fill_or_kill,
             "the paper venue did not receive the one fill-or-kill effect once");
-    // Notional 100 micros/tick-lot x 11 ticks x 2 lots = 2,200 micros; 115 bp
-    // rounds up to 26 micros.
     const auto& metrics = gateway.loop.metrics();
     require(metrics.fee_micros_total == 26, "fees " + std::to_string(metrics.fee_micros_total) + " micros, expected 26");
     require(gateway.paper_venue->balances().fees_paid.atoms() == 26, "the venue and the gateway disagree on fees");
     require(metrics.fills_buy == 1 && !gateway.loop.new_risk_stopped(), "paper fill metrics");
-    // Volume is the fill's notional at its own price and quantity: 100 x 11 x 2.
     require(metrics.volume_micros_buy == 100 * 11 * kOrderLots && metrics.volume_micros_sell == 0,
             "volume " + std::to_string(metrics.volume_micros_buy) + "/" + std::to_string(metrics.volume_micros_sell) +
                 " micros, expected 2200 bought and 0 sold");
     require(metrics.last_fill_timestamp_seconds > 0, "last fill timestamp not set");
 }
-
-// --- Fences, automatic re-arm and startup reconciliation ---------------------
 
 struct PaperFixture {
     PaperFixture() { g_paper = true; }
@@ -1141,11 +1096,6 @@ GatewayLoopConfig quiet_config(Tick quiet) {
     return value;
 }
 
-// ADR 0019 step 2: an election stops new risk; once the cluster has been
-// quiet for the configured period and the venue's book reconciles, the gateway
-// re-arms by itself. A decision authorized while it was stopped was never sent
-// by anyone, so it does not block the re-arm, and it is then sent exactly once
-// under a fresh proof.
 void fence_rearms_after_the_quiet_period_and_then_delivers_once() {
     PaperFixture paper;
     Base base("v2-gw-rearm");
@@ -1167,8 +1117,6 @@ void fence_rearms_after_the_quiet_period_and_then_delivers_once() {
             last_term = term;
             last_term_change = steady_ms();
         }
-        // A re-arm is the first armed step after the loop counted its fence stop
-        // (a stop and a re-arm inside one step still counts).
         if (rearmed_at == 0 && stops(gateway.loop.metrics(), GatewayStopCause::fence) != 0 &&
             !gateway.loop.new_risk_stopped())
             rearmed_at = steady_ms();
@@ -1177,10 +1125,9 @@ void fence_rearms_after_the_quiet_period_and_then_delivers_once() {
     cluster.run_until([&] { return stops(gateway.loop.metrics(), GatewayStopCause::fence) != 0; },
                       "the election to stop new risk");
     require(stops(gateway.loop.metrics(), GatewayStopCause::fence) == 1, "the election was not counted as a fence");
-    const auto effect = authorize(cluster, strategy);  // committed while the gateway is stopped
+    const auto effect = authorize(cluster, strategy);
     cluster.run_until([&] { return rearmed_at != 0; }, "the automatic re-arm", 60'000);
 
-    // The oracle is the test's own view of the last term change, not the loop's.
     require(rearmed_at >= last_term_change + kQuiet,
             "re-armed " + std::to_string(rearmed_at - last_term_change) + " ms after the last term change, "
             "inside the " + std::to_string(kQuiet) + " ms quiet period");
@@ -1204,8 +1151,6 @@ void fence_rearms_after_the_quiet_period_and_then_delivers_once() {
     require(stopped && rearmed, "the fence stop and the re-arm were not logged in order");
 }
 
-// A state read that times out is a fence too: the gateway saw nothing of what
-// happened meanwhile. No term changes here; the re-arm follows the quiet period.
 void a_timed_out_state_read_is_a_fence_that_rearms() {
     PaperFixture paper;
     Base base("v2-gw-gap");
@@ -1226,8 +1171,6 @@ void a_timed_out_state_read_is_a_fence_that_rearms() {
             "the read gap was not one fence stop followed by one re-arm");
 }
 
-// Kill epoch, generation and mode are the operator's controls: a change stops
-// new risk and only a new process arms it again, however quiet the cluster.
 void a_control_change_latches_until_an_operator_restart() {
     PaperFixture paper;
     Base base("v2-gw-control");
@@ -1241,14 +1184,13 @@ void a_control_change_latches_until_an_operator_restart() {
     cluster.run_until([&] { return gateway.loop.new_risk_stopped(); }, "the mode change to stop new risk");
     require(cluster.commit(op, SetStrategyMode{StrategyMode::normal, KillEpoch{1}, ExecutorGeneration{1}},
                            ProposeLane::control).code == ApplyCode::applied, "mode normal");
-    cluster.run(4000);  // many quiet periods
+    cluster.run(4000);
     const auto& metrics = gateway.loop.metrics();
     require(gateway.loop.new_risk_stopped(), "a strategy-mode change re-armed without an operator restart");
     require(stops(metrics, GatewayStopCause::control_change) == 1 && metrics.rearms == 0 &&
                 metrics.stop_active[static_cast<std::size_t>(GatewayStopCause::control_change)],
             "the control change is not the recorded, active cause");
 
-    // The operator's restart: a new process arms on a clean reconciliation.
     Gateway restarted(cluster, sim::FaultPolicy::clean(), quiet_config(200));
     start(cluster, restarted);
 }
@@ -1270,9 +1212,6 @@ void without_allow_new_risk_the_gateway_never_arms() {
             "a gateway without --allow-new-risk armed");
 }
 
-// The live break (2026-09-30): a restarted gateway whose venue reset to flat
-// while the kernel holds the position. It must stay stopped, say so, and show
-// both values; it must never "fix" either side.
 void a_restart_beside_a_held_position_with_a_reset_venue_is_a_mismatch() {
     PaperFixture paper;
     Base base("v2-gw-mismatch");
@@ -1290,7 +1229,7 @@ void a_restart_beside_a_held_position_with_a_reset_venue_is_a_mismatch() {
         }, "the first process's fill");
         cluster.run(500);
     }
-    Gateway restarted(cluster, sim::FaultPolicy::clean(), quiet_config(100));  // in-memory venue: flat again
+    Gateway restarted(cluster, sim::FaultPolicy::clean(), quiet_config(100));
     cluster.on_round = [&] { restarted.loop.step(); };
     cluster.run_until([&] { return restarted.loop.metrics().reconciliation_mismatch; }, "the mismatch", 20'000);
     cluster.run(2000);
@@ -1313,8 +1252,6 @@ void a_restart_beside_a_held_position_with_a_reset_venue_is_a_mismatch() {
     require(logged, "the mismatch was not logged with both values");
 }
 
-// The persisted venue: a restarted gateway finds the venue's base equal to the
-// kernel's position, arms, and publishes the fill totals of the earlier process.
 void a_restart_with_the_persisted_venue_reconciles_and_keeps_its_fill_record() {
     PaperFixture paper;
     Base base("v2-gw-persist");
@@ -1337,8 +1274,6 @@ void a_restart_with_the_persisted_venue_reconciles_and_keeps_its_fill_record() {
         first_fill_at = first.loop.metrics().last_fill_timestamp_seconds;
     }
     Gateway restarted(cluster, sim::FaultPolicy::clean(), Gateway::config(), {}, {file});
-    // Published before the first read: the totals come from the venue's file.
-    // 100 micros x 11 ticks x 2 lots = 2,200 notional; ceil(2,200 x 115 bp) = 26.
     const auto& opening = restarted.loop.metrics();
     require(opening.fee_micros_total == 26 && opening.volume_micros_buy == 2'200 &&
                 opening.last_fill_timestamp_seconds == first_fill_at && first_fill_at > 0,
@@ -1349,10 +1284,6 @@ void a_restart_with_the_persisted_venue_reconciles_and_keeps_its_fill_record() {
             "the restarted gateway armed without comparing 2 lots on both sides");
 }
 
-// A crash after the fill committed but before the venue's acknowledgement was
-// written: the venue still owns the reports, redelivers them, the kernel
-// answers already_applied (the position does not move twice), and only then
-// does the cut reconcile.
 void a_restart_between_commit_and_acknowledge_redelivers_then_arms() {
     PaperFixture paper;
     Base base("v2-gw-redeliver");
@@ -1369,7 +1300,7 @@ void a_restart_between_commit_and_acknowledge_redelivers_then_arms() {
         cluster.on_round = [&] {
             first.loop.step();
             if (first.counting.sends.size() == 1 && !std::filesystem::exists(before_ack))
-                std::filesystem::copy_file(file, before_ack);  // the send is durable; nothing acknowledged yet
+                std::filesystem::copy_file(file, before_ack);
         };
         (void)authorize(cluster, strategy);
         cluster.run_until([&] {
@@ -1393,8 +1324,6 @@ void a_restart_between_commit_and_acknowledge_redelivers_then_arms() {
             "the re-delivered fill was not counted exactly once in the fee total");
 }
 
-// First start of a persisted venue beside an existing position: the operator
-// adopts it once, with an explicit cost basis, and the gateway then reconciles.
 void an_adopted_position_reconciles_and_arms() {
     PaperFixture paper;
     Base base("v2-gw-adopt");
@@ -1403,7 +1332,7 @@ void an_adopted_position_reconciles_and_arms() {
     prepare_cluster(cluster, op, strategy);
     const auto leader = cluster.elect();
     {
-        Gateway first(cluster);  // an in-memory venue: the pre-persistence world
+        Gateway first(cluster);
         start(cluster, first);
         (void)authorize(cluster, strategy);
         cluster.run_until([&] {
@@ -1426,9 +1355,6 @@ void an_adopted_position_reconciles_and_arms() {
             "the adopted quote is not funding minus the cost basis");
 }
 
-// The continuous check (every read, armed or not) beside a venue whose balance
-// runs ahead of its reports: while the order is open in committed state the
-// cut is not comparable, so the early balance is never called a break.
 void a_venue_balance_ahead_of_an_open_order_is_not_a_mismatch() {
     PaperFixture paper;
     Base base("v2-gw-ahead");
@@ -1445,7 +1371,6 @@ void a_venue_balance_ahead_of_an_open_order_is_not_a_mismatch() {
     std::uint64_t ahead_reads = 0;
     cluster.on_round = [&] {
         gateway.loop.step();
-        // The test's own view: the venue holds the lots, the kernel does not yet.
         sim::VenueBook book;
         gateway.book.read_fn(gateway.book.context, book);
         const auto* risk = account(cluster.state_of(leader));
@@ -1462,10 +1387,6 @@ void a_venue_balance_ahead_of_an_open_order_is_not_a_mismatch() {
             "a venue balance ahead of an open order was called a mismatch");
 }
 
-// An election while an order is in flight at a venue whose balance runs ahead
-// of its reports: the book shows the bought lots before the kernel does. The
-// gateway must wait for the order to settle in committed state (never call it
-// a mismatch, never re-arm early), then re-arm.
 void an_election_during_an_in_flight_order_rearms_only_after_it_settles() {
     PaperFixture paper;
     Base base("v2-gw-inflight");
@@ -1475,7 +1396,7 @@ void an_election_during_an_in_flight_order_rearms_only_after_it_settles() {
     VenueChoice choice;
     choice.lagging_book = true;
     choice.paper_faults.delay_permille = 1000;
-    choice.paper_faults.delay_ticks = 1200;  // reports due 1.2 s after the send, inside the 2 s deadline
+    choice.paper_faults.delay_ticks = 1200;
     Gateway gateway(cluster, sim::FaultPolicy::clean(), quiet_config(300), {}, choice);
     start(cluster, gateway);
     bool leader_stopped = false;
@@ -1504,7 +1425,7 @@ void an_election_during_an_in_flight_order_rearms_only_after_it_settles() {
     require(gateway.counting.sends.size() == 1, "the in-flight order was sent again");
 }
 
-}  // namespace
+}
 
 int main() {
     const std::vector<std::pair<const char*, void (*)()>> tests{

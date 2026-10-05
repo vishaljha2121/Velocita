@@ -31,7 +31,7 @@ MICROS = 1_000_000
 NS = 1_000_000_000
 MINUTE_NS = 60 * NS
 MAX_WINDOW_MINUTES = 1440
-EXTRA = 4  # the strategy feature's index, after trend, ret1, vol, dev
+EXTRA = 4
 
 GT, LE, LT = PredicateOperator.greater_than, PredicateOperator.less_than_or_equal, PredicateOperator.less_than
 ENTER, EXIT = rules.Action.ENTER_LONG, rules.Action.EXIT
@@ -39,11 +39,11 @@ ENTER, EXIT = rules.Action.ENTER_LONG, rules.Action.EXIT
 
 @dataclass(frozen=True)
 class Params:
-    period_s: int | None = None       # churn / trend_churn: length of one phase; rotate: rotation period
-    exit_window_s: int = 60           # rotate: the exit lasts this long at the start of each period
-    window_min: int = 30              # dip: moving-average window in minutes
-    enter_below_bps: int = 20         # dip: buy when price is this far below the average
-    exit_above_bps: int = 10          # dip: sell when price is this far above it
+    period_s: int | None = None
+    exit_window_s: int = 60
+    window_min: int = 30
+    enter_below_bps: int = 20
+    exit_above_bps: int = 10
 
 
 @dataclass(frozen=True)
@@ -60,7 +60,7 @@ STRATEGIES = {
     "rotate": Spec(24, 34, "rotation", 1800),
     "dip": Spec(25, 35, "mdev", None),
 }
-TREND_IDENTITY = (21, 31)  # policy id, feature schema id of every rules.DEMOS program
+TREND_IDENTITY = (21, 31)
 
 
 def identity(strategy: str) -> tuple[int, int]:
@@ -69,7 +69,6 @@ def identity(strategy: str) -> tuple[int, int]:
 
 
 def resolved(strategy: str, params: Params) -> Params:
-    """PARAMS with the strategy's default period filled in, validated."""
     spec = STRATEGIES[strategy]
     period = params.period_s if params.period_s is not None else spec.default_period_s
     out = Params(period, params.exit_window_s, params.window_min, params.enter_below_bps, params.exit_above_bps)
@@ -86,7 +85,6 @@ def resolved(strategy: str, params: Params) -> Params:
 
 
 def program(strategy: str, value: int, params: Params) -> tuple[list[rules.Rule], rules.Settings]:
-    """First-match rules over the volume vector. VALUE is the trend SMA in days."""
     p = resolved(strategy, params)
     settings = rules.Settings(sma_days=value)
     if strategy == "churn":
@@ -98,7 +96,6 @@ def program(strategy: str, value: int, params: Params) -> tuple[list[rules.Rule]
         return ([rules.Rule(rules.TREND, LE, 0, EXIT), rules.Rule(EXTRA, LT, p.exit_window_s * MICROS, EXIT),
                  rules.Rule(rules.TREND, GT, 0, ENTER)], settings)
     if strategy == "dip":
-        # No match between the two thresholds: HOLD.
         return ([rules.Rule(EXTRA, LT, -p.enter_below_bps * 100, ENTER),
                  rules.Rule(EXTRA, GT, p.exit_above_bps * 100, EXIT)], settings)
     raise KeyError(strategy)
@@ -128,13 +125,6 @@ def rotation(event_ns: int, period_s: int) -> int:
 
 
 class MinuteWindow:
-    """The last observed price in each UTC minute, for the newest W minutes.
-
-    A minute without an observation carries the previous minute's close
-    forward; the newest minute's close is the newest price (provisional, like
-    today's close in the daily features). At most W entries plus one carried
-    close are kept."""
-
     def __init__(self, minutes: int) -> None:
         if not 1 <= minutes <= MAX_WINDOW_MINUTES:
             raise ValueError(f"window must be 1..{MAX_WINDOW_MINUTES} minutes")
@@ -156,7 +146,6 @@ class MinuteWindow:
             self.carry = self.closes.popleft()[1]
 
     def deviation_micros(self) -> int | None:
-        """round_half_even((newest / SMA - 1) * 1e6), or None until W minutes are covered."""
         if not self.closes:
             return None
         newest_minute, newest = self.closes[-1]

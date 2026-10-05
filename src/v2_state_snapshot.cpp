@@ -270,13 +270,6 @@ private:
                static_cast<std::uint8_t>(ClusterOrderState::conflict);
 }
 
-// Legal in REPLICATED state, which is narrower than "a known enum value".
-//
-// Architecture 9.1.2 makes `claimed` and `attempted` gateway-local: the reducer
-// never writes them, so meeting one here means the snapshot is corrupt or forged.
-// Interpreting it would mean trusting a value the authority cannot have produced.
-// Their numeric values stay reserved for schema stability - this excludes them
-// from canonical `TradingState` without renumbering the enum.
 [[nodiscard]] constexpr bool known(const OutboxState value) noexcept {
     switch (value) {
         case OutboxState::pending:
@@ -309,15 +302,12 @@ private:
                value.detail.words[2] != 0;
     }
     if (value.detail_kind == ApplyResultDetailKind::mass_cancel) {
-        // Emitted only on `applied`; every in-scope order is exactly one of
-        // cancelled or skipped, and scope is bounded by the order arena.
         const auto in_scope = value.mass_in_scope();
         const auto cancelled = value.mass_cancelled();
         return value.code == ApplyCode::applied && in_scope <= kMaxClusterOrders &&
                cancelled <= in_scope && value.mass_skipped() == in_scope - cancelled;
     }
     if (value.detail_kind == ApplyResultDetailKind::source_state) {
-        // A source with no cursor reports 0/0; one with a cursor has both.
         return value.code == ApplyCode::source_generation_gap &&
                value.source_cursor_id().value() != 0 &&
                (value.source_cursor_generation().value() == 0) ==
@@ -353,11 +343,6 @@ private:
                          value.decision_id.value() != 0
                    : value.detail != ApplyResultDetail{};
     }
-    // Metadata word 1 carries the identity domain. Validated as an exact enum
-    // value because `event_origin()` resolves anything unrecognised to `native`:
-    // correct at runtime, and exactly the wrong thing to accept from a decoder,
-    // where a forged word would move a gateway-authored receipt into the venue's
-    // identity domain.
     const auto origin = value.metadata_words[1];
     const bool known_origin =
         origin == static_cast<std::uint64_t>(ObservationOrigin::native) ||
@@ -514,8 +499,6 @@ private:
 
     for (std::size_t index = 0; index < state.caller_cursor_count; ++index) {
         const auto& cursor = state.caller_cursors[index];
-        // expired_below == 0 is the canonical first-admission state: the caller
-        // is registered, but no receipt prefix has been reclaimed yet.
         if (cursor.caller_id.value() == 0) return false;
         for (std::size_t prior = 0; prior < index; ++prior) {
             if (state.caller_cursors[prior].caller_id == cursor.caller_id) {
@@ -664,8 +647,6 @@ private:
         }
     }
 
-    // Each reservation has exactly one owning order. The existing unique IDs
-    // and forward-link checks plus equal counts also rule out orphan holds.
     if (state.order_count != state.reservation_count) return false;
     struct ReservedTotals {
         QuantityLots quantity{};
@@ -700,8 +681,6 @@ private:
                                         order.cluster_order_id);
         }
         if (proposal == nullptr || !current_effect_found) return false;
-        // Ownership is immutable proposal identity, not array position or the
-        // currently active policy. Account aggregates must equal their holds.
         if (validate(*proposal) != ContractError::none) return false;
         std::size_t account = 0;
         while (account < state.risk_account_count &&
@@ -1034,8 +1013,6 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
     writer.integral(static_cast<std::uint8_t>(state.strategy_mode));
     writer.integral(state.kill_epoch.value());
     writer.integral(state.executor_generation.value());
-    // Appended after the control prefix rather than inserted after
-    // state_version, so the existing header layout stays byte-stable.
     writer.integral(state.reclaimed_group_count);
     writer.integral(state.settled_incomplete_effect_count);
     writer.integral(static_cast<std::uint16_t>(state.caller_cursor_count));
@@ -1642,7 +1619,7 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
         (std::to_integer<unsigned char>(bytes[offset + 1]) << 8U));
 }
 
-}  // namespace
+}
 
 EncodeStateSnapshotResult encode_state_snapshot(
     const TradingState& state, const std::span<std::byte> output) noexcept {
@@ -1681,8 +1658,6 @@ DecodeStateSnapshotResult decode_state_snapshot(
         return {StateSnapshotError::invalid_magic, {}};
     }
 
-    // A different schema can have a different size bound. Do not classify it
-    // as corrupt current-schema state and permit a storage-level replay fallback.
     if (read_u16(snapshot, kStateSnapshotSchemaOffset) !=
         kStateSnapshotSchemaVersion) {
         return {StateSnapshotError::unsupported_schema, {}};
@@ -1722,4 +1697,4 @@ DecodeStateSnapshotResult decode_state_snapshot(
     return {StateSnapshotError::none, calculated};
 }
 
-}  // namespace velocita::v2
+}

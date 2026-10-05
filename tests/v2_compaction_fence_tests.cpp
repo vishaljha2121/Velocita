@@ -41,7 +41,6 @@ void test_parked_worker(const std::filesystem::path& root) {
     ReplicatedKernel node(identity_test::bootstrap(root, 1, {1}), {&FenceGate::observe, &gate});
     commit_one(node);
     require(node.compact() == 0 && node.compaction_pending(), "compaction did not enter async fence");
-    // Always release on assertion failure before the node's cold destructor joins.
     struct Release { FenceGate& gate; ~Release() { gate.release.store(true, std::memory_order_release); } } release{gate};
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while (!gate.entered.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < deadline)
@@ -94,7 +93,6 @@ void test_failure_cuts(const std::filesystem::path& root) {
         ReplicatedKernel recovered(identity_test::recover(directory, 1, {1}));
         require(recovered.status().applied_index == 2 && recovered.state().kill_epoch == KillEpoch{2},
                 "recovery across archive/snapshot/rewrite failure lost committed state");
-        // Recovered valid catalog plus retained old WAL must finish idempotently.
         if (!identity_test::read_wal(directory).empty() && recovered.retained_log_count())
             require(identity_test::complete_compaction(recovered) == 2, "recovered archive publication could not finish");
     }
@@ -106,7 +104,7 @@ void test_underfilled_cut_defers_without_killing_service(const std::filesystem::
     commit_one(node);
     require(node.propose(encoded(command(3, AdvanceKillEpoch{KillEpoch{3}}))).status == ProposeStatus::admitted,
             "protected third obligation did not fit one packed object");
-    node.flush_durability(); // durable, deliberately not yet quorum-applied by tick
+    node.flush_durability();
     require(node.status().applied_index == 2 && node.durable_index() == 3,
             "early-cut fixture did not retain a durable unfinished obligation");
     (void)node.compact();
@@ -121,9 +119,6 @@ void test_underfilled_cut_defers_without_killing_service(const std::filesystem::
     require(!std::filesystem::exists(root / "v2-archive" / "v2-archive-catalog.bin"),
             "underfilled cut published before reaccounting remaining object liability");
     node.tick(1);
-    // The first tick captures the newly durable commit checkpoint.  Compaction
-    // started the writer, so explicitly pump that metadata job and then resume
-    // the owner turn; `complete_compaction` intentionally does not enter Raft.
     const auto apply_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (node.status().applied_index < 3 &&
            std::chrono::steady_clock::now() < apply_deadline) {
@@ -168,7 +163,7 @@ void test_cached_archive_is_not_deletion_authority(const std::filesystem::path& 
     require(refused && identity_test::read_wal(root).size() == 2,
             "cached archive coverage reclaimed WAL after its named segment was corrupted");
 }
-} // namespace
+}
 
 int main() {
     std::array<char, 64> pattern{};

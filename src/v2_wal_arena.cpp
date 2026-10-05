@@ -12,8 +12,6 @@
 namespace velocita::v2 {
 namespace {
 
-// "VWB2". Distinct from the record magic inside the payload, so a block header
-// can never be mistaken for a record and vice versa.
 constexpr std::uint32_t kBlockMagic = 0x32425756U;
 constexpr std::uint16_t kBlockVersion = 2;
 
@@ -47,7 +45,7 @@ std::uint64_t get_le(std::span<const std::byte> bytes, std::size_t& offset,
     return value;
 }
 
-}  // namespace
+}
 
 std::vector<std::byte> frame_block(const std::uint64_t generation,
                                    const std::uint64_t sequence,
@@ -66,16 +64,11 @@ std::vector<std::byte> frame_block(const std::uint64_t generation,
     put_le(bytes, 0, 4);
     bytes.insert(bytes.end(), payload.begin(), payload.end());
 
-    // Checksum covers the header WITH THE CHECKSUM FIELD ZEROED plus the used
-    // payload only. Covering trailing padding would make a block's validity
-    // depend on bytes nothing wrote.
     const auto checksum = crc32(bytes);
     for (std::size_t i = 0; i < 4; ++i) {
         bytes[crc_offset + i] =
             static_cast<std::byte>((checksum >> (i * 8U)) & 0xFFU);
     }
-    // Pad to the fixed block size so every block occupies the same file offset
-    // stride and a torn tail is a partial BLOCK rather than a shifted stream.
     bytes.resize(kWalBlockBytes, std::byte{0});
     return bytes;
 }
@@ -122,9 +115,6 @@ bool WalBlockArena::acquire_open_block() {
     for (std::size_t slot = 0; slot < blocks_.size(); ++slot) {
         if (blocks_[slot].state != BlockState::durable) continue;
         auto& block = blocks_[slot];
-        // A NEW GENERATION EVERY TIME THE SLOT IS REUSED. This is what makes a
-        // completion from a previous use recognisable; without it a slow writer
-        // could release bytes that a different record now occupies.
         block.generation = next_generation_++;
         block.sequence = next_sequence_++;
         block.state = BlockState::open;
@@ -140,17 +130,12 @@ void WalBlockArena::finish_open_block() {
     if (!open_slot_.has_value()) return;
     auto& block = blocks_[*open_slot_];
     if (block.used == 0) {
-        // An empty block is returned rather than sealed. Sealing it would spend
-        // a sequence number and a write on nothing.
         block.state = BlockState::durable;
         open_slot_.reset();
         return;
     }
     block.state = BlockState::sealed;
     sealed_.push_back(*open_slot_);
-    // Note: `submitted_` is deliberately not touched. A newly sealed block is
-    // unsubmitted by construction, and it sits behind everything already handed
-    // out.
     open_slot_.reset();
 }
 
@@ -164,10 +149,6 @@ StageOutcome WalBlockArena::stage(const std::span<const std::byte> record_bytes,
     if (!open_slot_.has_value() && !acquire_open_block()) {
         return StageOutcome::backpressure;
     }
-    // NO RECORD STRADDLES A BLOCK. When the remainder will not hold it, the
-    // block is sealed short and a fresh one acquired. The wasted tail is the
-    // price of making every torn write a bad block rather than a plausible
-    // short record.
     if (blocks_[*open_slot_].used + record_bytes.size() > kWalBlockPayloadBytes) {
         finish_open_block();
         if (!acquire_open_block()) return StageOutcome::backpressure;
@@ -206,17 +187,11 @@ std::span<const std::byte> WalBlockArena::block_bytes(
 bool WalBlockArena::complete(const BlockDescriptor& descriptor) {
     if (descriptor.slot >= blocks_.size()) return false;
     auto& block = blocks_[descriptor.slot];
-    // THE STALE-COMPLETION GUARD. Same slot, different generation means this
-    // completion belongs to a use that has already been released and recycled.
-    // Honouring it would mark bytes durable that have never been written.
     if (block.generation != descriptor.generation) return false;
     if (block.state != BlockState::sealed) return false;
 
     const auto position = std::find(sealed_.begin(), sealed_.end(), descriptor.slot);
     if (position == sealed_.end()) return false;
-    // In order. A later block becoming durable before an earlier one would let
-    // the durable index cover a gap, which is exactly the claim it must never
-    // make.
     if (position != sealed_.begin()) return false;
     sealed_.erase(position);
     if (submitted_ > 0) --submitted_;
@@ -263,8 +238,6 @@ std::uint64_t WalBlockArena::generation_of(const std::size_t slot) const noexcep
 WalSegment::WalSegment(std::filesystem::path data_dir, const VerifiedStaticIdentity& identity,
                        StorageCheckpoints checkpoints)
     : path_(std::move(data_dir) / "v2-wal-blocks.bin"), identity_(identity), checkpoints_(checkpoints) {
-    // Compatibility/lineage refusal must precede a writable open, including for
-    // standalone users of this store. Kernel separately proves committed coverage.
     visit_existing_records(path_.parent_path(), identity_, [](const WalRecord&) {});
     fd_ = ::open(path_.c_str(), O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0600);
     if (fd_ < 0) throw std::runtime_error("cannot open " + path_.string());
@@ -277,17 +250,6 @@ WalSegment::WalSegment(std::filesystem::path data_dir, const VerifiedStaticIdent
     }
     reserved_through_ = static_cast<std::uint64_t>(info.st_size);
 
-    // RESUME AT THE WRITTEN FRONTIER, FOUND BY WALKING, not by dividing the file
-    // size.
-    //
-    // File size stopped meaning "end of data" the moment space was reserved
-    // ahead of the writes: a segment with a 2 MiB reservation and one block
-    // written would resume 2 MiB in, leaving a hole of zeros that recovery reads
-    // as the end of the log - silently losing everything appended afterwards.
-    //
-    // Walking also handles a torn tail for free. The first block that does not
-    // verify is where writing resumes, so a block that never completed is
-    // overwritten rather than left sitting in the middle of the file.
     std::array<std::byte, kWalBlockBytes> block{};
     next_offset_ = 0;
     try {
@@ -314,9 +276,6 @@ WalSegment::~WalSegment() {
 void WalSegment::reserve_through(const std::uint64_t offset) {
     if (offset <= reserved_through_) return;
     const auto target = offset + kWalPrealloctionBlocks * kWalBlockBytes;
-    // ZEROS, deliberately. A reserved region must not decode as a block, and
-    // `decode_block` rejects a zero magic, so unwritten space reads as the end
-    // of the log exactly as an unextended file would.
     if (::ftruncate(fd_, static_cast<off_t>(target)) != 0) {
         throw std::runtime_error("WAL preallocation failed");
     }
@@ -339,11 +298,6 @@ void WalSegment::write_block(const BlockDescriptor& descriptor,
 }
 
 void WalSegment::sync() {
-    // `fdatasync` where it exists, `fsync` where it does not. macOS has no
-    // `fdatasync`, and F_FULLFSYNC is the only call there that actually reaches
-    // the platter - but the development host is not the deployment target, and
-    // pretending otherwise in a durability path would be the wrong kind of
-    // portability.
 #if defined(__APPLE__)
     checkpoints_(StorageCheckpoint::before_file_sync);
     if (::fsync(fd_) != 0) throw std::runtime_error("WAL fsync failed");
@@ -354,9 +308,6 @@ void WalSegment::sync() {
 }
 
 std::size_t WalSegment::flush(WalBlockArena& arena) {
-    // The synchronous path, for callers with no writer thread. Writes every
-    // sealed block, syncs ONCE, and only then releases them - releasing before
-    // the sync would make "durable" mean "in the page cache".
     std::vector<BlockDescriptor> written;
     const auto original_offset = next_offset_;
     const auto original_reserved = reserved_through_;
@@ -379,18 +330,6 @@ std::size_t WalSegment::flush(WalBlockArena& arena) {
         }
         sync();
     } catch (...) {
-        // The blocks remain sealed and therefore cannot be recycled as
-        // durable. Roll back the append frontier so a caller that deliberately
-        // retries after handling the I/O failure does not duplicate records.
-        //
-        // The frontier is rolled back WHETHER OR NOT the truncation succeeds,
-        // and that is the safer of the two bad options rather than an oversight.
-        // The bytes past `original_offset` were never synced, so nothing may
-        // rely on them; leaving the frontier where the failed write left it
-        // would guarantee duplicate records on the retry, while rolling it back
-        // means the retry overwrites a region no reader is entitled to. A
-        // `(void)` cast does not satisfy `warn_unused_result`, and suppressing
-        // the warning rather than saying this was the wrong answer.
         const int rollback = ::ftruncate(fd_, static_cast<off_t>(original_offset));
         static_cast<void>(rollback);
         next_offset_ = original_offset;
@@ -407,8 +346,6 @@ std::size_t WalSegment::flush(WalBlockArena& arena) {
 
 namespace {
 
-// Packs a streamed sequence exactly as staging does. At most the current block
-// payload and one encoded record are owned at a time.
 class SegmentRewriteWriter final {
 public:
     SegmentRewriteWriter(const int fd, const VerifiedStaticIdentity& identity,
@@ -465,7 +402,7 @@ private:
     std::uint64_t offset_{};
 };
 
-}  // namespace
+}
 
 void WalSegment::rewrite_filtered(const std::uint64_t boundary,
                                   const bool keep_before_boundary) {
@@ -544,9 +481,6 @@ void visit_segment_records(const int fd, const VerifiedStaticIdentity& identity,
         if (done != kWalBlockBytes) break;
         const auto decoded = decode_block(block);
         if (!decoded) {
-            // Only complete all-zero preallocation is an ordinary end marker.
-            // A malformed complete block retains evidence; do not turn it into
-            // an append frontier which would overwrite it on the next proposal.
             if (std::all_of(block.begin(), block.end(), [](auto byte) { return byte == std::byte{0}; })) break;
             throw BoundWalError(BoundFrameError::invalid_payload, "corrupt complete WAL block");
         }
@@ -555,7 +489,7 @@ void visit_segment_records(const int fd, const VerifiedStaticIdentity& identity,
     }
 }
 
-}  // namespace
+}
 
 std::vector<WalRecord> WalSegment::read_records() const {
     std::vector<WalRecord> records;
@@ -663,9 +597,6 @@ std::size_t WalWriter::poll() {
     std::vector<BlockDescriptor> done;
     BlockDescriptor descriptor{};
     while (submissions_.pop(descriptor)) {
-        // Reading the arena's bytes for a SEALED slot. The owner cannot recycle
-        // that slot until it applies the completion this pass will publish, so
-        // the bytes are stable for exactly as long as they are needed.
         segment_->write_block(descriptor, arena_->block_bytes(descriptor));
         done.push_back(descriptor);
         if (done.size() >= completions_.capacity() / 2) break;
@@ -678,13 +609,7 @@ std::size_t WalWriter::poll() {
         }
         checkpoints_(StorageCheckpoint::writer_idle_before_control_acquire);
         if (switch_state_.load(std::memory_order_acquire) == 1) {
-            // The owner publishes every older submission before the release
-            // store which queued this switch. Recheck after acquiring that
-            // store: an earlier empty pop is not proof the queue stayed empty.
             if (!submissions_.empty()) return 0;
-            // A write completion means durable, but the old arena still owns
-            // the corresponding sealed slot until the protocol owner applies
-            // it. Do not grant a lifetime switch while such ownership remains.
             if (!completions_.empty()) return 0;
             const bool matches = target_generation_ == switch_expected_generation_;
             switch_completion_ = {target_generation_, switch_generation_,
@@ -702,16 +627,10 @@ std::size_t WalWriter::poll() {
         return 0;
     }
 
-    // ONE SYNC FOR THE WHOLE PASS, and strictly before any completion is
-    // published. Publishing first would make "completed" mean "written", and
-    // written is not durable.
     segment_->sync();
 
     for (const auto& finished : done) {
         while (!completions_.push(finished)) {
-            // The owner has not drained. Yielding rather than dropping: a
-            // dropped completion would leave a block sealed forever and the
-            // arena would fill and refuse, which is safe but a permanent stall.
             std::this_thread::yield();
         }
     }
@@ -727,7 +646,6 @@ void WalWriter::start() {
             while (running_.load(std::memory_order_acquire)) {
                 if (poll() == 0) std::this_thread::yield();
             }
-            // Drain anything left, so stopping does not strand submitted blocks.
             while (poll() > 0) {
             }
         } catch (...) {
@@ -748,4 +666,4 @@ void WalWriter::rethrow_failure() const {
     std::rethrow_exception(failure_);
 }
 
-}  // namespace velocita::v2
+}

@@ -59,7 +59,7 @@ bool valid_identity(const Envelope& envelope) noexcept {
            envelope.source_generation.value() != 0;
 }
 
-}  // namespace
+}
 
 std::uint32_t crc32_checksum(const std::span<const std::byte> bytes) noexcept {
     std::uint32_t crc = 0xFFFFFFFFU;
@@ -155,4 +155,4 @@ DecodeEnvelopeResult decode_envelope(const std::span<const std::byte> bytes) {
     return {EnvelopeError::none, std::move(envelope)};
 }
 
-}  // namespace velocita::v2
+}

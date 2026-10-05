@@ -1,3 +1,4 @@
+// V1: Aeron client session.
 #pragma once
 
 #include "velocita/client_routing.hpp"
@@ -42,4 +43,4 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace velocita
+}

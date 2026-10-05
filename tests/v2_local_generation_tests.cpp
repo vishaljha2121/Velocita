@@ -153,7 +153,7 @@ void run() {
             "wrong previous generation accepted");
 }
 
-} // namespace
+}
 
 int main() {
     try {

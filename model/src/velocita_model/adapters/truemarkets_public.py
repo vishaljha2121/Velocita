@@ -55,27 +55,16 @@ API_BASE_URL = "https://api.truemarkets.co"
 DOCS_URL = "https://docs.truemarkets.co/"
 QUICKSTART_URL = "https://docs.truemarkets.co/trading/quickstart"
 
-#: Read-only catalog endpoint. Confirmed to exist; its response shape is not.
 ASSETS_PATH = "/v1/conductor/assets"
 
-#: Endpoints this adapter must never call, listed so the prohibition is explicit
-#: in code review rather than implied by absence.
 PROHIBITED_PATHS = ("/v1/conductor/orders", "/v1/auth/api-key/token")
 
 
 class AdapterNotConfigured(RuntimeError):
-    """Raised when collection is attempted before required fields are confirmed."""
+    pass
 
 
 class TrueMarketsPublicAdapter(VenueAdapter):
-    """Read-only True Markets adapter.
-
-    Constructed with explicit endpoint paths supplied by the operator once they
-    have been confirmed from official documentation. Passing none leaves the
-    adapter in a state where `describe_capabilities()` works - so the pipeline
-    can report the venue-level NO-GO - but every collection method refuses.
-    """
-
     name = "truemarkets"
 
     __slots__ = ("_http", "_book_path", "_trades_path", "_metadata_path", "_symbol_map")
@@ -110,8 +99,6 @@ class TrueMarketsPublicAdapter(VenueAdapter):
     def describe_capabilities(self) -> VenueCapabilities:
         return VenueCapabilities(
             venue=self.name,
-            # False and unverified. Not "assume yes until proven otherwise" -
-            # that assumption is what turns a research project into a loss.
             supports_resting_limit_orders=MetadataField(
                 "supports_resting_limit_orders",
                 False,
@@ -148,9 +135,6 @@ class TrueMarketsPublicAdapter(VenueAdapter):
         if self._metadata_path is None:
             raise AdapterNotConfigured("metadata endpoint is not configured")
         payload = self._http.get(self._metadata_path, {"venue": "defi"})
-        # The response shape is unconfirmed, so nothing is parsed into typed
-        # metadata yet. The raw bytes are still captured and digested: they are
-        # evidence, and evidence is worth storing before it is understood.
         return (
             [
                 MetadataField("asset_catalog_raw_bytes", len(payload.body), "verified", payload.url),

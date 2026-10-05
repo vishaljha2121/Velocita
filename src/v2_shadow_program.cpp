@@ -21,9 +21,6 @@ void append(std::vector<std::byte>& out, const Digest256& digest) {
     out.insert(out.end(), digest.bytes.begin(), digest.bytes.end());
 }
 
-// The policy artifact's own digest: every field that defines the policy, in a
-// fixed order, under a domain tag. The C++ side has no canonical policy digest
-// of its own; this one is deterministic and binds the rules exactly.
 Digest256 policy_digest(const PolicyArtifact& policy) {
     std::vector<std::byte> bytes;
     append(bytes, "velocita.v2.shadow-policy.1");
@@ -47,8 +44,6 @@ Digest256 policy_digest(const PolicyArtifact& policy) {
     return sha256_digest(bytes);
 }
 
-// A command's payload digest binds every byte of the command except the digest
-// field itself: encode with a constant placeholder there, then hash.
 Command identified(CallerId caller, std::uint64_t sequence, CommandBody body) {
     Command command{{caller, RequestSequence{sequence}, {}}, std::move(body)};
     command.identity.payload_digest.bytes.fill(std::byte{0x01});
@@ -93,7 +88,7 @@ FeatureSchemaArtifact feature_schema(const ShadowProgram& p) {
     schema.feature_schema_id = p.feature_schema_id;
     schema.feature_count = static_cast<std::uint16_t>(p.generic_features + 1);
     for (std::uint16_t i = 0; i < p.generic_features; ++i) schema.features[i] = {FeatureEconomicKind::generic, 0};
-    schema.features[p.generic_features] = {FeatureEconomicKind::price, 1};  // the price feature carries ticks
+    schema.features[p.generic_features] = {FeatureEconomicKind::price, 1};
     schema.artifact_digest = compute_artifact_digest(schema).digest;
     return schema;
 }
@@ -105,15 +100,13 @@ ActionTemplate order_template(const ShadowProgram& p, Side side) {
     t.side = side;
     t.time_in_force = p.time_in_force;
     t.post_only = p.post_only;
-    t.order_slot = LogicalOrderSlot{1};  // one position: the latest proposal supersedes older ones
+    t.order_slot = LogicalOrderSlot{1};
     t.instrument_spec_version = p.row.instrument.instrument_spec_version;
     t.venue_capabilities_version = p.row.capabilities.venue_capabilities_version;
     t.price_source = {EconomicValueSourceKind::feature, p.generic_features, RoundingMode::toward_zero, {}, 1, {}};
     t.quantity_source = {EconomicValueSourceKind::fixed, 0, RoundingMode::toward_zero, p.order_quantity, 0};
     t.safety_caps.max_quantity = p.order_quantity;
     t.safety_caps.max_notional = p.max_notional;
-    // Price and reference are the same feature, so the deviation is zero; one tick
-    // is the tightest cap the contract accepts.
     t.safety_caps.max_abs_price_deviation = PriceTicks::from_atoms(1);
     t.safety_caps.max_abs_tick_offset = PriceTicks::from_atoms(1);
     t.safety_caps.max_market_data_age_ns = p.max_market_data_age_ns;
@@ -130,7 +123,6 @@ ExecutablePolicyArtifact executable_policy(const ShadowProgram& p, const PolicyA
     e.policy_artifact_digest = policy.artifact_digest;
     e.feature_schema_id = p.feature_schema_id;
     e.feature_schema_digest = schema.artifact_digest;
-    // Only templates some rule uses: the contract refuses unreferenced templates.
     std::uint16_t buy = 0, sell = 0;
     for (const auto& rule : p.rules) {
         if (rule.action == ShadowAction::enter_long && buy == 0) {
@@ -145,13 +137,13 @@ ExecutablePolicyArtifact executable_policy(const ShadowProgram& p, const PolicyA
     for (std::size_t i = 0; i < p.rules.size(); ++i) {
         const auto action = p.rules[i].action;
         const std::uint16_t slot = action == ShadowAction::enter_long ? buy : action == ShadowAction::exit ? sell : 0;
-        e.rule_template_slots[i] = ActionTemplateSlot{static_cast<std::uint8_t>(slot)};  // <= kMaxExecutableActionTemplates
+        e.rule_template_slots[i] = ActionTemplateSlot{static_cast<std::uint8_t>(slot)};
     }
     e.artifact_digest = compute_artifact_digest(e).digest;
     return e;
 }
 
-}  // namespace
+}
 
 ShadowSetup shadow_setup(const ShadowProgram& program, CallerId caller, std::uint64_t first_sequence,
                          KillEpoch kill_epoch, ExecutorGeneration executor_generation) {
@@ -230,7 +222,6 @@ RiskView resync_risk_view(const RiskView& current, const ApplyResult& authorizat
 }
 
 std::optional<SourceGeneration> resync_source_generation(SourceId source, const ApplyResult& recorded) noexcept {
-    // source_cursor_id() is zero unless the result carries the source_state report.
     if (recorded.code != ApplyCode::source_generation_gap || recorded.source_cursor_id() != source)
         return std::nullopt;
     const auto cursor = recorded.source_cursor_generation().value();
@@ -238,4 +229,4 @@ std::optional<SourceGeneration> resync_source_generation(SourceId source, const 
     return SourceGeneration{cursor + 1};
 }
 
-}  // namespace velocita::v2
+}

@@ -303,14 +303,10 @@ void undrained_completion_must_defer_switch(const std::filesystem::path& root) {
     writer.start();
     IdlePassCleanup cleanup{&gate, &writer};
 
-    // Hit one is after the worker published the old durable completion but
-    // before it acquired any target-switch control state.
     gate.await_hit(1);
     require(writer.submit_target_switch(41, 42, 201, next_segment, next_arena),
             "completion-guard switch submission failed");
     gate.release_hit(1);
-    // With the guard intact, that idle pass observes the queued switch but
-    // refuses activation because the owner has not acquired the old completion.
     gate.await_hit(2);
     WalWriter::TargetSwitchCompletion switched{};
     require(!writer.take_target_switch_completion(switched),
@@ -427,7 +423,7 @@ void maintenance_and_stale_generation_must_not_rebind(const std::filesystem::pat
             "stale-generation switch rebound or wrote the new target");
 
 }
-} // namespace
+}
 
 int main() {
     try {

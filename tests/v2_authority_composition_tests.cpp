@@ -1,4 +1,3 @@
-// Reuse the public-command cluster fixture; never inject TradingState economics.
 #define main replication_fixture_suite_main
 #include "v2_replication_tests.cpp"
 #undef main
@@ -110,7 +109,6 @@ void healthy_one_shot_and_unknown_retry(const std::filesystem::path& root,
     require(!fixture.send(node, prepared) && fixture.transport.calls == 1,
             "fresh authority bypassed unknown-outcome submit retry protection");
     require(record_unsent(fixture.delivery, prepared.effect.effect_id), "proven-unsent setup failed");
-    // A refused final attempt drops authority; proven-unsent needs a fresh request.
     const auto third = fixture.proof(node, 107);
     require(fixture.authority.accept(third, 108), "proven-unsent fresh request failed");
     fixture.transport.now = 109;
@@ -156,7 +154,6 @@ void partition_majority_kill(const std::filesystem::path& root, bool prior_proof
     require(majority->state().kill_epoch == KillEpoch{2} && old.state().kill_epoch == KillEpoch{1},
             "partition fixture lacks divergent kill state");
     if (prior_proof) {
-        // A proof is an ordered point, not a lock on a future remote kill.
         fixture.transport.now = 102;
         require(fixture.send(old, prepared) && fixture.transport.calls == 1 &&
                     fixture.transport.bytes == encode_payload(prepared.effect).bytes,
@@ -228,11 +225,11 @@ void clock_and_request_boundaries(const std::filesystem::path& root) {
         const auto proof = fixture.proof(node, start);
         require(fixture.authority.accept(proof, start + 1), "clock fixture proof refused");
         fixture.transport.now = start + 2;
-        if (mode == 0) fixture.transport.now = start + 50; // Inclusive bound.
+        if (mode == 0) fixture.transport.now = start + 50;
         if (mode == 1) fixture.transport.advance_on_second_clock = 100;
-        if (mode == 2) fixture.transport.now = start; // Regression since accept.
+        if (mode == 2) fixture.transport.now = start;
         if (mode == 3) {
-            fixture.authority.abandon_request(); // Reconnect discards outstanding authority.
+            fixture.authority.abandon_request();
             require(fixture.authority.begin_request(prepared, controls(node), start + 2).has_value(),
                     "reconnected request not created");
             require(!fixture.authority.accept(proof, start + 3), "earlier request proof matched a later sequence");
@@ -358,8 +355,6 @@ void async_marker_checkpoint(const std::filesystem::path& root) {
     require(gate.parked.load(), "marker checkpoint did not reach directory-sync boundary");
     require(node.status().applied_index == before && !node.take_authority_proof(),
             "real authority marker applied or released proof before checkpoint durability");
-    // Do not call dispatch without a proof here: its intentional refusal also
-    // abandons the pending gateway request, invalidating the later acceptance.
     gate.release.store(true);
     deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     std::optional<AuthorityProof> proof;
@@ -374,7 +369,7 @@ void async_marker_checkpoint(const std::filesystem::path& root) {
             "durable proof did not authorize exactly the original effect payload");
 }
 
-}  // namespace
+}
 
 int main() {
     static_assert(!std::is_default_constructible_v<AuthorityProof>);

@@ -60,9 +60,6 @@ bool same_apply_result(const ApplyResult& a, const ApplyResult& b) {
         a.detail_kind == b.detail_kind;
 }
 
-// This is deliberately a cold-constructor witness, not a simulated live install.
-// A live installer does not exist yet.  The fixture is a production-valid disk
-// image: snapshot S, a durable contiguous suffix, and hard-state commit C > S.
 void cold_recovery_applies_committed_suffix_without_notifications(
     const std::filesystem::path& root) {
     constexpr std::uint64_t snapshot_index = 2;
@@ -157,7 +154,7 @@ void cold_recovery_applies_committed_suffix_without_notifications(
               << " committed_suffix_notifications=0 retained_notifications=1\n";
 }
 
-} // namespace
+}
 
 int main(int argc, char** argv) {
     std::filesystem::path root;

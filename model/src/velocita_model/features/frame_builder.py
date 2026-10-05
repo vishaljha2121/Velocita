@@ -34,9 +34,6 @@ from .schema import FeatureSchema
 
 
 class FrameRefused(Exception):
-    """The edge declined to emit a frame. Carries the reason for the log and the
-    data-quality record; it is never an error the caller should paper over."""
-
     def __init__(self, reason: str, contract_error: ContractError | None = None) -> None:
         self.reason = reason
         self.contract_error = contract_error
@@ -45,13 +42,6 @@ class FrameRefused(Exception):
 
 @dataclass(frozen=True, slots=True)
 class FrameIdentity:
-    """The identity fields a frame carries from configuration and cluster state.
-
-    `policy_id`/`policy_version` name the policy this frame is proposed against.
-    A frame is always evaluated against one specific policy version; proposing a
-    frame without naming one would let the meaning of its features drift.
-    """
-
     policy_id: int
     policy_version: int
     venue_id: int
@@ -60,21 +50,11 @@ class FrameIdentity:
     source_generation: int
     instrument_id: int
     account_id: int
-    #: Cluster-owned versions. Until Phase 4 exists these are the shadow
-    #: simulator's own counters, and that limitation is recorded in the report.
     position_version: int = 1
     risk_version: int = 1
 
 
 class FeatureVector:
-    """A schema-checked staging buffer for feature values.
-
-    Values go in by name, come out as ordered atoms. Setting an unknown name is
-    a KeyError at the call site rather than a silently ignored assignment, which
-    is the difference between a typo you find in ten seconds and a strategy that
-    quietly evaluates against zero.
-    """
-
     __slots__ = ("_schema", "_values")
 
     def __init__(self, schema: FeatureSchema) -> None:
@@ -103,9 +83,6 @@ class FeatureVector:
         ]
 
     def atoms(self, count: int) -> tuple[int, ...]:
-        """Dense prefix of length `count`. A hole is a refusal, not a zero: the
-        canonical encoding has no way to say "index 7 is unknown", so a frame
-        with a hole would assert that the feature is exactly 0.0."""
         holes = self.missing(count)
         if holes:
             raise FrameRefused(
@@ -116,8 +93,6 @@ class FeatureVector:
 
 
 class DecisionFrameBuilder:
-    """Stateful per-pair frame emitter. One instance per (pair, source)."""
-
     __slots__ = ("_schema", "_identity", "_feature_count", "_source_sequence", "_venue_sequence")
 
     def __init__(
@@ -162,9 +137,6 @@ class DecisionFrameBuilder:
             raise FrameRefused("negative market-data age", ContractError.invalid_age)
 
         if venue_sequence is None:
-            # A venue that supplies no sequence forces us to synthesise one.
-            # That is a real weakening of ordering evidence and the metadata
-            # collector records it as such; it is not silently equivalent.
             self._venue_sequence += 1
             venue_sequence = self._venue_sequence
         else:
@@ -202,18 +174,12 @@ class DecisionFrameBuilder:
         try:
             frame.validate()
         except ContractViolation as violation:
-            # Undo the sequence consumption: an unemitted frame must not leave a
-            # hole in the source sequence, because a hole is indistinguishable
-            # from message loss to anything downstream.
             self._source_sequence -= 1
             raise FrameRefused(str(violation), violation.error) from violation
         return frame
 
 
 def evidence_digest(payloads: tuple[bytes, ...]) -> bytes:
-    """Digest over raw upstream bytes, length-prefixed so concatenation is
-    unambiguous. Without the prefix, (b"ab", b"c") and (b"a", b"bc") would name
-    the same evidence."""
     buffer = bytearray()
     for payload in payloads:
         buffer += len(payload).to_bytes(8, "little")

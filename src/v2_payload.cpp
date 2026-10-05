@@ -169,7 +169,7 @@ ActionTemplate read_action_template(Reader& reader) noexcept {
     return value;
 }
 
-}  // namespace
+}
 
 EncodePayloadResult encode_payload(const PolicyArtifact& value) {
     const auto contract_error = validate(value);
@@ -558,4 +558,4 @@ decode_executable_policy_artifact(const std::span<const std::byte> bytes) {
     return finish_decode(std::move(value));
 }
 
-}  // namespace velocita::v2
+}

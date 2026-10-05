@@ -8,8 +8,8 @@ import hashlib
 import hmac
 import struct
 
-SECRET = bytes(range(0x40, 0x60))            # 32 bytes
-INCARNATION = bytes([0xAB, 0x5A] + [0] * 14)  # matches identity_test fixture layout
+SECRET = bytes(range(0x40, 0x60))
+INCARNATION = bytes([0xAB, 0x5A] + [0] * 14)
 DOMAIN = b"velocita.auth.v1"
 
 

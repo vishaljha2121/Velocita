@@ -1,10 +1,6 @@
 #include "velocita/v2/node_client.hpp"
 #include "v2_node_test_support.hpp"
 
-// NodeClientSession against REAL in-process voters (the node-test harness).
-// The session's clock is injected; the voters run on real time. Expected
-// results come from the reducer alone.
-
 namespace {
 
 using Clock = NodeClientSession::Clock;
@@ -12,7 +8,6 @@ using Clock = NodeClientSession::Clock;
 struct SessionTransport final : ClientTransport {
     Network& network;
     explicit SessionTransport(Network& n) : network(n) {}
-    // UDP to a dead process is not refused, just never answered.
     bool offer_ingress(std::int32_t node, std::span<const std::byte> envelope) override {
         network.at(node).ingress_inbox.emplace_back(envelope.begin(), envelope.end());
         return true;
@@ -37,8 +32,6 @@ std::vector<ClientRoute> routes(const std::vector<std::int32_t>& order, std::uin
     return out;
 }
 
-// Pumps the session and turns the voters until the request settles, advancing
-// the session clock by STEP per round (real turns keep the voters honest).
 SubmitOutcome settle(Cluster& cluster, NodeClientSession& session, Clock::time_point& now,
                      std::chrono::milliseconds step = std::chrono::milliseconds(1), int limit = 30000) {
     for (int round = 0; round < limit; ++round) {
@@ -96,8 +89,6 @@ void follows_a_redirect_and_then_sticks_to_the_leader() {
     const auto second = settle(f.cluster, session, now);
     require(second.state == SubmitState::committed && second.sends == 1,
             "the next request did not go straight to the leader");
-    // Every voter publishes committed results, so request 1's late responses are
-    // still arriving while request 2 is pending: only request 2's may settle it.
     std::array<std::byte, kKernelResultBytes> bytes{};
     require(encode_kernel_result(second.result, bytes).error == KernelCodecError::none &&
                 bytes == expected_result(2),
@@ -106,7 +97,7 @@ void follows_a_redirect_and_then_sticks_to_the_leader() {
 
 void an_admitted_request_is_not_resent_early() {
     Fixture f("v2-client-admitted");
-    f.cluster.network.partitioned = true;  // the leader admits but cannot reach a quorum
+    f.cluster.network.partitioned = true;
     ClientTiming timing;
     NodeClientSession session(5, routes({f.leader, f.follower()}), f.transport, timing);
     auto now = Clock::now();
@@ -120,14 +111,11 @@ void an_admitted_request_is_not_resent_early() {
     now += std::chrono::milliseconds(2);
     outcome = session.pump(now);
     require(outcome.sends == 2, "an admitted request was not resent after the post-admission interval");
-    // The resend itself keeps the post-admission pace (M3 finding 4: fast resends
-    // after admission only append duplicate log entries).
     now += timing.resend_after_admit - std::chrono::milliseconds(2);
     outcome = session.pump(now);
     require(outcome.sends == 2, "a resend after admission fell back to the pre-admission pace");
 }
 
-// Records every response frame the session reads, so a test can replay one.
 struct RecordingTransport final : ClientTransport {
     SessionTransport& inner;
     std::vector<Bytes> seen;
@@ -149,9 +137,6 @@ struct RecordingTransport final : ClientTransport {
     }
 };
 
-// A propose status that says "something is wrong" (ProposeStatus::refused or
-// not_a_control_command) is final: retrying it can only time out. Offering an
-// ordinary command on the control lane is the realistic way to meet one.
 void a_permanent_propose_refusal_is_final() {
     Fixture f("v2-client-wrong-lane");
     NodeClientSession session(5, routes({f.leader, f.follower()}), f.transport);
@@ -171,8 +156,7 @@ void a_replayed_redirect_cannot_cause_a_duplicate_send() {
     RecordingTransport recording(f.transport);
     NodeClientSession session(5, routes({f.follower(), f.leader}), recording);
     auto now = Clock::now();
-    // The follower's "not leader" refusal is authentic and correlates with this request.
-    f.cluster.network.partitioned = true;  // admitted by the leader, never committed
+    f.cluster.network.partitioned = true;
     require(session.submit(authored(1), ProposeLane::normal, now, std::chrono::seconds(60)), "submit refused");
     SubmitOutcome outcome;
     for (int i = 0; i < 4000 && !(outcome = session.pump(now)).admitted; ++i) f.cluster.run(1);
@@ -199,8 +183,6 @@ void unreachable_voters_time_out_with_paced_resends() {
     for (int ms = 0; ms <= 2100 && (outcome = session.pump(now)).state == SubmitState::pending; ++ms)
         now += std::chrono::milliseconds(1);
     require(outcome.state == SubmitState::timed_out, "request did not time out");
-    // Paced at the pre-admission interval (0, 0.5, 1.0, 1.5 s, perhaps 2.0 s), not every pump,
-    // and rotated across voters so one dead voter cannot hide a live one.
     require(outcome.sends >= 4 && outcome.sends <= 5, "resends were not paced at the pre-admission interval");
     require(!f.cluster.network.at(1).ingress_inbox.empty() && !f.cluster.network.at(2).ingress_inbox.empty(),
             "unanswered resends did not rotate across voters");
@@ -210,7 +192,6 @@ void a_final_refusal_stops_the_request() {
     Fixture f("v2-client-refused");
     NodeClientSession session(5, routes({f.leader, f.follower()}), f.transport);
     auto now = Clock::now();
-    // Caller key 9 is CallerId 7; claiming CallerId 8 is impersonation.
     require(session.submit(authored(1, 8), ProposeLane::normal, now, std::chrono::seconds(30)), "submit refused");
     const auto outcome = settle(f.cluster, session, now);
     require(outcome.state == SubmitState::refused &&
@@ -221,8 +202,6 @@ void a_final_refusal_stops_the_request() {
 
 void responses_under_a_foreign_key_are_ignored() {
     Fixture f("v2-client-foreign");
-    // The session accepts responses only under the wrong secret: the voters'
-    // genuine responses must not settle anything.
     auto wrong = routes({f.leader, f.follower()});
     for (auto& route : wrong) {
         route.responses.clear();
@@ -240,7 +219,7 @@ void responses_under_a_foreign_key_are_ignored() {
             "a response the session cannot authenticate was believed");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

@@ -37,7 +37,6 @@ from typing import Final, Iterable
 
 LIVE_TRADING: Final[bool] = False
 
-#: Import names that would give this process the ability to sign or broadcast.
 BANNED_IMPORTS: Final[frozenset[str]] = frozenset(
     {
         "web3",
@@ -59,9 +58,6 @@ BANNED_IMPORTS: Final[frozenset[str]] = frozenset(
     }
 )
 
-#: Identifier substrings that indicate order-management or signing capability.
-#: Matched against attribute access and function definitions, not raw text, so a
-#: docstring explaining what is forbidden does not trip the audit.
 BANNED_IDENTIFIER_FRAGMENTS: Final[tuple[str, ...]] = (
     "private_key",
     "privatekey",
@@ -87,8 +83,6 @@ BANNED_IDENTIFIER_FRAGMENTS: Final[tuple[str, ...]] = (
     "swap_exact",
 )
 
-#: Config keys that imply the operator intends trading capability. Presence of
-#: any of these is a fail-closed condition even when the value is empty.
 BANNED_CONFIG_KEYS: Final[tuple[str, ...]] = (
     "private_key",
     "secret_key",
@@ -104,7 +98,7 @@ BANNED_CONFIG_KEYS: Final[tuple[str, ...]] = (
 
 
 class SafetyViolation(RuntimeError):
-    """Raised when the process cannot prove it is incapable of trading."""
+    pass
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,7 +149,6 @@ def package_root() -> Path:
 
 
 def audit_tree(root: Path | None = None) -> list[Finding]:
-    """Audit every Python source file under `root` for trading capability."""
     root = root or package_root()
     sources = sorted(root.rglob("*.py"))
     if not sources:
@@ -164,7 +157,7 @@ def audit_tree(root: Path | None = None) -> list[Finding]:
     findings: list[Finding] = []
     for path in sources:
         if path.name == "safety.py" and path.parent == package_root():
-            continue  # this module names the forbidden vocabulary by design
+            continue
         try:
             source = path.read_text(encoding="utf-8")
         except OSError as exc:
@@ -174,11 +167,6 @@ def audit_tree(root: Path | None = None) -> list[Finding]:
 
 
 def assert_no_effect_encoder() -> None:
-    """Prove the codec cannot author an external effect.
-
-    This is the check that actually matters. `OrderEffect` is the only value the
-    execution gateway acts on, and the model has no vocabulary for it.
-    """
     from . import contracts
 
     codec = sys.modules.get("velocita_model.contracts.codec")
@@ -196,7 +184,6 @@ def assert_no_effect_encoder() -> None:
 
 
 def assert_config_is_passive(keys: Iterable[str]) -> None:
-    """Fail closed on any configuration key that implies trading capability."""
     offending = sorted({key for key in keys if any(banned in key.lower() for banned in BANNED_CONFIG_KEYS)})
     if offending:
         raise SafetyViolation(
@@ -205,7 +192,6 @@ def assert_config_is_passive(keys: Iterable[str]) -> None:
 
 
 def enforce(root: Path | None = None) -> None:
-    """Run every interlock. Call once at process start, before any collector."""
     if LIVE_TRADING:
         raise SafetyViolation("LIVE_TRADING is true; this package has no live path and must not claim one")
     assert_no_effect_encoder()

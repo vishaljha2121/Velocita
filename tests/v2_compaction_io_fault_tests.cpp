@@ -138,8 +138,6 @@ void run_fault(const std::filesystem::path& root, const Arm arm) {
     auto& leader = fixture.leader();
     const auto expected = leader.status();
 
-    // Stop routing before this proposal: index4 becomes durable locally but
-    // remains uncommitted, forcing discard_through(3) to rewrite a real suffix.
     const auto suffix = leader.propose(encoded(command(
         4, AdvanceKillEpoch{KillEpoch{4}})));
     require(suffix.status == ProposeStatus::admitted, "durable suffix was refused");

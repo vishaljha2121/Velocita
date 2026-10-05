@@ -60,7 +60,7 @@ ArtifactDigestResult verify(
     return result;
 }
 
-}  // namespace
+}
 
 ArtifactDigestResult
 compute_artifact_digest(const FeatureSchemaArtifact& artifact) {
@@ -103,4 +103,4 @@ verify_artifact_digest(const ExecutablePolicyArtifact& artifact) {
 static_assert(kFeatureSchemaSelfDigestOffset == 10);
 static_assert(kExecutablePolicySelfDigestOffset == 90);
 
-}  // namespace velocita::v2
+}

@@ -64,7 +64,7 @@ std::optional<ShadowAction> action(std::string_view s) {
     return std::nullopt;
 }
 
-}  // namespace
+}
 
 ShadowProgramFile parse_shadow_program(std::string_view text, const VerifiedExecutionCatalog& catalog) {
     ShadowProgramFile out;
@@ -191,8 +191,6 @@ ShadowProgramFile parse_shadow_program(std::string_view text, const VerifiedExec
     return out;
 }
 
-// -- durable submitter state -------------------------------------------------
-
 namespace {
 
 constexpr std::array<std::byte, 4> kMagic{std::byte{'V'}, std::byte{'S'}, std::byte{'B'}, std::byte{'1'}};
@@ -240,8 +238,6 @@ bool sync(int fd) {
     return r == 0;
 }
 
-// Temporary file, fsync, rename, fsync the directory: the new state exists
-// only once its directory entry is durable.
 std::string store(const std::filesystem::path& file, const State& s) {
     const auto parent = file.parent_path().empty() ? std::filesystem::path(".") : file.parent_path();
     const int dir = ::open(parent.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
@@ -255,7 +251,6 @@ std::string store(const std::filesystem::path& file, const State& s) {
     return ok ? "" : "state write failed";
 }
 
-// nullopt + empty error: no file. nullopt + error: present but unusable.
 std::optional<State> load(const std::filesystem::path& file, std::string& error) {
     const int in = ::open(file.c_str(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
     if (in < 0) {
@@ -291,7 +286,7 @@ std::optional<State> load(const std::filesystem::path& file, std::string& error)
     return s;
 }
 
-}  // namespace
+}
 
 SubmitterStart begin_submitter_state(const std::filesystem::path& file, const std::array<std::byte, 16>& incarnation,
                                      std::uint64_t reserve) {
@@ -323,8 +318,6 @@ std::optional<bool> parse_exits_only(const std::optional<std::string_view>& valu
     return std::nullopt;
 }
 
-// -- split authority and operator verbs --------------------------------------
-
 std::string submitter_role_error(SubmitterRole role, CallerId caller) {
     if (caller.value() == 0) return "caller id must be non-zero";
     if (role == SubmitterRole::setup && !is_operator_caller(caller))
@@ -335,7 +328,6 @@ std::string submitter_role_error(SubmitterRole role, CallerId caller) {
     return "";
 }
 
-// A code appended to ApplyCode must be named here: -Wswitch is an error.
 #pragma GCC diagnostic push
 #pragma GCC diagnostic error "-Wswitch"
 std::string_view apply_code_name(ApplyCode code) noexcept {
@@ -443,7 +435,7 @@ std::string percent(std::uint32_t ppm) {
     return std::to_string(ppm / 10'000) + "." + fraction + " %";
 }
 
-}  // namespace
+}
 
 RiskLimitsVerb parse_risk_limits_verb(std::span<const std::string> words) {
     RiskLimitsVerb out;
@@ -547,4 +539,4 @@ std::string describe_risk_limits(const ConfigureRiskLimits& l) {
     return out.str();
 }
 
-}  // namespace velocita::v2
+}

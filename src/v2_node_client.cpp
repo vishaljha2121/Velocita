@@ -10,8 +10,6 @@ namespace velocita::v2 {
 
 namespace {
 
-// Refusals that say "something is wrong" end the request; capacity and busy
-// ones say "later" and are retried at the paced interval.
 bool final_refusal(std::uint8_t reason) noexcept {
     if (reason >= 64)
         return reason != static_cast<std::uint8_t>(IngressRefusal::busy) &&
@@ -20,7 +18,7 @@ bool final_refusal(std::uint8_t reason) noexcept {
            reason == static_cast<std::uint8_t>(ProposeStatus::not_a_control_command);
 }
 
-}  // namespace
+}
 
 NodeClientSession::NodeClientSession(std::uint64_t session_epoch, std::vector<ClientRoute> routes,
                                      ClientTransport& transport, ClientTiming timing)
@@ -64,7 +62,7 @@ bool NodeClientSession::submit(const Command& command, ProposeLane lane, Clock::
 }
 
 void NodeClientSession::send(Clock::time_point now) {
-    if (rotate_before_next_) target_ = next_after(target_);  // unanswered: try the next voter
+    if (rotate_before_next_) target_ = next_after(target_);
     auto* route = find(target_);
     const auto sequence = route->sequencer.next();
     if (!sequence) throw std::runtime_error("client session sequence exhausted");
@@ -88,7 +86,6 @@ void NodeClientSession::handle(std::span<const std::byte> frame, Clock::time_poi
     bool authentic = false;
     for (const auto& key : from->responses)
         authentic = authentic || verify_auth_envelope(key, frame, verified) == AuthEnvelopeError::none;
-    // Only an authentic frame may advance the voter's remembered session.
     if (!authentic || from->fence.admit(verified.header.session_epoch, verified.header.sequence) !=
                           SessionFence::Decision::accept)
         return;
@@ -122,19 +119,18 @@ void NodeClientSession::handle(std::span<const std::byte> frame, Clock::time_poi
             target_ = find(response.leader_id) != nullptr ? response.leader_id : next_after(target_);
             admitted_ = false;
             rotate_before_next_ = false;
-            next_send_ = now;  // follow the redirect at once
+            next_send_ = now;
         } else if (final_refusal(response.reason)) {
             outcome_.state = SubmitState::refused;
             outcome_.refusal_reason = response.reason;
             outcome_.leader_hint = response.leader_id;
             outcome_.from = route.sender;
         }
-        // Busy, not ready or a transient propose status: retry at the paced interval.
         return;
     case ResponseKind::gateway_refused:
     case ResponseKind::state_chunk:
     case ResponseKind::authority_granted:
-        return;  // decode_response refuses gateway kinds; a command session never sees one
+        return;
     }
 }
 
@@ -149,8 +145,8 @@ SubmitOutcome NodeClientSession::pump(Clock::time_point now) {
         if (outcome_.state == SubmitState::pending && now >= next_send_) send(now);
     }
     const auto reported = outcome_;
-    if (reported.state != SubmitState::pending) outcome_ = {};  // settled outcomes are reported once
+    if (reported.state != SubmitState::pending) outcome_ = {};
     return reported;
 }
 
-}  // namespace velocita::v2
+}

@@ -39,18 +39,6 @@ velocita::v2::Command command(const std::uint64_t request_sequence,
 
 void test_resuming_normal_requires_reconciliation() {
     using namespace velocita::v2;
-    // G-059. A kill is easy; UNDOING one is where the damage gets done. The
-    // moment after an emergency is exactly when the cluster's picture of its own
-    // exposure is least trustworthy - that is usually why the kill happened -
-    // and resuming normal trading then can double a position nobody has
-    // confirmed.
-    //
-    // Three order states mean "the cluster does not know its exposure":
-    // `submission_unknown` (it cannot say whether the venue has the order at
-    // all), `reconciling` and `conflict` (it and the venue disagree). Resuming
-    // is refused while any of them is present. Every other state is a known
-    // quantity - a healthy resting order is not a reason to stay halted, and
-    // treating it as one would make the rule unusable and then ignored.
     const auto with_order_in = [](const ClusterOrderState order_state) {
         TradingState state = catalog_test::state();
         state.strategy_mode = StrategyMode::halted;
@@ -81,9 +69,6 @@ void test_resuming_normal_requires_reconciliation() {
                 "a refused resume still changed the strategy mode");
     }
 
-    // A healthy resting order does NOT block a resume. Without this the rule
-    // would mean "never resume while trading", which is not a safety property
-    // but a deadlock, and the first operator to meet it would route around it.
     for (const auto allowed : {ClusterOrderState::live,
                                ClusterOrderState::partially_filled,
                                ClusterOrderState::filled,
@@ -96,9 +81,6 @@ void test_resuming_normal_requires_reconciliation() {
                 "the accepted resume did not take");
     }
 
-    // AND THE RULE IS ONE-WAY. Reducing authority is never blocked by the same
-    // condition, or an unreconciled cluster could not be halted - which would
-    // turn a safety rule into the thing it exists to prevent.
     for (const auto safer : {StrategyMode::halted, StrategyMode::no_new_risk,
                              StrategyMode::cancel_only, StrategyMode::reduce_only}) {
         auto state = with_order_in(ClusterOrderState::conflict);
@@ -116,8 +98,6 @@ void test_resuming_normal_requires_reconciliation() {
                     std::to_string(static_cast<int>(safer)));
     }
 
-    // A kill must never be blocked by it either - the one command that must
-    // always work is the one that stops everything.
     {
         auto state = with_order_in(ClusterOrderState::conflict);
         state.strategy_mode = StrategyMode::normal;
@@ -137,16 +117,6 @@ void test_resuming_normal_requires_reconciliation() {
 
 void test_control_authority_is_reserved_to_operator_callers() {
     using namespace velocita::v2;
-    // G-056, the authorization half. The reducer CANNOT verify a signature:
-    // G-066 keeps key material out of replicated state and `apply` performs no
-    // I/O, so authentication is necessarily an edge property. What the cluster
-    // can do - and what this enforces - is refuse a control action from a caller
-    // the edge never authenticated, and record which operator did issue it.
-    //
-    // The reservation is ONE-DIRECTIONAL by design. A control command must come
-    // from an operator caller; an operator caller is not forbidden ordinary
-    // ones. The deployment obligation that makes this mean something is that the
-    // edge never hands a reserved CallerId to a strategy.
     const auto control_from = [](const std::uint64_t caller,
                                  const std::uint64_t sequence,
                                  CommandBody body) {
@@ -158,8 +128,6 @@ void test_control_authority_is_reserved_to_operator_callers() {
     require(kMaxOperatorCallerId > 0,
             "the operator caller band is empty, so nothing can ever issue control");
 
-    // Risk limits are operator authority too: a strategy that could raise its
-    // own cap would make every limit advisory.
     const ConfigureRiskLimits limits{AccountId{5}, InstrumentId{4},
                                      RiskPolicyVersion{6}, RiskVersion{0},
                                      KillEpoch{}, ExecutorGeneration{},
@@ -181,15 +149,11 @@ void test_control_authority_is_reserved_to_operator_callers() {
         require(unauthorized.code == ApplyCode::unauthorized_control,
                 "a control command from a non-operator caller was not refused");
 
-        // Refused means NOTHING MOVED - not even the request receipt, or a
-        // replay of the same command would come back as a completed action.
         TradingState untouched = catalog_test::state();
         require(std::memcmp(&state, &untouched, sizeof(TradingState)) == 0,
                 "a refused control command still mutated authoritative state");
     }
 
-    // The same command from inside the band is accepted, so the refusal above
-    // is about the caller and not about the command being malformed.
     {
         TradingState state = catalog_test::state();
         ApplyScratch scratch;
@@ -210,13 +174,6 @@ void test_control_authority_is_reserved_to_operator_callers() {
                 "risk limits from an operator caller were refused");
     }
 
-    // A REFUSAL THAT CANNOT BE ENCODED IS NOT A REFUSAL AN OPERATOR EVER SEES.
-    //
-    // `ApplyCode` is carried in the canonical 128-byte result and validated on
-    // the way back in, so a new code has to be admitted by the codec and by the
-    // snapshot or the result fails to decode. Adding the code and forgetting
-    // those two lists is silent - it was caught here by a compiler warning
-    // about an unhandled switch, which is luck rather than coverage.
     {
         TradingState state = catalog_test::state();
         ApplyScratch scratch;
@@ -239,7 +196,6 @@ void test_control_authority_is_reserved_to_operator_callers() {
                 "the refusal did not survive a canonical round trip");
     }
 
-    // And an ordinary command from a high caller is untouched by any of this.
     {
         TradingState state = catalog_test::state();
         ApplyScratch scratch;
@@ -416,7 +372,7 @@ void test_invalid_mode_is_typed_and_retained() {
             "invalid identified control command was not retained exactly");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

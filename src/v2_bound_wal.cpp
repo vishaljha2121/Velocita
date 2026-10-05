@@ -35,7 +35,7 @@ void validate(const WalRecord& record, const VerifiedStaticIdentity& identity) {
                 KernelCodecError::none) refuse(Error::invalid_payload, "invalid WAL canonical command");
     }
 }
-} // namespace
+}
 std::vector<std::byte> encode_bound_wal_record(const WalRecord& record,
                                               const VerifiedStaticIdentity& identity) {
     validate(record, identity);
@@ -80,4 +80,4 @@ std::vector<WalRecord> decode_bound_wal_records(std::span<const std::byte> bytes
     }
     return records;
 }
-} // namespace velocita::v2
+}

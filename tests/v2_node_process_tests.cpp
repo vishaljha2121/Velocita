@@ -1,10 +1,3 @@
-// M2 exit: two real velocita-v2-node processes on loopback start, commit,
-// crash, restart, partition, heal, replay from disk and stop, driven by the
-// real client binary. Peer traffic runs through an in-test UDP relay that can
-// drop everything (a partition). Expected values come from the reducer.
-//
-//   v2-node-process-tests NODE_BINARY CLIENT_BINARY STATUS_BINARY
-
 #include "velocita/v2/execution_catalog.hpp"
 #include "velocita/v2/kernel.hpp"
 #include "velocita/v2/node_health.hpp"
@@ -51,7 +44,6 @@ std::string read_file(const fs::path& path) {
     return {std::istreambuf_iterator<char>(in), {}};
 }
 
-// Written the way the Mac tool writes: private temporary, then atomic rename.
 void write_secret(const fs::path& path, std::uint8_t seed, std::size_t length = 32) {
     std::string bytes(length, '\0');
     for (std::size_t i = 0; i < bytes.size(); ++i) bytes[i] = static_cast<char>(seed + i);
@@ -62,9 +54,6 @@ void write_secret(const fs::path& path, std::uint8_t seed, std::size_t length = 
     fs::rename(temporary, path);
 }
 
-// Bidirectional UDP relay: publisher -> LISTEN -> relay -> TARGET, with the
-// subscriber's replies (status messages, NAKs) forwarded back. Aeron flow
-// control needs both directions. `partitioned` drops everything.
 class Relay {
 public:
     std::atomic<bool> partitioned{false};
@@ -134,18 +123,18 @@ struct Harness {
     fs::path root;
     std::uint16_t base{};
     std::vector<int> voters{1, 2};
-    bool relayed{true};  // two voters only: each relay forwards replies to ONE publisher
-    std::uint32_t compact_at_entries{};  // 0: the node's default
+    bool relayed{true};
+    std::uint32_t compact_at_entries{};
     std::map<int, pid_t> pids;
     std::map<int, int> launches;
     std::uint64_t client_runs{};
 
-    std::uint16_t peer_port(int node) const { return static_cast<std::uint16_t>(base + node); }        // own bind
-    std::uint16_t relay_port(int to) const { return static_cast<std::uint16_t>(base + 10 + to); }      // relay -> to
+    std::uint16_t peer_port(int node) const { return static_cast<std::uint16_t>(base + node); }
+    std::uint16_t relay_port(int to) const { return static_cast<std::uint16_t>(base + 10 + to); }
     std::uint16_t ingress_port(int node) const { return static_cast<std::uint16_t>(base + 20 + node); }
     std::uint16_t response_port() const { return static_cast<std::uint16_t>(base + 30); }
     fs::path data(int node) const { return root / ("node-" + std::to_string(node)); }
-    fs::path keys(int node) const { return root / ("keys-" + std::to_string(node)); }  // 0 = the client
+    fs::path keys(int node) const { return root / ("keys-" + std::to_string(node)); }
 
     void write_config(int node, const char* startup) {
         std::ostringstream c;
@@ -167,12 +156,9 @@ struct Harness {
           << "caller.9.caller_id = 7\n"
           << "caller.9.key_file = " << (keys(node) / "caller.key").string() << "\n"
           << "caller.9.response_endpoint = 127.0.0.1:" << response_port() << "\n"
-          // The shadow setup's own route (operator band): a route is one
-          // session, so it never shares caller 9's replay fence.
           << "caller.11.caller_id = 9\n"
           << "caller.11.key_file = " << (keys(node) / "shadow.key").string() << "\n"
           << "caller.11.response_endpoint = 127.0.0.1:" << response_port() + 1 << "\n"
-          // The tick loop's strategy route, outside the operator band.
           << "caller.12.caller_id = 21\n"
           << "caller.12.key_file = " << (keys(node) / "strategy.key").string() << "\n"
           << "caller.12.response_endpoint = 127.0.0.1:" << response_port() + 2 << "\n"
@@ -252,7 +238,6 @@ struct Harness {
 
     struct ClientResult { int exit_code; std::string output; };
 
-    // FIRST_NODE is asked first; the other voters follow in ascending order.
     ClientResult client(std::uint64_t sequence, std::uint64_t kill_epoch, int first_node, int timeout_ms) {
         return operator_command(sequence, {"kill-epoch", std::to_string(kill_epoch)}, first_node, timeout_ms);
     }
@@ -280,7 +265,6 @@ struct Harness {
         return {WIFEXITED(status) ? WEXITSTATUS(status) : -1, read_file(log)};
     }
 
-    // SIGHUP, then wait for the node's own verdict line (applied or refused).
     std::string reload(int node) {
         const auto before = read_file(log_of(node));
         require(::kill(pids.at(node), SIGHUP) == 0, "SIGHUP failed");
@@ -313,7 +297,6 @@ std::string field(const std::string& output, const std::string& key) {
     return output.substr(begin, output.find_first_of(" \n", begin) - begin);
 }
 
-// Independent expectation for "kill-epoch N" after N-1 earlier such commands.
 std::uint64_t expected_state_version(std::uint64_t commands) {
     TradingState state{};
     ApplyScratch scratch{};
@@ -344,22 +327,17 @@ void scenario(Harness& h) {
     const int leader = h.await_leader();
     const int follower = leader == 1 ? 2 : 1;
 
-    // 1. The client asks the follower first and must follow the redirect. The
-    //    follower's refusal counter proves it was really asked (and refused).
     require_committed(h.client(1, 1, follower, 15000), 1, 1, "first commit via redirect");
-    std::this_thread::sleep_for(std::chrono::milliseconds(300));  // one health publish interval
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
     const auto asked = h.health(follower);
     require(asked && asked->ingress_refusals >= 1, "the follower was never asked: no redirect happened");
 
-    // 2. Two voters: with the follower dead nothing commits (fail-closed).
     const int killed = h.stop(follower, SIGKILL);
     require(WIFSIGNALED(killed), "follower did not die by SIGKILL");
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
     const auto log_before = h.health(leader)->current_index;
     const auto blocked = h.client(2, 2, leader, 3000);
     require(blocked.exit_code == 3, "commit succeeded without the second voter: " + blocked.output);
-    // Once the leader has ADMITTED the request, resending it only adds
-    // duplicate log entries (M3 finding 4). A 3 s outage may cost at most two.
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
     const auto growth = h.health(leader)->current_index - log_before;
     require(growth >= 1 && growth <= 2, "client flooded the leader's log with " + std::to_string(growth) +
@@ -379,10 +357,6 @@ void write_catalog(const fs::path& file) {
         .write(reinterpret_cast<const char*>(catalog.data()), static_cast<std::streamsize>(encoded.bytes_written));
 }
 
-// Three real processes over real Aeron, voters addressing each other directly
-// as the three-host templates do. Any one voter may die (SIGKILL: Aeron then
-// reports it not connected) and the other two keep committing; two dead is a
-// lost quorum and nothing commits.
 void three_voter_scenario(Harness& h) {
     for (const int who : {0, 1, 2, 3}) {
         fs::create_directories(h.keys(who));
@@ -406,8 +380,6 @@ void three_voter_scenario(Harness& h) {
     };
     const auto refused_before = h.health(leader)->peer_backpressure;
     require(killed(lost), "follower did not die by SIGKILL");
-    // Aeron keeps a dead peer's publication "connected" until its liveness
-    // timeout; commit only once the leader's offers to it are really refused.
     const auto refused_deadline = Clock::now() + std::chrono::seconds(30);
     while (h.health(leader)->peer_backpressure < refused_before + 20 && Clock::now() < refused_deadline)
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -423,7 +395,6 @@ void three_voter_scenario(Harness& h) {
     h.start(leader, "recover");
     require_committed(h.client(4, 4, h.await_leader(), 20000), 4, 4, "three voters: every voter back");
 
-    // Both restarted voters caught up from the log to the same applied index.
     const auto deadline = Clock::now() + std::chrono::seconds(10);
     bool converged = false;
     while (!converged && Clock::now() < deadline) {
@@ -443,7 +414,6 @@ void three_voter_scenario(Harness& h) {
     require(WIFEXITED(stopped) && WEXITSTATUS(stopped) == 0, "surviving voter did not exit cleanly on SIGTERM");
 }
 
-// A child process with pipes on stdin and stdout, read line by line.
 struct Piped {
     pid_t pid{-1};
     int in{-1}, out{-1};
@@ -502,11 +472,6 @@ struct Piped {
 
 std::string word(const std::string& line, const std::string& key) { return field(" " + line, key); }
 
-// The shadow submitter over real processes and real Aeron: the operator's
-// one-shot setup, then the strategy's tick loop with one shadow decision per
-// tick on the rule worked out by hand, leader loss survived, and a restart in
-// PAPER mode on generation 2 with request sequences past the first run's
-// reservation, authorizing through the kernel's own risk limits and halting.
 void shadow_submitter_scenario(Harness& h, const std::string& submitter) {
     for (const int who : {0, 1, 2, 3}) {
         fs::create_directories(h.keys(who));
@@ -522,7 +487,6 @@ void shadow_submitter_scenario(Harness& h, const std::string& submitter) {
     for (const int node : h.voters) h.start(node, "bootstrap");
     const int leader = h.await_leader();
 
-    // Operator ceremony through the operator client, as a person would run it.
     require(h.operator_command(1, {"kill-epoch", "1"}, leader, 20000).exit_code == 0, "kill epoch refused");
     require(h.operator_command(2, {"executor-generation", "1"}, leader, 20000).exit_code == 0,
             "executor generation refused");
@@ -542,7 +506,6 @@ void shadow_submitter_scenario(Harness& h, const std::string& submitter) {
             "order.time_in_force = gtc\norder.post_only = required\norder.quantity_lots = 1\n"
             "order.max_notional_micros = 10000\norder.max_market_data_age_ns = 5000000000\nsource.id = 41\n";
     }
-    // Each role its own key, CallerId, session, state file and response port.
     const auto role_args = [&](const std::string& key_id, const std::string& caller, const std::string& name,
                                int port_offset) {
         std::vector<std::string> args{submitter, "--program", program.string(), "--catalog",
@@ -563,8 +526,6 @@ void shadow_submitter_scenario(Harness& h, const std::string& submitter) {
     }();
     const auto args = role_args("12", "21", "strategy", 2);
 
-    // Split authority, refused before anything is sent: the tick loop with the
-    // operator's CallerId, and setup with the strategy's.
     {
         auto operator_ticks = role_args("11", "9", "shadow", 1);
         Piped refused(operator_ticks, h.root / "refused-ticks.log");
@@ -611,8 +572,6 @@ void shadow_submitter_scenario(Harness& h, const std::string& submitter) {
     require(ready.rfind("READY ", 0) == 0 && word(ready, "generation") == "1" && word(ready, "first_sequence") == "1",
             "submitter did not set up: " + ready + " " + read_file(h.root / "submitter-1.log"));
     for (int id = 1; id <= 10; ++id) tick(first, id, id % 2 == 1, id);
-    // Idle past the node's once-a-second trigger: every voter holds the whole
-    // log, so each compacts (threshold 16; ~28 entries), below its floor.
     std::this_thread::sleep_for(std::chrono::milliseconds(2500));
     for (const int node : h.voters) {
         const auto page = h.health(node);
@@ -623,20 +582,12 @@ void shadow_submitter_scenario(Harness& h, const std::string& submitter) {
                     std::to_string(page ? page->snapshot_index : 0) + " floor " +
                     std::to_string(page ? page->compaction_floor : 0));
     }
-    // ...and the scenario goes on over a compacted log: a leader SIGKILL, then
-    // a restarted submitter on the next generation.
     const int killed = h.stop(leader, SIGKILL);
     require(WIFSIGNALED(killed), "leader did not die by SIGKILL");
     for (int id = 11; id <= 20; ++id) tick(first, id, id % 2 == 1, id);
     const int status = first.finish();
     require(WIFEXITED(status) && WEXITSTATUS(status) == 0, "submitter did not exit cleanly at end of input");
 
-    // Paper: the operator sets limits for the fixture account (a fresh account
-    // starts at risk version 1, position version 1, which the frames bind by
-    // default): one lot per order and position. The clip is 1 lot at 11 ticks x
-    // 100 micros = 1,100 micros notional, 1,111 micros held with a 1 % fee hold.
-    // Two lots of reserve and 10,000 micros of holds would admit a second order,
-    // so only the slot (and, where the kernel has it, the position limit) stops one.
     const auto limits = h.operator_command(4, {"risk-limits", "account=5", "instrument=4", "risk_policy_version=1",
         "expected_risk_version=0", "kill_epoch=1", "executor_generation=1", "max_order_lots=1", "max_reserved_lots=2",
         "max_order_notional_micros=10000", "max_reserved_exposure_micros=10000", "initial_margin_ppm=1000000",
@@ -667,13 +618,10 @@ void shadow_submitter_scenario(Harness& h, const std::string& submitter) {
                 word(again, "first_sequence") == "10001" && word(again, "mode") == "paper",
             "restart did not continue in paper mode on generation 2 past the reservation: " + again + " " +
                 read_file(h.root / "submitter-2.log"));
-    // Up: the enter rule's buy, the slot empty and within every limit -> an order.
     const auto buy = paper_tick(second, 21, true);
     require(word(buy, "decision_code") == action && word(buy, "effective") == place &&
                 word(buy, "authorization") == "applied",
             "the first paper buy was not authorized: " + buy);
-    // Down, then up: the buy is still open (no gateway), so neither the exit's
-    // sell nor another buy may become a second order on the slot.
     for (const auto& [id, up] : {std::pair{22, false}, std::pair{23, true}}) {
         const auto refused = paper_tick(second, id, up);
         const auto why = word(refused, "authorization");
@@ -681,8 +629,6 @@ void shadow_submitter_scenario(Harness& h, const std::string& submitter) {
                     (why == "order_slot_occupied" || why == "position_limit_exceeded"),
                 "a second order on an occupied slot was not refused for that reason: " + refused);
     }
-    // The edge's loss stop: with exits_only=1 the buy is not even asked for (the
-    // kernel would have answered with a refusal code), while the exit still is.
     const auto withheld = paper_tick(second, 24, true, " exits_only=1");
     require(word(withheld, "decision_code") == action && word(withheld, "authorization") == "withheld",
             "a buy under the loss stop was sent for authorization: " + withheld);
@@ -693,7 +639,6 @@ void shadow_submitter_scenario(Harness& h, const std::string& submitter) {
                 std::string(63, '1') + " exits_only=yes");
     const auto unclear = second.line(std::chrono::seconds(30));
     require(unclear.rfind("ERROR id=26 reason=bad_tick", 0) == 0, "an unclear stop token was guessed: " + unclear);
-    // Halt: the next frame is not actionable, so nothing is sent for authorization.
     const auto halted = h.operator_command(5, {"strategy-mode", "halted", "1", "1"}, h.await_leader(), 20000);
     require(halted.exit_code == 0, "halt refused: " + halted.output);
     const auto after_halt = paper_tick(second, 27, true);
@@ -703,10 +648,6 @@ void shadow_submitter_scenario(Harness& h, const std::string& submitter) {
     const int status2 = second.finish();
     require(WIFEXITED(status2) && WEXITSTATUS(status2) == 0, "restarted submitter did not exit cleanly");
 
-    // Finding 48: starts that end before committing anything each claim a
-    // generation, so the state file runs ahead of the kernel. The next start is
-    // refused as a generation gap and re-bases from the kernel's own report: one
-    // past the last generation that committed, which is the paper run's.
     const std::uint64_t committed = std::stoull(word(again, "generation"));
     constexpr std::uint64_t kDeadStarts = 3;
     for (std::uint64_t i = 0; i < kDeadStarts; ++i) {
@@ -756,8 +697,7 @@ void shadow_submitter_scenario(Harness& h, const std::string& submitter) {
         require(read_file(log).find("RESYNC") == std::string::npos,
                 "a start on the persisted generation re-synced again: " + read_file(log));
     }
-    // The retained pools hold exactly the log above the snapshot.
-    std::this_thread::sleep_for(std::chrono::milliseconds(300));  // one health publish interval
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
     for (const int node : h.voters) {
         if (!h.pids.contains(node)) continue;
         const auto page = h.health(node);
@@ -773,7 +713,7 @@ void shadow_submitter_scenario(Harness& h, const std::string& submitter) {
         if (h.pids.contains(node)) (void)h.stop(node, SIGTERM);
 }
 
-}  // namespace
+}
 
 int main(int argc, char** argv) {
     if (argc != 4 && argc != 5) {
@@ -808,7 +748,6 @@ int main(int argc, char** argv) {
 
         scenario(h);
 
-        // 3. Partition through the relays: fail-closed, then heal and commit.
         to1.partitioned = true;
         to2.partitioned = true;
         const auto isolated = h.client(3, 3, h.leader() ? h.leader() : 1, 3000);
@@ -818,7 +757,6 @@ int main(int argc, char** argv) {
         h.await_leader();
         require_committed(h.client(3, 3, h.leader(), 20000), 3, 3, "commit after heal");
 
-        // 4. Replay: restart BOTH processes from disk; they recover and commit.
         for (const int node : {1, 2}) {
             const int killed = h.stop(node, SIGKILL);
             require(WIFSIGNALED(killed), "node did not die by SIGKILL");
@@ -830,8 +768,6 @@ int main(int argc, char** argv) {
         const auto h1 = h.health(1), h2 = h.health(2);
         require(h1 && h2, "health pages unreadable after restart");
 
-        // 4b. Live rotation of the link and caller secrets, no restart. Each
-        //     voter moves at its own moment; a commit follows every step.
         std::uint64_t next_command = 5;
         const auto commit_now = [&](const std::string& step) {
             require_committed(h.client(next_command, next_command, h.await_leader(), 20000), next_command,
@@ -844,7 +780,6 @@ int main(int argc, char** argv) {
             require(h.reload(node) == "applied", "node " + std::to_string(node) + " refused the new secrets");
             commit_now("node " + std::to_string(node) + " accepts new secrets");
         }
-        // The client now signs with the new caller secret, still accepting the old.
         write_secret(h.keys(0) / "caller.key.previous", 0x61);
         write_secret(h.keys(0) / "caller.key", 0x81);
         commit_now("client signs with the new secret");
@@ -865,22 +800,18 @@ int main(int argc, char** argv) {
         for (const int node : {1, 2}) require(h.reload(node) == "applied", "retiring the old secrets was refused");
         commit_now("old secrets retired");
 
-        // A torn push is refused and the node keeps its working keys.
         write_secret(h.keys(1) / "link-1-2.key.next", 0x55, 31);
         require(h.reload(1) == "refused", "a torn secret push was applied");
         commit_now("after a refused push");
         fs::remove(h.keys(1) / "link-1-2.key.next");
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(300));  // one health publish interval
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
         for (const int node : {1, 2}) {
             const auto page = h.health(node);
             require(page && page->auth_refusals == 0, "rotation caused authentication refusals on node " +
                                                           std::to_string(node));
             require(page->secret_reloads == 3 && page->secret_reload_failures == (node == 1 ? 1U : 0U),
                     "unexpected reload counts on node " + std::to_string(node));
-            // Every command this scenario commits is an operator kill-epoch,
-            // which draws on the protected reserve; nothing is compacted, so
-            // that reserve holds the whole log and the ordinary pool nothing.
             require(page->current_index > 0 && page->current_index <= 64 && page->retained_ordinary == 0 &&
                         page->retained_protected == static_cast<std::uint64_t>(page->current_index),
                     "the health page does not account for the retained log on node " + std::to_string(node) +
@@ -889,7 +820,6 @@ int main(int argc, char** argv) {
                         std::to_string(page->current_index));
         }
 
-        // Status tool reads the same page.
         const auto status_log = root / "status.log";
         const auto status_pid = h.spawn({h.status_binary, (h.data(recovered) / "health.page").string()}, status_log);
         int status_code = 0;
@@ -898,14 +828,12 @@ int main(int argc, char** argv) {
                     read_file(status_log).find("role=leader") != std::string::npos,
                 "status tool did not report the leader: " + read_file(status_log));
 
-        // 5. Graceful stop.
         for (const int node : {1, 2}) {
             const auto stopped = h.stop(node, SIGTERM);
             require(WIFEXITED(stopped) && WEXITSTATUS(stopped) == 0, "node did not exit cleanly on SIGTERM");
         }
         require(read_file(h.log_of(1)).find("STOPPED node=1") != std::string::npos, "node 1 did not report STOPPED");
 
-        // 6. Three voters, on the same ports now that the two-voter nodes are gone.
         Harness three;
         three.node_binary = h.node_binary;
         three.client_binary = h.client_binary;
@@ -917,7 +845,6 @@ int main(int argc, char** argv) {
         fs::create_directories(three.root);
         three_voter_scenario(three);
 
-        // 7. The shadow submitter end to end (when its binary is given).
         if (argc == 5) {
             Harness shadow;
             shadow.node_binary = h.node_binary;

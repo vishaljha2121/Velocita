@@ -17,9 +17,6 @@
 #endif
 #include "velocita/v2/archive_store.hpp"
 #include "velocita/v2/archive_file.hpp"
-// Everything the production source includes must be included HERE, before the
-// fault macros below: libstdc++ 15 calls syscall(SYS_futex, ...) inside
-// <atomic>/<thread>, and a later expansion would rewrite its call into our fake.
 #include "velocita/v2/wal_arena.hpp"
 #include <atomic>
 #include <thread>
@@ -62,7 +59,6 @@ int openat(int dir, const char* name, int flags, ...) {
     const bool absent_catalog = !(flags & O_CREAT) &&
         std::strcmp(name, "v2-archive-catalog.bin") == 0 &&
         ::fstatat(dir, name, &st, AT_SYMLINK_NOFOLLOW) != 0 && errno == ENOENT;
-    // An absent optional catalog is independently checked with fstatat.
     if (hit(Call::openat, !absent_catalog)) return -1;
     return ::openat(dir, name, flags, mode);
 }

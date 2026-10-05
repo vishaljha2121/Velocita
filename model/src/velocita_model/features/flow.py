@@ -21,19 +21,11 @@ class TradePrint:
     at_ns: int
     price: Decimal
     size: Decimal
-    #: 'buy'/'sell' when the venue states it, None otherwise. Never guessed here.
     direction: str | None = None
-    #: Direction we inferred, kept separate so an analysis can exclude inference.
     direction_inferred: str | None = None
 
 
 def infer_direction(price: Decimal, best_bid: Decimal | None, best_ask: Decimal | None) -> str | None:
-    """Transparent tick-rule inference: at-or-above the ask is buyer-initiated,
-    at-or-below the bid is seller-initiated, anything inside is unknown.
-
-    Returns None rather than a coin flip. An inferred direction that is wrong
-    half the time is worse than an absent one, because it looks like data.
-    """
     if best_bid is None or best_ask is None:
         return None
     if price >= best_ask:
@@ -44,8 +36,6 @@ def infer_direction(price: Decimal, best_bid: Decimal | None, best_ask: Decimal 
 
 
 class FlowWindow:
-    """Rolling trade count and notional over a fixed window."""
-
     __slots__ = ("_window_ns", "_prints")
 
     def __init__(self, window_seconds: float = 60.0) -> None:
@@ -62,8 +52,6 @@ class FlowWindow:
             self._prints.popleft()
 
     def advance(self, now_ns: int) -> None:
-        """Age the window even when nothing traded. Without this, a dead market
-        keeps reporting its last busy minute forever."""
         self._trim(now_ns)
 
     def trades_per_minute(self) -> Decimal:
@@ -76,9 +64,6 @@ class FlowWindow:
         return total * scale
 
     def directional_notional(self) -> tuple[Decimal, Decimal]:
-        """(buy_initiated, sell_initiated) using stated direction first, then
-        inference. Prints with neither are excluded from both totals rather than
-        being split evenly."""
         buys = sells = Decimal(0)
         for p in self._prints:
             direction = p.direction or p.direction_inferred

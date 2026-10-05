@@ -14,12 +14,6 @@
 #include <vector>
 #include <unistd.h>
 
-// E1 for the approved two-voter pilot (one voter per host). With exactly two
-// voters every commit needs BOTH durable copies, and compaction never passes
-// commit, so an intact voter can always catch up from its own log. These tests
-// attack that argument where it can actually fail: a partitioned peer, and a
-// peer that crashes after acknowledging but before its bytes reach disk.
-
 namespace {
 
 using namespace velocita;
@@ -49,7 +43,6 @@ std::vector<std::byte> encoded(const velocita::v2::Command& command) {
     return {storage.begin(), storage.begin() + static_cast<std::ptrdiff_t>(result.bytes_written)};
 }
 
-// Independent oracle: the reducer alone, never the cluster under test.
 Digest256 expected_digest_after(std::uint64_t count) {
     TradingState state{};
     ApplyScratch scratch{};
@@ -75,8 +68,6 @@ struct Pair {
     std::filesystem::path path(std::int32_t id) const { return root / std::to_string(id); }
     ReplicatedKernel& node(std::int32_t id) { return *nodes.at(id); }
 
-    // Power loss without flush: staged-but-unsynced WAL bytes vanish, exactly
-    // as they would if the host lost power. Recovery sees only the disk.
     void crash_and_recover(std::int32_t id) {
         nodes.at(id).reset();
         nodes[id] = std::make_unique<ReplicatedKernel>(identity_test::recover(
@@ -89,7 +80,6 @@ struct Pair {
         return nullptr;
     }
 
-    // Delivers only SENDER's queued messages to RECIPIENT; the rest are dropped.
     void deliver(std::int32_t sender, std::int32_t recipient) {
         while (auto message = identity_test::take_outbound_message(node(sender))) {
             if (message->recipient_id != recipient) continue;
@@ -133,7 +123,6 @@ struct Pair {
         auto& chosen = elect();
         const auto proposed = chosen.propose(encoded(authored_command(sequence)));
         require(proposed.status == ProposeStatus::admitted, "healthy pair refused an authored command");
-        // READY results drain in apply order; earlier suffix results may precede ours.
         for (int round = 0; round < 800; ++round) {
             settle(1);
             while (auto result = chosen.take_committed_result()) {
@@ -160,10 +149,6 @@ std::filesystem::path fresh_root(const std::filesystem::path& base, const char* 
     return root;
 }
 
-// The two-voter analogue of v2_snapshot_catchup_red: the peer is cut off while
-// the leader keeps accepting work. Unlike three voters, the leader must NOT be
-// able to commit or compact past the peer, so the peer later catches up from
-// its own log without any snapshot transfer.
 void partitioned_peer_catches_up_from_its_own_log(const std::filesystem::path& base) {
     Pair pair(fresh_root(base, "partitioned"));
     constexpr std::uint64_t kCommittedTogether = 6;
@@ -200,16 +185,11 @@ void partitioned_peer_catches_up_from_its_own_log(const std::filesystem::path& b
     pair.blocked.clear();
     pair.settle(2000);
 
-    // Catch-up itself: the peer received the whole staged suffix from its own
-    // log position and made it durable. No snapshot was needed or possible.
     const auto staged_end = committed_together + static_cast<std::int64_t>(kProposedAlone);
     for (const auto id : pair.members)
         require(pair.node(id).durable_index() == static_cast<std::uint64_t>(staged_end),
                 "voter " + std::to_string(id) + " does not durably hold the healed suffix");
 
-    // Approved contract (F4_AUTHORITY_BARRIER_BYTE_REVIEW.md §4): the pinned
-    // library has no automatic leader no-op, so entries from an older term wait
-    // for a current-term command. That availability cost is asserted, not hidden.
     const auto leader_after_heal = pair.elect().status();
     if (leader_after_heal.term > 0 && leader_after_heal.commit_index < staged_end)
         require(leader_after_heal.commit_index == committed_together,
@@ -230,10 +210,6 @@ void partitioned_peer_catches_up_from_its_own_log(const std::filesystem::path& b
     }
 }
 
-// The sharp case: the peer acknowledges an AppendEntries, then loses power
-// before its WAL bytes are synced. If that acknowledgement counted toward
-// quorum, the leader could commit and compact an entry that no longer exists on
-// the peer, and the peer would need a snapshot the pilot cannot deliver.
 void unsynced_peer_acknowledgement_cannot_advance_commit_or_compaction(
     const std::filesystem::path& base) {
     Pair pair(fresh_root(base, "unsynced"));
@@ -259,7 +235,6 @@ void unsynced_peer_acknowledgement_cannot_advance_commit_or_compaction(
     require(leader.durable_index() == static_cast<std::uint64_t>(proposed.index),
             "leader copy of the probe is not durable");
 
-    // Peer stages the probe and replies; it never flushes.
     pair.deliver(leader_id, peer_id);
     require(pair.node(peer_id).status().current_index == proposed.index,
             "peer did not stage the probe");
@@ -280,7 +255,6 @@ void unsynced_peer_acknowledgement_cannot_advance_commit_or_compaction(
     pair.settle(2000);
     require(pair.node(peer_id).durable_index() >= static_cast<std::uint64_t>(proposed.index),
             "recovered peer did not durably reacquire the probe from the leader's log");
-    // A restart may re-elect; an old-term probe then waits for a current-term entry.
     const auto drain_index = pair.commit(next + 1);
     require(drain_index == proposed.index + 1, "current-term drain did not follow the probe");
     pair.settle(100);
@@ -303,7 +277,7 @@ std::filesystem::path make_base() {
     return std::filesystem::canonical(made);
 }
 
-} // namespace
+}
 
 int main() {
     const auto base = make_base();

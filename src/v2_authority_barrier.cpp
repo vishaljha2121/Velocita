@@ -75,7 +75,7 @@ void write_digest(const std::span<std::byte> output,
     return digest;
 }
 
-}  // namespace
+}
 
 EncodeAuthorityBarrierResult
 encode_authority_barrier(const std::int32_t entry_type,
@@ -166,4 +166,4 @@ decode_authority_barrier(const std::int32_t entry_type,
     return {AuthorityBarrierCodecError::none, frame_digest};
 }
 
-}  // namespace velocita::v2
+}

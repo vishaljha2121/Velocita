@@ -61,11 +61,11 @@ class SecretsPresence(unittest.TestCase):
     def test_a_secret_is_never_read(self):
         key = self.secrets / "caller-9.key"
         key.write_bytes(b"\x02" * 32)
-        key.chmod(0o000)  # unreadable: presence must come from the directory, not the contents
+        key.chmod(0o000)
         self.assertIn(self.line("caller-9", 1), self.run_check())
 
     def test_an_empty_file_is_missing(self):
-        (self.secrets / "caller-11.key").write_bytes(b"")  # an interrupted push
+        (self.secrets / "caller-11.key").write_bytes(b"")
         self.assertIn(self.line("caller-11", 0), self.run_check())
 
     def test_a_missing_directory_reports_every_secret_missing(self):
@@ -74,8 +74,6 @@ class SecretsPresence(unittest.TestCase):
         self.assertEqual(text.count(" 0\n", 0, text.index("velocita_secrets_config_ok")), 3)
 
     def test_the_shipped_templates_need_the_strategy_and_gateway_keys(self):
-        # Every voter authenticates every caller, so each needs caller-12 (strategy
-        # tick loop) and caller-13 (paper gateway) beside its links and the others.
         root = SCRIPT.parent
         expected = {
             "three-host/node-1.conf.template": ["link-1-2", "link-1-3"],
@@ -100,9 +98,6 @@ class SecretsPresence(unittest.TestCase):
 
 
 class UnitSecretMounts(unittest.TestCase):
-    """Split authority on nuc1: each podman unit mounts exactly the one caller
-    key its role owns, and only the one-shot setup sees the operator's key 11."""
-
     SYSTEMD = SCRIPT.parent / "systemd"
 
     def mounts(self, unit):
@@ -119,15 +114,11 @@ class UnitSecretMounts(unittest.TestCase):
             self.assertIn(f"--caller-key-id {key} --caller-id {caller} ", text, unit)
 
     def test_setup_installs_the_program_the_edge_evaluates(self):
-        # Every argument that shapes the program text must match, or the edge's
-        # frames would name a policy the operator never installed.
         shaping = ("--strategy", "--value", "--usd-per-tick", "--catalog-root", "--catalog-row", "--policy-id",
                    "--policy-version", "--feature-schema-id", "--valid-from-ns", "--valid-until-ns",
                    "--order-quantity-lots", "--max-notional-micros", "--max-age-ns", "--source-id",
                    "--time-in-force", "--post-only", "--program-out", "--period-s", "--exit-window-s",
                    "--window-min", "--enter-below-bps", "--exit-above-bps")
-        # A volume strategy is chosen in shadow.env; both units must read it, after
-        # their literal arguments so it can replace them (argparse keeps the last).
         chosen = "$VELOCITA_STRATEGY_ARGS"
 
         def program_words(unit, start, end):

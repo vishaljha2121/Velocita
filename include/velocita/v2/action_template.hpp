@@ -1,3 +1,4 @@
+// Action templates, instrument and venue facts, and the economic proposal a decision produces.
 #pragma once
 
 #include "velocita/v2/contracts.hpp"
@@ -31,8 +32,6 @@ enum class EconomicValueSourceKind : std::uint8_t {
     feature = 2,
 };
 
-// Monetary conversion and venue limits are authoritative instrument facts.
-// Strategy policy binds their version but does not get to redefine them.
 struct InstrumentExecutionProfile {
     std::uint16_t schema_version{};
     VenueId venue_id{};
@@ -59,10 +58,6 @@ struct VenueCapabilities {
     constexpr auto operator<=>(const VenueCapabilities&) const noexcept = default;
 };
 
-// A feature value is converted to ticks by dividing its FeatureMicros atoms by
-// feature_atoms_per_tick using the explicit rounding mode, then applying the
-// checked tick offset. Inactive fields must be zero so one economic meaning has
-// one canonical representation.
 struct PriceSource {
     EconomicValueSourceKind kind{EconomicValueSourceKind::none};
     std::uint16_t feature_index{};
@@ -74,8 +69,6 @@ struct PriceSource {
     constexpr auto operator<=>(const PriceSource&) const noexcept = default;
 };
 
-// Quantity feature conversion is deliberately narrower than price conversion:
-// no implicit lot offset is available in V2.
 struct QuantitySource {
     EconomicValueSourceKind kind{EconomicValueSourceKind::none};
     std::uint16_t feature_index{};
@@ -113,9 +106,6 @@ struct ActionTemplate {
     constexpr auto operator<=>(const ActionTemplate&) const noexcept = default;
 };
 
-// This is an exact requested action, not a risk-approved order.
-// AuthorizeDecision verifies the current risk state and atomically reserves
-// before it creates an effect.
 struct EconomicActionProposal {
     std::uint16_t schema_version{};
     DecisionId decision_id{};
@@ -183,7 +173,7 @@ namespace action_detail {
            caps.max_market_data_age_ns == 0 && empty(caps.reference_price);
 }
 
-}  // namespace action_detail
+}
 
 [[nodiscard]] constexpr ContractError validate(const PriceSource& source) noexcept {
     switch (source.kind) {
@@ -444,4 +434,4 @@ static_assert(sizeof(InstrumentExecutionProfile) <=
               kInstrumentExecutionProfileObjectBudgetBytes);
 static_assert(sizeof(VenueCapabilities) <= kVenueCapabilitiesObjectBudgetBytes);
 
-}  // namespace velocita::v2
+}

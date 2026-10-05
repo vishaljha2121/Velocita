@@ -1,3 +1,4 @@
+// Aeron UDP transports for a voter and for a client of the cluster.
 #pragma once
 
 #include "velocita/aeron_runtime.hpp"
@@ -20,8 +21,6 @@ inline constexpr std::int32_t kResponseStreamId = 3003;
 
 [[nodiscard]] std::string udp_channel(const Endpoint& endpoint);
 
-// Aeron UDP implementation of NodeTransport (M2 decision B). Owner-thread only.
-// Aeron reassembles fragments; whole messages land in a small bounded inbox.
 class AeronNodeTransport final : public NodeTransport {
 public:
     static constexpr std::size_t kInboxFrames = 256;
@@ -45,9 +44,6 @@ private:
     std::uint64_t dropped_{};
 };
 
-// Aeron UDP implementation of ClientTransport: one ingress publication per
-// voter, one subscription for this caller's responses. Same bounded inbox and
-// drop accounting as the node side.
 class AeronClientTransport final : public ClientTransport {
 public:
     AeronClientTransport(AeronRuntime& runtime, const std::map<std::int32_t, Endpoint>& voters,
@@ -66,4 +62,4 @@ private:
     std::uint64_t dropped_{};
 };
 
-}  // namespace velocita::v2
+}

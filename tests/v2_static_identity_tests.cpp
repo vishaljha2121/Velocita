@@ -41,7 +41,6 @@ StaticIdentity fixture(std::int32_t local = 17) {
 }
 
 const std::vector<std::byte>& golden() {
-    // Independent Python struct.pack/hashlib vector; the codec is not its oracle.
     static const auto bytes = bytes_from_hex(
         "563249447c000000010000000102030405060708090a0b0c0d0e0f10"
         "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"
@@ -172,8 +171,6 @@ void test_header_digest_and_semantic_refusals() {
     }
 }
 
-// A V9 binary must refuse a schema-8 manifest outright: V8 decodes an 88-byte
-// ConfigureRiskLimits body, so a mixed cluster would diverge on the first one.
 void test_schema8_manifest_is_refused() {
     require(golden()[60] == std::byte{9} && golden()[62] == std::byte{9},
             "fixture drifted: the golden identity is not schema 9");
@@ -342,7 +339,7 @@ void test_shared_vs_local_digests() {
             "local ID did not change file checksum");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

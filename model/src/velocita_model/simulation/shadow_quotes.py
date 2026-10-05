@@ -39,9 +39,6 @@ class QuoteParameters:
     tick_size: Decimal
     lot_size: Decimal
     min_notional_quote: Decimal
-    #: Safety margin required on top of modelled costs before a quote is
-    #: considered economically sensible. A quote that only breaks even under
-    #: perfect assumptions is not a strategy.
     cost_safety_multiplier: Decimal = Decimal("1.5")
 
 
@@ -81,8 +78,6 @@ class SpreadTerms:
 
 @dataclass(frozen=True, slots=True)
 class ShadowQuote:
-    """A quote that exists only in this process. The field names carry that."""
-
     side: Side
     hypothetical_price: Decimal
     hypothetical_size_base: Decimal
@@ -101,13 +96,6 @@ class ShadowQuote:
 
 
 def round_to_tick(price: Decimal, tick: Decimal, side: Side) -> Decimal:
-    """Round *away* from the mid: a bid rounds down, an ask rounds up.
-
-    Rounding toward the mid would make a quote more aggressive than the model
-    asked for, which is the one direction the rounding must never move it. This
-    mirrors the reject-not-clamp principle in Phase 3D: the sign of an
-    adjustment is a safety property, not a formatting detail.
-    """
     if tick <= 0:
         raise ValueError("tick size must be positive")
     steps = price / tick
@@ -118,7 +106,6 @@ def round_to_tick(price: Decimal, tick: Decimal, side: Side) -> Decimal:
 
 
 def round_to_lot(size: Decimal, lot: Decimal) -> Decimal:
-    """Size always rounds down. Rounding up would show more risk than intended."""
     if lot <= 0:
         raise ValueError("lot size must be positive")
     steps = size / lot
@@ -126,12 +113,6 @@ def round_to_lot(size: Decimal, lot: Decimal) -> Decimal:
 
 
 def cost_floor_bps(params: QuoteParameters) -> Decimal:
-    """The minimum half-spread at which a round trip can pay for itself.
-
-    A round trip pays maker fees twice and amortised gas twice, and each side of
-    the quote captures only half the spread. The safety multiplier then requires
-    the edge to beat costs by a margin rather than tie them.
-    """
     round_trip_cost = (params.maker_fee_bps + params.gas_cost_bps) * Decimal(2)
     return round_trip_cost * params.cost_safety_multiplier / Decimal(2)
 
@@ -147,44 +128,32 @@ def build_quote(
     recent_adverse_selection_bps: Decimal | None,
     target_notional_quote: Decimal,
 ) -> ShadowQuote:
-    """Construct one hypothetical quote, or a suppressed one with a reason."""
     if fair_value <= 0:
         return _suppressed(side, fair_value, params, "fair value unavailable")
 
     floor_bps = cost_floor_bps(params)
 
-    # Volatility term: the wider fair value can wander while the quote rests,
-    # the wider the quote must be. Unavailable volatility is not treated as
-    # zero - an unmeasured market is not a calm one.
     if volatility_bps is None:
         return _suppressed(side, fair_value, params, "volatility unavailable for this horizon")
     volatility_term = volatility_bps * params.vol_spread_multiplier
 
-    # Latency term: scale the short-horizon volatility by how stale our view is.
-    # One second of staleness against a 20bps/s market is 20bps of blind risk.
     latency_seconds = Decimal(data_age_ns) / Decimal(1_000_000_000)
     latency_term = volatility_bps * latency_seconds
 
-    # Adverse selection: what fills actually cost recently, not what we hoped.
-    # Only a negative (unfavourable) markout widens the quote; a favourable one
-    # does not earn a tighter quote, because that would be fitting to noise.
     adverse_term = Decimal(0)
     if recent_adverse_selection_bps is not None and recent_adverse_selection_bps < 0:
         adverse_term = abs(recent_adverse_selection_bps)
 
-    # Inventory skew: signed, and applied so the risk-increasing side widens.
     skew = inventory.skew(fair_value)
     skew_magnitude = params.inventory_skew_bps_at_limit * abs(skew)
     if (side == Side.buy and skew > 0) or (side == Side.sell and skew < 0):
-        inventory_term = skew_magnitude       # already leaning this way: back off
+        inventory_term = skew_magnitude
     else:
-        inventory_term = -skew_magnitude      # reduces inventory: quote closer in
+        inventory_term = -skew_magnitude
 
     raw_half_spread = (
         params.base_half_spread_bps + volatility_term + latency_term + adverse_term + inventory_term
     )
-    # The cost floor is a floor, not a term: no combination of favourable
-    # adjustments may take the quote inside the price at which a fill pays.
     raw_half_spread = max(raw_half_spread, floor_bps)
 
     clamped_from: Decimal | None = None

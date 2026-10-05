@@ -39,9 +39,6 @@ class QueueAssumption(str, Enum):
 
 @dataclass(frozen=True, slots=True)
 class FillOpportunity:
-    """A modelled fill. `is_model_output` exists so no consumer can pretend
-    otherwise, and the reports print it."""
-
     assumption: QueueAssumption
     at_ns: int
     side: Side
@@ -55,8 +52,6 @@ class FillOpportunity:
 
 @dataclass(slots=True)
 class RestingShadowQuote:
-    """State for one hypothetical resting quote under one assumption."""
-
     side: Side
     price: Decimal
     size_base: Decimal
@@ -82,25 +77,14 @@ class RestingShadowQuote:
 def initial_queue_ahead(
     assumption: QueueAssumption, displayed_size_at_level: Decimal
 ) -> Decimal:
-    """Size assumed to be ahead of a newly placed quote."""
     if assumption == QueueAssumption.optimistic:
         return Decimal(0)
     if assumption == QueueAssumption.base:
         return displayed_size_at_level
-    # Conservative doubles the displayed size as a stand-in for joiners we
-    # cannot see. It is an admittedly crude proxy; its purpose is to answer
-    # "does the conclusion survive a pessimistic queue?", not to be precise.
     return displayed_size_at_level * Decimal(2)
 
 
 class FillModel:
-    """Consumes external trade prints and advances hypothetical queues.
-
-    Only prints observed on the venue's public feed are consumed. Nothing this
-    simulator hypothesises is ever fed back as volume - that would be modelling
-    your own orders trading with themselves.
-    """
-
     __slots__ = ("_assumption", "_quotes")
 
     def __init__(self, assumption: QueueAssumption) -> None:
@@ -147,19 +131,11 @@ class FillModel:
         size_base: Decimal,
         direction: str | None,
     ) -> list[FillOpportunity]:
-        """Route one external print against every open hypothetical quote.
-
-        `direction` is used only to skip prints that cannot have interacted with
-        this side. When the venue does not state a direction and it could not be
-        inferred, the print is applied to both sides - which overstates fills
-        rather than understating them, and the reports say so.
-        """
         produced: list[FillOpportunity] = []
         for quote in self._quotes:
             if not quote.is_open:
                 continue
 
-            # A bid is hit by seller-initiated flow; an ask is lifted by buyers.
             if direction == "buy" and quote.side == Side.buy:
                 continue
             if direction == "sell" and quote.side == Side.sell:
@@ -173,7 +149,6 @@ class FillModel:
             available = size_base
 
             if not swept:
-                # Traded exactly at our level: the queue ahead absorbs first.
                 consumed_by_queue = min(quote.queue_ahead_base, available)
                 quote.queue_ahead_base -= consumed_by_queue
                 available -= consumed_by_queue
@@ -211,13 +186,6 @@ class FillModel:
 
 
 class FillModelSet:
-    """Runs all three assumptions side by side over the same data.
-
-    This is the intended entry point. Instantiating a single `FillModel` and
-    reporting its result is how a shadow study accidentally becomes an
-    optimistic one.
-    """
-
     __slots__ = ("_models",)
 
     def __init__(self, assumptions: tuple[QueueAssumption, ...] = tuple(QueueAssumption)) -> None:
@@ -241,11 +209,5 @@ class FillModelSet:
         return [model.summary() for model in self._models.values()]
 
     def fill_probability_range(self) -> tuple[int, int]:
-        """(conservative, optimistic) fill counts - a range, never a point.
-
-        When queue position cannot be observed, this range *is* the answer. A
-        study that collapses it to one number has thrown away the uncertainty
-        that determines whether the strategy works.
-        """
         counts = [int(s["fill_opportunities"]) for s in self.summaries()]
         return (min(counts), max(counts)) if counts else (0, 0)

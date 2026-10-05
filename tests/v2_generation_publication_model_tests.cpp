@@ -105,7 +105,7 @@ struct Model {
     }
 };
 thread_local Model* active{};
-} // namespace publication_model
+}
 
 int generation_model_fsync(int fd) {
     auto* m = publication_model::active;
@@ -144,7 +144,6 @@ int generation_model_close(int fd) {
     return result;
 }
 
-// Execute the production transaction; only persistence syscalls are observed/faulted.
 #define fsync generation_model_fsync
 #define write generation_model_write
 #define mkdirat generation_model_mkdirat
@@ -212,7 +211,7 @@ int exercise(int cut, int fail, bool short_write = false, bool interrupt_write =
     if (fail > 0 || fail_close > 0) require(!returned, "startup hid a persistence error");
     return model.events;
 }
-} // namespace
+}
 
 int main() {
     try {
@@ -221,7 +220,6 @@ int main() {
         for (int fail = 1; fail <= count; ++fail) exercise(-1, fail);
         exercise(-1, -1, true);
         exercise(-1, -1, false, true);
-        // Four checked output closes: metadata, identity, seal, selector.
         for (int close = 1; close <= 4; ++close) exercise(-1, -1, false, false, close);
         std::cout << "generation publication model passed " << count << " persistence cuts and EIO points\n";
         return 0;

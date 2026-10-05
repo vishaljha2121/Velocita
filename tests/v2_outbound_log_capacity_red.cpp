@@ -1,4 +1,3 @@
-// Historical diagnostic filename retained; permanent capacity and ownership regressions.
 #define VELOCITA_RESULT_ADMISSION_FIXTURES_ONLY
 #include "v2_result_admission_red.cpp"
 
@@ -53,8 +52,6 @@ void outbound_payload_growth(const std::filesystem::path& root) {
               << " largest_peer_encoded_bytes=" << largest_bytes << '\n';
     require(largest_bytes <= kMaxBoundPeerBytes && largest_count == 1,
             "retry copies were not coalesced to one bounded AppendEntries per peer");
-    // We deliberately discarded the coalesced packets above. A real periodic
-    // retry, not manual reinjection of a saved message, must recover progress.
     cluster.settle(100);
     for (auto& node : cluster.nodes) {
         require(node->status().applied_index == 16, "coalesced packet loss wedged replication");
@@ -192,7 +189,6 @@ void queued_bytes_survive_suffix_replacement(const std::filesystem::path& root) 
     while (identity_test::take_outbound_message(leader)) {}
     const auto original = encoded(ordinary_result_command(1));
     require(leader.propose(original).status == ProposeStatus::admitted, "queued ownership initial proposal");
-    // Durable but uncommitted, with AppendEntries still waiting in each mailbox.
     leader.flush_durability();
     const auto other = id == 1 ? 2 : 1;
     identity_test::deliver_declared_peer(leader, PeerMessage{other, id,
@@ -242,7 +238,7 @@ void saturated_marker_suffix_replacement(const std::filesystem::path& root) {
     require(node.retained_log_count() == kRetainedLogOrdinaryEntries && !node.take_committed_result(),
             "suffix transfer changed log cardinality or duplicated result");
 }
-} // namespace
+}
 
 int main() {
     try {

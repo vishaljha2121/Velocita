@@ -69,15 +69,11 @@ def build(b: DecisionFrameBuilder, **overrides: object):
 
 class SchemaIdentity(unittest.TestCase):
     def test_schema_id_is_derived_from_content(self) -> None:
-        """A silent edit to a feature's meaning must change the id, so the
-        cluster rejects the scope mismatch instead of evaluating an old rule
-        against a new meaning."""
         original = FeatureSchema("x", (FeatureSpec(0, "a", "bps", "d"),))
         renamed_unit = FeatureSchema("x", (FeatureSpec(0, "a", "ratio", "d"),))
         self.assertNotEqual(original.schema_id, renamed_unit.schema_id)
 
     def test_schema_id_is_never_zero(self) -> None:
-        """Zero means 'absent' in every cluster identity check."""
         self.assertNotEqual(MARKET_MAKING_SCHEMA_V1.schema_id, 0)
 
     def test_index_must_match_position(self) -> None:
@@ -95,8 +91,6 @@ class FeatureVectorDiscipline(unittest.TestCase):
             builder().new_vector().set("not_a_feature", D(1))
 
     def test_a_hole_is_refused_rather_than_zero_filled(self) -> None:
-        """The canonical encoding cannot say 'unknown', so a hole would assert
-        the feature is exactly 0.0."""
         b = builder()
         vector = b.new_vector()
         vector.set("spread_bps", D("25"))
@@ -142,7 +136,6 @@ class SequenceIntegrity(unittest.TestCase):
         self.assertEqual([build(b).source_sequence for _ in range(3)], [1, 2, 3])
 
     def test_a_refused_frame_leaves_no_hole_in_the_sequence(self) -> None:
-        """A hole is indistinguishable from message loss downstream."""
         b = builder()
         build(b)
         with self.assertRaises(FrameRefused):
@@ -157,8 +150,6 @@ class SequenceIntegrity(unittest.TestCase):
         self.assertEqual(caught.exception.contract_error, ContractError.invalid_identity)
 
     def test_a_repeated_venue_sequence_is_permitted_but_advances_the_source(self) -> None:
-        """The venue may legitimately publish two updates with one sequence;
-        our own source sequence still advances so the frames stay distinct."""
         b = builder()
         first = build(b, venue_sequence=7)
         second = build(b, venue_sequence=7)
@@ -202,8 +193,6 @@ class StaleAndCrossedData(unittest.TestCase):
         self.assertEqual(status, MarketDataStatus.stale)
 
     def test_crossed_outranks_stale(self) -> None:
-        """A crossed book says the feed is wrong, which is a stronger statement
-        than an old book saying it is late."""
         status = classify_status(self._book("1.02", "1.01"), age_ns=5_000_000_000, max_age_ns=1_000_000_000)
         self.assertEqual(status, MarketDataStatus.crossed)
 
@@ -231,7 +220,6 @@ class StaleAndCrossedData(unittest.TestCase):
 class DepthMeasurement(unittest.TestCase):
     def test_depth_stops_at_the_distance_limit(self) -> None:
         levels = (Level(D("1.0000"), D("10")), Level(D("0.9990"), D("10")), Level(D("0.9000"), D("10")))
-        # 10 bps of a 1.0 mid is 0.001, so only the first two levels qualify.
         depth = cumulative_depth_quote(levels, mid=D("1.0000"), distance_bps=D("10"))
         self.assertEqual(depth, D("1.0000") * D("10") + D("0.9990") * D("10"))
 

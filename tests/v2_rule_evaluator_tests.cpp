@@ -218,7 +218,7 @@ void test_extreme_integer_atoms_do_not_overflow() {
                  "maximum versus minimum");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

@@ -1,3 +1,4 @@
+// Canonical byte encoding of kernel commands and results.
 #pragma once
 
 #include "velocita/v2/kernel.hpp"
@@ -58,8 +59,6 @@ enum class KernelCommandKind : std::uint16_t {
     request_replace = 16,
     configure_risk_limits = 17,
     acknowledge_gateway_results = 18,
-    // Appended. Kinds are tagged by explicit value, not by variant index, so
-    // every existing command keeps its number and no encoded bytes change.
     request_mass_cancel = 19,
     install_execution_catalog = 20,
 };
@@ -113,4 +112,4 @@ static_assert(kMaxKernelCommandBytes <= kKernelCommandBudgetBytes,
 static_assert(kKernelResultBytes <= kKernelResultBudgetBytes,
               "kernel result exceeded its reviewed canonical byte budget");
 
-}  // namespace velocita::v2
+}

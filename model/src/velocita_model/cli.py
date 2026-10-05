@@ -32,7 +32,6 @@ def _preflight() -> None:
 
 
 def cmd_verify(args: argparse.Namespace) -> int:
-    """Prove the interlock holds and print what it checked."""
     findings = audit_tree()
     print(f"LIVE_TRADING = {LIVE_TRADING}")
     print(f"static audit: {len(findings)} finding(s)")
@@ -125,15 +124,6 @@ def cmd_worksheet(args: argparse.Namespace) -> int:
 
 
 def cmd_collect(args: argparse.Namespace) -> int:
-    """Not implemented, and deliberately not stubbed into something that runs.
-
-    Collection needs a working venue adapter, and the adapter is blocked on
-    facts nobody has confirmed yet: whether a public order book exists, what its
-    response schema is, and whether resting limit orders are available at all on
-    the DeFi surface this account can reach. A collector built against guessed
-    field names would run happily and produce data that means nothing, which is
-    the failure mode this whole design exists to prevent.
-    """
     print(
         "collect is not implemented.\n\n"
         "It is blocked on venue verification, not on effort. Run:\n"
@@ -147,15 +137,11 @@ def cmd_collect(args: argparse.Namespace) -> int:
     return 3
 
 
-#: Minara's shortlist as True Markets lists it (spot only; ONDO, XMR, LIT are
-#: not listed; BTC/ETH/ZEC exist only as Coinbase-wrapped tokens on Base).
 DEFAULT_WATCH = "CBBTC,CBETH,SOL,HYPE,CBHYPE,PENDLE,CBZEC,VVV,PENGU"
 DEFAULT_TOPICS = "reference_prices,price_candles,trending_assets,surging_assets,orderbook.hyperliquid-spot.HYPE-USDC"
 
 
 def cmd_stream(args: argparse.Namespace) -> int:
-    """Record the public market-data stream as raw evidence. Read-only by
-    construction: no keys, and the socket can only send its own subscribe."""
     import time
 
     from .adapters.websocket import ReadOnlyMarketSocket
@@ -186,9 +172,6 @@ def cmd_stream(args: argparse.Namespace) -> int:
 
 
 def cmd_md_archive(args: argparse.Namespace) -> int:
-    """Nightly housekeeping for stream.db (docs/MD_ARCHIVE_RUNBOOK.md). Exit 0
-    when every day is archived or waiting normally, 3 when a day is blocked
-    (corrupt archive, ack for other bytes, late rows), 1 on error."""
     import sqlite3
 
     from .storage import md_archive as mda
@@ -236,9 +219,6 @@ def cmd_md_restore(args: argparse.Namespace) -> int:
 
 
 def cmd_shadow_edge(args: argparse.Namespace) -> int:
-    """Live reference prices -> rule features -> the C++ submitter. In shadow
-    mode decisions are only recorded; in paper mode (the submitter's --mode
-    paper) the kernel may authorize them for the paper gateway. Never a venue."""
     import time as _time
     from datetime import date as _date, datetime as _datetime, timedelta as _timedelta, timezone as _tz
 
@@ -274,7 +254,7 @@ def cmd_shadow_edge(args: argparse.Namespace) -> int:
         return 64
     Path(args.program_out).write_text(text, encoding="utf-8")
     if args.program_only:
-        return 0  # the operator's setup step installs this file (velocita-v2-shadow-submitter --setup-only)
+        return 0
     metrics = edge.EdgeMetrics(shadow_recorded_code=args.shadow_recorded_code)
     interval = lambda text: tuple(Decimal(v) for v in text.split(",")) if text else None
     paper_book = PaperBook(clip_lots=args.order_quantity_lots, quote_micros_per_tick_lot=args.quote_micros_per_tick_lot,
@@ -296,9 +276,6 @@ def cmd_shadow_edge(args: argparse.Namespace) -> int:
                       db=args.ledger_db)
 
     class DayBoundSocket:
-        """Ends the stream at the UTC day change so history is reloaded (the
-        edge refuses ticks whose history does not end yesterday)."""
-
         def __init__(self, day: _date) -> None:
             self.day = day
             self.inner = ReadOnlyMarketSocket("api.truemarkets.co", "/v1/defi/market")
@@ -318,7 +295,7 @@ def cmd_shadow_edge(args: argparse.Namespace) -> int:
         try:
             bars = load_binance_daily_api({"X": args.history_pair}, today - _timedelta(days=args.history_days),
                                           today - _timedelta(days=1), Path(args.history_cache) / str(today))
-        except (OSError, ValueError) as error:  # unreachable or malformed history: wait, never exit
+        except (OSError, ValueError) as error:
             failures += 1
             print(f"edge: history unavailable: {type(error).__name__}: {error}", file=sys.stderr, flush=True)
             _time.sleep(edge.backoff_delay(failures))
@@ -348,7 +325,6 @@ def _sha256_text(text: str) -> str:
 
 
 def cmd_report(args: argparse.Namespace) -> int:
-    """Not implemented: there is no collected data to report on yet."""
     print(
         "report is not implemented; no collection has run.\n"
         "The renderer exists in velocita_model.reporting.daily_report and is "
@@ -399,8 +375,6 @@ def build_parser() -> argparse.ArgumentParser:
     worksheet_parser.add_argument("--sizes", default="1,2,5,10")
     worksheet_parser.set_defaults(handler=cmd_worksheet)
 
-    # Present but not implemented. Listed so the gap is visible in --help rather
-    # than discovered when a systemd unit fails at 3am.
     collect_parser = sub.add_parser("collect", help="[BLOCKED] run the collector (needs venue verification)")
     collect_parser.add_argument("config", type=Path, nargs="?")
     collect_parser.set_defaults(handler=cmd_collect)
@@ -478,14 +452,14 @@ def build_parser() -> argparse.ArgumentParser:
     edge_parser.add_argument("--feature-schema-id", type=int, default=None,
                              help="default: the strategy's (trend 31, churn 32, trend_churn 33, rotate 34, dip 35)")
     edge_parser.add_argument("--valid-from-ns", type=int, default=1)
-    edge_parser.add_argument("--valid-until-ns", type=int, default=4_102_444_800_000_000_000)  # 2100-01-01
+    edge_parser.add_argument("--valid-until-ns", type=int, default=4_102_444_800_000_000_000)
     edge_parser.add_argument("--order-quantity-lots", type=int, default=1)
     edge_parser.add_argument("--max-notional-micros", type=int, required=True)
     edge_parser.add_argument("--max-age-ns", type=int, default=5_000_000_000)
     edge_parser.add_argument("--source-id", type=int, default=41)
     edge_parser.add_argument("--time-in-force", default="gtc")
     edge_parser.add_argument("--post-only", default="required")
-    edge_parser.add_argument("--shadow-recorded-code", type=int, default=17)  # edge.SHADOW_RECORDED
+    edge_parser.add_argument("--shadow-recorded-code", type=int, default=17)
     edge_parser.add_argument("--weekly-loss-cap-usd", default="12",
                              help="paper: stop buys (exits only) while this ISO week's realized loss exceeds it")
     edge_parser.add_argument("--paper-buy-bps", type=int, default=115, help="paper venue buy fee (the gateway's)")

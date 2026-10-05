@@ -1,3 +1,4 @@
+// The immutable catalog of tradable account, venue and instrument rows.
 #pragma once
 
 #include "velocita/v2/action_template.hpp"
@@ -68,11 +69,8 @@ encode_execution_catalog(std::span<const ExecutionCatalogRow> rows,
 
 class VerifiedExecutionCatalog final {
 public:
-    // Empty until decode succeeds. Verification binds bytes, not venue truth.
     constexpr VerifiedExecutionCatalog() noexcept = default;
 
-    // Owns decoded rows; refusal leaves destination unchanged. Publish the
-    // successful value as const for the lineage: replacement invalidates views.
     [[nodiscard]] static ExecutionCatalogError
     decode(std::span<const std::byte> bytes, const Digest256 &expected_root,
            VerifiedExecutionCatalog &destination) noexcept;
@@ -100,4 +98,4 @@ private:
 static_assert(sizeof(VerifiedExecutionCatalog) <= 16 * 1024,
               "verified catalog exceeded its reviewed resident-memory ceiling");
 
-} // namespace velocita::v2
+}

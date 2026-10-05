@@ -175,11 +175,6 @@ void test_source_capacities_fail_before_cursor_mutation() {
                       scratch).code == ApplyCode::applied,
                 "source-event receipt setup failed");
     }
-    // Source-event receipts are reclaimable once their source cursor has advanced
-    // past them (architecture 8.6), so the events admitted above would all be
-    // swept and the arena would never overflow. Replace them with events for a
-    // source that has NO cursor: nothing can vouch for those, so they are never
-    // reclaimed and this stays a test of the capacity path, not of the sweep.
     for (std::size_t index = 0; index < kMaxSourceEventReceipts; ++index) {
         event_full.source_events[index] = {
             SourceId{999}, SourceGeneration{1}, SourceSequence{index + 1},
@@ -203,8 +198,6 @@ void test_source_capacities_fail_before_cursor_mutation() {
             "source-event receipt overflow advanced the cursor");
 }
 
-// The expected cursor is what this test committed, written by hand: never read
-// back from the refusal under test.
 void test_generation_gap_reports_the_source_cursor() {
     using namespace velocita::v2;
     TradingState state = catalog_test::state();
@@ -237,7 +230,6 @@ void test_generation_gap_reports_the_source_cursor() {
                 cursor->sequence == SourceSequence{2},
             "a reported gap changed source state");
 
-    // Every other source refusal still names the refused event, not the cursor.
     const auto conflict = catalog_test::apply(state, source_command(5, 0x55, 6, 1, 1, 0xe5), scratch);
     const auto sequence_gap = catalog_test::apply(state, source_command(6, 0x56, 6, 1, 4, 0xe6), scratch);
     require(conflict.code == ApplyCode::source_event_conflict &&
@@ -247,7 +239,6 @@ void test_generation_gap_reports_the_source_cursor() {
                 sequence_gap.detail.words == std::array<std::uint64_t, 3>{6, 1, 4},
             "a refusal other than a generation gap carried the cursor report");
 
-    // Re-based exactly as the report says: one past the cursor, sequence 1.
     require(catalog_test::apply(state, source_command(7, 0x57, 6, 2, 1, 0xe7), scratch).code == ApplyCode::applied,
             "the generation after the reported cursor was refused");
     const auto regression = catalog_test::apply(state, source_command(8, 0x58, 6, 1, 3, 0xe8), scratch);
@@ -256,8 +247,6 @@ void test_generation_gap_reports_the_source_cursor() {
                 regression.detail.words == std::array<std::uint64_t, 3>{6, 1, 3},
             "a generation regression carried the cursor report");
 
-    // The retained answer is the cursor at refusal time, on this replica and on
-    // one restored from a snapshot, even though the cursor has moved since.
     require(catalog_test::apply(state, ahead_command, scratch) == ahead,
             "the exact retry of a reported gap answered differently");
     std::array<std::byte, kKernelResultBytes> encoded_result{};
@@ -332,7 +321,7 @@ void test_source_state_detail_is_validated_by_both_codecs() {
     refused([](ApplyResult& r) { r.detail.words[2] = 0; }, "a cursor with a generation but no sequence");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

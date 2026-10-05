@@ -47,10 +47,6 @@ class Stop:
 
 @dataclass(frozen=True, slots=True)
 class ResearchCapitalFloor:
-    """Simulated boundaries for a 20 USDC study. Defaults are deliberately tight
-    enough that a bad day stops the study rather than producing 400 fills of
-    evidence that the strategy loses money."""
-
     starting_equity_quote: Decimal = Decimal("20.00")
     daily_drawdown_limit_quote: Decimal = Decimal("0.50")
     total_drawdown_limit_quote: Decimal = Decimal("1.00")
@@ -64,16 +60,12 @@ class HostLimits:
     max_clock_offset_ms: float = 250.0
     max_market_data_age_ns: int = 2_000_000_000
     max_reference_divergence_bps: Decimal = Decimal("200")
-    #: Volatility above this percentile of the observed distribution pauses the
-    #: pair. Extreme regimes are worth studying separately, not worth quoting in.
     extreme_volatility_bps: Decimal = Decimal("500")
     min_depth_quote: Decimal = Decimal("5.00")
 
 
 @dataclass(slots=True)
 class RiskEngine:
-    """Evaluates stops. Holds no capital, sends nothing, cancels nothing."""
-
     floor: ResearchCapitalFloor = field(default_factory=ResearchCapitalFloor)
     limits: HostLimits = field(default_factory=HostLimits)
     _paused_pairs: dict[str, Stop] = field(default_factory=dict, repr=False)
@@ -106,15 +98,11 @@ class RiskEngine:
         return stop
 
     def resume(self, pair_id: str) -> None:
-        """Resuming a pair is an explicit operator act, recorded as such. There
-        is no automatic recovery: a feed that gapped once needs a human to say
-        the data since then is trustworthy."""
         self._paused_pairs.pop(pair_id, None)
 
     def manual_kill(self, at_ns: int, detail: str = "operator kill switch") -> Stop:
         return self._raise_stop(Stop(StopKind.manual_kill, None, detail, at_ns), is_global=True)
 
-    # -- data-quality gates ----------------------------------------------
 
     def check_market_data(
         self,
@@ -169,9 +157,6 @@ class RiskEngine:
         clock_offset_ms: float | None,
     ) -> Stop | None:
         if not clock_synced:
-            # Every latency and markout horizon in this system is a wall-clock
-            # difference. An unsynchronised clock does not degrade those
-            # measurements, it invalidates them.
             return self._raise_stop(
                 Stop(StopKind.clock_unsynchronised, None, "host clock is not synchronised", at_ns), is_global=True
             )
@@ -190,10 +175,8 @@ class RiskEngine:
             )
         return None
 
-    # -- simulated capital floor ------------------------------------------
 
     def check_simulated_equity(self, *, pair_id: str, at_ns: int, simulated_equity_quote: Decimal) -> Stop | None:
-        """Study boundary only. Never described as protection."""
         if self._session_start_equity_quote is None:
             self._session_start_equity_quote = simulated_equity_quote
         self._peak_equity_quote = (

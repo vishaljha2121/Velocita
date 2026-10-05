@@ -360,13 +360,6 @@ void test_shadow_identity_and_capacity_are_fail_closed() {
         require(outcome.code == ApplyCode::applied,
                 "decision capacity fixture failed before reaching the bound");
     }
-    // Give each retained proposal a distinct logical slot. Unauthorized decisions
-    // are reclaimable once a NEWER actionable proposal exists for the same slot
-    // (architecture 8.4), so sixteen same-slot proposals would be swept down to
-    // one and the arena would never reach its bound. Distinct slots make none of
-    // them superseded, which is what this test needs: an arena that is genuinely
-    // full and genuinely unsweepable, so the capacity path is exercised rather
-    // than the reclamation path.
     for (std::size_t index = 0; index < full.decision_count; ++index) {
         full.decision_cold[index].proposal.order_slot =
             LogicalOrderSlot{static_cast<std::uint16_t>(index + 1)};
@@ -381,7 +374,7 @@ void test_shadow_identity_and_capacity_are_fail_closed() {
             "decision capacity exhaustion partially mutated the bounded region");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

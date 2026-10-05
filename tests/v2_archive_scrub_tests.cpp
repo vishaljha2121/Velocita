@@ -1,8 +1,3 @@
-// The compaction path's archive check must not cost more as the archive grows
-// (M3 finding 53: every compaction reread and resynced every segment, twice,
-// and the pause passed the election timeout within two days). These tests pin
-// what the cheap check still catches at once, what the rotating scrub catches
-// and by when, and that the full check is unchanged.
 #include "velocita/v2/archive_store.hpp"
 #include "v2_identity_test_support.hpp"
 
@@ -26,7 +21,7 @@ struct ArchiveStoreTestAccess {
     static ArchiveStoreError full(ArchiveStore& store) { return store.verify_current(); }
     static ArchiveStoreError incremental(ArchiveStore& store) { return store.verify_incremental(); }
 };
-}  // namespace velocita::v2
+}
 
 namespace {
 using namespace velocita::v2;
@@ -56,7 +51,6 @@ struct Temp {
     }
 };
 
-// One record at INDEX, term 3.
 struct OneRecord {
     std::vector<std::byte> payload;
     std::uint64_t index{};
@@ -77,7 +71,6 @@ std::set<std::string> segment_names(const std::filesystem::path& root) {
     return out;
 }
 
-// Flips one byte in the middle of FILE: same length, different content.
 void corrupt_in_place(const std::filesystem::path& file) {
     const auto size = std::filesystem::file_size(file);
     std::fstream stream(file, std::ios::in | std::ios::out | std::ios::binary);
@@ -123,7 +116,6 @@ struct Fixture {
                 "open");
     }
 
-    // Publishes record INDEX as its own segment and returns that segment's file.
     std::filesystem::path publish(const Temp& temp, ArchiveStore& store, const std::uint64_t index) const {
         const auto before = segment_names(temp.path);
         OneRecord record{payload, index};
@@ -137,16 +129,12 @@ struct Fixture {
         return temp.path / "v2-archive" / added;
     }
 
-    // An archive of COUNT one-record segments; FILES[i] is catalog row i.
     void build(const Temp& temp, ArchiveStore& store, const std::uint64_t count,
                std::vector<std::filesystem::path>& files) const {
         open(temp, store);
         for (std::uint64_t index = 1; index <= count; ++index) files.push_back(publish(temp, store, index));
     }
 };
-
-// After five publishes the scrub cursor is back at row 0 (publishes scrub rows
-// {}, {0}, {0,1}, {0,1}, {2,3}), so the calls below read rows {0,1}, {2,3}, {4,0}.
 
 void same_length_corruption_is_found_when_the_scrub_reaches_it_and_not_before(const Fixture& f) {
     Temp temp;
@@ -167,21 +155,20 @@ void an_intact_archive_passes_more_than_one_rotation(const Fixture& f) {
     ArchiveStore store;
     std::vector<std::filesystem::path> files;
     f.build(temp, store, 5, files);
-    for (int call = 0; call < 7; ++call)  // rows {0,1} {2,3} {4,0} {1,2} {3,4} {0,1} {2,3}
+    for (int call = 0; call < 7; ++call)
         require(Access::incremental(store) == ArchiveStoreError::none, "the scrub wraps past the last row");
 }
 
-// The scrub runs inside every publish, so compaction alone rereads the archive.
 void publishes_alone_find_corruption_when_their_scrub_reaches_it(const Fixture& f) {
     Temp temp;
     ArchiveStore store;
     std::vector<std::filesystem::path> files;
     f.build(temp, store, 5, files);
     corrupt_in_place(files[3]);
-    files.push_back(f.publish(temp, store, 6));  // scrubs rows 0 and 1: intact
+    files.push_back(f.publish(temp, store, 6));
     OneRecord record{f.payload, 7};
     const ArchiveRecordSource source{&record, 1, &OneRecord::get};
-    const auto result = Access::publish(store, {7, 1, 7, 7, 3, 3, 0}, source);  // scrubs rows 2 and 3
+    const auto result = Access::publish(store, {7, 1, 7, 7, 3, 3, 0}, source);
     require(result.error == ArchiveStoreError::segment_failed, "the second publish reaches row 3 and refuses");
     require(store.catalog_generation() == 6 && segment_names(temp.path).size() == 6, "before writing anything");
 }
@@ -217,7 +204,7 @@ void a_changed_length_is_found_at_once_wherever_the_scrub_is(const Fixture& f) {
     ArchiveStore store;
     std::vector<std::filesystem::path> files;
     f.build(temp, store, 5, files);
-    std::filesystem::resize_file(files[4], std::filesystem::file_size(files[4]) - 1);  // row 4: not in {0,1}
+    std::filesystem::resize_file(files[4], std::filesystem::file_size(files[4]) - 1);
     require(Access::layout(store) == ArchiveStoreError::segment_failed, "a truncated segment fails the layout check");
     require(Access::incremental(store) == ArchiveStoreError::segment_failed, "so the compaction path refuses at once");
 }
@@ -278,7 +265,7 @@ void reopening_still_rereads_every_segment(const Fixture& f) {
                 ArchiveStoreError::segment_failed,
             "startup verification is still complete");
 }
-}  // namespace
+}
 
 int main() {
     const Fixture fixture;

@@ -21,9 +21,6 @@
 #include <unistd.h>
 #include <vector>
 
-// Deterministic persistence model for the actual BoundMetadataStore::save.
-// Only POSIX calls are replaced; the production identity-bound codec and save
-// implementation are compiled verbatim below.
 namespace bpm {
 struct PowerCut final {};
 struct Inode {
@@ -193,7 +190,7 @@ struct ScopedFileSystem {
   explicit ScopedFileSystem(FileSystem &fs) { active = &fs; }
   ~ScopedFileSystem() { active = previous; }
 };
-} // namespace bpm
+}
 
 template <class F> int bpm_int(F &&operation) {
   try {
@@ -416,8 +413,6 @@ struct Fixture {
         where +
             ": acknowledged bytes differ from independently packed new frame");
 
-    // Only durable bytes/names survive. Exercise the actual load path, without
-    // confusing this target-file check with whole-node temp-file admission.
     bpm::FileSystem rebooted;
     rebooted.volatile_names = fs.durable_names;
     rebooted.durable_names = fs.durable_names;
@@ -477,7 +472,7 @@ void short_writes() {
     f.oracle(false, "short cut " + std::to_string(cut));
   }
 }
-} // namespace
+}
 int main() {
   try {
     all_cuts_and_failures();

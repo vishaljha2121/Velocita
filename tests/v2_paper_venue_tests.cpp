@@ -13,22 +13,6 @@
 #include <string>
 #include <vector>
 
-// Every economic expectation below is hand-computed from the fixture constants
-// and written out in the comment beside it; none is read back from the venue or
-// the kernel under test.
-//
-// Fixture economics (BTC-like spot, $25 book):
-//   tick = $1 per whole BTC  -> tick_quote_micros = 1'000'000
-//   lot  = 1'000 sats        -> lot_base_atoms = 1'000, base_decimals = 8
-//   quote micros per tick-lot = 1'000'000 * 1'000 / 10^8 = 10
-//   (The kernel budgets one venue receipt per lot, so an order above 59 lots
-//   is unauthorizable; the lot is sized so a ~$20 order is 33 lots.)
-//   BUY  33 lots @ 60'001 ticks: notional = 60'001 * 33 * 10 = 19'800'330 micros
-//        fee @ 115 bp = 19'800'330 * 115 / 10'000 = 227'703.795 -> 227'704 (up)
-//   SELL 33 lots @ 59'001 ticks: notional = 59'001 * 33 * 10 = 19'470'330 micros
-//        fee @ 120 bp = 19'470'330 * 120 / 10'000 = 233'643.96  -> 233'644 (up)
-//   kernel fee hold @ 12'000 ppm on the buy: 237'603.96 -> 237'604
-
 namespace {
 
 using namespace velocita::v2;
@@ -112,7 +96,6 @@ PolicyArtifact paper_policy() {
     value.valid_from_event_time_ns = 100;
     value.valid_until_event_time_ns = 200;
     value.risk_policy_version = RiskPolicyVersion{6};
-    // First match: a price at or above 60'000 buys (slot 1); anything else sells (slot 2).
     value.rule_count = 2;
     value.rules[0] = {0, PredicateOperator::greater_than_or_equal,
                       FeatureMicros::from_atoms(60'000), Directive::place_limit};
@@ -216,8 +199,6 @@ struct Harness {
     std::uint64_t synthetic_sequence{900'000};
 };
 
-// The authorized submit effect exactly as the gateway's candidate check
-// materializes it from replicated state; no value if the kernel refuses it.
 std::optional<OrderEffect> try_authorize_at(Harness& harness, const std::uint64_t decision,
                                             const std::int64_t price) {
     const auto sequence = ++harness.source_sequence;
@@ -293,8 +274,6 @@ struct Delivered {
     ApplyResult result{};
 };
 
-// Poll, commit each report, and acknowledge only after its commit, as the
-// gateway must.
 std::vector<Delivered> drain(PaperVenue& venue, Harness& harness, const Tick now) {
     std::array<VenueObservation, sim::kMaxVenueObservationsPerPoll> out{};
     const auto count = venue.poll(out, now);
@@ -354,7 +333,6 @@ void require_released(const TradingState& state, const ClusterOrderId id,
 
 void require_held_untouched(const TradingState& state, const ClusterOrderId id,
                             const std::string& where) {
-    // Nothing booked: the full authorization hold is still in place.
     const auto& reservation = reservation_of(state, id);
     require(reservation.state == ReservationState::held &&
                 reservation.remaining_quantity.atoms() == kLots &&
@@ -398,8 +376,6 @@ PaperFaultPolicy only(std::uint16_t PaperFaultPolicy::*fault) {
     return policy;
 }
 
-// ---------------------------------------------------------------------------
-
 void test_fok_buy_fills_whole_at_limit_with_rounded_up_fee() {
     Harness harness;
     PaperVenue venue(config(), PaperFaultPolicy::clean(), 7);
@@ -417,7 +393,6 @@ void test_fok_buy_fills_whole_at_limit_with_rounded_up_fee() {
     require(fill.price.atoms() == kBuyPrice, "FOK filled away from the limit price");
     require(fill.quantity.atoms() == kLots, "FOK did not fill the entire quantity");
     require(fill.side == Side::buy, "the fill carried the wrong side");
-    // 19'800'330 * 115 / 10'000 = 227'703.795 -> 227'704, charged against us.
     require(fill.fee.atoms() == kBuyFee, "the buy fee is not ceil(notional * 115bp)");
     require(fill.venue_order_id == delivered[0].observation.venue_order_id,
             "the fill and the acknowledgement name different venue orders");
@@ -434,7 +409,6 @@ void test_fok_buy_fills_whole_at_limit_with_rounded_up_fee() {
             "the submit effect was not settled");
     require_released(harness.state, effect.cluster_order_id, "clean buy");
 
-    // 25'000'000 - 19'800'330 - 227'704 = 4'971'966
     const auto balances = venue.balances();
     require(balances.quote.atoms() == 4'971'966, "the venue debited the wrong quote");
     require(balances.base.atoms() == kLots, "the venue credited the wrong base");
@@ -457,7 +431,6 @@ void test_round_trip_sell_uses_sell_side_cost_and_returns_flat() {
     const auto delivered = drain(venue, harness, 300);
     require(delivered.size() == 2 && delivered[1].observation.kind == VenueObservationKind::fill,
             "the sell did not report ack + fill");
-    // 19'470'330 * 120 / 10'000 = 233'643.96 -> 233'644 (115bp would give 223'909).
     require(delivered[1].observation.fee.atoms() == kSellFee,
             "the sell fee is not ceil(notional * 120bp)");
     require(delivered[1].result.code == ApplyCode::applied, "the kernel refused the sell fill");
@@ -465,7 +438,6 @@ void test_round_trip_sell_uses_sell_side_cost_and_returns_flat() {
     require(harness.state.risk_accounts[0].position_quantity.atoms() == 0,
             "a round trip did not return the kernel position to flat");
     require_released(harness.state, sell.cluster_order_id, "round trip");
-    // 4'971'966 + 19'470'330 - 233'644 = 24'208'652; fees 227'704 + 233'644 = 461'348
     const auto balances = venue.balances();
     require(balances.quote.atoms() == 24'208'652, "the round trip left the wrong quote");
     require(balances.base.atoms() == 0, "the round trip left base inventory");
@@ -473,7 +445,6 @@ void test_round_trip_sell_uses_sell_side_cost_and_returns_flat() {
 }
 
 void test_budget_boundary_includes_the_fee() {
-    // Cost of the buy is notional + fee = 19'800'330 + 227'704 = 20'028'034.
     {
         Harness harness;
         PaperVenue venue(config(20'028'034), PaperFaultPolicy::clean(), 7);
@@ -514,9 +485,6 @@ void test_long_only_sell_without_inventory_is_killed_whole() {
     require(naked.balances() == paper::PaperBalances{MoneyMicros::from_atoms(kBudget), {}, {}},
             "a killed sell moved venue balances");
 
-    // While the kernel does not enforce allow_short it authorizes this naked
-    // sell, and the venue's balance check is the only thing between it and a
-    // short. Once enforcement lands the kernel refuses first; both are safe.
     Harness harness;
     PaperVenue venue(config(), PaperFaultPolicy::clean(), 7);
     if (const auto sell = try_authorize_at(harness, 20, kSellPrice)) {
@@ -533,7 +501,6 @@ void test_long_only_sell_without_inventory_is_killed_whole() {
                 "a refused naked sell left kernel state behind");
     }
 
-    // A partial cover is still killed whole: 32 lots held, 33 asked.
     PaperVenue short_by_one(config(kBudget, kLots - 1), PaperFaultPolicy::clean(), 7);
     require(short_by_one.send(raw_effect(1, Side::sell, kSellPrice), 10) ==
                 SendOutcome::business_rejected,
@@ -597,7 +564,6 @@ void test_resubmitting_a_known_order_is_a_venue_duplicate() {
 
 void test_unrenderable_or_misrouted_effects_never_reach_the_book() {
     PaperVenue venue(config(), PaperFaultPolicy::clean(), 7);
-    // 10^13 ticks * 10^6 micros per tick overflows int64: no wire price exists.
     const auto huge = raw_effect(1, Side::buy, 10'000'000'000'000);
     require(venue.send(huge, 10) == SendOutcome::pre_send_failure,
             "an unrenderable price was sent");
@@ -614,7 +580,7 @@ void test_unrenderable_or_misrouted_effects_never_reach_the_book() {
             "a refused send left venue state behind");
 
     auto disagreeing = config();
-    disagreeing.spec.lot_base_atoms = 200;  // product 2 micros != profile's 1
+    disagreeing.spec.lot_base_atoms = 200;
     PaperVenue misconfigured(disagreeing, PaperFaultPolicy::clean(), 7);
     require(!misconfigured.configured(), "a spec disagreeing with the profile was accepted");
     require(misconfigured.send(raw_effect(4, Side::buy), 10) == SendOutcome::pre_send_failure,
@@ -622,7 +588,6 @@ void test_unrenderable_or_misrouted_effects_never_reach_the_book() {
 }
 
 void test_fee_arithmetic_is_exact_and_rounds_against_us() {
-    // Independent integer oracles.
     require(paper::paper_fee(MoneyMicros::from_atoms(10'000), 115)->atoms() == 115,
             "an exact fee was rounded");
     require(paper::paper_fee(MoneyMicros::from_atoms(1), 1)->atoms() == 1,
@@ -631,8 +596,6 @@ void test_fee_arithmetic_is_exact_and_rounds_against_us() {
             "a zero notional was charged");
     require(!paper::paper_fee(MoneyMicros::from_atoms(1), 10'001).has_value(),
             "a fee above 100% was accepted");
-    // floor(max / 10'000) * 10'000 + 5'807 = max; 922'337'203'685'477 * 10'000 fits,
-    // ceil(5'807 * 10'000 / 10'000) = 5'807, total = max: exact at 100%.
     const auto max = std::numeric_limits<std::int64_t>::max();
     require(paper::paper_fee(MoneyMicros::from_atoms(max), 10'000)->atoms() == max,
             "a 100% fee on the largest notional was not exact");
@@ -647,15 +610,12 @@ void test_fee_arithmetic_is_exact_and_rounds_against_us() {
             "an overflowing notional produced a value");
 }
 
-// --- Faults ------------------------------------------------------------------
-
 void test_fault_delay_withholds_reports_until_due() {
     Harness harness;
     PaperVenue venue(config(), only(&PaperFaultPolicy::delay_permille), 7);
     const auto effect = authorize_at(harness, 20, kBuyPrice);
     require(venue.send(effect, 10) == SendOutcome::accepted, "the delayed buy was not accepted");
     require(venue.last_faults().delay, "the delay fault did not fire");
-    // Clean due ticks would be 11 (ack) and 12 (fill); +25 makes them 36 and 37.
     require(drain(venue, harness, 35).empty(), "a delayed report arrived early");
     require_held_untouched(harness.state, effect.cluster_order_id, "delay");
     require(order_of(harness.state, effect.cluster_order_id).state ==
@@ -677,8 +637,6 @@ void test_fault_duplicate_moves_the_position_once() {
     PaperVenue venue(config(), only(&PaperFaultPolicy::duplicate_permille), 7);
     const auto effect = authorize_at(harness, 20, kBuyPrice);
     require(venue.send(effect, 10) == SendOutcome::accepted, "the buy was not accepted");
-    // Each report is re-delivered one tick after its original, AFTER the original
-    // has been committed and acknowledged: ack@11, ack'@12, fill@12, fill'@13.
     std::vector<Delivered> all;
     const std::array<std::size_t, 3> per_tick{1, 2, 1};
     for (Tick now = 11; now <= 13; ++now) {
@@ -718,7 +676,6 @@ void test_fault_reorder_fill_before_ack_converges() {
             "reordering changed venue sequence numbers rather than delivery order");
     require(delivered[0].result.code == ApplyCode::applied,
             "a fill arriving before its acknowledgement was refused");
-    // The late ack must not revive or re-open a filled order.
     require(delivered[1].result.code == ApplyCode::venue_observation_not_applicable,
             "a late acknowledgement was applied to a filled order");
     require(order_of(harness.state, effect.cluster_order_id).state == ClusterOrderState::filled,
@@ -761,7 +718,6 @@ void test_fault_drop_response_unknown_then_query_adopts_the_fill() {
             "the order is not UnknownSubmission");
     require_held_untouched(harness.state, effect.cluster_order_id, "unknown");
 
-    // Stop duplicate risk: no resend, and no second order on the slot.
     require(plan_delivery(harness.state, delivery, GatewayEvidenceState{}, control, view,
                           SendQuotaView{4, 1}, timeouts, deadline + 100, &paper_catalog())
                     .send_count == 0,
@@ -785,9 +741,6 @@ void test_fault_drop_response_unknown_then_query_adopts_the_fill() {
         const auto second =
             run(probe.state, {{CallerId{1}, RequestSequence{++probe.request}, digest(0x32)},
                               AuthorizeDecision{DecisionId{31}}});
-        // With 33-lot orders the per-lot receipt budget (33 + 4 held for the
-        // unknown order, 33 + 5 for the new one, > 64) refuses before slot
-        // exclusivity is consulted; either refusal stops the duplicate risk.
         require(second.code == ApplyCode::venue_event_capacity_exceeded ||
                     second.code == ApplyCode::order_slot_occupied,
                 "a second buy was authorized while the first was unknown");
@@ -820,8 +773,6 @@ void test_fault_drop_response_unknown_then_query_adopts_the_fill() {
             "a complete known answer was not submittable");
     require(record_answer(reconciliation, effect.cluster_order_id), "record_answer failed");
 
-    // A cumulative snapshot alone cannot book a fill: it carries no execution
-    // identity, so the kernel refuses it as missing evidence.
     auto snapshot = synthetic(harness, VenueObservationKind::order_reconciled, effect);
     snapshot.venue_order_id = answer.venue_order_id;
     snapshot.quantity = answer.filled_quantity;
@@ -829,7 +780,6 @@ void test_fault_drop_response_unknown_then_query_adopts_the_fill() {
             "a totals-only snapshot was booked as a fill");
     require_held_untouched(harness.state, effect.cluster_order_id, "snapshot");
 
-    // Adopt: the query released the venue's own identified execution reports.
     const auto adopted = drain(venue, harness, deadline + 5);
     require(adopted.size() == 2 && adopted[1].observation.kind == VenueObservationKind::fill &&
                 adopted[1].observation.fee.atoms() == kBuyFee,
@@ -870,7 +820,6 @@ void test_fault_drop_request_unknown_then_not_found_releases_and_permits_retry()
             "an absent order moved the position");
     require_released(harness.state, effect.cluster_order_id, "absent");
 
-    // Retry is a FRESH authorization on the freed slot, never a resend.
     PaperVenue healthy(config(), PaperFaultPolicy::clean(), 7);
     const auto retry = authorize_at(harness, 21, kBuyPrice);
     require(retry.cluster_order_id != effect.cluster_order_id,
@@ -919,9 +868,6 @@ void test_fault_split_fills_in_pieces_and_the_kernel_books_each() {
     require(count == 3, "a two-piece split did not report ack + two fills");
     const auto& first = out[1];
     const auto& second = out[2];
-    // 33 = 16 + 17 (remainder on the last piece). Fees per piece, each rounded up:
-    //   60'001 * 16 * 10 = 9'600'160  * 115bp = 110'401.84  -> 110'402
-    //   60'001 * 17 * 10 = 10'200'170 * 115bp = 117'301.955 -> 117'302
     require(first.kind == VenueObservationKind::fill && second.kind == VenueObservationKind::fill,
             "the split reports were not fills");
     require(first.quantity.atoms() == 16 && second.quantity.atoms() == 17,
@@ -936,8 +882,6 @@ void test_fault_split_fills_in_pieces_and_the_kernel_books_each() {
     require(commit(harness, first).code == ApplyCode::applied, "the first piece was refused");
     const auto& order = order_of(harness.state, effect.cluster_order_id);
     const auto& reservation = reservation_of(harness.state, effect.cluster_order_id);
-    // Remaining 17 of 33: margin ceil(19'800'330 * 17 / 33) = 10'200'170 (exact);
-    // fee hold ceil(237'604 * 17 / 33) = ceil(122'402.06) = 122'403.
     require(order.state == ClusterOrderState::partially_filled,
             "the first piece did not leave the order partially filled");
     require(reservation.state == ReservationState::partially_consumed &&
@@ -955,7 +899,6 @@ void test_fault_split_fills_in_pieces_and_the_kernel_books_each() {
     require(harness.state.risk_accounts[0].position_quantity.atoms() == kLots,
             "the split pieces did not sum to the order");
     require_released(harness.state, effect.cluster_order_id, "split");
-    // 110'402 + 117'302 = 227'704; 25'000'000 - 19'800'330 - 227'704 = 4'971'966
     require(venue.balances().fees_paid.atoms() == 227'704 &&
                 venue.balances().quote.atoms() == 4'971'966,
             "the venue charged the split pieces the wrong total");
@@ -978,8 +921,6 @@ void test_fault_query_unavailable_concludes_nothing() {
     require(classify_query(view, nullptr, 0, GatewayTimeouts{}) == QueryDisposition::unavailable,
             "the gateway would submit an unavailable answer");
 }
-
-// --- Determinism and bounds --------------------------------------------------
 
 std::vector<std::uint64_t> script(const std::uint64_t seed) {
     PaperFaultPolicy policy;
@@ -1025,7 +966,6 @@ void test_same_seed_same_outputs() {
 
 void test_bounded_state_refuses_before_mutation_and_poll_respects_the_caller() {
     PaperVenue venue(config(1'000 * kBudget), PaperFaultPolicy::clean(), 7);
-    // Two reports per clean order: 128 / 2 = 64 orders fill the report queue.
     for (std::uint64_t index = 1; index <= 64; ++index) {
         require(venue.send(raw_effect(index, Side::buy, kBuyPrice, 1), 10) ==
                     SendOutcome::accepted,
@@ -1039,7 +979,6 @@ void test_bounded_state_refuses_before_mutation_and_poll_respects_the_caller() {
                 venue.pending_observation_count() == paper::kMaxPaperObservations,
             "a capacity refusal mutated the venue");
 
-    // Poll never writes past the caller's span; the rest stays owned and is offered next.
     std::array<VenueObservation, 1> one{};
     require(venue.poll(one, 100) == 1, "poll did not fill the caller's span");
     venue.acknowledge(one[0]);
@@ -1107,7 +1046,7 @@ void test_kernel_resequenced_execution_report_is_not_rebooked() {
             "a re-sequenced execution report moved the position again");
 }
 
-}  // namespace
+}
 
 int main() {
     const std::pair<const char*, void (*)()> tests[] = {

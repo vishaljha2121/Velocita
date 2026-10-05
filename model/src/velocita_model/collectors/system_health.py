@@ -48,12 +48,6 @@ class HealthSample:
 
     @property
     def is_throttled(self) -> bool:
-        """Any non-zero bit means the firmware limited the SoC at some point.
-
-        The Pi 5 evidence in this repo records `throttled=0x0` before and after
-        every acceptance run for exactly this reason: a throttled interval is
-        not comparable to an unthrottled one.
-        """
         if self.throttled_hex is None:
             return False
         try:
@@ -70,9 +64,6 @@ def _read_load1() -> float | None:
 
 
 def _read_cpu_percent() -> float | None:
-    """Load-average-derived, since a true instantaneous percentage needs two
-    samples and this is called on a slow cadence. Documented rather than
-    silently approximated."""
     load = _read_load1()
     if load is None:
         return None
@@ -114,7 +105,6 @@ def _run(command: list[str], timeout_s: float = 3.0) -> str | None:
 
 
 def read_throttled() -> str | None:
-    """`vcgencmd get_throttled` on a Pi, absent elsewhere."""
     output = _run(["vcgencmd", "get_throttled"])
     if output and "=" in output:
         return output.split("=", 1)[1].strip()
@@ -138,12 +128,6 @@ def read_temperature() -> float | None:
 
 
 def read_clock_status() -> tuple[bool, float | None]:
-    """(synchronised, offset_ms) from chrony or timedatectl.
-
-    Returns (False, None) when neither is available. Unknown synchronisation is
-    treated as unsynchronised, because the risk engine's response - stop
-    producing frames - is the safe one when we cannot tell.
-    """
     tracking = _run(["chronyc", "-c", "tracking"])
     if tracking:
         fields = tracking.split(",")
@@ -184,21 +168,14 @@ def sample(*, database_path: Path | None = None) -> HealthSample:
 def estimate_disk_requirement(
     *, book_updates_per_second: float, trades_per_minute: float, days: int
 ) -> dict[str, float]:
-    """Rough storage projection, so a 90-day plan is checked before it fills the
-    card rather than after.
-
-    Per-row sizes are measured approximations of the schema in `schema.sql`
-    including index overhead, not vendor claims. Treat the output as an order of
-    magnitude: the real number depends on how compressible the depth ladders are.
-    """
-    book_row_bytes = 420.0     # includes a bounded depth_json ladder
+    book_row_bytes = 420.0
     trade_row_bytes = 190.0
-    frame_row_bytes = 300.0    # 181-421 canonical bytes plus index overhead
+    frame_row_bytes = 300.0
 
     seconds = days * 86_400.0
     book_rows = book_updates_per_second * seconds
     trade_rows = trades_per_minute / 60.0 * seconds
-    frame_rows = book_rows  # one frame per accepted book update, worst case
+    frame_rows = book_rows
 
     total = book_rows * book_row_bytes + trade_rows * trade_row_bytes + frame_rows * frame_row_bytes
     return {

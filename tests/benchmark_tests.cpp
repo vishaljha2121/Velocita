@@ -86,7 +86,7 @@ void test_internal_trace_table() {
             "internal trace durations are wrong");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

@@ -44,7 +44,6 @@ Bytes secret_bytes() {
     return out;
 }
 
-// Same secret iff it derives a key that produces the same envelope bytes.
 Bytes envelope_with(const AuthSecret& secret) {
     const std::array<std::byte, 16> incarnation{std::byte{1}};
     const auto key = AuthKey::derive(secret, {AuthRole::peer, 1, 2}, incarnation);
@@ -147,7 +146,7 @@ void catalog_loads_only_against_its_pinned_root() {
     require(load_catalog_file(file, standard.root()).error == NodeFileError::wrong_size, "oversized catalog accepted");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

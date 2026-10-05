@@ -69,7 +69,7 @@ LocalGenerationError validate_value(const LocalGenerationSelector& value) noexce
     return LocalGenerationError::none;
 }
 
-} // namespace
+}
 
 EncodeLocalGenerationResult encode_local_generation_selector(
     const LocalGenerationSelector& input, const VerifiedStaticIdentity& identity,
@@ -151,4 +151,4 @@ LocalGenerationError validate_local_generation_transition(
     return LocalGenerationError::none;
 }
 
-} // namespace velocita::v2
+}

@@ -159,9 +159,6 @@ void test_refused_install_does_not_require_candidate_artifact() {
                       scratch).code == ApplyCode::applied,
                 "pinned receipt fixture did not fill through public commands");
     }
-    // The first full-arena sweep drops the acknowledged sequence 1 receipt,
-    // then this command refills the arena.  Every survivor is above the
-    // acknowledgement watermark and therefore pinned.
     require(apply(receipts_full,
                   control(++sequence, AdvanceKillEpoch{KillEpoch{++epoch}}),
                   scratch).code == ApplyCode::applied &&
@@ -234,9 +231,6 @@ void test_refused_install_does_not_require_candidate_artifact() {
                 ApplyCode::receipt_capacity_exceeded,
             "caller-full install did not return its deterministic refusal");
 
-    // Synthetic boundary: reaching uint64 max through public admission is not a
-    // practical test trace, but the terminal value is part of the reducer's
-    // explicit exhaustion contract and must dominate artifact readiness.
     TradingState exhausted;
     exhausted.kill_epoch = KillEpoch{1};
     exhausted.executor_generation = ExecutorGeneration{1};

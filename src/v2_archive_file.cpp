@@ -31,7 +31,7 @@ int stat_retry(const int fd, struct stat& value) noexcept {
     return result;
 }
 
-} // namespace
+}
 
 ArchiveFileReadResult read_archive_segment_at(
     const int directory_fd, const std::string_view basename,
@@ -121,4 +121,4 @@ ArchiveFileReadResult read_archive_segment_at(
     return {ArchiveFileError::none, ArchiveSegmentError::none, offset};
 }
 
-} // namespace velocita::v2
+}

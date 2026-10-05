@@ -1,3 +1,4 @@
+// The base of a storage generation: genesis or an installed snapshot.
 #pragma once
 
 #include "velocita/v2/bound_frame.hpp"
@@ -54,10 +55,6 @@ struct EncodeGenerationBaseResult {
     GenerationBase base{};
 };
 
-// SNAPSHOT is empty for genesis and the complete immutable bound snapshot for
-// snapshot kind. Failure leaves OUTPUT unchanged. EXPECTED_IDENTITY,
-// EXPECTED_CATALOG, SNAPSHOT and OUTPUT must not overlap SCRATCH or one another;
-// the 40-byte seal is staged before publication.
 [[nodiscard]] EncodeGenerationBaseResult encode_generation_base(
     GenerationBaseKind kind, std::uint64_t generation,
     const VerifiedStaticIdentity& expected_identity,
@@ -65,10 +62,6 @@ struct EncodeGenerationBaseResult {
     std::span<const std::byte> snapshot, std::span<std::byte> output,
     GenerationBaseScratch& scratch) noexcept;
 
-// Failure leaves DESTINATION unchanged. SEAL, EXPECTED_IDENTITY,
-// EXPECTED_CATALOG, SNAPSHOT and DESTINATION must not overlap SCRATCH or one
-// another. Successful decode validates the full bound/canonical snapshot and
-// catalog dependencies, not only the seal digest.
 [[nodiscard]] GenerationBaseError decode_generation_base(
     std::span<const std::byte> seal, std::uint64_t generation,
     const VerifiedStaticIdentity& expected_identity,
@@ -76,4 +69,4 @@ struct EncodeGenerationBaseResult {
     std::span<const std::byte> snapshot, GenerationBaseScratch& scratch,
     GenerationBase& destination) noexcept;
 
-} // namespace velocita::v2
+}

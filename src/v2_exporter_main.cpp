@@ -1,8 +1,4 @@
-// velocita-v2-exporter: serves one voter's health page as Prometheus metrics.
-// Read-only diagnostics (M3a); it reads the page per scrape and grants nothing.
-//
-//   velocita-v2-exporter --health FILE --host LABEL --listen IPV4 --port PORT
-
+// velocita-v2-exporter: serves a voter's health page as Prometheus metrics.
 #include "velocita/v2/node_health.hpp"
 #include "velocita/v2/node_metrics_text.hpp"
 
@@ -85,7 +81,7 @@ int listen_socket(const Options& o) {
     return fd;
 }
 
-}  // namespace
+}
 
 int main(int argc, char** argv) {
     try {

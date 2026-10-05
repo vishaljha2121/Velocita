@@ -170,4 +170,4 @@ bool RetainedLog::can_admit(
     return true;
 }
 
-} // namespace velocita::v2
+}

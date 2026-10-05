@@ -33,10 +33,6 @@ void operator delete[](void* p) noexcept { ::operator delete(p); }
 
 namespace {
 using namespace velocita::v2;
-// The byte lookahead remains 65,588. Worker-safe decoding also owns one fixed
-// frame scratch, one transactional state scratch and one output on the heap.
-// Bound total allocation, not only the largest request: many small allocations
-// proportional to the file must not evade this regression.
 constexpr std::size_t kLoadAllocationBudget = kMaxBoundSnapshotBytes + 1 +
     sizeof(BoundFrameScratch) + sizeof(StateSnapshotScratch) + sizeof(StoredSnapshot) + 1024;
 void require(bool condition, const std::string& reason) {
@@ -166,8 +162,6 @@ void test_incompatible_and_foreign_are_typed(const std::filesystem::path& direct
     require(thrown_code(store) == BoundFrameError::unsupported_schema,
             "oversized future canonical schema fell through to WAL fallback");
 
-    // Independent literal V2BF kind-3 frame with matching identity and valid
-    // integrity, but only the index/term prefix and no canonical state bytes.
     const auto semantic_truncation = from_hex(
         "56324246010003006800000010000000"
         "3ce5d6e3e9a886ab694852a129348bbe9413c2b55077a84804efa3cd645cc3e0"

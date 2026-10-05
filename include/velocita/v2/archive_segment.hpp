@@ -1,3 +1,4 @@
+// Canonical encoding of one archive segment: a run of committed log records.
 #pragma once
 
 #include "velocita/v2/authority_barrier.hpp"
@@ -48,8 +49,6 @@ struct ArchiveRecordView {
     std::span<const std::byte> payload;
 };
 
-// record_at may return a borrowed payload valid until its next invocation. The
-// source must return identical records across both encoder passes.
 struct ArchiveRecordSource {
     void* context{};
     std::uint32_t count{};
@@ -84,20 +83,14 @@ struct ArchiveSegmentDecodeResult {
 
 using ArchiveRecordVisitor = bool (*)(const ArchiveRecordView&, void*) noexcept;
 
-// OUTPUT must not overlap any source payload. Prevalidation and output-capacity
-// failures leave it unchanged. A source failure during pass two may leave a
-// partial, unpublishable output; this codec is not an atomic publication API.
 [[nodiscard]] ArchiveSegmentEncodeResult encode_archive_segment(
     const ArchiveRecordSource& source, std::int64_t predecessor_term,
     const VerifiedStaticIdentity& identity, std::span<std::byte> output,
     ArchiveSegmentScratch& scratch) noexcept;
 
-// INPUT is immutable for both passes. Visitor payload spans borrow INPUT only
-// for the synchronous callback and must not escape. Callback side effects are
-// not rolled back if a later callback refuses.
 [[nodiscard]] ArchiveSegmentDecodeResult decode_archive_segment(
     std::span<const std::byte> input, const VerifiedStaticIdentity& identity,
     ArchiveRecordVisitor visitor, void* visitor_context,
     ArchiveSegmentScratch& scratch, ArchiveSegmentMetadata& destination) noexcept;
 
-} // namespace velocita::v2
+}

@@ -31,7 +31,6 @@ from velocita_model.contracts.enums import (
     PredicateOperator,
 )
 
-# tests/v2_payload_codec_tests.cpp: digest_with_first_byte
 def digest_with_first_byte(value: int) -> bytes:
     return bytes([value]) + bytes(31)
 
@@ -46,7 +45,6 @@ GOLDEN_DECISION_FRAME_HEX = (
 GOLDEN_DECISION_FRAME_SHA256 = (
     "9bdc490425ee07a28b4a0fd624d25ea5b167180dc01bae2080d54c0e4c05dcc3"
 )
-# CHANGELOG.md, Phase 1 candidate: the exact 144-byte policy corpus digest.
 GOLDEN_POLICY_ARTIFACT_SHA256 = (
     "7cd115af41936eaaabbf53660d86e54d27c288c09f76f98efc1c2c75dd48ef30"
 )
@@ -121,7 +119,6 @@ class DecisionFrameGoldenBytes(unittest.TestCase):
             decode_decision_frame(frame_fixture().encode() + b"\x00")
 
     def test_legacy_v1_schema_fails_closed(self) -> None:
-        """A V1 frame must be refused by schema, not reinterpreted by length."""
         legacy = bytearray(frame_fixture().encode())
         legacy[0:2] = (1).to_bytes(2, "little")
         with self.assertRaises(ContractViolation) as caught:
@@ -145,9 +142,6 @@ class PolicyArtifactGoldenBytes(unittest.TestCase):
 
 
 class ContractRejection(unittest.TestCase):
-    """The edge must refuse to emit anything the reducer would reject, and must
-    report the same typed reason so a failure is diagnosable locally."""
-
     def test_zero_identity_rejected(self) -> None:
         with self.assertRaises(ContractViolation) as caught:
             dataclasses.replace(frame_fixture(), venue_id=0).encode()

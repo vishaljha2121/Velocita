@@ -1,3 +1,4 @@
+// Canonical encoding of decision frames, policies and feature schemas.
 #pragma once
 
 #include "velocita/v2/contracts.hpp"
@@ -93,4 +94,4 @@ decode_feature_schema_artifact(std::span<const std::byte> bytes);
 [[nodiscard]] DecodePayloadResult<ExecutablePolicyArtifact>
 decode_executable_policy_artifact(std::span<const std::byte> bytes);
 
-}  // namespace velocita::v2
+}

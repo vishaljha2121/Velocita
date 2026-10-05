@@ -20,11 +20,6 @@
 #include <utility>
 #include <vector>
 
-// This test executes the real MetadataStore::save implementation below.  Only
-// its POSIX calls are redirected, after all headers have been parsed, into a
-// deterministic persistence model.  It is a model of the required ordering;
-// it is not evidence about a physical device, filesystem, controller, or power
-// supply.
 namespace vpm {
 
 struct PowerCut final {};
@@ -154,7 +149,7 @@ struct FileSystem {
 
 thread_local FileSystem* active{};
 
-}  // namespace vpm
+}
 
 int vpm_open(const char* path, int flags, ...) {
     try {
@@ -203,9 +198,6 @@ int vpm_rename(const char* from, const char* to) {
     }
 }
 
-// Rename the production namespace so this direct inclusion cannot collide with
-// the normally linked storage library.  System headers were deliberately
-// included above, before these syscall-token substitutions.
 #define velocita vpm_storage
 #include "velocita/storage.hpp"
 #define open vpm_open
@@ -311,8 +303,6 @@ struct Fixture {
     explicit Fixture(std::filesystem::path path) : root(std::move(path)) {
         std::filesystem::create_directories(root);
         fs.directory = root.string();
-        // Seed a previously durable generation from the independent format
-        // specification, so a mutant in the save-under-test cannot weaken setup.
         const int old_inode = fs.next_inode++;
         const auto old_bytes = encode(old_state);
         fs.inodes.emplace(old_inode, vpm::Inode{old_bytes, old_bytes});
@@ -348,9 +338,6 @@ struct Fixture {
                     std::to_string(recovered->voted_for) + ", commit=" +
                     std::to_string(recovered->commit_index) + "}, not the new tuple");
 
-        // The independent decoder chooses the expected semantic generation.
-        // Materialize that modeled post-power image privately, then ensure the
-        // production load implementation interprets the exact same bytes.
         const auto materialized_name = std::string("recovered-") + std::to_string(fs.event) + ".bin";
         const auto materialized_path = root / materialized_name;
         std::ofstream output(materialized_path, std::ios::binary | std::ios::trunc);
@@ -387,8 +374,6 @@ void test_all_power_cut_boundaries() {
 }
 
 void test_short_write_and_syscall_failures() {
-    // This covers retry of one deterministic short write.  It is not an
-    // exhaustive sector-tear or device-writeback model.
     Fixture short_write(unique_root("short", 0));
     short_write.fs.short_first_write = true;
     const bool acknowledged = short_write.save_new();
@@ -413,9 +398,6 @@ void test_short_write_and_syscall_failures() {
         Fixture fixture(unique_root("failure", failure));
         fixture.fs.fail_before = failure;
         const bool acknowledged = fixture.save_new();
-        // The production implementation deliberately ignores directory-close
-        // failure after its sync.  The semantic oracle, rather than the injected
-        // event count, decides whether that returned operation is safe.
         fixture.check_oracle(acknowledged, "failure before syscall " + std::to_string(failure));
     }
 }
@@ -427,7 +409,7 @@ void test_acknowledged_save_is_durable() {
     fixture.check_oracle(true, "acknowledged save");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

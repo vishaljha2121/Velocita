@@ -9,8 +9,6 @@ from __future__ import annotations
 
 from enum import IntEnum
 
-# Independent per-family schema versions. These mirror the C++ constants and are
-# asserted against the golden corpora in tests/test_codec_golden_parity.py.
 POLICY_ARTIFACT_SCHEMA_VERSION = 1
 DECISION_FRAME_SCHEMA_VERSION = 2
 ORDER_EFFECT_SCHEMA_VERSION = 1
@@ -84,10 +82,6 @@ class EconomicValueSourceKind(IntEnum):
 
 
 class ContractError(IntEnum):
-    """Mirrors the C++ `ContractError`. Validation must fail with the same reason
-    the reducer would report, so an edge-side rejection is diagnosable without
-    round-tripping through the cluster."""
-
     none = 0
     invalid_identity = 1
     unsupported_schema = 2
@@ -110,8 +104,6 @@ class ContractError(IntEnum):
 
 
 class ContractViolation(Exception):
-    """Raised instead of emitting a frame the cluster would reject."""
-
     def __init__(self, error: ContractError, detail: str = "") -> None:
         self.error = error
         super().__init__(f"{error.name}: {detail}" if detail else error.name)

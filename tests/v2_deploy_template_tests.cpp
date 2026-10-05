@@ -8,10 +8,6 @@
 #include <stdexcept>
 #include <string>
 
-// The shipped two- and three-host templates, with placeholders filled as the
-// operator's sed would, must each parse and describe ONE cluster. The expected topology below
-// is written by hand from the deployment log, never read from the templates.
-
 namespace {
 
 using namespace velocita::v2;
@@ -25,13 +21,13 @@ struct Host {
     std::uint16_t voter_port, ingress_port;
 };
 const std::map<std::int32_t, Host> kThreeHosts{
-    {1, {"100.72.127.102", 42201, 42301}},  // nuc1
-    {2, {"100.84.151.116", 42202, 42302}},  // Pi
-    {3, {"100.85.36.22", 42203, 42303}},    // nuc2
+    {1, {"100.72.127.102", 42201, 42301}},
+    {2, {"100.84.151.116", 42202, 42302}},
+    {3, {"100.85.36.22", 42203, 42303}},
 };
 const std::map<std::int32_t, Host> kTwoHosts{
-    {1, {"100.72.127.102", 42201, 42301}},  // nuc1
-    {2, {"100.84.151.116", 42202, 42302}},  // Pi
+    {1, {"100.72.127.102", 42201, 42301}},
+    {2, {"100.84.151.116", 42202, 42302}},
 };
 
 struct Caller {
@@ -39,9 +35,6 @@ struct Caller {
     std::uint64_t caller_id;
     Endpoint response;
 };
-// Operator on the Mac; soak bot, shadow setup, strategy tick loop and paper
-// gateway on nuc1, each with its own key, CallerId (replay fence) and response
-// port. The tick loop and gateway are outside the operator band (<= 15).
 const std::vector<Caller> kCallers{
     {9, 7, {"100.91.80.64", 42400}},
     {10, 8, {"100.72.127.102", 42410}},
@@ -59,7 +52,6 @@ std::string filled(const std::string& topology, std::int32_t id) {
     std::stringstream buffer;
     buffer << in.rdbuf();
     auto text = buffer.str();
-    // Like the operator's `sed s/@X@/value/g`: every occurrence, comments included.
     const auto fill = [&](const std::string& placeholder, const std::string& value) {
         require(text.find(placeholder) != std::string::npos, "template lacks " + placeholder);
         for (auto at = text.find(placeholder); at != std::string::npos; at = text.find(placeholder, at))
@@ -104,8 +96,6 @@ void templates_describe_one_cluster(const std::string& topology, const std::map<
                 require(voter.key_file && *voter.key_file == link_file(id, voter.id),
                         "link " + std::to_string(id) + "-" + std::to_string(voter.id) + " uses the wrong secret");
         }
-        // Every voter must bootstrap the same identity or they never form a cluster;
-        // only the local node id may differ.
         auto identity = config.static_identity();
         require(identity.local_node_id == id && identity.voter_count == hosts.size(), "identity lacks a voter");
         identity.local_node_id = 0;
@@ -130,7 +120,7 @@ void strategy_and_gateway_callers_hold_no_operator_authority() {
                 "caller key " + std::to_string(caller.key_id) + " is on the wrong side of the operator band");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

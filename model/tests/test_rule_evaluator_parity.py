@@ -80,9 +80,6 @@ def rule(index: int, op: PredicateOperator, threshold: int, directive: Directive
 
 
 class PredicateBoundaries(unittest.TestCase):
-    """Every operator at its exact boundary. Fixed-point comparison must be
-    exact: 1_000_000 is not "approximately" 1_000_000."""
-
     def _directive_for(self, op: PredicateOperator, value: int) -> Directive:
         result = evaluate_rules(policy(rule(0, op, 1_000_000, Directive.place_limit)), frame((value,)))
         return result.directive
@@ -133,8 +130,6 @@ class OrderingSemantics(unittest.TestCase):
         self.assertEqual(result.rules_visited, 1)
 
     def test_matching_no_action_rule_is_terminal(self) -> None:
-        """A `no_action` match stops evaluation. It is a decision, not a skip -
-        this is what makes a deliberate suppression band expressible."""
         result = evaluate_rules(
             policy(
                 rule(0, PredicateOperator.greater_than, 0, Directive.no_action),
@@ -172,9 +167,6 @@ class OrderingSemantics(unittest.TestCase):
 
 class FailClosedBehaviour(unittest.TestCase):
     def test_feature_availability_is_checked_across_the_whole_rule_set(self) -> None:
-        """A rule referencing an absent feature fails the evaluation even when an
-        earlier rule would have matched first. Position must not change whether
-        a malformed policy is detected."""
         result = evaluate_rules(
             policy(
                 rule(0, PredicateOperator.greater_than, 0, Directive.place_limit),
@@ -201,8 +193,6 @@ class FailClosedBehaviour(unittest.TestCase):
 
 
 class ControlAuthorityDominance(unittest.TestCase):
-    """Section 3.4: the policy proposes, replicated control state disposes."""
-
     def _decide(self, directive: Directive, mode: StrategyMode):
         return decide(policy(rule(0, PredicateOperator.greater_than, 0, directive)), frame((1,)), mode)
 

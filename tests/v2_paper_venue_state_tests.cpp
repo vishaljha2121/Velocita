@@ -1,10 +1,3 @@
-// The paper venue's durable state: a restored venue answers exactly as the
-// venue it was captured from, every write is durable before the answer that
-// depends on it, and a torn or corrupt file is refused, never reset.
-//
-// Economics (hand-computed; quote micros per tick-lot = 10):
-//   BUY  1 lot @ 60'001: notional 600'010; fee ceil(600'010 * 115 / 10'000) = ceil(6'900.115) = 6'901
-//   SELL 25 lots @ 59'001: notional 14'750'250; fee 14'750'250 * 120 / 10'000 = 177'003 exactly
 #include "velocita/v2/digest.hpp"
 #include "velocita/v2/paper_venue_store.hpp"
 
@@ -115,16 +108,12 @@ void write_file(const std::filesystem::path& file, std::span<const std::byte> by
     out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
 }
 
-// Replaces the trailing digest so a deliberately edited payload is digest-correct.
 void redigest(std::vector<std::byte>& bytes) {
     const auto covered = std::span<const std::byte>(bytes).first(bytes.size() - 32);
     const auto digest = sha256_digest(covered);
     std::copy(digest.bytes.begin(), digest.bytes.end(), bytes.end() - 32);
 }
 
-// A venue with history: order 1 filled and acknowledged, order 2 filled with
-// its reports delivered but not acknowledged, order 3 a killed sell (nothing
-// recorded, its rejection report owned).
 void give_history(const sim::VenueTransport& venue) {
     require(venue.send(effect(1, Side::buy), 10) == SendOutcome::accepted, "order 1 was not accepted");
     for (const auto& report : poll_all(venue, 100)) venue.acknowledge(report);
@@ -133,8 +122,6 @@ void give_history(const sim::VenueTransport& venue) {
     require(venue.send(effect(3, Side::sell, 59'001, 5), 210) == SendOutcome::business_rejected,
             "a 5-lot sell against 2 lots was not killed");
 }
-
-// ---------------------------------------------------------------------------
 
 void restored_venue_answers_exactly_as_the_original() {
     PaperVenue original(config(), PaperFaultPolicy::clean(), 7);
@@ -146,24 +133,20 @@ void restored_venue_answers_exactly_as_the_original() {
     PaperState decoded;
     require(decode_paper_state(encode_paper_state(state), decoded) == PaperStateError::none, "the image did not decode");
 
-    // A venue configured with a different balance: restore must replace it.
     PaperVenue restored(config(1), PaperFaultPolicy::clean(), 99);
     require(restored.restore(decoded.venue), "a sound image was refused");
 
-    // Two buys of 1 lot: 25'000'000 - 2 * (600'010 + 6'901) = 23'786'178.
     require(restored.balances().quote.atoms() == kFunding - 2 * (kBuyNotional + kBuyFee) &&
                 restored.balances().base.atoms() == 2 && restored.balances().fees_paid.atoms() == 2 * kBuyFee,
             "the restored balances are not the two fills");
     require(restored.balances() == original.balances(), "restored balances differ from the original");
 
-    // Owned reports: a new process redelivers what the old one never acknowledged.
     original.restart_delivery();
     const auto left = poll_all(paper_venue_transport(original), 1'000);
     const auto right = poll_all(paper_venue_transport(restored), 1'000);
     require(left.size() == 3 && fingerprints(left) == fingerprints(right),
             "the restored venue does not own the same three reports (order 2 ack + fill, order 3 rejection)");
 
-    // Idempotency and queries answer as before.
     require(restored.send(effect(1, Side::buy), 2'000) == SendOutcome::venue_duplicate &&
                 original.send(effect(1, Side::buy), 2'000) == SendOutcome::venue_duplicate,
             "a resend of known order 1 was not a venue duplicate after restore");
@@ -177,7 +160,6 @@ void restored_venue_answers_exactly_as_the_original() {
     require(restored.query(ClusterOrderId{2'003}, 2'000).outcome == QueryOutcome::not_found,
             "the killed order 3 became known");
 
-    // Identities continue; none is reused.
     require(restored.send(effect(4, Side::buy), 3'000) == SendOutcome::accepted &&
                 original.send(effect(4, Side::buy), 3'000) == SendOutcome::accepted,
             "order 4 was not accepted");
@@ -229,7 +211,6 @@ void encoded_state_round_trips_and_every_corruption_is_refused() {
     require(decode_paper_state(bytes, decoded) == PaperStateError::none, "canonical bytes did not decode");
     require(encode_paper_state(decoded) == bytes, "decode then encode changed the bytes");
 
-    // Layout: magic [0,8), version [8,12), payload length [12,16), payload, digest (last 32).
     for (std::size_t at = 0; at < bytes.size(); ++at) {
         auto flipped = bytes;
         flipped[at] ^= std::byte{0x01};
@@ -254,9 +235,6 @@ void encoded_state_round_trips_and_every_corruption_is_refused() {
     redigest(version);
     require(decode_paper_state(version, decoded) == PaperStateError::bad_version, "version 2 was not refused");
 
-    // Digest-correct, but the payload's order count exceeds capacity. The
-    // order count sits after the fixed origin (16 + 8 + 1 + 8 + 8 + 8 + 8 = 57)
-    // and venue header (7 * 8 + 3 * 8 + 4 * 8 + 8 = 120) fields.
     auto overfull = bytes;
     const std::size_t order_count_at = 16 + 57 + 120;
     const std::uint32_t too_many = kMaxPaperOrders + 1;
@@ -292,7 +270,6 @@ void fresh_and_adopted_bootstraps_record_how_the_account_began() {
                 !fresh.state->origin.adopted && fresh.state->origin.funding.atoms() == kFunding,
             "a fresh account is not flat with the whole funding");
 
-    // The live case: long 25 lots bought for $21.315 including fees, funded with $25.
     const auto adopted = adopted_paper_state(config(), kIncarnation, MoneyMicros::from_atoms(kFunding),
                                              QuantityLots::from_atoms(25), MoneyMicros::from_atoms(21'315'000), 4'242, 77);
     require(adopted.error.empty(), "adoption refused: " + adopted.error);
@@ -306,12 +283,10 @@ void fresh_and_adopted_bootstraps_record_how_the_account_began() {
                 origin.cluster_incarnation == kIncarnation,
             "the adoption event is not recorded");
 
-    // The adopted base is sellable: the exit is not killed insufficient_base.
     PaperVenue sell(config(), PaperFaultPolicy::clean(), 7);
     require(sell.restore(venue), "the adopted image was refused");
     require(sell.send(effect(9, Side::sell, 59'001, 25), 10) == SendOutcome::accepted,
             "a 25-lot sell against the adopted 25 lots was not accepted");
-    // 3'685'000 + 14'750'250 - 177'003 = 18'258'247
     require(sell.balances().quote.atoms() == 18'258'247 && sell.balances().base.atoms() == 0,
             "the adopted exit did not settle at the sell-side cost");
 
@@ -366,7 +341,6 @@ void durable_venue_writes_before_it_answers_and_restart_reproduces_it() {
         const auto transport = opened.venue->transport();
         const auto book = opened.venue->book();
         require(transport.send(effect(1, Side::buy), 10) == SendOutcome::accepted, "send refused");
-        // Before any report is released, the file already holds the order and its reports.
         auto on_disk = load_paper_state(file);
         require(on_disk.error == PaperStateError::none && on_disk.state->venue.order_count == 1 &&
                     on_disk.state->venue.report_count == 2 && on_disk.state->venue.balances.base.atoms() == 1,
@@ -385,7 +359,7 @@ void durable_venue_writes_before_it_answers_and_restart_reproduces_it() {
                     on_disk.state->venue.ledger.last_fill_wall_seconds == 1'234.0,
                 "the acknowledgement and the committed fill were not written together");
         require(transport.send(effect(2, Side::buy), 200) == SendOutcome::accepted, "order 2 refused");
-        order_two = poll_all(transport, 300);  // delivered, never acknowledged: the process dies here
+        order_two = poll_all(transport, 300);
     }
     auto reopened = DurablePaperVenue::open(file, config(), PaperFaultPolicy::clean(), kIncarnation);
     require(reopened.error == PaperStateError::none, "reopen failed");
@@ -406,9 +380,6 @@ void durable_venue_writes_before_it_answers_and_restart_reproduces_it() {
             "the reopened venue's book lost the base, the cut, the fill ledger or the owned reports");
 }
 
-// Blocks every write under SUB by swapping the directory for a plain file of
-// the same name: creating "SUB/x" then fails with ENOTDIR even for root (a
-// read-only chmod does not stop root, and the image builds run its tests as root).
 struct WriteBlock {
     std::filesystem::path sub;
     std::filesystem::path held;
@@ -432,8 +403,6 @@ void failed_write_latches_the_venue_and_the_file_stays_truthful() {
     auto opened = DurablePaperVenue::open(file, config(), PaperFaultPolicy::clean(), kIncarnation);
     const auto transport = opened.venue->transport();
     writes.block();
-    // Executed in memory, not on disk: on disk it never happened, so the
-    // answer is ambiguous and nothing of it may be released.
     require(transport.send(effect(1, Side::buy), 10) == SendOutcome::ambiguous,
             "a send that could not be made durable was not reported ambiguous");
     require(opened.venue->failed(), "the failed write did not latch the venue");
@@ -451,8 +420,6 @@ void failed_write_latches_the_venue_and_the_file_stays_truthful() {
     require(reopened.venue->transport().query(ClusterOrderId{2'001}, 10).outcome == QueryOutcome::not_found,
             "an order never made durable is known after restart");
 
-    // A query changes durable state too (its fault draw); one that cannot be
-    // written answers nothing rather than a fact the file does not hold.
     const auto healthy = reopened.venue->transport();
     require(healthy.send(effect(5, Side::buy), 20) == SendOutcome::accepted, "order 5 refused");
     writes.block();
@@ -486,7 +453,7 @@ void open_refuses_another_cluster_another_venue_and_never_resets() {
     require(read_file(file) == bytes, "a refused open rewrote the corrupt file");
 }
 
-}  // namespace
+}
 
 int main() {
     const std::vector<std::pair<const char*, void (*)()>> tests{

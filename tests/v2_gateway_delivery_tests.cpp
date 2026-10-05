@@ -71,7 +71,6 @@ Digest256 request_digest(const std::uint64_t counter) {
     return digest(static_cast<std::uint8_t>(1 + counter % 255));
 }
 
-
 PolicyArtifact policy() {
     PolicyArtifact value;
     value.policy_id = PolicyId{10};
@@ -199,7 +198,6 @@ constexpr VenueCapabilityView capable_venue() {
 
 const GatewayEvidenceState no_evidence;
 
-
 struct Fixture {
     TradingState state = catalog_test::state();
     EffectId effect_id;
@@ -227,14 +225,6 @@ Fixture one_authorized_submit() {
     return {state, submit.effect_id()};
 }
 
-// A live authority lease, held constant, because these suites are about
-// delivery and reconciliation rather than about authority. The lease's own
-// behaviour is covered in `v2-gateway-tests`; here it must simply never be the
-// reason something did or did not send.
-//
-// The lease is fail-closed, so leaving these fields default would have silenced
-// every send in this file - which is how the enforcement was confirmed to reach
-// every path rather than only the new tests.
 constexpr Tick kLiveLeaseBound = 1'000'000;
 
 GatewayControlView control_of(const TradingState& state) {
@@ -382,7 +372,6 @@ void test_the_planner_only_schedules_what_the_guard_permits() {
     }
 }
 
-
 Fixture stranded_submit() {
     auto fixture = one_authorized_submit();
     ApplyScratch scratch;
@@ -446,11 +435,6 @@ void test_reconciliation_targets_only_unresolvable_exposure() {
 }
 
 void test_a_resting_order_is_confirmed_rather_than_assumed() {
-    // ADR 0008. Reconciliation only ever asked about orders already known to be
-    // wrong, so a resting order was never questioned - and a cancellation whose
-    // event never arrived (a dropped socket, a reconnect gap) left the cluster
-    // holding a reservation against an order that no longer existed, with
-    // nothing to raise it.
     auto fixture = one_authorized_submit();
     for (std::size_t i = 0; i < fixture.state.order_count; ++i) {
         fixture.state.orders[i].state = ClusterOrderState::live;
@@ -467,8 +451,6 @@ void test_a_resting_order_is_confirmed_rather_than_assumed() {
     require(first.to_query[0].need == ReconciliationNeed::unconfirmed_resting,
             "the resting order was queried under the wrong need");
 
-    // THE CADENCE IS SLOWER THAN EVERY OTHER NEED, because confirming a healthy
-    // order is not urgent and the traffic is proportional to the whole book.
     GatewayReconciliationState asked;
     require(record_query(asked, only_order(fixture.state), 0, 0),
             "the fixture could not record a query");
@@ -485,11 +467,6 @@ void test_a_resting_order_is_confirmed_rather_than_assumed() {
                     .query_count == 1,
             "a resting order was never re-confirmed");
 
-    // AND IT IS UNCAPPED. The other needs give up after `max_query_attempts`,
-    // which is right for something already known to be wrong: stop hammering a
-    // stuck venue. Confirming a resting order is a HEARTBEAT, and giving up
-    // returns the system to exactly the silent state this exists to end. The
-    // bound is the rate, not the count.
     GatewayReconciliationState exhausted;
     for (std::uint32_t attempt = 0; attempt <= timeouts.max_query_attempts + 2;
          ++attempt) {
@@ -685,7 +662,6 @@ void test_the_reconciliation_planner_reads_no_clock_and_mutates_nothing() {
                                             GatewayTimeouts{}, 3);
     require(first == second, "the reconciliation planner is not a function");
 }
-
 
 VenueObservation reconciled(const TradingState& state, EffectId effect_id,
                             const std::uint64_t venue_order,
@@ -902,7 +878,6 @@ void test_the_evidence_watermark_is_monotonic_per_order() {
     require(accepted_evidence_watermark(fixture.state, ClusterOrderId{9'999}) == 0,
             "an unknown order reported a non-zero evidence watermark");
 }
-
 
 enum class CommitOutcome { committed, result_lost, leadership_lost };
 
@@ -1196,7 +1171,6 @@ void test_a_saturated_evidence_queue_stops_producing_more_evidence() {
             "the planner stayed stopped after the queue drained");
 }
 
-
 void test_a_gateway_crash_cannot_produce_a_second_order() {
     for (int cut = 0; cut <= 2; ++cut) {
         const std::string where = " (cut " + std::to_string(cut) + ")";
@@ -1439,8 +1413,6 @@ void test_a_gateway_that_never_scanned_sends_nothing() {
             "a gateway that never scanned replicated state sent anyway");
 }
 
-// --- native versus synthetic observation identity (architecture 10.15) ------
-
 VenueObservation at_sequence(const TradingState& state, const EffectId effect_id,
                              const VenueObservationKind kind,
                              const std::uint64_t sequence) {
@@ -1457,9 +1429,6 @@ VenueObservation at_sequence(const TradingState& state, const EffectId effect_id
 }
 
 void test_a_gateway_authored_event_cannot_squat_on_a_venue_sequence() {
-    // The gateway picks the sequence on an `effect_unknown`; the venue picks its
-    // own. Nothing coordinates the two, so they can collide - and the loser must
-    // never be real venue evidence.
     auto fixture = pending_cancel();
     const auto cancel_effect = fixture.effect_id;
     constexpr std::uint64_t contested = 900'041;
@@ -1482,11 +1451,8 @@ void test_a_gateway_authored_event_cannot_squat_on_a_venue_sequence() {
 }
 
 void test_a_synthetic_answer_is_not_blocked_by_a_native_sequence() {
-    // The same collision the other way. A reconciliation answer is the only
-    // thing that can resolve an unknown effect, so refusing it on a number the
-    // venue happened to use once strands the order with no way out.
     auto fixture = silent_cancel();
-    constexpr std::uint64_t contested = 7'100;  // the acknowledgement's sequence
+    constexpr std::uint64_t contested = 7'100;
 
     auto answer = at_sequence(fixture.state, fixture.effect_id,
                               VenueObservationKind::cancel_reconciled, contested);
@@ -1499,11 +1465,6 @@ void test_a_synthetic_answer_is_not_blocked_by_a_native_sequence() {
 }
 
 void test_a_replayed_synthetic_answer_is_caught_by_command_identity() {
-    // Synthetic observations leave the venue's deduplication domain, so command
-    // identity is what stops a replay. That makes the evidence seam's rule -
-    // retry under the identity you first used - load-bearing for reconciliation
-    // and not only for delivery. This is the test that fails if it stops being
-    // true.
     auto fixture = silent_cancel();
     auto answer = at_sequence(fixture.state, fixture.effect_id,
                               VenueObservationKind::cancel_reconciled, 8'800);
@@ -1526,9 +1487,6 @@ void test_a_replayed_synthetic_answer_is_caught_by_command_identity() {
     require(sole_order(fixture.state).state == settled,
             "a replayed synthetic answer moved the order");
 
-    // A fresh identity carrying the same verdict is harmless by VALUE: a final
-    // cumulative total re-decided against what is already booked is a delta of
-    // zero.
     const auto position = fixture.state.risk_accounts[0].position_quantity;
     const CommandIdentity fresh{CallerId{1}, RequestSequence{4'421},
                                 observation_fingerprint(answer)};
@@ -1538,8 +1496,6 @@ void test_a_replayed_synthetic_answer_is_caught_by_command_identity() {
 }
 
 void test_native_kinds_keep_strict_sequence_deduplication() {
-    // The native domain is unchanged, and the point of separating the two was
-    // to keep it that way rather than to weaken it.
     auto fixture = one_authorized_submit();
     const auto submit_effect = fixture.effect_id;
 
@@ -1741,23 +1697,6 @@ void test_replaying_the_same_answer_changes_nothing() {
     require(submit_answer(fixture.state, answer, 20).code == ApplyCode::applied,
             "an exact command replay did not return its retained result");
 
-    // A repeat under a FRESH request identity is not refused by the venue's
-    // sequence domain, because a synthetic answer never belonged to that domain -
-    // its sequence was chosen by the gateway.
-    //
-    // CHANGED BY ADR 0008, DELIBERATELY. This previously required a refusal, on
-    // the ground that the effect was already resolved and the answer had nothing
-    // left to say. That ground no longer holds: the first answer left the order
-    // RESTING, and a resting order is now confirmed rather than assumed, on an
-    // uncapped heartbeat. Refusing repeat confirmations is precisely the
-    // "assume" behaviour ADR 0008 exists to end - a cancellation whose event
-    // never arrived would be undiscoverable.
-    //
-    // Admitting it was always safe, and the comment this replaces said so:
-    // adjudicating a FINAL CUMULATIVE total against what the cluster already
-    // holds computes a delta of zero. Harmless by value is the property that was
-    // doing the real work; the refusal was the tidier statement, not the safer
-    // one.
     const auto before_repeat = fixture.state;
     require(submit_answer(fixture.state, answer, 21).code == ApplyCode::applied,
             "a repeat confirmation of a resting order was refused, which returns "
@@ -1818,15 +1757,6 @@ void test_a_reconciliation_answer_is_refused_where_it_cannot_apply() {
             "the acknowledgement fixture was refused");
     require(sole_order(live.state).state == ClusterOrderState::live,
             "the acknowledgement fixture is not live");
-    // CHANGED BY ADR 0008. This encoded the assumption the ADR overturns - that a
-    // live order "needs none" - and it is the most direct statement of it in the
-    // suite. A resting order is now confirmed rather than assumed, because a
-    // cancellation whose event never arrived leaves an order looking exactly
-    // like this one and nothing else would ever discover it.
-    //
-    // The answer here says the venue still holds the order with zero filled,
-    // which agrees with what the cluster holds, so it is admitted and moves
-    // nothing. That is what a confirmation is supposed to look like.
     const auto before_confirm = live.state;
     require(submit_answer(live.state, reconciled(live.state, live.effect_id, 77, 0),
                           20)
@@ -1850,7 +1780,6 @@ void test_a_reconciliation_answer_is_refused_where_it_cannot_apply() {
                     .code == ApplyCode::venue_observation_not_applicable,
             "a resolved order accepted a second, contradicting answer");
 }
-
 
 void test_a_cancel_is_deliverable_in_every_strategy_mode() {
     const auto fixture = pending_cancel();
@@ -2532,7 +2461,7 @@ void test_the_guard_refuses_an_incoherent_control_snapshot() {
     const auto stale = control_of(fixture.state);
     ApplyScratch scratch;
 
-    {   // Kill epoch advanced in state; the cached view still matches the effect.
+    {
         auto state = fixture.state;
         const Command advance{{CallerId{1}, RequestSequence{40}, digest(0x61)},
                               AdvanceKillEpoch{KillEpoch{
@@ -2545,7 +2474,7 @@ void test_the_guard_refuses_an_incoherent_control_snapshot() {
                 "a send was authorized against a kill epoch the supplied state "
                 "had already advanced past");
     }
-    {   // Executor generation advanced in state.
+    {
         auto state = fixture.state;
         const Command advance{{CallerId{1}, RequestSequence{41}, digest(0x62)},
                               SetExecutorGeneration{ExecutorGeneration{
@@ -2558,7 +2487,7 @@ void test_the_guard_refuses_an_incoherent_control_snapshot() {
                 "a send was authorized against an executor generation the "
                 "supplied state had already superseded");
     }
-    {   // Strategy mode revoked in state while the cached view still says normal.
+    {
         auto state = fixture.state;
         const Command halt{{CallerId{1}, RequestSequence{42}, digest(0x63)},
                            SetStrategyMode{StrategyMode::halted, state.kill_epoch,
@@ -2721,7 +2650,7 @@ void test_rejected_cancel_final_evidence_covers_every_quantity_relation() {
                 "the cancel rejection was refused");
     };
 
-    {   // BELOW what the cluster booked: unclosable, so a conflict.
+    {
         auto fixture = silent_cancel_with_booked_fill(1);
         reject_the_cancel(fixture, 8'500);
         require(sole_order(fixture.state).state == ClusterOrderState::reconciling,
@@ -2738,7 +2667,7 @@ void test_rejected_cancel_final_evidence_covers_every_quantity_relation() {
         require(!risk_released(fixture.state),
                 "a conflicted order released its reservation");
     }
-    {   // ABOVE what the cluster booked: missing evidence, so refuse and wait.
+    {
         auto fixture = pending_cancel();
         reject_the_cancel(fixture, 8'600);
         const auto before = fixture.state;
@@ -2769,7 +2698,6 @@ void test_new_risk_is_still_refused_outside_normal() {
     }
 }
 
-
 struct ArenaPeak {
     const char* name;
     std::size_t capacity;
@@ -2790,8 +2718,8 @@ struct Horizons {
     std::size_t peak_caller_cursors{};
     std::size_t peak_source_events{};
 
-    std::uint64_t max_order_age{};        // authorization to last observation
-    std::uint64_t max_unresolved_age{};   // the retention horizon that matters
+    std::uint64_t max_order_age{};
+    std::uint64_t max_unresolved_age{};
     std::uint64_t max_unsettled_age{};
     std::uint32_t max_send_attempts_used{};
     std::uint32_t max_query_attempts_used{};
@@ -2875,7 +2803,7 @@ struct CommitFaults {
 struct RunOutcome {
     std::size_t venue_orders_created{};
     std::set<std::uint64_t> accepted_order_ids;
-    std::map<std::uint64_t, std::uint64_t> identity_owner;  // order -> effect
+    std::map<std::uint64_t, std::uint64_t> identity_owner;
 
     std::map<std::uint64_t, std::int64_t> venue_reported;
     std::map<std::uint64_t, std::int64_t> cluster_booked;
@@ -2924,8 +2852,8 @@ struct RunOutcome {
     std::size_t evidence_dropped{};
     std::size_t evidence_outstanding{};
     std::map<QueryDisposition, std::size_t> dispositions;
-    std::set<std::uint64_t> answered_ahead;   // venue reported fills we never got
-    std::set<std::uint64_t> never_answered;   // no trustworthy answer was obtained
+    std::set<std::uint64_t> answered_ahead;
+    std::set<std::uint64_t> never_answered;
     std::size_t reconciliation_refused_inapplicable{};
     std::size_t adjudications_checked{};
 
@@ -3950,7 +3878,6 @@ void test_the_matrix_is_reproducible() {
             "two different seeds produced identical runs, so the seed is inert");
 }
 
-
 void report(const char* label, const Horizons& worst) {
     if (std::getenv("VELOCITA_HORIZON_REPORT") == nullptr) return;
     std::printf("\n  %s\n  arena              cap   peak  margin\n", label);
@@ -4023,7 +3950,6 @@ void test_retention_capacity_exceeds_the_horizon_under_nominal_faults() {
             "the run never retried or re-queried, so the horizons it measured "
             "were not the ones the bounds describe");
 }
-
 
 constexpr std::size_t kSlots = kMaxExecutableActionTemplates;
 
@@ -4198,7 +4124,7 @@ void conflict_the_order(TradingState& state, const ClusterOrderId order,
 
     auto answer = base(VenueObservationKind::order_reconciled);
     answer.effect_id = requested.effect_id();
-    answer.quantity = QuantityLots{};  // below the one lot the cluster booked
+    answer.quantity = QuantityLots{};
     answer.evidence_digest = digest(0x6C);
     require(observe(answer) == ApplyCode::applied,
             "the slot fixture could not conflict its order");
@@ -4304,7 +4230,7 @@ void test_the_bounded_retry_and_query_budgets_are_actually_reached() {
             "no order was ever re-queried, so the query budget is unexercised");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

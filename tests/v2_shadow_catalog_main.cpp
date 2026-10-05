@@ -1,13 +1,4 @@
-// velocita-v2-shadow-catalog: writes a SHADOW execution catalog and prints its root.
-//
-//   velocita-v2-shadow-catalog [--truemarkets-cbbtc | --truemarkets] OUTPUT_FILE
-//
-// Without a profile it writes the test FIXTURE (fictional venue 9, prices
-// 1..100 ticks). --truemarkets-cbbtc writes the True Markets cbBTC/USDC row
-// (v2_shadow_catalog_rows.hpp) so shadow decisions can price real BTC;
-// --truemarkets writes cbBTC/USDC (instrument 1) and SOL/USDC (instrument 2).
-// Neither is a venue contract: the real catalog comes from M5 closure.
-
+// velocita-v2-shadow-catalog: writes the execution catalog file.
 #include "v2_catalog_test_support.hpp"
 #include "v2_shadow_catalog_rows.hpp"
 

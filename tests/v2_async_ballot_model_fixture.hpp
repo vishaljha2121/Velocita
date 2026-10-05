@@ -1,7 +1,5 @@
 #pragma once
 
-// Included by v2_async_persistence_model_tests.cpp inside its unnamed namespace,
-// after the shared disk model and identity fixtures are available.
 struct BallotModelResult {
     int events{};
     bool granted{};

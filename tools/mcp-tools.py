@@ -40,7 +40,7 @@ def parse(raw):
     text = raw.decode("utf-8", "replace")
     if text.lstrip().startswith("{"):
         return json.loads(text)
-    for line in text.splitlines():           # SSE framing
+    for line in text.splitlines():
         if line.startswith("data:"):
             return json.loads(line[5:].strip())
     raise ValueError(text[:300])

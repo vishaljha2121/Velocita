@@ -22,8 +22,6 @@ std::vector<std::byte> archive_hex(std::string_view text) {
     return bytes;
 }
 
-// Independently authored 100-byte schema-8 AdvanceKillEpoch command copied
-// from the permanent archive-loss RED, not encoded by the implementation under test.
 const std::vector<std::byte>& audited_archive_command() {
     static const auto bytes = archive_hex(
         "56324b433800000009000600010000000000000001000000000000000100000000000000000000000000000000000000000000000000000000000000"
@@ -239,7 +237,7 @@ struct AutomaticRoot {
     }
 };
 
-} // namespace
+}
 
 int main(int argc, char** argv) {
     if (argc > 2 || (argc == 2 && std::filesystem::exists(argv[1]))) {

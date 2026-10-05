@@ -23,7 +23,6 @@ std::size_t response_size(ResponseKind kind) noexcept {
         case ResponseKind::admitted: return kResponseAdmittedBytes;
         case ResponseKind::refused: return kResponseRefusedBytes;
         case ResponseKind::committed: return kResponseCommittedBytes;
-        // Gateway kinds have their own codecs; this one refuses them.
         case ResponseKind::gateway_refused:
         case ResponseKind::state_chunk:
         case ResponseKind::authority_granted: return 0;
@@ -45,7 +44,7 @@ T get(std::span<const std::byte> in, std::size_t at) noexcept {
     return static_cast<T>(raw);
 }
 
-}  // namespace
+}
 
 EncodeNodeProtocolResult encode_ingress(ProposeLane lane, std::span<const std::byte> command,
                                         std::span<std::byte> output) noexcept {
@@ -149,7 +148,7 @@ Digest256 get_digest(std::span<const std::byte> in, std::size_t at) noexcept {
 
 bool valid_mode(std::uint8_t mode) noexcept { return mode >= 1 && mode <= 5; }
 
-}  // namespace
+}
 
 bool is_gateway_request(std::span<const std::byte> body) noexcept {
     const auto kind = response_kind_byte(body);
@@ -246,7 +245,7 @@ bool valid_geometry(const StateChunkHeader& header, std::size_t chunk_bytes) noe
     return chunk_bytes == std::min(kStateChunkPayloadBytes, header.snapshot_bytes - offset);
 }
 
-}  // namespace
+}
 
 EncodeNodeProtocolResult encode_state_chunk(const StateChunkHeader& header, std::span<const std::byte> chunk,
                                             std::span<std::byte> output) noexcept {
@@ -348,4 +347,4 @@ NodeProtocolError decode_authority_granted(std::span<const std::byte> input, Res
     return NodeProtocolError::none;
 }
 
-}  // namespace velocita::v2
+}

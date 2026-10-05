@@ -1,3 +1,4 @@
+// Prints the sizes of the kernel's objects and messages.
 #include "velocita/v2/action_template.hpp"
 #include "velocita/v2/action_resolver.hpp"
 #include "velocita/v2/contracts.hpp"

@@ -1,3 +1,4 @@
+// V1: client-side leader discovery and routing.
 #pragma once
 
 #include "velocita/wire.hpp"
@@ -63,4 +64,4 @@ private:
 
 [[nodiscard]] std::string_view to_string(LeaderKnowledgeState state) noexcept;
 
-}  // namespace velocita
+}

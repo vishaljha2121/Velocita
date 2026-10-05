@@ -212,8 +212,6 @@ void validate_recovery_metadata(int directory, const VerifiedStaticIdentity& ide
     (void)read_bound_metadata_at(directory, metadata_name, identity, resync);
     struct stat info{};
     if (::fstatat(directory, metadata_temporary, &info, AT_SYMLINK_NOFOLLOW) == 0) {
-        // A temp is evidence of an interrupted replacement, never a newer vote
-        // to adopt. Refuse unrecognizable/foreign bytes rather than erase them.
         (void)read_bound_metadata_at(directory, metadata_temporary, identity, false);
     } else if (errno != ENOENT) refuse(Code::io_failure, "metadata temporary stat failed");
 }
@@ -310,7 +308,7 @@ void write_selector(int root, const LocalGenerationSelector& selection,
     checkpoints(IdentityStartupCheckpoint::selector_synced);
     if (::close(output.release()) != 0) refuse(Code::io_failure, "selector close failed");
 }
-} // namespace
+}
 
 VerifiedIdentityStartup::VerifiedIdentityStartup(std::filesystem::path root, std::filesystem::path directory,
     VerifiedStaticIdentity identity, VerifiedExecutionCatalog catalog, LocalGenerationSelector selection)
@@ -342,8 +340,6 @@ void VerifiedIdentityStartup::validate_ownership() const {
     verify_name(root_fd_, generations_name, generations_fd_);
     verify_name(generations_fd_, directory_.filename(), directory_fd_);
     check_root_contents(root_fd_, false);
-    // The named child is allowed only with its complete dependency/object
-    // validation. A directory-name allowlist alone is not archive ownership.
     std::array<std::byte, kMaxStaticIdentityBytes> identity_bytes{};
     std::array<std::byte, kMaxExecutionCatalogBytes> catalog_bytes{};
     const auto encoded_identity = encode_static_identity(identity_.value(), identity_bytes);
@@ -404,7 +400,6 @@ VerifiedIdentityStartup VerifiedIdentityStartup::bootstrap(const std::filesystem
     auto scratch = std::make_unique<GenerationBaseScratch>();
     const auto encoded = encode_generation_base(GenerationBaseKind::genesis, 1, identity, catalog, {}, seal, *scratch);
     if (encoded.error != GenerationBaseError::none) refuse(Code::invalid_identity, "genesis base encoding failed");
-    // The seal is last: every dependency is durable before its name can certify a base.
     sync(base.value);
     sync(runtime.value);
     sync(generations.value);
@@ -451,7 +446,6 @@ VerifiedIdentityStartup VerifiedIdentityStartup::recover(const std::filesystem::
     const auto runtime_path = path / generations_name / name;
     validate_recovery_metadata(runtime.value, identity, false);
     validate_runtime_floor(runtime_path, identity, catalog, selected.base);
-    // Re-establish durability after an interrupted rename; never promote a temp.
     (void)read_bound_metadata_at(runtime.value, metadata_name, identity, true);
     sync_file(runtime.value, "v2-wal-blocks.bin", true);
     sync_file(runtime.value, "v2-snapshot.bin", true);
@@ -476,4 +470,4 @@ VerifiedIdentityStartup VerifiedIdentityStartup::recover(const std::filesystem::
     checkpoints(IdentityStartupCheckpoint::selection_verified);
     return result;
 }
-} // namespace velocita::v2
+}

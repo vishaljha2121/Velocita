@@ -1,4 +1,3 @@
-// Standalone open-contract diagnostics; intentionally outside passing CTest.
 #define main replication_fixture_suite_main
 #include "v2_replication_tests.cpp"
 #undef main
@@ -28,8 +27,6 @@ void foreign_artifact(const std::filesystem::path& root, const std::string& kind
                               identity_test::runtime_directory(target_dir) / file,
                               std::filesystem::copy_options::overwrite_existing);
     const auto before = directory_image(target_dir);
-    // Current contracts cannot emit a typed lineage refusal. A future fix must
-    // narrow its oracle to that reason, not count arbitrary startup exceptions.
     ReplicatedKernel recovered(identity_test::recover(target_dir, 1, {1},
                                    catalog_test::standard_catalog(), 0x22));
     std::cout << "foreign_" << kind << " accepted=1 recovered_kill="
@@ -87,7 +84,7 @@ void missing_hard_state(const std::filesystem::path& root) {
     require(restarted.status().term >= previous_term,
             "RED F5/F6: missing hard state reset a participating voter's term and vote");
 }
-} // namespace
+}
 
 int main(int argc, char** argv) {
     try {

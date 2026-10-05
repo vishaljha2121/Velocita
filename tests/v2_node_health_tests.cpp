@@ -31,7 +31,6 @@ struct TempDir {
     ~TempDir() { std::error_code ignored; fs::remove_all(path, ignored); }
 };
 
-// Every field derives from K, so a torn read shows up as disagreeing fields.
 NodeHealth uniform(std::uint64_t k) {
     NodeHealth h;
     h.node_id = static_cast<std::int32_t>(k % 1000 + 1);
@@ -54,13 +53,10 @@ void round_trip_and_refusals() {
     const auto file = dir.path / "health.page";
     require(!read_node_health(file).has_value(), "missing page read as healthy");
     auto page = NodeHealthPage::create(file);
-    // A page that exists but was never published is UNKNOWN, not a healthy
-    // all-zero reading (roadmap M3a: missing samples are not zeros).
     require(!read_node_health(file).has_value(), "never-published page read as an all-zero status");
     page->publish(uniform(42));
     const auto read = read_node_health(file);
     require(read && *read == uniform(42), "published health did not read back exactly");
-    // Distinct values catch two fields swapped on the page (uniform() cannot).
     auto distinct = uniform(42);
     distinct.retained_ordinary = 7001;
     distinct.retained_protected = 13;
@@ -91,10 +87,6 @@ void concurrent_reads_are_never_torn() {
     auto page = NodeHealthPage::create(file);
     page->publish(uniform(1));
     std::atomic<bool> stop{false};
-    // The writer overlaps readers constantly but pauses briefly between
-    // publishes, as any real writer does (the node publishes every 100 ms). A
-    // writer that never pauses can starve every seqlock reader: that was a
-    // test artefact on the NUC, not a page defect, and it hid nothing.
     std::thread writer([&] {
         for (std::uint64_t k = 2; !stop.load(std::memory_order_relaxed); ++k) {
             page->publish(uniform(k));
@@ -121,7 +113,7 @@ void concurrent_reads_are_never_torn() {
     require(consistent > 1000, "reader almost never obtained a consistent snapshot");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

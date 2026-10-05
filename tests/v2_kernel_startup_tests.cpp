@@ -143,7 +143,7 @@ void constructor_unwind() {
     auto next_owner = identity_test::recover(dir, 1, {1});
     require(next_owner.owns_directory(), "constructor unwind leaked directory ownership");
 }
-} // namespace
+}
 
 int main(int argc, char** argv) {
     try {

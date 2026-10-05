@@ -228,7 +228,7 @@ void saturated_real_blocks_drain_before_switch() {
             "saturated switch redirected an old record into the new WAL");
 }
 
-} // namespace
+}
 
 int main() {
     try {

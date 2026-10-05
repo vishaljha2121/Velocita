@@ -30,7 +30,6 @@ def words(unit):
 
 
 def mounts(unit):
-    """container path -> host path, from `-v HOST:CONTAINER[:ro]`."""
     w = words(unit)
     return {w[i + 1].split(":")[1]: w[i + 1].split(":")[0] for i, x in enumerate(w) if x == "-v"}
 
@@ -79,7 +78,6 @@ class ArchiveUnit(unittest.TestCase):
         self.assertIn("Type=oneshot", UNIT.read_text())
 
     def test_sqlite_temp_files_go_to_a_writable_created_directory(self):
-        # The container root is read-only, so SQLite's default /tmp would fail.
         tmp = env(UNIT)["SQLITE_TMPDIR"]
         host = host_path(UNIT, tmp)
         self.assertIsNotNone(host, "SQLITE_TMPDIR is not on a mounted volume")
@@ -111,7 +109,7 @@ class Timer(unittest.TestCase):
         when = re.search(r"^OnCalendar=\*-\*-\* (\d\d):(\d\d):00 UTC$", text, re.MULTILINE)
         self.assertIsNotNone(when, "the timer must name UTC: archive days are UTC days")
         minutes = int(when.group(1)) * 60 + int(when.group(2))
-        grace_s = 600  # md-archive --grace-s default
+        grace_s = 600
         self.assertGreater(minutes * 60, grace_s)
         self.assertIn("Persistent=true", text)
         self.assertIn("WantedBy=timers.target", text)
@@ -136,7 +134,7 @@ class MacJob(unittest.TestCase):
         local = job["StartCalendarInterval"]
         when = re.search(r"OnCalendar=\*-\*-\* (\d\d):(\d\d):00 UTC", TIMER.read_text())
         archive_utc = int(when.group(1)) * 60 + int(when.group(2))
-        eastern = ZoneInfo("America/New_York")  # the owner's Mac
+        eastern = ZoneInfo("America/New_York")
         for day in ((2026, 7, 1), (2026, 12, 1)):
             run = datetime(*day, local["Hour"], local["Minute"], tzinfo=eastern).astimezone(timezone.utc)
             pull_utc = (run.hour * 60 + run.minute) % (24 * 60)

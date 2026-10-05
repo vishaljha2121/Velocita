@@ -91,8 +91,6 @@ void require_encode_error(const ExecutionCatalogRow& candidate,
 }
 
 void test_independent_golden_and_owned_decode() {
-    // Independently constructed from the approved field table using Python
-    // struct.pack('<...') and hashlib.sha256; never produced by this codec.
     const auto golden = hex_bytes(
         "56324543010001009c0000000b000000000000000100160000000000000021000000"
         "000000002c000000000000000a000000000000000100000000000000a08601000000"
@@ -345,7 +343,7 @@ void test_catalog_text_unused_tail_is_not_identity() {
                          "same logical asset hidden by unused tails was accepted");
 }
 
-}  // namespace
+}
 
 void run_execution_catalog_adversarial_tests() {
     test_independent_golden_and_owned_decode();

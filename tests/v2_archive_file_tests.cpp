@@ -166,7 +166,7 @@ void run(const std::filesystem::path& root) {
     ::close(directory);
 }
 
-} // namespace
+}
 
 int main(int argc, char** argv) {
     if (argc > 2 || (argc == 2 && std::filesystem::exists(argv[1]))) {

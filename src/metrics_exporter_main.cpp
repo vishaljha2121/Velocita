@@ -1,3 +1,4 @@
+// V1: raft-metrics-exporter.
 #include "velocita/shared_metrics.hpp"
 
 #include <arpa/inet.h>
@@ -288,7 +289,7 @@ int listen_socket(const Options& options) {
     return listener;
 }
 
-}  // namespace
+}
 
 int main(int argc, char** argv) {
     try {

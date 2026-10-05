@@ -17,14 +17,12 @@ std::uint32_t u32(std::span<const std::byte> bytes, std::size_t at) noexcept {
     return value;
 }
 
-// Establish a complete bounded shape BEFORE the shared V1 decoder can reserve or copy.
 Error preflight(std::span<const std::byte> bytes) noexcept {
     if (bytes.size() < 16 || u32(bytes, 0) != 0x31524550U ||
         bytes[4] != std::byte{kBoundPeerBodyVersion & 0xFFU} ||
         bytes[5] != std::byte{kBoundPeerBodyVersion >> 8U}) return Error::invalid_payload;
     const auto kind = std::to_integer<unsigned>(bytes[6]) |
         (std::to_integer<unsigned>(bytes[7]) << 8);
-    // Vote bodies end in the pre-vote flag, canonical 0 or 1.
     if (kind == 1 || kind == 2)
         return bytes.size() == (kind == 1 ? 49U : 26U) &&
                 std::to_integer<unsigned>(bytes.back()) <= 1 ? Error::none : Error::invalid_payload;
@@ -41,7 +39,6 @@ Error preflight(std::span<const std::byte> bytes) noexcept {
         if (length > bytes.size() - offset) return Error::invalid_payload;
         offset += length;
     }
-    // The V2 trailer: the leader's compaction floor.
     return bytes.size() - offset == 8 ? Error::none : Error::invalid_payload;
 }
 
@@ -121,7 +118,6 @@ Error validate(const PeerMessage& message, const VerifiedStaticIdentity& identit
         vote && vote->term < 0) return Error::invalid_payload;
     if (const auto* append = std::get_if<AppendEntries>(&message.payload)) {
         if (append->entries.size() > kMaxBoundPeerEntries) return Error::capacity_exceeded;
-        // Raft forms both the batch end and its following index using signed arithmetic.
         const auto count = static_cast<std::int64_t>(append->entries.size());
         if (append->term < 0 || append->previous_log_index < 0 ||
             append->previous_log_term < 0 || append->leader_commit < 0 || append->compaction_floor < 0 ||
@@ -151,7 +147,7 @@ Error validate(const PeerMessage& message, const VerifiedStaticIdentity& identit
         return Error::invalid_payload;
     return Error::none;
 }
-} // namespace
+}
 
 std::vector<std::byte> encode_bound_peer_body(const PeerMessage& message) {
     auto body = encode_peer_message(message);
@@ -175,8 +171,6 @@ BoundFrameError decode_bound_peer(std::span<const std::byte> input,
     if (framing != Error::none) return framing;
     const auto shape = preflight(view.payload);
     if (shape != Error::none) return shape;
-    // Preflight fixed the shape: strip the V2 trailer and hand the V1 decoder
-    // its own version, then restore the trailer's field.
     const auto kind = std::to_integer<unsigned>(view.payload[6]) |
                       (std::to_integer<unsigned>(view.payload[7]) << 8);
     const std::size_t trailer = kind == 3 ? 8 : (kind == 1 || kind == 2) ? 1 : 0;
@@ -223,7 +217,7 @@ BoundFrameEncodeResult encode_bound_peer(const PeerMessageView& message,
     if (std::holds_alternative<RequestVote>(message.payload)) inner_size += 32 + 1;
     else if (std::holds_alternative<RequestVoteResponse>(message.payload)) inner_size += 9 + 1;
     else if (const auto* append = std::get_if<BorrowedAppendEntries>(&message.payload)) {
-        inner_size += 36 + 8;  // + the compaction-floor trailer
+        inner_size += 36 + 8;
         for (const auto& entry : append->entries) inner_size += 20 + entry.payload.size();
     } else inner_size += 25;
     if (inner_size + kBoundFrameOverheadBytes > kMaxBoundPeerBytes)
@@ -231,8 +225,6 @@ BoundFrameEncodeResult encode_bound_peer(const PeerMessageView& message,
     if (output.size() < inner_size + kBoundFrameOverheadBytes)
         return {Error::output_too_small, 0};
 
-    // Stage the complete inner message before touching output. Entry payloads may
-    // alias the caller's output buffer, just as encode_bound_frame permits.
     std::array<std::byte, kMaxBoundPeerBytes - kBoundFrameOverheadBytes> inner_storage{};
     auto inner = std::span<std::byte>{inner_storage}.first(inner_size);
     std::size_t at{};

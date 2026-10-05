@@ -174,7 +174,7 @@ void test_invalid_unsigned_content_fails_before_hashing() {
             "missing bound feature digest was accepted while hashing");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

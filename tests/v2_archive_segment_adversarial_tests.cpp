@@ -47,8 +47,6 @@ VerifiedStaticIdentity verify(StaticIdentity value) {
 }
 
 const std::vector<std::byte>& golden() {
-    // Independent Python struct.pack/hashlib, NOT archive encoder output.
-    // Gateway incarnation and requested catalog intentionally differ from cluster identity.
     static const auto bytes = hex(
         "56324153010060007402000002000000110000000000000012000000000000000300000000000000"
         "040000000000000006000000000000003ce5d6e3e9a886ab694852a129348bbe9413c2b55077a848"
@@ -193,10 +191,10 @@ void test_every_truncation_and_bit_flip() {
 void test_resealed_semantic_corruption_before_any_visitor() {
     struct Change { std::size_t offset; std::uint64_t value; std::size_t width; };
     for (const auto change : std::array{
-        Change{346, 19, 8},             // skip index in the SECOND record
-        Change{354, 3, 8},             // term regresses despite a consistent endpoint
-        Change{366, 102, 4},           // unknown type
-        Change{374, 1, 4},             // record reserved byte
+        Change{346, 19, 8},
+        Change{354, 3, 8},
+        Change{366, 102, 4},
+        Change{374, 1, 4},
     }) {
         auto bytes = golden();
         put(bytes, change.offset, change.value, change.width);
@@ -219,7 +217,7 @@ void test_resealed_semantic_corruption_before_any_visitor() {
         refused(bytes, "resealed invalid header accepted");
     }
     auto bytes = golden();
-    bytes[346 + 32 + 122] ^= std::byte{1}; // foreign marker authority, valid all three hashes
+    bytes[346 + 32 + 122] ^= std::byte{1};
     const auto marker_hash = sha256_digest(std::span{bytes}.subspan(346 + 32 + 8, 146));
     std::copy(marker_hash.bytes.begin(), marker_hash.bytes.end(), bytes.begin() + 346 + 32 + 154);
     reseal_record(bytes, 346);
@@ -275,13 +273,13 @@ void test_resealed_invalid_command_is_not_skipped() {
                 ArchiveSegmentError::none && metadata.record_count == 2,
             "valid repeated command history rejected");
     const auto second_payload = 96 + 164 + 32;
-    put(bytes, second_payload + 8, kKernelCodecSchemaVersion + 1, 2); // unsupported inner schema, all hashes repaired
+    put(bytes, second_payload + 8, kKernelCodecSchemaVersion + 1, 2);
     const auto digest = sha256_digest(std::span{bytes}.subspan(second_payload + 8, 60));
     std::copy(digest.bytes.begin(), digest.bytes.end(), bytes.begin() + second_payload + 68);
     reseal_record(bytes, 96 + 164, command.size());
     refused(bytes, "resealed unsupported command schema accepted");
 }
-}  // namespace
+}
 
 int main() {
     try {

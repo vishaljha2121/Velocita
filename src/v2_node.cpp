@@ -13,7 +13,6 @@ std::optional<AuthKey> derive(const AuthSecret& secret, const AuthRoute& route,
     return AuthKey::derive(secret, route, incarnation);
 }
 
-// Accepting keys in preference order: current, next, previous.
 std::optional<std::vector<AuthKey>> derive_accepting(const SecretSet& set, const AuthRoute& route,
                                                      const std::array<std::byte, 16>& incarnation) {
     std::vector<AuthKey> keys;
@@ -27,7 +26,6 @@ std::optional<std::vector<AuthKey>> derive_accepting(const SecretSet& set, const
     return keys;
 }
 
-// Accepts if ANY key verifies; DESTINATION changes only on success.
 AuthEnvelopeError verify_any(const std::vector<AuthKey>& keys, std::span<const std::byte> frame,
                              VerifiedAuthEnvelope& destination) {
     auto error = AuthEnvelopeError::tag_mismatch;
@@ -42,7 +40,7 @@ ResponseCorrelation correlation_of(const CommandIdentity& identity) {
     return {identity.request_sequence.value(), identity.payload_digest};
 }
 
-}  // namespace
+}
 
 struct V2Node::KeySets {
     struct Peer {
@@ -58,11 +56,11 @@ struct V2Node::KeySets {
 };
 
 struct V2Node::PeerLink {
-    KeySets::Peer keys;                // replaced by rotation; everything below survives it
+    KeySets::Peer keys;
     SessionSequencer sequencer;
     SessionFence fence{};
-    std::vector<std::byte> stash{};    // one back-pressured envelope, retried first
-    std::vector<std::byte> pending{};  // one authenticated body the kernel was busy for
+    std::vector<std::byte> stash{};
+    std::vector<std::byte> pending{};
 };
 
 struct V2Node::CallerLink {
@@ -164,16 +162,11 @@ void V2Node::turn(const int elapsed_ms) {
         send_results();
         service_gateway_authority(elapsed_ms);
     } catch (...) {
-        // Fail-stop: a kernel or transport fault leaves no safe way to continue.
         failed_ = true;
         throw;
     }
 }
 
-// Compaction reclaims log entries every voter already holds (the kernel's
-// floor gate), so the retained log never fills while all voters keep up. It
-// pauses Raft progress while in flight, so it is attempted at most once a
-// second and only past the configured threshold.
 void V2Node::maybe_compact(const int elapsed_ms) {
     if (kernel_->compaction_pending()) {
         compaction_ms_ += static_cast<std::uint64_t>(elapsed_ms);
@@ -187,13 +180,12 @@ void V2Node::maybe_compact(const int elapsed_ms) {
     if (compact_wait_ms_ < 1000 || kernel_->retained_log_count() < compact_at_entries_) return;
     compact_wait_ms_ = 0;
     compaction_ms_ = 0;
-    if (kernel_->compact_within_floor() != 0) {  // started and finished in one call
+    if (kernel_->compact_within_floor() != 0) {
         ++counters_.compactions;
         counters_.last_compaction_ms = 0;
     }
 }
 
-// Returns false while the kernel is still busy: the body stays pending.
 bool V2Node::deliver_peer(PeerLink& link, std::span<const std::byte> body) {
     const auto received = kernel_->receive_peer(body);
     if (received.status == PeerReceiveStatus::busy) {
@@ -207,10 +199,6 @@ bool V2Node::deliver_peer(PeerLink& link, std::span<const std::byte> body) {
 }
 
 void V2Node::receive_peers() {
-    // An authenticated frame is never dropped because persistence is pending:
-    // that would discard vote requests during every election. Retry the held
-    // body first; while the kernel is still busy, leave new frames with the
-    // transport rather than accept more than one held frame per peer.
     for (auto& [id, link] : peers_)
         if (!link->pending.empty() && !deliver_peer(*link, std::vector<std::byte>(link->pending))) return;
     for (std::uint32_t i = 0; i < budgets_.peer_fragment_limit; ++i) {
@@ -229,7 +217,6 @@ void V2Node::receive_peers() {
             ++counters_.auth_refusals;
             continue;
         }
-        // Only an authenticated frame may advance the remembered session.
         if (link.fence.admit(verified.header.session_epoch, verified.header.sequence) !=
             SessionFence::Decision::accept) {
             ++counters_.fence_refusals;
@@ -241,10 +228,6 @@ void V2Node::receive_peers() {
 }
 
 void V2Node::send_peers() {
-    // A refused offer holds back only that peer: its stashed envelope is retried
-    // first, and its newer frames wait (coalescing) in the kernel mailbox while
-    // every other peer keeps receiving. One unreachable voter must not stall a
-    // three-voter quorum. At most one envelope per peer is held outside the mailbox.
     std::array<std::int32_t, kMaxStaticVoters> held{};
     std::size_t held_count = 0;
     for (auto& [id, link] : peers_) {
@@ -338,7 +321,6 @@ void V2Node::receive_ingress() {
             continue;
         }
         response.correlation = correlation_of(command.identity);
-        // Authentication names the caller; the command may not claim anyone else.
         if (command.identity.caller_id.value() != caller.caller_id) {
             response.reason = static_cast<std::uint8_t>(IngressRefusal::caller_mismatch);
         } else if (!ready()) {
@@ -360,8 +342,6 @@ void V2Node::receive_ingress() {
 }
 
 void V2Node::send_results() {
-    // Every voter publishes every applied result; drain all of them so the
-    // bounded ledger never fills with answers nobody here can deliver.
     while (const auto committed = kernel_->take_committed_result()) {
         const auto found = caller_by_id_.find(committed->identity.caller_id.value());
         if (found == caller_by_id_.end()) {
@@ -392,8 +372,6 @@ void V2Node::refuse_gateway(CallerLink& caller, const ResponseCorrelation& corre
     if (!offer_body(caller, body)) ++counters_.responses_dropped;
 }
 
-// Serves the APPLIED state of this voter, which must currently lead: a gateway
-// fed by a lagging follower would observe older terms and latch stop-new-risk.
 void V2Node::serve_state(CallerLink& caller, const ResponseCorrelation& correlation) {
     const auto encoded = encode_state_snapshot(kernel_->state(), snapshot_);
     if (encoded.error != StateSnapshotError::none) throw std::runtime_error("applied state did not encode");
@@ -415,7 +393,6 @@ void V2Node::serve_state(CallerLink& caller, const ResponseCorrelation& correlat
         const auto length = std::min(kStateChunkPayloadBytes, encoded.bytes_written - offset);
         const auto framed = encode_state_chunk(header, std::span(snapshot_).subspan(offset, length), gateway_body_);
         if (framed.error != NodeProtocolError::none) throw std::runtime_error("state chunk encoding failed");
-        // A dropped chunk leaves an incomplete read; the gateway re-requests.
         if (!offer_body(caller, std::span(gateway_body_).first(framed.bytes_written))) ++counters_.responses_dropped;
     }
     ++counters_.gateway_state_reads;
@@ -429,17 +406,12 @@ void V2Node::handle_gateway(CallerLink& caller, std::span<const std::byte> body)
     if (!gateway_caller_ || caller.caller_id != *gateway_caller_)
         return refuse_gateway(caller, correlation, static_cast<std::uint8_t>(IngressRefusal::not_gateway_caller));
     if (!ready()) return refuse_gateway(caller, correlation, static_cast<std::uint8_t>(IngressRefusal::not_ready));
-    // is_leader() is false while persistence is pending; that is "later", not a redirect.
     if (!quiescent())
         return refuse_gateway(caller, correlation, static_cast<std::uint8_t>(ProposeStatus::persistence_busy));
     if (!kernel_->is_leader())
         return refuse_gateway(caller, correlation, static_cast<std::uint8_t>(ProposeStatus::not_leader));
     if (request.kind == GatewayRequestKind::state_read) return serve_state(caller, correlation);
 
-    // One slot: the authenticated gateway asking again means it gave up on the
-    // previous barrier, so that one is abandoned rather than left to issue.
-    // A resend of the pending barrier is not proposed again: its proof may
-    // already sit in the kernel, and a second proposal would read as busy.
     if (gateway_authority_ && gateway_authority_->barrier == request.barrier) {
         gateway_authority_->correlation = correlation;
         return;
@@ -470,8 +442,6 @@ void V2Node::service_gateway_authority(const int elapsed_ms) {
         return refuse_gateway(caller, correlation, static_cast<std::uint8_t>(ProposeStatus::not_leader));
     }
     if (auto proof = kernel_->take_authority_proof()) {
-        // The kernel holds one proof for the one barrier it admitted; anything
-        // else is dropped, never forwarded under this request's correlation.
         if (proof->view().request != pending.barrier) return;
         std::array<std::byte, kResponseAuthorityGrantedBytes> body{};
         if (encode_authority_granted(pending.correlation, proof->view(), body).error != NodeProtocolError::none)
@@ -500,4 +470,4 @@ bool V2Node::quiescent() const noexcept {
     return !kernel_->persistence_pending() && !kernel_->compaction_pending();
 }
 
-}  // namespace velocita::v2
+}

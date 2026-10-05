@@ -1,3 +1,4 @@
+// Strongly typed identifiers and checked integer quantities.
 #pragma once
 
 #include <compare>
@@ -203,4 +204,4 @@ using MoneyMicros = FixedPoint<MoneyMicrosTag, 1'000'000>;
 using FeeMicros = FixedPoint<FeeMicrosTag, 1'000'000>;
 using FeatureMicros = FixedPoint<FeatureMicrosTag, 1'000'000>;
 
-}  // namespace velocita::v2
+}

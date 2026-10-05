@@ -26,11 +26,11 @@ _FILLS_SHOWN = 10
 @dataclass(frozen=True)
 class Fill:
     time_ns: int
-    side: str           # "buy" or "sell"
-    price: Decimal      # reference price the fill is costed against
+    side: str
+    price: Decimal
     qty_btc: Decimal
-    cash_usd: Decimal   # USDC paid (buy) or received (sell)
-    fee_usd: Decimal    # the measured cost against the reference price
+    cash_usd: Decimal
+    fee_usd: Decimal
 
 
 @dataclass
@@ -54,7 +54,6 @@ class Book:
         return 1 - Decimal(str(self.costs.sell_bps)) / _BP
 
     def act(self, time_ns: int, price: Decimal, *, want_long: bool) -> Fill | None:
-        """Move to the wanted position; None when already there."""
         if want_long and self.btc == 0 and self.cash > 0:
             qty = self.cash / (price * self._buy_factor())
             fill = Fill(time_ns, "buy", price, qty, self.cash, self.cash - qty * price)
@@ -92,24 +91,19 @@ def _day(time_ns: int):
 
 
 class Ledger:
-    """Both books, a buy-and-hold benchmark, and (optionally) SQLite persistence
-    so a restarted edge continues the same book."""
-
     def __init__(self, costs: Costs, book_usd: Decimal, *, db: Path | str | None = None) -> None:
         self.costs = costs
         self.book_usd = book_usd
         self.books = {timing: Book(timing, costs, book_usd) for timing in ("tick", "daily")}
-        self.pending: tuple[int, Decimal, str] | None = None  # the daily book's latest decision today
+        self.pending: tuple[int, Decimal, str] | None = None
         self.hold_btc: Decimal | None = None
         self._db = sqlite3.connect(db) if db is not None else None
         if self._db is not None:
             self._create()
             self._load()
 
-    # -- decisions ----------------------------------------------------------------
 
     def observe(self, time_ns: int, price: Decimal, action: str) -> None:
-        """One committed, proposed shadow decision: ACTION is the matched rule's."""
         if self.hold_btc is None:
             self.hold_btc = self.book_usd / (price * (1 + Decimal(str(self.costs.buy_bps)) / _BP))
         fills: list[tuple[str, Fill]] = []
@@ -133,7 +127,6 @@ class Ledger:
             return self.book_usd
         return self.hold_btc * price * (1 - Decimal(str(self.costs.sell_bps)) / _BP)
 
-    # -- metrics ------------------------------------------------------------------
 
     def render(self, price: Decimal) -> str:
         usd = lambda v: f"{v.quantize(Decimal('0.01'))}"
@@ -156,8 +149,6 @@ class Ledger:
             out += [f'velocita_shadow_book_round_trips_total{{timing="{t}",result="win"}} {b.wins}',
                     f'velocita_shadow_book_round_trips_total{{timing="{t}",result="loss"}} {b.losses}']
         out += ["# TYPE velocita_shadow_hold_equity_usd gauge", f"velocita_shadow_hold_equity_usd {usd(self.hold_equity(price))}"]
-        # The latest fills per book (n=1 newest), valued at their time in seconds:
-        # a bounded order history for a Grafana table.
         out.append("# TYPE velocita_shadow_book_fill gauge")
         for t, b in self.books.items():
             for n, fill in enumerate(reversed(b.fills[-_FILLS_SHOWN:]), start=1):
@@ -165,7 +156,6 @@ class Ledger:
                            f'price="{format(fill.price.normalize(), "f")}"}} {fill.time_ns // 1_000_000_000}')
         return "\n".join(out) + "\n"
 
-    # -- persistence --------------------------------------------------------------
 
     def _create(self) -> None:
         self._db.executescript("""

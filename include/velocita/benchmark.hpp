@@ -1,3 +1,4 @@
+// V1: benchmark request tracking and latency samples.
 #pragma once
 
 #include <cstddef>
@@ -95,4 +96,4 @@ private:
 [[nodiscard]] std::vector<std::uint64_t> cumulative_bucket_counts(
     std::span<const std::uint64_t> values, std::span<const std::uint64_t> bounds);
 
-}  // namespace velocita
+}

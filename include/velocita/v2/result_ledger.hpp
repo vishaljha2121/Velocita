@@ -1,3 +1,4 @@
+// Bounded ownership of command results until they are delivered.
 #pragma once
 
 #include "velocita/v2/committed_result.hpp"
@@ -38,7 +39,6 @@ struct ResultObligationView {
     ResultObligationState state{ResultObligationState::reserved};
     ResultHandle handle{};
     ResultBinding binding{};
-    // Meaningful only for READY. RESERVED observations contain the native default.
     CommittedResult ready_result{};
 };
 
@@ -46,7 +46,6 @@ using ResultObligationVisitor = bool (*)(void*, ResultObligationView) noexcept;
 
 struct ResultLedgerTestAccess;
 
-// Owner-thread only. Handles are scoped to this instance, not cross-ledger capabilities.
 class ResultLedger final {
 public:
     ResultLedger() noexcept;
@@ -57,13 +56,9 @@ public:
 
     [[nodiscard]] std::optional<ResultHandle> reserve(
         const ResultBinding& binding, bool control_eligible) noexcept;
-    // Simulates new reservations after the named RESERVED owners are durably
-    // removed. This does not release them; the caller owns that ordering.
     [[nodiscard]] bool can_reserve(
         std::span<const bool> control_eligible,
         std::span<const ResultHandle> released = {}) const noexcept;
-    // True only while HANDLE owns an unpublished reservation. Ready results
-    // are obligations for take(), not reservations available to apply again.
     [[nodiscard]] bool matches(ResultHandle handle,
                                const ResultBinding& binding) const noexcept;
     [[nodiscard]] bool publish(ResultHandle handle,
@@ -71,10 +66,6 @@ public:
     [[nodiscard]] bool release_reserved(ResultHandle handle) noexcept;
     [[nodiscard]] std::optional<CommittedResult> take() noexcept;
 
-    // Owner-thread only and non-reentrant. Validates the complete native slot
-    // inventory before visiting READY in take() order, then RESERVED in slot
-    // order. A visitor refusal may have observed a prefix and returns false.
-    // This observation is not a revision or concurrent-change detector.
     [[nodiscard]] bool visit_obligations(ResultObligationVisitor visitor,
                                          void* context) const noexcept;
 
@@ -116,4 +107,4 @@ private:
 static_assert(sizeof(ResultHandle) == 16);
 static_assert(sizeof(ResultLedger) == 229400);
 
-} // namespace velocita::v2
+}

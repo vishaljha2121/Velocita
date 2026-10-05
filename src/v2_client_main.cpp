@@ -1,29 +1,4 @@
-// velocita-v2-client: authenticated operator client for the M2 node.
-//
-//   velocita-v2-client --caller-key-id N --caller-id N (--key-file FILE | --key-stdin)
-//       --incarnation HEX32 --session-file FILE --response-endpoint HOST:PORT
-//       --node ID=HOST:PORT [--node ...] --aeron-dir DIR --sequence N
-//       [--timeout-ms N] COMMAND
-//
-// COMMAND: kill-epoch VALUE | executor-generation VALUE
-//          | install-catalog ROOT_HEX64 EXPECTED_KILL_EPOCH EXPECTED_EXECUTOR_GENERATION
-//          | strategy-mode normal|no_new_risk|cancel_only|reduce_only|halted
-//                EXPECTED_KILL_EPOCH EXPECTED_EXECUTOR_GENERATION
-//          | risk-limits KEY=VALUE... (every field; see shadow_submitter.hpp)
-//
-// --dry-run parses the command and prints what would be sent, then exits 0;
-// risk-limits always prints its summary (lots, dollars) before sending.
-//
-// Output: "COMMITTED sequence=.. index=.. term=.. code=.. code_name=.. state_version=..
-// kill_epoch=.. executor_generation=.. strategy_mode=.. [risk_version=..] from=.."
-// or "REFUSED reason=.. leader=..". Exit codes: 0 committed+applied, 1 committed
-// with another code, 3 timeout, 4 refused, 64 usage. Operator control and risk
-// configuration only: nothing here proposes or authorizes an order.
-//
-// --key-stdin reads 32 or 64 raw bytes: the first secret signs, and responses
-// verify under either (rotation overlap). --key-file follows the node's
-// rotation layout: FILE signs; FILE.next / FILE.previous are also accepted.
-
+// velocita-v2-client: operator commands for the cluster.
 #include "velocita/aeron_runtime.hpp"
 #include "velocita/v2/aeron_node_transport.hpp"
 #include "velocita/v2/node_files.hpp"
@@ -84,17 +59,17 @@ struct Arguments {
     std::filesystem::path key_file, session_file, aeron_dir;
     bool key_stdin{};
     bool dry_run{};
-    std::string summary;                    // printed before sending
+    std::string summary;
     std::array<std::byte, 16> incarnation{};
     Endpoint response_endpoint;
     std::map<std::int32_t, Endpoint> nodes;
-    std::vector<std::int32_t> order;  // --node order: the first is asked first
+    std::vector<std::int32_t> order;
     std::uint64_t sequence{};
     std::uint64_t timeout_ms{10000};
     std::uint64_t kill_epoch{};
-    CommandBody body{};                     // the operator command to send
-    ProposeLane lane{ProposeLane::control};  // kill-path reserve only for control commands
-    Digest256 digest{};                     // its payload digest
+    CommandBody body{};
+    ProposeLane lane{ProposeLane::control};
+    Digest256 digest{};
 };
 
 Digest256 payload_digest(std::uint64_t kill_epoch) {
@@ -105,7 +80,6 @@ Digest256 payload_digest(std::uint64_t kill_epoch) {
     return sha256_digest(bytes);
 }
 
-// Domain-separated digest of an operator verb and its arguments as typed.
 Digest256 verb_digest(const std::string& verb, std::initializer_list<std::string> args) {
     std::string text = "velocita.v2-client." + verb;
     for (const auto& arg : args) text += " " + arg;
@@ -178,8 +152,6 @@ Arguments parse(int argc, char** argv) {
         install.expected_kill_epoch = KillEpoch{number(argv[i + 2], "expected kill epoch")};
         install.expected_executor_generation = ExecutorGeneration{number(argv[i + 3], "expected executor generation")};
         a.body = install;
-        // Operator-only in the reducer, but not a kill-path command: the control
-        // lane's reserve is for halting and reducing risk.
         a.lane = ProposeLane::normal;
         a.digest = verb_digest(verb, {argv[i + 1], argv[i + 2], argv[i + 3]});
     } else if (verb == "strategy-mode" && i + 4 == argc) {
@@ -195,7 +167,6 @@ Arguments parse(int argc, char** argv) {
         const auto parsed = parse_risk_limits_verb(words);
         if (!parsed.limits) throw Usage("risk-limits: " + parsed.error);
         a.body = *parsed.limits;
-        // Not a kill-path command: raising limits must not spend the control reserve.
         a.lane = ProposeLane::normal;
         a.digest = verb_digest(verb, {risk_limits_canonical(*parsed.limits)});
         a.summary = describe_risk_limits(*parsed.limits);
@@ -213,14 +184,12 @@ Arguments parse(int argc, char** argv) {
     return a;
 }
 
-// Deterministic per (value): a retry carries a byte-identical identity.
 int run(const Arguments& a) {
     std::cout << a.summary << std::flush;
     if (a.dry_run) {
         std::cout << "DRY-RUN not sent" << std::endl;
         return 0;
     }
-    // Signing secret first, then any others accepted for responses.
     std::vector<AuthSecret> secrets;
     if (a.key_stdin) {
         std::array<std::byte, 2 * kAuthSecretBytes + 1> raw{};
@@ -298,7 +267,7 @@ int run(const Arguments& a) {
     }
 }
 
-}  // namespace
+}
 
 int main(int argc, char** argv) {
     try {

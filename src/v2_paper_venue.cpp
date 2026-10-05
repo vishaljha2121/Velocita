@@ -8,7 +8,6 @@
 namespace velocita::v2::paper {
 namespace {
 
-// Deterministic paper evidence, not venue proof. Byte 9 tags it as paper.
 [[nodiscard]] Digest256 paper_evidence(const std::uint64_t sequence) noexcept {
     Digest256 value;
     for (std::size_t index = 0; index < 8; ++index) {
@@ -26,7 +25,7 @@ namespace {
            render_quantity(effect.quantity, spec, text) != 0;
 }
 
-}  // namespace
+}
 
 bool valid(const PaperVenueConfig& config) noexcept {
     return spec_agrees_with_profile(config.spec, config.profile) &&
@@ -52,7 +51,6 @@ std::optional<FeeMicros> paper_fee(const MoneyMicros notional,
     if (notional.atoms() < 0 || bps > kBasisPointsPerUnit) return std::nullopt;
     constexpr std::int64_t unit = kBasisPointsPerUnit;
     const auto rate = static_cast<std::int64_t>(bps);
-    // Split so no intermediate exceeds int64: remainder * rate < 10'000 * 10'000.
     const auto whole = MoneyMicros::from_atoms(notional.atoms() / unit).checked_multiply(rate);
     if (!whole) return std::nullopt;
     const auto remainder_product = (notional.atoms() % unit) * rate;
@@ -106,11 +104,8 @@ VenueObservation PaperVenue::report(const VenueObservationKind kind,
 
 void PaperVenue::schedule(const VenueObservation& observation, const Tick due,
                           const bool duplicate, const bool withheld) noexcept {
-    // Capacity is reserved by the caller before any mutation.
     scheduled_[scheduled_count_++] = {due, ++ordinal_, observation, false, withheld};
     if (duplicate) {
-        // Byte-identical, one tick later, so it can arrive after the original
-        // has been committed and acknowledged.
         scheduled_[scheduled_count_++] = {due + 1, ++ordinal_, observation, false, withheld};
     }
 }
@@ -119,8 +114,6 @@ SendOutcome PaperVenue::refuse(const OrderEffect& effect, const PaperRejectReaso
                                const Tick due, const bool duplicate,
                                const bool drop_response) noexcept {
     last_reject_ = reason;
-    // A killed order is not recorded: the venue holds nothing, so a later query
-    // truthfully answers not_found and reconciliation releases the hold.
     if (drop_response) return SendOutcome::ambiguous;
     schedule(report(VenueObservationKind::order_rejected, effect), due, duplicate, false);
     return SendOutcome::business_rejected;
@@ -174,7 +167,6 @@ SendOutcome PaperVenue::send(const OrderEffect& effect, const Tick now) noexcept
         const auto notional = paper_notional(effect.price, piece_quantity[index],
                                              config_.profile.quote_micros_per_tick_lot);
         if (!notional) return SendOutcome::pre_send_failure;
-        // Rounded per piece: a split never costs less than the whole.
         const auto charged = paper_fee(*notional, bps);
         if (!charged) return SendOutcome::pre_send_failure;
         const auto sum = fee.checked_add(*charged);
@@ -189,8 +181,6 @@ SendOutcome PaperVenue::send(const OrderEffect& effect, const Tick now) noexcept
     const auto proceeds = notional ? notional->checked_sub(fee_money) : std::nullopt;
     if (!cost || !proceeds) return SendOutcome::pre_send_failure;
 
-    // Every refusal below schedules at most `copies` reports and an execution
-    // at most (1 + pieces) * copies, so checking here keeps all paths pre-mutation.
     const auto needed = static_cast<std::size_t>(1 + pieces) * copies;
     if (order_count_ == orders_.size() || free_slots < needed) {
         return SendOutcome::pre_send_failure;
@@ -225,13 +215,9 @@ SendOutcome PaperVenue::send(const OrderEffect& effect, const Tick now) noexcept
                                effect.side, effect.price, effect.quantity, *notional, fee};
     balances_ = {*next_quote, *next_base, *next_fees};
 
-    // A dropped response still executed. Its reports are withheld, not lost:
-    // only a query releases them, because reconciliation needs identified
-    // executions and a cumulative total carries none.
     const bool withheld = faults.drop_response;
     auto ack = report(VenueObservationKind::order_acknowledged, effect);
     ack.venue_order_id = venue_order;
-    // Sequences follow venue order; reorder changes only delivery order.
     std::array<VenueObservation, kMaxPaperSplitPieces> fills{};
     for (std::int64_t index = 0; index < pieces; ++index) {
         auto& fill = fills[index];
@@ -279,8 +265,6 @@ std::size_t PaperVenue::poll(const std::span<VenueObservation> out, const Tick n
 }
 
 void PaperVenue::acknowledge(const VenueObservation& observation) noexcept {
-    // Only DELIVERED copies are released. A duplicate not yet handed over must
-    // survive its twin's acknowledgement, or the duplicate fault is untestable.
     const auto acknowledged = observation_fingerprint(observation);
     std::size_t kept = 0;
     for (std::size_t index = 0; index < scheduled_count_; ++index) {
@@ -347,7 +331,7 @@ void PaperVenue::read_book(sim::VenueBook& out) const noexcept {
         const auto order = scheduled_[index].observation.cluster_order_id;
         const auto listed = std::span(out.pending_orders).first(out.pending_order_count);
         if (std::find(listed.begin(), listed.end(), order) != listed.end()) continue;
-        out.pending_orders[out.pending_order_count++] = order;  // 128 reports fit 128 ids
+        out.pending_orders[out.pending_order_count++] = order;
     }
     out.committed_through = ledger_.committed_through;
     out.fee_micros_total = ledger_.fee_micros_total;
@@ -454,7 +438,7 @@ VenueSessionId transport_session(void* context) {
     return static_cast<PaperVenue*>(context)->session();
 }
 
-}  // namespace
+}
 
 sim::VenueTransport paper_venue_transport(PaperVenue& venue) noexcept {
     sim::VenueTransport transport;
@@ -471,4 +455,4 @@ sim::VenueBookSource paper_venue_book(PaperVenue& venue) noexcept {
     return {&book_read, &book_committed, &venue};
 }
 
-}  // namespace velocita::v2::paper
+}

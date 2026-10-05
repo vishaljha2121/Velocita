@@ -80,10 +80,8 @@ Fd open_parent(const std::filesystem::path& file) noexcept {
     return Fd(::open(parent.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
 }
 
-// Durable replacement of NAME in DIRECTORY with COUNTER's encoding.
 SessionEpochError publish(int directory, const std::string& name, std::uint64_t counter) noexcept {
     const auto temporary = name + ".tmp";
-    // Never promoted: a leftover temporary is only ever truncated and rewritten.
     Fd output(::openat(directory, temporary.c_str(),
                        O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW | O_CLOEXEC, 0600));
     if (output.get() < 0 || ::fchmod(output.get(), 0600) != 0) return SessionEpochError::io_failure;
@@ -92,11 +90,10 @@ SessionEpochError publish(int directory, const std::string& name, std::uint64_t 
         return SessionEpochError::io_failure;
     if (::renameat(directory, temporary.c_str(), directory, name.c_str()) != 0)
         return SessionEpochError::io_failure;
-    // The new epoch exists only once its directory entry is durable.
     return sync(directory) ? SessionEpochError::none : SessionEpochError::io_failure;
 }
 
-}  // namespace
+}
 
 SessionEpochResult create_session_epoch_file(const std::filesystem::path& file) noexcept {
     try {
@@ -157,4 +154,4 @@ SessionEpochResult advance_session_epoch_file(const std::filesystem::path& file)
     }
 }
 
-}  // namespace velocita::v2
+}

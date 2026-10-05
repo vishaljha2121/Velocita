@@ -13,4 +13,4 @@ bool seed_election_jitter() noexcept {
     return true;
 }
 
-}  // namespace velocita::v2
+}

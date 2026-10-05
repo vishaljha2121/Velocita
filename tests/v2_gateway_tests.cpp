@@ -44,7 +44,6 @@ Digest256 digest(const std::uint8_t marker) {
     return value;
 }
 
-// Assert the transport stayed empty: a refusal code alone cannot prove no send occurred.
 class RecordingTransport final {
 public:
     void send(const OrderEffect& effect) {
@@ -213,10 +212,6 @@ Fixture authorized_submit() {
     return {state, submit.effect_id(), submit.cluster_order_id()};
 }
 
-// The same fixture carried one step further: a cancel is authorized while the
-// submit is still pending. The emergency-lane tests
-// need a RISK-REDUCING effect, and a cancel is the only operation that is one by
-// its identity alone.
 Fixture authorized_cancel() {
     auto fixture = authorized_submit();
     ApplyScratch scratch;
@@ -335,8 +330,6 @@ void test_public_gateway_paths_reject_oversized_counts() {
     }
 }
 
-// A control view confirmed against the leader AT `now`, with a lease that has
-// not lapsed. Every existing test wants this: it is the ordinary case.
 constexpr Tick kNow = 1000;
 constexpr Tick kLeaseBound = 50;
 
@@ -398,7 +391,6 @@ void test_a_permitted_effect_is_sent_with_its_exact_canonical_bytes() {
     require(decision.permitted(), "a valid effect was refused before send");
     require(transport.send_count() == 1, "a permitted effect was not sent once");
 
-    // Transport bytes must equal the cluster's canonical reconstruction.
     const auto authoritative = materialize_order_effect(fixture.state, fixture.effect_id);
     require(authoritative.has_value() &&
                 encode_payload(*authoritative).bytes == transport.last(),
@@ -460,13 +452,6 @@ void test_stale_control_authority_is_never_sent() {
 }
 
 void test_an_expired_authority_lease_stops_new_risk() {
-    // G-055. Generation and kill-epoch fencing compare the gateway's cache
-    // against CLUSTER STATE, which only helps a gateway that can still read the
-    // cluster. A partitioned one keeps believing its last good answer forever,
-    // and nothing in Phase 5 bounded how long it may act on it.
-    //
-    // The lease bounds exactly that: how stale a confirmed control view may be
-    // before this gateway must assume someone else holds authority.
     const auto fixture = authorized_submit();
 
     const auto attempt = [&](const GatewayControlView& control) {
@@ -480,7 +465,6 @@ void test_an_expired_authority_lease_stops_new_risk() {
     require(attempt(fresh).first == PreSendRefusal::none,
             "a freshly confirmed control view was refused");
 
-    // Exactly at the bound is still inside it; one tick past is not.
     auto at_bound = matching_control(fixture.state);
     at_bound.now = at_bound.confirmed_at + at_bound.lease_bound;
     require(attempt(at_bound).first == PreSendRefusal::none,
@@ -495,10 +479,6 @@ void test_an_expired_authority_lease_stops_new_risk() {
 }
 
 void test_an_unconfigured_lease_is_expired_not_unlimited() {
-    // FAIL CLOSED. A default-constructed control view carries no lease, and the
-    // tempting reading of "no bound" is "no limit". For an authority check the
-    // only safe reading is the opposite: a gateway that cannot say when it last
-    // confirmed its authority does not have any.
     const auto fixture = authorized_submit();
     GatewayControlView unconfigured{fixture.state.executor_generation,
                                     fixture.state.kill_epoch,
@@ -511,7 +491,6 @@ void test_an_unconfigured_lease_is_expired_not_unlimited() {
     require(transport.send_count() == 0,
             "an effect was sent with no authority lease at all");
 
-    // And a view claiming confirmation in the future is nonsense, not credit.
     auto from_the_future = matching_control(fixture.state);
     from_the_future.confirmed_at = from_the_future.now + 1;
     RecordingTransport other;
@@ -522,14 +501,8 @@ void test_an_unconfigured_lease_is_expired_not_unlimited() {
 }
 
 void test_a_cancel_survives_what_stops_new_risk() {
-    // G-056 and G-058. The emergency lane exists because the moment you most
-    // need to cancel is the moment the normal lane is exhausted or the lease has
-    // lapsed - a partition is exactly when both happen at once. A cancel path
-    // that shares the normal lane's budget, or that the lease stops, is not an
-    // independent kill path.
     const auto fixture = authorized_cancel();
 
-    // Normal lane empty, emergency lane has room.
     RecordingTransport starved;
     require(deliver(fixture.state, fixture.effect_id, matching_control(fixture.state),
                     capable_venue(), SendQuotaView{0, 1}, starved)
@@ -537,7 +510,6 @@ void test_a_cancel_survives_what_stops_new_risk() {
             "a cancel was refused while emergency capacity remained");
     require(starved.send_count() == 1, "the cancel did not reach the transport");
 
-    // Lease lapsed. New risk is stopped; reducing risk is not.
     auto lapsed = matching_control(fixture.state);
     lapsed.now = lapsed.confirmed_at + lapsed.lease_bound + 1;
     RecordingTransport after_lapse;
@@ -546,7 +518,6 @@ void test_a_cancel_survives_what_stops_new_risk() {
                     .permitted(),
             "a lapsed lease stopped a cancel, trapping risk it cannot reduce");
 
-    // Both lanes empty is still a refusal - the lane is reserved, not infinite.
     RecordingTransport exhausted;
     require(deliver(fixture.state, fixture.effect_id, matching_control(fixture.state),
                     capable_venue(), SendQuotaView{0, 0}, exhausted)
@@ -555,9 +526,6 @@ void test_a_cancel_survives_what_stops_new_risk() {
 }
 
 void test_the_emergency_lane_cannot_carry_new_risk() {
-    // G-057. The lane may only reduce risk, so admission is decided by the
-    // OPERATION'S IDENTITY and not by arithmetic on its fields. A submit drawing
-    // on emergency capacity would be the whole guarantee inverted.
     const auto fixture = authorized_submit();
     RecordingTransport transport;
     const auto decision = deliver(fixture.state, fixture.effect_id,
@@ -584,15 +552,12 @@ void test_boolean_authority_cannot_renew() {
             "local leader boolean still minted a fresh authority lease");
     require(control == original, "boolean reading mutated gateway authority");
 
-    // A follower's or deposed leader's copy renews nothing, and - the part that
-    // matters - leaves the previous confirmation time exactly where it was.
     const auto before = control;
     require(!renew_authority(control, follower, kNow + 11),
             "a non-authoritative read reported a renewal");
     require(control.confirmed_at == before.confirmed_at,
             "a non-authoritative read extended the lease");
 
-    // Time running backwards is not evidence of freshness.
     require(!renew_authority(control, authoritative, kNow + 9),
             "a backwards tick renewed the lease");
     require(control.confirmed_at == before.confirmed_at,
@@ -623,7 +588,6 @@ void test_candidate_cache_age_filter_is_not_send_authority() {
 
     const Tick last_contact = kNow + 100;
     require(!renew_authority(control, reading, last_contact), "boolean renewal was accepted");
-    // Synthetic cache-age fixture only. Final dispatch requires a separate proof.
     control.confirmed_at = last_contact;
 
     const auto sends_at = [&](const Tick when) {
@@ -641,8 +605,6 @@ void test_candidate_cache_age_filter_is_not_send_authority() {
     require(!sends_at(last_contact + kLeaseBound + 1),
             "the gateway kept sending past its lease with no authoritative read");
 
-    // And no amount of further time brings it back on its own - only a renewal
-    // does, which is what makes the stop safe rather than a pause.
     require(!sends_at(last_contact + kLeaseBound * 100),
             "a lapsed gateway resumed sending without renewing");
 }
@@ -683,17 +645,6 @@ void test_exhausted_quota_defers_rather_than_sending() {
 }
 
 void test_the_gateway_can_send_nothing_the_cluster_did_not_author() {
-    // G-060, under the reading accepted in ADR 0007: the guarantee is that no
-    // emergency action reaches a venue except through a committed command.
-    // There is no side door - not a gateway acting on its own initiative, not a
-    // stale identity resurrected from somewhere else.
-    //
-    // Stated as a PROPERTY rather than as a sample. The existing unknown-effect
-    // test checks one fabricated id, which is evidence about that id. What the
-    // guarantee needs is the implication in general: if the guard permits an
-    // effect, that effect is in the committed outbox. Sweeping the identity
-    // space is the difference between "999999 was refused" and "nothing outside
-    // the outbox is permitted".
     const auto fixture = authorized_submit();
 
     const auto in_outbox = [](const TradingState& state, const EffectId id) {
@@ -714,10 +665,6 @@ void test_the_gateway_can_send_nothing_the_cluster_did_not_author() {
                 "the pre-send guard permitted EffectId " +
                     std::to_string(id.value()) +
                     ", which the cluster never authored");
-        // And the bytes it hands over are the cluster's own reconstruction, not
-        // something the gateway assembled. Identity alone is not enough: an
-        // effect that exists but whose payload the gateway chose would still be
-        // an action the cluster did not author.
         const auto authoritative = materialize_order_effect(fixture.state, id);
         require(authoritative.has_value() &&
                     encode_payload(*decision.effect).bytes ==
@@ -728,8 +675,6 @@ void test_the_gateway_can_send_nothing_the_cluster_did_not_author() {
     for (std::uint64_t candidate = 0; candidate < 4'096; ++candidate) {
         probe(EffectId{candidate});
     }
-    // Neighbours of the real identity, because an off-by-one in a lookup is how
-    // a plausible-but-unauthored id would actually arise.
     const auto real = fixture.effect_id.value();
     for (std::uint64_t delta = 1; delta <= 64; ++delta) {
         probe(EffectId{real + delta});
@@ -737,19 +682,6 @@ void test_the_gateway_can_send_nothing_the_cluster_did_not_author() {
     }
     probe(fixture.effect_id);
 
-    // AND EVERY OTHER IDENTITY THE STATE ACTUALLY HOLDS. A sweep over an
-    // arbitrary numeric range is weaker than it looks: the ids a wrong lookup
-    // would really return are not random numbers, they are the OTHER ids
-    // sitting in the same records.
-    //
-    // WHAT TRYING TO BREAK THIS TAUGHT US, recorded because it is the real
-    // reason the guarantee holds. Keying BOTH the guard's scan and
-    // `materialize_order_effect` on `cluster_order_id` - so the two agree with
-    // each other, which is what makes a lookup bug dangerous - changes nothing:
-    // the canonical payload digest BINDS THE EFFECT ID, so an id that is not
-    // the record's own cannot reconstruct and is refused as
-    // `payload_unreconstructable`. The lookup key is not the defence. The
-    // defence is that the bytes only exist for the identity that authored them.
     for (std::size_t i = 0; i < fixture.state.outbox_effect_count; ++i) {
         const auto& effect = fixture.state.outbox_effects[i];
         probe(EffectId{effect.cluster_order_id.value()});
@@ -769,9 +701,6 @@ void test_the_gateway_can_send_nothing_the_cluster_did_not_author() {
                 " effects rather than the single authored one, so it either "
                 "proved nothing or found a second door");
 
-    // AND EMPTYING THE OUTBOX EMPTIES THE GATEWAY. If the cluster holds no
-    // authored effect, there is nothing to send - the gateway has no reserve of
-    // its own to fall back on.
     auto emptied = fixture.state;
     emptied.outbox_effect_count = 0;
     for (std::uint64_t candidate = 0; candidate < 1'024; ++candidate) {
@@ -789,24 +718,9 @@ void test_the_gateway_can_send_nothing_the_cluster_did_not_author() {
 }
 
 void test_a_late_send_against_a_closed_order_is_fenced_not_retained() {
-    // G-057a, and it discharges a forward reference Phase 4 left open on
-    // purpose. Orphan settlement (architecture 8.2) marks an effect `incomplete`
-    // when its order resolved before that effect ever received evidence - the
-    // alternative being a group that can never be reclaimed, which wedges the
-    // bounded arenas. `settle_orphaned_effects` says so in as many words: a late
-    // gateway send against a closed order "is answered by executor-generation
-    // and kill-epoch fencing plus stable EffectId idempotency in Phase 8, not by
-    // retaining these bytes forever."
-    //
-    // This is that answer, stated as three separate claims, because the
-    // guarantee is precisely that the SECOND and THIRD are what protect us and
-    // not the first.
     auto fixture = authorized_submit();
     const auto effect_id = fixture.effect_id;
 
-    // CLAIM ONE: the cluster does NOT keep the bytes. Once settled, the effect
-    // is not deliverable and the guard says so - which is the availability trade
-    // Phase 4 made, not a protection.
     fixture.state.outbox_effects[0].state = OutboxState::incomplete;
     RecordingTransport settled_transport;
     const auto settled = deliver(fixture.state, effect_id,
@@ -817,10 +731,6 @@ void test_a_late_send_against_a_closed_order_is_fenced_not_retained() {
     require(settled_transport.send_count() == 0,
             "a settled-incomplete effect reached the transport");
 
-    // CLAIM TWO: FENCING is what stops a gateway that kept the bytes anyway.
-    // A stale executor generation or kill epoch is refused at the last pre-send
-    // boundary regardless of what the gateway is holding, and regardless of
-    // whether the cluster still has anything to say about that effect.
     auto advanced = fixture.state;
     advanced.outbox_effects[0].state = OutboxState::pending;
     const auto stale_control = matching_control(advanced);
@@ -846,10 +756,6 @@ void test_a_late_send_against_a_closed_order_is_fenced_not_retained() {
     require(kill_transport.send_count() == 0,
             "a late send from before the kill reached the transport");
 
-    // AND THE EFFECT'S OWN BYTES CARRY THE FENCE, which is what makes this work
-    // when the gateway is holding a payload the cluster has forgotten. An
-    // OrderEffect names the generation and kill epoch it was authorized under,
-    // so the refusal does not depend on the cluster being able to rebuild it.
     const auto authorized = materialize_order_effect(fixture.state, effect_id);
     require(authorized.has_value(), "the fixture effect could not be rebuilt");
     require(authorized->executor_generation == fixture.state.executor_generation &&
@@ -857,10 +763,6 @@ void test_a_late_send_against_a_closed_order_is_fenced_not_retained() {
             "the effect does not carry the authority it was created under, so a "
             "gateway holding it could not be fenced by its own bytes");
 
-    // CLAIM THREE: IDENTITY IS STABLE, so a duplicate is recognisable as one.
-    // The EffectId is derived, not allocated, so rebuilding the same effect
-    // yields the same identity - which is what lets a venue treat a redelivery
-    // as the same request rather than as a second order.
     const auto rebuilt = materialize_order_effect(fixture.state, effect_id);
     require(rebuilt.has_value() && rebuilt->effect_id == effect_id &&
                 encode_payload(*rebuilt).bytes == encode_payload(*authorized).bytes,
@@ -902,7 +804,6 @@ void test_a_settled_effect_is_not_deliverable() {
 }
 
 void test_gateway_local_delivery_states_are_never_read_from_the_cluster() {
-    // claimed and attempted are gateway-local; replicated occurrences must be refused.
     const auto fixture = authorized_submit();
     for (const auto local : {OutboxState::claimed, OutboxState::attempted}) {
         auto state = fixture.state;
@@ -916,7 +817,7 @@ void test_gateway_local_delivery_states_are_never_read_from_the_cluster() {
     }
 }
 
-}  // namespace
+}
 
 int main() {
     try {

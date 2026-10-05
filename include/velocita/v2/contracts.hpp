@@ -1,3 +1,4 @@
+// Core value types and validation shared by the kernel, codecs and gateway.
 #pragma once
 
 #include "velocita/v2/domain.hpp"
@@ -103,17 +104,6 @@ enum class EffectOperation : std::uint8_t {
     replace = 3,
 };
 
-// Who authored an observation's identity (architecture 10.15).
-//
-// A NATIVE observation is the venue's own event and its sequence is the venue's,
-// so `(venue, session, sequence)` is a real identity. A SYNTHETIC one is
-// authored by the gateway - a declared timeout, or an answer to a query it asked
-// - and its sequence was chosen by the shell. Deduplicating both in one domain
-// lets a gateway-chosen number collide with a venue-chosen one, and the loser is
-// real economic evidence in either direction.
-//
-// Derived from the kind rather than carried on the wire, so the two cannot
-// disagree.
 enum class ObservationOrigin : std::uint8_t {
     native = 1,
     synthetic = 2,
@@ -125,29 +115,10 @@ enum class VenueObservationKind : std::uint8_t {
     fill = 3,
     cancelled = 4,
     effect_unknown = 5,
-    // Terminal venue evidence: quantity is final cumulative filled quantity,
-    // not an incremental fill. Only accepted fills may change position.
     cancel_reconciled = 6,
-    // A reconciliation query's answer about one order (architecture 10.1.6).
-    //
-    // Like `cancel_reconciled`, quantity is FINAL CUMULATIVE filled quantity
-    // rather than an increment, and that is the whole safety argument. A query
-    // answer is a snapshot, not an event, so it has no venue sequence of its own
-    // and session-scoped identity is unsafe across exactly the reconnects
-    // reconciliation runs after. Cumulative evidence makes a repeat harmless BY
-    // VALUE - apply books the difference against what it already recorded, so a
-    // second delivery computes a delta of zero - which demotes deduplication
-    // from a correctness requirement to an optimisation.
-    //
-    // Uniquely, `venue_order_id` MAY be zero here, meaning the venue answered
-    // that it holds no such order. That answer is the point of reconciliation:
-    // it proves nothing was placed, so the reservation was never real risk and
-    // can be released. `validate` enforces that absence implies zero fill.
     order_reconciled = 7,
 };
 
-// Total by construction: every kind is named, so adding one forces a decision
-// here rather than defaulting into the venue's identity domain by omission.
 [[nodiscard]] constexpr ObservationOrigin observation_origin(
     const VenueObservationKind kind) noexcept {
     switch (kind) {
@@ -161,8 +132,6 @@ enum class VenueObservationKind : std::uint8_t {
         case VenueObservationKind::order_reconciled:
             return ObservationOrigin::synthetic;
     }
-    // An unknown kind is refused upstream by `validate`; treating it as native
-    // here keeps the strictest deduplication for anything unrecognised.
     return ObservationOrigin::native;
 }
 
@@ -344,7 +313,7 @@ template <typename Id>
     return false;
 }
 
-}  // namespace detail
+}
 
 [[nodiscard]] constexpr ContractError validate(const PolicyArtifact& policy) noexcept {
     if (!detail::present(policy.policy_id) || !detail::present(policy.policy_version) ||
@@ -470,8 +439,6 @@ template <typename Id>
             }
             return ContractError::none;
         case VenueObservationKind::order_reconciled:
-            // A snapshot, never an execution: no price, fee, or execution
-            // identity may ride along and be mistaken for one.
             if (observation.price.atoms() != 0 || observation.fee.atoms() != 0 ||
                 observation.execution_id.value() != 0) {
                 return ContractError::non_canonical_value;
@@ -479,10 +446,6 @@ template <typename Id>
             if (observation.quantity.atoms() < 0) {
                 return ContractError::non_canonical_value;
             }
-            // Absence implies nothing filled. "The venue denies this order but
-            // reports it filled" is incoherent, so it is refused at the contract
-            // boundary rather than adjudicated deeper in where the two halves
-            // would have to be reconciled against each other.
             if (!detail::present(observation.venue_order_id) &&
                 observation.quantity.atoms() != 0) {
                 return ContractError::non_canonical_value;
@@ -495,4 +458,4 @@ template <typename Id>
     return ContractError::invalid_enum;
 }
 
-}  // namespace velocita::v2
+}

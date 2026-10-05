@@ -45,15 +45,11 @@ def _require(section: dict[str, Any], key: str, where: str) -> Any:
 
 @dataclass(frozen=True, slots=True)
 class PairConfig:
-    """One candidate pair. Note what is NOT defaulted: tick size, minimum size,
-    and fees have no fallback value. A pair whose economics we have not
-    confirmed cannot be silently studied with invented parameters."""
-
     pair_id: str
     base: str
     quote: str
     venue_symbol: str
-    tick_size: str            # decimal string, exact
+    tick_size: str
     lot_size: str
     min_notional_quote: str
     maker_fee_bps: str
@@ -73,10 +69,6 @@ class PairConfig:
 
 @dataclass(frozen=True, slots=True)
 class StrategyConfig:
-    """Shadow-simulation parameters. Every default here is conservative, and the
-    reserve fraction defaults to holding back half the notional account until
-    costs are measured rather than assumed."""
-
     account_equity_quote: str = "20.00"
     reserve_fraction: str = "0.50"
     quote_sizes_quote: tuple[str, ...] = ("1", "2", "5", "10")
@@ -91,7 +83,6 @@ class StrategyConfig:
     markout_horizons_ms: tuple[int, ...] = (100, 1_000, 5_000, 30_000, 60_000, 300_000)
     queue_assumptions: tuple[str, ...] = ("optimistic", "base", "conservative")
 
-    # Research capital floors. These bound the study, not a live account.
     daily_drawdown_limit_quote: str = "0.50"
     total_drawdown_limit_quote: str = "1.00"
     equity_floor_quote: str = "19.00"
@@ -140,7 +131,6 @@ class Config:
 
     @property
     def digest(self) -> bytes:
-        """Content hash of the resolved config, stable across key ordering."""
         return sha256_digest(json.dumps(self.raw, sort_keys=True, separators=(",", ":")).encode())
 
     @property
@@ -166,7 +156,6 @@ def load_config(path: Path | str) -> Config:
     except tomllib.TOMLDecodeError as exc:
         raise ConfigError(f"config {path} is not valid TOML: {exc}") from exc
 
-    # Fail closed before anything else inspects the file.
     assert_config_is_passive(_walk_keys(raw))
 
     source_raw = _require(raw, "source", "config")

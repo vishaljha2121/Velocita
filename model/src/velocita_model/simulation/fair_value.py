@@ -68,7 +68,6 @@ def estimate_fair_value(
     book_age_ns: int = 0,
     max_book_age_ns: int = 2_000_000_000,
 ) -> FairValue:
-    """Blend available components, withholding anything that fails its gate."""
     components: list[Component] = []
 
     if book_age_ns > max_book_age_ns:
@@ -80,8 +79,6 @@ def estimate_fair_value(
     if not book.is_two_sided:
         return FairValue(None, (Component("book", None, Decimal(0), "book is one-sided"),), reason="incomplete_book")
     if book.is_crossed:
-        # A crossed book is not a tight book. Quoting against one means quoting
-        # against a feed that is wrong, which is the fastest way to be picked off.
         return FairValue(None, (Component("book", None, Decimal(0), "book is crossed"),), reason="crossed_book")
 
     mid = mid_price(book)
@@ -98,9 +95,6 @@ def estimate_fair_value(
     elif mid is not None and mid > 0:
         divergence_bps = abs(reference_price - mid) / mid * Decimal(10_000)
         if divergence_bps > max_reference_divergence_bps:
-            # Large divergence means one of the two feeds is wrong and we do not
-            # know which. Averaging them would produce a number that is wrong in
-            # a new way; withholding preserves the disagreement as a signal.
             components.append(
                 Component(
                     "reference",

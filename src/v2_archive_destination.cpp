@@ -16,7 +16,7 @@ Digest256 identity_digest(const VerifiedStaticIdentity& identity) noexcept {
     return sha256_digest(std::span{bytes}.first(encoded.bytes_written));
 }
 
-} // namespace
+}
 
 ArchiveDestinationEvidence::ArchiveDestinationEvidence(
     ArchiveDestinationEvidence&& other) noexcept
@@ -133,4 +133,4 @@ ArchiveDestinationResult ArchiveDestinationVerifier::verify_existing(
     }
 }
 
-} // namespace velocita::v2
+}

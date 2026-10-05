@@ -1,4 +1,3 @@
-// Historical _red filename retained; now the permanent result-admission suite.
 #define main replication_fixture_suite_main
 #include "v2_replication_tests.cpp"
 #undef main
@@ -137,7 +136,6 @@ void oversized_recovery_refuses(const std::filesystem::path& root) {
     { auto owner = identity_test::bootstrap(root, 2, {1, 2, 3}); }
     auto metadata = identity_test::metadata_store(root);
     metadata.save({1, -1, 0});
-    // Valid prior unbounded history; do not depend on future bounded admission to create it.
     identity_test::RawWalFixture wal(root);
     for (std::uint64_t i = 1; i <= 961; ++i)
         wal.append({i, 1, static_cast<std::int32_t>(i), RAFT_LOGTYPE_NORMAL,
@@ -181,8 +179,6 @@ void matching_retention_and_markers(const std::filesystem::path& root) {
         fill_follower(node, 959, true);
         velocita::AppendEntries batch{1, 944, 1, 960, {}};
         for (int i = 945; i <= 960; ++i) {
-            // Same index/term matches the retained entry in the pinned Raft
-            // library; a retransmission must not overwrite its original binding.
             const auto sequence = i < 960 ? 2000 + i : i;
             batch.entries.push_back({1, i, RAFT_LOGTYPE_NORMAL,
                 encoded(ordinary_result_command(static_cast<std::uint64_t>(sequence)))});
@@ -242,7 +238,7 @@ void partial_batch_refusal(const std::filesystem::path& root) {
             "batch capacity refusal did not process control-only header");
 }
 #endif
-} // namespace
+}
 
 #ifndef VELOCITA_RESULT_ADMISSION_FIXTURES_ONLY
 int main() {

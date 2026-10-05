@@ -23,8 +23,6 @@
 namespace identity_test {
 using namespace velocita::v2;
 
-// Test driver only: production compact() is a nonblocking owner pump. Joining
-// afterward restores the fixture's explicitly synchronous WAL-driving mode.
 inline std::uint64_t complete_compaction(ReplicatedKernel& node) {
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
     while (std::chrono::steady_clock::now() < deadline) {
@@ -65,7 +63,6 @@ inline VerifiedStaticIdentity verified_identity(const StaticIdentity& value) {
     return verified;
 }
 
-// Test-only dynamic adapter. Production egress consumes owned bounded frame bytes.
 template <typename Sender>
 inline std::optional<velocita::PeerMessage> take_outbound_message(Sender& sender) {
     std::array<std::byte, kMaxBoundPeerBytes> bytes{};
@@ -84,8 +81,6 @@ inline std::optional<velocita::PeerMessage> take_outbound_message(Sender& sender
     return message;
 }
 
-// Fixture readers explicitly recover the stored local binding; they do not
-// relabel an artifact with the identity of the target under test.
 inline VerifiedStaticIdentity stored_identity(const std::filesystem::path& path) {
     std::ifstream input(path / kStaticIdentityFileName, std::ios::binary);
     std::array<std::byte, kMaxStaticIdentityBytes + 1> bytes{};
@@ -127,7 +122,6 @@ inline std::vector<velocita::WalRecord> read_wal(const std::filesystem::path& pa
     return WalSegment::read_existing_records(runtime_directory(path), stored_identity(path));
 }
 
-// Deliberately accepts malformed inner commands for admission-negative tests.
 inline std::vector<std::byte> raw_record(const velocita::WalRecord& record,
                                         const VerifiedStaticIdentity& identity) {
     std::vector<std::byte> payload(24 + record.payload.size());
@@ -145,8 +139,6 @@ inline std::vector<std::byte> raw_record(const velocita::WalRecord& record,
     return bytes;
 }
 
-// Corruption fixtures bypass the semantic encoder only to plant bytes which
-// must be refused by recovery. This is never a production store API.
 class RawWalFixture {
 public:
     explicit RawWalFixture(std::filesystem::path path)
@@ -164,8 +156,6 @@ private:
     std::uint64_t sequence_{};
 };
 
-// Uses the generic frame encoder intentionally: malformed canonical peer bodies
-// must still reach the public byte-boundary decoder in negative fixtures.
 inline std::vector<std::byte> frame_peer_body(
     const velocita::PeerMessage& raw, const VerifiedStaticIdentity& sender_identity) {
     const auto body = encode_bound_peer_body(raw);
@@ -189,8 +179,6 @@ inline void deliver_peer(Receiver& receiver, const velocita::PeerMessage& raw,
     }
 }
 
-// Crafted-message fixtures use a manifest-compatible identity for the declared
-// sender; this is lineage plumbing, not transport authentication.
 inline VerifiedStaticIdentity declared_sender_identity(
     const velocita::PeerMessage& raw, std::vector<std::int32_t> receiver_members,
     const VerifiedExecutionCatalog& catalog = catalog_test::standard_catalog(),
@@ -210,9 +198,6 @@ inline void deliver_declared_peer(Receiver& receiver, const velocita::PeerMessag
     deliver_peer(receiver, raw, declared_sender_identity(raw, receiver.static_identity()));
 }
 
-// With pre-vote an expired election timer only asks; it raises no term. Grant
-// the pre-vote from `peer` so the node campaigns for real, which is where its
-// term and self-vote reach hard state. Other outbound messages are discarded.
 template <typename Node>
 inline void grant_prevote(Node& node, const std::int32_t peer) {
     while (auto message = take_outbound_message(node)) {
@@ -247,8 +232,6 @@ inline VerifiedIdentityStartup recover(const std::filesystem::path& path, std::i
     return VerifiedIdentityStartup::recover(path, identity(id, std::move(members), catalog, lineage_tag), catalog);
 }
 
-// Corruption fixtures must publish identity before deliberately planting history.
-// This is not adoption of existing bytes and never selects bootstrap implicitly.
 inline void provision(const std::filesystem::path& path, std::int32_t id,
     std::vector<std::int32_t> members,
     const VerifiedExecutionCatalog& catalog = catalog_test::standard_catalog(),
@@ -264,4 +247,4 @@ inline Digest256 authority_domain(std::vector<std::int32_t> members,
     const auto value = identity(id, std::move(members), catalog, lineage_tag);
     return verified_identity(value).authority_domain();
 }
-} // namespace identity_test
+}

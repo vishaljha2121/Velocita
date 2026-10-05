@@ -263,4 +263,4 @@ std::size_t ResultLedger::reserved_count() const noexcept {
            header_.ready_count;
 }
 
-} // namespace velocita::v2
+}

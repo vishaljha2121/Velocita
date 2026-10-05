@@ -127,7 +127,6 @@ bool factor_ok(const ExecutionCatalogRow &r) {
     if (r.tick_quote_micros <= 0 || r.lot_base_atoms <= 0 ||
         r.base_decimals > 18)
         return false;
-    // Positive int64 factors fit signed 128 bits; rounding is never permitted.
     __int128 scale = 1;
     for (std::uint8_t i = 0; i < r.base_decimals; ++i)
         scale *= 10;
@@ -286,7 +285,7 @@ Digest256 root_digest(std::span<const std::byte> b) {
     return sha256_digest(
         std::span<const std::byte>{p}.first(domain.size() + b.size()));
 }
-} // namespace
+}
 
 EncodeExecutionCatalogResult
 encode_execution_catalog(std::span<const ExecutionCatalogRow> rows,
@@ -372,4 +371,4 @@ VerifiedExecutionCatalog::lookup(AccountId a, VenueId v, InstrumentId i,
     }
     return nullptr;
 }
-} // namespace velocita::v2
+}

@@ -16,9 +16,9 @@ def quote(symbol, side, qty, out, before, after):
 
 class MeasuredCosts(unittest.TestCase):
     def test_all_in_cost_per_side(self) -> None:
-        rows = [quote("X", "buy", "100", "0.99", "99", "101"),   # ref 100: 100/0.99 = 101.0101 -> 101.01 bp
-                quote("X", "sell", "1", "98", "100", "100"),     # 98 for 1 at ref 100 -> 200 bp
-                quote("X", "sell", "1", "99", "100", "100")]     # -> 100 bp
+        rows = [quote("X", "buy", "100", "0.99", "99", "101"),
+                quote("X", "sell", "1", "98", "100", "100"),
+                quote("X", "sell", "1", "99", "100", "100")]
         with TemporaryDirectory() as d:
             path = f"{d}/q.json"
             json.dump(rows, open(path, "w"))

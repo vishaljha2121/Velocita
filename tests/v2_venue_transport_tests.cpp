@@ -38,8 +38,6 @@ OrderEffect submit_effect(const std::uint64_t id) {
     return effect;
 }
 
-// ADR 0009. Every path through the two-step send, with the venue's answers
-// injected so nothing here touches a network.
 struct StepScript {
     StepOutcome prepare{StepOutcome::succeeded};
     StepOutcome sign{StepOutcome::succeeded};
@@ -106,18 +104,6 @@ void test_nothing_happens_at_the_venue_before_step_one_succeeds() {
 }
 
 void test_step_one_ambiguity_is_not_step_two_ambiguity() {
-    // THE DISTINCTION THIS WHOLE FUNCTION EXISTS FOR.
-    //
-    // Both are "we do not know what the venue did". They are reported
-    // differently because an order left `initialized` CANNOT FILL - it awaits a
-    // signature that was never sent - while an ambiguous submission may be
-    // resting right now.
-    //
-    // Collapsing them either way is expensive. Reporting step one as `ambiguous`
-    // sends the gateway reconciling for an order that cannot exist. Reporting
-    // step two as `pre_send_failure` tells the gateway nothing is at the venue
-    // when something may be, and the effect would be retried into a second live
-    // order.
     StepScript first;
     first.prepare = StepOutcome::ambiguous;
     const auto first_step = resolve_two_step_send(scripted(first), submit_effect(1));
@@ -136,9 +122,6 @@ void test_step_one_ambiguity_is_not_step_two_ambiguity() {
 }
 
 void test_an_ambiguous_submission_is_never_abandoned() {
-    // Abandoning what may be a live order is worse than leaving it. Only the
-    // gateway's reconciliation can establish which it is, and it asks with the
-    // cluster's full picture rather than the adapter's partial one.
     StepScript script;
     script.submit = StepOutcome::ambiguous;
     require(resolve_two_step_send(scripted(script), submit_effect(1)) ==
@@ -149,9 +132,6 @@ void test_an_ambiguous_submission_is_never_abandoned() {
 }
 
 void test_a_failure_after_step_one_abandons_the_unsigned_order() {
-    // A signing failure or a clean refusal leaves an `initialized` order behind.
-    // It cannot fill, so the cleanup is untidiness rather than risk - but
-    // leaving it forever would litter the venue with unsigned orders.
     StepScript signing;
     signing.sign = StepOutcome::refused;
     require(resolve_two_step_send(scripted(signing), submit_effect(1)) ==
@@ -169,15 +149,6 @@ void test_a_failure_after_step_one_abandons_the_unsigned_order() {
     require(refused.abandons == 1, "a refused submission left its order behind");
 }
 
-// THE POINT OF THE WHOLE FILE. A scenario is run twice - once against the
-// simulator directly, once through the transport vtable that wraps it - and the
-// two must agree at every step.
-//
-// Without this the boundary is an assertion in a header. With it, the claim
-// "the gateway cannot tell which venue it is talking to" is checkable, and it is
-// the claim the real adapter will inherit: whatever the True Markets adapter
-// does about JWTs, rate limits and two-step DeFi signing happens BEHIND this
-// seam, and the gateway's behaviour must not change when it appears.
 struct Trace {
     std::vector<int> send_outcomes;
     std::vector<std::size_t> poll_counts;
@@ -206,8 +177,6 @@ Trace run_scenario(Send send, Poll poll, Query query, Session session) {
 }
 
 void test_the_simulator_behaves_identically_through_the_seam() {
-    // Identical seeds and policies, so any divergence is the seam and not the
-    // venue's own randomness.
     constexpr std::uint64_t kSeed = 0xC0FFEE;
     const FaultPolicy policy{};
 
@@ -250,19 +219,12 @@ void test_the_simulator_behaves_identically_through_the_seam() {
             "the seam is not transparent and no adapter behind it can be trusted "
             "to behave like the simulator the suite was written against");
 
-    // Non-vacuity: a scenario that sends nothing and sees nothing would compare
-    // equal trivially.
     require(!direct_trace.send_outcomes.empty() &&
                 direct_trace.sessions.front() != 0,
             "the scenario exercised nothing, so the comparison proves nothing");
 }
 
 void test_a_poll_never_overruns_the_caller_s_buffer() {
-    // The simulator returns a `std::vector`; the seam writes into a span the
-    // CALLER owns. That is the whole reason the signature differs rather than
-    // forwarding the vector: an adapter must not be able to decide how much
-    // memory the gateway spends, and a venue that floods us must be truncated
-    // rather than obeyed.
     SimulatedVenue venue(0xBEEF, FaultPolicy{}, VenueId{9});
     const auto transport = simulated_venue_transport(venue);
     for (std::uint64_t id = 1; id <= 8; ++id) {
@@ -285,9 +247,6 @@ void test_a_poll_never_overruns_the_caller_s_buffer() {
 }
 
 void test_an_undelivered_observation_survives_truncation() {
-    // Truncating must DEFER, never DROP. An observation the buffer had no room
-    // for is economic evidence, and a seam that silently discarded it would lose
-    // fills - the one thing the whole evidence path exists to prevent.
     SimulatedVenue venue(0xD00D, FaultPolicy{}, VenueId{9});
     const auto transport = simulated_venue_transport(venue);
     for (std::uint64_t id = 1; id <= 6; ++id) {
@@ -322,7 +281,7 @@ void test_an_undelivered_observation_survives_truncation() {
             "a single wide poll delivered");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

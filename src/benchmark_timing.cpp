@@ -23,7 +23,7 @@ std::uint64_t duration(const std::uint64_t end, const std::uint64_t begin) noexc
     return end >= begin ? end - begin : 0;
 }
 
-}  // namespace
+}
 
 std::uint64_t benchmark_monotonic_nanoseconds() noexcept {
     return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -107,4 +107,4 @@ std::optional<BenchmarkTiming> BenchmarkTraceTable::complete(
     return result;
 }
 
-}  // namespace velocita
+}

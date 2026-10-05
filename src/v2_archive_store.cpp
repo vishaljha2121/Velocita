@@ -35,8 +35,6 @@ bool sync_fd(int fd) noexcept {
   }
   return true;
 }
-// POSIX permits close(EINTR) to have already released the descriptor. Retrying
-// can close an unrelated descriptor after reuse, so close is attempted once.
 bool close_fd(int fd) noexcept { return ::close(fd) == 0; }
 struct File {
   int fd{-1};
@@ -184,7 +182,7 @@ struct EncodedCandidate {
   Digest256 terminal{};
 };
 struct WalBridgeConflict final {};
-} // namespace
+}
 
 struct ArchiveStore::State {
   int root{-1}, directory{-1};
@@ -195,7 +193,6 @@ struct ArchiveStore::State {
   std::size_t count{};
   Digest256 catalog_digest{};
   std::uint64_t logical_bytes{};
-  // Next catalog row the rotating scrub rereads (verify_incremental).
   std::size_t scrub_next{};
   std::vector<std::byte> identity_bytes;
   std::vector<std::byte> execution_bytes;
@@ -437,11 +434,6 @@ ArchiveStoreError ArchiveStore::open(const std::filesystem::path &path,
   }
 }
 
-// Everything about the archive that can be checked without reading segment
-// contents: the directory is still ours, the dependency files and the catalog
-// on disk equal what this store holds, the directory holds exactly the
-// catalog's files, and every catalogued segment is an owned regular file of the
-// catalogued length. Its cost is one stat per segment, not one read and fsync.
 ArchiveStoreError ArchiveStore::verify_layout() noexcept {
   try {
     if (!state_) return ArchiveStoreError::invalid_argument;
@@ -499,8 +491,6 @@ ArchiveStoreError ArchiveStore::verify_layout() noexcept {
   } catch (...) { return ArchiveStoreError::publication_failed; }
 }
 
-// Rereads COUNT catalogued segments starting at row FIRST (wrapping), checks
-// each against its catalog row and digests, and resyncs it.
 ArchiveStoreError ArchiveStore::verify_segments(const std::size_t first, const std::size_t count) noexcept {
   try {
     if (!state_) return ArchiveStoreError::invalid_argument;
@@ -527,18 +517,11 @@ ArchiveStoreError ArchiveStore::verify_segments(const std::size_t first, const s
   } catch (...) { return ArchiveStoreError::publication_failed; }
 }
 
-// The whole archive: layout, then every segment's bytes. Linear in the bytes
-// archived, so it runs where a voter is not serving consensus (history
-// recovery), never on the compaction path.
 ArchiveStoreError ArchiveStore::verify_current() noexcept {
   if (const auto layout = verify_layout(); layout != ArchiveStoreError::none) return layout;
   return verify_segments(0, state_->count);
 }
 
-// The compaction path's check. Its cost does not grow with the archive: the
-// layout, plus a rotating scrub that rereads kArchiveScrubSegmentsPerVerify
-// segments per call, so every segment is still reread once every
-// ceil(count / kArchiveScrubSegmentsPerVerify) calls (ADR 0014, 2026-10-03).
 ArchiveStoreError ArchiveStore::verify_incremental() noexcept {
   if (const auto layout = verify_layout(); layout != ArchiveStoreError::none) return layout;
   auto& s = *state_;
@@ -769,8 +752,6 @@ ArchiveStore::publish(const ArchivePublicationContext &c,
     s.header = header;
     s.catalog_digest = ce.catalog_digest;
     s.logical_bytes += total_bytes;
-    // Each new segment was reread and resynced above; the layout check
-    // confirms the published catalog and directory around them.
     if (const auto checked = verify_layout(); checked != ArchiveStoreError::none) {
       result.error = checked;
       return result;
@@ -1032,8 +1013,6 @@ bool ArchiveStore::consume_for_reclamation(
     return false;
   }
   const auto mode = state_->identity.value().deployment_mode;
-  // Validate the local capability under the same conditions as the laboratory
-  // path, except for the explicitly independent deployment evidence above.
   const bool local_valid =
       local.valid_ && mode == DeploymentMode::two_host_pilot &&
       local.storage_generation_ == storage &&
@@ -1148,4 +1127,4 @@ const Digest256 &ArchiveStore::catalog_digest() const noexcept {
   static const Digest256 empty{};
   return state_ ? state_->catalog_digest : empty;
 }
-} // namespace velocita::v2
+}

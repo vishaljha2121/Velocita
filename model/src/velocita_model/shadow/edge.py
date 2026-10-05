@@ -40,12 +40,12 @@ from ..research import rules
 from ..research.bars import DailyBars
 from . import volume
 
-NO_RULE = 65535  # the evaluator's "no rule matched" sentinel
-SHADOW_RECORDED = 17  # DecisionCode::shadow_recorded in include/velocita/v2/kernel.hpp (parity-tested)
-ACTION = 1  # DecisionCode::action: what a paper (authoritative) decision records (parity-tested)
-PROPOSED = 1  # ActionResolutionCode::proposed in include/velocita/v2/action_resolver.hpp (parity-tested)
-DIRECTIVES = {1: "no_action", 2: "place_limit", 3: "cancel", 4: "replace"}  # Directive, contracts.hpp (parity-tested)
-FEATURE_NAMES = ("trend", "ret1", "vol", "dev")  # rules.TREND, RET1, VOL, DEV (parity-tested)
+NO_RULE = 65535
+SHADOW_RECORDED = 17
+ACTION = 1
+PROPOSED = 1
+DIRECTIVES = {1: "no_action", 2: "place_limit", 3: "cancel", 4: "replace"}
+FEATURE_NAMES = ("trend", "ret1", "vol", "dev")
 _OPS = {PredicateOperator.less_than: "lt", PredicateOperator.less_than_or_equal: "le",
         PredicateOperator.equal: "eq", PredicateOperator.greater_than_or_equal: "ge",
         PredicateOperator.greater_than: "gt"}
@@ -127,7 +127,7 @@ class Tick:
     features: list[int]
     evidence: str
     expected_rule: int | None
-    exits_only: bool = False  # the paper book's buy stop; the token is sent only while it is on
+    exits_only: bool = False
 
     def line(self) -> str:
         return (f"TICK id={self.tick_id} event_ns={self.event_ns} receive_ns={self.receive_ns} age_ns={self.age_ns} "
@@ -140,8 +140,6 @@ class FeatureSource:
                  symbol: str = "BTC|USD", min_interval_ns: int = 0, params: volume.Params | None = None,
                  window: volume.MinuteWindow | None = None, price_source: str = "reference",
                  price_chain: str | None = None) -> None:
-        # "reference": a reference_prices mid (BTC, ETH). "candles": the 30 s candle
-        # close of PRICE_CHAIN (SOL has no reference row; the feed also lists a perp).
         if price_source not in ("reference", "candles"):
             raise ValueError(f"unknown price source {price_source!r}")
         if price_source == "candles" and not price_chain:
@@ -153,20 +151,16 @@ class FeatureSource:
         spec = volume.STRATEGIES.get(strategy)
         self.extra = spec.feature if spec else None
         self.params = volume.resolved(strategy, params or volume.Params()) if spec else None
-        # The minute window outlives a day's FeatureSource: the caller passes the same one in.
         if window is None and self.extra == "mdev":
             window = volume.MinuteWindow(self.params.window_min)
         self.window = window
         self.closes = list(closes)
         self.usd_per_tick = usd_per_tick
         self.symbol = symbol
-        self.last_event_ns = -1  # newest observation forwarded
-        # Each forwarded tick costs two Raft log entries. Compaction reclaims
-        # them, but every compaction pauses the voters and adds an archive
-        # segment, so the forwarding rate is still a budget.
+        self.last_event_ns = -1
         self.min_interval_ns = min_interval_ns
         self.last_forward_ns: int | None = None
-        self.last_outcome = ""  # what the last message was: tick, resend, other or no_history
+        self.last_outcome = ""
 
     def tick(self, raw: str, *, receive_ns: int, tick_id: int) -> Tick | None:
         self.last_outcome, tick = self._classify(raw, receive_ns, tick_id)
@@ -186,7 +180,7 @@ class FeatureSource:
                 return "other", None
             try:
                 mid = Decimal(row["close"])
-                stamp = message["timestamp"]  # the message is stamped, not the candle
+                stamp = message["timestamp"]
                 if not isinstance(stamp, int) or isinstance(stamp, bool) or stamp <= 0:
                     raise ValueError("candle message without a whole-second stamp")
                 event_ns = stamp * 1_000_000_000
@@ -205,19 +199,15 @@ class FeatureSource:
             except (KeyError, ValueError, TypeError, InvalidOperation):
                 return "other", None
         if self.window is not None:
-            self.window.observe(event_ns, mid)  # every new observation, throttled or not
-        # The venue re-sends its last price every second between ~12 s refreshes:
-        # only a newer observation is a source event.
+            self.window.observe(event_ns, mid)
         if event_ns <= self.last_event_ns:
             return "resend", None
-        # Throttled prices are not marked seen: the freshest one still goes
-        # out (even as a resend) once the interval has passed.
         if self.last_forward_ns is not None and receive_ns - self.last_forward_ns < self.min_interval_ns:
             return "throttled", None
         day = datetime.fromtimestamp(event_ns // 1_000_000_000, timezone.utc).date()
         history = [(d, c) for d, c in self.closes if d < day]
         if not history or history[-1][0] != day - timedelta(days=1):
-            return "no_history", None  # stale history: refuse rather than count the wrong days
+            return "no_history", None
         dates = tuple(d for d, _ in history) + (day,)
         bars = DailyBars(dates, ("X",), (tuple(c for _, c in history) + (float(mid),),), None)
         feats = rules.features(bars, 0, len(history), self.settings)
@@ -278,7 +268,6 @@ class EdgeMetrics:
     last_features: tuple[int, ...] = ()
     feature_names: tuple[str, ...] = FEATURE_NAMES
     last_price_usd: Decimal | None = None
-    # Paper mode: the kernel's verdict on each AuthorizeDecision, by ApplyCode name.
     paper: bool = False
     authorizations: dict[str, int] = field(default_factory=dict)
     resyncs: int = 0
@@ -290,8 +279,6 @@ class EdgeMetrics:
     submitter_errors: dict[tuple[str, str], int] = field(default_factory=dict)
 
     def observe_submitter_error(self, line: str) -> None:
-        """Any reply that is not a DECISION. Labels are bounded: the submitter's
-        reason vocabulary (else `other`) and an ApplyCode-sized number (else `none`)."""
         self.errors += 1
         fields = dict(part.split("=", 1) for part in line.split()[1:] if "=" in part)
         reason, code = fields.get("reason", ""), fields.get("code", "")
@@ -335,7 +322,7 @@ class EdgeMetrics:
         if "authorization" in d:
             self.paper = True
             self.risk_version, self.position_version = int(d["risk_version"]), int(d["position_version"])
-            if d["authorization"] not in ("none", "withheld"):  # withheld: never sent (paper book counts it)
+            if d["authorization"] not in ("none", "withheld"):
                 name = str(d["authorization"])
                 self.authorizations[name] = self.authorizations.get(name, 0) + 1
             if int(d.get("resync", 0)):
@@ -404,7 +391,6 @@ class EdgeMetrics:
 
 
 def _read_line(process: subprocess.Popen, timeout_s: float) -> str | None:
-    """One line from the submitter, or None at end of output or after TIMEOUT_S."""
     ready, _, _ = select.select([process.stdout], [], [], timeout_s)
     if not ready:
         return None
@@ -413,16 +399,10 @@ def _read_line(process: subprocess.Popen, timeout_s: float) -> str | None:
 
 
 BACKOFF_CAP_S = 60.0
-# What a market-data connection can fail with. WebSocketRefused (a topic or
-# endpoint outside the read-only contract) is a configuration error and is not
-# here: retrying cannot fix it.
 MARKET_DATA_ERRORS = (ProtocolError, OSError, UnicodeDecodeError)
 
 
 def backoff_delay(failures: int, jitter: Callable[[], float] = random.random) -> float:
-    """Seconds to wait after FAILURES (>= 1) consecutive failures: 1, 2, 4 ... s
-    capped at BACKOFF_CAP_S, jittered into the step's upper half so restarts
-    spread out but never retry at once."""
     step = min(BACKOFF_CAP_S, 2.0 ** min(failures - 1, 16))
     return step * (0.5 + 0.5 * jitter())
 
@@ -450,11 +430,6 @@ def run_once(socket_factory: Callable[[], object], submitter_argv: Sequence[str]
              topics: Iterable[str] = ("reference_prices",), ledger=None, paper_book=None,
              reconnect: Callable[[], bool] | None = None, sleep: Callable[[float], None] | None = None,
              jitter: Callable[[], float] = random.random) -> RunResult:
-    """One submitter process, until it ends or market data does. A market-data
-    failure never raises: while RECONNECT() holds, the connection is reopened
-    after `backoff_delay` with the same submitter; without RECONNECT, or once it
-    is false, the run ends. PAPER_BOOK (paper mode only) books the
-    kernel-confirmed fills and sets the TICK line's buy stop."""
     metrics = metrics or EdgeMetrics(shadow_recorded_code)
     metrics.feature_names = source.feature_names
     sleep = sleep or time.sleep
@@ -474,8 +449,6 @@ def run_once(socket_factory: Callable[[], object], submitter_argv: Sequence[str]
             publish(rendered(), textfile)
 
     def forward(raw: str) -> str | None:
-        """One market-data message through the submitter: why the submitter
-        ended, or None while it still answers."""
         nonlocal next_id, last_price
         receive_ns = clock_ns()
         next_id += 1
@@ -502,8 +475,6 @@ def run_once(socket_factory: Callable[[], object], submitter_argv: Sequence[str]
             metrics.observe(decision, tick_receive_ns=tick.receive_ns,
                             expected_rule=tick.expected_rule, age_ns=tick.age_ns)
             result.decisions += 1
-            # The book moves only on what the cluster recorded AND sized:
-            # a stale or refused decision would not have been an order.
             rule = int(decision["rule"])
             last_price = Decimal(tick.features[-1]) * source.usd_per_tick
             if (ledger is not None and int(decision["decision_code"]) == recorded_code
@@ -531,7 +502,6 @@ def run_once(socket_factory: Callable[[], object], submitter_argv: Sequence[str]
             result.reason = f"submitter not ready: {ready!r}"
             return result
         metrics.submitter_ready = 1
-        # A paper submitter records `action` decisions; the book follows those instead.
         paper = " mode=paper" in f" {ready}"
         recorded_code = ACTION if paper else shadow_recorded_code
         metrics.paper = metrics.paper or paper
@@ -564,7 +534,7 @@ def run_once(socket_factory: Callable[[], object], submitter_argv: Sequence[str]
                         pass
             again = reconnect is not None and reconnect()
             kind = market_data_error_kind(error) if error is not None else "closed"
-            if error is not None or again:  # a clean end with no reconnect is the day ending
+            if error is not None or again:
                 metrics.market_data_errors[kind] = metrics.market_data_errors.get(kind, 0) + 1
                 what = f"{type(error).__name__}: {error}" if error is not None else "the server closed the stream"
                 print(f"edge: market data {kind}: {what}", file=sys.stderr, flush=True)
@@ -582,7 +552,7 @@ def run_once(socket_factory: Callable[[], object], submitter_argv: Sequence[str]
                 if stream:
                     stream.close()
             except OSError:
-                pass  # a broken pipe still holding an unsent tick
+                pass
         try:
             process.wait(timeout=30)
         except subprocess.TimeoutExpired:

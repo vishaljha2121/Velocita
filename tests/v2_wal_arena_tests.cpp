@@ -99,7 +99,6 @@ void test_independent_bound_wal_golden_and_block_version() {
     VerifiedStaticIdentity identity;
     require(VerifiedStaticIdentity::decode(identity_bytes, identity) == StaticIdentityCodecError::none,
             "golden WAL identity failed");
-    // Independently calculated with Python struct/hashlib/zlib, not this codec.
     const auto golden = hex(
         "5632424601000200d40000007c0000003ce5d6e3e9a886ab694852a129348bbe9413c2b55077a84804efa3cd645cc3e0"
         "1100000000000000070000000000000003000000000000000700000000000000"
@@ -112,7 +111,6 @@ void test_independent_bound_wal_golden_and_block_version() {
     require(decoded.index == 7 && decoded.term == 3 && decoded.entry_id == 7 &&
             decoded.entry_type == 0 && decoded.payload == command_payload(1), "golden WAL fields changed");
     const auto block = frame_block(1, 1, golden);
-    // tools/v2_schema_goldens.py "WAL block crc".
     require(block[4] == std::byte{2} && block[28] == std::byte{0x04} &&
             block[29] == std::byte{0x19} && block[30] == std::byte{0x12} && block[31] == std::byte{0x1d},
             "block-v2 version/independent CRC changed");
@@ -150,10 +148,6 @@ void test_complete_corruption_is_not_an_empty_segment(const std::filesystem::pat
             "corrupt block refusal changed diagnostic evidence");
 }
 
-// Stand-in for the writer: takes the next sealed block, frames it, and reports
-// completion. Split into two calls so a test can interleave anything it likes
-// between the disk write and the release - which is where the interesting
-// failures live.
 struct Writer {
     WalBlockArena* arena;
     std::vector<std::vector<std::byte>> written;
@@ -179,15 +173,11 @@ struct Writer {
 
 void test_a_record_never_straddles_a_block() {
     WalBlockArena arena;
-    // Two records that cannot share a block: the second would overrun.
     const auto big = record(kWalBlockPayloadBytes - 16, 0x11);
     const auto also_big = record(64, 0x22);
     require(arena.stage(big, 1) == StageOutcome::staged, "first record refused");
     require(arena.stage(also_big, 2) == StageOutcome::staged, "second record refused");
 
-    // The first block was sealed SHORT rather than filled to the brim, because
-    // the alternative is splitting a record across a boundary where a torn write
-    // makes half of it indistinguishable from a whole short one.
     require(arena.sealed_count() == 1,
             "the arena did not seal the first block before starting a second");
 
@@ -224,8 +214,6 @@ void test_block_and_generation_transitions() {
     require(writer.flush_one(), "flush failed");
     require(arena.state_of(0) == BlockState::durable, "completion did not release");
 
-    // Reuse must mint a NEW generation, or a completion from the previous use
-    // could not be told apart from this one's.
     for (std::size_t i = 0; i < kWalArenaBlocks; ++i) {
         require(arena.stage(record(kWalBlockPayloadBytes, 0x55),
                             static_cast<std::uint64_t>(10 + i)) ==
@@ -247,7 +235,6 @@ void test_a_stale_completion_cannot_release_a_reused_slot() {
     writer.write(*first);
     require(writer.release(*first), "the first release failed");
 
-    // The slot is recycled and now holds a different record.
     require(arena.stage(record(256, 0x77), 2) == StageOutcome::staged, "stage failed");
     arena.seal_open_block();
     const auto second = arena.next_sealed();
@@ -255,9 +242,6 @@ void test_a_stale_completion_cannot_release_a_reused_slot() {
     require(second->slot == first->slot, "the fixture did not reuse the slot");
     require(second->generation != first->generation, "the slot kept its generation");
 
-    // THE HAZARD. A completion for the previous use arrives late. Honouring it
-    // would mark the NEW record durable on the strength of a flush that never
-    // covered it.
     require(!arena.complete(*first),
             "a stale completion released a recycled slot");
     require(arena.durable_index() == 1,
@@ -278,17 +262,12 @@ void test_the_durable_index_advances_only_on_completion_and_only_in_order() {
     arena.seal_open_block();
     require(arena.sealed_count() == 2, "the fixture did not seal two blocks");
 
-    // Staged is not durable. This is the whole distinction the phase exists to
-    // introduce, so it is asserted rather than assumed.
     require(arena.durable_index() == 0, "staging alone advanced the durable index");
 
     Writer writer{&arena, {}};
     const auto first = arena.next_sealed();
     require(first.has_value() && first->highest_record_index == 5, "wrong order");
 
-    // Completing the SECOND block first must be refused. Accepting it would let
-    // the durable index cover record 9 while record 5 is still only staged - a
-    // gap the index would then be claiming to have crossed.
     auto out_of_order = *first;
     out_of_order.slot = (first->slot + 1) % kWalArenaBlocks;
     out_of_order.generation = arena.generation_of(out_of_order.slot);
@@ -305,8 +284,6 @@ void test_the_durable_index_advances_only_on_completion_and_only_in_order() {
 
 void test_a_stalled_writer_causes_bounded_refusal_not_overwrite() {
     WalBlockArena arena;
-    // Fill every block without ever completing one, which is exactly what a
-    // stalled or failing writer looks like from here.
     std::uint64_t index = 0;
     for (std::size_t i = 0; i < kWalArenaBlocks; ++i) {
         require(arena.stage(record(kWalBlockPayloadBytes, 0xAA), ++index) ==
@@ -316,15 +293,10 @@ void test_a_stalled_writer_causes_bounded_refusal_not_overwrite() {
     arena.seal_open_block();
     require(arena.free_blocks() == 0, "the arena did not actually fill");
 
-    // REFUSAL, not overwrite. Overwriting would discard bytes that are not yet
-    // durable, and the entry they belong to may already have been counted toward
-    // a quorum.
     require(arena.stage(record(64, 0xBB), ++index) == StageOutcome::backpressure,
             "a full arena accepted another record");
     require(arena.durable_index() == 0, "a refused record advanced durability");
 
-    // And it recovers. Backpressure that never lifted would be a deadlock with a
-    // safety argument attached.
     Writer writer{&arena, {}};
     require(writer.flush_one(), "flush failed");
     require(arena.stage(record(64, 0xCC), ++index) == StageOutcome::staged,
@@ -355,9 +327,6 @@ void test_a_torn_or_corrupt_block_is_detected_not_guessed() {
     require(!decode_block(header_damaged).has_value(),
             "a block with a damaged magic still decoded");
 
-    // Padding is outside the checksum by design, so scribbling it must NOT
-    // invalidate the block - a block's validity cannot depend on bytes nothing
-    // wrote.
     auto padded = good;
     padded[kWalBlockBytes - 1] ^= std::byte{0xFF};
     require(decode_block(padded).has_value(),
@@ -377,17 +346,6 @@ void test_framing_round_trips_exactly() {
 
 void test_the_durable_index_does_not_advance_before_the_sync(
     const std::filesystem::path& root) {
-    // The narrowest window in the whole durability path, and the one that was
-    // wrong. `flush` writes blocks, syncs, and releases them; the release is
-    // what raises the durable index, and the durable index is what this node
-    // reports to Raft for its own quorum vote. Releasing before the sync means
-    // counting a vote for bytes that are in the page cache and nowhere else - a
-    // power cut in that window loses entries a majority already promised.
-    //
-    // Observed at the `before_file_sync` checkpoint rather than by crashing,
-    // because a crash cannot show it: `_exit` does not drop the page cache, so
-    // the file comes back complete either way and the bug is invisible on disk.
-    // What distinguishes correct from incorrect is the INDEX at that instant.
     std::filesystem::create_directories(root);
 
     const auto staged_record = [](const std::uint64_t index) { return bound_record(index, 1); };
@@ -413,8 +371,6 @@ void test_the_durable_index_does_not_advance_before_the_sync(
                               &seen});
 
     require(segment.flush(arena) == 1, "flush wrote nothing");
-    // Without this the assertion below would hold vacuously on any build where
-    // the checkpoint stopped firing.
     require(seen.calls == 1,
             "the pre-sync checkpoint fired " + std::to_string(seen.calls) +
                 " times, so the window was never observed");
@@ -589,13 +545,7 @@ void test_synchronous_flush_refuses_submitted_writer_work(
 
 void test_preallocated_space_does_not_read_back_as_data(
     const std::filesystem::path& root) {
-    // Preallocation extends the file well past the write frontier. That space
-    // must read as the END of the log, not as blocks - otherwise recovery would
-    // walk into reserved zeros and, at best, stop for the wrong reason.
     std::filesystem::create_directories(root);
-    // REAL records, not arbitrary bytes. The framing tests above only exercise
-    // the block layer, so they pass on any payload; this one walks the whole
-    // path back out through the record decoder and needs records that decode.
     const auto staged_record = [](const std::uint64_t index) { return bound_record(index, 1); };
 
     WalBlockArena arena;
@@ -619,9 +569,6 @@ void test_preallocated_space_does_not_read_back_as_data(
                 "read as data");
     require(records.front().index == 1, "the recovered record is not the one written");
 
-    // And appending after a reopen must continue AFTER the existing block, not
-    // overwrite it - the resume point comes from the written frontier, which is
-    // not the file size once space is reserved ahead of it.
     WalBlockArena more;
     require(more.stage(staged_record(2), 2) == StageOutcome::staged, "stage failed");
     more.seal_open_block();
@@ -676,7 +623,7 @@ void test_rewrite_crashes_preserve_one_complete_history(const std::filesystem::p
     }
 }
 
-}  // namespace
+}
 
 int main() {
     try {

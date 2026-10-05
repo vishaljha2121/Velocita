@@ -1,16 +1,5 @@
 #pragma once
 
-// Test-only True Markets stand-in and signer. Neither is linked by any
-// production target. The fake renders and parses its own text and never calls
-// the adapter's encoders or decoders, so a test cannot pass by agreeing with
-// itself.
-//
-// MOCK PAYLOAD FORMAT. The real payload is an unsigned transaction for the
-// account's custodial signer, and its inner shape was omitted from the evidence.
-// Here each payload is {"unsigned_tx":"MOCKTX1;side=S;base=B;bound=Q;handle=H",
-// "organization_id":"org-test"}: B base atoms, Q the quote-atom bound the
-// transaction would enforce (buy: maximum total debit; sell: minimum net credit).
-
 #include "velocita/v2/digest.hpp"
 #include "velocita/v2/truemarkets_venue.hpp"
 
@@ -41,7 +30,6 @@ inline std::string decimal(const std::int64_t atoms, const int decimals) {
     return text;
 }
 
-// Exact inverse of `decimal` for the fake's own parsing of requests.
 inline std::int64_t atoms_of(const std::string& text, const int decimals) {
     const auto point = text.find('.');
     std::string whole = point == std::string::npos ? text : text.substr(0, point);
@@ -65,8 +53,6 @@ inline std::string sha_hex(const std::string& text) {
     return hex(sha256_digest(std::as_bytes(std::span(text.data(), text.size()))));
 }
 
-// ---------------------------------------------------------------------------
-
 struct FakeClock {
     Tick now{0};
     static Tick read(void* self) noexcept { return static_cast<FakeClock*>(self)->now; }
@@ -77,11 +63,8 @@ enum class Script : std::uint8_t {
     normal,
     tool_error,
     rate_limited,
-    // The request never reached the venue.
     lost_request,
-    // The venue acted, the reply was lost.
     lost_reply,
-    // trade_prepare only: submitted directly, no payloads (D-26).
     direct_submission,
 };
 
@@ -89,7 +72,7 @@ enum class Settlement : std::uint8_t { filled, failed, partial, pending_forever 
 
 struct Swap {
     std::string handle;
-    std::string order_id;  // assigned at execution
+    std::string order_id;
     Side side{};
     std::int64_t base_atoms{};
     std::int64_t gross{};
@@ -99,11 +82,10 @@ struct Swap {
     Settlement settlement{Settlement::filled};
     int pending_polls{};
     std::string tx;
-    bool booked{};  // applied once to the venue's own ledger
+    bool booked{};
 };
 
 struct FakeTrueMarkets {
-    // Market: quote micros per whole base unit, and the flat fee.
     std::int64_t price_micros{119'500'000};
     std::int64_t fee_bps{100};
     int base_decimals{9};
@@ -116,9 +98,7 @@ struct FakeTrueMarkets {
     FakeClock* clock{};
     Tick latency{0};
 
-    // Scripts consumed per call kind; empty means normal.
     std::map<ApiCall, std::deque<Script>> scripts;
-    // Quote-reply tampering, applied to the next quote-shaped reply.
     std::string reply_side_override;
     std::string reply_base_override;
     std::string reply_qty_override;
@@ -128,7 +108,7 @@ struct FakeTrueMarkets {
 
     std::vector<ApiCall> calls;
     std::vector<std::string> requests;
-    std::map<std::string, Swap> swaps;  // by handle
+    std::map<std::string, Swap> swaps;
     std::vector<std::string> received_signatures;
     std::int64_t quote_balance{25'000'000};
     std::int64_t base_balance{0};
@@ -170,7 +150,6 @@ struct FakeTrueMarkets {
         if (swap.order_id.empty()) swap.order_id = "ord-" + std::to_string(++counter);
     }
 
-    // The venue's own economic truth, applied when a swap settles.
     void settle(Swap& swap, const std::int64_t base) {
         if (swap.side == Side::buy) {
             quote_balance -= swap.qty_out;
@@ -228,7 +207,6 @@ struct FakeTrueMarkets {
             if (prepare) swap.order_id = swap.handle;
             swap.side = field(request, "side") == "buy" ? Side::buy : Side::sell;
             swap.base_atoms = atoms_of(field(request, "qty"), base_decimals);
-            // Round the gross against the client, then a ceiling fee.
             const auto product = static_cast<__int128>(swap.base_atoms) * price_micros;
             const __int128 scale = [&] { __int128 s = 1; for (int i = 0; i < base_decimals; ++i) s *= 10; return s; }();
             swap.gross = static_cast<std::int64_t>(swap.side == Side::buy ? (product + scale - 1) / scale
@@ -257,7 +235,6 @@ struct FakeTrueMarkets {
             if (script == Script::lost_reply) return {ApiStatus::no_response, 0};
             return write("{\"order_id\":\"" + found->second.order_id + "\",\"status\":\"submitted\"}", response);
         }
-        // order_status: /v1/conductor/orders/{id}/status
         const std::string path(request);
         const std::string prefix = "/v1/conductor/orders/";
         const auto id = path.substr(prefix.size(), path.size() - prefix.size() - std::string("/status").size());
@@ -291,11 +268,6 @@ struct FakeTrueMarkets {
                      response);
     }
 };
-
-// ---------------------------------------------------------------------------
-// Deterministic TEST signer. Not cryptographic: the "signature" is a SHA-256
-// of a fixed label, key label and the payload. It exists to exercise the
-// inspect-then-sign contract, replay refusal and audit join.
 
 struct AuditRecord {
     std::uint64_t request_sequence{};
@@ -388,11 +360,9 @@ struct TestSigner {
         audit.push_back({intent.request_sequence, intent.effect_id, SignerVerdict::signed_ok, key_version,
                          intent.policy_version, result.signature_id,
                          sha_hex(std::string(request.payloads[0]))});
-        // A slow signer: the time passes after it decided, so only the
-        // adapter's own freshness check can notice.
         if (clock) clock->now += latency;
         return result;
     }
 };
 
-}  // namespace tm_test
+}

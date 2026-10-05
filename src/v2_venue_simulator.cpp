@@ -7,18 +7,16 @@
 namespace velocita::v2::sim {
 namespace {
 
-// Deterministic test evidence, not cryptographic venue proof.
 [[nodiscard]] Digest256 evidence_of(const std::uint64_t marker) noexcept {
     Digest256 value;
     for (std::size_t index = 0; index < 8; ++index) {
         value.bytes[index] = static_cast<std::byte>((marker >> (index * 8)) & 0xFF);
     }
-    // Validation requires non-zero evidence even for marker zero.
     value.bytes[8] = std::byte{0x01};
     return value;
 }
 
-}  // namespace
+}
 
 SimulatedVenue::SimulatedVenue(const std::uint64_t seed, const FaultPolicy policy,
                                const VenueId venue_id) noexcept
@@ -33,13 +31,11 @@ std::uint64_t SimulatedVenue::next_random() noexcept {
 }
 
 bool SimulatedVenue::roll(const std::uint16_t permille) noexcept {
-    // Consume a draw even at zero probability so toggling one fault preserves later draws.
     const auto draw = next_random() % 1000;
     return permille != 0 && draw < permille;
 }
 
 FaultSet SimulatedVenue::choose_faults(const bool for_query) noexcept {
-    // Roll every applicable class in fixed order so faults can compose reproducibly.
     FaultSet faults;
     if (for_query) {
         faults.disconnect = roll(policy_.disconnect_permille);
@@ -90,11 +86,9 @@ VenueObservation SimulatedVenue::base_observation(const VenueObservationKind kin
 
 void SimulatedVenue::schedule(VenueObservation observation, const Tick due,
                               const bool duplicate, const bool reorder) {
-    // Zero ordinal moves a response ahead of natural-order responses due at the same tick.
     const auto ordinal = reorder ? 0 : ++ordinal_;
     scheduled_.push_back({due, ordinal, observation, false});
     if (duplicate) {
-        // Duplicate canonical bytes, including sequence and evidence.
         scheduled_.push_back({due, ordinal, observation, false});
     }
 }
@@ -114,18 +108,15 @@ SendOutcome SimulatedVenue::send(const OrderEffect& effect, const Tick now) {
         auto* order = find(effect.cluster_order_id);
         if (order == nullptr) return SendOutcome::business_rejected;
         order->cancelled = true;
-        // Loss suppresses the cancellation response, not the venue-side cancellation.
         if (!faults.loss) {
             auto cancelled =
                 base_observation(VenueObservationKind::cancelled, *order);
-            // Cancellation resolves the cancel effect; the resting order retains the submit EffectId.
             cancelled.effect_id = effect.effect_id;
             schedule(cancelled, now + latency(faults), faults.duplication,
                      faults.reorder);
         }
 
         if (faults.fill_after_cancel && order->filled < order->original) {
-            // A fill already in flight can arrive after cancellation acknowledgement.
             auto fill = base_observation(VenueObservationKind::fill, *order);
             fill.execution_id = ExecutionId{++execution_counter_};
             fill.side = order->side;
@@ -155,8 +146,6 @@ SendOutcome SimulatedVenue::send(const OrderEffect& effect, const Tick now) {
 
     auto& resting = resting_.back();
     if (faults.loss) {
-        // Leave the accepted order resting. Unreported executions cannot be recovered
-        // from reconciliation totals alone, which carry no execution identities.
         return SendOutcome::accepted;
     }
 
@@ -165,7 +154,6 @@ SendOutcome SimulatedVenue::send(const OrderEffect& effect, const Tick now) {
 
     const auto total = resting.original.atoms();
     if (faults.partial_fill && total > 1) {
-        // Leave half resting so cancellation and fill-after-cancel remain reachable.
         const auto pieces = total / 2;
         for (std::int64_t index = 0; index < pieces; ++index) {
             auto fill = base_observation(VenueObservationKind::fill, resting);
@@ -215,11 +203,6 @@ std::vector<VenueObservation> SimulatedVenue::poll(const Tick now) {
 
 void SimulatedVenue::acknowledge_observation(
     const VenueObservation& observation) noexcept {
-    // By canonical fingerprint, not by (venue, session, sequence). That tuple is
-    // an identity only for native events, so acknowledging by it lets a
-    // gateway-authored observation retire a native one the cluster has not
-    // committed - evidence loss that is invisible because the queue merely gets
-    // shorter.
     const auto acknowledged = observation_fingerprint(observation);
     scheduled_.erase(
         std::remove_if(scheduled_.begin(), scheduled_.end(),
@@ -257,14 +240,12 @@ QueryResult SimulatedVenue::query(const ClusterOrderId order, const Tick) {
     result.cancelled = resting->cancelled;
 
     if (faults.inconsistent_query) {
-        // Deny already-reported fills: later evidence cannot reduce booked executions.
         result.filled_quantity = QuantityLots{};
         result.remaining_quantity = resting->original;
         result.inconsistent = true;
     }
 
     if (faults.partial_window) {
-        // Page the current answer, including any corruption, so both faults remain visible.
         const auto paged = result.filled_quantity.atoms() / 2;
         result.filled_quantity = QuantityLots::from_atoms(paged);
         result.remaining_quantity =
@@ -274,4 +255,4 @@ QueryResult SimulatedVenue::query(const ClusterOrderId order, const Tick) {
     return result;
 }
 
-}  // namespace velocita::v2::sim
+}

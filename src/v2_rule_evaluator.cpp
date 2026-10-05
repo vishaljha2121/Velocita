@@ -26,7 +26,7 @@ namespace {
     return false;
 }
 
-}  // namespace
+}
 
 RuleEvaluation evaluate_rules(const PolicyArtifact& policy,
                               const DecisionFrame& frame) noexcept {
@@ -76,4 +76,4 @@ RuleEvaluation evaluate_rules(const PolicyArtifact& policy,
             policy.rule_count};
 }
 
-}  // namespace velocita::v2
+}

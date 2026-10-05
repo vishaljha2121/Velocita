@@ -1,14 +1,3 @@
-// Crash model for the session-epoch file. The production source is compiled
-// here with its persistence syscalls redirected: only bytes and directory
-// entries that were actually fsynced survive a simulated power cut. At the cut
-// the syscall has taken effect but the process "dies": it and every later
-// persistence call fail with EIO and nothing further becomes durable. (An
-// exception would unwind through noexcept production helpers.)
-//
-// Invariant: an epoch returned to a caller is NEVER returned again after a
-// crash at any later point. Reissuing one would let an old process incarnation
-// pass the receiver's replay fence.
-
 #include <cerrno>
 #include <cstdint>
 #include <filesystem>
@@ -26,12 +15,11 @@ void require(bool ok, const std::string& why) { if (!ok) throw std::runtime_erro
 
 struct Model {
     std::filesystem::path directory;
-    std::map<std::string, ino_t> names;            // durable directory entries
-    std::map<ino_t, std::vector<char>> contents;   // durable file bytes
+    std::map<std::string, ino_t> names;
+    std::map<ino_t, std::vector<char>> contents;
     int events{}, cut_after{-1};
     bool crashed{};
 
-    // True when this completed call is the cut: it happened, but report failure.
     bool cut_now() { return ++events == cut_after && (crashed = true); }
     void persist(int fd) {
         struct stat info{};
@@ -67,7 +55,7 @@ struct Model {
     }
 };
 thread_local Model* active{};
-}  // namespace epoch_model
+}
 
 int epoch_model_fsync(int fd) {
     auto* m = epoch_model::active;
@@ -118,7 +106,6 @@ struct Temp {
 
 constexpr int kAdvances = 3;
 
-// Returns the number of persistence events in an uncut run.
 int exercise(int cut) {
     Temp live, recovered;
     epoch_model::Model model;
@@ -145,7 +132,6 @@ int exercise(int cut) {
     model.materialize(recovered.path);
     const auto after_crash = advance_session_epoch_file(recovered.path / "session-epoch.bin");
     if (!created) {
-        // Create never returned: absence or a complete epoch-1 file are both legal.
         require(after_crash.error == SessionEpochError::missing ||
                     (after_crash.error == SessionEpochError::none && after_crash.epoch == 2),
                 "interrupted create left a file that is neither absent nor complete");
@@ -159,7 +145,7 @@ int exercise(int cut) {
     return model.events;
 }
 
-}  // namespace
+}
 
 int main() {
     try {

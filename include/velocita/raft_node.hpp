@@ -1,3 +1,4 @@
+// V1: the Raft node around the counter state machine.
 #pragma once
 
 #include "velocita/counter_fsm.hpp"
@@ -106,4 +107,4 @@ private:
 #endif
 };
 
-}  // namespace velocita
+}

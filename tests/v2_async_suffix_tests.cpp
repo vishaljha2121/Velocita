@@ -104,7 +104,6 @@ void run(bool previous_term_conflict, bool higher_term, bool staged_tail,
         require(fence.owner_rewrites == 0,
                 "RED F6: conflicting suffix rewrite executed on protocol owner");
     }
-    // Caller storage becomes garbage immediately; a deferred receive must own it.
     require(node.retained_log_count() == old_count && node.reserved_result_count() == old_count,
             "suffix cells or reservations released before worker preparation");
     std::fill(bytes.begin(), bytes.end(), std::byte{0xCC});
@@ -208,9 +207,6 @@ void run_worker_failure(StorageCheckpoint fail_at) {
         require(proposal_refused, "failed suffix rewrite still accepted a proposal");
     }
 
-    // Injected orderly worker exceptions are not a power-loss model.  They do
-    // prove restart accepts only one whole publication: old [1..3], or the
-    // renamed surviving prefix [1], with every retained command byte exact.
     ReplicatedKernel recovered(identity_test::recover(root.path / "node", 1, {1, 2}));
     const auto records = identity_test::read_wal(root.path / "node");
     require(records.size() == 1 || records.size() == 3,

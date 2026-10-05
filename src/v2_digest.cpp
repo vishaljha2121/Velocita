@@ -95,7 +95,7 @@ std::optional<std::uint8_t> hex_nibble(const char character) noexcept {
     return std::nullopt;
 }
 
-}  // namespace
+}
 
 Sha256::Sha256() noexcept
     : state_{
@@ -104,9 +104,6 @@ Sha256::Sha256() noexcept
     } {}
 
 void Sha256::update(const std::span<const std::byte> bytes) noexcept {
-    // API precondition: cumulative input is less than 2^61 bytes, so the
-    // SHA-256 bit-length encoding below cannot overflow. Archive callers are
-    // independently bounded to 4 MiB.
     total_bytes_ += static_cast<std::uint64_t>(bytes.size());
     std::size_t offset{};
     if (buffered_ != 0) {
@@ -187,8 +184,6 @@ std::optional<Digest256> parse_digest256(const std::string_view hex) noexcept {
 
 Digest256 observation_fingerprint(const VenueObservation& value) noexcept {
     constexpr std::string_view domain = "velocita/venue-observation/v2";
-    // Canonical V2 observation: schema(2), kind(1), seven IDs(56), side(1),
-    // price/quantity/fee(24), evidence digest(32). Never hash object padding.
     std::array<std::byte, domain.size() + 116> bytes{};
     std::size_t offset = 0;
     for (const char c : domain) bytes[offset++] = static_cast<std::byte>(c);
@@ -213,4 +208,4 @@ Digest256 observation_fingerprint(const VenueObservation& value) noexcept {
     return sha256_digest(bytes);
 }
 
-}  // namespace velocita::v2
+}

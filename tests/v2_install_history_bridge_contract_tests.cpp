@@ -121,8 +121,6 @@ void snapshot_covered_history_enters_gated_recovery() {
     constexpr std::int64_t term = 1;
     identity_test::provision(fixture.path, 1, {1});
 
-    // The repeated canonical command is a legitimate duplicate. Compute the
-    // snapshot independently through the reducer instead of inventing fields.
     const auto duplicate = command(1, AdvanceKillEpoch{KillEpoch{1}});
     const auto duplicate_bytes = encoded(duplicate);
     TradingState expected_state = catalog_test::state();
@@ -148,7 +146,7 @@ void snapshot_covered_history_enters_gated_recovery() {
     require(directory_image(fixture.path) == before,
             "constructing gated recovery changed the 8193-entry cold history image");
 }
-} // namespace
+}
 
 int main() {
     try {

@@ -549,7 +549,7 @@ void test_restart_and_dedup(const std::filesystem::path& data_dir) {
     require(wal.read_all().size() == 2, "WAL record count mismatch");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

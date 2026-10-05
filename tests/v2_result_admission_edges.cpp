@@ -151,8 +151,6 @@ void protected_full_control_reuses_released_ordinary(const std::filesystem::path
     require(reply.success && node.status().current_index == 1024 &&
                 node.status().applied_index == 0,
             "controls could not reuse replacement's released ordinary ownership");
-    // These controls own ORDINARY slots. Counting their kind instead of their
-    // actual slot pool would incorrectly refuse this next ordinary replacement.
     const velocita::AppendEntries ordinary{3, 1022, 1, 1024, {
         {3, 1023, RAFT_LOGTYPE_NORMAL, encoded(ordinary_result_command(8001))},
         {3, 1024, RAFT_LOGTYPE_NORMAL, encoded(ordinary_result_command(8002))}}};
@@ -178,7 +176,7 @@ void protected_full_control_reuses_released_ordinary(const std::filesystem::path
     require(!node.take_committed_result(), "mixed-pool replacement emitted extra results");
 }
 
-} // namespace
+}
 
 int main() {
     try {

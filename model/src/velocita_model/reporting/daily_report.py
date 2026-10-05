@@ -68,7 +68,6 @@ def render_daily_report(
     fill_ranges: Sequence[tuple[str, int, int]],
     risk_events: Sequence[tuple[str, str, str]],
 ) -> str:
-    """Render the daily Markdown report."""
     out: list[str] = []
     add = out.append
 
@@ -87,8 +86,6 @@ def render_daily_report(
     add(f"| Code version | {code_version} |")
     add("")
 
-    # -- venue capability comes first: if a passive strategy is not expressible
-    # -- on the venue, no per-pair number below is actionable.
     expressible, capability_reason = capabilities.passive_strategy_is_expressible()
     add("## Venue capability")
     add("")
@@ -245,13 +242,6 @@ def render_competition_worksheet(
     multiplier_confidence: str,
     quote_sizes_quote: Sequence[Decimal],
 ) -> str:
-    """Leaderboard feasibility arithmetic, with the assumptions named.
-
-    This worksheet answers one question honestly: how many fills per hour would
-    a given quote size need to reach a volume target? It is arithmetic, not a
-    forecast. It cannot tell you whether those fills are achievable, and it
-    never claims qualification or placement.
-    """
     out: list[str] = []
     add = out.append
     add("# Leaderboard feasibility worksheet")

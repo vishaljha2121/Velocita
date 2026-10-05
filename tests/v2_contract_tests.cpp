@@ -294,7 +294,7 @@ void test_sha256_contract() {
             "invalid digest hex length was accepted");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

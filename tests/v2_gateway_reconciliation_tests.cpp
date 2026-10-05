@@ -1,6 +1,3 @@
-// compare_venue_book: the venue's own book against committed state at one cut
-// (book ch50). Every expectation is derived from the fixture's inputs in the
-// test, never from the function under test.
 #include "velocita/v2/gateway_loop.hpp"
 
 #include <iostream>
@@ -20,12 +17,8 @@ void require(bool condition, const std::string& message) {
 constexpr AccountId kAccount{5};
 constexpr InstrumentId kInstrument{4};
 
-// A committed state holding POSITION lots on the served row, one on another
-// row, and the given cluster orders.
 std::unique_ptr<TradingState> state_with(std::int64_t position, std::vector<std::uint64_t> orders = {}) {
     auto state = std::make_unique<TradingState>();
-    // Same instrument on both rows, the served one first and another account
-    // after it, so neither "first match" nor "last match" passes by accident.
     state->risk_account_count = 3;
     state->risk_accounts[0].account_id = AccountId{4};
     state->risk_accounts[0].instrument_id = kInstrument;
@@ -61,13 +54,11 @@ void equal_position_at_a_clean_cut_matches() {
 }
 
 void different_position_at_a_clean_cut_is_a_mismatch_with_both_values() {
-    // The live break: the kernel holds 25 lots, a reset venue holds 0.
     const auto state = state_with(25);
     const auto result = compare_venue_book(*state, kAccount, kInstrument, book_with(0), kClean);
     require(result.verdict == BookVerdict::mismatch && result.kind == BookBreak::position,
             "a 25-lot kernel position beside a flat venue was not a position mismatch");
     require(result.kernel_lots == 25 && result.venue_lots == 0, "the mismatch does not carry both values");
-    // Zero tolerance: one lot is a break.
     const auto one = compare_venue_book(*state, kAccount, kInstrument, book_with(24), kClean);
     require(one.verdict == BookVerdict::mismatch, "a one-lot difference was tolerated");
 }
@@ -82,7 +73,6 @@ void absent_risk_account_is_a_flat_kernel_position() {
 }
 
 void only_the_served_row_is_compared() {
-    // Account 6 holds 999 lots; the served row (account 5) holds 25.
     const auto state = state_with(25);
     const auto result = compare_venue_book(*state, kAccount, kInstrument, book_with(25), kClean);
     require(result.verdict == BookVerdict::match && result.kernel_lots == 25,
@@ -111,7 +101,7 @@ void a_read_older_than_the_gateway_has_seen_is_not_comparable() {
 void a_read_older_than_the_venue_committed_cut_is_not_comparable() {
     const auto state = state_with(0);
     auto book = book_with(25);
-    book.committed_through = 101;  // the venue knows evidence committed at 101
+    book.committed_through = 101;
     require(compare_venue_book(*state, kAccount, kInstrument, book, kClean).verdict == BookVerdict::not_comparable,
             "a read applied below the venue's committed cut produced a break");
     book.committed_through = 100;
@@ -167,8 +157,6 @@ void a_truncated_pending_list_is_not_comparable() {
 }
 
 void only_a_fence_is_rearmable() {
-    // The owner's rule: a fence (term, leader, read gap) re-arms; everything
-    // else needs an operator.
     const std::vector<std::pair<GatewayStopCause, bool>> expected{
         {GatewayStopCause::fence, true},
         {GatewayStopCause::unknown_outcome, false},
@@ -212,7 +200,6 @@ void every_cause_and_verdict_renders_from_the_first_scrape() {
         "velocita_gateway_reconciliation_verdict{verdict=\"match\"} 0",
     };
     for (const auto& line : lines) require(text.find(line + "\n") != std::string::npos, "missing: " + line);
-    // Every cause is present from the first scrape, so increase() sees its first stop.
     const std::vector<std::string> causes{"fence", "unknown_outcome", "conflict", "refused_evidence",
                                           "control_change", "reconciliation_mismatch", "reconciliation_exhausted",
                                           "capacity", "corrupt_state", "wrong_cluster", "authority"};
@@ -224,7 +211,7 @@ void every_cause_and_verdict_renders_from_the_first_scrape() {
     }
 }
 
-}  // namespace
+}
 
 int main() {
     const std::vector<std::pair<const char*, void (*)()>> tests{

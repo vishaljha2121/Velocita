@@ -65,7 +65,7 @@ bool digest_equal(std::span<const std::byte> encoded, const Digest256& expected)
         difference |= std::to_integer<std::uint8_t>(encoded[i] ^ expected.bytes[i]);
     return difference == 0;
 }
-} // namespace
+}
 
 BoundFrameEncodeResult encode_bound_frame(
     BoundFrameKind kind, const VerifiedStaticIdentity& identity,
@@ -88,7 +88,6 @@ BoundFrameEncodeResult encode_bound_frame(
               header.begin() + 16);
     put32(header, 48, local(kind) ? static_cast<std::uint32_t>(identity.value().local_node_id) : 0);
 
-    // Stage the complete frame before touching output: payload is allowed to overlap output.
     std::copy(kDomain.begin(), kDomain.end(), scratch.bytes.begin());
     auto staged = std::span<std::byte>{scratch.bytes}.subspan(kDomain.size(), total);
     std::copy(header.begin(), header.end(), staged.begin());
@@ -134,4 +133,4 @@ BoundFrameError decode_bound_frame(
     return BoundFrameError::none;
 }
 
-} // namespace velocita::v2
+}

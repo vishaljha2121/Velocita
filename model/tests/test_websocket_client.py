@@ -27,7 +27,6 @@ class Rfc6455Examples(unittest.TestCase):
         self.assertEqual(decoder.feed(bytes.fromhex("810548656c6c6f")), [(ws.OP_TEXT, b"Hello")])
 
     def test_decoder_joins_fragments_split_anywhere(self) -> None:
-        # RFC 5.7: "Hel" then continuation "lo", delivered one byte at a time.
         decoder = ws.FrameDecoder(max_message_bytes=1024)
         out = []
         for byte in bytes.fromhex("010348656c80026c6f"):
@@ -42,7 +41,7 @@ class Rfc6455Examples(unittest.TestCase):
 
     def test_control_frame_interleaved_in_a_fragmented_message(self) -> None:
         decoder = ws.FrameDecoder(max_message_bytes=1024)
-        ping = bytes.fromhex("890548656c6c6f")  # RFC 5.7 unmasked ping "Hello"
+        ping = bytes.fromhex("890548656c6c6f")
         out = decoder.feed(bytes.fromhex("010348656c") + ping + bytes.fromhex("80026c6f"))
         self.assertEqual(out, [(ws.OP_PING, b"Hello"), (ws.OP_TEXT, b"Hello")])
 
@@ -59,7 +58,6 @@ class DecoderRefusals(unittest.TestCase):
         self._refuses(bytes.fromhex("c10548656c6c6f"))
 
     def test_oversized_message_is_refused_before_buffering(self) -> None:
-        # Header announces 2^32 bytes; refusal must not wait for the payload.
         self._refuses(bytes.fromhex("827f0000000100000000"), max_message_bytes=1 << 20)
 
     def test_fragments_that_together_exceed_the_bound(self) -> None:
@@ -93,9 +91,6 @@ class ReadOnlyGuards(unittest.TestCase):
 
 
 class HandshakeRefusals(unittest.TestCase):
-    """The server must prove it read OUR key (RFC 6455 4.1); a proxy or a
-    non-WebSocket endpoint answering must not be treated as the stream."""
-
     def _open_against(self, reply: bytes, reason: str) -> None:
         client_side, server_side = socket.socketpair()
 
@@ -149,10 +144,6 @@ class HandshakeRefusals(unittest.TestCase):
 
 
 class LoopbackSession(unittest.TestCase):
-    """A scripted server on a socket pair: handshake, ping, a fragmented text
-    message and a close. The client must pong with the ping's payload, deliver
-    the text, answer the close, and send nothing else but its subscribe."""
-
     def test_session(self) -> None:
         client_side, server_side = socket.socketpair()
         received: list[bytes] = []
@@ -166,9 +157,9 @@ class LoopbackSession(unittest.TestCase):
             server_side.sendall(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n"
                                  "Connection: Upgrade\r\nSec-WebSocket-Accept: " + ws.accept_key(key) +
                                  "\r\n\r\n").encode())
-            server_side.sendall(bytes.fromhex("890548656c6c6f"))                  # ping "Hello"
+            server_side.sendall(bytes.fromhex("890548656c6c6f"))
             server_side.sendall(bytes.fromhex("010348656c") + bytes.fromhex("80026c6f"))
-            server_side.sendall(bytes.fromhex("880203e8"))                        # close 1000
+            server_side.sendall(bytes.fromhex("880203e8"))
             server_side.settimeout(5)
             try:
                 while True:
@@ -186,7 +177,7 @@ class LoopbackSession(unittest.TestCase):
         client.open()
         client.subscribe(["reference_prices"])
         self.assertEqual(client.recv_text(), "Hello")
-        self.assertIsNone(client.recv_text())  # closed by the server
+        self.assertIsNone(client.recv_text())
         client.close()
         thread.join(timeout=10)
         server_side.close()

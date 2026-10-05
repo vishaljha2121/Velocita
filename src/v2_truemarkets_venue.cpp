@@ -10,8 +10,6 @@ namespace {
 
 constexpr std::int64_t kBasisPoints = 10'000;
 
-// Reply words. None of the execute or status words is recorded from the venue;
-// they are the fixture vocabulary and must be replaced from recorded replies.
 constexpr std::array<std::string_view, 2> kAcceptedWords{"submitted", "accepted"};
 constexpr std::string_view kSettledWord = "filled";
 constexpr std::array<std::string_view, 3> kNotExecutedWords{"failed", "expired", "rejected"};
@@ -25,8 +23,6 @@ template <std::size_t N>
     return sha256_digest(std::as_bytes(std::span(text.data(), text.size())));
 }
 
-// Deterministic from the venue's own identifier, so a restarted process
-// derives the same id for the same order or execution.
 [[nodiscard]] std::uint64_t id_from(const std::string_view domain, const std::string_view text) noexcept {
     Sha256 hash;
     hash.update(std::as_bytes(std::span(domain.data(), domain.size())));
@@ -43,7 +39,6 @@ template <std::size_t N>
     return out;
 }
 
-// ceil(notional * bps / 10'000), split so no intermediate exceeds int64.
 [[nodiscard]] std::optional<std::int64_t> fee_cap(const std::int64_t notional, const std::uint32_t bps) noexcept {
     if (notional < 0) return std::nullopt;
     const auto whole = multiply(notional / kBasisPoints, bps);
@@ -55,7 +50,6 @@ template <std::size_t N>
     return total;
 }
 
-// What one authorized FOK swap may do, from the committed effect alone.
 struct Authorization {
     std::int64_t base_atoms{};
     std::int64_t limit_notional{};
@@ -77,8 +71,6 @@ struct Authorization {
     return Authorization{*base, *notional, bound};
 }
 
-// Executed notional (before fee) from a quote-asset movement net or gross of
-// fee: a buy debits notional + fee, a sell credits notional - fee.
 [[nodiscard]] std::optional<std::int64_t> executed_notional(const Side side, const std::int64_t quote_moved,
                                                             const std::int64_t fee) noexcept {
     if (quote_moved < 0 || fee < 0) return std::nullopt;
@@ -89,7 +81,6 @@ struct Authorization {
     return notional;
 }
 
-// Within the FOK limit and the fee cap?
 [[nodiscard]] bool within_authorization(const Side side, const std::int64_t notional, const std::int64_t fee,
                                         const std::int64_t limit_notional, const std::uint32_t max_fee_bps) noexcept {
     const auto cap = fee_cap(notional, max_fee_bps);
@@ -105,7 +96,7 @@ struct Authorization {
     return {QueryOutcome::not_found, {}, {}, {}, false, false, true, true};
 }
 
-}  // namespace
+}
 
 bool valid(const TrueMarketsVenueConfig& config) noexcept {
     return spec_agrees_with_profile(config.spec, config.profile) && config.flow != ExecutionFlow::unset &&
@@ -167,7 +158,6 @@ ApiReply TrueMarketsVenue::call(const ApiCall kind, const std::string_view reque
 }
 
 void TrueMarketsVenue::queue(const VenueObservation& observation) noexcept {
-    // Callers reserve room before any decision that needs it.
     queued_[queued_count_++] = {observation, false};
 }
 
@@ -201,16 +191,11 @@ SendOutcome TrueMarketsVenue::send(const OrderEffect& effect, const Tick now) no
         return SendOutcome::pre_send_failure;
     }
     if (effect.operation != EffectOperation::submit || effect.time_in_force != TimeInForce::fill_or_kill) {
-        // Nothing rests on a swap venue, so there is nothing to cancel, and a
-        // swap is fill-or-kill by nature. Refused locally; no call is made.
         TmOrder local{effect.cluster_order_id, effect.effect_id};
         queue(report(VenueObservationKind::order_rejected, local, "velocita/truemarkets/unsupported"));
         return SendOutcome::business_rejected;
     }
     auto* order = order_for(effect.cluster_order_id);
-    // NO RESEND WITHOUT PROOF. Once a call that can create exposure has been
-    // made for this order, only reconciliation may say what happened; a
-    // second submission would be a second swap.
     if (order != nullptr && order->committal_call_made) {
         ++counters_.duplicate_sends_refused;
         return SendOutcome::venue_duplicate;
@@ -218,7 +203,6 @@ SendOutcome TrueMarketsVenue::send(const OrderEffect& effect, const Tick now) no
     if (order != nullptr && order->effect_id != effect.effect_id) return SendOutcome::pre_send_failure;
     if (order == nullptr) {
         if (order_count_ == orders_.size()) {
-            // Only a record proving nothing was sent may be reused.
             for (std::size_t i = 0; i < order_count_; ++i) {
                 if (orders_[i].committal_call_made || orders_[i].phase != TmPhase::abandoned_before_submit) continue;
                 orders_[i] = orders_[--order_count_];
@@ -242,8 +226,6 @@ SendOutcome TrueMarketsVenue::send(const OrderEffect& effect, const Tick now) no
     const auto qty = rendered_length == 0 ? std::nullopt : tm_text({rendered.data(), rendered_length});
     if (!authorized || !qty) return SendOutcome::pre_send_failure;
 
-    // Both calls of the send are paid for up front, so a local refusal never
-    // strands a signed payload half way.
     if (!take(order_bucket_, config_.order_rate, 2, now)) {
         ++counters_.local_rate_limited;
         return SendOutcome::rate_limited;
@@ -259,7 +241,6 @@ SendOutcome TrueMarketsVenue::send(const OrderEffect& effect, const Tick now) no
     const Tick received_at = clock_.now();
     const std::string_view body{response_.data(), first.length};
 
-    // The (base-unit) reply amounts: qty in base, qty_out and fee in quote.
     TradeReply reply;
     const bool decoded =
         first.status == ApiStatus::completed &&
@@ -267,9 +248,6 @@ SendOutcome TrueMarketsVenue::send(const OrderEffect& effect, const Tick now) no
                            {config_.spec.base_decimals, config_.quote_decimals, config_.quote_decimals},
                            reply) == DecodeError::none;
     if (prepare) {
-        // trade_prepare may itself submit (D-26). Anything short of a readable
-        // reply with payloads to sign is an exposure we cannot rule out, and
-        // an error or pacing label proves nothing about it.
         if (!decoded || reply.payload_count == 0) {
             order->committal_call_made = true;
             order->phase = TmPhase::uncertain;
@@ -283,7 +261,6 @@ SendOutcome TrueMarketsVenue::send(const OrderEffect& effect, const Tick now) no
         }
         order->handle_is_order_id = true;
     } else {
-        // get_quote is non-committal: whatever it answered, nothing can execute.
         if (first.status == ApiStatus::rate_limited) return SendOutcome::rate_limited;
         if (!decoded || reply.payload_count == 0) return SendOutcome::pre_send_failure;
         order->handle_is_order_id = false;
@@ -318,7 +295,6 @@ SendOutcome TrueMarketsVenue::send(const OrderEffect& effect, const Tick now) no
         return SendOutcome::pre_send_failure;
     }
     order->signature_id = signature.signature_id;
-    // The quote carries no recorded expiry; a stale one is never submitted.
     if (clock_.now() > received_at + config_.quote_ttl) return SendOutcome::pre_send_failure;
 
     const auto execute = encode_trade_execute(++rpc_id_, order->handle,
@@ -349,8 +325,6 @@ SendOutcome TrueMarketsVenue::send(const OrderEffect& effect, const Tick now) no
             return SendOutcome::business_rejected;
         }
     }
-    // Timeout, pacing, a tool error or an unrecognised answer to the committal
-    // call: the swap may be executing. Reconciliation asks by the id we hold.
     if (order->handle_is_order_id || config_.status_accepts_quote_id) {
         order->venue_order_id = VenueOrderId{id_from("velocita/truemarkets/order/v1", order->handle.view())};
     }
@@ -402,11 +376,7 @@ void TrueMarketsVenue::absorb_settlement(TmOrder& order, const StatusReply& stat
     bool breach = !whole || lots != order.quantity.atoms() || !notional || !limit_notional ||
                   !within_authorization(order.side, *notional, status.fee_atoms, *limit_notional,
                                         config_.max_fee_bps);
-    // What the venue did is booked even when it breaches the authorization:
-    // the position must reflect reality. It cannot be booked when it does not
-    // fit the order at all.
     if (whole && lots > 0 && lots <= order.quantity.atoms() && notional && denominator && *denominator > 0) {
-        // Rounded against us: a buy's price up, a sell's down.
         const auto ticks = order.side == Side::buy ? 1 + (*notional - 1) / *denominator : *notional / *denominator;
         if (ticks > 0) {
             auto fill = report(VenueObservationKind::fill, order, evidence);
@@ -462,10 +432,6 @@ void TrueMarketsVenue::acknowledge(const VenueObservation& observation) noexcept
 QueryResult TrueMarketsVenue::query(const ClusterOrderId id, const Tick now) noexcept {
     if (!configured_) return unavailable();
     auto* order = order_for(id);
-    // True Markets takes no client order id, so an order this process has no
-    // record of (a restart, a lost prepare reply) cannot be asked about.
-    // Silence, never absence: absence would release a reservation that may be
-    // real at the venue.
     if (order == nullptr) return unavailable();
     if (!order->committal_call_made) return absent();
     if (order->phase == TmPhase::accepted || order->phase == TmPhase::uncertain) {
@@ -478,12 +444,10 @@ QueryResult TrueMarketsVenue::query(const ClusterOrderId id, const Tick now) noe
     result.window_complete = true;
     result.ordered_after_relevant_sends = true;
     if (order->phase == TmPhase::settled) {
-        // An atomic swap leaves nothing to fill: the remainder is not working.
         result.filled_quantity = order->filled;
         result.inconsistent = order->breach;
         return result;
     }
-    // The venue holds it and has not settled it.
     result.remaining_quantity = order->quantity;
     return result;
 }
@@ -508,7 +472,7 @@ QueryResult transport_query(void* context, const ClusterOrderId order, const Tic
 
 VenueSessionId transport_session(void* context) { return static_cast<TrueMarketsVenue*>(context)->session(); }
 
-}  // namespace
+}
 
 sim::VenueTransport truemarkets_venue_transport(TrueMarketsVenue& venue) noexcept {
     sim::VenueTransport transport;
@@ -538,4 +502,4 @@ std::string_view describe(const LiveArmingRefusal refusal) noexcept {
     return "unknown";
 }
 
-}  // namespace velocita::v2::truemarkets
+}

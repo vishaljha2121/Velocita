@@ -35,25 +35,16 @@ class FeatureSpec:
     unit: str
     description: str
     signed: bool = False
-    # Divisor that converts this feature's micros atoms into the unit an action
-    # template needs. Only meaningful for features usable as a price or quantity
-    # source; see `action_template.hpp` (`feature_atoms_per_tick` / `_per_lot`).
     atoms_per_tick: int | None = None
     atoms_per_lot: int | None = None
 
 
-#: Market-making feature schema, revision 1.
-#:
-#: Units are chosen so a rule threshold is readable by a human reviewing a
-#: policy diff: basis points and ratios rather than raw venue floats.
 MARKET_MAKING_V1: Final[tuple[FeatureSpec, ...]] = (
-    # --- price level, in ticks; usable as action-template price sources -------
     FeatureSpec(0, "mid_price_ticks", "ticks", "(best_bid + best_ask) / 2", atoms_per_tick=1_000_000),
     FeatureSpec(1, "best_bid_ticks", "ticks", "best displayed bid", atoms_per_tick=1_000_000),
     FeatureSpec(2, "best_ask_ticks", "ticks", "best displayed ask", atoms_per_tick=1_000_000),
     FeatureSpec(3, "microprice_ticks", "ticks", "size-weighted mid", atoms_per_tick=1_000_000),
     FeatureSpec(4, "fair_value_ticks", "ticks", "blended fair value estimate", atoms_per_tick=1_000_000),
-    # --- spread and shape ----------------------------------------------------
     FeatureSpec(5, "spread_ticks", "ticks", "best_ask - best_bid"),
     FeatureSpec(6, "spread_bps", "bps", "spread relative to mid"),
     FeatureSpec(7, "book_imbalance", "ratio", "(bid_sz - ask_sz)/(bid_sz + ask_sz), -1..1", signed=True),
@@ -61,38 +52,30 @@ MARKET_MAKING_V1: Final[tuple[FeatureSpec, ...]] = (
     FeatureSpec(9, "top_ask_size_lots", "lots", "size resting at best ask", atoms_per_lot=1_000_000),
     FeatureSpec(10, "depth_bid_10bps_quote", "quote", "cumulative bid notional within 10bps of mid"),
     FeatureSpec(11, "depth_ask_10bps_quote", "quote", "cumulative ask notional within 10bps of mid"),
-    # --- volatility ----------------------------------------------------------
     FeatureSpec(12, "realized_vol_1s_bps", "bps", "realized volatility, 1s horizon"),
     FeatureSpec(13, "realized_vol_5s_bps", "bps", "realized volatility, 5s horizon"),
     FeatureSpec(14, "realized_vol_30s_bps", "bps", "realized volatility, 30s horizon"),
     FeatureSpec(15, "realized_vol_300s_bps", "bps", "realized volatility, 5m horizon"),
-    # --- external flow -------------------------------------------------------
     FeatureSpec(16, "trades_per_min", "count", "observed public prints per minute"),
     FeatureSpec(17, "notional_per_min_quote", "quote", "observed public traded notional per minute"),
     FeatureSpec(18, "reference_divergence_bps", "bps", "local mid vs reference price", signed=True),
-    # --- inventory and capital ----------------------------------------------
     FeatureSpec(19, "inventory_base_lots", "lots", "signed base-asset inventory", signed=True, atoms_per_lot=1_000_000),
     FeatureSpec(20, "inventory_notional_quote", "quote", "signed inventory marked to fair value", signed=True),
     FeatureSpec(21, "inventory_skew", "ratio", "inventory / max inventory, -1..1", signed=True),
     FeatureSpec(22, "deployable_quote", "quote", "quote balance outside the safety reserve"),
     FeatureSpec(23, "target_quote_size_lots", "lots", "size the sizing model wants to show", atoms_per_lot=1_000_000),
-    # --- measured strategy quality (fed back from the simulator) -------------
     FeatureSpec(24, "adverse_selection_30s_bps", "bps", "recent 30s fill-conditioned markout", signed=True),
     FeatureSpec(25, "fill_ratio_recent", "ratio", "recent simulated fill rate, 0..1"),
     FeatureSpec(26, "queue_ahead_lots", "lots", "estimated size ahead at the quoted level"),
-    # --- costs ---------------------------------------------------------------
     FeatureSpec(27, "gas_cost_bps", "bps", "amortised per-fill on-chain cost"),
     FeatureSpec(28, "maker_fee_bps", "bps", "configured maker fee"),
     FeatureSpec(29, "taker_fee_bps", "bps", "configured taker fee"),
-    # --- session and health --------------------------------------------------
     FeatureSpec(30, "utc_hour", "count", "UTC hour of day, 0..23"),
     FeatureSpec(31, "data_quality", "ratio", "0..1 composite feed-health score"),
 )
 
 
 class FeatureSchema:
-    """An immutable, content-addressed feature layout."""
-
     __slots__ = ("_specs", "_by_name", "_revision", "_digest", "_schema_id")
 
     def __init__(self, revision: str, specs: tuple[FeatureSpec, ...]) -> None:
@@ -111,8 +94,6 @@ class FeatureSchema:
         self._by_name = {spec.name: spec for spec in specs}
         self._revision = revision
         self._digest = sha256_digest(self._canonical_json().encode("utf-8"))
-        # Derive a non-zero u64 identity from the digest. The cluster stores the
-        # id; the digest stays in the model artifact as the human-auditable link.
         self._schema_id = int.from_bytes(self._digest[:8], "big") | 1
 
     def _canonical_json(self) -> str:
@@ -145,7 +126,6 @@ class FeatureSchema:
 
     @property
     def schema_id(self) -> int:
-        """The `FeatureSchemaId` written into every frame and policy."""
         return self._schema_id
 
     @property

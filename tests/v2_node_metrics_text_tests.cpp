@@ -5,9 +5,6 @@
 #include <string>
 #include <vector>
 
-// Expected lines are hand-written from the fixture below, never produced by the
-// renderer under test.
-
 namespace {
 
 using namespace velocita::v2;
@@ -25,7 +22,7 @@ NodeHealth fixture() {
     h.node_id = 2;
     h.pid = 41;
     h.session_epoch = 4;
-    h.role = 1;  // follower
+    h.role = 1;
     h.ready = true;
     h.term = 168;
     h.leader_id = 1;
@@ -82,8 +79,6 @@ void known_voter_renders_every_series() {
         "velocita_v2_results_dropped_total{host=\"pi\",node=\"2\"} 9",
         "velocita_v2_secret_reloads_total{host=\"pi\",node=\"2\"} 2",
         "velocita_v2_secret_reload_failures_total{host=\"pi\",node=\"2\"} 1",
-        // Retained Raft log: entries held per pool, against the fixed capacity
-        // (8,192 = 8,128 ordinary + 64 reserved for operator control).
         "velocita_v2_retained_log_entries{host=\"pi\",node=\"2\",pool=\"ordinary\"} 6100",
         "velocita_v2_retained_log_entries{host=\"pi\",node=\"2\",pool=\"protected\"} 3",
         "velocita_v2_retained_log_capacity{host=\"pi\",node=\"2\",pool=\"ordinary\"} 8128",
@@ -103,7 +98,6 @@ void known_voter_renders_every_series() {
 void unknown_voter_is_down_not_zero() {
     const auto text = render_node_metrics(std::nullopt, "nuc", 1);
     require(has_line(text, "velocita_v2_up{host=\"nuc\",node=\"unknown\"} 0"), "unknown voter not reported down");
-    // No other velocita_v2 sample may appear: absence, not zeros.
     std::size_t samples = 0;
     for (std::size_t at = text.find("\nvelocita_v2_"); at != std::string::npos;
          at = text.find("\nvelocita_v2_", at + 1))
@@ -114,13 +108,13 @@ void unknown_voter_is_down_not_zero() {
 
 void clock_skew_never_reports_negative_age() {
     auto h = fixture();
-    h.last_turn_monotonic_ns = 9'000'000'000ULL;  // stamp "after" now
+    h.last_turn_monotonic_ns = 9'000'000'000ULL;
     const auto text = render_node_metrics(h, "pi", 7'000'000'000ULL);
     require(has_line(text, "velocita_v2_telemetry_age_seconds{host=\"pi\",node=\"2\"} 0.000"),
             "future stamp not clamped to zero age");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

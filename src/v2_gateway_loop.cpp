@@ -23,8 +23,6 @@ void append_le(std::vector<std::byte>& out, T value) {
     for (std::size_t i = 0; i < sizeof(T); ++i) out.push_back(static_cast<std::byte>((raw >> (8 * i)) & 0xff));
 }
 
-// The payload digest binds every byte of the command except the digest field:
-// encode with a constant placeholder there, then hash under a domain tag.
 Command identified(CallerId caller, RequestSequence sequence, CommandBody body) {
     Command command{{caller, sequence, {}}, std::move(body)};
     command.identity.payload_digest.bytes.fill(std::byte{0x01});
@@ -65,7 +63,7 @@ std::uint64_t& at(Array& array, Enum value) noexcept {
     return array[static_cast<std::size_t>(value)];
 }
 
-}  // namespace
+}
 
 void GatewayStageHistogram::observe(double ms) noexcept {
     for (std::size_t i = 0; i < kGatewayStageBucketsMs.size(); ++i)
@@ -89,8 +87,6 @@ GatewayLoop::GatewayLoop(GatewayLoopConfig config, GatewayLink& link, const Veri
     if (!clock_.monotonic_ms || !clock_.wall_seconds || !venue_.send_fn || !venue_.poll_fn ||
         !venue_.acknowledge_fn || !venue_.query_fn || !venue_.session_fn)
         throw std::invalid_argument("the gateway loop needs a clock and a complete venue transport");
-    // A durable venue's committed-fill totals outlive the process; publish
-    // them from the first render rather than restarting at zero.
     if (book_.present()) {
         sim::VenueBook opening{};
         book_.read_fn(book_.context, opening);
@@ -148,8 +144,6 @@ BookComparison compare_venue_book(const TradingState& state, const AccountId acc
     result.venue_lots = venue.base.atoms();
     if (!venue.available) return result;
     result.verdict = BookVerdict::not_comparable;
-    // Cut order before values (ch50): a read older than what this process or
-    // the venue already knows committed cannot show a break.
     if (cut.applied_index < cut.seen_index || cut.applied_index < venue.committed_through) return result;
     if (venue.pending_orders_truncated) return result;
     for (std::size_t i = 0; i < venue.pending_order_count; ++i) {
@@ -211,9 +205,6 @@ std::size_t GatewayLoop::open_orders(const TradingState& state) const noexcept {
             continue;
         const auto binding = materialize_bound_order_effect(state, order.effect_id, catalog_);
         if (binding && !serves(*binding)) continue;
-        // Authorized but provably never handed to the venue by this process:
-        // it cannot have moved the venue's balance. A prior process's
-        // unsettled effect is a recovery suspect and so is never "unsent".
         if (order.state == ClusterOrderState::dispatch_authorized) {
             const auto* record_of = outbox(state, order.effect_id);
             const DeliveryAttempt* attempt = nullptr;
@@ -303,7 +294,7 @@ GatewayLoop::Marks* GatewayLoop::marks(EffectId effect, bool create) noexcept {
         if (!free && mark.effect_id.value() == 0) free = &mark;
     }
     if (!create) return nullptr;
-    if (!free) {  // bounded: the oldest diagnostic mark gives way
+    if (!free) {
         std::rotate(marks_.begin(), marks_.begin() + 1, marks_.end());
         free = &marks_.back();
     }
@@ -317,8 +308,6 @@ VenueObservation GatewayLoop::synthetic(VenueObservationKind kind, ClusterOrderI
     observation.kind = kind;
     observation.venue_id = config_.venue.venue_id;
     observation.venue_session_id = venue_.session();
-    // Gateway-authored identity: the command's own reserved sequence, which no
-    // other gateway command of any process ever reuses.
     observation.venue_sequence = VenueSequence{sequence.value()};
     observation.cluster_order_id = order;
     observation.effect_id = effect;
@@ -340,8 +329,6 @@ bool GatewayLoop::record(const VenueObservation& observation, Tick now) {
     else
         sequence = take_sequence();
     if (!sequence) return false;
-    // The reducer requires an evidence command's digest to be the observation's
-    // own fingerprint, so a copied digest can never hide changed evidence.
     const CommandIdentity identity{config_.caller, *sequence, observation_fingerprint(observation)};
     return record_evidence_obligation(*evidence_, identity, observation, observation.effect_id, now);
 }
@@ -379,7 +366,6 @@ void GatewayLoop::on_state(const LinkOutcome& outcome, Tick now) {
     if (outcome.status != LinkStatus::done) {
         if (outcome.status == LinkStatus::refused && outcome.refusal_reason == 0) stop(GatewayStopCause::corrupt_state);
         if (outcome.status == LinkStatus::timed_out && authority_) {
-            // A state-read gap: whatever happened meanwhile was not observed.
             last_fence_at_ = now;
             stop(GatewayStopCause::fence);
         }
@@ -389,7 +375,6 @@ void GatewayLoop::on_state(const LinkOutcome& outcome, Tick now) {
     const auto& reading = outcome.reading;
     if (state.execution_catalog_root != catalog_.root() || reading.authority_domain.is_zero() ||
         (authority_ && reading.authority_domain != authority_domain_)) {
-        // Not the cluster this process was configured for: send nothing more.
         stop(GatewayStopCause::wrong_cluster);
         if (authority_) authority_->stop_all_transport();
         phase_ = GatewayPhase::halted;
@@ -405,17 +390,11 @@ void GatewayLoop::on_state(const LinkOutcome& outcome, Tick now) {
         authority_ = std::make_unique<GatewayAuthority>(link_.incarnation(), authority_domain_,
                                                         config_.freshness_bound);
         authority_->observe_fence(control_, term_);
-        // A prior process may have sent any unsettled effect: those are
-        // recovery suspects, and the arming gate waits until they settle.
         (void)begin_gateway_recovery(delivery_, state, now);
-        // Transport (cancels, evidence) is live from the first read; new risk
-        // waits for the arming gate below.
         authority_->activate_after_reconciliation();
         authority_->stop_new_risk();
         phase_ = GatewayPhase::running;
     } else {
-        // Kill epoch, generation and mode are operator controls: a change
-        // latches. A term or leader change is a fence and may re-arm.
         const bool control_changed = control_.executor_generation != previous.executor_generation ||
                                      control_.kill_epoch != previous.kill_epoch ||
                                      control_.strategy_mode != previous.strategy_mode;
@@ -493,9 +472,8 @@ void GatewayLoop::on_authority(LinkOutcome& outcome, Tick now) {
     switch (handoff_outcome_.value_or(sim::SendOutcome::ambiguous)) {
     case sim::SendOutcome::accepted:
     case sim::SendOutcome::venue_duplicate:
-        break;  // transport stays open until the venue's first observation
+        break;
     case sim::SendOutcome::business_rejected:
-        // Still open: a venue rejection observation closes it, silence becomes unknown.
         ++at(metrics_.rejects, GatewayReject::business_rejected);
         break;
     case sim::SendOutcome::pre_send_failure:
@@ -507,7 +485,7 @@ void GatewayLoop::on_authority(LinkOutcome& outcome, Tick now) {
         ++at(metrics_.rejects, GatewayReject::rate_limited);
         break;
     case sim::SendOutcome::ambiguous:
-        stop(GatewayStopCause::unknown_outcome);  // the deadline turns it into effect_unknown
+        stop(GatewayStopCause::unknown_outcome);
         break;
     }
 }
@@ -522,16 +500,15 @@ void GatewayLoop::on_command(const LinkOutcome& outcome, Tick now) {
     const auto* obligation = find_obligation(*evidence_, in_flight_identity_);
     if (!obligation) return;
     if (outcome.status == LinkStatus::refused) {
-        stop(GatewayStopCause::refused_evidence);  // a final refusal of evidence is a configuration fault
+        stop(GatewayStopCause::refused_evidence);
         return;
     }
-    if (outcome.status != LinkStatus::done) return;  // plan_evidence retries the same identity
+    if (outcome.status != LinkStatus::done) return;
     const auto observation = obligation->observation;
     (void)discharge_evidence(*evidence_, in_flight_identity_);
     state_dirty_ = true;
     seen_index_ = std::max(seen_index_, outcome.index);
     if (!accepted_code(outcome.result.code)) {
-        // Evidence the reducer refused stays owned by the venue (not acknowledged).
         ++at(metrics_.rejects, GatewayReject::kernel_refused);
         stop(GatewayStopCause::refused_evidence);
         return;
@@ -539,8 +516,6 @@ void GatewayLoop::on_command(const LinkOutcome& outcome, Tick now) {
     const bool fill = observation.kind == VenueObservationKind::fill;
     const auto notional = fill ? fill_notional(observation) : std::nullopt;
     const auto wall = clock_.wall_seconds(clock_.context);
-    // The venue records the commit and releases the report in one durable
-    // write, so its fill totals and committed cut survive a restart exactly.
     if (book_.committed_fn)
         book_.committed_fn(book_.context, {outcome.index, observation, notional.value_or(0), wall});
     venue_.acknowledge(observation);
@@ -575,7 +550,7 @@ void GatewayLoop::poll_venue(Tick now) {
     const auto sequences = config_.sequence_limit - next_sequence_;
     const auto room = std::min({free, static_cast<std::size_t>(sim::kMaxVenueObservationsPerPoll),
                                 static_cast<std::size_t>(std::min<std::uint64_t>(sequences, 64))});
-    if (room == 0) return;  // the venue keeps what we cannot yet own
+    if (room == 0) return;
     std::array<VenueObservation, sim::kMaxVenueObservationsPerPoll> polled{};
     const auto count = venue_.poll(std::span(polled).first(room), now);
     for (std::size_t i = 0; i < count; ++i) {
@@ -584,7 +559,7 @@ void GatewayLoop::poll_venue(Tick now) {
         bool duplicate = false;
         for (std::size_t j = 0; j < evidence_->obligation_count; ++j)
             duplicate |= observation_fingerprint(evidence_->obligations[j].observation) == fingerprint;
-        if (duplicate) continue;  // one obligation; acknowledging it releases every copy
+        if (duplicate) continue;
         const auto sequence = next_sequence_;
         if (!record(observation, now)) {
             stop(GatewayStopCause::capacity);
@@ -663,8 +638,6 @@ bool GatewayLoop::deliver(Tick now) {
     for (std::size_t i = 0; i < plan.ambiguous_count; ++i) {
         const auto effect = plan.now_ambiguous[i];
         const auto* record_of = outbox(state, effect);
-        // Only an effect the cluster still holds as unanswered can be declared
-        // unknown; one it already settled or marked is merely closed here.
         if (record_of && record_of->state == OutboxState::pending) {
             const auto sequence = take_sequence();
             if (!sequence) return false;
@@ -684,7 +657,6 @@ bool GatewayLoop::deliver(Tick now) {
         if (!binding || !serves(*binding)) continue;
         if (auto* mark = marks(effect, true); mark->first_deliverable == 0) mark->first_deliverable = now;
         if (binding->effect.operation == EffectOperation::cancel) {
-            // Committed-cancel exception: no proof, still every fence and quota.
             handoff_outcome_.reset();
             const GatewayTransportBoundary boundary{&GatewayLoop::transport_clock, &GatewayLoop::transport_handoff,
                                                     this};
@@ -723,8 +695,6 @@ bool GatewayLoop::reconcile(Tick now) {
     const auto& state = link_.state();
     const auto plan = plan_reconciliation(state, reconciliation_, delivery_, control_, config_.venue,
                                           config_.timeouts, now);
-    // Only this venue can answer for an order; another venue's "not found"
-    // would release a reservation that is real somewhere else.
     std::optional<ReconciliationTarget> chosen;
     for (std::size_t i = 0; i < plan.query_count && !chosen; ++i) {
         const auto binding = materialize_bound_order_effect(state, plan.to_query[i].effect_id, catalog_);
@@ -781,7 +751,6 @@ void GatewayLoop::transport_handoff(BoundOrderEffect binding, void* self) {
     try {
         loop.handoff_outcome_ = loop.venue_.send(binding.effect, loop.clock_.monotonic_ms(loop.clock_.context));
     } catch (...) {
-        // Bytes may have left: possibly sent, never proof of unsent.
         loop.handoff_outcome_ = sim::SendOutcome::ambiguous;
     }
 }
@@ -886,4 +855,4 @@ std::string render_gateway_metrics(const GatewayMetrics& m) {
     return out.str();
 }
 
-}  // namespace velocita::v2
+}

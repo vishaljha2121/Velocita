@@ -1,3 +1,4 @@
+// V1: Aeron media driver and client set-up.
 #pragma once
 
 #include "Aeron.h"
@@ -37,5 +38,4 @@ private:
     std::shared_ptr<aeron::Aeron> aeron_;
 };
 
-}  // namespace velocita
-
+}

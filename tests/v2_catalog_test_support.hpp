@@ -64,7 +64,6 @@ inline const VerifiedExecutionCatalog& standard_catalog() {
     return value;
 }
 
-// Only for isolated reducer fixtures. Replication tests must install via commands.
 inline TradingState state(const VerifiedExecutionCatalog& value = standard_catalog()) {
     TradingState result;
     result.execution_catalog_root = value.root();
@@ -82,8 +81,6 @@ inline ReplayApplyResult replay(TradingState& state, std::span<const std::byte> 
                                          &standard_catalog());
 }
 
-// Preserve pre-upgrade golden answers: remove ONLY the approved appended root
-// and restore framing schema 7. A changed old field still fails the old oracle.
 inline Digest256 schema7_projection(const TradingState& state) {
     std::array<std::byte, kMaxStateSnapshotBytes> bytes{};
     const auto encoded = encode_state_snapshot(state, bytes);
@@ -96,4 +93,4 @@ inline Digest256 schema7_projection(const TradingState& state) {
     return sha256_digest(std::span{bytes}.subspan(kStateSnapshotDigestInputOffset,
         kStateSnapshotPayloadOffset + old_payload - kStateSnapshotDigestInputOffset));
 }
-} // namespace catalog_test
+}

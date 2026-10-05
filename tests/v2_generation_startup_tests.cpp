@@ -498,7 +498,7 @@ void test_snapshot_base_runtime_floor() {
     }
 }
 
-} // namespace
+}
 
 int main() {
     try {

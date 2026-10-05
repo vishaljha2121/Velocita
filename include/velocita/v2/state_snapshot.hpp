@@ -1,3 +1,4 @@
+// Canonical byte encoding of the whole trading state.
 #pragma once
 
 #include "velocita/v2/kernel.hpp"
@@ -27,9 +28,6 @@ inline constexpr std::size_t kStateSnapshotSourceBytes = 24;
 inline constexpr std::size_t kStateSnapshotSourceEventBytes = 56;
 inline constexpr std::size_t kStateSnapshotReceiptBytes = 133;
 inline constexpr std::size_t kStateSnapshotEconomicProposalBytes = 104;
-// V4 decision records do not repeat identities already carried by the frame.
-// The fixed region includes a one-byte proposal-presence tag; a present
-// proposal contributes only its non-derivable economic fields.
 inline constexpr std::size_t kStateSnapshotDecisionFixedBytes = 241;
 inline constexpr std::size_t kStateSnapshotDecisionProposalBytes = 54;
 inline constexpr std::size_t kStateSnapshotDecisionFeatureBytes = 8;
@@ -91,9 +89,6 @@ struct DecodeStateSnapshotResult {
     Digest256 state_digest{};
 };
 
-// Decode is transactional: candidate is caller-owned scratch and destination
-// is assigned only after framing, digest, bounds, enums, and state invariants
-// have all been validated.
 struct StateSnapshotScratch final {
     TradingState candidate{};
 };
@@ -111,4 +106,4 @@ static_assert(kMaxStateSnapshotBytes < 64U * 1024U);
 static_assert(kMaxStateSnapshotBytes == 65519U);
 static_assert(std::is_nothrow_copy_assignable_v<TradingState>);
 
-}  // namespace velocita::v2
+}

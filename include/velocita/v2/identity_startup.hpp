@@ -1,3 +1,4 @@
+// Start-up verification of a voter's static identity and data directory.
 #pragma once
 
 #include "velocita/v2/execution_catalog.hpp"
@@ -44,8 +45,6 @@ struct IdentityStartupCheckpoints {
     }
 };
 
-// Cold-start ownership, not serving authority. The kernel integration must keep
-// this member alive until every store/writer using the directory is destroyed.
 class VerifiedIdentityStartup final {
 public:
     [[nodiscard]] static VerifiedIdentityStartup bootstrap(
@@ -86,4 +85,4 @@ private:
     LocalGenerationSelector selection_;
 };
 
-} // namespace velocita::v2
+}

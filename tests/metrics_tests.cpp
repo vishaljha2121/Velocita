@@ -12,7 +12,7 @@ void require(const bool condition, const std::string& message) {
     if (!condition) throw std::runtime_error(message);
 }
 
-}  // namespace
+}
 
 int main() {
     const auto unique = std::chrono::steady_clock::now().time_since_epoch().count();

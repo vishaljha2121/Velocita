@@ -9,9 +9,6 @@
 #include <thread>
 #include <unistd.h>
 
-// Compile the actual integration privately so this test can name the private
-// typed completion through its single friend. The production API exposes no
-// completion injection or corruption hook.
 #include "../src/v2_replication.cpp"
 
 namespace velocita::v2 {
@@ -93,7 +90,7 @@ struct PersistenceFenceTestAccess {
     }
 };
 
-} // namespace velocita::v2
+}
 
 namespace {
 using namespace velocita;
@@ -263,7 +260,7 @@ void duplicate_history_case() {
             "duplicate history completion mutated owner state");
 }
 
-} // namespace
+}
 
 int main() {
     try {

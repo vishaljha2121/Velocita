@@ -133,7 +133,7 @@ Digest256 calculate_digest(
     return digest.finish();
 }
 
-} // namespace
+}
 
 EncodeGenerationBaseResult encode_generation_base(
     const GenerationBaseKind kind, const std::uint64_t generation,
@@ -209,4 +209,4 @@ GenerationBaseError decode_generation_base(
     return GenerationBaseError::none;
 }
 
-} // namespace velocita::v2
+}

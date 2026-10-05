@@ -1,3 +1,4 @@
+// Fixed-capacity storage for retained Raft log entries.
 #pragma once
 
 #include "velocita/v2/result_ledger.hpp"
@@ -27,9 +28,6 @@ struct RetainedLogDescriptor {
 };
 static_assert(sizeof(RetainedLogDescriptor) == 40);
 
-// Owner-thread-only fixed retained history. Construction is the only allocating
-// operation; callers normally heap-own this object because its startup backing
-// is deliberately large.
 class RetainedLog final {
 public:
     RetainedLog();
@@ -43,8 +41,6 @@ public:
         std::uint64_t index, std::span<const std::byte> payload,
         bool control_eligible,
         std::optional<ResultHandle> result = std::nullopt) noexcept;
-    // Only interval endpoints may be erased. This makes durable prefix and
-    // tail-first suffix release explicit and prevents holes in modulo lookup.
     [[nodiscard]] bool erase(std::uint64_t index) noexcept;
     void clear() noexcept;
 
@@ -55,9 +51,6 @@ public:
     [[nodiscard]] std::span<std::byte> payload(std::uint64_t index) noexcept;
     [[nodiscard]] std::span<const std::byte> payload(std::uint64_t index) const noexcept;
 
-    // Simulates removal of the existing suffix starting at SUFFIX_START before
-    // adding CLASSES. Stored actual pool tags, not command classification, grant
-    // hypothetical token credit. No ownership is released by this call.
     [[nodiscard]] bool can_admit(
         std::span<const bool> control_eligible,
         std::optional<std::uint64_t> suffix_start = std::nullopt) const noexcept;
@@ -83,4 +76,4 @@ private:
     std::size_t protected_count_{};
 };
 
-} // namespace velocita::v2
+}

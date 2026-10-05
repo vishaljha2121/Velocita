@@ -27,7 +27,7 @@ std::uint64_t percentile(const std::vector<std::uint64_t>& sorted, const long do
     return sorted[std::min(sorted.size() - 1, rank == 0 ? std::size_t{0} : rank - 1)];
 }
 
-}  // namespace
+}
 
 PendingRequestTable::PendingRequestTable(const std::size_t capacity)
     : slots_(next_power_of_two(capacity)), occupied_(slots_.size()) {}
@@ -153,4 +153,4 @@ std::vector<std::uint64_t> cumulative_bucket_counts(
     return counts;
 }
 
-}  // namespace velocita
+}

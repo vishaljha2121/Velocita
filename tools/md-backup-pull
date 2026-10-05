@@ -45,7 +45,6 @@ def archive_name(day: str) -> str:
 
 
 def digest_line(text: str, name: str) -> str | None:
-    """`<sha256>  <name>` or a bare sha256; a line naming another file is refused."""
     words = text.split()
     if not words or not SHA.fullmatch(words[0]) or len(words) > 2:
         return None
@@ -78,8 +77,6 @@ class Remote:
         return self.run([*SSH, self.host, command], input=data, stdout=stdout, stderr=subprocess.PIPE)
 
     def listing(self) -> tuple[dict, dict]:
-        """(day -> sidecar sha256, day -> acknowledged sha256). Only names this
-        tool would itself produce are accepted; everything else is ignored."""
         result = self._ssh(f"cd {self.dir} && {{ grep -H . stream-*.sqlite.gz.sha256 acked/stream-*.ack "
                            f"2>/dev/null; true; }}")
         if result.returncode != 0:
@@ -114,7 +111,6 @@ class Remote:
 
 
 def write_sidecar(local: Path, name: str, sha: str) -> None:
-    """sha256sum format, so `shasum -a 256 -c` and md-restore both read it."""
     tmp = local / f".part-{name}.sha256"
     with open(tmp, "w", encoding="ascii") as handle:
         handle.write(f"{sha}  {name}\n")
@@ -146,7 +142,7 @@ def pull_day(remote: Remote, local: Path, day: str, sha: str, acked: bool, say) 
             return False
         os.replace(part, copy)
         write_sidecar(local, name, sha)
-        if sha256_file(copy) != sha:  # what is on disk now, not what passed through
+        if sha256_file(copy) != sha:
             copy.unlink()
             say(f"{day}: FAILED stored copy does not re-read as {sha}; removed, not acknowledged")
             return False

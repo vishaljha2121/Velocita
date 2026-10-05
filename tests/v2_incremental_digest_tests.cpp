@@ -110,7 +110,7 @@ void test_million_a_and_no_hash_allocations() {
                    "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0",
                    "million a");
 }
-}  // namespace
+}
 
 int main() {
     try {

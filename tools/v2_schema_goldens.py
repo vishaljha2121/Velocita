@@ -40,14 +40,13 @@ GENERATION_BASE_DOMAIN = b"velocita.v2.local-generation-base.v1"
 AUTHORITY_BARRIER_ENTRY_TYPE = 101
 
 
-# --- V2ID static identity -------------------------------------------------
 def identity(schema, incarnation, catalog_root, voters, local, mode=1):
     body = bytearray()
-    body += u16(1) + u16(0)                       # frame schema, reserved
+    body += u16(1) + u16(0)
     body += incarnation + catalog_root
-    body += u16(schema) + u16(schema)             # state snapshot, command/result
-    body += u16(1) + u16(1) + u16(1) + u16(1)     # marker, catalog, replication, storage
-    body += bytes([1, mode]) + u16(len(voters))   # quorum mode, deployment, count
+    body += u16(schema) + u16(schema)
+    body += u16(1) + u16(1) + u16(1) + u16(1)
+    body += bytes([1, mode]) + u16(len(voters))
     for voter in voters:
         body += i32(voter)
     body += i32(local)
@@ -69,15 +68,12 @@ def fixture_identity(schema, local=17):
                     [17, 257, 65537], local)
 
 
-# --- V2KC kernel command / V2ST snapshot --------------------------------
 def framed(magic, schema, prefix, payload):
-    # The length field counts the payload after the schema and any kind tag.
     unsealed = magic + u32(len(payload)) + u16(schema) + prefix + payload
     return unsealed + sha(unsealed[8:])
 
 
 def advance_kill_epoch_command(schema):
-    # kind 6; identity caller 1, sequence 1, digest 01 00..; new kill epoch 1
     payload = u64(1) + u64(1) + bytes([1]) + bytes(31) + u64(1)
     return framed(b"V2KC", schema, u16(6), payload)
 
@@ -86,14 +82,12 @@ def empty_state_snapshot(schema):
     return framed(b"V2ST", schema, b"", bytes(8) + bytes([5]) + bytes(86))
 
 
-# --- V2BF bound frame ------------------------------------------------------
 def bound_frame(kind, manifest_digest, owner, payload):
     header = (b"V2BF" + u16(1) + u16(kind) + u32(88 + len(payload)) + u32(len(payload)) +
               manifest_digest + i32(owner) + u32(0))
     return header + payload + sha(BOUND_FRAME_DOMAIN + header + payload)
 
 
-# --- V2AB authority marker ------------------------------------------------
 def authority_marker(authority_domain):
     body = (u16(1) + bytes(range(0xa0, 0xb0)) + u64(3) + u64(5) + bytes(range(0x40, 0x60)) +
             u64(7) + u64(11) + bytes(range(0x80, 0xa0)) + authority_domain)
@@ -101,9 +95,7 @@ def authority_marker(authority_domain):
     return frame + sha(frame[8:])
 
 
-# --- V2AS archive segment -------------------------------------------------
 def archive_segment(manifest_digest, predecessor_term, records):
-    """records: (index, term, entry_id, entry_type, payload)"""
     body = bytearray()
     for index, term, entry_id, entry_type, payload in records:
         header = u64(index) + i64(term) + i32(entry_id) + i32(entry_type) + u32(len(payload)) + u32(0)
@@ -116,7 +108,6 @@ def archive_segment(manifest_digest, predecessor_term, records):
     return unsealed + sha(SEGMENT_DOMAIN + unsealed)
 
 
-# --- V2AC archive catalog -------------------------------------------------
 def archive_catalog_digest(manifest_digest, local):
     def digest(first):
         return bytes([first]) + bytes(31)
@@ -132,23 +123,17 @@ def archive_catalog_digest(manifest_digest, local):
     return sha(CATALOG_DOMAIN + header + rows)
 
 
-# --- V2LG local generation selector --------------------------------------
 def local_generation_selector(manifest_digest, local):
     head = (b"V2LG" + u16(1) + u16(128) + u32(160) + u32(0) + manifest_digest + i32(local) +
             u32(0) + u64(8) + u64(3) + u64(7) + bytes(range(160, 192)) + bytes(16))
     return head + sha(SELECTOR_DOMAIN + head)
 
 
-# --- WAL block v2 --------------------------------------------------------
 def wal_block_crc(payload, generation=1, sequence=1):
-    # CRC-32 over the header with its checksum field zeroed plus the payload.
     header = u32(0x32425756) + u16(2) + u16(0) + u64(generation) + u64(sequence) + u32(len(payload))
     return u32(zlib.crc32(header + u32(0) + payload))
 
 
-# --- V2GB generation base seal --------------------------------------------
-# Catalog root of catalog_test::standard_catalog(), taken from the reviewed
-# F5 worker-golden evidence; the execution catalog codec is unchanged by V9.
 STANDARD_CATALOG_ROOT = bytes.fromhex(
     "a17bf680a3bad9b9035efb898745f4d20df2bfd0a82f20cf397e923047c73c64")
 
@@ -162,7 +147,6 @@ def generation_base_seal(schema):
     return prefix + digest
 
 
-# --- the vector set -------------------------------------------------------
 def vectors(schema):
     ident = fixture_identity(schema)
     m = manifest(ident)
@@ -192,7 +176,6 @@ def vectors(schema):
     }
 
 
-# Reviewed schema-8 literals, copied from the tests they were pinned in.
 REVIEWED_V8 = {
     "manifest digest": "eef0ad41482478f93cf9ac45c22d104c60c6d233638eef41429a4e6050ccc323",
     "authority domain": "28c6283ffd06603e0e483836a876faf9f48c398f7fe6754f8b9eec0ac0fb6363",

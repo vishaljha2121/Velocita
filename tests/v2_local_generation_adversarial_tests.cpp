@@ -33,7 +33,6 @@ VerifiedStaticIdentity identity() {
     return id;
 }
 const std::vector<std::byte>& golden() {
-    // Python struct.pack/hashlib from the approved offsets, independent of codec.
     static const auto bytes = hex(
         "56324c4701008000a0000000000000003ce5d6e3e9a886ab694852a129348bbe9413c2b55077a84804efa3cd645cc3e0"
         "1100000000000000080000000000000003000000000000000700000000000000"

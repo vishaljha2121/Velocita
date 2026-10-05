@@ -16,7 +16,6 @@ import sys
 
 DS = {"type": "prometheus", "uid": "velocita-v2-prometheus"}
 
-# (uid, file, title, short name for the link bar)
 OVERVIEW = ("velocita-v2-cluster", "velocita-v2-cluster.json", "Velocita — Overview", "Overview")
 RAFT = ("velocita-v2-raft", "velocita-v2-raft.json", "Velocita — Raft & storage", "Raft & storage")
 STRATEGY = ("velocita-v2-strategy", "velocita-v2-strategy.json", "Velocita — Strategy (shadow)", "Strategy (shadow)")
@@ -126,7 +125,6 @@ NEW_RISK_HELP = ("1 = the gateway sends no risk-increasing order. After an elect
                  "or a reconciliation mismatch only a restart (after checking the gateway journal) re-arms it.")
 
 
-# ---------------------------------------------------------------------------
 def right_now_row():
     row("Right now: is the cluster safe and able to commit?")
     stat("Voters reporting", 'sum(velocita_v2_up)', 0, 4, steps=(("red", None), ("orange", 2), ("green", 3)),
@@ -204,7 +202,6 @@ def overview():
                             "Read-only: nothing here grants authority to trade.", ["overview"])
 
 
-# ---------------------------------------------------------------------------
 def raft_log_row():
     row("Raft log & compaction")
     stat("Log used (ordinary)", '100 * velocita_v2_retained_log_entries{pool="ordinary"} / '
@@ -335,7 +332,6 @@ def raft():
                         "the disks under the WAL, and the soak bot.", ["raft"])
 
 
-# ---------------------------------------------------------------------------
 def shadow_edge_row():
     row("Shadow edge: live ticks to recorded decisions (never trades)")
     stat("Submitter ready", 'max(velocita_shadow_submitter_ready)', 0, 6,
@@ -486,8 +482,6 @@ def strategy():
                             "$1,000 virtual book. Nothing here trades.", ["strategy", "shadow"])
 
 
-# ---------------------------------------------------------------------------
-# Order of the stack and of the legends: the path one order takes.
 STAGES = ("decision_to_authorized", "authorized_to_proof", "proof_to_sent", "sent_to_fill", "fill_to_committed")
 CENTS = "suffix:¢"
 
@@ -511,7 +505,6 @@ def paper_now_row():
     stat("Unknown outcomes (range)", 'sum(increase(velocita_gateway_unknown_outcomes_total[$__range]))', 12, 4, h=6,
          steps=(("green", None), ("red", 1)), decimals=0,
          description="Orders whose venue outcome the gateway could not establish. Each one stops new risk. Must be 0.")
-    # The gauge is 0 until the gateway process sees its first fill (it restarts at 0), and time() - 0 is 1970.
     stat("Since last fill", 'time() - (max(velocita_gateway_last_fill_timestamp_seconds) > 0)', 16, 4, h=6, unit="s",
          steps=(("blue", None),), no_value="no fill since gateway start",
          description="Seconds since the last paper fill seen by the running gateway (it resets on restart). The daily "
@@ -686,7 +679,6 @@ def volume_row():
         ('100 * sum(increase(velocita_gateway_fees_usd_total[7d]))', "gateway, rolling 7 days"),
     ], 12, 12, unit=CENTS, description="Venue-reported paper fees over a rolling week, in US cents.")
     advance(8)
-    # Gross = net + fees: what the price moves alone did, before the venue's fees.
     stat("Gross P&L this week (before fees)", f'{WEEK_PNL} + {WEEK_FEES}', 0, 6, unit="currencyUSD", h=8,
          decimals=2, steps=(("red", None), ("green", 0)),
          description="Net P&L plus fees: the realized price-move result of this week's closed round trips, before "
@@ -712,7 +704,6 @@ def paper():
                          "stage, orders, fills, position and fees. No real order is sent.", ["paper", "gateway"])
 
 
-# ---------------------------------------------------------------------------
 def machines_row():
     row("Machines: NUC and Pi")
     series("CPU busy %", [('100 * (1 - avg by (host) (rate(node_cpu_seconds_total{mode="idle"}[1m])))', "{{host}}")],
@@ -742,7 +733,6 @@ def hosts():
 
 
 def build():
-    """File name -> dashboard, in link-bar order."""
     return dict(f() for f in (overview, raft, strategy, paper, hosts))
 
 

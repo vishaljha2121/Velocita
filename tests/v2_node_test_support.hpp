@@ -1,8 +1,4 @@
 #pragma once
-// Shared in-process harness for V2Node tests: a fake network, a cluster of
-// real V2Node owner loops, and the test's own caller. Moved verbatim from
-// v2_node_tests.cpp so client-session tests drive the same real nodes.
-// Include in exactly one translation unit per test binary.
 #include "velocita/v2/node.hpp"
 #include "v2_catalog_test_support.hpp"
 #include "v2_identity_test_support.hpp"
@@ -20,7 +16,6 @@
 #include <string>
 #include <unistd.h>
 #include <vector>
-
 
 namespace {
 
@@ -71,7 +66,7 @@ struct FakeTransport final : NodeTransport {
     std::int32_t self{};
     std::deque<Bytes> peer_inbox, ingress_inbox;
     bool block_offers{};
-    std::vector<Bytes> refused;  // envelopes offered while blocked or to a stopped voter
+    std::vector<Bytes> refused;
 
     std::optional<std::size_t> receive(Channel channel, std::span<std::byte> buffer) override {
         auto& inbox = channel == Channel::peer ? peer_inbox : ingress_inbox;
@@ -89,9 +84,9 @@ struct FakeTransport final : NodeTransport {
 struct Network {
     std::map<std::int32_t, FakeTransport> transports;
     std::deque<Bytes> responses;
-    std::vector<std::pair<std::int32_t, Bytes>> captured;  // (recipient, authentic peer frame)
+    std::vector<std::pair<std::int32_t, Bytes>> captured;
     bool partitioned{};
-    std::set<std::int32_t> down;  // stopped voters: offers to them are refused
+    std::set<std::int32_t> down;
 
     FakeTransport& at(std::int32_t id) {
         auto& transport = transports[id];
@@ -106,7 +101,6 @@ bool FakeTransport::offer_peer(std::int32_t voter, std::span<const std::byte> en
         refused.emplace_back(envelope.begin(), envelope.end());
         return false;
     }
-    // Aeron refuses an offer to a peer that is not connected, forever.
     if (network->down.contains(voter)) {
         refused.emplace_back(envelope.begin(), envelope.end());
         return false;
@@ -144,7 +138,6 @@ NodeConfig config_for(const std::filesystem::path& base, std::int32_t id, NodeSt
     return config;
 }
 
-// One distinct link secret per voter pair; the 1-2 link keeps kLinkSeed.
 std::uint8_t link_seed(std::int32_t a, std::int32_t b) {
     return static_cast<std::uint8_t>(kLinkSeed + 4 * (a + b - 3));
 }
@@ -156,7 +149,6 @@ NodeSecrets secrets_for(std::int32_t id, const std::vector<std::int32_t>& voters
     return secrets;
 }
 
-// The test's own caller: builds ingress envelopes and verifies responses.
 struct Caller {
     SessionSequencer sequencer{1};
     std::map<std::int32_t, SessionFence> fences;
@@ -175,7 +167,6 @@ struct Caller {
         out.resize(env.bytes_written);
         return out;
     }
-    // Verifies with the response key of the sender the route names.
     std::optional<std::pair<std::int32_t, NodeResponse>> open(const Bytes& frame) {
         AuthRoute route;
         if (peek_auth_route(frame, route) != AuthEnvelopeError::none || route.role != AuthRole::response)
@@ -195,7 +186,6 @@ struct Caller {
     }
 };
 
-// Parks the WAL worker inside a hard-state save while armed.
 struct Gate {
     std::atomic<bool> armed{false}, parked{false}, released{false};
     static void observe(MetadataCheckpoint checkpoint, void* context) {
@@ -215,8 +205,8 @@ struct Cluster {
     Caller caller;
     std::vector<std::pair<std::int32_t, NodeResponse>> received;
     std::map<std::int32_t, std::unique_ptr<Gate>> gates;
-    bool deliver_responses_to_caller = true;  // false: leave them for a session under test
-    std::uint32_t compact_at_entries = 2048;   // set before start() to exercise compaction
+    bool deliver_responses_to_caller = true;
+    std::uint32_t compact_at_entries = 2048;
 
     explicit Cluster(std::filesystem::path root, std::vector<std::int32_t> ids = kTwo)
         : base(std::move(root)), voters(std::move(ids)) {
@@ -225,15 +215,11 @@ struct Cluster {
             start(id, NodeStartup::bootstrap);
         }
     }
-    // Release parked workers BEFORE destroying nodes (which joins them), and
-    // destroy nodes while their gates are still alive: members die in reverse
-    // declaration order, which would otherwise free the gates first.
     ~Cluster() {
         for (auto& [id, gate] : gates) gate->released = true;
         nodes.clear();
     }
     void start(std::int32_t id, NodeStartup startup) {
-        // Retire any old node while its gate is alive and released.
         if (const auto old = gates.find(id); old != gates.end()) old->second->released = true;
         nodes.erase(id);
         gates[id] = std::make_unique<Gate>();
@@ -243,8 +229,6 @@ struct Cluster {
                                              MetadataCheckpoints{&Gate::observe, gates[id].get()});
     }
     V2Node& node(std::int32_t id) { return *nodes.at(id); }
-    // A stopped voter's process is gone: it takes no turns, and every offer to
-    // it is refused. Its data directory survives for a later restart.
     void stop(std::int32_t id) {
         if (const auto gate = gates.find(id); gate != gates.end()) gate->second->released = true;
         nodes.erase(id);
@@ -258,8 +242,6 @@ struct Cluster {
         start(id, NodeStartup::recover);
     }
 
-    // Real elapsed time, as the binary will feed it: simulated time racing
-    // ahead of real fsyncs would expire election timers before votes persist.
     std::chrono::steady_clock::time_point last = std::chrono::steady_clock::now();
     void run(int rounds) {
         for (int round = 0; round < rounds; ++round) {
@@ -293,7 +275,6 @@ struct Cluster {
         run_until([&] { return leader() != 0; }, "a ready leader");
         return leader();
     }
-    // No authenticated peer frame may vanish, busy kernel or not.
     std::uint64_t busy_holds() {
         std::uint64_t total = 0;
         for (auto& [id, node] : nodes) {
@@ -326,7 +307,6 @@ struct Base {
     ~Base() { std::error_code ignored; std::filesystem::remove_all(path, ignored); }
 };
 
-// Independent expectation: the canonical result the reducer alone produces.
 std::array<std::byte, kKernelResultBytes> expected_result(std::uint64_t through_sequence) {
     TradingState state{};
     ApplyScratch scratch{};
@@ -338,4 +318,4 @@ std::array<std::byte, kKernelResultBytes> expected_result(std::uint64_t through_
     return bytes;
 }
 
-}  // namespace
+}

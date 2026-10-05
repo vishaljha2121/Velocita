@@ -1,3 +1,4 @@
+// V1: the counter state machine with request deduplication.
 #pragma once
 
 #include "velocita/wire.hpp"
@@ -19,5 +20,4 @@ private:
     std::unordered_map<std::uint64_t, std::int64_t> completed_;
 };
 
-}  // namespace velocita
-
+}

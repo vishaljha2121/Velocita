@@ -60,9 +60,6 @@ def _digest_bytes(value: bytes, what: str) -> bytes:
 
 @dataclass(frozen=True, slots=True)
 class PolicyRule:
-    """One ordered predicate. Array position is economically meaningful: the
-    reducer stops at the first match, including a match selecting `no_action`."""
-
     feature_index: int
     predicate: PredicateOperator
     threshold_atoms: int
@@ -103,8 +100,6 @@ class PolicyArtifact:
     schema_version: int = POLICY_ARTIFACT_SCHEMA_VERSION
 
     def validate(self) -> None:
-        # Order mirrors the C++ `validate(const PolicyArtifact&)` exactly so the
-        # reported reason matches what the reducer would report.
         present(self.policy_id, "policy_id")
         present(self.policy_version, "policy_version")
         present(self.feature_schema_id, "feature_schema_id")
@@ -150,13 +145,6 @@ class PolicyArtifact:
 
 @dataclass(frozen=True, slots=True)
 class DecisionFrame:
-    """The bounded causal evidence for exactly one authoritative evaluation.
-
-    Every field is provenance the reducer checks. `features` is the only part
-    the research pipeline is free to define, and even that is pinned by
-    `feature_schema_id`: index N means one thing forever under a given schema.
-    """
-
     policy_id: int
     policy_version: int
     feature_schema_id: int
@@ -241,7 +229,6 @@ class DecisionFrame:
         return bytes(out)
 
     def corpus_digest(self) -> bytes:
-        """SHA-256 of the canonical bytes, matching the C++ corpus digests."""
         return sha256_digest(self.encode())
 
 
@@ -277,11 +264,6 @@ class _Reader:
 
 
 def decode_decision_frame(payload: bytes) -> DecisionFrame:
-    """Decode is used by replay and by the parity tests, never on a hot path.
-
-    Trailing undeclared bytes are rejected, as in the C++ decoder: a payload the
-    encoder would not have produced is not a payload we agree to interpret.
-    """
     if len(payload) < DECISION_FRAME_PAYLOAD_FIXED_BYTES:
         raise ContractViolation(ContractError.capacity_exceeded, "truncated decision frame")
     reader = _Reader(payload)

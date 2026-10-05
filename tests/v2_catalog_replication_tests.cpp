@@ -163,7 +163,6 @@ void verify_latched_surface(ReplicatedKernel& node) {
     require_dependency_failure([&] { node.tick(1); },
                                "latched node accepted tick");
     require_dependency_failure([&] {
-        // A latched node must refuse even malformed input before peer parsing.
         (void)node.receive_peer(std::span<const std::byte>{});
     }, "latched node accepted peer input");
     require_dependency_failure([&] { (void)identity_test::complete_compaction(node); },
@@ -361,7 +360,7 @@ void test_peer_commit_stops_before_apply_on_missing_artifact() {
             "peer commit consumed an installation lacking its artifact");
     verify_latched_surface(follower);
 }
-} // namespace
+}
 
 void run_catalog_replication_tests() {
     test_missing_intended_catalog_refused_before_bootstrap();

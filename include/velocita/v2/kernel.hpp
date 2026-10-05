@@ -1,3 +1,4 @@
+// The deterministic trading state machine: commands, state and apply.
 #pragma once
 
 #include "velocita/v2/action_resolver.hpp"
@@ -27,11 +28,6 @@ inline constexpr std::size_t kMaxRiskReservations = 16;
 inline constexpr std::size_t kMaxClusterOrders = 16;
 inline constexpr std::size_t kMaxOutboxEffects = 16;
 inline constexpr std::size_t kMaxVenueEventReceipts = 64;
-// Distinct logical clients of the cluster: the market-data edge, the authorizer,
-// the execution gateway, and the operator console. CallerId must be a STABLE
-// identity assigned by configuration - a caller returning from a restart with a
-// fresh id would fill this arena with dead entries and rebuild the lifetime
-// wedge one level up. See architecture 8.6.
 inline constexpr std::size_t kMaxCallerCursors = 8;
 static_assert(kMaxPolicies > 0);
 static_assert(kMaxSources > 0);
@@ -133,32 +129,14 @@ enum class ApplyCode : std::uint8_t {
     venue_event_capacity_exceeded,
     replacement_not_authorizable,
     order_not_replaceable,
-    // Native amend and overlapping replacement are disabled. Safe serial
-    // replacement remains required: cancel -> reconcile -> freshly authorize.
     replacement_not_supported,
-    // At most one unresolved cluster order per (account, instrument, venue,
-    // logical order slot), enforcing the selected no-overlap policy even when
-    // a fresh DecisionId would derive a different ClusterOrderId.
     order_slot_occupied,
     risk_account_capacity_exceeded,
     risk_version_exhausted,
     risk_reconfiguration_blocked,
-    // Architecture 8.6. The request identity is at or below its caller's
-    // watermark but its receipt has been reclaimed, so the kernel can no longer
-    // say what happened. It refuses rather than re-executing, because
-    // re-execution would be a second economic mutation; the caller reconciles
-    // against state, where almost every command's real protection already lives.
     request_expired,
-    // Reserved for historical results from the withdrawn venue-sequence
-    // watermark design. New reducers never emit this code.
     venue_event_expired,
-    // A control action arrived from a caller outside the reserved operator
-    // band. See `kMaxOperatorCallerId`. Appended at the END of this enum on
-    // purpose: every existing code keeps its value, so no retained result and
-    // no golden byte moves.
     unauthorized_control,
-    // A resume into a risk-increasing mode was refused because the cluster
-    // cannot currently say what its exposure is. See G-059.
     reconciliation_required,
     catalog_not_installed,
     catalog_installation_blocked,
@@ -168,17 +146,6 @@ enum class ApplyCode : std::uint8_t {
     position_limit_exceeded,
 };
 
-// The highest RequestSequence whose receipt this caller has had RECLAIMED.
-//
-// Deliberately not "highest ever admitted". The kernel must refuse only what it
-// actually forgot, so a caller sending a low sequence the cluster never held is
-// treated as fresh rather than refused. Refusing on the high-water mark instead
-// would enforce monotonicity as a side effect of expiry, which is a different
-// contract and a stricter one than architecture 8.6 requires.
-//
-// This cursor cannot itself be forgotten: it is the only thing distinguishing an
-// EXPIRED request from one never seen, and without it expiry would silently
-// permit re-execution - a second economic mutation.
 struct CallerCursor {
     CallerId caller_id{};
     RequestSequence expired_below{};
@@ -214,23 +181,6 @@ struct SupersedePolicy {
     PolicyVersion policy_version{};
 };
 
-// THE OPERATOR CALLER BAND. Control actions - kill epoch, executor generation,
-// strategy mode, catalog installation, risk limits - are accepted only from a
-// `CallerId` at or below this value.
-//
-// The reducer CANNOT verify a signature. G-066 keeps key material out of
-// replicated state and `apply` performs no I/O, so authentication is
-// necessarily a property of the edge that admits the command. What the cluster
-// can do is refuse a control action from a caller the edge never authenticated,
-// and record which operator issued the one it accepted - the existing
-// `CommandIdentity` already carries both the caller and a digest binding the
-// payload, so this needs no new bytes.
-//
-// ONE-DIRECTIONAL, deliberately: a control command must come from an operator
-// caller, but an operator caller may also issue ordinary ones. Making it
-// exclusive would buy nothing the edge does not already have to guarantee, and
-// the guarantee it does have to make is the deployment obligation that gives
-// this meaning - NEVER ISSUE A RESERVED CallerId TO A STRATEGY.
 inline constexpr std::uint64_t kMaxOperatorCallerId = 15;
 
 [[nodiscard]] constexpr bool is_operator_caller(const CallerId caller) noexcept {
@@ -251,31 +201,12 @@ struct SetExecutorGeneration {
     ExecutorGeneration new_generation{};
 };
 
-// WHAT A MASS CANCEL REACHES. Named rather than encoded as wildcard zeros,
-// because an operator reading a log entry under pressure should not have to
-// know that an empty account means "everything".
 enum class MassCancelScope : std::uint8_t {
     all = 1,
     account = 2,
     account_instrument = 3,
 };
 
-// ADR 0007. ONE command, not N individual cancels.
-//
-// The N-cancel form needed no new bytes and fails twice. Sixteen entries
-// against a four-block control reserve can drain the kill path it was meant to
-// sit beside - the exact failure the reservation exists to prevent, arriving
-// from inside the lane. And a mass cancel that stops half way leaves orders
-// live with no record of the intent to cancel them, while the operator has been
-// told the book is flat.
-//
-// Bounded by construction: the scope can name at most `kMaxClusterOrders`
-// orders, and `kMaxOutboxEffects` is the same number by static assertion, so
-// the request either fits or is refused. Neither outcome is partial.
-//
-// Carries the expected control values for the same reason `SetStrategyMode`
-// does: an operator acting on a stale view of authority must not have that
-// action silently applied to a newer one.
 struct RequestMassCancel {
     MassCancelScope scope{MassCancelScope::all};
     AccountId account_id{};
@@ -297,8 +228,6 @@ struct EvaluateDecisionFrame {
     DecisionFrame frame{};
 };
 
-// Staging is deliberately atomic: no replica can observe rules from one
-// revision with units or venue economics from another revision.
 struct StageExecutablePolicy {
     FeatureSchemaArtifact feature_schema{};
     ExecutablePolicyArtifact executable_policy{};
@@ -346,13 +275,8 @@ struct ConfigureRiskLimits {
     MoneyMicros max_reserved_exposure{};
     std::uint32_t initial_margin_ppm{};
     std::uint32_t maximum_fee_ppm{};
-    // Bounds |position| after every open order on either side fills. Zero
-    // denies new exposure; it never means unlimited.
     QuantityLots max_position_quantity{};
-    // False is long-only: a sell may only reduce a long position.
     bool allow_short{};
-    // Non-zero reference into the operator's audit record of why the limits
-    // changed. Carried in the log only; the kernel does not interpret it.
     std::uint32_t reason_code{};
 };
 
@@ -409,21 +333,11 @@ enum class ApplyResultDetailKind : std::uint8_t {
     fill = 3,
     venue_event = 4,
     risk_configuration = 5,
-    // Appended, so every existing kind keeps its value.
     mass_cancel = 6,
-    // Carried by a `stale_risk_state` authorization refusal so the strategy can
-    // bind the account's current versions on its next frame. Words are
-    // {risk_version, position_version, position_quantity atoms}.
     risk_state = 7,
-    // Carried only by a `source_generation_gap` refusal so a submitter whose
-    // state ran ahead can re-base on the next generation. Words are {source_id,
-    // cursor generation, cursor sequence}; both zero when the source has none.
     source_state = 8,
 };
 
-// Three canonical 64-bit words are interpreted only through the explicit tag.
-// This overlays command-family-specific results without making every retained
-// RequestReceipt pay for both source and Phase 4 authorization fields.
 struct ApplyResultDetail {
     std::array<std::uint64_t, 3> words{};
 
@@ -450,9 +364,6 @@ struct ApplyResultDetail {
                   static_cast<std::uint64_t>(filled_quantity.atoms())}}};
     }
 
-    // How much a mass cancel actually did. An operator who fired one needs to
-    // know the difference between "nothing was open" and "nothing could be
-    // cancelled", and those are the same `applied` result without this.
     [[nodiscard]] static constexpr ApplyResultDetail mass_cancel(
         const std::uint64_t in_scope,
         const std::uint64_t cancelled,
@@ -488,8 +399,6 @@ struct ApplyResultDetail {
 struct ApplyResult {
     ApplyCode code{ApplyCode::invalid_command};
     ContractError contract_error{ContractError::none};
-    // detail_kind tags these two words: fill stream identity for fills,
-    // policy identity otherwise. Raw words are exposed for canonical codecs.
     std::array<std::uint64_t, 2> metadata_words{};
     PolicyLifecycle policy_lifecycle{PolicyLifecycle::none};
     std::uint64_t state_version{};
@@ -628,10 +537,6 @@ struct ApplyResult {
                    ? EffectId{metadata_words[0]}
                    : EffectId{};
     }
-    // Which identity domain this receipt belongs to. Retained because the kind
-    // is not in the result, and a deduplication or reclamation pass must know
-    // whether the sequence means anything without going to find the
-    // observation.
     [[nodiscard]] constexpr ObservationOrigin event_origin() const noexcept {
         return detail_kind == ApplyResultDetailKind::venue_event &&
                        metadata_words[1] ==
@@ -678,9 +583,6 @@ struct ExecutablePolicyBundle {
     constexpr auto operator<=>(const ExecutablePolicyBundle&) const noexcept = default;
 };
 
-// The hot record contains only fields used to find a decision and consume its
-// authoritative outcome. Its independently retained cold partner contains the
-// full input needed for audit and deterministic re-evaluation.
 struct DecisionRecordHot {
     DecisionId decision_id{};
     PolicyId policy_id{};
@@ -750,9 +652,7 @@ struct RiskAccount {
     QuantityLots max_order_quantity{};
     QuantityLots max_reserved_quantity{};
     QuantityLots reserved_quantity{};
-    // Gross notional ceiling for one proposed order.
     MoneyMicros max_order_gross_notional{};
-    // Aggregate margin_hold + fee_hold budget, NOT gross open-order notional.
     MoneyMicros max_reserved_exposure{};
     MoneyMicros reserved_margin{};
     MoneyMicros reserved_fee{};
@@ -790,9 +690,6 @@ struct ClusterOrder {
     constexpr auto operator<=>(const ClusterOrder&) const noexcept = default;
 };
 
-// The exact economic payload is normalized through the retained immutable
-// DecisionRecordCold. This record owns delivery identity and digest without
-// duplicating the 176-byte boundary object in every bounded slot.
 struct OutboxEffectRecord {
     EffectId effect_id{};
     ClusterOrderId cluster_order_id{};
@@ -819,9 +716,6 @@ static_assert(sizeof(DecisionRecordCold) <= kDecisionRecordColdBudgetBytes,
 static_assert(kDecisionRecordHotArenaSlotStrideBytes == kTargetCacheLineBytes,
               "hot decision record no longer fits one target cache-line slot");
 
-// TradingState has one mutable owner. References into its arrays must not be
-// retained across apply(): later phases may reuse slots during replicated
-// expiry even though std::array itself never reallocates.
 struct TradingState {
     std::uint64_t state_version{};
     StrategyMode strategy_mode{StrategyMode::halted};
@@ -848,24 +742,13 @@ struct TradingState {
     std::array<ClusterOrder, kMaxClusterOrders> orders{};
     std::size_t outbox_effect_count{};
     std::array<OutboxEffectRecord, kMaxOutboxEffects> outbox_effects{};
-    // Monotonic count of fully resolved order groups reclaimed from the bounded
-    // arenas. Deliberately in state rather than in ApplyResult: it gives the
-    // dashboard the "how much has ever been swept" signal without growing the
-    // 128-byte canonical result or regenerating every existing golden result.
     std::uint64_t reclaimed_group_count{};
-    // Monotonic count of effects settled to `incomplete` because their order
-    // resolved before they ever received evidence. Operationally this is the
-    // signal that the gateway is losing effect outcomes: reclamation stays
-    // healthy, but a rising count means delivery bookkeeping is incomplete.
     std::uint64_t settled_incomplete_effect_count{};
     std::size_t caller_cursor_count{};
     std::array<CallerCursor, kMaxCallerCursors> caller_cursors{};
     Digest256 execution_catalog_root{};
 };
 
-// Reserved for bounded temporary indexes/encoding buffers in later reducer
-// increments. It is caller-owned so apply never needs hidden thread-local or
-// heap-backed scratch state.
 struct ApplyScratch final {};
 
 class CatalogDependencyUnavailable final : public std::exception {
@@ -881,13 +764,9 @@ public:
 [[nodiscard]] bool execution_catalog_ready(
     const Digest256& required_root, const VerifiedExecutionCatalog* catalog) noexcept;
 
-// Recovery-only semantic preflight, in addition to canonical snapshot validation.
 [[nodiscard]] bool execution_catalog_bindings_valid(
     const TradingState& state, const VerifiedExecutionCatalog& catalog) noexcept;
 
-// Pure, bounded reconstruction from retained authorization evidence. Returns
-// no value for missing/inconsistent evidence or unsupported operations.
-// The returned value owns its data; no pointer into TradingState escapes.
 [[nodiscard]] std::optional<OrderEffect> materialize_order_effect(
     const TradingState& state, EffectId effect_id) noexcept;
 
@@ -900,7 +779,6 @@ struct BoundOrderEffect {
     constexpr auto operator<=>(const BoundOrderEffect&) const noexcept = default;
 };
 
-// A local copied value, not an authenticated cross-process authority envelope.
 [[nodiscard]] std::optional<BoundOrderEffect> materialize_bound_order_effect(
     const TradingState& state, EffectId effect_id,
     const VerifiedExecutionCatalog& catalog) noexcept;
@@ -932,4 +810,4 @@ static_assert(sizeof(OutboxEffectRecord) <=
 static_assert(sizeof(TradingState) <= kTradingStateObjectBudgetBytes,
               "TradingState exceeded its reviewed in-memory object budget");
 
-}  // namespace velocita::v2
+}

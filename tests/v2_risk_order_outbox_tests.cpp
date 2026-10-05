@@ -181,20 +181,6 @@ velocita::v2::TradingState ready_state(
     return state;
 }
 
-
-// A genuinely two-sided fixture: a bid on logical slot 1 and an ask on slot 2.
-//
-// Slot exclusivity only earns its keep if the two sides never contend, and every
-// other fixture here quotes a single slot, so that has never actually been shown.
-// Two ordered rules select two templates: first-match sends a rich feature to the
-// buy template and anything above the floor to the sell template, which is the
-// simplest arrangement that exercises both slots from one policy without a second
-// policy artifact.
-//
-// Prices are kept small deliberately. The shared instrument profile caps price at
-// 100 ticks and per-order gross notional at 4,000, and notional is price * qty *
-// 100, so a two-lot order above 20 ticks would be refused for reasons unrelated
-// to slotting.
 velocita::v2::PolicyArtifact two_sided_policy() {
     using namespace velocita::v2;
     auto value = policy();
@@ -231,16 +217,9 @@ velocita::v2::TradingState two_sided_state() {
     const auto schema = feature_schema();
     state.active_executable_policy.executable_policy =
         two_sided_executable_policy(schema);
-    // ready_state() evaluates DecisionId{20} before this swap, so that decision
-    // was resolved against the single-rule policy and its proposal targets slot 1
-    // regardless of the two-sided bindings. It is deliberately left unused: a
-    // caller must evaluate its own decisions AFTER this function returns, or it
-    // will authorize a proposal that predates the policy it thinks it is testing.
     return state;
 }
 
-// Evaluate a decision at an explicit feature value, so a caller can steer
-// first-match rule selection and therefore which slot the proposal targets.
 velocita::v2::ApplyResult evaluate_at_feature(
     velocita::v2::TradingState& state,
     velocita::v2::ApplyScratch& scratch,
@@ -258,14 +237,6 @@ velocita::v2::ApplyResult evaluate_at_feature(
                                 scratch);
     require(admitted.code == ApplyCode::applied,
             "source event admission failed");
-
-
-
-
-
-
-
-
 
     auto value = frame();
     value.venue_sequence = VenueSequence{source_sequence};
@@ -343,9 +314,6 @@ velocita::v2::Command observe_fill(
     observation.effect_id = effect_id;
     observation.venue_order_id = VenueOrderId{70};
     observation.execution_id = execution_id;
-    // Side and price must match the resolved proposal: a fill whose side
-    // disagrees is refused as not applicable, which is correct but reads as a
-    // mysterious fixture failure on a two-sided book.
     observation.side = side;
     observation.price = PriceTicks::from_atoms(price);
     observation.quantity = QuantityLots::from_atoms(quantity);
@@ -428,10 +396,6 @@ void append_replacement_decision(
          MoneyMicros::from_atoms(price * quantity * 100)}};
 }
 
-// Drive one decision through the REAL admission path: record the source event,
-// then evaluate the frame. Writing decision records directly would bypass the
-// capacity checks where reclamation lives, so a harness shortcut there would
-// test nothing.
 velocita::v2::ApplyResult evaluate_new_decision(
     velocita::v2::TradingState& state,
     velocita::v2::ApplyScratch& scratch,
@@ -471,9 +435,6 @@ velocita::v2::Command authorize_decision(const std::uint64_t request,
             AuthorizeDecision{decision_id}};
 }
 
-// A second authoritative place_limit decision targeting the SAME logical order
-// slot as the Phase 3 fixture decision. Slot exclusivity, not directive class,
-// is what must refuse the resulting authorization.
 void append_submit_decision(velocita::v2::TradingState& state,
                             const velocita::v2::DecisionId decision_id,
                             const std::int64_t price,
@@ -481,9 +442,6 @@ void append_submit_decision(velocita::v2::TradingState& state,
                             const velocita::v2::LogicalOrderSlot slot =
                                 velocita::v2::LogicalOrderSlot{1}) {
     using namespace velocita::v2;
-    // Bounds-check in the harness itself: without reclamation the decision arena
-    // fills at the same rate as orders, and an unchecked append would write past
-    // the array and make the failure undefined rather than diagnosable.
     require(state.decision_count < kMaxDecisionRecords,
             "decision arena is full: retained decisions were not reclaimed");
     const auto index = state.decision_count++;
@@ -571,8 +529,6 @@ void test_submit_authorization_is_atomic_and_idempotent() {
                 state.outbox_effects[0].decision_id == DecisionId{20},
             "reservation, order, and effect are not linked by stable identity");
 
-    // Notional is 11 ticks * 2 lots * 100 quote micros = 2,200.
-    // Full margin is 2,200 and ceil(2,200 * 2,500 / 1,000,000) is 6.
     require(state.risk_accounts[0].reserved_quantity ==
                 QuantityLots::from_atoms(2) &&
                 state.risk_accounts[0].reserved_margin ==
@@ -1037,11 +993,6 @@ void test_authorization_rechecks_current_controls() {
                 ApplyCode::stale_control_generation,
             "decision from a previous kill epoch was authorized");
 
-    // Replacement previously had to recheck controls because it could create an
-    // effect. It now refuses before reaching any control check, which is a
-    // strictly stronger property: no control state permits it. Asserting the
-    // unconditional refusal keeps the original intent - stale controls cannot
-    // slip a replacement through - without asserting a check that no longer runs.
     auto replacement = ready_state();
     const auto submit = catalog_test::apply(replacement, authorize(2, 0x63), scratch);
     append_replacement_decision(replacement, DecisionId{21}, 12, 3);
@@ -1138,9 +1089,6 @@ void test_fill_proves_only_the_submit_effect_it_names() {
     using namespace velocita::v2;
     ApplyScratch scratch;
 
-    // A fill is positive evidence that the submit reached the venue. If the
-    // submit outcome was previously unknown, a partial fill must therefore
-    // advance the order to partially_filled and acknowledge that submit.
     auto unknown_submit = ready_state();
     const auto submit = catalog_test::apply(unknown_submit, authorize(2, 0x6d), scratch);
     require(catalog_test::apply(unknown_submit,
@@ -1165,10 +1113,6 @@ void test_fill_proves_only_the_submit_effect_it_names() {
                     OutboxState::acknowledged,
             "a partial fill did not resolve the submit uncertainty it proved");
 
-    // Once cancel is the current effect, a fill naming that cancel must be
-    // refused: it cannot turn cancel delivery into execution evidence. A fill
-    // naming the historical submit remains valid, but it must leave the cancel
-    // unknown until cancel-specific evidence arrives.
     auto unknown_cancel = ready_state();
     const auto cancel_submit = catalog_test::apply(unknown_cancel, authorize(2, 0x70), scratch);
     const auto cancel = catalog_test::apply(
@@ -1219,9 +1163,6 @@ void test_authorization_reserves_completion_and_cancel_capacity() {
     using namespace velocita::v2;
     ApplyScratch scratch;
 
-    // Fifty-eight retained observations leave six slots. A new two-atom order
-    // can require two one-atom fills plus bounded submit/cancel reconciliation
-    // transitions, so it must be refused before it can strand existing risk.
     auto event_pressure = ready_state();
     for (std::size_t index = 0; index < 58; ++index) {
         ApplyResult retained;
@@ -1241,10 +1182,6 @@ void test_authorization_reserves_completion_and_cancel_capacity() {
         event_before, event_pressure,
         "venue completion-capacity refusal mutated economics");
 
-    // Sixteen effect slots can support at most eight unresolved orders when
-    // every order owns a submit record and must retain one cancel record. The
-    // ninth order must stop at authorization, while all eight admitted orders
-    // must still be able to enter cancellation.
     auto outbox_pressure = ready_state();
     auto& risk = outbox_pressure.risk_accounts[0];
     risk.max_order_quantity = QuantityLots::from_atoms(16);
@@ -1295,14 +1232,6 @@ void test_authorization_reserves_completion_and_cancel_capacity() {
                                       order_ids[0], cancel_ids[0], 1'900),
                   scratch).code == ApplyCode::applied,
             "cancel-rejection fixture failed");
-    // A rejected cancel no longer proves the order is still live (architecture
-    // 10.3.5). The venue refuses a cancel for "already cancelled", "already
-    // filled", and "no such order" as readily as for "still working", and once
-    // cancels may be redelivered a rejection of the DUPLICATE is the common case.
-    // So the order goes to `reconciling` and a fresh cancel needs reconciliation
-    // first. The arena-pressure guarantee this test exists for is unchanged - the
-    // reconciliation is an observation and allocates no outbox slot - it just
-    // takes one more step to reach.
     require(catalog_test::apply(outbox_pressure,
                   request_cancel(9, 0x76, order_ids[0]), scratch).code ==
                 ApplyCode::order_not_cancellable,
@@ -1314,8 +1243,6 @@ void test_authorization_reserves_completion_and_cancel_capacity() {
                                       order_ids[0], cancel_ids[0], 1'901),
                   scratch).code == ApplyCode::applied,
             "reconciliation could not report the order still working");
-    // A fresh request identity: the refused attempt above retained its receipt,
-    // so re-presenting the same identity would correctly return that refusal.
     const auto retried = catalog_test::apply(
         outbox_pressure, request_cancel(10, 0x78, order_ids[0]), scratch);
     require(retried.code == ApplyCode::applied &&
@@ -1424,13 +1351,7 @@ void test_cancel_fill_final_evidence_permutations() {
                     submit.cluster_order_id(), cancel.effect_id(), 1702), final};
             bool fill_seen = false;
             for (const auto step : permutation) {
-                if (filled == 0 && step == 0) continue; // No execution exists in the zero-fill case.
-                // Sequences are assigned at APPLY time, not at construction.
-                // The permutation deliberately applies these commands in every
-                // order, so fixed identities would send a caller's sequence
-                // backwards, which architecture 8.6 now correctly refuses as
-                // expired. This test is about evidence ordering, not request
-                // deduplication, so each application gets a fresh identity.
+                if (filled == 0 && step == 0) continue;
                 auto command = commands[step];
                 command.identity.request_sequence =
                     RequestSequence{state.state_version + 500};
@@ -1456,24 +1377,9 @@ void test_cancel_fill_final_evidence_permutations() {
                     "permutation snapshot restore failed");
                 state = restored;
             }
-            // A refused early proof is a stable command outcome. A new request
-            // may re-present the same venue evidence once its prerequisites exist.
-            // Derived from the monotonic state version rather than fixed:
-            // RequestSequence must be monotonic per caller (architecture 8.6),
-            // and a fixed sequence re-presented after later permutations have
-            // advanced this caller's watermark is now correctly refused as
-            // expired rather than executed.
             final.identity.request_sequence =
                 RequestSequence{state.state_version + 1'000};
             const auto final_result = catalog_test::apply(state, final, scratch);
-            // `venue_observation_not_applicable` joins the accepted set because
-            // `cancel_reconciled` is a SYNTHETIC observation: it no longer holds
-            // a place in the venue's sequence domain, so a re-presentation after
-            // the order has already converged is re-adjudicated and refused on
-            // the order's state rather than on identity. That refusal is the
-            // correct answer - there is nothing left for the evidence to say -
-            // and the convergence asserted below is what this test is actually
-            // about.
             require((final_result.code == ApplyCode::applied ||
                      final_result.code == ApplyCode::already_applied ||
                      final_result.code ==
@@ -1500,7 +1406,6 @@ void test_cancel_before_earlier_fill_does_not_lose_fill_evidence() {
     const auto cancel = catalog_test::apply(state,
         request_cancel(1, 0xf2, submit.cluster_order_id()), scratch);
     require(cancel.code == ApplyCode::applied, "late-fill cancel fixture failed");
-    // Venue order: fill at 1601, cancellation at 1602. Delivery is reversed.
     require(catalog_test::apply(state, observe_order_event(1, 0xf3, VenueObservationKind::cancelled,
         submit.cluster_order_id(), cancel.effect_id(), 1602), scratch).code ==
             ApplyCode::applied, "late-fill cancellation fixture failed");
@@ -1566,11 +1471,6 @@ void test_cancel_before_earlier_fill_does_not_lose_fill_evidence() {
                 std::equal(direct_bytes.begin(), direct_bytes.begin() +
                     static_cast<std::ptrdiff_t>(direct_snapshot.bytes_written), replay_bytes.begin()),
             "reconciliation replay produced different snapshot bytes");
-    // A cross-request retry of a SYNTHETIC final proof. It is no longer refused
-    // on venue sequence identity - that domain belongs to the venue - so it is
-    // re-adjudicated and refused on the order, which has already converged.
-    // Asserted as the property the message names rather than as a code: the
-    // retry must not move economics a second time.
     const auto before_retry = state;
     proof.identity.request_sequence = RequestSequence{4};
     const auto retried = catalog_test::apply(state, proof, scratch);
@@ -1728,10 +1628,6 @@ void test_fill_digest_cannot_hide_changed_economics() {
     retry_event.identity.request_sequence = RequestSequence{9};
     require(catalog_test::apply(state, retry_event, scratch).code == ApplyCode::already_applied,
             "verified venue-event fingerprint did not survive restore");
-    // Mutated to another NATIVE kind on purpose. The venue's sequence domain is
-    // what this case is about, and only a native observation belongs to it: the
-    // venue said sequence 1302 was an acknowledgement, and it cannot also have
-    // been a rejection.
     auto changed_event = event;
     std::get<ObserveOrderEvent>(changed_event.body).observation.kind =
         VenueObservationKind::order_rejected;
@@ -1745,10 +1641,6 @@ void test_fill_digest_cannot_hide_changed_economics() {
     require(catalog_test::apply(state, changed_event, scratch).code == ApplyCode::venue_event_identity_conflict,
             "valid fingerprint concealed conflicting venue-event content");
 
-    // And the counterpart. A SYNTHETIC observation carrying the same number is
-    // not a contradiction, because that number was never the venue's to give:
-    // the gateway chose it. Refusing here would discard the gateway's only way
-    // of telling the cluster an effect's outcome is unknown.
     auto synthetic_event = event;
     auto& synthetic_observation =
         std::get<ObserveOrderEvent>(synthetic_event.body).observation;
@@ -1824,11 +1716,6 @@ void test_outbox_reconstructs_full_immutable_payload() {
     ApplyScratch scratch;
     auto state = ready_state();
     const auto submit = catalog_test::apply(state, authorize(2, 0x91), scratch);
-    // The second effect is a cancel rather than a replace: direct replacement is
-    // refused, so a submit/cancel pair is the only way one order accumulates two
-    // effects. The test still proves what it was written to prove - that every
-    // retained effect reconstructs its exact historical bytes regardless of how
-    // live state moves afterwards.
     const auto cancel = catalog_test::apply(state,
         request_cancel(1, 0x92, submit.cluster_order_id()), scratch);
     require(cancel.code == ApplyCode::applied, "outbox fixture cancel failed");
@@ -1862,8 +1749,6 @@ void test_outbox_reconstructs_full_immutable_payload() {
         require(encoded.error == PayloadError::none, "expected submit effect invalid");
         expected[0] = encoded.bytes;
 
-        // Whole-order cancel: zero price/quantity, provenance and
-        // authorization-time controls retained from the cancel receipt.
         value.effect_id = cancel.effect_id();
         value.committed_directive_index = cancel.state_version;
         value.executor_generation = cancel.executor_generation;
@@ -1947,11 +1832,8 @@ void test_outbox_reconstructs_full_immutable_payload() {
             "missing authorization receipt reconstructed an effect");
 }
 
-}  // namespace
+}
 
-// G-018 route: direct amend/replace is not offered, so no path can hold old and
-// new terms at once. The refusal must be typed and must leave every economic
-// balance byte-identical, including after snapshot restore.
 void test_request_replace_fails_closed_without_economics() {
     using namespace velocita::v2;
     auto state = ready_state();
@@ -1977,8 +1859,6 @@ void test_request_replace_fails_closed_without_economics() {
     require(state.orders[0].state == ClusterOrderState::dispatch_authorized,
             "refused replacement moved the order out of its authorized state");
 
-    // The refusal must survive a canonical snapshot round trip unchanged: a
-    // refused command must not be a state the snapshot cannot express.
     std::array<std::byte, kMaxStateSnapshotBytes> snapshot{};
     const auto encoded = encode_state_snapshot(state, snapshot);
     require(encoded.error == StateSnapshotError::none,
@@ -1995,10 +1875,6 @@ void test_request_replace_fails_closed_without_economics() {
             "replacement refusal did not hold after snapshot restore");
 }
 
-// The other half of G-018. Deferring RequestReplace is not sufficient: a fresh
-// authorization on an occupied logical slot reaches the same double-reserved
-// state through cancel-then-submit, because ClusterOrderId is derived from the
-// varying DecisionId and therefore never collides.
 void test_fresh_submit_cannot_bypass_unresolved_cancelled_slot() {
     using namespace velocita::v2;
     auto state = ready_state();
@@ -2043,9 +1919,6 @@ void test_fresh_submit_cannot_bypass_unresolved_cancelled_slot() {
                 state.reservations[0] == occupied.reservations[0],
             "refused slot reuse mutated economics");
 
-    // Final reconciliation proves the cumulative filled quantity and releases the
-    // residual. Only then may the slot be reused. This sequencing is what G-018
-    // requires: the old order's risk is gone before the new order's risk exists.
     auto proof = observe_order_event(2, 0xf6,
                                      VenueObservationKind::cancel_reconciled,
                                      submit.cluster_order_id(),
@@ -2065,19 +1938,6 @@ void test_fresh_submit_cannot_bypass_unresolved_cancelled_slot() {
             "slot was not reusable after its residual risk was resolved");
 }
 
-// ---------------------------------------------------------------------------
-// B2: bounded arenas must survive continuous requoting.
-//
-// Every completed requote cycle consumes one decision record, one cluster order,
-// one reservation, and one outbox effect. All four arenas hold 16. Without
-// reclamation the kernel therefore stops authorizing after 16 lifetime cycles on
-// a slot, whatever the market is doing - and slot exclusivity guarantees each
-// requote consumes a fresh set.
-//
-// A cycle here is the real one: authorize, fill completely, reservation released,
-// slot free. Payload records can be reclaimed, but retained receipts must still
-// prevent a historical decision from authorizing another economic mutation.
-// ---------------------------------------------------------------------------
 void test_completed_requote_cycles_do_not_exhaust_bounded_arenas() {
     using namespace velocita::v2;
     auto state = ready_state();
@@ -2085,8 +1945,6 @@ void test_completed_requote_cycles_do_not_exhaust_bounded_arenas() {
 
     std::uint64_t request = 2;
     std::uint64_t execution = 3'000;
-    // The Phase 3 fixture already retained DecisionId{20}; drive that one first,
-    // then keep requoting well past every arena bound.
     for (std::uint64_t cycle = 0; cycle < 20; ++cycle) {
         const DecisionId decision{20 + cycle};
         if (cycle > 0) {
@@ -2116,23 +1974,11 @@ void test_completed_requote_cycles_do_not_exhaust_bounded_arenas() {
             "state after arena reclamation failed snapshot invariants");
 }
 
-// The ordering hazard. A terminal order whose effect is still unresolved must
-// survive the sweep, because materialize_order_effect needs its decision record
-// and authorization receipt to reproduce the exact bytes already sent.
-// Reclaiming it would leave a pending external effect whose payload can never be
-// reconstructed, breaking G-020 and stranding the gateway.
 void test_sweep_preserves_records_an_unresolved_effect_still_needs() {
     using namespace velocita::v2;
     auto state = ready_state();
     ApplyScratch scratch;
 
-    // The realistic shape: a cancel is in flight when the fill lands. The ORDER
-    // resolves - filled, reservation released, slot free - while its CANCEL
-    // effect is still pending, so the gateway must remain able to reproduce the
-    // exact bytes it sent for that cancel.
-    //
-    // Note a fill cannot leave a SUBMIT effect unknown: being filled is proof the
-    // order existed at the venue, and the kernel correctly resolves it.
     const auto stranded = catalog_test::apply(state, authorize_decision(2, 0xc0, DecisionId{20}),
                                 scratch);
     require(stranded.code == ApplyCode::applied, "stranded fixture failed");
@@ -2161,8 +2007,6 @@ void test_sweep_preserves_records_an_unresolved_effect_still_needs() {
         encode_payload(*materialize_order_effect(state, stranded_cancel.effect_id()))
             .bytes;
 
-    // The slot is free because the reservation released, so requoting continues
-    // on it and drives every arena past its bound.
     std::uint64_t request = 4;
     std::uint64_t execution = 5'000;
     for (std::uint64_t cycle = 1; cycle < 20; ++cycle) {
@@ -2194,25 +2038,11 @@ void test_sweep_preserves_records_an_unresolved_effect_still_needs() {
             "sweep reclaimed records an unresolved effect still needed");
 }
 
-// conflict is terminal but NOT resolved: internal state and venue evidence
-// disagree, so the exposure is of unknown size and its hold must stand. Nothing
-// sets this state yet - B4 reconciliation will - so it is constructed directly
-// to pin the sweep invariant before its producer exists.
-//
-// A conflicted order keeps its reservation, so its slot stays occupied and no
-// further orders can be created on it. The decision arena is therefore filled
-// instead, which is enough to trigger a sweep and prove it declines to sacrifice
-// the conflict for capacity.
 void test_conflicted_orders_are_never_swept() {
     using namespace velocita::v2;
     auto state = two_sided_state();
     ApplyScratch scratch;
 
-    // A conflicted order on slot 1. Once superseded proposals became
-    // reclaimable, the decision arena can no longer be filled to force a sweep,
-    // so pressure now comes from the ORDER arena instead - which is the more
-    // realistic source anyway. That needs a second slot to cycle on, hence the
-    // two-sided fixture.
     require(evaluate_at_feature(state, scratch, DecisionId{30}, 16, 2, 3).code ==
                 ApplyCode::applied,
             "conflict fixture decision failed");
@@ -2264,9 +2094,6 @@ void test_conflicted_orders_are_never_swept() {
             "conflicted order lost the bytes an operator needs to resolve it");
 }
 
-// Reservations are addressed by ARRAY INDEX from ClusterOrder. Dense compaction
-// that moves reservations without repairing those indices would silently point
-// an order at another order's risk - no compile error, no validation failure.
 void test_sweep_preserves_reservation_index_pairing() {
     using namespace velocita::v2;
     auto state = ready_state();
@@ -2355,7 +2182,6 @@ void test_reclaimed_decision_retains_identity_and_authorization() {
         require(candidate->risk_accounts[0] == risk && candidate->order_count == orders &&
                     candidate->decision_count == decisions && candidate->outbox_effect_count == effects,
                 "reclaimed identity retry mutated economics or recreated payload records");
-        // A genuinely fresh identity still works and has exactly one materializable effect.
         require(evaluate_new_decision(*candidate, scratch, DecisionId{40}, 22,
                     request + 3).code == ApplyCode::applied, "fresh decision was blocked");
         const auto fresh = catalog_test::apply(*candidate,
@@ -2408,9 +2234,9 @@ void test_risk_configuration_codec_and_restore() {
     for (const std::uint64_t value : {5ULL, 4ULL, 6ULL, 1ULL, 2ULL, 3ULL, 4ULL, 8ULL, 4000ULL, 8000ULL})
         put(value, 64);
     for (const std::uint32_t value : {1'000'000U, 2'500U}) put(value, 32);
-    put(1'000, 64);  // max_position_quantity
-    put(1, 8);       // allow_short
-    put(1, 32);      // reason_code
+    put(1'000, 64);
+    put(1, 8);
+    put(1, 32);
     require(expected.size() == 101 &&
                 std::equal(expected.begin(), expected.end(), bytes.begin() + 60),
             "risk configuration canonical field order or integer widths changed");
@@ -2424,7 +2250,7 @@ void test_risk_configuration_codec_and_restore() {
                     KernelCodecError::none, "truncated configuration was accepted");
     }
     auto malformed = bytes;
-    std::fill_n(malformed.begin() + 60 + 48, 8, std::byte{}); // zero max_order_quantity
+    std::fill_n(malformed.begin() + 60 + 48, 8, std::byte{});
     const auto integrity = sha256_digest(std::span<const std::byte>{malformed.data() + 8,
         encoded.bytes_written - kDigestBytes - 8});
     std::copy(integrity.bytes.begin(), integrity.bytes.end(),
@@ -2433,8 +2259,6 @@ void test_risk_configuration_codec_and_restore() {
                 KernelCodecError::invalid_value && encode_kernel_command(decoded, again).error ==
                 KernelCodecError::none && again == bytes,
             "malformed configuration passed semantic validation or changed decode destination");
-    // Each appended field is validated on decode, not only on encode: a byte
-    // the encoder can never produce must not be admitted from the log.
     const auto reject_body = [&](const std::size_t offset, const std::vector<std::byte>& patch,
                                  const std::string& what) {
         auto corrupt = bytes;
@@ -2583,8 +2407,6 @@ void test_risk_configuration_admission_and_capacity() {
     auto configuration = configure_risk(state, 1);
     auto& c = std::get<ConfigureRiskLimits>(configuration.body);
     c.expected_risk_version = RiskVersion{};
-    // Configure below full notional, but above margin+fee: notional and holds
-    // are intentionally distinct limits. No fixture-injected risk survives.
     c.initial_margin_ppm = 100'000;
     c.max_reserved_exposure = MoneyMicros::from_atoms(300);
     state.risk_accounts = {};
@@ -2632,12 +2454,6 @@ void test_risk_configuration_admission_and_capacity() {
     require(catalog_test::apply(state, full, scratch).code == ApplyCode::risk_account_capacity_exceeded &&
                 state.risk_accounts == accounts, "full risk arena mutated on refused creation");
     auto receipts_full = state;
-    // Receipts are now reclaimable (architecture 8.6), so a filler of default
-    // records would simply be swept and capacity would never be exceeded. Fill
-    // with PINNED receipts instead - applied fill results, which are the
-    // deduplication for a venue execution identity and are never forgotten while
-    // an order could still accept quantity. That makes the arena genuinely full
-    // and keeps this test about the capacity path rather than the sweep.
     for (std::size_t index = 0; index < kMaxRequestReceipts; ++index) {
         ApplyResult pinned;
         pinned.code = ApplyCode::applied;
@@ -2655,44 +2471,11 @@ void test_risk_configuration_admission_and_capacity() {
             "configuration committed without room for its receipt");
 }
 
-// ---------------------------------------------------------------------------
-// Serial replacement acceptance: the full requote lifecycle with a risk-limit
-// update landing inside the cancel/reconcile window.
-//
-// Refusing native amend does not by itself satisfy G-018. G-018 constrains the
-// amend/cancel-replace TRANSITION, and with native amend disabled the serial
-// cancel -> reconcile -> fresh-authorize path IS that transition. It therefore
-// has to be proven, not assumed, and proven while replicated risk configuration
-// is changing underneath it - the case an operator actually creates when
-// retuning limits on a live book.
-//
-// The matrix, in order:
-//   1. a rate/policy change is refused while the cancelled order still holds risk;
-//   2. an aggregate cap that would not cover the retained hold is refused;
-//   3. a prospective per-order cap change is accepted and rewrites no balance,
-//      no historical effect, and no position version;
-//   4. a successor evaluated before the bump is refused as stale, not admitted
-//      and not silently re-based onto the new version;
-//   5. only final reconciliation releases the residual and frees the slot;
-//   6. a freshly evaluated successor authorizes against the new configuration; and
-//   7. every historical and current effect still reconstructs byte-for-byte
-//      across snapshot restore and canonical command replay.
-// ---------------------------------------------------------------------------
 void test_serial_replacement_across_a_risk_limit_update() {
     using namespace velocita::v2;
     auto state = ready_state();
     ApplyScratch scratch;
 
-    // Canonical replay leg. EVERY command that reaches apply is recorded,
-    // including refused ones: an admitted refusal retains a receipt and advances
-    // the global StateVersion, and `committed_directive_index` in an effect's
-    // canonical bytes is exactly that StateVersion at authorization time. A
-    // replay that skips refusals therefore reproduces different effect bytes,
-    // which is a fidelity bug in the replay rather than in the kernel.
-    //
-    // Snapshot restore proves the state can be rebuilt; replay proves it can be
-    // re-derived from the commands that produced it, which is the stronger
-    // property and the one the outbox depends on.
     std::vector<Command> history;
     const auto admitted = [&](const Command& command) {
         const auto outcome = catalog_test::apply(state, command, scratch);
@@ -2705,8 +2488,6 @@ void test_serial_replacement_across_a_risk_limit_update() {
     const auto submit_bytes =
         encode_payload(*materialize_order_effect(state, submit.effect_id())).bytes;
 
-    // A successor evaluated NOW binds RiskVersion 1. The configuration update
-    // below makes it stale, and it must never be quietly re-based.
     require(evaluate_new_decision(state, scratch, DecisionId{21}, 2, 3, &history)
                     .code == ApplyCode::applied,
             "successor decision was not retained");
@@ -2729,9 +2510,6 @@ void test_serial_replacement_across_a_risk_limit_update() {
                 what);
     };
 
-    // 1. Rates and policy version cannot move while the reservation is unresolved.
-    //    A cancel-pending order still owns real exposure, and re-rating it would
-    //    revalue a hold taken under different terms.
     {
         const auto before = state;
         auto rates = configure_risk(state, 1);
@@ -2743,7 +2521,6 @@ void test_serial_replacement_across_a_risk_limit_update() {
         economics_unchanged(before, state, "blocked rate change mutated economics");
     }
 
-    // 2. An aggregate cap below the retained hold is refused, not clamped.
     {
         const auto before = state;
         auto tighten = configure_risk(state, 2);
@@ -2754,7 +2531,6 @@ void test_serial_replacement_across_a_risk_limit_update() {
         economics_unchanged(before, state, "refused cap change mutated economics");
     }
 
-    // 3. A prospective per-order cap change is accepted mid-cancellation.
     const auto before_update = state;
     auto update = configure_risk(state, 3);
     std::get<ConfigureRiskLimits>(update.body).max_order_quantity =
@@ -2779,10 +2555,6 @@ void test_serial_replacement_across_a_risk_limit_update() {
                         .bytes == cancel_bytes,
             "configuration rewrote a historical effect's bytes");
 
-    // 4. The successor bound RiskVersion 1 and must be refused as stale. This
-    //    precedes the slot check on purpose: the specific economic reason is
-    //    more useful than "the slot is busy", and the precedence is fixed so the
-    //    reported reason is stable on every replica.
     {
         const auto before = state;
         require(admitted(authorize_decision(4, 0x73, DecisionId{21})).code ==
@@ -2791,7 +2563,6 @@ void test_serial_replacement_across_a_risk_limit_update() {
         economics_unchanged(before, state, "stale successor mutated economics");
     }
 
-    // 5. Only final reconciliation releases the residual.
     require(admitted(observe_order_event(1, 0x74, VenueObservationKind::cancelled,
                                          submit.cluster_order_id(),
                                          cancel.effect_id(), 2100))
@@ -2819,7 +2590,6 @@ void test_serial_replacement_across_a_risk_limit_update() {
                 state.reservations[0].state == ReservationState::released,
             "final reconciliation did not release the residual hold");
 
-    // 6. A freshly evaluated successor authorizes against the new configuration.
     require(evaluate_new_decision(state, scratch, DecisionId{22}, 3, 6, &history)
                     .code == ApplyCode::applied,
             "fresh successor decision was not retained");
@@ -2830,7 +2600,6 @@ void test_serial_replacement_across_a_risk_limit_update() {
     const auto successor_bytes =
         encode_payload(*materialize_order_effect(state, successor.effect_id())).bytes;
 
-    // 7. Every effect in the lifecycle survives snapshot restore byte-for-byte.
     std::array<std::byte, kMaxStateSnapshotBytes> snapshot{};
     const auto encoded = encode_state_snapshot(state, snapshot);
     require(encoded.error == StateSnapshotError::none,
@@ -2854,9 +2623,6 @@ void test_serial_replacement_across_a_risk_limit_update() {
                 restored.orders == state.orders,
             "snapshot restore changed serial-lifecycle economics");
 
-    // 8. Canonical replay. Re-drive the recorded lifecycle through the encoded
-    //    command path from an identical starting state, then require the same
-    //    historical effect bytes AND the same canonical snapshot.
     auto replayed = ready_state();
     ApplyScratch replay_scratch;
     KernelCommandCodecScratch codec_scratch;
@@ -2891,20 +2657,6 @@ void test_serial_replacement_across_a_risk_limit_update() {
             "canonical replay did not converge to the direct snapshot");
 }
 
-// ---------------------------------------------------------------------------
-// Reclamation landing inside the cancel/reconcile window.
-//
-// The production shape: a cancel is outstanding at a slow venue while the edge
-// keeps producing frames, so the arenas fill mid-cancellation. Compaction and
-// the cancel lifecycle have only been tested apart; here they interact.
-//
-// The question that matters is not whether the cancelled order survives the
-// sweep - it is unresolved, so it must - but whether a stuck slot can still be
-// RECOVERED once the arenas are full. If the reconciliation that releases the
-// residual itself needed the capacity that is exhausted, one slow venue response
-// would wedge the kernel instead of degrading it, and the operator path in
-// G-074a would become mandatory rather than a safety net.
-// ---------------------------------------------------------------------------
 void test_reclamation_during_cancellation_preserves_the_recovery_path() {
     using namespace velocita::v2;
     auto state = ready_state();
@@ -2929,12 +2681,6 @@ void test_reclamation_during_cancellation_preserves_the_recovery_path() {
             "stuck-slot fixture did not reach reconciling");
     const auto held = state.risk_accounts[0];
 
-    // The edge keeps evaluating because market data does not stop. Once
-    // unauthorized decisions became reclaimable this stopped being able to
-    // exhaust the arena at all: each new actionable proposal for the occupied
-    // slot supersedes the previous one, so at most the newest survives. The
-    // property is now the stronger one - a stuck order cannot wedge evaluation -
-    // rather than the earlier "evaluation halts but can still recover".
     std::uint64_t request = 3;
     std::uint64_t sequence = 2;
     for (std::uint64_t cycle = 1; cycle < 40; ++cycle) {
@@ -2945,7 +2691,6 @@ void test_reclamation_during_cancellation_preserves_the_recovery_path() {
                 "occupied slot were not reclaimed");
     }
 
-    // The reconciling order is untouched by compaction pressure.
     require(state.order_count >= 1 &&
                 state.orders[0].cluster_order_id == submit.cluster_order_id() &&
                 state.orders[0].state == ClusterOrderState::reconciling &&
@@ -2964,10 +2709,6 @@ void test_reclamation_during_cancellation_preserves_the_recovery_path() {
                         .bytes == cancel_bytes,
             "reclamation pressure changed a reconciling order's effect bytes");
 
-    // THE PROPERTY UNDER TEST: recovery does not depend on the arena that filled.
-    // Final reconciliation consumes a request receipt and a venue-event receipt,
-    // neither of which is the decision arena, so a stuck slot stays recoverable
-    // while evaluation is failing closed.
     auto proof = observe_order_event(2, 0x84,
                                      VenueObservationKind::cancel_reconciled,
                                      submit.cluster_order_id(), cancel.effect_id(),
@@ -2979,10 +2720,6 @@ void test_reclamation_during_cancellation_preserves_the_recovery_path() {
     require(catalog_test::apply(state, proof, scratch).code == ApplyCode::applied &&
                 state.reservations[0].state == ReservationState::released,
             "a stuck slot could not be reconciled while the arenas were full");
-    // The orphaned submit effect is recorded as `incomplete` - outcome never
-    // established - and must NOT be recorded as `acknowledged`, which would
-    // claim evidence the venue never gave us. Checked before reclamation
-    // removes the record.
     {
         bool saw_incomplete = false;
         for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
@@ -2994,17 +2731,10 @@ void test_reclamation_during_cancellation_preserves_the_recovery_path() {
                 "orphaned effect was not settled honestly as incomplete");
     }
 
-    // Once the residual is released the group becomes reclaimable, and the slot
-    // is free for a fresh quote.
     require(evaluate_new_decision(state, scratch, DecisionId{99}, sequence++,
                                   request++)
                     .code == ApplyCode::applied,
             "evaluation did not continue after the stuck slot was reconciled");
-    // Reclamation is on-demand: it runs only when an arena is full, and now that
-    // superseded proposals are reclaimed the arena no longer fills here. So the
-    // assertion is that the group is RECLAIMABLE - terminal, released, and with
-    // every effect settled - not that a sweep happened to run. On-demand
-    // reclamation itself is covered by the requote-cycle test.
     require(state.orders[0].state == ClusterOrderState::cancelled &&
                 state.reservations[0].state == ReservationState::released,
             "the stuck slot did not become reclaimable after reconciliation");
@@ -3016,22 +2746,6 @@ void test_reclamation_during_cancellation_preserves_the_recovery_path() {
             "recovered state failed snapshot invariants");
 }
 
-// ---------------------------------------------------------------------------
-// Risk configuration against every unresolved order state.
-//
-// Architecture section 8.1 requires that a rate or policy-version change be
-// refused while ANY unresolved reservation exists for the account and
-// instrument, naming unknown, reconciling and conflict explicitly. The
-// implementing predicate keys on the reservation not being released rather than
-// on the order's lifecycle state, which is the right axis - risk is what the
-// rule protects - but it means the named states are only covered transitively.
-// Pin each one, because a future refactor that switches the predicate to a state
-// list would silently drop whichever state it forgot.
-//
-// The economic reason: re-rating an account with live exposure would revalue a
-// hold taken under different terms. Caps are prospective and may move; rates are
-// retroactive in effect and may not.
-// ---------------------------------------------------------------------------
 void test_risk_configuration_respects_every_unresolved_order_state() {
     using namespace velocita::v2;
     ApplyScratch scratch;
@@ -3058,9 +2772,6 @@ void test_risk_configuration_respects_every_unresolved_order_state() {
                     state.outbox_effects == before.outbox_effects,
                 std::string{what} + ": blocked rate change mutated economics");
 
-        // A policy-version bump alone is equally blocked: it is the version that
-        // gates which rates may later apply, so letting it move would strand the
-        // hold on a version its own policy no longer describes.
         auto policy_only = configure_risk(state, 2);
         std::get<ConfigureRiskLimits>(policy_only.body).risk_policy_version =
             RiskPolicyVersion{7};
@@ -3068,8 +2779,6 @@ void test_risk_configuration_respects_every_unresolved_order_state() {
                     ApplyCode::risk_reconfiguration_blocked,
                 std::string{what} + ": policy-version bump was admitted");
 
-        // Prospective per-order caps remain configurable: they bind future
-        // authorizations and never revalue an existing hold.
         auto caps = configure_risk(state, 3);
         std::get<ConfigureRiskLimits>(caps.body).max_order_quantity =
             QuantityLots::from_atoms(3);
@@ -3082,8 +2791,6 @@ void test_risk_configuration_respects_every_unresolved_order_state() {
                     state.reservations == before.reservations,
                 std::string{what} + ": cap change rewrote a live hold");
 
-        // An aggregate cap that would not cover the retained hold is refused
-        // rather than clamped, in every unresolved state.
         auto shrink = configure_risk(state, 4);
         std::get<ConfigureRiskLimits>(shrink.body).max_reserved_exposure =
             MoneyMicros::from_atoms(1);
@@ -3128,13 +2835,10 @@ void test_risk_configuration_respects_every_unresolved_order_state() {
                 "reconciling fixture failed");
     });
 
-    // `conflict` has no producer yet - B4 reconciliation will add one - so it is
-    // constructed directly to pin the rule before its producer exists.
     blocked_in("conflict", [](TradingState& state, const ApplyResult&) {
         state.orders[0].state = ClusterOrderState::conflict;
     });
 
-    // Once the risk is genuinely resolved, rates become configurable again.
     auto resolved = ready_state();
     const auto submit = catalog_test::apply(resolved, authorize(2, 0x96), scratch);
     require(catalog_test::apply(resolved,
@@ -3155,31 +2859,11 @@ void test_risk_configuration_respects_every_unresolved_order_state() {
             "rate change disturbed the filled position");
 }
 
-// ---------------------------------------------------------------------------
-// Multi-slot serial requoting: a bid and an ask cycling independently.
-//
-// This is what slot exclusivity was actually built for. A single-slot maker
-// stops quoting entirely while a cancel reconciles; a two-sided maker must keep
-// the other side live throughout, because the alternative - one stuck side
-// silencing the book - is the failure that makes the whole G-018 trade
-// unacceptable in practice.
-//
-// The properties that must hold:
-//   * the two slots do not contend: occupying one never blocks the other;
-//   * each slot's exclusivity is enforced independently;
-//   * both orders' risk is held simultaneously and summed, not netted;
-//   * reclamation of one side never disturbs the other's pairing or bytes; and
-//   * the whole interleaving survives snapshot restore.
-// ---------------------------------------------------------------------------
 void test_two_sided_slots_requote_independently() {
     using namespace velocita::v2;
     auto state = two_sided_state();
     ApplyScratch scratch;
 
-    // Both decisions are evaluated AFTER the two-sided policy is installed.
-    // Feature 11 falls below rule 0's threshold of 15, so first-match falls
-    // through to rule 1 and its sell template on slot 2. Feature 16 matches rule
-    // 0 and its buy template on slot 1.
     require(evaluate_at_feature(state, scratch, DecisionId{30}, 11, 2, 3).code ==
                 ApplyCode::applied,
             "ask decision was not retained");
@@ -3200,9 +2884,6 @@ void test_two_sided_slots_requote_independently() {
     require(bid.cluster_order_id() != ask.cluster_order_id() &&
                 state.order_count == 2 && state.reservation_count == 2,
             "two-sided quoting did not create two independent orders");
-    // The premise the rest of the test rests on: first-match really did select
-    // two different templates, so these are opposite sides on distinct slots and
-    // not two copies of one quote.
     {
         const auto& first = state.decision_cold[1].proposal;
         const auto& second = state.decision_cold[2].proposal;
@@ -3210,24 +2891,15 @@ void test_two_sided_slots_requote_independently() {
                 "the two decisions did not resolve to distinct slots and sides");
     }
 
-    // Both sides hold risk at once. Exposure sums; it is not netted across
-    // sides, because two resting orders can both fill.
     require(state.risk_accounts[0].reserved_quantity ==
                 QuantityLots::from_atoms(4),
             "two-sided reserved quantity was netted instead of summed");
 
-    // Each slot is exclusive on its own. Re-authorizing either side is refused
-    // for slot occupancy, and the other side is untouched.
     {
         const auto before = state;
-        // Same request identity: receipt deduplication returns the original
-        // result verbatim, before authorization logic is reached at all.
         require(catalog_test::apply(state, authorize_decision(5, 0xa1, DecisionId{30}), scratch) ==
                     ask,
                 "ask request retry did not return its retained result");
-        // Different request identity, same decision: authorization recognises the
-        // decision was already consumed and replays its identities rather than
-        // creating a second order on the slot.
         const auto replayed =
             catalog_test::apply(state, authorize_decision(9, 0xa3, DecisionId{30}), scratch);
         require(replayed.code == ApplyCode::already_applied &&
@@ -3239,7 +2911,6 @@ void test_two_sided_slots_requote_independently() {
                 "retry mutated economics");
     }
 
-    // Cancel and reconcile the ask while the bid keeps quoting.
     const auto cancel = catalog_test::apply(
         state, request_cancel(1, 0xa4, ask.cluster_order_id()), scratch);
     require(cancel.code == ApplyCode::applied, "ask cancel failed");
@@ -3251,7 +2922,6 @@ void test_two_sided_slots_requote_independently() {
                     .code == ApplyCode::applied,
             "ask cancellation failed");
 
-    // The bid is entirely unaffected by the ask's reconciliation.
     const auto bid_index = state.orders[0].cluster_order_id == bid.cluster_order_id()
                                ? 0u : 1u;
     require(state.orders[bid_index].state == ClusterOrderState::dispatch_authorized &&
@@ -3270,7 +2940,6 @@ void test_two_sided_slots_requote_independently() {
     require(catalog_test::apply(state, proof, scratch).code == ApplyCode::applied,
             "ask reconciliation failed while the bid was live");
 
-    // Only the ask's risk was released; the bid's hold is untouched.
     require(state.risk_accounts[0].reserved_quantity ==
                 QuantityLots::from_atoms(2),
             "reconciling one side released the other side's risk");
@@ -3280,14 +2949,9 @@ void test_two_sided_slots_requote_independently() {
                     .bytes == ask_bytes,
             "reconciling the ask changed its historical effect bytes");
 
-    // The ask slot is now free and requotes while the bid still rests.
     require(evaluate_at_feature(state, scratch, DecisionId{32}, 11, 4, 7).code ==
                 ApplyCode::applied,
             "ask requote decision was not retained");
-    // Sequence 10, not 8: RequestSequence must be monotonic per caller
-    // (architecture 8.6), and this caller has already reached 9. A lower
-    // sequence is now correctly refused as expired rather than executed, which
-    // is exactly the protection the watermark exists to give.
     const auto requote = catalog_test::apply(state, authorize_decision(10, 0xa7, DecisionId{32}),
                                scratch);
     require(requote.code == ApplyCode::applied &&
@@ -3313,36 +2977,8 @@ void test_two_sided_slots_requote_independently() {
             "snapshot restore changed two-sided economics");
 }
 
-// ---------------------------------------------------------------------------
-// Unauthorized-decision retention.
-//
-// A live maker evaluates continuously and most frames produce no_action, so the
-// decision arena fills with records no order will ever reference. Reclaiming
-// order groups does not help: there may be no resolved group to free.
-//
-// Two distinct cases, with different justifications:
-//
-//   * STRUCTURALLY NON-AUTHORIZABLE. Every condition in the authorizability
-//     predicate is an immutable property of the retained record - evaluation
-//     mode, decision code, effective directive, resolution code, proposal
-//     validity and self-consistent identity. A record failing any of them can
-//     never become authorizable, whatever happens later, so it is safe to
-//     reclaim with no horizon and no clock.
-//
-//   * SUPERSEDED. An actionable decision never authorized, for a slot where a
-//     NEWER actionable decision exists. A maker only ever wants the latest quote
-//     for a slot; resurrecting an older proposal would rest a price computed
-//     from older market data, the same objection that already justifies refusing
-//     a stale RiskVersion.
-//
-// Identity survives either way: applied evaluation receipts outlive the decision
-// arena and retain the DecisionId, payload digest and original outcome, so
-// conflict detection and exact replay still work after reclamation.
-// ---------------------------------------------------------------------------
 void test_unauthorizable_decisions_do_not_fill_the_arena() {
     using namespace velocita::v2;
-    // Feature 5 is below the single rule's threshold of 10, so no rule matches
-    // and every evaluation retains a no_action decision.
     auto state = ready_state(EvaluationMode::authoritative,
                              FeatureMicros::from_atoms(5));
     ApplyScratch scratch;
@@ -3360,8 +2996,6 @@ void test_unauthorizable_decisions_do_not_fill_the_arena() {
     require(state.order_count == 0 && state.outbox_effect_count == 0,
             "no_action evaluations created economics");
 
-    // Identity survives reclamation: re-presenting a reclaimed DecisionId with a
-    // different payload must still conflict rather than read as fresh.
     auto altered = frame();
     altered.source_sequence = SourceSequence{1};
     altered.venue_sequence = VenueSequence{1};
@@ -3381,12 +3015,9 @@ void test_superseded_slot_decisions_are_reclaimed() {
     auto state = ready_state();
     ApplyScratch scratch;
 
-    // Occupy slot 1 so no later actionable decision for it can be authorized.
     const auto submit = catalog_test::apply(state, authorize(2, 0x51), scratch);
     require(submit.code == ApplyCode::applied, "supersession fixture failed");
 
-    // Each of these is authorizable in shape and targets the occupied slot, so
-    // each is retained and none can ever be consumed.
     std::uint64_t request = 3;
     for (std::uint64_t cycle = 1; cycle < 40; ++cycle) {
         require(evaluate_at_feature(state, scratch, DecisionId{200 + cycle}, 11,
@@ -3396,8 +3027,6 @@ void test_superseded_slot_decisions_are_reclaimed() {
                 "occupied slot were never reclaimed");
     }
 
-    // The live order and its decision are untouched: a referenced decision is
-    // never superseded.
     require(state.order_count == 1 &&
                 state.orders[0].cluster_order_id == submit.cluster_order_id() &&
                 materialize_order_effect(state, submit.effect_id()).has_value(),
@@ -3406,26 +3035,12 @@ void test_superseded_slot_decisions_are_reclaimed() {
             "supersession reclaimed every decision including the newest");
 }
 
-// ---------------------------------------------------------------------------
-// Finite identity horizons (architecture 8.6).
-//
-// Nothing reclaimed a request receipt, so the kernel accepted exactly
-// kMaxRequestReceipts commands in its lifetime and then refused everything
-// permanently. A second ceiling inside the same arena stopped fills being
-// accepted, which strands existing risk rather than merely stopping new work.
-//
-// The safety rule that shapes the fix: an expired request must be REFUSED, never
-// re-executed, because re-execution would be a second economic mutation. Telling
-// "expired" apart from "never seen" is what the per-caller watermark is for.
-// ---------------------------------------------------------------------------
 void test_request_receipts_do_not_bound_the_kernel_lifetime() {
     using namespace velocita::v2;
     auto state = ready_state(EvaluationMode::authoritative,
                              FeatureMicros::from_atoms(5));
     ApplyScratch scratch;
 
-    // Well past kMaxRequestReceipts. Each cycle emits two commands, so this
-    // drives roughly three times the old lifetime ceiling.
     std::uint64_t request = 2;
     for (std::uint64_t cycle = 1; cycle < 400; ++cycle) {
         const auto outcome = evaluate_at_feature(
@@ -3445,7 +3060,6 @@ void test_an_expired_request_is_refused_never_re_executed() {
     auto state = ready_state();
     ApplyScratch scratch;
 
-    // Authorize once, then age its receipt out by driving unrelated traffic.
     const auto submit = catalog_test::apply(state, authorize(2, 0x61), scratch);
     require(submit.code == ApplyCode::applied, "expiry fixture failed");
     const auto orders_after_submit = state.order_count;
@@ -3458,25 +3072,13 @@ void test_an_expired_request_is_refused_never_re_executed() {
                 "expiry fixture could not drive the receipt arena");
     }
 
-    // Re-present the original request identity. Whatever the kernel answers, it
-    // must not create a second order: that is the property, and the answer is
-    // secondary.
     const auto replayed = catalog_test::apply(state, authorize(2, 0x61), scratch);
     require(state.order_count == orders_after_submit,
             "re-presenting an aged request created a second order");
-    // Three acceptable answers, all safe. The receipt may have survived, in
-    // which case deduplication returns the retained ORIGINAL result verbatim -
-    // authorization receipts are pinned while their order lives, because
-    // materialize_order_effect needs them. It may have been reclaimed, in which
-    // case the watermark refuses. Or authorization's own order-based
-    // deduplication answers already_applied. What must never happen is a second
-    // order, which is asserted above and is the actual property.
     require(replayed == submit || replayed.code == ApplyCode::already_applied ||
                 replayed.code == ApplyCode::request_expired,
             "an aged request was neither deduplicated nor refused as expired");
 
-    // A request BELOW its caller's watermark that was never seen must be refused
-    // rather than treated as fresh, or expiry would silently permit replay.
     const auto never_seen = catalog_test::apply(state, authorize(1, 0x62), scratch);
     require(never_seen.code == ApplyCode::request_expired,
             "a request below the caller watermark was treated as fresh");
@@ -3484,11 +3086,6 @@ void test_an_expired_request_is_refused_never_re_executed() {
             "a below-watermark request mutated state");
 }
 
-// Resolved groups must release their venue-identity receipts. The result's
-// existing DecisionId field supplies the zero-byte ownership link: while that
-// decision still owns an order the receipt is pinned; after group reclamation
-// the same receipt can be swept without allowing a duplicate to book against a
-// live reservation.
 void test_resolved_orders_release_venue_identity_capacity() {
     using namespace velocita::v2;
     auto state = two_sided_state();
@@ -3626,16 +3223,6 @@ void test_acknowledged_duplicate_fills_do_not_exhaust_receipts() {
             "duplicate redelivery prevented a fresh execution from booking");
 }
 
-
-// An `order_reconciled` answer meaning THE VENUE HOLDS NO SUCH ORDER. A zero
-// `venue_order_id` is what expresses absence, and `validate` enforces that
-// absence implies zero cumulative fill.
-//
-// The venue sequence is NOT optional even though this kind is synthetic - the
-// identity check in `validate` requires one of every observation, and leaving it
-// zero produced an `invalid_identity` refusal that looked exactly like an
-// applicability refusal. That cost a long detour through the applicability gates
-// before the cause turned out to be the fixture.
 velocita::v2::Command reconciled_absent(
     const std::uint64_t request,
     const std::uint8_t marker,
@@ -3660,11 +3247,6 @@ velocita::v2::Command reconciled_absent(
 
 void test_a_resting_order_the_venue_does_not_hold_is_resolved() {
     using namespace velocita::v2;
-    // ADR 0008, rules 2 and 3. Asking about a resting order is pointless if the
-    // answer is refused, and it was: `order_reconciled` applied only to
-    // `submission_unknown` and `dispatch_authorized`. An order the venue
-    // acknowledged and then lost - a cancellation whose event never arrived -
-    // could be queried forever and never resolved.
     auto state = ready_state();
     ApplyScratch scratch;
     const auto submit = catalog_test::apply(state, authorize(2, 0xf1), scratch);
@@ -3690,8 +3272,6 @@ void test_a_resting_order_the_venue_does_not_hold_is_resolved() {
     require(state.reservations[0].state == ReservationState::released,
             "an absent resting order with no booked fills kept its reservation");
 
-    // And a resting order the venue DOES still hold is left alone - the query is
-    // a confirmation, not an excuse to move something that is fine.
     auto healthy = ready_state();
     ApplyScratch other;
     const auto held = catalog_test::apply(healthy, authorize(2, 0xe1), other);
@@ -3716,30 +3296,11 @@ void test_a_resting_order_the_venue_does_not_hold_is_resolved() {
 
 void test_an_unrequested_venue_cancellation_is_evidence_not_noise() {
     using namespace velocita::v2;
-    // THE OTHER HALF OF G-060, and it is narrower than ADR 0007 first claimed.
-    //
-    // The accepted reading is that no emergency action reaches a venue except
-    // through a committed command. Nothing in this system can PREVENT someone
-    // acting at the venue's own console, so the ADR said such an action would
-    // reconcile back through `ObserveOrderEvent`. Writing this test showed that
-    // is false: `order_reconciled` can only say the venue STILL HOLDS an order,
-    // and `cancel_reconciled` is tied to a cancel the cluster authored. There is
-    // no evidence kind that says "the venue cancelled something you never asked
-    // to cancel". See ADR 0007's amendment.
-    //
-    // What IS true, and is what this pins: the cluster refuses to act on that
-    // evidence rather than absorbing it. A venue cannot unilaterally free
-    // reserved risk by announcing a cancellation the cluster never authored.
-    // That is the safety half. The visibility half is an open gap, recorded as
-    // one.
     auto state = ready_state();
     ApplyScratch scratch;
     const auto submit = catalog_test::apply(state, authorize(2, 0xf1), scratch);
     require(submit.code == ApplyCode::applied, "submit fixture did not authorize");
 
-    // The venue must have ACKNOWLEDGED the order first. Cancelling something the
-    // venue never admitted to holding is not an out-of-band action, it is an
-    // inapplicable event, and refusing it proves nothing about this case.
     require(catalog_test::apply(state,
                   observe_order_event(1, 0xf2, VenueObservationKind::order_acknowledged,
                                       submit.cluster_order_id(), submit.effect_id(), 901),
@@ -3756,35 +3317,18 @@ void test_an_unrequested_venue_cancellation_is_evidence_not_noise() {
                             submit.cluster_order_id(), submit.effect_id(), 902),
         scratch);
 
-    // ADR 0008. The venue telling us unprompted is EVIDENCE, and refusing it left
-    // the cluster believing a dead order was resting - reservation held, slot
-    // occupied, book silently wrong. Exchange-initiated cancellation is routine
-    // (a post-only order that would cross, self-trade prevention, a halt), so
-    // this fires in normal operation and not only from a console.
-    //
-    // It moves to `reconciling`, which is exactly what an AUTHORED cancel
-    // produces: `cancelled` is a notification in this design, not terminal
-    // evidence, and settlement comes from cumulative evidence afterwards. Not
-    // `conflict` - that is terminal-but-stuck and blocks a resume under G-059,
-    // so a routine post-only rejection would wedge trading until a human cleared
-    // it, and a safety rule that fires constantly gets disabled.
     require(outcome.code == ApplyCode::applied,
             "an unrequested venue cancellation was refused, leaving the cluster "
             "believing a dead order was still resting");
     require(state.orders[0].state == ClusterOrderState::reconciling,
             "an unrequested venue cancellation did not put the order in doubt");
 
-    // THE SAFETY HALF IS UNCHANGED AND IS THE POINT. Accepting the notification
-    // must not release anything: the venue cannot free reserved risk by
-    // announcing a cancellation, only cumulative evidence can settle it.
     require_economics_unchanged(before, state,
                                 "an unrequested venue cancellation released "
                                 "reserved risk on the venue's word alone");
     require(state.reservations[0].state != ReservationState::released,
             "an unrequested venue cancellation released the reservation");
 
-    // And it is now in doubt, so a resume is blocked until it is settled - the
-    // divergence is visible rather than silent, which is the whole change.
     state.strategy_mode = StrategyMode::halted;
     const Command resume{{CallerId{9}, RequestSequence{77}, digest(0x5A)},
                          SetStrategyMode{StrategyMode::normal, state.kill_epoch,
@@ -3807,11 +3351,6 @@ velocita::v2::Command mass_cancel(const velocita::v2::TradingState& state,
 
 void test_mass_cancel_pulls_every_cancellable_order_in_scope() {
     using namespace velocita::v2;
-    // ADR 0007. One command, one log entry, applied atomically - because the
-    // alternative (N individual cancels on the control lane) can drain the
-    // four-block reserve it shares with the kill path, and a mass-cancel that
-    // stops half way leaves orders live while the operator believes the book is
-    // flat.
     auto state = ready_state();
     ApplyScratch scratch;
     std::vector<ClusterOrderId> live;
@@ -3853,9 +3392,6 @@ void test_mass_cancel_pulls_every_cancellable_order_in_scope() {
     }
 }
 
-// The kill path's answer has to leave the reducer: a committed mass-cancel
-// result must encode for the operator, and a replica retaining its receipt must
-// still snapshot, restore and answer an exact retry identically.
 void test_mass_cancel_result_survives_codec_snapshot_and_retry() {
     using namespace velocita::v2;
     for (const std::uint64_t orders : {std::uint64_t{0}, std::uint64_t{2}}) {
@@ -3869,7 +3405,6 @@ void test_mass_cancel_result_survives_codec_snapshot_and_retry() {
                         static_cast<std::uint8_t>(0x90 + slot), decision), scratch).code ==
                         ApplyCode::applied, "mass-cancel codec fixture could not authorize");
         }
-        // Every fixture order is live and in scope for `all`, so each is cancelled.
         const std::array<std::uint64_t, 3> expected{orders, orders, 0};
         const auto command = mass_cancel(state, 90, 0xA5, MassCancelScope::all);
         const auto outcome = catalog_test::apply(state, command, scratch);
@@ -3937,8 +3472,6 @@ void test_mass_cancel_detail_is_validated_by_both_codecs() {
                     StateSnapshotError::invalid_state,
                 "snapshot accepted " + what);
     };
-    // The reducer emits this detail only on `applied`, and every in-scope order
-    // is exactly one of cancelled or skipped.
     refused([](ApplyResult& r) { r.code = ApplyCode::outbox_capacity_exceeded; },
             "a mass-cancel detail on a refusal");
     refused([](ApplyResult& r) { r.detail.words[1] = 3; }, "cancelled + skipped above in-scope");
@@ -3953,13 +3486,6 @@ void test_mass_cancel_detail_is_validated_by_both_codecs() {
 
 void test_mass_cancel_skips_the_uncancellable_without_failing() {
     using namespace velocita::v2;
-    // An already-filled order is not a FAILURE of a mass cancel, it is simply
-    // outside the cancellable set - and a strict reading would make the command
-    // useless in the one situation it exists for, since there is nearly always a
-    // filled or conflicted order in the book when things go wrong.
-    //
-    // What "atomic" therefore means: the cancellable set is decided up front,
-    // and either all of THAT set is cancelled or none of it is.
     auto state = ready_state();
     ApplyScratch scratch;
     append_submit_decision(state, DecisionId{21}, 11, 1, LogicalOrderSlot{1});
@@ -3969,8 +3495,6 @@ void test_mass_cancel_skips_the_uncancellable_without_failing() {
     const auto second = catalog_test::apply(state, authorize_decision(42, 0x92, DecisionId{22}), scratch);
     require(second.code == ApplyCode::applied, "fixture order two failed");
 
-    // Put the first beyond cancelling, by hand: the point under test is the
-    // reducer's selection rule, not the route that produced the state.
     for (std::size_t i = 0; i < state.order_count; ++i) {
         if (state.orders[i].cluster_order_id == first.cluster_order_id()) {
             state.orders[i].state = ClusterOrderState::filled;
@@ -4000,11 +3524,6 @@ void test_mass_cancel_skips_the_uncancellable_without_failing() {
 
 void test_mass_cancel_refuses_rather_than_half_finishing() {
     using namespace velocita::v2;
-    // THE PROPERTY THE SINGLE COMMAND EXISTS FOR. If the outbox cannot hold a
-    // cancel for every order in the cancellable set, the whole command is
-    // refused and NOTHING moves. A partial mass cancel is the worst outcome
-    // available: some orders live, no record of the intent to cancel them, and
-    // an operator who has been told the book is flat.
     auto state = ready_state();
     ApplyScratch scratch;
     for (std::uint64_t slot = 1; slot <= 3; ++slot) {
@@ -4018,7 +3537,6 @@ void test_mass_cancel_refuses_rather_than_half_finishing() {
                 "fixture order failed");
     }
 
-    // Fill the outbox so that fewer free slots remain than orders to cancel.
     state.outbox_effect_count = state.outbox_effects.size() - 1;
 
     const auto snapshot = state;
@@ -4026,9 +3544,6 @@ void test_mass_cancel_refuses_rather_than_half_finishing() {
                                scratch);
     require(outcome.code == ApplyCode::outbox_capacity_exceeded,
             "a mass cancel that could not fit was not refused");
-    // Economics, not bytes. A refusal is REQUIRED to move state - it retains a
-    // request receipt, which is what makes the refusal itself replayable and
-    // attributable. What must not move is anything economic.
     require_economics_unchanged(snapshot, state,
                                 "a refused mass cancel still changed economics, "
                                 "so it was not atomic");
@@ -4040,9 +3555,6 @@ void test_mass_cancel_refuses_rather_than_half_finishing() {
 
 void test_mass_cancel_is_fenced_like_every_other_control_action() {
     using namespace velocita::v2;
-    // The expected kill epoch and executor generation are carried for the same
-    // reason SetStrategyMode carries them: an operator acting on a stale view of
-    // authority must not have that action silently applied to a newer one.
     auto state = ready_state();
     ApplyScratch scratch;
     append_submit_decision(state, DecisionId{21}, 11, 1, LogicalOrderSlot{1});
@@ -4144,8 +3656,6 @@ void test_bound_effect_keeps_historical_catalog_versions() {
                     bound->venue_capabilities_version,
             "snapshot restore changed historical catalog binding");
 
-    // Historical binding comes from the retained cold proposal, never from a
-    // subsequently changed active-policy projection.
     state.active_executable_policy.instrument.instrument_spec_version =
         InstrumentSpecVersion{99};
     state.active_executable_policy.venue.venue_capabilities_version =
@@ -4172,10 +3682,6 @@ void test_bound_effect_keeps_historical_catalog_versions() {
             "bound effect accepted a matching root with no historical row");
 }
 
-// ---------------------------------------------------------------------------
-// Position limits. The oracle below is written from the contract, in 128-bit
-// arithmetic, and never consults the reducer: P is the signed position, R the
-// open quantity on BOTH sides, q the proposal quantity.
 enum class PositionExpectation { allowed, refused, overflow };
 
 PositionExpectation expected_position_outcome(const velocita::v2::Side side,
@@ -4266,11 +3772,6 @@ void test_position_limit_matrix() {
     }
 }
 
-// The conservative rule is only conservative if the OTHER side's open quantity
-// really is counted. Shown with two live orders from the real path: a resting
-// buy must shrink what a long-only account may sell.
-// Unreachable through admitted commands or snapshots; guards the negation of a
-// corrupt in-memory cap, which would be undefined for INT64_MIN.
 void test_negative_position_cap_fails_closed() {
     using namespace velocita::v2;
     auto state = ready_state();
@@ -4317,8 +3818,6 @@ void test_position_limit_counts_open_orders_on_both_sides() {
     require_economics_unchanged(before, state, "position refusal mutated economics");
 }
 
-// A frame bound to explicit versions, as a strategy would build it from the
-// refusal it just received rather than from a peek at replicated state.
 velocita::v2::ApplyResult evaluate_bound_decision(
     velocita::v2::TradingState& state, velocita::v2::ApplyScratch& scratch,
     const velocita::v2::DecisionId decision_id, const std::uint64_t source_sequence,
@@ -4356,7 +3855,6 @@ void test_lowered_cap_is_reduce_only_and_stale_refusal_resyncs() {
                 state.risk_accounts[0].position_quantity == QuantityLots::from_atoms(6),
             "a cap below the current position was refused or rewrote the position");
 
-    // The fixture decision was bound to risk version 1; the account is now at 2.
     const auto current = state.risk_accounts[0];
     require(current.risk_version != state.decision_cold[0].frame.risk_version,
             "fixture drifted: the old decision is not stale");
@@ -4390,7 +3888,6 @@ void test_lowered_cap_is_reduce_only_and_stale_refusal_resyncs() {
     require(catalog_test::apply(restored, stale_command, scratch) == stale,
             "a restored replica answered the stale retry differently");
 
-    // Bind exactly what the refusal said, then trade against the lowered cap.
     require(evaluate_bound_decision(state, scratch, DecisionId{21}, 2, 3, stale.current_risk_version(),
                                     stale.current_position_version()).code == ApplyCode::applied,
             "re-synced decision was not evaluated");
@@ -4419,8 +3916,6 @@ void test_lowered_cap_is_reduce_only_and_stale_refusal_resyncs() {
             "a reducing sell was refused under a lowered cap");
 }
 
-// Only the position moved (as a fill would move it): the detail must report
-// the account's position version, not the one the decision was bound to.
 void test_stale_position_resync_reports_current_position() {
     using namespace velocita::v2;
     auto state = ready_state();
@@ -4456,7 +3951,6 @@ void test_risk_state_detail_is_validated_by_both_codecs() {
                     KernelCodecError::none &&
                 decoded.current_position_quantity() == QuantityLots::from_atoms(-5),
             "a short position did not survive the re-sync detail");
-    // Minimal canonical state: one registered caller and one retained receipt.
     const auto retaining = [](const ApplyResult& retained_result) {
         TradingState value = catalog_test::state();
         value.state_version = 5;

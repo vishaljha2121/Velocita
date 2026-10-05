@@ -12,19 +12,19 @@
 namespace velocita::v2 {
 namespace {
 
-constexpr std::uint64_t kMagic = 0x3148484C56ULL;  // "VLHH1" little-endian, diagnostic page
+constexpr std::uint64_t kMagic = 0x3148484C56ULL;
 constexpr std::uint32_t kVersion = 4;
 constexpr std::size_t kCells = 30;
 static_assert(std::atomic<std::uint64_t>::is_always_lock_free,
               "cross-process seqlock cells must be address-free lock-free atomics");
 
-}  // namespace
+}
 
 struct NodeHealthPage::Page {
     std::uint64_t magic;
     std::uint32_t version;
     std::uint32_t cells;
-    std::atomic<std::uint64_t> sequence;  // odd while a publish is in progress
+    std::atomic<std::uint64_t> sequence;
     std::array<std::atomic<std::uint64_t>, kCells> value;
 };
 
@@ -61,7 +61,7 @@ NodeHealth unflatten(const std::array<std::uint64_t, kCells>& v) noexcept {
     return h;
 }
 
-}  // namespace
+}
 
 std::unique_ptr<NodeHealthPage> NodeHealthPage::create(const std::filesystem::path& file) {
     const int fd = ::open(file.c_str(), O_RDWR | O_CREAT | O_TRUNC | O_NOFOLLOW | O_CLOEXEC, 0644);
@@ -87,7 +87,6 @@ void NodeHealthPage::publish(const NodeHealth& health) noexcept {
     const auto values = flatten(health);
     const auto sequence = page_->sequence.load(std::memory_order_relaxed);
     page_->sequence.store(sequence + 1, std::memory_order_relaxed);
-    // The odd sequence must be visible before any cell changes.
     std::atomic_thread_fence(std::memory_order_release);
     for (std::size_t i = 0; i < kCells; ++i) page_->value[i].store(values[i], std::memory_order_relaxed);
     page_->sequence.store(sequence + 2, std::memory_order_release);
@@ -110,11 +109,10 @@ std::optional<NodeHealth> read_node_health(const std::filesystem::path& file) {
     if (page->magic == kMagic && page->version == kVersion && page->cells == kCells) {
         for (int attempt = 0; attempt < 1000 && !result; ++attempt) {
             const auto before = page->sequence.load(std::memory_order_acquire);
-            if (before == 0) break;  // never published: unknown, not a zero reading
+            if (before == 0) break;
             if (before % 2 != 0) continue;
             std::array<std::uint64_t, kCells> values{};
             for (std::size_t i = 0; i < kCells; ++i) values[i] = page->value[i].load(std::memory_order_relaxed);
-            // Cells must be read before the sequence is re-checked.
             std::atomic_thread_fence(std::memory_order_acquire);
             if (page->sequence.load(std::memory_order_relaxed) == before) result = unflatten(values);
         }
@@ -123,4 +121,4 @@ std::optional<NodeHealth> read_node_health(const std::filesystem::path& file) {
     return result;
 }
 
-}  // namespace velocita::v2
+}

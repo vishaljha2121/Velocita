@@ -60,7 +60,6 @@ void encoder_bytes_and_borrowing() {
         {1, 2, RequestVote{7, 1, 4, 3}}, {1, 2, RequestVoteResponse{7, true}},
         {1, 2, AppendEntriesResponse{7, false, 4, 1}},
     }};
-    // 88 bytes of framing around inner bodies of 48+1, 25+1 (pre-vote flag) and 41.
     const std::array<std::size_t, 3> expected_sizes{{137, 114, 129}};
     std::size_t small_index{};
     for (const auto& message : small) {
@@ -89,7 +88,6 @@ void encoder_bytes_and_borrowing() {
     require(encode_bound_peer(borrowed, sender, second, second_scratch).error == BoundFrameError::invalid_route,
         "borrowed route semantics");
 
-    // Deferred transport owns canonical bytes, never the caller's entry spans.
     OutboundMailboxes boxes(sender);
     borrowed.recipient_id = 2;
     const auto expected = encode_bound_peer(borrowed, sender, first, first_scratch);
@@ -187,9 +185,6 @@ void fair_cursor_under_refill() {
     }
     require(std::all_of(seen.begin(), seen.end(), [](bool value) { return value; }), "starvation");
 }
-// A held (unreachable) peer's frames stay queued and keep coalescing, while
-// every other peer's frames still come out: one dead voter must not stall
-// the rest of a three-voter cluster.
 void held_peer_does_not_stall_others() {
     const auto sender = context(1); BoundFrameScratch scratch; OutboundMailboxes boxes(sender);
     for (const int peer : {2, 3}) {
@@ -219,7 +214,7 @@ void held_peer_does_not_stall_others() {
     }
     require(saw_newer && boxes.empty(), "released peer did not receive its latest frame");
 }
-} // namespace
+}
 int main() {
     try {
         encoder_bytes_and_borrowing(); replacement_copyout_and_ownership(); fair_cursor_under_refill();

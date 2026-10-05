@@ -1,3 +1,4 @@
+// Feature schemas and executable policies: rules bound to action templates.
 #pragma once
 
 #include "velocita/v2/action_template.hpp"
@@ -12,8 +13,6 @@ namespace velocita::v2 {
 inline constexpr std::uint16_t kFeatureSchemaArtifactSchemaVersion = 1;
 inline constexpr std::uint16_t kExecutablePolicyArtifactSchemaVersion = 1;
 
-// Candidate schema capacities. They become accepted V2 wire constants only
-// after canonical-size, ARM64, Pi, and NUC gates pass unchanged.
 inline constexpr std::size_t kMaxExecutablePolicyArtifacts = 2;
 inline constexpr std::size_t kMaxExecutableActionTemplates = 8;
 
@@ -40,8 +39,6 @@ struct FeatureSchemaArtifact {
     constexpr auto operator<=>(const FeatureSchemaArtifact&) const noexcept = default;
 };
 
-// Slot zero is the canonical no-action selection. Nonzero slots are one-based
-// indices into templates, avoiding a separate sentinel value on the wire.
 struct ExecutablePolicyArtifact {
     std::uint16_t schema_version{};
     PolicyId policy_id{};
@@ -131,7 +128,7 @@ namespace executable_policy_detail {
     return ExecutablePolicyBindingCode::bound;
 }
 
-}  // namespace executable_policy_detail
+}
 
 [[nodiscard]] constexpr ContractError
 validate(const FeatureSchemaArtifact& schema) noexcept {
@@ -303,4 +300,4 @@ static_assert(sizeof(FeatureSchemaArtifact) <=
 static_assert(sizeof(ExecutablePolicyArtifact) <=
               kExecutablePolicyArtifactObjectBudgetBytes);
 
-}  // namespace velocita::v2
+}

@@ -155,9 +155,6 @@ void replace_command_digest(std::span<std::byte> frame) {
               frame.begin() + static_cast<std::ptrdiff_t>(digest_offset));
 }
 
-// Schema 9 changed only the ConfigureRiskLimits body and the admitted result
-// enums. For every other frame, rewriting the schema byte back to 8 and
-// resealing must reproduce the reviewed schema-8 golden exactly.
 std::string schema8_full_hash(std::span<const std::byte> frame,
                               const std::size_t digest_input_offset) {
     using namespace velocita::v2;
@@ -193,7 +190,7 @@ void test_execution_catalog_install_has_independent_canonical_bytes() {
                 static_cast<std::byte>((value >> (index * 8U)) & 0xffU);
         }
     };
-    put(4, 96, 4);  // identity 48 + install body 48
+    put(4, 96, 4);
     put(8, kKernelCodecSchemaVersion, 2);
     put(10, 20, 2);
     put(12, 12, 8);
@@ -346,7 +343,6 @@ void test_command_identity_and_kind_are_explicit() {
                     "a20adaad8354630d8024d97273607f186262564550e38ddc15048c791c78f4f6",
             "source-command golden corpus changed: frame=" + frame_hash +
                 " full=" + full_hash);
-    // Approved V5 migration changes only schema/digests for this old command.
     auto legacy = bytes;
     legacy[8] = std::byte{4};
     replace_command_digest({legacy.data(), encoded.bytes_written});
@@ -800,7 +796,7 @@ void test_encode_bounds_and_invalid_values() {
             "unknown result enum was encoded");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

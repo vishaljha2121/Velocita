@@ -1,3 +1,4 @@
+// A simulated True Markets venue: fill-or-kill at the limit price with measured fees.
 #pragma once
 
 #include "velocita/v2/action_template.hpp"
@@ -13,11 +14,6 @@
 
 namespace velocita::v2::paper {
 
-// Paper TrueMarkets venue behind the VenueTransport seam. Owner decisions it
-// encodes: fill-or-kill at the order's limit price, measured per-side cost in
-// basis points, long-only, a finite quote budget. Bounded, allocation-free,
-// deterministic for a given (config, faults, seed, input sequence).
-
 using sim::QueryOutcome;
 using sim::QueryResult;
 using sim::SendOutcome;
@@ -29,8 +25,6 @@ inline constexpr std::uint8_t kMaxPaperSplitPieces = 4;
 inline constexpr std::uint32_t kBasisPointsPerUnit = 10'000;
 
 struct PaperVenueConfig {
-    // Must agree with `profile` under `spec_agrees_with_profile`; the fee is
-    // charged on the same notional the kernel reserved against.
     VenueInstrumentSpec spec{};
     InstrumentExecutionProfile profile{};
     std::uint32_t buy_fee_bps{};
@@ -42,16 +36,11 @@ struct PaperVenueConfig {
 
 [[nodiscard]] bool valid(const PaperVenueConfig& config) noexcept;
 
-// Each class rolls independently on every send (query_unavailable on every
-// query), always consuming a draw, so toggling one class leaves the others'
-// draws unchanged.
 struct PaperFaultPolicy {
     std::uint16_t delay_permille{};
     std::uint16_t duplicate_permille{};
     std::uint16_t reorder_permille{};
-    // The request never reaches the venue; the sender cannot tell.
     std::uint16_t drop_request_permille{};
-    // The venue executes, but the response and its reports are lost.
     std::uint16_t drop_response_permille{};
     std::uint16_t reject_permille{};
     std::uint16_t split_permille{};
@@ -81,7 +70,6 @@ enum class PaperRejectReason : std::uint8_t {
     not_fill_or_kill,
     insufficient_quote,
     insufficient_base,
-    // Fill-or-kill orders never rest, so there is never anything to cancel.
     nothing_resting,
     unsupported_operation,
 };
@@ -105,9 +93,6 @@ struct PaperOrder {
     FeeMicros fee{};
 };
 
-// What the kernel has committed of this venue's evidence: the log index the
-// last acknowledged report was committed at, and running fill totals that
-// outlive a gateway process.
 struct PaperCommittedLedger {
     std::int64_t committed_through{};
     std::int64_t fee_micros_total{};
@@ -118,16 +103,12 @@ struct PaperCommittedLedger {
     constexpr bool operator==(const PaperCommittedLedger&) const noexcept = default;
 };
 
-// A report the venue still owns. Delivery marks and due ticks are not durable:
-// a restored venue offers every owned report again, at once, in schedule order.
 struct PaperOwnedReport {
     std::uint64_t ordinal{};
     VenueObservation observation{};
     bool withheld{};
 };
 
-// Everything the venue answers from. Restoring it reproduces every later
-// answer (send, duplicate, query, poll) of the venue it was captured from.
 struct PaperVenueImage {
     VenueId venue_id{};
     InstrumentId instrument_id{};
@@ -144,14 +125,10 @@ struct PaperVenueImage {
     std::array<PaperOwnedReport, kMaxPaperObservations> reports{};
 };
 
-// quote_micros_per_tick_lot * price * quantity, in the action resolver's
-// multiplication order. No value on overflow or a non-positive input.
 [[nodiscard]] std::optional<MoneyMicros> paper_notional(
     PriceTicks price, QuantityLots quantity,
     MoneyMicros quote_micros_per_tick_lot) noexcept;
 
-// ceil(notional * bps / 10'000) in micros: a fractional micro is charged to
-// us, never forgiven. No value on overflow, negative notional, or bps > 10'000.
 [[nodiscard]] std::optional<FeeMicros> paper_fee(MoneyMicros notional,
                                                  std::uint32_t bps) noexcept;
 
@@ -162,14 +139,8 @@ public:
 
     [[nodiscard]] bool configured() const noexcept { return configured_; }
 
-    // Outcomes: accepted (filled whole; reports follow through poll),
-    // business_rejected (killed whole; an order_rejected report follows),
-    // venue_duplicate, pre_send_failure (refused before anything existed at the
-    // venue), ambiguous (a dropped request or a dropped response).
     [[nodiscard]] SendOutcome send(const OrderEffect& effect, Tick now) noexcept;
 
-    // Writes at most out.size() due reports in (due, schedule) order; the rest
-    // stay owned by the venue and are offered on a later poll.
     [[nodiscard]] std::size_t poll(std::span<VenueObservation> out, Tick now) noexcept;
     void acknowledge(const VenueObservation& observation) noexcept;
     void restart_delivery() noexcept;
@@ -186,14 +157,11 @@ public:
     }
     [[nodiscard]] const PaperOrder* find_order(ClusterOrderId order) const noexcept;
 
-    // Kernel-committed evidence, recorded before its acknowledge (same write).
     void record_committed(const sim::CommittedEvidence& evidence) noexcept;
     [[nodiscard]] PaperCommittedLedger ledger() const noexcept { return ledger_; }
     void read_book(sim::VenueBook& out) const noexcept;
 
     void capture(PaperVenueImage& out) const noexcept;
-    // False (venue unchanged) for an image of another venue or instrument, or
-    // one that breaks a capacity, balance or identity invariant.
     [[nodiscard]] bool restore(const PaperVenueImage& image) noexcept;
 
 private:
@@ -232,8 +200,7 @@ private:
     std::array<Scheduled, kMaxPaperObservations> scheduled_{};
 };
 
-// Trivially copyable handles; the venue must outlive every copy.
 [[nodiscard]] sim::VenueTransport paper_venue_transport(PaperVenue& venue) noexcept;
 [[nodiscard]] sim::VenueBookSource paper_venue_book(PaperVenue& venue) noexcept;
 
-}  // namespace velocita::v2::paper
+}

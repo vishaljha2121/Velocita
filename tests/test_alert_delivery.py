@@ -18,7 +18,6 @@ HOST_ENV = ROOT / "deploy/v2/systemd/host.env.example"
 
 
 def repo_mounts(unit):
-    """Container path -> repo path, from `-v %h/src/aeron-raft-pi/X:/Y:ro`."""
     return {c: ROOT / h for h, c in re.findall(r"-v %h/src/aeron-raft-pi/(\S+?):(/\S+?):ro\s", unit.read_text())}
 
 

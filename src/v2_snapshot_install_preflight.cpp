@@ -20,7 +20,7 @@ bool same_entry(const SnapshotSuffixEntryView& left,
         std::equal(left.payload.begin(), left.payload.end(), right.payload.begin());
 }
 
-} // namespace
+}
 
 SnapshotInstallPreflightResult preflight_snapshot_suffix(
     const SnapshotInstallLocalView& local,
@@ -96,8 +96,6 @@ SnapshotInstallPreflightResult preflight_snapshot_suffix(
             return refuse(Error::history_gap);
     }
 
-    // A known committed term cannot be replaced by an incoming prefix whose
-    // term is already lower, even when incoming S lies beyond the local end.
     if (local.snapshot_index != 0 &&
         local.snapshot_index <= incoming_snapshot_index &&
         local.snapshot_term > incoming_snapshot_term)
@@ -131,4 +129,4 @@ SnapshotInstallPreflightResult preflight_snapshot_suffix(
             local.retained.size() - suffix_offset, local.log_end};
 }
 
-} // namespace velocita::v2
+}

@@ -47,7 +47,7 @@ def usd(micros: int) -> str:
 @dataclass
 class Week:
     key: str = ""
-    volume: int = 0      # micros, both sides
+    volume: int = 0
     fees: int = 0
     pnl: int = 0
     buys: int = 0
@@ -59,16 +59,16 @@ class Week:
 
 @dataclass
 class State:
-    position: int = 0                 # lots, the kernel's as last confirmed
-    basis: int = 0                    # micros: notional paid for the lots held (fees already realized)
-    cash: int = 0                     # micros
-    pending: list | None = None       # [side, price_ticks, lots] of the last applied authorization
+    position: int = 0
+    basis: int = 0
+    cash: int = 0
+    pending: list | None = None
     volume: int = 0
     fees: int = 0
     pnl: int = 0
     buys: int = 0
     sells: int = 0
-    unattributed: int = 0             # position moves no pending order explains
+    unattributed: int = 0
     withheld: dict = field(default_factory=lambda: {r: 0 for r in REASONS})
     week: Week = field(default_factory=Week)
 
@@ -96,7 +96,6 @@ class PaperBook:
                 loaded["week"] = Week(**loaded["week"])
                 self.state = State(**loaded)
 
-    # -- the buy stop -------------------------------------------------------------
 
     def _roll(self, event_ns: int) -> None:
         key = iso_week(event_ns)
@@ -104,7 +103,6 @@ class PaperBook:
             self.state.week = Week(key)
 
     def gate(self, event_ns: int, price_ticks: int) -> str | None:
-        """Why buys are stopped for this tick, or None."""
         self._roll(event_ns)
         s = self.state
         notional = price_ticks * self.clip * self.unit
@@ -116,7 +114,6 @@ class PaperBook:
             self.stop = None
         return self.stop
 
-    # -- decisions ------------------------------------------------------------------
 
     def observe(self, event_ns: int, price_ticks: int, *, action: str | None, authorization: str,
                 resync_position: int | None, stop: str | None) -> None:
@@ -140,9 +137,6 @@ class PaperBook:
             self._fill(side, s.pending[1], abs(delta))
             s.pending = None
         else:
-            # Unknown cost (a position from before this book, or a move no order
-            # explains): marked at this tick's price, so a later sell is never
-            # booked as a profit on lots that cost nothing.
             s.unattributed += 1
             s.cash -= delta * price_ticks * self.unit
             s.position = position
@@ -185,7 +179,6 @@ class PaperBook:
             self._db.close()
             self._db = None
 
-    # -- metrics --------------------------------------------------------------------
 
     def render(self) -> str:
         s, w = self.state, self.state.week

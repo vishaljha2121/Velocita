@@ -1,3 +1,4 @@
+// Applies a recorded command frame and emits its result frame.
 #pragma once
 
 #include "velocita/v2/kernel_codec.hpp"
@@ -23,9 +24,6 @@ struct ReplayApplyResult {
     Digest256 result_frame_digest{};
 };
 
-// Applies one canonical command frame and emits its canonical result frame.
-// Expected failures are checked before apply(), so malformed input and an
-// undersized output buffer cannot mutate authoritative state.
 [[nodiscard]] ReplayApplyResult apply_encoded_kernel_command(
     TradingState& state,
     std::span<const std::byte> command_bytes,
@@ -34,4 +32,4 @@ struct ReplayApplyResult {
     std::span<std::byte> result_output,
     const VerifiedExecutionCatalog* catalog = nullptr);
 
-}  // namespace velocita::v2
+}

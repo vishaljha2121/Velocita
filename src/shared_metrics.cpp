@@ -38,7 +38,7 @@ std::uint64_t load(const MetricCell& cell) noexcept {
     return cell.value.load(std::memory_order_relaxed);
 }
 
-}  // namespace
+}
 
 SharedMetrics::SharedMetrics(const std::int32_t node_id, const std::filesystem::path& path) {
     if (path.empty()) return;
@@ -304,4 +304,4 @@ std::optional<MetricsSnapshot> read_shared_metrics(const std::filesystem::path& 
     return result;
 }
 
-}  // namespace velocita
+}

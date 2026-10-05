@@ -1,3 +1,4 @@
+// The log entry a gateway commits to obtain permission for one send.
 #pragma once
 
 #include "velocita/v2/contracts.hpp"
@@ -63,4 +64,4 @@ decode_authority_barrier(std::int32_t entry_type,
 static_assert(sizeof(AuthorityBarrier) <= 160,
               "authority barrier exceeded its reviewed bounded representation");
 
-}  // namespace velocita::v2
+}

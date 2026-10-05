@@ -31,8 +31,6 @@ import time
 
 HOST = os.environ.get("TM_WS_HOST", "api.truemarkets.co")
 PATH = os.environ.get("TM_WS_PATH", "/v1/defi/market")
-# Cloudflare rejects non-browser user-agents before the request reaches the API
-# (D-10). That applies to the upgrade request too.
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/140.0 Safari/537.36")
 
@@ -75,7 +73,7 @@ def connect(token: str) -> ssl.SSLSocket:
 
 def send_text(sock: ssl.SSLSocket, text: str) -> None:
     payload = text.encode()
-    header = bytearray([0x81])  # FIN + text
+    header = bytearray([0x81])
     mask = os.urandom(4)
     length = len(payload)
     if length < 126:
@@ -123,7 +121,7 @@ def frames(sock: ssl.SSLSocket, deadline: float):
         if opcode == 0x8:
             print("server closed the socket")
             return
-        if opcode == 0x9:  # ping -> pong
+        if opcode == 0x9:
             sock.sendall(b"\x8a\x80" + os.urandom(4))
             continue
         if opcode in (0x1, 0x2):
@@ -143,29 +141,16 @@ def main() -> int:
 
     sock = connect(token)
 
-    # The subscribe envelope is NOT documented. Several shapes are tried and the
-    # venue's replies recorded: a rejection names what it wanted, which is the
-    # finding. Read-only either way - this client cannot express anything but a
-    # subscription.
-    # The venue told us the shape through its own errors: "no topics provided
-    # for subscription" rules out `channel`/`channels`, and "unknown message
-    # type" rules out `op`/`method`. So: {"type":"subscribe","topics":[...]}.
-    # What a TOPIC looks like is the remaining unknown.
-    sol = "495e07ac-fa3e-4179-85b7-b1e8cece3dc4"   # SOL, solana, 9dp
-    # Sixteen channel NAMES were all `unknown_channel`, so stop guessing names
-    # and establish the FORMAT: which segment is the channel, and how many
-    # segments does it want? A reason of `unknown_channel` means the format
-    # parsed; `invalid_topic_format` means it did not. That difference is the
-    # measurement.
+    sol = "495e07ac-fa3e-4179-85b7-b1e8cece3dc4"
     topics = [
-        "zzzz:" + sol,                 # is segment 1 the channel?
-        "orderbook:zzzz",              # or is segment 2?
-        "defi:orderbook:" + sol,       # three segments, venue first
+        "zzzz:" + sol,
+        "orderbook:zzzz",
+        "defi:orderbook:" + sol,
         "orderbook:defi:" + sol,
-        "orderbook:SOL",               # symbol rather than uuid
+        "orderbook:SOL",
         "orderbook:SOL-USDC",
         "orderbook:solana:" + sol,
-        "a:b:c:d",                     # how many segments are tolerated?
+        "a:b:c:d",
         "a",
         "a:b",
     ]

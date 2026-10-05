@@ -287,10 +287,6 @@ private:
         return true;
     }
     if (const auto* body = std::get_if<RequestMassCancel>(&command.body)) {
-        // The scope must be one we know, and a scoped request must actually
-        // name its scope - a zero account on a scope of `account` would reach
-        // every order whose proposal also carries none, which is the broadest
-        // possible reading of the narrowest possible request.
         if (!known(body->scope)) return false;
         if (body->scope == MassCancelScope::account ||
             body->scope == MassCancelScope::account_instrument) {
@@ -379,15 +375,12 @@ private:
                result.detail.words[2] != 0;
     }
     if (result.detail_kind == ApplyResultDetailKind::mass_cancel) {
-        // Emitted only on `applied`; every in-scope order is exactly one of
-        // cancelled or skipped, and scope is bounded by the order arena.
         const auto in_scope = result.mass_in_scope();
         const auto cancelled = result.mass_cancelled();
         return result.code == ApplyCode::applied && in_scope <= kMaxClusterOrders &&
                cancelled <= in_scope && result.mass_skipped() == in_scope - cancelled;
     }
     if (result.detail_kind == ApplyResultDetailKind::source_state) {
-        // A source with no cursor reports 0/0; one with a cursor has both.
         return result.code == ApplyCode::source_generation_gap &&
                result.source_cursor_id().value() != 0 &&
                (result.source_cursor_generation().value() == 0) ==
@@ -540,7 +533,6 @@ private:
         return kVenueObservationPayloadBytes;
     }
     if (std::holds_alternative<RequestCancel>(body)) return 8;
-    // scope(1) + account(8) + instrument(8) + kill epoch(8) + generation(8)
     if (std::holds_alternative<RequestMassCancel>(body)) return 33;
     if (std::holds_alternative<ObserveOrderEvent>(body)) {
         return kVenueObservationPayloadBytes;
@@ -1087,8 +1079,6 @@ void write_body(Writer& writer, const CommandBody& body) noexcept {
             value.expected_kill_epoch = KillEpoch{reader.integral<std::uint64_t>()};
             value.expected_executor_generation =
                 ExecutorGeneration{reader.integral<std::uint64_t>()};
-            // An unknown scope is not a scope. Decoding it as `all` would turn a
-            // corrupt or newer-version command into the broadest possible action.
             if (!known(value.scope)) return false;
             body = value;
             return true;
@@ -1231,7 +1221,7 @@ void write_result_payload(Writer& writer, const ApplyResult& value) noexcept {
                       bytes.begin() + static_cast<std::ptrdiff_t>(digest_offset));
 }
 
-}  // namespace
+}
 
 EncodeKernelValueResult encode_kernel_command(
     const Command& command, const std::span<std::byte> output) noexcept {
@@ -1360,4 +1350,4 @@ DecodeKernelValueResult decode_kernel_result(
     return {KernelCodecError::none, frame_digest};
 }
 
-}  // namespace velocita::v2
+}

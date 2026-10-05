@@ -7,9 +7,6 @@
 namespace velocita::v2 {
 namespace {
 
-// Ten to the power of `decimals`, or zero if that would not fit. Used as a
-// DIVISOR, so a zero return must be treated as "cannot represent" by every
-// caller rather than divided by.
 [[nodiscard]] std::int64_t power_of_ten(const std::uint8_t decimals) noexcept {
     if (decimals > 18) return 0;
     std::int64_t value = 1;
@@ -23,26 +20,12 @@ namespace {
     return __builtin_mul_overflow(left, right, &product);
 }
 
-}  // namespace
+}
 
 std::size_t render_decimal(const std::int64_t atoms, const std::uint8_t decimals,
                            const std::span<char> out) noexcept {
     if (decimals > 18) return 0;
 
-    // THE SIGN IS HANDLED WITHOUT NEGATING. `-(int64 min)` is undefined
-    // behaviour, and that value is reachable - it is what an unchecked
-    // subtraction produces. Digits are therefore extracted from the NEGATIVE
-    // side, where every int64 is representable, and the sign is written
-    // separately.
-    //
-    // WHAT CATCHES A REGRESSION HERE IS THE SANITIZED BUILD, NOT AN ASSERTION,
-    // and that is worth knowing rather than assuming. Rewriting this as
-    // `negative ? -atoms : atoms` still renders int64 min correctly on this
-    // compiler - the wrap happens to land on the right digits - so every value
-    // assertion in the suite passes. UBSan reports it immediately: "negation of
-    // -9223372036854775808 cannot be represented in type 'int64_t'". A mutation
-    // that reintroduces the UB therefore dies in the Debug ASan+UBSan run that
-    // gates every phase, and nowhere else.
     const bool negative = atoms < 0;
 
     std::array<char, 20> digits{};
@@ -53,21 +36,12 @@ std::size_t render_decimal(const std::int64_t atoms, const std::uint8_t decimals
     }
     while (remaining != 0) {
         const auto digit = remaining % 10;
-        // `digit` is <= 0 when `remaining` is negative, so negate the DIGIT,
-        // which is always in [-9, 0] and never overflows.
         digits[digit_count++] = static_cast<char>('0' + (negative ? -digit : digit));
         remaining /= 10;
     }
 
-    // Left-pad with zeros so there is something in front of the decimal point
-    // and enough after it: 1 atom at 6dp is "0.000001", which needs seven digits
-    // from a one-digit number.
     while (digit_count <= decimals) digits[digit_count++] = '0';
 
-    // Trim trailing zeros in the FRACTION only, so the text is canonical. The
-    // fraction sits at the low end of `digits`, so scanning up from index zero
-    // and stopping at the first non-zero drops only TRAILING zeros - which is
-    // why an internal run like 1.000001 survives.
     std::size_t fraction_digits = decimals;
     while (fraction_digits > 0 && digits[decimals - fraction_digits] == '0') {
         --fraction_digits;
@@ -93,7 +67,6 @@ std::size_t render_decimal(const std::int64_t atoms, const std::uint8_t decimals
 
 bool spec_agrees_with_profile(const VenueInstrumentSpec& spec,
                               const InstrumentExecutionProfile& profile) noexcept {
-    // Agreeing about a number is not the same as being about the same thing.
     if (spec.venue_id != profile.venue_id) return false;
     if (spec.instrument_id != profile.instrument_id) return false;
     if (spec.tick_quote_micros <= 0 || spec.lot_base_atoms <= 0) return false;
@@ -105,9 +78,6 @@ bool spec_agrees_with_profile(const VenueInstrumentSpec& spec,
     if (multiply_overflows(spec.tick_quote_micros, spec.lot_base_atoms, product)) {
         return false;
     }
-    // EXACT, not close. A product that does not land on a whole number of quote
-    // micros cannot be represented by the replicated contract at all, so
-    // rounding it would encode an error as a price.
     if (product % base_unit != 0) return false;
 
     return product / base_unit == profile.quote_micros_per_tick_lot.atoms();
@@ -120,8 +90,6 @@ std::size_t render_price(const PriceTicks price, const VenueInstrumentSpec& spec
     if (multiply_overflows(price.atoms(), spec.tick_quote_micros, quote_micros)) {
         return 0;
     }
-    // Quote currency is carried in micros throughout V2, so six decimals is the
-    // scale by construction rather than by choice.
     return render_decimal(quote_micros, 6, out);
 }
 
@@ -142,7 +110,7 @@ namespace {
     return {error, 0};
 }
 
-}  // namespace
+}
 
 AssetSymbol asset_symbol(const std::string_view text) noexcept {
     AssetSymbol symbol;
@@ -157,10 +125,6 @@ OrderBodyResult encode_market_order_body(const OrderEffect&,
                                          const AssetSymbol,
                                          const AssetSymbol,
                                          const std::span<char>) noexcept {
-    // OrderEffect has no approved market/swap intent. Treating its zero price as
-    // permission to cross would fabricate economics the replicated decision did
-    // not authorize, while treating its positive price as disposable would erase
-    // a limit. Keep the public seam fail-closed until such an intent is approved.
     return body_failure(OrderBodyError::unsupported_operation);
 }
 
@@ -173,11 +137,7 @@ OrderBodyResult encode_limit_order_body(const OrderEffect& effect,
     if (effect.operation != EffectOperation::submit) {
         return body_failure(OrderBodyError::unsupported_operation);
     }
-    // VenueOrderSchema::verified cannot bind this metadata and capability set to
-    // the exact authorized effect or to an immutable catalog version. Product
-    // agreement is arithmetic evidence only: different tick/lot factors can
-    // share a product while producing different price and quantity bytes.
     return body_failure(OrderBodyError::schema_unverified);
 }
 
-}  // namespace velocita::v2
+}

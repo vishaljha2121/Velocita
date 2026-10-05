@@ -1,3 +1,4 @@
+// Classifies whether a received snapshot can be installed over local state.
 #pragma once
 
 #include "velocita/v2/retained_log.hpp"
@@ -48,16 +49,10 @@ struct SnapshotInstallPreflightResult {
     std::uint64_t selected_log_end{};
 };
 
-// Pure classification of caller-validated local records. A successful result
-// describes a borrowed suffix within `local.retained`; it is not permission to
-// install, publish, delete history, release results, or serve traffic. The
-// optional incoming boundary is already verified evidence from the incoming
-// history. This function performs no decoding, I/O, allocation or mutation.
-// On error, no result fields other than `error` are usable.
 [[nodiscard]] SnapshotInstallPreflightResult preflight_snapshot_suffix(
     const SnapshotInstallLocalView& local,
     std::uint64_t incoming_snapshot_index,
     std::int64_t incoming_snapshot_term,
     const SnapshotSuffixEntryView* incoming_boundary) noexcept;
 
-} // namespace velocita::v2
+}

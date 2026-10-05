@@ -23,7 +23,7 @@ struct ActualSyncTrace {
     std::atomic<bool> failure_fired{};
 };
 std::atomic<ActualSyncTrace*> active_sync_trace{};
-} // namespace
+}
 
 int observed_metadata_fsync(const int fd) {
     if (auto* trace = active_sync_trace.load(std::memory_order_acquire)) {
@@ -39,9 +39,6 @@ int observed_metadata_fsync(const int fd) {
     return ::fsync(fd);
 }
 
-// Compile the actual store behind a forwarding syscall shim.  Its definitions
-// satisfy the static-library references, so the uninstrumented store object is
-// not extracted by the linker (the same arrangement as the original RED).
 #define fsync observed_metadata_fsync
 #include "../src/v2_bound_metadata.cpp"
 #undef fsync
@@ -75,11 +72,6 @@ public:
 
 enum class PausePoint { before_file_sync, before_directory_sync };
 
-// MetadataCheckpoints bracket the actual BoundMetadataStore fsync calls.  A
-// `file_synced` or `directory_synced` observation therefore means that the
-// immediately preceding real syscall succeeded; it is not a mocked durability
-// acknowledgement.  The callback parks only a non-owner thread, so the old
-// synchronous implementation reaches the owner-sync assertion without hanging.
 class MetadataFence final {
 public:
     explicit MetadataFence(const PausePoint point)
@@ -110,7 +102,6 @@ public:
     void inject_sync_failure(const std::size_t call) {
         arm();
         std::lock_guard lock(mutex_);
-        // A failure test observes the named actual syscall and does not park it.
         armed_ = false;
         syscalls_.fail_on_call.store(call, std::memory_order_relaxed);
     }
@@ -226,10 +217,6 @@ void assert_quarantined(ReplicatedKernel& node, const ReplicaStatus& before,
     std::array<std::byte, kMaxBoundPeerBytes> frame{};
     require(node.take_outbound_frame(frame).error == OutboundTakeError::empty,
             "protocol output was readable before metadata directory durability");
-    // This fixture has not prepared an authority barrier; the check is only a
-    // boundary smoke test, not evidence that an already-prepared proof is held.
-    // Substantive proof-guard coverage belongs in the authority composition
-    // fixture, which can build the required committed effect/catalog state.
     require(!node.take_authority_proof(),
             "authority proof escaped before metadata directory durability");
     if (check_apply) {
@@ -362,8 +349,6 @@ void commit_case(const PausePoint point, const std::filesystem::path& root) {
     ReplicatedKernel node(identity_test::bootstrap(root, 1, {1}), {}, fence.checkpoints());
     ReleaseOnExit release{&fence};
     node.start_writer();
-    // Establish the single-voter leader and finish its term fence before arming
-    // the checkpoint under test.
     node.tick(1);
     pump(node, [&] { return !node.persistence_pending() && node.is_leader(); },
          "single voter did not finish leader setup");
@@ -439,9 +424,6 @@ void sync_failure_case(const std::size_t failed_call,
         require(proposal_refused, "metadata fsync failure still accepted new proposals");
     }
 
-    // The failed publication may leave either the old durable tuple, the new
-    // complete tuple after a directory-sync error, or an image recovery refuses.
-    // It may never recover a malformed or unrelated tuple.
     try {
         ReplicatedKernel recovered(identity_test::recover(root, 1, {1, 2}));
         const auto stored = identity_test::metadata_store(root).load();
@@ -451,7 +433,6 @@ void sync_failure_case(const std::size_t failed_call,
         require(recovered.status().applied_index == 0,
                 "restart invented applied state after metadata fsync EIO");
     } catch (const BoundMetadataError&) {
-        // Explicit refusal is an allowed crash image outcome.
     }
 }
 
@@ -463,7 +444,7 @@ void at_both_cuts(Run run) {
         run(point, root.path);
     }
 }
-} // namespace
+}
 
 int main() {
     try {

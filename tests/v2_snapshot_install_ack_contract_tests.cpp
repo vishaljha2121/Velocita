@@ -157,7 +157,7 @@ void verify_contract(bool overclaim) {
                 fixture.state().applied_count == kSuffixEnd && fixture.state().applied_id_sum == sum20,
             "stale snapshot ACK regressed or reapplied verified state");
 }
-} // namespace
+}
 
 int main(int argc, char** argv) {
     try {

@@ -33,7 +33,7 @@ Response make_response(const ResponseStatus status, const std::int32_t leader_id
     return response;
 }
 
-}  // namespace
+}
 
 RaftNode::RaftNode(std::int32_t node_id, std::filesystem::path data_dir,
                    std::vector<std::int32_t> members, bool enable_trace)
@@ -258,7 +258,6 @@ void RaftNode::receive_peer(const PeerMessage& message) {
 #endif
     if (const auto* value = std::get_if<RequestVote>(&message.payload)) {
         if (value->candidate_id != message.sender_id) throw std::runtime_error("vote candidate does not match sender");
-        // V1 never enables pre-vote and its wire has no flag: always a real vote.
         msg_requestvote_t request{value->term, value->candidate_id, value->last_log_index, value->last_log_term, 0};
         msg_requestvote_response_t response{};
         result = raft_recv_requestvote(server_, sender, &request, &response);
@@ -493,4 +492,4 @@ std::uint64_t RaftNode::benchmark_peer_round_trip(
 }
 #endif
 
-}  // namespace velocita
+}

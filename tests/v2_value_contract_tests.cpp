@@ -280,7 +280,7 @@ void test_venue_observation_contract() {
             "acknowledgement without venue order identity was accepted");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

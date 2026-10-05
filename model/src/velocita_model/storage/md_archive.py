@@ -54,13 +54,13 @@ class ArchiveError(RuntimeError):
 
 @dataclass(frozen=True)
 class Policy:
-    retention_days: int = 3        # complete days kept in stream.db after their ack
-    keep_archives_days: int = 7    # acked and pruned archives older than this leave nuc1
-    grace_s: int = 600             # a day is archived only this long after it ends
-    max_days: int = 10             # days archived per run
-    batch_rows: int = 5000         # rows per delete transaction
-    batch_pause_s: float = 0.05    # between delete transactions, so the recorder gets the lock
-    reclaim_pages: int = 2048      # pages per incremental_vacuum transaction
+    retention_days: int = 3
+    keep_archives_days: int = 7
+    grace_s: int = 600
+    max_days: int = 10
+    batch_rows: int = 5000
+    batch_pause_s: float = 0.05
+    reclaim_pages: int = 2048
 
 
 def day_start_s(day: date) -> int:
@@ -84,7 +84,6 @@ def sha256_file(path: Path) -> str:
 
 
 def parse_digest_line(text: str, name: str) -> str | None:
-    """`<sha256>  <name>` (sha256sum) or a bare sha256. A different name is refused."""
     words = text.split()
     if not words or not _SHA.fullmatch(words[0]) or len(words) > 2:
         return None
@@ -102,7 +101,6 @@ def _fsync_dir(path: Path) -> None:
 
 
 def write_atomic(path: Path, data: bytes) -> None:
-    # Ends in .tmp, not .prom: node-exporter reads every *.prom in its directory.
     tmp = path.with_name(f".tmp-{path.name}.tmp")
     with open(tmp, "wb") as handle:
         handle.write(data)
@@ -113,8 +111,6 @@ def write_atomic(path: Path, data: bytes) -> None:
 
 
 def _row_digest(rows: Iterable[tuple]) -> tuple[int, int]:
-    """Order-independent multiset digest: (count, sum of row sha256 mod 2^256).
-    repr keeps the storage class (1 vs 1.0 vs '1' vs b'1')."""
     count, total = 0, 0
     for row in rows:
         total = (total + int.from_bytes(hashlib.sha256(repr(tuple(row)).encode("utf-8", "surrogatepass")).digest(),
@@ -124,8 +120,6 @@ def _row_digest(rows: Iterable[tuple]) -> tuple[int, int]:
 
 
 def _day_where(types: list[str], start_ns: int, end_ns: int) -> tuple[str, list]:
-    # `type IN (...)` lets the (type, receive_time_ns) index serve a pure time
-    # range; without it a day's read would scan the whole table.
     marks = ",".join("?" * len(types))
     return f"type IN ({marks}) AND receive_time_ns >= ? AND receive_time_ns < ?", [*types, start_ns, end_ns]
 
@@ -139,7 +133,6 @@ class Archiver:
         self._hooks, self._trace = hooks or {}, trace
         self.last_report: dict[date, str] = {}
 
-    # -- layout -----------------------------------------------------------
 
     def archive_path(self, day: date) -> Path:
         return self.dir / archive_name(day)
@@ -192,12 +185,10 @@ class Archiver:
         if name in self._hooks:
             self._hooks[name](*args)
 
-    # -- connection -------------------------------------------------------
 
     def _connect(self, timeout: float = 10.0) -> sqlite3.Connection:
         if not self.db.is_file():
             raise ArchiveError(f"{self.db} does not exist")
-        # mode=rw: a wrong path must fail, never create an empty database.
         conn = sqlite3.connect(f"file:{quote(str(self.db))}?mode=rw", uri=True, isolation_level=None, timeout=timeout)
         if self._trace is not None:
             conn.set_trace_callback(self._trace)
@@ -207,10 +198,8 @@ class Archiver:
     def _types(conn: sqlite3.Connection) -> list[str]:
         return [row[0] for row in conn.execute("SELECT DISTINCT type FROM main.market_message")]
 
-    # -- archive ----------------------------------------------------------
 
     def archive(self) -> list[date]:
-        """Archive every complete day not yet archived. Returns the days written."""
         for sub in ("", "acked", "pruned"):
             (self.dir / sub).mkdir(parents=True, exist_ok=True)
         for leftover in [*self.dir.glob(".tmp-*"), *(self.dir / "pruned").glob(".tmp-*")]:
@@ -270,11 +259,11 @@ class Archiver:
         self._create_schema(conn, tmp_db)
         conn.execute("ATTACH DATABASE ? AS arc", (str(tmp_db),))
         try:
-            conn.execute("PRAGMA arc.journal_mode = OFF")  # a scratch file, verified before it is published
+            conn.execute("PRAGMA arc.journal_mode = OFF")
             conn.execute("PRAGMA arc.synchronous = OFF")
             conn.execute("BEGIN")
             try:
-                types = self._types(conn)  # opens the read snapshot every later statement shares
+                types = self._types(conn)
                 self._hook("after_snapshot", day)
                 where, params = _day_where(types, start, end)
                 conn.execute(f"INSERT INTO arc.market_message SELECT * FROM main.market_message WHERE {where}", params)
@@ -325,12 +314,10 @@ class Archiver:
                     "db_sha256": raw_sha.hexdigest(), "start_ns": start, "end_ns": end,
                     "archived_at_ns": self._clock_ns()}
         write_atomic(self.manifest_path(day), (json.dumps(manifest, sort_keys=True) + "\n").encode())
-        write_atomic(self.sidecar_path(day), f"{sha}  {name}\n".encode("ascii"))  # last: marks completion
+        write_atomic(self.sidecar_path(day), f"{sha}  {name}\n".encode("ascii"))
 
-    # -- prune ------------------------------------------------------------
 
     def prune(self) -> dict[date, str]:
-        """Delete archived days that pass the gate. Returns day -> outcome."""
         report: dict[date, str] = {}
         today, pruned = self._today(), set(self.pruned_days())
         (self.dir / "pruned").mkdir(parents=True, exist_ok=True)
@@ -348,14 +335,14 @@ class Archiver:
         return report
 
     def _prune_day(self, conn: sqlite3.Connection, day: date, today: date) -> str:
-        if (today - day).days <= self.policy.retention_days:                       # (c)
+        if (today - day).days <= self.policy.retention_days:
             return "retention"
         sha = self.sidecar_sha(day)
         manifest = self.manifest(day)
         if (sha is None or manifest is None or manifest.get("sha256") != sha
-                or not self.archive_path(day).is_file() or sha256_file(self.archive_path(day)) != sha):  # (a)
+                or not self.archive_path(day).is_file() or sha256_file(self.archive_path(day)) != sha):
             return "archive_unverified"
-        ack = self.ack_sha(day)                                                       # (b)
+        ack = self.ack_sha(day)
         if ack is None:
             return "awaiting_ack"
         if ack != sha:
@@ -370,8 +357,6 @@ class Archiver:
         while True:
             conn.execute("BEGIN IMMEDIATE")
             try:
-                # id <= max_id: a row that reached this day after the snapshot is
-                # not in the archive, so it must never be deleted here.
                 deleted = conn.execute(
                     f"DELETE FROM main.market_message WHERE id IN (SELECT id FROM main.market_message "
                     f"WHERE {where} AND id <= ? LIMIT ?)", [*params, max_id, self.policy.batch_rows]).rowcount
@@ -398,24 +383,17 @@ class Archiver:
                             [*params, max_id]).fetchone()[0] == 1
 
     def _reclaim(self, conn: sqlite3.Connection) -> None:
-        """Return free pages to the filesystem, live, only when the database is
-        already auto_vacuum=INCREMENTAL (set once by `compact`). Otherwise the
-        free pages are reused by new rows and the file stops growing."""
         if conn.execute("PRAGMA main.auto_vacuum").fetchone()[0] != 2:
             return
         free = conn.execute("PRAGMA main.freelist_count").fetchone()[0]
         for _ in range(free // self.policy.reclaim_pages + 1):
-            # The pragma frees one page per step: fetchall runs the whole bounded batch.
             conn.execute(f"PRAGMA main.incremental_vacuum({int(self.policy.reclaim_pages)})").fetchall()
             if conn.execute("PRAGMA main.freelist_count").fetchone()[0] == 0:
                 break
             self._sleep(self.policy.batch_pause_s)
 
-    # -- archive retention on nuc1 ---------------------------------------
 
     def remove_old_archives(self) -> list[date]:
-        """Remove archives the Mac acknowledged, whose rows are pruned, older than
-        keep_archives_days. The ack and pruned records stay."""
         removed, today, pruned = [], self._today(), set(self.pruned_days())
         for day in self.archived_days():
             if (today - day).days <= self.policy.keep_archives_days or day not in pruned:
@@ -430,13 +408,8 @@ class Archiver:
             _fsync_dir(self.dir)
         return removed
 
-    # -- compaction (md-stream stopped) -----------------------------------
 
     def compact(self, quiet_s: int = 120) -> None:
-        """Shrink stream.db and switch it to auto_vacuum=INCREMENTAL, after which
-        every prune returns space live. Needs md-stream STOPPED: VACUUM holds the
-        write lock for its whole run. Refuses if a row arrived in the last
-        quiet_s seconds or another connection holds the database open."""
         conn = self._connect(timeout=1.0)
         try:
             types = self._types(conn)
@@ -451,8 +424,6 @@ class Archiver:
             free = shutil.disk_usage(self.db.parent).free
             if free < 2 * used + (256 << 20):
                 raise ArchiveError(f"compaction needs {2 * used + (256 << 20)} free bytes, have {free}")
-            # Leaving WAL needs every other connection closed: a second proof
-            # that the recorder is not running.
             try:
                 mode = conn.execute("PRAGMA journal_mode = DELETE").fetchone()[0]
             except sqlite3.OperationalError as error:
@@ -467,7 +438,6 @@ class Archiver:
         finally:
             conn.close()
 
-    # -- metrics ----------------------------------------------------------
 
     def metrics(self, *, ok: bool) -> str:
         now_s = self._clock_ns() // _NS
@@ -510,8 +480,6 @@ class Archiver:
 
 
 class RunLock:
-    """One md-archive at a time (a manual run beside the timer's)."""
-
     def __init__(self, directory: Path) -> None:
         directory.mkdir(parents=True, exist_ok=True)
         self._handle = open(directory / ".lock", "w")
@@ -529,16 +497,11 @@ class RunLock:
         self._handle.close()
 
 
-# -- restore (research, usually on the Mac) -------------------------------
-
 def _columns(conn: sqlite3.Connection, schema: str, table: str) -> list[str]:
     return [row[1] for row in conn.execute(f"PRAGMA {schema}.table_info({table})")]
 
 
 def restore(archives: Iterable[Path], into: Path) -> int:
-    """Merge archived days into a research database (created with the full
-    schema if absent). Each archive must match its sidecar. Rows already
-    present (same id) are kept, so restoring a day twice is harmless."""
     from .sqlite_store import ResearchStore
 
     archives = [Path(a) for a in archives]

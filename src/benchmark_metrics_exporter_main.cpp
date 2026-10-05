@@ -1,3 +1,4 @@
+// V1: benchmark-metrics-exporter.
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <poll.h>
@@ -122,7 +123,7 @@ int listen_socket(const Options& options) {
     return listener;
 }
 
-}  // namespace
+}
 
 int main(int argc, char** argv) {
     try {

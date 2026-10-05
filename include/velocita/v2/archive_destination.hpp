@@ -1,3 +1,4 @@
+// Proof that an independent destination holds the same archive as this voter.
 #pragma once
 
 #include "velocita/v2/execution_catalog.hpp"
@@ -26,8 +27,6 @@ struct ArchiveDestinationRequest {
     std::uint64_t local_storage_generation{};
     std::uint64_t attempt{};
     Digest256 challenge{};
-    // SHA-256 of the pinned destination's complete canonical static-identity
-    // bytes. The private verifier derives this from its separate trusted input.
     Digest256 destination_identity{};
     constexpr auto operator<=>(const ArchiveDestinationRequest&) const noexcept = default;
 };
@@ -73,10 +72,6 @@ class ArchiveDestinationVerifier final {
 private:
     friend class AuthenticatedArchiveTransport;
     friend struct ArchiveDestinationTestAccess;
-    // The trusted caller holds exclusive ownership of DESTINATION_ROOT across
-    // this complete verification. The filesystem verifier cannot authenticate
-    // physical-host independence or prevent a separately privileged actor from
-    // replacing that root between syscalls.
     [[nodiscard]] static ArchiveDestinationResult verify_existing(
         const std::filesystem::path& destination_root,
         const VerifiedStaticIdentity& pinned_destination_identity,
@@ -88,4 +83,4 @@ private:
         const ArchiveDestinationRequest& request) noexcept;
 };
 
-} // namespace velocita::v2
+}

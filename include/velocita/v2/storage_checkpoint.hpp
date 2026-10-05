@@ -1,3 +1,4 @@
+// Named points in storage operations where tests inject crashes.
 #pragma once
 
 namespace velocita::v2 {
@@ -18,7 +19,6 @@ enum class StorageCheckpoint {
     writer_idle_before_control_acquire,
 };
 
-// Optional deterministic crash/failure seam. No observer is installed in production by default.
 struct StorageCheckpoints {
     void (*observe)(StorageCheckpoint, void*){};
     void* context{};
@@ -27,4 +27,4 @@ struct StorageCheckpoints {
     }
 };
 
-}  // namespace velocita::v2
+}

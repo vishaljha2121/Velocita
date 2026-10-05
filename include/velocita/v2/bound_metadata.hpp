@@ -1,3 +1,4 @@
+// Durable Raft term, vote and commit index, bound to the static identity.
 #pragma once
 
 #include "velocita/storage.hpp"
@@ -35,9 +36,6 @@ private:
     std::span<const std::byte> input, const VerifiedStaticIdentity& identity,
     PersistentMetadata& destination, BoundFrameScratch& scratch) noexcept;
 
-// Read exactly one regular, non-symlink directory entry. The bounded reader
-// consumes at most 113 bytes (the 112-byte frame plus one oversize lookahead).
-// When requested, resync happens only after the complete object is validated.
 [[nodiscard]] PersistentMetadata read_bound_metadata_at(
     int directory_fd, const char* name, const VerifiedStaticIdentity& identity,
     bool resync = false);
@@ -59,4 +57,4 @@ private:
     MetadataCheckpoints checkpoints_;
 };
 
-} // namespace velocita::v2
+}

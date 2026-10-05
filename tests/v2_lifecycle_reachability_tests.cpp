@@ -1,29 +1,4 @@
 #include "v2_catalog_test_support.hpp"
-// An exhaustive inventory of the order lifecycle states the reducer can actually
-// reach, and what every observation does in each one.
-//
-// WHY THIS EXISTS. Phase 5 grew `apply_observe_order_event` into a large set of
-// interacting predicates - reconciled_submit, reconciled_cancel,
-// cancel_reconcilable, cancel_agrees, cancel_contradicts, late_cancel_completion,
-// reconciliation, terminal, effect_resolved - feeding a guard disjunction with
-// negations. Reading that code is how it was written, so reading it again is a
-// poor way to find what is wrong with it. This instead DRIVES the kernel through
-// every command sequence it accepts, breadth first, and records the truth.
-//
-// Two things fall out that review-by-reading does not give:
-//
-//   THE REACHABLE SET. Phase 5 already shipped one branch that cannot be reached
-//   and two fixtures that built states the kernel cannot produce. An enumerated
-//   inventory makes both kinds of mistake visible instead of plausible.
-//
-//   A CHANGE DETECTOR. The inventory is asserted. A future edit that creates a
-//   new reachable lifecycle state, or that makes an existing one unreachable,
-//   fails this test and forces the author to say why.
-//
-// The fixture here is built independently of the one in the delivery tests, on
-// purpose. Phase 4 used the same discipline for its property corpus: a second
-// construction of the same setup is a cross-check, and a shared helper would hide
-// exactly the kind of fixture error that has already bitten this phase twice.
 
 #include "velocita/v2/digest.hpp"
 #include "velocita/v2/kernel.hpp"
@@ -98,8 +73,6 @@ const char* name_of(const EffectOperation operation) {
     }
     return "?";
 }
-
-// --- an independently built fixture ----------------------------------------
 
 PolicyArtifact policy() {
     PolicyArtifact value;
@@ -223,12 +196,6 @@ DecisionFrame frame(const TradingState& state) {
     return value;
 }
 
-// --- the lifecycle signature -----------------------------------------------
-
-// What distinguishes one lifecycle position from another for review purposes.
-// Deliberately coarse: request sequences, digests and state versions differ on
-// every path and would make the search never converge without telling anyone
-// anything.
 struct Signature {
     ClusterOrderState order{};
     OutboxState effect{};
@@ -248,10 +215,6 @@ struct Signature {
     }
 };
 
-// Canonical bytes, so "did this change the state" is answered by the same
-// equality the cluster itself uses. An unencodable state returns an empty vector,
-// which compares unequal to any encodable one and is therefore recorded as a
-// change worth exploring rather than silently skipped.
 [[nodiscard]] std::vector<std::byte> canonical_bytes(const TradingState& state) {
     std::array<std::byte, kMaxStateSnapshotBytes> buffer{};
     const auto encoded = encode_state_snapshot(state, buffer);
@@ -262,10 +225,6 @@ struct Signature {
             buffer.begin() + static_cast<std::ptrdiff_t>(encoded.bytes_written)};
 }
 
-// Settled means the whole ORDER GROUP is done, not merely the current effect.
-// Reclamation requires every sibling effect to be settled, so a position whose
-// current effect is resolved while a sibling is still pending is not finished -
-// it is exactly the shape that pins arenas while looking healthy.
 [[nodiscard]] bool group_is_settled(const TradingState& state) {
     if (state.order_count != 1) return false;
     const auto& order = state.orders[0];
@@ -307,17 +266,11 @@ struct Signature {
     return true;
 }
 
-// --- command generation ----------------------------------------------------
-
 struct Step {
     Command command;
     const char* label;
 };
 
-// Every command the kernel accepts that can move one order's lifecycle. Each is
-// offered in every state; the kernel decides what is applicable, which is the
-// entire point - a generator that pre-filtered would only ever confirm what its
-// author already believed.
 std::vector<Step> successors(const TradingState& state, std::uint64_t& counter) {
     std::vector<Step> steps;
     if (state.order_count != 1) return steps;
@@ -382,8 +335,6 @@ std::vector<Step> successors(const TradingState& state, std::uint64_t& counter) 
                     is_current ? "cancelled(current)" : "cancelled(submit)");
         observation(VenueObservationKind::effect_unknown, effect_id, 0, 0,
                     is_current ? "unknown(current)" : "unknown(submit)");
-        // Quantity variants around what the cluster has booked: the three
-        // relations are the whole of the reconciliation adjudication.
         for (const auto quantity : {booked, booked + 1, booked - 1}) {
             if (quantity < 0) continue;
             observation(VenueObservationKind::cancel_reconciled, effect_id, 88,
@@ -405,15 +356,9 @@ std::vector<Step> successors(const TradingState& state, std::uint64_t& counter) 
     return steps;
 }
 
-// --- the exploration -------------------------------------------------------
-
 struct Reachable {
     std::map<Signature, std::string> first_path;
-    // For every reachable signature, which labelled steps CHANGED state there.
     std::map<Signature, std::set<std::string>> accepted;
-    // And where each of those led. Reachability to settlement is a property of
-    // the graph, not of any single outgoing edge: an edge that loops back to its
-    // own position satisfies "has a successor" while resolving nothing.
     std::map<Signature, std::set<Signature>> transitions;
 };
 
@@ -458,18 +403,6 @@ Reachable explore(const std::size_t depth_limit) {
             ApplyScratch step_scratch;
             const auto before = canonical_bytes(next);
             const auto result = catalog_test::apply(next, step.command, step_scratch);
-            // Record every STATE-CHANGING result, not only `applied`.
-            //
-            // The reducer deliberately mutates on some refusal paths -
-            // `fill_quantity_conflict` marks the order conflicted while returning
-            // a non-applied code, precisely so an unbookable execution does not
-            // vanish silently. Filtering on `applied` therefore hid exactly the
-            // positions the refusal was invented to make visible, and no
-            // inventory built that way can claim to be exhaustive.
-            //
-            // Change is measured on canonical bytes rather than `memcmp`, because
-            // the struct carries padding whose contents depend on how the value
-            // was built.
             const auto after = canonical_bytes(next);
             if (after == before) continue;
             (void)result;
@@ -492,8 +425,7 @@ Reachable explore(const std::size_t depth_limit) {
     return found;
 }
 
-
-}  // namespace
+}
 
 int main() {
     try {
@@ -516,27 +448,6 @@ int main() {
             std::cout << '\n';
         }
 
-        // NO PINNED INVENTORY COUNT, deliberately. The count moved from 27 to
-        // 41 the moment state-changing refusals were retained, and it will move
-        // again when the two approved material decisions land. A changing count
-        // is evidence of a contract change; forcing it back to a number would
-        // hide exactly the result this tool exists to produce. Pin it only once
-        // the contract is stable again.
-
-        // 1. CONFLICT IS A STICKY LIFECYCLE, NOT A FROZEN ORDER.
-        //
-        //    Two properties were conflated in the first version of this check,
-        //    which forbade every transition out of a conflicted position. That is
-        //    too strong: material decision A keeps accounting valid executions
-        //    while the dispute stands, so a conflicted order's RESERVATION
-        //    legitimately moves - held to released - as fills book.
-        //
-        //    What must never happen is the LIFECYCLE STATE changing. Nothing may
-        //    automatically carry the order to filled, cancelled, rejected or back
-        //    to live, because that would declare a recorded disagreement solved
-        //    on evidence that did not settle it. `order_is_risk_resolved` keys off
-        //    that state, so holding it also keeps the group unreclaimable even
-        //    once the reservation releases.
         for (const auto& [signature, destinations] : found.transitions) {
             if (signature.order != ClusterOrderState::conflict) continue;
             for (const auto& next : destinations) {
@@ -547,18 +458,6 @@ int main() {
             }
         }
 
-        // 2. EVERY RECOVERABLE POSITION REACHES SETTLEMENT OR ESCALATION.
-        //
-        //    The earlier assertion only proved a position had SOME outgoing
-        //    applied edge on its CURRENT effect. That is too weak in three ways
-        //    at once: the edge may loop back to the same position, it need not
-        //    lead anywhere terminal, and a sibling effect left pending still pins
-        //    the group even when the current one is resolved.
-        //
-        //    Conflict is excluded because it is intentionally a sink. Including
-        //    it would demand an automatic escape from the one state that must not
-        //    have one - the contradiction that appears as soon as refusal
-        //    mutations are part of the inventory at all.
         std::map<Signature, bool> resolves;
         const auto reaches_rest = [&](const Signature& start) {
             std::set<Signature> seen{start};
@@ -566,9 +465,6 @@ int main() {
             while (!queue.empty()) {
                 const auto here = queue.front();
                 queue.pop_front();
-                // A conflicted position counts as escalation, not settlement -
-                // an operator owns it from here. `group_is_settled` never reports
-                // true for one, because conflict is not a terminal order state.
                 if (here.group_settled ||
                     here.order == ClusterOrderState::conflict) {
                     return true;
@@ -592,9 +488,6 @@ int main() {
                         signature.text());
         }
 
-        // NON-VACUITY. An assertion over an empty or trivial set passes while
-        // proving nothing, and this one silently becomes trivial if a future
-        // change makes every position terminal or disconnects the graph.
         require(resolves.size() >= 8,
                 "too few recoverable positions were checked for reachability (" +
                     std::to_string(resolves.size()) + "), so the property is "

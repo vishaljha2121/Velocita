@@ -1,15 +1,4 @@
-// Phase 7 storage measurement.
-//
-// Phase 7's gate puts correctness and power-cut evidence before throughput, and
-// both now pass, so this measures rather than claims. What it measures is the
-// thing the phase set out to change: how long the OWNER LOOP is held by the
-// storage path, separated from how long the disk takes.
-//
-// It deliberately reports both a synchronous and an off-thread figure, because
-// the number that matters is the difference between them. A single absolute
-// throughput number would say more about this laptop than about the design, and
-// the deployment targets are a Pi and a NUC.
-
+// Measures write-ahead-log durability throughput.
 #include "velocita/v2/wal_arena.hpp"
 #include "velocita/v2/bound_wal.hpp"
 
@@ -56,8 +45,6 @@ std::vector<std::byte> command_sized_record(const std::uint64_t index) {
     value.entry_type = 0;
     Command command;
     command.identity = {CallerId{1}, RequestSequence{index}, {}};
-    // Never all-zero: the codec refuses a zero payload digest, and a digest
-    // derived from index alone wrapped to zero at record 256.
     command.identity.payload_digest.bytes[0] = static_cast<std::byte>(index);
     command.identity.payload_digest.bytes[1] = std::byte{0x5a};
     command.body = AdvanceKillEpoch{KillEpoch{index}};
@@ -90,7 +77,7 @@ void report(const char* label, const Summary& summary) {
               << label << "_max_us=" << summary.max_us << "\n";
 }
 
-}  // namespace
+}
 
 int main() {
     const auto root = std::filesystem::temp_directory_path() /
@@ -102,8 +89,6 @@ int main() {
 
     constexpr std::uint64_t kRecords = 2000;
 
-    // 1. SYNCHRONOUS: the owner does the write and the fsync itself. This is
-    //    what the owner loop paid before the writer thread existed.
     std::vector<double> inline_samples;
     inline_samples.reserve(kRecords);
     {
@@ -121,9 +106,6 @@ int main() {
         }
     }
 
-    // 2. OFF-THREAD: the owner stages, hands over, and collects completions.
-    //    The fsync happens on the writer. The sample is the OWNER's time only,
-    //    which is the number this phase set out to reduce.
     std::vector<double> owner_samples;
     owner_samples.reserve(kRecords);
     std::uint64_t refusals = 0;
@@ -135,11 +117,6 @@ int main() {
         for (std::uint64_t index = 1; index <= kRecords; ++index) {
             const auto record = command_sized_record(index);
             const auto start = Clock::now();
-            // RETRY ON BACKPRESSURE, because a real caller must. Counting a
-            // refusal as a fast sample would measure the arena declining work
-            // rather than the owner loop doing it - the first run of this
-            // benchmark did exactly that and reported a number four fifths of
-            // which was refusals.
             while (arena.stage(record, index) != StageOutcome::staged) {
                 ++refusals;
                 BlockDescriptor spin{};
@@ -158,7 +135,6 @@ int main() {
             owner_samples.push_back(
                 std::chrono::duration<double, std::micro>(elapsed).count());
         }
-        // Drain, so the durable index below is the real one.
         for (int spin = 0; spin < 100'000 && arena.durable_index() < kRecords; ++spin) {
             BlockDescriptor finished{};
             while (writer.take_completion(finished)) (void)arena.complete(finished);

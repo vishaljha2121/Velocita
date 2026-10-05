@@ -137,7 +137,7 @@ template <std::size_t Size>
         prefix.size() + payload.size()));
 }
 
-}  // namespace
+}
 
 EncodeStaticIdentityResult
 encode_static_identity(const StaticIdentity& value,
@@ -230,7 +230,6 @@ StaticIdentityCodecError VerifiedStaticIdentity::decode(
     const auto validation = validate(candidate);
     if (validation != StaticIdentityCodecError::none) return validation;
 
-    // Shared identity deliberately excludes framing, local ID and file checksum.
     const auto shared = bytes.subspan(kIncarnationOffset,
                                       kVotersOffset + 4U * voter_count -
                                           kIncarnationOffset);
@@ -244,4 +243,4 @@ StaticIdentityCodecError VerifiedStaticIdentity::decode(
     return StaticIdentityCodecError::none;
 }
 
-}  // namespace velocita::v2
+}

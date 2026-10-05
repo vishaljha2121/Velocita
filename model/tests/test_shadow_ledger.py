@@ -47,18 +47,17 @@ class TickBook(unittest.TestCase):
 
     def test_no_order_without_a_position_change(self) -> None:
         book = ledger.Book("tick", COSTS, Decimal(1000))
-        self.assertIsNone(book.act(0, Decimal(100), want_long=False))  # already flat
+        self.assertIsNone(book.act(0, Decimal(100), want_long=False))
         self.assertIsNotNone(book.act(1, Decimal(100), want_long=True))
-        self.assertIsNone(book.act(2, Decimal(105), want_long=True))  # already long
+        self.assertIsNone(book.act(2, Decimal(105), want_long=True))
         self.assertEqual(book.trades, 1)
 
     def test_a_losing_round_trip_and_marking_to_market(self) -> None:
         book = ledger.Book("tick", COSTS, Decimal(1000))
         book.act(0, Decimal(100), want_long=True)
-        # Long 9.900990 BTC: selling at 90 would return 9.900990 * 90 * 0.99 = 882.18.
         self.assertEqual(cents(book.equity(Decimal(90))), Decimal("882.18"))
         self.assertEqual(cents(book.unrealized_pnl(Decimal(90))), Decimal("-117.82"))
-        book.act(1, Decimal(90), want_long=False)  # 9.900990 * 90 * 0.99 = 882.18
+        book.act(1, Decimal(90), want_long=False)
         self.assertEqual(cents(book.cash), Decimal("882.18"))
         self.assertEqual((book.wins, book.losses), (0, 1))
 
@@ -72,14 +71,13 @@ class TickBook(unittest.TestCase):
 
 class DailyBook(unittest.TestCase):
     def test_only_the_last_decision_of_each_utc_day_acts(self) -> None:
-        # Like the backtest: the signal at the day's close sets the next day's position.
         l = ledger.Ledger(COSTS, Decimal(1000))
         l.observe(at("2026-09-29T09:00:00"), Decimal(100), "enter_long")
         l.observe(at("2026-09-29T15:00:00"), Decimal(101), "exit")
-        l.observe(at("2026-09-29T23:59:00"), Decimal(102), "enter_long")  # the close decision
+        l.observe(at("2026-09-29T23:59:00"), Decimal(102), "enter_long")
         self.assertEqual(l.books["daily"].trades, 0, "the daily book acted before the day closed")
         self.assertEqual(l.books["tick"].trades, 3, "the tick book acts on every change")
-        l.observe(at("2026-09-30T00:00:30"), Decimal(103), "enter_long")  # first decision of the next day
+        l.observe(at("2026-09-30T00:00:30"), Decimal(103), "enter_long")
         daily = l.books["daily"]
         self.assertEqual(daily.trades, 1)
         self.assertEqual(daily.fills[-1].price, Decimal(102), "the daily fill is not at the day's close")
@@ -94,9 +92,8 @@ class Benchmark(unittest.TestCase):
     def test_buy_and_hold_from_the_first_price(self) -> None:
         l = ledger.Ledger(COSTS, Decimal(1000))
         l.observe(0, Decimal(100), "exit")
-        # Bought 9.900990 BTC at 100 (with the buy cost); selling at 110 returns 1078.22.
         self.assertEqual(cents(l.hold_equity(Decimal(110))), Decimal("1078.22"))
-        l.observe(1, Decimal(120), "enter_long")  # later prices do not re-buy the benchmark
+        l.observe(1, Decimal(120), "enter_long")
         self.assertEqual(cents(l.hold_equity(Decimal(110))), Decimal("1078.22"))
 
 
@@ -112,7 +109,6 @@ class Persistence(unittest.TestCase):
             self.assertEqual(again.books["tick"].btc, first.books["tick"].btc)
             self.assertEqual(again.books["tick"].trades, 1)
             self.assertEqual(again.hold_equity(Decimal(100)), first.hold_equity(Decimal(100)))
-            # The pending close decision survived: the next day executes it.
             again.observe(at("2026-09-30T00:01:00"), Decimal(105), "exit")
             self.assertEqual(again.books["daily"].trades, 1)
             again.close()

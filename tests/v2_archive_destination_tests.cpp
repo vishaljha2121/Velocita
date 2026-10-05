@@ -30,11 +30,8 @@ int fsync(int fd) {
     }
     return ::fsync(fd);
 }
-} // namespace destination_fault
+}
 
-// Compile the real verifier/store privately so the durability failure reaches
-// the actual fsync shim. This remains a native simulated trusted transport;
-// production gets no raw authentication bypass.
 #define fsync destination_fault::fsync
 #include "../src/v2_archive_store.cpp"
 #undef fsync
@@ -77,7 +74,7 @@ struct ArchiveDestinationTestAccess {
         return evidence.consume(expected);
     }
 };
-} // namespace velocita::v2
+}
 
 namespace {
 using namespace velocita::v2;
@@ -375,8 +372,6 @@ void test_payload_dependency_and_durability_refusal() {
         require_unchanged(durable_source, durable_destination, durable, "durability failure");
     }
 
-    // A complete archive under another valid catalog/manifest is still not the
-    // requested dependency. Self-consistency is not authority to relabel it.
     TempRoot foreign_root{"v2-archive-foreign-catalog"};
     const auto row = catalog_test::row(AccountId{19},
         {kInstrumentExecutionProfileSchemaVersion, VenueId{9}, InstrumentId{4},
@@ -415,7 +410,7 @@ void test_payload_dependency_and_durability_refusal() {
     require(destination_before != image(fixture.destination_root.path),
             "payload corruption fixture was vacuous");
 }
-} // namespace
+}
 
 int main() {
     try {

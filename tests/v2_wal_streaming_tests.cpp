@@ -127,14 +127,12 @@ void test_constructor_and_rewrite_have_bounded_single_allocations(
 
     require_exact_history(root, 1, kRecordCount / 2);
 
-    // A no-op suffix request must leave every canonical survivor unchanged.
     segment.truncate_from(kRecordCount + 1);
     require_exact_history(root, 1, kRecordCount / 2);
 
     segment.discard_through(kRecordCount / 4);
     require_exact_history(root, kRecordCount / 4 + 1, kRecordCount / 2);
 
-    // A no-op prefix request likewise preserves the complete canonical bytes.
     segment.discard_through(1);
     require_exact_history(root, kRecordCount / 4 + 1, kRecordCount / 2);
 

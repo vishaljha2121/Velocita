@@ -135,7 +135,6 @@ velocita::v2::VenueObservation reconciled_fixture() {
     answer.cluster_order_id = ClusterOrderId{4};
     answer.effect_id = EffectId{5};
     answer.venue_order_id = VenueOrderId{6};
-    // A snapshot, not an execution: no price, fee, or execution identity.
     answer.quantity = QuantityLots::from_atoms(2);
     answer.evidence_digest = digest_with_first_byte(std::byte{0x66});
     return answer;
@@ -147,8 +146,6 @@ void test_order_reconciled_round_trips_and_fails_closed() {
     const auto bytes = encode_payload(answer);
     require(bytes.error == PayloadError::none,
             "a valid reconciliation answer did not encode");
-    // Additive by construction: the seventh kind costs no bytes, so it must
-    // occupy exactly the same 116-byte frame every other observation does.
     require(bytes.bytes.size() == kVenueObservationPayloadBytes,
             "the seventh observation kind changed the observation frame size");
     const auto decoded = decode_venue_observation(bytes.bytes);
@@ -156,10 +153,6 @@ void test_order_reconciled_round_trips_and_fails_closed() {
                 encode_payload(*decoded.value).bytes == bytes.bytes,
             "a reconciliation answer did not round trip canonically");
 
-    // Absence implies nothing filled. "The venue denies this order but reports it
-    // filled" is incoherent and is refused at the contract boundary rather than
-    // adjudicated deeper in, where the two halves would have to be reconciled
-    // against each other.
     auto absent = answer;
     absent.venue_order_id = VenueOrderId{};
     absent.quantity = QuantityLots::from_atoms(1);
@@ -169,8 +162,6 @@ void test_order_reconciled_round_trips_and_fails_closed() {
     require(encode_payload(absent).error == PayloadError::none,
             "an absent order reporting no fill was refused");
 
-    // A snapshot has no single execution price or fee, and carrying one would
-    // invite it to be booked as though it did.
     auto priced = answer;
     priced.price = PriceTicks::from_atoms(1);
     require(encode_payload(priced).error != PayloadError::none,
@@ -365,7 +356,7 @@ void test_payloads_fail_closed() {
             "invalid policy enum was accepted or lost its typed reason");
 }
 
-}  // namespace
+}
 
 void test_order_effect_preserves_post_only_independently_of_time_in_force() {
     using namespace velocita::v2;

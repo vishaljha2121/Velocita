@@ -26,7 +26,6 @@ std::vector<std::byte> from_hex(const std::string& hex) {
 }
 
 VerifiedStaticIdentity identity() {
-    // Independent static-identity golden from v2_static_identity_tests.cpp.
     auto bytes = from_hex(
         "563249447c000000010000000102030405060708090a0b0c0d0e0f10"
         "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"
@@ -215,7 +214,7 @@ void test_owners_bounds_and_output_preservation() {
             "overlapping payload/output was corrupted");
 }
 
-} // namespace
+}
 
 int main() {
     try {

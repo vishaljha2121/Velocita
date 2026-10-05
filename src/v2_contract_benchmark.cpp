@@ -1,3 +1,4 @@
+// Measures contract validation and codec costs.
 #include "velocita/v2/artifact_digest.hpp"
 #include "velocita/v2/digest.hpp"
 #include "velocita/v2/payload.hpp"
@@ -133,7 +134,7 @@ void measure(const std::string_view name, const std::size_t iterations,
               << " max_ns=" << samples.back() << " sink=" << sink << '\n';
 }
 
-}  // namespace
+}
 
 int main() {
     using namespace velocita::v2;

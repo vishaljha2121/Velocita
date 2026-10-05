@@ -73,7 +73,7 @@ void test_golden_and_semantics() {
                 "failed encode changed output");
     }
     auto corrupt = actual;
-    corrupt[68] = std::byte{1}; // payload reserved; digest failure still preserves destination.
+    corrupt[68] = std::byte{1};
     destination = {99, 17, 88};
     require(decode_bound_metadata(corrupt, identity(), destination, scratch) ==
                 BoundFrameError::digest_mismatch,
@@ -131,7 +131,7 @@ void test_store_bounds_temp_and_symlink() {
     }
     std::filesystem::remove_all(root);
 }
-} // namespace
+}
 
 int main() {
     try {

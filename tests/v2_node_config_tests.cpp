@@ -9,9 +9,6 @@
 #include <unistd.h>
 #include <vector>
 
-// Expected values are hand-built from the fixture text below, never taken from
-// parser output. The digest oracle is sha256_digest, pinned by its own goldens.
-
 namespace {
 
 using namespace velocita::v2;
@@ -111,8 +108,6 @@ void valid_config_parses_to_hand_built_values() {
                 hex_digest("ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100"),
             "archive destination differs");
     require(c.max_history_wal_bytes == 1073741824, "WAL budget differs");
-    // Absent: compaction starts at 2,048 retained entries (a quarter of the
-    // 8,128-entry ordinary pool), leaving room for a voter to catch up.
     require(c.compact_at_entries == 2048, "compaction threshold default differs");
     const auto tuned = parse_node_config(kValid + "history.compact_at_entries = 64\n");
     require(tuned.config && tuned.config->compact_at_entries == 64, "compaction threshold did not parse");
@@ -158,7 +153,6 @@ void unknown_and_duplicate_keys_refuse() {
 void grammar_is_strict() {
     expect_error(replaced(kValid, "node_id =", "node_id = 1\r"), Code::invalid_line, "carriage return", 2);
     expect_error(replaced(kValid, "node_id =", "node_id = 1 # nuc"), Code::invalid_value, "inline comment", 2);
-    // A free-form value is where an inline comment would silently change meaning.
     expect_error(replaced(kValid, "catalog.file =", "catalog.file = /etc/velocita/catalog.bin # primary"),
                  Code::invalid_value, "inline comment inside a path value", 7, "catalog.file");
     expect_error(replaced(kValid, "node_id =", "node_id 1"), Code::invalid_line, "missing equals", 2);
@@ -252,7 +246,7 @@ void file_loading_is_bounded_and_does_not_follow_links() {
     require(load_node_config(dir / "big.conf").error.code == Code::too_large, "oversized file not refused");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

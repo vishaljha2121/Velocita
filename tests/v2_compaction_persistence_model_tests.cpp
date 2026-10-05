@@ -438,8 +438,6 @@ DirectoryImage complete_image(const std::filesystem::path& root) {
     }
     model.materialize(model.root_key, recovery_root);
     const auto image_before = complete_image(recovery_root);
-    // Refusal is not permission to violate publication ordering. Inspect the
-    // durable image before recovery can re-sync anything.
     const auto image_wal = identity_test::read_wal(recovery_root);
     const bool old_wal = std::ranges::equal(image_wal, before_wal, same_record);
     const bool new_wal = image_wal.size() == 1 && same_record(image_wal[0], expected_suffix);

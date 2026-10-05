@@ -15,7 +15,7 @@ from velocita_model.collectors import market_stream as ms
 from velocita_model.storage.sqlite_store import ResearchStore
 
 SECOND = 1_000_000_000
-T0 = 1_790_600_000 * SECOND  # 2026-09-28T12:53:20Z
+T0 = 1_790_600_000 * SECOND
 
 
 def reference(bid: str, ask: str, mid: str) -> str:
@@ -83,8 +83,8 @@ class CandleStoragePolicy(Fixture):
 
     def test_unchanged_watched_rows_are_counted_not_stored(self) -> None:
         self.recorder.handle(candles("118.5", bonk_close="0.1"), T0 + SECOND)
-        self.recorder.handle(candles("118.5", bonk_close="0.2"), T0 + 2 * SECOND)  # only BONK moved
-        self.recorder.handle(candles("118.6"), T0 + 3 * SECOND)                     # SOL moved
+        self.recorder.handle(candles("118.5", bonk_close="0.2"), T0 + 2 * SECOND)
+        self.recorder.handle(candles("118.6"), T0 + 3 * SECOND)
         self.assertEqual(len(self.rows()), 2)
         self.assertIn('velocita_md_messages_total{type="price_candles"} 3\n', self.recorder.metrics(T0 + 3 * SECOND))
         self.assertIn('velocita_md_candles_deduplicated_total 1\n', self.recorder.metrics(T0 + 3 * SECOND))
@@ -94,10 +94,8 @@ class Metrics(Fixture):
     def test_reference_spread_and_source_age(self) -> None:
         self.recorder.handle(reference("99", "101", "100"), T0 + SECOND)
         text = self.recorder.metrics(T0 + SECOND)
-        # (101 - 99) / 100 (the MID) * 1e4 = 200.000 bp; against the bid it would be 202.020
         self.assertIn('velocita_md_reference_spread_bps{symbol="SOL|USD"} 200.000\n', text)
         self.assertIn('velocita_md_reference_mid{symbol="SOL|USD"} 100\n', text)
-        # received 12:53:21, source quote stamped 12:53:18 -> 3 s old
         self.assertIn('velocita_md_reference_source_age_seconds{symbol="SOL|USD",source="coinbase"} 3.000\n', text)
 
     def test_silent_subscribed_topic_is_flagged_not_hidden(self) -> None:
@@ -105,7 +103,6 @@ class Metrics(Fixture):
         text = self.recorder.metrics(T0 + 61 * SECOND)
         self.assertIn('velocita_md_topic_silent{topic="orderbook.hyperliquid-spot.HYPE-USDC"} 1\n', text)
         self.assertIn('velocita_md_topic_silent{topic="reference_prices"} 0\n', text)
-        # price_candles never arrived either: silent too.
         self.assertIn('velocita_md_topic_silent{topic="price_candles"} 1\n', text)
 
     def test_rejected_subscription_is_visible(self) -> None:
@@ -127,9 +124,6 @@ class Metrics(Fixture):
 
 
 class Loop(unittest.TestCase):
-    """The loop reconnects after a failed connect and after the stream ends,
-    publishing metrics atomically each time."""
-
     def test_reconnect_and_publish(self) -> None:
         with TemporaryDirectory() as directory:
             store = ResearchStore(f"{directory}/r.db")
@@ -162,7 +156,6 @@ class Loop(unittest.TestCase):
                           stop=lambda: not script and not any(s.messages for s in sockets),
                           sleep=sleeps.append, max_backoff_s=8)
             self.assertEqual(attempts, ["subscribe", "subscribe"])
-            # 1 s, doubling while connects fail, reset to 1 s after a successful session.
             self.assertEqual(sleeps, [1, 2, 1])
             self.assertIn("velocita_md_reconnects_total 3\n", open(textfile).read())
             self.assertEqual(store.connection.execute("SELECT COUNT(*) FROM market_message").fetchone()[0], 2)

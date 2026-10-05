@@ -15,8 +15,6 @@ namespace {
 
 constexpr std::size_t kHeaderBytes = kPaperStateMagic.size() + 4 + 4;
 constexpr std::size_t kDigestBytes = 32;
-// Well above the largest payload (256 orders and 128 reports); anything
-// longer is not a file this code wrote.
 constexpr std::size_t kMaxFileBytes = 1U << 20;
 
 class Writer {
@@ -229,7 +227,7 @@ std::filesystem::path parent_of(const std::filesystem::path& file) {
     return file.parent_path().empty() ? std::filesystem::path(".") : file.parent_path();
 }
 
-}  // namespace
+}
 
 const char* describe(const PaperStateError error) noexcept {
     switch (error) {
@@ -361,7 +359,6 @@ PaperBootstrap adopted_paper_state(const PaperVenueConfig& config,
     venue_config.base_balance = kernel_lots;
     PaperVenue venue(venue_config, PaperFaultPolicy::clean(), 1);
     if (!venue.configured()) return {"paper venue refused its configuration", nullptr};
-    // The adoption read is the first cut: a later read applied below it is older.
     venue.record_committed({applied_index, {}, 0, 0});
     auto state = std::make_unique<PaperState>();
     state->origin = {cluster_incarnation, funding, true, kernel_lots, cost, applied_index, state_version};
@@ -410,8 +407,6 @@ SendOutcome DurablePaperVenue::send(void* self, const OrderEffect& effect, const
 
 std::size_t DurablePaperVenue::poll(void* self, const std::span<VenueObservation> out, const Tick now) {
     auto& venue = *static_cast<DurablePaperVenue*>(self);
-    // Every report was durable before its send returned; polling changes only
-    // the non-durable delivery marks.
     return venue.failed_ ? 0 : venue.venue_.poll(out, now);
 }
 
@@ -441,8 +436,6 @@ void DurablePaperVenue::read_book(void* self, sim::VenueBook& out) {
 }
 
 void DurablePaperVenue::committed(void* self, const sim::CommittedEvidence& evidence) {
-    // Not persisted here: the acknowledge that follows writes both at once, so
-    // a crash between them redelivers the report instead of counting it twice.
     static_cast<DurablePaperVenue*>(self)->venue_.record_committed(evidence);
 }
 
@@ -461,4 +454,4 @@ sim::VenueBookSource DurablePaperVenue::book() noexcept {
     return {&DurablePaperVenue::read_book, &DurablePaperVenue::committed, this};
 }
 
-}  // namespace velocita::v2::paper
+}

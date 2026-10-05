@@ -50,8 +50,6 @@ struct Inode {
     std::map<std::string, ino_t> names;
     std::vector<char> bytes;
 };
-// A sync persists this inode's bytes OR directory names, never both implicitly.
-// Unsynced changes may disappear. This is a bounded model, not a device claim.
 struct Model {
     std::filesystem::path root;
     ino_t root_inode{};
@@ -235,7 +233,6 @@ struct Fixture {
         const auto ec = catalog.encode(execution_bytes);
         check(id.error == StaticIdentityCodecError::none && ec.error == ExecutionCatalogError::none, "fixture encode failed");
         identity_length = id.bytes_written; execution_length = ec.bytes_written;
-        // Authored schema-8 command, independent of the archive encoder.
         constexpr std::string_view hex = "56324b43380000000900060001000000000000000100000000000000010000000000000000000000000000000000000000000000000000000000000001000000000000007ebfc094cb08c72268b6e92acc835d5b5bbee17c517e564750290c1a437a118b";
         for (std::size_t at = 0; at < hex.size(); at += 2)
             command.push_back(std::byte(std::stoul(std::string(hex.substr(at, 2)), nullptr, 16)));

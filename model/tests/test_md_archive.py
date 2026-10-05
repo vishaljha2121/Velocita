@@ -25,38 +25,32 @@ from velocita_model.storage import md_archive as mda
 from velocita_model.storage.sqlite_store import ResearchStore
 
 S = 1_000_000_000
-# UTC midnights, written by hand (2026-09-28T12:53:20Z = 1790600000, minus
-# 12h53m20s = 46400 s) and cross-checked against calendar.timegm in a test.
-D28 = 1_790_553_600   # 2026-09-28T00:00:00Z
-D29 = D28 + 86_400    # 2026-09-29
-D30 = D29 + 86_400    # 2026-09-30
-D01 = D30 + 86_400    # 2026-10-01
-D02 = D01 + 86_400    # 2026-10-02
+D28 = 1_790_553_600
+D29 = D28 + 86_400
+D30 = D29 + 86_400
+D01 = D30 + 86_400
+D02 = D01 + 86_400
 
 SESSIONS = [
-    # session_id, venue, started_at_ns, ended_at_ns, config_digest, schema_digest, code_version, clock_synced, stop_reason
     (1, "truemarkets", (D28 - 3600) * S, D29 * S + 7 * 3600 * S, "c1", "s1", "0.1", 1, "interrupted"),
     (2, "truemarkets", D29 * S + 12 * 3600 * S, None, "c2", "s1", "0.1", 1, None),
 ]
 INTERVALS = [
-    # id, session_id, pair_id, kind, started_at_ns, ended_at_ns, detail
-    (1, 1, None, "disconnect", D28 * S + 23 * 3600 * S, D29 * S + 3600 * S, "stream ended"),  # spans 28 -> 29
-    (2, 2, None, "disconnect", D30 * S + 10 * 3600 * S, None, "OSError: reset"),             # still open
+    (1, 1, None, "disconnect", D28 * S + 23 * 3600 * S, D29 * S + 3600 * S, "stream ended"),
+    (2, 2, None, "disconnect", D30 * S + 10 * 3600 * S, None, "OSError: reset"),
 ]
 BODY_UNICODE = '{"type":"surging_assets","note":"café → \U0001f680","nl":"a\\nb"}\nraw tail'
 MESSAGES = [
-    # id, session_id, type, topics, server_ts_s, receive_time_ns, body, body_digest, full_digest, filtered
-    (1, 1, "reference_prices", '["reference_prices"]', D28, D28 * S, '{"a":1}', "b1", "f1", 0),            # first ns of 28
+    (1, 1, "reference_prices", '["reference_prices"]', D28, D28 * S, '{"a":1}', "b1", "f1", 0),
     (2, 1, "price_candles", '["price_candles"]', D28 + 43_200, (D28 + 43_200) * S, '{"c":2}', "b2", "f2", 1),
-    (3, 1, "surging_assets", None, None, D29 * S - 1, BODY_UNICODE, "b3", "f3", 0),                       # last ns of 28
-    (4, 1, "reference_prices", '["reference_prices"]', D29, D29 * S, '{"a":4}', "b4", "f4", 0),            # first ns of 29
+    (3, 1, "surging_assets", None, None, D29 * S - 1, BODY_UNICODE, "b3", "f3", 0),
+    (4, 1, "reference_prices", '["reference_prices"]', D29, D29 * S, '{"a":4}', "b4", "f4", 0),
     (5, 1, "unparseable", None, None, D29 * S + S // 2, "not json", "b5", "f5", 0),
     (6, 2, "trending_assets", '["trending_assets"]', D30 + 21_600, (D30 + 21_600) * S, '{"t":6}', "b6", "f6", 0),
     (7, 2, "reference_prices", '["reference_prices"]', D01 - 1, D01 * S - 1, '{"a":7}', "b7", "f7", 0),
-    (8, 2, "reference_prices", '["reference_prices"]', D01 + 1, (D01 + 1) * S, '{"a":8}', "b8", "f8", 0),  # "today"
+    (8, 2, "reference_prices", '["reference_prices"]', D01 + 1, (D01 + 1) * S, '{"a":8}', "b8", "f8", 0),
 ]
 DAY28, DAY29, DAY30, DAY01 = date(2026, 9, 28), date(2026, 9, 29), date(2026, 9, 30), date(2026, 10, 1)
-# Hand-assigned expectations per day.
 EXPECTED_IDS = {DAY28: [1, 2, 3], DAY29: [4, 5], DAY30: [6, 7]}
 EXPECTED_SESSIONS = {DAY28: [1], DAY29: [1], DAY30: [2]}
 EXPECTED_INTERVALS = {DAY28: [1], DAY29: [1], DAY30: [2]}
@@ -67,7 +61,7 @@ def at(seconds: int):
 
 
 def build_db(path: pathlib.Path, messages=MESSAGES) -> None:
-    ResearchStore(path).close()  # the production schema md-stream creates
+    ResearchStore(path).close()
     conn = sqlite3.connect(path)
     conn.executemany("INSERT INTO collector_session VALUES (?,?,?,?,?,?,?,?,?)", SESSIONS)
     conn.executemany("INSERT INTO data_quality_interval VALUES (?,?,?,?,?,?,?)", INTERVALS)
@@ -116,7 +110,6 @@ class Fixture(unittest.TestCase):
         return self.dir / f"stream-{day.isoformat()}.sqlite.gz"
 
     def ack(self, day: date, sha: str | None = None) -> pathlib.Path:
-        """What the Mac writes after verifying its copy: the sha256 it computed."""
         (self.dir / "acked").mkdir(exist_ok=True)
         path = self.dir / "acked" / f"stream-{day.isoformat()}.ack"
         digest = sha if sha is not None else sha256_file(self.gz(day))
@@ -132,14 +125,13 @@ class DayBoundaries(Fixture):
     def test_hand_written_midnights_match_the_calendar(self):
         self.assertEqual(D28, calendar.timegm((2026, 9, 28, 0, 0, 0)))
         self.assertEqual(D01, calendar.timegm((2026, 10, 1, 0, 0, 0)))
-        # The fixture's per-day expectation agrees with an independent split.
         for day, ids in EXPECTED_IDS.items():
             self.assertEqual(self.ids_of_day(day), ids)
 
 
 class Archive(Fixture):
     def test_each_complete_day_round_trips_every_row_and_column(self):
-        archived = self.archiver(D01 + 1800).archive()  # 00:30 UTC on 10-01
+        archived = self.archiver(D01 + 1800).archive()
         self.assertEqual(archived, [DAY28, DAY29, DAY30])
         self.assertFalse(self.gz(DAY01).exists(), "today is never complete")
         by_id = {m[0]: m for m in MESSAGES}
@@ -170,7 +162,7 @@ class Archive(Fixture):
                              f"{sha256_file(self.gz(day))}  stream-{day.isoformat()}.sqlite.gz\n")
 
     def test_grace_period_holds_back_a_day_that_just_ended(self):
-        archived = self.archiver(D01 + 300, grace_s=600).archive()  # 00:05 UTC
+        archived = self.archiver(D01 + 300, grace_s=600).archive()
         self.assertEqual(archived, [DAY28, DAY29])
         self.assertFalse(self.gz(DAY30).exists())
 
@@ -267,8 +259,6 @@ class Snapshot(Fixture):
 
 
 class PruneGate(Fixture):
-    """Each test satisfies every condition but one; only that one may hold the rows."""
-
     def archived_and_acked(self) -> None:
         self.archiver(D01 + 1800).archive()
         for day in (DAY28, DAY29, DAY30):
@@ -276,7 +266,6 @@ class PruneGate(Fixture):
 
     def test_all_conditions_met_deletes_exactly_the_archived_rows(self):
         self.archived_and_acked()
-        # 10-02 00:30 with 3 retained days: only 09-28 is older than the window.
         report = self.archiver(D02 + 1800, retention_days=3).prune()
         self.assertEqual(report[DAY28], "pruned")
         self.assertEqual(db_ids(self.db), [4, 5, 6, 7, 8])
@@ -287,10 +276,10 @@ class PruneGate(Fixture):
         self.archived_and_acked()
         data = bytearray(self.gz(DAY28).read_bytes())
         data[len(data) // 2] ^= 0x01
-        self.gz(DAY28).write_bytes(bytes(data))  # ack and sidecar still name the original
+        self.gz(DAY28).write_bytes(bytes(data))
         report = self.archiver(D02 + 1800, retention_days=0).prune()
         self.assertEqual(report[DAY28], "archive_unverified")
-        self.assertEqual(db_ids(self.db), [1, 2, 3, 8])  # 29 and 30 pruned, 28 kept
+        self.assertEqual(db_ids(self.db), [1, 2, 3, 8])
 
     def test_gate_a_missing_archive_never_prunes(self):
         self.archived_and_acked()
@@ -300,7 +289,6 @@ class PruneGate(Fixture):
         self.assertEqual(db_ids(self.db), [4, 5, 8])
 
     def test_gate_a_manifest_for_other_bytes_never_prunes(self):
-        # The manifest's id range drives the delete; it must belong to this archive.
         self.archived_and_acked()
         manifest = self.dir / "stream-2026-09-28.manifest.json"
         record = json.loads(manifest.read_text())
@@ -327,11 +315,9 @@ class PruneGate(Fixture):
 
     def test_gate_c_retention_window_keeps_recent_days(self):
         self.archived_and_acked()
-        # 10-02: 28 is 4 days old, 29 is 3, 30 is 2. Window 3 keeps 29 and 30.
         report = self.archiver(D02 + 1800, retention_days=3).prune()
         self.assertEqual((report[DAY29], report[DAY30]), ("retention", "retention"))
         self.assertEqual(db_ids(self.db), [4, 5, 6, 7, 8])
-        # Window 0 at the same instant releases both.
         self.archiver(D02 + 1800, retention_days=0).prune()
         self.assertEqual(db_ids(self.db), [8])
 
@@ -366,7 +352,7 @@ class PruneGate(Fixture):
             mda.Archiver(self.db, self.dir, clock_ns=at(D02 + 1800), sleep=lambda _s: None,
                          policy=mda.Policy(retention_days=3, batch_rows=2),
                          hooks={"after_batch": crash}).prune()
-        remaining = db_ids(self.db)  # the first batch of two committed, the second never ran
+        remaining = db_ids(self.db)
         self.assertEqual((len([i for i in remaining if i <= 3]), [i for i in remaining if i > 3]), (1, [4, 5, 6, 7, 8]))
         self.assertFalse((self.dir / "pruned" / "stream-2026-09-28.pruned").exists())
         report = self.archiver(D02 + 1800, retention_days=3, batch_rows=2).prune()
@@ -379,7 +365,6 @@ class PruneGate(Fixture):
         mda.Archiver(self.db, self.dir, clock_ns=at(D02 + 1800), sleep=lambda _s: None,
                      policy=mda.Policy(retention_days=0, batch_rows=2),
                      hooks={"after_batch": lambda d, b: batches.append((d, b))}).prune()
-        # 28: 3 rows -> batches of 2,1; 29: 2 -> 2; 30: 2 -> 2.
         self.assertEqual(batches, [(DAY28, 1), (DAY28, 2), (DAY29, 1), (DAY30, 1)])
 
 
@@ -393,7 +378,6 @@ class ArchiveRemoval(Fixture):
 
     def test_old_archive_removed_only_after_ack_and_prune(self):
         self.ack(DAY28)
-        # 10-06: 28 is 8 days old (> 7), 29 is 7, 30 is 6.
         now = D01 + 5 * 86_400 + 1800
         archiver = self.archiver(now, retention_days=3, keep_archives_days=7)
         archiver.prune()
@@ -412,9 +396,9 @@ class ArchiveRemoval(Fixture):
         self.ack(DAY28)
         archiver = self.archiver(D01 + 30 * 86_400, retention_days=0, keep_archives_days=0)
         archiver.prune()
-        self.ack_path_of(DAY28).unlink()  # lost on nuc1; the Mac re-acknowledges on its next run
+        self.ack_path_of(DAY28).unlink()
         self.assertEqual(archiver.remove_old_archives(), [])
-        self.ack(DAY28, sha="3" * 64)  # an ack for other bytes is no better
+        self.ack(DAY28, sha="3" * 64)
         self.assertEqual(archiver.remove_old_archives(), [])
         self.assertTrue(self.gz(DAY28).exists())
 
@@ -432,7 +416,7 @@ class ArchiveRemoval(Fixture):
         archiver = self.archiver(D01 + 30 * 86_400, retention_days=0, keep_archives_days=0)
         archiver.prune()
         self.assertEqual(len(archiver.remove_old_archives()), 3)
-        self.assertEqual(archiver.archive(), [DAY01])  # only the day that has since completed
+        self.assertEqual(archiver.archive(), [DAY01])
         self.assertEqual(self.present(), ["stream-2026-10-01.sqlite.gz"])
 
 
@@ -456,7 +440,6 @@ class Metrics(Fixture):
             'velocita_md_archive_days{state="on_host"}': "3",
             'velocita_md_archive_days{state="acked"}': "1",
             'velocita_md_archive_days{state="pruned"}': "1",
-            # Oldest archive without a matching ack is 09-29, which ended at D30.
             "velocita_md_archive_oldest_unacked_day_end_timestamp_seconds": str(D30),
             "velocita_md_archive_oldest_unacked_age_seconds": str(now - D30),
             'velocita_md_archive_blocked_days{reason="archive_unverified"}': "0",
@@ -479,7 +462,7 @@ class Restore(Fixture):
     def test_restore_merges_days_into_a_research_db(self):
         self.archiver(D01 + 1800).archive()
         target = self.root / "research.db"
-        archives = [self.gz(DAY28), self.gz(DAY30), self.gz(DAY28)]  # a repeat is harmless
+        archives = [self.gz(DAY28), self.gz(DAY30), self.gz(DAY28)]
         mda.restore(archives, target)
         conn = sqlite3.connect(target)
         rows = conn.execute("SELECT * FROM market_message ORDER BY id").fetchall()
@@ -501,12 +484,11 @@ class Restore(Fixture):
 
 class Compact(Fixture):
     def test_refuses_while_the_recorder_is_writing(self):
-        # Newest row (id 8) was received at D01+1 s; 60 s later is "recently".
         with self.assertRaises(mda.ArchiveError):
             self.archiver(D01 + 61).compact(quiet_s=120)
 
     def test_refuses_while_another_connection_holds_the_db(self):
-        other = sqlite3.connect(self.db)  # the recorder keeps one open even when idle
+        other = sqlite3.connect(self.db)
         other.execute("SELECT count(*) FROM market_message").fetchone()
         try:
             with self.assertRaisesRegex(mda.ArchiveError, "holds"):
@@ -531,7 +513,7 @@ class Compact(Fixture):
         before = os.path.getsize(self.db)
         self.archiver(D02 + 1800).compact(quiet_s=120)
         conn = sqlite3.connect(self.db)
-        self.assertEqual(conn.execute("PRAGMA auto_vacuum").fetchone()[0], 2)  # INCREMENTAL
+        self.assertEqual(conn.execute("PRAGMA auto_vacuum").fetchone()[0], 2)
         self.assertEqual(conn.execute("PRAGMA integrity_check").fetchone()[0], "ok")
         self.assertEqual(conn.execute("PRAGMA journal_mode").fetchone()[0], "wal")
         self.assertEqual([r[0] for r in conn.execute("SELECT id FROM market_message")], [8])
@@ -545,7 +527,7 @@ class IncrementalReclaim(unittest.TestCase):
             root = pathlib.Path(tmp)
             db = root / "stream.db"
             conn = sqlite3.connect(db)
-            conn.execute("PRAGMA auto_vacuum = INCREMENTAL")  # must precede the first table
+            conn.execute("PRAGMA auto_vacuum = INCREMENTAL")
             conn.executescript(pathlib.Path(mda.__file__).with_name("schema.sql").read_text())
             conn.close()
             big = [(100 + i, 1, "price_candles", None, None, D28 * S + i, "y" * 3000, "b", "f", 1) for i in range(400)]
@@ -567,9 +549,6 @@ class IncrementalReclaim(unittest.TestCase):
 
 
 class CommandLine(Fixture):
-    """The `md-archive` subcommand on the real clock: the fixture's days are all
-    complete by any date this test can run on."""
-
     def run_cli(self, *extra: str) -> tuple[int, str]:
         import contextlib
         import io
@@ -664,7 +643,6 @@ class ConcurrentWriter(unittest.TestCase):
             by_id = {m[0]: m for m in MESSAGES}
             self.assertEqual(day28, [by_id[1], by_id[2], by_id[3]] + bulk)
             remaining = db_ids(db)
-            # Day 01 (row 8) was archived but not acked; the writer's rows are "today" (10-02).
             self.assertEqual(remaining, [8] + list(range(100_000, 100_000 + out["n"])))
 
 

@@ -18,9 +18,6 @@ class LiveTradingFlag(unittest.TestCase):
 
 
 class StructuralGuarantees(unittest.TestCase):
-    """These matter more than the flag: they are what the flag would have to
-    defeat, and it cannot."""
-
     def test_codec_cannot_author_an_external_effect(self) -> None:
         safety.assert_no_effect_encoder()
         for forbidden in ("OrderEffect", "encode_order_effect", "VenueObservation"):
@@ -66,8 +63,6 @@ class StaticAudit(unittest.TestCase):
         )
 
     def test_a_docstring_naming_the_vocabulary_does_not_trip_the_audit(self) -> None:
-        """The audit walks the AST, so prose about what is forbidden is fine.
-        Otherwise this repo could not document its own interlock."""
         self.assertEqual(
             self._audit('"""This module must never sign_transaction or submit_order."""\n'),
             [],
@@ -113,7 +108,7 @@ class TransportGuard(unittest.TestCase):
 
     def test_allowlisted_post_is_permitted(self) -> None:
         client = ReadOnlyHttp("https://example.invalid", post_allowlist=("/v1/market/book",))
-        client._guard("/v1/market/book", "POST")  # must not raise
+        client._guard("/v1/market/book", "POST")
 
     def test_non_get_non_post_methods_are_refused(self) -> None:
         for method in ("PUT", "DELETE", "PATCH"):

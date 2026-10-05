@@ -71,8 +71,6 @@ void reset(Fault value) {
 }
 }
 
-// The production reader is compiled verbatim; only its filesystem boundary is
-// replaced. This tests interrupted/short reads and changes without timing races.
 #define openat file_io::openat
 #define fstat file_io::fstat
 #define read file_io::read
@@ -139,7 +137,6 @@ void exercise(file_io::Fault fault, bool success) {
 
 int main() {
     try {
-        // Existing independent CP-028 golden, not production-encoder output.
         file_io::bytes = from_hex(
             "56324153010060002401000001000000070000000000000007000000000000000200000000000000030000000000000003000000000000003ce5d6e3e9a886ab694852a129348bbe9413c2b55077a84804efa3cd645cc3e00000000000000000"
             "070000000000000003000000000000000700000000000000640000000000000056324b43380000000900060001000000000000000100000000000000010000000000000000000000000000000000000000000000000000000000000001000000000000007ebfc094cb08c72268b6e92acc835d5b5bbee17c517e564750290c1a437a118b"

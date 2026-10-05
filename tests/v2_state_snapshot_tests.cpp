@@ -313,9 +313,6 @@ void test_snapshot_rejects_unbacked_risk_aggregates() {
     std::array<std::byte, kMaxStateSnapshotBytes> storage{};
     const auto encoded = encode_state_snapshot(original, storage);
     require(encoded.error == StateSnapshotError::none, "risk fixture did not encode");
-    // These fixed-width arenas are the snapshot suffix. Locate risk fields from
-    // their canonical layout, not C++ object offsets or a byte-pattern search.
-    // The trailing execution catalog root follows the arenas.
     const auto risk_offset = encoded.bytes_written - kDigestBytes - kDigestBytes -
         (2 + original.outbox_effect_count * kStateSnapshotOutboxEffectBytes) -
         (2 + original.order_count * kStateSnapshotClusterOrderBytes) -
@@ -360,7 +357,6 @@ void test_snapshot_position_limit_fields_are_canonical() {
     const auto at = [&](const std::size_t offset) {
         return storage.begin() + static_cast<std::ptrdiff_t>(risk_offset + offset);
     };
-    // Record layout: ... position(104) max_position(112) allow_short(120).
     std::vector<std::byte> expected;
     for (const std::int64_t value : {std::int64_t{-3}, std::int64_t{10}})
         for (unsigned shift = 0; shift < 64; shift += 8)
@@ -399,8 +395,6 @@ void test_snapshot_position_limit_fields_are_canonical() {
 void test_snapshot_reservation_ownership_and_sum_overflow() {
     using namespace velocita::v2;
     auto state = phase4_state();
-    // Two orders and two risk accounts. Keeping the global total correct must
-    // not hide assigning a hold to the wrong account.
     state.risk_account_count = 2;
     state.risk_accounts[1] = state.risk_accounts[0];
     state.risk_accounts[1].account_id = AccountId{6};
@@ -437,7 +431,6 @@ void test_snapshot_reservation_ownership_and_sum_overflow() {
         MoneyMicros::from_atoms(1), MoneyMicros::from_atoms(1), {}, ReservationState::held};
     require(encode_state_snapshot(orphan, bytes).error == StateSnapshotError::invalid_state,
             "snapshot accepted an orphan reservation");
-    // Put both orders under account zero, then overflow each checked accumulator.
     state.decision_cold[1].frame.account_id = AccountId{5};
     state.decision_cold[1].proposal.account_id = AccountId{5};
     state.risk_accounts[0].reserved_quantity = QuantityLots::from_atoms(4);
@@ -489,8 +482,6 @@ void test_empty_snapshot_has_canonical_layout() {
     require(std::equal(encoded.state_digest.bytes.begin(), encoded.state_digest.bytes.end(),
                        storage.begin() + static_cast<std::ptrdiff_t>(digest_offset)),
             "returned digest differs from framed digest");
-    // Schema 9 changed only the risk account record, which an empty state has
-    // none of: with the schema byte rewritten to 8 the reviewed V8 digest holds.
     auto legacy = storage;
     legacy[kStateSnapshotSchemaOffset] = std::byte{8};
     require(to_hex(sha256_digest({legacy.data() + kStateSnapshotDigestInputOffset,
@@ -501,16 +492,6 @@ void test_empty_snapshot_has_canonical_layout() {
     require(hash ==
                 "ab1e3731b7edc9f6bcc2c0d463842fa9d4e9e9717572cb7a3bcbd84f58290349",
             "empty state golden digest changed: " + hash);
-    // V6 empty-payload size guard.
-    //
-    // This previously asserted V5's empty payload was byte-identical to V4's
-    // apart from the schema byte, i.e. that B1 added no header field. That is
-    // now deliberately false: orphan-settlement accounting appends
-    // `settled_incomplete_effect_count`, so the empty payload grew by eight
-    // bytes. Hashing the payload again would only restate the golden digest
-    // above, so the guard keeps its real job in a form that cannot duplicate it -
-    // pinning the empty-payload SIZE, which is what unreviewed header growth
-    // actually moves.
     require(encoded.bytes_written ==
                 kStateSnapshotPayloadOffset + kStateSnapshotEmptyPayloadBytes +
                     kDigestBytes,
@@ -727,12 +708,6 @@ void test_decode_is_transactional_for_corrupt_and_unknown_input() {
 
 void test_snapshot_rejects_gateway_local_outbox_states() {
     using namespace velocita::v2;
-    // Architecture 9.1.2: `claimed` and `attempted` are GATEWAY-LOCAL. The
-    // reducer never writes them, so meeting one in replicated state means the
-    // state is corrupt or forged - and interpreting it would mean trusting a
-    // value the authority cannot have produced. The contract said snapshot
-    // validation must reject them; the range check accepted the whole contiguous
-    // OutboxState span instead, so it accepted both.
     const auto original = phase4_state();
     std::array<std::byte, kMaxStateSnapshotBytes> storage{};
     const auto encoded = encode_state_snapshot(original, storage);
@@ -748,10 +723,6 @@ void test_snapshot_rejects_gateway_local_outbox_states() {
                 "the encoder accepted a gateway-local outbox state");
     }
 
-    // Locate the effect-state byte by DIFFING two legal encodings that differ in
-    // exactly that field. Derived from the canonical layout by construction, and
-    // self-checking - anything but a single differing byte means the assumption
-    // is wrong - rather than an object offset or a byte-pattern search.
     auto alternative = original;
     alternative.outbox_effects[0].state = OutboxState::rejected;
     std::array<std::byte, kMaxStateSnapshotBytes> alternative_bytes{};
@@ -806,12 +777,6 @@ void test_snapshot_rejects_gateway_local_outbox_states() {
 
 void test_snapshot_rejects_an_unknown_observation_origin() {
     using namespace velocita::v2;
-    // `event_origin()` resolves anything it does not recognise to `native`.
-    // That is the right reading at runtime - the strictest deduplication for
-    // anything unrecognised - and exactly the wrong thing to accept from a
-    // decoder: a forged word would move a gateway-authored receipt into the
-    // venue's identity domain, where it can refuse real venue evidence under a
-    // sequence the venue actually owns.
     auto state = phase5_observation_state();
     auto& retained = state.receipts[state.receipt_count - 1].result;
 
@@ -1079,8 +1044,6 @@ void test_declared_maximum_is_exact_and_encodable() {
             OutboxState::pending};
     }
 
-    // Caller cursors are part of the maximum too: the declared bound is only
-    // honest if the largest VALID state fills every arena, including this one.
     state.caller_cursor_count = kMaxCallerCursors;
     for (std::size_t index = 0; index < kMaxCallerCursors; ++index) {
         state.caller_cursors[index] = {
@@ -1095,7 +1058,7 @@ void test_declared_maximum_is_exact_and_encodable() {
             "public maximum does not exactly bound the largest valid snapshot");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

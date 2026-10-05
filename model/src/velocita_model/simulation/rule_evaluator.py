@@ -30,7 +30,6 @@ from ..contracts.enums import (
     StrategyMode,
 )
 
-#: `kNoMatchedRuleIndex` from `rule_evaluator.hpp`.
 NO_MATCHED_RULE_INDEX: Final = 0xFFFF
 
 
@@ -43,8 +42,6 @@ class RuleEvaluationCode(IntEnum):
 
 
 class ControlOutcome(IntEnum):
-    """Why replicated control state permitted or suppressed the directive."""
-
     permitted = 1
     suppressed_no_new_risk = 2
     suppressed_cancel_only = 3
@@ -63,8 +60,6 @@ class RuleEvaluation:
 
 @dataclass(frozen=True, slots=True)
 class Decision:
-    """What the cluster would retain: the policy result plus control authority."""
-
     evaluation: RuleEvaluation
     control: ControlOutcome
     effective_directive: Directive
@@ -72,13 +67,6 @@ class Decision:
 
     @property
     def directs_new_risk(self) -> bool:
-        """True only for a directive that survives control authority AND is
-        authoritative. A shadow decision never produces an effect, by contract:
-        Phase 4 must reject a risk-increasing effect built from one.
-
-        The name avoids the order-management vocabulary the safety audit bans on
-        purpose. This property is the closest this package comes to describing an
-        external effect, and it should not read like a verb."""
         return (
             not self.shadow
             and self.control == ControlOutcome.permitted
@@ -87,10 +75,6 @@ class Decision:
 
     @property
     def directs_new_risk_if_authoritative(self) -> bool:
-        """The research question: would this frame have directed new risk if the
-        same policy were activated for real? This is the quantity the shadow
-        simulator counts, and it must never be confused with the property above.
-        """
         return self.control == ControlOutcome.permitted and self.effective_directive in (
             Directive.place_limit,
             Directive.replace,
@@ -98,7 +82,6 @@ class Decision:
 
 
 def _matches(feature_atoms: int, predicate: PredicateOperator, threshold_atoms: int) -> bool:
-    """Exact integer comparison. No tolerance, no float, no locale."""
     match predicate:
         case PredicateOperator.less_than:
             return feature_atoms < threshold_atoms
@@ -114,7 +97,6 @@ def _matches(feature_atoms: int, predicate: PredicateOperator, threshold_atoms: 
 
 
 def evaluate_rules(policy: PolicyArtifact, frame: DecisionFrame) -> RuleEvaluation:
-    """Ordered first-match evaluation, including a terminal `no_action` match."""
     try:
         policy.validate()
     except ContractViolation as violation:
@@ -137,9 +119,6 @@ def evaluate_rules(policy: PolicyArtifact, frame: DecisionFrame) -> RuleEvaluati
             0,
         )
 
-    # Availability is checked across the whole rule set before any economic
-    # comparison, so a policy referencing a feature this frame does not carry
-    # fails identically regardless of where that rule sits in the array.
     for rule in policy.rules:
         if rule.feature_index >= len(frame.features):
             return RuleEvaluation(
@@ -169,16 +148,10 @@ def evaluate_rules(policy: PolicyArtifact, frame: DecisionFrame) -> RuleEvaluati
     )
 
 
-#: Directives each strategy mode permits. Control authority dominates economic
-#: policy: the policy proposes, replicated control state disposes.
 _PERMITTED: Final[dict[StrategyMode, frozenset[Directive]]] = {
     StrategyMode.normal: frozenset(Directive),
     StrategyMode.no_new_risk: frozenset({Directive.no_action, Directive.cancel}),
     StrategyMode.cancel_only: frozenset({Directive.no_action, Directive.cancel}),
-    # reduce_only is not "the same as cancel_only". It fails closed for
-    # risk-increasing actions because Phase 3 cannot prove a replace or a place
-    # reduces exposure - positions and reservations are Phase 4 state. Treating
-    # an unproven action as safe would invert the authority hierarchy.
     StrategyMode.reduce_only: frozenset({Directive.no_action, Directive.cancel}),
     StrategyMode.halted: frozenset({Directive.no_action}),
 }
@@ -206,17 +179,7 @@ def decide(
     *,
     shadow: bool = True,
 ) -> Decision:
-    """Full mirror: evaluate, then apply control authority.
-
-    `shadow` defaults to True because everything this package produces is shadow
-    by construction. An authoritative decision is one the cluster made; this
-    process cannot make one and the default must not suggest otherwise.
-    """
     if mode == StrategyMode.halted:
-        # `halted` is the categorical exception in section 3.4: it terminates
-        # before source and rule work because no strategy directive is
-        # permitted. Mirroring the short-circuit matters because `rules_visited`
-        # is replay evidence and a bounded-cost metric, not a debug counter.
         return Decision(
             evaluation=RuleEvaluation(
                 RuleEvaluationCode.no_rule_matched,

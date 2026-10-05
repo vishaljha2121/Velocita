@@ -26,9 +26,6 @@ ReplayApplyResult apply_encoded_kernel_command(
     const auto applied = apply(state, codec_scratch.candidate, apply_scratch, catalog);
     const auto encoded = encode_kernel_result(applied, result_output);
     if (encoded.error != KernelCodecError::none) {
-        // The output size was preflighted and apply() only returns values from
-        // the frozen result registries. Reaching this branch is an invariant
-        // violation, not a recoverable input error.
         return {
             .error = ReplayError::result_encode_failed,
             .codec_error = encoded.error,
@@ -47,4 +44,4 @@ ReplayApplyResult apply_encoded_kernel_command(
     };
 }
 
-}  // namespace velocita::v2
+}

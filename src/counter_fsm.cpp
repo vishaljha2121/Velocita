@@ -36,5 +36,4 @@ std::optional<std::int64_t> CounterFsm::result_for(std::uint64_t request_id) con
     return it->second;
 }
 
-}  // namespace velocita
-
+}

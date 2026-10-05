@@ -81,7 +81,6 @@ void run() {
     allocation_probe::enabled = false;
     require(encoded.error == GenerationBaseError::none,
             "RED: approved generation base seal did not encode");
-    // tools/v2_schema_goldens.py "generation base seal" (schema-bound identity).
     const std::array<std::byte, kGenerationBaseSealBytes> expected_seal{
         std::byte{0x56}, std::byte{0x32}, std::byte{0x47}, std::byte{0x42},
         std::byte{0x01}, std::byte{0x00}, std::byte{0x01}, std::byte{0x00},
@@ -185,7 +184,6 @@ void run() {
                 GenerationBaseError::output_too_small && unchanged == unchanged_sentinel,
             "small encode buffer was overwritten");
 
-    // Reseal each invalid header independently: a bad hash must not hide a missing format guard.
     std::array<std::byte, kMaxStaticIdentityBytes> root_identity{};
     const auto root_encoded = encode_static_identity(expected.value(), root_identity);
     require(root_encoded.error == StaticIdentityCodecError::none, "root identity fixture failed");
@@ -219,7 +217,7 @@ void run() {
             "genesis base accepted snapshot bytes");
 }
 
-} // namespace
+}
 
 int main() {
     try {

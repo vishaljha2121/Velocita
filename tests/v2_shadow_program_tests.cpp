@@ -7,10 +7,6 @@
 #include <stdexcept>
 #include <string>
 
-// The shadow command builder, applied through the REAL reducer from a fresh
-// state with the fixture catalog. Expected rule matches are worked out by hand
-// from the feature values in each test, never read back from the builder.
-
 namespace {
 
 using namespace velocita::v2;
@@ -22,7 +18,6 @@ void require(bool condition, const std::string& message) {
 constexpr std::int64_t kMicros = 1'000'000;
 constexpr std::uint16_t kTrend = 0, kPrice = 4;
 
-// The fixture catalog's only row: account 5, venue 9, instrument 4, prices 1..100 ticks.
 ExecutionCatalogRow fixture_row() {
     return catalog_test::row(AccountId{5},
         {kInstrumentExecutionProfileSchemaVersion, VenueId{9}, InstrumentId{4}, InstrumentSpecVersion{7},
@@ -32,7 +27,6 @@ ExecutionCatalogRow fixture_row() {
          (kVenueDirectivePlaceLimit | kVenueDirectiveCancel), kVenueTifGtc, 1});
 }
 
-// BTC trend as rules: trend > 0 -> enter long; trend <= 0 -> exit.
 ShadowProgram trend_program() {
     ShadowProgram p;
     p.policy_id = PolicyId{21};
@@ -54,10 +48,6 @@ ShadowProgram trend_program() {
     return p;
 }
 
-// The operator ceremony a fresh cluster needs before any policy command: a
-// halted cluster with a nonzero kill epoch and executor generation installs its
-// execution catalog through consensus. (catalog_test::state() skips this by
-// pre-setting the root, which hid the requirement once already.)
 std::vector<ApplyResult> ceremony(TradingState& state, ApplyScratch& scratch, std::uint64_t& sequence) {
     const auto operator_command = [&](CommandBody body) {
         Digest256 digest;
@@ -115,8 +105,6 @@ struct Harness {
     }
     ApplyResult authorize() { return catalog_test::apply(state, authorize_decision(caller, sequence++,
                                                                                    DecisionId{decisions}), scratch); }
-    // One lot per order and position, long-only; holds at 100 % margin + 1 % fee.
-    // Reserve for two orders, so a second order is stopped by the slot alone.
     ApplyResult configure_risk(RiskVersion expected) {
         ConfigureRiskLimits limits;
         limits.account_id = AccountId{5};
@@ -153,7 +141,6 @@ void setup_applies_on_a_fresh_cluster_state() {
 void a_tick_records_a_shadow_decision_on_the_rule_that_matches() {
     Harness h;
     (void)h.setup();
-    // trend +5 % -> rule 0 (enter long, a buy template): proposed place_limit, effective no_action.
     auto [source, up] = h.tick(50'000, 11);
     require(source.code == ApplyCode::applied, "source event refused");
     require(up.code == ApplyCode::applied && up.decision_code == DecisionCode::shadow_recorded,
@@ -162,7 +149,6 @@ void a_tick_records_a_shadow_decision_on_the_rule_that_matches() {
     require(up.matched_rule_index == 0 && up.proposed_directive == Directive::place_limit &&
                 up.effective_directive == Directive::no_action,
             "uptrend did not propose the enter rule, or shadow acquired authority");
-    // The retained proposal is a BUY of the program's clip at the price feature (11 ticks).
     const auto proposal = [&](DecisionId id) {
         for (std::size_t i = 0; i < h.state.decision_count; ++i)
             if (h.state.decision_hot[i].decision_id == id) return h.state.decision_cold[i].proposal;
@@ -172,13 +158,11 @@ void a_tick_records_a_shadow_decision_on_the_rule_that_matches() {
     require(buy.side == Side::buy && buy.price == PriceTicks::from_atoms(11) &&
                 buy.quantity == QuantityLots::from_atoms(1),
             "the enter rule did not propose a buy of one clip at the price feature");
-    // trend -5 % -> rule 1 (exit).
     const auto down = h.tick(-50'000, 11).second;
     require(proposal(DecisionId{h.decisions}).side == Side::sell, "the exit rule did not propose a sell");
     require(down.decision_code == DecisionCode::shadow_recorded && down.matched_rule_index == 1 &&
                 down.effective_directive == Directive::no_action,
             "a downtrend tick did not match the exit rule");
-    // trend exactly 0 -> "> 0" fails, "<= 0" matches: rule 1.
     require(h.tick(0, 11).second.matched_rule_index == 1, "the boundary went to the wrong rule");
 }
 
@@ -188,7 +172,7 @@ void a_hold_rule_proposes_no_action() {
                        {kTrend, PredicateOperator::greater_than_or_equal, 0, ShadowAction::hold},
                        {kTrend, PredicateOperator::less_than, 0, ShadowAction::exit}};
     (void)h.setup();
-    const auto hold = h.tick(10'000, 11).second;  // +1 %: not > 100 x, but >= 0 -> rule 1, HOLD
+    const auto hold = h.tick(10'000, 11).second;
     require(hold.decision_code == DecisionCode::shadow_recorded && hold.matched_rule_index == 1 &&
                 hold.proposed_directive == Directive::no_action,
             "a hold rule proposed an action");
@@ -214,14 +198,12 @@ void a_restarted_edge_continues_on_the_next_generation() {
     (void)h.setup();
     for (int i = 0; i < 3; ++i) require(h.tick(1, 11).second.decision_code == DecisionCode::shadow_recorded,
                                         "generation 1 tick refused");
-    h.source_sequence = 0;  // a restarted edge starts its sequence again, on the next generation
+    h.source_sequence = 0;
     const auto [source, decision] = h.tick(1, 11, 2);
     require(source.code == ApplyCode::applied && decision.decision_code == DecisionCode::shadow_recorded,
             "generation 2 did not continue the source");
 }
 
-// Starts that died before committing anything left the submitter's generation
-// ahead of the kernel's cursor. The cursor is (2, 3) by construction here.
 void a_submitter_ahead_of_the_kernel_rebases_one_past_the_reported_cursor() {
     Harness h;
     (void)h.setup();
@@ -256,7 +238,7 @@ void only_a_reported_gap_for_this_source_moves_the_generation() {
     r.code = ApplyCode::source_generation_regression;
     require(!resync_source_generation(SourceId{41}, r), "a regression moved the generation");
     r = gap;
-    r.detail_kind = ApplyResultDetailKind::source;  // the refused event's own identity, not the cursor
+    r.detail_kind = ApplyResultDetailKind::source;
     require(!resync_source_generation(SourceId{41}, r), "a gap without the cursor report moved the generation");
     r = gap;
     r.detail.words[1] = std::numeric_limits<std::uint64_t>::max();
@@ -279,8 +261,6 @@ Digest256 state_digest(const TradingState& state) {
     return sha256_digest(std::span(bytes).first(encoded.bytes_written));
 }
 
-// The reducer's receipt contract: an exact retry (same caller, sequence and
-// payload digest) returns the ORIGINAL retained result and changes nothing.
 void setup_is_idempotent_under_exact_retry() {
     Harness h;
     const auto commands = shadow_setup(h.program, CallerId{7}, h.sequence, h.state.kill_epoch, h.state.executor_generation);
@@ -293,31 +273,24 @@ void setup_is_idempotent_under_exact_retry() {
     require(state_digest(h.state) == before, "an exact retry of setup changed replicated state");
 }
 
-// Payload digests must bind the command's content: a DIFFERENT command reusing a
-// request sequence is a conflict, never mistaken for an exact retry.
 void a_reused_sequence_with_different_content_is_a_conflict() {
     Harness h;
     (void)h.setup();
     const auto reused = h.sequence;
     (void)h.tick(10'000, 11);
-    h.sequence = reused;               // same request sequences again...
-    h.source_sequence -= 1;            // ...for the same source slot, with different features
+    h.sequence = reused;
+    h.source_sequence -= 1;
     const auto [source, decision] = h.tick(-10'000, 12);
-    // The source event is byte-identical (same slot, same evidence): an exact retry, retained result.
     require(source.code == ApplyCode::applied, "an exact retry of the source event was not idempotent");
-    // The decision differs (features): a conflict, not the earlier decision's result.
     require(decision.code == ApplyCode::duplicate_conflict,
             "a different command reusing a request sequence was not refused as a conflict: code " +
                 std::to_string(static_cast<int>(decision.code)));
 }
 
-// Changing a rule while keeping the policy id and version must be refused: the
-// published policy is immutable, and a silent "already applied" would leave
-// the old rules running while the operator believes the new ones are live.
 void a_changed_rule_under_the_same_version_is_refused() {
     Harness h;
     (void)h.setup();
-    h.program.rules[0].threshold = 10'000;  // trend > +1 % instead of > 0
+    h.program.rules[0].threshold = 10'000;
     const auto commands = shadow_setup(h.program, CallerId{7}, h.sequence, h.state.kill_epoch,
                                        h.state.executor_generation);
     const auto publish = catalog_test::apply(h.state, commands.commands[0], h.scratch);
@@ -334,12 +307,10 @@ void setup_requires_an_installed_catalog() {
             "a policy was published into a cluster with no execution catalog");
 }
 
-
 DecisionFrame frame_of(const Command& command) {
     return std::get<EvaluateDecisionFrame>(command.body).frame;
 }
 
-// The binding is carried into the frame exactly; the default is today's shadow frame.
 void frames_bind_the_given_mode_and_risk_versions() {
     ShadowTick t;
     t.source = SourceId{41};
@@ -363,9 +334,6 @@ void frames_bind_the_given_mode_and_risk_versions() {
             "the payload digest does not bind the evaluation mode and versions");
 }
 
-// Paper through the real reducer, as a strategy caller (21, outside the operator
-// band). A fresh account starts at risk version 1, position version 1; the
-// fixture clip is 1 lot at 11 ticks x 100 micros per tick-lot = 1,100 micros.
 void a_paper_buy_is_authorized_and_a_second_order_on_the_slot_is_not() {
     Harness h;
     (void)h.setup();
@@ -381,8 +349,6 @@ void a_paper_buy_is_authorized_and_a_second_order_on_the_slot_is_not() {
                 h.state.reservations[0].remaining_quantity == QuantityLots::from_atoms(1) &&
                 h.state.reservations[0].remaining_notional == MoneyMicros::from_atoms(1'100),
             "the paper buy did not become one order of one lot for 1,100 micros");
-    // The buy is still open (no gateway here), so the slot is taken: the exit's
-    // sell must not become a second order.
     const auto down = h.paper_tick(-50'000, {});
     require(authorizable(down), "the exit decision was not offered for authorization");
     const auto second = h.authorize();
@@ -390,8 +356,6 @@ void a_paper_buy_is_authorized_and_a_second_order_on_the_slot_is_not() {
             "a second order was authorized while the slot's first order is open");
 }
 
-// A frame bound to an old risk version is never authorized; bound to the
-// account's current one it is. Two configurations -> risk version 2.
 void only_a_frame_bound_to_the_current_risk_version_is_authorized() {
     Harness h;
     (void)h.setup();
@@ -402,8 +366,6 @@ void only_a_frame_bound_to_the_current_risk_version_is_authorized() {
     const auto stale = h.authorize();
     require(stale.code != ApplyCode::applied && h.state.order_count == 0,
             "a frame bound to risk version 1 was authorized after the account moved to 2");
-    // The kernel reports the account's versions on the stale refusal (placeholder
-    // detail kind until the kernel appends it); built here from the real state.
     ApplyResult report = stale;
     report.code = ApplyCode::stale_risk_state;
     report.detail_kind = kRiskStateDetailKind;
@@ -426,7 +388,6 @@ void shadow_decisions_are_never_offered_for_authorization() {
             "a shadow decision was offered for authorization");
 }
 
-// Each condition of authorizable() on its own, from a hand-built actionable result.
 void authorizable_needs_every_condition() {
     ApplyResult good;
     good.code = ApplyCode::applied;
@@ -445,7 +406,7 @@ void authorizable_needs_every_condition() {
     r.decision_code = DecisionCode::control_halted;
     require(!authorizable(r), "a halted decision was offered");
     r = good;
-    r.effective_directive = Directive::no_action;  // a hold rule: action, but nothing to place
+    r.effective_directive = Directive::no_action;
     require(!authorizable(r), "a hold decision was offered");
     r = good;
     r.action_resolution_code = ActionResolutionCode::notional_cap_exceeded;
@@ -474,9 +435,6 @@ void the_risk_view_moves_only_on_a_reported_stale_refusal() {
     require(resync_risk_view(current, r) == current, "a zero position version was adopted");
 }
 
-// Exits-only (the edge's weekly loss stop): the rule that matched decides, read
-// from the program the policy was built from. Rule 0 of the trend program is
-// enter_long and rule 1 is exit, by construction above.
 void exits_only_withholds_a_buy_and_still_asks_for_an_exit() {
     const auto program = trend_program();
     ApplyResult buy;
@@ -493,7 +451,7 @@ void exits_only_withholds_a_buy_and_still_asks_for_an_exit() {
     require(paper_request(program, buy, true) == PaperRequest::withheld, "the stop let a buy through");
     require(paper_request(program, sell, true) == PaperRequest::authorize, "the stop withheld an exit");
     auto unknown = buy;
-    unknown.matched_rule_index = 2;  // the program has two rules
+    unknown.matched_rule_index = 2;
     require(paper_request(program, unknown, true) == PaperRequest::withheld, "an unknown rule passed the stop");
     auto hold = buy;
     hold.effective_directive = Directive::no_action;
@@ -502,8 +460,6 @@ void exits_only_withholds_a_buy_and_still_asks_for_an_exit() {
             "a decision with nothing to place was offered or withheld");
 }
 
-// Through the real reducer: the stop withholds the enter rule's buy, so no order
-// exists afterwards; the same frame without the stop becomes one order.
 void a_withheld_buy_leaves_no_order() {
     Harness h;
     (void)h.setup();
@@ -518,9 +474,6 @@ void a_withheld_buy_leaves_no_order() {
             "without the stop the same buy did not become an order");
 }
 
-// Installing a volume program over the running trend one: a new policy id with
-// a five-feature schema (the four daily features, then phase), rules on feature
-// 4. Phase is 1,000,000 in an odd half-period and 0 in an even one.
 void a_trend_churn_program_replaces_the_trend_program_and_follows_the_phase() {
     Harness h;
     (void)h.setup();
@@ -535,7 +488,6 @@ void a_trend_churn_program_replaces_the_trend_program_and_follows_the_phase() {
     h.program = churn;
     require(h.state.strategy_mode == StrategyMode::normal, "the trend setup did not leave the strategy enabled");
     const auto installed = h.setup();
-    // Four policy steps are new; the mode was already normal, so its step is a no-op.
     for (std::size_t step = 0; step < installed.size(); ++step)
         require(installed[step].code == (step < 4 ? ApplyCode::applied : ApplyCode::already_applied),
                 "installing the churn program, step " + std::to_string(step) + ": code " +
@@ -558,8 +510,6 @@ void a_trend_churn_program_replaces_the_trend_program_and_follows_the_phase() {
         (void)catalog_test::apply(h.state, commands[0], h.scratch);
         return catalog_test::apply(h.state, commands[1], h.scratch);
     };
-    // Uptrend, odd phase -> rule 1 (enter); uptrend, even phase -> rule 2 (exit);
-    // downtrend wins over an odd phase -> rule 0 (exit).
     const auto enter = frame(50'000, kMicros);
     require(enter.decision_code == DecisionCode::shadow_recorded && enter.matched_rule_index == 1 &&
                 enter.proposed_directive == Directive::place_limit,
@@ -568,7 +518,7 @@ void a_trend_churn_program_replaces_the_trend_program_and_follows_the_phase() {
     require(frame(-1, kMicros).matched_rule_index == 0, "a downtrend did not exit first");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

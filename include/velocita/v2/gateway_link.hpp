@@ -1,3 +1,4 @@
+// The gateway's session with the cluster: commands, state reads and authority requests.
 #pragma once
 
 #include "velocita/v2/authority_proof.hpp"
@@ -15,16 +16,10 @@
 
 namespace velocita::v2 {
 
-// The gateway caller's whole session with the cluster: kernel commands, state
-// reads and authority requests share one caller key, so they must share one
-// ingress sequencer and one response fence per voter. (A NodeClientSession
-// beside this object would issue colliding sequences and the node's replay
-// fence would refuse one of them.) Command behaviour mirrors NodeClientSession.
-// Non-blocking, one request in flight, time injected as Tick milliseconds.
 struct GatewayLinkTiming {
     Tick resend_before_admit{500};
     Tick resend_after_admit{5000};
-    Tick resend_gateway{500};  // state read / authority request left unanswered
+    Tick resend_gateway{500};
 };
 
 enum class LinkRequest : std::uint8_t { none, command, state, authority };
@@ -42,21 +37,21 @@ struct StateReading {
 struct LinkOutcome {
     LinkRequest request{LinkRequest::none};
     LinkStatus status{LinkStatus::idle};
-    ApplyResult result{};          // command, done
-    std::int64_t term{};           // command, done
-    std::int64_t index{};          // command, done
-    std::int32_t from{};           // voter whose response settled the request
-    std::uint8_t refusal_reason{}; // refused; 0 = corrupt state from an authentic voter
+    ApplyResult result{};
+    std::int64_t term{};
+    std::int64_t index{};
+    std::int32_t from{};
+    std::uint8_t refusal_reason{};
     std::int32_t leader_hint{-1};
-    StateReading reading{};        // state, done; the state itself is GatewayLink::state()
-    std::optional<AuthorityProof> proof;  // authority, done
+    StateReading reading{};
+    std::optional<AuthorityProof> proof;
 };
 
 struct GatewayLinkCounters {
-    std::uint64_t unauthentic{};   // no route, wrong role, or MAC refused
-    std::uint64_t fenced{};        // authentic but replayed or stale epoch
-    std::uint64_t uncorrelated{};  // authentic, fenced, but answers nothing pending
-    std::uint64_t proofs_refused{};// correlated grant whose content does not match the request
+    std::uint64_t unauthentic{};
+    std::uint64_t fenced{};
+    std::uint64_t uncorrelated{};
+    std::uint64_t proofs_refused{};
 };
 
 class GatewayLink {
@@ -67,15 +62,11 @@ public:
     GatewayLink(const GatewayLink&) = delete;
     GatewayLink& operator=(const GatewayLink&) = delete;
 
-    // Each starts one request; false (nothing sent) when busy or unencodable.
     [[nodiscard]] bool submit(const Command& command, ProposeLane lane, Tick now, Tick timeout);
     [[nodiscard]] bool request_state(Tick now, Tick timeout);
     [[nodiscard]] bool request_authority(const AuthorityBarrier& barrier, Tick now, Tick timeout);
 
-    // Sends what is due, drains responses, reports the outcome. A settled
-    // outcome is reported once; the link is then idle.
     LinkOutcome pump(Tick now);
-    // Forget the in-flight request; its late answers become uncorrelated.
     void abandon() noexcept;
 
     [[nodiscard]] bool busy() const noexcept { return pending_.request != LinkRequest::none; }
@@ -99,12 +90,12 @@ private:
         Tick deadline{};
         Tick next_send{};
         bool admitted{};
-        bool answered{};  // any correlated response since the last send
+        bool answered{};
     };
     struct Assembly {
-        std::optional<StateChunkHeader> header;  // chunk_index zeroed
+        std::optional<StateChunkHeader> header;
         std::int32_t from{};
-        std::uint32_t received{};  // bitmask of chunk indices
+        std::uint32_t received{};
     };
 
     [[nodiscard]] bool start(LinkRequest request, std::span<const std::byte> body,
@@ -140,4 +131,4 @@ private:
     GatewayLinkCounters counters_{};
 };
 
-}  // namespace velocita::v2
+}

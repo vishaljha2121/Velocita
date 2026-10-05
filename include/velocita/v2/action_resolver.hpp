@@ -1,3 +1,4 @@
+// Resolves a matched rule's action template and a decision frame into an exact economic proposal.
 #pragma once
 
 #include "velocita/v2/action_template.hpp"
@@ -60,4 +61,4 @@ static_assert(std::is_trivially_copyable_v<ActionResolution>);
 static_assert(sizeof(ActionResolution) <= kActionResolutionObjectBudgetBytes,
               "ActionResolution exceeded its reviewed result budget");
 
-}  // namespace velocita::v2
+}

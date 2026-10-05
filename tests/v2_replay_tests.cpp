@@ -73,9 +73,6 @@ velocita::v2::DecisionFrame frame() {
     return value;
 }
 
-// These fixtures issue control commands, so their caller has to be one the edge
-// would have authenticated - see `kMaxOperatorCallerId`. The number is otherwise
-// arbitrary.
 constexpr velocita::v2::CallerId kFixtureOperator{7};
 
 velocita::v2::Command command(const std::uint64_t sequence,
@@ -133,7 +130,7 @@ auto corpus() {
                                               EvaluationMode::authoritative,
                                               invalid})),
     };
-    records[6] = records[5];  // Exact retry crosses the snapshot boundary.
+    records[6] = records[5];
     return records;
 }
 
@@ -215,12 +212,6 @@ void test_snapshot_plus_suffix_equals_full_byte_replay() {
             "full replay and snapshot-plus-suffix did not converge byte-for-byte");
 
     const auto final_digest = to_hex(full_snapshot.state_digest);
-    // RE-PINNED 2026-09-16 for a reviewed fixture change. Control actions are now
-    // accepted only from the reserved operator caller band
-    // (`kMaxOperatorCallerId`), and this corpus issues them from a caller that
-    // was outside it, so the corpus's caller moved into the band. The commands,
-    // their order and the reducer are unchanged; what moved is the identity
-    // every command carries, and the receipts that record it.
     require(to_hex(catalog_test::schema7_projection(full)) ==
                 "3be6f42d0748bb6fa7b549febf59ffd6da70363865748e430340f32a38c9359d",
             "replay corpus final state changed without reviewed migration: " +
@@ -254,7 +245,7 @@ void test_replay_preflight_failure_does_not_mutate_state() {
             "invalid replay record mutated authoritative state");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

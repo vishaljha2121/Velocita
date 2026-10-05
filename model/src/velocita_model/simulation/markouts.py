@@ -45,7 +45,6 @@ class FillMarkouts:
 
 
 def markout_bps(side: Side, fill_price: Decimal, fair_value_later: Decimal) -> Decimal:
-    """Positive means the fill was favourable to us."""
     if fill_price <= 0:
         raise ValueError("fill price must be positive")
     direction = Decimal(1) if side == Side.buy else Decimal(-1)
@@ -53,14 +52,6 @@ def markout_bps(side: Side, fill_price: Decimal, fair_value_later: Decimal) -> D
 
 
 class FairValueTrack:
-    """Time series of fair value, queried at a horizon after a fill.
-
-    Lookup returns None past the end of the series. A markout horizon that
-    extends beyond the collected data is *missing*, not zero, and excluding it
-    is the difference between "we measured no adverse selection" and "we stopped
-    watching before it showed up".
-    """
-
     __slots__ = ("_points",)
 
     def __init__(self) -> None:
@@ -70,7 +61,7 @@ class FairValueTrack:
         if fair_value <= 0:
             return
         if self._points and at_ns < self._points[-1][0]:
-            return  # out-of-order sample; the collector records the reorder
+            return
         self._points.append((at_ns, fair_value))
 
     def value_at_or_after(self, at_ns: int) -> Decimal | None:
@@ -104,7 +95,7 @@ def compute_markouts(
     for horizon_ms in horizons_ms:
         later = track.value_at_or_after(at_ns + horizon_ms * 1_000_000)
         if later is None:
-            continue  # horizon not covered by collected data; omitted, not zeroed
+            continue
         results.append(Markout(horizon_ms, later, markout_bps(side, fill_price, later)))
     return FillMarkouts(
         at_ns=at_ns,
@@ -118,18 +109,6 @@ def compute_markouts(
 
 
 def percentile(values: Sequence[Decimal], fraction: Decimal) -> Decimal | None:
-    """Conservative nearest-rank percentile on exact Decimals.
-
-    The rank is `floor(fraction * n) + 1` rather than the more common
-    `ceil(fraction * n)`. The two differ only when `fraction * n` lands on an
-    integer, and there the conventional rank excludes the tail entirely: with 20
-    samples, a conventional p95 returns the 19th value and never sees the single
-    worst one, which is precisely the observation a risk report exists to show.
-
-    This convention errs toward the tail by at most one sample. For a statistic
-    whose entire purpose is to characterise bad outcomes, understating is the
-    dangerous direction and overstating is not.
-    """
     if not values:
         return None
     ordered = sorted(values)
@@ -165,19 +144,10 @@ class MarkoutStatistics:
 
 
 def summarize(fills: Iterable[FillMarkouts], horizon_ms: int) -> MarkoutStatistics:
-    """Percentiles are reported on the *unfavourable* tail.
-
-    p95 here means "the 95th-percentile worst outcome", so a strategy is judged
-    by how bad its bad fills were, not by how good its average looked. Averaging
-    adverse selection is how a strategy that loses on 5% of fills and wins
-    slightly on 95% gets published as profitable.
-    """
     values = [m for fill in fills if (m := fill.at_horizon(horizon_ms)) is not None]
     if not values:
         return MarkoutStatistics(horizon_ms, 0, None, None, None, None, None, None)
     total = sum(values, Decimal(0))
-    # Percentiles taken on negated values so p95 is the 95th-worst, then negated
-    # back, keeping the "positive is good" convention in the output.
     negated = [-value for value in values]
     return MarkoutStatistics(
         horizon_ms=horizon_ms,
@@ -192,9 +162,6 @@ def summarize(fills: Iterable[FillMarkouts], horizon_ms: int) -> MarkoutStatisti
 
 
 def split_by_side(fills: Iterable[FillMarkouts]) -> dict[Side, list[FillMarkouts]]:
-    """Bid and ask fills must be reported separately. A pair can be perfectly
-    safe to bid and unsafe to offer - trending markets do exactly that - and a
-    combined number averages the two into a conclusion that is wrong for both."""
     split: dict[Side, list[FillMarkouts]] = {Side.buy: [], Side.sell: []}
     for fill in fills:
         split[fill.side].append(fill)

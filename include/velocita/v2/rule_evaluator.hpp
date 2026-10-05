@@ -1,3 +1,4 @@
+// Evaluates a policy's ordered rules against a decision frame.
 #pragma once
 
 #include "velocita/v2/contracts.hpp"
@@ -39,4 +40,4 @@ static_assert(std::is_trivially_copyable_v<RuleEvaluation>);
 static_assert(sizeof(RuleEvaluation) <= kRuleEvaluationObjectBudgetBytes,
               "RuleEvaluation exceeded its reviewed hot-result budget");
 
-}  // namespace velocita::v2
+}

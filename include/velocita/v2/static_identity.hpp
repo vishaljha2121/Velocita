@@ -1,3 +1,4 @@
+// The cluster's immutable identity: incarnation, members, catalog root, deployment mode.
 #pragma once
 
 #include "velocita/v2/contracts.hpp"
@@ -87,4 +88,4 @@ private:
 static_assert(sizeof(StaticIdentity) <= 96,
               "static identity exceeded its reviewed bounded representation");
 
-}  // namespace velocita::v2
+}

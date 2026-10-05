@@ -388,7 +388,7 @@ void test_instrument_bounds_and_cancel_safety_path() {
             "stale market data blocked the bounded cancel safety path");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

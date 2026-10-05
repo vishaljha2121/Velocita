@@ -3,22 +3,18 @@
 namespace velocita::v2 {
 namespace {
 
-// Unknown cancels may retry without increasing risk. Unknown submits need
-// reconciliation; reconciling and gateway-local states remain undeliverable.
 [[nodiscard]] bool deliverable_from(const OutboxState state,
                                     const EffectOperation operation) noexcept {
     if (state == OutboxState::pending) return true;
     return state == OutboxState::unknown && operation == EffectOperation::cancel;
 }
 
-// Cancels remain eligible in halted/cancel-only mode; generation and epoch still fence them.
 [[nodiscard]] bool control_permits(const OrderEffect& effect,
                                    const StrategyMode mode) noexcept {
     if (effect.operation == EffectOperation::cancel) return true;
     return mode == StrategyMode::normal;
 }
 
-// Reject unrepresentable intent; never alter order economics to fit the venue.
 [[nodiscard]] bool venue_can_represent(const OrderEffect& effect,
                                        const VenueCapabilityView& venue) noexcept {
     if (venue.venue_id != effect.venue_id) return false;
@@ -36,10 +32,9 @@ namespace {
     return {reason, std::nullopt, {}, {}, {}};
 }
 
-}  // namespace
+}
 
 bool renew_authority(GatewayControlView&, const AuthorityReading&, Tick) noexcept {
-    // Compatibility refusal only: a local role bit cannot mint quorum evidence.
     return false;
 }
 
@@ -67,8 +62,6 @@ PreSendDecision evaluate_delivery_candidate(const TradingState& state,
         return refuse(PreSendRefusal::effect_not_deliverable);
     }
 
-    // The payload and its historical metadata come from one immutable catalog
-    // binding. A bare effect is reconstruction evidence, not send authority.
     if (catalog == nullptr) {
         return refuse(PreSendRefusal::payload_unreconstructable);
     }
@@ -84,8 +77,6 @@ PreSendDecision evaluate_delivery_candidate(const TradingState& state,
     if ((row->capabilities.directive_mask & required_operation) == 0)
         return refuse(PreSendRefusal::unsupported_operation);
 
-    // Matching stale cache/effect values are insufficient: verify current replicated
-    // authority first. Generation precedes epoch for deterministic refusal priority.
     if (control.executor_generation != state.executor_generation) {
         return refuse(PreSendRefusal::stale_executor_generation);
     }
@@ -106,18 +97,6 @@ PreSendDecision evaluate_delivery_candidate(const TradingState& state,
         return refuse(PreSendRefusal::control_forbids_new_risk);
     }
 
-    // THE LEASE, and only for effects that increase risk.
-    //
-    // Placed after the fences it complements rather than before them: when the
-    // gateway CAN see the cluster, a stale generation is the more specific
-    // answer and the more useful one to report. The lease is what remains true
-    // when it cannot see the cluster at all.
-    //
-    // A cancel is deliberately exempt. A lapsed lease means this gateway may no
-    // longer be the authority, and the safe response to that is to stop opening
-    // exposure - not to stop closing it. Refusing cancels here would trap risk
-    // at precisely the moment the operator most needs it gone, which inverts
-    // what the lease is for.
     const bool reducing = reduces_risk(effect.operation);
     if (!reducing && !control.lease_is_live()) {
         return refuse(PreSendRefusal::authority_lease_expired);
@@ -128,9 +107,6 @@ PreSendDecision evaluate_delivery_candidate(const TradingState& state,
         return refuse(PreSendRefusal::venue_cannot_represent_intent);
     }
 
-    // Risk-reducing effects may fall back to the reserved lane; nothing else
-    // may touch it. That asymmetry IS the reservation - a lane both lanes can
-    // spend is one lane with two names.
     if (quota.normal_lane_remaining == 0 &&
         !(reducing && quota.emergency_lane_remaining > 0)) {
         return refuse(PreSendRefusal::quota_exhausted);
@@ -141,7 +117,7 @@ PreSendDecision evaluate_delivery_candidate(const TradingState& state,
             binding->venue_capabilities_version};
 }
 
-}  // namespace velocita::v2
+}
 
 namespace velocita::v2 {
 
@@ -161,10 +137,8 @@ bool record_send(GatewayDeliveryState& delivery, const EffectId effect_id,
     for (std::size_t index = 0; index < delivery.attempt_count; ++index) {
         auto& attempt = delivery.attempts[index];
         if (attempt.effect_id != effect_id) continue;
-        // Retry the stable EffectId so the venue can deduplicate.
         attempt.sent_at = now;
         attempt.awaiting_response = true;
-        // An in-flight send invalidates any prior proof that it was unsent.
         attempt.resend_permitted = false;
         ++attempt.attempts;
         return true;
@@ -193,7 +167,6 @@ std::size_t reclaim_delivery_attempts(GatewayDeliveryState& delivery,
         }
         return false;
     };
-    // Preserve authorization order while compacting; borrowed pointers are invalidated.
     std::size_t kept = 0;
     for (std::size_t index = 0; index < delivery.attempt_count; ++index) {
         if (!held(delivery.attempts[index].effect_id)) continue;
@@ -243,8 +216,6 @@ bool record_unsent(GatewayDeliveryState& delivery,
 
 namespace {
 
-// Incomplete effects are non-deliverable and reclaimable; a synthetic in-flight
-// attempt would create a recovery barrier no legitimate response can clear.
 [[nodiscard]] bool effect_requires_startup_recovery(
     const OutboxState state) noexcept {
     return state != OutboxState::acknowledged &&
@@ -252,7 +223,7 @@ namespace {
            state != OutboxState::incomplete;
 }
 
-}  // namespace
+}
 
 std::size_t begin_gateway_recovery(GatewayDeliveryState& delivery,
                                    const TradingState& state,
@@ -285,7 +256,6 @@ bool recovery_complete(const GatewayDeliveryState& delivery,
                 break;
             }
         }
-        // Absence means the fully resolved group was swept.
         if (effect == nullptr) continue;
         switch (effect->state) {
             case OutboxState::acknowledged:
@@ -322,7 +292,6 @@ EvidencePlan plan_evidence(const GatewayEvidenceState& evidence,
 
         if (obligation.attempts != 0) {
             if (!obligation.awaiting_commit) {
-                // A result was lost rather than merely delayed; retry at once.
             } else if (now < obligation.last_proposed_at + timeouts.commit_deadline) {
                 continue;
             }
@@ -389,13 +358,10 @@ DeliveryPlan plan_delivery(const TradingState& state,
         delivery.attempt_count > delivery.attempts.size() ||
         evidence.obligation_count > evidence.obligations.size()) return plan;
 
-    // Sends and ambiguity declarations both generate evidence that must be retained.
     if (evidence_queue_saturated(evidence)) return plan;
 
-    // Without the startup scan, pending effects may have been sent by a prior process.
     if (!delivery.started) return plan;
 
-    // Classify timeouts before sends so this tick cannot also retry an ambiguous effect.
     for (std::size_t index = 0; index < delivery.attempt_count; ++index) {
         const auto& attempt = delivery.attempts[index];
         if (!attempt.awaiting_response) continue;
@@ -404,7 +370,6 @@ DeliveryPlan plan_delivery(const TradingState& state,
         plan.now_ambiguous[plan.ambiguous_count++] = attempt.effect_id;
     }
 
-    // Arena order is authorization order.
     auto remaining = quota;
     for (std::size_t index = 0; index < state.outbox_effect_count &&
          (remaining.normal_lane_remaining != 0 || remaining.emergency_lane_remaining != 0);
@@ -419,8 +384,6 @@ DeliveryPlan plan_delivery(const TradingState& state,
         }
         if (just_ambiguous) continue;
 
-        // Submit retries need proof the prior send was unsent. Cancels may retry under
-        // the same EffectId because they cannot add exposure.
         const bool cancel = state.outbox_effects[index].operation ==
                             EffectOperation::cancel;
 
@@ -445,13 +408,11 @@ DeliveryPlan plan_delivery(const TradingState& state,
     return plan;
 }
 
-}  // namespace velocita::v2
+}
 
 namespace velocita::v2 {
 namespace {
 
-// submission_unknown can describe either operation; inspect the current effect
-// to distinguish an ambiguous submit from an ambiguous cancel.
 [[nodiscard]] EffectOperation current_operation(const TradingState& state,
                                                 const ClusterOrder& order) noexcept {
     for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
@@ -478,30 +439,25 @@ namespace {
             if (current_operation(state, order) != EffectOperation::cancel) {
                 return ReconciliationNeed::submission_unknown;
             }
-            // Try the idempotent cancel retry first; reconcile after its send budget is spent.
             return delivery_exhausted(order, delivery, timeouts)
                        ? ReconciliationNeed::cancel_unconfirmed
                        : ReconciliationNeed::none;
         case ClusterOrderState::reconciling:
             return ReconciliationNeed::cancel_unconfirmed;
         case ClusterOrderState::dispatch_authorized:
-            // Wait for send exhaustion so an absence query cannot race a scheduled send.
             return delivery_exhausted(order, delivery, timeouts)
                        ? ReconciliationNeed::delivery_exhausted
                        : ReconciliationNeed::none;
         case ClusterOrderState::acknowledged:
         case ClusterOrderState::live:
         case ClusterOrderState::partially_filled:
-            // ADR 0008. Confirmed, not assumed. Nothing here is known to be
-            // wrong, and that is exactly the point: an order whose cancellation
-            // event was lost looks identical to one that is fine.
             return ReconciliationNeed::unconfirmed_resting;
         default:
             return ReconciliationNeed::none;
     }
 }
 
-}  // namespace
+}
 
 const ReconciliationAttempt* find_reconciliation(
     const GatewayReconciliationState& reconciliation,
@@ -573,8 +529,6 @@ QueryDisposition classify_query(const VenueQueryView& answer,
                 return exhausted ? QueryDisposition::exhausted
                                  : QueryDisposition::incomplete;
             }
-            // Concurrent accepted evidence invalidates the snapshot comparison even when
-            // the venue reports complete window coverage.
             if (attempt != nullptr && evidence_now != attempt->evidence_at_query) {
                 return exhausted ? QueryDisposition::exhausted
                                  : QueryDisposition::incomplete;
@@ -593,9 +547,7 @@ ReconciliationPlan plan_reconciliation(const TradingState& state,
                                        const Tick now) noexcept {
     ReconciliationPlan plan;
 
-    // Generation fences the writer. Kill epoch/mode permit reconciliation of existing risk.
     if (control.executor_generation != state.executor_generation) return plan;
-    // Unavailable query support is a transport outcome, handled by classify_query.
     (void)venue;
 
     for (std::size_t index = 0; index < state.order_count; ++index) {
@@ -607,14 +559,7 @@ ReconciliationPlan plan_reconciliation(const TradingState& state,
                                                   order.cluster_order_id);
         const bool heartbeat = need == ReconciliationNeed::unconfirmed_resting;
         if (attempt != nullptr) {
-            // One outstanding query per order prevents answers from arriving out of order.
             if (attempt->awaiting_answer) continue;
-            // THE ATTEMPT CAP DOES NOT APPLY TO THE HEARTBEAT. Giving up is right
-            // for a need that names something already wrong: stop hammering a
-            // stuck venue, leave the slot blocked, let an operator see it. Giving
-            // up on confirming a resting order instead returns the cluster to
-            // ASSUMING, which is the silent state ADR 0008 exists to end. The
-            // bound on this need is its RATE, not its count.
             if (!heartbeat && attempt->attempts >= timeouts.max_query_attempts) {
                 continue;
             }
@@ -629,4 +574,4 @@ ReconciliationPlan plan_reconciliation(const TradingState& state,
     return plan;
 }
 
-}  // namespace velocita::v2
+}

@@ -18,7 +18,7 @@ std::int32_t parse_positive_node_id(const std::string_view value) {
     return node_id;
 }
 
-}  // namespace
+}
 
 RequestTarget parse_request_target(const std::string_view value) {
     const auto separator = value.find('=');
@@ -178,4 +178,4 @@ std::string_view to_string(const LeaderKnowledgeState state) noexcept {
     return "unknown";
 }
 
-}  // namespace velocita
+}

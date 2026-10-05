@@ -17,8 +17,6 @@ bool dispatch_gateway_send(
 
     const auto now = transport.clock(transport.context);
     auto candidate_control = known_control;
-    // Candidate age is not authority. Freshness comes only from the private
-    // request-start deadline checked by consume immediately before handoff.
     candidate_control.now = now;
     candidate_control.confirmed_at = now;
     candidate_control.lease_bound = 1;
@@ -37,7 +35,6 @@ bool dispatch_gateway_send(
     if (!find_attempt(delivery, actual.effect.effect_id) &&
         delivery.attempt_count == delivery.attempts.size()) return refuse();
 
-    // Sample again after validation; queued/prepared work did not buy a new age.
     const auto at_handoff = transport.clock(transport.context);
     if (at_handoff < now) { authority.stop_new_risk(); return refuse(); }
     if (actual.effect.operation == EffectOperation::cancel) {
@@ -49,10 +46,8 @@ bool dispatch_gateway_send(
     if (quota.normal_lane_remaining != 0) --quota.normal_lane_remaining;
     else --quota.emergency_lane_remaining;
 
-    // No callback runs between recording uncertainty/consumption and this handoff.
-    // A thrown transport error leaves awaiting_response set; it cannot restore proof.
     transport.handoff(actual, transport.context);
     return true;
 }
 
-}  // namespace velocita::v2
+}

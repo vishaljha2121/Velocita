@@ -170,7 +170,7 @@ void snapshot_catchup_must_recover_a_lagging_voter(const std::filesystem::path& 
 
     cluster.traced_lagger = lagger_id;
     cluster.blocked.erase(lagger_id);
-    cluster.settle(2000); // Drive actual AppendEntries backtracking/retries.
+    cluster.settle(2000);
 
     const auto recovered = cluster.node(lagger_id).status();
     std::cout << "snapshot-catchup trace: leader=" << leader_id
@@ -191,7 +191,7 @@ void snapshot_catchup_must_recover_a_lagging_voter(const std::filesystem::path& 
             "lagging voter did not recover the independently authored state");
 }
 
-} // namespace
+}
 
 int main(int argc, char** argv) {
     try {

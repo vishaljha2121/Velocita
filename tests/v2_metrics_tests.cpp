@@ -1,13 +1,3 @@
-// Phase 4 metrics.
-//
-// The properties that matter are not "the numbers are right" in isolation but
-// that the projection is HONEST about the two things it cannot do: it has no
-// clock, and it is not authoritative. So the tests below pin that ages are
-// state-version distances rather than durations, that collection never mutates
-// state or participates in any digest, and that the unresolved counts key on
-// retained RISK rather than on lifecycle state - because a conflicted order is
-// terminal and still the most important thing on the dashboard.
-
 #include "velocita/v2/metrics.hpp"
 
 #include <array>
@@ -43,14 +33,12 @@ TradingState state_with_orders() {
         MoneyMicros::from_atoms(3'000), MoneyMicros::from_atoms(20),
         1'000'000, 2'500};
 
-    // A live order holding risk, authorized long ago.
     state.reservation_count = 2;
     state.reservations[0] = {ClusterOrderId{31}, QuantityLots::from_atoms(2), {},
                              QuantityLots::from_atoms(2),
                              MoneyMicros::from_atoms(3'000),
                              MoneyMicros::from_atoms(3'000),
                              MoneyMicros::from_atoms(20), ReservationState::held};
-    // A resolved order holding nothing, authorized recently.
     state.reservations[1] = {ClusterOrderId{32}, QuantityLots::from_atoms(2),
                              QuantityLots::from_atoms(2), {}, {}, {}, {},
                              ReservationState::released};
@@ -67,8 +55,6 @@ TradingState state_with_orders() {
     state.outbox_effects[1] = {EffectId{42}, ClusterOrderId{32}, DecisionId{22},
                                Digest256{}, 1, OutboxState::acknowledged};
 
-    // The cancel effect was created well after its parent order. Its own
-    // authorization receipt is the canonical creation-version provenance.
     ApplyResult cancel_authorization;
     cancel_authorization.code = ApplyCode::applied;
     cancel_authorization.state_version = 80;
@@ -108,8 +94,6 @@ void test_ages_are_state_version_distances_not_durations() {
     auto state = state_with_orders();
     const auto metrics = collect_metrics(state);
 
-    // Order 0 was authorized at version 40 and the cluster is at 100, so it has
-    // been unresolved across 60 applied commands. No clock was consulted.
     require(metrics.oldest_unresolved_order_age == 60,
             "unresolved age was not the state-version distance");
     require(metrics.oldest_reconciling_order_age_since_authorization == 60,
@@ -117,8 +101,6 @@ void test_ages_are_state_version_distances_not_durations() {
     require(metrics.oldest_unsettled_effect_age == 20,
             "unsettled effect age ignored the effect's own creation receipt");
 
-    // Advancing the cluster advances every age by exactly the same amount, which
-    // a wall-clock measure could not guarantee under a clock correction.
     state.state_version = 130;
     const auto later = collect_metrics(state);
     require(later.oldest_unresolved_order_age ==
@@ -145,9 +127,6 @@ void test_a_future_dated_record_reports_zero_rather_than_wrapping() {
 
 void test_unresolved_counts_key_on_risk_not_lifecycle_state() {
     auto state = state_with_orders();
-    // Conflict is TERMINAL but still holds exposure of unknown size. A metric
-    // that counted "not terminal" would miss it, which is precisely the record an
-    // operator most needs to see.
     state.orders[0].state = ClusterOrderState::conflict;
     const auto metrics = collect_metrics(state);
     require(metrics.unresolved_orders == 1,
@@ -163,18 +142,11 @@ void test_collection_is_a_pure_projection() {
     const auto original = state_with_orders();
     auto state = original;
 
-    // Purity is checked at the byte level rather than through a snapshot,
-    // deliberately. A snapshot would only prove the CANONICAL bytes are
-    // unchanged, and canonical encoding omits inactive slots and scratch. A
-    // memcmp over the whole trivially-copyable object proves collect_metrics
-    // touched nothing at all, including the fields a snapshot would not carry.
     static_assert(std::is_trivially_copyable_v<TradingState>);
     const auto first = collect_metrics(state);
     require(std::memcmp(&state, &original, sizeof(TradingState)) == 0,
             "collect_metrics mutated authoritative state");
 
-    // Same state, same metrics: the projection is a function, not a sampler, so
-    // it can be recomputed by any observer without coordinating with the reducer.
     require(collect_metrics(state) == first, "collect_metrics was not deterministic");
 }
 
@@ -215,7 +187,7 @@ void test_outcome_counters_classify_refusals() {
             "outcome classification did not separate the refusal families");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

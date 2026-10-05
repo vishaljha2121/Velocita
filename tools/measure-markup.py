@@ -21,7 +21,6 @@ import urllib.request
 TM = "https://mcp.truemarkets.co/mcp"
 CATALOG = "https://api.truemarkets.co/v1/conductor/assets?venue=defi"
 REFERENCE = "https://api.truemarkets.co/v1/defi/market/prices?symbol="
-#: (symbol, chain) pairs quoted on both sides. cbBTC tracks BTC 1:1; SOL is native.
 ASSETS = (("SOL", "solana"), ("CBBTC", "base"))
 ALLOWED = frozenset({"login_request_code", "login_verify_code", "get_quote"})
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
@@ -66,7 +65,6 @@ class Session:
         request.add_header("content-type", "application/json")
         request.add_header("accept", "application/json, text/event-stream")
         request.add_header("MCP-Protocol-Version", "2025-06-18")
-        # Cloudflare in front of the MCP server refuses Python's default agent (403).
         request.add_header("User-Agent", "velocita-quote-capture/1")
         if self.id:
             request.add_header("mcp-session-id", self.id)
@@ -80,8 +78,6 @@ class Session:
                     return 502, b'{}'
                 return response.status, raw
         except urllib.error.HTTPError as error:
-            # An authenticated error body can contain credentials. Never echo it;
-            # the status code alone is safe to report.
             return error.code, b'{}'
         except (urllib.error.URLError, ValueError, OSError, AttributeError):
             return 502, b'{}'
@@ -101,7 +97,7 @@ class Session:
             if result.get("isError"):
                 text = " ".join(str(c.get("text", "")) for c in result.get("content") or [] if isinstance(c, dict))
                 return {"_error": "tool failed", "detail": text}
-            return result  # retain structuredContent and content, not guessed numbers
+            return result
         except (ValueError, AttributeError):
             return {"_error": "invalid response", "detail": ""}
 
@@ -124,21 +120,18 @@ def redact(value):
 
 
 def fetch_catalog():
-    """The public asset catalog (GET, no credentials)."""
     request = urllib.request.Request(CATALOG, headers={"User-Agent": "velocita-quote-capture/1"})
     with urllib.request.urlopen(request, timeout=60) as response:
         return json.loads(response.read(MAX_RESPONSE_BYTES))
 
 
 def fetch_reference(symbol):
-    """True Markets' public reference candles for SYMBOL (GET, no credentials)."""
     request = urllib.request.Request(REFERENCE + symbol, headers={"User-Agent": "velocita-quote-capture/1"})
     with urllib.request.urlopen(request, timeout=30) as response:
         return json.loads(response.read(MAX_RESPONSE_BYTES))
 
 
 def reference_close(document):
-    """The 30s candle close, as the venue's string; None if absent or unreachable."""
     for candle in (document or {}).get("candles") or ():
         if isinstance(candle, dict) and candle.get("interval") == "30s":
             return candle.get("closePrice")
@@ -146,8 +139,6 @@ def reference_close(document):
 
 
 def resolve_address(catalog, symbol, chain):
-    """get_quote resolves a contract address, not a bare symbol (404 for "SOL").
-    Exactly one tradeable catalog entry must match, or nothing is quoted."""
     matches = [a for a in catalog.get("data") or () if a.get("symbol") == symbol
                and a.get("chain") == chain and a.get("tradeable") and a.get("address")]
     if len(matches) != 1:
@@ -156,8 +147,6 @@ def resolve_address(catalog, symbol, chain):
 
 
 def scrub(text, limit=300):
-    """A failure reason is worth printing only after emails and anything
-    token-shaped are masked."""
     text = re.sub(r"[\w.+-]+@[\w-]+(\.[\w-]+)+", "[EMAIL]", str(text))
     text = re.sub(r"eyJ[\w-]+\.[\w-]+(\.[\w-]*)?", "[TOKEN]", text)
     text = re.sub(r"[A-Za-z0-9+/_=-]{32,}", "[REDACTED]", text)
@@ -165,9 +154,6 @@ def scrub(text, limit=300):
 
 
 def read_code(attempts=3):
-    """Discard keystrokes typed before the prompt (a pasted command's trailing
-    newline would otherwise be read as an empty code), then ask until a
-    non-empty code arrives."""
     try:
         import termios
         if sys.stdin.isatty():
@@ -238,7 +224,6 @@ def main(argv):
                     print(f"No reference price for {symbol}; sell quote for ${amount} skipped.")
                     continue
                 else:
-                    # Sized from the public reference, never from a quote's output.
                     qty = format((amount / Decimal(reference_before)).quantize(Decimal("0.000001"), ROUND_DOWN), "f")
                     unit = "base"
                 arguments = dict(chain=chain, side=side, base_asset=address, qty=qty, qty_unit=unit)
@@ -247,7 +232,7 @@ def main(argv):
                     result = session.call("get_quote", **arguments)
                     if "_error" not in result:
                         break
-                    time.sleep(2 * (attempt + 1))  # the server reports rate limiting as a tool error
+                    time.sleep(2 * (attempt + 1))
                 else:
                     print(f"Quote request failed after 3 attempts: {result['_error']}: "
                           f"{scrub(result.get('detail', ''))}")

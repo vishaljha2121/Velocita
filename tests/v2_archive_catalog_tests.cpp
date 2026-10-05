@@ -65,7 +65,6 @@ void test_golden_and_round_trip() {
     const auto encoded = encode_archive_catalog(header, rows, id, bytes);
     require(encoded.error == ArchiveCatalogError::none && encoded.bytes_written == 352,
             "golden encode failed");
-    // Generated independently with Python struct.pack + hashlib.sha256 from CP-038.
     require(to_hex(encoded.catalog_digest) ==
         "5e48a01855177a452d23c295b92ebfd7049e239dc4fe926abbfeec9855fa9412",
         "independent catalog SHA golden mismatch");
@@ -116,7 +115,7 @@ void test_refusals_leave_destinations_unchanged() {
             "short destination was not atomic");
 
     auto self_consistent_bad = bytes;
-    self_consistent_bad[96] = std::byte{2}; // first row no longer begins at one
+    self_consistent_bad[96] = std::byte{2};
     reseal(self_consistent_bad);
     decoded = sentinel;
     std::array<ArchiveCatalogRow, 1> decoded_rows{row_sentinel};
@@ -171,7 +170,7 @@ void test_exact_maximum() {
             decoded_rows == rows, "exact maximum catalog did not round trip");
 }
 
-} // namespace
+}
 
 int main() {
     try {

@@ -23,7 +23,7 @@ std::uint64_t exponential_upper_bound(const ClientRecoveryConfig& config,
     return std::min(config.retry_cap_ns, config.retry_base_ns << retry_ordinal);
 }
 
-}  // namespace
+}
 
 ClientRecoveryPolicy::ClientRecoveryPolicy(ClientRecoveryConfig config)
     : config_(config) {
@@ -87,4 +87,4 @@ bool ClientRecoveryPolicy::deadline_reached(const std::uint64_t now_ns,
     return now_ns >= deadline_ns;
 }
 
-}  // namespace velocita
+}

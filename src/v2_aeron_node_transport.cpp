@@ -12,8 +12,6 @@ std::string udp_channel(const Endpoint& endpoint) {
 
 namespace {
 
-// Whole reassembled messages in a small bounded inbox. Oversized or overflowing
-// input is dropped here and counted: nothing allocates for an unauthenticated frame.
 struct BoundedInbox {
     std::shared_ptr<aeron::Subscription> subscription;
     std::deque<std::vector<std::byte>> inbox;
@@ -34,7 +32,7 @@ struct BoundedInbox {
           }) {}
 };
 
-}  // namespace
+}
 
 struct AeronNodeTransport::Inbound : BoundedInbox {
     using BoundedInbox::BoundedInbox;
@@ -83,10 +81,10 @@ bool offered(aeron::Publication& publication, std::span<const std::byte> bytes) 
     if (result >= 0) return true;
     if (result == aeron::PUBLICATION_CLOSED || result == aeron::MAX_POSITION_EXCEEDED)
         throw std::runtime_error("Aeron publication became unusable");
-    return false;  // back-pressured, not connected or admin action: the caller keeps the frame
+    return false;
 }
 
-}  // namespace
+}
 
 bool AeronNodeTransport::offer_peer(std::int32_t voter_id, std::span<const std::byte> envelope) {
     const auto found = peers_.find(voter_id);
@@ -137,4 +135,4 @@ std::optional<std::size_t> AeronClientTransport::receive_response(std::span<std:
     return std::nullopt;
 }
 
-}  // namespace velocita::v2
+}

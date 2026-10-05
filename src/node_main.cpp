@@ -1,3 +1,4 @@
+// V1: raft-node.
 #include "velocita/aeron_runtime.hpp"
 #include "velocita/owner_loop_scheduler.hpp"
 #include "velocita/raft_node.hpp"
@@ -142,7 +143,7 @@ struct OfferWork {
     std::size_t progressed{};
 };
 
-}  // namespace
+}
 
 int main(int argc, char** argv) {
     try {

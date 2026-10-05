@@ -160,9 +160,6 @@ find_receipt(const TradingState& state, const CommandIdentity& identity) noexcep
     return state.order_count;
 }
 
-// The NATIVE identity domain only. A synthetic observation's sequence was chosen
-// by the gateway, not by the venue, so it is not an identity and must neither
-// claim nor block one here.
 [[nodiscard]] const RequestReceipt* find_applied_native_event(
     const TradingState& state,
     const VenueId venue_id,
@@ -177,8 +174,6 @@ find_receipt(const TradingState& state, const CommandIdentity& identity) noexcep
             outcome.event_venue_id() == venue_id &&
             outcome.event_session_id() == session_id &&
             outcome.event_sequence() == sequence;
-        // A fill is always native, and its venue-event coordinates are retained
-        // in the fill detail rather than the event detail.
         const bool fill_matches = outcome.detail_kind == ApplyResultDetailKind::fill &&
             outcome.fill_venue_id() == venue_id &&
             outcome.fill_session_id() == session_id && outcome.fill_sequence() == sequence;
@@ -205,8 +200,6 @@ find_receipt(const TradingState& state, const CommandIdentity& identity) noexcep
     return nullptr;
 }
 
-// Defined below, near the other reclamation sweeps; declared here because source
-// admission is the first call site in file order.
 [[nodiscard]] std::size_t sweep_admitted_source_events(TradingState& state) noexcept;
 [[nodiscard]] CallerCursor* find_caller_cursor(TradingState& state,
                                                CallerId caller_id) noexcept;
@@ -731,20 +724,6 @@ template <std::size_t WordCount>
         return result(state, ApplyCode::already_applied, next_version);
     }
 
-    // G-059. A kill is easy; UNDOING one is where the damage gets done. The
-    // moment after an emergency is when the cluster's picture of its own
-    // exposure is least trustworthy - usually that is why the kill happened -
-    // and resuming normal trading then can double a position nobody confirmed.
-    //
-    // ONE-WAY, deliberately. Only a transition INTO the mode that permits new
-    // risk is gated. Reducing authority is never blocked by it, or an
-    // unreconciled cluster could not be halted, and a safety rule that prevents
-    // halting has become the thing it exists to prevent.
-    //
-    // And only the states that mean "unknown" block it. A healthy resting order
-    // is a known quantity; treating it as a reason to stay halted would make the
-    // rule mean "never resume while trading", which is not a safety property but
-    // a deadlock - and the first operator to meet it would route around it.
     if (command.mode == StrategyMode::normal) {
         for (std::size_t index = 0; index < state.order_count; ++index) {
             const auto order_state = state.orders[index].state;
@@ -887,8 +866,6 @@ template <std::size_t WordCount>
     }
 
     if (state.source_event_count == state.source_events.size()) {
-        // Sweep before refusing: an admitted-and-covered receipt is no longer
-        // load-bearing, because the source cursor already refuses a regression.
         (void)sweep_admitted_source_events(state);
     }
     if (state.source_event_count == state.source_events.size()) {
@@ -948,57 +925,11 @@ template <std::size_t WordCount>
     return value;
 }
 
-// Reclaim fully resolved order groups from the bounded arenas.
-//
-// Every completed requote cycle consumes one decision record, one cluster order,
-// one reservation, and one outbox effect, and all four arenas hold 16. Without
-// reclamation the kernel stops authorizing after 16 lifetime cycles on a slot,
-// which slot exclusivity makes arrive one requote at a time.
-//
-// Three properties make this safe in a deterministic reducer:
-//
-//   * it reads no clock and draws no random value, so the same state and command
-//     always produce the same sweep and the same result bytes;
-//   * it is bounded and allocation-free: a fixed number of passes over arenas of
-//     16, using caller-independent stack masks; and
-//   * it is economically inert. Only reservations already in the released state
-//     are dropped, and a released reservation holds nothing, so no risk-account
-//     total changes. A nonzero hold on a supposedly released reservation is
-//     treated as not reclaimable rather than trusted.
-//
-// Reclaimable requires TERMINAL AND RESOLVED, which are not the same property.
-// `filled`, `cancelled`, and `rejected` resolve their risk. `conflict` is
-// terminal but unresolved - internal state and venue evidence disagree, so the
-// exposure is of unknown size - and `reconciling` still awaits final venue
-// evidence. Neither may be reclaimed: doing so would free capacity against
-// exposure that may still exist, and would destroy the retained proposal and
-// effect bytes an operator needs to resolve the disagreement.
-//
-// An order group is also retained while any of its effects is unsettled, because
-// materialize_order_effect rebuilds an effect's exact historical bytes from the
-// retained decision and receipt. Reclaiming those inputs would strand a pending
-// external effect whose payload can never be reproduced, breaking G-020.
-//
-// Decisions are reclaimed only as part of a resolved group. A decision that was
-// never authorized is retained, because it may still be authorized later.
-// Applied evaluation and authorization receipts remain identity tombstones after
-// payload reclamation. Admission consults them even for new request IDs. Any
-// future receipt reclamation must preserve that guarantee through its declared
-// retry/conflict horizon; freeing payload storage does not grant identity reuse.
-// An outbox effect is SETTLED once no further evidence can change it.
-// `incomplete` counts: it records that the outcome was never established, which
-// is a final answer even though it is not a satisfying one.
 [[nodiscard]] constexpr bool effect_is_settled(const OutboxState state) noexcept {
     return state == OutboxState::acknowledged || state == OutboxState::rejected ||
            state == OutboxState::conflict || state == OutboxState::incomplete;
 }
 
-// TERMINAL AND RISK-RESOLVED. These are different properties and the difference
-// is the whole safety argument for reclamation: `conflict` and `reconciling` are
-// terminal-or-stuck while still holding exposure of unknown size, so they are
-// never resolved. Factored out so reclamation and orphan settlement cannot drift
-// apart - they must agree on what "resolved" means or one will free capacity the
-// other still considers live.
 [[nodiscard]] bool order_is_risk_resolved(const TradingState& state,
                                           const ClusterOrder& order) noexcept {
     const bool terminal = order.state == ClusterOrderState::filled ||
@@ -1013,12 +944,6 @@ template <std::size_t WordCount>
            reservation.margin_hold.atoms() == 0 && reservation.fee_hold.atoms() == 0;
 }
 
-// Maximum future accepted observations for one unresolved order under the
-// Phase-4 serial lifecycle. Fill fragmentation is bounded by the remaining
-// quantity in minimum lot atoms. The control allowance is state-sensitive:
-// submit may report unknown then acknowledge; cancel may report unknown, then
-// cancelled, then final reconciliation. No probabilistic fill-size assumption
-// is allowed in a safety capacity check.
 [[nodiscard]] std::size_t future_venue_events_for_order(
     const TradingState& state, const ClusterOrder& order) noexcept {
     if (order.reservation_index >= state.reservation_count) {
@@ -1043,12 +968,12 @@ template <std::size_t WordCount>
     std::size_t control_events = 0;
     switch (order.state) {
         case ClusterOrderState::dispatch_authorized:
-            control_events = 5;  // submit unknown+ack, cancel unknown+cancel+reconcile
+            control_events = 5;
             break;
         case ClusterOrderState::acknowledged:
         case ClusterOrderState::live:
         case ClusterOrderState::partially_filled:
-            control_events = 3;  // cancel unknown+cancelled+reconciled
+            control_events = 3;
             break;
         case ClusterOrderState::cancel_pending:
             control_events = 3;
@@ -1057,16 +982,14 @@ template <std::size_t WordCount>
             control_events = current_effect != nullptr &&
                                      current_effect->operation ==
                                          EffectOperation::submit
-                                 ? 4  // submit ack, then the cancel path
-                                 : 2; // cancelled, then reconciliation
+                                 ? 4
+                                 : 2;
             break;
         case ClusterOrderState::reconciling:
         case ClusterOrderState::conflict:
             control_events = 1;
             break;
         case ClusterOrderState::replace_pending:
-            // Native replacement is disabled. Treat any retained legacy state
-            // as unbudgetable rather than inventing completion semantics.
             return kMaxVenueEventReceipts + 1;
         case ClusterOrderState::filled:
         case ClusterOrderState::cancelled:
@@ -1103,7 +1026,7 @@ template <std::size_t WordCount>
         add(future_venue_events_for_order(state, state.orders[index]));
     }
     add(static_cast<std::size_t>(new_order_quantity.atoms()));
-    add(5);  // the new order begins at dispatch_authorized
+    add(5);
     return required <= kMaxVenueEventReceipts;
 }
 
@@ -1131,36 +1054,12 @@ template <std::size_t WordCount>
         orders_needing_cancel_slot += !has_cancel_slot;
     }
 
-    // One submit record and one future cancel slot belong to the new order.
     return state.outbox_effect_count <= kMaxOutboxEffects &&
            orders_needing_cancel_slot <= kMaxOutboxEffects &&
            state.outbox_effect_count + orders_needing_cancel_slot + 2 <=
                kMaxOutboxEffects;
 }
 
-// Settle effects orphaned by terminal resolution.
-//
-// Once an order is closed, no future observation can be meaningfully scoped to
-// an effect of that order which never received evidence: the venue has nothing
-// left to say about it. Leaving such an effect `pending` forever makes its whole
-// group permanently unreclaimable, and enough of those wedge the bounded arenas -
-// evaluation fails closed and cannot recover even after the order reconciles.
-//
-// Note `pending` does NOT mean "never sent". pending/claimed/attempted are
-// gateway-side bookkeeping the cluster learns about asynchronously, so a venue
-// response can legitimately arrive before the cluster is told the effect was
-// attempted. The problem is not that the effect was unsent; it is that all later
-// evidence was scoped to a sibling effect and this one was never spoken about.
-//
-// `incomplete` is the honest record - outcome never established - rather than
-// `acknowledged`, which would claim evidence we never received.
-//
-// This is safe only because the group's RISK is already resolved: the residual
-// was released against final venue evidence, so there is no exposure left to
-// under-reserve. `conflict` is deliberately excluded by order_is_risk_resolved.
-// A late gateway send against a closed order remains a real hazard; it is
-// answered by executor-generation and kill-epoch fencing plus stable EffectId
-// idempotency in Phase 8, not by retaining these bytes forever.
 std::size_t settle_orphaned_effects(TradingState& state,
                                     const ClusterOrderId cluster_order_id) noexcept {
     std::size_t settled = 0;
@@ -1175,22 +1074,6 @@ std::size_t settle_orphaned_effects(TradingState& state,
     return settled;
 }
 
-// Can this retained decision EVER be authorized?
-//
-// Every condition mirrored here is an immutable property of the record itself -
-// evaluation mode, decision code, effective directive, resolution code, proposal
-// validity, and self-consistent identity. None depends on mutable state, so a
-// record failing any of them can never become authorizable however the world
-// changes. That is what makes reclaiming it safe with no horizon and no clock.
-//
-// This mirrors apply_authorize_decision's predicate deliberately. If that gains a
-// condition and this does not, the sweep will reclaim records the authorizer
-// would still have accepted; the two must be changed together.
-// A receipt may be forgotten only if nothing still depends on it.
-//
-// Authorization provenance stays while its effect exists. Fill identity stays
-// while its order exists. A control-event result additionally requires producer
-// acknowledgement and a settled/superseded effect before it can be forgotten.
 [[nodiscard]] const CallerCursor* find_caller_cursor(
     const TradingState& state, const CallerId caller_id) noexcept {
     for (std::size_t index = 0; index < state.caller_cursor_count; ++index) {
@@ -1292,10 +1175,6 @@ std::size_t settle_orphaned_effects(TradingState& state,
     }
 }
 
-// Forget the oldest unpinned receipts. Order is preserved so "oldest" stays
-// meaningful, and the caller watermarks that make expiry detectable are advanced
-// on admission rather than here, so a forgotten receipt is always already
-// covered by its caller's cursor.
 [[nodiscard]] std::size_t sweep_expired_receipts(
     TradingState& state, const CallerId acknowledging_caller = {},
     const RequestSequence acknowledged_through = {}) noexcept {
@@ -1304,8 +1183,6 @@ std::size_t settle_orphaned_effects(TradingState& state,
     for (std::size_t index = 0; index < state.receipt_count; ++index) {
         if (!receipt_is_pinned(state, state.receipts[index],
                                acknowledging_caller, acknowledged_through)) {
-            // Record what is being forgotten, per caller, so a later retry of
-            // exactly this identity is refused rather than re-executed.
             const auto& identity = state.receipts[index].identity;
             auto* cursor = find_caller_cursor(state, identity.caller_id);
             if (cursor == nullptr &&
@@ -1334,11 +1211,6 @@ struct ReceiptAdmissionAvailability {
     bool caller_available{};
 };
 
-// Pure preflight equivalent of the ordinary full-arena sweep below.  Besides
-// dropping the same unpinned receipts, sweep_expired_receipts registers their
-// callers while cursor capacity remains.  Simulate that small identity set so
-// catalog dependency checks do not require an artifact for an install that the
-// reducer must refuse before it can commit the root.
 [[nodiscard]] ReceiptAdmissionAvailability receipt_admission_after_sweep(
     const TradingState& state, const CallerId command_caller) noexcept {
     std::array<CallerId, kMaxCallerCursors> callers{};
@@ -1371,12 +1243,6 @@ struct ReceiptAdmissionAvailability {
             has_caller(command_caller) || caller_count < callers.size()};
 }
 
-// Source-event receipts have their own watermark already: SourceCursor holds the
-// highest admitted sequence per source, and admission independently refuses a
-// regression. The receipt only distinguishes an exact redelivery (retained
-// no-op) from a conflicting one (fail closed), so once the sequence is at or
-// below the cursor the receipt is no longer load-bearing for safety - a
-// redelivery is refused as a regression rather than re-admitted.
 [[nodiscard]] std::size_t sweep_admitted_source_events(TradingState& state) noexcept {
     std::size_t kept = 0;
     for (std::size_t index = 0; index < state.source_event_count; ++index) {
@@ -1420,10 +1286,6 @@ struct ReceiptAdmissionAvailability {
            cold.proposal.decision_id == hot.decision_id;
 }
 
-// A proposal is immutable, but its authority is not. Authorization must bind to
-// the executable policy that is active NOW, not merely prove that the proposal
-// was valid when evaluated. Otherwise a delayed command can resurrect an order
-// after policy rotation while carrying perfectly self-consistent old bytes.
 [[nodiscard]] bool decision_matches_current_execution_contract(
     const TradingState& state,
     const DecisionRecordHot& hot,
@@ -1449,16 +1311,6 @@ struct ReceiptAdmissionAvailability {
                cold.proposal.venue_capabilities_version;
 }
 
-// Does a NEWER actionable proposal exist for the same logical order slot?
-//
-// A maker only ever wants the latest quote for a slot, so an older unauthorized
-// proposal is stale by construction: authorizing it would rest a price computed
-// from older market data, which is the same objection that already justifies
-// refusing a stale RiskVersion.
-//
-// Array position is arrival order and is canonical - decisions are appended and
-// compaction is stable, so a higher index is unambiguously later on every
-// replica. DecisionId is caller-chosen and deliberately not used for ordering.
 [[nodiscard]] bool decision_is_superseded(const TradingState& state,
                                           const std::size_t index) noexcept {
     const auto& proposal = state.decision_cold[index].proposal;
@@ -1506,9 +1358,6 @@ struct ReceiptAdmissionAvailability {
         drop_reservation[order.reservation_index] = true;
         ++reclaimed;
     }
-    // No early return on `reclaimed == 0`. Decisions are reclaimable in their
-    // own right, and the case that matters most - an arena full of no_action
-    // records with no order to free - has exactly zero reclaimable order groups.
     for (std::size_t effect = 0; effect < state.outbox_effect_count; ++effect) {
         const auto& record = state.outbox_effects[effect];
         for (std::size_t index = 0; index < state.order_count; ++index) {
@@ -1520,8 +1369,6 @@ struct ReceiptAdmissionAvailability {
         }
     }
 
-    // Candidate decisions come from dropped orders and their dropped effects,
-    // then any decision a surviving order or effect still names is un-marked.
     for (std::size_t index = 0; index < state.order_count; ++index) {
         if (!drop_order[index]) continue;
         for (std::size_t slot = 0; slot < state.decision_count; ++slot) {
@@ -1530,14 +1377,6 @@ struct ReceiptAdmissionAvailability {
             }
         }
     }
-    // Decisions no order will ever consume are reclaimable independently of
-    // whether any order group was dropped. A live maker produces mostly
-    // no_action, so without this the decision arena fills with records that are
-    // structurally incapable of ever becoming an order.
-    //
-    // Identity is not lost: applied evaluation receipts outlive the decision
-    // arena and retain the DecisionId, payload digest and original outcome, so
-    // conflict detection and exact replay still work afterwards.
     for (std::size_t index = 0; index < state.decision_count; ++index) {
         if (drop_decision[index]) continue;
         if (decision_is_authorizable(state.decision_hot[index],
@@ -1574,10 +1413,6 @@ struct ReceiptAdmissionAvailability {
                     [](const bool value) { return value; });
     if (!any_drop) return 0;
 
-    // Reservations compact first so orders can be repointed in one pass.
-    // ClusterOrder addresses its reservation by ARRAY INDEX, so moving a
-    // reservation without repairing that index would silently point an order at
-    // another order's risk: no compile error, no validation failure.
     std::array<std::uint16_t, kMaxRiskReservations> reservation_remap{};
     std::size_t kept_reservations = 0;
     for (std::size_t index = 0; index < state.reservation_count; ++index) {
@@ -1648,11 +1483,6 @@ struct ReceiptAdmissionAvailability {
                                no_rule, 0);
     }
 
-    // Sweep before `existing_index` is resolved, for the same reason as in
-    // apply_authorize_decision: compaction moves records, so any index or
-    // reference taken first would silently name a different slot afterwards.
-    // The decision arena fills first in a requote loop, so this is the admission
-    // point a continuously quoting strategy actually reaches.
     if (state.decision_count == state.decision_hot.size()) {
         (void)sweep_resolved_order_groups(state);
     }
@@ -1673,9 +1503,6 @@ struct ReceiptAdmissionAvailability {
                                hot.matched_rule_index, hot.rules_visited,
                                hot.action_resolution_code);
     }
-    // Sweeping payload records must not erase logical identity. Applied
-    // evaluation receipts outlive the decision arena and retain its digest and
-    // original outcome. A replay never recreates a swept proposal.
     for (std::size_t index = 0; index < state.receipt_count; ++index) {
         const auto& receipt = state.receipts[index];
         if (receipt.result.code != ApplyCode::applied ||
@@ -1867,13 +1694,6 @@ struct ReceiptAdmissionAvailability {
                                     next_version, command.decision_id);
     }
 
-    // Sweep BEFORE anything resolves an index or borrows a reference into the
-    // arenas. Compaction moves records, so a decision index or a `const auto&`
-    // taken earlier would still be in bounds afterwards while naming a
-    // different - possibly cleared - slot. That failure is silent: no crash, no
-    // sanitizer report, just an order reserved from a zeroed proposal. Sweeping
-    // first makes the hazard structurally impossible rather than a rule someone
-    // has to remember when adding a lookup.
     std::int64_t largest_configured_order = 0;
     for (std::size_t index = 0; index < state.risk_account_count; ++index) {
         largest_configured_order = std::max(
@@ -1891,15 +1711,10 @@ struct ReceiptAdmissionAvailability {
         state.order_count == state.orders.size() ||
         state.outbox_effect_count == state.outbox_effects.size() ||
         venue_capacity_pressure || outbox_capacity_pressure) {
-        // If this frees nothing, the typed capacity refusals below still fire,
-        // so the path stays fail-closed.
         (void)sweep_resolved_order_groups(state);
         if (venue_capacity_pressure) (void)sweep_expired_receipts(state);
     }
 
-    // Authorization receipts outlive reclaimed payload records. Recognize a
-    // submit from its existing domain-separated generation-1 identity, not an
-    // outbox lookup: cancel receipts share the authorization result tag.
     for (std::size_t index = 0; index < state.receipt_count; ++index) {
         const auto& retained = state.receipts[index].result;
         if (retained.code != ApplyCode::applied ||
@@ -1944,11 +1759,6 @@ struct ReceiptAdmissionAvailability {
                                     next_version, command.decision_id);
     }
 
-    // Zero is the uninitialized bootstrap value, not execution authority. An
-    // effect carrying either zero cannot pass the public OrderEffect contract,
-    // so authorizing it would reserve risk and create outbox work that the
-    // gateway can never materialize. Refuse before creating new economic state;
-    // the operator must establish both monotonic controls first.
     if (state.kill_epoch.value() == 0 ||
         state.executor_generation.value() == 0) {
         return authorization_result(state, ApplyCode::stale_control_generation,
@@ -2038,8 +1848,6 @@ struct ReceiptAdmissionAvailability {
                                     next_version, command.decision_id);
     }
 
-    // Open quantity is counted against BOTH sides: either resting order may
-    // fill first, so netting them would admit a position past the cap.
     const bool buying = cold.proposal.side == Side::buy;
     const auto extreme = buying
         ? risk->position_quantity.checked_add(*next_quantity)
@@ -2062,20 +1870,6 @@ struct ReceiptAdmissionAvailability {
                                     next_version, command.decision_id);
     }
 
-    // Slot exclusivity. This is how G-018 is satisfied: rather than computing a
-    // clever hold that covers two coexisting orders, the kernel refuses to let a
-    // second order exist on the slot at all.
-    //
-    // It is load-bearing even though direct replacement is refused, because
-    // ClusterOrderId is derived from the varying DecisionId and therefore never
-    // collides. Without this, cancel-then-authorize reaches exactly the
-    // double-reserved state that deferring replacement was meant to prevent:
-    // the cancel-pending order keeps its hold (G-016) while the new order takes
-    // a second one.
-    //
-    // Occupancy is defined by retained risk, not by order state, because risk is
-    // what G-018 constrains. A reservation that has been released has nothing
-    // left to double-reserve, whatever lifecycle state its order records.
     for (std::size_t index = 0; index < state.order_count; ++index) {
         const auto& existing = state.orders[index];
         if (existing.reservation_index >= state.reservation_count) continue;
@@ -2178,8 +1972,6 @@ struct ReceiptAdmissionAvailability {
                                     1,
                                     OutboxState::pending};
 
-    // Commit section: all validation, arithmetic, capacity, identity, and
-    // candidate construction above is complete. These assignments cannot fail.
     risk->reserved_quantity = *next_quantity;
     risk->reserved_margin = *next_margin;
     risk->reserved_fee = *next_fee;
@@ -2226,16 +2018,9 @@ struct ReceiptAdmissionAvailability {
             ContractError::none, existing->result.decision_id);
     }
     if (accepted_venue_event_count(state) == kMaxVenueEventReceipts) {
-        // Sweep before resolving any state index or borrowing an arena
-        // reference. Resolved groups release the observation receipts they own;
-        // unresolved orders keep every identity that can still affect them.
         (void)sweep_resolved_order_groups(state);
         (void)sweep_expired_receipts(state);
     }
-    // Capacity is decided here but REFUSED below, after the owning order is
-    // known. The sweep above must still precede any index lookup - compaction
-    // moves records - but the refusal itself must not happen before the cluster
-    // can say which order was affected.
     const bool venue_evidence_exhausted =
         accepted_venue_event_count(state) == kMaxVenueEventReceipts;
 
@@ -2247,17 +2032,6 @@ struct ReceiptAdmissionAvailability {
     }
     auto& order = state.orders[order_index];
     if (venue_evidence_exhausted) {
-        // The venue executed and the cluster has no receipt capacity left to
-        // account for it. The quantity genuinely cannot be booked - doing so
-        // without retaining its identity would break at-most-once accounting -
-        // but the ORDER must not go on reading as live while its position is
-        // known to be wrong.
-        //
-        // Marking it conflicted makes the divergence operator-visible and keeps
-        // the group unreclaimable, which is the same treatment an unbookable
-        // quantity already receives. It does not fix the exhaustion itself;
-        // that is the retention contract, and the contract must not be chosen
-        // by leaving the loss silent in the meantime.
         order.state = ClusterOrderState::conflict;
         order.last_evidence_state_version = next_version;
         return fill_result(state, ApplyCode::fill_capacity_exceeded,
@@ -2271,9 +2045,6 @@ struct ReceiptAdmissionAvailability {
             break;
         }
     }
-    // Fill identity is scoped to the order's submit effect. A cancel effect may
-    // name the same cluster order, but execution evidence cannot acknowledge or
-    // otherwise resolve cancel delivery.
     if (outbox == nullptr || outbox->operation != EffectOperation::submit) {
         return fill_result(state, ApplyCode::venue_observation_not_applicable,
                            next_version, observation, observation.quantity,
@@ -2298,9 +2069,6 @@ struct ReceiptAdmissionAvailability {
                            next_version, observation, observation.quantity,
                            ContractError::none, order.decision_id);
     }
-    // A pending amend or historical fill after its acknowledgement cannot be
-    // charged to the currently active terms. Preserve the existing hold and
-    // refuse ordinary accounting until explicit replacement reconciliation.
     for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
         auto& current = state.outbox_effects[index];
         if (current.effect_id == order.effect_id &&
@@ -2317,33 +2085,6 @@ struct ReceiptAdmissionAvailability {
                                ContractError::none, order.decision_id);
         }
     }
-    // A conflicted order is terminal-but-unresolved: internal state and venue
-    // evidence disagree and the cluster cannot tell which is right. Booking a
-    // later fill would move the position on one side of an unsettled
-    // disagreement, and - worse - carry the order to `filled`, releasing its
-    // reservation and erasing the conflict from the projection entirely. ADR 0001
-    // is explicit that reconciliation "never overwrites conflicting evidence to
-    // make a dashboard green", and that is exactly what this would be.
-    //
-    // `apply_observe_order_event` already refuses everything from `conflict`.
-    // The fill path did not, which is the asymmetry an enumeration of the
-    // reachable lifecycle found and reading the code did not.
-    // A conflicted order KEEPS ACCOUNTING VALID EXECUTIONS. Two properties were
-    // conflated here and they are separable (material decision A):
-    //
-    //   CONFLICT IS STICKY - later evidence may not automatically declare the
-    //   dispute solved, so the lifecycle state and the group's unreclaimability
-    //   survive whatever arrives next; and
-    //
-    //   VALID EXECUTION ACCOUNTING CONTINUES - a unique fill carrying venue
-    //   identity, execution identity, side, price, quantity and fee is STRONGER
-    //   evidence than the order-level cumulative snapshot that usually created
-    //   the conflict. Refusing it left the known position and remaining hold
-    //   wrong while the kernel held every field needed to book it safely, and
-    //   further real fills widened the divergence the system claims to expose.
-    //
-    // Anything outside the authorized remaining hold is still refused below, and
-    // the sticky lifecycle is preserved at the state assignment near the end.
 
     auto* risk = find_risk_account(state, proposal.account_id,
                                    proposal.instrument_id);
@@ -2354,23 +2095,6 @@ struct ReceiptAdmissionAvailability {
     }
     if (reservation.state == ReservationState::released ||
         observation.quantity > reservation.remaining_quantity) {
-        // The venue traded something the cluster cannot book: either the hold is
-        // already released, or the fill exceeds what was ever reserved. Booking
-        // it would exceed authorized risk, so the quantity is refused - but the
-        // DIVERGENCE must not be refused silently.
-        //
-        // This is the fill-after-cancel case made reachable by Phase 5. Until a
-        // gateway existed nothing produced `cancel_reconciled`, so a released
-        // reservation could not be contradicted; a reconciliation query answer is
-        // a SNAPSHOT, and a venue can still report a fill that was already
-        // executed when it called the order cancelled. The cluster's position is
-        // then genuinely wrong and only an operator can settle it.
-        //
-        // Marking the order `conflict` is what makes that true statement. It is
-        // terminal-but-unresolved, so `order_is_risk_resolved` refuses to reclaim
-        // the group and the retained proposal and effect bytes stay available to
-        // whoever has to resolve it. Mutating on a refusal path is deliberate and
-        // has precedent directly above: the refusal itself is new knowledge.
         order.state = ClusterOrderState::conflict;
         order.last_evidence_state_version = next_version;
         return fill_result(state, ApplyCode::fill_quantity_conflict,
@@ -2435,8 +2159,6 @@ struct ReceiptAdmissionAvailability {
                            ContractError::none, order.decision_id);
     }
 
-    // Commit section: the accepted fill, position move, reservation release,
-    // order transition, and delivery acknowledgement become visible together.
     risk->position_quantity = *next_position;
     risk->position_version = PositionVersion{risk->position_version.value() + 1};
     risk->reserved_quantity = *next_reserved_quantity;
@@ -2451,12 +2173,6 @@ struct ReceiptAdmissionAvailability {
                             ? ReservationState::released
                             : ReservationState::partially_consumed;
     if (order.state == ClusterOrderState::conflict) {
-        // Sticky. The reservation and holds have just been updated correctly, and
-        // the reservation may even have released - but the disagreement is
-        // historical and unresolved, so the order stays conflicted and
-        // `order_is_risk_resolved` keeps the group unreclaimable until an
-        // operator settles it. Booking the execution is not the same as agreeing
-        // about the order.
     } else if (next_remaining->atoms() == 0) {
         order.state = ClusterOrderState::filled;
     } else if (order.state != ClusterOrderState::cancel_pending &&
@@ -2496,22 +2212,10 @@ struct ReceiptAdmissionAvailability {
     return value;
 }
 
-// WHAT A CANCEL OF THIS ORDER WOULD DO, decided in one place.
-//
-// A mass cancel has to know the answer for every order in scope BEFORE it
-// mutates anything, because it must refuse rather than half-finish. Asking the
-// question twice - once to plan, once to act - is how the two answers drift
-// apart, and a plan that disagrees with the action is worse than no plan. So
-// both callers read this.
 enum class CancelDisposition : std::uint8_t {
-    // Will emit a cancel effect into a fresh outbox slot.
     needs_slot,
-    // Will overwrite a definitively rejected cancel record for the same order,
-    // so it costs no additional outbox capacity.
     reuses_slot,
-    // A cancel is already outstanding. Not an error and not work.
     already_cancelling,
-    // Terminal, unreserved, or otherwise beyond cancelling.
     not_cancellable,
 };
 
@@ -2633,10 +2337,6 @@ enum class CancelDisposition : std::uint8_t {
         return authorization_result(state, ApplyCode::order_not_cancellable,
                                     next_version, order.decision_id);
     }
-    // A definitively rejected cancel is no longer deliverable and cannot change
-    // economics. Reuse that one record for the next generation so repeated
-    // venue rejections do not consume the bounded arena forever. Pending,
-    // unknown, reconciling, and conflicting effects are never overwritten.
     const bool reuse_rejected_cancel =
         current_effect != nullptr &&
         current_effect->operation == EffectOperation::cancel &&
@@ -2732,9 +2432,6 @@ enum class CancelDisposition : std::uint8_t {
                                   ApplyCode::venue_observation_not_applicable,
                                   next_version, observation);
     }
-    // Sequence identity is the VENUE's guarantee, so only a native observation
-    // may be judged by it. A synthetic replay is caught by the retained request
-    // receipt and by cumulative-by-value adjudication instead (10.15).
     if (observation_origin(observation.kind) == ObservationOrigin::native) {
         if (const auto* existing = find_applied_native_event(
                 state, observation.venue_id, observation.venue_session_id,
@@ -2800,10 +2497,6 @@ enum class CancelDisposition : std::uint8_t {
                                   next_version, observation);
     }
 
-    // Event names are not interchangeable acknowledgements. In particular,
-    // `order_acknowledged` proves a submit reached the venue; applying it to a
-    // cancel would resolve the cancel effect while leaving the order
-    // cancel-pending, permanently excluding the later cancellation evidence.
     if (observation.kind == VenueObservationKind::order_acknowledged &&
         effect->operation != EffectOperation::submit) {
         return venue_event_result(state,
@@ -2811,52 +2504,17 @@ enum class CancelDisposition : std::uint8_t {
                                   next_version, observation);
     }
 
-    // Architecture 10.1.6. A reconciliation answer resolves exactly ONE question -
-    // did the submit reach the venue, and how much has it filled - and refuses
-    // everything it cannot answer honestly from a snapshot.
     const bool reconciled_submit =
         observation.kind == VenueObservationKind::order_reconciled;
-    // `order_reconciled` answers "the venue holds this order, with this cumulative
-    // fill". That is exactly as meaningful about a stuck CANCEL as about a stuck
-    // submit: it says the cancel did not take effect and the order is still
-    // working. Without this, `reconciling` is a dead end - `cancel_reconciled`
-    // can only say the cancel DID take effect, so an order whose cancel was
-    // rejected or lost would have no way back to a state a fresh cancel could be
-    // authorized from.
     const bool reconciled_cancel =
         reconciled_submit && effect->operation == EffectOperation::cancel &&
         effect->effect_id == order.effect_id &&
         (order.state == ClusterOrderState::submission_unknown ||
          order.state == ClusterOrderState::reconciling ||
          order.state == ClusterOrderState::cancel_pending) &&
-        // Deliberately excludes `pending`. A pending cancel has not been
-        // delivered yet, so its outcome is not in doubt - and answering "the
-        // order is still live" about it is true, useless, and destructive: it
-        // marks the cancel `rejected` and returns the order to `live`, silently
-        // abandoning an intent the operator asked for. Reconciliation is for
-        // cancels whose DELIVERY is uncertain, which is what the other three
-        // states mean.
-        //
-        // Consequence, recorded rather than hidden: a cancel whose send attempts
-        // are exhausted cannot yet be reconciled, because the useful answer there
-        // is "re-authorize a fresh cancel" and nothing does that. That needs a
-        // re-authorization story before the state is opened up.
         (effect->state == OutboxState::unknown ||
          effect->state == OutboxState::rejected ||
          effect->state == OutboxState::reconciling);
-    // ADR 0008, rule 3. A RESTING ORDER IS A LEGITIMATE SUBJECT OF
-    // RECONCILIATION. The original window was `submission_unknown` and
-    // `dispatch_authorized` - orders whose DELIVERY was in doubt - which made
-    // asking about a resting order pointless, because the answer was refused.
-    // An order the venue acknowledged and then lost could be queried forever.
-    //
-    // The effect state widens with it: a resting order's submit effect is
-    // `acknowledged`, which the delivery-in-doubt window excluded by design.
-    //
-    // The KIND is part of the predicate. Without it this exempts any observation
-    // against a resting order with an acknowledged submit effect, including a
-    // late `order_acknowledged` - which the gate refuses on purpose, because
-    // replaying it would erase partial-fill knowledge.
     const bool reconciled_resting =
         reconciled_submit &&
         effect->effect_id == order.effect_id &&
@@ -2876,29 +2534,8 @@ enum class CancelDisposition : std::uint8_t {
                                   ApplyCode::venue_observation_not_applicable,
                                   next_version, observation);
     }
-    // A zero venue order id is the venue answering that it holds no such order.
-    // `validate` has already guaranteed that a zero identity carries a zero fill,
-    // so this is unambiguously a claim that nothing was ever placed.
     const bool venue_denies_order =
         reconciled_submit && observation.venue_order_id.value() == 0;
-    // Quantity is FINAL CUMULATIVE filled, so agreement is equality against what
-    // the cluster has already booked - never addition. That is what makes a
-    // repeated answer a no-op by value rather than by identity.
-    //
-    // The two directions of disagreement are NOT symmetric, and treating them as
-    // if they were is how a recoverable order gets frozen terminal.
-    //
-    // BELOW what the cluster booked - including the venue denying the order while
-    // the cluster holds fills - is a genuine conflict. No future evidence reduces
-    // a booked fill, so the gap can never close.
-    //
-    // ABOVE it is missing evidence, not conflict: fills the cluster has not seen
-    // may still be in flight, and under a reordering transport they routinely
-    // are. The answer is refused so the order stays queryable and recoverable
-    // rather than terminal. If the gap never closes the order remains visibly
-    // unresolved with a rising age, which is the G-074a operator signal - and
-    // that is strictly better than burning a recoverable state on evidence that
-    // might have been one tick away.
     const bool reconciled_conflict =
         reconciled_submit &&
         (venue_denies_order ? reservation.filled_quantity.atoms() != 0
@@ -2910,9 +2547,6 @@ enum class CancelDisposition : std::uint8_t {
                                   next_version, observation);
     }
 
-    // A new transport observation can repeat the same semantic uncertainty.
-    // Retain its request receipt, but do not count it as another applied venue
-    // transition or pretend that the state became "more unknown".
     if (observation.kind == VenueObservationKind::effect_unknown &&
         effect->effect_id == order.effect_id &&
         effect->state == OutboxState::unknown &&
@@ -2922,19 +2556,9 @@ enum class CancelDisposition : std::uint8_t {
                                   ContractError::none, order.decision_id);
     }
 
-    // Transport observations cannot erase established execution knowledge.
-    // A late cancel completion after a full fill can acknowledge its own effect,
-    // but cannot change the filled order or release its reservation again.
     const bool terminal = order.state == ClusterOrderState::filled ||
                           order.state == ClusterOrderState::cancelled ||
                           order.state == ClusterOrderState::rejected;
-    // A cancel the venue refuses after the order already finished. The refusal is
-    // definitive evidence about the CANCEL - it will never take effect - even
-    // though it says nothing about an order whose outcome is already known.
-    // Without this the effect stays `pending` forever: the gateway redelivers
-    // until its attempts are spent, every rejection is refused because the order
-    // is terminal, reconciliation never targets a finished order, and the group
-    // is never reclaimable because one of its effects is never settled.
     const bool terminal_cancel_rejection =
         observation.kind == VenueObservationKind::order_rejected &&
         effect->operation == EffectOperation::cancel &&
@@ -2948,48 +2572,16 @@ enum class CancelDisposition : std::uint8_t {
          (observation.kind == VenueObservationKind::cancel_reconciled &&
           observation.quantity == reservation.filled_quantity)) &&
         effect->operation == EffectOperation::cancel;
-    // Applicability is about WHERE the order is, never about whether the venue
-    // agrees. Folding the quantity comparison into applicability meant a venue
-    // that disagreed produced a bare refusal - no transition, nothing recorded,
-    // and an order stuck in `reconciling` forever. The submit path's conflict
-    // branches had no counterpart here, and this separates the two questions so
-    // they can have different answers.
     const bool cancel_reconcilable =
         observation.kind == VenueObservationKind::cancel_reconciled &&
         effect->operation == EffectOperation::cancel &&
         effect->effect_id == order.effect_id &&
         ((effect->state == OutboxState::reconciling &&
           order.state == ClusterOrderState::reconciling) ||
-         // A cancel that simply went silent never produced a `cancelled`
-         // observation, so it never reached `reconciling`. Reconciliation is
-         // precisely how such a cancel should become resolvable, and requiring
-         // `reconciling` closed the only way out of the state.
          (effect->state == OutboxState::unknown &&
           order.state == ClusterOrderState::submission_unknown) ||
-         // A REJECTED cancel. 10.3.6 makes an opaque business rejection mean the
-         // lifecycle is unknown rather than live, precisely because a rejection
-         // of a duplicate can overtake the original successful cancellation. It
-         // then has to admit the evidence for that case: without this the venue
-         // can answer "yes, it is cancelled" and the cluster has no way to record
-         // what it was told, stranding the reservation permanently.
-         //
-         // Widened only for the explicitly final reconciliation path. Ordinary
-         // events against a resolved effect stay refused.
          (effect->state == OutboxState::rejected &&
           order.state == ClusterOrderState::reconciling));
-    // A disagreement has two very different causes, and collapsing them is how a
-    // recoverable order gets frozen terminal.
-    //
-    // The venue reporting MORE than the cluster booked is not a conflict. It is
-    // MISSING EVIDENCE: fills that close the gap may still be in flight, and
-    // under a reordering transport they routinely are. Phase 4 already relies on
-    // this - `test_cancel_fill_final_evidence_permutations` applies fill,
-    // cancellation, and final reconciliation in every order and requires all six
-    // to converge. Refusing lets the evidence settle and be re-presented.
-    //
-    // The venue reporting LESS is a genuine conflict, because no future evidence
-    // can reduce a fill the cluster has already booked. That gap can never close,
-    // so waiting for it to is a lie.
     const bool cancel_agrees = observation.quantity == reservation.filled_quantity;
     const bool cancel_contradicts =
         observation.quantity < reservation.filled_quantity;
@@ -3002,11 +2594,6 @@ enum class CancelDisposition : std::uint8_t {
     }
     const bool effect_resolved = effect->state == OutboxState::acknowledged ||
                                  effect->state == OutboxState::rejected;
-    // ADR 0008. An unsolicited cancellation is evidence about the ORDER, not
-    // about the submit effect that placed it - and that effect being resolved
-    // is the NORMAL case here, since the venue acknowledged the order before
-    // cancelling it. The gate below is effect-centric, so without this exemption
-    // it swallows exactly the evidence this change exists to accept.
     const bool unsolicited_cancellation =
         observation.kind == VenueObservationKind::cancelled &&
         effect->operation == EffectOperation::submit &&
@@ -3029,19 +2616,10 @@ enum class CancelDisposition : std::uint8_t {
                                   next_version, observation);
     }
 
-    // The replace acknowledgement/rejection branch that lived here is gone with
-    // direct replacement itself. No effect can carry EffectOperation::replace, so
-    // there is no acknowledged-terms transition to resolve and no need to
-    // reconstruct an old residual from a filled-quantity baseline.
-
     const bool releases =
         reconciliation ||
         (observation.kind == VenueObservationKind::order_rejected &&
          effect->operation == EffectOperation::submit) ||
-        // Nothing was ever placed, so the reservation was never real risk. This
-        // is the single most valuable answer reconciliation can obtain, and it is
-        // economically identical to a submit the venue never accepted - which is
-        // why it needs no new lifecycle state of its own.
         (venue_denies_order && !reconciled_conflict);
     RiskAccount* risk = nullptr;
     std::optional<QuantityLots> next_reserved_quantity;
@@ -3086,39 +2664,11 @@ enum class CancelDisposition : std::uint8_t {
                 break;
             }
             if (terminal_cancel_rejection) {
-                // Settles the effect and nothing else. The order's outcome is
-                // already known and a transport refusal may not revise it.
                 break;
             }
-            // A rejected CANCEL does not prove the order is still working. The
-            // venue refuses a cancel for "already cancelled", "already filled",
-            // and "no such order" as readily as for "still live" - and once
-            // cancels may be redelivered, a rejection of the DUPLICATE is the
-            // common case. Returning the order to `live` on that evidence would
-            // let a reordered rejection flip a genuinely cancelled order back to
-            // working, after which its real cancellation is refused because the
-            // effect is already resolved.
-            //
-            // So a rejected cancel means the lifecycle is unknown, not live.
-            // Reconciliation establishes the truth before a fresh cancel can be
-            // authorized, which is the whole point of having it.
             order.state = ClusterOrderState::reconciling;
             break;
         case VenueObservationKind::cancelled:
-            // ADR 0008. An UNSOLICITED cancellation of a resting order is
-            // evidence, not noise. Refusing it left the cluster believing a dead
-            // order was still working - reservation held, slot occupied, book
-            // silently wrong - and exchange-initiated cancellation is routine
-            // rather than exotic: a post-only order that would cross, self-trade
-            // prevention, a market halt.
-            //
-            // It lands in `reconciling`, which is exactly where an AUTHORED
-            // cancel puts an order, because `cancelled` is a notification here
-            // and not terminal evidence. Settlement comes from cumulative
-            // evidence afterwards, so the venue still cannot free reserved risk
-            // by announcing anything. Deliberately NOT `conflict`: that is
-            // terminal-but-stuck and blocks a resume under G-059, so a routine
-            // post-only rejection would wedge trading until a human cleared it.
             if (effect->operation != EffectOperation::cancel) {
                 const bool resting =
                     order.state == ClusterOrderState::acknowledged ||
@@ -3141,11 +2691,6 @@ enum class CancelDisposition : std::uint8_t {
             break;
         case VenueObservationKind::cancel_reconciled:
             if (cancel_contradicts) {
-                // The venue reports less filled than the cluster booked, and no
-                // future evidence reduces a booked fill. Terminal but NOT
-                // risk-resolved: the reservation is retained and this slot alone
-                // stays blocked, matching the submit path rather than leaving the
-                // order silently stuck.
                 effect->state = OutboxState::conflict;
                 order.state = ClusterOrderState::conflict;
                 break;
@@ -3156,34 +2701,13 @@ enum class CancelDisposition : std::uint8_t {
             break;
         case VenueObservationKind::order_reconciled:
             if (reconciled_conflict) {
-                // Terminal but NOT risk-resolved. The reservation is retained and
-                // this logical slot stays blocked; every other slot keeps trading.
-                // Architecture 10.1.5 chose that scoping over the contract's
-                // cluster-wide mode change.
                 effect->state = OutboxState::conflict;
                 order.state = ClusterOrderState::conflict;
             } else if (venue_denies_order) {
                 effect->state = OutboxState::rejected;
-                // ADR 0008. The LABEL differs by how the order got here, because
-                // the two say different things to whoever reads the state.
-                // `rejected` means the venue refused the order - true when the
-                // submit's delivery was in doubt and the venue turns out never to
-                // have had it. An order the venue ACKNOWLEDGED and later stopped
-                // holding was not refused; it is gone, which is `cancelled`.
-                //
-                // Economically identical either way - terminal, zero fills, the
-                // reservation released below - so this is about not telling an
-                // operator something false.
                 order.state = reconciled_resting ? ClusterOrderState::cancelled
                                                  : ClusterOrderState::rejected;
             } else {
-                // The venue holds the order and agrees about what it has filled.
-                // For a submit that means the submit arrived and the effect is
-                // acknowledged. For a CANCEL it means the opposite - the order is
-                // still working, so the cancel did not take effect and had no
-                // economic result, which is exactly `rejected`. Marking it
-                // rejected is also what lets `apply_request_cancel` reuse the
-                // record for a fresh attempt rather than consuming the arena.
                 effect->state = reconciled_cancel ? OutboxState::rejected
                                                   : OutboxState::acknowledged;
                 order.state = reservation.filled_quantity.atoms() > 0
@@ -3206,16 +2730,6 @@ enum class CancelDisposition : std::uint8_t {
         reservation.fee_hold = {};
         reservation.state = ReservationState::released;
     }
-    // Settle orphans only on DEFINITIVE evidence, which `releases` already
-    // identifies: final cancel reconciliation, or a rejected submit the venue
-    // never accepted. Those are the two cases where nothing further is owed.
-    //
-    // A full fill is deliberately excluded even though it is terminal. If a
-    // cancel was in flight when the fill landed, the venue still owes a response
-    // to that cancel ("too late, already filled"), so the effect is awaiting
-    // evidence rather than orphaned. Auto-settling it would discard a response
-    // we have every reason to expect. If that response never arrives, it is the
-    // G-074a operator situation, not something to heal automatically.
     if (releases && order_is_risk_resolved(state, order)) {
         (void)settle_orphaned_effects(state, order.cluster_order_id);
     }
@@ -3225,22 +2739,6 @@ enum class CancelDisposition : std::uint8_t {
                               order.decision_id);
 }
 
-// Direct amend/replace is not offered.
-//
-// G-018 requires that an amend never temporarily or permanently double-reserve
-// risk. Whenever the old and new orders can both be live at the venue, the only
-// reservation that satisfies G-011 is old + new, which is exactly what G-018
-// forbids. Holding max(old, new) instead satisfies G-018 but under-reserves the
-// concurrent case, and no venue this system targets has documented that its
-// replace atomically excludes the old order.
-//
-// Those two guarantees are therefore unsatisfiable together while concurrency is
-// possible, and the only escape is to make concurrency impossible: at most one
-// unresolved cluster order per logical slot, enforced in apply_authorize_decision.
-// Requoting is cancel -> final reconciliation -> fresh authoritative decision.
-//
-// The command kind stays allocated so reintroducing replacement later needs no
-// wire renumbering. It decodes, and it refuses before touching any economics.
 [[nodiscard]] ApplyResult apply_request_mass_cancel(
     TradingState& state,
     const RequestMassCancel& command,
@@ -3254,13 +2752,6 @@ enum class CancelDisposition : std::uint8_t {
         return result(state, ApplyCode::stale_control_generation, next_version);
     }
 
-    // PASS ONE DECIDES, AND MUTATES NOTHING.
-    //
-    // The set to cancel is fixed here, before anything moves, and the only
-    // aggregate constraint - outbox capacity - is checked against the whole set
-    // rather than one order at a time. Checking per order is what produces a
-    // half-finished mass cancel: the first few fit, the rest do not, and the
-    // operator has been told the book is flat.
     std::array<std::uint16_t, kMaxClusterOrders> selected{};
     std::size_t selected_count = 0;
     std::size_t in_scope = 0;
@@ -3270,8 +2761,6 @@ enum class CancelDisposition : std::uint8_t {
         const auto& order = state.orders[index];
         const auto decision_index = find_decision_index(state, order.decision_id);
         if (decision_index == state.decision_count) {
-            // No proposal, so no account or instrument to compare. Only a
-            // scope of `all` can be sure it means this order.
             if (command.scope != MassCancelScope::all) continue;
         } else if (!order_matches_scope(order,
                                         state.decision_cold[decision_index].proposal,
@@ -3290,12 +2779,6 @@ enum class CancelDisposition : std::uint8_t {
                 break;
             case CancelDisposition::already_cancelling:
             case CancelDisposition::not_cancellable:
-                // NOT A FAILURE. An order that is already terminal, or already
-                // being cancelled, is outside the cancellable set the same way
-                // an out-of-scope order is. A strict reading would make this
-                // command useless in the one situation it exists for, because
-                // there is nearly always a filled or conflicted order in the
-                // book when things have gone wrong.
                 ++skipped;
                 break;
         }
@@ -3306,9 +2789,6 @@ enum class CancelDisposition : std::uint8_t {
         return result(state, ApplyCode::outbox_capacity_exceeded, next_version);
     }
 
-    // PASS TWO ACTS, and cannot fail for a reason pass one did not see: it
-    // reuses `apply_request_cancel` unchanged, and that function's own
-    // preconditions are the ones `disposition_of_cancel` just evaluated.
     std::size_t cancelled = 0;
     for (std::size_t i = 0; i < selected_count; ++i) {
         const auto order_id = state.orders[selected[i]].cluster_order_id;
@@ -3372,7 +2852,7 @@ enum class CancelDisposition : std::uint8_t {
         if (!held) return result(state, ApplyCode::risk_arithmetic_overflow, next_version);
         if (command.max_reserved_quantity < existing->reserved_quantity || command.max_reserved_exposure < *held)
             return result(state, ApplyCode::insufficient_risk_capacity, next_version);
-        configured = *existing;  // Preserve every economic balance and PositionVersion.
+        configured = *existing;
         configured.risk_version = RiskVersion{existing->risk_version.value() + 1};
     } else {
         configured.account_id = command.account_id;
@@ -3387,12 +2867,8 @@ enum class CancelDisposition : std::uint8_t {
     configured.max_reserved_exposure = command.max_reserved_exposure;
     configured.initial_margin_ppm = command.initial_margin_ppm;
     configured.maximum_fee_ppm = command.maximum_fee_ppm;
-    // Deliberately not refused when below the current position: the account
-    // becomes reduce-only, which is what an operator lowering a cap means.
     configured.max_position_quantity = command.max_position_quantity;
     configured.allow_short = command.allow_short;
-    // All possible refusals precede this non-throwing commit. apply() has already
-    // reserved receipt capacity; the single owner publishes the result afterward.
     if (existing != nullptr) *existing = configured;
     else state.risk_accounts[state.risk_account_count++] = configured;
     auto outcome = result(state, ApplyCode::applied, next_version);
@@ -3523,7 +2999,7 @@ enum class CancelDisposition : std::uint8_t {
     return result(state, ApplyCode::invalid_command, next_version);
 }
 
-}  // namespace
+}
 
 bool execution_catalog_ready(const Digest256& required_root,
                              const VerifiedExecutionCatalog* catalog) noexcept {
@@ -3650,7 +3126,7 @@ bool proposal_matches_catalog(const EconomicActionProposal& proposal,
     const auto notional = one_lot ? one_lot->checked_multiply(proposal.quantity.atoms()) : std::nullopt;
     return notional && *notional == proposal.notional;
 }
-} // namespace
+}
 
 bool execution_catalog_bindings_valid(const TradingState& state,
                                       const VerifiedExecutionCatalog& catalog) noexcept {
@@ -3729,8 +3205,6 @@ ApplyResult apply(TradingState& state,
                   const Command& command,
                   ApplyScratch&,
                   const VerifiedExecutionCatalog* catalog) {
-    // Dependency failure is outside the replicated result domain and precedes
-    // even receipt reclamation. Raft must make this check before its index moves.
     if (!execution_catalog_ready(required_execution_catalog(state, command), catalog))
         throw CatalogDependencyUnavailable{};
     if (!present(command.identity)) {
@@ -3745,12 +3219,6 @@ ApplyResult apply(TradingState& state,
                           : ContractError::missing_digest);
     }
 
-    // AUTHORIZATION BEFORE ANYTHING ELSE MUTATES OR IS REMEMBERED.
-    //
-    // Placed ahead of the receipt lookup on purpose: an unauthorized control
-    // command must leave no trace at all. Retaining a receipt for it would make
-    // a replay of the same bytes return a completed action rather than the
-    // refusal, which is exactly the confusion an audit of a kill cannot afford.
     if (std::holds_alternative<AdvanceKillEpoch>(command.body) ||
         std::holds_alternative<SetExecutorGeneration>(command.body) ||
         std::holds_alternative<SetStrategyMode>(command.body) ||
@@ -3761,8 +3229,6 @@ ApplyResult apply(TradingState& state,
         }
     }
 
-    // Verify actual observation bytes before either request or economic-event
-    // deduplication. A copied digest must never hide changed evidence.
     const VenueObservation* observation = nullptr;
     if (const auto* fill = std::get_if<ObserveFill>(&command.body)) {
         if (fill->observation.kind != VenueObservationKind::fill)
@@ -3786,10 +3252,6 @@ ApplyResult apply(TradingState& state,
         return result(state, ApplyCode::duplicate_conflict, state.state_version);
     }
 
-    // Not retained. If it sits at or below its caller's watermark it WAS seen and
-    // its receipt has since been forgotten, so the kernel can no longer say what
-    // happened. Refuse rather than re-execute: re-execution would be a second
-    // economic mutation, and the caller's real protection lives in state anyway.
     if (const auto* cursor = find_caller_cursor(state, command.identity.caller_id);
         cursor != nullptr &&
         command.identity.request_sequence <= cursor->expired_below) {
@@ -3819,9 +3281,6 @@ ApplyResult apply(TradingState& state,
     if (state.receipt_count == state.receipts.size()) {
         return result(state, ApplyCode::receipt_capacity_exceeded, state.state_version);
     }
-    // A caller the cluster has never seen needs a cursor before its first command
-    // can be admitted, because without one an expired request would later read as
-    // fresh. Refusing here keeps that impossible rather than merely unlikely.
     if (find_caller_cursor(state, command.identity.caller_id) == nullptr &&
         state.caller_cursor_count == state.caller_cursors.size()) {
         return result(state, ApplyCode::receipt_capacity_exceeded, state.state_version);
@@ -3844,4 +3303,4 @@ ApplyResult apply(TradingState& state,
     return outcome;
 }
 
-}  // namespace velocita::v2
+}

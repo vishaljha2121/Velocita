@@ -1,3 +1,4 @@
+// V1: raft-dump, prints a V1 log.
 #include "velocita/storage.hpp"
 #include "velocita/wire.hpp"
 
@@ -26,4 +27,3 @@ int main(int argc, char** argv) {
         return 1;
     }
 }
-

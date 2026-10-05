@@ -1,43 +1,4 @@
-// velocita-v2-gateway: one venue's execution gateway, a separate process from
-// every voter. It reads committed state, obtains a one-shot authority proof per
-// risk-increasing send, delivers to the venue, and submits what the venue
-// reports as gateway-caller commands. It never changes a position itself.
-//
-//   velocita-v2-gateway --caller-key-id N --caller-id N --key-file FILE --incarnation HEX32
-//       --catalog FILE --session-file FILE --state-file FILE --response-endpoint HOST:PORT
-//       --node ID=HOST:PORT [--node ...] --aeron-dir DIR --venue paper|simulated|truemarkets
-//       --metrics-textfile PATH [--arm-live-venue --signer-endpoint PATH]
-//       [--freshness-ms N --allow-new-risk] [--catalog-root HEX64]
-//       [--catalog-row ACCOUNT,VENUE,INSTRUMENT,SPEC,CAPS] [--lease-ms N] [--timeout-ms N]
-//       [--state-interval-ms N] [--buy-fee-bps N] [--sell-fee-bps N] [--rearm-quiet-ms N]
-//       [--paper-state-file FILE [--paper-state-init --paper-quote-usd N
-//                                 | --paper-adopt-position --paper-adopt-cost-micros N --paper-quote-usd N]]
-//
-// The catalog root comes from the cluster's committed state (or must equal
-// --catalog-root); the row defaults to the one the active executable policy
-// binds. New risk needs BOTH --allow-new-risk and a nonzero --freshness-ms;
-// otherwise it only reconciles and cancels. New risk arms only at a committed
-// read where the venue's book matches the kernel's position (zero lots), with
-// no order open. A fence (term or leader change, timed-out read) re-arms after
-// --rearm-quiet-ms (default 30000) through the same check; any other stop
-// (unknown outcome, conflict, refused evidence, control change, mismatch)
-// holds until a restart.
-//
-// --venue paper needs --paper-state-file: the venue's balances, orders and
-// owned reports, rewritten durably before every answer. A missing file is
-// refused; the FIRST start creates it with exactly one of
-//   --paper-state-init      a flat account funded with --paper-quote-usd
-//                           (refused unless the kernel is flat on the row);
-//   --paper-adopt-position  base = the kernel's committed position, quote =
-//                           --paper-quote-usd minus --paper-adopt-cost-micros
-//                           (the position's cost, fees included);
-// then exits 0 (PAPER_STATE line) without trading. Both refuse an existing file.
-// stdout: STOP cause=..., ARMED/REARMED ..., RECONCILIATION mismatch ... lines.
-// --venue truemarkets needs --arm-live-venue AND --signer-endpoint, and is then
-// still refused because no build compiles a live venue transport (ADR 0019).
-// stdout: READY ..., then NEW_RISK stopped=0|1 on every change.
-// Exit: 0 on SIGINT/SIGTERM, 2 runtime failure, 64 usage.
-
+// velocita-v2-gateway: the execution gateway for one catalog row.
 #include "velocita/aeron_runtime.hpp"
 #include "velocita/v2/aeron_node_transport.hpp"
 #include "velocita/v2/gateway_loop.hpp"
@@ -111,8 +72,8 @@ struct Arguments {
     std::map<std::int32_t, Endpoint> nodes;
     std::vector<std::int32_t> order;
     std::string venue;
-    std::optional<std::array<std::uint64_t, 5>> row;  // account, venue, instrument, spec version, capabilities version
-    std::uint64_t freshness_ms{};  // zero (the ADR 0013 default): never new risk
+    std::optional<std::array<std::uint64_t, 5>> row;
+    std::uint64_t freshness_ms{};
     std::uint64_t lease_ms{2000}, timeout_ms{3000}, state_interval_ms{250};
     std::uint64_t buy_fee_bps{115}, sell_fee_bps{120};
     std::optional<std::uint64_t> paper_quote_usd;
@@ -125,9 +86,6 @@ struct Arguments {
     std::string signer_endpoint;
 };
 
-// Every paper-state refusal that needs no cluster happens here, before any
-// key file, Aeron directory or network is touched. A torn or corrupt file is
-// refused (exit 64), never replaced: replacing it would reset the balances.
 void check_paper_state(const Arguments& a) {
     const bool bootstrap = a.paper_state_init || a.paper_adopt_position;
     if (a.venue != "paper") {
@@ -160,8 +118,6 @@ void check_paper_state(const Arguments& a) {
         throw Usage("paper state refused: " + std::string(paper::describe(existing.error)));
 }
 
-// Served-row orders that are not terminal: a bootstrap beside one could not
-// say what the venue holds.
 std::size_t unresolved_orders(const TradingState& state, const VerifiedExecutionCatalog& catalog,
                               const ExecutionCatalogRow& row) {
     std::size_t count = 0;
@@ -248,9 +204,6 @@ Arguments parse(int argc, char** argv) {
             throw Usage("unknown argument " + key);
         }
     }
-    // Checked before anything else so the refusal is the whole diagnostic and
-    // no key file, Aeron directory or network is touched. Every build today
-    // refuses here: none compiles a live transport (ADR 0019).
     if (a.venue == "truemarkets") {
         const auto refusal = truemarkets::evaluate_live_arming({a.arm_live_venue, a.signer_endpoint});
         if (refusal != truemarkets::LiveArmingRefusal::none)
@@ -274,9 +227,9 @@ Arguments parse(int argc, char** argv) {
 Tick monotonic_ms(void*) noexcept {
     timespec now{};
 #ifdef CLOCK_BOOTTIME
-    ::clock_gettime(CLOCK_BOOTTIME, &now);  // counts suspend: a sleeping host does not age proofs slowly
+    ::clock_gettime(CLOCK_BOOTTIME, &now);
 #else
-    ::clock_gettime(CLOCK_MONOTONIC, &now);  // macOS: includes sleep
+    ::clock_gettime(CLOCK_MONOTONIC, &now);
 #endif
     return static_cast<Tick>(now.tv_sec) * 1000 + static_cast<Tick>(now.tv_nsec / 1'000'000);
 }
@@ -292,11 +245,9 @@ void write_metrics(const std::filesystem::path& file, const std::string& text) {
         out << text;
         if (!out) throw std::runtime_error("metrics file write failed: " + temporary);
     }
-    std::filesystem::rename(temporary, file);  // readers never see a torn page
+    std::filesystem::rename(temporary, file);
 }
 
-// THE ONE PLACE A VENUE IS CONSTRUCTED. Everything the loop knows about a
-// venue is the VenueTransport seam and the capability view returned here.
 struct Venue {
     std::unique_ptr<sim::SimulatedVenue> simulated;
     std::unique_ptr<paper::DurablePaperVenue> paper;
@@ -336,13 +287,11 @@ Venue make_venue(const Arguments& a, const ExecutionCatalogRow& row) {
     venue.paper = std::move(opened.venue);
     venue.transport = venue.paper->transport();
     venue.book = venue.paper->book();
-    // Fill-or-kill only: no post-only, no resting orders.
     venue.capabilities.supports_post_only = false;
     venue.capabilities.supports_good_til_cancel = false;
     return venue;
 }
 
-// The row every effect this gateway sends must bind to; lookup is exact.
 const ExecutionCatalogRow& venue_row(const VerifiedExecutionCatalog& catalog, const std::array<std::uint64_t, 5>& key) {
     const auto* row = catalog.lookup(AccountId{key[0]}, VenueId{key[1]}, InstrumentId{key[2]},
                                      InstrumentSpecVersion{key[3]}, VenueCapabilitiesVersion{key[4]});
@@ -350,7 +299,6 @@ const ExecutionCatalogRow& venue_row(const VerifiedExecutionCatalog& catalog, co
     return *row;
 }
 
-// One journal line per stop (with its cause), arm, re-arm and reconciliation break.
 void report_events(GatewayLoop& loop) {
     std::array<GatewayEvent, kMaxGatewayEvents> events{};
     const auto count = loop.drain_events(events);
@@ -393,8 +341,6 @@ int run(const Arguments& a) {
     if (!start.error.empty()) throw Usage("state refused: " + start.error);
     std::uint64_t reserved = start.first_sequence + kReserve;
 
-    // Fresh per process: a proof or state answer for any other process can
-    // never correlate with this one's requests.
     std::array<std::byte, 16> process_incarnation{};
     if (::getentropy(process_incarnation.data(), process_incarnation.size()) != 0)
         throw std::runtime_error("entropy unavailable for the gateway process incarnation");
@@ -415,8 +361,6 @@ int run(const Arguments& a) {
     }
     GatewayLink link(epoch.epoch, process_incarnation, std::move(routes), transport);
 
-    // One authenticated read of the leader's committed state pins the catalog
-    // root and names the row the active executable policy binds.
     std::optional<LinkOutcome> first;
     for (int attempt = 0; attempt < 10 && !first && !g_stop.load(); ++attempt) {
         if (!link.request_state(monotonic_ms(nullptr), a.timeout_ms)) throw std::runtime_error("state request refused");
@@ -543,7 +487,7 @@ int run(const Arguments& a) {
     return 0;
 }
 
-}  // namespace
+}
 
 int main(int argc, char** argv) {
     std::signal(SIGINT, on_signal);

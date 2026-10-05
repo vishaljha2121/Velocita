@@ -1,3 +1,4 @@
+// Measures rule evaluation and decision costs.
 #include "velocita/v2/artifact_digest.hpp"
 #include "velocita/v2/kernel.hpp"
 #include "velocita/v2/rule_evaluator.hpp"
@@ -176,7 +177,7 @@ bool prepare(TradingState& state,
                  scratch, &catalog).code == ApplyCode::applied;
 }
 
-}  // namespace
+}
 
 int main() {
     constexpr std::size_t iterations = 100'000;
@@ -227,8 +228,6 @@ int main() {
         std::cerr << "could not prepare authoritative reducer benchmark fixture\n";
         return 1;
     }
-    // Setup receipts are outside the timed workload. The authoritative state
-    // they produced remains, while the bounded receipt arena starts empty.
     state.receipt_count = 0;
     std::size_t decision_high_watermark{};
     std::size_t receipt_high_watermark{};

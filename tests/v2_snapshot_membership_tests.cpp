@@ -152,8 +152,6 @@ void test_snapshot_restores_three_voter_membership(
     const auto included = identity_test::complete_compaction(before_restart);
     require(included > 1, "snapshot did not include more than one committed entry");
 
-    // A restarted voter must retain all three voters while loading the snapshot.
-    // Isolate it: a self-only Raft server would elect itself and commit locally.
     cluster.blocked.insert(1);
     cluster.restart(1);
     cluster.tick(250);
@@ -163,8 +161,6 @@ void test_snapshot_restores_three_voter_membership(
     require(isolated.commit_index <= before.commit_index,
             "isolated restarted voter committed without a quorum");
 
-    // Reconnection must remain useful: the restored voter can receive peer
-    // routes, participate in a fresh commit, and converge with its peers.
     cluster.blocked.erase(1);
     cluster.tick(200);
     cluster.commit(5);
@@ -179,7 +175,7 @@ void test_snapshot_restores_three_voter_membership(
     }
 }
 
-}  // namespace
+}
 
 int main() {
     const auto root = std::filesystem::temp_directory_path() /

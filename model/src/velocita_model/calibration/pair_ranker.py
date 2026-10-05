@@ -48,9 +48,6 @@ class Gate:
 
 @dataclass(frozen=True, slots=True)
 class PairEvidence:
-    """Everything measured for one pair. None means not measured - which is a
-    different, and usually worse, state than measured-and-bad."""
-
     pair_id: str
     metadata_confidence: str
     venue_supports_resting_orders: bool | None
@@ -84,7 +81,6 @@ class Scorecard:
     unverified_facts: tuple[str, ...] = field(default_factory=tuple)
 
 
-#: Minimum evidence before any conclusion is permitted, per the staged plan.
 MIN_COLLECTION_HOURS = Decimal("48")
 MIN_FILL_OPPORTUNITIES_STAGE2 = 100
 MIN_FILL_OPPORTUNITIES_STAGE3 = 20
@@ -92,27 +88,17 @@ MIN_COMPLETED_CYCLES_STAGE5 = 50
 
 
 def expected_net_bps(evidence: PairEvidence) -> Decimal | None:
-    """Conservative net edge per fill, in bps.
-
-    Gross capture is half the median spread, because a passive quote sitting a
-    half-spread from mid captures that much when it fills at its price. From it
-    we subtract the modelled round-trip cost and the *conservative* adverse
-    selection - not the mean, and not the optimistic-queue figure.
-    """
     if evidence.median_spread_bps is None or evidence.round_trip_cost_bps is None:
         return None
     gross = evidence.median_spread_bps / Decimal(2)
     adverse = evidence.markout_30s_bps_conservative
     if adverse is None:
         return None
-    # Markouts are positive-is-good; an unfavourable one is negative and its
-    # magnitude is a cost.
     adverse_cost = -adverse if adverse < 0 else Decimal(0)
     return gross - evidence.round_trip_cost_bps - adverse_cost
 
 
 def evaluate_stage_1(evidence: PairEvidence) -> Gate:
-    """Market-data-only collection."""
     stage = "Stage 1 - market data collection"
     if evidence.venue_supports_resting_orders is not True:
         return Gate(
@@ -137,7 +123,6 @@ def evaluate_stage_1(evidence: PairEvidence) -> Gate:
 
 
 def evaluate_stage_2(evidence: PairEvidence) -> Gate:
-    """Shadow quoting."""
     stage = "Stage 2 - shadow quoting"
     if evidence.fill_opportunities_conservative < MIN_FILL_OPPORTUNITIES_STAGE2:
         return Gate(
@@ -161,7 +146,6 @@ def evaluate_stage_2(evidence: PairEvidence) -> Gate:
 
 
 def evaluate_stage_3(evidence: PairEvidence) -> Gate:
-    """1-USDC hypothetical canary analysis. Still a simulation."""
     stage = "Stage 3 - 1 USDC hypothetical canary"
     if evidence.fill_opportunities_conservative < MIN_FILL_OPPORTUNITIES_STAGE3:
         return Gate(
@@ -180,7 +164,6 @@ def evaluate_stage_3(evidence: PairEvidence) -> Gate:
 
 
 def evaluate_stage_5(evidence: PairEvidence) -> Gate:
-    """Limited two-sided hypothetical quoting."""
     stage = "Stage 5 - two-sided hypothetical quoting"
     if evidence.completed_cycle_fraction is None:
         return Gate(stage, GateResult.insufficient_data, "cycle completion was not measured")
@@ -243,8 +226,6 @@ def score_pair(evidence: PairEvidence) -> Scorecard:
 
 
 def rank(scorecards: list[Scorecard]) -> list[Scorecard]:
-    """Order by status, then by conservative net edge. A REJECT never sorts
-    above a WATCHLIST no matter how good its headline number looks."""
     order = {PairStatus.research_candidate: 0, PairStatus.watchlist: 1, PairStatus.reject: 2}
     return sorted(
         scorecards,

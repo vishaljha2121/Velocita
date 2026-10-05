@@ -53,8 +53,6 @@ AuthorityBarrier fixture() {
 }
 
 const std::vector<std::byte>& golden() {
-    // Produced independently with Python struct.pack('<H16sQQ32sQQ32s32s') and
-    // hashlib.sha256 over bytes 8..153; this codec is not its own oracle.
     static const auto bytes = bytes_from_hex(
         "563241429000000001000102030405060708090a0b0c0d0e0f10"
         "11121314151617182122232425262728404142434445464748494a4b4c4d4e4f"
@@ -250,7 +248,7 @@ void test_zero_field_decode_with_recomputed_digest() {
     }
 }
 
-}  // namespace
+}
 
 int main() {
     try {

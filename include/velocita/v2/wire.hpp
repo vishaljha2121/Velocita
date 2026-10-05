@@ -1,3 +1,4 @@
+// Checksummed envelope for canonical messages.
 #pragma once
 
 #include "velocita/v2/domain.hpp"
@@ -10,7 +11,7 @@
 
 namespace velocita::v2 {
 
-inline constexpr std::uint32_t kEnvelopeMagic = 0x32544C56U;  // VLT2
+inline constexpr std::uint32_t kEnvelopeMagic = 0x32544C56U;
 inline constexpr std::uint16_t kEnvelopeVersion = 1;
 inline constexpr std::uint32_t kSupportedEnvelopeFlags = 0;
 inline constexpr std::size_t kEnvelopeHeaderBytes = 80;
@@ -78,4 +79,4 @@ struct DecodeEnvelopeResult {
 [[nodiscard]] DecodeEnvelopeResult decode_envelope(std::span<const std::byte> bytes);
 [[nodiscard]] std::uint32_t crc32_checksum(std::span<const std::byte> bytes) noexcept;
 
-}  // namespace velocita::v2
+}

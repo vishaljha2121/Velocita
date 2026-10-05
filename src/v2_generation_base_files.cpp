@@ -170,7 +170,7 @@ GenerationBaseFileError read_base(
     destination = result;
     return Error::none;
 }
-} // namespace
+}
 
 GenerationBaseFileError inspect_selector_temporary_at(
     int root_fd, const VerifiedStaticIdentity& identity,
@@ -208,4 +208,4 @@ GenerationBaseFileError read_generation_base_at(
     SelectedGenerationBase& destination) noexcept {
     return read_base(root_fd, identity, catalog, snapshot_buffer, scratch, destination, &candidate);
 }
-} // namespace velocita::v2
+}

@@ -21,7 +21,7 @@ struct Writer {
     }
 };
 
-}  // namespace
+}
 
 std::string render_node_metrics(const std::optional<NodeHealth>& health, std::string_view host,
                                 const std::uint64_t now_monotonic_ns) {
@@ -30,7 +30,6 @@ std::string render_node_metrics(const std::optional<NodeHealth>& health, std::st
                (health ? std::to_string(health->node_id) : std::string("unknown")) + "\"";
     w.type("velocita_v2_up", "gauge", "1 when this voter's health page is readable and published.");
     w.sample("velocita_v2_up", health ? 1 : 0);
-    // An unknown voter stops here: absence, never healthy zeros (M3a).
     if (!health) return w.out.str();
     const auto& h = *health;
 
@@ -61,9 +60,6 @@ std::string render_node_metrics(const std::optional<NodeHealth>& health, std::st
     w.sample("velocita_v2_log_index", h.applied_index, ",kind=\"applied\"");
     w.sample("velocita_v2_log_index", h.durable_index, ",kind=\"durable\"");
 
-    // Full is not an error state: the ordinary pool stops admitting normal
-    // commands until compaction reclaims a prefix, while the protected pool
-    // keeps room for operator kills.
     w.type("velocita_v2_retained_log_entries", "gauge", "Raft log entries held in memory, per pool.");
     w.sample("velocita_v2_retained_log_entries", h.retained_ordinary, ",pool=\"ordinary\"");
     w.sample("velocita_v2_retained_log_entries", h.retained_protected, ",pool=\"protected\"");
@@ -104,4 +100,4 @@ std::string render_node_metrics(const std::optional<NodeHealth>& health, std::st
     return w.out.str();
 }
 
-}  // namespace velocita::v2
+}

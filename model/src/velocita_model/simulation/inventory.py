@@ -45,8 +45,6 @@ class InventoryLimits:
 
 @dataclass(slots=True)
 class SimulatedInventory:
-    """Mutable simulated book. Not a position. Never a position."""
-
     limits: InventoryLimits
     simulated_base: Decimal = Decimal(0)
     simulated_quote: Decimal = Decimal(0)
@@ -59,16 +57,12 @@ class SimulatedInventory:
             self.simulated_quote = self.limits.deployable_quote
 
     def simulated_notional(self, fair_value: Decimal) -> Decimal:
-        """Signed inventory marked at fair value, in quote units."""
         return self.simulated_base * fair_value
 
     def simulated_equity(self, fair_value: Decimal) -> Decimal:
-        """Deployable equity only. The reserve is excluded because the simulator
-        is not modelling access to it."""
         return self.simulated_quote + self.simulated_notional(fair_value)
 
     def skew(self, fair_value: Decimal) -> Decimal:
-        """Inventory as a fraction of the cap, clamped to [-1, 1]."""
         cap = self.limits.max_inventory_quote
         if cap <= 0:
             return Decimal(0)
@@ -76,12 +70,6 @@ class SimulatedInventory:
         return max(Decimal(-1), min(Decimal(1), raw))
 
     def at_limit(self, fair_value: Decimal, side: Side) -> bool:
-        """True when quoting `side` would increase inventory beyond the cap.
-
-        The check is directional: being maximally long stops the bid, not the
-        ask. Stopping both would leave the simulator unable to model reducing an
-        unwanted position, which is the situation that most needs modelling.
-        """
         notional = self.simulated_notional(fair_value)
         cap = self.limits.max_inventory_quote
         if side == Side.buy:
@@ -91,8 +79,6 @@ class SimulatedInventory:
     def apply_simulated_fill(
         self, side: Side, price: Decimal, size_base: Decimal, fee_quote: Decimal = Decimal(0)
     ) -> None:
-        """Apply a hypothetical fill. Fees are charged as modelled, never
-        omitted for a cleaner-looking curve."""
         if size_base <= 0:
             raise ValueError("simulated fill size must be positive")
         notional = price * size_base
@@ -110,7 +96,6 @@ class SimulatedInventory:
         self._history.append((at_ns, self.simulated_equity(fair_value)))
 
     def max_simulated_drawdown(self) -> Decimal:
-        """Peak-to-trough of simulated deployable equity."""
         peak: Decimal | None = None
         worst = Decimal(0)
         for _, equity in self._history:

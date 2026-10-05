@@ -31,8 +31,6 @@ OP_PONG = 0xA
 _CONTROL = (OP_CLOSE, OP_PING, OP_PONG)
 _GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
-#: The only endpoints this client may open. CeFi is excluded on purpose: its
-#: authenticated channels (drop copy) are account data, not market data.
 ALLOWED_ENDPOINTS: frozenset[tuple[str, str]] = frozenset(
     {("api.truemarkets.co", "/v1/defi/market"), ("api.uat.truemarkets.co", "/v1/defi/market")}
 )
@@ -44,20 +42,17 @@ _TOPIC = re.compile(
 
 
 class ProtocolError(RuntimeError):
-    """The peer broke RFC 6455 or exceeded a bound; the connection is unusable."""
+    pass
 
 
 class HandshakeRefused(ProtocolError):
-    """The server answered the upgrade with something other than 101; STATUS is
-    its HTTP status code, or None when the status line did not parse."""
-
     def __init__(self, status: int | None, message: str) -> None:
         super().__init__(message)
         self.status = status
 
 
 class WebSocketRefused(RuntimeError):
-    """The client declined an endpoint or topic outside the read-only contract."""
+    pass
 
 
 def accept_key(client_key: str) -> str:
@@ -66,7 +61,6 @@ def accept_key(client_key: str) -> str:
 
 
 def encode_client_frame(opcode: int, payload: bytes, *, mask_key: bytes | None = None) -> bytes:
-    """One unfragmented client frame; clients must always mask (RFC 6455 5.3)."""
     mask_key = os.urandom(4) if mask_key is None else mask_key
     if len(mask_key) != 4:
         raise ValueError("mask key must be 4 bytes")
@@ -85,10 +79,6 @@ def encode_client_frame(opcode: int, payload: bytes, *, mask_key: bytes | None =
 
 
 class FrameDecoder:
-    """Incremental decoder. `feed` returns complete (opcode, payload) messages:
-    control frames as they arrive, data messages once their final fragment is in.
-    `expect_masked` is for tests that decode what a client sent."""
-
     def __init__(self, *, max_message_bytes: int, expect_masked: bool = False) -> None:
         self._max = max_message_bytes
         self._expect_masked = expect_masked
@@ -144,7 +134,6 @@ class FrameDecoder:
             if len(buf) < 10:
                 return None
             length, offset = struct.unpack("!Q", buf[2:10])[0], 10
-        # Refuse on the header: never buffer toward an oversized payload.
         if length > self._max or (opcode not in _CONTROL and len(self._message) + length > self._max):
             raise ProtocolError("frame exceeds the configured bound")
         mask = b""
@@ -171,12 +160,6 @@ def subscribe_message(topics: Sequence[str]) -> str:
 
 
 class ReadOnlyMarketSocket:
-    """One connection to an allowlisted market-data endpoint.
-
-    `connect` is injectable so tests can script a server; by default it opens a
-    TLS connection to HOST:443 with certificate verification.
-    """
-
     __slots__ = ("_host", "_path", "_timeout_s", "_max", "_connect", "_sock", "_decoder", "_pending", "_closed")
 
     def __init__(
@@ -239,8 +222,6 @@ class ReadOnlyMarketSocket:
         self._write(encode_client_frame(OP_TEXT, subscribe_message(topics).encode("utf-8")))
 
     def recv_text(self) -> str | None:
-        """Next text message, or None once the connection has closed. Pings are
-        answered with pongs; binary messages are refused (the API is JSON)."""
         while not self._closed:
             while self._pending:
                 opcode, payload = self._pending.pop(0)

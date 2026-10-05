@@ -14,25 +14,6 @@
 #include <string>
 #include <vector>
 
-// Every economic expectation is hand-computed from the fixture constants and
-// written beside it; none is read back from the adapter or the kernel.
-//
-// Fixture economics (SOL-like spot, $25 book):
-//   tick = $0.01 per whole SOL -> tick_quote_micros = 10'000
-//   lot  = 0.01 SOL            -> lot_base_atoms = 10'000'000, base_decimals = 9
-//   quote micros per tick-lot = 10'000 * 10'000'000 / 10^9 = 100
-//   20 lots = 0.2 SOL = 200'000'000 atoms
-//   BUY  20 lots, limit 12'000 ticks ($120.00): limit notional 24'000'000
-//        kernel fee hold @ 12'000 ppm = 288'000; max_fee_bps 120 -> max fee 288'000
-//        signer bound (max debit) = 24'000'000 + 288'000 = 24'288'000
-//   SELL 20 lots, limit 11'900 ticks: limit notional 23'800'000
-//        max fee 23'800'000 * 120 / 10'000 = 285'600
-//        signer bound (min credit) = 23'800'000 - 285'600 = 23'514'400
-//   Fake market $119.50, fee 100 bp:
-//        gross 0.2 * 119.5 = 23'900'000; fee 239'000
-//        buy debit 24'139'000; sell net credit 23'661'000
-//        fill price = 23'900'000 / (20 * 100) = 11'950 ticks exactly
-
 namespace {
 
 using namespace velocita::v2;
@@ -118,8 +99,6 @@ TrueMarketsVenueConfig config(const ExecutionFlow flow) {
     return value;
 }
 
-// One adapter with its fake venue, signer and clock. Heap-held: the adapter
-// carries fixed request/response buffers.
 struct Rig {
     FakeClock clock;
     FakeTrueMarkets venue;
@@ -140,9 +119,6 @@ struct Rig {
     }
 };
 
-// ---------------------------------------------------------------------------
-// Kernel harness: the same authorization path as the paper venue tests.
-
 PolicyArtifact tm_policy() {
     PolicyArtifact value;
     value.schema_version = kPolicyArtifactSchemaVersion;
@@ -156,7 +132,6 @@ PolicyArtifact tm_policy() {
     value.valid_from_event_time_ns = 100;
     value.valid_until_event_time_ns = 200;
     value.risk_policy_version = RiskPolicyVersion{6};
-    // A price at or above 12'000 buys (slot 1); anything else sells (slot 2).
     value.rule_count = 2;
     value.rules[0] = {0, PredicateOperator::greater_than_or_equal, FeatureMicros::from_atoms(kBuyLimit),
                       Directive::place_limit};
@@ -312,7 +287,6 @@ struct Delivered {
     ApplyResult result{};
 };
 
-// Poll, commit each report, acknowledge only after its commit.
 std::vector<Delivered> drain(TrueMarketsVenue& venue, Harness& harness, const Tick now) {
     std::array<VenueObservation, sim::kMaxVenueObservationsPerPoll> out{};
     const auto count = venue.poll(out, now);
@@ -336,7 +310,6 @@ VenueObservation synthetic(Harness& harness, const VenueObservationKind kind, co
     return value;
 }
 
-// What the gateway's reconcile() submits for a query answer.
 std::optional<ApplyResult> reconcile_answer(Harness& harness, const OrderEffect& effect, const QueryResult& answer) {
     if (answer.outcome == QueryOutcome::unavailable || answer.inconsistent) return std::nullopt;
     auto observation = synthetic(harness, VenueObservationKind::order_reconciled, effect);
@@ -400,8 +373,6 @@ void settle_buy(Rig& rig, Harness& harness, const OrderEffect& effect, const std
     require(rig.venue.base_balance == 200'000'000 && rig.venue.quote_balance == kBudget - kBuyDebit,
             where + ": the venue's own ledger disagrees with one 0.2 SOL buy");
 }
-
-// ---------------------------------------------------------------------------
 
 void test_quote_flow_buy_signs_the_quoted_payload_and_books_once() {
     Rig rig(ExecutionFlow::quote_then_execute);
@@ -468,7 +439,7 @@ void test_quote_expired_before_submit_sends_nothing_and_permits_a_fresh_quote() 
     Rig rig(ExecutionFlow::quote_then_execute);
     Harness harness;
     const auto effect = authorize_at(harness, 20, kBuyLimit);
-    rig.signer.latency = 2'001;  // signing outlives the 2'000-tick quote TTL
+    rig.signer.latency = 2'001;
     require(rig.adapter->send(effect, 10) == SendOutcome::pre_send_failure,
             "an expired quote was not a pre-send failure");
     require(rig.calls(ApiCall::trade_execute) == 0, "an expired quote was submitted");
@@ -489,7 +460,6 @@ void test_submit_timeout_is_ambiguous_and_never_resent() {
     const auto effect = authorize_at(harness, 20, kBuyLimit);
     rig.venue.scripts[ApiCall::trade_execute] = {Script::lost_reply};
     require(rig.adapter->send(effect, 10) == SendOutcome::ambiguous, "a lost submit reply was not ambiguous");
-    // The gateway may ask again; the adapter must not resubmit.
     require(rig.adapter->send(effect, 20) == SendOutcome::venue_duplicate,
             "a second send of a possibly-submitted effect was not refused");
     require(rig.calls(ApiCall::trade_execute) == 1 && rig.calls(ApiCall::trade_prepare) == 1 &&
@@ -501,12 +471,10 @@ void test_submit_timeout_is_ambiguous_and_never_resent() {
             "the kernel refused the unknown-submission report");
     require_held_untouched(harness.state, effect.cluster_order_id, "unknown");
 
-    // Query: the prepare's order id is queryable, and the venue settled.
     const auto answer = rig.adapter->query(effect.cluster_order_id, 500);
     require(answer.outcome == QueryOutcome::known && answer.filled_quantity.atoms() == kLots &&
                 answer.remaining_quantity.atoms() == 0 && !answer.inconsistent,
             "the query did not report the settled swap");
-    // Adopt: identified ack and fill, released by the status that answered.
     const auto delivered = drain(*rig.adapter, harness, 600);
     require_single_fill(delivered, "adopt");
     require(order_of(harness.state, effect.cluster_order_id).state == ClusterOrderState::filled &&
@@ -552,8 +520,6 @@ void test_quote_flow_lost_submit_without_queryable_id_stays_unknown() {
     require(commit(harness, synthetic(harness, VenueObservationKind::effect_unknown, effect)).code ==
                 ApplyCode::applied,
             "unknown not applied");
-    // Only the quote id is held, and the status endpoint is not known to accept
-    // it: silence, never "not found".
     for (Tick now = 500; now < 5'000; now += 500) {
         require(rig.adapter->query(effect.cluster_order_id, now).outcome == QueryOutcome::unavailable,
                 "an unqueryable submission was reported as a fact");
@@ -618,7 +584,6 @@ void test_partial_settlement_books_the_evidence_and_is_a_conflict() {
         require(each.result.code == ApplyCode::applied, "the kernel refused partial evidence");
         if (each.observation.kind == VenueObservationKind::fill) booked += each.observation.quantity.atoms();
     }
-    // Half of 20 lots settled: 10 lots is what the venue did, so it is booked.
     require(booked == 10 && harness.state.risk_accounts[0].position_quantity.atoms() == 10,
             "the partial settlement was not booked as reported");
     const auto answer = rig.adapter->query(effect.cluster_order_id, 1'100);
@@ -635,7 +600,6 @@ void test_rate_limits_local_and_venue() {
                 [](TrueMarketsVenueConfig& value) { value.order_rate = {2, 1'000}; });
         Harness harness;
         const auto effect = authorize_at(harness, 20, kBuyLimit);
-        // Spend the bucket on a send the venue answers, then ask again at once.
         rig.venue.scripts[ApiCall::get_quote] = {Script::tool_error};
         require(rig.adapter->send(effect, 10) == SendOutcome::pre_send_failure, "a quote error was not pre-send");
         const auto before = rig.venue.calls.size();
@@ -735,8 +699,6 @@ void test_venue_issue_is_killed_before_signing() {
 void test_signer_refuses_a_payload_that_exceeds_the_authorization() {
     Rig rig(ExecutionFlow::quote_then_execute);
     Harness harness;
-    // The quote's JSON says 24.139 but the transaction would allow a larger
-    // debit than the kernel reserved (24'288'000): only the signer can see it.
     rig.venue.payload_bound_delta = kBuyBound - kBuyDebit + 1;
     const auto effect = authorize_at(harness, 20, kBuyLimit);
     require(rig.adapter->send(effect, 10) == SendOutcome::pre_send_failure,
@@ -747,7 +709,7 @@ void test_signer_refuses_a_payload_that_exceeds_the_authorization() {
 
     Rig exact(ExecutionFlow::quote_then_execute);
     Harness second;
-    exact.venue.payload_bound_delta = kBuyBound - kBuyDebit;  // exactly the reservation
+    exact.venue.payload_bound_delta = kBuyBound - kBuyDebit;
     const auto at_bound = authorize_at(second, 20, kBuyLimit);
     require(exact.adapter->send(at_bound, 10) == SendOutcome::accepted, "a payload at the bound was refused");
 }
@@ -772,8 +734,6 @@ void test_quote_identity_mismatch_is_never_signed() {
 }
 
 void test_unknown_order_query_is_silence_not_absence() {
-    // A restarted adapter has no record of an order a previous process may have
-    // submitted. True Markets takes no client order id, so nothing can be asked.
     Rig rig(ExecutionFlow::prepare_then_execute);
     const auto answer = rig.adapter->query(ClusterOrderId{4'242}, 10);
     require(answer.outcome == QueryOutcome::unavailable, "an order this process never saw was declared absent");
@@ -829,8 +789,6 @@ OrderEffect raw_buy(const std::uint64_t id) {
 }
 
 void test_bounded_order_table_never_forgets_a_possible_submission() {
-    // A record that proves nothing was sent may be reused; one that may have
-    // been submitted may not, because forgetting it would license a resend.
     Rig rig(ExecutionFlow::prepare_then_execute,
             [](TrueMarketsVenueConfig& value) { value.order_rate = {1'000, 1}; });
     for (std::uint64_t i = 0; i < kMaxTmOrders; ++i) {
@@ -862,7 +820,6 @@ void test_live_arming_refuses_without_both_and_without_a_compiled_transport() {
     require(evaluate_live_arming({true, "/run/signer.sock"}) == LiveArmingRefusal::no_live_transport,
             "this build claims a live transport");
     require(!kLiveVenueTransportCompiled, "a live transport is compiled into this build");
-    // Only a build that compiles a live transport could ever pass.
     require(evaluate_live_arming({true, "/run/signer.sock"}, true) == LiveArmingRefusal::none,
             "arming with both was refused by a live-capable build");
     require(evaluate_live_arming({false, "/run/signer.sock"}, true) == LiveArmingRefusal::not_armed &&
@@ -880,7 +837,7 @@ void test_configuration_is_never_defaulted() {
         [](TrueMarketsVenueConfig& value) { value.quote_asset = {}; },
         [](TrueMarketsVenueConfig& value) { value.max_fee_bps = 0; },
         [](TrueMarketsVenueConfig& value) { value.quote_ttl = 0; },
-        [](TrueMarketsVenueConfig& value) { value.order_rate = {1, 100}; },  // a send needs two tokens
+        [](TrueMarketsVenueConfig& value) { value.order_rate = {1, 100}; },
         [](TrueMarketsVenueConfig& value) { value.spec.lot_base_atoms = 1; },
     };
     for (std::size_t i = 0; i < breaks.size(); ++i) {
@@ -914,7 +871,7 @@ void test_transport_seam_drives_the_same_adapter() {
     require(transport.session() == VenueSessionId{1}, "session identity differs");
 }
 
-}  // namespace
+}
 
 int main() {
     const std::pair<const char*, void (*)()> tests[] = {

@@ -1,27 +1,4 @@
 #include "v2_catalog_test_support.hpp"
-// Generated Phase 4 property corpus.
-//
-// The Phase 4 gate is stated as a property, not as agreement with a second
-// implementation: fault/property tests must not be able to produce an unreserved
-// effect, a duplicate economic mutation, a negative reservation, or a replay
-// mismatch. This corpus drives randomized but well-formed command histories and
-// checks those properties after every single command.
-//
-// Independence argument. Most checks are contract-derived invariants rather
-// than a transcription of reducer branches. A deliberately tiny execution
-// ledger adds the one independent model Phase 4 needs most: accepted buys add
-// position, accepted sells subtract it, and duplicate identities add nothing.
-// It does not model order states, holds, reclamation, or return-code selection,
-// so it can fail differently from the implementation without becoming a second
-// copy of it. The Phase 1-3 mirror remains in v2_model_replay_tests.cpp.
-//
-// Leverage worth knowing about: encode_state_snapshot runs the full structural
-// validator, which already enforces per-account conservation - reserved totals
-// must equal the sum over that account's reservations - plus reservation
-// ownership, non-negativity, and index bounds. So snapshotting after every
-// command is itself a dense invariant check, and this corpus adds the properties
-// the validator cannot see: cross-command monotonicity, reclamation being
-// economically inert, and byte-identical canonical replay of the full history.
 
 #include "velocita/v2/kernel.hpp"
 #include "velocita/v2/kernel_codec.hpp"
@@ -73,12 +50,6 @@ private:
     std::uint64_t state_;
 };
 
-// --- properties ------------------------------------------------------------
-
-// Every retained effect must belong to a retained order, and that order must own
-// the reservation it points at. Reclamation removes a group whole, so a surviving
-// effect naming a missing order means compaction dropped records unevenly - the
-// exact failure that would strand a pending external effect.
 void require_no_unreserved_effect(const TradingState& state,
                                   const std::string& where) {
     for (std::size_t index = 0; index < state.outbox_effect_count; ++index) {
@@ -100,9 +71,6 @@ void require_no_unreserved_effect(const TradingState& state,
     }
 }
 
-// Quantities cannot go negative or exceed what was originally reserved. The
-// snapshot validator checks the per-account sums; this checks the per-record
-// arithmetic that feeds them.
 void require_reservation_arithmetic(const TradingState& state,
                                     const std::string& where) {
     for (std::size_t index = 0; index < state.reservation_count; ++index) {
@@ -130,8 +98,6 @@ void require_reservation_arithmetic(const TradingState& state,
     }
 }
 
-// Snapshot encode runs the structural validator, including per-account
-// conservation; decode must reproduce the exact state.
 void require_snapshot_round_trip(const TradingState& state,
                                  const std::string& where) {
     std::array<std::byte, kMaxStateSnapshotBytes> bytes{};
@@ -154,16 +120,6 @@ void require_snapshot_round_trip(const TradingState& state,
                            again.begin()),
             where + ": snapshot round trip was not byte-identical");
 }
-
-
-// --- fixture ---------------------------------------------------------------
-//
-// Phase 1-3 scaffolding (policy catalog, executable-policy bundle, source
-// cursor) is built directly: it is already covered by the Phase 1-3 mirror model
-// and is not what this corpus is testing. Every piece of PHASE 4 state - risk
-// accounts, decisions, orders, reservations, outbox effects - is created only by
-// commands, so the corpus exercises the real admission paths rather than a
-// hand-assembled state that may be unreachable in practice.
 
 PolicyArtifact corpus_policy() {
     PolicyArtifact value;
@@ -239,10 +195,6 @@ ExecutablePolicyArtifact corpus_executable_policy(
 
 TradingState bootstrap_state() {
     TradingState state = catalog_test::state();
-    // The bundle records the StateVersions at which it was staged and activated,
-    // and validation requires both to be at or below the current version. A
-    // bootstrap that declares them while sitting at version zero describes a
-    // history that never happened.
     state.state_version = 2;
     state.strategy_mode = StrategyMode::normal;
     state.kill_epoch = KillEpoch{2};
@@ -262,10 +214,6 @@ TradingState bootstrap_state() {
          VenueCapabilitiesVersion{8}, (kVenueDirectivePlaceLimit | kVenueDirectiveCancel), kVenueTifGtc, 1},
         1,
         2};
-    // The source cursor is deliberately NOT pre-registered: a zero sequence is
-    // an invalid cursor, and letting the first RecordSourceEvent establish it
-    // keeps the corpus honest about admission rather than hand-seeding state the
-    // kernel would never produce.
     return state;
 }
 
@@ -327,9 +275,6 @@ struct Coverage {
     }
 };
 
-
-// --- corpus driver ---------------------------------------------------------
-
 void run_seed(const std::uint64_t seed, Coverage& coverage) {
     Generator generator(seed);
     auto state = bootstrap_state();
@@ -347,11 +292,6 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
     std::uint64_t trace_step = 0;
 
     const auto admit = [&](const Command& command, const std::string& where) {
-        // Every command is recorded, refusals included: an admitted refusal
-        // retains a receipt and advances StateVersion, and an effect's canonical
-        // committed_directive_index is that StateVersion at authorization time.
-        // A replay that skipped refusals would authorize at a different version
-        // and diverge on bytes for reasons unrelated to the reducer.
         const auto outcome = catalog_test::apply(state, command, scratch);
         history.push_back(command);
         ++coverage.total;
@@ -368,12 +308,9 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
         return outcome;
     };
 
-    // Create the risk account through B1 rather than by hand.
     {
         const Command create{
             {CallerId{kMaxOperatorCallerId}, RequestSequence{request++}, digest(0xe2)},
-            // A position cap far above anything the corpus can reach, so this
-            // ledger oracle is not also silently a position-limit oracle.
             ConfigureRiskLimits{AccountId{5}, InstrumentId{4}, RiskPolicyVersion{6},
                                 RiskVersion{}, state.kill_epoch,
                                 state.executor_generation,
@@ -395,7 +332,7 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
 
         switch (generator.bounded(10)) {
             case 0:
-            case 1: {  // evaluate a decision, steering the slot by feature value
+            case 1: {
                 ++sequence;
                 const auto evidence = digest(0x400 + sequence);
                 admit({{CallerId{7}, RequestSequence{request}, digest(0x21)},
@@ -403,7 +340,7 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
                                          SourceSequence{sequence}, evidence}},
                       "source admission");
                 const std::int64_t feature =
-                    generator.bounded(2) == 0 ? 16 : 11;  // slot 1 buy / slot 2 sell
+                    generator.bounded(2) == 0 ? 16 : 11;
                 const DecisionId id{decision_id++};
                 const auto outcome = admit(
                     {{CallerId{8}, RequestSequence{request++},
@@ -415,7 +352,7 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
                 if (outcome.code == ApplyCode::applied) unauthorized.push_back(id);
                 break;
             }
-            case 2: {  // authorize a retained decision
+            case 2: {
                 if (unauthorized.empty()) break;
                 const auto pick = generator.bounded(unauthorized.size());
                 const auto id = unauthorized[pick];
@@ -431,7 +368,7 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
                 break;
             }
             case 3:
-            case 4: {  // fill an existing order, sometimes partially
+            case 4: {
                 if (state.order_count == 0) break;
                 const auto& order =
                     state.orders[generator.bounded(state.order_count)];
@@ -494,7 +431,7 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
                 }
                 break;
             }
-            case 5: {  // cancel an order
+            case 5: {
                 if (state.order_count == 0) break;
                 const auto& order =
                     state.orders[generator.bounded(state.order_count)];
@@ -505,7 +442,7 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
                 if (outcome.code == ApplyCode::applied) coverage.cancelled = true;
                 break;
             }
-            case 6: {  // venue order event against the current effect
+            case 6: {
                 if (state.outbox_effect_count == 0) break;
                 const auto& effect =
                     state.outbox_effects[generator.bounded(state.outbox_effect_count)];
@@ -556,7 +493,7 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
                 }
                 break;
             }
-            case 7: {  // duplicate and conflicting observation identities
+            case 7: {
                 if (applied_observations.empty()) break;
                 auto command = applied_observations[
                     generator.bounded(applied_observations.size())];
@@ -578,12 +515,6 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
                 const auto risk_before = state.risk_accounts[0];
                 const auto duplicate_kind = generator.bounded(3);
 
-                // Only a NATIVE observation can be judged by venue sequence
-                // identity. A synthetic one - a gateway-declared timeout, or a
-                // reconciliation answer - carries a number the gateway chose, so
-                // a repeat of it is re-adjudicated rather than refused on
-                // identity. What must hold either way is the economic invariant
-                // asserted below, and that is the property this case exists for.
                 auto origin = ObservationOrigin::native;
                 if (const auto* event = std::get_if<ObserveOrderEvent>(&command.body)) {
                     origin = observation_origin(event->observation.kind);
@@ -612,11 +543,6 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
                     }
                 }
                 const auto outcome = admit(command, "duplicate observation");
-                // For a synthetic repeat the code is a function of the ORDER's
-                // current state rather than of identity, so pinning one value
-                // here would pin the fixture's timing instead of the contract.
-                // What is pinned is the thing that would be wrong: the venue's
-                // sequence domain must never claim a number the gateway chose.
                 const bool code_matches =
                     synthetic && duplicate_kind != 0
                         ? outcome.code != ApplyCode::venue_event_identity_conflict
@@ -644,19 +570,13 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
                             std::to_string(trace_step));
                 break;
             }
-            default: {  // refusals and control traffic
+            default: {
                 if (generator.bounded(2) == 0 && state.order_count > 0) {
-                    // Native replacement is disabled and must stay refused.
                     const auto& order = state.orders[0];
                     const auto outcome = admit(
                         {{CallerId{5}, RequestSequence{request++}, digest(0xD00 + request)},
                          RequestReplace{order.cluster_order_id, DecisionId{decision_id}}},
                         "replacement request");
-                    // The property is that replacement NEVER succeeds, not that
-                    // it always fails for the same reason: once the corpus
-                    // exhausts the 256-receipt arena, admission refuses on
-                    // capacity before dispatch ever reaches the replacement
-                    // handler. Both are correct fail-closed outcomes.
                     require(outcome.code != ApplyCode::applied,
                             "native replacement was admitted by the corpus");
                 } else {
@@ -685,15 +605,11 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
                     std::to_string(seed) + " step=" +
                     std::to_string(trace_step));
 
-        // Monotonic accounting: neither counter may ever decrease.
         require(state.reclaimed_group_count >= previous_reclaimed &&
                     state.settled_incomplete_effect_count >= previous_settled,
                 "a Phase 4 accounting counter went backwards");
         if (state.reclaimed_group_count > previous_reclaimed) {
             coverage.reclaimed = true;
-            // Reclamation must be economically inert: it only ever removes
-            // groups whose reservations are already released and therefore hold
-            // nothing, so no account total may move because of a sweep.
             require(state.risk_accounts[0].reserved_quantity ==
                             totals_before.reserved_quantity &&
                         state.risk_accounts[0].reserved_margin ==
@@ -707,8 +623,6 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
         }
     }
 
-    // Canonical replay of the whole history, refusals included, must converge to
-    // byte-identical state.
     auto replayed = bootstrap_state();
     ApplyScratch replay_scratch;
     KernelCommandCodecScratch codec_scratch;
@@ -746,15 +660,6 @@ void test_generated_phase4_properties() {
     }
     require(coverage.sufficient(),
             "the generated corpus did not exercise every required Phase 4 outcome");
-    // Guard against a future change quietly making the corpus vacuous - for
-    // example by exhausting an arena early so every later step is a no-op.
-    //
-    // A high refusal rate is expected and wanted: the generator deliberately
-    // aims commands at stale decisions, released reservations, occupied slots
-    // and closed orders, which is how the refusal paths get exercised at all.
-    // The threshold only has to catch "almost nothing was admitted", so it is
-    // set at a third rather than tuned to the current ratio, which would make it
-    // a change detector instead of a vacuity guard.
     require(coverage.applied * 3 > coverage.total,
             "fewer than one third of corpus commands were admitted: " +
                 std::to_string(coverage.applied) + "/" +
@@ -764,7 +669,7 @@ void test_generated_phase4_properties() {
               << " commands admitted\n";
 }
 
-}  // namespace
+}
 
 int main() {
     try {

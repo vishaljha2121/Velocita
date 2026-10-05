@@ -48,7 +48,7 @@ bool same_metadata(const PersistentMetadata& lhs, const PersistentMetadata& rhs)
         lhs.commit_index == rhs.commit_index;
 }
 
-}  // namespace
+}
 
 struct ReplicatedKernel::CompactionJob {
     ReplicatedKernel* owner{};
@@ -132,8 +132,6 @@ bool ReplicatedKernel::archive_admission(std::uint64_t resulting_last_index,
     const auto covered = archive_open_ ? archive_.covered_through() : 0;
     const auto pending = resulting_last_index > covered ? resulting_last_index - covered : 0;
     if (pending > kRetainedLogEntries) return false;
-    // Startup established absence under the root lock. Charge the same packed
-    // reservations before the first publication without any admission-time I/O.
     if (!archive_open_) {
         constexpr auto per_object = (kMaxArchiveSegmentBytes - 128) / kMaxArchiveRecordBytes;
         const auto objects = (pending + per_object - 1) / per_object;
@@ -148,9 +146,6 @@ bool ReplicatedKernel::archive_admission(std::uint64_t resulting_last_index,
 }
 
 Digest256 state_digest_of(const TradingState& state) {
-    // The canonical snapshot digest, so "the same state" means the same thing to
-    // a convergence check and to a snapshot install. Anything cheaper - a state
-    // version, an order count - can agree while the states differ.
     static thread_local std::array<std::byte, kMaxStateSnapshotBytes> storage{};
     const auto encoded = encode_state_snapshot(state, storage);
     if (encoded.error != StateSnapshotError::none) {
@@ -201,8 +196,6 @@ ReplicatedKernel::ReplicatedKernel(VerifiedIdentityStartup startup,
     if (history_config_.maximum_wal_bytes == 0 || history_config_.maximum_wal_bytes > (1ULL << 30))
         throw std::runtime_error("invalid history recovery WAL budget");
 
-    // Decode every retained command, including uncommitted and snapshot-covered
-    // entries, before opening writable storage. Decoding is not speculative apply.
     const auto stored = snapshots_.load();
     if (std::filesystem::exists(std::filesystem::symlink_status(startup_.root_directory() / "v2-archive")))
         open_archive();
@@ -286,28 +279,13 @@ ReplicatedKernel::ReplicatedKernel(VerifiedIdentityStartup startup,
     table.log_pop = &ReplicatedKernel::log_pop;
     table.log_clear = &ReplicatedKernel::log_clear;
     table.log_get_node_id = &ReplicatedKernel::log_get_node_id;
-    // THE GATE. Without this callback Raft counts our vote as soon as an entry
-    // is appended, which with an asynchronous log means before its bytes exist
-    // on disk.
     table.durable_idx = &ReplicatedKernel::durable_idx;
     raft_set_callbacks(server_, &table, this);
-    // The V2 peer wire carries the pre-vote flags (body version 3), so a voter
-    // cut off by a network drop cannot raise its term and depose a healthy
-    // leader when it returns (M3 log findings 43 and 47).
     raft_set_prevote(server_, 1);
 
     if (raft_add_node(server_, nullptr, node_id_, 1) == nullptr) {
         throw std::runtime_error("failed to add Raft member " + std::to_string(node_id_));
     }
-    // INSTALL THE SNAPSHOT FIRST, then replay only what it does not cover.
-    //
-    // Without a snapshot this is replay from the beginning, which is the
-    // strongest form: the reducer is deterministic, so replaying the committed
-    // prefix reconstructs exactly the state that prefix produced, and a
-    // divergence surfaces instead of hiding behind a state file. A snapshot is
-    // the same guarantee for a prefix that has been reclaimed, and it is only
-    // trusted because the canonical decoder revalidates every invariant before
-    // it is accepted.
     std::uint64_t installed_through = 0;
     if (stored) {
         const int began = raft_begin_load_snapshot(
@@ -323,9 +301,6 @@ ReplicatedKernel::ReplicatedKernel(VerifiedIdentityStartup startup,
         }
     }
 
-    // `raft_begin_load_snapshot` retains only the local Raft node. Restore the
-    // configured voter set after the snapshot so a restarted voter cannot
-    // accidentally become a one-node cluster.
     for (const auto member : members_) {
         if (member == node_id_) continue;
         if (member <= 0 ||
@@ -334,10 +309,6 @@ ReplicatedKernel::ReplicatedKernel(VerifiedIdentityStartup startup,
         }
     }
 
-    // Hard state is restored AFTER the snapshot, not before.
-    // `raft_begin_load_snapshot` assigns `current_term` from the snapshot and
-    // clears the vote, so restoring them first silently loses both - and the
-    // symptom appears far away, as a commit index that no longer fits the log.
     if (raft_set_current_term(server_, metadata_.term) != 0) {
         throw std::runtime_error("failed to restore Raft term");
     }
@@ -346,13 +317,9 @@ ReplicatedKernel::ReplicatedKernel(VerifiedIdentityStartup startup,
         throw std::runtime_error("failed to restore Raft vote");
     }
 
-    // Binding was checked for every record, even those already snapshot-covered.
     auto expected_index = installed_through + 1;
     std::uint64_t recovered_through = installed_through;
     WalSegment::visit_existing_records(data_dir, startup_.identity(), [&](const WalRecord& record) {
-        // Entries the snapshot already accounts for are skipped rather than
-        // re-applied. A crash between a durable snapshot and its prefix
-        // reclamation leaves exactly this overlap, and it has to be harmless.
         if (record.index <= installed_through) return;
         if (record.index != expected_index++) {
             throw std::runtime_error("WAL history is not a contiguous snapshot suffix");
@@ -369,9 +336,6 @@ ReplicatedKernel::ReplicatedKernel(VerifiedIdentityStartup startup,
         }
         recovered_through = record.index;
     });
-    // Records recovered from disk are durable by definition - they were read
-    // from it. Telling the arena so is what lets a restarted node count itself
-    // toward quorum for its own recovered log.
     arena_.seed_durable_index(recovered_through);
 
     if (metadata_.commit_index < 0) {
@@ -388,9 +352,6 @@ ReplicatedKernel::ReplicatedKernel(VerifiedIdentityStartup startup,
         throw std::runtime_error("failed to replay committed WAL entries: " +
                                  callback_error_);
     }
-    // Snapshot-covered bridge debt is validated/published while service is gated;
-    // it does not consume the bounded live retained-log arena. Ordinary startup
-    // keeps its existing archive admission rule.
     if (!history_recovery_pending() &&
         !archive_admission(static_cast<std::uint64_t>(raft_get_current_idx(server_)), true))
         throw std::runtime_error("recovery refused: deployment quota cannot cover accepted archive obligations");
@@ -402,8 +363,6 @@ ReplicatedKernel::ReplicatedKernel(VerifiedIdentityStartup startup,
 }
 
 ReplicatedKernel::~ReplicatedKernel() {
-    // Cold shutdown may join. The worker context and every store it references
-    // stay alive until it finishes, even if the owner never polled completion.
     if (writer_) writer_->stop();
     if (server_ != nullptr) raft_free(server_);
 }
@@ -415,23 +374,8 @@ void ReplicatedKernel::tick(const int elapsed_ms) {
         result != 0 && result != RAFT_ERR_PERSIST_PENDING) {
         throw std::runtime_error("raft_periodic failed: " + std::to_string(result));
     }
-    // Callback failures remain dominated by the permanent owner latch even on
-    // library paths that have already performed an in-memory role transition.
     require_usable();
 
-    // A LEADER SERVES A NON-ZERO TERM. willemt promotes a lone voting node
-    // straight to leader without campaigning - "only one voting node means it's
-    // safe for us to become the leader" - which is correct for safety and leaves
-    // `current_term` at zero. Raft's own model has no term-zero leader; zero
-    // means no leader has ever existed.
-    //
-    // Left alone it is not cosmetic. Entries inherit the leader's term, so they
-    // are written with term zero, and `raft_begin_load_snapshot` rejects a zero
-    // term outright - so a single-voter cluster could take a snapshot and then
-    // silently fail to install it on restart, recovering from the log prefix it
-    // had already reclaimed. Restoring the invariant here is the narrowest place
-    // that closes it, and on a multi-voter cluster the branch never fires
-    // because an election has already raised the term.
     if (raft_is_leader(server_) != 0 && raft_get_current_term(server_) == 0) {
         if (raft_set_current_term(server_, 1) != 0) {
             throw std::runtime_error("failed to raise a leader's term above zero");
@@ -459,8 +403,6 @@ void ReplicatedKernel::flush_durability() {
         if (writer_running_ && !persistence_ && !same_metadata(desired_metadata_, metadata_))
             submit_hard_state();
 
-        // A maintenance request owns the serial writer lane. Existing submitted
-        // blocks drain before it; no later block is admitted ahead of metadata.
         if (persistence_) {
             BlockDescriptor finished{};
             while (writer_->take_completion(finished)) (void)arena_.complete(finished);
@@ -496,21 +438,14 @@ void ReplicatedKernel::flush_durability() {
                 storage_failed_ = true;
                 throw std::runtime_error("owned peer continuation did not consume its truncate grant");
             }
-            // Replay can discover another higher hard-state prerequisite. It
-            // must be fenced before this pump can submit any newly staged WAL.
             if (!same_metadata(desired_metadata_, metadata_)) {
                 submit_hard_state();
                 return;
             }
         }
 
-        // Seal whatever is open so a quiet period cannot leave recent records
-        // staged indefinitely - the time half of the flush trigger; the arena's
-        // block-full rotation is the space half.
         arena_.seal_open_block();
 
-        // Hand sealed blocks to the writer. A full submission ring is backpressure
-        // like any other: the blocks stay sealed and go on the next pass.
         bool submitted_any = false;
         while (const auto descriptor = arena_.next_unsubmitted()) {
             if (!writer_->submit(*descriptor)) break;
@@ -518,26 +453,17 @@ void ReplicatedKernel::flush_durability() {
             submitted_any = true;
         }
 
-        // With no writer thread the I/O happens here, which is what keeps a test
-        // deterministic. With one, the thread has already done it or will shortly.
         if (!writer_running_) {
             (void)writer_->poll();
         }
         (void)submitted_any;
 
-        // Completions are applied BY THE OWNER, which is what keeps every mutation
-        // of the arena on one thread and lets the writer read sealed bytes without
-        // a lock.
         BlockDescriptor finished{};
         while (writer_->take_completion(finished)) {
             (void)arena_.complete(finished);
         }
         send_early_ack();
     } catch (...) {
-        // A write or sync exception does not identify which bytes reached the
-        // medium. Continuing could let this process serve authority from an
-        // in-memory log whose durable prefix is ambiguous. Only restart and
-        // recovery may decide what survived.
         storage_failed_ = true;
         throw;
     }
@@ -737,8 +663,6 @@ void ReplicatedKernel::collect_persistence() {
 }
 
 bool ReplicatedKernel::accept_persistence_completion() {
-    // A duplicate delivered after the one in-flight job was consumed has no
-    // object or owner state to authorize. Refuse it without mutating anything.
     if (!persistence_) return false;
     const auto& completion = persistence_->completion;
     if (!completion.succeeded || completion.operation != persistence_->operation ||
@@ -811,8 +735,6 @@ void ReplicatedKernel::stop_writer() {
     if (!writer_running_) return;
     writer_->stop();
     writer_running_ = false;
-    // Anything the thread finished on its way out still needs applying, or the
-    // arena would hold blocks that are durable and look sealed.
     BlockDescriptor finished{};
     while (writer_->take_completion(finished)) {
         (void)arena_.complete(finished);
@@ -870,30 +792,6 @@ ProposeOutcome ReplicatedKernel::propose(const std::span<const std::byte> comman
         return outcome;
     }
 
-    // THE LANE IS A LABEL UNTIL IT IS CHECKED.
-    //
-    // `ProposeLane` is chosen by the caller, so naming the control lane is not
-    // the same as being entitled to it. Two ways that would make the
-    // reservation meaningless:
-    //
-    //   - label an ordinary command "control" and spend the kill path's
-    //     reserved blocks on strategy traffic;
-    //   - offer a real control command from an unauthenticated caller. The
-    //     reducer refuses it - but only AFTER the entry has consumed reserved
-    //     capacity, committed and replicated. A refusal that costs the resource
-    //     it was protecting is a denial of service on the kill path.
-    //
-    // So the lane decodes and checks before the entry exists. That costs a
-    // decode on every proposal, and it is the difference
-    // between a reservation and a bypass anyone may name.
-    //
-    // `RequestMassCancel` is admitted here but is NOT operator-only in the
-    // reducer, and the split is deliberate. Mass cancel only reduces risk, and
-    // requiring operator authority to reduce risk is the asymmetry error this
-    // phase avoids everywhere else - anyone may flatten the book on the normal
-    // lane. What an operator caller buys is the right to spend the KILL
-    // RESERVE doing it, which is a claim on a scarce resource rather than a
-    // claim about the action.
     if (lane == ProposeLane::control) {
         if (!control_eligible(probe)) {
             outcome.status = ProposeStatus::not_a_control_command;
@@ -901,9 +799,6 @@ ProposeOutcome ReplicatedKernel::propose(const std::span<const std::byte> comman
         }
     }
 
-    // Keep ordinary proposals outside the reserved WAL margin before entering
-    // Raft. log_offer itself runs before Raft increments the accepted log count;
-    // its refusal must still clean up any unaccepted payload/result ownership.
     if (lane == ProposeLane::normal &&
         arena_.free_blocks() <= kControlLaneReservedBlocks) {
         outcome.status = ProposeStatus::normal_lane_exhausted;
@@ -924,9 +819,6 @@ ProposeOutcome ReplicatedKernel::propose(const std::span<const std::byte> comman
         return outcome;
     }
 
-    // The entry id is a Raft-level hint, not an economic identity. The command's
-    // real identity lives in its canonical bytes and is enforced by the reducer's
-    // request receipt, so narrowing it to 31 bits here costs nothing.
     std::uint64_t seed = 0;
     for (const auto byte : command_bytes) {
         seed = seed * 1099511628211ULL ^ static_cast<std::uint64_t>(byte);
@@ -965,9 +857,6 @@ ProposeOutcome ReplicatedKernel::propose(const std::span<const std::byte> comman
 
 std::optional<CommittedResult> ReplicatedKernel::take_committed_result() {
     require_usable();
-    // READY values predate this fence and own their bytes. Reading one cannot
-    // expose a consequence of the paused turn; before_apply prevents any new
-    // value from becoming READY until the matching checkpoint is durable.
     if (compaction_ || archive_recovery_pending_ || history_recovery_pending()) return std::nullopt;
     return results_->take();
 }
@@ -1121,7 +1010,6 @@ void ReplicatedKernel::abandon_authority_request(const AuthorityBarrier& request
 std::int64_t ReplicatedKernel::authority_drain_index() const {
     require_usable();
     const auto applied = raft_get_last_applied_idx(server_);
-    // Derive at owner boundaries, not inside log_pop (Raft has not removed it yet).
     for (auto index = log_payloads_->last_index();
          index > static_cast<std::uint64_t>(applied) && index >= log_payloads_->first_index(); --index) {
         const auto* entry = raft_get_entry_from_idx(server_, static_cast<raft_index_t>(index));
@@ -1139,10 +1027,6 @@ OutboundTakeResult ReplicatedKernel::take_outbound_frame(
 }
 
 std::int64_t ReplicatedKernel::compaction_floor() const noexcept {
-    // A voter's match index is what it has acknowledged durably (the clamp);
-    // this node's own copy counts only once it is on disk. Match counts reset
-    // (a new leader) or go stale (a follower that once led), so the floor
-    // never falls below what this node already learned.
     auto floor = static_cast<std::int64_t>(arena_.durable_index());
     for (int i = 0; i < raft_get_num_nodes(server_); ++i) {
         auto* node = raft_get_node_from_idx(server_, static_cast<raft_index_t>(i));
@@ -1158,7 +1042,6 @@ void ReplicatedKernel::send_early_ack() {
     const auto due = follower_ack_.due(term, raft_get_current_leader(server_), raft_is_follower(server_) != 0,
                                        static_cast<std::int64_t>(arena_.durable_index()));
     if (!due) return;
-    // first_index is ignored by the leader on a success; the wire requires >= 1.
     if (queue_outbound({node_id_, follower_ack_.leader(),
                         AppendEntriesResponse{term, true, *due, *due + 1}}) == 0)
         follower_ack_.sent(*due);
@@ -1169,8 +1052,6 @@ int ReplicatedKernel::queue_outbound(const PeerMessageView& message) noexcept {
     const auto queued = outbound_->enqueue(message, *peer_scratch_);
     if (queued.error == OutboundEnqueueError::none ||
         queued.error == OutboundEnqueueError::stale_term) return 0;
-    // Some library paths ignore send-callback errors. The permanent latch also
-    // gates owner boundaries and before_apply; a packet fault cannot mint authority.
     outbound_failed_ = true;
     return RAFT_ERR_SHUTDOWN;
 }
@@ -1192,8 +1073,6 @@ ReplicaStatus ReplicatedKernel::status() const {
     value.compaction_floor = compaction_floor();
     value.snapshot_index = raft_get_snapshot_last_idx(server_);
     if (raft_is_leader(server_) != 0) {
-        // willemt's own test in raft_send_appendentries: such a voter can only
-        // be served by a snapshot install.
         const auto snapshot = raft_get_snapshot_last_idx(server_);
         for (int i = 0; i < raft_get_num_nodes(server_); ++i) {
             auto* node = raft_get_node_from_idx(server_, static_cast<raft_index_t>(i));
@@ -1220,10 +1099,7 @@ CommittedOutboxView ReplicatedKernel::committed_outbox() const {
 
 std::uint64_t ReplicatedKernel::compact_within_floor() {
     require_usable();
-    // A compaction in flight passed this gate when it fixed its cut.
     if (compaction_) return compact();
-    // compact() cuts at the applied index (and requires it to equal the
-    // commit index); every voter must already hold it.
     if (raft_get_last_applied_idx(server_) > compaction_floor()) return 0;
     return compact();
 }
@@ -1276,8 +1152,6 @@ std::uint64_t ReplicatedKernel::compact() {
             }
             if (!archive_verification_evidence_) return 0;
         }
-        // Preflight every callback's no-fail erase condition before the first
-        // irreversible Raft poll. Ready results own values, not log-cell borrows.
         for (auto index = log_payloads_->first_index(); index <= cut; ++index) {
             const auto* owned = log_payloads_->find(index);
             const auto* entry = raft_get_entry_from_idx(server_, static_cast<raft_index_t>(index));
@@ -1367,8 +1241,6 @@ void ReplicatedKernel::persist_compaction(void* context) {
         self.storage_checkpoints_(StorageCheckpoint::compaction_wal_rewritten);
         return;
     }
-    // Neither Raft nor retained slabs are accessed by the worker. Exact source
-    // bytes were copied under the owner fence and are now compared against disk.
     std::size_t matched{};
     WalSegment::visit_existing_records(self.startup_.directory(), self.startup_.identity(),
         [&](const WalRecord& record) {
@@ -1416,9 +1288,6 @@ void ReplicatedKernel::persist_compaction(void* context) {
 }
 
 void ReplicatedKernel::persist_commit_index() {
-    // Followers can learn quorum commitment before their own writer catches up.
-    // Their restart checkpoint must cover only locally durable bytes, including
-    // when there are none. Volatile apply does not make a disk record exist.
     const auto durable = static_cast<raft_index_t>(arena_.durable_index());
     const auto raw = raft_get_commit_idx(server_);
     const auto commit = std::min(durable, raw);
@@ -1445,7 +1314,6 @@ ReplicatedKernel::AdmissionCapacity ReplicatedKernel::admission_capacity(const A
             if (append.previous_log_term != raft_get_snapshot_last_term(server_)) return {};
         } else {
             const auto* entry = raft_get_entry_from_idx(server_, prev);
-            // No append on this path; let Raft process its term/prev refusal.
             if (!entry || entry->term != append.previous_log_term) return {};
         }
     }
@@ -1459,7 +1327,6 @@ ReplicatedKernel::AdmissionCapacity ReplicatedKernel::admission_capacity(const A
         const auto* existing = raft_get_entry_from_idx(server_, index);
         if (!existing) break;
         if (existing->term == append.entries[first_new].term) continue;
-        // Preserve Raft's fatal committed-conflict check, even while full.
         if (index <= raft_get_commit_idx(server_)) return {};
         replaced_suffix = static_cast<std::uint64_t>(index);
         for (auto retained = *replaced_suffix; retained <= log_payloads_->last_index(); ++retained) {
@@ -1493,8 +1360,6 @@ ReplicatedKernel::AdmissionCapacity ReplicatedKernel::admission_capacity(const A
         archive_capacity = archive_capacity && archive_admission(
             static_cast<std::uint64_t>(prev + 1 + static_cast<std::int64_t>(i)), control_eligible(command));
     }
-    // The owner cannot interleave another admission during this synchronous call.
-    // Planned releases become real only in successful durable log_pop callbacks.
     return {results_->can_reserve(std::span(classes).first(count),
                                  std::span(released).first(released_count)),
             archive_capacity && log_payloads_->can_admit(std::span(log_classes).first(log_count), replaced_suffix)};
@@ -1546,8 +1411,6 @@ PeerReceiveResult ReplicatedKernel::receive_peer(std::span<const std::byte> boun
             if (!capacity.log) ++log_capacity_refusals_;
             entries.clear();
         }
-        // The pinned library caps by its whole local log, which can include an
-        // unchecked suffix. Only this packet's verified prefix can advance commit.
         const auto verified_end = value->previous_log_index +
             static_cast<std::int64_t>(entries.size());
         request.leader_commit = std::min(value->leader_commit, verified_end);
@@ -1556,19 +1419,6 @@ PeerReceiveResult ReplicatedKernel::receive_peer(std::span<const std::byte> boun
         msg_appendentries_response_t response{};
         result = raft_recv_appendentries(server_, sender, &request, &response);
 
-        // A FOLLOWER'S SUCCESS MUST NOT COVER ENTRIES IT HAS ONLY STAGED.
-        //
-        // The leader turns `current_idx` straight into this follower's match
-        // index and counts it toward quorum. Reporting an index whose bytes are
-        // not yet on disk is therefore the same defect as a leader counting its
-        // own undurable copy - just on the other side of the wire, and not
-        // fixable by the patch that fixed that one, because this number is
-        // produced here.
-        //
-        // Clamping costs a round trip: the leader sees a lower match, resends,
-        // and the follower reports the higher index once its writer has caught
-        // up. That is the correct trade - the alternative is a quorum formed
-        // around bytes a power cut would erase.
         auto reported = response.current_idx;
         const auto durable = static_cast<raft_index_t>(arena_.durable_index());
         if (response.success != 0 && reported > durable) reported = durable;
@@ -1578,12 +1428,8 @@ PeerReceiveResult ReplicatedKernel::receive_peer(std::span<const std::byte> boun
                 {node_id_, message.sender_id,
                  AppendEntriesResponse{response.term, response.success != 0, reported,
                                        response.first_idx}});
-            // The clamp costs nothing extra once the writer catches up:
-            // send_early_ack reports the rest as soon as it is durable.
             follower_ack_.record(response.term, message.sender_id, response.success != 0,
                                  response.current_idx, reported);
-            // The floor describes every voter, not this follower's log, so a
-            // refused append from the current leader still carries it.
             if (response.term == value->term) known_floor_ = std::max(known_floor_, value->compaction_floor);
         }
     } else if (const auto* value = std::get_if<AppendEntriesResponse>(&message.payload)) {
@@ -1674,7 +1520,6 @@ int ReplicatedKernel::apply_log(raft_server_t*, void* user_data, raft_entry_t* e
             static_cast<const std::byte*>(entry->data.buf), entry->data.len);
 
         if (entry->type == kAuthorityBarrierEntryType) {
-            // Historical markers are replication no-ops, never business results.
             if (!self.restoring_ && self.pending_authority_barrier_ &&
                 self.pending_authority_barrier_->index == index &&
                 self.pending_authority_barrier_->term == entry->term &&
@@ -1716,10 +1561,6 @@ int ReplicatedKernel::apply_log(raft_server_t*, void* user_data, raft_entry_t* e
             return 0;
         }
 
-        // THE ONLY CALL TO apply() IN THIS CLASS. G-035 is not a rule the code
-        // follows, it is the shape of the code: there is no other path from a
-        // command to the reducer, so a command that never commits cannot have an
-        // economic effect.
         Command command;
         const auto decoded =
             decode_kernel_command(bytes, command, *self.codec_scratch_);
@@ -1877,9 +1718,6 @@ int ReplicatedKernel::log_offer(raft_server_t*, void* user_data, raft_entry_t* e
 
         if (self.restoring_) return 0;
 
-        // STAGE, DO NOT SYNC. This runs inside a Raft callback and therefore
-        // inside the owner loop; the whole objective of the phase is that it
-        // must not block on the disk. Durability follows in `flush_durability`.
         const auto framed = encode_bound_wal_record({static_cast<std::uint64_t>(index),
                                                entry->term, entry->id, entry->type,
                                                {payload.begin(), payload.end()}}, self.startup_.identity());
@@ -1892,9 +1730,6 @@ int ReplicatedKernel::log_offer(raft_server_t*, void* user_data, raft_entry_t* e
             case StageOutcome::backpressure:
             case StageOutcome::record_too_large:
                 ++self.backpressure_refusals_;
-                // Bounded refusal. Accepting an entry the log cannot make
-                // durable would be exactly the overwrite the arena refuses, one
-                // level up.
                 self.callback_error_ = "WAL staging refused the entry";
                 discard();
                 return RAFT_ERR_SHUTDOWN;
@@ -1965,8 +1800,6 @@ int ReplicatedKernel::log_prepare_truncate(raft_server_t*, void* user_data,
     if (self.restoring_) return 0;
     try {
         if (!self.writer_running_) {
-            // Explicit deterministic test mode: one whole-cut rewrite here,
-            // never one rewrite per subsequent log_pop callback.
             self.flush_durability();
             self.segment_->truncate_from(boundary);
             self.arena_.rewind_durable_index(boundary - 1);
@@ -2013,8 +1846,6 @@ int ReplicatedKernel::log_pop(raft_server_t*, void* user_data, raft_entry_t*,
             self.pending_authority_barrier_.reset();
         return 0;
     }
-    // The exact whole cut is already durable. Per-entry callbacks now release
-    // only owner-side obligations as Raft performs its original pop loop.
     if (!self.erase_log_suffix(static_cast<std::uint64_t>(index))) return RAFT_ERR_SHUTDOWN;
     if (self.pending_authority_barrier_ && self.pending_authority_barrier_->index >= index)
         self.pending_authority_barrier_.reset();
@@ -2031,9 +1862,6 @@ int ReplicatedKernel::log_clear(raft_server_t*, void* user_data, raft_entry_t*,
         self.pending_authority_barrier_.reset();
         return 0;
     }
-    // Runtime clear cannot be paused by the pinned per-entry callback: its
-    // return is ignored. Keep this path cold-only until snapshot installation
-    // owns a separately reviewed quiesce/drain/generation activation protocol.
     self.storage_failed_ = true;
     self.callback_error_ = "runtime Raft log clear is forbidden";
     return RAFT_ERR_SHUTDOWN;
@@ -2048,4 +1876,4 @@ raft_index_t ReplicatedKernel::durable_idx(raft_server_t*, void* user_data) {
     return static_cast<raft_index_t>(self.arena_.durable_index());
 }
 
-}  // namespace velocita::v2
+}

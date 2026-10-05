@@ -13,8 +13,8 @@
 namespace velocita {
 namespace {
 
-constexpr std::uint32_t kMetadataMagic = 0x3141544DU;  // MTA1
-constexpr std::uint32_t kWalMagic = 0x314C4157U;       // WAL1
+constexpr std::uint32_t kMetadataMagic = 0x3141544DU;
+constexpr std::uint32_t kWalMagic = 0x314C4157U;
 constexpr std::uint16_t kStorageVersion = 1;
 constexpr std::uint16_t kWalHeaderSize = 44;
 constexpr std::size_t kMaxPayload = 1024 * 1024;
@@ -100,7 +100,7 @@ void fsync_directory(const std::filesystem::path& directory) {
     ::close(fd);
 }
 
-}  // namespace
+}
 
 std::uint32_t crc32(std::span<const std::byte> bytes) {
     std::uint32_t crc = 0xFFFFFFFFU;
@@ -238,8 +238,6 @@ void WriteAheadLog::append(const WalRecord& record) {
     }
 }
 
-// One encoder for every path that writes a record - the two file rewrites and
-// block staging - so they cannot drift apart about the format.
 std::vector<std::byte> encode_wal_record(const WalRecord& record) {
     std::vector<std::byte> bytes;
     bytes.reserve(kWalHeaderSize + record.payload.size());
@@ -302,9 +300,6 @@ std::vector<WalRecord> decode_wal_records(const std::span<const std::byte> bytes
     return records;
 }
 
-// Rewrite the log to exactly `kept`, atomically. Temp file, fsync, rename,
-// fsync the directory: a crash at any point leaves either the old log or the
-// new one, never a partial one.
 void WriteAheadLog::rewrite(const std::vector<WalRecord>& kept) const {
     const auto temporary = path_.string() + ".tmp";
     const int fd = ::open(temporary.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -328,9 +323,6 @@ void WriteAheadLog::truncate_from(std::uint64_t first_removed_index) {
     if (first_removed_index == 0) {
         throw std::runtime_error("WAL truncation index is outside the log");
     }
-    // Selected by the record's OWN index rather than by position. Position and
-    // index coincide only while no prefix has been reclaimed, and compaction
-    // ends that.
     std::vector<WalRecord> kept;
     for (auto& record : records) {
         if (record.index < first_removed_index) kept.push_back(std::move(record));
@@ -388,9 +380,6 @@ std::vector<WalRecord> WriteAheadLog::read_all() const {
         if (stored_crc != crc32(checksum_bytes)) {
             throw std::runtime_error("WAL checksum mismatch at offset " + std::to_string(record_start));
         }
-        // Contiguous WITHIN ITSELF, not necessarily starting at one. A log whose
-        // prefix a snapshot has reclaimed legitimately begins above one, and
-        // requiring index == position + 1 would make compaction unreadable.
         if (!records.empty() && record.index != records.back().index + 1U) {
             throw std::runtime_error("WAL index is not contiguous at offset " + std::to_string(record_start));
         }
@@ -399,4 +388,4 @@ std::vector<WalRecord> WriteAheadLog::read_all() const {
     return records;
 }
 
-}  // namespace velocita
+}

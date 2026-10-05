@@ -1,3 +1,4 @@
+// V1: scheduling of the node's single owner thread.
 #pragma once
 
 #include <chrono>
@@ -124,9 +125,6 @@ private:
     std::uint64_t maximum_tick_gap_nanoseconds_{};
 };
 
-// The callable types remain template parameters so production uses static
-// dispatch. Tests can inject a fake clock and fake pollers without adding
-// std::function allocation or virtual dispatch to the owner loop.
 template <typename ClockSource, typename Tick, typename PeerPoll,
           typename RaftOutputDrain, typename PeerOffer,
           typename ResponseCapacity, typename ClientPoll,
@@ -170,4 +168,4 @@ template <typename ClockSource, typename Tick, typename PeerPoll,
     return result;
 }
 
-}  // namespace velocita
+}

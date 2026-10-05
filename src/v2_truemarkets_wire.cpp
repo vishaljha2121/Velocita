@@ -13,14 +13,9 @@ namespace {
            c == ':' || c == '-';
 }
 
-// Signatures may be base64 or base64url as well as hex.
 [[nodiscard]] constexpr bool signature_char(const char c) noexcept {
     return identifier_char(c) || c == '+' || c == '/' || c == '=';
 }
-
-// ---------------------------------------------------------------------------
-// JSON scanning over a view. Every function advances `at` past what it read
-// and returns false on the first byte that is not valid JSON.
 
 struct Cursor {
     std::string_view text;
@@ -42,7 +37,6 @@ void skip_space(Cursor& cursor) noexcept {
     return digit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
 }
 
-// At an opening quote. `content` is the raw bytes between the quotes.
 [[nodiscard]] bool scan_string(Cursor& cursor, std::string_view& content, bool& escaped) noexcept {
     if (cursor.peek() != '"') return false;
     const auto begin = ++cursor.at;
@@ -104,8 +98,6 @@ void skip_space(Cursor& cursor) noexcept {
     return true;
 }
 
-// Scans one value at `depth` (the enclosing container count). Recursion is
-// bounded by kMaxJsonDepth.
 [[nodiscard]] JsonError scan_value(Cursor& cursor, const std::size_t depth) noexcept {
     skip_space(cursor);
     const char c = cursor.peek();
@@ -156,8 +148,6 @@ struct Member {
     std::string_view raw;
 };
 
-// Walks the top-level members of a validated object. `visit` returns false
-// to stop early.
 template <typename Visit>
 [[nodiscard]] bool each_member(const std::string_view object, Visit&& visit) noexcept {
     Cursor cursor{object, 0};
@@ -187,8 +177,6 @@ template <typename Visit>
     }
 }
 
-// ---------------------------------------------------------------------------
-
 struct Writer {
     std::span<char> out;
     std::size_t length{};
@@ -214,8 +202,6 @@ struct Writer {
     }
 };
 
-// Builds in scratch and copies only a complete result, so a refusal never
-// leaves a prefix in `out`.
 template <typename Build>
 [[nodiscard]] EncodeResult build_into(const std::span<char> out, Build&& build) noexcept {
     std::array<char, kMaxTmRequestBytes> scratch{};
@@ -243,8 +229,6 @@ template <typename Build>
     return side == Side::buy ? "buy" : side == Side::sell ? "sell" : "";
 }
 
-// A required text member: missing_field if absent, unsafe_text if present but
-// not a plain identifier string.
 [[nodiscard]] DecodeError required_text(const std::string_view object, const std::string_view key,
                                         TmText& out) noexcept {
     const auto raw = json_member_raw(object, key);
@@ -268,7 +252,7 @@ template <typename Build>
     return DecodeError::none;
 }
 
-}  // namespace
+}
 
 std::optional<TmText> tm_text(const std::string_view text) noexcept {
     if (text.empty() || text.size() > kMaxTmTextBytes) return std::nullopt;
@@ -314,7 +298,6 @@ JsonError validate_json_object(const std::string_view document) noexcept {
     skip_space(cursor);
     if (!cursor.done()) return JsonError::trailing_bytes;
 
-    // Top-level keys: no escapes (they would hide a duplicate) and no repeats.
     constexpr std::size_t kMaxKeys = 64;
     std::array<std::string_view, kMaxKeys> keys{};
     std::size_t count = 0;
@@ -541,4 +524,4 @@ DecodeError decode_status_reply(const std::string_view document, const AmountDec
     return DecodeError::none;
 }
 
-}  // namespace velocita::v2::truemarkets
+}

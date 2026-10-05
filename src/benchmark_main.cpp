@@ -1,3 +1,4 @@
+// V1: raft-bench.
 #include "velocita/benchmark.hpp"
 #include "velocita/client_recovery.hpp"
 #include "velocita/client_session.hpp"
@@ -496,7 +497,7 @@ void publish_prometheus(const std::filesystem::path& run_file,
     }
 }
 
-}  // namespace
+}
 
 int main(int argc, char** argv) {
     try {

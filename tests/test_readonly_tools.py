@@ -43,7 +43,6 @@ class MarkupTests(unittest.TestCase):
         self.assertEqual(arguments, {"email": "owner@example.invalid", "code": "000000"})
 
     def test_empty_code_is_asked_again_not_sent(self):
-        # A stray Enter queued before the prompt must not be spent as the code.
         module = load("measure-markup.py")
         calls = []
         class Session:
@@ -81,7 +80,6 @@ class MarkupTests(unittest.TestCase):
         return code, output.getvalue()
 
     def test_a_refused_quote_is_retried(self):
-        # The MCP server reports rate limiting as a tool error; a lone retry succeeds.
         code, output = self._scripted_quotes([{"_error": "RPC failed", "detail": "invalid params"},
                                               {"_error": "RPC failed", "detail": "invalid params"},
                                               {"structuredContent": {"out": "0.2"}}])
@@ -103,7 +101,6 @@ class MarkupTests(unittest.TestCase):
         {"symbol": "CBBTC", "chain": "base", "address": "0xcbbtc", "tradeable": True}]}
 
     def test_base_asset_is_the_catalog_address_not_the_symbol(self):
-        # 2026-09-28: get_quote answered "resolve base asset: 404" for base_asset "SOL".
         module = load("measure-markup.py")
         self.assertEqual(module["resolve_address"](self.CATALOG, "SOL", "solana"),
                          "So11111111111111111111111111111111111111112")
@@ -124,13 +121,12 @@ class MarkupTests(unittest.TestCase):
         self.assertNotIn("SECRET_AUTH_TOKEN", output)
 
     def test_sells_are_sized_from_the_public_reference_not_a_quote(self):
-        # Reference 100 USDC per unit: a $25 sell is 0.25 base units, whatever the quotes said.
         result, calls, output = self.run_capture(reference={"candles": [{"interval": "30s", "closePrice": "100"}]})
         sells = [args for name, args in calls if name == "get_quote" and args["side"] == "sell"]
         self.assertTrue(sells, "no sell quotes requested")
         for args in sells:
             self.assertEqual((args["qty"], args["qty_unit"]), ("0.250000", "base"))
-        self.assertEqual(result, 2)  # capture is not a completed measurement
+        self.assertEqual(result, 2)
         self.assertIn("unverified", output.lower())
 
     def test_every_asset_is_quoted_on_both_sides(self):
@@ -149,8 +145,6 @@ class MarkupTests(unittest.TestCase):
         self.assertIn("_error", session.call("get_quote"))
 
     def test_requests_name_themselves_to_cloudflare(self):
-        # Cloudflare in front of mcp.truemarkets.co answers 403 to Python's
-        # default "Python-urllib/x.y" agent (observed 2026-09-28).
         module = load("measure-markup.py")
         seen = []
         class Opener:

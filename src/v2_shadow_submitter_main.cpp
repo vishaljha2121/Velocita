@@ -1,41 +1,4 @@
-// velocita-v2-shadow-submitter: installs a rule program in the cluster (operator,
-// one shot) or evaluates one DecisionFrame per tick read from stdin (strategy).
-// Authority is split: --setup-only needs an operator caller (CallerId <= 15) and
-// the tick loop refuses one, so the process that proposes cannot change controls.
-//
-//   velocita-v2-shadow-submitter [--setup-only] [--mode shadow|paper]
-//       [--risk-version N --position-version N]
-//       --program FILE --catalog FILE --caller-key-id N --caller-id N
-//       --key-file FILE --incarnation HEX32 --session-file FILE --state-file FILE
-//       --response-endpoint HOST:PORT --node ID=HOST:PORT [--node ...] --aeron-dir DIR
-//       [--timeout-ms N]
-//
-// Each caller needs its OWN session and state files: a shared state file would
-// skip the tick loop's source generation.
-//
-// --setup-only: Publish, Validate, Stage, ActivateExecutable, SetStrategyMode(normal);
-//   stdout: SETUP generation=G first_sequence=S kill_epoch=K executor_generation=E strategy_mode=M
-// Tick loop, shadow (default): EvaluationMode::shadow, frames bind risk 1 / position 1;
-//   no decision can authorize. Paper: authoritative frames bound to the current
-//   risk and position versions (start: --risk-version / --position-version, default
-//   1/1); after an actionable decision, AuthorizeDecision. A stale_risk_state
-//   refusal that reports the account's versions is adopted for the next frame.
-// stdin:  TICK id=ID event_ns=N receive_ns=N age_ns=N features=F0,F1,..,PRICE evidence=HEX64 [exits_only=0|1]
-//         exits_only=1 (paper): an enter_long proposal is recorded but not sent for authorization.
-// stdout: READY generation=G first_sequence=S mode=shadow|paper caller_id=C
-//         DECISION id=ID source_seq=Q decision=D code=C decision_code=DC rule=R proposed=P effective=E resolution=A
-//                  from=V t_read_ns=T t_source_ns=T t_decision_ns=T
-//           paper adds: risk_version=R position_version=P authorization=NAME|none|withheld [resync=1 position_lots=Q]
-// Timestamps are wall-clock nanoseconds (comparable with the edge on the same host).
-// Exit: 0 at end of input (or setup done); 2 setup refused; 3 a command could not be committed
-// within the timeout, or was refused (restart: the next run is a new source generation); 64 usage.
-// Source re-sync: starts that end before committing leave the state file's generation ahead
-// of the kernel. A source_generation_gap refusal reports the kernel's cursor; the tick is
-// retried once on the generation after it (sequence 1), persisted first, and stderr gets
-// RESYNC source=S refused_generation=G cursor_generation=C cursor_sequence=Q generation=N.
-// Any other source refusal (regression, sequence gap) prints ERROR and exits 3: it means the
-// kernel holds events this state never reserved, so the submitter does not leapfrog them.
-
+// velocita-v2-shadow-submitter: the strategy's submitter process.
 #include "velocita/aeron_runtime.hpp"
 #include "velocita/v2/aeron_node_transport.hpp"
 #include "velocita/v2/node_client.hpp"
@@ -62,7 +25,7 @@ struct Usage final : std::runtime_error {
 };
 
 constexpr std::uint64_t kReserve = 10'000;
-constexpr std::uint64_t kCommandsPerTick = 3;  // source event, evaluation, paper authorization
+constexpr std::uint64_t kCommandsPerTick = 3;
 
 std::uint64_t number(const std::string& text, const char* what) {
     std::uint64_t value = 0;
@@ -164,7 +127,6 @@ std::string slurp(const std::filesystem::path& file) {
     return buffer.str();
 }
 
-// The program names its catalog root; the catalog file must verify against it.
 Digest256 declared_root(const std::string& text) {
     std::istringstream in(text);
     std::string line;
@@ -184,8 +146,6 @@ Digest256 declared_root(const std::string& text) {
     throw Usage("program: catalog.root missing");
 }
 
-// Submits COMMAND until it settles. A timeout is retried with the SAME command:
-// it may already have committed, and an exact retry returns the retained result.
 std::optional<SubmitOutcome> commit(NodeClientSession& session, const Command& command, ProposeLane lane,
                                     std::chrono::milliseconds total) {
     const auto deadline = Clock::now() + total;
@@ -205,8 +165,6 @@ std::optional<SubmitOutcome> commit(NodeClientSession& session, const Command& c
 
 bool setup_step_ok(const ApplyResult& r, std::size_t step) {
     if (r.code == ApplyCode::applied || r.code == ApplyCode::already_applied) return true;
-    // Re-running setup on a restart: the policy is already active, so validation
-    // is no longer a legal transition. Accept exactly that case.
     return step == 1 && r.code == ApplyCode::invalid_policy_transition && r.policy_lifecycle == PolicyLifecycle::active;
 }
 
@@ -251,12 +209,9 @@ int run(const Arguments& a) {
     const CallerId caller{a.caller_id};
 
     if (a.setup_only) {
-        // The four steps that need no control values, then the mode change built
-        // from the kill epoch and executor generation the cluster just reported.
         const auto provisional = shadow_setup(program, caller, sequence, KillEpoch{}, ExecutorGeneration{});
         ApplyResult last;
         for (std::size_t step = 0; step < 4; ++step) {
-            // Policy commands are ordinary commands: only the mode change is a control command.
             const auto outcome = commit(session, provisional.commands[step], ProposeLane::normal, total);
             if (outcome && outcome->state == SubmitState::committed &&
                 outcome->result.code == ApplyCode::catalog_not_installed) {
@@ -328,7 +283,7 @@ int run(const Arguments& a) {
             exits_only = *gate;
         } catch (const std::exception& error) {
             std::cout << "ERROR id=" << f["id"] << " reason=bad_tick" << std::endl;
-            continue;  // nothing was sent; the source sequence is unused
+            continue;
         }
         ++source_sequence;
         const FrameBinding binding = a.paper
@@ -352,8 +307,6 @@ int run(const Arguments& a) {
             if (resynced || !source || source->state != SubmitState::committed) break;
             const auto next = resync_source_generation(parsed.source, source->result);
             if (!next) break;
-            // Persisted before use: the state file must never name a generation below one in use,
-            // or the next start would be refused as a regression, which does not re-sync.
             if (const auto e = extend_reservation(a.state_file, a.incarnation, next->value(), reserved); !e.empty())
                 throw std::runtime_error("re-sync: " + e);
             std::cerr << "RESYNC source=" << parsed.source.value() << " refused_generation=" << generation
@@ -409,7 +362,7 @@ int run(const Arguments& a) {
     return 0;
 }
 
-}  // namespace
+}
 
 int main(int argc, char** argv) {
     try {

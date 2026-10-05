@@ -1,3 +1,4 @@
+// V1: raft-bench-merge.
 #include "velocita/benchmark.hpp"
 
 #include <array>
@@ -107,7 +108,7 @@ void write_distribution(std::ostream& output, const velocita::DistributionSummar
            << ",\"max_ns\":" << value.maximum_ns << '}';
 }
 
-}  // namespace
+}
 
 int main(int argc, char** argv) {
     try {

@@ -72,7 +72,7 @@ int open_directory(const std::filesystem::path& path) {
     return fd;
 }
 
-} // namespace
+}
 
 BoundMetadataError::BoundMetadataError(BoundMetadataErrorKind kind,
                                        BoundFrameError frame_error,
@@ -202,8 +202,6 @@ void BoundMetadataStore::save(const PersistentMetadata& value) const {
     const std::string temporary_name = std::string{kV2MetadataFileName} + ".tmp";
     int fd = -1;
     try {
-        // Runtime replacement is never permission to recreate lost or foreign
-        // voting memory. Genesis publication is an explicit startup operation.
         (void)read_bound_metadata_at(directory_fd, kV2MetadataFileName, identity_);
         struct stat before {};
         const bool temporary_exists =
@@ -266,4 +264,4 @@ void BoundMetadataStore::save(const PersistentMetadata& value) const {
     }
 }
 
-} // namespace velocita::v2
+}

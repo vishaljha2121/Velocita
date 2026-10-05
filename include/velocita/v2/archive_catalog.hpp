@@ -1,3 +1,4 @@
+// Canonical encoding of the archive catalog: the list of archived log segments.
 #pragma once
 
 #include "velocita/v2/digest.hpp"
@@ -62,16 +63,13 @@ struct ArchiveCatalogEncodeResult {
     Digest256 catalog_digest{};
 };
 
-// Validation and capacity failures leave output unchanged.
 [[nodiscard]] ArchiveCatalogEncodeResult encode_archive_catalog(
     const ArchiveCatalogHeader& header, std::span<const ArchiveCatalogRow> rows,
     const VerifiedStaticIdentity& identity, std::span<std::byte> output) noexcept;
 
-// Fully validates the immutable input before copying. On refusal header,
-// destination_rows and destination_count are unchanged.
 [[nodiscard]] ArchiveCatalogError decode_archive_catalog(
     std::span<const std::byte> input, const VerifiedStaticIdentity& identity,
     ArchiveCatalogHeader& header, std::span<ArchiveCatalogRow> destination_rows,
     std::size_t& destination_count) noexcept;
 
-} // namespace velocita::v2
+}

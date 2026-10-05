@@ -1,9 +1,5 @@
 #include "v2_node_test_support.hpp"
 
-// Two or three V2Node owner loops over an in-process fake network. Expected results
-// come from the reducer alone; frames the tests forge or replay are built
-// with the test's own keys, never read back from node internals.
-
 namespace {
 
 void redirect_admit_and_commit() {
@@ -31,8 +27,6 @@ void redirect_admit_and_commit() {
     (void)cluster.busy_holds();
 }
 
-// Park the follower's WAL worker mid-save so its kernel is deterministically
-// busy while authentic frames keep arriving. None may be lost.
 void busy_kernel_holds_frames_instead_of_dropping_them() {
     Base base("v2-node-busy");
     Cluster cluster(base.path);
@@ -61,7 +55,6 @@ void forged_replayed_and_mismatched_frames_have_no_effect() {
     const auto follower = leader == 1 ? 2 : 1;
     cluster.run(20);
 
-    // Forged: a well-formed RequestVote at a huge term, signed with a wrong secret.
     const velocita::PeerMessage vote{follower, leader, RequestVote{1000, follower, 0, 0}};
     const auto term_before = cluster.node(leader).status().replica.term;
     const auto body = identity_test::frame_peer_body(
@@ -78,7 +71,6 @@ void forged_replayed_and_mismatched_frames_have_no_effect() {
     require(cluster.node(leader).status().replica.term == term_before && cluster.leader() == leader,
             "forged frame changed the leader's term or role");
 
-    // Replayed: an authentic frame the follower already sent to the leader.
     Bytes authentic;
     for (const auto& [recipient, frame] : cluster.network.captured)
         if (recipient == leader) authentic = frame;
@@ -89,7 +81,6 @@ void forged_replayed_and_mismatched_frames_have_no_effect() {
     require(cluster.node(leader).status().counters.fence_refusals > fence_before,
             "replayed authentic frame was not refused by the session fence");
 
-    // Mismatched: caller key 9 is CallerId 7, but the command claims CallerId 8.
     const auto index_before = cluster.node(leader).status().replica.current_index;
     cluster.network.at(leader).ingress_inbox.push_back(cluster.caller.ingress(leader, authored(2, 8)));
     cluster.run_until([&] { return cluster.response_for(2, ResponseKind::refused).has_value(); }, "mismatch refusal");
@@ -146,9 +137,6 @@ void partition_and_backpressure_recover() {
     cluster.network.at(1).block_offers = true;
     cluster.run_until([&] { return cluster.node(1).status().counters.peer_backpressure > 0; },
                       "a blocked offer to be counted");
-    // Stay blocked across several 200 ms heartbeats (library default), so newer
-    // frames exist. The refused envelope is kept and offered again first, byte
-    // for byte, never replaced by a newer one: backpressure delays, never discards.
     const auto blocked_until = std::chrono::steady_clock::now() + std::chrono::milliseconds(600);
     while (std::chrono::steady_clock::now() < blocked_until) cluster.run(1);
     const auto& refused = cluster.network.at(1).refused;
@@ -162,11 +150,7 @@ void partition_and_backpressure_recover() {
                 cluster.network.captured[captured_before].second == refused.front(),
             "stashed envelope was not the first frame offered after backpressure cleared");
 
-    // A healed old-term entry waits for a current-term command (approved cost).
     leader = cluster.elect();
-    // Submitted like a client: a node may answer "busy" while its disk writer
-    // is saturated (seen under parallel load), which means retry, so the same
-    // command is re-offered until the leader admits it.
     int rounds = 0;
     try {
         cluster.run_until([&] {
@@ -178,7 +162,6 @@ void partition_and_backpressure_recover() {
                    cluster.response_for(2, ResponseKind::committed).has_value();
         }, "both commands committed after heal");
     } catch (const std::exception& error) {
-        // Say what actually happened: which request is missing, and each voter's view.
         std::string state = std::string(error.what()) + " [1 committed=" +
             (cluster.response_for(1, ResponseKind::committed) ? "yes" : "no") + ", 2 committed=" +
             (cluster.response_for(2, ResponseKind::committed) ? "yes" : "no") + ", 2 admitted=" +
@@ -200,7 +183,6 @@ void partition_and_backpressure_recover() {
     (void)cluster.busy_holds();
 }
 
-// Seeds for one route's secret set: current, then optional next / previous.
 SecretSet secret_set(std::uint8_t current, std::optional<std::uint8_t> next = {},
                      std::optional<std::uint8_t> previous = {}) {
     SecretSet set{secret(current)};
@@ -216,8 +198,6 @@ NodeSecrets rotation_secrets(std::int32_t self, SecretSet link, SecretSet caller
     return secrets;
 }
 
-// The approved three-step overlap, with the two voters deliberately promoted
-// at different moments. No step may refuse an authentic frame or lose a commit.
 void rotation_across_live_nodes_has_no_outage() {
     Base base("v2-node-rotation");
     Cluster cluster(base.path);
@@ -242,8 +222,6 @@ void rotation_across_live_nodes_has_no_outage() {
     commit("before rotation");
     const auto refusals_before = refusals();
 
-    // 1. Voters learn the new secrets one at a time, as a push reaches one host
-    //    before the other. Learning must not change what a voter SENDS.
     apply(1, secret_set(kLinkSeed, kNewLinkSeed), secret_set(kCallerSeed, kNewCallerSeed));
     commit("one voter accepts the new secrets");
     apply(2, secret_set(kLinkSeed, kNewLinkSeed), secret_set(kCallerSeed, kNewCallerSeed));
@@ -251,20 +229,17 @@ void rotation_across_live_nodes_has_no_outage() {
     cluster.caller.send_seed = kNewCallerSeed;
     commit("new secrets accepted");
 
-    // 2. Promote node 1 only: it sends new, node 2 still sends old.
     apply(1, secret_set(kNewLinkSeed, {}, kLinkSeed), secret_set(kNewCallerSeed, {}, kCallerSeed));
     commit("mixed promotion");
     apply(2, secret_set(kNewLinkSeed, {}, kLinkSeed), secret_set(kNewCallerSeed, {}, kCallerSeed));
     commit("both promoted");
 
-    // 3. Retire the old secrets everywhere.
     for (const std::int32_t node : {1, 2})
         apply(node, secret_set(kNewLinkSeed), secret_set(kNewCallerSeed));
     cluster.caller.accept_seeds = {kNewCallerSeed};
     commit("old secrets retired");
     require(refusals() == refusals_before, "rotation refused an authentic frame");
 
-    // The retired secret is now dead: a correctly formed frame under it is refused.
     const auto follower = leader == 1 ? 2 : 1;
     const velocita::PeerMessage vote{follower, leader, RequestVote{1, follower, 0, 0}};
     const auto body = identity_test::frame_peer_body(
@@ -277,8 +252,6 @@ void rotation_across_live_nodes_has_no_outage() {
     cluster.run(2);
     require(refusals() == refusals_before + 1, "frame under the retired secret was accepted");
 
-    // A reload missing ANY one configured route changes nothing, and refuses by
-    // returning false: the binary must be able to keep running on old keys.
     const auto refuses_cleanly = [&](NodeSecrets secrets) {
         try {
             return !cluster.node(1).replace_secrets(std::move(secrets));
@@ -296,10 +269,6 @@ void rotation_across_live_nodes_has_no_outage() {
     (void)cluster.busy_holds();
 }
 
-// Three voters: a commit needs two durable copies, so any ONE voter may be
-// lost. An unreachable voter must not hold back traffic to the one that is
-// reachable; a returning voter catches up from the retained log (the node
-// never compacts, so no snapshot install is needed).
 std::int32_t commit(Cluster& cluster, std::uint64_t sequence, const std::string& step) {
     const auto leader = cluster.elect();
     cluster.network.at(leader).ingress_inbox.push_back(cluster.caller.ingress(leader, authored(sequence)));
@@ -310,8 +279,6 @@ std::int32_t commit(Cluster& cluster, std::uint64_t sequence, const std::string&
     return leader;
 }
 
-// Every running voter has applied exactly the leader's commit and holds the
-// same state digest.
 void require_converged(Cluster& cluster, const std::string& step) {
     const auto leader = cluster.elect();
     cluster.run_until([&] {
@@ -335,8 +302,6 @@ void three_voters_commit_without_an_unreachable_follower() {
     require(commit(cluster, 2, "one follower unreachable") == leader,
             "losing a follower moved leadership");
     require_converged(cluster, "two of three");
-    // Across several heartbeats, the leader retries ONE held envelope to the
-    // stopped voter; newer frames for it wait in the mailbox, never replace it.
     const auto outage_until = std::chrono::steady_clock::now() + std::chrono::milliseconds(600);
     while (std::chrono::steady_clock::now() < outage_until) cluster.run(1);
     const auto& refused = cluster.network.at(leader).refused;
@@ -366,9 +331,6 @@ void three_voters_elect_a_new_leader_when_the_leader_is_lost() {
     (void)cluster.busy_holds();
 }
 
-// The node compacts on its own once the log passes its threshold, but never
-// above the compaction floor: a stopped voter pins every other voter's cut,
-// and when it returns it catches up by ordinary appends.
 void three_voters_compact_below_the_floor_and_keep_committing() {
     Base base("v2-node-compaction");
     Cluster cluster(base.path, {});
@@ -379,7 +341,6 @@ void three_voters_compact_below_the_floor_and_keep_committing() {
         cluster.start(id, NodeStartup::bootstrap);
     }
     std::uint64_t sequence = 0;
-    // Below the threshold nothing compacts (compaction pauses Raft progress).
     for (int i = 0; i < 5; ++i) commit(cluster, ++sequence, "below the threshold");
     const auto quiet_until = std::chrono::steady_clock::now() + std::chrono::milliseconds(1500);
     while (std::chrono::steady_clock::now() < quiet_until) cluster.run(1);
@@ -421,8 +382,6 @@ void three_voters_compact_below_the_floor_and_keep_committing() {
     }, "compaction to resume past the pinned cut once every voter holds the log");
 }
 
-// Compaction must not get in the way of failover: after every voter has
-// compacted, losing the LEADER still leaves two voters that elect and commit.
 void three_voters_fail_over_after_compacting() {
     Base base("v2-node-compaction-failover");
     Cluster cluster(base.path, {});
@@ -450,8 +409,6 @@ void three_voters_fail_over_after_compacting() {
         require(!node->status().replica.role.empty(), "fixture");
 }
 
-// Two voters down is a lost quorum: nothing may commit, and nothing is
-// reported as committed.
 void three_voters_refuse_to_commit_without_a_quorum() {
     Base base("v2-node-three-quorum");
     Cluster cluster(base.path, kThree);
@@ -468,7 +425,7 @@ void three_voters_refuse_to_commit_without_a_quorum() {
     (void)cluster.busy_holds();
 }
 
-}  // namespace
+}
 
 int main() {
     try {

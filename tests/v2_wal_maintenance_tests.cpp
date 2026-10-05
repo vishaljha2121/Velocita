@@ -84,7 +84,7 @@ void test_blocking_job_keeps_owner_nonblocking_and_hands_off_payload(
             writer.stop();
         }
     } cleanup{job, writer};
-    job.input = 73; // immutable after the release publication below
+    job.input = 73;
     require(writer.submit_maintenance(run_blocking, &job), "maintenance refused");
     wait_until([&] { return job.entered.load(std::memory_order_acquire); },
                "maintenance body never entered");
@@ -142,7 +142,7 @@ void test_exception_is_a_permanent_writer_failure(const std::filesystem::path& r
     writer.stop();
 }
 
-} // namespace
+}
 
 int main() {
     try {

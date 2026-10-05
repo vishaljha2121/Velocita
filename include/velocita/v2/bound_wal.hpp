@@ -1,3 +1,4 @@
+// Write-ahead-log records bound to the static identity.
 #pragma once
 
 #include "velocita/storage.hpp"
@@ -20,4 +21,4 @@ private:
     std::span<const std::byte> bytes, const VerifiedStaticIdentity& identity);
 [[nodiscard]] std::vector<WalRecord> decode_bound_wal_records(
     std::span<const std::byte> bytes, const VerifiedStaticIdentity& identity);
-} // namespace velocita::v2
+}

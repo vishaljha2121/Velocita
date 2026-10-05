@@ -149,11 +149,6 @@ void test_failed_suffix_rewrite_latches_node(
         while (identity_test::take_outbound_message(node)) {
         }
 
-    // A higher-term leader replaces the still-uncommitted marker at the same
-    // index. Raft invokes log_pop before removing the old entry. The injected
-    // failure occurs after the replacement file was synced but before rename,
-    // so the old durable segment and its in-memory owned payload must remain the
-    // only state this process may serve.
         velocita::AppendEntries replacement;
         replacement.term = node.status().term + 1;
         replacement.entries.push_back(
@@ -201,9 +196,6 @@ void test_failed_suffix_rewrite_latches_node(
                 "storage-failed node could campaign after failed truncation");
     }
 
-    // The injection fires before atomic rename, so a clean process must recover
-    // the original durable marker, not the attempted replacement and not an
-    // invented empty suffix. Restart reconstructs only the drain obligation.
     failure.armed = false;
     const auto records = identity_test::read_wal(root);
     require(records.size() == 1 && records[0].index == static_cast<std::uint64_t>(original_index) &&
@@ -288,8 +280,6 @@ void test_failed_threaded_wal_flush_reaches_owner(const std::filesystem::path& r
                                          [&failure] { return failure.reached; }),
                 "threaded failure fixture never reached sync");
     }
-    // Joining is the deterministic observation fence: notification happens in
-    // the injected callback, while the writer publishes its latch in the catch.
     node.stop_writer();
 
     require_protocol_closed(node, marker(41, domain), "threaded WAL failure");
@@ -424,8 +414,6 @@ void test_failed_self_vote_is_reported_by_tick(const std::filesystem::path& root
                               root, 2, {1, 2, 3},
                               catalog_test::standard_catalog(), lineage_tag),
                           {}, {fail_before_metadata_write, &failure});
-    // With pre-vote the campaign, and so the self-vote, starts in the owner
-    // call that delivers the deciding grant; that call must report the failure.
     node.tick(10'000);
     bool refused = false;
     try { identity_test::grant_prevote(node, 1); }
@@ -490,7 +478,7 @@ void test_failed_commit_persist_latches_node(const std::filesystem::path& root) 
     require_protocol_closed(node, marker(31, domain), "commit metadata failure");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

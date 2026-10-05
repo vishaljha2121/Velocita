@@ -54,7 +54,7 @@ void close_checked(int& fd, const char* message) {
     const int closing = std::exchange(fd, -1);
     if (::close(closing) != 0) throw std::runtime_error(message);
 }
-} // namespace
+}
 
 SnapshotStore::SnapshotStore(std::filesystem::path data_dir,
                              const VerifiedStaticIdentity& identity,
@@ -74,7 +74,6 @@ void SnapshotStore::save(const TradingState& state,
         incompatible(BoundFrameError::invalid_payload,
                      "snapshot coordinates must be positive and representable");
 
-    // Cold/worker I/O: keep bounded codec workspaces off the worker stack.
     struct SaveWorkspace {
         std::array<std::byte, kMaxStateSnapshotBytes> canonical{};
         std::array<std::byte, kCoordinatesBytes + kMaxStateSnapshotBytes> payload{};
@@ -170,8 +169,6 @@ std::optional<StoredSnapshot> SnapshotStore::load() const {
     }
     const auto bytes = std::span<const std::byte>{storage}.first(count);
 
-    // Once any bytes exist, an unrecognized wrapper is incompatible rather than
-    // an optional snapshot. In particular this rejects the former VSN2 framing.
     if (count < 4 || bytes[0] != std::byte{'V'} || bytes[1] != std::byte{'2'} ||
         bytes[2] != std::byte{'B'} || bytes[3] != std::byte{'F'})
         incompatible(BoundFrameError::invalid_magic,
@@ -181,8 +178,6 @@ std::optional<StoredSnapshot> SnapshotStore::load() const {
     const auto admitted = decode_bound_frame(bytes, BoundFrameKind::snapshot,
                                               identity_, view, scratch);
     if (admitted != BoundFrameError::none) {
-        // Preserve the pre-V2BF rule: a recognizable future canonical schema is
-        // incompatible even when its declared outer length exceeds today's cap.
         constexpr std::size_t canonical_offset = kBoundFrameHeaderBytes + kCoordinatesBytes;
         if (admitted == BoundFrameError::capacity_exceeded &&
             count > canonical_offset) {
@@ -214,4 +209,4 @@ std::optional<StoredSnapshot> SnapshotStore::load() const {
     result.state_digest = decoded.state_digest;
     return result;
 }
-} // namespace velocita::v2
+}

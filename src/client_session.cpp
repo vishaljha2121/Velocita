@@ -73,4 +73,4 @@ std::int32_t AeronClientSession::node_id(const std::size_t channel_index) const 
     return impl_->options.request_targets[channel_index].node_id;
 }
 
-}  // namespace velocita
+}

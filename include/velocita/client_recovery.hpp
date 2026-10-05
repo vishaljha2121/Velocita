@@ -1,3 +1,4 @@
+// V1: client retry and recovery policy.
 #pragma once
 
 #include "velocita/client_routing.hpp"
@@ -40,4 +41,4 @@ private:
     ClientRecoveryConfig config_;
 };
 
-}  // namespace velocita
+}

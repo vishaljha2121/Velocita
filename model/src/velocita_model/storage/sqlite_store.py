@@ -24,14 +24,6 @@ _SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 
 def now_ns() -> int:
-    """Wall-clock UTC nanoseconds.
-
-    Deliberately `time.time_ns()` and not a monotonic clock: these values are
-    written into `DecisionFrame.receive_time_ns`, which must be comparable
-    across processes and machines. Monotonic clocks are used for measuring
-    durations within a process; see `collectors/system_health.py` for the
-    clock-synchronisation check that makes this value trustworthy.
-    """
     return time.time_ns()
 
 
@@ -43,8 +35,6 @@ class SessionHandle:
 
 
 class ResearchStore:
-    """A thin, explicit wrapper. No ORM, no lazy magic, no hidden writes."""
-
     def __init__(self, path: Path | str, *, read_only: bool = False) -> None:
         self._path = Path(path)
         self._read_only = read_only
@@ -77,8 +67,6 @@ class ResearchStore:
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
-        """Explicit transaction. Used wherever raw evidence and its immediate
-        index entry must both exist or neither."""
         self._conn.execute("BEGIN IMMEDIATE")
         try:
             yield self._conn
@@ -88,7 +76,6 @@ class ResearchStore:
         else:
             self._conn.execute("COMMIT")
 
-    # -- session ----------------------------------------------------------
 
     def open_session(
         self,
@@ -114,7 +101,6 @@ class ResearchStore:
             (now_ns(), reason, session.session_id),
         )
 
-    # -- raw evidence -----------------------------------------------------
 
     def record_metadata(
         self,
@@ -146,9 +132,6 @@ class ResearchStore:
         return int(cursor.lastrowid)
 
     def record_trade_print(self, session: SessionHandle, **row: Any) -> int | None:
-        """Returns None when the print was a duplicate. Duplicate suppression is
-        by venue trade id; a venue that supplies none forfeits deduplication and
-        the collector records that limitation in metadata."""
         try:
             cursor = self._conn.execute(
                 "INSERT INTO trade_print (session_id, pair_id, venue_trade_id, event_time_ns, "
@@ -187,7 +170,6 @@ class ResearchStore:
             (now_ns(), interval_id),
         )
 
-    # -- canonical frames -------------------------------------------------
 
     def record_decision_frame(
         self,
@@ -200,9 +182,6 @@ class ResearchStore:
         payload: bytes,
         payload_digest: str,
     ) -> int | None:
-        """Store the exact canonical bytes. Returns None for an exact duplicate,
-        which is a no-op by digest rather than a second row - the same rule the
-        reducer applies to a redelivered command."""
         try:
             cursor = self._conn.execute(
                 "INSERT INTO decision_frame (session_id, pair_id, source_sequence, event_time_ns, "
@@ -228,7 +207,6 @@ class ResearchStore:
             (pair_id, since_ns),
         )
 
-    # -- shadow results ---------------------------------------------------
 
     def record_shadow_decision(self, **row: Any) -> int:
         cursor = self._conn.execute(
@@ -282,7 +260,6 @@ class ResearchStore:
             {"session_id": session.session_id, "at_ns": now_ns(), **row},
         )
 
-    # -- queries ----------------------------------------------------------
 
     def query(self, sql: str, params: Sequence[Any] = ()) -> list[sqlite3.Row]:
         return list(self._conn.execute(sql, params))
@@ -293,6 +270,4 @@ class ResearchStore:
         return int(page_count) * int(page_size)
 
     def checkpoint(self) -> None:
-        """Fold the WAL back into the main database. Called on clean shutdown so
-        a subsequent power loss cannot lose an unmerged tail."""
         self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")

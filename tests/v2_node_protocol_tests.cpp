@@ -7,9 +7,6 @@
 #include <string_view>
 #include <vector>
 
-// Goldens generated independently with Python struct (see the CP-055 evidence
-// README); never from the code under test.
-
 namespace {
 
 using namespace velocita::v2;
@@ -162,7 +159,7 @@ void ingress_round_trips_and_refuses() {
             "oversized ingress decoded");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

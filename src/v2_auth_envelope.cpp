@@ -8,7 +8,6 @@ namespace {
 constexpr std::size_t kBlockBytes = 64;
 constexpr std::string_view kDeriveDomain = "velocita.auth.v1";
 
-// Volatile stores so the compiler cannot drop the wipe of a dying secret.
 void wipe(std::span<std::byte> bytes) noexcept {
     volatile std::byte* cursor = bytes.data();
     for (std::size_t i = 0; i < bytes.size(); ++i) cursor[i] = std::byte{0};
@@ -70,7 +69,6 @@ struct Parsed {
     std::size_t body_bytes{};
 };
 
-// Structure only; cheap and crypto-free so malformed input costs no hashing.
 AuthEnvelopeError parse(std::span<const std::byte> input, Parsed& parsed) noexcept {
     if (input.size() < kAuthHeaderBytes) return AuthEnvelopeError::truncated;
     if (!std::equal(kAuthEnvelopeMagic.begin(), kAuthEnvelopeMagic.end(), input.begin()))
@@ -92,7 +90,7 @@ AuthEnvelopeError parse(std::span<const std::byte> input, Parsed& parsed) noexce
     return AuthEnvelopeError::none;
 }
 
-}  // namespace
+}
 
 std::optional<AuthSecret> AuthSecret::from_bytes(std::span<const std::byte> bytes) noexcept {
     if (bytes.size() != kAuthSecretBytes) return std::nullopt;
@@ -184,7 +182,6 @@ AuthEnvelopeError verify_auth_envelope(const AuthKey& key, std::span<const std::
     Hmac mac(key.key_);
     mac.update(input.first(signed_bytes));
     const auto expected = mac.finish();
-    // Accumulate every byte difference: no early exit that leaks the prefix length.
     unsigned difference = 0;
     for (std::size_t i = 0; i < kAuthTagBytes; ++i)
         difference |= std::to_integer<unsigned>(expected.bytes[i] ^ input[signed_bytes + i]);
@@ -199,4 +196,4 @@ Digest256 hmac_sha256(std::span<const std::byte> key, std::span<const std::byte>
     return mac.finish();
 }
 
-}  // namespace velocita::v2
+}

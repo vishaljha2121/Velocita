@@ -1,3 +1,4 @@
+// Size budgets for the kernel's objects and messages.
 #pragma once
 
 #include <cstddef>
@@ -21,21 +22,14 @@ round_up_to_cache_line(const std::size_t bytes) noexcept {
     return ((bytes - 1) / kTargetCacheLineBytes + 1) * kTargetCacheLineBytes;
 }
 
-// Object ceilings are review gates, not serialized sizes. Raising one requires
-// an explicit working-set, arena-capacity, and snapshot-impact review.
 inline constexpr std::size_t kDecisionFrameObjectBudgetBytes = 448;
 inline constexpr std::size_t kPolicyArtifactObjectBudgetBytes = 1024;
 inline constexpr std::size_t kRuleEvaluationObjectBudgetBytes = 16;
-// Phase 3D adds one active and one staged executable-policy bundle plus exact
-// proposals in cold decision records. The 80-KiB ceiling is asserted against
-// sizeof(TradingState) at compile time, on x86-64 and ARM64 alike.
 inline constexpr std::size_t kTradingStateObjectBudgetBytes = 80U * 1024U;
 inline constexpr std::size_t kDecisionRecordHotBudgetBytes = 64;
 inline constexpr std::size_t kDecisionRecordColdBudgetBytes = 640;
 inline constexpr std::size_t kDecisionFramePayloadBudgetBytes = 448;
 inline constexpr std::size_t kPolicyArtifactPayloadBudgetBytes = 576;
-// An atomic StageExecutablePolicy command carries every immutable fact needed
-// to resolve an action identically on every replica.
 inline constexpr std::size_t kKernelCommandBudgetBytes = 1920;
 inline constexpr std::size_t kKernelResultBudgetBytes = 128;
 inline constexpr std::size_t kPriceSourceObjectBudgetBytes = 32;
@@ -49,12 +43,8 @@ inline constexpr std::size_t kActionResolutionObjectBudgetBytes = 128;
 inline constexpr std::size_t kFeatureDescriptorObjectBudgetBytes = 16;
 inline constexpr std::size_t kFeatureSchemaArtifactObjectBudgetBytes = 576;
 inline constexpr std::size_t kExecutablePolicyArtifactObjectBudgetBytes = 1408;
-// Candidate wire ceilings for Phase 3D hardware validation. These are distinct
-// from object budgets because canonical payloads omit padding and unused slots.
 inline constexpr std::size_t kFeatureSchemaArtifactPayloadBudgetBytes = 384;
 inline constexpr std::size_t kExecutablePolicyArtifactPayloadBudgetBytes = 1344;
-// Phase 4 in-memory authorization slice. These are resident object ceilings;
-// canonical snapshot budgets are reviewed separately in the codec increment.
 inline constexpr std::size_t kRiskAccountObjectBudgetBytes = 128;
 inline constexpr std::size_t kRiskReservationObjectBudgetBytes = 64;
 inline constexpr std::size_t kClusterOrderObjectBudgetBytes = 64;
@@ -63,4 +53,4 @@ inline constexpr std::size_t kOutboxEffectRecordObjectBudgetBytes = 64;
 static_assert(kTargetCacheLineBytes >= alignof(std::max_align_t));
 static_assert(is_power_of_two(kTargetCacheLineBytes));
 
-}  // namespace velocita::v2
+}

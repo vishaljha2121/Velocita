@@ -12,9 +12,6 @@
 #include <unistd.h>
 #include <vector>
 
-// File goldens come from tests/v2_session_fence_goldens.py (Python struct +
-// zlib), never from the code under test. Fence expectations are hand-derived.
-
 namespace {
 
 using namespace velocita::v2;
@@ -66,13 +63,13 @@ void fence_follows_hand_derived_table() {
     const std::array<Step, 11> steps{{
         {0, 1, Decision::invalid_counter, 0, 0},
         {1, 0, Decision::invalid_counter, 0, 0},
-        {5, 10, Decision::accept, 5, 10},          // first authentic session, any start
+        {5, 10, Decision::accept, 5, 10},
         {5, 10, Decision::replayed_sequence, 5, 10},
         {5, 9, Decision::replayed_sequence, 5, 10},
         {5, 11, Decision::accept, 5, 11},
-        {4, 100, Decision::stale_epoch, 5, 11},     // older incarnation, even with higher sequence
-        {6, 1, Decision::accept, 6, 1},             // newer incarnation restarts its sequence
-        {5, 12, Decision::stale_epoch, 6, 1},       // the old process is now retired for good
+        {4, 100, Decision::stale_epoch, 5, 11},
+        {6, 1, Decision::accept, 6, 1},
+        {5, 12, Decision::stale_epoch, 6, 1},
         {6, 1, Decision::replayed_sequence, 6, 1},
         {UINT64_MAX, UINT64_MAX, Decision::accept, UINT64_MAX, UINT64_MAX},
     }};
@@ -147,7 +144,7 @@ void temporaries_and_links_are_never_trusted() {
     TempDir dir;
     const auto file = dir.path / "session-epoch.bin";
     write(file, kEpoch2);
-    write(dir.path / "session-epoch.bin.tmp", kEpochMax);  // an aborted advance's garbage
+    write(dir.path / "session-epoch.bin.tmp", kEpochMax);
     const auto advanced = advance_session_epoch_file(file);
     require(advanced.error == SessionEpochError::none && advanced.epoch == 3,
             "leftover temporary was promoted or blocked recovery");
@@ -163,7 +160,7 @@ void temporaries_and_links_are_never_trusted() {
             "create in a missing directory not reported as io failure");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

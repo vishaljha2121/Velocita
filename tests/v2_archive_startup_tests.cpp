@@ -251,7 +251,7 @@ struct AutomaticRoot {
     }
 };
 
-} // namespace
+}
 
 int main() {
     try {

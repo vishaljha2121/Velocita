@@ -11,8 +11,6 @@ int getentropy(void* bytes, std::size_t size) {
     return ::getentropy(bytes, size);
 }
 }
-// Exercise failure of the actual cold-start entropy call without exposing a
-// production knob that could replace fresh session identity with a constant.
 #define getentropy archive_entropy_fault::getentropy
 #include "../src/v2_replication.cpp"
 #undef getentropy
@@ -45,7 +43,7 @@ ArchiveDestinationEvidence verify_on_worker(const std::filesystem::path& root,
     std::thread worker([&] {
         result = ArchiveDestinationTestAccess::verify(root, destination, publisher, request);
     });
-    worker.join(); // Test driver only; the protocol-owner API never joins.
+    worker.join();
     require(result.error == ArchiveDestinationError::none && result.evidence.verified(),
             "simulated authenticated destination failed exact archive verification");
     return std::move(result.evidence);

@@ -88,7 +88,6 @@ class MarketStreamRecorder:
         self.reconnects = 0
         self.protocol_errors = 0
 
-    # -- connection lifecycle ---------------------------------------------
 
     def on_connected(self, now_ns: int) -> None:
         self._up = True
@@ -102,7 +101,6 @@ class MarketStreamRecorder:
         if self._gap_id is None:
             self._gap_id = self._store.open_quality_interval(self._session, "disconnect", detail=reason)
 
-    # -- messages -----------------------------------------------------------
 
     def handle(self, text: str, receive_ns: int) -> None:
         self._latest_receive_ns = max(self._latest_receive_ns, receive_ns)
@@ -165,11 +163,8 @@ class MarketStreamRecorder:
              receive_ns, body, _sha256(body), full_digest, int(filtered)),
         )
 
-    # -- metrics ----------------------------------------------------------
 
     def metrics(self, now_ns: int) -> str:
-        """Prometheus text. A topic that never arrived is reported silent, never
-        omitted: absence must look like absence (M3a)."""
         out = [
             "# TYPE velocita_md_up gauge", f"velocita_md_up {int(self._up)}",
             "# TYPE velocita_md_reconnects_total counter", f"velocita_md_reconnects_total {self.reconnects}",
@@ -183,8 +178,6 @@ class MarketStreamRecorder:
         out += [f'velocita_md_messages_total{{type="{_label(k)}"}} {v}' for k, v in sorted(self._counts.items())]
         out.append("# TYPE velocita_md_topic_silent gauge")
         for topic in self._topics:
-            # Never seen: measured from the connection, so a fresh subscription
-            # gets the same grace period as a stream that went quiet.
             since = self._last_seen_ns.get(topic, self._connected_at_ns)
             silent = since is None or now_ns - since > self._silent_after_ns
             out.append(f'velocita_md_topic_silent{{topic="{_label(topic)}"}} {int(silent)}')
@@ -207,7 +200,6 @@ class MarketStreamRecorder:
 
 
 def publish(text: str, path: str) -> None:
-    """Atomic replace, so node-exporter never reads a half-written file."""
     tmp = f"{path}.tmp"
     with open(tmp, "w", encoding="utf-8") as handle:
         handle.write(text)
@@ -226,8 +218,6 @@ def run_stream(
     publish_every_s: float = 10.0,
     max_backoff_s: float = 60.0,
 ) -> None:
-    """Connect, subscribe, record; reconnect with capped exponential backoff.
-    Every disconnect is recorded as a data-quality gap, never backfilled."""
     backoff, attempts, last_publish = 1.0, 0, 0
     while not stop():
         if attempts:
@@ -252,7 +242,7 @@ def run_stream(
             reason = "stream ended"
         except OSError as error:
             reason = f"{type(error).__name__}: {error}"
-        except RuntimeError as error:  # ProtocolError and refusals
+        except RuntimeError as error:
             recorder.protocol_errors += 1
             reason = f"{type(error).__name__}: {error}"
         finally:

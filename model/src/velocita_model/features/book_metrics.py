@@ -21,18 +21,12 @@ from ..contracts.enums import MarketDataStatus
 
 @dataclass(frozen=True, slots=True)
 class Level:
-    """One ladder level, in exact decimal price and size."""
-
     price: Decimal
     size: Decimal
 
 
 @dataclass(frozen=True, slots=True)
 class BookObservation:
-    """A normalised book snapshot. `status` is decided by the collector, not by
-    the metric functions - staleness is a property of when we received data, not
-    of what the data says."""
-
     pair_id: str
     source_sequence: int
     venue_sequence: int | None
@@ -89,8 +83,6 @@ def spread_bps(book: BookObservation) -> Decimal | None:
 
 
 def microprice(book: BookObservation) -> Decimal | None:
-    """Size-weighted mid: the best bid is weighted by the *ask* size and vice
-    versa, because a large resting ask pushes the true clearing price down."""
     if not book.is_two_sided:
         return None
     bid_size = book.bids[0].size
@@ -102,8 +94,6 @@ def microprice(book: BookObservation) -> Decimal | None:
 
 
 def book_imbalance(book: BookObservation, depth: int = 1) -> Decimal | None:
-    """(bid - ask) / (bid + ask) over the top `depth` levels, in [-1, 1].
-    Positive means bid-heavy."""
     if not book.is_two_sided:
         return None
     bid_size = sum((level.size for level in book.bids[:depth]), Decimal(0))
@@ -115,10 +105,6 @@ def book_imbalance(book: BookObservation, depth: int = 1) -> Decimal | None:
 
 
 def cumulative_depth_quote(levels: Sequence[Level], mid: Decimal, distance_bps: Decimal) -> Decimal:
-    """Notional resting within `distance_bps` of `mid`, in quote units.
-
-    Notional rather than base size, because a 20 USDC account cares about how
-    much money sits in front of it, not how many tokens."""
     if mid <= 0:
         return Decimal(0)
     limit = mid * distance_bps / Decimal(10_000)
@@ -137,12 +123,6 @@ def classify_status(
     max_age_ns: int,
     recovering: bool = False,
 ) -> MarketDataStatus:
-    """Decide the frame's `MarketDataStatus`.
-
-    Order matters and is deliberately pessimistic: a book that is both stale and
-    crossed reports `crossed`, because a crossed book is a stronger statement
-    about the feed being wrong than an old book is.
-    """
     if recovering:
         return MarketDataStatus.recovering
     if not book.is_two_sided:

@@ -1,3 +1,4 @@
+// Digests of policy, feature-schema and executable-policy artifacts.
 #pragma once
 
 #include "velocita/v2/digest.hpp"
@@ -25,19 +26,14 @@ struct ArtifactDigestResult {
     Digest256 digest{};
 };
 
-// Computation permits only the artifact's own digest to be zero because it is
-// excluded from its preimage. Every other structural and bound-digest contract
-// must already be valid.
 [[nodiscard]] ArtifactDigestResult
 compute_artifact_digest(const FeatureSchemaArtifact& artifact);
 [[nodiscard]] ArtifactDigestResult
 compute_artifact_digest(const ExecutablePolicyArtifact& artifact);
 
-// Verification first requires the complete structural contract, including a
-// nonzero claimed digest, and then performs exact digest comparison.
 [[nodiscard]] ArtifactDigestResult
 verify_artifact_digest(const FeatureSchemaArtifact& artifact);
 [[nodiscard]] ArtifactDigestResult
 verify_artifact_digest(const ExecutablePolicyArtifact& artifact);
 
-}  // namespace velocita::v2
+}

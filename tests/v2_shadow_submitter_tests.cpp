@@ -11,9 +11,6 @@
 #include <string>
 #include <unistd.h>
 
-// Shadow-submitter library: the program file and the durable submitter state.
-// Expected programs are built by hand here, not by the parser under test.
-
 namespace {
 
 using namespace velocita::v2;
@@ -116,7 +113,6 @@ void bad_files_are_refused_with_the_line() {
     refused(gap, "rule numbering gap");
     refused(std::string(valid_text()).replace(valid_text().find("0 gt 0"), 6, "0 >> 0"), "unknown operator");
     refused(std::string(valid_text()).replace(valid_text().find("enter_long"), 10, "enter_shrt"), "unknown action");
-    // Features are 0..3 generic plus 4 = price; 5 does not exist.
     refused(std::string(valid_text()).replace(valid_text().find("rule.3 = 3"), 10, "rule.3 = 5"), "feature out of range");
     refused(std::string(valid_text()).replace(valid_text().find("catalog.instrument = 4"), 22,
                                               "catalog.instrument = 5"), "row not in the catalog");
@@ -148,7 +144,6 @@ void state_starts_fresh_then_advances_generation_and_skips_the_reservation() {
     require(first.error.empty() && first.generation == 1 && first.first_sequence == 1,
             "a fresh state did not start at generation 1, sequence 1: " + first.error);
     const auto second = begin_submitter_state(file, kIncarnationA, 1000);
-    // Everything up to the reserved high-water mark may have been used: start past it.
     require(second.error.empty() && second.generation == 2 && second.first_sequence == 1001,
             "a restart did not move to the next generation past the reservation");
     require(extend_reservation(file, kIncarnationA, second.generation, 5000).empty(), "extension failed");
@@ -180,8 +175,6 @@ void a_corrupt_state_is_refused_not_reset() {
             "a corrupt state file was silently replaced (sequences could be reused)");
 }
 
-// CallerId 9 is the shadow operator route, 21 the strategy route; 15 is the
-// top of the kernel's operator band (kernel.hpp: kMaxOperatorCallerId).
 void authority_is_split_between_setup_and_ticks() {
     require(submitter_role_error(SubmitterRole::setup, CallerId{9}).empty(), "setup refused an operator caller");
     require(submitter_role_error(SubmitterRole::setup, CallerId{15}).empty(), "setup refused the top operator id");
@@ -219,8 +212,6 @@ void strategy_modes_parse_by_name() {
     require(!parse_strategy_mode("halt") && !parse_strategy_mode(""), "an unknown mode name was accepted");
 }
 
-// The owner's paper settings (docs/PAPER_TRADING_RUNBOOK.md): $25 per order and
-// in total, one 25-lot clip of position, long-only.
 std::vector<std::string> owner_words() {
     return {"account=1", "instrument=1", "risk_policy_version=1", "expected_risk_version=0", "kill_epoch=1",
             "executor_generation=1", "max_order_lots=25", "max_reserved_lots=25",
@@ -265,7 +256,6 @@ void the_risk_limits_verb_builds_every_field() {
     auto shorting = owner_words();
     shorting[13] = "allow_short=1";
     require(parse_risk_limits_verb(shorting).limits->allow_short, "allow_short=1 was not carried");
-    // Every value distinct, so no field can be read from another's word.
     const auto distinct = parse_risk_limits_verb(std::vector<std::string>{
         "account=2", "instrument=3", "risk_policy_version=4", "expected_risk_version=5", "kill_epoch=6",
         "executor_generation=7", "max_order_lots=8", "max_reserved_lots=9", "max_order_notional_micros=10",
@@ -292,7 +282,7 @@ void bad_risk_limits_are_refused_before_sending() {
         require(parsed.error.find(names) != std::string::npos, what + ": reported as '" + parsed.error + "'");
     };
     auto words = owner_words();
-    words.erase(words.begin() + 12);  // max_position_lots
+    words.erase(words.begin() + 12);
     refused(words, "missing field", "max_position_lots");
     words = owner_words();
     words[14] = "reason_code=0";
@@ -309,16 +299,16 @@ void bad_risk_limits_are_refused_before_sending() {
     words[13] = "allow_short=2";
     refused(words, "non-boolean allow_short", "allow_short");
     words = owner_words();
-    words[7] = "max_reserved_lots=10";  // below one order's 25 lots: the kernel's own validity rule
+    words[7] = "max_reserved_lots=10";
     refused(words, "reserved below one order", "invalid");
     words = owner_words();
     words[12] = "max_position_lots=-1";
     refused(words, "negative position limit", "max_position_lots");
     words = owner_words();
-    words[8] = "max_order_notional_micros=9223372036854775808";  // 2^63: would wrap negative as atoms
+    words[8] = "max_order_notional_micros=9223372036854775808";
     refused(words, "notional beyond int64", "max_order_notional_micros");
     words = owner_words();
-    words[11] = "maximum_fee_ppm=4294967296";  // 2^32: would truncate to 0 as a uint32
+    words[11] = "maximum_fee_ppm=4294967296";
     refused(words, "fee rate beyond uint32", "maximum_fee_ppm");
 }
 
@@ -337,10 +327,8 @@ void risk_limits_are_canonical_and_described_in_lots_and_dollars() {
         require(text.find(needle) != std::string::npos, std::string("summary lacks '") + needle + "':\n" + text);
 }
 
-}  // namespace
+}
 
-// A volume program as the edge writes it (model/.../shadow/volume.py, churn):
-// five generic features, rules on feature 4, the price at index 5.
 void a_five_feature_volume_program_parses() {
     std::string text = valid_text();
     text.replace(text.find("policy.id = 21"), 14, "policy.id = 22");
@@ -357,7 +345,7 @@ void a_five_feature_volume_program_parses() {
                 p.rules[1].action == ShadowAction::exit,
             "the churn program differs from the text");
     std::string beyond = text;
-    beyond.replace(beyond.find("rule.2 = 4"), 10, "rule.2 = 6");  // 0..4 generic, 5 = price, 6 does not exist
+    beyond.replace(beyond.find("rule.2 = 4"), 10, "rule.2 = 6");
     require(!parse(beyond).program, "a rule on a feature past the price was accepted");
 }
 

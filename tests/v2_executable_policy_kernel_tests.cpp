@@ -248,10 +248,6 @@ void test_digest_and_identity_fail_closed() {
     auto changed_economics = valid;
     changed_economics.instrument.quote_micros_per_tick_lot =
         MoneyMicros::from_atoms(101);
-    // The same instrument-spec version is already committed by the immutable
-    // catalog to 100 quote micros per tick-lot.  This mutation must now fail at
-    // that stronger external binding before it can become a staged-identity
-    // conflict inside TradingState.
     require(catalog_test::apply(state, command(6, changed_economics), scratch).code ==
                 ApplyCode::catalog_binding_mismatch,
             "reused catalog version silently changed instrument economics");
@@ -379,7 +375,7 @@ void test_catalog_row_and_exact_capability_binding_fail_closed() {
             "stage accepted substituted capabilities under the same version");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

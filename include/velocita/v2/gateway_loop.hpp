@@ -1,3 +1,4 @@
+// The gateway's main loop: reads committed state, delivers orders, reports venue evidence.
 #pragma once
 
 #include "velocita/v2/gateway.hpp"
@@ -15,33 +16,22 @@
 
 namespace velocita::v2 {
 
-// Every tick in this file is milliseconds of the injected monotonic clock.
 struct GatewayLoopConfig {
     CallerId caller{};
-    // Request sequences this process may use: [first_sequence, sequence_limit).
-    // The binary reserves them durably before use, so a restart never reuses one.
     std::uint64_t first_sequence{};
     std::uint64_t sequence_limit{};
     VenueCapabilityView venue{};
-    // The one catalog row this gateway serves (with venue's id and capability
-    // version above). Effects and orders bound to any other row are left alone.
     AccountId account{};
     InstrumentId instrument{};
     InstrumentSpecVersion instrument_spec_version{};
     GatewayTimeouts timeouts{5000, 3, 1000, 4, 2000, 60'000};
-    // GatewayAuthority freshness from request start. Zero means no new risk.
     Tick freshness_bound{};
-    // Control-view lease: a submit candidate needs a state read this recent.
     Tick lease_bound{2000};
     Tick state_interval{250};
     Tick request_timeout{3000};
     Tick ack_interval{1000};
-    // Refilled every second; the emergency lane serves cancels only.
     SendQuotaView quota_per_second{5, 2};
-    // Without it the loop never activates new risk, whatever it finds.
     bool allow_new_risk{};
-    // After a fence, new risk re-arms only once no term or leader change and
-    // no timed-out state read has been seen for this long.
     Tick rearm_quiet{30'000};
 };
 
@@ -56,13 +46,11 @@ enum class GatewayReject : std::uint8_t {
     kernel_refused, reconciliation_conflict, reconciliation_exhausted, count
 };
 enum class GatewayAuthorityResult : std::uint8_t { granted, refused, timed_out, rejected, count };
-// decision_to_authorized is not measured: the gateway sees neither the
-// decision's nor the authorization's time, only committed state versions.
 enum class GatewayStage : std::uint8_t {
-    authorized_to_proof,  // effect first seen deliverable in a committed read -> proof accepted
-    proof_to_sent,        // proof accepted -> venue send returned
-    sent_to_fill,         // venue send returned -> first fill polled
-    fill_to_committed,    // fill polled -> its ObserveFill committed result received
+    authorized_to_proof,
+    proof_to_sent,
+    sent_to_fill,
+    fill_to_committed,
     count
 };
 
@@ -70,26 +58,24 @@ inline constexpr std::array<double, 13> kGatewayStageBucketsMs{
     1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000};
 
 struct GatewayStageHistogram {
-    std::array<std::uint64_t, kGatewayStageBucketsMs.size()> buckets{};  // cumulative at render
+    std::array<std::uint64_t, kGatewayStageBucketsMs.size()> buckets{};
     std::uint64_t count{};
     double sum_ms{};
     void observe(double ms) noexcept;
 };
 
-// Why new risk is stopped. Only a fence re-arms by itself; every other cause
-// is latched for the life of the process (operator restart).
 enum class GatewayStopCause : std::uint8_t {
-    fence,                     // term or leader change, or a state read that timed out
-    unknown_outcome,           // a send whose outcome could not be established
-    conflict,                  // the cluster holds a conflict, or the venue answered inconsistently
-    refused_evidence,          // the kernel refused venue evidence, or the node refused it finally
-    control_change,            // kill epoch, executor generation or strategy mode changed
-    reconciliation_mismatch,   // the venue's book disagrees with committed state at one cut
-    reconciliation_exhausted,  // a reconciliation query ran out of attempts
-    capacity,                  // request sequences or the evidence queue ran out
-    corrupt_state,             // an authentic voter served state that does not decode
-    wrong_cluster,             // catalog root or authority domain is not this gateway's
-    authority,                 // the authority latched on a clock or control regression
+    fence,
+    unknown_outcome,
+    conflict,
+    refused_evidence,
+    control_change,
+    reconciliation_mismatch,
+    reconciliation_exhausted,
+    capacity,
+    corrupt_state,
+    wrong_cluster,
+    authority,
     count
 };
 
@@ -97,18 +83,14 @@ enum class GatewayStopCause : std::uint8_t {
     return cause == GatewayStopCause::fence;
 }
 
-// ch50 "compare at one cut": the venue's own book against the committed state
-// of the served row. Position tolerance is zero lots.
 enum class BookVerdict : std::uint8_t { match, not_comparable, mismatch, unavailable, count };
 enum class BookBreak : std::uint8_t { none, position, unknown_order };
 
 struct BookCut {
-    std::int64_t applied_index{};  // of the committed read being compared
-    // Highest log index this process has already seen applied or committed; a
-    // read below it (a new leader still applying) is older than what we know.
+    std::int64_t applied_index{};
     std::int64_t seen_index{};
-    std::size_t evidence_pending{};  // gateway obligations not yet committed
-    std::size_t open_orders{};       // served-row orders that may still change the position
+    std::size_t evidence_pending{};
+    std::size_t open_orders{};
 };
 
 struct BookComparison {
@@ -116,7 +98,7 @@ struct BookComparison {
     BookBreak kind{BookBreak::none};
     std::int64_t kernel_lots{};
     std::int64_t venue_lots{};
-    ClusterOrderId order{};  // unknown_order: the order the venue names
+    ClusterOrderId order{};
 
     constexpr bool operator==(const BookComparison&) const noexcept = default;
 };
@@ -128,7 +110,7 @@ enum class GatewayEventKind : std::uint8_t { stopped, armed, rearmed, reconcilia
 
 struct GatewayEvent {
     GatewayEventKind kind{};
-    GatewayStopCause cause{GatewayStopCause::count};  // stopped only
+    GatewayStopCause cause{GatewayStopCause::count};
     std::int64_t term{};
     std::int64_t applied_index{};
     std::int64_t kernel_lots{};
@@ -158,19 +140,17 @@ struct GatewayMetrics {
     std::size_t position_count{};
     std::array<GatewayPosition, kMaxRiskAccounts> positions{};
     std::int64_t fee_micros_total{};
-    // Filled notional by side: price x lots x the served row's quote micros per tick-lot.
     std::int64_t volume_micros_buy{}, volume_micros_sell{};
-    double last_fill_timestamp_seconds{};  // wall clock when the last fill committed; 0 = none
-    double heartbeat_timestamp_seconds{};  // wall clock of the last loop step
-    // Stops by cause (a cause counts when it newly applies) and fence re-arms.
+    double last_fill_timestamp_seconds{};
+    double heartbeat_timestamp_seconds{};
     std::array<std::uint64_t, static_cast<std::size_t>(GatewayStopCause::count)> stops{};
     std::uint64_t rearms{};
     std::array<bool, static_cast<std::size_t>(GatewayStopCause::count)> stop_active{};
-    bool awaiting_arm{};     // stopped, nothing latched, waiting for the arming gate
-    bool not_configured{};   // --allow-new-risk or --freshness-ms absent: never arms
+    bool awaiting_arm{};
+    bool not_configured{};
     BookVerdict reconciliation{BookVerdict::unavailable};
     bool reconciliation_mismatch{};
-    std::int64_t reconciliation_kernel_lots{}, reconciliation_venue_lots{};  // frozen at a mismatch
+    std::int64_t reconciliation_kernel_lots{}, reconciliation_venue_lots{};
     double reconciliation_last_match_seconds{};
     bool venue_book_known{};
     std::int64_t venue_base_lots{};
@@ -178,21 +158,10 @@ struct GatewayMetrics {
     std::uint64_t events_dropped{};
 };
 
-// Prometheus text exposition. Every counter is present from the first render
-// with every known label value, so increase() sees the first rise.
 [[nodiscard]] std::string render_gateway_metrics(const GatewayMetrics& metrics);
 
 enum class GatewayPhase : std::uint8_t { starting, running, halted };
 
-// One gateway process's non-blocking loop: read committed state, plan, obtain
-// a one-shot proof for each risk-increasing send, hand it to the venue, and
-// submit what the venue reports as gateway-caller commands.
-//
-// New risk is armed only at a committed read where the venue's book matches
-// the served row (compare_venue_book), nothing is unsettled, nothing latched a
-// stop, and --allow-new-risk is configured. A fence re-arms through the same
-// gate after the quiet period; every other stop cause is latched until a new
-// process (operator action). A venue without a book never arms.
 class GatewayLoop {
 public:
     GatewayLoop(GatewayLoopConfig config, GatewayLink& link, const VerifiedExecutionCatalog& catalog,
@@ -207,12 +176,10 @@ public:
     [[nodiscard]] GatewayPhase phase() const noexcept { return phase_; }
     [[nodiscard]] bool new_risk_stopped() const noexcept;
     [[nodiscard]] bool all_transport_stopped() const noexcept;
-    // Next request sequence; the binary keeps its durable reservation ahead.
     [[nodiscard]] std::uint64_t next_sequence() const noexcept { return next_sequence_; }
     void extend_sequence_limit(std::uint64_t limit) noexcept;
     [[nodiscard]] const GatewayDeliveryState& delivery() const noexcept { return delivery_; }
     [[nodiscard]] const GatewayEvidenceState& evidence() const noexcept { return *evidence_; }
-    // Stops, arms and reconciliation breaks since the last drain, oldest first.
     [[nodiscard]] std::size_t drain_events(std::span<GatewayEvent> out) noexcept;
 
 private:
@@ -245,7 +212,6 @@ private:
     [[nodiscard]] VenueObservation synthetic(VenueObservationKind kind, ClusterOrderId order, EffectId effect,
                                              RequestSequence sequence) const;
     void stop(GatewayStopCause cause) noexcept;
-    // After an authority call: a latch the loop did not ask for is a regression.
     void note_authority(bool was_stopped) noexcept;
     void gate(const TradingState& state, const StateReading& reading, Tick now);
     [[nodiscard]] std::size_t open_orders(const TradingState& state) const noexcept;
@@ -267,7 +233,7 @@ private:
     std::int64_t term_{};
     std::int32_t leader_{};
     std::int64_t seen_index_{};
-    std::uint32_t latched_{};   // bit per non-re-armable GatewayStopCause
+    std::uint32_t latched_{};
     bool fence_pending_{};
     Tick last_fence_at_{};
     std::array<GatewayEvent, kMaxGatewayEvents> events_{};
@@ -279,8 +245,8 @@ private:
     Tick quota_refilled_at_{};
     InFlight in_flight_{InFlight::none};
     CommandIdentity in_flight_identity_{};
-    std::uint64_t in_flight_ack_{};          // sequence of the in-flight acknowledgement
-    std::uint64_t in_flight_ack_through_{};  // what it acknowledges
+    std::uint64_t in_flight_ack_{};
+    std::uint64_t in_flight_ack_through_{};
     BoundOrderEffect prepared_{};
     Tick state_requested_at_{};
     Tick last_state_at_{};
@@ -296,4 +262,4 @@ private:
     GatewayMetrics metrics_{};
 };
 
-}  // namespace velocita::v2
+}

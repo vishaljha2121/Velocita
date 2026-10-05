@@ -34,7 +34,6 @@ void require(const bool condition, const std::string& message) {
     if (!condition) throw std::runtime_error(message);
 }
 
-// Content digest of a file, for asserting a file was NOT touched.
 std::string file_digest(const std::filesystem::path& path) {
     std::ifstream in(path, std::ios::binary);
     if (!in) return "<missing>";
@@ -120,14 +119,6 @@ Digest256 digest(const std::uint8_t marker) {
     value.bytes[1] = std::byte{0x5A};
     return value;
 }
-
-// --- the economic fixture, built from PUBLIC COMMANDS ONLY -------------------
-//
-// Deliberately not lifted from the kernel suites' in-memory fixtures. Those
-// assign `TradingState` fields directly, which is right for testing a reducer in
-// isolation and wrong here: the whole question is whether the reducer reaches
-// the same state when every precondition has to survive proposal, replication
-// and commit. A fixture that skipped consensus would be assuming the answer.
 
 PolicyArtifact policy_artifact() {
     PolicyArtifact value;
@@ -225,7 +216,6 @@ DecisionFrame decision_frame() {
     return value;
 }
 
-// Same, with the caller spelled out, for the tests that care which one it is.
 Command command_from(const std::uint64_t caller, const std::uint64_t sequence,
                      CommandBody body) {
     return {{CallerId{caller}, RequestSequence{sequence},
@@ -259,21 +249,13 @@ std::vector<std::byte> unsupported_command(
     return bytes;
 }
 
-// --- the cluster harness ----------------------------------------------------
-
 struct Cluster {
     std::filesystem::path root;
     std::vector<std::int32_t> members;
     std::vector<std::unique_ptr<ReplicatedKernel>> nodes;
-    // Node ids whose peer traffic is dropped in both directions. This is how
-    // quorum loss is modelled: the voters are alive and correct, they simply
-    // cannot be reached, which is the realistic failure and the one that must
-    // fail closed.
     std::set<std::int32_t> partitioned;
-    // Sees every message before any filtering; `drop` then filters further.
     std::function<void(const PeerMessage&)> observe;
     std::function<bool(const PeerMessage&)> drop;
-    // Election safety: at most one leader per term, over the whole run.
     std::map<std::int64_t, std::int32_t> leader_of_term;
     std::uint8_t lineage_tag{};
 
@@ -303,9 +285,6 @@ struct Cluster {
         throw std::runtime_error("no such node");
     }
 
-    // Destroy and reconstruct one voter from its own durable files only. The
-    // replacement shares nothing with its predecessor except the directory,
-    // which is the entire point of a restart test.
     void restart(const std::int32_t id) {
         for (auto& candidate : nodes) {
             if (candidate != nullptr && candidate->status().node_id == id) {
@@ -331,8 +310,6 @@ struct Cluster {
             if (drop && drop(message)) continue;
             for (auto& recipient : nodes) {
                 if (recipient->status().node_id != message.recipient_id) continue;
-                // Through the wire codec, so a message that could not survive
-                // encoding cannot pass here either.
                 identity_test::deliver_peer(*recipient, message,
                     node(message.sender_id).static_identity());
                 break;
@@ -359,18 +336,6 @@ struct Cluster {
         check_durability_invariant();
     }
 
-    // THE DURABILITY INVARIANT, checked after every single tick of every test
-    // rather than in one place that could be skipped: whatever ANY voter
-    // believes is committed is durable on a MAJORITY of voters.
-    //
-    // Not "commit <= durable on every node": a follower learns commitment from
-    // its leader and may hold (and apply) it before its own copy is on disk; it
-    // only ever persists what it holds (see
-    // test_zero_durable_follower_does_not_persist_volatile_commit). With three
-    // voters two durable followers can also commit before the leader's own
-    // sync. For one or two voters the majority form is at least as strict.
-    // Every scenario - elections, partitions, restarts, compaction - is a
-    // witness for it.
     void check_durability_invariant() const {
         std::int64_t highest = 0;
         std::int32_t claimant = 0;
@@ -424,8 +389,6 @@ struct Cluster {
         throw std::runtime_error("cluster did not elect a leader");
     }
 
-    // Offer a command to the leader and drive the cluster until it commits.
-    // Returns the committed result, which is the ONLY place an outcome exists.
     CommittedResult commit(const Command& value, const int rounds = 400) {
         auto& chosen = elect();
         const auto bytes = encoded(value);
@@ -451,9 +414,6 @@ struct Cluster {
     }
 };
 
-// Drive the cluster to an AUTHORIZED SUBMIT through consensus. Every
-// precondition below is a replicated command, so reaching an outbox effect at
-// all proves the reducer's full economic path survives the seam.
 std::uint64_t build_authorized_submit(Cluster& cluster) {
     std::uint64_t sequence = 0;
     const auto bundle = executable_bundle();
@@ -507,11 +467,6 @@ std::uint64_t build_authorized_submit(Cluster& cluster) {
     return sequence;
 }
 
-// The kill path end to end: a mass cancel committed through consensus must be
-// answerable to its operator (the node encodes every committed result it
-// delivers) and must leave every replica able to report and recover its state.
-// Status and snapshots both run the canonical snapshot encoder over the retained
-// receipt, so an unadmitted result detail stops every replica, not just one.
 void test_a_committed_mass_cancel_is_answerable_and_recoverable(
     const std::filesystem::path& root) {
     Cluster cluster(root, 3);
@@ -519,7 +474,6 @@ void test_a_committed_mass_cancel_is_answerable_and_recoverable(
     const auto flattened = cluster.commit(command(
         ++sequence, RequestMassCancel{MassCancelScope::all, {}, {}, KillEpoch{1},
                                       ExecutorGeneration{1}}));
-    // build_authorized_submit leaves exactly one live, cancellable order.
     require(flattened.result.code == ApplyCode::applied &&
                 flattened.result.detail_kind == ApplyResultDetailKind::mass_cancel &&
                 flattened.result.mass_in_scope() == 1 && flattened.result.mass_cancelled() == 1 &&
@@ -583,8 +537,6 @@ void test_zero_authority_bootstrap_cannot_authorize_an_effect(
             "public zero-authority refusal partially created economics");
 }
 
-// --- G-035: only committed commands invoke the reducer ----------------------
-
 void test_only_committed_commands_invoke_the_reducer(const std::filesystem::path& root) {
     Cluster cluster(root, 3);
     auto& leader = cluster.elect();
@@ -595,8 +547,6 @@ void test_only_committed_commands_invoke_the_reducer(const std::filesystem::path
                 "voters did not start from one state");
     }
 
-    // Admitted, then deliberately NOT routed. The entry is in the leader's log
-    // and no quorum has acknowledged it, so no voter may have applied it.
     const auto bytes = encoded(command(
         1, SetStrategyMode{StrategyMode::normal, KillEpoch{}, ExecutorGeneration{}}));
     const auto outcome = leader.propose(bytes);
@@ -614,7 +564,6 @@ void test_only_committed_commands_invoke_the_reducer(const std::filesystem::path
     require(!leader.take_committed_result(),
             "an uncommitted command produced a result");
 
-    // Now let it commit. The SAME command must now take effect exactly once.
     cluster.settle(200);
     const auto result = leader.take_committed_result();
     require(result.has_value(), "the command never committed");
@@ -622,8 +571,6 @@ void test_only_committed_commands_invoke_the_reducer(const std::filesystem::path
     require(leader.status().state_digest != before.state_digest,
             "a committed command did not change the state");
 }
-
-// --- G-036: follower routing preserves command identity ---------------------
 
 void test_follower_routing_preserves_command_identity(const std::filesystem::path& root) {
     Cluster cluster(root, 3);
@@ -646,15 +593,10 @@ void test_follower_routing_preserves_command_identity(const std::filesystem::pat
     require(refused.leader_id == leader_id,
             "a follower did not name the current leader, so a client cannot route");
 
-    // Routed to the leader UNCHANGED - same identity, same bytes - and the
-    // committed result carries that identity back. Routing that mutated identity
-    // would break the reducer's dedup and make a retry a second mutation.
     const auto committed = cluster.commit(value);
     require(committed.identity == value.identity,
             "the committed result did not carry the original command identity");
 }
-
-// --- G-037: leader crash cut points -----------------------------------------
 
 void test_a_leader_crash_before_commit_creates_no_effect(const std::filesystem::path& root) {
     Cluster cluster(root, 3);
@@ -664,8 +606,6 @@ void test_a_leader_crash_before_commit_creates_no_effect(const std::filesystem::
     const auto before = cluster.elect().status();
     require(before.outbox_effect_count == 1, "the fixture did not leave one effect");
 
-    // A second authorization, admitted and then abandoned by killing the leader
-    // before any peer hears about it.
     (void)cluster.commit(command(sequence + 1,
                                  RecordSourceEvent{SourceId{12}, SourceGeneration{1},
                                                    SourceSequence{2}, digest(0x45)}));
@@ -720,8 +660,6 @@ void test_a_leader_crash_after_commit_reproduces_the_same_effect(
             "replaying the committed log reproduced a different state");
 }
 
-// --- G-036: a retry after a lost response returns the retained result --------
-
 void test_a_retry_after_a_lost_response_returns_the_retained_result(
     const std::filesystem::path& root) {
     Cluster cluster(root, 3);
@@ -731,9 +669,6 @@ void test_a_retry_after_a_lost_response_returns_the_retained_result(
     require(first.result.code == ApplyCode::applied, "the first attempt failed");
     const auto after_first = cluster.elect().status();
 
-    // The client never saw the result and retries the IDENTICAL command. It
-    // commits again - the log does not deduplicate - and the reducer answers
-    // from its retained receipt without mutating anything.
     const auto second = cluster.commit(value);
     require(second.identity == first.identity, "the retry lost its identity");
     require(second.result.state_version == first.result.state_version,
@@ -748,8 +683,6 @@ void test_a_retry_after_a_lost_response_returns_the_retained_result(
     }
 }
 
-// --- G-038: quorum loss fails closed ----------------------------------------
-
 void test_quorum_loss_creates_no_new_risk_decision(const std::filesystem::path& root) {
     Cluster cluster(root, 3);
     const auto sequence = build_authorized_submit(cluster);
@@ -759,8 +692,6 @@ void test_quorum_loss_creates_no_new_risk_decision(const std::filesystem::path& 
     auto& leader = cluster.elect();
     const auto before = leader.status();
 
-    // Both followers become unreachable. The leader is alive and correct and
-    // simply cannot obtain a quorum, which is the realistic failure.
     for (const auto& node : cluster.nodes) {
         const auto id = node->status().node_id;
         if (id != before.node_id) cluster.partitioned.insert(id);
@@ -772,8 +703,6 @@ void test_quorum_loss_creates_no_new_risk_decision(const std::filesystem::path& 
                                         SourceSequence{2}, digest(0x45)}));
     const auto outcome = isolated.propose(bytes);
 
-    // Admission into a local log is not authority. What must not happen is an
-    // APPLIED effect, on any voter, while no quorum exists.
     for (int round = 0; round < 400; ++round) {
         for (auto& node : cluster.nodes) node->tick(10);
         cluster.route();
@@ -789,14 +718,6 @@ void test_quorum_loss_creates_no_new_risk_decision(const std::filesystem::path& 
             "a command committed without a quorum");
     (void)outcome;
 
-    // Healing the partition must let the same command through, or the test
-    // proves only that it was malformed.
-    //
-    // It is RE-PROPOSED rather than waited for. An entry appended by a leader
-    // that then lost quorum is uncommitted, and Raft may legitimately truncate
-    // it when a new leader is chosen - losing it is correct, and a client
-    // retries. Waiting for the original to appear would be asserting something
-    // Raft never promised.
     cluster.partitioned.clear();
     const auto healed = cluster.commit(command(
         sequence + 1, RecordSourceEvent{SourceId{12}, SourceGeneration{1},
@@ -805,8 +726,6 @@ void test_quorum_loss_creates_no_new_risk_decision(const std::filesystem::path& 
             "the command never committed even once quorum returned, so the "
             "refusal above proved nothing about quorum");
 }
-
-// --- G-040: restart and dedup ------------------------------------------------
 
 void test_a_restarted_voter_recovers_state_outbox_and_dedup(
     const std::filesystem::path& root) {
@@ -836,8 +755,6 @@ void test_a_restarted_voter_recovers_state_outbox_and_dedup(
     require(after.applied_index == follower_before.applied_index,
             "a restarted voter did not replay its committed prefix");
 
-    // Dedup survives too: an already-applied command re-presented after the
-    // restart is still answered from the retained receipt.
     const auto replayed = cluster.commit(command(
         sequence, AuthorizeDecision{DecisionId{20}}));
     require(replayed.result.code == ApplyCode::already_applied ||
@@ -848,8 +765,6 @@ void test_a_restarted_voter_recovers_state_outbox_and_dedup(
                 "a replayed authorization created a second effect after restart");
     }
 }
-
-// --- G-039: convergence ------------------------------------------------------
 
 void test_all_voters_converge(const std::filesystem::path& root) {
     Cluster cluster(root, 3);
@@ -876,9 +791,6 @@ void test_all_voters_converge(const std::filesystem::path& root) {
             "the convergence check ran on a cluster with nothing to converge on");
 }
 
-
-// --- Phase 6 leftover: the committed-outbox read contract -------------------
-
 void test_a_committed_outbox_read_carries_its_own_authority(
     const std::filesystem::path& root) {
     Cluster cluster(root, 3);
@@ -896,9 +808,6 @@ void test_a_committed_outbox_read_carries_its_own_authority(
     require(from_leader.applied_index > 0,
             "an authoritative read carried no applied index");
 
-    // A follower holds the same BYTES and must not present them as
-    // authoritative. That distinction is the entire contract: without it a
-    // caller cannot tell a current view from a stale one, and both look correct.
     for (const auto& node : cluster.nodes) {
         if (node->is_leader()) continue;
         const auto from_follower = node->committed_outbox();
@@ -910,8 +819,6 @@ void test_a_committed_outbox_read_carries_its_own_authority(
                 "a follower named a different leader");
     }
 }
-
-// --- Phase 7a: durable snapshots, compaction and install --------------------
 
 void test_a_snapshot_is_durable_before_its_prefix_is_reclaimed(
     const std::filesystem::path& root) {
@@ -927,10 +834,6 @@ void test_a_snapshot_is_durable_before_its_prefix_is_reclaimed(
     const auto included = identity_test::complete_compaction(only);
     require(included > 0, "compaction covered nothing");
 
-    // The ORDER is the property. After compaction both must be true at once:
-    // the snapshot exists and decodes, and the log no longer holds the prefix.
-    // If reclamation could precede durability, a crash between them would leave
-    // neither.
     const auto stored = identity_test::snapshot_store(root / "1").load();
     require(stored.has_value(), "compaction reclaimed a prefix with no snapshot");
     require(stored->last_included_index == included,
@@ -954,8 +857,6 @@ void test_a_restart_installs_the_snapshot_and_replays_the_rest(
     const auto included = identity_test::complete_compaction(cluster.elect());
     require(included > 0, "compaction covered nothing");
 
-    // More commands AFTER the snapshot, so recovery has to do both halves:
-    // install the snapshot, then replay the suffix the snapshot does not cover.
     (void)cluster.commit(command(sequence + 1,
                                  RecordSourceEvent{SourceId{12}, SourceGeneration{1},
                                                    SourceSequence{2}, digest(0x45)}));
@@ -1021,8 +922,6 @@ void test_a_corrupt_snapshot_degrades_to_replay_rather_than_refusing_to_start(
     cluster.settle(50);
     const auto before = cluster.elect().status();
 
-    // No compaction, so the log still holds everything. Corrupting the snapshot
-    // must therefore cost nothing at all.
     auto store = identity_test::snapshot_store(root / "1");
     store.save(cluster.elect().state(), 1, 1);
     require(store.load().has_value(), "the fixture snapshot did not round-trip");
@@ -1037,9 +936,6 @@ void test_a_corrupt_snapshot_degrades_to_replay_rather_than_refusing_to_start(
     require(!store.load().has_value(),
             "a corrupted snapshot still loaded, so the checksum proves nothing");
 
-    // The node must still start. A snapshot is an optimisation over replay, and
-    // an unreadable one has to degrade to the thing it optimised - refusing to
-    // start would turn a recoverable disk fault into an outage.
     cluster.restart(1);
     cluster.settle(200);
     require(cluster.node(1).status().state_digest == before.state_digest,
@@ -1056,9 +952,6 @@ void test_an_unsupported_snapshot_schema_refuses_without_touching_storage(
         identity_test::snapshot_store(directory).save(cluster.elect().state(), 1, 1);
     }
 
-    // Bound header plus coordinates is 72 bytes. Its payload is a canonical
-    // state frame whose schema sits at byte 8 and whose final 32 bytes are the
-    // inner SHA-256. Change ONLY that schema and repair both integrity layers.
     constexpr std::size_t outer_header = 72;
     constexpr std::size_t outer_payload_length_offset = 12;
     const auto snapshot_path = identity_test::snapshot_store(directory).path();
@@ -1214,9 +1107,6 @@ void test_an_incompatible_uncommitted_segment_suffix_refuses_without_touching_st
         require(segment.flush(arena) == 1,
                 "incompatible segment suffix fixture did not flush");
     }
-    // Preserve a diagnostic torn tail after the complete incompatible record.
-    // Startup must reject compatibility before any writable recovery path can
-    // normalize, truncate, or otherwise erase either piece of evidence.
     const auto segment_path =
         identity_test::runtime_directory(directory) / "v2-wal-blocks.bin";
     const auto segment_bytes = read_bytes(segment_path);
@@ -1269,9 +1159,6 @@ void test_an_incompatible_uncommitted_legacy_suffix_refuses_without_touching_sto
 
 void test_recovery_is_never_behind_the_last_acknowledged_commit(
     const std::filesystem::path& root) {
-    // The power-cut property, stated as the invariant rather than as a fault
-    // injection: whatever a caller was told had committed must still be there
-    // after a restart, at every point where the durable artefacts differ.
     Cluster cluster(root, 1);
     const auto sequence = build_authorized_submit(cluster);
     cluster.settle(50);
@@ -1310,20 +1197,8 @@ void test_recovery_is_never_behind_the_last_acknowledged_commit(
     }
 }
 
-
-// --- Phase 7b: durability is a separate index from commit -------------------
-
 void test_an_entry_cannot_commit_before_its_bytes_are_durable(
     const std::filesystem::path& root) {
-    // THE GATE, proved by withholding the disk.
-    //
-    // An earlier version of this check only asserted `commit <= durable` while
-    // the harness flushed on every tick. That invariant held trivially, because
-    // the gap it describes was closed before anything could observe it - and
-    // removing the gate entirely still passed. The test proved nothing.
-    //
-    // Here the cluster ticks WITHOUT flushing, so the entry is staged and never
-    // synced, and the leader's own vote is the only one available.
     Cluster cluster(root, 1);
     auto& node = cluster.elect();
 
@@ -1336,7 +1211,7 @@ void test_an_entry_cannot_commit_before_its_bytes_are_durable(
             "the leader refused the command");
 
     for (int round = 0; round < 50; ++round) {
-        node.tick(10);  // no flush_durability: the disk never happens
+        node.tick(10);
         require(node.durable_index() == before_durable,
                 "durability advanced with no flush");
         require(node.status().commit_index == before_commit,
@@ -1347,7 +1222,6 @@ void test_an_entry_cannot_commit_before_its_bytes_are_durable(
     require(node.status().current_index > before_commit,
             "the entry never reached the log, so nothing was being withheld");
 
-    // Now let the disk happen. The same entry must commit and apply.
     for (int round = 0; round < 50; ++round) {
         node.flush_durability();
         node.tick(10);
@@ -1364,11 +1238,6 @@ void test_an_entry_cannot_commit_before_its_bytes_are_durable(
 
 void test_a_follower_ack_never_covers_merely_staged_entries(
     const std::filesystem::path& root) {
-    // The leader turns a follower's reported current_idx straight into that
-    // follower's match index and counts it toward quorum. A follower that acks
-    // entries it has only staged is therefore the same defect as a leader
-    // counting its own undurable copy - and the Raft patch cannot fix it,
-    // because this number is produced on our side of the wire.
     Cluster cluster(root, 3);
     auto& leader = cluster.elect();
     const auto leader_id = leader.status().node_id;
@@ -1379,9 +1248,6 @@ void test_a_follower_ack_never_covers_merely_staged_entries(
     require(leader.propose(encoded(value)).status == ProposeStatus::admitted,
             "the leader refused the command");
 
-    // ONLY THE LEADER FLUSHES. Followers receive, append and stage, and reply -
-    // but their bytes never reach the disk, so their acks must not be worth a
-    // quorum.
     for (int round = 0; round < 200; ++round) {
         leader.flush_durability();
         for (auto& node : cluster.nodes) node->tick(10);
@@ -1393,8 +1259,6 @@ void test_a_follower_ack_never_covers_merely_staged_entries(
                 "a result appeared while no follower had synced");
     }
 
-    // Non-vacuity: the followers really did receive and stage it, so something
-    // was genuinely being withheld rather than never sent.
     bool a_follower_holds_it = false;
     for (const auto& node : cluster.nodes) {
         if (node->status().node_id == leader_id) continue;
@@ -1405,20 +1269,11 @@ void test_a_follower_ack_never_covers_merely_staged_entries(
     require(a_follower_holds_it,
             "no follower ever received the entry, so nothing was being withheld");
 
-    // Let the followers reach the disk. The same entry must now commit.
     cluster.settle(400);
     require(cluster.elect().status().commit_index > before,
             "the entry never committed once followers were durable, so the clamp "
             "is a deadlock rather than a gate");
 }
-
-// ---------------------------------------------------------------------------
-// EARLY DURABLE ACKS. A follower's reply may only claim what is on disk (the
-// clamp above), and today it says nothing more until the leader's next
-// heartbeat, so every commit waits up to one heartbeat interval for news the
-// follower already has. These tests pin down both halves: the follower speaks
-// up as soon as it is durable, and it never claims more than a normal reply
-// in the same term could.
 
 std::vector<velocita::AppendEntriesResponse> drain_acks(ReplicatedKernel& node,
                                                         std::vector<std::int32_t>* to = nullptr) {
@@ -1446,12 +1301,11 @@ velocita::AppendEntries three_entries(const std::int64_t term) {
 void test_a_durable_follower_acks_without_waiting_to_be_asked(const std::filesystem::path& root) {
     ReplicatedKernel node(identity_test::bootstrap(root / "node", 2, {1, 2, 3}));
     identity_test::deliver_declared_peer(node, PeerMessage{1, 2, three_entries(1)});
-    // Staged, not durable: the immediate reply may claim nothing (the clamp).
     const auto first = drain_acks(node);
     require(first.size() == 1 && first[0].success && first[0].current_index == 0,
             "the immediate reply claimed entries that were only staged");
 
-    node.flush_durability();  // entries 1..3 reach the disk; no message arrives
+    node.flush_durability();
     std::vector<std::int32_t> to;
     const auto early = drain_acks(node, &to);
     require(early.size() == 1, "a durable follower waited to be asked before acknowledging (" +
@@ -1472,9 +1326,6 @@ void test_an_early_ack_never_covers_entries_the_leader_has_not_verified(
     (void)drain_acks(node);
     require(node.durable_index() == 3, "fixture: term-1 entries 1..3 are not durable");
 
-    // A term-2 leader checks only index 1. Entries 2..3 are durable here but
-    // may differ from that leader's log: claiming them would let it count a
-    // copy of entries it never sent.
     velocita::AppendEntries heartbeat{};
     heartbeat.term = 2;
     heartbeat.previous_log_index = 1;
@@ -1499,11 +1350,8 @@ void test_an_early_ack_never_covers_entries_the_leader_has_not_verified(
 void test_an_early_ack_never_speaks_for_a_term_already_left(const std::filesystem::path& root) {
     ReplicatedKernel node(identity_test::bootstrap(root / "node", 2, {1, 2, 3}));
     identity_test::deliver_declared_peer(node, PeerMessage{1, 2, three_entries(1)});
-    (void)drain_acks(node);  // staged only: the clamped reply claimed nothing
+    (void)drain_acks(node);
 
-    // Term 2 begins before the term-1 entries reach the disk. Helping the
-    // term-1 leader commit them now could lose them: the term-2 leader may
-    // overwrite entries it never had.
     velocita::AppendEntries heartbeat{};
     heartbeat.term = 2;
     identity_test::deliver_declared_peer(node, PeerMessage{3, 2, heartbeat});
@@ -1522,8 +1370,6 @@ void test_an_early_ack_never_speaks_for_a_term_already_left(const std::filesyste
     }
 }
 
-// Parks the WAL writer thread just before its fsync: the entries are written
-// and staged but NOT durable, for as long as the test needs.
 class WalSyncFence {
 public:
     StorageCheckpoints checkpoints() { return {&WalSyncFence::observe, this}; }
@@ -1572,8 +1418,6 @@ void test_an_early_ack_waits_for_the_writer_thread_to_sync(const std::filesystem
         std::this_thread::yield();
     }
     require(fence.parked(), "fixture: the writer never reached its fsync");
-    // Written and staged, not synced: the owner keeps flushing and must still
-    // claim nothing, however far staging has run ahead.
     for (int pass = 0; pass < 20; ++pass) {
         node.flush_durability();
         for (const auto& ack : drain_acks(node)) acks.push_back(ack);
@@ -1605,8 +1449,6 @@ void test_a_commit_does_not_wait_for_a_heartbeat(const std::filesystem::path& ro
     require(leader.propose(encoded(command(1, SetStrategyMode{StrategyMode::normal, {}, {}}))).status ==
                 ProposeStatus::admitted,
             "the leader refused the command");
-    // Time does not move: tick(0) can never fire a heartbeat. Bytes still reach
-    // the disk and messages still flow, which is all a commit should need.
     std::optional<CommittedResult> committed;
     for (int round = 0; round < 20 && !committed; ++round) {
         for (auto& node : cluster.nodes) node->flush_durability();
@@ -1620,16 +1462,11 @@ void test_a_commit_does_not_wait_for_a_heartbeat(const std::filesystem::path& ro
                 std::to_string(leader.status().commit_index));
 }
 
-// The retained log never evicts: once its ordinary pool is full, normal
-// commands are refused until compaction reclaims a prefix. Operators must be
-// able to see that coming, so status reports each pool's use.
 void test_status_reports_retained_log_use_by_pool(const std::filesystem::path& root) {
     Cluster cluster(root, 3);
     const auto base = cluster.elect().status();
     require(base.retained_ordinary + base.retained_protected == static_cast<std::uint64_t>(base.current_index),
             "the pools do not account for every retained entry");
-    // Ordinary: a caller outside the operator band. (An operator's kill-path
-    // command draws on the protected pool whichever lane it arrives on.)
     for (std::uint64_t sequence = 1; sequence <= 3; ++sequence)
         (void)cluster.commit(command_from(kMaxOperatorCallerId + 1, sequence,
                                           SetStrategyMode{StrategyMode::normal, {}, {}}));
@@ -1650,16 +1487,10 @@ void test_status_reports_retained_log_use_by_pool(const std::filesystem::path& r
             "a control-lane command did not draw on the protected pool");
 }
 
-// A voter behind the leader's compacted prefix cannot be served by
-// AppendEntries, and runtime snapshot install does not exist yet. That voter
-// is stranded until repaired - but it must not take the leader, or the rest of
-// the cluster, down with it.
 void test_a_voter_behind_the_leaders_snapshot_does_not_stop_the_cluster(const std::filesystem::path& root) {
     Cluster cluster(root, 3);
     auto& leader = cluster.elect();
     const auto leader_id = leader.status().node_id;
-    // The lowest-numbered follower is served first in the leader's send loop,
-    // so a stranded voter there would also starve the other follower.
     std::int32_t stranded = 0, healthy = 0;
     for (const auto id : cluster.members) {
         if (id == leader_id) continue;
@@ -1673,11 +1504,7 @@ void test_a_voter_behind_the_leaders_snapshot_does_not_stop_the_cluster(const st
     cluster.partitioned.erase(stranded);
 
     const auto term = leader.status().term;
-    // 4 s of simulated time: longer than any election timeout (1-2 s), so a
-    // follower starved of heartbeats would start an election.
     cluster.settle(400);
-    // Every voter, not just the leader: a stranded voter that hears nothing
-    // campaigns, and its higher terms depose a healthy leader.
     for (const auto id : cluster.members) {
         const auto status = cluster.node(id).status();
         require(status.term == term && status.role != "candidate",
@@ -1687,27 +1514,23 @@ void test_a_voter_behind_the_leaders_snapshot_does_not_stop_the_cluster(const st
     require(cluster.leader() == &leader, "leadership moved while a voter was stranded");
     require(leader.status().stranded_voters == 1,
             "the leader did not report the voter behind its snapshot");
-    // The other two keep committing.
     const auto result = cluster.commit(command_from(kMaxOperatorCallerId + 1, 6,
                                                     SetStrategyMode{StrategyMode::normal, {}, {}}));
     (void)result;
-    cluster.settle(30);  // a follower learns the commit index with the next append
+    cluster.settle(30);
     require(cluster.node(healthy).status().commit_index == leader.status().commit_index,
             "the healthy follower stopped following");
     require(cluster.node(stranded).status().commit_index < leader.status().commit_index,
             "fixture: the stranded voter somehow caught up without a snapshot");
 }
 
-// The compaction floor is the lowest index EVERY voter holds durably: below
-// it any voter may compact without stranding another. The leader computes it
-// and sends it with every append; a silent voter pins it.
 void test_the_compaction_floor_is_the_slowest_voters_position(const std::filesystem::path& root) {
     Cluster cluster(root, 3);
     auto& leader = cluster.elect();
     for (std::uint64_t sequence = 1; sequence <= 4; ++sequence)
         (void)cluster.commit(command_from(kMaxOperatorCallerId + 1, sequence,
                                           SetStrategyMode{StrategyMode::normal, {}, {}}));
-    cluster.settle(30);  // a heartbeat carries the floor to the followers
+    cluster.settle(30);
     const auto all = leader.status().commit_index;
     for (const auto id : cluster.members)
         require(cluster.node(id).status().compaction_floor == all,
@@ -1715,7 +1538,6 @@ void test_the_compaction_floor_is_the_slowest_voters_position(const std::filesys
                     std::to_string(cluster.node(id).status().compaction_floor) + " with every voter at " +
                     std::to_string(all));
 
-    // One voter falls silent: the floor stays where that voter is.
     std::int32_t silent = 0;
     for (const auto id : cluster.members) if (id != leader.status().node_id) { silent = id; break; }
     cluster.partitioned.insert(silent);
@@ -1731,10 +1553,6 @@ void test_the_compaction_floor_is_the_slowest_voters_position(const std::filesys
             require(cluster.node(id).status().compaction_floor <= all,
                     "voter " + std::to_string(id) + " was told a floor above the silent voter");
 
-    // Entries every voter holds can never be truncated, so the floor is
-    // permanent: a new leader (whose match counts start at zero) keeps it.
-    // (The silent voter campaigned while cut off, so healing may itself move
-    // leadership: take whoever leads once the cluster settles.)
     cluster.partitioned.clear();
     cluster.settle(400);
     auto& current = cluster.elect();
@@ -1746,8 +1564,7 @@ void test_the_compaction_floor_is_the_slowest_voters_position(const std::filesys
                 std::to_string(current.status().commit_index));
     const auto cut_off = current.status().node_id;
     cluster.partitioned.insert(cut_off);
-    cluster.settle(400);  // the other two elect a new leader
-    // The cut-off leader still believes it leads; look among the others.
+    cluster.settle(400);
     ReplicatedKernel* successor = nullptr;
     for (const auto id : cluster.members)
         if (id != cut_off && cluster.node(id).is_leader()) successor = &cluster.node(id);
@@ -1764,8 +1581,6 @@ void test_a_follower_never_lowers_its_known_floor(const std::filesystem::path& r
     heartbeat.compaction_floor = 5;
     identity_test::deliver_declared_peer(node, PeerMessage{1, 2, heartbeat});
     require(node.status().compaction_floor == 5, "the floor from the leader was not recorded");
-    // A later append with a lower floor (another leader that learned less)
-    // cannot undo it: entries every voter held stay held.
     heartbeat.term = 2;
     heartbeat.compaction_floor = 3;
     identity_test::deliver_declared_peer(node, PeerMessage{3, 2, heartbeat});
@@ -1774,9 +1589,6 @@ void test_a_follower_never_lowers_its_known_floor(const std::filesystem::path& r
             "a lower floor replaced what the voter already knew: " + std::to_string(node.status().compaction_floor));
 }
 
-// With three voters two durable followers can commit an entry before the
-// leader's own sync. The floor must still wait for the leader's disk: a leader
-// that crashed would come back without those entries and need them from peers.
 void test_the_floor_waits_for_the_leaders_own_disk(const std::filesystem::path& root) {
     Cluster cluster(root, 3);
     auto& leader = cluster.elect();
@@ -1788,7 +1600,7 @@ void test_the_floor_waits_for_the_leaders_own_disk(const std::filesystem::path& 
             "the leader refused the command");
     for (int round = 0; round < 200; ++round) {
         for (auto& node : cluster.nodes)
-            if (node.get() != &leader) node->flush_durability();  // ONLY THE FOLLOWERS SYNC
+            if (node.get() != &leader) node->flush_durability();
         for (auto& node : cluster.nodes) node->tick(10);
         cluster.route();
         cluster.check_durability_invariant();
@@ -1803,9 +1615,6 @@ void test_the_floor_waits_for_the_leaders_own_disk(const std::filesystem::path& 
                     " is above what the leader holds on disk (" + std::to_string(durable_before) + ")");
 }
 
-// A candidate whose whole log is compacted must still advertise the term of
-// its last entry (now only in the snapshot). Advertising 0 makes every voter
-// refuse it as out of date, so after the leader is lost nobody can win.
 void test_voters_compacted_to_their_end_can_still_elect(const std::filesystem::path& root) {
     Cluster cluster(root, 3);
     auto& leader = cluster.elect();
@@ -1820,7 +1629,6 @@ void test_voters_compacted_to_their_end_can_still_elect(const std::filesystem::p
     const auto old = leader.status().node_id;
     cluster.partitioned.insert(old);
     cluster.settle(600);
-    // The cut-off old leader still believes it leads; look among the others.
     ReplicatedKernel* successor = nullptr;
     for (const auto id : cluster.members)
         if (id != old && cluster.node(id).is_leader()) successor = &cluster.node(id);
@@ -1834,7 +1642,6 @@ void test_voters_compacted_to_their_end_can_still_elect(const std::filesystem::p
     require(successor->status().commit_index > before, "the new leader could not commit after compaction");
 }
 
-// Drive the floor-gated compaction for up to LIMIT; 0 means it never started.
 std::uint64_t compact_to_floor(ReplicatedKernel& node, const std::chrono::milliseconds limit) {
     const auto deadline = std::chrono::steady_clock::now() + limit;
     while (std::chrono::steady_clock::now() < deadline) {
@@ -1866,13 +1673,11 @@ void test_compaction_never_cuts_above_the_floor(const std::filesystem::path& roo
     cluster.partitioned.insert(silent);
     for (int i = 0; i < 4; ++i) commit();
     cluster.settle(30);
-    // The silent voter holds nothing yet: nobody may reclaim anything.
     require(compact_to_floor(leader, std::chrono::milliseconds(300)) == 0,
             "the leader compacted above a voter that lacks the entries");
     require(compact_to_floor(cluster.node(other), std::chrono::milliseconds(300)) == 0,
             "a follower compacted above a voter that lacks the entries");
 
-    // Heal: the floor rises to the commit index and every voter may compact.
     cluster.partitioned.clear();
     cluster.settle(400);
     auto& current = cluster.elect();
@@ -1882,8 +1687,6 @@ void test_compaction_never_cuts_above_the_floor(const std::filesystem::path& roo
         require(compact_to_floor(cluster.node(id), std::chrono::seconds(10)) > 0,
                 "voter " + std::to_string(id) + " could not compact up to a floor every voter holds");
 
-    // A voter that falls behind now catches up by ordinary appends: nothing it
-    // needs was reclaimed.
     cluster.partitioned.insert(silent);
     for (int i = 0; i < 3; ++i) commit();
     cluster.partitioned.clear();
@@ -1900,9 +1703,6 @@ void test_compaction_never_cuts_above_the_floor(const std::filesystem::path& roo
 
 void test_a_writer_thread_carries_durability_off_the_owner_loop(
     const std::filesystem::path& root) {
-    // The same cluster, with the I/O moved to another thread. Nothing about the
-    // guarantees may change: the point of the thread is WHERE the fsync happens,
-    // not whether it has to happen before an entry counts.
     Cluster cluster(root, 1);
     auto& node = cluster.elect();
     node.start_writer();
@@ -1914,17 +1714,13 @@ void test_a_writer_thread_carries_durability_off_the_owner_loop(
     require(node.propose(encoded(value)).status == ProposeStatus::admitted,
             "the leader refused the command");
 
-    // A wall-clock bound, not a round count: 4000 spins last ~3 ms, less than
-    // one fsync on the Pi's SD card while its live voter is also syncing.
     std::optional<CommittedResult> committed;
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while (!committed && std::chrono::steady_clock::now() < deadline) {
-        node.flush_durability();   // submits and collects; the thread writes
+        node.flush_durability();
         node.tick(10);
         committed = node.take_committed_result();
         std::this_thread::yield();
-        // The invariant still holds at every observation, now with a real
-        // thread between the append and the sync.
         require(node.status().commit_index <=
                     static_cast<std::int64_t>(node.durable_index()),
                 "a threaded writer let commit run ahead of durability");
@@ -1945,8 +1741,6 @@ void test_a_writer_thread_carries_durability_off_the_owner_loop(
 
     node.stop_writer();
 
-    // And the durable bytes are real: a restart with no thread reconstructs the
-    // same state from what the thread put on disk.
     const auto before = node.status();
     cluster.restart(1);
     cluster.settle(200);
@@ -1964,8 +1758,6 @@ void test_durability_is_tracked_separately_and_never_overstated(
     const auto durable = node.durable_index();
     const auto status = node.status();
 
-    // Non-vacuity first: records really are going through the block segment, so
-    // everything below is about the new path and not the legacy one.
     const auto staged = identity_test::wal_segment(root / "1").read_records();
     require(!staged.empty(),
             "no records reached the block segment, so this test is measuring the "
@@ -1973,10 +1765,6 @@ void test_durability_is_tracked_separately_and_never_overstated(
     require(durable >= staged.back().index,
             "the durable index does not cover the records on disk");
 
-    // The persisted hard state is a statement about BYTES ON DISK. willemt can
-    // advance its in-memory commit index past what this node has synced, since
-    // it counts the leader's own vote unconditionally; persisting that would
-    // leave a restart reading a commit index past the end of its own log.
     const auto persisted = identity_test::metadata_store(root / "1").load();
     require(persisted.commit_index <= static_cast<std::int64_t>(durable),
             "the persisted commit index ran ahead of durability: commit " +
@@ -1985,31 +1773,13 @@ void test_durability_is_tracked_separately_and_never_overstated(
     require(persisted.commit_index <= status.current_index,
             "the persisted commit index is past the end of the log");
 
-    // And the whole point: a restart reconstructs from those durable bytes.
     cluster.restart(1);
     cluster.settle(200);
     require(cluster.node(1).status().state_digest == status.state_digest,
             "recovery from the block segment produced a different state");
 }
 
-// --- Phase 7: the power-cut matrix -------------------------------------------
-
 void test_truncation_does_not_race_the_writer(const std::filesystem::path& root) {
-    // A suffix replacement REWRITES the segment. If the writer thread is still
-    // draining while that happens, blocks belonging to the rejected suffix are
-    // written to a file that is about to be replaced, and their completions are
-    // published afterwards - so the owner raises the durable index for entries
-    // the segment no longer holds. The node then reports as durable a suffix
-    // that a restart cannot find, which is the exact thing the durability gate
-    // exists to make impossible.
-    //
-    // Timing alone cannot pin this: the drain usually finishes first, which is
-    // why running both threads and hoping produced a green test over a broken
-    // truncation. The writer is therefore PARKED inside its drain, at the point
-    // where its bytes are written but not yet synced, until the owner has
-    // reached the replacement. The park releases itself after a bounded wait so
-    // that the correct implementation - which joins the writer before
-    // rewriting - cannot deadlock against it.
     struct Park {
         std::mutex mutex;
         std::condition_variable changed;
@@ -2029,8 +1799,6 @@ void test_truncation_does_not_race_the_writer(const std::filesystem::path& root)
             park.armed = false;
             park.parked = true;
             park.changed.notify_all();
-            // Bounded: the fix joins this thread, so an unbounded park would
-            // hang the passing case rather than fail the broken one.
             park.changed.wait_for(lock, std::chrono::milliseconds(300),
                                   [] { return !park.parked; });
             park.parked = false;
@@ -2045,21 +1813,11 @@ void test_truncation_does_not_race_the_writer(const std::filesystem::path& root)
         ReplicatedKernel node(identity_test::bootstrap(dir, 2, {1, 2, 3}), checkpoints);
         node.start_writer();
 
-        // Two entries, so the replacement below removes index 2 and keeps
-        // index 1. A single entry would hide the defect: the replacement reuses
-        // the same index, so a stale completion and a correct one name the same
-        // number and the invariant cannot tell them apart.
         velocita::AppendEntries append{};
         append.term = 1;
-        // `PeerLogEntry` is {term, id, type, payload}; the index comes from
-        // `previous_log_index` plus position.
         append.entries.push_back({1, 1, RAFT_LOGTYPE_NORMAL, first_payload});
         identity_test::deliver_declared_peer(node, PeerMessage{1, 2, append});
         node.flush_durability();
-        // Settle the first entry before arming, so the park catches the drain
-        // that carries index 2 and not this one.
-        // The owner applies completions; the writer only publishes them. So
-        // draining is a loop of `flush_durability`, not a sleep.
         for (int i = 0; i < 500 && node.durable_index() < 1; ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
             node.flush_durability();
@@ -2086,8 +1844,6 @@ void test_truncation_does_not_race_the_writer(const std::filesystem::path& root)
                     "never set up and this test proves nothing");
         }
 
-        // The writer now holds index 2's bytes written but unsynced. Replace the
-        // suffix from index 2 while it sits there.
         append.term = 2;
         append.previous_log_index = 1;
         append.previous_log_term = 1;
@@ -2108,9 +1864,6 @@ void test_truncation_does_not_race_the_writer(const std::filesystem::path& root)
         node.stop_writer();
         node.flush_durability();
 
-        // THE INVARIANT. The durable index may never name an index the segment
-        // does not hold - "durable" is a claim about bytes on disk, and a claim
-        // that outruns the file is the failure this whole phase is about.
         const auto records = identity_test::wal_segment(dir).read_records();
         std::uint64_t highest_on_disk = 0;
         for (const auto& record : records) {
@@ -2125,7 +1878,6 @@ void test_truncation_does_not_race_the_writer(const std::filesystem::path& root)
                 "the segment does not hold the replacement suffix after the rewrite");
     }
 
-    // And the claim must survive the restart it is about.
     ReplicatedKernel restarted(identity_test::recover(dir, 2, {1, 2, 3}));
     require(restarted.status().current_index == 2,
             "the restart did not recover the replaced suffix");
@@ -2133,16 +1885,6 @@ void test_truncation_does_not_race_the_writer(const std::filesystem::path& root)
 
 void test_corruption_of_acknowledged_history_fails_closed(
     const std::filesystem::path& root) {
-    // THE POWER-CUT PROPERTY, as a sweep rather than a handful of points.
-    //
-    // A power cut can land anywhere: between two blocks, inside a block header,
-    // inside a record, inside the checksum. The guarantee is not that every cut
-    // preserves everything - that is impossible - but that recovery never comes
-    // back holding LESS than the last state a caller was told about, and never
-    // comes back holding something the cluster never agreed.
-    //
-    // Each iteration builds a node, records what it acknowledged, truncates its
-    // segment at a chosen offset, and restarts.
     const auto build = [&](const std::filesystem::path& dir) {
         std::filesystem::remove_all(dir);
         std::filesystem::create_directories(dir);
@@ -2156,19 +1898,12 @@ void test_corruption_of_acknowledged_history_fails_closed(
         return identity_test::runtime_directory(dir / "1") / "v2-wal-blocks.bin";
     };
 
-    // Establish the shape once: how big the segment is, and what a clean restart
-    // recovers, so the sweep below has something to compare against.
     const auto reference_dir = root / "reference";
     const auto acknowledged = build(reference_dir);
     const auto full_size = std::filesystem::file_size(segment_path(reference_dir));
     require(full_size >= kWalBlockBytes,
             "the fixture produced no segment to cut");
 
-    // Offsets chosen to land in every structurally distinct place: nothing, a
-    // few bytes (inside the magic), inside the header, just short of a block,
-    // exactly a block, and past the written frontier into reserved space.
-    // The written frontier, not the file size: preallocation leaves reserved
-    // zeros past the data, and cutting inside those changes nothing.
     const auto written = identity_test::wal_segment(reference_dir / "1").read_records().size();
     require(written > 1, "the fixture wrote too few blocks to sweep");
     const auto data_end = written * kWalBlockBytes;
@@ -2177,8 +1912,6 @@ void test_corruption_of_acknowledged_history_fails_closed(
         0, 3, kWalBlockHeaderBytes / 2, kWalBlockHeaderBytes,
         kWalBlockHeaderBytes + 7, kWalBlockBytes - 1,
     };
-    // Every block boundary, and a byte either side of each, so a cut lands in a
-    // header, in a payload, and exactly between blocks.
     for (std::uint64_t block = 1; block <= written; ++block) {
         const auto boundary = block * kWalBlockBytes;
         cuts.push_back(boundary - 1);
@@ -2197,21 +1930,11 @@ void test_corruption_of_acknowledged_history_fails_closed(
                 "the fixture was not reproducible at cut " + std::to_string(cut));
 
         {
-            // Truncate: the bytes past the cut simply never reached the platter.
             const auto path = segment_path(dir);
             std::filesystem::resize_file(path, cut);
         }
 
         if (cut < data_end) {
-            // Refusing is necessary but not sufficient. The reversal from
-            // clamping to refusing (ADR 0006's amendment) was made so an
-            // operator is TOLD what happened and the files are left intact, and
-            // a refusal that surfaces as a downstream replay failure with an
-            // empty cause serves neither. So the diagnostic is part of the
-            // contract and is asserted as one: without this, deleting the
-            // explicit check still "refuses", because `raft_apply_all` then
-            // fails on the entries that are not there - which is how a
-            // mutation of that check survived this sweep.
             std::string reason;
             try { Cluster restarted(dir, 1, 0xAB, true); }
             catch (const std::runtime_error& error) { reason = error.what(); }
@@ -2233,8 +1956,6 @@ void test_corruption_of_acknowledged_history_fails_closed(
                 "intact acknowledged prefix changed" + where);
         ++recovered_full;
 
-        // And whatever it recovered, it must be able to keep going: a node that
-        // starts but cannot make progress has traded an outage for a slower one.
         const auto resumed = restarted.elect().status();
         require(resumed.node_id == 1, "the node did not resume after a cut" + where);
     }
@@ -2248,23 +1969,11 @@ void test_corruption_of_acknowledged_history_fails_closed(
 }
 
 void test_winning_leadership_is_not_promotion(const std::filesystem::path& root) {
-    // G-053. The dangerous reading of "the leader is the gateway" is that
-    // whoever wins Raft has thereby become the execution authority. It is
-    // dangerous because Raft leadership changes on its own - a timeout, a slow
-    // link, a restart - and the old gateway may still be alive and sending.
-    // Promotion has to be a decision somebody makes, not a consequence of an
-    // election nobody watched.
-    //
-    // Executor generation is what the pre-send guard fences on, so this asserts
-    // the only thing that matters: no leadership event moves it. The generation
-    // moves when an operator says so, and at no other time.
     Cluster cluster(root, 3);
     auto& first = cluster.elect();
     const auto original = first.state().executor_generation;
     const auto first_leader = first.status().node_id;
 
-    // Promote deliberately once, so the test is not merely observing a value
-    // that nothing in this fixture could ever change.
     const auto promote = encoded(command_from(kMaxOperatorCallerId, 1,
         SetExecutorGeneration{ExecutorGeneration{original.value() + 1}}));
     require(first.propose(promote, ProposeLane::control).status ==
@@ -2275,8 +1984,6 @@ void test_winning_leadership_is_not_promotion(const std::filesystem::path& root)
     require(promoted.value() == original.value() + 1,
             "the deliberate promotion did not take");
 
-    // Now take leadership away and give it to somebody else, repeatedly. Each
-    // of these is exactly the event a standby might mistake for its cue.
     std::set<std::int32_t> leaders_seen{first_leader};
     for (int round = 0; round < 3; ++round) {
         const auto leader = cluster.elect().status().node_id;
@@ -2293,17 +2000,12 @@ void test_winning_leadership_is_not_promotion(const std::filesystem::path& root)
         }
     }
 
-    // Without this the loop above could have re-elected the same voter every
-    // time, and "leadership changed and nothing promoted" would be a claim about
-    // an event that never happened.
     require(leaders_seen.size() > 1,
             "leadership never actually moved, so this test never observed the "
             "event it exists to rule out");
 
     const auto final_leader = cluster.elect().status().node_id;
 
-    // And a restart - a voter coming back with no memory of who it was - is not
-    // a promotion either. It recovers the generation, it does not mint one.
     cluster.restart(final_leader);
     cluster.settle(400);
     for (auto& node : cluster.nodes) {
@@ -2366,21 +2068,6 @@ void test_malformed_normal_commands_never_enter_durable_history(
 
 void test_the_control_lane_admits_only_authenticated_control(
     const std::filesystem::path& root) {
-    // THE RESERVE IS ONLY A RESERVE IF NOT EVERYONE CAN SPEND IT.
-    //
-    // `ProposeLane` is chosen by the caller, so on its own it is a label, not a
-    // permission. Two ways to make the reservation meaningless follow from that,
-    // and both are closed here:
-    //
-    //   - label an ordinary command "control" and spend the kill path's blocks
-    //     on strategy traffic;
-    //   - send a real control command from an unauthenticated caller, which the
-    //     reducer will refuse - AFTER the entry has already consumed reserved
-    //     capacity, committed, and replicated. A refusal that costs the resource
-    //     it was protecting is a denial of service on the kill path.
-    //
-    // Both are refused BEFORE the entry exists, which is the only point at which
-    // refusing is free.
     Cluster cluster(root, 1);
     auto& node = cluster.elect();
 
@@ -2394,8 +2081,6 @@ void test_the_control_lane_admits_only_authenticated_control(
                 ProposeStatus::not_a_control_command,
             "an ordinary command was admitted to the control lane");
 
-    // The same command on its own lane is fine, so the refusal is about the
-    // lane and not about the command.
     require(node.propose(ordinary).status == ProposeStatus::admitted,
             "the ordinary command was not admissible at all");
 
@@ -2406,16 +2091,12 @@ void test_the_control_lane_admits_only_authenticated_control(
                 ProposeStatus::not_a_control_command,
             "an unauthenticated caller was allowed to spend the kill reserve");
 
-    // And the real thing still gets in.
     const auto authentic = encoded(command_from(kMaxOperatorCallerId, 3,
                                                 AdvanceKillEpoch{KillEpoch{1}}));
     require(node.propose(authentic, ProposeLane::control).status ==
                 ProposeStatus::admitted,
             "an authenticated control command was refused by its own lane");
 
-    // The lane must carry the operation it was built for. ADR 0007 notes this
-    // explicitly, because adding a mass cancel and forgetting the lane would
-    // leave the emergency command refused by the emergency path.
     const auto flatten = encoded(command_from(
         kMaxOperatorCallerId, 4,
         RequestMassCancel{MassCancelScope::all, {}, {}, KillEpoch{1},
@@ -2425,9 +2106,6 @@ void test_the_control_lane_admits_only_authenticated_control(
             "the control lane refused a mass cancel, which is the operation it "
             "exists to carry");
 
-    // Undecodable bytes are not a control command either. The lane cannot take
-    // the caller's word for what it is carrying, so anything it cannot read is
-    // not something it may reserve capacity for.
     const std::vector<std::byte> garbage(64, std::byte{0xEE});
     require(node.propose(garbage, ProposeLane::control).status ==
                 ProposeStatus::not_a_control_command,
@@ -2436,24 +2114,12 @@ void test_the_control_lane_admits_only_authenticated_control(
 
 void test_a_flood_of_normal_commands_cannot_starve_a_kill(
     const std::filesystem::path& root) {
-    // G-056, the independence half. The kill command already exists and is now
-    // authorized; what was missing is that it had to queue behind everything
-    // else. A strategy that floods the cluster fills the staging arena, and
-    // without a reservation the command that stops the flood is precisely the
-    // one that cannot get in.
-    //
-    // Driven by NOT FLUSHING. Staging fills, nothing drains it, and the arena
-    // reaches the reserved margin - which is the same shape as a stalled disk or
-    // a writer that cannot keep up, and is why the margin is in blocks rather
-    // than in a rate.
     Cluster cluster(root, 1);
     auto& node = cluster.elect();
 
     std::size_t admitted = 0;
     bool normal_refused = false;
     for (std::size_t i = 0; i < 20'000 && !normal_refused; ++i) {
-        // Large ordinary records reach WAL pressure before the independent
-        // result budget; small control records now saturate that budget first.
         const auto bytes = encoded(command(static_cast<std::uint64_t>(i + 1),
                                            PublishPolicy{policy_artifact()}));
         const auto outcome = node.propose(bytes);
@@ -2471,15 +2137,6 @@ void test_a_flood_of_normal_commands_cannot_starve_a_kill(
             "condition it exists to check");
     require(admitted > 0, "the fixture admitted nothing at all");
 
-    // THE POINT, and it has to be measured rather than sampled. A single
-    // control command getting through proves almost nothing: whatever block was
-    // open when the normal lane closed still had room in it, so one more record
-    // fits whether or not any blocks were actually reserved. Shrinking the
-    // margin to zero left a one-command assertion green, which is how that was
-    // found.
-    //
-    // So count how much the control lane can absorb, and require it to exceed
-    // what one block could hold. Only real reserved BLOCKS can supply that.
     std::size_t control_admitted = 0;
     std::size_t control_bytes = 0;
     bool control_refused = false;
@@ -2502,9 +2159,6 @@ void test_a_flood_of_normal_commands_cannot_starve_a_kill(
                 " bytes, which one already-open block could have supplied - so "
                 "nothing proves any capacity was reserved for it");
 
-    // And the reservation is a margin, not an exemption: drain the reserve and
-    // control is refused too, because unbounded admission is what the arena's
-    // backpressure exists to prevent.
     require(control_refused,
             "the control lane admitted without bound, which is the failure the "
             "arena's backpressure exists to prevent");
@@ -2512,8 +2166,6 @@ void test_a_flood_of_normal_commands_cannot_starve_a_kill(
                 node.ready_result_count() == 0,
             "failed WAL append leaked an unaccepted result reservation");
 
-    // Draining restores the normal lane, so the refusal was backpressure and not
-    // a latch that needs clearing.
     node.flush_durability();
     for (int i = 0; i < 50; ++i) {
         node.tick(1);
@@ -2526,22 +2178,9 @@ void test_a_flood_of_normal_commands_cannot_starve_a_kill(
 }
 
 void test_v2_storage_is_not_v1_storage(const std::filesystem::path& root) {
-    // G-051. V2 reuses V1's MetadataStore and WriteAheadLog - they are
-    // payload-generic and duplicating them would have been worse - but that
-    // made both milestones write the same filenames with the same magic and
-    // version constants. A V2 node aimed at a V1 directory therefore ACCEPTED
-    // V1's hard state, because the values it validates are literally the values
-    // V1 wrote, and failed only later and by accident when a V1 payload reached
-    // the V2 codec.
-    //
-    // The generation layout reserves a closed root namespace. A selected V2
-    // root polluted with V1 files must now fail closed and preserve both
-    // histories; startup must not silently treat that root as a fresh node.
     const auto dir = root / "shared";
     identity_test::provision(dir, 1, {1});
 
-    // A V1 data directory: hard state a V1 node would have written, plus a log
-    // record whose payload means nothing to V2.
     velocita::PersistentMetadata v1_metadata;
     v1_metadata.term = 9;
     v1_metadata.voted_for = 3;
@@ -2567,9 +2206,6 @@ void test_v2_storage_is_not_v1_storage(const std::filesystem::path& root) {
     }
     require(refused, "a selected V2 root accepted foreign V1 root contents");
 
-    // And it must not have written over what V1 left. Storage isolation that
-    // works by starting fresh and clobbering the other milestone's files is not
-    // isolation; it is the destructive migration G-051 names.
     require(file_digest(dir / velocita::kV1MetadataFileName) == v1_metadata_digest,
             "the V2 node rewrote V1's metadata");
     require(file_digest(dir / velocita::kV1WalFileName) == v1_wal_digest,
@@ -2580,11 +2216,6 @@ void test_v2_storage_is_not_v1_storage(const std::filesystem::path& root) {
 
 void test_a_torn_hard_state_write_never_produces_a_corrupt_hard_state(
     const std::filesystem::path& root) {
-    // The plan asks for "hard-state two-slot recovery chooses newest valid
-    // sequence". Two slots are one way to get the property; this implementation
-    // gets the same property from a temp file plus an atomic rename, so what is
-    // tested here is the PROPERTY rather than the mechanism: recovery never
-    // observes a partially written hard state.
     std::filesystem::create_directories(root / "1");
     Cluster cluster(root, 1);
     (void)build_authorized_submit(cluster);
@@ -2597,10 +2228,6 @@ void test_a_torn_hard_state_write_never_produces_a_corrupt_hard_state(
             "the fixture wrote no metadata to tear");
     const auto size = std::filesystem::file_size(metadata_path);
 
-    // A torn hard state cannot be produced by truncating the real file, because
-    // rename is atomic - which IS the property. So the test asserts the two
-    // halves that make it true: a partial file is refused rather than
-    // misinterpreted, and the real path never leaves one behind.
     const auto torn = root / "1" / "metadata.torn";
     std::filesystem::copy_file(metadata_path, torn);
     std::filesystem::resize_file(torn, size / 2);
@@ -2612,8 +2239,6 @@ void test_a_torn_hard_state_write_never_produces_a_corrupt_hard_state(
     }
     require(!refused, "the intact metadata was refused");
 
-    // Now tear the real one and require a refusal rather than a plausible
-    // misreading - a hard state read wrong is worse than one that fails loudly.
     std::filesystem::resize_file(metadata_path, size / 2);
     bool threw = false;
     try {
@@ -2648,9 +2273,6 @@ void test_hard_state_atomic_replace_cut_matrix(const std::filesystem::path& root
                value.commit_index == new_state.commit_index;
     };
 
-    // `_exit` models a process crash: dirty kernel page-cache contents remain
-    // available. Before rename the named file must therefore remain old; after
-    // atomic rename it must be the complete new frame, never a torn mixture.
     for (const auto cut : {Checkpoint::before_write, Checkpoint::partial_write,
                            Checkpoint::file_written, Checkpoint::file_synced,
                            Checkpoint::file_renamed, Checkpoint::directory_synced}) {
@@ -2672,8 +2294,6 @@ void test_hard_state_atomic_replace_cut_matrix(const std::filesystem::path& root
                     WEXITSTATUS(status) == 73,
                 "hard-state cut did not reach its protocol checkpoint");
 
-        // A partial temp is preserved and refuses serving recovery. Inspect the
-        // selected FINAL separately to prove atomicity without blessing the temp.
         const auto runtime = identity_test::runtime_directory(directory);
         const int directory_fd = ::open(runtime.c_str(), O_RDONLY | O_DIRECTORY);
         require(directory_fd >= 0, "metadata cut directory open failed");
@@ -2701,8 +2321,6 @@ void test_hard_state_atomic_replace_cut_matrix(const std::filesystem::path& root
                     "post-rename cut retained the temporary pathname");
     }
 
-    // This observes callback ordering only: save reaches directory_synced before
-    // returning. It neither proves that fsync executed nor emulates power loss.
     const auto completed = root / "completion-checkpoint";
     identity_test::provision(completed, 1, {1, 2, 3});
     identity_test::metadata_store(completed).save(old_state);
@@ -2717,13 +2335,7 @@ void test_hard_state_atomic_replace_cut_matrix(const std::filesystem::path& root
             "save returned without observing its completion checkpoint");
 }
 
-// --- the same suite on a single voter ----------------------------------------
-
 void test_one_voter_reaches_the_same_state(const std::filesystem::path& root) {
-    // The gate requires the deterministic tests to pass through ONE and three
-    // voters. A single voter commits without any peer, so this isolates whether
-    // anything in the economic path depended on replication rather than on
-    // consensus being satisfied.
     Cluster single(root / "single", 1);
     (void)build_authorized_submit(single);
     single.settle(100);
@@ -2763,17 +2375,12 @@ void test_suffix_replacement_invalidates_old_durability(
         first.term = 2;
         first.entries[0] = {2, 2, RAFT_LOGTYPE_NORMAL, replacement};
         identity_test::deliver_declared_peer(node, PeerMessage{3, 2, first});
-        // Without a writer thread the reply exists at once: the clamp must
-        // claim nothing, whatever the replaced entry's durability was.
         if (!threaded) {
             const auto immediate = identity_test::take_outbound_message(node);
             require(immediate.has_value() &&
                         std::get<velocita::AppendEntriesResponse>(immediate->payload).current_index == 0,
                     "replacement acknowledged using obsolete history durability");
         }
-        // Later replies (an early ack once the writer catches up) may claim
-        // index 1 only if the REPLACEMENT is what is on disk at that moment; an
-        // ack built from the old entry's durability would find term 1 there.
         bool claimed = false;
         const auto reply_deadline = std::chrono::steady_clock::now() +
                                     std::chrono::seconds(5);
@@ -2847,7 +2454,6 @@ void test_snapshot_catalog_metadata_is_validated_before_publication(
         recovered = cluster.elect().state();
         status = cluster.elect().status();
     }
-    // This is structurally valid and hashable, but contradicts immutable spec 7.
     recovered.active_executable_policy.instrument.maximum_price = PriceTicks::from_atoms(101);
     auto store = identity_test::snapshot_store(root / "1");
     store.save(recovered, static_cast<std::uint64_t>(status.applied_index), status.term);
@@ -3063,7 +2669,6 @@ void test_authority_marker_is_not_an_economic_command(const std::filesystem::pat
     const auto second = restarted.propose_authority_barrier(second_request);
     require(second.status == ProposeStatus::admitted, "second resolved marker refused");
     cluster.settle();
-    // The pinned library snapshots only when at least two log entries exist.
     require(identity_test::complete_compaction(cluster.node(1)) == static_cast<std::uint64_t>(second.index),
             "marker-ended snapshot could not compact");
     cluster.restart(1);
@@ -3080,7 +2685,6 @@ void test_old_term_marker_waits_for_current_term_control(const std::filesystem::
     const auto marker = old.propose_authority_barrier(authority_request());
     require(marker.status == ProposeStatus::admitted, "old-term marker setup failed");
     old.flush_durability();
-    // Deliver the append but never deliver the durable acknowledgement back.
     while (auto message = identity_test::take_outbound_message(old)) {
         identity_test::deliver_peer(cluster.node(message->recipient_id), *message,
             cluster.node(message->sender_id).static_identity());
@@ -3154,8 +2758,6 @@ void test_lagging_follower_marker_history_and_suffix_replacement(const std::file
         return std::make_unique<ReplicatedKernel>(std::move(startup));
     };
     auto follower = open();
-    // A leader may have applied A/B before emitting C while this follower lagged.
-    // A held append can still carry leader_commit=0; replay cannot reject this backlog.
     velocita::AppendEntries append{1, 0, 0, 0,
         {marker_entry(1), marker_entry(2), marker_entry(3)}};
     identity_test::deliver_declared_peer(*follower, PeerMessage{1, 2, append});
@@ -3190,8 +2792,6 @@ void test_lagging_follower_marker_history_and_suffix_replacement(const std::file
 void test_marker_domain_and_type_refusal_preserves_history(const std::filesystem::path& root) {
     Cluster cluster(root / "foreign-domain", 1);
     auto& derived = cluster.elect();
-    // The request helper carries the three-voter domain; this one-voter identity
-    // has a different nonzero derived domain and must reject it without append.
     require(derived.propose_authority_barrier(authority_request()).status == ProposeStatus::refused &&
                 derived.status().current_index == 0,
             "foreign authority domain admitted a marker");
@@ -3277,14 +2877,7 @@ void test_marker_snapshot_covers_volatile_committed_prefix(const std::filesystem
             "marker snapshot recovery lost its prefix or recreated an economic result");
 }
 
-}  // namespace
-
-// --- pre-vote (Raft thesis 9.6; M3 log findings 43 and 47) -------------------
-//
-// A voter that times out first asks whether it COULD win the next term. Only a
-// majority of yes answers lets it raise its term, and a voter that still hears
-// its leader says no. An isolated voter therefore cannot climb terms and depose
-// a healthy leader when it returns.
+}
 
 bool is_prevote_request(const PeerMessage& message) {
     const auto* vote = std::get_if<velocita::RequestVote>(&message.payload);
@@ -3312,9 +2905,6 @@ velocita::RequestVote vote_request(const std::int32_t candidate, const std::int6
     return vote;
 }
 
-// Voter 2 of {1,2,3} holding entries 1..3 of term 1 from leader 1. With
-// `silence`, it then hears nothing for 2.1 s, longer than any randomized
-// election timeout (1-2 s), so it no longer has a leader.
 std::vector<velocita::RequestVote> follower_of_term_one(ReplicatedKernel& node, const bool silence) {
     identity_test::deliver_declared_peer(node, PeerMessage{1, 2, three_entries(1)});
     node.flush_durability();
@@ -3361,8 +2951,6 @@ void test_a_timed_out_follower_only_asks_and_a_prevote_grant_changes_nothing(
             "granting a pre-vote changed the grantor's term or role");
     require(directory_image(root / "node") == before, "granting a pre-vote wrote the grantor's storage");
 
-    // The vote itself is still free: a real term-2 candidate gets it, and then
-    // the pre-vote's candidate cannot.
     identity_test::deliver_declared_peer(node, PeerMessage{1, 2, vote_request(1, 2, 3, 1, false)});
     const auto real = only_reply(node, "real vote", false);
     require(real.vote_granted && real.term == 2,
@@ -3384,8 +2972,6 @@ void test_a_voter_that_hears_its_leader_refuses_prevotes(const std::filesystem::
                 "a refused pre-vote changed the follower's term or leader");
     }
     {
-        // Its own expired timer is the voter's verdict on the leader: from the
-        // moment it asks, it grants others who have also lost that leader.
         ReplicatedKernel node(identity_test::bootstrap(root / "asker", 2, {1, 2, 3}));
         (void)follower_of_term_one(node, false);
         std::vector<velocita::RequestVote> asked;
@@ -3421,9 +3007,6 @@ void test_a_voter_that_hears_its_leader_refuses_prevotes(const std::filesystem::
 void test_a_stale_log_cannot_win_a_prevote(const std::filesystem::path& root) {
     ReplicatedKernel node(identity_test::bootstrap(root / "node", 2, {1, 2, 3}));
     (void)follower_of_term_one(node, true);
-    // The voter holds 1..3 of term 1 (the fixture delivered them): a log ending
-    // earlier, or in an older term, is behind it.
-    // The last one proposes the voter's own term: no newer term to win.
     for (const auto& stale : {vote_request(3, 2, 2, 1, true), vote_request(3, 2, 0, 0, true),
                               vote_request(3, 2, 9, 0, true), vote_request(3, 1, 3, 1, true)}) {
         identity_test::deliver_declared_peer(node, PeerMessage{3, 2, stale});
@@ -3436,8 +3019,6 @@ void test_a_stale_log_cannot_win_a_prevote(const std::filesystem::path& root) {
     require(node.status().term == 1, "a pre-vote changed the voter's term");
 }
 
-// A pre-candidate counts a grant only for the term it proposed and only while
-// its round is open; a refusal from a newer term teaches it that term.
 void test_a_prevote_round_counts_only_its_own_grants(const std::filesystem::path& root) {
     ReplicatedKernel node(identity_test::bootstrap(root / "node", 2, {1, 2, 3}));
     require(!follower_of_term_one(node, true).empty(), "fixture: the follower never timed out");
@@ -3454,7 +3035,6 @@ void test_a_prevote_round_counts_only_its_own_grants(const std::filesystem::path
                 std::string(what) + ": now " + std::string(status.role) + " in term " +
                     std::to_string(status.term));
     };
-    // One grant is a majority of three with our own: only term 2 may count.
     identity_test::deliver_declared_peer(node, PeerMessage{1, 2, grant(3)});
     expect("follower", 1, "a grant for a term the node never proposed started an election");
 
@@ -3491,7 +3071,6 @@ void test_an_isolated_voter_rejoins_without_raising_the_term(const std::filesyst
     cluster.observe = [&](const PeerMessage& message) {
         if (message.sender_id == isolated && is_prevote_request(message)) ++prevotes;
     };
-    // 10 s alone: five or more election timeouts, like the wifi drops of finding 43.
     cluster.partitioned.insert(isolated);
     for (int round = 0; round < 1000; ++round) {
         cluster.step();
@@ -3524,8 +3103,6 @@ void test_a_lost_leader_is_replaced_within_bounded_time(const std::filesystem::p
     const auto old_id = old.status().node_id;
     const auto term = old.status().term;
     cluster.partitioned.insert(old_id);
-    // A follower times out within 2 s of the last heartbeat; each split
-    // pre-vote or vote costs at most another 2 s. 8 s allows three splits.
     ReplicatedKernel* successor = nullptr;
     int elapsed = 0;
     for (; elapsed < 8000 && successor == nullptr; elapsed += 10) {
@@ -3567,8 +3144,6 @@ void test_a_stale_voter_never_campaigns_and_the_complete_log_wins(const std::fil
     require(cluster.node(stale).status().current_index < committed,
             "fixture: the stale voter is not behind");
 
-    // The leader is lost and the stale voter returns. For 6 s the complete
-    // voter's own requests are dropped, so only the stale one can campaign.
     cluster.partitioned = {leader_id};
     std::size_t asked = 0;
     cluster.observe = [&](const PeerMessage& message) {
@@ -3597,7 +3172,6 @@ void test_a_stale_voter_never_campaigns_and_the_complete_log_wins(const std::fil
             if (cluster.node(id).is_leader()) successor = &cluster.node(id);
     }
     require(successor == &cluster.node(fresh), "the voter holding every committed entry did not win");
-    // It may not know they are committed until it commits in its own term.
     require(successor->status().current_index >= committed, "the new leader lacks a committed entry");
     require(successor->propose(encoded(command_from(kMaxOperatorCallerId + 1, 4,
                                                     SetStrategyMode{StrategyMode::normal, {}, {}})))
@@ -3610,9 +3184,6 @@ void test_a_stale_voter_never_campaigns_and_the_complete_log_wins(const std::fil
             "the stale voter did not converge on the new leader");
 }
 
-// Random single-voter partitions (the leader included) while commands flow.
-// Checked every step: one leader per term, and the majority-durable invariant.
-// Checked here: every voter applies the same term at every committed index.
 void test_prevote_keeps_elections_and_commits_safe_under_partitions(const std::filesystem::path& root) {
     Cluster cluster(root, 3);
     (void)cluster.elect();
@@ -3764,7 +3335,6 @@ int main(int argc, char** argv) {
                     fresh("identity-membership"));
             else throw std::runtime_error("unknown correction test: " + name);
         };
-        // Election timeouts come from rand(); a sweep reruns a test per seed.
         if (const char* seed = std::getenv("VELOCITA_TEST_SEED"))
             std::srand(static_cast<unsigned>(std::stoul(seed)));
         if (argc == 2) {
@@ -3849,8 +3419,6 @@ int main(int argc, char** argv) {
         test_a_writer_thread_carries_durability_off_the_owner_loop(fresh("writer"));
         test_one_voter_reaches_the_same_state(fresh("voter-count"));
 
-        // Last on purpose: willemt draws election timeouts from the process-wide
-        // rand(), so a test added earlier would reseed every later test's timing.
         test_a_committed_mass_cancel_is_answerable_and_recoverable(fresh("mass-cancel-commit"));
 
         test_a_timed_out_follower_only_asks_and_a_prevote_grant_changes_nothing(fresh("prevote-grant"));

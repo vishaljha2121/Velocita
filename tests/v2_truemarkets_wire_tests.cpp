@@ -8,11 +8,6 @@
 #include <string>
 #include <string_view>
 
-// Expected values are written out by hand from the recorded evidence
-// (docs/evidence/truemarkets_markup_2026-09-28/quotes_buy_sell_1631utc.json,
-// SOL $25 rows) and the recorded MCP input schema; none is read back from the
-// code under test.
-
 namespace {
 
 using namespace velocita::v2;
@@ -31,8 +26,6 @@ TmText text(const std::string_view value) {
 constexpr std::string_view kSol = "So11111111111111111111111111111111111111112";
 constexpr std::string_view kUsdc = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
-// Recorded 2026-09-28 16:31:50 UTC, SOL buy $25 (qty_unit quote). The payloads
-// member was omitted from the evidence and is absent here.
 constexpr std::string_view kRecordedBuy =
     R"({"base_asset":"So11111111111111111111111111111111111111112",)"
     R"("quote_asset":"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v","order_side":"buy",)"
@@ -41,7 +34,6 @@ constexpr std::string_view kRecordedBuy =
     R"("quote_id":"2dae2384-b83d-4ea6-ba3d-819b86e5d0e6",)"
     R"("issues":[{"balance":{"actual":"0","expected":"25"},"message":"Insufficient balance"}]})";
 
-// Recorded 2026-09-28 16:31:51 UTC, SOL sell (qty_unit base).
 constexpr std::string_view kRecordedSell =
     R"({"base_asset":"So11111111111111111111111111111111111111112",)"
     R"("quote_asset":"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v","order_side":"sell",)"
@@ -62,7 +54,6 @@ void test_decimal_parse_is_exact_and_refuses_rounding() {
           "9223372036854.775808", "99999999999999999999"}) {
         require(!parse_decimal_atoms(bad, 6).has_value(), "accepted " + std::string(bad));
     }
-    // More fractional digits than the asset has is refused, not rounded.
     require(!parse_decimal_atoms("0.2063311701", 9).has_value(), "rounded excess precision");
 }
 
@@ -113,7 +104,6 @@ void test_trade_call_encodes_every_field_explicitly() {
                 std::string_view(out.data(), prepare.bytes_written) == expected_prepare,
             "trade_prepare body differs");
 
-    // D-25 / D-24: an unset chain or unit is refused, never omitted.
     out.fill('#');
     auto no_chain = arguments;
     no_chain.chain = Chain::unset;
@@ -188,7 +178,6 @@ void test_recorded_quotes_decode_exactly() {
                 sell.qty_out_atoms == 24'752'144 && sell.fee_atoms == 250'021,
             "recorded sell amounts differ");
 
-    // A quote is not a prepare: the handle field differs.
     TradeReply wrong;
     require(decode_trade_reply(kRecordedBuy, ReplyShape::prepare, {6, 9, 6}, wrong) ==
                 DecodeError::missing_field,
@@ -258,7 +247,7 @@ void test_fixture_execute_and_status_decode() {
             "a partial execution record was accepted");
 }
 
-}  // namespace
+}
 
 int main() {
     const std::pair<const char*, void (*)()> tests[] = {

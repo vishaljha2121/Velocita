@@ -10,8 +10,6 @@
 namespace velocita::v2 {
 namespace {
 
-// Opens without following a final symlink and reads at most CAPACITY + 1
-// bytes, so an oversized file is detected without an unbounded read.
 template <std::size_t Capacity>
 NodeFileError read_bounded(const std::filesystem::path& file, bool secret,
                            std::array<std::byte, Capacity + 1>& buffer, std::size_t& length) noexcept {
@@ -35,7 +33,7 @@ NodeFileError read_bounded(const std::filesystem::path& file, bool secret,
     return error;
 }
 
-}  // namespace
+}
 
 LoadSecretResult load_secret_file(const std::filesystem::path& file) noexcept {
     std::array<std::byte, kAuthSecretBytes + 1> buffer{};
@@ -49,7 +47,6 @@ LoadSecretResult load_secret_file(const std::filesystem::path& file) noexcept {
     } else {
         result.secret = AuthSecret::from_bytes(std::span(buffer).first(kAuthSecretBytes));
     }
-    // Wipe the stack copy; the AuthSecret owns the only surviving copy.
     volatile std::byte* cursor = buffer.data();
     for (std::size_t i = 0; i < buffer.size(); ++i) cursor[i] = std::byte{0};
     return result;
@@ -90,4 +87,4 @@ LoadCatalogResult load_catalog_file(const std::filesystem::path& file, const Dig
     return result;
 }
 
-}  // namespace velocita::v2
+}

@@ -21,7 +21,6 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 def load_tool():
-    # Mutation runs point this at a scratch copy; normal runs use the real tool.
     path = pathlib.Path(os.environ.get("VELOCITA_MD_BACKUP_TOOL", ROOT / "tools" / "md-backup-pull"))
     loader = importlib.machinery.SourceFileLoader("md_backup_pull", str(path))
     spec = importlib.util.spec_from_loader("md_backup_pull", loader)
@@ -39,8 +38,6 @@ def name(day):
 
 
 class FakeSsh:
-    """subprocess.run stand-in for `ssh HOST COMMAND`."""
-
     def __init__(self, home):
         self.home = home
         self.calls = []

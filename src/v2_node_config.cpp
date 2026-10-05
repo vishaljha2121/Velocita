@@ -32,7 +32,6 @@ std::string_view trim(std::string_view text) noexcept {
     return text;
 }
 
-// Decimal without sign or leading zeros, checked against MAXIMUM.
 std::optional<std::uint64_t> decimal(std::string_view text, std::uint64_t maximum) noexcept {
     if (text.empty() || text.size() > 20 || (text.size() > 1 && text.front() == '0')) return std::nullopt;
     std::uint64_t value = 0;
@@ -101,7 +100,6 @@ std::uint32_t bounded_u32(std::string_view value, std::uint64_t maximum, std::si
     return static_cast<std::uint32_t>(*parsed);
 }
 
-// `voter.<id>.<field>` / `caller.<id>.<field>`; id is a positive int32.
 struct Indexed {
     std::int32_t id{};
     std::string field;
@@ -118,7 +116,7 @@ std::optional<Indexed> indexed(std::string_view key, std::string_view prefix, st
 }
 
 struct Draft {
-    std::map<std::string, std::size_t> seen;  // key -> line
+    std::map<std::string, std::size_t> seen;
     std::optional<std::int32_t> node_id;
     std::optional<std::filesystem::path> data_root, catalog_file;
     std::optional<NodeStartup> startup;
@@ -182,8 +180,6 @@ void assign(Draft& d, const std::string& key, std::string_view value, std::size_
         if (!bytes || *bytes == 0) invalid();
         d.max_wal = *bytes;
     } else if (key == "history.compact_at_entries") {
-        // Well inside the 8,128-entry ordinary pool, so compaction starts
-        // while a lagging voter still has room to catch up.
         const auto entries = bounded_u32(value, 8000, line);
         if (entries < 16) invalid();
         d.compact_at_entries = entries;
@@ -234,7 +230,6 @@ NodeConfig finish(Draft& d, std::string_view text) {
     if (!d.ingress) missing("ingress.endpoint");
     if (!d.max_wal) missing("history.max_wal_bytes");
     if (d.voter_endpoints.empty()) missing("voter." + std::to_string(*d.node_id) + ".endpoint");
-    // Membership first: which voters are peers, and so need keys, depends on it.
     if (!d.voter_endpoints.contains(*d.node_id)) fail(Code::inconsistent, 0, "node_id");
     for (const auto& [id, key] : d.voter_keys)
         if (!d.voter_endpoints.contains(id)) missing("voter." + std::to_string(id) + ".endpoint");
@@ -293,7 +288,7 @@ NodeConfig finish(Draft& d, std::string_view text) {
     return config;
 }
 
-}  // namespace
+}
 
 StaticIdentity NodeConfig::static_identity() const {
     StaticIdentity identity;
@@ -331,7 +326,6 @@ ParseNodeConfigResult parse_node_config(std::string_view text) {
             if (key.empty() || !std::all_of(key.begin(), key.end(), key_char))
                 fail(Code::invalid_key, line_number, key);
             if (!draft.seen.emplace(key, line_number).second) fail(Code::duplicate_key, line_number, key);
-            // No inline comments: a '#' inside a value is ambiguous, so refuse it.
             if (value.empty() || value.find('#') != std::string_view::npos)
                 fail(Code::invalid_value, line_number, key);
             assign(draft, key, value, line_number);
@@ -363,4 +357,4 @@ ParseNodeConfigResult load_node_config(const std::filesystem::path& file) {
     return parse_node_config(bytes);
 }
 
-}  // namespace velocita::v2
+}

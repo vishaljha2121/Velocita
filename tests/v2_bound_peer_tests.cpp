@@ -83,7 +83,6 @@ void compaction_floor_tests() {
     auto sender = context(1);
     auto receiver = context(2);
     BoundFrameScratch scratch;
-    // Owning encoder: the floor survives the round trip.
     PeerMessage append{1, 2, AppendEntries{7, 0, 0, 0, {{7, 1, 0, command()}}}};
     std::get<AppendEntries>(append.payload).compaction_floor = 42;
     std::array<std::byte, kMaxBoundPeerBytes> bytes{};
@@ -94,7 +93,6 @@ void compaction_floor_tests() {
                 BoundFrameError::none &&
                 std::get<AppendEntries>(decoded.payload).compaction_floor == 42,
             "the compaction floor did not survive the owning encoder");
-    // Allocation-free encoder: the same.
     const auto payload = command();
     const std::array<BorrowedPeerLogEntry, 1> borrowed{{{7, 1, 0, payload}}};
     BorrowedAppendEntries view{7, 0, 0, 0, borrowed, 99};
@@ -104,13 +102,10 @@ void compaction_floor_tests() {
                 BoundFrameError::none &&
                 std::get<AppendEntries>(decoded.payload).compaction_floor == 99,
             "the compaction floor did not survive the view encoder");
-    // A V1 body (older peer) is refused, not misread.
     refused(frame(encode_peer_message(append), sender), BoundFrameError::invalid_payload);
-    // An AppendEntries body without its trailer is refused.
     auto body = encode_bound_peer_body(append);
     body.resize(body.size() - 8);
     refused(frame(body, sender), BoundFrameError::invalid_payload);
-    // A negative floor is refused by both sides.
     std::get<AppendEntries>(append.payload).compaction_floor = -1;
     require(encode_bound_peer(append, sender, bytes, scratch).error == BoundFrameError::invalid_payload,
             "a negative floor was encoded");
@@ -120,9 +115,6 @@ void compaction_floor_tests() {
                 BoundFrameError::invalid_payload,
             "the allocation-free encoder accepted a negative floor");
 }
-// The pre-vote flag rides as a one-byte trailer on both vote bodies (body
-// version 3). A version-2 body, which is exactly what a voter without
-// pre-vote sends, is refused rather than read as a real vote.
 void prevote_wire_tests() {
     auto sender = context(1);
     auto receiver = context(2);
@@ -150,7 +142,6 @@ void prevote_wire_tests() {
                     require(std::get<RequestVoteResponse>(decoded.payload).prevote == flag &&
                                 std::get<RequestVoteResponse>(decoded.payload).vote_granted,
                             "the pre-vote flag did not survive a vote reply round trip");
-                // The view encoder writes the same body as the owning one.
                 const auto inner = encode_bound_peer_body(message);
                 require(std::equal(inner.begin(), inner.end(),
                                    bytes.begin() + static_cast<std::ptrdiff_t>(kBoundFrameHeaderBytes)),
@@ -158,7 +149,6 @@ void prevote_wire_tests() {
             }
         }
     }
-    // Sizes: the version-2 bodies plus one trailer byte; the version is 3.
     RequestVote prevote{7, 1, 3, 2};
     prevote.prevote = true;
     RequestVoteResponse granted{7, true};
@@ -169,7 +159,6 @@ void prevote_wire_tests() {
     require(vote_body[4] == std::byte{3} && vote_body[5] == std::byte{0} && vote_body[48] == std::byte{1} &&
                 reply_body[25] == std::byte{1},
             "the vote bodies do not carry version 3 and the flag trailer");
-    // What a voter without pre-vote sends: version 2, no vote trailer.
     for (const PeerMessage& old : {PeerMessage{1, 2, RequestVote{7, 1, 3, 2}},
                                    PeerMessage{1, 2, RequestVoteResponse{7, true}},
                                    PeerMessage{1, 2, AppendEntriesResponse{7, true, 3, 1}}}) {
@@ -181,7 +170,6 @@ void prevote_wire_tests() {
     auto old_body = encode_bound_peer_body(old_append);
     old_body[4] = std::byte{2};
     refused(frame(old_body, sender), BoundFrameError::invalid_payload);
-    // A vote body without its trailer, or with a non-canonical flag, is refused.
     for (auto body : {vote_body, reply_body}) {
         auto shortened = body;
         shortened.pop_back();
@@ -245,7 +233,7 @@ void codec_tests() {
         refused(frame(inner, sender), BoundFrameError::invalid_payload);
     }
     auto vote = encode_bound_peer_body(messages[0]);
-    vote[28] = std::byte{1}; // RequestVote reserved word, independent of envelope integrity.
+    vote[28] = std::byte{1};
     refused(frame(vote, sender), BoundFrameError::invalid_payload);
     auto reply = encode_bound_peer_body(messages[1]);
     reply[24] = std::byte{2};
@@ -288,7 +276,6 @@ void codec_tests() {
     entries[0].type = 0;
     entries[0].payload[0] ^= std::byte{1};
     refused(frame(batch, sender), BoundFrameError::invalid_payload);
-    // Framing is insufficient: an otherwise valid marker must name this authority domain.
     AuthorityBarrier barrier{};
     barrier.incarnation[0] = std::byte{1};
     barrier.request_sequence = 1;
@@ -475,7 +462,6 @@ void bounded_batch_progress() {
     for (int i = 0; i < 20; ++i) step();
     for (std::uint64_t i = 1; i <= 40; ++i)
         require(leader->propose(command(i)).status == ProposeStatus::admitted, "batch backlog proposal refused");
-    // Followers have not received this backlog; one transport batch cannot contain all of it.
     leader->flush_durability();
     leader->tick(200);
     route();
@@ -489,7 +475,6 @@ void bounded_batch_progress() {
 }
 
 void verified_prefix_limits_commit(const bool heartbeat) {
-    // Synthetic ingress regression, not a claimed honest-sender election trace.
     OwnedDirectory directory;
     const auto path = directory.path / "2";
     {
@@ -539,7 +524,7 @@ void verified_prefix_limits_commit(const bool heartbeat) {
             repair.entries.push_back({3, i, RAFT_LOGTYPE_NORMAL, command(i)});
         identity_test::deliver_declared_peer(node, PeerMessage{3, 2, repair});
         node.flush_durability();
-        node.tick(0); // Checkpoint the newly durable committed prefix before restart.
+        node.tick(0);
         require(node.state().kill_epoch == KillEpoch{20} && node.status().applied_index == 20,
             "verified replacement suffix did not apply");
         for (int i = 17; i <= 20; ++i) {
@@ -607,7 +592,7 @@ void append_prefix_arithmetic_refuses() {
     require(decode_bound_peer(frame(PeerMessage{1, 2, overflow}, sender), context(2), decoded, scratch) ==
         BoundFrameError::none, "representable prefix edge refused");
 }
-} // namespace
+}
 int main() {
     try {
         const auto* selected = std::getenv("BOUND_PEER_CASE");

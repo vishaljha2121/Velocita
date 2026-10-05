@@ -211,7 +211,7 @@ void run() {
         refuses(f, "snapshot namespace accepted an extra file");
     }
 }
-} // namespace
+}
 
 int main() {
     try { run(); std::cout << "generation base files tests passed\n"; return 0; }

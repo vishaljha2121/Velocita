@@ -21,7 +21,7 @@ from velocita_model.shadow import edge, volume
 from test_shadow_edge import history, reference
 
 NS = 1_000_000_000
-NOON_0928 = 1_790_596_800 * NS  # 2026-09-28T12:00:00Z, a whole multiple of 60 s and of 1800 s
+NOON_0928 = 1_790_596_800 * NS
 CATALOG = edge.CatalogRow(root="ab" * 32, account=1, venue=20, instrument=1, instrument_spec_version=1,
                           venue_capabilities_version=1)
 UNIT = dict(valid_from_ns=1, valid_until_ns=4_102_444_800_000_000_000, order_quantity_lots=25,
@@ -31,27 +31,23 @@ UNIT = dict(valid_from_ns=1, valid_until_ns=4_102_444_800_000_000_000, order_qua
 
 class Phase(unittest.TestCase):
     def test_parity_of_whole_periods_since_the_epoch(self) -> None:
-        # period 60 s: [0, 60 s) is period 0 (even), [60 s, 120 s) is period 1 (odd).
         self.assertEqual(volume.phase(0, 60), 0)
         self.assertEqual(volume.phase(60 * NS - 1, 60), 0)
         self.assertEqual(volume.phase(60 * NS, 60), 1_000_000)
         self.assertEqual(volume.phase(120 * NS - 1, 60), 1_000_000)
         self.assertEqual(volume.phase(120 * NS, 60), 0)
-        # 1,790,596,800 / 60 = 29,843,280 (even); one minute later is odd.
         self.assertEqual(volume.phase(NOON_0928, 60), 0)
         self.assertEqual(volume.phase(NOON_0928 + 60 * NS, 60), 1_000_000)
-        # period 45 s: 1,790,596,800 / 45 = 39,791,040 (even); +44.999 s still even.
         self.assertEqual(volume.phase(NOON_0928 + 44_999_000_000, 45), 0)
         self.assertEqual(volume.phase(NOON_0928 + 45 * NS, 45), 1_000_000)
 
 
 class Rotation(unittest.TestCase):
     def test_microseconds_into_the_period(self) -> None:
-        # 1,790,596,800 = 1800 x 994,776: noon starts a period.
         self.assertEqual(volume.rotation(NOON_0928, 1800), 0)
         self.assertEqual(volume.rotation(NOON_0928 + 59_500_000_000, 1800), 59_500_000)
         self.assertEqual(volume.rotation(NOON_0928 + 60 * NS, 1800), 60_000_000)
-        self.assertEqual(volume.rotation(NOON_0928 + 1799 * NS + 999, 1800), 1_799_000_000)  # sub-us truncated
+        self.assertEqual(volume.rotation(NOON_0928 + 1799 * NS + 999, 1800), 1_799_000_000)
         self.assertEqual(volume.rotation(NOON_0928 + 1800 * NS, 1800), 0)
 
 
@@ -61,19 +57,17 @@ class MinuteWindow(unittest.TestCase):
     def test_last_price_per_minute_with_carry_forward(self) -> None:
         w = volume.MinuteWindow(3)
         w.observe(10 * NS, Decimal("100"))
-        w.observe(50 * NS, Decimal("102"))        # minute 0 closes at 102
-        w.observe(2 * self.M + 10 * NS, Decimal("99"))  # minute 1 has no price: 102 carries
-        # slots 0,1,2 = 102, 102, 99: SMA 101; 99/101 - 1 = -0.019801980... -> -19,801.98 us -> -19,802
+        w.observe(50 * NS, Decimal("102"))
+        w.observe(2 * self.M + 10 * NS, Decimal("99"))
         self.assertEqual(w.deviation_micros(), -19_802)
 
     def test_not_available_until_the_window_is_covered(self) -> None:
         w = volume.MinuteWindow(3)
         w.observe(5 * self.M, Decimal("100"))
-        self.assertIsNone(w.deviation_micros())  # slots 3,4,5: nothing before minute 5
+        self.assertIsNone(w.deviation_micros())
         w.observe(6 * self.M, Decimal("100"))
-        self.assertIsNone(w.deviation_micros())  # slots 4,5,6
+        self.assertIsNone(w.deviation_micros())
         w.observe(7 * self.M, Decimal("103"))
-        # slots 5,6,7 = 100, 100, 103: SMA 101; 103/101 - 1 = 0.0198019801... -> 19,802
         self.assertEqual(w.deviation_micros(), 19_802)
 
     def test_bounded_and_the_newest_pruned_close_carries_in(self) -> None:
@@ -82,7 +76,6 @@ class MinuteWindow(unittest.TestCase):
             w.observe(minute * self.M, Decimal(price))
         self.assertLessEqual(len(w.closes), 2)
         self.assertEqual(w.carry, Decimal("110"))
-        # slots 4,5 = 110 (carried from minute 1), 120: SMA 115; 120/115 - 1 = 0.04347826... -> 43,478
         self.assertEqual(w.deviation_micros(), 43_478)
         for minute in range(6, 5000):
             w.observe(minute * self.M, Decimal(minute))
@@ -96,14 +89,13 @@ class MinuteWindow(unittest.TestCase):
         self.assertEqual(list(w.closes), [(0, Decimal("100"))])
 
     def test_rounding_is_half_even(self) -> None:
-        # W = 2, closes a, b: ratio = (b - a) / (a + b). a + b = 2,000,000.
         w = volume.MinuteWindow(2)
         w.observe(0, Decimal("999999.5"))
-        w.observe(self.M, Decimal("1000000.5"))  # ratio 1/2e6 = 0.5 us -> 0 (half-up would give 1)
+        w.observe(self.M, Decimal("1000000.5"))
         self.assertEqual(w.deviation_micros(), 0)
         w = volume.MinuteWindow(2)
         w.observe(0, Decimal("999998.5"))
-        w.observe(self.M, Decimal("1000001.5"))  # ratio 3/2e6 = 1.5 us -> 2 (truncation would give 1)
+        w.observe(self.M, Decimal("1000001.5"))
         self.assertEqual(w.deviation_micros(), 2)
 
     def test_a_window_is_1_to_1440_minutes(self) -> None:
@@ -179,8 +171,6 @@ def trend_features(closes: list[float], price: float) -> tuple[int, ...]:
     return rules.features(bars, 0, days - 1, rules.Settings(sma_days=125))
 
 
-# history(200) ends 2026-07-19, so ticks are on 2026-07-20. 1,784,548,800 s = 2026-07-20T12:00:00Z,
-# a multiple of 60 (29,742,480 minutes, even) and of 1800 (991,416 periods).
 NOON_0720 = 1_784_548_800 * NS
 
 
@@ -190,17 +180,16 @@ class VolumeTicks(unittest.TestCase):
         daily = trend_features([c for _, c in history(200)], 300.0)
         even = f.tick(reference("300", "2026-07-20T12:00:00Z"), receive_ns=NOON_0720, tick_id=1)
         self.assertEqual(even.features, list(daily) + [0, 30_000])
-        self.assertEqual(even.expected_rule, 1)  # phase 0: "4 le 0 exit"
+        self.assertEqual(even.expected_rule, 1)
         odd = f.tick(reference("300", "2026-07-20T12:01:00Z"), receive_ns=NOON_0720 + 60 * NS, tick_id=2)
         self.assertEqual(odd.features[4:], [1_000_000, 30_000])
-        self.assertEqual(odd.expected_rule, 0)   # phase 1: "4 gt 0 enter_long"
+        self.assertEqual(odd.expected_rule, 0)
         self.assertEqual(f.feature_names, ("trend", "ret1", "vol", "dev", "phase"))
 
     def test_rotate_tick_carries_seconds_into_the_period(self) -> None:
         f = edge.FeatureSource("rotate", 125, closes=history(200), usd_per_tick=Decimal("0.01"))
         tick = f.tick(reference("300", "2026-07-20T12:00:30Z"), receive_ns=NOON_0720 + 30 * NS, tick_id=1)
         self.assertEqual(tick.features[4], 30_000_000)
-        # history rises 1 a day, so trend > 0: inside the 60 s window the exit rule (index 1) matches.
         self.assertGreater(tick.features[0], 0)
         self.assertEqual(tick.expected_rule, 1)
         later = f.tick(reference("300", "2026-07-20T12:01:00Z"), receive_ns=NOON_0720 + 60 * NS, tick_id=2)
@@ -210,15 +199,11 @@ class VolumeTicks(unittest.TestCase):
         f = edge.FeatureSource("dip", 125, closes=history(200), usd_per_tick=Decimal("0.01"),
                                min_interval_ns=600 * NS, params=volume.Params(window_min=2))
         self.assertIsNone(f.tick(reference("300", "2026-07-20T12:00:00Z"), receive_ns=NOON_0720, tick_id=1))
-        self.assertEqual(f.last_outcome, "warming_up")  # slot 11:59 has no price yet
-        # 12:01 at 306: slots 12:00 = 300, 12:01 = 306, SMA 303; 306/303 - 1 = 0.00990099.. -> 9,901: exit.
+        self.assertEqual(f.last_outcome, "warming_up")
         first = f.tick(reference("306", "2026-07-20T12:01:00Z"), receive_ns=NOON_0720 + 60 * NS, tick_id=2)
         self.assertEqual((first.features[4:], first.expected_rule), ([9_901, 30_600], 1))
-        # 12:02 at 294 is throttled (600 s interval) but still closes minute 12:02 in the window.
         self.assertIsNone(f.tick(reference("294", "2026-07-20T12:02:00Z"), receive_ns=NOON_0720 + 120 * NS, tick_id=3))
         self.assertEqual(f.last_outcome, "throttled")
-        # 12:11 at 300, forwarded: slot 12:10 carries 12:02's 294 -> SMA 297; 300/297 - 1 = 0.0101.. -> 10,101.
-        # (Had the throttled price been skipped, 306 would carry: 300/303 - 1 -> -9,901.)
         later = f.tick(reference("300", "2026-07-20T12:11:00Z"), receive_ns=NOON_0720 + 660 * NS, tick_id=4)
         self.assertEqual(later.features[4:], [10_101, 30_000])
 

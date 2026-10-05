@@ -1,3 +1,4 @@
+// V1: raft-client.
 #include "velocita/client_recovery.hpp"
 #include "velocita/client_routing.hpp"
 #include "velocita/client_session.hpp"
@@ -110,7 +111,7 @@ Options parse_options(int argc, char** argv) {
     return options;
 }
 
-}  // namespace
+}
 
 int main(int argc, char** argv) {
     try {

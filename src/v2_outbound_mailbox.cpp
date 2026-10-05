@@ -12,7 +12,7 @@ std::int64_t term(const BorrowedPeerPayload& payload) noexcept {
 std::size_t kind_index(const BorrowedPeerPayload& payload) noexcept {
     return payload.index();
 }
-} // namespace
+}
 
 OutboundMailboxes::OutboundMailboxes(const VerifiedStaticIdentity& identity) noexcept
     : identity_(&identity) {
@@ -99,4 +99,4 @@ OutboundTakeResult OutboundMailboxes::take(
     return {};
 }
 
-} // namespace velocita::v2
+}

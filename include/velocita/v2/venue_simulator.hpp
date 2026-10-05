@@ -1,3 +1,4 @@
+// Test venue with injected clock ticks and seeded faults.
 #pragma once
 
 #include "velocita/v2/contracts.hpp"
@@ -9,25 +10,22 @@
 
 namespace velocita::v2::sim {
 
-// Test-only venue with caller-supplied ticks and deterministic seeded faults.
-
 using Tick = std::uint64_t;
 
 enum class Fault : std::uint8_t {
     none = 0,
-    delay,               // the response arrives, late
-    loss,                // the response never arrives at all
-    duplication,         // the response arrives twice
-    reorder,             // responses arrive out of their natural order
-    partial_fill,        // the order fills in pieces rather than at once
-    fill_after_cancel,   // a fill lands after cancellation was confirmed
-    disconnect,          // the session ends; a new one gets a new identity
-    rate_limit,          // the venue refuses to accept right now
-    inconsistent_query,  // a query disagrees with what was already reported
-    partial_window,      // a query answers truthfully but not for the whole window
+    delay,
+    loss,
+    duplication,
+    reorder,
+    partial_fill,
+    fill_after_cancel,
+    disconnect,
+    rate_limit,
+    inconsistent_query,
+    partial_window,
 };
 
-// Classes roll independently; rate limits and disconnects prevent book mutation.
 struct FaultSet {
     bool delay{};
     bool loss{};
@@ -91,15 +89,14 @@ struct FaultPolicy {
 };
 
 enum class SendOutcome : std::uint8_t {
-    accepted = 1,        // the venue took it
-    venue_duplicate,     // the venue already has this client identity
-    business_rejected,   // the venue refused it on its own terms
-    pre_send_failure,    // it never left us; nothing is at the venue
-    ambiguous,           // it may or may not have arrived: UNKNOWN, not failed
-    rate_limited,        // refused for pacing; nothing is at the venue
+    accepted = 1,
+    venue_duplicate,
+    business_rejected,
+    pre_send_failure,
+    ambiguous,
+    rate_limited,
 };
 
-// Unavailable is silence; not_found is an explicit absence answer.
 enum class QueryOutcome : std::uint8_t {
     known = 1,
     not_found,
@@ -113,15 +110,12 @@ struct QueryResult {
     QuantityLots remaining_quantity{};
     bool cancelled{};
     bool inconsistent{};
-    // A partial window is a prefix, not proof of the complete execution total.
     bool window_complete{true};
     bool ordered_after_relevant_sends{true};
 };
 
-// Observations remain owned until acknowledged; restart can redeliver them.
 struct ScheduledObservation {
     Tick due{};
-    // Preserves natural within-tick order unless the reorder fault applies.
     std::uint64_t ordinal{};
     VenueObservation observation{};
     bool delivered{};
@@ -139,17 +133,14 @@ class SimulatedVenue final {
 public:
     SimulatedVenue(std::uint64_t seed, FaultPolicy policy, VenueId venue_id) noexcept;
 
-    // Returns the transport outcome; observations arrive asynchronously through poll.
     [[nodiscard]] SendOutcome send(const OrderEffect& effect, Tick now);
 
-    // Returns due observations once per delivery run; acknowledgement removes them.
     [[nodiscard]] std::vector<VenueObservation> poll(Tick now);
     void acknowledge_observation(const VenueObservation& observation) noexcept;
     void restart_delivery() noexcept;
 
     [[nodiscard]] QueryResult query(ClusterOrderId order, Tick now);
 
-    // Reconnects change session identity; execution deduplication must survive them.
     [[nodiscard]] VenueSessionId session() const noexcept { return session_; }
 
     [[nodiscard]] const std::vector<FaultSet>& fault_log() const noexcept {
@@ -158,7 +149,6 @@ public:
     [[nodiscard]] const std::vector<SimulatedExecution>& executions() const noexcept {
         return executions_;
     }
-    // Every observation the venue still owns (not yet acknowledged).
     [[nodiscard]] const std::vector<ScheduledObservation>& owned_observations() const noexcept {
         return scheduled_;
     }
@@ -200,4 +190,4 @@ private:
     std::vector<FaultSet> fault_log_;
 };
 
-}  // namespace velocita::v2::sim
+}

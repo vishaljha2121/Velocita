@@ -1,3 +1,4 @@
+// A leader's proof that an authority barrier committed in its current term.
 #pragma once
 
 #include "velocita/v2/authority_barrier.hpp"
@@ -8,7 +9,6 @@ namespace velocita::v2 {
 class ReplicatedKernel;
 class GatewayLink;
 
-// Owned local value, not an authenticated IPC encoding or a persisted grant.
 struct AuthorityProofView {
     AuthorityBarrier request{};
     BoundOrderEffect binding{};
@@ -26,10 +26,6 @@ public:
 
 private:
     friend class ReplicatedKernel;
-    // Cross-process issuance: GatewayLink constructs one only from an
-    // authority_granted frame that verified under the issuing voter's response
-    // key, passed that voter's session fence, and answers the link's pending
-    // request (see gateway_link.hpp). Nothing else outside the kernel may.
     friend class GatewayLink;
 class GatewayLink;
     explicit AuthorityProof(const AuthorityProofView& view) noexcept : view_(view) {}
@@ -38,4 +34,4 @@ class GatewayLink;
 
 static_assert(sizeof(AuthorityProof) <= 512);
 
-}  // namespace velocita::v2
+}

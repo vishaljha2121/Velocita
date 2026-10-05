@@ -7,25 +7,11 @@
 namespace velocita::v2::sim {
 namespace {
 
-// THE DEFERRAL BUFFER IS THE WHOLE SUBTLETY HERE.
-//
-// `SimulatedVenue::poll` hands back everything due at once and considers it
-// delivered; the seam promises to write no more than the caller asked for. Those
-// two are only compatible if the overflow is HELD rather than dropped, because
-// an observation is economic evidence and losing one loses a fill.
-//
-// So a poll takes whatever the venue offers, gives the caller as much as fits,
-// and keeps the rest to hand over first on the next call. Acknowledgement still
-// goes straight through to the venue, which is what keeps redelivery-on-crash
-// working: an observation sitting in this buffer is unacknowledged, so a restart
-// sees it again from the venue itself rather than from here.
 struct SimulatorSeam {
     SimulatedVenue* venue;
     std::vector<VenueObservation> deferred;
 };
 
-// One seam per venue instance, kept alive independently of the returned struct
-// because `VenueTransport` is a trivially copyable handle and owns nothing.
 std::vector<std::unique_ptr<SimulatorSeam>>& seams() {
     static std::vector<std::unique_ptr<SimulatorSeam>> instances;
     return instances;
@@ -82,7 +68,7 @@ void simulated_book_read(void* context, VenueBook& out) {
     }
 }
 
-}  // namespace
+}
 
 VenueBookSource simulated_venue_book(SimulatedVenue& venue) noexcept {
     return {&simulated_book_read, nullptr, &venue};
@@ -90,7 +76,6 @@ VenueBookSource simulated_venue_book(SimulatedVenue& venue) noexcept {
 
 SendOutcome resolve_two_step_send(const TwoStepSend& steps,
                                   const OrderEffect& effect) noexcept {
-    // STEP ONE. Nothing exists at the venue until this succeeds.
     switch (steps.prepare_fn(steps.context, effect)) {
         case StepOutcome::succeeded:
             break;
@@ -98,23 +83,15 @@ SendOutcome resolve_two_step_send(const TwoStepSend& steps,
             return SendOutcome::rate_limited;
         case StepOutcome::refused:
         case StepOutcome::ambiguous:
-            // Ambiguity here is reported as "nothing was sent" because an order
-            // left `initialized` cannot fill. See ADR 0009 for the documented
-            // fact this rests on, and for why it is recorded as a dependency
-            // rather than assumed.
             return SendOutcome::pre_send_failure;
     }
 
-    // From here an `initialized` order may exist, so every failure path below
-    // attempts to abandon it.
     switch (steps.sign_fn(steps.context, effect)) {
         case StepOutcome::succeeded:
             break;
         case StepOutcome::rate_limited:
         case StepOutcome::refused:
         case StepOutcome::ambiguous:
-            // Signing is local. It cannot be ambiguous about the VENUE, so every
-            // non-success means nothing was submitted.
             steps.abandon_fn(steps.context, effect);
             return SendOutcome::pre_send_failure;
     }
@@ -123,16 +100,11 @@ SendOutcome resolve_two_step_send(const TwoStepSend& steps,
         case StepOutcome::succeeded:
             return SendOutcome::accepted;
         case StepOutcome::ambiguous:
-            // THE ONE THAT MATTERS. The order may be resting. Do NOT abandon -
-            // abandoning what may be a live order is worse than leaving it, and
-            // only the gateway's reconciliation can establish which it is.
             return SendOutcome::ambiguous;
         case StepOutcome::rate_limited:
             steps.abandon_fn(steps.context, effect);
             return SendOutcome::rate_limited;
         case StepOutcome::refused:
-            // A clean refusal at submission is the venue declining on its own
-            // terms, which is economic information and not a transport failure.
             steps.abandon_fn(steps.context, effect);
             return SendOutcome::business_rejected;
     }
@@ -151,4 +123,4 @@ VenueTransport simulated_venue_transport(SimulatedVenue& venue) noexcept {
     return transport;
 }
 
-}  // namespace velocita::v2::sim
+}

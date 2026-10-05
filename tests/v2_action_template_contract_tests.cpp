@@ -311,7 +311,7 @@ void test_proposal_is_exact_and_never_implicitly_clamped() {
             "proposal without capability provenance was accepted");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

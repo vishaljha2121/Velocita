@@ -157,7 +157,7 @@ void test_cancel_exception_respects_control_highwaters_and_stop_all() {
             "stop-all allowed committed cancel transport");
 }
 
-}  // namespace
+}
 
 int main() {
     static_assert(!std::is_copy_constructible_v<GatewayAuthority>);

@@ -263,7 +263,7 @@ void test_feature_units_and_conversions_are_authoritative() {
             "wrong feature-schema digest was accepted");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

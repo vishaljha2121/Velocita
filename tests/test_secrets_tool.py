@@ -10,7 +10,6 @@ ROOT = pathlib.Path(__file__).parents[1]
 
 
 def load_tool():
-    # Mutation runs point this at a scratch copy; normal runs use the real tool.
     path = pathlib.Path(os.environ.get("VELOCITA_SECRETS_TOOL", ROOT / "tools" / "velocita-secrets"))
     loader = importlib.machinery.SourceFileLoader("velocita_secrets", str(path))
     spec = importlib.util.spec_from_loader("velocita_secrets", loader)
@@ -23,8 +22,6 @@ TOOL = load_tool()
 
 
 class FakeKeychain:
-    """Stands in for the Keychain; also records that values never reach argv."""
-
     def __init__(self):
         self.items = {}
 
@@ -55,8 +52,6 @@ class FakeRemote:
 
 
 class RecordingRun:
-    """Captures subprocess calls so tests can check where secret bytes travel."""
-
     def __init__(self, stdout="", returncode=0):
         self.calls = []
         self.stdout = stdout

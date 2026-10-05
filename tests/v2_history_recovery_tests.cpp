@@ -234,8 +234,6 @@ void published_archive_still_waits_for_owner_completion() {
         require(gate.changed.wait_for(lock, 10s, [&] { return gate.parked; }),
                 "history worker did not pause after durable catalog publication");
     }
-    // Disk publication is complete, but only the owner may consume the exact
-    // completion and release protocol work.
     verify_archive(root.path, bridge.payload);
     require(node.history_recovery_pending() && node.persistence_pending() &&
                 !node.is_leader(),
@@ -272,9 +270,6 @@ void partial_archive_resumes_across_cold_restart() {
     require(read_bytes(wal_path) == bridge.wal_bytes,
             "first bridge publication deleted overlapping WAL");
 
-    // This is a cold restart-overlap witness, not a simulated physical crash:
-    // advance the independently valid snapshot/metadata while leaving the full
-    // retained WAL and already-published archive prefix in place.
     identity_test::snapshot_store(root.path).save(bridge.state, kBridgeIndex, 1);
     identity_test::metadata_store(root.path).save(
         {1, -1, static_cast<std::int64_t>(kBridgeIndex)});
@@ -373,7 +368,7 @@ void bounded_refusals_publish_nothing() {
         }
     }
 }
-} // namespace
+}
 
 int main() {
     const char* scenario = "successful recovery";

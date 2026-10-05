@@ -133,8 +133,6 @@ void test_all_cuts_and_forged_structures_preserve_destination() {
             input[8 + i] = static_cast<std::byte>((input.size() >> (8 * i)) & 255);
     };
     const auto matching_root = [](std::span<const std::byte> input) {
-        // A valid hash must not excuse an invalid structure. Golden tests
-        // independently pin the valid domain/bytes; this helper is not that oracle.
         constexpr std::string_view domain = "velocita.execution-catalog.v1";
         std::vector<std::byte> preimage;
         for (char c : domain) preimage.push_back(static_cast<std::byte>(c));
@@ -198,7 +196,7 @@ void test_encoder_capacity_and_aliasing() {
                            aliased_output.begin()), "encoder read rows after overwriting them");
 }
 
-} // namespace
+}
 
 int main() {
     try {

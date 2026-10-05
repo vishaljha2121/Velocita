@@ -28,12 +28,9 @@ from ..features.flow import TradePrint
 
 
 class TransportRefused(RuntimeError):
-    """The transport declined to make a request that could change venue state."""
+    pass
 
 
-#: Path fragments that indicate a state-changing route on any venue. Matching is
-#: substring-based and deliberately over-broad: a false refusal costs one
-#: allowlist entry, a false permit costs an order.
 STATE_CHANGING_PATH_FRAGMENTS: tuple[str, ...] = (
     "/orders",
     "/order",
@@ -53,10 +50,6 @@ STATE_CHANGING_PATH_FRAGMENTS: tuple[str, ...] = (
 
 @dataclass(frozen=True, slots=True)
 class MetadataField:
-    """One metadata fact with its provenance. `confidence` is never defaulted to
-    'verified' - a value we inferred must not be indistinguishable from one the
-    venue documented."""
-
     field: str
     value: Any
     confidence: str
@@ -69,8 +62,6 @@ class MetadataField:
 
 @dataclass(frozen=True, slots=True)
 class RawPayload:
-    """Bytes exactly as received, with the digest that names them."""
-
     body: bytes
     received_at_ns: int
     url: str | None = None
@@ -81,12 +72,6 @@ class RawPayload:
 
 
 class ReadOnlyHttp:
-    """A minimal HTTP client that structurally cannot place an order.
-
-    stdlib `urllib` on purpose: the Pi should not need a package index to
-    collect data, and a smaller dependency surface is a smaller audit surface.
-    """
-
     __slots__ = ("_base_url", "_timeout_s", "_post_allowlist", "_user_agent")
 
     def __init__(
@@ -134,25 +119,11 @@ class ReadOnlyHttp:
 
 
 class VenueAdapter(ABC):
-    """What a venue must provide before it can be studied.
-
-    Each method returns observations *and* the raw payloads behind them, because
-    `DecisionFrame.raw_evidence_digest` must name real received bytes. An adapter
-    that reconstructs a payload for the digest defeats the audit trail.
-    """
-
-    #: Human-readable venue name, written into the collector session row.
     name: str = "unnamed"
 
     @abstractmethod
     def describe_capabilities(self) -> "VenueCapabilities":
-        """Report what the venue supports, with per-field confidence.
-
-        This is the method that decides whether a passive strategy is even
-        expressible on the venue. It is called before collection starts and its
-        result is written into the report, so a study cannot silently proceed on
-        a venue that has no resting limit orders.
-        """
+        pass
 
     @abstractmethod
     def fetch_metadata(self, pair_id: str) -> tuple[Iterable[MetadataField], RawPayload]:
@@ -169,16 +140,6 @@ class VenueAdapter(ABC):
 
 @dataclass(frozen=True, slots=True)
 class VenueCapabilities:
-    """What the venue actually lets a participant do.
-
-    `supports_resting_limit_orders` is the load-bearing field. A passive
-    market-making strategy requires resting two-sided quotes that other
-    participants trade against. If a venue offers only request-for-quote or
-    market orders, no amount of shadow simulation makes market making possible
-    there, and the honest output is a NO-GO on the venue rather than a
-    scorecard for each pair.
-    """
-
     venue: str
     supports_resting_limit_orders: MetadataField
     supports_post_only: MetadataField
@@ -206,7 +167,6 @@ class VenueCapabilities:
         return tuple(f for f in self.all_fields() if f.confidence != "verified")
 
     def passive_strategy_is_expressible(self) -> tuple[bool, str]:
-        """(expressible, reason). Unverified is treated as not expressible."""
         resting = self.supports_resting_limit_orders
         if resting.confidence != "verified":
             return False, f"resting limit order support is {resting.confidence}, not verified"

@@ -41,7 +41,6 @@ def history(n: int = 200, start: float = 100.0) -> list[tuple[date, float]]:
 
 class Units(unittest.TestCase):
     def test_price_ticks_are_exact_and_round_toward_zero(self) -> None:
-        # 83000.505 USD at 0.01 USD per tick = 8300050.5 ticks -> 8300050
         self.assertEqual(edge.price_ticks(Decimal("83000.505"), Decimal("0.01")), 8_300_050)
         self.assertEqual(edge.price_ticks(Decimal("1"), Decimal("0.3")), 3)
 
@@ -50,8 +49,6 @@ class Units(unittest.TestCase):
 
 
 class CrossLanguageParity(unittest.TestCase):
-    """Constants copied from C++ must match the header they came from."""
-
     def _enum(self, name: str, header_file: str = "kernel.hpp") -> dict[str, int]:
         import re
         header = (Path(__file__).resolve().parents[2] / "include" / "velocita" / "v2" / header_file).read_text()
@@ -97,15 +94,12 @@ class ProgramFile(unittest.TestCase):
                                  time_in_force="gtc", post_only="required")
         self.assertIn("catalog.root = " + "ab" * 32 + "\n", text)
         self.assertIn("features.generic = 4\n", text)
-        # trend(125): feature 0 (trend) > 0 -> enter_long; <= 0 -> exit
         self.assertIn("rule.1 = 0 gt 0 enter_long\nrule.2 = 0 le 0 exit\n", text)
-        # The model digest names the exact research program (strategy and parameter).
         expected = hashlib.sha256(b"velocita.rules.v1 trend 125").hexdigest()
         self.assertIn(f"policy.model_digest = {expected}\n", text)
 
 
 def candles(rows, ts_s: int) -> str:
-    """A price_candles message: True Markets stamps the message, not each candle."""
     return json.dumps({"type": "price_candles", "timestamp": ts_s, "topics": ["price_candles"],
                        "data": [{"symbol": sym, "chain": chain, "interval": iv, "close": close,
                                  "open": close, "high": close, "low": close, "address": "x", "asset_id": "y"}
@@ -113,23 +107,20 @@ def candles(rows, ts_s: int) -> str:
 
 
 class CandleTicks(unittest.TestCase):
-    """SOL has no reference_prices row on True Markets; its price is the 30 s candle
-    close of the chain we trade (spot on solana), never the perp listed beside it."""
-
     def source(self) -> edge.FeatureSource:
         return edge.FeatureSource("trend", 125, closes=history(200), usd_per_tick=Decimal("0.01"), symbol="SOL",
                                   price_source="candles", price_chain="solana")
 
     def test_the_spot_30s_close_is_the_tick(self) -> None:
-        ts = 1_784_548_800  # 2026-07-20 12:00:00 UTC, the day after the last close
+        ts = 1_784_548_800
         raw = candles([("SOL", "hypercore-perp", "30s", "118.445"),
                        ("SOL", "solana", "1h", "117.000"),
                        ("SOL", "solana", "30s", "118.578198444149"),
                        ("HYPE", "solana", "30s", "40.0")], ts)
         tick = self.source().tick(raw, receive_ns=ts * NS + 2 * NS, tick_id=3)
         self.assertIsNotNone(tick)
-        self.assertEqual(tick.features[-1], 11_857)          # floor(118.578198 / 0.01)
-        self.assertEqual(tick.event_ns, ts * NS)             # the message's own stamp
+        self.assertEqual(tick.features[-1], 11_857)
+        self.assertEqual(tick.event_ns, ts * NS)
         self.assertEqual(tick.age_ns, 2 * NS)
         closes = [c for _, c in history(200)] + [118.578198444149]
         bars = DailyBars(tuple(date(2026, 1, 1) + timedelta(days=i) for i in range(201)), ("SOL",), (tuple(closes),), None)
@@ -158,16 +149,15 @@ class CandleTicks(unittest.TestCase):
 class Ticks(unittest.TestCase):
     def test_tick_from_a_reference_message(self) -> None:
         f = edge.FeatureSource("trend", 125, closes=history(200), usd_per_tick=Decimal("0.01"))
-        raw = reference("300.00", "2026-07-20T12:00:00Z")  # the day after the last close (2026-07-19)
+        raw = reference("300.00", "2026-07-20T12:00:00Z")
         tick = f.tick(raw, receive_ns=1_784_548_800 * NS + 3 * NS, tick_id=7)
         self.assertIsNotNone(tick)
-        # Oracle: the tested research feature function on history + today's provisional close.
         closes = [c for _, c in history(200)] + [300.0]
         bars = DailyBars(tuple(date(2026, 1, 1) + timedelta(days=i) for i in range(201)), ("BTC",), (tuple(closes),), None)
         expected = rules.features(bars, 0, 200, rules.trend(125)[1])
         self.assertEqual(tick.features[:4], list(expected))
-        self.assertEqual(tick.features[4], 30_000)                                 # 300.00 / 0.01
-        self.assertEqual(tick.evidence, hashlib.sha256(raw.encode()).hexdigest())  # raw message digest
+        self.assertEqual(tick.features[4], 30_000)
+        self.assertEqual(tick.evidence, hashlib.sha256(raw.encode()).hexdigest())
         self.assertEqual(tick.event_ns, 1_784_548_800 * NS)
         self.assertEqual(tick.age_ns, 3 * NS)
         self.assertEqual(tick.expected_rule, rules.first_match(rules.trend(125)[0], expected))
@@ -180,20 +170,15 @@ class Ticks(unittest.TestCase):
         self.assertIsNone(f.tick(json.dumps({"type": "price_candles", "data": []}), receive_ns=0, tick_id=1))
 
     def test_clock_skew_never_gives_a_negative_age(self) -> None:
-        # Our clock 2 s behind the source's stamp: the frame's market-data age is 0, not -2 s.
         f = edge.FeatureSource("trend", 125, closes=history(200), usd_per_tick=Decimal("0.01"))
         tick = f.tick(reference("300", "2026-07-20T12:00:00Z"), receive_ns=1_784_548_800 * NS - 2 * NS, tick_id=1)
         self.assertEqual(tick.age_ns, 0)
 
     def test_stale_history_is_refused_not_guessed(self) -> None:
-        # Last close 2026-07-19; a tick on 2026-07-21 would count the wrong days in every window.
         f = edge.FeatureSource("trend", 125, closes=history(200), usd_per_tick=Decimal("0.01"))
         self.assertIsNone(f.tick(reference("300", "2026-07-21T12:00:00Z"), receive_ns=0, tick_id=1))
 
     def test_only_a_new_observation_is_a_tick(self) -> None:
-        # True Markets re-sends the last reference price every second and refreshes
-        # it about every 12 s (measured 2026-09-28): a resend is not a new source
-        # event, and an older stamp arriving late is not one either.
         f = edge.FeatureSource("trend", 125, closes=history(200), usd_per_tick=Decimal("0.01"))
         at = 1_784_548_800 * NS
         first = f.tick(reference("300", "2026-07-20T12:00:00Z"), receive_ns=at, tick_id=1)
@@ -204,7 +189,6 @@ class Ticks(unittest.TestCase):
         newer = f.tick(reference("302", "2026-07-20T12:00:12Z"), receive_ns=at + 12 * NS + NS // 4, tick_id=5)
         self.assertIsNotNone(newer)
         self.assertEqual((newer.features[4], newer.age_ns), (30_200, NS // 4))
-        # A message that yields no tick (other symbol) does not move the high-water stamp.
         self.assertIsNone(f.tick(reference("1", "2026-07-20T12:00:30Z", symbol="SOL|USD"), receive_ns=0, tick_id=6))
         self.assertIsNotNone(f.tick(reference("303", "2026-07-20T12:00:24Z"), receive_ns=at + 24 * NS, tick_id=7))
 
@@ -216,22 +200,18 @@ class Ticks(unittest.TestCase):
                  (reference("1", symbol="SOL|USD"), "other"),
                  (json.dumps({"type": "price_candles", "data": []}), "other"),
                  ("not json", "other"),
-                 (reference("300", "2026-07-22T12:00:00Z"), "no_history")]  # history ends 2026-07-19
+                 (reference("300", "2026-07-22T12:00:00Z"), "no_history")]
         for i, (raw, outcome) in enumerate(cases):
             f.tick(raw, receive_ns=at, tick_id=i)
             self.assertEqual(f.last_outcome, outcome, raw[:60])
 
     def test_a_minimum_interval_forwards_at_most_one_price_per_interval(self) -> None:
-        # Each forwarded tick costs two retained Raft log entries, and nothing
-        # reclaims the log yet: at one tick per 30 s the log lasts ~34 h.
         f = edge.FeatureSource("trend", 125, closes=history(200), usd_per_tick=Decimal("0.01"),
                                min_interval_ns=30 * NS)
         at = 1_784_548_800 * NS
         self.assertIsNotNone(f.tick(reference("300", "2026-07-20T12:00:00Z"), receive_ns=at, tick_id=1))
         self.assertIsNone(f.tick(reference("301", "2026-07-20T12:00:10Z"), receive_ns=at + 10 * NS, tick_id=2))
         self.assertEqual(f.last_outcome, "throttled")
-        # The throttled price was never forwarded, so its later resend is still
-        # the freshest observation and goes out once the interval has passed.
         resend = f.tick(reference("301", "2026-07-20T12:00:10Z"), receive_ns=at + 30 * NS, tick_id=3)
         self.assertIsNotNone(resend)
         self.assertEqual(resend.features[4], 30_100)
@@ -252,8 +232,6 @@ class Decisions(unittest.TestCase):
         d = edge.parse_decision(self.LINE)
         m.observe(d, tick_receive_ns=1_000_000_000, expected_rule=0)
         text = m.render(now_ns=1_010_000_000)
-        # received 1.0000 s, read by the submitter 1.0005 s, source committed 1.004 s, decision 1.009 s:
-        # tick-to-decision 9 ms = edge 0.5 + source commit 3.5 + decision commit 5.0
         self.assertIn("velocita_shadow_tick_to_decision_ms_sum 9.000\n", text)
         self.assertIn('velocita_shadow_hop_ms_sum{hop="edge"} 0.500\n', text)
         self.assertIn('velocita_shadow_hop_ms_sum{hop="source_commit"} 3.500\n', text)
@@ -265,7 +243,6 @@ class Decisions(unittest.TestCase):
         self.assertIn('velocita_shadow_tick_to_decision_ms_bucket{le="5"} 0\n', text)
 
     def test_proposed_and_effective_directives_are_counted(self) -> None:
-        # The kernel's own view: the strategy proposed place_limit (2), shadow authorized no_action (1).
         m = edge.EdgeMetrics(shadow_recorded_code=14)
         m.observe(edge.parse_decision(self.LINE), tick_receive_ns=1_000_000_000, expected_rule=0)
         m.observe(edge.parse_decision(self.LINE.replace("effective=1", "effective=9")), tick_receive_ns=1_000_000_000,
@@ -273,7 +250,6 @@ class Decisions(unittest.TestCase):
         text = m.render(now_ns=0)
         self.assertIn('velocita_shadow_directives_total{stage="proposed",directive="place_limit"} 2\n', text)
         self.assertIn('velocita_shadow_directives_total{stage="effective",directive="no_action"} 1\n', text)
-        # An unknown code is shown, not dropped.
         self.assertIn('velocita_shadow_directives_total{stage="effective",directive="code_9"} 1\n', text)
 
     def test_resolution_and_market_data_age_are_reported(self) -> None:
@@ -393,14 +369,11 @@ class EndToEndWithAFakeSubmitter(unittest.TestCase):
             self.assertEqual(result.decisions, 3)
             self.assertIn('velocita_shadow_decisions_total{decision_code="14"} 3\n', text)
             self.assertIn('velocita_shadow_agreement_total{result="agree"} 3\n', text)
-            # After the run the submitter has exited: ready reads 0, and one start was counted.
             self.assertIn("velocita_shadow_submitter_ready 0\n", text)
             self.assertIn("velocita_shadow_submitter_starts_total 1\n", text)
-            # Every message is accounted for: 3 new prices, 1 resend, 1 other topic.
             self.assertIn('velocita_shadow_messages_total{outcome="tick"} 3\n', text)
             self.assertIn('velocita_shadow_messages_total{outcome="resend"} 1\n', text)
             self.assertIn('velocita_shadow_messages_total{outcome="other"} 1\n', text)
-            # The model's last view: price 40000 ticks x $0.01, features from the tested research function.
             self.assertIn("velocita_shadow_price_usd 400.00\n", text)
             closes = [c for _, c in history(200)] + [400.0]
             bars = DailyBars(tuple(date(2026, 1, 1) + timedelta(days=i) for i in range(201)), ("BTC",),
@@ -465,7 +438,6 @@ class PaperEndToEnd(unittest.TestCase):
             edge.run_once(lambda: Socket(), [sys.executable, str(fake)], source, textfile=str(textfile),
                           shadow_recorded_code=17, clock_ns=iter(range(10**18, 10**18 + 10**9, 10**6)).__next__,
                           ledger=book)
-            # Paper decisions are `action` (1), not shadow_recorded: the tick book still buys once at 400.
             self.assertEqual(book.books["tick"].trades, 1)
             self.assertEqual(book.books["tick"].fills[0].price, Decimal("400.00"))
             text = textfile.read_text()
@@ -495,7 +467,6 @@ class LedgerFromCommittedDecisions(unittest.TestCase):
             edge.run_once(lambda: Socket(), [sys.executable, str(fake)], source, textfile=str(textfile),
                           shadow_recorded_code=14, clock_ns=iter(range(10**18, 10**18 + 10**9, 10**6)).__next__,
                           ledger=book)
-            # Buy at 400; the stale exit at 410 is ignored; enter at 420 changes nothing.
             self.assertEqual(book.books["tick"].trades, 1)
             self.assertEqual(book.books["tick"].fills[0].price, Decimal("400.00"))
             text = textfile.read_text()
@@ -504,8 +475,6 @@ class LedgerFromCommittedDecisions(unittest.TestCase):
 
 
 class Backoff(unittest.TestCase):
-    """Hand-computed: 2^(n-1) s capped at 60 s, jittered into its upper half."""
-
     def test_the_delay_doubles_from_one_second_and_is_capped(self) -> None:
         top = [edge.backoff_delay(n, lambda: 1.0) for n in range(1, 9)]
         self.assertEqual(top, [1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 60.0, 60.0])
@@ -536,10 +505,6 @@ class SubmitterErrorLabels(unittest.TestCase):
 
 
 def _scripted(connections: list) -> Callable[[], object]:
-    """A socket factory over CONNECTIONS, one entry per connection: an
-    exception is raised by open(); a list is what that connection delivers
-    before the server closes it (an exception in it is raised by that recv, a
-    callable is called for the message)."""
     script = connections
 
     class Socket:
@@ -566,9 +531,6 @@ def _scripted(connections: list) -> Callable[[], object]:
 
 
 class MarketDataOutages(unittest.TestCase):
-    """Finding 48: a refused handshake (HTTP 503) killed the edge. Every
-    market-data failure is now a counted reconnect with the submitter kept."""
-
     def test_refusals_and_drops_reconnect_with_one_submitter_and_bounded_backoff(self) -> None:
         from velocita_model.adapters.websocket import HandshakeRefused, ProtocolError
         with TemporaryDirectory() as d:
@@ -598,8 +560,6 @@ class MarketDataOutages(unittest.TestCase):
                                        reconnect=lambda: bool(connections), sleep=sleeps.append,
                                        jitter=lambda: 1.0)
             text = textfile.read_text()
-            # Three prices over three connections and one submitter (the fake's
-            # source sequence would restart with a new process).
             self.assertEqual(result.decisions, 3)
             self.assertIn("velocita_shadow_submitter_starts_total 1\n", text)
             self.assertIn('velocita_shadow_decisions_total{decision_code="14"} 3\n', text)
@@ -610,7 +570,6 @@ class MarketDataOutages(unittest.TestCase):
             self.assertIn('velocita_shadow_market_data_errors_total{kind="closed"} 1\n', text)
             self.assertIn("velocita_shadow_market_data_connected 0\n", text)
             self.assertEqual(seen_connected, [True])
-            # Consecutive failures 1, 2, 3 wait 1, 2, 4 s; a delivered price resets the count.
             self.assertEqual(sleeps, [1.0, 2.0, 4.0, 1.0, 2.0, 1.0])
             self.assertEqual(result.reason, "market data ended")
             self.assertIn("HTTP/1.1 503 Service Unavailable", stderr.getvalue())
@@ -662,7 +621,7 @@ class SubmitterEnds(unittest.TestCase):
 
     def test_an_exited_submitter_is_not_written_to_and_its_reply_is_logged(self) -> None:
         def after_exit() -> str:
-            time.sleep(0.5)  # the submitter has exited by the time this price arrives
+            time.sleep(0.5)
             return reference("401.0", "2026-07-20T12:00:02Z")
 
         result, text, stderr = self._run(EXITING_SUBMITTER, [reference("400.0", "2026-07-20T12:00:01Z"),
@@ -674,7 +633,7 @@ class SubmitterEnds(unittest.TestCase):
 
     def test_a_closed_submitter_input_ends_the_run_instead_of_raising(self) -> None:
         def after_close() -> str:
-            time.sleep(0.5)  # the submitter has closed its input by now
+            time.sleep(0.5)
             return reference("400.0", "2026-07-20T12:00:01Z")
 
         result, text, _ = self._run(DEAF_SUBMITTER, [after_close])
@@ -683,13 +642,10 @@ class SubmitterEnds(unittest.TestCase):
 
 
 class _Stop(BaseException):
-    """Ends the edge's endless loop from inside a test."""
+    pass
 
 
 class EdgeCommandSurvivesOutages(unittest.TestCase):
-    """The incident through the command itself: a history fetch failure and
-    two 503 handshakes, then prices, with one submitter start throughout."""
-
     def test_the_command_keeps_running_and_keeps_its_submitter(self) -> None:
         from datetime import datetime, timezone
         from unittest import mock
@@ -699,7 +655,7 @@ class EdgeCommandSurvivesOutages(unittest.TestCase):
         from velocita_model.research import bars as bars_module
         now = datetime.now(timezone.utc)
         today = now.date()
-        days = [today - timedelta(days=200 - i) for i in range(200)]  # ends yesterday
+        days = [today - timedelta(days=200 - i) for i in range(200)]
         loads: list[int] = []
 
         def load(*_args, **_kwargs):
@@ -747,8 +703,6 @@ class EdgeCommandSurvivesOutages(unittest.TestCase):
         self.assertIn('velocita_shadow_decisions_total{decision_code="14"} 2\n', text)
         self.assertIn('velocita_shadow_market_data_errors_total{kind="http_5xx"} 2\n', text)
         self.assertIn('velocita_shadow_market_data_errors_total{kind="closed"} 1\n', text)
-        # History, two refusals, the closed stream. (subprocess.wait polls
-        # time.sleep in steps of at most 50 ms; a backoff is never under 0.5 s.)
         backoffs = [s for s in sleeps if s >= 0.5]
         self.assertTrue(len(backoffs) == 4 and all(s <= 60 for s in backoffs), backoffs)
 

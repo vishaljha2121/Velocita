@@ -1,6 +1,3 @@
-// Standalone F5 audit diagnostics. Replacement and archival modes remain RED until
-// replacement-snapshot, and audit-archive contracts are approved and implemented.
-// This file is not a CTest target; compile it directly against the V2 archives.
 #define main replication_fixture_suite_main
 #include "v2_replication_tests.cpp"
 #undef main
@@ -110,9 +107,6 @@ void audit_archive_red(const std::filesystem::path& root) {
     require(included >= static_cast<std::uint64_t>(audited_result.index),
             "fixture compaction did not cover the exact audited record index");
 
-    // There is currently no archive interface or archive acknowledgement to
-    // consult. Check both record stores; the separate source review establishes
-    // that no archive handoff precedes compaction in this implementation.
     const auto after_segment = identity_test::read_wal(node_root);
     const auto after_legacy = legacy.read_all();
     const auto retained_in_segment = std::ranges::any_of(after_segment, [&](const auto& record) {
@@ -130,7 +124,7 @@ void audit_archive_red(const std::filesystem::path& root) {
             "RED F5/A14: compaction reclaimed the exact command without a verified archive handoff");
 }
 
-}  // namespace
+}
 
 int main(int argc, char** argv) {
     if (argc != 3) {

@@ -232,10 +232,8 @@ void test_previous_term_entry_is_not_committed_by_recheck() {
     raft_free(raft);
 }
 
-} // namespace
+}
 
-// Pre-vote at five voters (V2 runs at most three, where one grant is already
-// a majority): a grant counts only in the round that asked for it.
 void test_prevote_grants_do_not_carry_over_between_rounds() {
     Durability state;
     raft_cbs_t cbs = callbacks();

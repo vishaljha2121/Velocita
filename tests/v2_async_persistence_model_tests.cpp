@@ -148,8 +148,6 @@ ScenarioResult composed_async_scenario(const Names schedule, const int cut) {
             "async model missed a cut or successful baseline promise");
     model.materialize(model.root_key, image_root);
 
-    // Inspect independently authored durable bytes BEFORE recovery can resync
-    // any directory or file. Refusal never excuses loss of committed prefix 1.
     const auto image_wal = identity_test::read_wal(image_root);
     require(!image_wal.empty() && same_async_record(image_wal.front(), old_records.front()),
             "crash image lost or changed committed prefix 1");
@@ -239,7 +237,7 @@ ScenarioResult composed_async_scenario(const Names schedule, const int cut) {
 
 #include "v2_async_ballot_model_fixture.hpp"
 
-} // namespace
+}
 
 int main() {
     std::string active_case;

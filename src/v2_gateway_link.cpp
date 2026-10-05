@@ -9,7 +9,6 @@
 namespace velocita::v2 {
 namespace {
 
-// "Something is wrong" ends the request; capacity/busy says "later".
 bool final_refusal(std::uint8_t reason) noexcept {
     switch (reason) {
     case static_cast<std::uint8_t>(ProposeStatus::refused):
@@ -29,7 +28,7 @@ StateChunkHeader without_index(StateChunkHeader header) noexcept {
     return header;
 }
 
-}  // namespace
+}
 
 GatewayLink::GatewayLink(std::uint64_t session_epoch, std::array<std::byte, 16> process_incarnation,
                          std::vector<ClientRoute> routes, ClientTransport& transport, GatewayLinkTiming timing)
@@ -68,7 +67,7 @@ bool GatewayLink::start(LinkRequest request, std::span<const std::byte> body, co
     pending_.correlation = correlation;
     pending_.deadline = now + timeout;
     pending_.next_send = now;
-    pending_.answered = true;  // the first send goes to the current target
+    pending_.answered = true;
     outcome_ = {};
     outcome_.request = request;
     outcome_.status = LinkStatus::pending;
@@ -117,7 +116,7 @@ void GatewayLink::abandon() noexcept {
 }
 
 void GatewayLink::send(Tick now) {
-    if (!pending_.answered) target_ = next_after(target_);  // unanswered: try the next voter
+    if (!pending_.answered) target_ = next_after(target_);
     auto* route = find(target_);
     const auto sequence = route->sequencer.next();
     if (!sequence) throw std::runtime_error("gateway session sequence exhausted");
@@ -141,7 +140,7 @@ void GatewayLink::redirect(std::int32_t leader, Tick now) {
     target_ = find(leader) != nullptr ? leader : next_after(target_);
     pending_.admitted = false;
     pending_.answered = true;
-    pending_.next_send = now;  // follow the redirect at once
+    pending_.next_send = now;
 }
 
 void GatewayLink::on_command(std::int32_t from, std::span<const std::byte> body, Tick now) {
@@ -207,8 +206,6 @@ void GatewayLink::on_chunk(std::int32_t from, std::span<const std::byte> body) {
         return;
     }
     pending_.answered = true;
-    // Chunks of one snapshot share every header field but the index; a chunk of
-    // a different snapshot (a resend answered after the state moved) restarts.
     const auto header = without_index(chunk.header);
     if (!assembly_.header || *assembly_.header != header || assembly_.from != from) assembly_ = {header, from, 0};
     const auto offset = static_cast<std::size_t>(chunk.header.chunk_index) * kStateChunkPayloadBytes;
@@ -238,8 +235,6 @@ void GatewayLink::on_grant(std::int32_t from, std::span<const std::byte> body) {
         ++counters_.uncorrelated;
         return;
     }
-    // Correlation already binds the exact request body; these restate the
-    // parts of it the proof must carry so a mismatched grant never becomes one.
     if (view.request != pending_.barrier || view.request.incarnation != incarnation_ || view.issuer_id != from) {
         ++counters_.proofs_refused;
         return;
@@ -264,7 +259,6 @@ void GatewayLink::handle(std::span<const std::byte> frame, Tick now) {
         ++counters_.unauthentic;
         return;
     }
-    // Only an authentic frame may advance the voter's remembered session.
     if (from->fence.admit(verified.header.session_epoch, verified.header.sequence) != SessionFence::Decision::accept) {
         ++counters_.fenced;
         return;
@@ -287,7 +281,6 @@ LinkOutcome GatewayLink::pump(Tick now) {
         if (outcome_.status == LinkStatus::pending && now >= pending_.deadline) outcome_.status = LinkStatus::timed_out;
         if (outcome_.status == LinkStatus::pending && now >= pending_.next_send) send(now);
     } else {
-        // Idle: drain late answers so they cannot pile up behind the next request.
         while (const auto size = transport_.receive_response(inbound_))
             handle(std::span<const std::byte>(inbound_).first(*size), now);
     }
@@ -298,4 +291,4 @@ LinkOutcome GatewayLink::pump(Tick now) {
     return reported;
 }
 
-}  // namespace velocita::v2
+}

@@ -1,6 +1,3 @@
-// Gateway node-protocol bytes, metrics exposition and the gateway.caller key.
-// Expected bytes and offsets come from the layout comments in node_protocol.hpp,
-// written out here by hand; nothing below takes an expectation from an encoder.
 #include "velocita/v2/gateway_loop.hpp"
 #include "velocita/v2/node_config.hpp"
 #include "velocita/v2/node_protocol.hpp"
@@ -78,12 +75,9 @@ void test_gateway_request_bytes_and_round_trip() {
     every_prefix_is_truncated(std::span<const std::byte>(out), [](auto bytes) {
         GatewayRequest ignored;
         auto error = decode_gateway_request(bytes, ignored);
-        // Below the fixed header every prefix is truncated; above it too, since
-        // the kind byte promises the barrier.
         return error;
     }, "authority request");
 
-    // A barrier that names another process's incarnation is refused both ways.
     authority.barrier.incarnation = incarnation(4);
     require(encode_gateway_request(authority, out).error == NodeProtocolError::invalid_value,
             "encoder accepted a barrier for a different incarnation");
@@ -105,7 +99,6 @@ void test_gateway_request_bytes_and_round_trip() {
     zero_id[0] = std::byte{0x12};
     require(decode_gateway_request(zero_id, decoded) == NodeProtocolError::invalid_kind, "kind 0x12 accepted");
 
-    // The command decoder must never read gateway bytes as a command lane.
     IngressView ingress;
     require(decode_ingress(std::span(out).first(26), ingress) == NodeProtocolError::invalid_lane,
             "decode_ingress accepted a gateway request as a lane");
@@ -120,7 +113,6 @@ void test_correlation_binds_the_exact_request_body() {
     const auto ca = gateway_correlation(a), cb = gateway_correlation(b);
     require(ca.request_sequence == 5 && cb.request_sequence == 5, "correlation does not carry the request id");
     require(ca.payload_digest != cb.payload_digest, "two processes' identical request ids share a correlation");
-    // Independent recomputation: SHA-256 over the tag and the body.
     Sha256 hash;
     const std::string tag = "velocita.v2.gateway-request.1";
     hash.update(std::as_bytes(std::span(tag.data(), tag.size())));
@@ -150,7 +142,6 @@ void test_refusal_bytes() {
         require(encode_gateway_refusal({{}, reason, 0, 0}, copy).error == NodeProtocolError::invalid_reason,
                 "encoder accepted reason " + std::to_string(reason));
     }
-    // Legacy decoder refuses every gateway kind rather than misreading it.
     NodeResponse legacy;
     for (const std::uint8_t kind : {4, 5, 6}) {
         auto copy = out;
@@ -178,13 +169,12 @@ void test_state_chunk_geometry() {
     require(decode_state_chunk(std::span(out).first(encoded.bytes_written - 1), view) ==
                 NodeProtocolError::length_mismatch, "short chunk body accepted");
 
-    // Geometry the encoder and decoder must both refuse.
     const Bytes full(kStateChunkPayloadBytes, std::byte{1});
     auto bad = header;
-    bad.chunk_index = 0;  // a first chunk must be full
+    bad.chunk_index = 0;
     require(encode_state_chunk(bad, tail, out).error == NodeProtocolError::invalid_geometry, "short first chunk");
     bad = header;
-    bad.chunk_count = 3;  // 30,000 bytes need exactly 2
+    bad.chunk_count = 3;
     require(encode_state_chunk(bad, tail, out).error == NodeProtocolError::invalid_geometry, "wrong chunk count");
     bad = header;
     bad.chunk_index = 2;
@@ -194,7 +184,6 @@ void test_state_chunk_geometry() {
     bad.chunk_count = 3;
     bad.chunk_index = 0;
     require(encode_state_chunk(bad, full, out).error == NodeProtocolError::invalid_geometry, "oversize snapshot");
-    // Forge the count on the wire after a valid encode.
     auto forged = Bytes(out.begin(), out.begin() + static_cast<std::ptrdiff_t>(encoded.bytes_written));
     require(encode_state_chunk(header, tail, forged).error == NodeProtocolError::none, "re-encode");
     forged[135] = std::byte{9};
@@ -269,11 +258,11 @@ void test_authority_granted_bytes() {
     require(decode_authority_granted(bad, decoded_correlation, decoded) == NodeProtocolError::invalid_value,
             "strategy mode 6 accepted");
     bad = out;
-    bad[41] ^= std::byte{0xff};  // barrier magic
+    bad[41] ^= std::byte{0xff};
     require(decode_authority_granted(bad, decoded_correlation, decoded) == NodeProtocolError::invalid_value,
             "corrupt barrier frame accepted");
     bad = out;
-    bad[300] ^= std::byte{0x01};  // inside the effect payload
+    bad[300] ^= std::byte{0x01};
     const auto changed = decode_authority_granted(bad, decoded_correlation, decoded);
     require(changed != NodeProtocolError::none || !same(decoded, view), "a flipped effect byte decoded unchanged");
 }
@@ -307,7 +296,7 @@ void test_metrics_start_at_zero_with_every_label() {
         require(text.find(line + "\n") != std::string::npos, "metrics page lacks: " + line);
     require(text.find("decision_to_authorized") == std::string::npos, "an unmeasured stage was exported");
 
-    metrics.stages[1].observe(3.0);  // proof_to_sent, 3 ms: buckets le>=5 count it, le<=2 do not
+    metrics.stages[1].observe(3.0);
     metrics.fee_micros_total = 1'234'567;
     const auto after = render_gateway_metrics(metrics);
     require(after.find("velocita_gateway_stage_ms_bucket{stage=\"proof_to_sent\",le=\"2\"} 0\n") != std::string::npos &&
@@ -355,7 +344,7 @@ void test_gateway_caller_config() {
     require(!zero.config && zero.error.code == NodeConfigErrorCode::invalid_value, "gateway.caller = 0 accepted");
 }
 
-}  // namespace
+}
 
 int main() {
     const std::vector<std::pair<const char*, void (*)()>> tests{

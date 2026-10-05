@@ -1,5 +1,3 @@
-// Historical F5 archive-loss reproducer. The stronger permanent CTest coverage
-// is v2-archive-compaction-tests (named-catalog retrieval and restart, not a scan).
 #define main replication_fixture_suite_main
 #include "v2_replication_tests.cpp"
 #undef main
@@ -20,12 +18,6 @@ std::vector<std::byte> hex(const std::string_view text) {
     return bytes;
 }
 
-// Extracted from the repository's independently Python-calculated block-v2
-// golden (v2_wal_arena_tests), excluding its WAL metadata and outer frame digest:
-// this 100-byte literal was not produced by encode_kernel_command at runtime.
-// Canonical schema-8 AdvanceKillEpoch command:
-// caller=1, request=1, payload identity digest 01:00..., kill epoch=1. This is
-// literal evidence, not bytes obtained from the encoder under test.
 const std::vector<std::byte>& audited_command_bytes() {
     static const auto bytes = hex(
         "56324b433800000009000600010000000000000001000000000000000100000000000000000000000000000000000000000000000000000000000000"
@@ -111,14 +103,11 @@ void archive_before_last_copy_red(const std::filesystem::path& root) {
               << " retained_raw_bytes_anywhere=" << retained_anywhere
               << " stronger_catalog_restart_proof=v2-archive-compaction-tests\n";
 
-    // A recovery snapshot proves current state, not the sequence/caller bytes
-    // which ADR 0007 makes the audit record. Until a separately verified archive
-    // covers this index, compact must not remove the last raw canonical copy.
     require(retained_record || retained_anywhere,
             "RED F5/A14: compact removed the last raw committed command/identity bytes without verified archive coverage");
 }
 
-} // namespace
+}
 
 int main(int argc, char** argv) {
     if (argc != 2 || std::filesystem::exists(argv[1])) {

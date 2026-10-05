@@ -132,8 +132,6 @@ const std::array<std::byte, kAuthorityBarrierBytes>& marker_bytes() {
 }
 
 const std::vector<std::byte>& segment_golden() {
-    // Independently generated with Python struct.pack/hashlib from the approved
-    // byte sheet, not by the implementation under test.
     static const auto bytes = hex(
         "56324153010060002401000001000000070000000000000007000000000000000200000000000000030000000000000003000000000000003ce5d6e3e9a886ab694852a129348bbe9413c2b55077a84804efa3cd645cc3e00000000000000000"
         "070000000000000003000000000000000700000000000000640000000000000056324b43380000000900060001000000000000000100000000000000010000000000000000000000000000000000000000000000000000000000000001000000000000007ebfc094cb08c72268b6e92acc835d5b5bbee17c517e564750290c1a437a118b"
@@ -181,8 +179,6 @@ bool generated_record_at(void* context, const std::uint32_t ordinal,
     auto& source = *static_cast<GeneratedSourceContext*>(context);
     ++source.calls;
     std::copy(source.payload.begin(), source.payload.end(), source.staging.begin());
-    // Every view aliases the same caller-owned staging buffer, whose contents
-    // are only promised until this callback's next invocation.
     destination = {source.first_index + ordinal, 1, -static_cast<std::int32_t>(ordinal), 0,
                    {source.staging.data(), source.payload.size()}};
     return true;
@@ -248,13 +244,13 @@ void test_independent_golden_and_decode() {
 
 void test_failed_authority_attempt_is_preserved() {
     AuthorityBarrier marker;
-    marker.incarnation[0] = std::byte{0xf1}; // gateway identity, deliberately not cluster identity
+    marker.incarnation[0] = std::byte{0xf1};
     marker.request_sequence = 77;
     marker.effect_id = EffectId{9};
     marker.expected_effect_payload_digest.bytes[0] = std::byte{1};
     marker.expected_kill_epoch = KillEpoch{4};
     marker.expected_executor_generation = ExecutorGeneration{5};
-    marker.catalog_root.bytes[0] = std::byte{0xee}; // deliberately not installed catalog
+    marker.catalog_root.bytes[0] = std::byte{0xee};
     marker.authority_domain = identity().authority_domain();
     std::array<std::byte, kAuthorityBarrierBytes> marker_bytes{};
     require(encode_authority_barrier(kAuthorityBarrierEntryType, marker, marker_bytes).error ==

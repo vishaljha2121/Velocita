@@ -172,9 +172,6 @@ StageExecutablePolicy executable_bundle_command(const PolicyArtifact& base) {
     return value;
 }
 
-// These fixtures issue control commands, so their caller has to be one the edge
-// would have authenticated - see `kMaxOperatorCallerId`. The number is otherwise
-// arbitrary.
 constexpr CallerId kFixtureOperator{7};
 
 const VerifiedExecutionCatalog& model_catalog() {
@@ -535,7 +532,6 @@ ApplyResult model_source_event(ModelState& state,
     }
 
     auto* cursor = model_source(state, command.source_id);
-    // A generation gap reports the cursor instead of the refused event.
     const auto generation_gap = [&] {
         auto value = model_result(state, ApplyCode::source_generation_gap, version);
         value.detail_kind = ApplyResultDetailKind::source_state;
@@ -1027,8 +1023,6 @@ ApplyResult model_new_command(ModelState& state,
                                  std::is_same_v<T, RequestMassCancel> ||
                                  std::is_same_v<T, AcknowledgeGatewayResults> ||
                                  std::is_same_v<T, InstallExecutionCatalog>) {
-                // This generator covers Phase 1-3 only. A complete independent
-                // Phase 4 model remains an acceptance requirement.
                 return model_result(state, ApplyCode::invalid_command, version);
             }
         },
@@ -1285,17 +1279,6 @@ void test_generated_model_and_snapshot_replay() {
             "generated corpus never exercised a rejected decision");
     require(coverage.count(DecisionCode::invalid_frame) != 0,
             "generated corpus never exercised invalid-frame precedence");
-    // RE-PINNED 2026-09-16, for a reviewed fixture change and nothing else.
-    // Control actions are now accepted only from the reserved operator caller
-    // band (`kMaxOperatorCallerId`), and this corpus issues them, so its caller
-    // moved from 77 into the band. Every generated command's identity therefore
-    // changed, which is the whole of the difference - the generator, the
-    // distribution and the reducer are untouched. The coverage assertions above
-    // still hold, which is what makes that claim checkable rather than asserted.
-    // RE-PINNED 2026-10-01 (finding 48): a source_generation_gap result now
-    // carries the source_state cursor report instead of the refused event's
-    // identity. The model states that rule independently and every command's
-    // result still matches it byte for byte; only retained gap receipts moved.
     require(actual ==
                 "36b6f2884ea71f1cf0a4b33f50c62f6d18f12b0186fcdb6e5c489560f17e4986",
             "generated replay corpus changed without review: " + actual);
@@ -1305,7 +1288,7 @@ void test_generated_model_and_snapshot_replay() {
               << " snapshot_cuts_per_history=6 schema7_projection_corpus_digest=" << actual << '\n';
 }
 
-}  // namespace
+}
 
 int main() {
     try {

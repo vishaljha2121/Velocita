@@ -30,9 +30,6 @@ import time
 
 BASE = os.environ.get("TM_BASE", "https://api.truemarkets.co")
 CANONICAL_ORIGIN = "https://api.truemarkets.co"
-# Cloudflare rejects clients that announce a non-browser user-agent with
-# `403 error code: 1010`, before the request reaches the API. See D-10: the
-# block is on the user-agent, not the TLS fingerprint.
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/140.0 Safari/537.36")
 
@@ -53,7 +50,6 @@ def tlv(tag: int, body: bytes) -> bytes:
 
 
 def jwk_to_pem(jwk: dict) -> bytes:
-    """SEC1 EC private key, so no third-party crypto library is needed."""
     d, x, y = (b64url_decode(jwk[k]).rjust(32, b"\0") for k in ("d", "x", "y"))
     body = (tlv(0x02, b"\x01") + tlv(0x04, d)
             + tlv(0xA0, bytes.fromhex("06082A8648CE3D030107"))
@@ -64,8 +60,6 @@ def jwk_to_pem(jwk: dict) -> bytes:
 
 
 def der_signature_to_raw(der: bytes) -> bytes:
-    """ES256 wants raw r||s. `openssl dgst -sign` emits DER, and sending DER is
-    rejected - this conversion is not optional."""
     index = 2 if der[1] < 0x80 else 2 + (der[1] & 0x7F)
     parts = []
     for _ in range(2):
@@ -181,8 +175,6 @@ def mint_token(key_name: str, token_name: str) -> int:
         return 2
     material = json.loads(key_path.read_text())
     key_id = material["key_id"]
-    # The PEM exists only for as long as openssl needs it, with 0600, in a
-    # private temporary directory.
     with tempfile.TemporaryDirectory() as scratch:
         pem = pathlib.Path(scratch) / "k.pem"
         pem.write_bytes(jwk_to_pem(material["private_key"]))
@@ -197,8 +189,6 @@ def mint_token(key_name: str, token_name: str) -> int:
             return 1
     signature = base64.urlsafe_b64encode(der_signature_to_raw(der)).decode().rstrip("=")
 
-    # Verified envelope (D-13): key_id, an INTEGER timestamp, and the raw
-    # signature. A string timestamp is rejected as "invalid request body".
     body = json.dumps({"key_id": key_id, "timestamp": timestamp,
                        "signature": signature}).encode()
     try:

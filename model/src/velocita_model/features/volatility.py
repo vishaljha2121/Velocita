@@ -24,15 +24,6 @@ class PricePoint:
 
 
 class RealizedVolatility:
-    """Close-to-close realized volatility in basis points over a window.
-
-    Definition, stated explicitly so a report can be read without guessing:
-    the root-mean-square of consecutive log-free relative returns within the
-    window, expressed in bps. Relative returns rather than log returns keeps the
-    arithmetic in exact Decimal; at these magnitudes the difference is far below
-    the measurement noise of a DeFi feed.
-    """
-
     __slots__ = ("_window_ns", "_min_samples", "_points")
 
     def __init__(self, window_seconds: float, *, min_samples: int = 3) -> None:
@@ -62,7 +53,6 @@ class RealizedVolatility:
         return (self._points[-1].at_ns - self._points[0].at_ns) >= self._window_ns * 0.8
 
     def value_bps(self) -> Decimal | None:
-        """None when the window is too thin to support a number."""
         if len(self._points) < self._min_samples or not self.spans_full_window():
             return None
         squares = Decimal(0)
@@ -80,8 +70,6 @@ class RealizedVolatility:
 
 
 class VolatilitySet:
-    """The horizons the feature schema declares, updated together."""
-
     __slots__ = ("_estimators",)
 
     def __init__(self, horizons_seconds: Iterable[float] = (1.0, 5.0, 30.0, 300.0)) -> None:
@@ -99,9 +87,6 @@ class VolatilitySet:
 
 
 def jump_count(points: Iterable[PricePoint], threshold_bps: Decimal) -> int:
-    """Count consecutive moves exceeding `threshold_bps`. A market maker's real
-    enemy is the gap, not the average; this is what makes wide-spread pairs with
-    jumpy prints rank badly rather than well."""
     total = 0
     previous: Decimal | None = None
     for point in points:

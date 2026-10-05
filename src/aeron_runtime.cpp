@@ -17,7 +17,7 @@ std::runtime_error driver_error(const std::string& operation) {
     return std::runtime_error(operation + ": " + aeron_errmsg());
 }
 
-}  // namespace
+}
 
 AeronRuntime::AeronRuntime(std::string directory) {
     if (aeron_driver_context_init(&driver_context_) < 0) {
@@ -93,4 +93,4 @@ std::int64_t AeronRuntime::offer(aeron::Publication& publication, std::span<cons
     return publication.offer(buffer, 0, static_cast<aeron::util::index_t>(bytes.size()));
 }
 
-}  // namespace velocita
+}

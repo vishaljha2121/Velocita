@@ -228,7 +228,7 @@ void test_executable_policy_fails_closed() {
             "invalid embedded action directive was accepted or misclassified");
 }
 
-}  // namespace
+}
 
 int main() {
     try {

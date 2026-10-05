@@ -133,7 +133,7 @@ struct ResolvedInteger {
     return proposal;
 }
 
-}  // namespace
+}
 
 ActionResolution resolve_action(
     const DecisionId decision_id,
@@ -270,4 +270,4 @@ ActionResolution resolve_action(
     return {ActionResolutionCode::proposed, ContractError::none, proposal};
 }
 
-}  // namespace velocita::v2
+}

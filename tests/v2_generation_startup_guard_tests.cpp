@@ -143,7 +143,7 @@ void existing_token_revalidates_selector() {
     refused([&] { owner.validate_ownership(); }, IdentityStartupErrorCode::invalid_file);
     require(image(root) == before, "ownership refusal changed selector evidence");
 }
-} // namespace
+}
 
 int main() {
     try {

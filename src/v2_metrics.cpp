@@ -5,11 +5,6 @@
 namespace velocita::v2 {
 namespace {
 
-// Unresolved means the record still holds exposure the cluster cannot yet
-// account for. This deliberately mirrors the reclamation rule rather than
-// enumerating lifecycle states: terminal is not the same as risk-resolved, and a
-// metric that counted "not terminal" would miss a conflicted order, which is the
-// single most important thing to surface.
 [[nodiscard]] bool order_holds_unresolved_risk(const TradingState& state,
                                                const ClusterOrder& order) noexcept {
     if (order.reservation_index >= state.reservation_count) return true;
@@ -22,16 +17,12 @@ namespace {
            state != OutboxState::conflict && state != OutboxState::incomplete;
 }
 
-// Age in state versions. A record authorized at or after the current version has
-// age zero rather than a wrapped enormous number: the subtraction is unsigned and
-// a future-dated record would otherwise report as maximally stale, turning a
-// corrupt-looking input into a page.
 [[nodiscard]] std::uint64_t age_in_versions(const std::uint64_t now,
                                             const std::uint64_t then) noexcept {
     return now > then ? now - then : 0;
 }
 
-}  // namespace
+}
 
 TradingMetrics collect_metrics(const TradingState& state) noexcept {
     TradingMetrics metrics;
@@ -80,9 +71,6 @@ TradingMetrics collect_metrics(const TradingState& state) noexcept {
                 std::max(metrics.oldest_conflicted_order_age, age);
         }
 
-        // Decision-to-authorization distance. The decision record may already be
-        // reclaimed, in which case the distance is simply not reported for that
-        // order rather than guessed at.
         for (std::size_t slot_index = 0; slot_index < state.decision_count;
              ++slot_index) {
             if (state.decision_hot[slot_index].decision_id != order.decision_id) {
@@ -101,9 +89,6 @@ TradingMetrics collect_metrics(const TradingState& state) noexcept {
         if (slot < metrics.effects_by_state.size()) ++metrics.effects_by_state[slot];
         if (!effect_is_unsettled(effect.state)) continue;
         ++metrics.unsettled_effects;
-        // The effect's own authorization receipt pins the state version at
-        // which this generation was created. A cancel may be much younger than
-        // its parent order, so using order authorization would overstate age.
         for (std::size_t receipt = 0; receipt < state.receipt_count; ++receipt) {
             const auto& result = state.receipts[receipt].result;
             if (result.code != ApplyCode::applied ||
@@ -220,4 +205,4 @@ void observe_outcome(OutcomeCounters& counters, const ApplyResult& result) noexc
     }
 }
 
-}  // namespace velocita::v2
+}

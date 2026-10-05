@@ -1,11 +1,4 @@
-// velocita-v2-node: the M2 startable V2 voter. No venue capability is linked.
-//
-//   velocita-v2-node --config FILE [--aeron-dir DIR] [--health FILE]
-//
-// Exit codes: 0 clean shutdown, 2 runtime failure (fail-stop), 64 usage or
-// configuration refusal. The first stdout line after startup is
-// "READY node=<id> epoch=<epoch> config=<sha256>".
-
+// velocita-v2-node: runs one voter.
 #include "velocita/aeron_runtime.hpp"
 #include "velocita/v2/aeron_node_transport.hpp"
 #include "velocita/v2/election_jitter.hpp"
@@ -33,7 +26,6 @@ using Clock = std::chrono::steady_clock;
 std::atomic<bool> g_stop{false};
 std::atomic<bool> g_reload{false};
 void on_signal(int) { g_stop.store(true, std::memory_order_relaxed); }
-// SIGHUP only raises a flag; the owner thread performs the reload.
 void on_reload(int) { g_reload.store(true, std::memory_order_relaxed); }
 
 struct Usage final : std::runtime_error {
@@ -61,7 +53,6 @@ Arguments parse(int argc, char** argv) {
     return arguments;
 }
 
-// Current secret plus optional FILE.next / FILE.previous (rotation layout).
 std::optional<NodeSecrets> load_secrets(const NodeConfig& config, std::string& refusal) {
     NodeSecrets secrets;
     const auto load = [&](const std::filesystem::path& file) -> std::optional<SecretSet> {
@@ -147,7 +138,6 @@ int run(const Arguments& arguments) {
     auto secrets = load_secrets(config, refusal);
     if (!secrets) throw Usage("secret refused: " + refusal);
 
-    // The session epoch is durable before this process sends anything.
     const auto epoch_file = config.data_root / "session-epoch.bin";
     SessionEpochResult epoch;
     if (config.startup == NodeStartup::bootstrap) {
@@ -165,8 +155,6 @@ int run(const Arguments& arguments) {
     auto health = NodeHealthPage::create(health_file);
     velocita::AeronRuntime aeron(arguments.aeron_dir.value_or(config.data_root / "aeron").string());
     AeronNodeTransport transport(aeron, config);
-    // Before any Raft server exists: every voter process must draw its own
-    // election timeouts, or survivors of a leader loss split votes in lock-step.
     if (!seed_election_jitter()) throw std::runtime_error("entropy unavailable for election jitter");
     V2Node node(config, catalog.catalog, std::move(*secrets), epoch.epoch, transport);
     ReloadCounters reloads;
@@ -184,8 +172,6 @@ int run(const Arguments& arguments) {
             const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last).count();
             if (elapsed > 0) last = now;
             if (g_reload.exchange(false, std::memory_order_relaxed)) {
-                // A bad push must never leave the node without working keys:
-                // any refusal keeps the keys it already has.
                 std::string why;
                 auto fresh = load_secrets(config, why);
                 if (fresh && node.replace_secrets(std::move(*fresh))) {
@@ -205,7 +191,6 @@ int run(const Arguments& arguments) {
             }
             std::this_thread::sleep_for(tick);
         }
-        // Graceful stop: no new caller work; let in-flight durability finish.
         node.close_ingress();
         const auto deadline = Clock::now() + std::chrono::seconds(2);
         while (Clock::now() < deadline && !node.quiescent()) {
@@ -225,7 +210,7 @@ int run(const Arguments& arguments) {
     }
 }
 
-}  // namespace
+}
 
 int main(int argc, char** argv) {
     std::signal(SIGINT, on_signal);

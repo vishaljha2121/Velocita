@@ -194,7 +194,7 @@ ArchiveSegmentError validate_record_region(
                                  : ArchiveSegmentError::length_mismatch;
 }
 
-} // namespace
+}
 
 ArchiveSegmentEncodeResult encode_archive_segment(
     const ArchiveRecordSource& source, const std::int64_t predecessor_term,
@@ -227,8 +227,6 @@ ArchiveSegmentEncodeResult encode_archive_segment(
         ArchiveRecordView record;
         if (!source.record_at(source.context, ordinal, record))
             return {ArchiveSegmentError::source_read_failed, 0, {}};
-        // Recheck all fallible source-owned semantics on pass two. A failure may
-        // leave partial bytes, but never reports them publishable.
         const auto payload_error = validate_payload(record, identity, scratch);
         if (payload_error != ArchiveSegmentError::none) return {payload_error, 0, {}};
         if (record.index != validated.first_index + ordinal || record.term <= 0 ||
@@ -338,4 +336,4 @@ ArchiveSegmentDecodeResult decode_archive_segment(
     return {ArchiveSegmentError::none};
 }
 
-} // namespace velocita::v2
+}

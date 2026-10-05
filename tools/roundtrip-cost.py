@@ -50,7 +50,6 @@ def quote(input_mint, output_mint, amount, slippage_bps=50):
 
 
 def round_trip(symbol, mint, usd):
-    """Buy `usd` of the token, then sell every unit back. Report the loss."""
     amount_in = int(Decimal(str(usd)) * 10 ** USDC_DECIMALS)
     buy = quote(USDC, mint, amount_in)
     if "outAmount" not in buy:
@@ -77,8 +76,6 @@ def round_trip(symbol, mint, usd):
 
 
 def main(argv):
-    # symbol -> mint. Chosen for depth: the cheapest round trip wins, and depth
-    # is what keeps impact from dominating at size.
     targets = {
         "SOL":   "So11111111111111111111111111111111111111112",
         "JUP":   "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",

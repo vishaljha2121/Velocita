@@ -234,8 +234,6 @@ void snapshot_covered_history_must_still_be_consistent(const std::filesystem::pa
         write_bytes(identity_test::runtime_directory(directory) / "v2-wal-blocks.bin",
                     frame_block(1, 1, payload));
     };
-    // A crash after snapshot publication but before reclamation legitimately
-    // leaves this exact overlap; it must not be rejected unconditionally.
     plant(originals);
     { ReplicatedKernel healthy(identity_test::recover(directory, 1, {1}));
       require(healthy.state().kill_epoch == KillEpoch{3}, "valid covered overlap changed state"); }
@@ -244,7 +242,6 @@ void snapshot_covered_history_must_still_be_consistent(const std::filesystem::pa
         if (std::string_view(mode) == "duplicate") altered[1].index = altered[0].index;
         else if (std::string_view(mode) == "gap") altered.erase(altered.begin() + 1);
         else {
-            // Keep all record terms <= hard state: only the overlap disagrees.
             identity_test::metadata_store(directory).save({2, -1, 3});
             altered.back().term = 2;
         }
@@ -257,7 +254,7 @@ void snapshot_covered_history_must_still_be_consistent(const std::filesystem::pa
     require(healthy.state().kill_epoch == KillEpoch{3}, "restored covered history failed");
 }
 
-} // namespace
+}
 
 int main() {
     const auto root = std::filesystem::temp_directory_path() /
