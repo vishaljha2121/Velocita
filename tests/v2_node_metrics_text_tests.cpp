@@ -48,6 +48,9 @@ NodeHealth fixture() {
     h.stranded_voters = 1;
     h.compactions = 12;
     h.last_compaction_ms = 350;
+    h.receipts = 200;
+    h.pinned_receipts = 17;
+    h.pinned_receipts_peak = 31;
     return h;
 }
 
@@ -88,6 +91,10 @@ void known_voter_renders_every_series() {
         "velocita_v2_stranded_voters{host=\"pi\",node=\"2\"} 1",
         "velocita_v2_compactions_total{host=\"pi\",node=\"2\"} 12",
         "velocita_v2_last_compaction_seconds{host=\"pi\",node=\"2\"} 0.350",
+        "velocita_v2_receipts{host=\"pi\",node=\"2\",state=\"held\"} 200",
+        "velocita_v2_receipts{host=\"pi\",node=\"2\",state=\"pinned\"} 17",
+        "velocita_v2_pinned_receipts_peak{host=\"pi\",node=\"2\"} 31",
+        "velocita_v2_receipt_capacity{host=\"pi\",node=\"2\"} 256",
     };
     for (const auto& line : expected) require(has_line(text, line), "missing or wrong line: " + line);
     require(text.find("# TYPE velocita_v2_auth_refusals_total counter\n") != std::string::npos,

@@ -1072,6 +1072,9 @@ ReplicaStatus ReplicatedKernel::status() const {
     value.retained_protected = log_payloads_->protected_count();
     value.compaction_floor = compaction_floor();
     value.snapshot_index = raft_get_snapshot_last_idx(server_);
+    value.receipts = state_.receipt_count;
+    value.pinned_receipts = pinned_receipt_count(state_);
+    value.pinned_receipts_peak = pinned_receipts_peak_;
     if (raft_is_leader(server_) != 0) {
         const auto snapshot = raft_get_snapshot_last_idx(server_);
         for (int i = 0; i < raft_get_num_nodes(server_); ++i) {
@@ -1572,6 +1575,7 @@ int ReplicatedKernel::apply_log(raft_server_t*, void* user_data, raft_entry_t* e
             return RAFT_ERR_SHUTDOWN;
         }
         const auto result = apply(self.state_, command, *self.scratch_, &self.catalog_);
+        self.pinned_receipts_peak_ = std::max<std::uint64_t>(self.pinned_receipts_peak_, pinned_receipt_count(self.state_));
 
         if (!self.restoring_) {
             auto* owned = self.log_payloads_->find(static_cast<std::uint64_t>(index));

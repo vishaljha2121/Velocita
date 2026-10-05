@@ -40,6 +40,9 @@ struct NodeHealth {
     std::uint64_t stranded_voters{};
     std::uint64_t compactions{};
     std::uint64_t last_compaction_ms{};
+    std::uint64_t receipts{};
+    std::uint64_t pinned_receipts{};
+    std::uint64_t pinned_receipts_peak{};
     constexpr auto operator<=>(const NodeHealth&) const noexcept = default;
 };
 

@@ -1,0 +1,9 @@
+[Unit]
+Description=Velocita heartbeat to the outside monitor (nuc1)
+ConditionPathExists=%h/.config/velocita/heartbeat-url
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.config/velocita/host.env
+ExecStartPre=/usr/bin/mkdir -p %h/velocita-v2/textfile
+ExecStart=/bin/sh %h/src/aeron-raft-pi/deploy/v2/heartbeat.sh %h/.config/velocita/heartbeat-url %h/velocita-v2/textfile/velocita-heartbeat.prom

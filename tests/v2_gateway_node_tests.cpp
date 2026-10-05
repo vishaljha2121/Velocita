@@ -745,6 +745,14 @@ void an_idle_gateway_proposes_nothing_after_acknowledging_its_evidence() {
             "an idle gateway used " + std::to_string(gateway.loop.next_sequence() - sequences_used) +
                 " request sequences: it is acknowledging its own acknowledgements");
     require(cluster.state_of(leader).state_version == state_version, "an idle gateway committed commands");
+    for (const auto id : cluster.voters) {
+        const auto replica = cluster.node(id).status().replica;
+        const auto& state = cluster.state_of(id);
+        require(replica.receipts == state.receipt_count && replica.pinned_receipts == pinned_receipt_count(state),
+                "voter " + std::to_string(id) + " reports receipt counts that are not its state's");
+        require(replica.pinned_receipts_peak >= 2 && replica.pinned_receipts_peak >= replica.pinned_receipts,
+                "voter " + std::to_string(id) + " did not record the authorization and its fill as pinned at once");
+    }
 }
 
 void node_refuses_wrong_caller_follower_and_unconfigured_gateway() {

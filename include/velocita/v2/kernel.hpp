@@ -788,6 +788,8 @@ struct BoundOrderEffect {
                                 ApplyScratch& scratch,
                                 const VerifiedExecutionCatalog* catalog = nullptr);
 
+[[nodiscard]] std::size_t pinned_receipt_count(const TradingState& state) noexcept;
+
 [[nodiscard]] const PolicyRecord* find_policy(const TradingState& state,
                                               PolicyId policy_id,
                                               PolicyVersion policy_version) noexcept;

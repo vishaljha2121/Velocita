@@ -13,6 +13,17 @@ release-engineering work.
 
 ## [V2] - In development
 
+### Outside heartbeat; pinned-receipt metrics — 2026-10-05 (CP-081)
+
+- **Heartbeat.** nuc1 pings a monitor outside the house every minute, and reports a failure at
+  once when Prometheus, Alertmanager or ntfy stops answering
+  (`docs/ALERT_DELIVERY_RUNBOOK.md`). New alert: `VelocitaHeartbeatNotSent`.
+- **Receipts.** Each voter now exports how many request receipts it holds and how many are
+  pinned (cannot be reclaimed yet), with the peak since the process started. This is the input
+  ADR 0022 needs to size the receipt table; the held count alone is no guide, because the table
+  fills by design before it is swept. New alert: `VelocitaPinnedReceiptsHigh`. The health page
+  format changes (version 5), so a voter and its exporter restart together.
+
 ### The gateway stops acknowledging its own acknowledgements — 2026-10-05 (CP-080)
 
 - An idle gateway proposed one `AcknowledgeGatewayResults` a second, because each

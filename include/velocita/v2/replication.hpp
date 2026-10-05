@@ -107,6 +107,9 @@ struct ReplicaStatus {
     std::uint32_t stranded_voters{};
     std::int64_t compaction_floor{};
     std::int64_t snapshot_index{};
+    std::uint64_t receipts{};
+    std::uint64_t pinned_receipts{};
+    std::uint64_t pinned_receipts_peak{};
 };
 
 struct CommittedOutboxView {
@@ -270,6 +273,7 @@ private:
     FollowerAckTracker follower_ack_;
     std::int64_t known_floor_{};
     std::uint64_t polled_through_{};
+    std::uint64_t pinned_receipts_peak_{};
     std::uint64_t blocks_submitted_{};
     std::uint64_t backpressure_refusals_{};
     std::uint64_t highest_staged_index_{};

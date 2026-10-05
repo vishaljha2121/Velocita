@@ -515,3 +515,42 @@ tests:
         alertname: VelocitaElectionsRecurring
         exp_alerts: []
 
+  - interval: 1m
+    input_series:
+      - series: 'velocita_heartbeat_last_sent_timestamp_seconds{job="node",host="nuc1"}'
+        values: '0+60x10 600x20'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: VelocitaHeartbeatNotSent
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: VelocitaHeartbeatNotSent
+        exp_alerts:
+          - exp_labels: {severity: warning, job: node, host: nuc1}
+            exp_annotations:
+              summary: "No heartbeat has reached the outside monitor for 6m 0s"
+              description: "nuc1 cannot reach the outside monitor, so the monitor is (or soon will be) reporting nuc1 as down. Check the home internet connection and journalctl --user -u velocita-heartbeat."
+
+  - interval: 1m
+    input_series:
+      - series: 'velocita_v2_receipts{job="velocita-v2",host="nuc1",node="1",state="pinned"}'
+        values: '192x10 200x20'
+      - series: 'velocita_v2_receipts{job="velocita-v2",host="nuc1",node="1",state="held"}'
+        values: '256x30'
+      - series: 'velocita_v2_receipt_capacity{job="velocita-v2",host="nuc1",node="1"}'
+        values: '256x30'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: VelocitaPinnedReceiptsHigh
+        exp_alerts: []
+      - eval_time: 14m
+        alertname: VelocitaPinnedReceiptsHigh
+        exp_alerts: []
+      - eval_time: 17m
+        alertname: VelocitaPinnedReceiptsHigh
+        exp_alerts:
+          - exp_labels: {severity: warning, host: nuc1, node: "1"}
+            exp_annotations:
+              summary: "nuc1: 78.12% of the receipt table cannot be reclaimed"
+              description: "Receipts stay pinned while an effect is unsettled or the gateway has not acknowledged its results. At 100 % the kernel refuses new commands (receipt_capacity_exceeded). Check that the gateway is running and acknowledging."
+

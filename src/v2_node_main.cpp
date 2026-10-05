@@ -121,6 +121,9 @@ NodeHealth health_of(const NodeStatus& status, std::uint64_t turns, bool failed,
     h.stranded_voters = status.replica.stranded_voters;
     h.compactions = c.compactions;
     h.last_compaction_ms = c.last_compaction_ms;
+    h.receipts = status.replica.receipts;
+    h.pinned_receipts = status.replica.pinned_receipts;
+    h.pinned_receipts_peak = status.replica.pinned_receipts_peak;
     return h;
 }
 

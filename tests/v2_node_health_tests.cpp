@@ -45,6 +45,7 @@ NodeHealth uniform(std::uint64_t k) {
     h.retained_ordinary = h.retained_protected = k;
     h.compaction_floor = h.snapshot_index = static_cast<std::int64_t>(k);
     h.stranded_voters = h.compactions = h.last_compaction_ms = k;
+    h.receipts = h.pinned_receipts = h.pinned_receipts_peak = k;
     return h;
 }
 
@@ -75,6 +76,14 @@ void round_trip_and_refusals() {
                 compaction->stranded_voters == 1 && compaction->compactions == 7 &&
                 compaction->last_compaction_ms == 42,
             "compaction fields were swapped or lost on the page");
+    distinct.receipts = 201;
+    distinct.pinned_receipts = 18;
+    distinct.pinned_receipts_peak = 33;
+    page->publish(distinct);
+    const auto receipts = read_node_health(file);
+    require(receipts && receipts->receipts == 201 && receipts->pinned_receipts == 18 &&
+                receipts->pinned_receipts_peak == 33,
+            "receipt fields were swapped or lost on the page");
     { std::ofstream(dir.path / "foreign.page", std::ios::binary) << std::string(4096, 'x'); }
     require(!read_node_health(dir.path / "foreign.page").has_value(), "foreign page accepted");
     { std::ofstream(dir.path / "short.page", std::ios::binary) << "VLH"; }

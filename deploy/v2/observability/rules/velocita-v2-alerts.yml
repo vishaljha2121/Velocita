@@ -269,3 +269,17 @@ groups:
         annotations:
           summary: "Alertmanager failed to deliver {{ $value | printf \"%.0f\" }} notification(s) in 15 minutes"
           description: "ntfy refused or was unreachable. On nuc1: systemctl --user status velocita-ntfy; a 401/403 in the Alertmanager journal means the publish token or its access entry is wrong (runbook, First install)."
+      - alert: VelocitaHeartbeatNotSent
+        expr: time() - velocita_heartbeat_last_sent_timestamp_seconds > 300
+        labels: {severity: warning}
+        annotations:
+          summary: "No heartbeat has reached the outside monitor for {{ $value | humanizeDuration }}"
+          description: "nuc1 cannot reach the outside monitor, so the monitor is (or soon will be) reporting nuc1 as down. Check the home internet connection and journalctl --user -u velocita-heartbeat."
+      - alert: VelocitaPinnedReceiptsHigh
+        expr: velocita_v2_receipts{state="pinned"} / on(host, node) velocita_v2_receipt_capacity > 0.75
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }}: {{ $value | humanizePercentage }} of the receipt table cannot be reclaimed"
+          description: "Receipts stay pinned while an effect is unsettled or the gateway has not acknowledged its results. At 100 % the kernel refuses new commands (receipt_capacity_exceeded). Check that the gateway is running and acknowledging."
+

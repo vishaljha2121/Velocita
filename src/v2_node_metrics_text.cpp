@@ -1,4 +1,5 @@
 #include "velocita/v2/node_metrics_text.hpp"
+#include "velocita/v2/kernel.hpp"
 #include "velocita/v2/retained_log.hpp"
 
 #include <array>
@@ -75,6 +76,13 @@ std::string render_node_metrics(const std::optional<NodeHealth>& health, std::st
     std::snprintf(compaction.data(), compaction.size(), "%.3f", static_cast<double>(h.last_compaction_ms) / 1e3);
     gauge("velocita_v2_last_compaction_seconds", "How long the last compaction paused Raft progress.",
           compaction.data());
+
+    w.type("velocita_v2_receipts", "gauge", "Request receipts: held (in the table) and pinned (cannot be dropped yet).");
+    w.sample("velocita_v2_receipts", h.receipts, ",state=\"held\"");
+    w.sample("velocita_v2_receipts", h.pinned_receipts, ",state=\"pinned\"");
+    gauge("velocita_v2_pinned_receipts_peak", "Most pinned receipts after any command since this process started.",
+          h.pinned_receipts_peak);
+    gauge("velocita_v2_receipt_capacity", "Fixed receipt table capacity.", kMaxRequestReceipts);
 
     const auto counter = [&](const char* name, const char* help, std::uint64_t value) {
         w.type(name, "counter", help);

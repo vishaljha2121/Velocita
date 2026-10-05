@@ -155,8 +155,58 @@ Then set `VELOCITA_NTFY_BASE_URL` in `host.env` to that URL, restart `velocita-n
 same URL in the phone app. The URL in the app and the base URL **must be identical**: the iOS
 wake-up is keyed on it.
 
-## What this does not cover
+## The outside heartbeat
 
-**If nuc1 is off, or the house loses power or internet, nothing here can tell you:** Prometheus,
-Alertmanager and ntfy all run on nuc1. That needs a check from outside the house (a heartbeat that
-alerts when it *stops*). It is the next step and is not installed yet.
+Prometheus, Alertmanager and ntfy all run on nuc1. If nuc1 is off, or the house loses power or
+internet, none of them can tell you. The heartbeat covers that: nuc1 pings a monitor outside the
+house every minute, and the monitor alerts you when the pings **stop**.
+
+**How it works**
+
+- `velocita-heartbeat.timer` runs `deploy/v2/heartbeat.sh` every minute on nuc1.
+- The script checks that Prometheus, Alertmanager and ntfy answer locally.
+  - All three answer: it requests the ping URL.
+  - Any one does not: it requests the ping URL with `/fail`, which makes the monitor alert at once.
+- The ping URL is read from `~/.config/velocita/heartbeat-url` (mode 600, not in the repo). It
+  never appears in the journal or in a metric.
+- The unit does nothing until that file exists.
+- It writes `velocita_heartbeat_*` metrics. `VelocitaHeartbeatNotSent` fires when no ping has got
+  out for 5 minutes; you will see it once the connection is back.
+
+**The monitor.** Any service that accepts a plain HTTPS GET as a ping, and treats `<url>/fail` as
+an explicit failure, works. The recommended one is Healthchecks: it is open source (BSD), and its
+hosted service at healthchecks.io has a free tier. It must run outside the house; self-hosting it
+on nuc1 would defeat the purpose.
+
+**Set it up (once)**
+
+1. Create an account at healthchecks.io and add a check named `velocita-nuc1`: period **1 minute**,
+   grace **3 minutes**.
+2. Choose how it reaches you. It cannot use the ntfy server on nuc1: that server is inside the
+   tailnet, and it is down in exactly the cases this covers. Use both of:
+   - **Email**, which is on by default.
+   - **ntfy.sh** (Integrations → ntfy): the public server, with a long random topic name. Then in
+     the phone's ntfy app, subscribe to that topic on `https://ntfy.sh`. Only the words "nuc1 is
+     down" travel through it.
+3. Copy the check's ping URL and store it on nuc1:
+
+       umask 077
+       cat > ~/.config/velocita/heartbeat-url      # paste the URL, Enter, then Ctrl-D
+
+4. Enable the timer:
+
+       cp ~/src/aeron-raft-pi/deploy/v2/systemd/velocita-heartbeat.{service,timer} ~/.config/systemd/user/
+       systemctl --user daemon-reload
+       systemctl --user enable --now velocita-heartbeat.timer
+
+**Test it**
+
+    systemctl --user start velocita-heartbeat.service
+    grep -v '^#' ~/velocita-v2/textfile/velocita-heartbeat.prom     # alert_path_ok 1, sent 1
+
+The check turns green on the monitor within a minute. To see the alarm, stop the timer
+(`systemctl --user stop velocita-heartbeat.timer`), wait 4 minutes for the notification, and
+start it again.
+
+**What it still does not tell you:** *why* nuc1 is unreachable. A power cut, a dead router and a
+hung machine all look the same from outside.

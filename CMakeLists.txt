@@ -293,6 +293,7 @@ target_compile_options(velocita_v2_paper_venue PRIVATE -Wall -Wextra -Wpedantic)
 # the v2-truemarkets-no-network-symbols test checks on its object files.
 add_library(velocita_v2_truemarkets_venue
     src/v2_truemarkets_venue.cpp
+    src/v2_truemarkets_rest.cpp
     src/v2_truemarkets_wire.cpp)
 target_include_directories(velocita_v2_truemarkets_venue PUBLIC include)
 target_link_libraries(velocita_v2_truemarkets_venue PUBLIC velocita_v2_contracts PRIVATE velocita_v2_venue_simulator)
@@ -477,6 +478,11 @@ if(BUILD_TESTING)
     target_link_libraries(v2-kernel-policy-tests PRIVATE velocita_v2_kernel)
     target_compile_options(v2-kernel-policy-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-kernel-policy-tests COMMAND v2-kernel-policy-tests)
+
+    add_executable(v2-pinned-receipts-tests tests/v2_pinned_receipts_tests.cpp)
+    target_link_libraries(v2-pinned-receipts-tests PRIVATE velocita_v2_kernel)
+    target_compile_options(v2-pinned-receipts-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-pinned-receipts-tests COMMAND v2-pinned-receipts-tests)
 
     add_executable(v2-venue-wire-tests tests/v2_venue_wire_tests.cpp)
     target_link_libraries(v2-venue-wire-tests PRIVATE velocita_v2_venue_simulator)
@@ -994,6 +1000,11 @@ if(BUILD_TESTING)
     target_link_libraries(v2-gateway-reconciliation-tests PRIVATE velocita_v2_gateway_loop)
     target_compile_options(v2-gateway-reconciliation-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-gateway-reconciliation-tests COMMAND v2-gateway-reconciliation-tests)
+
+    add_executable(v2-truemarkets-rest-tests tests/v2_truemarkets_rest_tests.cpp)
+    target_link_libraries(v2-truemarkets-rest-tests PRIVATE velocita_v2_truemarkets_venue)
+    target_compile_options(v2-truemarkets-rest-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-truemarkets-rest-tests COMMAND v2-truemarkets-rest-tests)
 
     add_executable(v2-truemarkets-wire-tests tests/v2_truemarkets_wire_tests.cpp)
     target_link_libraries(v2-truemarkets-wire-tests PRIVATE velocita_v2_truemarkets_venue)

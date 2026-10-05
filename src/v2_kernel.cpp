@@ -3178,6 +3178,13 @@ std::optional<BoundOrderEffect> materialize_bound_order_effect(
         proposal.instrument_spec_version, proposal.venue_capabilities_version};
 }
 
+std::size_t pinned_receipt_count(const TradingState& state) noexcept {
+    std::size_t pinned = 0;
+    for (std::size_t index = 0; index < state.receipt_count; ++index)
+        pinned += receipt_is_pinned(state, state.receipts[index]) ? 1 : 0;
+    return pinned;
+}
+
 const PolicyRecord* find_policy(const TradingState& state,
                                 const PolicyId policy_id,
                                 const PolicyVersion policy_version) noexcept {
