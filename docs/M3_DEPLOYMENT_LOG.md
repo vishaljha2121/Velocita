@@ -844,3 +844,20 @@ No venue, credential or trading action. Started 2026-09-25.
     - the base compaction pause (0.2–1.0 s) and the fact that all voters compact together;
     - the archive is never pruned (about 85 days to the catalog ceiling at this tick rate).
 
+54. **The gateway acknowledged its own acknowledgements, once a second, forever (found
+    2026-10-05).** The edge unit says one tick per 30 s, yet the log grew 64 entries a minute.
+    Measured: the edge produced about 6 entries a minute; the other 58 were the gateway's
+    `AcknowledgeGatewayResults` commands.
+
+    **Cause.** An acknowledgement is itself a command with a request sequence. The loop
+    acknowledged "everything below my next sequence", so each acknowledgement made the next one
+    look necessary (`GatewayLoop::choose`).
+
+    **Effect.** About 90 % of the Raft log, a compaction every 32 minutes instead of every
+    ~6 hours, 48 archive segments a day, and 86,400 request sequences a day.
+
+    **Fix (CP-080).** The gateway acknowledges only while an evidence command (anything but an
+    acknowledgement) is still unacknowledged. Test:
+    `an_idle_gateway_proposes_nothing_after_acknowledging_its_evidence`, which fails on the old
+    condition with "an idle gateway used 6 request sequences".
+

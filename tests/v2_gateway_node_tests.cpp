@@ -746,6 +746,35 @@ std::optional<GatewayRefusal> await_refusal(Cluster& cluster, Caller& caller) {
     return std::nullopt;
 }
 
+void an_idle_gateway_proposes_nothing_after_acknowledging_its_evidence() {
+    Base base("v2-gw-idle");
+    Cluster cluster(base.path, {1, 2, 3});
+    Caller op{kOperatorKey, kOperator}, strategy{kStrategyKey, kStrategy};
+    prepare_cluster(cluster, op, strategy);
+    const auto leader = cluster.elect();
+    Gateway gateway(cluster);
+    start(cluster, gateway);
+    (void)authorize(cluster, strategy);
+    const auto evidence_through = [&] { return gateway.loop.next_sequence() - 1; };
+    cluster.run_until([&] {
+        const auto* risk = account(cluster.state_of(leader));
+        return risk && risk->position_quantity.atoms() == kOrderLots && gateway.loop.evidence().obligation_count == 0;
+    }, "the fill to commit");
+    const auto last_evidence = evidence_through();
+    cluster.run_until([&] {
+        const auto* producer = cursor(cluster.state_of(leader), kGateway);
+        return producer && producer->gateway_results_acknowledged_through.value() >= last_evidence;
+    }, "the acknowledgement of the last evidence command");
+
+    const auto sequences_used = gateway.loop.next_sequence();
+    const auto state_version = cluster.state_of(leader).state_version;
+    cluster.run(3000);  // ten acknowledgement intervals with nothing new to acknowledge
+    require(gateway.loop.next_sequence() == sequences_used,
+            "an idle gateway used " + std::to_string(gateway.loop.next_sequence() - sequences_used) +
+                " request sequences: it is acknowledging its own acknowledgements");
+    require(cluster.state_of(leader).state_version == state_version, "an idle gateway committed commands");
+}
+
 void node_refuses_wrong_caller_follower_and_unconfigured_gateway() {
     {
         Base base("v2-gw-refuse");
@@ -1483,6 +1512,8 @@ int main() {
          node_refuses_wrong_caller_follower_and_unconfigured_gateway},
         {"authorized_order_is_delivered_once_and_its_fill_moves_the_position",
          authorized_order_is_delivered_once_and_its_fill_moves_the_position},
+        {"an_idle_gateway_proposes_nothing_after_acknowledging_its_evidence",
+         an_idle_gateway_proposes_nothing_after_acknowledging_its_evidence},
         {"forged_replayed_mismatched_and_stale_proofs_are_refused", forged_replayed_mismatched_and_stale_proofs_are_refused},
         {"lost_and_duplicated_responses_still_deliver_exactly_once", lost_and_duplicated_responses_still_deliver_exactly_once},
         {"leader_change_during_authority_request_sends_nothing", leader_change_during_authority_request_sends_nothing},

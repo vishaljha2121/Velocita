@@ -285,7 +285,15 @@ std::optional<RequestSequence> GatewayLoop::take_sequence() noexcept {
         stop(GatewayStopCause::capacity);
         return std::nullopt;
     }
+    last_evidence_sequence_ = next_sequence_;
     return RequestSequence{next_sequence_++};
+}
+
+std::optional<RequestSequence> GatewayLoop::take_acknowledgement_sequence() noexcept {
+    const auto last_evidence = last_evidence_sequence_;
+    const auto sequence = take_sequence();
+    last_evidence_sequence_ = last_evidence;
+    return sequence;
 }
 
 GatewayLoop::Marks* GatewayLoop::marks(EffectId effect, bool create) noexcept {
@@ -615,8 +623,9 @@ void GatewayLoop::choose(Tick now) {
     std::uint64_t through = next_sequence_ - 1;
     for (std::size_t i = 0; i < evidence_->obligation_count; ++i)
         through = std::min(through, evidence_->obligations[i].identity.request_sequence.value() - 1);
-    if (through >= config_.first_sequence && through > acknowledged_through_ && now >= last_ack_at_ + config_.ack_interval) {
-        if (const auto sequence = take_sequence()) {
+    const bool evidence_unacknowledged = std::min(through, last_evidence_sequence_) > acknowledged_through_;
+    if (through >= config_.first_sequence && evidence_unacknowledged && now >= last_ack_at_ + config_.ack_interval) {
+        if (const auto sequence = take_acknowledgement_sequence()) {
             const auto command = identified(config_.caller, *sequence, AcknowledgeGatewayResults{RequestSequence{through}});
             last_ack_at_ = now;
             if (link_.submit(command, ProposeLane::normal, now, config_.request_timeout)) {

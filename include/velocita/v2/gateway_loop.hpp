@@ -241,6 +241,7 @@ private:
     [[nodiscard]] bool record(const VenueObservation& observation, Tick now);
     [[nodiscard]] bool serves(const BoundOrderEffect& binding) const noexcept;
     [[nodiscard]] std::optional<RequestSequence> take_sequence() noexcept;
+    [[nodiscard]] std::optional<RequestSequence> take_acknowledgement_sequence() noexcept;
     [[nodiscard]] VenueObservation synthetic(VenueObservationKind kind, ClusterOrderId order, EffectId effect,
                                              RequestSequence sequence) const;
     void stop(GatewayStopCause cause) noexcept;
@@ -287,6 +288,7 @@ private:
     bool state_dirty_{true};
     std::uint64_t next_sequence_{};
     std::uint64_t acknowledged_through_{};
+    std::uint64_t last_evidence_sequence_{};
     Tick last_ack_at_{};
     std::optional<sim::SendOutcome> handoff_outcome_{};
     std::array<Marks, kMaxOutboxEffects> marks_{};

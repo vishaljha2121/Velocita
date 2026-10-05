@@ -13,6 +13,13 @@ release-engineering work.
 
 ## [V2] - In development
 
+### The gateway stops acknowledging its own acknowledgements — 2026-10-05 (CP-080)
+
+- An idle gateway proposed one `AcknowledgeGatewayResults` a second, because each
+  acknowledgement's own sequence looked unacknowledged: about 90 % of the Raft log (M3 finding
+  54). It now acknowledges only while an evidence command is unacknowledged. Gateway only; no
+  wire or storage change.
+
 ### Alert delivery; compaction no longer rereads the whole archive — 2026-10-03 (CP-079)
 
 - **Alert delivery.** Prometheus → Alertmanager → self-hosted ntfy on nuc1 → phone
