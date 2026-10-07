@@ -702,7 +702,7 @@
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "Completed requires flat inventory and a checked final ledger. Running window alone is not a health assertion.",
+   "description": "Completed requires a validated final ledger and flat account. Running window is not a health assertion; inspect reconciliation and feed alerts.",
    "gridPos": {
     "h": 4,
     "w": 4,
@@ -724,12 +724,8 @@
       "mode": "absolute",
       "steps": [
        {
-        "color": "red",
-        "value": null
-       },
-       {
         "color": "green",
-        "value": 1
+        "value": null
        }
       ]
      },

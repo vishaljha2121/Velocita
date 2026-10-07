@@ -125,7 +125,7 @@
    },
    "targets": [
     {
-     "expr": "((max(velocita_indicator_run_state{strategy=\"stochastic\"}) == 1) * 0 + 2) or (max(velocita_shadow_submitter_ready{strategy=\"stochastic\"}))",
+     "expr": "((max(velocita_indicator_run_state{strategy=\"stochastic\"}) == 1) * 0 + 2) or max(velocita_shadow_submitter_ready{strategy=\"stochastic\"})",
      "legendFormat": "",
      "refId": "A",
      "instant": true

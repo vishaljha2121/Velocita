@@ -90,7 +90,12 @@ def exprs(dashboard):
 
 
 def legacy_expression(expression):
-    return expression.replace('strategy="stochastic",', '').replace('{strategy="stochastic"}', '')
+    expression=expression.replace('strategy="stochastic",', '').replace('{strategy="stochastic"}', '')
+    # The completed-session display preserves the original readiness query as
+    # its fallback. Check that fallback for the historical no-panel-loss test;
+    # the new lifecycle wrapper is asserted independently below.
+    prefix='((max(velocita_indicator_run_state) == 1) * 0 + 2) or '
+    return expression[len(prefix):] if expression.startswith(prefix) else expression
 
 
 PAPER_METRICS = {
@@ -165,6 +170,17 @@ class DashboardsAreGeneratedAndLoadable(unittest.TestCase):
         before_exprs = {e for panel in before for e in panel["exprs"]}
         after_exprs = {e for d in dashboards().values() for e in exprs(d)}
         self.assertEqual(before_exprs - after_exprs, set())
+
+    def test_submitter_completion_display_preserves_live_readiness(self):
+        matched=[]
+        for board in dashboards().values():
+            for panel in content_panels(board):
+                if panel['title']=='Submitter ready':
+                    matched.append(panel)
+                    self.assertEqual(panel['targets'][0]['expr'],
+                        '((max(velocita_indicator_run_state{strategy="stochastic"}) == 1) * 0 + 2) or max(velocita_shadow_submitter_ready{strategy="stochastic"})')
+                    self.assertEqual(panel['fieldConfig']['defaults']['mappings'][0]['options']['2']['text'],'COMPLETED')
+        self.assertEqual(len(matched),2)
 
     def test_overview_answers_cluster_health_at_a_glance(self):
         overview = next(d for d in dashboards().values() if d["uid"] == OLD_UID)
