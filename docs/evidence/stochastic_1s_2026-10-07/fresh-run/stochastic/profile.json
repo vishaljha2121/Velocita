@@ -1,0 +1,13 @@
+{
+  "mode": "paper",
+  "strategy": "stochastic",
+  "incarnation": "c8a6a0a78fbf49a099b222124a5d557f",
+  "catalog_root": "3b8b7f798e31c6ce39ef6a88ba44fd2644ec8c6e4792ed7beb227fd14a532dfe",
+  "start_ns": 1791399373467548000,
+  "stop_ns": 1792608973467548000,
+  "program": "/edge/indicator.program",
+  "ledger": "/edge/ledger.db",
+  "venue_report": "/venue/venue.json",
+  "edge_metrics": "/edge/edge.prom",
+  "gateway_metrics": "/venue/gateway.prom"
+}

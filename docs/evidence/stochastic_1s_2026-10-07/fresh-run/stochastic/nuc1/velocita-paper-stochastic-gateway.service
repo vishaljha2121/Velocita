@@ -1,0 +1,16 @@
+[Unit]
+Description=velocita-paper-stochastic-gateway
+After=velocita-paper-stochastic-node.service
+
+
+[Service]
+ExecStart=/usr/bin/podman run --rm --name velocita-paper-stochastic-gateway --network host --userns=keep-id --read-only --security-opt no-new-privileges --cap-drop all --pids-limit 128 --memory 512m --shm-size 256m -e AERON_TERM_BUFFER_LENGTH=1048576 -v %h/velocita-indicator-paper/stochastic/config/catalog.bin:/etc/velocita/catalog.bin:ro -v %h/velocita-indicator-paper/stochastic/gateway:/state -v %t/velocita-secrets/caller-13.key:/run/velocita-secrets/caller-13.key:ro --entrypoint /usr/local/bin/velocita-v2-gateway localhost/velocita-v2:paper-7297bd5 --venue paper --catalog /etc/velocita/catalog.bin --catalog-row 2,20,2,1,1 --caller-key-id 13 --caller-id 22 --key-file /run/velocita-secrets/caller-13.key --incarnation c8a6a0a78fbf49a099b222124a5d557f --node 1=100.72.127.102:44301 --node 2=100.84.151.116:44302 --node 3=100.85.36.22:44303 --session-file /state/gateway.session --state-file /state/gateway.state --paper-state-file /state/paper.state --paper-report-file /state/venue.json --response-endpoint 100.72.127.102:44413 --aeron-dir /dev/shm/velocita-gateway-aeron --metrics-textfile /state/gateway.prom --buy-fee-bps 20 --sell-fee-bps 20 --freshness-ms 2000 --allow-new-risk
+ExecStop=/usr/bin/podman stop -t 15 velocita-paper-stochastic-gateway
+ExecStopPost=-/usr/bin/podman rm --ignore velocita-paper-stochastic-gateway
+Restart=on-failure
+RestartPreventExitStatus=64
+RestartSec=10
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

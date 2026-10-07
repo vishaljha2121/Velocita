@@ -1,0 +1,16 @@
+[Unit]
+Description=velocita-paper-stochastic-edge
+After=velocita-paper-stochastic-gateway.service
+
+
+[Service]
+ExecStart=/usr/bin/podman run --rm --name velocita-paper-stochastic-edge --network host --userns=keep-id --read-only --security-opt no-new-privileges --cap-drop all --pids-limit 128 --memory 512m --shm-size 256m -e AERON_TERM_BUFFER_LENGTH=1048576 -v %h/velocita-indicator-paper/stochastic/config:/config:ro -v %h/velocita-indicator-paper/stochastic/edge:/edge -v %h/velocita-indicator-paper/stochastic/gateway:/venue:ro -v %t/velocita-secrets/caller-12.key:/run/velocita-secrets/caller-12.key:ro --entrypoint python3 localhost/velocita-v2-shadow:paper-1s-0680b08 -m velocita_model.shadow.run_stochastic_second --mode paper --config /config/profile-1s.json -- velocita-v2-shadow-submitter --program /edge/indicator-1s.program --catalog /config/catalog.bin --caller-key-id 12 --caller-id 21 --key-file /run/velocita-secrets/caller-12.key --incarnation c8a6a0a78fbf49a099b222124a5d557f --node 1=100.72.127.102:44301 --node 2=100.84.151.116:44302 --node 3=100.85.36.22:44303 --session-file /edge/strategy.session --state-file /edge/strategy.state --response-endpoint 100.72.127.102:44412 --mode paper --aeron-dir /dev/shm/velocita-shadow-aeron
+ExecStop=/usr/bin/podman stop -t 15 velocita-paper-stochastic-edge
+ExecStopPost=-/usr/bin/podman rm --ignore velocita-paper-stochastic-edge
+Restart=on-failure
+RestartPreventExitStatus=64
+RestartSec=10
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

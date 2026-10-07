@@ -1,0 +1,16 @@
+[Unit]
+Description=velocita-paper-indicator-observer
+After=network-online.target
+
+
+[Service]
+ExecStart=/usr/bin/podman run --rm --name velocita-paper-indicator-observer --network host --userns=keep-id --read-only --security-opt no-new-privileges --cap-drop all --pids-limit 128 --memory 128m --shm-size 256m -e AERON_TERM_BUFFER_LENGTH=1048576 -v %h/velocita-indicator-paper/observer.json:/config/observer.json:ro -v %h/velocita-indicator-paper/stochastic/edge:/runs/stochastic/edge:ro -v %h/velocita-indicator-paper/stochastic/gateway:/runs/stochastic/gateway:ro --entrypoint python3 localhost/velocita-v2-shadow:paper-1s-0680b08 -m velocita_model.shadow.indicator_observer --config /config/observer.json
+ExecStop=/usr/bin/podman stop -t 15 velocita-paper-indicator-observer
+ExecStopPost=-/usr/bin/podman rm --ignore velocita-paper-indicator-observer
+Restart=on-failure
+RestartPreventExitStatus=64
+RestartSec=10
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,17 @@
+[Unit]
+Description=velocita-paper-stochastic-node
+After=network-online.target
+Wants=velocita-paper-stochastic-exporter.service
+
+[Service]
+ExecStartPre=/bin/sh %h/src/aeron-raft-pi/deploy/v2/one-cluster-guard.sh velocita-paper-stochastic-node
+ExecStart=/usr/bin/podman run --rm --name velocita-paper-stochastic-node --network host --userns=keep-id --read-only --security-opt no-new-privileges --cap-drop all --pids-limit 128 --memory 1g --shm-size 256m -e AERON_TERM_BUFFER_LENGTH=1048576 -v %h/velocita-indicator-paper/stochastic/config:/etc/velocita:ro -v %h/velocita-indicator-paper/stochastic/data:/var/lib/velocita-v2 -v %t/velocita-secrets:/run/velocita-secrets:ro localhost/velocita-v2:m3-cp081 --config /etc/velocita/node-2.conf --aeron-dir /dev/shm/velocita-aeron
+ExecStop=/usr/bin/podman stop -t 15 velocita-paper-stochastic-node
+ExecStopPost=-/usr/bin/podman rm --ignore velocita-paper-stochastic-node
+Restart=on-failure
+RestartPreventExitStatus=64
+RestartSec=10
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target
