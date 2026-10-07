@@ -132,7 +132,10 @@ class Journal:
 def snapshot(path,incarnation,now,epoch=None):
     raw=Path(path).read_bytes()
     if len(raw)>100000: raise ValueError('paper snapshot capacity')
-    s=json.loads(raw)
+    return validate_snapshot(json.loads(raw),incarnation,now,epoch)
+
+
+def validate_snapshot(s,incarnation,now,epoch=None):
     cost_bps=20 if epoch is not None else 30
     prior=epoch['previous_orders'] if epoch is not None else []
     if epoch is not None and (s['orders'][:len(prior)]!=prior or len(s['orders'])<len(prior)):
@@ -147,7 +150,7 @@ def snapshot(path,incarnation,now,epoch=None):
     cash,lots,fees,buy,sell=25000000,0,0,0,0
     seen=set()
     for order_index,order in enumerate(s['orders']):
-        order_bps=30 if order_index<len(prior) else cost_bps
+        order_bps=epoch.get('previous_cost_bps',30) if order_index<len(prior) else cost_bps
         identifier=order['id']
         if type(identifier) is not int or not 0<identifier<2**64 or identifier in seen:
             raise ValueError('paper duplicate order')
@@ -210,7 +213,7 @@ class Book:
         with self.journal.db:
             self.journal.db.execute('insert or replace into equities values (?,?)',(event_ns//NS,mark-reserve))
         peak=self.journal.db.execute('select max(equity) from equities').fetchone()[0]
-        if event_ns>=self.stop_ns: self.stop='duration'
+        if event_ns>=self.stop_ns and not (self.epoch and self.epoch['variant']=='stochastic_1s_cash_v1'): self.stop='duration'
         elif len(s['orders'])>=240: self.stop='capacity'
         elif max(25000000,peak)-(mark-reserve)>=10000000: self.stop='drawdown'
         elif s['lots']==0 and s['cash']<notional-(-notional*self.cost_bps//10000): self.stop='insufficient_balance'

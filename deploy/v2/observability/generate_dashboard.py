@@ -131,7 +131,8 @@ def finish(board, description, tags):
 ROLE_MAP = [{"type": "value", "options": {"0": {"text": "none"}, "1": {"text": "follower"},
                                           "2": {"text": "candidate", "color": "orange"},
                                           "3": {"text": "LEADER", "color": "blue"}}}]
-READY_MAP = [{"type": "value", "options": {"0": {"text": "NOT READY"}, "1": {"text": "READY"}}}]
+READY_MAP = [{"type": "value", "options": {"0": {"text": "NOT READY"}, "1": {"text": "READY"}, "2": {"text": "COMPLETED", "color": "blue"}}}]
+RUN_MAP = [{"type":"value","options":{"0":{"text":"Running window","color":"blue"},"1":{"text":"Completed","color":"blue"},"2":{"text":"Needs finalization","color":"orange"}}}]
 GATEWAY_UP_MAP = [{"type": "value", "options": {"0": {"text": "DOWN"}, "1": {"text": "UP"}}}]
 NEW_RISK_MAP = [{"type": "value", "options": {"0": {"text": "NEW RISK ALLOWED"}, "1": {"text": "NEW RISK STOPPED"}}}]
 NEW_RISK_HELP = ("1 = the gateway sends no risk-increasing order. After an election it re-arms by itself once the "
@@ -173,7 +174,7 @@ def right_now_row():
          description="Committed entries a voter has not applied yet. Healthy: 0.")
     stat("Voters accepting commands", 'sum(velocita_v2_ready)', 8, 4, steps=(("red", None), ("orange", 2), ("green", 3)),
          description="Voters past their recovery barrier, of three.")
-    stat("Submitter ready", 'max(velocita_shadow_submitter_ready)', 12, 4,
+    stat("Submitter ready", '((max(velocita_indicator_run_state{strategy="stochastic"}) == 1) * 0 + 2) or max(velocita_shadow_submitter_ready)', 12, 4,
          steps=(("red", None), ("green", 1)), mappings=READY_MAP,
          description="1 once the policy is installed and the strategy mode is normal.")
     stat("Paper gateway", 'max(velocita_gateway_up)', 16, 4, steps=(("red", None), ("green", 1)), mappings=GATEWAY_UP_MAP,
@@ -348,7 +349,7 @@ def raft():
 
 def shadow_edge_row():
     row("Shadow edge: live ticks to recorded decisions (never trades)")
-    stat("Submitter ready", 'max(velocita_shadow_submitter_ready)', 0, 6,
+    stat("Submitter ready", '((max(velocita_indicator_run_state{strategy="stochastic"}) == 1) * 0 + 2) or max(velocita_shadow_submitter_ready)', 0, 6,
          steps=(("red", None), ("green", 1)), mappings=READY_MAP,
          description="1 once the policy is installed and the strategy mode is normal.")
     stat("Last decision", 'max(velocita_shadow_last_decision_age_seconds)', 6, 6, unit="s",
@@ -751,8 +752,8 @@ def indicator_paper_rows():
         stat('Pilot-only fees',f'velocita_indicator_variant_fees_usd{selector}',12,6,unit='currencyUSD',decimals=3)
         stat('Pilot-only fills',f'velocita_indicator_variant_order_count{selector}',18,6,decimals=0)
         advance(4)
-        stat('Confirmed account ready',f'velocita_indicator_reconciled{selector}',0,4,
-             steps=(("red",None),("green",1)),description='0 or missing: account snapshot is stale, pending or does not reconcile. No new buying.')
+        stat('Session status',f'velocita_indicator_run_state{selector}',0,4,mappings=RUN_MAP,
+             description='Completed requires a validated final ledger and flat account. Running window is not a health assertion; inspect reconciliation and feed alerts.')
         stat('Equity after exit cost (account history; new fills 20 bp)',f'velocita_indicator_equity_usd{selector}',4,4,unit='currencyUSD',decimals=2)
         stat('Net P&L since funding (account history; new fills 20 bp)',f'velocita_indicator_net_pnl_usd{selector}',8,4,unit='currencyUSD',decimals=2,
              steps=(("red",None),("green",0)),

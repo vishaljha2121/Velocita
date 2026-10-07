@@ -26,6 +26,7 @@ class IndicatorDeployment(unittest.TestCase):
                 self.assertNotIn('caller-11',edge)
                 self.assertIn('--mode paper',edge)
                 self.assertIn(f'ExecStopPost=-/usr/bin/podman rm --ignore velocita-paper-{strategy}-edge',edge)
+                self.assertIn(f'ExecStop=/usr/bin/podman stop --ignore -t 15 velocita-paper-{strategy}-edge',edge)
                 self.assertNotIn('podman rm --force',edge)
                 self.assertNotIn('--mode live',edge)
                 self.assertIn(f'{strategy}/gateway:/venue:ro',edge)

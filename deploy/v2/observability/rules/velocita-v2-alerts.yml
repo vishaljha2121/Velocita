@@ -318,7 +318,7 @@ groups:
           summary: "The {{ $labels.strategy }} ledger is {{ $value }} fill(s) behind the venue"
           description: "The edge records every confirmed fill within a second. A lasting gap means the edge is stopped or cannot write its ledger."
       - alert: VelocitaPaperEdgeStalled
-        expr: velocita_indicator_price_age_seconds > 5
+        expr: velocita_indicator_price_age_seconds > 5 unless on(strategy,paper_run) (velocita_indicator_run_state == 1)
         for: 1m
         labels: {severity: critical}
         annotations:
@@ -331,7 +331,7 @@ groups:
           summary: "The edge received {{ $labels.outcome }} market data in the last 10 minutes"
           description: "invalid: the price response did not decode or had a gap. bar_missing: the bar that just closed was not in the response. Invalid input blocks entry; a gap requires a fresh warmup."
       - alert: VelocitaPaperBuyStop
-        expr: velocita_indicator_buy_stop == 1
+        expr: velocita_indicator_buy_stop == 1 unless on(strategy,paper_run) (velocita_indicator_run_state == 1)
         for: 1m
         labels: {severity: warning}
         annotations:

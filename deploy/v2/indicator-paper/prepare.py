@@ -16,7 +16,7 @@ GUARD='/bin/sh %h/src/aeron-raft-pi/deploy/v2/one-cluster-guard.sh'
 def unit(name,command,*,after='network-online.target',extra='',memory='512m',guard=False):
     return '\n'.join(['[Unit]',f'Description={name}',f'After={after}',extra,'',
         '[Service]',*([f'ExecStartPre={GUARD} {name}'] if guard else []),'ExecStart='+shlex.join(command),
-        f'ExecStop=/usr/bin/podman stop -t 15 {name}',
+        f'ExecStop=/usr/bin/podman stop --ignore -t 15 {name}',
         f'ExecStopPost=-/usr/bin/podman rm --ignore {name}',
         'Restart=on-failure','RestartPreventExitStatus=64','RestartSec=10','TimeoutStopSec=30',
         '', '[Install]','WantedBy=default.target',''])

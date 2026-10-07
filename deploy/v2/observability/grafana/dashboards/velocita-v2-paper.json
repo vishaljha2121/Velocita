@@ -696,13 +696,13 @@
   },
   {
    "type": "stat",
-   "title": "Confirmed account ready",
+   "title": "Session status",
    "id": 13,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "0 or missing: account snapshot is stale, pending or does not reconcile. No new buying.",
+   "description": "Completed requires flat inventory and a checked final ledger. Running window alone is not a health assertion.",
    "gridPos": {
     "h": 4,
     "w": 4,
@@ -711,7 +711,7 @@
    },
    "targets": [
     {
-     "expr": "velocita_indicator_reconciled{strategy=\"stochastic\"}",
+     "expr": "velocita_indicator_run_state{strategy=\"stochastic\"}",
      "legendFormat": "",
      "refId": "A",
      "instant": true
@@ -736,7 +736,25 @@
      "color": {
       "mode": "thresholds"
      },
-     "mappings": [],
+     "mappings": [
+      {
+       "type": "value",
+       "options": {
+        "0": {
+         "text": "Running window",
+         "color": "blue"
+        },
+        "1": {
+         "text": "Completed",
+         "color": "blue"
+        },
+        "2": {
+         "text": "Needs finalization",
+         "color": "orange"
+        }
+       }
+      }
+     ],
      "noValue": "unknown"
     },
     "overrides": []

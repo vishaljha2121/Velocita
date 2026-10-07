@@ -6,7 +6,8 @@ from pathlib import Path
 import sqlite3
 import time
 
-from .indicator_paper import identity_text,snapshot
+from .indicator_paper import identity_text,snapshot,validate_snapshot
+from .paper_completion import completed_path,open_completion
 
 
 def labelled(text,strategy,prefix):
@@ -41,10 +42,13 @@ def measured_cost_account(fills):
 
 def open_ledger(path,strategy,incarnation):
     db=sqlite3.connect(f'file:{path}?mode=ro',uri=True)
-    row=db.execute('select value from identity where id=1').fetchone()
-    if row is None or row[0]!=identity_text(strategy,incarnation):
-        db.close();raise ValueError('paper journal identity mismatch')
-    return db
+    try:
+        row=db.execute('select value from identity where id=1').fetchone()
+        if row is None or row[0]!=identity_text(strategy,incarnation):
+            raise ValueError('paper journal identity mismatch')
+        return db
+    except BaseException:
+        db.close();raise
 
 
 def file_metrics(c,strategy,now,emit,out):
@@ -62,7 +66,8 @@ def metrics(c,now):
     def emit(name,value,extra=''):
         out.append(f'velocita_indicator_{name}{{strategy="{strategy}"{extra}}} {value}')
     emit('initial_cash_usd',25)
-    emit('stop_timestamp_seconds',c['stop_ns']/1e9)
+    if c.get('epoch',{}).get('variant')!='stochastic_1s_cash_v1':
+        emit('stop_timestamp_seconds',c['stop_ns']/1e9)
     emit('paper_mode',1)
     epoch=c.get('epoch')
     cost_bps=20 if epoch else 30
@@ -76,16 +81,41 @@ def metrics(c,now):
         s=snapshot(c['venue_report'],c['incarnation'],now,epoch)
     except (ValueError,OSError,KeyError,TypeError):
         s=None
-    emit('reconciled',int(s is not None))
+    completed=False
+    expired=bool(epoch and epoch['variant']!='stochastic_1s_cash_v1' and now>=epoch['end_ns']/1e9)
+    db=None
     try:
-        db=open_ledger(c['ledger'],strategy,c['incarnation'])
-    except (sqlite3.Error,ValueError,OSError):
-        emit('ledger_readable',0)
-        return '\n'.join(out)+'\n'
-    try:
+        if epoch and completed_path(c['ledger']).exists():
+            db,final,finalized_at=open_completion(c,now)
+            # Compare even a stale report's economics; this is NOT a freshness claim.
+            if Path(c['venue_report']).exists():
+                raw=Path(c['venue_report']).read_bytes()
+                if len(raw)>100000: raise ValueError('paper snapshot capacity')
+                present=json.loads(raw)
+                present=validate_snapshot(present,c['incarnation'],present['stamp'],epoch)
+            else: present=None
+            if present is not None and any(present[k]!=final[k] for k in
+                    ('orders','cash','lots','fees','buy_volume','sell_volume')):
+                raise ValueError('completed account changed')
+            s=final;completed=True
+            emit('finalized_timestamp_seconds',finalized_at)
+            reason=json.loads(db.execute('select payload from completion where id=1').fetchone()[0])['reason']
+            if reason not in ('duration','insufficient_balance','drawdown','capacity'): raise ValueError('stop reason')
+            emit('completed_reason',1,f',reason="{reason}"')
+        else:
+            db=open_ledger(c['ledger'],strategy,c['incarnation'])
         if epoch:
             record=db.execute('select payload from variant_epoch where id=1').fetchone()
             if record is None or json.loads(record[0])!=epoch: raise ValueError('variant epoch mismatch')
+    except (sqlite3.Error,ValueError,OSError,KeyError,TypeError):
+        if db is not None: db.close()
+        emit('reconciled',0)
+        emit('run_state',2 if expired else 0)
+        emit('ledger_readable',0)
+        return '\n'.join(out)+'\n'
+    emit('run_state',1 if completed else (2 if expired else 0))
+    emit('reconciled',int(s is not None))
+    try:
         emit('ledger_readable',1)
         fills=db.execute('select id,side,price,lots,notional,fee,stamp,first_seen from fills order by rowid').fetchall()
         mark=db.execute('select stamp,price from marks order by stamp desc limit 1').fetchone()
@@ -123,8 +153,8 @@ def metrics(c,now):
         emit('order_capacity',240)
         emit('lifetime_completed_trades',sum(o['side']==2 for o in s['orders']))
         emit('ledger_fills_behind',len(s['orders'])-len(fills))
-        if mark and 0<=now-mark[0]<=(5 if epoch else 600):
-            value=s['lots']*mark[1]*100
+        if s['lots']==0 or (mark and 0<=now-mark[0]<=(5 if epoch else 600)):
+            value=s['lots']*mark[1]*100 if s['lots'] else 0
             equity=s['cash']+value-fee(value,cost_bps)
             emit('equity_usd',equity/1e6)
             if epoch:

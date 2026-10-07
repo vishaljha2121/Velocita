@@ -9,7 +9,8 @@ from ..adapters.websocket import ReadOnlyMarketSocket,FrameDecoder,ProtocolError
 from ..safety import enforce
 from .edge import EdgeMetrics,run_once
 from .indicator_paper import Journal,Book,NS
-from .stochastic_second import FastSource,pilot_program,LIMIT
+from .paper_completion import publish_completion,completed_path
+from .stochastic_second import FastSource,pilot_program,LIMIT,VARIANT,CASH_VARIANT
 
 
 class PublicSecondSocket(ReadOnlyMarketSocket):
@@ -41,7 +42,8 @@ class PublicSecondSocket(ReadOnlyMarketSocket):
         if tuple(topics): raise ValueError('fixed public stream only')
 
     def recv_text(self):
-        if time.time_ns()>=self.deadline_ns or self.source.used()>=LIMIT: return None
+        if self.source.terminal_reason: return None
+        if not self.source.cash_run and (time.time_ns()>=self.deadline_ns or self.source.used()>=LIMIT): return None
         if self.bootstrap is not None:
             raw=self.bootstrap;self.bootstrap=None;return raw
         if self.source.retry_bar is not None and self.last_raw is not None: return self.last_raw
@@ -64,11 +66,13 @@ def main():
     parser.add_argument('--mode',choices=('paper',),required=True)
     parser.add_argument('submitter',nargs=argparse.REMAINDER)
     a=parser.parse_args();enforce();c=json.loads(a.config.read_text());epoch=c['epoch']
-    if c['mode']!='paper' or c['strategy']!='stochastic' or epoch['variant']!='stochastic_1s_v1':
+    if c['mode']!='paper' or c['strategy']!='stochastic' or epoch['variant'] not in (VARIANT,CASH_VARIANT):
         raise ValueError('one-second paper profile required')
-    if Path(c['program']).read_text()!=pilot_program(c['catalog_root'],epoch['end_ns']):
+    if Path(c['program']).read_text()!=pilot_program(c['catalog_root'],epoch['end_ns'],epoch['variant']):
         raise ValueError('immutable one-second program mismatch')
-    if time.time_ns()>=epoch['end_ns']: return 0
+    cash_run=epoch['variant']==CASH_VARIANT
+    if completed_path(c['ledger']).exists(): return 0
+    if not cash_run and time.time_ns()>=epoch['end_ns']: return 0
     command=a.submitter[1:] if a.submitter[:1]==['--'] else a.submitter
     if not command or '--mode' not in command or command[command.index('--mode')+1]!='paper':
         raise ValueError('paper submitter required')
@@ -79,15 +83,22 @@ def main():
     def connected():
         nonlocal connections
         connections+=1
-        if connections>12: raise ProtocolError('pilot reconnect limit')
+        if not cash_run and connections>12: raise ProtocolError('pilot reconnect limit')
         return PublicSecondSocket(source,epoch['end_ns'])
     def again():
+        if cash_run: return source.terminal_reason is None
         return connections<12 and time.time_ns()<epoch['end_ns'] and source.used()<LIMIT
     try:
         result=run_once(connected,command,source,textfile=c['edge_metrics'],
             shadow_recorded_code=17,metrics=EdgeMetrics(17),paper_book=book,topics=(),reconnect=again)
         print(f'ONE_SECOND_STOP reason={result.reason} decisions={result.decisions}',flush=True)
-        return 0
+        if source.terminal_reason or (not cash_run and time.time_ns()>=epoch['end_ns']):
+            final=book.refresh()
+            if final is None:
+                raise ValueError('pilot ended without a reconciled final account')
+            publish_completion(journal.db,c,final,time.time(),source.terminal_reason or 'duration')
+            return 0
+        return 2
     finally: journal.close()
 
 

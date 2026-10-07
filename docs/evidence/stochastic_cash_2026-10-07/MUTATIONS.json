@@ -1,0 +1,22 @@
+[
+  {
+    "mutation": "flat",
+    "killed_by": "test_paper_completion.CompletionTests.test_unsettled_nonflat_stale_or_mismatched_account_cannot_finalize"
+  },
+  {
+    "mutation": "fills",
+    "killed_by": "test_paper_completion.CompletionTests.test_unsettled_nonflat_stale_or_mismatched_account_cannot_finalize"
+  },
+  {
+    "mutation": "readonly",
+    "killed_by": "test_paper_completion.CompletionTests.test_standalone_copy_includes_wal_and_preserves_source"
+  },
+  {
+    "mutation": "expiry",
+    "killed_by": "test_stochastic_cash.CashTests.test_no_time_or_2400_frame_stop"
+  },
+  {
+    "mutation": "cashstop",
+    "killed_by": "test_stochastic_cash.CashTests.test_cash_exhaustion_is_flat_cannot_afford_clip_and_fee"
+  }
+]

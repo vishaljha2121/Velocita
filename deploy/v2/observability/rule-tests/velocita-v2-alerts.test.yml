@@ -723,3 +723,30 @@ tests:
               summary: "stochastic has used 80.42% of its lifetime orders"
               description: "The paper venue keeps every order for the life of the run. At 100 % the strategy stops buying and exits."
 
+
+  # A completed account suppresses expected feed/duration alarms, but an expired
+  # unfinalized account and a broken final ledger still raise their alarms.
+  - interval: 1m
+    input_series:
+      - series: 'velocita_indicator_run_state{strategy="stochastic",paper_run="completed"}'
+        values: '1x5'
+      - series: 'velocita_indicator_price_age_seconds{strategy="stochastic",paper_run="completed"}'
+        values: '600x5'
+      - series: 'velocita_indicator_buy_stop{strategy="stochastic",paper_run="completed",reason="duration"}'
+        values: '1x5'
+      - series: 'velocita_indicator_ledger_readable{strategy="stochastic",paper_run="completed"}'
+        values: '0x5'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: VelocitaPaperEdgeStalled
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: VelocitaPaperBuyStop
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: VelocitaPaperLedgerUnreadable
+        exp_alerts:
+          - exp_labels: {severity: warning, strategy: stochastic, paper_run: completed}
+            exp_annotations:
+              summary: "The stochastic fill ledger cannot be read"
+              description: "The observer cannot open the edge's ledger read-only, or it belongs to another run. The edge is probably stopped. On nuc1: systemctl --user status velocita-paper-stochastic-edge."

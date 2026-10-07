@@ -9,6 +9,8 @@ from .edge import Tick
 from ..research import rules
 
 VARIANT='stochastic_1s_v1'
+CASH_VARIANT='stochastic_1s_cash_v1'
+NO_DEADLINE=2**63-1
 LIMIT=2400
 
 
@@ -76,13 +78,15 @@ class Signals:
         return (1000000 if self.exit>=3 else 0,1000000 if self.entry>=3 else 0)
 
 
-def pilot_program(root,until_ns):
+def pilot_program(root,until_ns,variant=VARIANT):
     text=program_text('stochastic',root,until_ns)
-    digest=hashlib.sha256(VARIANT.encode()).hexdigest()
+    if variant not in (VARIANT,CASH_VARIANT): raise ValueError('unknown strategy variant')
+    cash=variant==CASH_VARIANT
+    digest=hashlib.sha256(variant.encode()).hexdigest()
     lines=[]
     for line in text.splitlines():
         key=line.split(' = ')[0]
-        value={'policy.id':'128','policy.feature_schema_id':'138',
+        value={'policy.id':'129' if cash else '128','policy.feature_schema_id':'139' if cash else '138',
                'policy.model_digest':digest,'order.max_market_data_age_ns':'2000000000'}.get(key)
         lines.append(f'{key} = {value}' if value else line)
     return '\n'.join(lines)+'\n'
@@ -101,7 +105,8 @@ class FastSource(Source):
     def __init__(self,journal,book,epoch):
         super().__init__('stochastic',journal,book)
         register_epoch(journal,epoch)
-        self.epoch=epoch;self.reset();self.last_sent_bucket=None
+        self.epoch=epoch;self.cash_run=epoch['variant']==CASH_VARIANT
+        self.terminal_reason=None;self.reset();self.last_sent_bucket=None
 
     def reset(self):
         self.indicators=Indicators();self.signals=Signals();self.previous_flags=None
@@ -143,7 +148,7 @@ class FastSource(Source):
         if age>2*NS: self.last_outcome='stale';return None
         if flags is None or self.indicators.count<1200:
             self.last_outcome='warming_up';return None
-        if self.used()>=LIMIT: self.last_outcome='capacity';return None
+        if not self.cash_run and self.used()>=LIMIT: self.last_outcome='capacity';return None
         if self.retry_bar==event_ns:
             self.retry_bar=None
         else:
@@ -156,10 +161,17 @@ class FastSource(Source):
         price=int(Decimal(k['c'])*100)
         stop=self.book.gate(event_ns,price)
         count=self.journal.db.execute('select count(*) from fills').fetchone()[0]
-        if count>=len(self.epoch['previous_orders'])+40:
+        if not self.cash_run and count>=len(self.epoch['previous_orders'])+40:
             stop='capacity'
             with self.journal.db:
                 self.journal.db.execute('insert or ignore into stops values (?,?)',('capacity',event_ns//NS))
+        if self.cash_run and self.book.lots==0 and stop in ('insufficient_balance','capacity','drawdown'):
+            self.terminal_reason=stop
+            with self.journal.db:
+                self.journal.db.execute('insert or ignore into stops values (?,?)',(stop,event_ns//NS))
+            self.journal.finish(event_ns)
+            self.last_outcome=stop
+            return None
         last_exit=self.journal.db.execute('select max(stamp) from fills where side=2').fetchone()[0]
         exit_flag,entry_flag=flags
         if last_exit is not None and event_ns/NS-last_exit<60: entry_flag=0
