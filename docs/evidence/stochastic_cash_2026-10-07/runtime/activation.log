@@ -1,0 +1,51 @@
+applied_index=3508 orders=0 effects=0
+risk account=2 position=0 reserved=0 margin=0
+SETUP generation=2 first_sequence=10001 kill_epoch=1 executor_generation=1 strategy_mode=1
+{
+  "status": "started, verification required",
+  "incarnation": "c8a6a0a78fbf49a099b222124a5d557f",
+  "epoch": {
+    "variant": "stochastic_1s_cash_v1",
+    "start_ns": 1791409624162354155,
+    "end_ns": 9223372036854775807,
+    "previous_orders": [
+      {
+        "id": 16885946128455561303,
+        "side": 1,
+        "price": 11627,
+        "lots": 12,
+        "notional": 13952400,
+        "fee": 27905
+      },
+      {
+        "id": 12153494103251164985,
+        "side": 2,
+        "price": 11623,
+        "lots": 12,
+        "notional": 13947600,
+        "fee": 27896
+      },
+      {
+        "id": 10376154016922758510,
+        "side": 1,
+        "price": 11637,
+        "lots": 12,
+        "notional": 13964400,
+        "fee": 27929
+      },
+      {
+        "id": 14550139650856616054,
+        "side": 2,
+        "price": 11625,
+        "lots": 12,
+        "notional": 13950000,
+        "fee": 27900
+      }
+    ],
+    "previous_cost_bps": 20,
+    "cash": 24869170,
+    "fees": 111630,
+    "volume": 55814400,
+    "cost_bps": 20
+  }
+}

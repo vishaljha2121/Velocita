@@ -1,0 +1,13 @@
+[
+  "._activate.py",
+  "._observability",
+  "._finalize-old.py",
+  "rule-tests/._velocita-v2-alerts.test.yml",
+  "observability/._velocita-v2-paper.json",
+  "observability/._prometheus.yml",
+  "observability/._velocita-v2-hosts.json",
+  "observability/._velocita-v2-cluster.json",
+  "observability/._velocita-v2-raft.json",
+  "observability/._velocita-v2-strategy.json",
+  "rules/._velocita-v2-alerts.yml"
+]

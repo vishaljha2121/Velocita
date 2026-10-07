@@ -20,7 +20,9 @@
   plus historical query assertions needing explicit handling of the new lifecycle
   wrapper. Commit 9a71762 regenerated the dashboards and separately pins the exact
   completed-state query and original readiness fallback. All 15 dashboard tests
-  pass locally. The corrected full native rebuild is required before activation.
+  pass locally. The corrected 9a71762 native rebuild passed all 140 CTest targets
+  before activation. Its packaged image also passed all 25 focused Python tests
+  without a source overlay.
 
-No failed-build image was deployed. Remaining deployment/native results belong
-in DEPLOYED.md once observed, not inferred from these offline checks.
+No failed-build image was deployed. Observed deployment and runtime results are
+recorded in DEPLOYED.md and runtime/.

@@ -1,0 +1,33 @@
+{
+  "checked_at": 1791407814.1157823,
+  "voters": [
+    {
+      "ip": "100.72.127.102",
+      "up": 1.0,
+      "failed": 0.0,
+      "leader": 1.0,
+      "retained": 1456.0,
+      "capacity": 8128.0,
+      "pinned": 1.0
+    },
+    {
+      "ip": "100.84.151.116",
+      "up": 1.0,
+      "failed": 0.0,
+      "leader": 0.0,
+      "retained": 1456.0,
+      "capacity": 8128.0,
+      "pinned": 1.0
+    },
+    {
+      "ip": "100.85.36.22",
+      "up": 1.0,
+      "failed": 0.0,
+      "leader": 0.0,
+      "retained": 1456.0,
+      "capacity": 8128.0,
+      "pinned": 1.0
+    }
+  ],
+  "free_bytes": 71257751552
+}

@@ -4,6 +4,9 @@ import json,os,re,subprocess,sys,time
 home=Path.home();root=home/'velocita-indicator-paper';base=root/'stochastic'
 stage=home/'stochastic-cash-20261007';image=sys.argv[1]
 assert image.startswith('localhost/velocita-v2-shadow:paper-cash-')
+# Transfer source with git archive, not a macOS tar that adds AppleDouble files.
+for folder in (stage/'rules',stage/'observability'):
+    assert not list(folder.rglob('._*')), f'transfer metadata in {folder}'
 def run(cmd):
     r=subprocess.run(cmd,text=True,capture_output=True)
     print(r.stdout,end='',flush=True);print(r.stderr,end='',flush=True)

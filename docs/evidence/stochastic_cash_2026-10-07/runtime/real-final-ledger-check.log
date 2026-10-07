@@ -1,0 +1,7 @@
+REAL_FINAL_LEDGER_READ_ONLY_OK
+velocita_indicator_initial_cash_usd{strategy="stochastic"} 25
+velocita_indicator_completed_reason{strategy="stochastic",reason="duration"} 1
+velocita_indicator_run_state{strategy="stochastic"} 1
+velocita_indicator_ledger_readable{strategy="stochastic"} 1
+velocita_indicator_cash_usd{strategy="stochastic"} 24.86917
+velocita_indicator_equity_usd{strategy="stochastic"} 24.86917

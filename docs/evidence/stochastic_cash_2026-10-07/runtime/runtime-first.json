@@ -1,0 +1,255 @@
+{
+  "checked_at": 1791409894.9598768,
+  "services": {
+    "velocita-paper-stochastic-edge": [
+      "NRestarts=0",
+      "ExecMainStatus=0",
+      "ActiveState=active"
+    ],
+    "velocita-paper-stochastic-gateway": [
+      "NRestarts=0",
+      "ExecMainStatus=0",
+      "ActiveState=active"
+    ],
+    "velocita-paper-indicator-observer": [
+      "NRestarts=0",
+      "ExecMainStatus=0",
+      "ActiveState=active"
+    ],
+    "velocita-v2-prometheus": [
+      "NRestarts=17",
+      "ExecMainStatus=0",
+      "ActiveState=active"
+    ],
+    "velocita-v2-grafana": [
+      "NRestarts=0",
+      "ExecMainStatus=0",
+      "ActiveState=active"
+    ]
+  },
+  "metrics": [
+    "velocita_indicator_initial_cash_usd{strategy=\"stochastic\"} 25",
+    "velocita_indicator_cost_bps{strategy=\"stochastic\"} 20",
+    "velocita_indicator_measured_cost_bps{strategy=\"stochastic\",side=\"buy\"} 100",
+    "velocita_indicator_measured_cost_bps{strategy=\"stochastic\",side=\"sell\"} 98",
+    "velocita_indicator_source_file_age_seconds{strategy=\"stochastic\",source=\"edge\"} 0.7710123062133789",
+    "velocita_indicator_shadow_submitter_ready{strategy=\"stochastic\"} 1",
+    "velocita_indicator_shadow_errors_total{strategy=\"stochastic\"} 0",
+    "velocita_indicator_shadow_agreement_total{strategy=\"stochastic\",result=\"agree\"} 208",
+    "velocita_indicator_shadow_agreement_total{strategy=\"stochastic\",result=\"disagree\"} 0",
+    "velocita_indicator_shadow_tick_to_decision_ms_count{strategy=\"stochastic\"} 208",
+    "velocita_indicator_shadow_market_data_connected{strategy=\"stochastic\"} 1",
+    "velocita_indicator_buy_stop{strategy=\"stochastic\",reason=\"unreconciled\"} 0",
+    "velocita_indicator_source_file_age_seconds{strategy=\"stochastic\",source=\"gateway\"} 0.09501862525939941",
+    "velocita_indicator_gateway_new_risk_stopped{strategy=\"stochastic\"} 0",
+    "velocita_indicator_run_state{strategy=\"stochastic\"} 0",
+    "velocita_indicator_reconciled{strategy=\"stochastic\"} 1",
+    "velocita_indicator_ledger_readable{strategy=\"stochastic\"} 1",
+    "velocita_indicator_cash_usd{strategy=\"stochastic\"} 24.86917",
+    "velocita_indicator_position_sol{strategy=\"stochastic\"} 0.0",
+    "velocita_indicator_ledger_fills_behind{strategy=\"stochastic\"} 0",
+    "velocita_indicator_equity_usd{strategy=\"stochastic\"} 24.86917",
+    "velocita_indicator_variant_net_pnl_usd{strategy=\"stochastic\"} 0.0",
+    "velocita_indicator_variant_volume_usd{strategy=\"stochastic\"} 0.0",
+    "velocita_indicator_variant_fees_usd{strategy=\"stochastic\"} 0.0",
+    "velocita_indicator_variant_order_count{strategy=\"stochastic\"} 0"
+  ],
+  "queries": {
+    "velocita_indicator_cash_usd": [
+      {
+        "metric": {
+          "__name__": "velocita_indicator_cash_usd",
+          "host": "nuc1",
+          "instance": "127.0.0.1:9460",
+          "job": "indicator-paper",
+          "paper_run": "c8a6a0a78fbf49a099b222124a5d557f-cash-v1",
+          "strategy": "stochastic"
+        },
+        "value": [
+          1791409895.008,
+          "24.86917"
+        ]
+      }
+    ],
+    "velocita_indicator_equity_usd": [
+      {
+        "metric": {
+          "__name__": "velocita_indicator_equity_usd",
+          "host": "nuc1",
+          "instance": "127.0.0.1:9460",
+          "job": "indicator-paper",
+          "paper_run": "c8a6a0a78fbf49a099b222124a5d557f-cash-v1",
+          "strategy": "stochastic"
+        },
+        "value": [
+          1791409895.01,
+          "24.86917"
+        ]
+      }
+    ],
+    "velocita_indicator_ledger_readable": [
+      {
+        "metric": {
+          "__name__": "velocita_indicator_ledger_readable",
+          "host": "nuc1",
+          "instance": "127.0.0.1:9460",
+          "job": "indicator-paper",
+          "paper_run": "c8a6a0a78fbf49a099b222124a5d557f-cash-v1",
+          "strategy": "stochastic"
+        },
+        "value": [
+          1791409895.011,
+          "1"
+        ]
+      }
+    ],
+    "velocita_indicator_variant_volume_usd": [
+      {
+        "metric": {
+          "__name__": "velocita_indicator_variant_volume_usd",
+          "host": "nuc1",
+          "instance": "127.0.0.1:9460",
+          "job": "indicator-paper",
+          "paper_run": "c8a6a0a78fbf49a099b222124a5d557f-cash-v1",
+          "strategy": "stochastic"
+        },
+        "value": [
+          1791409895.012,
+          "0"
+        ]
+      }
+    ],
+    "velocita_indicator_run_state": [
+      {
+        "metric": {
+          "__name__": "velocita_indicator_run_state",
+          "host": "nuc1",
+          "instance": "127.0.0.1:9460",
+          "job": "indicator-paper",
+          "paper_run": "c8a6a0a78fbf49a099b222124a5d557f-cash-v1",
+          "strategy": "stochastic"
+        },
+        "value": [
+          1791409895.014,
+          "0"
+        ]
+      }
+    ]
+  },
+  "venue": {
+    "version": 1,
+    "incarnation": "c8a6a0a78fbf49a099b222124a5d557f",
+    "account": 2,
+    "instrument": 2,
+    "venue": 20,
+    "funding": 25000000,
+    "buy_bps": 20,
+    "sell_bps": 20,
+    "stamp": 1791409894.9103932,
+    "failed": false,
+    "cash": 24869170,
+    "lots": 0,
+    "fees": 111630,
+    "buy_volume": 27916800,
+    "sell_volume": 27897600,
+    "committed_through": 2721,
+    "last_fill_stamp": 1791405206.5723574,
+    "pending_reports": 0,
+    "capacity": 256,
+    "orders": [
+      {
+        "id": 16885946128455561303,
+        "side": 1,
+        "price": 11627,
+        "lots": 12,
+        "notional": 13952400,
+        "fee": 27905
+      },
+      {
+        "id": 12153494103251164985,
+        "side": 2,
+        "price": 11623,
+        "lots": 12,
+        "notional": 13947600,
+        "fee": 27896
+      },
+      {
+        "id": 10376154016922758510,
+        "side": 1,
+        "price": 11637,
+        "lots": 12,
+        "notional": 13964400,
+        "fee": 27929
+      },
+      {
+        "id": 14550139650856616054,
+        "side": 2,
+        "price": 11625,
+        "lots": 12,
+        "notional": 13950000,
+        "fee": 27900
+      }
+    ]
+  },
+  "grafana_health": {
+    "database": "ok",
+    "version": "13.1.3",
+    "commit": "45a27d64b64a82d666b06aa5c5bb3521587edb0d"
+  },
+  "dashboard_sha256": "a2591305136f54a787c7e78197424c75c61a597183c6524c3b1cece6211310d9",
+  "voters": [
+    {
+      "ip": "100.72.127.102",
+      "metrics": [
+        "velocita_v2_up{host=\"nuc1\",node=\"1\"} 1",
+        "velocita_v2_role{host=\"nuc1\",node=\"1\",role=\"none\"} 0",
+        "velocita_v2_role{host=\"nuc1\",node=\"1\",role=\"follower\"} 1",
+        "velocita_v2_role{host=\"nuc1\",node=\"1\",role=\"candidate\"} 0",
+        "velocita_v2_role{host=\"nuc1\",node=\"1\",role=\"leader\"} 0",
+        "velocita_v2_failed{host=\"nuc1\",node=\"1\"} 0"
+      ]
+    },
+    {
+      "ip": "100.84.151.116",
+      "metrics": [
+        "velocita_v2_up{host=\"pi\",node=\"2\"} 1",
+        "velocita_v2_role{host=\"pi\",node=\"2\",role=\"none\"} 0",
+        "velocita_v2_role{host=\"pi\",node=\"2\",role=\"follower\"} 1",
+        "velocita_v2_role{host=\"pi\",node=\"2\",role=\"candidate\"} 0",
+        "velocita_v2_role{host=\"pi\",node=\"2\",role=\"leader\"} 0",
+        "velocita_v2_failed{host=\"pi\",node=\"2\"} 0"
+      ]
+    },
+    {
+      "ip": "100.85.36.22",
+      "metrics": [
+        "velocita_v2_up{host=\"nuc2\",node=\"3\"} 1",
+        "velocita_v2_role{host=\"nuc2\",node=\"3\",role=\"none\"} 0",
+        "velocita_v2_role{host=\"nuc2\",node=\"3\",role=\"follower\"} 0",
+        "velocita_v2_role{host=\"nuc2\",node=\"3\",role=\"candidate\"} 0",
+        "velocita_v2_role{host=\"nuc2\",node=\"3\",role=\"leader\"} 1",
+        "velocita_v2_failed{host=\"nuc2\",node=\"3\"} 0"
+      ]
+    }
+  ],
+  "alerts": [
+    {
+      "name": "VelocitaMdStreamDbLarge",
+      "state": "firing"
+    },
+    {
+      "name": "VelocitaAlertDeliveryFailing",
+      "state": "firing"
+    },
+    {
+      "name": "VelocitaGatewayHeartbeatStale",
+      "state": "firing"
+    },
+    {
+      "name": "VelocitaPaperObserverDown",
+      "state": "pending"
+    }
+  ],
+  "start_ns": 1791409624162354155,
+  "no_scheduled_stop": true
+}
