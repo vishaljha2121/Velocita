@@ -1,0 +1,553 @@
+{
+  "checked_at": "2026-10-07T22:38:51.042309+00:00",
+  "containers": [
+    {
+      "name": "velocita-v2-node-exporter",
+      "image": "docker.io/prom/node-exporter:v1.10.2",
+      "image_id": "696e69e899e068f4df3ebafc08a3fd025eed498271ce6160dad97097311fa574",
+      "started_at": "2026-09-28T16:38:02.115138031-04:00",
+      "source_labels": {},
+      "mounts": [
+        {
+          "source": "/sys",
+          "destination": "/host/sys",
+          "read_write": false
+        },
+        {
+          "source": "/",
+          "destination": "/rootfs",
+          "read_write": false
+        },
+        {
+          "source": "/home/velocitas/velocita-v2/textfile",
+          "destination": "/textfile",
+          "read_write": false
+        },
+        {
+          "source": "/proc",
+          "destination": "/host/proc",
+          "read_write": false
+        }
+      ]
+    },
+    {
+      "name": "velocita-md-stream",
+      "image": "docker.io/library/python:3.12-slim",
+      "image_id": "9e87977b867847e186d066f531ef783b006d582a985c341c269446088d90f2c4",
+      "started_at": "2026-10-01T14:27:21.044072615-04:00",
+      "source_labels": {},
+      "mounts": [
+        {
+          "source": "/home/velocitas/src/aeron-raft-pi/model",
+          "destination": "/model",
+          "read_write": false
+        },
+        {
+          "source": "/home/velocitas/velocita-md",
+          "destination": "/data",
+          "read_write": true
+        },
+        {
+          "source": "/home/velocitas/velocita-v2/textfile",
+          "destination": "/textfile",
+          "read_write": true
+        }
+      ]
+    },
+    {
+      "name": "velocita-paper-stochastic-node",
+      "image": "localhost/velocita-v2:m3-cp081",
+      "image_id": "42cecefe380808d5daf7eb59f7b358908795a7e03ef93607c8b0d7461cb6acbb",
+      "started_at": "2026-10-07T15:03:37.125512655-04:00",
+      "source_labels": {
+        "org.velocita.source_commit": "30f8ce8e221698f7f1e409f0563ff49d1cd8ab46"
+      },
+      "mounts": [
+        {
+          "source": "/home/velocitas/velocita-indicator-paper/stochastic/data",
+          "destination": "/var/lib/velocita-v2",
+          "read_write": true
+        },
+        {
+          "source": "/home/velocitas/velocita-indicator-paper/stochastic/config",
+          "destination": "/etc/velocita",
+          "read_write": false
+        }
+      ]
+    },
+    {
+      "name": "velocita-paper-stochastic-exporter",
+      "image": "localhost/velocita-v2:m3-cp081",
+      "image_id": "42cecefe380808d5daf7eb59f7b358908795a7e03ef93607c8b0d7461cb6acbb",
+      "started_at": "2026-10-07T15:03:37.147568426-04:00",
+      "source_labels": {
+        "org.velocita.source_commit": "30f8ce8e221698f7f1e409f0563ff49d1cd8ab46"
+      },
+      "mounts": [
+        {
+          "source": "/home/velocitas/velocita-indicator-paper/stochastic/data",
+          "destination": "/var/lib/velocita-v2",
+          "read_write": false
+        }
+      ]
+    },
+    {
+      "name": "velocita-paper-stochastic-gateway",
+      "image": "localhost/velocita-v2:paper-7297bd5",
+      "image_id": "8bec1a44fdce89ca7e9a2d40493844d8768b0e93ed14d268123a286e89038cc9",
+      "started_at": "2026-10-07T17:47:57.053029379-04:00",
+      "source_labels": {
+        "org.velocita.source_commit": "7297bd56f95ce33a4d3677d6d215592048d78789"
+      },
+      "mounts": [
+        {
+          "source": "/home/velocitas/velocita-indicator-paper/stochastic/gateway",
+          "destination": "/state",
+          "read_write": true
+        },
+        {
+          "source": "/home/velocitas/velocita-indicator-paper/stochastic/config/catalog.bin",
+          "destination": "/etc/velocita/catalog.bin",
+          "read_write": false
+        }
+      ]
+    },
+    {
+      "name": "velocita-paper-stochastic-edge",
+      "image": "localhost/velocita-v2-shadow:paper-cash-9a71762",
+      "image_id": "edf15c640f86a4fe886d087916b762ab1dde013daf1a8be7a5ea6bca35b5b65a",
+      "started_at": "2026-10-07T17:47:59.9060922-04:00",
+      "source_labels": {
+        "org.velocita.source_commit": "9a717627b3e1d3971cb889a6517252a45fc45179"
+      },
+      "mounts": [
+        {
+          "source": "/home/velocitas/velocita-indicator-paper/stochastic/config",
+          "destination": "/config",
+          "read_write": false
+        },
+        {
+          "source": "/home/velocitas/velocita-indicator-paper/stochastic/edge",
+          "destination": "/edge",
+          "read_write": true
+        },
+        {
+          "source": "/home/velocitas/velocita-indicator-paper/stochastic/gateway",
+          "destination": "/venue",
+          "read_write": false
+        }
+      ]
+    },
+    {
+      "name": "velocita-paper-indicator-observer",
+      "image": "localhost/velocita-v2-shadow:paper-cash-9a71762",
+      "image_id": "edf15c640f86a4fe886d087916b762ab1dde013daf1a8be7a5ea6bca35b5b65a",
+      "started_at": "2026-10-07T17:48:15.793213093-04:00",
+      "source_labels": {
+        "org.velocita.source_commit": "9a717627b3e1d3971cb889a6517252a45fc45179"
+      },
+      "mounts": [
+        {
+          "source": "/home/velocitas/velocita-indicator-paper/observer.json",
+          "destination": "/config/observer.json",
+          "read_write": false
+        },
+        {
+          "source": "/home/velocitas/velocita-indicator-paper/stochastic/edge",
+          "destination": "/runs/stochastic/edge",
+          "read_write": false
+        },
+        {
+          "source": "/home/velocitas/velocita-indicator-paper/stochastic/gateway",
+          "destination": "/runs/stochastic/gateway",
+          "read_write": false
+        }
+      ]
+    },
+    {
+      "name": "velocita-v2-prometheus",
+      "image": "docker.io/prom/prometheus:v3.13.2",
+      "image_id": "8da6d95a8747c08872fbffa86d35a9c39433cbe908ce8e5939ad34087cceac86",
+      "started_at": "2026-10-07T17:49:56.235717386-04:00",
+      "source_labels": {},
+      "mounts": [
+        {
+          "source": "/home/velocitas/.local/share/containers/storage/volumes/velocita-v2-prometheus-data/_data",
+          "destination": "/prometheus",
+          "read_write": true
+        },
+        {
+          "source": "/home/velocitas/stochastic-cash-20261007/observability/prometheus.yml",
+          "destination": "/etc/prometheus/prometheus.yml",
+          "read_write": false
+        },
+        {
+          "source": "/home/velocitas/stochastic-cash-20261007/rules",
+          "destination": "/etc/prometheus/rules",
+          "read_write": false
+        }
+      ]
+    },
+    {
+      "name": "velocita-ntfy",
+      "image": "docker.io/binwiederhier/ntfy:v2.25.0",
+      "image_id": "8cc00c90b55220de3225c0157b4f327a71975616561843f5ac03aea9c726df11",
+      "started_at": "2026-10-07T18:00:59.578790266-04:00",
+      "source_labels": {},
+      "mounts": [
+        {
+          "source": "/home/velocitas/.local/share/containers/storage/volumes/velocita-ntfy-data/_data",
+          "destination": "/var/lib/ntfy",
+          "read_write": true
+        },
+        {
+          "source": "/home/velocitas/src/aeron-raft-pi/deploy/v2/alerting/ntfy/templates",
+          "destination": "/etc/ntfy/templates",
+          "read_write": false
+        },
+        {
+          "source": "/home/velocitas/src/aeron-raft-pi/deploy/v2/alerting/ntfy/server.yml",
+          "destination": "/etc/ntfy/server.yml",
+          "read_write": false
+        }
+      ]
+    },
+    {
+      "name": "velocita-v2-alertmanager",
+      "image": "docker.io/prom/alertmanager:v0.34.1",
+      "image_id": "53622b714941158bc20cc92a7571aef515556218eef914b7b8ec5b2a0cb6f607",
+      "started_at": "2026-10-07T18:02:15.791855444-04:00",
+      "source_labels": {},
+      "mounts": [
+        {
+          "source": "/home/velocitas/.local/share/containers/storage/volumes/velocita-v2-alertmanager-data/_data",
+          "destination": "/alertmanager",
+          "read_write": true
+        },
+        {
+          "source": "/home/velocitas/src/aeron-raft-pi/deploy/v2/alerting/alertmanager.yml",
+          "destination": "/etc/alertmanager/alertmanager.yml",
+          "read_write": false
+        }
+      ]
+    },
+    {
+      "name": "velocita-v2-grafana",
+      "image": "docker.io/grafana/grafana:13.1.3",
+      "image_id": "8b5e93ab63f515a9d1d0eea03d99e5896b09074996164c6a500fc713c1d2d451",
+      "started_at": "2026-10-07T18:33:33.533320905-04:00",
+      "source_labels": {},
+      "mounts": [
+        {
+          "source": "/home/velocitas/.local/share/containers/storage/volumes/velocita-v2-grafana-data/_data",
+          "destination": "/var/lib/grafana",
+          "read_write": true
+        },
+        {
+          "source": "/home/velocitas/src/aeron-raft-pi/deploy/v2/observability/grafana/provisioning",
+          "destination": "/etc/grafana/provisioning",
+          "read_write": false
+        },
+        {
+          "source": "/home/velocitas/stochastic-cash-20261007/observability",
+          "destination": "/etc/grafana/dashboards",
+          "read_write": false
+        }
+      ]
+    }
+  ],
+  "config_hashes": {
+    ".config/systemd/user/velocita-paper-stochastic-edge.service": "d014c26e650584b6d755fb17d5493e1b790d22dd5eae8d7bc09d826d9bb30b47",
+    ".config/systemd/user/velocita-v2-alertmanager.service": "b015bf892a2be5b223a7b4fa129ef28fbca3f4a5375e54e9e9f0198790952467",
+    ".config/systemd/user/velocita-v2-node-exporter.service": "1ebff85ac29aba3e50967489650dd813d41bc57b2b64b9f307afe5e74ded2bac",
+    ".config/systemd/user/velocita-md-archive.service": "1f8cc7c3608c60348e775f46f4f60cbdbed6a772192507369c2b7dd21c0f9963",
+    ".config/systemd/user/velocita-paper-sma-node.service": "f0bb3e23ef18e0ab4e0b2968d2715f5f127bcf8550e575dd4f9ef0555328af87",
+    ".config/systemd/user/velocita-ntfy.service": "018493ab8e265a088f4fa3a76ca3645288cb3dacb7ee555d3d29b464d22179c0",
+    ".config/systemd/user/velocita-v2-secrets-check.service": "7fe47031b0b2061769f653ca36044c20008ff6af2a1494b644cb80d8a201df0c",
+    ".config/systemd/user/velocita-v2-prometheus.service": "e66cb97ccaa76917cd4852e3f5c54e5e16165241da7dfda5df6a3a1dd94c01fd",
+    ".config/systemd/user/velocita-v2-node@.service": "3cab40d4d18f40acdacbfb795d88deb2731e95ffbb4bcb6eaa57cff7a8ebbb79",
+    ".config/systemd/user/velocita-paper-stochastic-node.service": "d976b6ae924d8451cbabe6b0573b7ae4f4abad49de36fa4039b8356d9a67b45f",
+    ".config/systemd/user/velocita-paper-stochastic-gateway.service": "6c29718766e0c243fa39e4b2595d5d76275945588c388a2fcc3ba771dd1e53f0",
+    ".config/systemd/user/velocita-paper-sma-gateway.service": "53d70dcd1e3e0f13a1af3c22ac593b610c81f37e09b280c3dacff9fd70f87a63",
+    ".config/systemd/user/velocita-v2-shadow-edge.service": "a13f1e1bcd039c1bbb613b732c52fb969d9a50c86e33889cf56e63be1a21c842",
+    ".config/systemd/user/velocita-md-stream.service": "5b727608b835ecfb9660935418da348ba35d18ba4cc3a788f23e02faea91761a",
+    ".config/systemd/user/velocita-v2-exporter.service": "e1878244a6049a620195554604a6bd7c0bb9be6b984a268deb892296c8f7d854",
+    ".config/systemd/user/velocita-paper-sma-exporter.service": "4698297a25d39f12e0c1655a6ec1fc833c5d03e434a931d6fbe7abe5de15fafe",
+    ".config/systemd/user/velocita-paper-sma-edge.service": "3407365c029649dba452c29ae1a27d916d7459e2238b753bdbcf9e56eedb6196",
+    ".config/systemd/user/velocita-paper-indicator-observer.service": "906f7ce6749dfca740c6f66dcb2755e72eae706724e7ac20b0ffc8c907ceac1a",
+    ".config/systemd/user/velocita-v2-gateway.service": "841eac893d1d9935c32e80725296d6f84e7421c9e5229b0cd27067b6b766c26a",
+    ".config/systemd/user/velocita-v2-grafana.service": "fd05a150f2348ebe7efd0e9ec8f6c175f21df9d898498e9046f669755cabb28f",
+    ".config/systemd/user/velocita-paper-stochastic-exporter.service": "e4938b8b7ebeec77bd2d1091c85e71a86a0509e5282f7184f3a07996d35dc43a",
+    ".config/systemd/user/velocita-v2-shadow-setup.service": "4716c48809e5935e2b03d788d1c99968cd963180f9961e71560e252090b03243",
+    ".config/systemd/user/velocita-heartbeat.service": "45a82c6b836e3b0c76961163a4f491225c93399bd0e5c0aff934a84aafe7ea7c",
+    "velocita-indicator-paper/stochastic/config/profile-cash.json": "88805e4e626ba9e791a0d69db1554cef070a19d6f690b0d0d7f0132e4880904d",
+    "velocita-indicator-paper/stochastic/edge/indicator-cash.program": "5e70f2fb6b301bf7b11c07b5aa94a6d431869f4219363a05d954e9b216c22302",
+    "velocita-indicator-paper/observer.json": "1f7319cf32af5a981b37c32ee0d86451e0b2a88d1418640c94cef81581f64d06",
+    "stochastic-cash-20261007/observability/prometheus.yml": "fa6deefe13a9728c372697cc9dfa0cb4f4bb1c87c663e99fb913426a821b84cd",
+    "stochastic-cash-20261007/rules/velocita-v2-alerts.yml": "37c685d1a12e8dabb1458aec5137986336b1b6fa4c8ba29becf6bd85ad540ed3"
+  },
+  "profile": {
+    "mode": "paper",
+    "strategy": "stochastic",
+    "incarnation": "c8a6a0a78fbf49a099b222124a5d557f",
+    "catalog_root": "3b8b7f798e31c6ce39ef6a88ba44fd2644ec8c6e4792ed7beb227fd14a532dfe",
+    "start_ns": 1791409624162354155,
+    "stop_ns": 0,
+    "program": "/edge/indicator-cash.program",
+    "ledger": "/edge/ledger-cash-v1.db",
+    "venue_report": "/venue/venue.json",
+    "edge_metrics": "/edge/edge.prom",
+    "gateway_metrics": "/venue/gateway.prom",
+    "epoch": {
+      "variant": "stochastic_1s_cash_v1",
+      "start_ns": 1791409624162354155,
+      "end_ns": 9223372036854775807,
+      "previous_orders": [
+        {
+          "id": 16885946128455561303,
+          "side": 1,
+          "price": 11627,
+          "lots": 12,
+          "notional": 13952400,
+          "fee": 27905
+        },
+        {
+          "id": 12153494103251164985,
+          "side": 2,
+          "price": 11623,
+          "lots": 12,
+          "notional": 13947600,
+          "fee": 27896
+        },
+        {
+          "id": 10376154016922758510,
+          "side": 1,
+          "price": 11637,
+          "lots": 12,
+          "notional": 13964400,
+          "fee": 27929
+        },
+        {
+          "id": 14550139650856616054,
+          "side": 2,
+          "price": 11625,
+          "lots": 12,
+          "notional": 13950000,
+          "fee": 27900
+        }
+      ],
+      "previous_cost_bps": 20,
+      "cash": 24869170,
+      "fees": 111630,
+      "volume": 55814400,
+      "cost_bps": 20
+    }
+  },
+  "paper_metrics": [
+    "velocita_indicator_initial_cash_usd{strategy=\"stochastic\"} 25",
+    "velocita_indicator_variant_start_timestamp_seconds{strategy=\"stochastic\"} 1791409624.1623542",
+    "velocita_indicator_shadow_ticks_total{strategy=\"stochastic\"} 3049",
+    "velocita_indicator_shadow_errors_total{strategy=\"stochastic\"} 0",
+    "velocita_indicator_shadow_agreement_total{strategy=\"stochastic\",result=\"agree\"} 3049",
+    "velocita_indicator_shadow_agreement_total{strategy=\"stochastic\",result=\"disagree\"} 0",
+    "velocita_indicator_buy_stop{strategy=\"stochastic\",reason=\"unreconciled\"} 0",
+    "velocita_indicator_gateway_new_risk_stopped{strategy=\"stochastic\"} 0",
+    "velocita_indicator_run_state{strategy=\"stochastic\"} 0",
+    "velocita_indicator_reconciled{strategy=\"stochastic\"} 1",
+    "velocita_indicator_ledger_readable{strategy=\"stochastic\"} 1",
+    "velocita_indicator_cash_usd{strategy=\"stochastic\"} 10.886238",
+    "velocita_indicator_position_sol{strategy=\"stochastic\"} 0.12",
+    "velocita_indicator_ledger_fills_behind{strategy=\"stochastic\"} 0",
+    "velocita_indicator_equity_usd{strategy=\"stochastic\"} 24.778398",
+    "velocita_indicator_variant_net_pnl_usd{strategy=\"stochastic\"} -0.090772",
+    "velocita_indicator_variant_volume_usd{strategy=\"stochastic\"} 41.6652",
+    "velocita_indicator_variant_fees_usd{strategy=\"stochastic\"} 0.083332",
+    "velocita_indicator_variant_order_count{strategy=\"stochastic\"} 3"
+  ],
+  "alerts": [
+    {
+      "labels": {
+        "alertname": "VelocitaMdStreamDbLarge",
+        "host": "nuc1",
+        "instance": "100.72.127.102:9110",
+        "job": "node",
+        "severity": "warning"
+      },
+      "annotations": {
+        "description": "Retention keeps about 5 days (~5.5 GB). Check VelocitaMdBackupNotAcked and the velocita-md-archive journal. If most of the file is free pages (velocita_md_stream_db_free_bytes), compact it with md-stream stopped (runbook).",
+        "summary": "stream.db on nuc1 is larger than 8 GB"
+      },
+      "state": "firing",
+      "activeAt": "2026-10-07T21:49:59.317630599Z",
+      "value": "2.0789567488e+10"
+    },
+    {
+      "labels": {
+        "alertname": "VelocitaPaperAccountUnreconciled",
+        "host": "nuc1",
+        "instance": "127.0.0.1:9460",
+        "job": "indicator-paper",
+        "paper_run": "c8a6a0a78fbf49a099b222124a5d557f-cash-v1",
+        "severity": "critical",
+        "strategy": "stochastic"
+      },
+      "annotations": {
+        "description": "The venue report is stale, has pending reports, or does not add up. The strategy holds on every bar while this lasts: it will not buy and it CANNOT EXIT an open position. Check the gateway and ~/velocita-indicator-paper/stochastic/gateway/venue.json.",
+        "summary": "The stochastic paper account does not reconcile"
+      },
+      "state": "pending",
+      "activeAt": "2026-10-07T22:38:49.317630599Z",
+      "value": "0e+00"
+    }
+  ],
+  "targets": [
+    {
+      "labels": {
+        "host": "nuc1",
+        "instance": "127.0.0.1:9460",
+        "job": "active-paper-pipeline",
+        "paper_run": "c8a6a0a78fbf49a099b222124a5d557f-cash-v1"
+      },
+      "health": "up",
+      "error": ""
+    },
+    {
+      "labels": {
+        "host": "nuc1",
+        "instance": "127.0.0.1:9093",
+        "job": "alertmanager"
+      },
+      "health": "up",
+      "error": ""
+    },
+    {
+      "labels": {
+        "host": "nuc1",
+        "instance": "127.0.0.1:9460",
+        "job": "indicator-paper",
+        "paper_run": "c8a6a0a78fbf49a099b222124a5d557f-cash-v1"
+      },
+      "health": "up",
+      "error": ""
+    },
+    {
+      "labels": {
+        "host": "nuc1",
+        "instance": "100.72.127.102:9110",
+        "job": "node"
+      },
+      "health": "up",
+      "error": ""
+    },
+    {
+      "labels": {
+        "host": "pi",
+        "instance": "100.84.151.116:9110",
+        "job": "node"
+      },
+      "health": "up",
+      "error": ""
+    },
+    {
+      "labels": {
+        "host": "nuc2",
+        "instance": "100.85.36.22:9110",
+        "job": "node"
+      },
+      "health": "up",
+      "error": ""
+    },
+    {
+      "labels": {
+        "instance": "127.0.0.1:9090",
+        "job": "prometheus"
+      },
+      "health": "up",
+      "error": ""
+    },
+    {
+      "labels": {
+        "host": "nuc1",
+        "instance": "100.72.127.102:11410",
+        "job": "velocita-v2",
+        "paper_run": "c8a6a0a78fbf49a099b222124a5d557f-cash-v1",
+        "strategy": "stochastic"
+      },
+      "health": "up",
+      "error": ""
+    },
+    {
+      "labels": {
+        "host": "pi",
+        "instance": "100.84.151.116:11410",
+        "job": "velocita-v2",
+        "paper_run": "c8a6a0a78fbf49a099b222124a5d557f-cash-v1",
+        "strategy": "stochastic"
+      },
+      "health": "up",
+      "error": ""
+    },
+    {
+      "labels": {
+        "host": "nuc2",
+        "instance": "100.85.36.22:11410",
+        "job": "velocita-v2",
+        "paper_run": "c8a6a0a78fbf49a099b222124a5d557f-cash-v1",
+        "strategy": "stochastic"
+      },
+      "health": "up",
+      "error": ""
+    }
+  ],
+  "confirmed_fills": [
+    {
+      "side": 1,
+      "price_cents": 11627,
+      "lots": 12,
+      "fee_micros": 27905,
+      "timestamp": 1791404043.3675792
+    },
+    {
+      "side": 2,
+      "price_cents": 11623,
+      "lots": 12,
+      "fee_micros": 27896,
+      "timestamp": 1791404698.496716
+    },
+    {
+      "side": 1,
+      "price_cents": 11637,
+      "lots": 12,
+      "fee_micros": 27929,
+      "timestamp": 1791405017.678335
+    },
+    {
+      "side": 2,
+      "price_cents": 11625,
+      "lots": 12,
+      "fee_micros": 27900,
+      "timestamp": 1791405206.5723574
+    },
+    {
+      "side": 1,
+      "price_cents": 11574,
+      "lots": 12,
+      "fee_micros": 27778,
+      "timestamp": 1791410491.6437128
+    },
+    {
+      "side": 2,
+      "price_cents": 11569,
+      "lots": 12,
+      "fee_micros": 27766,
+      "timestamp": 1791411360.6680772
+    },
+    {
+      "side": 1,
+      "price_cents": 11578,
+      "lots": 12,
+      "fee_micros": 27788,
+      "timestamp": 1791411761.8142323
+    }
+  ]
+}

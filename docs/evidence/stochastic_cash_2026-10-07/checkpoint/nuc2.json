@@ -1,0 +1,81 @@
+{
+  "checked_at": "2026-10-07T22:39:06.776405+00:00",
+  "containers": [
+    {
+      "name": "velocita-v2-node-exporter",
+      "image": "docker.io/prom/node-exporter:v1.10.2",
+      "image_id": "696e69e899e068f4df3ebafc08a3fd025eed498271ce6160dad97097311fa574",
+      "started_at": "2026-09-28T18:07:06.584274517-04:00",
+      "source_labels": {},
+      "mounts": [
+        {
+          "source": "/home/velocitas/velocita-v2/textfile",
+          "destination": "/textfile",
+          "read_write": false
+        },
+        {
+          "source": "/proc",
+          "destination": "/host/proc",
+          "read_write": false
+        },
+        {
+          "source": "/sys",
+          "destination": "/host/sys",
+          "read_write": false
+        },
+        {
+          "source": "/",
+          "destination": "/rootfs",
+          "read_write": false
+        }
+      ]
+    },
+    {
+      "name": "velocita-paper-stochastic-node",
+      "image": "localhost/velocita-v2:m3-cp081",
+      "image_id": "6f5d627f8fa8626c6644e7cc31a967a83a8eddbf54f3dd7cbeac36825b7c229b",
+      "started_at": "2026-10-07T15:04:03.075420685-04:00",
+      "source_labels": {
+        "org.velocita.source_commit": "30f8ce8e221698f7f1e409f0563ff49d1cd8ab46"
+      },
+      "mounts": [
+        {
+          "source": "/home/velocitas/velocita-indicator-paper/stochastic/config",
+          "destination": "/etc/velocita",
+          "read_write": false
+        },
+        {
+          "source": "/home/velocitas/velocita-indicator-paper/stochastic/data",
+          "destination": "/var/lib/velocita-v2",
+          "read_write": true
+        }
+      ]
+    },
+    {
+      "name": "velocita-paper-stochastic-exporter",
+      "image": "localhost/velocita-v2:m3-cp081",
+      "image_id": "6f5d627f8fa8626c6644e7cc31a967a83a8eddbf54f3dd7cbeac36825b7c229b",
+      "started_at": "2026-10-07T15:04:03.126484986-04:00",
+      "source_labels": {
+        "org.velocita.source_commit": "30f8ce8e221698f7f1e409f0563ff49d1cd8ab46"
+      },
+      "mounts": [
+        {
+          "source": "/home/velocitas/velocita-indicator-paper/stochastic/data",
+          "destination": "/var/lib/velocita-v2",
+          "read_write": false
+        }
+      ]
+    }
+  ],
+  "config_hashes": {
+    ".config/systemd/user/velocita-paper-stochastic-exporter.service": "14bda9615a031bba3f4411dca4d18352fe7c189eee6418a3a9a354e0d11a0c3a",
+    ".config/systemd/user/velocita-v2-node-exporter.service": "1ebff85ac29aba3e50967489650dd813d41bc57b2b64b9f307afe5e74ded2bac",
+    ".config/systemd/user/velocita-v2-node@.service": "3cab40d4d18f40acdacbfb795d88deb2731e95ffbb4bcb6eaa57cff7a8ebbb79",
+    ".config/systemd/user/velocita-paper-sma-exporter.service": "ccea7f1d3f7b19e858c1b789e790ad5fca49d8071ae6b1ce00df6d3d9aa857a0",
+    ".config/systemd/user/velocita-v2-exporter.service": "e1878244a6049a620195554604a6bd7c0bb9be6b984a268deb892296c8f7d854",
+    ".config/systemd/user/velocita-paper-stochastic-node.service": "356ef4670b8476375ce84884556197e8a8f098d5ae91cb52cf10814b1467f3f0",
+    ".config/systemd/user/velocita-paper-sma-node.service": "25d09b930c4fc4a431fde641a843146bee61d009e9b4ea8bd1996a264016e0ce",
+    ".config/systemd/user/velocita-v2-secrets-check.service": "7fe47031b0b2061769f653ca36044c20008ff6af2a1494b644cb80d8a201df0c"
+  }
+}
