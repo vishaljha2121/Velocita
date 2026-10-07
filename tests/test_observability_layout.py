@@ -86,7 +86,11 @@ def content_panels(dashboard):
 
 
 def exprs(dashboard):
-    return [t["expr"] for p in content_panels(dashboard) for t in p.get("targets", [])]
+    return [legacy_expression(t["expr"]) for p in content_panels(dashboard) for t in p.get("targets", [])]
+
+
+def legacy_expression(expression):
+    return expression.replace('strategy="stochastic",', '').replace('{strategy="stochastic"}', '')
 
 
 PAPER_METRICS = {
@@ -104,7 +108,7 @@ PAPER_BOOK_METRICS = {
     "velocita_paper_week_loss_usd", "velocita_paper_weekly_loss_cap_usd", "velocita_paper_expected_week_volume_usd",
     "velocita_paper_expected_week_loss_usd", "velocita_paper_buys_stopped", "velocita_paper_buys_withheld_total",
 }
-PAPER_STAGES = {"decision_to_authorized", "authorized_to_proof", "proof_to_sent", "sent_to_fill", "fill_to_committed"}
+PAPER_STAGES = {"authorized_to_proof", "proof_to_sent", "sent_to_fill", "fill_to_committed"}
 
 
 class DashboardsAreGeneratedAndLoadable(unittest.TestCase):
@@ -153,7 +157,7 @@ class DashboardsAreGeneratedAndLoadable(unittest.TestCase):
     def test_no_pre_split_panel_or_query_was_lost(self):
         before = json.loads(PRE_SPLIT.read_text())["panels"]
         self.assertEqual(len(before), 66)
-        after = {(p["type"], p["title"], tuple(t["expr"] for t in p.get("targets", [])))
+        after = {(p["type"], p["title"], tuple(legacy_expression(t["expr"]) for t in p.get("targets", [])))
                  for d in dashboards().values() for p in content_panels(d)}
         for panel in before:
             self.assertIn((panel["type"], panel["title"], tuple(panel["exprs"])), after,
@@ -213,7 +217,7 @@ class DashboardsAreGeneratedAndLoadable(unittest.TestCase):
     def test_new_risk_stopped_is_the_first_and_widest_paper_panel(self):
         paper = next(d for d in dashboards().values() if d["uid"] == "velocita-v2-paper")
         first = content_panels(paper)[0]
-        self.assertEqual(first["targets"][0]["expr"], "max(velocita_gateway_new_risk_stopped)")
+        self.assertEqual(first["targets"][0]["expr"], 'max(velocita_gateway_new_risk_stopped{strategy="stochastic"})')
         self.assertEqual((first["gridPos"]["x"], first["gridPos"]["y"]), (0, 1))
         same_line = [p for p in content_panels(paper) if p["gridPos"]["y"] == first["gridPos"]["y"]]
         self.assertEqual(max(p["gridPos"]["w"] for p in same_line), first["gridPos"]["w"])

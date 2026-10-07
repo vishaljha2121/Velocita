@@ -472,6 +472,8 @@ def run_once(socket_factory: Callable[[], object], submitter_argv: Sequence[str]
             return "submitter stopped answering" if code is None else f"submitter exited with code {code}"
         if reply.startswith("DECISION "):
             decision = parse_decision(reply)
+            if hasattr(source, "observe_decision"):
+                source.observe_decision(decision, tick)
             metrics.observe(decision, tick_receive_ns=tick.receive_ns,
                             expected_rule=tick.expected_rule, age_ns=tick.age_ns)
             result.decisions += 1

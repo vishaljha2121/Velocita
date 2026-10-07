@@ -54,7 +54,10 @@ class AddressesAgree(unittest.TestCase):
 
     def test_the_webhook_reaches_ntfy_on_nuc1s_tailscale_address_and_port(self):
         host, port = re.fullmatch(r"http://([\d.]+):(\d+)/.*", WEBHOOK).groups()
-        nuc1 = one(r'targets: \["([\d.]+):9410"\]\n\s+labels: \{host: nuc1\}', PROMETHEUS.read_text(), "nuc1 address")
+        addresses = set(re.findall(r'targets: \["([\d.]+):\d+"\]\n\s+labels: \{host: nuc1[,}]', PROMETHEUS.read_text()))
+        addresses.discard("127.0.0.1")
+        self.assertEqual(len(addresses), 1, addresses)
+        nuc1 = addresses.pop()
         self.assertEqual(host, nuc1)
         self.assertEqual(one(r"NTFY_LISTEN_HTTP=\$\{VELOCITA_TAILSCALE_IP\}:(\d+)", NTFY_UNIT.read_text(), "ntfy port"), port)
         self.assertEqual(one(r"^VELOCITA_NTFY_BASE_URL=(\S+)$", HOST_ENV.read_text(), "base url"), f"http://{host}:{port}")

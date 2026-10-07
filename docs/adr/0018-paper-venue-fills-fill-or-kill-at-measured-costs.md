@@ -90,3 +90,31 @@ paper trading, not hidden.
 - Finding 1 must be fixed before any live canary (roadmap M7).
 - The paper venue links the test-only simulator library for wire rendering.
   `v2_venue_wire.cpp` should move to its own library.
+
+## Amendment 2026-10-07: the stochastic paper run departs from two terms of this ADR
+
+**Status: deviation recorded; the owner has not yet accepted or rejected it.**
+
+The stochastic paper run started on 2026-10-07
+(`docs/evidence/dual_indicator_paper_2026-10-07/`) keeps fill-or-kill and the bounded,
+persisted paper venue. It departs from this ADR in two ways:
+
+| Term of this ADR | What the run does | Evidence for the run's value |
+|---|---|---|
+| Per-side cost is the **measured** True Markets cost (SOL: 100 bp buy, 98 bp sell) | 30 bp per side: 20 bp service fee plus 10 bp execution allowance | Only the sell-side service fee has live evidence (`docs/evidence/cost_recheck_2026-10-05/`); the rest is assumed |
+| The limit, and so the fill price, is the True Markets reference price | The close of the last completed Binance SOLUSDT five-minute bar | None: it is a proxy from another venue and another quote asset |
+
+**Rules while the deviation stands**
+
+1. The paper venue's own numbers are labelled "30 bp scenario" wherever they are shown.
+2. The observer re-prices the same fills at the measured costs and publishes that P&L and the
+   volume per dollar lost beside the scenario figures (`velocita_indicator_measured_cost_*`,
+   `velocita_indicator_volume_per_usd_lost{cost="measured"}`).
+3. Any statement about this strategy's economics quotes the measured-cost figure, or both.
+4. A paper result from this run is not evidence for the live gates in
+   `docs/LIVE_TRADING_JOURNEY.md` until the cost is measured on both sides and the fill price
+   comes from True Markets.
+
+**To close it,** either measure the buy-side fee and the execution cost and replace the table
+above with the measurement, or return the run to the measured costs.
+

@@ -1,7 +1,7 @@
 {
  "uid": "velocita-v2-cluster",
  "title": "Velocita \u2014 Overview",
- "description": "Cluster health at a glance; the link bar opens the detail dashboards. Read-only: nothing here grants authority to trade.",
+ "description": "Active cluster: stochastic paper only. Cluster health at a glance; the link bar opens the detail dashboards. Read-only: nothing here grants authority to trade.",
  "schemaVersion": 41,
  "version": 1,
  "editable": false,
@@ -109,7 +109,7 @@
    },
    "targets": [
     {
-     "expr": "sum(velocita_v2_up)",
+     "expr": "sum(velocita_v2_up{strategy=\"stochastic\"})",
      "legendFormat": "",
      "refId": "A",
      "instant": true
@@ -176,7 +176,7 @@
    },
    "targets": [
     {
-     "expr": "max(velocita_v2_leader_id)",
+     "expr": "max(velocita_v2_leader_id{strategy=\"stochastic\"})",
      "legendFormat": "",
      "refId": "A",
      "instant": true
@@ -239,7 +239,7 @@
    },
    "targets": [
     {
-     "expr": "max(velocita_v2_term)",
+     "expr": "max(velocita_v2_term{strategy=\"stochastic\"})",
      "legendFormat": "",
      "refId": "A",
      "instant": true
@@ -298,7 +298,7 @@
    },
    "targets": [
     {
-     "expr": "increase(max(velocita_v2_term)[1h:15s])",
+     "expr": "increase(max(velocita_v2_term{strategy=\"stochastic\"})[1h:15s])",
      "legendFormat": "",
      "refId": "A",
      "instant": true
@@ -365,7 +365,7 @@
    },
    "targets": [
     {
-     "expr": "max(velocita_v2_telemetry_age_seconds)",
+     "expr": "max(velocita_v2_telemetry_age_seconds{strategy=\"stochastic\"})",
      "legendFormat": "",
      "refId": "A",
      "instant": true
@@ -432,7 +432,7 @@
    },
    "targets": [
     {
-     "expr": "sum(velocita_v2_failed)",
+     "expr": "sum(velocita_v2_failed{strategy=\"stochastic\"})",
      "legendFormat": "",
      "refId": "A",
      "instant": true
@@ -495,7 +495,7 @@
    },
    "targets": [
     {
-     "expr": "velocita_v2_role{role=\"leader\"} * 3 + velocita_v2_role{role=\"candidate\"} * 2 + velocita_v2_role{role=\"follower\"}",
+     "expr": "velocita_v2_role{strategy=\"stochastic\",role=\"leader\"} * 3 + velocita_v2_role{strategy=\"stochastic\",role=\"candidate\"} * 2 + velocita_v2_role{strategy=\"stochastic\",role=\"follower\"}",
      "legendFormat": "node {{node}} ({{host}})",
      "refId": "A",
      "instant": true
@@ -574,7 +574,7 @@
    },
    "targets": [
     {
-     "expr": "max(velocita_v2_log_index{kind=\"current\"} - on(host,node) velocita_v2_log_index{kind=\"commit\"})",
+     "expr": "max(velocita_v2_log_index{strategy=\"stochastic\",kind=\"current\"} - on(host,node) velocita_v2_log_index{strategy=\"stochastic\",kind=\"commit\"})",
      "legendFormat": "",
      "refId": "A",
      "instant": true
@@ -641,7 +641,7 @@
    },
    "targets": [
     {
-     "expr": "max(increase(velocita_v2_log_index{kind=\"commit\"}[1h]))",
+     "expr": "max(increase(velocita_v2_log_index{strategy=\"stochastic\",kind=\"commit\"}[1h]))",
      "legendFormat": "",
      "refId": "A",
      "instant": true
@@ -700,7 +700,7 @@
    },
    "targets": [
     {
-     "expr": "max(velocita_v2_log_index{kind=\"commit\"})",
+     "expr": "max(velocita_v2_log_index{strategy=\"stochastic\",kind=\"commit\"})",
      "legendFormat": "",
      "refId": "A",
      "instant": true
@@ -759,7 +759,7 @@
    },
    "targets": [
     {
-     "expr": "max(velocita_v2_log_index{kind=\"commit\"} - on(host,node) velocita_v2_log_index{kind=\"applied\"})",
+     "expr": "max(velocita_v2_log_index{strategy=\"stochastic\",kind=\"commit\"} - on(host,node) velocita_v2_log_index{strategy=\"stochastic\",kind=\"applied\"})",
      "legendFormat": "",
      "refId": "A",
      "instant": true
@@ -826,7 +826,7 @@
    },
    "targets": [
     {
-     "expr": "sum(velocita_v2_ready)",
+     "expr": "sum(velocita_v2_ready{strategy=\"stochastic\"})",
      "legendFormat": "",
      "refId": "A",
      "instant": true
@@ -893,7 +893,7 @@
    },
    "targets": [
     {
-     "expr": "max(velocita_shadow_submitter_ready)",
+     "expr": "max(velocita_shadow_submitter_ready{strategy=\"stochastic\"})",
      "legendFormat": "",
      "refId": "A",
      "instant": true
@@ -968,7 +968,7 @@
    },
    "targets": [
     {
-     "expr": "max(velocita_gateway_up)",
+     "expr": "max(velocita_gateway_up{strategy=\"stochastic\"})",
      "legendFormat": "",
      "refId": "A",
      "instant": true
@@ -1043,7 +1043,7 @@
    },
    "targets": [
     {
-     "expr": "max(velocita_gateway_new_risk_stopped)",
+     "expr": "max(velocita_gateway_new_risk_stopped{strategy=\"stochastic\"})",
      "legendFormat": "",
      "refId": "A",
      "instant": true

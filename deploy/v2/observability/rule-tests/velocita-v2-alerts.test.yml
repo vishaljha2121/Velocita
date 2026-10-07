@@ -8,17 +8,17 @@ evaluation_interval: 10s
 tests:
   - interval: 10s
     input_series:
-      - series: 'up{job="velocita-v2",instance="100.72.127.102:9410",host="nuc1"}'
+      - series: 'up{strategy="stochastic",job="velocita-v2",instance="100.72.127.102:9410",host="nuc1"}'
         values: '1x180'
-      - series: 'velocita_v2_up{job="velocita-v2",instance="100.72.127.102:9410",host="nuc1",node="1"}'
+      - series: 'velocita_v2_up{strategy="stochastic",job="velocita-v2",instance="100.72.127.102:9410",host="nuc1",node="1"}'
         values: '1x180'
-      - series: 'up{job="velocita-v2",instance="100.84.151.116:9410",host="pi"}'
+      - series: 'up{strategy="stochastic",job="velocita-v2",instance="100.84.151.116:9410",host="pi"}'
         values: '1x29 0x150'
-      - series: 'velocita_v2_up{job="velocita-v2",instance="100.84.151.116:9410",host="pi",node="2"}'
+      - series: 'velocita_v2_up{strategy="stochastic",job="velocita-v2",instance="100.84.151.116:9410",host="pi",node="2"}'
         values: '1x29 _x150'
-      - series: 'up{job="velocita-v2",instance="100.85.36.22:9410",host="nuc2"}'
+      - series: 'up{strategy="stochastic",job="velocita-v2",instance="100.85.36.22:9410",host="nuc2"}'
         values: '1x180'
-      - series: 'velocita_v2_up{job="velocita-v2",instance="100.85.36.22:9410",host="nuc2",node="3"}'
+      - series: 'velocita_v2_up{strategy="stochastic",job="velocita-v2",instance="100.85.36.22:9410",host="nuc2",node="3"}'
         values: '1x59 0x120'
     alert_rule_test:
       # All three reporting: neither quorum alert.
@@ -553,4 +553,173 @@ tests:
             exp_annotations:
               summary: "nuc1: 78.12% of the receipt table cannot be reclaimed"
               description: "Receipts stay pinned while an effect is unsettled or the gateway has not acknowledged its results. At 100 % the kernel refuses new commands (receipt_capacity_exceeded). Check that the gateway is running and acknowledging."
+
+
+  - interval: 10s
+    input_series:
+      - series: 'up{job="velocita-v2",instance="old:9410",host="old"}'
+        values: '0x60'
+      - series: 'velocita_v2_up{job="velocita-v2",instance="old:9410",host="old",node="1"}'
+        values: '0x60'
+      - series: 'up{job="velocita-v2",strategy="stochastic",instance="new:11410",host="pi"}'
+        values: '1x29 0x31'
+      - series: 'velocita_v2_up{job="velocita-v2",strategy="stochastic",instance="new:11410",host="pi",node="2"}'
+        values: '1x29 _x31'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: VelocitaVoterDown
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: VelocitaVoterDown
+        exp_alerts:
+          - exp_labels: {severity: critical, job: velocita-v2, strategy: stochastic, instance: 'new:11410', host: pi}
+            exp_annotations:
+              summary: "Voter on pi is not reporting"
+              description: "Its health page is unreadable or its exporter is unreachable. Two of three voters still commit; one more loss stops the cluster."
+
+  - interval: 1m
+    input_series:
+      - series: 'velocita_gateway_heartbeat_timestamp_seconds{job="active-paper-pipeline",host="nuc1",strategy="stochastic"}'
+        values: '0+60x10 600x20'
+      - series: 'velocita_gateway_up{job="active-paper-pipeline",host="nuc1",strategy="stochastic"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: VelocitaGatewayHeartbeatStale
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: VelocitaGatewayDown
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: VelocitaGatewayHeartbeatStale
+        exp_alerts: []
+      - eval_time: 13m
+        alertname: VelocitaGatewayHeartbeatStale
+        exp_alerts:
+          - exp_labels: {severity: critical, job: active-paper-pipeline, host: nuc1, strategy: stochastic}
+            exp_annotations:
+              summary: "The gateway's loop has not run for 3m 0s"
+              description: "The gateway writes a heartbeat twice a second. A stale one means the process is dead or hung while its metrics file still says up. No order is sent or reconciled. Check the gateway service and its journal."
+
+  - interval: 1m
+    input_series:
+      - series: 'velocita_indicator_reconciled{job="indicator-paper",host="nuc1",strategy="stochastic"}'
+        values: '1x5 0x10 1x10'
+      - series: 'velocita_indicator_ledger_readable{job="indicator-paper",host="nuc1",strategy="stochastic"}'
+        values: '1x5 0x10 1x10'
+      - series: 'velocita_indicator_ledger_fills_behind{job="indicator-paper",host="nuc1",strategy="stochastic"}'
+        values: '0x5 2x10 0x10'
+      - series: 'velocita_indicator_price_age_seconds{job="indicator-paper",host="nuc1",strategy="stochastic"}'
+        values: '0+60x25'
+      - series: 'up{job="indicator-paper",host="nuc1",instance="127.0.0.1:9460"}'
+        values: '1x5 0x10 1x10'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: VelocitaPaperAccountUnreconciled
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: VelocitaPaperAccountUnreconciled
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: VelocitaPaperAccountUnreconciled
+        exp_alerts:
+          - exp_labels: {severity: critical, job: indicator-paper, host: nuc1, strategy: stochastic}
+            exp_annotations:
+              summary: "The stochastic paper account does not reconcile"
+              description: "The venue report is stale, has pending reports, or does not add up. The strategy holds on every bar while this lasts: it will not buy and it CANNOT EXIT an open position. Check the gateway and ~/velocita-indicator-paper/stochastic/gateway/venue.json."
+      - eval_time: 20m
+        alertname: VelocitaPaperAccountUnreconciled
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: VelocitaPaperLedgerUnreadable
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: VelocitaPaperLedgerUnreadable
+        exp_alerts:
+          - exp_labels: {severity: warning, job: indicator-paper, host: nuc1, strategy: stochastic}
+            exp_annotations:
+              summary: "The stochastic fill ledger cannot be read"
+              description: "The observer cannot open the edge's ledger read-only, or it belongs to another run. The edge is probably stopped. On nuc1: systemctl --user status velocita-paper-stochastic-edge."
+      - eval_time: 9m
+        alertname: VelocitaPaperLedgerBehind
+        exp_alerts:
+          - exp_labels: {severity: warning, job: indicator-paper, host: nuc1, strategy: stochastic}
+            exp_annotations:
+              summary: "The stochastic ledger is 2 fill(s) behind the venue"
+              description: "The edge records every confirmed fill within a second. A lasting gap means the edge is stopped or cannot write its ledger."
+      - eval_time: 20m
+        alertname: VelocitaPaperLedgerBehind
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: VelocitaPaperObserverDown
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: VelocitaPaperObserverDown
+        exp_alerts:
+          - exp_labels: {severity: warning, job: indicator-paper, host: nuc1, instance: "127.0.0.1:9460"}
+            exp_annotations:
+              summary: "The paper strategy's metrics observer is not answering"
+              description: "Strategy, edge and gateway panels are blind and the other paper alerts cannot fire. On nuc1: systemctl --user status velocita-paper-indicator-observer."
+      - eval_time: 20m
+        alertname: VelocitaPaperObserverDown
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: VelocitaPaperEdgeStalled
+        exp_alerts: []
+      - eval_time: 13m
+        alertname: VelocitaPaperEdgeStalled
+        exp_alerts:
+          - exp_labels: {severity: critical, job: indicator-paper, host: nuc1, strategy: stochastic}
+            exp_annotations:
+              summary: "The stochastic edge has seen no completed bar for 13m 0s"
+              description: "A new five-minute bar should be marked every 300 seconds. The edge is stopped, cannot reach the price source, or is receiving bad data. It cannot enter or EXIT while this lasts."
+
+  - interval: 1m
+    input_series:
+      - series: 'velocita_shadow_messages_total{job="active-paper-pipeline",host="nuc1",strategy="stochastic",outcome="bar_missing"}'
+        values: '0x5 3x30'
+      - series: 'velocita_shadow_messages_total{job="active-paper-pipeline",host="nuc1",strategy="stochastic",outcome="stale"}'
+        values: '0+280x35'
+      - series: 'velocita_indicator_buy_stop{job="indicator-paper",host="nuc1",strategy="stochastic",reason="drawdown"}'
+        values: '0x5 1x30'
+      - series: 'velocita_indicator_buy_stop{job="indicator-paper",host="nuc1",strategy="stochastic",reason="capacity"}'
+        values: '0x35'
+      - series: 'velocita_indicator_order_count{job="indicator-paper",host="nuc1",strategy="stochastic"}'
+        values: '192x5 193x30'
+      - series: 'velocita_indicator_order_capacity{job="indicator-paper",host="nuc1",strategy="stochastic"}'
+        values: '240x35'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: VelocitaPaperBadMarketData
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: VelocitaPaperBadMarketData
+        exp_alerts:
+          - exp_labels: {severity: warning, job: active-paper-pipeline, host: nuc1, strategy: stochastic, outcome: bar_missing}
+            exp_annotations:
+              summary: "The edge received bar_missing market data in the last 10 minutes"
+              description: "invalid: the price response did not decode or had a gap. bar_missing: the bar that just closed was not in the response. Each one can cost a five-minute bar's signal."
+      - eval_time: 25m
+        alertname: VelocitaPaperBadMarketData
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: VelocitaPaperBuyStop
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: VelocitaPaperBuyStop
+        exp_alerts:
+          - exp_labels: {severity: warning, job: indicator-paper, host: nuc1, strategy: stochastic, reason: drawdown}
+            exp_annotations:
+              summary: "stochastic has stopped buying: drawdown"
+              description: "drawdown, capacity and duration are permanent for this run and force an exit. unreconciled and insufficient_balance clear by themselves."
+      - eval_time: 4m
+        alertname: VelocitaPaperOrderCapacity
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: VelocitaPaperOrderCapacity
+        exp_alerts:
+          - exp_labels: {severity: warning, job: indicator-paper, host: nuc1, strategy: stochastic}
+            exp_annotations:
+              summary: "stochastic has used 80.42% of its lifetime orders"
+              description: "The paper venue keeps every order for the life of the run. At 100 % the strategy stops buying and exits."
 

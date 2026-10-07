@@ -1,7 +1,7 @@
 {
  "uid": "velocita-v2-hosts",
  "title": "Velocita \u2014 Hosts",
- "description": "The NUCs and the Pi from node-exporter: CPU, memory, disks, temperature, network.",
+ "description": "Active cluster: stochastic paper only. The NUCs and the Pi from node-exporter: CPU, memory, disks, temperature, network.",
  "schemaVersion": 41,
  "version": 1,
  "editable": false,

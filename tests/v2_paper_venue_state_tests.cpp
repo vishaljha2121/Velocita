@@ -1,5 +1,6 @@
 #include "velocita/v2/digest.hpp"
 #include "velocita/v2/paper_venue_store.hpp"
+#include "velocita/v2/paper_report.hpp"
 
 #include <array>
 #include <filesystem>
@@ -429,6 +430,43 @@ void failed_write_latches_the_venue_and_the_file_stays_truthful() {
     writes.unblock();
 }
 
+void two_paper_instances_report_only_their_confirmed_fills() {
+    TempDir dir;
+    const auto a=dir.path/"sma.state",b=dir.path/"stochastic.state";
+    const auto first=fresh_paper_state(config(),kIncarnation,MoneyMicros::from_atoms(kFunding));
+    const auto second=fresh_paper_state(config(),kOtherIncarnation,MoneyMicros::from_atoms(kFunding));
+    require(create_paper_state(a,*first.state)==PaperStateError::none &&
+            create_paper_state(b,*second.state)==PaperStateError::none,"two paper states initialize");
+    auto left=DurablePaperVenue::open(a,config(),PaperFaultPolicy::clean(),kIncarnation);
+    auto right=DurablePaperVenue::open(b,config(),PaperFaultPolicy::clean(),kOtherIncarnation);
+    require(left.venue && right.venue,"two paper venues open");
+    const auto transport=left.venue->transport();
+    require(transport.send(effect(1,Side::buy),10)==SendOutcome::accepted,"left paper buy accepted");
+    auto pending=render_paper_report(*left.venue,AccountId{5},115,120,100.);
+    require(pending.find("\"buy_volume\":0")!=std::string::npos,"uncommitted fill does not report committed volume");
+    const auto reports=poll_all(transport,100);
+    const auto book=left.venue->book();
+    for(const auto& report:reports) {
+        book.committed_fn(book.context,{50,report,report.kind==VenueObservationKind::fill?kBuyNotional:0,123.5});
+        transport.acknowledge(report);
+    }
+    const auto filled=render_paper_report(*left.venue,AccountId{5},115,120,124.);
+    require(filled.find("\"buy_volume\":600010")!=std::string::npos &&
+            filled.find("\"fee\":6901")!=std::string::npos &&
+            filled.find("\"price\":60001")!=std::string::npos &&
+            filled.find("\"last_fill_stamp\":123.5")!=std::string::npos,
+            "paper report uses confirmed volume exact fees price and fill time");
+    const auto untouched=render_paper_report(*right.venue,AccountId{5},115,120,124.);
+    require(untouched.find("\"cash\":25000000")!=std::string::npos &&
+            untouched.find("\"orders\":[]")!=std::string::npos &&
+            untouched.find("\"incarnation\":\"01000000000000000000000000000000\"")!=std::string::npos,
+            "other paper account remains funded flat and separately identified");
+    left.venue.reset();
+    left=DurablePaperVenue::open(a,config(),PaperFaultPolicy::clean(),kIncarnation);
+    require(render_paper_report(*left.venue,AccountId{5},115,120,124.)==filled,
+            "paper report survives restart without changing committed fills");
+}
+
 void open_refuses_another_cluster_another_venue_and_never_resets() {
     TempDir dir;
     const auto file = dir.path / "paper.state";
@@ -457,6 +495,7 @@ void open_refuses_another_cluster_another_venue_and_never_resets() {
 
 int main() {
     const std::vector<std::pair<const char*, void (*)()>> tests{
+        {"two_paper_instances_report_only_their_confirmed_fills",two_paper_instances_report_only_their_confirmed_fills},
         {"restored_venue_answers_exactly_as_the_original", restored_venue_answers_exactly_as_the_original},
         {"restore_refuses_an_image_of_another_row_or_a_broken_invariant",
          restore_refuses_an_image_of_another_row_or_a_broken_invariant},

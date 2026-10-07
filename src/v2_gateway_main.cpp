@@ -3,6 +3,7 @@
 #include "velocita/v2/aeron_node_transport.hpp"
 #include "velocita/v2/gateway_loop.hpp"
 #include "velocita/v2/node_files.hpp"
+#include "velocita/v2/paper_report.hpp"
 #include "velocita/v2/paper_venue_store.hpp"
 #include "velocita/v2/shadow_submitter.hpp"
 #include "velocita/v2/truemarkets_venue.hpp"
@@ -79,6 +80,7 @@ struct Arguments {
     std::optional<std::uint64_t> paper_quote_usd;
     std::optional<std::uint64_t> paper_adopt_cost_micros;
     std::filesystem::path paper_state_file;
+    std::filesystem::path paper_report_file;
     bool paper_state_init{}, paper_adopt_position{};
     std::uint64_t rearm_quiet_ms{30'000};
     bool allow_new_risk{};
@@ -190,6 +192,10 @@ Arguments parse(int argc, char** argv) {
         else if (key == "--state-interval-ms") a.state_interval_ms = number(value, "state interval");
         else if (key == "--buy-fee-bps") a.buy_fee_bps = number(value, "buy fee bps");
         else if (key == "--sell-fee-bps") a.sell_fee_bps = number(value, "sell fee bps");
+        else if (key == "--paper-report-file") {
+            if (!a.paper_report_file.empty()) throw Usage("duplicate --paper-report-file");
+            a.paper_report_file = value;
+        }
         else if (key == "--paper-quote-usd") a.paper_quote_usd = number(value, "paper quote usd");
         else if (key == "--paper-adopt-cost-micros") a.paper_adopt_cost_micros = number(value, "adoption cost micros");
         else if (key == "--paper-state-file") a.paper_state_file = value;
@@ -211,6 +217,14 @@ Arguments parse(int argc, char** argv) {
     }
     if (a.arm_live_venue || !a.signer_endpoint.empty()) {
         if (a.venue != "truemarkets") throw Usage("--arm-live-venue and --signer-endpoint apply only to --venue truemarkets");
+    }
+    if (!a.paper_report_file.empty()) {
+        if (a.venue != "paper") throw Usage("--paper-report-file applies only to --venue paper");
+        for (const auto& protected_path : {a.paper_state_file, a.state_file, a.session_file, a.catalog, a.key_file,
+                                           a.metrics_textfile})
+            if (!protected_path.empty() && std::filesystem::absolute(a.paper_report_file).lexically_normal() ==
+                                               std::filesystem::absolute(protected_path).lexically_normal())
+                throw Usage("--paper-report-file overlaps an input or durable state file");
     }
     check_paper_state(a);
     if (a.key_file.empty() || a.session_file.empty() || a.state_file.empty() || a.aeron_dir.empty() ||
@@ -478,6 +492,11 @@ int run(const Arguments& a) {
         const auto now = monotonic_ms(nullptr);
         if (now >= last_write + 500) {
             write_metrics(a.metrics_textfile, render_gateway_metrics(loop.metrics()));
+            if (!a.paper_report_file.empty())
+                write_metrics(a.paper_report_file,
+                              paper::render_paper_report(*venue.paper, row.account_id,
+                                                         static_cast<std::uint32_t>(a.buy_fee_bps),
+                                                         static_cast<std::uint32_t>(a.sell_fee_bps), wall_seconds(nullptr)));
             last_write = now;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));

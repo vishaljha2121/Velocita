@@ -6,7 +6,7 @@ groups:
   - name: velocita-v2
     rules:
       - alert: VelocitaVoterDown
-        expr: velocita_v2_up == 0 or up{job="velocita-v2"} == 0
+        expr: velocita_v2_up{strategy="stochastic"} == 0 or up{job="velocita-v2",strategy="stochastic"} == 0
         for: 1m
         labels: {severity: critical}
         annotations:
@@ -15,14 +15,14 @@ groups:
       # Counted from scrape targets, not health pages, so a voter whose exporter
       # vanished entirely still counts as missing.
       - alert: VelocitaQuorumAtRisk
-        expr: count(up{job="velocita-v2"} == 1 and on(instance) velocita_v2_up == 1) < 3
+        expr: count(up{job="velocita-v2",strategy="stochastic"} == 1 and on(instance) velocita_v2_up{strategy="stochastic"} == 1) < 3
         for: 1m
         labels: {severity: warning}
         annotations:
           summary: "Only {{ $value }} of 3 voters reporting"
           description: "The cluster still commits with two voters, but one more loss stops it. Restore the missing voter."
       - alert: VelocitaQuorumLost
-        expr: (count(up{job="velocita-v2"} == 1 and on(instance) velocita_v2_up == 1) or vector(0)) < 2
+        expr: (count(up{job="velocita-v2",strategy="stochastic"} == 1 and on(instance) velocita_v2_up{strategy="stochastic"} == 1) or vector(0)) < 2
         for: 30s
         labels: {severity: critical}
         annotations:
@@ -282,4 +282,65 @@ groups:
         annotations:
           summary: "{{ $labels.host }}: {{ $value | humanizePercentage }} of the receipt table cannot be reclaimed"
           description: "Receipts stay pinned while an effect is unsettled or the gateway has not acknowledged its results. At 100 % the kernel refuses new commands (receipt_capacity_exceeded). Check that the gateway is running and acknowledging."
+      - alert: VelocitaGatewayHeartbeatStale
+        expr: time() - velocita_gateway_heartbeat_timestamp_seconds > 30
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "The gateway's loop has not run for {{ $value | humanizeDuration }}"
+          description: "The gateway writes a heartbeat twice a second. A stale one means the process is dead or hung while its metrics file still says up. No order is sent or reconciled. Check the gateway service and its journal."
+      - alert: VelocitaPaperAccountUnreconciled
+        expr: velocita_indicator_reconciled == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "The {{ $labels.strategy }} paper account does not reconcile"
+          description: "The venue report is stale, has pending reports, or does not add up. The strategy holds on every bar while this lasts: it will not buy and it CANNOT EXIT an open position. Check the gateway and ~/velocita-indicator-paper/{{ $labels.strategy }}/gateway/venue.json."
+      - alert: VelocitaPaperObserverDown
+        expr: up{job="indicator-paper"} == 0 or absent(up{job="indicator-paper"})
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "The paper strategy's metrics observer is not answering"
+          description: "Strategy, edge and gateway panels are blind and the other paper alerts cannot fire. On nuc1: systemctl --user status velocita-paper-indicator-observer."
+      - alert: VelocitaPaperLedgerUnreadable
+        expr: velocita_indicator_ledger_readable == 0
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "The {{ $labels.strategy }} fill ledger cannot be read"
+          description: "The observer cannot open the edge's ledger read-only, or it belongs to another run. The edge is probably stopped. On nuc1: systemctl --user status velocita-paper-{{ $labels.strategy }}-edge."
+      - alert: VelocitaPaperLedgerBehind
+        expr: velocita_indicator_ledger_fills_behind > 0
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "The {{ $labels.strategy }} ledger is {{ $value }} fill(s) behind the venue"
+          description: "The edge records every confirmed fill within a second. A lasting gap means the edge is stopped or cannot write its ledger."
+      - alert: VelocitaPaperEdgeStalled
+        expr: velocita_indicator_price_age_seconds > 700
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "The {{ $labels.strategy }} edge has seen no completed bar for {{ $value | humanizeDuration }}"
+          description: "A new five-minute bar should be marked every 300 seconds. The edge is stopped, cannot reach the price source, or is receiving bad data. It cannot enter or EXIT while this lasts."
+      - alert: VelocitaPaperBadMarketData
+        expr: increase(velocita_shadow_messages_total{outcome=~"invalid|bar_missing"}[10m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "The edge received {{ $labels.outcome }} market data in the last 10 minutes"
+          description: "invalid: the price response did not decode or had a gap. bar_missing: the bar that just closed was not in the response. Each one can cost a five-minute bar's signal."
+      - alert: VelocitaPaperBuyStop
+        expr: velocita_indicator_buy_stop == 1
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.strategy }} has stopped buying: {{ $labels.reason }}"
+          description: "drawdown, capacity and duration are permanent for this run and force an exit. unreconciled and insufficient_balance clear by themselves."
+      - alert: VelocitaPaperOrderCapacity
+        expr: velocita_indicator_order_count / velocita_indicator_order_capacity > 0.8
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.strategy }} has used {{ $value | humanizePercentage }} of its lifetime orders"
+          description: "The paper venue keeps every order for the life of the run. At 100 % the strategy stops buying and exits."
 

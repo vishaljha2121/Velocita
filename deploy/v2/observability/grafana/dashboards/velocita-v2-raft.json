@@ -1,7 +1,7 @@
 {
  "uid": "velocita-v2-raft",
  "title": "Velocita \u2014 Raft & storage",
- "description": "Raft log capacity and compaction, durability and commit progress, elections, refusals, the disks under the WAL, and the soak bot.",
+ "description": "Active cluster: stochastic paper only. Raft log capacity and compaction, durability and commit progress, elections, refusals, the disks under the WAL, and the soak bot.",
  "schemaVersion": 41,
  "version": 1,
  "editable": false,
@@ -109,7 +109,7 @@
    },
    "targets": [
     {
-     "expr": "100 * velocita_v2_retained_log_entries{pool=\"ordinary\"} / velocita_v2_retained_log_capacity{pool=\"ordinary\"}",
+     "expr": "100 * velocita_v2_retained_log_entries{strategy=\"stochastic\",pool=\"ordinary\"} / velocita_v2_retained_log_capacity{strategy=\"stochastic\",pool=\"ordinary\"}",
      "legendFormat": "{{host}}",
      "refId": "A",
      "instant": true
@@ -176,7 +176,7 @@
    },
    "targets": [
     {
-     "expr": "(velocita_v2_retained_log_capacity{pool=\"ordinary\"} - velocita_v2_retained_log_entries{pool=\"ordinary\"}) / clamp_min(deriv(velocita_v2_retained_log_entries{pool=\"ordinary\"}[30m]), 1e-9)",
+     "expr": "(velocita_v2_retained_log_capacity{strategy=\"stochastic\",pool=\"ordinary\"} - velocita_v2_retained_log_entries{strategy=\"stochastic\",pool=\"ordinary\"}) / clamp_min(deriv(velocita_v2_retained_log_entries{strategy=\"stochastic\",pool=\"ordinary\"}[30m]), 1e-9)",
      "legendFormat": "{{host}}",
      "refId": "A",
      "instant": true
@@ -243,7 +243,7 @@
    },
    "targets": [
     {
-     "expr": "velocita_v2_retained_log_entries{pool=\"protected\"}",
+     "expr": "velocita_v2_retained_log_entries{strategy=\"stochastic\",pool=\"protected\"}",
      "legendFormat": "{{host}}",
      "refId": "A",
      "instant": true
@@ -310,17 +310,17 @@
    },
    "targets": [
     {
-     "expr": "velocita_v2_log_index{kind=\"commit\"}",
+     "expr": "velocita_v2_log_index{strategy=\"stochastic\",kind=\"commit\"}",
      "legendFormat": "{{host}} commit",
      "refId": "A"
     },
     {
-     "expr": "velocita_v2_compaction_floor",
+     "expr": "velocita_v2_compaction_floor{strategy=\"stochastic\"}",
      "legendFormat": "{{host}} floor (every voter holds up to here)",
      "refId": "B"
     },
     {
-     "expr": "velocita_v2_snapshot_index",
+     "expr": "velocita_v2_snapshot_index{strategy=\"stochastic\"}",
      "legendFormat": "{{host}} snapshot (compacted up to here)",
      "refId": "C"
     }
@@ -369,7 +369,7 @@
    },
    "targets": [
     {
-     "expr": "max(velocita_v2_stranded_voters)",
+     "expr": "max(velocita_v2_stranded_voters{strategy=\"stochastic\"})",
      "legendFormat": "",
      "refId": "A",
      "instant": true
@@ -432,7 +432,7 @@
    },
    "targets": [
     {
-     "expr": "velocita_v2_last_compaction_seconds",
+     "expr": "velocita_v2_last_compaction_seconds{strategy=\"stochastic\"}",
      "legendFormat": "{{host}}",
      "refId": "A",
      "instant": true
@@ -499,7 +499,7 @@
    },
    "targets": [
     {
-     "expr": "velocita_v2_compactions_total",
+     "expr": "velocita_v2_compactions_total{strategy=\"stochastic\"}",
      "legendFormat": "{{host}}",
      "refId": "A",
      "instant": true
@@ -571,22 +571,22 @@
    },
    "targets": [
     {
-     "expr": "velocita_v2_log_index{kind=\"current\"}",
+     "expr": "velocita_v2_log_index{strategy=\"stochastic\",kind=\"current\"}",
      "legendFormat": "appended node {{node}}",
      "refId": "A"
     },
     {
-     "expr": "velocita_v2_log_index{kind=\"durable\"}",
+     "expr": "velocita_v2_log_index{strategy=\"stochastic\",kind=\"durable\"}",
      "legendFormat": "on disk node {{node}}",
      "refId": "B"
     },
     {
-     "expr": "velocita_v2_log_index{kind=\"commit\"}",
+     "expr": "velocita_v2_log_index{strategy=\"stochastic\",kind=\"commit\"}",
      "legendFormat": "committed node {{node}}",
      "refId": "C"
     },
     {
-     "expr": "velocita_v2_log_index{kind=\"applied\"}",
+     "expr": "velocita_v2_log_index{strategy=\"stochastic\",kind=\"applied\"}",
      "legendFormat": "applied node {{node}}",
      "refId": "D"
     }
@@ -635,17 +635,17 @@
    },
    "targets": [
     {
-     "expr": "velocita_v2_log_index{kind=\"current\"} - on(host,node) velocita_v2_log_index{kind=\"durable\"}",
+     "expr": "velocita_v2_log_index{strategy=\"stochastic\",kind=\"current\"} - on(host,node) velocita_v2_log_index{strategy=\"stochastic\",kind=\"durable\"}",
      "legendFormat": "waiting for disk, node {{node}}",
      "refId": "A"
     },
     {
-     "expr": "velocita_v2_log_index{kind=\"current\"} - on(host,node) velocita_v2_log_index{kind=\"commit\"}",
+     "expr": "velocita_v2_log_index{strategy=\"stochastic\",kind=\"current\"} - on(host,node) velocita_v2_log_index{strategy=\"stochastic\",kind=\"commit\"}",
      "legendFormat": "waiting for quorum, node {{node}}",
      "refId": "B"
     },
     {
-     "expr": "velocita_v2_log_index{kind=\"commit\"} - on(host,node) velocita_v2_log_index{kind=\"applied\"}",
+     "expr": "velocita_v2_log_index{strategy=\"stochastic\",kind=\"commit\"} - on(host,node) velocita_v2_log_index{strategy=\"stochastic\",kind=\"applied\"}",
      "legendFormat": "waiting to apply, node {{node}}",
      "refId": "C"
     }
@@ -694,7 +694,7 @@
    },
    "targets": [
     {
-     "expr": "rate(velocita_v2_log_index{kind=\"commit\"}[1m]) * 60",
+     "expr": "rate(velocita_v2_log_index{strategy=\"stochastic\",kind=\"commit\"}[1m]) * 60",
      "legendFormat": "node {{node}}",
      "refId": "A"
     }
@@ -743,7 +743,7 @@
    },
    "targets": [
     {
-     "expr": "rate(velocita_v2_owner_turns_total[1m])",
+     "expr": "rate(velocita_v2_owner_turns_total{strategy=\"stochastic\"}[1m])",
      "legendFormat": "node {{node}}",
      "refId": "A"
     }
@@ -792,7 +792,7 @@
    },
    "targets": [
     {
-     "expr": "velocita_v2_term",
+     "expr": "velocita_v2_term{strategy=\"stochastic\"}",
      "legendFormat": "node {{node}}",
      "refId": "A"
     }
@@ -854,12 +854,12 @@
    },
    "targets": [
     {
-     "expr": "rate(velocita_v2_auth_refusals_total[5m]) * 60",
+     "expr": "rate(velocita_v2_auth_refusals_total{strategy=\"stochastic\"}[5m]) * 60",
      "legendFormat": "authentication, node {{node}}",
      "refId": "A"
     },
     {
-     "expr": "rate(velocita_v2_fence_refusals_total[5m]) * 60",
+     "expr": "rate(velocita_v2_fence_refusals_total{strategy=\"stochastic\"}[5m]) * 60",
      "legendFormat": "replay/stale session, node {{node}}",
      "refId": "B"
     }
@@ -908,7 +908,7 @@
    },
    "targets": [
     {
-     "expr": "rate(velocita_v2_ingress_refusals_total[5m]) * 60",
+     "expr": "rate(velocita_v2_ingress_refusals_total{strategy=\"stochastic\"}[5m]) * 60",
      "legendFormat": "node {{node}}",
      "refId": "A"
     }
@@ -957,12 +957,12 @@
    },
    "targets": [
     {
-     "expr": "rate(velocita_v2_peer_backpressure_total[1m])",
+     "expr": "rate(velocita_v2_peer_backpressure_total{strategy=\"stochastic\"}[1m])",
      "legendFormat": "peer unreachable/slow, node {{node}}",
      "refId": "A"
     },
     {
-     "expr": "rate(velocita_v2_peer_busy_holds_total[1m])",
+     "expr": "rate(velocita_v2_peer_busy_holds_total{strategy=\"stochastic\"}[1m])",
      "legendFormat": "held while disk busy, node {{node}}",
      "refId": "B"
     }
@@ -1011,12 +1011,12 @@
    },
    "targets": [
     {
-     "expr": "increase(velocita_v2_results_sent_total[5m])",
+     "expr": "increase(velocita_v2_results_sent_total{strategy=\"stochastic\"}[5m])",
      "legendFormat": "sent, node {{node}}",
      "refId": "A"
     },
     {
-     "expr": "increase(velocita_v2_results_dropped_total[5m])",
+     "expr": "increase(velocita_v2_results_dropped_total{strategy=\"stochastic\"}[5m])",
      "legendFormat": "dropped (no listener), node {{node}}",
      "refId": "B"
     }
@@ -1065,17 +1065,17 @@
    },
    "targets": [
     {
-     "expr": "velocita_v2_session_epoch",
+     "expr": "velocita_v2_session_epoch{strategy=\"stochastic\"}",
      "legendFormat": "session epoch (restarts), node {{node}}",
      "refId": "A"
     },
     {
-     "expr": "velocita_v2_secret_reloads_total",
+     "expr": "velocita_v2_secret_reloads_total{strategy=\"stochastic\"}",
      "legendFormat": "secret reloads, node {{node}}",
      "refId": "B"
     },
     {
-     "expr": "velocita_v2_secret_reload_failures_total",
+     "expr": "velocita_v2_secret_reload_failures_total{strategy=\"stochastic\"}",
      "legendFormat": "refused reloads, node {{node}}",
      "refId": "C"
     }

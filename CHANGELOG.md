@@ -13,6 +13,24 @@ release-engineering work.
 
 ## [V2] - In development
 
+### Stochastic paper strategy, with the independent review's fixes — 2026-10-07 (CP-082)
+
+- **Strategy.** A stochastic-momentum paper strategy on five-minute SOL bars (policy 127, feature
+  schema 137), with its own journal, fill ledger and stops
+  (`model/src/velocita_model/shadow/indicator_paper.py`), a read-only metrics observer, and a
+  gateway option that publishes the paper venue's balances and fills (`--paper-report-file`).
+- **Review fixes** (`docs/evidence/dual_indicator_paper_2026-10-07/FIX_LOG.md`):
+  - the observer no longer writes to the trading ledger; the edge is its only writer;
+  - bad or late market data is counted and skipped instead of ending the edge;
+  - nine alert rules for the strategy's own failures, including a gateway heartbeat rule;
+  - P&L and volume per dollar lost are shown at the measured costs beside the 30 bp scenario;
+  - gateway stage percentiles need 100 orders; bar-close-to-fill delay is shown;
+  - a start guard refuses a second cluster's voter on a host.
+- **ADRs.** 0018 is amended to record that this run does not use measured costs or the True
+  Markets reference price; 0016 to record that the edge reads the venue report and that operator
+  commands were issued from a voter host. Both await the owner's decision.
+- No voter change. The gateway and edge images are rebuilt from this commit.
+
 ### Outside heartbeat; pinned-receipt metrics — 2026-10-05 (CP-081)
 
 - **Heartbeat.** nuc1 pings a monitor outside the house every minute, and reports a failure at

@@ -12,6 +12,7 @@ uid updates it in place, and bookmarks and the home dashboard keep working.
 """
 import json
 import pathlib
+import re
 import sys
 
 DS = {"type": "prometheus", "uid": "velocita-v2-prometheus"}
@@ -98,6 +99,12 @@ def bars(title, targets, x, w, unit="none", h=8, description="", decimals=0):
     })
 
 
+def note(title, content, h=3):
+    panels.append({"type": "text", "id": _id(), "title": title, "gridPos": {"x": 0, "y": _y, "w": 24, "h": h},
+                   "options": {"mode": "markdown", "content": content}})
+    advance(h)
+
+
 def advance(h):
     global _y
     _y += h
@@ -105,6 +112,13 @@ def advance(h):
 
 def finish(board, description, tags):
     uid, file, title, _ = board
+    def active(match):
+        metric, labels = match.group(1), match.group(2)
+        return metric + ('{strategy="stochastic",' + labels[1:] if labels else '{strategy="stochastic"}')
+    for panel in panels:
+        for target in panel.get('targets', []):
+            target['expr'] = re.sub(r'\b(velocita_(?:v2|shadow|gateway)_[a-zA-Z0-9_]+)(\{[^}]*\})?', active, target['expr'])
+    description = 'Active cluster: stochastic paper only. ' + description
     return file, {
         "uid": uid, "title": title, "description": description,
         "schemaVersion": 41, "version": 1, "editable": False, "refresh": "10s",
@@ -350,7 +364,7 @@ def shadow_edge_row():
     series("Tick to decision (ms)", [
         ('histogram_quantile(0.5, sum by (le) (rate(velocita_shadow_tick_to_decision_ms_bucket[5m])))', "p50 (5m)"),
         ('histogram_quantile(0.99, sum by (le) (rate(velocita_shadow_tick_to_decision_ms_bucket[5m])))', "p99 (5m)"),
-    ], 0, 12, unit="ms", description="Tick received by the edge -> decision committed by the cluster.")
+    ], 0, 12, unit="ms", description="Active stochastic only: payload delivered to Python -> committed decision reply at the local C++ submitter. Includes indicator/journal work and two Raft commits; excludes HTTP fetch and order execution. Histogram interpolation over sparse five-minute windows is not a reliable tail-latency estimate. See Paper trading for sample counts and a gated p99.")
     series("Where the time goes (average ms per tick, 5m)", [
         ('sum by (hop) (rate(velocita_shadow_hop_ms_sum[5m])) / '
          'scalar(clamp_min(sum(rate(velocita_shadow_tick_to_decision_ms_count[5m])), 1e-9))', "{{hop}}"),
@@ -474,6 +488,9 @@ def model_row():
 
 def strategy():
     start()
+    note("Not running", "**The BTC shadow strategy on this page is not running.** The active strategy is the "
+         "stochastic paper strategy on the *Paper trading* dashboard. Panels below show no data until a "
+         "shadow strategy is deployed again.")
     shadow_edge_row()
     journey_row()
     shadow_book_row()
@@ -482,18 +499,23 @@ def strategy():
                             "$1,000 virtual book. Nothing here trades.", ["strategy", "shadow"])
 
 
-STAGES = ("decision_to_authorized", "authorized_to_proof", "proof_to_sent", "sent_to_fill", "fill_to_committed")
+STAGES = ("authorized_to_proof", "proof_to_sent", "sent_to_fill", "fill_to_committed")
 CENTS = "suffix:¢"
 
 
 def _stage_mean(stage, window):
     return (f'sum(increase(velocita_gateway_stage_ms_sum{{stage="{stage}"}}[{window}])) / '
-            f'clamp_min(sum(increase(velocita_gateway_stage_ms_count{{stage="{stage}"}}[{window}])), 1e-9)')
+            f'(sum(increase(velocita_gateway_stage_ms_count{{stage="{stage}"}}[{window}])) > 0)')
+
+
+def _stage_samples(stage, window):
+    return f'sum(increase(velocita_gateway_stage_ms_count{{stage="{stage}"}}[{window}]))'
 
 
 def _stage_quantile(q, stage, window):
     return (f'histogram_quantile({q}, sum by (le) '
-            f'(rate(velocita_gateway_stage_ms_bucket{{stage="{stage}"}}[{window}])))')
+            f'(increase(velocita_gateway_stage_ms_bucket{{stage="{stage}"}}[{window}]))) '
+            f'and on() ({_stage_samples(stage, window)} >= 100)')
 
 
 def paper_now_row():
@@ -546,26 +568,26 @@ def rearm_row():
 
 
 def tick_to_trade_row():
-    row("Tick to trade: decision -> authorized -> proof -> sent -> fill -> committed")
-    stat("Tick to trade, mean (range)", ' + '.join(f'({_stage_mean(s, "$__range")})' for s in STAGES),
+    row("Stochastic gateway: observed effect -> proof -> send -> fill -> committed")
+    stat("Sum of gateway stage means", ' + '.join(f'({_stage_mean(s, "$__range")})' for s in STAGES),
          0, 4, unit="ms", h=8, steps=(("blue", None),),
-         description="Sum of the five stage means over the dashboard's time range: decision committed -> fill "
-                     "committed. A stage with no orders in the range adds 0; 'unknown' until every stage has "
-                     "seen at least one order.")
+         description="Four gateway-clock stage means. Starts when the gateway first observes a deliverable effect. "
+                     "Excludes tick processing, decision authorization and the wait before gateway observation. "
+                     "Stages may have different sample counts across a window or restart; this sum is not a paired end-to-end latency.")
     series("Where the time goes (mean ms per order, 5m)", [(_stage_mean(s, "5m"), s) for s in STAGES],
            4, 12, unit="ms", stack=True,
-           description="Stacked per-stage means, in the order an order passes through them; the top of the stack is "
-                       "the mean tick-to-trade. sent_to_fill is the (simulated) venue.")
-    bars("p99 by stage (selected time range)",
-         [(s, f'histogram_quantile(0.99, sum by (le) (increase(velocita_gateway_stage_ms_bucket{{stage="{s}"}}[$__range])))')
-          for s in STAGES], 16, 8, unit="ms", decimals=1,
+           description="Independent gateway-stage means. Their sum is not full tick-to-trade latency. sent_to_fill is the simulated venue.")
+    bars("p99 by stage (selected range, 100+ orders)", [(s, _stage_quantile(0.99, s, "$__range")) for s in STAGES],
+         16, 8, unit="ms", decimals=1,
          description="99th percentile of each stage over the dashboard's time range, from the stage histogram. "
-                     "Percentiles do not add: this is not a p99 of the whole path.")
+                     "Shown only for a stage with at least 100 orders in the range. Percentiles do not add.")
     advance(8)
-    series("Stage latency p50 (5m)", [(_stage_quantile(0.5, s, "5m"), s) for s in STAGES], 0, 12, unit="ms",
-           description="Median per stage. Resolution is limited by the histogram's buckets.")
-    series("Stage latency p99 (5m)", [(_stage_quantile(0.99, s, "5m"), s) for s in STAGES], 12, 12, unit="ms",
-           description="99th percentile per stage. With few orders in 5 minutes this is close to the slowest one.")
+    series("Orders per stage (selected range)", [(_stage_samples(s, "$__range"), s) for s in STAGES], 0, 8,
+           description="How many orders each stage timing is based on. Below 100 the percentile panels stay empty.")
+    series("Stage latency p50 (selected range, 100+ orders)", [(_stage_quantile(0.5, s, "$__range"), s) for s in STAGES],
+           8, 8, unit="ms", description="Median per stage. Resolution is limited by the histogram's buckets.")
+    series("Stage latency p99 (selected range, 100+ orders)", [(_stage_quantile(0.99, s, "$__range"), s) for s in STAGES],
+           16, 8, unit="ms", description="99th percentile per stage, from bucket interpolation.")
     advance(8)
 
 
@@ -692,13 +714,118 @@ def volume_row():
     advance(8)
 
 
+def indicator_paper_rows():
+    descriptions={
+        'sma': ('SMA momentum', '10-minute bars',
+            'IF flat AND SMA(20) > SMA(50): buy 0.12 SOL.\n'
+            'ELSE IF long AND SMA(20) <= SMA(50): sell 0.12 SOL.\n'
+            'ELSE: hold. SMA is the average close over the stated number of bars.'),
+        'stochastic': ('Stochastic momentum', '5-minute bars',
+            'K = 100 × (close − lowest low over 14 bars) / (highest high − lowest low).\n'
+            'D = average of the last 3 K values. A flat range gives K = 50.\n'
+            'IF long AND (K <= D OR K <= 40): sell 0.12 SOL.\n'
+            'ELSE IF flat AND K > D AND K >= 50: buy 0.12 SOL.\n'
+            'ELSE: hold. Exit rules have priority.')}
+    for strategy in ('stochastic',):
+        title,cadence,rules=descriptions[strategy]
+        row(f'{title} — isolated $25 virtual account')
+        content=(f'**{cadence}; long-only SOL/cash.**\n\n```text\n{rules}\n```\n\n'
+            'Signals use completed Binance SOLUSDT OHLC (a proxy, not executable TM quotes). '
+            'The signal is delayed one five-minute bar; the FOK paper gateway uses that next '
+            'completed close, rounded down to $0.01. Indicator comparisons use the registered '
+            'integer rounding. Each account starts with $25 once, has no top-ups, and pays '
+            '**0.30% assumed cost per side** (0.20% service + 0.10% execution). '
+            'A clip must fit its own balance including fees and the $25 notional cap.\n\n'
+            '**Bounded diagnostic:** stop new buys and request exit at $10 observed liquidation '
+            'drawdown, 240 venue orders, or day 14. A stop is not a guaranteed loss ceiling; '
+            'stale data or unresolved orders can delay exit. No venue orders or live promotion. '
+            'These strategies lost money historically; paper results alone do not establish alpha.')
+        panels.append({'type':'text','id':_id(),'title':f'{title}: rules and assumptions',
+            'gridPos':{'x':0,'y':_y,'w':24,'h':10},'options':{'mode':'markdown','content':content}})
+        advance(10)
+        selector=f'{{strategy="{strategy}"}}'
+        stat('Confirmed account ready',f'velocita_indicator_reconciled{selector}',0,4,
+             steps=(("red",None),("green",1)),description='0 or missing: account snapshot is stale, pending or does not reconcile. No new buying.')
+        stat('Equity after exit cost (30 bp scenario)',f'velocita_indicator_equity_usd{selector}',4,4,unit='currencyUSD',decimals=2)
+        stat('Net P&L since funding (30 bp scenario)',f'velocita_indicator_net_pnl_usd{selector}',8,4,unit='currencyUSD',decimals=2,
+             steps=(("red",None),("green",0)),
+             description='The account as simulated: 0.30% per side, which is an assumption. See the measured-cost panels in the next row.')
+        stat('Cash available',f'velocita_indicator_cash_usd{selector}',12,4,unit='currencyUSD',decimals=2)
+        stat('SOL inventory',f'velocita_indicator_position_sol{selector}',16,4,decimals=2)
+        stat('Candle age',f'velocita_indicator_price_age_seconds{selector}',20,4,unit='s',
+             steps=(("green",None),("red",600)))
+        advance(4)
+        measured='The same fills re-priced at the costs measured on True Markets on 2026-09-28: 1.00% per buy, 0.98% per sell (ADR 0018).'
+        stat('Net P&L at measured costs',f'velocita_indicator_measured_cost_net_pnl_usd{selector}',0,4,unit='currencyUSD',decimals=2,
+             steps=(("red",None),("green",0)),description=measured)
+        stat('Volume per $1 lost (30 bp scenario)',f'velocita_indicator_volume_per_usd_lost{{strategy="{strategy}",cost="scenario"}}',4,4,
+             unit='currencyUSD',decimals=0,description='Total buy and sell volume divided by the loss so far, as simulated. Empty while the account is not at a loss.')
+        stat('Volume per $1 lost (measured costs)',f'velocita_indicator_volume_per_usd_lost{{strategy="{strategy}",cost="measured"}}',8,4,
+             unit='currencyUSD',decimals=0,description=measured+' Plain churn achieves about $101 on SOL.')
+        stat('Drawdown stop used',f'100 * velocita_indicator_drawdown_usd{selector} / 10',12,4,unit='percent',decimals=0,
+             steps=(("green",None),("orange",50),("red",80)),description='Share of the $10 drawdown that stops new buys and requests an exit.')
+        stat('Bar close to fill (mean)',f'velocita_indicator_bar_close_to_fill_seconds{{strategy="{strategy}",stat="mean"}}',16,4,unit='s',decimals=1,
+             description='From the end of the five-minute bar to the confirmed fill, over every fill with a known time. Includes the data fetch, the decision, authorization, any retry after a stale-risk refusal, and the simulated venue.')
+        stat('Bar close to fill (max)',f'velocita_indicator_bar_close_to_fill_seconds{{strategy="{strategy}",stat="max"}}',20,4,unit='s',decimals=1)
+        advance(4)
+        series('SOL price with confirmed entries / exits',[
+            (f'velocita_indicator_price_usd{selector}','SOL proxy close'),
+            (f'max_over_time(velocita_indicator_fill_marker_usd{{strategy="{strategy}",side="buy"}}[$__interval])','Entry'),
+            (f'max_over_time(velocita_indicator_fill_marker_usd{{strategy="{strategy}",side="sell"}}[$__interval])','Exit')],
+            0,14,unit='currencyUSD',min0=False,
+            description='Markers are confirmed simulated fills, never raw signals. Their chart time has scrape/bucket resolution; exact confirmation times are retained in the ledger. Missed historical times are unknown, not invented. Zoom in to inspect close entries/exits.')
+        for name,color in (('Entry','green'),('Exit','red')):
+            panels[-1]['fieldConfig']['overrides'].append({'matcher':{'id':'byName','options':name},
+                'properties':[{'id':'custom.drawStyle','value':'points'}, {'id':'custom.showPoints','value':'always'},
+                    {'id':'custom.pointSize','value':9},{'id':'custom.lineWidth','value':0},
+                    {'id':'color','value':{'mode':'fixed','fixedColor':color}}]})
+        series('Equity and drawdown',[(f'velocita_indicator_equity_usd{selector}','Equity'),
+            (f'velocita_indicator_drawdown_usd{selector}','Drawdown')],14,10,unit='currencyUSD',min0=False)
+        advance(8)
+        metric=f'velocita_indicator_shadow_tick_to_decision_ms'
+        count=f'sum(increase({metric}_count{{strategy="{strategy}"}}[$__range]))'
+        stat('Decision samples (range estimate)',count,0,6,decimals=1,
+             description='Prometheus increase extrapolates between scrapes and handles process counter resets; this is an estimated count, not an exact event ledger.')
+        stat('Mean tick to decision',f'sum(increase({metric}_sum{{strategy="{strategy}"}}[$__range])) / ({count} > 0)',6,6,unit='ms',decimals=3,
+             description='Payload delivered to Python through receipt of the committed decision at the local C++ submitter. Includes indicators, durable journal and two Raft commits. Excludes HTTP fetch, authorization and fills. Same-host wall clock; clock steps can distort durations.')
+        stat('p99 estimate (100+ samples)',f'histogram_quantile(0.99, sum by (le) (increase({metric}_bucket{{strategy="{strategy}"}}[$__range]))) and on() ({count} >= 100)',12,6,unit='ms',decimals=2,
+             description='Bucket interpolation, not an exact observed percentile. Hidden below an estimated 100 samples. Five-minute decisions do not characterize high-load tail latency.')
+        stat('Rule disagreements',f'velocita_indicator_shadow_agreement_total{{strategy="{strategy}",result="disagree"}}',18,6,decimals=0)
+        advance(4)
+        series('Tick to decision: mean by component (30m)',[
+            (f'sum by (hop) (increase(velocita_indicator_shadow_hop_ms_sum{{strategy="{strategy}"}}[30m])) / scalar(sum(increase({metric}_count{{strategy="{strategy}"}}[30m])) > 0)','{{hop}}')],
+            0,24,unit='ms',stack=True,description='edge: feature/journal work and IPC; source_commit and decision_commit: request to committed reply, including networking, scheduling, quorum and durable storage. Not pure kernel execution time.')
+        advance(8)
+        for offset,days in ((0,7),(12,14)):
+            sel=f'{{strategy="{strategy}",days="{days}"}}'
+            for j,(label,metric,unit) in enumerate((('Volume','period_volume_usd','currencyUSD'),
+                    ('Net P&L','period_pnl_usd','currencyUSD'),('Fees','period_fees_usd','currencyUSD'),
+                    ('Round trips','period_completed_trades','none'))):
+                stat(f'{days}d {label}',f'velocita_indicator_{metric}{sel}',offset+3*j,3,unit=unit,decimals=2,
+                    description='Trailing window, or since funding when the account is younger. No annualization. Unknown historical fill times are excluded from timed volume/fees/trade counts.')
+        advance(4)
+        series('Volume accumulated',[(f'velocita_indicator_volume_usd_total{selector}','Executed buy + sell notional')],
+            0,8,unit='currencyUSD')
+        series('Buy stops',[(f'velocita_indicator_buy_stop{selector}','{{reason}}'),
+            (f'velocita_indicator_gateway_new_risk_stopped{selector}','Gateway stopped')],8,8,
+            description='Stops are independent for each account. Loss/capacity/duration stops persist across restart.')
+        series('Orders used / capacity',[(f'velocita_indicator_order_count{selector}','Orders'),
+            (f'velocita_indicator_order_capacity{selector}','Buy-stop capacity')],16,8)
+        advance(8)
+
+
 def paper():
     start()
     paper_now_row()
+    panels[0]['title'] = 'Active stochastic paper cluster: gateway status'
+    indicator_paper_rows()
     rearm_row()
     tick_to_trade_row()
     orders_row()
     position_row()
+    note("Not running", "**The weekly volume-strategy panels below (churn, rotate, dip) have no data:** those "
+         "strategies are not running. The stochastic strategy's volume, cost and stop figures are in its "
+         "own section above.")
     volume_row()
     return finish(PAPER, "Phase 2 paper trading: the gateway against the TrueMarkets simulator. Tick-to-trade by "
                          "stage, orders, fills, position and fees. No real order is sent.", ["paper", "gateway"])

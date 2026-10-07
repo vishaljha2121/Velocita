@@ -82,3 +82,47 @@ version, and the submitter never sees them.
   `--policy-version 2` or the fresh cluster that ADR 0015 already requires.
 - **Placeholder at merge.** The edge copy has a placeholder `kRiskStateDetailKind`. Replace it with
   `ApplyResultDetailKind::risk_state` (value 7, which matches).
+
+## Amendment 2026-10-07: two practices introduced by the stochastic paper run
+
+**Status: recorded for the owner's decision.** Found by the independent review
+(`docs/evidence/dual_indicator_paper_2026-10-07/INDEPENDENT_REVIEW.md`, M3 and M4).
+
+### 1. The edge reads the gateway's venue report
+
+This ADR chose "the submitter talks to the cluster only through committed commands". The
+indicator edge (`model/src/velocita_model/shadow/indicator_paper.py`) additionally reads
+`venue.json`, a file the gateway writes twice a second, and uses it to:
+- send an exit only when the venue holds a position, and an entry only when it is flat;
+- stop buying on drawdown, order capacity or insufficient cash;
+- keep its fill ledger.
+
+**Why it was done.** The kernel holds lots but no cash, fees or fill prices (ADR 0021 is not built),
+so the drawdown stop has nowhere else to read them.
+
+**How it is bounded.** The report is accepted only if it names this incarnation, account and
+venue, is at most 5 seconds old, has no pending reports, and its cash, lots, fees and volume
+equal the sum of its own order list. Anything else is "unreconciled", and the edge then holds: it
+neither buys nor sells. The kernel's risk limits still bound every order.
+
+**What it costs.** Position now has two sources of truth for the edge (the kernel through
+refusals, the venue through this file), and a stale or missing report freezes an open position
+until it clears. `VelocitaPaperAccountUnreconciled` alerts on that.
+
+**It ends** when ADR 0021 puts cash and P&L in the kernel; the edge then reads committed state only.
+
+### 2. Operator commands were issued by a script on a voter host
+
+`deploy/v2/indicator-paper/control.py` (action `ceremony`) sent the kill epoch, executor
+generation, catalog install and risk limits as the operator (CallerId 7), using the copy of
+`caller-9.key` that every voter holds, from nuc1.
+
+Until then operator commands came from the owner's Mac, with the key read from the Keychain.
+The kernel cannot tell the two apart: the keys are symmetric, and every voter must hold every
+caller key to verify it. So ADR 0015's "operator-only" has always meant "anyone who can read a
+voter's secrets directory"; this run is the first time that was used.
+
+**Owner decision needed:** either accept that set-up automation on a voter host may act as the
+operator, or require ceremonies from the Mac. Nothing in the code enforces the second; ADR 0020
+(roles) would not either, since the caller is a genuine operator caller.
+

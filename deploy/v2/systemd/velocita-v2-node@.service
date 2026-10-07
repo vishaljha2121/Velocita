@@ -21,6 +21,7 @@ AssertPathExists=%t/velocita-secrets
 
 [Service]
 Type=simple
+ExecStartPre=/bin/sh %h/src/aeron-raft-pi/deploy/v2/one-cluster-guard.sh velocita-v2-node-%i
 ExecStart=/usr/bin/podman run --rm --replace --name velocita-v2-node-%i \
     --network host --userns=keep-id \
     --read-only --security-opt no-new-privileges --cap-drop all \
