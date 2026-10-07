@@ -3964,21 +3964,6 @@
    }
   },
   {
-   "type": "text",
-   "id": 70,
-   "title": "Not running",
-   "gridPos": {
-    "x": 0,
-    "y": 114,
-    "w": 24,
-    "h": 3
-   },
-   "options": {
-    "mode": "markdown",
-    "content": "**The weekly volume-strategy panels below (churn, rotate, dip) have no data:** those strategies are not running. The stochastic strategy's volume, cost and stop figures are in its own section above."
-   }
-  },
-  {
    "type": "stat",
    "title": "Final stop reason",
    "id": 71,
@@ -3989,7 +3974,7 @@
    "description": "A checked final snapshot records why the strategy stopped.",
    "gridPos": {
     "x": 0,
-    "y": 117,
+    "y": 114,
     "w": 24,
     "h": 3
    },
