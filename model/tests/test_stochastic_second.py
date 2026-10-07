@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from velocita_model.shadow.indicator_paper import Journal,Book,snapshot,ingest,NS
@@ -16,6 +17,25 @@ def venue():
 
 
 class SecondTests(unittest.TestCase):
+    def test_runner_calls_real_runner_signature(self):
+        from velocita_model.shadow import run_stochastic_second as runner
+        with tempfile.TemporaryDirectory() as d,patch('time.time_ns',return_value=100*NS):
+            j,source,report=self.make_source(d)
+            epoch=source.epoch
+            j.close()
+            program=Path(d)/'program'
+            program.write_text(pilot_program('a'*64,epoch['end_ns']))
+            config=Path(d)/'config.json'
+            config.write_text(json.dumps(dict(mode='paper',strategy='stochastic',
+                incarnation='a'*32,catalog_root='a'*64,epoch=epoch,
+                program=str(program),ledger=str(Path(d)/'ledger.db'),
+                venue_report=str(report),stop_ns=1801*NS,edge_metrics=str(Path(d)/'edge.prom'))))
+            with patch('sys.argv',['runner','--config',str(config),'--mode','paper',
+                    '--','submitter','--mode','paper']),patch.object(runner,'run_once',autospec=True) as run:
+                run.return_value=SimpleNamespace(reason='closed',decisions=0)
+                self.assertEqual(runner.main(),0)
+                self.assertEqual(run.call_args.kwargs['shadow_recorded_code'],17)
+
     def test_ema_hand_oracle(self):
         e=EMA(3)
         self.assertIsNone(e.push(1));self.assertIsNone(e.push(2))

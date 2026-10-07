@@ -85,7 +85,7 @@ def main():
         return connections<12 and time.time_ns()<epoch['end_ns'] and source.used()<LIMIT
     try:
         result=run_once(connected,command,source,textfile=c['edge_metrics'],
-            metrics=EdgeMetrics(17),paper_book=book,topics=(),reconnect=again)
+            shadow_recorded_code=17,metrics=EdgeMetrics(17),paper_book=book,topics=(),reconnect=again)
         print(f'ONE_SECOND_STOP reason={result.reason} decisions={result.decisions}',flush=True)
         return 0
     finally: journal.close()
