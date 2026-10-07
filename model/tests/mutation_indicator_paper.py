@@ -14,7 +14,7 @@ MUTANTS=(
     ('snapshot_identity',"s['incarnation']!=incarnation",'False','test_confirmed_cash_fee_and_volume_oracle'),
     ('snapshot_age',"0<=now-s['stamp']<=5","0<=now-s['stamp']<=600",'test_confirmed_cash_fee_and_volume_oracle'),
     ('commit_reconciliation',"if (cash,lots,fees,buy,sell)!=(s['cash'],s['lots'],s['fees'],s['buy_volume'],s['sell_volume']):",'if False:','test_confirmed_cash_fee_and_volume_oracle'),
-    ('fee_rounding',"fee!=-(-notional*30//10000)",'False','test_confirmed_cash_fee_and_volume_oracle'),
+    ('fee_rounding',"fee!=-(-notional*order_bps//10000)",'False','test_confirmed_cash_fee_and_volume_oracle'),
     ('freshness','age>20*NS','age>200*NS','test_source_staleness_resync_bound_and_restart'),
     ('resync_bound',"and row[0]==1):","and row[0]>=1):",'test_source_staleness_resync_bound_and_restart'),
 )

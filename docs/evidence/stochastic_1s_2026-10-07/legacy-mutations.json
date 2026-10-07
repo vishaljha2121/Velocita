@@ -1,0 +1,42 @@
+[
+  {
+    "mutation": "delay",
+    "test": "test_sma_delayed_signal_and_integer_price",
+    "killed_by_named_assertion": true
+  },
+  {
+    "mutation": "journal_identity",
+    "test": "test_ledgers_isolate_and_bind_on_restart",
+    "killed_by_named_assertion": true
+  },
+  {
+    "mutation": "snapshot_identity",
+    "test": "test_confirmed_cash_fee_and_volume_oracle",
+    "killed_by_named_assertion": true
+  },
+  {
+    "mutation": "snapshot_age",
+    "test": "test_confirmed_cash_fee_and_volume_oracle",
+    "killed_by_named_assertion": true
+  },
+  {
+    "mutation": "commit_reconciliation",
+    "test": "test_confirmed_cash_fee_and_volume_oracle",
+    "killed_by_named_assertion": true
+  },
+  {
+    "mutation": "fee_rounding",
+    "test": "test_confirmed_cash_fee_and_volume_oracle",
+    "killed_by_named_assertion": true
+  },
+  {
+    "mutation": "freshness",
+    "test": "test_source_staleness_resync_bound_and_restart",
+    "killed_by_named_assertion": true
+  },
+  {
+    "mutation": "resync_bound",
+    "test": "test_source_staleness_resync_bound_and_restart",
+    "killed_by_named_assertion": true
+  }
+]
