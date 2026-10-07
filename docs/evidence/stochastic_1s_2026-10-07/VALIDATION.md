@@ -16,3 +16,15 @@
   forwarded as orders. No venue credentials, quotes or orders in this check.
 - Existing compatibility tests retain the read-only observer contract.
 - Not a completed economic backtest/null/holdout study. No profitability claim.
+
+## Host build and startup regression
+
+The initial host build at 978b4c4 passed all 140 C++ tests and all ten new Python
+tests inside the resulting image. Deployment then exposed a missing required
+runner argument before any submitter was launched. The added main-entrypoint
+test, autospecced against the actual run_once signature, reproduced the TypeError.
+Commit 0680b08 supplies shadow_recorded_code=17; all 369 model tests pass.
+See DEPLOYED.md for the replacement image's build and runtime results.
+
+Promtool passed the complete rule suite. Eight legacy paper mutations also
+killed after updating their fee-epoch anchor; see legacy-mutations.json.
