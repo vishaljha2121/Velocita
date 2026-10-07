@@ -1,0 +1,514 @@
+{
+ "uid": "velocita-v2-hosts",
+ "title": "Velocita \u2014 Hosts",
+ "description": "Active cluster: stochastic paper only. The NUCs and the Pi from node-exporter: CPU, memory, disks, temperature, network.",
+ "schemaVersion": 41,
+ "version": 1,
+ "editable": false,
+ "refresh": "10s",
+ "time": {
+  "from": "now-3h",
+  "to": "now"
+ },
+ "tags": [
+  "velocita",
+  "v2",
+  "hosts"
+ ],
+ "timezone": "browser",
+ "links": [
+  {
+   "type": "link",
+   "title": "Overview",
+   "url": "/d/velocita-v2-cluster",
+   "icon": "dashboard",
+   "tooltip": "Velocita \u2014 Overview",
+   "targetBlank": false,
+   "keepTime": true,
+   "includeVars": false,
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "type": "link",
+   "title": "Raft & storage",
+   "url": "/d/velocita-v2-raft",
+   "icon": "dashboard",
+   "tooltip": "Velocita \u2014 Raft & storage",
+   "targetBlank": false,
+   "keepTime": true,
+   "includeVars": false,
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "type": "link",
+   "title": "Strategy (shadow)",
+   "url": "/d/velocita-v2-strategy",
+   "icon": "dashboard",
+   "tooltip": "Velocita \u2014 Strategy (shadow)",
+   "targetBlank": false,
+   "keepTime": true,
+   "includeVars": false,
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "type": "link",
+   "title": "Paper trading",
+   "url": "/d/velocita-v2-paper",
+   "icon": "dashboard",
+   "tooltip": "Velocita \u2014 Paper trading",
+   "targetBlank": false,
+   "keepTime": true,
+   "includeVars": false,
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "type": "link",
+   "title": "Hosts",
+   "url": "/d/velocita-v2-hosts",
+   "icon": "dashboard",
+   "tooltip": "Velocita \u2014 Hosts",
+   "targetBlank": false,
+   "keepTime": true,
+   "includeVars": false,
+   "asDropdown": false,
+   "tags": []
+  }
+ ],
+ "panels": [
+  {
+   "type": "row",
+   "title": "Machines: NUC and Pi",
+   "id": 1,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 0
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "CPU busy %",
+   "id": 2,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 0,
+    "y": 1
+   },
+   "targets": [
+    {
+     "expr": "100 * (1 - avg by (host) (rate(node_cpu_seconds_total{mode=\"idle\"}[1m])))",
+     "legendFormat": "{{host}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Waiting on disk (iowait %)",
+   "id": 3,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "High on the Pi = the SD card is the bottleneck.",
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 8,
+    "y": 1
+   },
+   "targets": [
+    {
+     "expr": "100 * avg by (host) (rate(node_cpu_seconds_total{mode=\"iowait\"}[1m]))",
+     "legendFormat": "{{host}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Memory available",
+   "id": 4,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 16,
+    "y": 1
+   },
+   "targets": [
+    {
+     "expr": "node_memory_MemAvailable_bytes",
+     "legendFormat": "{{host}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Disk write latency (avg ms per write)",
+   "id": 5,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Average time per completed write. The Pi's SD card runs roughly 10-50 ms.",
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 0,
+    "y": 9
+   },
+   "targets": [
+    {
+     "expr": "1000 * rate(node_disk_write_time_seconds_total{device=~\"nvme0n1|mmcblk0|sd[a-z]\"}[1m]) / clamp_min(rate(node_disk_writes_completed_total{device=~\"nvme0n1|mmcblk0|sd[a-z]\"}[1m]), 1e-9)",
+     "legendFormat": "{{host}} {{device}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Root disk free %",
+   "id": 6,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 8,
+    "y": 9
+   },
+   "targets": [
+    {
+     "expr": "100 * node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}",
+     "legendFormat": "{{host}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Temperature",
+   "id": 7,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 16,
+    "y": 9
+   },
+   "targets": [
+    {
+     "expr": "max by (host) (node_thermal_zone_temp)",
+     "legendFormat": "{{host}} thermal zone",
+     "refId": "A"
+    },
+    {
+     "expr": "max by (host) (node_hwmon_temp_celsius)",
+     "legendFormat": "{{host}} hwmon",
+     "refId": "B"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "celsius",
+     "min": null,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Tailscale traffic",
+   "id": 8,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 17
+   },
+   "targets": [
+    {
+     "expr": "rate(node_network_receive_bytes_total{device=\"tailscale0\"}[1m])",
+     "legendFormat": "{{host}} rx",
+     "refId": "A"
+    },
+    {
+     "expr": "rate(node_network_transmit_bytes_total{device=\"tailscale0\"}[1m])",
+     "legendFormat": "{{host}} tx",
+     "refId": "B"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "Bps",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Uptime",
+   "id": 9,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "A reset here means the machine rebooted.",
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 17
+   },
+   "targets": [
+    {
+     "expr": "time() - node_boot_time_seconds",
+     "legendFormat": "{{host}}",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value_and_name",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  }
+ ],
+ "templating": {
+  "list": []
+ },
+ "annotations": {
+  "list": []
+ }
+}

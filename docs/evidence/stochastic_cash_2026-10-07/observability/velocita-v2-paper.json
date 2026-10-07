@@ -1,0 +1,4051 @@
+{
+ "uid": "velocita-v2-paper",
+ "title": "Velocita \u2014 Paper trading",
+ "description": "Active cluster: stochastic paper only. Phase 2 paper trading: the gateway against the TrueMarkets simulator. Tick-to-trade by stage, orders, fills, position and fees. No real order is sent.",
+ "schemaVersion": 41,
+ "version": 1,
+ "editable": false,
+ "refresh": "10s",
+ "time": {
+  "from": "now-3h",
+  "to": "now"
+ },
+ "tags": [
+  "velocita",
+  "v2",
+  "paper",
+  "gateway"
+ ],
+ "timezone": "browser",
+ "links": [
+  {
+   "type": "link",
+   "title": "Overview",
+   "url": "/d/velocita-v2-cluster",
+   "icon": "dashboard",
+   "tooltip": "Velocita \u2014 Overview",
+   "targetBlank": false,
+   "keepTime": true,
+   "includeVars": false,
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "type": "link",
+   "title": "Raft & storage",
+   "url": "/d/velocita-v2-raft",
+   "icon": "dashboard",
+   "tooltip": "Velocita \u2014 Raft & storage",
+   "targetBlank": false,
+   "keepTime": true,
+   "includeVars": false,
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "type": "link",
+   "title": "Strategy (shadow)",
+   "url": "/d/velocita-v2-strategy",
+   "icon": "dashboard",
+   "tooltip": "Velocita \u2014 Strategy (shadow)",
+   "targetBlank": false,
+   "keepTime": true,
+   "includeVars": false,
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "type": "link",
+   "title": "Paper trading",
+   "url": "/d/velocita-v2-paper",
+   "icon": "dashboard",
+   "tooltip": "Velocita \u2014 Paper trading",
+   "targetBlank": false,
+   "keepTime": true,
+   "includeVars": false,
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "type": "link",
+   "title": "Hosts",
+   "url": "/d/velocita-v2-hosts",
+   "icon": "dashboard",
+   "tooltip": "Velocita \u2014 Hosts",
+   "targetBlank": false,
+   "keepTime": true,
+   "includeVars": false,
+   "asDropdown": false,
+   "tags": []
+  }
+ ],
+ "panels": [
+  {
+   "type": "row",
+   "title": "Active stochastic paper cluster: gateway status",
+   "id": 1,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 0
+   },
+   "panels": []
+  },
+  {
+   "type": "stat",
+   "title": "New risk",
+   "id": 2,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "1 = the gateway sends no risk-increasing order. After an election it re-arms by itself once the cluster is quiet and the venue reconciles; after an unknown outcome, a conflict, a control change or a reconciliation mismatch only a restart (after checking the gateway journal) re-arms it. Alert: VelocitaGatewayNewRiskStopped. An armed gateway alone does not imply an active strategy; check session status and submitter.",
+   "gridPos": {
+    "h": 6,
+    "w": 8,
+    "x": 0,
+    "y": 1
+   },
+   "targets": [
+    {
+     "expr": "max(velocita_gateway_new_risk_stopped{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"})",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "red",
+        "value": 1
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [
+      {
+       "type": "value",
+       "options": {
+        "0": {
+         "text": "NEW RISK ALLOWED"
+        },
+        "1": {
+         "text": "NEW RISK STOPPED"
+        }
+       }
+      }
+     ],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Gateway",
+   "id": 3,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "1 while the gateway process runs. 'unknown' = not deployed, or its metrics are not scraped.",
+   "gridPos": {
+    "h": 6,
+    "w": 4,
+    "x": 8,
+    "y": 1
+   },
+   "targets": [
+    {
+     "expr": "max(velocita_gateway_up{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"})",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": 1
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [
+      {
+       "type": "value",
+       "options": {
+        "0": {
+         "text": "DOWN"
+        },
+        "1": {
+         "text": "UP"
+        }
+       }
+      }
+     ],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Unknown outcomes (range)",
+   "id": 4,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Orders whose venue outcome the gateway could not establish. Each one stops new risk. Must be 0.",
+   "gridPos": {
+    "h": 6,
+    "w": 4,
+    "x": 12,
+    "y": 1
+   },
+   "targets": [
+    {
+     "expr": "sum(increase(velocita_gateway_unknown_outcomes_total{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}[$__range]))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "red",
+        "value": 1
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Since last fill",
+   "id": 5,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Seconds since the last paper fill seen by the running gateway (it resets on restart). The daily trend strategy trades a few times a year, so a long gap is normal.",
+   "gridPos": {
+    "h": 6,
+    "w": 4,
+    "x": 16,
+    "y": 1
+   },
+   "targets": [
+    {
+     "expr": "time() - (max(velocita_gateway_last_fill_timestamp_seconds{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}) > 0)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "no fill since gateway start"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Fees paid",
+   "id": 6,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "All fees charged on paper fills since the gateway's counters began, in US cents.",
+   "gridPos": {
+    "h": 6,
+    "w": 4,
+    "x": 20,
+    "y": 1
+   },
+   "targets": [
+    {
+     "expr": "100 * sum(velocita_gateway_fees_usd_total{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"})",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix:\u00a2",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 1
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "row",
+   "title": "Stochastic one-second session \u2014 isolated $25 virtual account",
+   "id": 7,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 7
+   },
+   "panels": []
+  },
+  {
+   "type": "text",
+   "id": 8,
+   "title": "Stochastic one-second session: rules and assumptions",
+   "gridPos": {
+    "x": 0,
+    "y": 8,
+    "w": 24,
+    "h": 10
+   },
+   "options": {
+    "mode": "markdown",
+    "content": "**Ongoing paper session: one-second completed bars; SOL/cash; 0.12 SOL orders.**\n\n```text\nENTER: K crosses above D, K >= 60, EMA300 > EMA1200;\n       all conditions hold for 3 seconds.\nEXIT:  K < D and K <= 40 for 3 seconds.\nWait 60 seconds after an exit before re-entry.\nSTOP:  while flat, cash cannot cover 0.12 SOL plus its fee.\n```\n\nStochastic range 900 seconds; K smoothing 10 seconds; D smoothing 30 seconds.\nSignals use the previous completed second. Public Binance SOLUSDT is a price\nproxy; simulated FOK fills use the following close. **20 bp per side, fee-only**;\nbuy-side symmetry is assumed. This is not proof of True Markets execution or alpha.\n\n**No scheduled time cutoff.** Continues from **$24.869170**, preserving the\noriginal $25 funding and all four prior fills. Session-only metrics exclude\nthose prior fills; lifetime and 7/14-day panels include them. One cluster only.\nThe $10 drawdown, 240 lifetime-order, reconciliation and storage guards remain.\nWhile invested in SOL, low USDC does not block selling. A finalized flat session\nkeeps its balances and fills visible even after the edge stops."
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Session-only net P&L (20 bp)",
+   "id": 9,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 0,
+    "y": 18
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_variant_net_pnl_usd{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 3
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Session-only volume",
+   "id": 10,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 6,
+    "y": 18
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_variant_volume_usd{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 2
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Session-only fees",
+   "id": 11,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 12,
+    "y": 18
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_variant_fees_usd{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 3
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Session-only fills",
+   "id": 12,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 18,
+    "y": 18
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_variant_order_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Session status",
+   "id": 13,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Completed requires flat inventory and a checked final ledger. Running window alone is not a health assertion.",
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 0,
+    "y": 22
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_run_state{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": 1
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [
+      {
+       "type": "value",
+       "options": {
+        "0": {
+         "text": "Open (see health)",
+         "color": "blue"
+        },
+        "1": {
+         "text": "Completed",
+         "color": "blue"
+        },
+        "2": {
+         "text": "Needs finalization",
+         "color": "orange"
+        }
+       }
+      }
+     ],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Equity after exit cost (account history; new fills 20 bp)",
+   "id": 14,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 4,
+    "y": 22
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_equity_usd{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 2
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Net P&L since funding (account history; new fills 20 bp)",
+   "id": 15,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Account lifetime includes old 30 bp fills and new 20 bp fee-only fills. Pilot-only panels isolate the new rules; buy-side 20 bp remains assumed.",
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 8,
+    "y": 22
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_net_pnl_usd{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": 0
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 2
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Cash available",
+   "id": 16,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 12,
+    "y": 22
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_cash_usd{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 2
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "SOL inventory",
+   "id": 17,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 16,
+    "y": 22
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_position_sol{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 2
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Age of last recorded candle",
+   "id": 18,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Naturally increases once the session is completed. No fresh price is needed to value a flat final account.",
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 20,
+    "y": 22
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_price_age_seconds{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "red",
+        "value": 5
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "P&L under historical 100/98 bp stress",
+   "id": 19,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Historical route stress case: same fills re-priced at the September 28 100/98 bp quotes; not the current 20 bp CLI service fee.",
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 0,
+    "y": 26
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_measured_cost_net_pnl_usd{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": 0
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 2
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Volume per $1 lost (account history; new fills 20 bp)",
+   "id": 20,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Total buy and sell volume divided by the loss so far, as simulated. Empty while the account is not at a loss.",
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 4,
+    "y": 26
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_volume_per_usd_lost{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",cost=\"scenario\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "No net loss",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Volume per $1 lost (100/98 bp stress)",
+   "id": 21,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Historical route stress case: same fills re-priced at the September 28 100/98 bp quotes; not the current 20 bp CLI service fee. Plain churn achieves about $101 on SOL.",
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 8,
+    "y": 26
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_volume_per_usd_lost{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",cost=\"measured\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "No net loss",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Drawdown stop used",
+   "id": 22,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Share of the $10 drawdown that stops new buys and requests an exit.",
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 12,
+    "y": 26
+   },
+   "targets": [
+    {
+     "expr": "100 * velocita_indicator_drawdown_usd{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"} / 10",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 50
+       },
+       {
+        "color": "red",
+        "value": 80
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Bar close to fill (mean)",
+   "id": 23,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "No exact signal-to-fill join is currently instrumented for this one-second pilot. The configured delay is one completed bar; do not infer a measurement from fill timestamps.",
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 16,
+    "y": 26
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_bar_close_to_fill_seconds{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stat=\"mean\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "Not instrumented",
+     "decimals": 1
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Bar close to fill (max)",
+   "id": 24,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "No exact signal-to-fill join is currently instrumented for this one-second pilot. The configured delay is one completed bar; do not infer a measurement from fill timestamps.",
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 20,
+    "y": 26
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_bar_close_to_fill_seconds{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stat=\"max\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "Not instrumented",
+     "decimals": 1
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "SOL price with confirmed entries / exits",
+   "id": 25,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Markers are confirmed simulated fills, never raw signals. Their chart time has scrape/bucket resolution; exact confirmation times are retained in the ledger. Missed historical times are unknown, not invented. Zoom in to inspect close entries/exits.",
+   "gridPos": {
+    "h": 8,
+    "w": 14,
+    "x": 0,
+    "y": 30
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_price_usd{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}",
+     "legendFormat": "SOL proxy close",
+     "refId": "A"
+    },
+    {
+     "expr": "max_over_time(velocita_indicator_fill_marker_usd{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",side=\"buy\"}[$__interval])",
+     "legendFormat": "Entry",
+     "refId": "B"
+    },
+    {
+     "expr": "max_over_time(velocita_indicator_fill_marker_usd{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",side=\"sell\"}[$__interval])",
+     "legendFormat": "Exit",
+     "refId": "C"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "min": null,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Entry"
+      },
+      "properties": [
+       {
+        "id": "custom.drawStyle",
+        "value": "points"
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "always"
+       },
+       {
+        "id": "custom.pointSize",
+        "value": 9
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 0
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Exit"
+      },
+      "properties": [
+       {
+        "id": "custom.drawStyle",
+        "value": "points"
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "always"
+       },
+       {
+        "id": "custom.pointSize",
+        "value": 9
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 0
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Equity and drawdown",
+   "id": 26,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 8,
+    "w": 10,
+    "x": 14,
+    "y": 30
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_equity_usd{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}",
+     "legendFormat": "Equity",
+     "refId": "A"
+    },
+    {
+     "expr": "velocita_indicator_drawdown_usd{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}",
+     "legendFormat": "Drawdown",
+     "refId": "B"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "min": null,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Decision samples (range estimate)",
+   "id": 27,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Prometheus increase extrapolates between scrapes and handles process counter resets; this is an estimated count, not an exact event ledger.",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 0,
+    "y": 38
+   },
+   "targets": [
+    {
+     "expr": "sum(increase(velocita_indicator_shadow_tick_to_decision_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}[$__range]))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 1
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Mean tick to decision",
+   "id": 28,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Payload delivered to Python through receipt of the committed decision at the local C++ submitter. Includes indicators, durable journal and two Raft commits. Excludes HTTP fetch, authorization and fills. Same-host wall clock; clock steps can distort durations.",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 6,
+    "y": 38
+   },
+   "targets": [
+    {
+     "expr": "sum(increase(velocita_indicator_shadow_tick_to_decision_ms_sum{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}[$__range])) / (sum(increase(velocita_indicator_shadow_tick_to_decision_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}[$__range])) > 0)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 3
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "p99 estimate (100+ samples)",
+   "id": 29,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Bucket interpolation, not an exact observed percentile. Hidden below an estimated 100 samples. Five-minute decisions do not characterize high-load tail latency.",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 12,
+    "y": 38
+   },
+   "targets": [
+    {
+     "expr": "histogram_quantile(0.99, sum by (le) (increase(velocita_indicator_shadow_tick_to_decision_ms_bucket{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}[$__range]))) and on() (sum(increase(velocita_indicator_shadow_tick_to_decision_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}[$__range])) >= 100)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "Need 100 samples",
+     "decimals": 2
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Rule disagreements",
+   "id": 30,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 18,
+    "y": 38
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_shadow_agreement_total{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",result=\"disagree\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Tick to decision: mean by component (30m)",
+   "id": 31,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "edge: feature/journal work and IPC; source_commit and decision_commit: request to committed reply, including networking, scheduling, quorum and durable storage. Not pure kernel execution time.",
+   "gridPos": {
+    "h": 8,
+    "w": 24,
+    "x": 0,
+    "y": 42
+   },
+   "targets": [
+    {
+     "expr": "sum by (hop) (increase(velocita_indicator_shadow_hop_ms_sum{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}[30m])) / scalar(sum(increase(velocita_indicator_shadow_tick_to_decision_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}[30m])) > 0)",
+     "legendFormat": "{{hop}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "normal"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "stat",
+   "title": "7d Volume",
+   "id": 32,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Trailing window, or since funding when the account is younger. No annualization. Unknown historical fill times are excluded from timed volume/fees/trade counts.",
+   "gridPos": {
+    "h": 4,
+    "w": 3,
+    "x": 0,
+    "y": 50
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_period_volume_usd{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",days=\"7\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 2
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "7d Net P&L",
+   "id": 33,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Trailing window, or since funding when the account is younger. No annualization. Unknown historical fill times are excluded from timed volume/fees/trade counts.",
+   "gridPos": {
+    "h": 4,
+    "w": 3,
+    "x": 3,
+    "y": 50
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_period_pnl_usd{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",days=\"7\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 2
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "7d Fees",
+   "id": 34,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Trailing window, or since funding when the account is younger. No annualization. Unknown historical fill times are excluded from timed volume/fees/trade counts.",
+   "gridPos": {
+    "h": 4,
+    "w": 3,
+    "x": 6,
+    "y": 50
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_period_fees_usd{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",days=\"7\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 2
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "7d Round trips",
+   "id": 35,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Trailing window, or since funding when the account is younger. No annualization. Unknown historical fill times are excluded from timed volume/fees/trade counts.",
+   "gridPos": {
+    "h": 4,
+    "w": 3,
+    "x": 9,
+    "y": 50
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_period_completed_trades{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",days=\"7\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 2
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "14d Volume",
+   "id": 36,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Trailing window, or since funding when the account is younger. No annualization. Unknown historical fill times are excluded from timed volume/fees/trade counts.",
+   "gridPos": {
+    "h": 4,
+    "w": 3,
+    "x": 12,
+    "y": 50
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_period_volume_usd{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",days=\"14\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 2
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "14d Net P&L",
+   "id": 37,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Trailing window, or since funding when the account is younger. No annualization. Unknown historical fill times are excluded from timed volume/fees/trade counts.",
+   "gridPos": {
+    "h": 4,
+    "w": 3,
+    "x": 15,
+    "y": 50
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_period_pnl_usd{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",days=\"14\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 2
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "14d Fees",
+   "id": 38,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Trailing window, or since funding when the account is younger. No annualization. Unknown historical fill times are excluded from timed volume/fees/trade counts.",
+   "gridPos": {
+    "h": 4,
+    "w": 3,
+    "x": 18,
+    "y": 50
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_period_fees_usd{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",days=\"14\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 2
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "14d Round trips",
+   "id": 39,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Trailing window, or since funding when the account is younger. No annualization. Unknown historical fill times are excluded from timed volume/fees/trade counts.",
+   "gridPos": {
+    "h": 4,
+    "w": 3,
+    "x": 21,
+    "y": 50
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_period_completed_trades{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",days=\"14\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 2
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Volume accumulated",
+   "id": 40,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 0,
+    "y": 54
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_volume_usd_total{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}",
+     "legendFormat": "Executed buy + sell notional",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Buy stops",
+   "id": 41,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Stops are independent for each account. Loss/capacity/duration stops persist across restart.",
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 8,
+    "y": 54
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_buy_stop{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}",
+     "legendFormat": "{{reason}}",
+     "refId": "A"
+    },
+    {
+     "expr": "velocita_indicator_gateway_new_risk_stopped{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}",
+     "legendFormat": "Gateway stopped",
+     "refId": "B"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Orders used / capacity",
+   "id": 42,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 16,
+    "y": 54
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_order_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}",
+     "legendFormat": "Orders",
+     "refId": "A"
+    },
+    {
+     "expr": "velocita_indicator_order_capacity{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}",
+     "legendFormat": "Buy-stop capacity",
+     "refId": "B"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "row",
+   "title": "Stops, automatic re-arms and reconciliation",
+   "id": 43,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 62
+   },
+   "panels": []
+  },
+  {
+   "type": "stat",
+   "title": "Venue vs kernel",
+   "id": 44,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "1 = at a comparable cut the paper venue's base differed from the kernel's position (zero-lot tolerance). New risk stays stopped until a restart. Alert: VelocitaGatewayReconciliationMismatch.",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 0,
+    "y": 63
+   },
+   "targets": [
+    {
+     "expr": "max(velocita_gateway_reconciliation_mismatch{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"})",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "red",
+        "value": 1
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [
+      {
+       "type": "value",
+       "options": {
+        "0": {
+         "text": "MATCH"
+        },
+        "1": {
+         "text": "MISMATCH"
+        }
+       }
+      }
+     ],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Compared position (lots)",
+   "id": 45,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Kernel and venue position at the last comparable cut; frozen at the values of a mismatch.",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 6,
+    "y": 63
+   },
+   "targets": [
+    {
+     "expr": "max by (source) (velocita_gateway_reconciliation_position_lots{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"})",
+     "legendFormat": "{{source}}",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value_and_name",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Re-arms (range)",
+   "id": 46,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Automatic re-arms after a fence (election or state-read gap).",
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 12,
+    "y": 63
+   },
+   "targets": [
+    {
+     "expr": "sum(increase(velocita_gateway_rearms_total{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}[$__range]))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Since clean reconciliation",
+   "id": 47,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Seconds since the venue's book last matched the kernel at a comparable cut. 'unknown' = none since the gateway started (a cut is comparable only with no order open).",
+   "gridPos": {
+    "h": 4,
+    "w": 8,
+    "x": 16,
+    "y": 63
+   },
+   "targets": [
+    {
+     "expr": "time() - (max(velocita_gateway_reconciliation_last_match_timestamp_seconds{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}) > 0)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 300
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Stops by cause (per hour)",
+   "id": 48,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "fence re-arms by itself after the quiet period; every other cause holds new risk until the gateway is restarted (runbook 5.3).",
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 67
+   },
+   "targets": [
+    {
+     "expr": "sum by (cause) (increase(velocita_gateway_stops_total{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}[1h]))",
+     "legendFormat": "{{cause}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "normal"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Why new risk is stopped now",
+   "id": 49,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "1 per active cause. awaiting_arm = only the arming check is pending (quiet period, an open order, or a cut not yet comparable). Alert: VelocitaGatewayAwaitingRearm after 10 m.",
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 67
+   },
+   "targets": [
+    {
+     "expr": "max by (cause) (velocita_gateway_stop_cause{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}) > 0",
+     "legendFormat": "{{cause}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "row",
+   "title": "Stochastic gateway: observed effect -> proof -> send -> fill -> committed",
+   "id": 50,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 75
+   },
+   "panels": []
+  },
+  {
+   "type": "stat",
+   "title": "Sum of gateway stage means",
+   "id": 51,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Four gateway-clock stage means. Starts when the gateway first observes a deliverable effect. Excludes tick processing, decision authorization and the wait before gateway observation. Stages may have different sample counts across a window or restart; this sum is not a paired end-to-end latency.",
+   "gridPos": {
+    "h": 8,
+    "w": 4,
+    "x": 0,
+    "y": 76
+   },
+   "targets": [
+    {
+     "expr": "(sum(increase(velocita_gateway_stage_ms_sum{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"authorized_to_proof\"}[$__range])) / (sum(increase(velocita_gateway_stage_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"authorized_to_proof\"}[$__range])) > 0)) + (sum(increase(velocita_gateway_stage_ms_sum{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"proof_to_sent\"}[$__range])) / (sum(increase(velocita_gateway_stage_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"proof_to_sent\"}[$__range])) > 0)) + (sum(increase(velocita_gateway_stage_ms_sum{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"sent_to_fill\"}[$__range])) / (sum(increase(velocita_gateway_stage_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"sent_to_fill\"}[$__range])) > 0)) + (sum(increase(velocita_gateway_stage_ms_sum{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"fill_to_committed\"}[$__range])) / (sum(increase(velocita_gateway_stage_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"fill_to_committed\"}[$__range])) > 0))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "No fill samples"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Where the time goes (mean ms per order, 5m)",
+   "id": 52,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Independent gateway-stage means. Their sum is not full tick-to-trade latency. sent_to_fill is the simulated venue.",
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 4,
+    "y": 76
+   },
+   "targets": [
+    {
+     "expr": "sum(increase(velocita_gateway_stage_ms_sum{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"authorized_to_proof\"}[5m])) / (sum(increase(velocita_gateway_stage_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"authorized_to_proof\"}[5m])) > 0)",
+     "legendFormat": "authorized_to_proof",
+     "refId": "A"
+    },
+    {
+     "expr": "sum(increase(velocita_gateway_stage_ms_sum{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"proof_to_sent\"}[5m])) / (sum(increase(velocita_gateway_stage_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"proof_to_sent\"}[5m])) > 0)",
+     "legendFormat": "proof_to_sent",
+     "refId": "B"
+    },
+    {
+     "expr": "sum(increase(velocita_gateway_stage_ms_sum{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"sent_to_fill\"}[5m])) / (sum(increase(velocita_gateway_stage_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"sent_to_fill\"}[5m])) > 0)",
+     "legendFormat": "sent_to_fill",
+     "refId": "C"
+    },
+    {
+     "expr": "sum(increase(velocita_gateway_stage_ms_sum{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"fill_to_committed\"}[5m])) / (sum(increase(velocita_gateway_stage_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"fill_to_committed\"}[5m])) > 0)",
+     "legendFormat": "fill_to_committed",
+     "refId": "D"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "normal"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "bargauge",
+   "title": "p99 by stage (selected range, 100+ orders)",
+   "id": 53,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "99th percentile of each stage over the dashboard's time range, from the stage histogram. Shown only for a stage with at least 100 orders in the range. Percentiles do not add.",
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 16,
+    "y": 76
+   },
+   "targets": [
+    {
+     "expr": "histogram_quantile(0.99, sum by (le) (increase(velocita_gateway_stage_ms_bucket{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"authorized_to_proof\"}[$__range]))) and on() (sum(increase(velocita_gateway_stage_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"authorized_to_proof\"}[$__range])) >= 100)",
+     "legendFormat": "authorized_to_proof",
+     "refId": "A",
+     "instant": true
+    },
+    {
+     "expr": "histogram_quantile(0.99, sum by (le) (increase(velocita_gateway_stage_ms_bucket{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"proof_to_sent\"}[$__range]))) and on() (sum(increase(velocita_gateway_stage_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"proof_to_sent\"}[$__range])) >= 100)",
+     "legendFormat": "proof_to_sent",
+     "refId": "B",
+     "instant": true
+    },
+    {
+     "expr": "histogram_quantile(0.99, sum by (le) (increase(velocita_gateway_stage_ms_bucket{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"sent_to_fill\"}[$__range]))) and on() (sum(increase(velocita_gateway_stage_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"sent_to_fill\"}[$__range])) >= 100)",
+     "legendFormat": "sent_to_fill",
+     "refId": "C",
+     "instant": true
+    },
+    {
+     "expr": "histogram_quantile(0.99, sum by (le) (increase(velocita_gateway_stage_ms_bucket{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"fill_to_committed\"}[$__range]))) and on() (sum(increase(velocita_gateway_stage_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"fill_to_committed\"}[$__range])) >= 100)",
+     "legendFormat": "fill_to_committed",
+     "refId": "D",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "decimals": 1,
+     "min": 0,
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "blue"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "horizontal",
+    "displayMode": "basic",
+    "showUnfilled": true,
+    "valueMode": "color",
+    "namePlacement": "left",
+    "sizing": "auto",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Orders per stage (selected range)",
+   "id": 54,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "How many orders each stage timing is based on. Below 100 the percentile panels stay empty.",
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 0,
+    "y": 84
+   },
+   "targets": [
+    {
+     "expr": "sum(increase(velocita_gateway_stage_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"authorized_to_proof\"}[$__range]))",
+     "legendFormat": "authorized_to_proof",
+     "refId": "A"
+    },
+    {
+     "expr": "sum(increase(velocita_gateway_stage_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"proof_to_sent\"}[$__range]))",
+     "legendFormat": "proof_to_sent",
+     "refId": "B"
+    },
+    {
+     "expr": "sum(increase(velocita_gateway_stage_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"sent_to_fill\"}[$__range]))",
+     "legendFormat": "sent_to_fill",
+     "refId": "C"
+    },
+    {
+     "expr": "sum(increase(velocita_gateway_stage_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"fill_to_committed\"}[$__range]))",
+     "legendFormat": "fill_to_committed",
+     "refId": "D"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Stage latency p50 (selected range, 100+ orders)",
+   "id": 55,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Median per stage. Resolution is limited by the histogram's buckets.",
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 8,
+    "y": 84
+   },
+   "targets": [
+    {
+     "expr": "histogram_quantile(0.5, sum by (le) (increase(velocita_gateway_stage_ms_bucket{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"authorized_to_proof\"}[$__range]))) and on() (sum(increase(velocita_gateway_stage_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"authorized_to_proof\"}[$__range])) >= 100)",
+     "legendFormat": "authorized_to_proof",
+     "refId": "A"
+    },
+    {
+     "expr": "histogram_quantile(0.5, sum by (le) (increase(velocita_gateway_stage_ms_bucket{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"proof_to_sent\"}[$__range]))) and on() (sum(increase(velocita_gateway_stage_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"proof_to_sent\"}[$__range])) >= 100)",
+     "legendFormat": "proof_to_sent",
+     "refId": "B"
+    },
+    {
+     "expr": "histogram_quantile(0.5, sum by (le) (increase(velocita_gateway_stage_ms_bucket{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"sent_to_fill\"}[$__range]))) and on() (sum(increase(velocita_gateway_stage_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"sent_to_fill\"}[$__range])) >= 100)",
+     "legendFormat": "sent_to_fill",
+     "refId": "C"
+    },
+    {
+     "expr": "histogram_quantile(0.5, sum by (le) (increase(velocita_gateway_stage_ms_bucket{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"fill_to_committed\"}[$__range]))) and on() (sum(increase(velocita_gateway_stage_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"fill_to_committed\"}[$__range])) >= 100)",
+     "legendFormat": "fill_to_committed",
+     "refId": "D"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Stage latency p99 (selected range, 100+ orders)",
+   "id": 56,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "99th percentile per stage, from bucket interpolation.",
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 16,
+    "y": 84
+   },
+   "targets": [
+    {
+     "expr": "histogram_quantile(0.99, sum by (le) (increase(velocita_gateway_stage_ms_bucket{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"authorized_to_proof\"}[$__range]))) and on() (sum(increase(velocita_gateway_stage_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"authorized_to_proof\"}[$__range])) >= 100)",
+     "legendFormat": "authorized_to_proof",
+     "refId": "A"
+    },
+    {
+     "expr": "histogram_quantile(0.99, sum by (le) (increase(velocita_gateway_stage_ms_bucket{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"proof_to_sent\"}[$__range]))) and on() (sum(increase(velocita_gateway_stage_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"proof_to_sent\"}[$__range])) >= 100)",
+     "legendFormat": "proof_to_sent",
+     "refId": "B"
+    },
+    {
+     "expr": "histogram_quantile(0.99, sum by (le) (increase(velocita_gateway_stage_ms_bucket{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"sent_to_fill\"}[$__range]))) and on() (sum(increase(velocita_gateway_stage_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"sent_to_fill\"}[$__range])) >= 100)",
+     "legendFormat": "sent_to_fill",
+     "refId": "C"
+    },
+    {
+     "expr": "histogram_quantile(0.99, sum by (le) (increase(velocita_gateway_stage_ms_bucket{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"fill_to_committed\"}[$__range]))) and on() (sum(increase(velocita_gateway_stage_ms_count{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\",stage=\"fill_to_committed\"}[$__range])) >= 100)",
+     "legendFormat": "fill_to_committed",
+     "refId": "D"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "row",
+   "title": "Orders, fills, rejects and authority",
+   "id": 57,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 92
+   },
+   "panels": []
+  },
+  {
+   "type": "stat",
+   "title": "Orders sent (range)",
+   "id": 58,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 0,
+    "y": 93
+   },
+   "targets": [
+    {
+     "expr": "sum(increase(velocita_gateway_orders_sent_total{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}[$__range]))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Fills (range)",
+   "id": 59,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 6,
+    "y": 93
+   },
+   "targets": [
+    {
+     "expr": "sum(increase(velocita_gateway_fills_total{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}[$__range]))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Rejects (range)",
+   "id": 60,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Orders the (simulated) venue or the gateway refused.",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 12,
+    "y": 93
+   },
+   "targets": [
+    {
+     "expr": "sum(increase(velocita_gateway_rejects_total{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}[$__range]))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 1
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Authority requests (range)",
+   "id": 61,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Requests the gateway made to the cluster for authority to send.",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 18,
+    "y": 93
+   },
+   "targets": [
+    {
+     "expr": "sum(increase(velocita_gateway_authority_requests_total{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}[$__range]))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Orders and fills per minute",
+   "id": 62,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Orders the gateway sent to the venue, and fills it received, by side.",
+   "gridPos": {
+    "h": 8,
+    "w": 6,
+    "x": 0,
+    "y": 97
+   },
+   "targets": [
+    {
+     "expr": "sum by (side) (60 * rate(velocita_gateway_orders_sent_total{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}[5m]))",
+     "legendFormat": "sent {{side}}",
+     "refId": "A"
+    },
+    {
+     "expr": "sum by (side) (60 * rate(velocita_gateway_fills_total{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}[5m]))",
+     "legendFormat": "filled {{side}}",
+     "refId": "B"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Rejects by reason (per minute)",
+   "id": 63,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Why orders were refused.",
+   "gridPos": {
+    "h": 8,
+    "w": 6,
+    "x": 6,
+    "y": 97
+   },
+   "targets": [
+    {
+     "expr": "sum by (reason) (60 * rate(velocita_gateway_rejects_total{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}[5m]))",
+     "legendFormat": "{{reason}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "normal"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Authority requests by result (per minute)",
+   "id": 64,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "The cluster's answers to the gateway's requests for authority.",
+   "gridPos": {
+    "h": 8,
+    "w": 6,
+    "x": 12,
+    "y": 97
+   },
+   "targets": [
+    {
+     "expr": "sum by (result) (60 * rate(velocita_gateway_authority_requests_total{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}[5m]))",
+     "legendFormat": "{{result}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "normal"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Unknown outcomes (per 5 minutes)",
+   "id": 65,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Any value above 0 stopped new risk (alert: VelocitaGatewayUnknownOutcome).",
+   "gridPos": {
+    "h": 8,
+    "w": 6,
+    "x": 18,
+    "y": 97
+   },
+   "targets": [
+    {
+     "expr": "sum(increase(velocita_gateway_unknown_outcomes_total{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}[5m]))",
+     "legendFormat": "unknown outcomes",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "row",
+   "title": "Position and fees",
+   "id": 66,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 105
+   },
+   "panels": []
+  },
+  {
+   "type": "stat",
+   "title": "Position (lots)",
+   "id": 67,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "The gateway's paper position per account and instrument, in lots.",
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 0,
+    "y": 106
+   },
+   "targets": [
+    {
+     "expr": "velocita_gateway_position_lots{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}",
+     "legendFormat": "{{account}} {{instrument}}",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value_and_name",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Position over time (lots)",
+   "id": 68,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Steps at each fill.",
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 8,
+    "y": 106
+   },
+   "targets": [
+    {
+     "expr": "velocita_gateway_position_lots{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}",
+     "legendFormat": "{{account}} {{instrument}}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "min": null,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Fees (cents)",
+   "id": 69,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Cumulative paper fees and fees in the last hour, in US cents.",
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 16,
+    "y": 106
+   },
+   "targets": [
+    {
+     "expr": "100 * sum(velocita_gateway_fees_usd_total{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"})",
+     "legendFormat": "total",
+     "refId": "A"
+    },
+    {
+     "expr": "100 * sum(increase(velocita_gateway_fees_usd_total{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}[1h]))",
+     "legendFormat": "last hour",
+     "refId": "B"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix:\u00a2",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "text",
+   "id": 70,
+   "title": "Not running",
+   "gridPos": {
+    "x": 0,
+    "y": 114,
+    "w": 24,
+    "h": 3
+   },
+   "options": {
+    "mode": "markdown",
+    "content": "**The weekly volume-strategy panels below (churn, rotate, dip) have no data:** those strategies are not running. The stochastic strategy's volume, cost and stop figures are in its own section above."
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Final stop reason",
+   "id": 71,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "A checked final snapshot records why the strategy stopped.",
+   "gridPos": {
+    "x": 0,
+    "y": 117,
+    "w": 24,
+    "h": 3
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_completed_reason{strategy=\"stochastic\",paper_run=\"c8a6a0a78fbf49a099b222124a5d557f-cash-v1\"}",
+     "refId": "A",
+     "legendFormat": "{{reason}}",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": 1
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "None (not finalized)"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "name",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  }
+ ],
+ "templating": {
+  "list": []
+ },
+ "annotations": {
+  "list": []
+ }
+}
