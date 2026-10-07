@@ -41,5 +41,8 @@ run(['podman','run','--rm','--name','velocita-paper-stochastic-1s-setup','--netw
  '--session-file','/state/setup.session','--state-file','/state/setup.state',
  '--response-endpoint','100.72.127.102:44411',*profile['transport'],
  '--aeron-dir','/dev/shm/velocita-setup-aeron'],'SETUP ')
+# Installing policy/normal mode changes controls after the first gateway arm.
+# Reconcile and arm against those final controls before accepting edge decisions.
+run(['systemctl','--user','restart','velocita-paper-stochastic-gateway.service'])
 run(['systemctl','--user','start','velocita-paper-stochastic-edge.service','velocita-paper-indicator-observer.service'])
 print(json.dumps(dict(status='started',incarnation=c['incarnation'],epoch=c['epoch']),indent=2))
