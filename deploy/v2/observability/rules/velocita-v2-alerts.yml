@@ -318,18 +318,18 @@ groups:
           summary: "The {{ $labels.strategy }} ledger is {{ $value }} fill(s) behind the venue"
           description: "The edge records every confirmed fill within a second. A lasting gap means the edge is stopped or cannot write its ledger."
       - alert: VelocitaPaperEdgeStalled
-        expr: velocita_indicator_price_age_seconds > 700
+        expr: velocita_indicator_price_age_seconds > 5
         for: 1m
         labels: {severity: critical}
         annotations:
           summary: "The {{ $labels.strategy }} edge has seen no completed bar for {{ $value | humanizeDuration }}"
-          description: "A new five-minute bar should be marked every 300 seconds. The edge is stopped, cannot reach the price source, or is receiving bad data. It cannot enter or EXIT while this lasts."
+          description: "A new one-second bar should be marked each second. The edge is stopped, cannot reach the price source, or is receiving bad data. It cannot enter or EXIT while this lasts."
       - alert: VelocitaPaperBadMarketData
         expr: increase(velocita_shadow_messages_total{outcome=~"invalid|bar_missing"}[10m]) > 0
         labels: {severity: warning}
         annotations:
           summary: "The edge received {{ $labels.outcome }} market data in the last 10 minutes"
-          description: "invalid: the price response did not decode or had a gap. bar_missing: the bar that just closed was not in the response. Each one can cost a five-minute bar's signal."
+          description: "invalid: the price response did not decode or had a gap. bar_missing: the bar that just closed was not in the response. Invalid input blocks entry; a gap requires a fresh warmup."
       - alert: VelocitaPaperBuyStop
         expr: velocita_indicator_buy_stop == 1
         for: 1m

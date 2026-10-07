@@ -428,7 +428,7 @@
   },
   {
    "type": "row",
-   "title": "Stochastic momentum \u2014 isolated $25 virtual account",
+   "title": "Stochastic one-second pilot \u2014 isolated $25 virtual account",
    "id": 7,
    "collapsed": false,
    "gridPos": {
@@ -442,7 +442,7 @@
   {
    "type": "text",
    "id": 8,
-   "title": "Stochastic momentum: rules and assumptions",
+   "title": "Stochastic one-second pilot: rules and assumptions",
    "gridPos": {
     "x": 0,
     "y": 8,
@@ -451,13 +451,253 @@
    },
    "options": {
     "mode": "markdown",
-    "content": "**5-minute bars; long-only SOL/cash.**\n\n```text\nK = 100 \u00d7 (close \u2212 lowest low over 14 bars) / (highest high \u2212 lowest low).\nD = average of the last 3 K values. A flat range gives K = 50.\nIF long AND (K <= D OR K <= 40): sell 0.12 SOL.\nELSE IF flat AND K > D AND K >= 50: buy 0.12 SOL.\nELSE: hold. Exit rules have priority.\n```\n\nSignals use completed Binance SOLUSDT OHLC (a proxy, not executable TM quotes). The signal is delayed one five-minute bar; the FOK paper gateway uses that next completed close, rounded down to $0.01. Indicator comparisons use the registered integer rounding. Each account starts with $25 once, has no top-ups, and pays **0.30% assumed cost per side** (0.20% service + 0.10% execution). A clip must fit its own balance including fees and the $25 notional cap.\n\n**Bounded diagnostic:** stop new buys and request exit at $10 observed liquidation drawdown, 240 venue orders, or day 14. A stop is not a guaranteed loss ceiling; stale data or unresolved orders can delay exit. No venue orders or live promotion. These strategies lost money historically; paper results alone do not establish alpha."
+    "content": "**1-second completed bars; long-only SOL/cash.**\n\n```text\nK = SMA10 of stochastic over the trailing 900 seconds; D = SMA30 of K.\nTrend = EMA300 > EMA1200 (one-second closes). Flat range K = 50.\nIF flat AND 60-second cooldown complete: buy after K crosses above D,\nwith K >= 60 and positive trend sustained for 3 seconds.\nIF long: sell after K < D and K <= 40 for 3 seconds.\nELSE hold. Account and capacity gates override entries.\n```\n\nPublic Binance SOLUSDT proxy; signal delayed one second before the next close supplies the simulated FOK limit. This is not a True Markets executable quote. New fills pay **20 bp (0.20%) per side, fee-only scenario**; the SOL sell fee has settlement evidence, buy symmetry is assumed. No fixed slippage charge is added. Original $25 funding, prior cash and historical 30 bp fills are preserved. Account lifetime panels include the earlier five-minute strategy; the pilot-only panels below start at the immutable cutover baseline. No top-ups.\n\n**Bounded engineering run:** 30 minutes of entries, up to 5 further minutes for exit, 2400 frames including retries, at most 40 additional fills plus exit reserve, and existing $10 drawdown / 240 lifetime-order stops. Missing data can prevent exit. Only one cluster. This pilot does not establish alpha or approve live trading."
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Pilot-only net P&L (20 bp)",
+   "id": 9,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 0,
+    "y": 18
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_variant_net_pnl_usd{strategy=\"stochastic\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 3
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Pilot-only volume",
+   "id": 10,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 6,
+    "y": 18
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_variant_volume_usd{strategy=\"stochastic\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 2
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Pilot-only fees",
+   "id": 11,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 12,
+    "y": 18
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_variant_fees_usd{strategy=\"stochastic\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 3
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Pilot-only fills",
+   "id": 12,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 18,
+    "y": 18
+   },
+   "targets": [
+    {
+     "expr": "velocita_indicator_variant_order_count{strategy=\"stochastic\"}",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
    }
   },
   {
    "type": "stat",
    "title": "Confirmed account ready",
-   "id": 9,
+   "id": 13,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -467,7 +707,7 @@
     "h": 4,
     "w": 4,
     "x": 0,
-    "y": 18
+    "y": 22
    },
    "targets": [
     {
@@ -519,8 +759,8 @@
   },
   {
    "type": "stat",
-   "title": "Equity after exit cost (30 bp scenario)",
-   "id": 10,
+   "title": "Equity after exit cost (account history; new fills 20 bp)",
+   "id": 14,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -530,7 +770,7 @@
     "h": 4,
     "w": 4,
     "x": 4,
-    "y": 18
+    "y": 22
    },
    "targets": [
     {
@@ -579,18 +819,18 @@
   },
   {
    "type": "stat",
-   "title": "Net P&L since funding (30 bp scenario)",
-   "id": 11,
+   "title": "Net P&L since funding (account history; new fills 20 bp)",
+   "id": 15,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "The account as simulated: 0.30% per side, which is an assumption. See the measured-cost panels in the next row.",
+   "description": "Account lifetime includes old 30 bp fills and new 20 bp fee-only fills. Pilot-only panels isolate the new rules; buy-side 20 bp remains assumed.",
    "gridPos": {
     "h": 4,
     "w": 4,
     "x": 8,
-    "y": 18
+    "y": 22
    },
    "targets": [
     {
@@ -644,7 +884,7 @@
   {
    "type": "stat",
    "title": "Cash available",
-   "id": 12,
+   "id": 16,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -654,7 +894,7 @@
     "h": 4,
     "w": 4,
     "x": 12,
-    "y": 18
+    "y": 22
    },
    "targets": [
     {
@@ -704,7 +944,7 @@
   {
    "type": "stat",
    "title": "SOL inventory",
-   "id": 13,
+   "id": 17,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -714,7 +954,7 @@
     "h": 4,
     "w": 4,
     "x": 16,
-    "y": 18
+    "y": 22
    },
    "targets": [
     {
@@ -764,7 +1004,7 @@
   {
    "type": "stat",
    "title": "Candle age",
-   "id": 14,
+   "id": 18,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -774,7 +1014,7 @@
     "h": 4,
     "w": 4,
     "x": 20,
-    "y": 18
+    "y": 22
    },
    "targets": [
     {
@@ -796,7 +1036,7 @@
        },
        {
         "color": "red",
-        "value": 600
+        "value": 5
        }
       ]
      },
@@ -826,18 +1066,18 @@
   },
   {
    "type": "stat",
-   "title": "Net P&L at measured costs",
-   "id": 15,
+   "title": "P&L under historical 100/98 bp stress",
+   "id": 19,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "The same fills re-priced at the costs measured on True Markets on 2026-09-28: 1.00% per buy, 0.98% per sell (ADR 0018).",
+   "description": "Historical route stress case: same fills re-priced at the September 28 100/98 bp quotes; not the current 20 bp CLI service fee.",
    "gridPos": {
     "h": 4,
     "w": 4,
     "x": 0,
-    "y": 22
+    "y": 26
    },
    "targets": [
     {
@@ -890,8 +1130,8 @@
   },
   {
    "type": "stat",
-   "title": "Volume per $1 lost (30 bp scenario)",
-   "id": 16,
+   "title": "Volume per $1 lost (account history; new fills 20 bp)",
+   "id": 20,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -901,7 +1141,7 @@
     "h": 4,
     "w": 4,
     "x": 4,
-    "y": 22
+    "y": 26
    },
    "targets": [
     {
@@ -950,18 +1190,18 @@
   },
   {
    "type": "stat",
-   "title": "Volume per $1 lost (measured costs)",
-   "id": 17,
+   "title": "Volume per $1 lost (100/98 bp stress)",
+   "id": 21,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "The same fills re-priced at the costs measured on True Markets on 2026-09-28: 1.00% per buy, 0.98% per sell (ADR 0018). Plain churn achieves about $101 on SOL.",
+   "description": "Historical route stress case: same fills re-priced at the September 28 100/98 bp quotes; not the current 20 bp CLI service fee. Plain churn achieves about $101 on SOL.",
    "gridPos": {
     "h": 4,
     "w": 4,
     "x": 8,
-    "y": 22
+    "y": 26
    },
    "targets": [
     {
@@ -1011,7 +1251,7 @@
   {
    "type": "stat",
    "title": "Drawdown stop used",
-   "id": 18,
+   "id": 22,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1021,7 +1261,7 @@
     "h": 4,
     "w": 4,
     "x": 12,
-    "y": 22
+    "y": 26
    },
    "targets": [
     {
@@ -1079,17 +1319,17 @@
   {
    "type": "stat",
    "title": "Bar close to fill (mean)",
-   "id": 19,
+   "id": 23,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "From the end of the five-minute bar to the confirmed fill, over every fill with a known time. Includes the data fetch, the decision, authorization, any retry after a stale-risk refusal, and the simulated venue.",
+   "description": "Legacy five-minute run only; intentionally unavailable for the one-second variant until an exact order-to-signal timestamp join exists. Includes the data fetch, the decision, authorization, any retry after a stale-risk refusal, and the simulated venue.",
    "gridPos": {
     "h": 4,
     "w": 4,
     "x": 16,
-    "y": 22
+    "y": 26
    },
    "targets": [
     {
@@ -1139,7 +1379,7 @@
   {
    "type": "stat",
    "title": "Bar close to fill (max)",
-   "id": 20,
+   "id": 24,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1149,7 +1389,7 @@
     "h": 4,
     "w": 4,
     "x": 20,
-    "y": 22
+    "y": 26
    },
    "targets": [
     {
@@ -1199,7 +1439,7 @@
   {
    "type": "timeseries",
    "title": "SOL price with confirmed entries / exits",
-   "id": 21,
+   "id": 25,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1209,7 +1449,7 @@
     "h": 8,
     "w": 14,
     "x": 0,
-    "y": 26
+    "y": 30
    },
    "targets": [
     {
@@ -1321,7 +1561,7 @@
   {
    "type": "timeseries",
    "title": "Equity and drawdown",
-   "id": 22,
+   "id": 26,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1331,7 +1571,7 @@
     "h": 8,
     "w": 10,
     "x": 14,
-    "y": 26
+    "y": 30
    },
    "targets": [
     {
@@ -1375,7 +1615,7 @@
   {
    "type": "stat",
    "title": "Decision samples (range estimate)",
-   "id": 23,
+   "id": 27,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1385,7 +1625,7 @@
     "h": 4,
     "w": 6,
     "x": 0,
-    "y": 34
+    "y": 38
    },
    "targets": [
     {
@@ -1435,7 +1675,7 @@
   {
    "type": "stat",
    "title": "Mean tick to decision",
-   "id": 24,
+   "id": 28,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1445,7 +1685,7 @@
     "h": 4,
     "w": 6,
     "x": 6,
-    "y": 34
+    "y": 38
    },
    "targets": [
     {
@@ -1495,7 +1735,7 @@
   {
    "type": "stat",
    "title": "p99 estimate (100+ samples)",
-   "id": 25,
+   "id": 29,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1505,7 +1745,7 @@
     "h": 4,
     "w": 6,
     "x": 12,
-    "y": 34
+    "y": 38
    },
    "targets": [
     {
@@ -1555,7 +1795,7 @@
   {
    "type": "stat",
    "title": "Rule disagreements",
-   "id": 26,
+   "id": 30,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1565,7 +1805,7 @@
     "h": 4,
     "w": 6,
     "x": 18,
-    "y": 34
+    "y": 38
    },
    "targets": [
     {
@@ -1615,7 +1855,7 @@
   {
    "type": "timeseries",
    "title": "Tick to decision: mean by component (30m)",
-   "id": 27,
+   "id": 31,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1625,7 +1865,7 @@
     "h": 8,
     "w": 24,
     "x": 0,
-    "y": 38
+    "y": 42
    },
    "targets": [
     {
@@ -1664,7 +1904,7 @@
   {
    "type": "stat",
    "title": "7d Volume",
-   "id": 28,
+   "id": 32,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1674,7 +1914,7 @@
     "h": 4,
     "w": 3,
     "x": 0,
-    "y": 46
+    "y": 50
    },
    "targets": [
     {
@@ -1724,7 +1964,7 @@
   {
    "type": "stat",
    "title": "7d Net P&L",
-   "id": 29,
+   "id": 33,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1734,7 +1974,7 @@
     "h": 4,
     "w": 3,
     "x": 3,
-    "y": 46
+    "y": 50
    },
    "targets": [
     {
@@ -1784,7 +2024,7 @@
   {
    "type": "stat",
    "title": "7d Fees",
-   "id": 30,
+   "id": 34,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1794,7 +2034,7 @@
     "h": 4,
     "w": 3,
     "x": 6,
-    "y": 46
+    "y": 50
    },
    "targets": [
     {
@@ -1844,7 +2084,7 @@
   {
    "type": "stat",
    "title": "7d Round trips",
-   "id": 31,
+   "id": 35,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1854,7 +2094,7 @@
     "h": 4,
     "w": 3,
     "x": 9,
-    "y": 46
+    "y": 50
    },
    "targets": [
     {
@@ -1904,7 +2144,7 @@
   {
    "type": "stat",
    "title": "14d Volume",
-   "id": 32,
+   "id": 36,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1914,7 +2154,7 @@
     "h": 4,
     "w": 3,
     "x": 12,
-    "y": 46
+    "y": 50
    },
    "targets": [
     {
@@ -1964,7 +2204,7 @@
   {
    "type": "stat",
    "title": "14d Net P&L",
-   "id": 33,
+   "id": 37,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1974,7 +2214,7 @@
     "h": 4,
     "w": 3,
     "x": 15,
-    "y": 46
+    "y": 50
    },
    "targets": [
     {
@@ -2024,7 +2264,7 @@
   {
    "type": "stat",
    "title": "14d Fees",
-   "id": 34,
+   "id": 38,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -2034,7 +2274,7 @@
     "h": 4,
     "w": 3,
     "x": 18,
-    "y": 46
+    "y": 50
    },
    "targets": [
     {
@@ -2084,7 +2324,7 @@
   {
    "type": "stat",
    "title": "14d Round trips",
-   "id": 35,
+   "id": 39,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -2094,7 +2334,7 @@
     "h": 4,
     "w": 3,
     "x": 21,
-    "y": 46
+    "y": 50
    },
    "targets": [
     {
@@ -2144,7 +2384,7 @@
   {
    "type": "timeseries",
    "title": "Volume accumulated",
-   "id": 36,
+   "id": 40,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -2154,7 +2394,7 @@
     "h": 8,
     "w": 8,
     "x": 0,
-    "y": 50
+    "y": 54
    },
    "targets": [
     {
@@ -2193,7 +2433,7 @@
   {
    "type": "timeseries",
    "title": "Buy stops",
-   "id": 37,
+   "id": 41,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -2203,7 +2443,7 @@
     "h": 8,
     "w": 8,
     "x": 8,
-    "y": 50
+    "y": 54
    },
    "targets": [
     {
@@ -2247,7 +2487,7 @@
   {
    "type": "timeseries",
    "title": "Orders used / capacity",
-   "id": 38,
+   "id": 42,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -2257,7 +2497,7 @@
     "h": 8,
     "w": 8,
     "x": 16,
-    "y": 50
+    "y": 54
    },
    "targets": [
     {
@@ -2301,20 +2541,20 @@
   {
    "type": "row",
    "title": "Stops, automatic re-arms and reconciliation",
-   "id": 39,
+   "id": 43,
    "collapsed": false,
    "gridPos": {
     "h": 1,
     "w": 24,
     "x": 0,
-    "y": 58
+    "y": 62
    },
    "panels": []
   },
   {
    "type": "stat",
    "title": "Venue vs kernel",
-   "id": 40,
+   "id": 44,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -2324,7 +2564,7 @@
     "h": 4,
     "w": 6,
     "x": 0,
-    "y": 59
+    "y": 63
    },
    "targets": [
     {
@@ -2389,7 +2629,7 @@
   {
    "type": "stat",
    "title": "Compared position (lots)",
-   "id": 41,
+   "id": 45,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -2399,7 +2639,7 @@
     "h": 4,
     "w": 6,
     "x": 6,
-    "y": 59
+    "y": 63
    },
    "targets": [
     {
@@ -2448,7 +2688,7 @@
   {
    "type": "stat",
    "title": "Re-arms (range)",
-   "id": 42,
+   "id": 46,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -2458,7 +2698,7 @@
     "h": 4,
     "w": 4,
     "x": 12,
-    "y": 59
+    "y": 63
    },
    "targets": [
     {
@@ -2508,7 +2748,7 @@
   {
    "type": "stat",
    "title": "Since clean reconciliation",
-   "id": 43,
+   "id": 47,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -2518,7 +2758,7 @@
     "h": 4,
     "w": 8,
     "x": 16,
-    "y": 59
+    "y": 63
    },
    "targets": [
     {
@@ -2571,7 +2811,7 @@
   {
    "type": "timeseries",
    "title": "Stops by cause (per hour)",
-   "id": 44,
+   "id": 48,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -2581,7 +2821,7 @@
     "h": 8,
     "w": 12,
     "x": 0,
-    "y": 63
+    "y": 67
    },
    "targets": [
     {
@@ -2620,7 +2860,7 @@
   {
    "type": "timeseries",
    "title": "Why new risk is stopped now",
-   "id": 45,
+   "id": 49,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -2630,7 +2870,7 @@
     "h": 8,
     "w": 12,
     "x": 12,
-    "y": 63
+    "y": 67
    },
    "targets": [
     {
@@ -2669,20 +2909,20 @@
   {
    "type": "row",
    "title": "Stochastic gateway: observed effect -> proof -> send -> fill -> committed",
-   "id": 46,
+   "id": 50,
    "collapsed": false,
    "gridPos": {
     "h": 1,
     "w": 24,
     "x": 0,
-    "y": 71
+    "y": 75
    },
    "panels": []
   },
   {
    "type": "stat",
    "title": "Sum of gateway stage means",
-   "id": 47,
+   "id": 51,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -2692,7 +2932,7 @@
     "h": 8,
     "w": 4,
     "x": 0,
-    "y": 72
+    "y": 76
    },
    "targets": [
     {
@@ -2741,7 +2981,7 @@
   {
    "type": "timeseries",
    "title": "Where the time goes (mean ms per order, 5m)",
-   "id": 48,
+   "id": 52,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -2751,7 +2991,7 @@
     "h": 8,
     "w": 12,
     "x": 4,
-    "y": 72
+    "y": 76
    },
    "targets": [
     {
@@ -2805,7 +3045,7 @@
   {
    "type": "bargauge",
    "title": "p99 by stage (selected range, 100+ orders)",
-   "id": 49,
+   "id": 53,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -2815,7 +3055,7 @@
     "h": 8,
     "w": 8,
     "x": 16,
-    "y": 72
+    "y": 76
    },
    "targets": [
     {
@@ -2883,7 +3123,7 @@
   {
    "type": "timeseries",
    "title": "Orders per stage (selected range)",
-   "id": 50,
+   "id": 54,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -2893,7 +3133,7 @@
     "h": 8,
     "w": 8,
     "x": 0,
-    "y": 80
+    "y": 84
    },
    "targets": [
     {
@@ -2947,7 +3187,7 @@
   {
    "type": "timeseries",
    "title": "Stage latency p50 (selected range, 100+ orders)",
-   "id": 51,
+   "id": 55,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -2957,7 +3197,7 @@
     "h": 8,
     "w": 8,
     "x": 8,
-    "y": 80
+    "y": 84
    },
    "targets": [
     {
@@ -3011,7 +3251,7 @@
   {
    "type": "timeseries",
    "title": "Stage latency p99 (selected range, 100+ orders)",
-   "id": 52,
+   "id": 56,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -3021,7 +3261,7 @@
     "h": 8,
     "w": 8,
     "x": 16,
-    "y": 80
+    "y": 84
    },
    "targets": [
     {
@@ -3075,20 +3315,20 @@
   {
    "type": "row",
    "title": "Orders, fills, rejects and authority",
-   "id": 53,
+   "id": 57,
    "collapsed": false,
    "gridPos": {
     "h": 1,
     "w": 24,
     "x": 0,
-    "y": 88
+    "y": 92
    },
    "panels": []
   },
   {
    "type": "stat",
    "title": "Orders sent (range)",
-   "id": 54,
+   "id": 58,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -3098,7 +3338,7 @@
     "h": 4,
     "w": 6,
     "x": 0,
-    "y": 89
+    "y": 93
    },
    "targets": [
     {
@@ -3148,7 +3388,7 @@
   {
    "type": "stat",
    "title": "Fills (range)",
-   "id": 55,
+   "id": 59,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -3158,7 +3398,7 @@
     "h": 4,
     "w": 6,
     "x": 6,
-    "y": 89
+    "y": 93
    },
    "targets": [
     {
@@ -3208,7 +3448,7 @@
   {
    "type": "stat",
    "title": "Rejects (range)",
-   "id": 56,
+   "id": 60,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -3218,7 +3458,7 @@
     "h": 4,
     "w": 6,
     "x": 12,
-    "y": 89
+    "y": 93
    },
    "targets": [
     {
@@ -3272,7 +3512,7 @@
   {
    "type": "stat",
    "title": "Authority requests (range)",
-   "id": 57,
+   "id": 61,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -3282,7 +3522,7 @@
     "h": 4,
     "w": 6,
     "x": 18,
-    "y": 89
+    "y": 93
    },
    "targets": [
     {
@@ -3332,7 +3572,7 @@
   {
    "type": "timeseries",
    "title": "Orders and fills per minute",
-   "id": 58,
+   "id": 62,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -3342,7 +3582,7 @@
     "h": 8,
     "w": 6,
     "x": 0,
-    "y": 93
+    "y": 97
    },
    "targets": [
     {
@@ -3386,7 +3626,7 @@
   {
    "type": "timeseries",
    "title": "Rejects by reason (per minute)",
-   "id": 59,
+   "id": 63,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -3396,7 +3636,7 @@
     "h": 8,
     "w": 6,
     "x": 6,
-    "y": 93
+    "y": 97
    },
    "targets": [
     {
@@ -3435,7 +3675,7 @@
   {
    "type": "timeseries",
    "title": "Authority requests by result (per minute)",
-   "id": 60,
+   "id": 64,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -3445,7 +3685,7 @@
     "h": 8,
     "w": 6,
     "x": 12,
-    "y": 93
+    "y": 97
    },
    "targets": [
     {
@@ -3484,7 +3724,7 @@
   {
    "type": "timeseries",
    "title": "Unknown outcomes (per 5 minutes)",
-   "id": 61,
+   "id": 65,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -3494,7 +3734,7 @@
     "h": 8,
     "w": 6,
     "x": 18,
-    "y": 93
+    "y": 97
    },
    "targets": [
     {
@@ -3533,20 +3773,20 @@
   {
    "type": "row",
    "title": "Position and fees",
-   "id": 62,
+   "id": 66,
    "collapsed": false,
    "gridPos": {
     "h": 1,
     "w": 24,
     "x": 0,
-    "y": 101
+    "y": 105
    },
    "panels": []
   },
   {
    "type": "stat",
    "title": "Position (lots)",
-   "id": 63,
+   "id": 67,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -3556,7 +3796,7 @@
     "h": 8,
     "w": 8,
     "x": 0,
-    "y": 102
+    "y": 106
    },
    "targets": [
     {
@@ -3605,7 +3845,7 @@
   {
    "type": "timeseries",
    "title": "Position over time (lots)",
-   "id": 64,
+   "id": 68,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -3615,7 +3855,7 @@
     "h": 8,
     "w": 8,
     "x": 8,
-    "y": 102
+    "y": 106
    },
    "targets": [
     {
@@ -3654,7 +3894,7 @@
   {
    "type": "timeseries",
    "title": "Fees (cents)",
-   "id": 65,
+   "id": 69,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -3664,7 +3904,7 @@
     "h": 8,
     "w": 8,
     "x": 16,
-    "y": 102
+    "y": 106
    },
    "targets": [
     {
@@ -3707,11 +3947,11 @@
   },
   {
    "type": "text",
-   "id": 66,
+   "id": 70,
    "title": "Not running",
    "gridPos": {
     "x": 0,
-    "y": 110,
+    "y": 114,
     "w": 24,
     "h": 3
    },
@@ -3723,20 +3963,20 @@
   {
    "type": "row",
    "title": "Volume strategies: this ISO week against the loss budget",
-   "id": 67,
+   "id": 71,
    "collapsed": false,
    "gridPos": {
     "h": 1,
     "w": 24,
     "x": 0,
-    "y": 113
+    "y": 117
    },
    "panels": []
   },
   {
    "type": "stat",
    "title": "Volume this week",
-   "id": 68,
+   "id": 72,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -3746,7 +3986,7 @@
     "h": 6,
     "w": 4,
     "x": 0,
-    "y": 114
+    "y": 118
    },
    "targets": [
     {
@@ -3795,7 +4035,7 @@
   {
    "type": "stat",
    "title": "Fees this week",
-   "id": 69,
+   "id": 73,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -3805,7 +4045,7 @@
     "h": 6,
     "w": 4,
     "x": 4,
-    "y": 114
+    "y": 118
    },
    "targets": [
     {
@@ -3855,7 +4095,7 @@
   {
    "type": "stat",
    "title": "Net P&L this week",
-   "id": 70,
+   "id": 74,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -3865,7 +4105,7 @@
     "h": 6,
     "w": 4,
     "x": 8,
-    "y": 114
+    "y": 118
    },
    "targets": [
     {
@@ -3919,7 +4159,7 @@
   {
    "type": "stat",
    "title": "Volume per $ lost",
-   "id": 71,
+   "id": 75,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -3929,7 +4169,7 @@
     "h": 6,
     "w": 4,
     "x": 12,
-    "y": 114
+    "y": 118
    },
    "targets": [
     {
@@ -3979,7 +4219,7 @@
   {
    "type": "stat",
    "title": "Trades per hour (1h)",
-   "id": 72,
+   "id": 76,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -3989,7 +4229,7 @@
     "h": 6,
     "w": 4,
     "x": 16,
-    "y": 114
+    "y": 118
    },
    "targets": [
     {
@@ -4039,7 +4279,7 @@
   {
    "type": "gauge",
    "title": "Loss budget used",
-   "id": 73,
+   "id": 77,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -4049,7 +4289,7 @@
     "h": 6,
     "w": 4,
     "x": 20,
-    "y": 114
+    "y": 118
    },
    "targets": [
     {
@@ -4102,7 +4342,7 @@
   {
    "type": "timeseries",
    "title": "Weekly volume: observed vs expected",
-   "id": 74,
+   "id": 78,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -4112,7 +4352,7 @@
     "h": 8,
     "w": 8,
     "x": 0,
-    "y": 120
+    "y": 124
    },
    "targets": [
     {
@@ -4166,7 +4406,7 @@
   {
    "type": "timeseries",
    "title": "Weekly loss: observed vs expected and the cap",
-   "id": 75,
+   "id": 79,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -4176,7 +4416,7 @@
     "h": 8,
     "w": 8,
     "x": 8,
-    "y": 120
+    "y": 124
    },
    "targets": [
     {
@@ -4230,7 +4470,7 @@
   {
    "type": "timeseries",
    "title": "Buys stopped and withheld",
-   "id": 76,
+   "id": 80,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -4240,7 +4480,7 @@
     "h": 8,
     "w": 8,
     "x": 16,
-    "y": 120
+    "y": 124
    },
    "targets": [
     {
@@ -4284,7 +4524,7 @@
   {
    "type": "timeseries",
    "title": "Volume by side (USD per hour, 1h)",
-   "id": 77,
+   "id": 81,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -4294,7 +4534,7 @@
     "h": 8,
     "w": 12,
     "x": 0,
-    "y": 128
+    "y": 132
    },
    "targets": [
     {
@@ -4333,7 +4573,7 @@
   {
    "type": "timeseries",
    "title": "Fees, last 7 days (cents)",
-   "id": 78,
+   "id": 82,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -4343,7 +4583,7 @@
     "h": 8,
     "w": 12,
     "x": 12,
-    "y": 128
+    "y": 132
    },
    "targets": [
     {
@@ -4382,7 +4622,7 @@
   {
    "type": "stat",
    "title": "Gross P&L this week (before fees)",
-   "id": 79,
+   "id": 83,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -4392,7 +4632,7 @@
     "h": 8,
     "w": 6,
     "x": 0,
-    "y": 136
+    "y": 140
    },
    "targets": [
     {
@@ -4446,7 +4686,7 @@
   {
    "type": "timeseries",
    "title": "P&L this week: gross, fees, net",
-   "id": 80,
+   "id": 84,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -4456,7 +4696,7 @@
     "h": 8,
     "w": 18,
     "x": 6,
-    "y": 136
+    "y": 140
    },
    "targets": [
     {

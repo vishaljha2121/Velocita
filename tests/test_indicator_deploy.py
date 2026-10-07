@@ -68,7 +68,7 @@ class IndicatorDeployment(unittest.TestCase):
         d=json.loads((ROOT/'deploy/v2/observability/grafana/dashboards/velocita-v2-paper.json').read_text())
         texts=[p['options']['content'] for p in d['panels'] if p['type']=='text']
         self.assertFalse(any('SMA(20) > SMA(50)' in t for t in texts))
-        self.assertTrue(any('K <= D OR K <= 40' in t for t in texts))
+        self.assertTrue(any('K < D and K <= 40 for 3 seconds' in t for t in texts))
         for strategy in ('stochastic',):
             panels=[p for p in d['panels'] if any('fill_marker_usd' in t.get('expr','') and
                 f'strategy="{strategy}"' in t['expr'] for t in p.get('targets',[]))]

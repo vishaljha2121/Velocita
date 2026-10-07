@@ -124,6 +124,37 @@ void give_history(const sim::VenueTransport& venue) {
             "a 5-lot sell against 2 lots was not killed");
 }
 
+void fee_epoch_keeps_old_fills_and_charges_new_fee() {
+    TempDir dir;
+    const auto file = dir.path / "paper.state";
+    auto old_config = config();
+    old_config.buy_fee_bps = 30;
+    old_config.sell_fee_bps = 30;
+    auto initial = fresh_paper_state(old_config, kIncarnation, MoneyMicros::from_atoms(kFunding));
+    require(create_paper_state(file, *initial.state) == PaperStateError::none, "fee epoch create");
+    auto opened = DurablePaperVenue::open(file, old_config, PaperFaultPolicy::clean(), kIncarnation);
+    auto transport = opened.venue->transport();
+    require(transport.send(effect(1, Side::buy, 10000), 1) == SendOutcome::accepted, "old buy");
+    for (const auto& report : poll_all(transport, 100)) transport.acknowledge(report);
+    require(transport.send(effect(2, Side::sell, 10000), 101) == SendOutcome::accepted, "old sell");
+    for (const auto& report : poll_all(transport, 200)) transport.acknowledge(report);
+    require(opened.venue->venue().balances().quote.atoms() == 24'999'400, "old 30 bp cash oracle");
+    opened.venue.reset();
+    auto next_config = old_config;
+    next_config.buy_fee_bps = 20;
+    next_config.sell_fee_bps = 20;
+    auto next = DurablePaperVenue::open(file, next_config, PaperFaultPolicy::clean(), kIncarnation);
+    require(next.error == PaperStateError::none, "new fee restore");
+    require(next.venue->venue().balances().quote.atoms() == 24'999'400, "restore repriced history");
+    require(next.venue->transport().send(effect(3, Side::buy, 10000), 201) == SendOutcome::accepted,
+            "new buy");
+    require(next.venue->venue().balances().quote.atoms() == 24'899'200, "new 20 bp cash oracle");
+    auto image = std::make_unique<PaperVenueImage>();
+    next.venue->venue().capture(*image);
+    require(image->orders[0].fee.atoms() == 300 && image->orders[1].fee.atoms() == 300 &&
+            image->orders[2].fee.atoms() == 200, "fee epoch repriced retained orders");
+}
+
 void restored_venue_answers_exactly_as_the_original() {
     PaperVenue original(config(), PaperFaultPolicy::clean(), 7);
     give_history(paper_venue_transport(original));
@@ -513,6 +544,8 @@ int main() {
         {"open_refuses_another_cluster_another_venue_and_never_resets",
          open_refuses_another_cluster_another_venue_and_never_resets},
     };
+    fee_epoch_keeps_old_fills_and_charges_new_fee();
+    std::cout << "PASS fee_epoch_keeps_old_fills_and_charges_new_fee" << std::endl;
     int failures = 0;
     for (const auto& [name, test] : tests) {
         try {

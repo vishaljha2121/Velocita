@@ -119,3 +119,15 @@ persisted paper venue. It departs from this ADR in two ways:
 **To close it,** either measure the buy-side fee and the execution cost and replace the table
 above with the measurement, or return the run to the measured costs.
 
+
+## Owner correction 2026-10-07: one-second pilot fee epoch
+
+The owner requested matching the approximately 20 bp TM fee for the new pilot.
+New paper fills use 20 bp per side with zero additional fixed execution allowance.
+Only the SOL sell fee is settlement-verified; buy symmetry and Binance proxy fills
+remain assumptions. Historical 30 bp fills and account cash are retained exactly.
+A cutover record fixes the prior-order prefix and new fee epoch; the observer
+checks both and shows pilot-only P&L separately from account lifetime history.
+The 100/98 bp repricing is retained as a historical-route stress comparison, not
+a claim about the current service fee. These labels supersede the 30 bp display
+rule for the new epoch only. No live gate is closed by this change.

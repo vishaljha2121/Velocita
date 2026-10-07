@@ -1,0 +1,38 @@
+[
+  {
+    "mutant": "ema_alpha",
+    "test": "test_ema_hand_oracle",
+    "killed": true,
+    "output": "F\n======================================================================\nFAIL: test_ema_hand_oracle (test_stochastic_second.SecondTests.test_ema_hand_oracle)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/vishaljha/.cache/velocita-work/stochastic-1s-20261007/model/tests/test_stochastic_second.py\", line 23, in test_ema_hand_oracle\n    self.assertEqual(e.push(6),4)\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^\nAssertionError: 3.0 != 4\n\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nFAILED (failures=1)\n"
+  },
+  {
+    "mutant": "confirmation",
+    "test": "test_cross_confirmation_and_reset",
+    "killed": true,
+    "output": "F\n======================================================================\nFAIL: test_cross_confirmation_and_reset (test_stochastic_second.SecondTests.test_cross_confirmation_and_reset)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/vishaljha/.cache/velocita-work/stochastic-1s-20261007/model/tests/test_stochastic_second.py\", line 41, in test_cross_confirmation_and_reset\n    self.assertEqual(s.push((62,60,101,100)),(0,0))\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: Tuples differ: (0, 1000000) != (0, 0)\n\nFirst differing element 1:\n1000000\n0\n\n- (0, 1000000)\n+ (0, 0)\n\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nFAILED (failures=1)\n"
+  },
+  {
+    "mutant": "delay",
+    "test": "test_one_second_lag_duplicate_and_restart",
+    "killed": true,
+    "output": "F\n======================================================================\nFAIL: test_one_second_lag_duplicate_and_restart (test_stochastic_second.SecondTests.test_one_second_lag_duplicate_and_restart)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/vishaljha/.cache/velocita-work/stochastic-1s-20261007/model/tests/test_stochastic_second.py\", line 104, in test_one_second_lag_duplicate_and_restart\n    self.assertEqual(tick.features,(0,0,10000))\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: Tuples differ: (0, 1000000, 10000) != (0, 0, 10000)\n\nFirst differing element 1:\n1000000\n0\n\n- (0, 1000000, 10000)\n?     ------\n\n+ (0, 0, 10000)\n\n----------------------------------------------------------------------\nRan 1 test in 0.006s\n\nFAILED (failures=1)\n"
+  },
+  {
+    "mutant": "future",
+    "test": "test_future_and_stale_never_forward",
+    "killed": true,
+    "output": "F\n======================================================================\nFAIL: test_future_and_stale_never_forward (test_stochastic_second.SecondTests.test_future_and_stale_never_forward)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/vishaljha/.cache/velocita-work/stochastic-1s-20261007/model/tests/test_stochastic_second.py\", line 133, in test_future_and_stale_never_forward\n    self.assertIsNone(s.tick(self.raw(99),receive_ns=98*NS,tick_id=1))\n    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: Tick(tick_id=1, event_ns=99000000000, receive_ns=98000000000, age_ns=-1000000000, features=(0, 1000000, 10000), evidence='0b377a1d14d1d6ef28bd883196a1f3765f1a208acb106f4921b61fc442b9c389', expected_rule=1, exits_only=False) is not None\n\n----------------------------------------------------------------------\nRan 1 test in 0.006s\n\nFAILED (failures=1)\n"
+  },
+  {
+    "mutant": "cooldown",
+    "test": "test_capacity_cooldown_and_immutable_epoch",
+    "killed": true,
+    "output": "F\n======================================================================\nFAIL: test_capacity_cooldown_and_immutable_epoch (test_stochastic_second.SecondTests.test_capacity_cooldown_and_immutable_epoch)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/vishaljha/.cache/velocita-work/stochastic-1s-20261007/model/tests/test_stochastic_second.py\", line 122, in test_capacity_cooldown_and_immutable_epoch\n    self.assertEqual(tick.features[1],0)\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^\nAssertionError: 1000000 != 0\n\n----------------------------------------------------------------------\nRan 1 test in 0.007s\n\nFAILED (failures=1)\n"
+  },
+  {
+    "mutant": "fee_epoch",
+    "test": "test_cost_epoch_preserves_previous_fees",
+    "killed": true,
+    "output": "F\n======================================================================\nFAIL: test_cost_epoch_preserves_previous_fees (test_stochastic_second.SecondTests.test_cost_epoch_preserves_previous_fees)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/vishaljha/.cache/velocita-work/stochastic-1s-20261007/model/tests/test_stochastic_second.py\", line 64, in test_cost_epoch_preserves_previous_fees\n    try: restored=snapshot(p,'a'*32,100,epoch)\n                  ~~~~~~~~^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/vishaljha/.cache/velocita-work/stochastic-1s-20261007/model/tests/tmpx__r0up2/src/velocita_model/shadow/indicator_paper.py\", line 158, in snapshot\n    raise ValueError('paper fill economics')\nValueError: paper fill economics\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/Users/vishaljha/.cache/velocita-work/stochastic-1s-20261007/model/tests/test_stochastic_second.py\", line 65, in test_cost_epoch_preserves_previous_fees\n    except ValueError as error: self.fail(f'valid historical 30 bp prefix refused: {error}')\n                                ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: valid historical 30 bp prefix refused: paper fill economics\n\n----------------------------------------------------------------------\nRan 1 test in 0.001s\n\nFAILED (failures=1)\n"
+  }
+]

@@ -663,7 +663,7 @@ tests:
       - eval_time: 20m
         alertname: VelocitaPaperObserverDown
         exp_alerts: []
-      - eval_time: 11m
+      - eval_time: 0m
         alertname: VelocitaPaperEdgeStalled
         exp_alerts: []
       - eval_time: 13m
@@ -672,7 +672,7 @@ tests:
           - exp_labels: {severity: critical, job: indicator-paper, host: nuc1, strategy: stochastic}
             exp_annotations:
               summary: "The stochastic edge has seen no completed bar for 13m 0s"
-              description: "A new five-minute bar should be marked every 300 seconds. The edge is stopped, cannot reach the price source, or is receiving bad data. It cannot enter or EXIT while this lasts."
+              description: "A new one-second bar should be marked each second. The edge is stopped, cannot reach the price source, or is receiving bad data. It cannot enter or EXIT while this lasts."
 
   - interval: 1m
     input_series:
@@ -698,7 +698,7 @@ tests:
           - exp_labels: {severity: warning, job: active-paper-pipeline, host: nuc1, strategy: stochastic, outcome: bar_missing}
             exp_annotations:
               summary: "The edge received bar_missing market data in the last 10 minutes"
-              description: "invalid: the price response did not decode or had a gap. bar_missing: the bar that just closed was not in the response. Each one can cost a five-minute bar's signal."
+              description: "invalid: the price response did not decode or had a gap. bar_missing: the bar that just closed was not in the response. Invalid input blocks entry; a gap requires a fresh warmup."
       - eval_time: 25m
         alertname: VelocitaPaperBadMarketData
         exp_alerts: []

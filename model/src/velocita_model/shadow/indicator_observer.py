@@ -64,12 +64,16 @@ def metrics(c,now):
     emit('initial_cash_usd',25)
     emit('stop_timestamp_seconds',c['stop_ns']/1e9)
     emit('paper_mode',1)
-    emit('cost_bps',30)
+    epoch=c.get('epoch')
+    cost_bps=20 if epoch else 30
+    emit('cost_bps',cost_bps)
+    emit('decision_interval_seconds',1 if epoch else 300)
+    if epoch: emit('variant_start_timestamp_seconds',epoch['start_ns']/1e9)
     emit('measured_cost_bps',MEASURED_BUY_BPS,',side="buy"')
     emit('measured_cost_bps',MEASURED_SELL_BPS,',side="sell"')
     file_metrics(c,strategy,now,emit,out)
     try:
-        s=snapshot(c['venue_report'],c['incarnation'],now)
+        s=snapshot(c['venue_report'],c['incarnation'],now,epoch)
     except (ValueError,OSError,KeyError,TypeError):
         s=None
     emit('reconciled',int(s is not None))
@@ -79,6 +83,9 @@ def metrics(c,now):
         emit('ledger_readable',0)
         return '\n'.join(out)+'\n'
     try:
+        if epoch:
+            record=db.execute('select payload from variant_epoch where id=1').fetchone()
+            if record is None or json.loads(record[0])!=epoch: raise ValueError('variant epoch mismatch')
         emit('ledger_readable',1)
         fills=db.execute('select id,side,price,lots,notional,fee,stamp,first_seen from fills order by rowid').fetchall()
         mark=db.execute('select stamp,price from marks order by stamp desc limit 1').fetchone()
@@ -91,7 +98,7 @@ def metrics(c,now):
             emit('period_volume_usd',sum(f[4] for f in recent)/1e6,f',days="{days}"')
             emit('period_fees_usd',sum(f[5] for f in recent)/1e6,f',days="{days}"')
             emit('period_completed_trades',sum(f[1]==2 for f in recent),f',days="{days}"')
-        delays=[f[6]-f[6]//300*300 for f in fills if f[6] is not None]
+        delays=[] if epoch else [f[6]-f[6]//300*300 for f in fills if f[6] is not None]
         if delays:
             emit('bar_close_to_fill_seconds',delays[-1],',stat="last"')
             emit('bar_close_to_fill_seconds',sum(delays)/len(delays),',stat="mean"')
@@ -116,10 +123,15 @@ def metrics(c,now):
         emit('order_capacity',240)
         emit('lifetime_completed_trades',sum(o['side']==2 for o in s['orders']))
         emit('ledger_fills_behind',len(s['orders'])-len(fills))
-        if mark and 0<=now-mark[0]<=600:
+        if mark and 0<=now-mark[0]<=(5 if epoch else 600):
             value=s['lots']*mark[1]*100
-            equity=s['cash']+value-fee(value,30)
+            equity=s['cash']+value-fee(value,cost_bps)
             emit('equity_usd',equity/1e6)
+            if epoch:
+                emit('variant_net_pnl_usd',(equity-epoch['cash'])/1e6)
+                emit('variant_volume_usd',(volume-epoch['volume'])/1e6)
+                emit('variant_fees_usd',(s['fees']-epoch['fees'])/1e6)
+                emit('variant_order_count',len(s['orders'])-len(epoch['previous_orders']))
             emit('net_pnl_usd',(equity-25000000)/1e6)
             recorded=db.execute('select max(equity) from equities').fetchone()[0] or 0
             emit('drawdown_usd',(max(25000000,recorded,equity)-equity)/1e6)

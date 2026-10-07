@@ -364,7 +364,7 @@ def shadow_edge_row():
     series("Tick to decision (ms)", [
         ('histogram_quantile(0.5, sum by (le) (rate(velocita_shadow_tick_to_decision_ms_bucket[5m])))', "p50 (5m)"),
         ('histogram_quantile(0.99, sum by (le) (rate(velocita_shadow_tick_to_decision_ms_bucket[5m])))', "p99 (5m)"),
-    ], 0, 12, unit="ms", description="Active stochastic only: payload delivered to Python -> committed decision reply at the local C++ submitter. Includes indicator/journal work and two Raft commits; excludes HTTP fetch and order execution. Histogram interpolation over sparse five-minute windows is not a reliable tail-latency estimate. See Paper trading for sample counts and a gated p99.")
+    ], 0, 12, unit="ms", description="Active stochastic only: payload delivered to Python -> committed decision reply at the local C++ submitter. Includes indicator/journal work and two Raft commits; excludes HTTP fetch and order execution. Histogram interpolation over sparse windows is not a reliable tail-latency estimate. See Paper trading for sample counts and a gated p99.")
     series("Where the time goes (average ms per tick, 5m)", [
         ('sum by (hop) (rate(velocita_shadow_hop_ms_sum[5m])) / '
          'scalar(clamp_min(sum(rate(velocita_shadow_tick_to_decision_ms_count[5m])), 1e-9))', "{{hop}}"),
@@ -720,52 +720,59 @@ def indicator_paper_rows():
             'IF flat AND SMA(20) > SMA(50): buy 0.12 SOL.\n'
             'ELSE IF long AND SMA(20) <= SMA(50): sell 0.12 SOL.\n'
             'ELSE: hold. SMA is the average close over the stated number of bars.'),
-        'stochastic': ('Stochastic momentum', '5-minute bars',
-            'K = 100 × (close − lowest low over 14 bars) / (highest high − lowest low).\n'
-            'D = average of the last 3 K values. A flat range gives K = 50.\n'
-            'IF long AND (K <= D OR K <= 40): sell 0.12 SOL.\n'
-            'ELSE IF flat AND K > D AND K >= 50: buy 0.12 SOL.\n'
-            'ELSE: hold. Exit rules have priority.')}
+        'stochastic': ('Stochastic one-second pilot', '1-second completed bars',
+            'K = SMA10 of stochastic over the trailing 900 seconds; D = SMA30 of K.\n'
+            'Trend = EMA300 > EMA1200 (one-second closes). Flat range K = 50.\n'
+            'IF flat AND 60-second cooldown complete: buy after K crosses above D,\n'
+            'with K >= 60 and positive trend sustained for 3 seconds.\n'
+            'IF long: sell after K < D and K <= 40 for 3 seconds.\n'
+            'ELSE hold. Account and capacity gates override entries.')}
     for strategy in ('stochastic',):
         title,cadence,rules=descriptions[strategy]
         row(f'{title} — isolated $25 virtual account')
         content=(f'**{cadence}; long-only SOL/cash.**\n\n```text\n{rules}\n```\n\n'
-            'Signals use completed Binance SOLUSDT OHLC (a proxy, not executable TM quotes). '
-            'The signal is delayed one five-minute bar; the FOK paper gateway uses that next '
-            'completed close, rounded down to $0.01. Indicator comparisons use the registered '
-            'integer rounding. Each account starts with $25 once, has no top-ups, and pays '
-            '**0.30% assumed cost per side** (0.20% service + 0.10% execution). '
-            'A clip must fit its own balance including fees and the $25 notional cap.\n\n'
-            '**Bounded diagnostic:** stop new buys and request exit at $10 observed liquidation '
-            'drawdown, 240 venue orders, or day 14. A stop is not a guaranteed loss ceiling; '
-            'stale data or unresolved orders can delay exit. No venue orders or live promotion. '
-            'These strategies lost money historically; paper results alone do not establish alpha.')
+            'Public Binance SOLUSDT proxy; signal delayed one second before the next close supplies '
+            'the simulated FOK limit. This is not a True Markets executable quote. '
+            'New fills pay **20 bp (0.20%) per side, fee-only scenario**; the SOL sell fee has '
+            'settlement evidence, buy symmetry is assumed. No fixed slippage charge is added. '
+            'Original $25 funding, prior cash and historical 30 bp fills are preserved. '
+            'Account lifetime panels include the earlier five-minute strategy; the pilot-only '
+            'panels below start at the immutable cutover baseline. No top-ups.\n\n'
+            '**Bounded engineering run:** 30 minutes of entries, up to 5 further minutes for exit, '
+            '2400 frames including retries, at most 40 additional fills plus exit reserve, '
+            'and existing $10 drawdown / 240 lifetime-order stops. Missing data can prevent exit. '
+            'Only one cluster. This pilot does not establish alpha or approve live trading.')
         panels.append({'type':'text','id':_id(),'title':f'{title}: rules and assumptions',
             'gridPos':{'x':0,'y':_y,'w':24,'h':10},'options':{'mode':'markdown','content':content}})
         advance(10)
         selector=f'{{strategy="{strategy}"}}'
+        stat('Pilot-only net P&L (20 bp)',f'velocita_indicator_variant_net_pnl_usd{selector}',0,6,unit='currencyUSD',decimals=3)
+        stat('Pilot-only volume',f'velocita_indicator_variant_volume_usd{selector}',6,6,unit='currencyUSD',decimals=2)
+        stat('Pilot-only fees',f'velocita_indicator_variant_fees_usd{selector}',12,6,unit='currencyUSD',decimals=3)
+        stat('Pilot-only fills',f'velocita_indicator_variant_order_count{selector}',18,6,decimals=0)
+        advance(4)
         stat('Confirmed account ready',f'velocita_indicator_reconciled{selector}',0,4,
              steps=(("red",None),("green",1)),description='0 or missing: account snapshot is stale, pending or does not reconcile. No new buying.')
-        stat('Equity after exit cost (30 bp scenario)',f'velocita_indicator_equity_usd{selector}',4,4,unit='currencyUSD',decimals=2)
-        stat('Net P&L since funding (30 bp scenario)',f'velocita_indicator_net_pnl_usd{selector}',8,4,unit='currencyUSD',decimals=2,
+        stat('Equity after exit cost (account history; new fills 20 bp)',f'velocita_indicator_equity_usd{selector}',4,4,unit='currencyUSD',decimals=2)
+        stat('Net P&L since funding (account history; new fills 20 bp)',f'velocita_indicator_net_pnl_usd{selector}',8,4,unit='currencyUSD',decimals=2,
              steps=(("red",None),("green",0)),
-             description='The account as simulated: 0.30% per side, which is an assumption. See the measured-cost panels in the next row.')
+             description='Account lifetime includes old 30 bp fills and new 20 bp fee-only fills. Pilot-only panels isolate the new rules; buy-side 20 bp remains assumed.')
         stat('Cash available',f'velocita_indicator_cash_usd{selector}',12,4,unit='currencyUSD',decimals=2)
         stat('SOL inventory',f'velocita_indicator_position_sol{selector}',16,4,decimals=2)
         stat('Candle age',f'velocita_indicator_price_age_seconds{selector}',20,4,unit='s',
-             steps=(("green",None),("red",600)))
+             steps=(("green",None),("red",5)))
         advance(4)
-        measured='The same fills re-priced at the costs measured on True Markets on 2026-09-28: 1.00% per buy, 0.98% per sell (ADR 0018).'
-        stat('Net P&L at measured costs',f'velocita_indicator_measured_cost_net_pnl_usd{selector}',0,4,unit='currencyUSD',decimals=2,
+        measured='Historical route stress case: same fills re-priced at the September 28 100/98 bp quotes; not the current 20 bp CLI service fee.'
+        stat('P&L under historical 100/98 bp stress',f'velocita_indicator_measured_cost_net_pnl_usd{selector}',0,4,unit='currencyUSD',decimals=2,
              steps=(("red",None),("green",0)),description=measured)
-        stat('Volume per $1 lost (30 bp scenario)',f'velocita_indicator_volume_per_usd_lost{{strategy="{strategy}",cost="scenario"}}',4,4,
+        stat('Volume per $1 lost (account history; new fills 20 bp)',f'velocita_indicator_volume_per_usd_lost{{strategy="{strategy}",cost="scenario"}}',4,4,
              unit='currencyUSD',decimals=0,description='Total buy and sell volume divided by the loss so far, as simulated. Empty while the account is not at a loss.')
-        stat('Volume per $1 lost (measured costs)',f'velocita_indicator_volume_per_usd_lost{{strategy="{strategy}",cost="measured"}}',8,4,
+        stat('Volume per $1 lost (100/98 bp stress)',f'velocita_indicator_volume_per_usd_lost{{strategy="{strategy}",cost="measured"}}',8,4,
              unit='currencyUSD',decimals=0,description=measured+' Plain churn achieves about $101 on SOL.')
         stat('Drawdown stop used',f'100 * velocita_indicator_drawdown_usd{selector} / 10',12,4,unit='percent',decimals=0,
              steps=(("green",None),("orange",50),("red",80)),description='Share of the $10 drawdown that stops new buys and requests an exit.')
         stat('Bar close to fill (mean)',f'velocita_indicator_bar_close_to_fill_seconds{{strategy="{strategy}",stat="mean"}}',16,4,unit='s',decimals=1,
-             description='From the end of the five-minute bar to the confirmed fill, over every fill with a known time. Includes the data fetch, the decision, authorization, any retry after a stale-risk refusal, and the simulated venue.')
+             description='Legacy five-minute run only; intentionally unavailable for the one-second variant until an exact order-to-signal timestamp join exists. Includes the data fetch, the decision, authorization, any retry after a stale-risk refusal, and the simulated venue.')
         stat('Bar close to fill (max)',f'velocita_indicator_bar_close_to_fill_seconds{{strategy="{strategy}",stat="max"}}',20,4,unit='s',decimals=1)
         advance(4)
         series('SOL price with confirmed entries / exits',[

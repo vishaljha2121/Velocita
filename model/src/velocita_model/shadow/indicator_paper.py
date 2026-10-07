@@ -129,27 +129,32 @@ class Journal:
     def close(self): self.db.close()
 
 
-def snapshot(path,incarnation,now):
+def snapshot(path,incarnation,now,epoch=None):
     raw=Path(path).read_bytes()
     if len(raw)>100000: raise ValueError('paper snapshot capacity')
     s=json.loads(raw)
+    cost_bps=20 if epoch is not None else 30
+    prior=epoch['previous_orders'] if epoch is not None else []
+    if epoch is not None and (s['orders'][:len(prior)]!=prior or len(s['orders'])<len(prior)):
+        raise ValueError('paper cost epoch prefix mismatch')
     if (s['version']!=1 or s['incarnation']!=incarnation or s['account']!=2 or
             s['venue']!=20 or s['instrument']!=2 or s['funding']!=25000000 or
-            s['buy_bps']!=30 or s['sell_bps']!=30 or s['failed']):
+            s['buy_bps']!=cost_bps or s['sell_bps']!=cost_bps or s['failed']):
         raise ValueError('paper snapshot identity or cost mismatch')
     if not 0<=now-s['stamp']<=5: raise ValueError('paper snapshot stale')
     if s['capacity']!=256 or len(s['orders'])>256: raise ValueError('paper capacity mismatch')
     if s['pending_reports']: raise ValueError('paper reports pending')
     cash,lots,fees,buy,sell=25000000,0,0,0,0
     seen=set()
-    for order in s['orders']:
+    for order_index,order in enumerate(s['orders']):
+        order_bps=30 if order_index<len(prior) else cost_bps
         identifier=order['id']
         if type(identifier) is not int or not 0<identifier<2**64 or identifier in seen:
             raise ValueError('paper duplicate order')
         seen.add(identifier)
         price,quantity,notional,fee=(order[k] for k in ('price','lots','notional','fee'))
         if (any(type(x) is not int for x in (price,quantity,notional,fee)) or price<=0 or quantity!=12 or
-                notional!=price*quantity*100 or fee!=-(-notional*30//10000)):
+                notional!=price*quantity*100 or fee!=-(-notional*order_bps//10000)):
             raise ValueError('paper fill economics')
         if order['side']==1 and lots==0:
             cash-=notional+fee;lots+=quantity;buy+=notional
@@ -178,14 +183,16 @@ def ingest(journal,s,now):
 
 
 class Book:
-    def __init__(self,journal,report,stop_ns):
+    def __init__(self,journal,report,stop_ns,epoch=None):
+        self.epoch=epoch
+        self.cost_bps=20 if epoch is not None else 30
         self.journal,self.report,self.stop_ns=journal,Path(report),stop_ns
         self.stop=None
         self.lots=None
 
     def refresh(self):
         try:
-            s=snapshot(self.report,self.journal.incarnation,time.time())
+            s=snapshot(self.report,self.journal.incarnation,time.time(),self.epoch)
             ingest(self.journal,s,time.time())
             return s
         except RECONCILE_ERRORS:
@@ -199,14 +206,14 @@ class Book:
         self.lots=s['lots']
         notional=price*12*100
         mark=s['cash']+s['lots']*price*100
-        reserve=-(-(s['lots']*price*100)*30//10000)
+        reserve=-(-(s['lots']*price*100)*self.cost_bps//10000)
         with self.journal.db:
             self.journal.db.execute('insert or replace into equities values (?,?)',(event_ns//NS,mark-reserve))
         peak=self.journal.db.execute('select max(equity) from equities').fetchone()[0]
         if event_ns>=self.stop_ns: self.stop='duration'
         elif len(s['orders'])>=240: self.stop='capacity'
         elif max(25000000,peak)-(mark-reserve)>=10000000: self.stop='drawdown'
-        elif s['lots']==0 and s['cash']<notional-(-notional*30//10000): self.stop='insufficient_balance'
+        elif s['lots']==0 and s['cash']<notional-(-notional*self.cost_bps//10000): self.stop='insufficient_balance'
         else: self.stop=None
         if self.stop in ('duration','capacity','drawdown'):
             with self.journal.db:

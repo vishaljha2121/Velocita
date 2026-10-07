@@ -384,7 +384,7 @@
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "Active stochastic only: payload delivered to Python -> committed decision reply at the local C++ submitter. Includes indicator/journal work and two Raft commits; excludes HTTP fetch and order execution. Histogram interpolation over sparse five-minute windows is not a reliable tail-latency estimate. See Paper trading for sample counts and a gated p99.",
+   "description": "Active stochastic only: payload delivered to Python -> committed decision reply at the local C++ submitter. Includes indicator/journal work and two Raft commits; excludes HTTP fetch and order execution. Histogram interpolation over sparse windows is not a reliable tail-latency estimate. See Paper trading for sample counts and a gated p99.",
    "gridPos": {
     "h": 8,
     "w": 12,
