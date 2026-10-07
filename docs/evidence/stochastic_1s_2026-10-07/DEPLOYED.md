@@ -1,7 +1,8 @@
 # One-second stochastic paper deployment — October 7, 2026
 
 Status: continuation deployment was superseded by the owner-requested fresh $25 reset.
-The new sole cluster is healthy; operator ceremony and paper activation are pending.
+The new sole cluster is healthy; owner ceremony completed and paper trading is running.
+See ACTIVATION_RESULT.md for the startup reconciliation and verified first fill.
 See RESET_COMMANDS.md for the current state and exact executed/pending commands.
 The sections below document the historical continuation attempt.
 
@@ -94,6 +95,7 @@ New cluster c8a6a0a78fbf49a099b222124a5d557f: three ready voters, term 1,
 one leader, empty retained history at bootstrap. Old data archived on all hosts.
 New image paper-1s-0680b08 passed 140 C++ and 11 in-image Python tests. Its ID is
 33d6c413a396fddbefd908d86c15f706b4cc4b8b31345bd4cb4b1addc2c7f09f.
-Owner ceremony has not run; new venue funding and edge activation remain pending.
+Owner ceremony, new venue funding and edge activation completed. A startup
+reconciliation interruption is documented in ACTIVATION_RESULT.md.
 Prometheus configuration is valid, 47 rules loaded, Grafana healthy, and new-run
 voter count three. Monitoring is isolated with a paper_run label.

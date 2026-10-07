@@ -1,8 +1,9 @@
 # Fresh paper ledger reset: command record
 
-Status on October 7, 2026: old account archived; fresh cluster healthy with three
-voters and one leader. Operator ceremony NOT executed. New $25 venue state NOT
-initialized. Edge, gateway and observer remain stopped. No new strategy trades.
+Status on October 7, 2026: the owner completed all four Mac commands. Fresh
+$25 paper state initialized; edge, gateway and observer running after startup
+reconciliation. The first new paper buy is verified. See ACTIVATION_RESULT.md
+for exact restart/recovery evidence and the bounded pilot deadline.
 
 New incarnation: `c8a6a0a78fbf49a099b222124a5d557f`.
 Old incarnation: `19137567d0c14889b29f7674e26a8fd8`.
@@ -106,13 +107,13 @@ the shipped source paths. New metrics carry `paper_run=c8a6a0a78fbf49a099b222124
 strategy dashboard selectors require that value. Old time series are retained.
 Config validation passed with 47 rules; Grafana database health is OK; the mounted
 paper dashboard hash matches the generated file. New-run voter count is three.
-Strategy panels are intentionally empty until the owner setup and activation.
+Strategy panels were empty while setup was pending; they now have run-scoped data.
 
 Raw command output is retained in scratch/reset-*.log, image-final-check.log,
 host-build-fix.log and mac-operator-client.log. These logs are local evidence,
 not all tracked in Git.
 
-## Pending: owner ceremony on the Mac
+## Executed by owner: ceremony on the Mac
 
 Run this once from your Mac terminal:
 
@@ -131,9 +132,9 @@ retain the output; do not rerun all four blindly.
 This is owner-run because ADR 0016 says the ceremony prints commands "for the
 owner to run from the Mac". No operator command was issued from a host.
 
-## Pending: initialize and activate after owner success
+## Executed: initialize and activate after owner success
 
-Prepared, not yet executed:
+Executed after the owner supplied all four COMMITTED/applied results:
 
 ```sh
 ssh velocitas@nuc1 'python3 "$HOME/stochastic-fresh-c8a6a0a7/activate-after-owner.py"'
@@ -146,3 +147,36 @@ starts the edge and read-only observer. Its 30-minute entry and five-minute exit
 window start then, not during maintenance. Verify feed/cadence, reconciled cash
 and inventory, current fees, capacity and dashboard data before calling deployment
 complete. No live venue orders are involved.
+
+## Additional executed recovery steps
+
+The initial script started the gateway before policy setup. The policy's switch
+to normal mode latched control_change. The edge was stopped, and the gateway
+restarted. A pending unsent effect then entered restart recovery and latched
+unknown_outcome. No venue order/fill existed at that point. Position match alone
+was insufficient evidence; a further restart still stopped.
+
+With both edge and gateway stopped, the bounded `read-committed-state.cpp`
+diagnostic made one authenticated state read through the gateway's existing
+session. It did not submit a Raft command or access a venue. Output at applied
+index 349 proved order 15666494356934747149 state=11 (rejected), effect
+2184018967446018083 state=5 (rejected), zero position, zero reserved lots/margin.
+After this direct proof, the gateway started and was verified armed before the
+edge resumed. No control/safety latch was bypassed or state file edited.
+
+```sh
+ssh velocitas@nuc1 'systemctl --user stop velocita-paper-stochastic-edge.service'
+ssh velocitas@nuc1 'systemctl --user restart velocita-paper-stochastic-gateway.service'
+# An earlier restart still stopped: see fresh-gateway-stop-investigation.log.
+# The diagnostic required the gateway stopped and its response port free.
+ssh velocitas@nuc1 'systemctl --user stop velocita-paper-stochastic-gateway.service'
+# Diagnostic invocation and source are recorded in ACTIVATION_RESULT.md.
+ssh velocitas@nuc1 'systemctl --user start velocita-paper-stochastic-gateway.service'
+# Wait for fresh metrics with new_risk_stopped=0 before this next command:
+ssh velocitas@nuc1 'systemctl --user start velocita-paper-stochastic-edge.service'
+```
+
+The recorded activation recipe now restarts the gateway AFTER policy setup and
+waits for a fresh armed metric BEFORE starting the edge. This corrects startup
+ordering; it is not a kernel/recovery code change. The interrupted period is
+retained in the evidence, and the original pilot deadline was not extended.

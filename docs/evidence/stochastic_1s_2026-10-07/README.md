@@ -1,7 +1,8 @@
 # One-second stochastic paper deployment
 
-Current status: fresh replacement cluster ready; owner Mac ceremony and paper
-activation pending. Only one cluster runs. Old state is archived on all hosts.
+Current status: fresh paper strategy running after owner ceremony and startup
+reconciliation. One paper buy verified at 20:14 UTC. Only one cluster runs; old
+state is archived on all hosts. See ACTIVATION_RESULT.md for runtime evidence.
 The owner selected a new $25 virtual balance with no old trades or fees.
 
 Read [RESET_COMMANDS.md](RESET_COMMANDS.md) for the exact commands executed,

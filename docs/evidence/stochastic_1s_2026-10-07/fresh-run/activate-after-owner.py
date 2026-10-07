@@ -43,6 +43,12 @@ run(['podman','run','--rm','--name','velocita-paper-stochastic-1s-setup','--netw
  '--aeron-dir','/dev/shm/velocita-setup-aeron'],'SETUP ')
 # Installing policy/normal mode changes controls after the first gateway arm.
 # Reconcile and arm against those final controls before accepting edge decisions.
+armed_after=time.time()
 run(['systemctl','--user','restart','velocita-paper-stochastic-gateway.service'])
+metrics=base/'gateway/gateway.prom'
+for i in range(30):
+ time.sleep(.5)
+ if metrics.exists() and metrics.stat().st_mtime>=armed_after and 'velocita_gateway_new_risk_stopped 0' in metrics.read_text(): break
+else: raise RuntimeError('gateway not armed after setup; edge remains stopped')
 run(['systemctl','--user','start','velocita-paper-stochastic-edge.service','velocita-paper-indicator-observer.service'])
 print(json.dumps(dict(status='started',incarnation=c['incarnation'],epoch=c['epoch']),indent=2))
