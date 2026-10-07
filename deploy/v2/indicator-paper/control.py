@@ -36,20 +36,17 @@ def main():
         command[command.index('--network')+1]='none'
         run(command)
     elif a.action=='ceremony':
-        command=common+['-v',f'{base}/operator:/state',
-            '-v','%t/velocita-secrets/caller-9.key:/run/velocita-secrets/caller-9.key:ro',
-            '--entrypoint','/usr/local/bin/velocita-v2-client',f'localhost/velocita-v2:{tag}',
-            '--caller-key-id','9','--caller-id','7','--key-file','/run/velocita-secrets/caller-9.key',
-            '--session-file','/state/operator.session','--response-endpoint',f'100.72.127.102:{42400+offset}',
-            '--aeron-dir','/dev/shm/velocita-operator-aeron',*c['transport']]
         actions=[['kill-epoch','1'],['executor-generation','1'],['install-catalog',m['catalog_root'],'1','1'],
             ['risk-limits','account=2','instrument=2','risk_policy_version=1','expected_risk_version=0',
              'kill_epoch=1','executor_generation=1','max_order_lots=12','max_reserved_lots=12',
              'max_order_notional_micros=25000000','max_reserved_exposure_micros=25000000',
              'initial_margin_ppm=1000000','maximum_fee_ppm=3000','max_position_lots=12',
              'allow_short=0','reason_code=20261007']]
+        print('Operator commands are sent from the Mac, not from a voter host (ADR 0016, 2026-10-07).')
+        print('Run each with velocita-v2-client --key-stdin and the operator key from the Keychain:')
         for sequence,action in enumerate(actions,1):
-            run(command+['--sequence',str(sequence),*action],expected='code_name=applied')
+            print('  --sequence',sequence,' '.join(action),*c['transport'])
+        raise SystemExit(64)
     elif a.action=='setup':
         command=common+['-v',f'{base}/config:/config:ro','-v',f'{base}/edge:/edge:ro',
             '-v',f'{base}/setup:/state',

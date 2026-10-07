@@ -48,6 +48,22 @@ class IndicatorDeployment(unittest.TestCase):
             self.assertEqual(len(observer),1)
             self.assertEqual(observer[0]['strategy'],'stochastic')
 
+    def test_the_setup_script_prints_operator_commands_and_sends_none(self):
+        import subprocess,sys
+        spec=importlib.util.spec_from_file_location('prepare_indicator',ROOT/'deploy/v2/indicator-paper/prepare.py')
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        control=ROOT/'deploy/v2/indicator-paper/control.py'
+        self.assertNotIn('caller-9',control.read_text())
+        with tempfile.TemporaryDirectory(dir=ROOT/'tests') as folder:
+            out=Path(folder)/'profiles'
+            module.generate(out,'test-image','12'*32,1000000000)
+            result=subprocess.run([sys.executable,str(control),'--manifest',str(out/'manifest.json'),
+                '--strategy','stochastic','ceremony'],capture_output=True,text=True)
+            self.assertEqual(result.returncode,64)
+            for verb in ('kill-epoch 1','executor-generation 1','install-catalog','risk-limits account=2'):
+                self.assertIn(verb,result.stdout)
+            self.assertIn('from the Mac',result.stdout)
+
     def test_dashboard_has_rules_and_confirmed_fill_points_for_selected_strategy(self):
         d=json.loads((ROOT/'deploy/v2/observability/grafana/dashboards/velocita-v2-paper.json').read_text())
         texts=[p['options']['content'] for p in d['panels'] if p['type']=='text']

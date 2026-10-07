@@ -93,7 +93,8 @@ paper trading, not hidden.
 
 ## Amendment 2026-10-07: the stochastic paper run departs from two terms of this ADR
 
-**Status: deviation recorded; the owner has not yet accepted or rejected it.**
+**Status: accepted for now by the owner on 2026-10-07** ("let the cost model be that for now"). The
+rules below apply for as long as it stands, and the closing condition at the end is unchanged.
 
 The stochastic paper run started on 2026-10-07
 (`docs/evidence/dual_indicator_paper_2026-10-07/`) keeps fill-or-kill and the bounded,

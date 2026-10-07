@@ -85,7 +85,7 @@ version, and the submitter never sees them.
 
 ## Amendment 2026-10-07: two practices introduced by the stochastic paper run
 
-**Status: recorded for the owner's decision.** Found by the independent review
+**Status: the first is recorded and bounded; the second is decided (below).** Found by the independent review
 (`docs/evidence/dual_indicator_paper_2026-10-07/INDEPENDENT_REVIEW.md`, M3 and M4).
 
 ### 1. The edge reads the gateway's venue report
@@ -122,7 +122,11 @@ The kernel cannot tell the two apart: the keys are symmetric, and every voter mu
 caller key to verify it. So ADR 0015's "operator-only" has always meant "anyone who can read a
 voter's secrets directory"; this run is the first time that was used.
 
-**Owner decision needed:** either accept that set-up automation on a voter host may act as the
-operator, or require ceremonies from the Mac. Nothing in the code enforces the second; ADR 0020
-(roles) would not either, since the caller is a genuine operator caller.
+**Owner decision, 2026-10-07: operator commands stay on the Mac for now.**
+- `control.py` no longer sends them. Its `ceremony` action prints the four operator commands for
+  the owner to run from the Mac with `velocita-v2-client --key-stdin`, and exits 64.
+- The `setup` action is unchanged: it runs as the set-up caller (key 11), which this ADR already
+  assigns to a one-shot unit on nuc1.
+- This is a rule the tooling follows, not one the kernel enforces: every voter still holds the
+  operator key, because verifying a symmetric key needs the same bytes as signing with it.
 

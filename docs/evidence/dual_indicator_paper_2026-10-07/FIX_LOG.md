@@ -170,3 +170,13 @@ the unit files from the backup directory and restart the three services.
 - **Not done, low severity:** L1–L8 in the review, including the leftover stopped container on
   nuc1 and the observer being scraped by two jobs.
 - **Other sessions' uncommitted work** in the repository is untouched and still uncommitted.
+
+## Owner decisions, 2026-10-07
+
+- **H1, cost model:** the 30 bp scenario stays for now. ADR 0018's amendment is marked accepted
+  for now; its rules (label it, show measured costs beside it, quote the measured figure) and its
+  closing condition stand.
+- **M4, operator commands:** they stay on the Mac for now. `control.py`'s `ceremony` action no
+  longer mounts the operator key or sends anything; it prints the four commands to run from the
+  Mac and exits 64. A test covers it. ADR 0016's amendment records the decision and that the
+  kernel cannot enforce it.
