@@ -455,6 +455,8 @@ def run_once(socket_factory: Callable[[], object], submitter_argv: Sequence[str]
         tick = source.tick(raw, receive_ns=receive_ns, tick_id=next_id)
         metrics.observe_message(source.last_outcome, tick, source.usd_per_tick)
         if tick is None:
+            if source.last_outcome == "quiet":
+                published()
             return None
         stop = paper_book.gate(tick.event_ns, tick.features[-1]) if paper and paper_book is not None else None
         tick.exits_only = stop is not None

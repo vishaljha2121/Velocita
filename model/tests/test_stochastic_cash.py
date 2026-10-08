@@ -74,3 +74,63 @@ class CashTests(unittest.TestCase):
             tick=self.source.tick(self.raw('300'),receive_ns=100*NS,tick_id=1)
         self.assertEqual(tick.features[:2],(0,0))
         self.assertIsNone(self.source.terminal_reason)
+
+    def bar(self,stamp,price='100'):
+        return json.dumps(dict(s='SOLUSDT',k=dict(s='SOLUSDT',i='1s',x=True,
+            t=(stamp-1)*1000,T=stamp*1000-1,o=price,h=price,l=price,c=price)))
+
+    def send(self,stamp,price='100'):
+        self.s['stamp']=float(stamp);Path(self.c['venue_report']).write_text(json.dumps(self.s))
+        with patch('time.time',return_value=float(stamp)):
+            return self.source.tick(self.bar(stamp,price),receive_ns=stamp*NS,tick_id=stamp)
+
+    def rows(self,table):
+        return self.j.db.execute(f'select count(*) from {table}').fetchone()[0]
+
+    def test_idle_bars_stay_local_until_the_heartbeat(self):
+        self.source.previous_flags=(0,0)
+        with patch.object(self.source.signals,'push',return_value=(0,0)):
+            first=self.send(100)
+            self.assertEqual(first.features,(0,0,10000))
+            for stamp in range(101,130):
+                self.assertIsNone(self.send(stamp))
+                self.assertEqual(self.source.last_outcome,'quiet')
+            self.assertEqual((self.rows('attempts'),self.rows('evidence')),(1,1))
+            self.assertEqual((self.rows('marks'),self.rows('equities')),(30,30))
+            beat=self.send(130)
+            self.assertIsNotNone(beat)
+            self.assertEqual(beat.features,(0,0,10000))
+            self.assertIsNone(self.send(131))
+            self.assertEqual(self.rows('attempts'),2)
+
+    def test_a_signal_is_sent_at_once_inside_the_idle_window(self):
+        self.source.previous_flags=(0,0)
+        with patch.object(self.source.signals,'push',side_effect=[(0,0),(0,1000000),(0,0)]):
+            self.assertIsNotNone(self.send(100))
+            self.assertIsNone(self.send(101))
+            entry=self.send(102)
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.features,(0,1000000,10000))
+
+    def test_a_latched_stop_is_sent_at_once_inside_the_idle_window(self):
+        self.s.update(cash=952000,lots=12,fees=48000,buy_volume=24000000,
+            orders=[dict(id=2**63+1,side=1,price=20000,lots=12,notional=24000000,fee=48000)])
+        self.source.previous_flags=(0,0)
+        with patch.object(self.source.signals,'push',return_value=(0,0)):
+            self.assertIsNotNone(self.send(100,'200'))
+            self.assertIsNone(self.send(101,'200'))
+            exit_now=self.send(102,'100')
+        self.assertIsNotNone(exit_now)
+        self.assertEqual(exit_now.features,(1000000,0,10000))
+
+    def test_a_retry_is_never_treated_as_idle(self):
+        self.source.previous_flags=(0,0)
+        with patch.object(self.source.signals,'push',side_effect=[(0,0),(0,1000000),(0,0)]):
+            self.assertIsNotNone(self.send(100))
+            self.assertIsNone(self.send(101))
+            tick=self.send(102)
+            self.assertIsNotNone(tick)
+            self.source.observe_decision(dict(authorization='stale_risk_state',resync=1),tick)
+            again=self.send(102)
+        self.assertIsNotNone(again)
+        self.assertEqual(again.features,(0,1000000,10000))

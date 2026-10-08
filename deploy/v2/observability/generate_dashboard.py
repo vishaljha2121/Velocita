@@ -403,8 +403,9 @@ def edge_row():
          steps=(("red", None), ("green", 1)), mappings=READY_MAP,
          description="1 once the policy is installed and the strategy mode is normal.")
     stat("Last decision", 'max(velocita_shadow_last_decision_age_seconds)', 6, 6, unit="s",
-         steps=(("green", None), ("orange", 5), ("red", 30)),
-         description="Seconds since the cluster last recorded a decision. One is expected every second.")
+         steps=(("green", None), ("orange", 45), ("red", 90)),
+         description="Seconds since the cluster last recorded a decision. The edge sends a bar when it has a signal "
+                     "or a stop, and otherwise one every 30 seconds.")
     stat("Rule agreement", 'sum(velocita_shadow_agreement_total{result="agree"}) / '
          'clamp_min(sum(velocita_shadow_agreement_total), 1)', 12, 6, unit="percentunit",
          steps=(("red", None), ("green", 1)),
@@ -462,7 +463,8 @@ def journey_row():
     ], 0, 12, description="The funnel over time (5 min rate).")
     series("Messages by outcome (per minute)", [
         ('sum by (outcome) (60 * rate(velocita_shadow_messages_total[5m]))', "{{outcome}}"),
-    ], 12, 12, stack=True, description="forwarded = sent to the cluster; stale = older than 2 s; throttled = a second "
+    ], 12, 12, stack=True, description="forwarded = sent to the cluster; quiet = nothing to act on, kept local "
+                                        "(one bar in 30 s is still sent); stale = older than 2 s; throttled = a second "
                                         "bar in the same wall-clock second; duplicate = already handled; warming_up = "
                                         "indicators not ready; invalid = rejected frame or a bar ahead of the local "
                                         "clock (alert: VelocitaPaperBadMarketData).")

@@ -1,7 +1,7 @@
 # 0023. Archive retention for a run with no end date
 
 Date: 2026-10-07
-Status: Proposed. It needs the owner's decision. The alert in section 1 is built; nothing else is.
+Status: Accepted by the owner on 2026-10-07 (section 2). Sections 1 and 2 are built; neither is deployed yet.
 
 ## Context
 
@@ -51,7 +51,7 @@ occupancy).
 
 At today's rate 70% is about six days before the limit and 90% about two.
 
-### 2. Send a bar to the cluster only when it can matter (recommended)
+### 2. Send a bar to the cluster only when it can matter
 
 The edge forwards a bar when any of these is true, and otherwise records it locally and sends
 nothing:

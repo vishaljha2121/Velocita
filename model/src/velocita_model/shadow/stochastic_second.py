@@ -12,6 +12,7 @@ VARIANT='stochastic_1s_v1'
 CASH_VARIANT='stochastic_1s_cash_v1'
 NO_DEADLINE=2**63-1
 LIMIT=2400
+HEARTBEAT_NS=30*10**9
 
 
 def candle(start,end,o,h,l,c):
@@ -107,7 +108,7 @@ class FastSource(Source):
         register_epoch(journal,epoch)
         self.epoch=epoch;self.cash_run=epoch['variant']==CASH_VARIANT
         self.terminal_reason=None;self.reset();self.last_sent_bucket=None
-        self.needs_bootstrap=False
+        self.needs_bootstrap=False;self.last_forwarded_ns=None
 
     def reset(self):
         self.indicators=Indicators();self.signals=Signals();self.previous_flags=None
@@ -158,13 +159,6 @@ class FastSource(Source):
             if not (protective and self.book.lots): return dropped('warming_up')
             flags=(0,0)
         if not self.cash_run and self.used()>=LIMIT: return dropped('capacity')
-        if not retrying:
-            if self.last_sent_bucket==receive_ns//NS:
-                self.last_outcome='throttled';return None
-            if not self.journal.attempt(event_ns,receive_ns):
-                self.last_outcome='duplicate';return None
-        self.last_sent_bucket=receive_ns//NS
-        self.retry_flags=flags
         stop=self.book.gate(event_ns,price)
         count=self.journal.db.execute('select count(*) from fills').fetchone()[0]
         if not self.cash_run and count>=len(self.epoch['previous_orders'])+40:
@@ -186,6 +180,17 @@ class FastSource(Source):
         if self.book.lots is not None:
             exit_flag=exit_flag if self.book.lots else 0
             entry_flag=entry_flag if not self.book.lots and stop is None else 0
+        if not retrying:
+            idle=self.last_forwarded_ns is not None and 0<=event_ns-self.last_forwarded_ns<HEARTBEAT_NS
+            if idle and not (exit_flag or entry_flag):
+                self.last_outcome='quiet';return None
+            if self.last_sent_bucket==receive_ns//NS:
+                self.last_outcome='throttled';return None
+            if not self.journal.attempt(event_ns,receive_ns):
+                self.last_outcome='duplicate';return None
+        self.last_sent_bucket=receive_ns//NS
+        self.retry_flags=flags
+        self.last_forwarded_ns=event_ns
         features=(exit_flag,entry_flag,price)
         with self.journal.db:
             self.journal.db.execute('insert or ignore into evidence values (?,?)',(event_ns,raw))

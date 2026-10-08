@@ -348,6 +348,35 @@ FAKE_SUBMITTER = textwrap.dedent('''
 
 
 class EndToEndWithAFakeSubmitter(unittest.TestCase):
+    def test_a_quiet_message_still_refreshes_the_metrics_file(self) -> None:
+        with TemporaryDirectory() as d:
+            fake = Path(d) / "fake_submitter.py"
+            fake.write_text(FAKE_SUBMITTER)
+            textfile = Path(d) / "shadow.prom"
+            seen = []
+
+            class Quiet:
+                feature_names = ("flag",)
+                usd_per_tick = Decimal("0.01")
+                last_outcome = "quiet"
+                def tick(self, raw, *, receive_ns, tick_id):
+                    self.last_outcome = raw
+                    return None
+
+            messages = ["duplicate", "quiet", None]
+
+            class Socket:
+                def open(self): ...
+                def subscribe(self, topics): ...
+                def recv_text(self):
+                    seen.append(textfile.read_text().count('outcome="quiet"') if textfile.exists() else -1)
+                    return messages.pop(0)
+                def close(self): ...
+
+            edge.run_once(lambda: Socket(), [sys.executable, str(fake)], Quiet(), textfile=str(textfile),
+                          shadow_recorded_code=14, clock_ns=iter(range(10**18, 10**18 + 10**9, 10**6)).__next__)
+            self.assertEqual(seen, [0, 0, 1])
+
     def test_messages_become_decisions_and_metrics(self) -> None:
         with TemporaryDirectory() as d:
             fake = Path(d) / "fake_submitter.py"

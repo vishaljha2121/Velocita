@@ -180,7 +180,7 @@
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "Seconds since the cluster last recorded a decision. One is expected every second.",
+   "description": "Seconds since the cluster last recorded a decision. The edge sends a bar when it has a signal or a stop, and otherwise one every 30 seconds.",
    "gridPos": {
     "h": 4,
     "w": 6,
@@ -207,11 +207,11 @@
        },
        {
         "color": "orange",
-        "value": 5
+        "value": 45
        },
        {
         "color": "red",
-        "value": 30
+        "value": 90
        }
       ]
      },
@@ -804,7 +804,7 @@
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "forwarded = sent to the cluster; stale = older than 2 s; throttled = a second bar in the same wall-clock second; duplicate = already handled; warming_up = indicators not ready; invalid = rejected frame or a bar ahead of the local clock (alert: VelocitaPaperBadMarketData).",
+   "description": "forwarded = sent to the cluster; quiet = nothing to act on, kept local (one bar in 30 s is still sent); stale = older than 2 s; throttled = a second bar in the same wall-clock second; duplicate = already handled; warming_up = indicators not ready; invalid = rejected frame or a bar ahead of the local clock (alert: VelocitaPaperBadMarketData).",
    "gridPos": {
     "h": 8,
     "w": 12,
