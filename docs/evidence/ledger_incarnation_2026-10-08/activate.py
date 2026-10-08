@@ -4,7 +4,7 @@ import json,os,re,subprocess,time
 home=Path.home();root=home/'velocita-indicator-paper';base=root/'stochastic';stage=home/'ledger-abd1e149'
 inc='abd1e149a26d4062ba5bbba2d90b3305'
 units=home/'.config/systemd/user'
-voter='localhost/velocita-v2:ledger-8a15b98';shadow='localhost/velocita-v2-shadow:paper-ledger-8a15b98'
+voter='localhost/velocita-v2:ledger-f55209e';shadow='localhost/velocita-v2-shadow:paper-ledger-f55209e'
 uid=os.getuid()
 assert inc in (base/'config/node-1.conf').read_text()
 assert not (base/'gateway/paper.state').exists(), 'not a fresh account; do not rerun'

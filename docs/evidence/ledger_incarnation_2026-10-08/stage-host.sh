@@ -15,7 +15,7 @@ if test "$node" = 1; then
  ! systemctl --user is-active --quiet velocita-paper-stochastic-gateway.service
 fi
 test ! -e "$retired"
-podman image exists localhost/velocita-v2:ledger-8a15b98
+podman image exists localhost/velocita-v2:ledger-f55209e
 grep -q "^cluster.incarnation = $old_inc$" "$live/config/node-$node.conf"
 mkdir -p "$base/retired"
 mv "$live" "$retired"
@@ -29,15 +29,15 @@ for name in velocita-paper-stochastic-node velocita-paper-stochastic-exporter ve
  test -f "$unit" || continue
  cp "$unit" "$retired/units-before/$name.service"
  sed -i -e "s/$old_inc/$new_inc/g" \
-  -e 's#localhost/velocita-v2:m3-cp081#localhost/velocita-v2:ledger-8a15b98#g' \
-  -e 's#localhost/velocita-v2:paper-7297bd5#localhost/velocita-v2:ledger-8a15b98#g' \
-  -e 's#localhost/velocita-v2-shadow:paper-cash-d542601#localhost/velocita-v2-shadow:paper-ledger-8a15b98#g' \
-  -e 's#localhost/velocita-v2-shadow:paper-cash-9a71762#localhost/velocita-v2-shadow:paper-ledger-8a15b98#g' "$unit"
+  -e 's#localhost/velocita-v2:m3-cp081#localhost/velocita-v2:ledger-f55209e#g' \
+  -e 's#localhost/velocita-v2:paper-7297bd5#localhost/velocita-v2:ledger-f55209e#g' \
+  -e 's#localhost/velocita-v2-shadow:paper-cash-d542601#localhost/velocita-v2-shadow:paper-ledger-f55209e#g' \
+  -e 's#localhost/velocita-v2-shadow:paper-cash-9a71762#localhost/velocita-v2-shadow:paper-ledger-f55209e#g' "$unit"
  ! grep -q "$old_inc" "$unit"
  ! grep -q -e 'm3-cp081' -e 'paper-7297bd5' -e 'paper-cash-' "$unit"
 done
 if test "$node" = 1; then
- podman image exists localhost/velocita-v2-shadow:paper-ledger-8a15b98
+ podman image exists localhost/velocita-v2-shadow:paper-ledger-f55209e
  rm -rf "$units/velocita-paper-stochastic-edge.service.d.retired"
  if test -d "$units/velocita-paper-stochastic-edge.service.d"; then
   cp -r "$units/velocita-paper-stochastic-edge.service.d" "$retired/units-before/"
