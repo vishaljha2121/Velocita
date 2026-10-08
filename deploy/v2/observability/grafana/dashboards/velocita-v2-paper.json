@@ -1,7 +1,7 @@
 {
  "uid": "velocita-v2-paper",
  "title": "Velocita \u2014 Paper trading",
- "description": "Active cluster: stochastic paper only. Phase 2 paper trading: the gateway against the TrueMarkets simulator. Tick-to-trade by stage, orders, fills, position and fees. No real order is sent.",
+ "description": "Active cluster: stochastic paper only. Paper trading: the gateway against the fill-or-kill simulator. The session's account, gateway stages, orders, fills, position and fees. No real order is sent.",
  "schemaVersion": 41,
  "version": 1,
  "editable": false,
@@ -44,10 +44,10 @@
   },
   {
    "type": "link",
-   "title": "Strategy (shadow)",
+   "title": "Strategy edge",
    "url": "/d/velocita-v2-strategy",
    "icon": "dashboard",
-   "tooltip": "Velocita \u2014 Strategy (shadow)",
+   "tooltip": "Velocita \u2014 Strategy edge",
    "targetBlank": false,
    "keepTime": true,
    "includeVars": false,
@@ -101,7 +101,7 @@
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "1 = the gateway sends no risk-increasing order. After an election it re-arms by itself once the cluster is quiet and the venue reconciles; after an unknown outcome, a conflict, a control change or a reconciliation mismatch only a restart (after checking the gateway journal) re-arms it. Alert: VelocitaGatewayNewRiskStopped.",
+   "description": "1 = the gateway sends no risk-increasing order. After an election it re-arms by itself once the cluster is quiet and the venue reconciles; after an unknown outcome, a conflict, a control change or a reconciliation mismatch only a restart (after checking the gateway journal) re-arms it. Alert: VelocitaGatewayNewRiskStopped. An armed gateway alone does not imply an active strategy; check session status and submitter.",
    "gridPos": {
     "h": 6,
     "w": 8,
@@ -315,7 +315,7 @@
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "Seconds since the last paper fill seen by the running gateway (it resets on restart). The daily trend strategy trades a few times a year, so a long gap is normal.",
+   "description": "Seconds since the last paper fill seen by the running gateway (it resets on restart).",
    "gridPos": {
     "h": 6,
     "w": 4,
@@ -428,7 +428,7 @@
   },
   {
    "type": "row",
-   "title": "Stochastic one-second pilot \u2014 isolated $25 virtual account",
+   "title": "Stochastic one-second session \u2014 isolated $25 virtual account",
    "id": 7,
    "collapsed": false,
    "gridPos": {
@@ -442,7 +442,7 @@
   {
    "type": "text",
    "id": 8,
-   "title": "Stochastic one-second pilot: rules and assumptions",
+   "title": "Stochastic one-second session: rules and assumptions",
    "gridPos": {
     "x": 0,
     "y": 8,
@@ -451,12 +451,12 @@
    },
    "options": {
     "mode": "markdown",
-    "content": "**1-second completed bars; long-only SOL/cash.**\n\n```text\nK = SMA10 of stochastic over the trailing 900 seconds; D = SMA30 of K.\nTrend = EMA300 > EMA1200 (one-second closes). Flat range K = 50.\nIF flat AND 60-second cooldown complete: buy after K crosses above D,\nwith K >= 60 and positive trend sustained for 3 seconds.\nIF long: sell after K < D and K <= 40 for 3 seconds.\nELSE hold. Account and capacity gates override entries.\n```\n\nPublic Binance SOLUSDT proxy; signal delayed one second before the next close supplies the simulated FOK limit. This is not a True Markets executable quote. New fills pay **20 bp (0.20%) per side, fee-only scenario**; the SOL sell fee has settlement evidence, buy symmetry is assumed. No fixed slippage charge is added. Original $25 funding, prior cash and historical 30 bp fills are preserved. Account lifetime panels include the earlier five-minute strategy; the pilot-only panels below start at the immutable cutover baseline. No top-ups.\n\n**Bounded engineering run:** 30 minutes of entries, up to 5 further minutes for exit, 2400 frames including retries, at most 40 additional fills plus exit reserve, and existing $10 drawdown / 240 lifetime-order stops. Missing data can prevent exit. Only one cluster. This pilot does not establish alpha or approve live trading."
+    "content": "**Ongoing paper session: one-second completed bars; SOL/cash; 0.12 SOL orders.**\n\n```text\nENTER: K crosses above D, K >= 60, EMA300 > EMA1200;\n       all conditions hold for 3 seconds.\nEXIT:  K < D and K <= 40 for 3 seconds.\nWait 60 seconds after an exit before re-entry.\nSTOP:  while flat, cash cannot cover 0.12 SOL plus its fee.\n```\n\nStochastic range 900 seconds; K smoothing 10 seconds; D smoothing 30 seconds.\nSignals use the previous completed second. Public Binance SOLUSDT is a price\nproxy; simulated FOK fills use the following close. **20 bp per side, fee-only**;\nbuy-side symmetry is assumed. This is not proof of True Markets execution or alpha.\n\n**No scheduled time cutoff.** Continues from **$24.869170**, preserving the\noriginal $25 funding and all four prior fills. Session-only metrics exclude\nthose prior fills; lifetime and 7/14-day panels include them. One cluster only.\nThe $10 drawdown, 240 lifetime-order, reconciliation and storage guards remain.\nWhile invested in SOL, low USDC does not block selling. A finalized flat session\nkeeps its balances and fills visible even after the edge stops."
    }
   },
   {
    "type": "stat",
-   "title": "Pilot-only net P&L (20 bp)",
+   "title": "Session-only net P&L (20 bp)",
    "id": 9,
    "datasource": {
     "type": "prometheus",
@@ -516,7 +516,7 @@
   },
   {
    "type": "stat",
-   "title": "Pilot-only volume",
+   "title": "Session-only volume",
    "id": 10,
    "datasource": {
     "type": "prometheus",
@@ -576,7 +576,7 @@
   },
   {
    "type": "stat",
-   "title": "Pilot-only fees",
+   "title": "Session-only fees",
    "id": 11,
    "datasource": {
     "type": "prometheus",
@@ -636,7 +636,7 @@
   },
   {
    "type": "stat",
-   "title": "Pilot-only fills",
+   "title": "Session-only fills",
    "id": 12,
    "datasource": {
     "type": "prometheus",
@@ -702,7 +702,7 @@
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "Completed requires a validated final ledger and flat account. Running window is not a health assertion; inspect reconciliation and feed alerts.",
+   "description": "Completed requires flat inventory and a checked final ledger. Running window alone is not a health assertion.",
    "gridPos": {
     "h": 4,
     "w": 4,
@@ -724,8 +724,12 @@
       "mode": "absolute",
       "steps": [
        {
-        "color": "green",
+        "color": "red",
         "value": null
+       },
+       {
+        "color": "green",
+        "value": 1
        }
       ]
      },
@@ -737,7 +741,7 @@
        "type": "value",
        "options": {
         "0": {
-         "text": "Running window",
+         "text": "Open (see health)",
          "color": "blue"
         },
         "1": {
@@ -839,7 +843,7 @@
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "Account lifetime includes old 30 bp fills and new 20 bp fee-only fills. Pilot-only panels isolate the new rules; buy-side 20 bp remains assumed.",
+   "description": "Account lifetime includes old 30 bp fills and new 20 bp fee-only fills. Session-only panels isolate the new rules; buy-side 20 bp remains assumed.",
    "gridPos": {
     "h": 4,
     "w": 4,
@@ -1017,13 +1021,13 @@
   },
   {
    "type": "stat",
-   "title": "Candle age",
+   "title": "Age of last recorded candle",
    "id": 18,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "",
+   "description": "Naturally increases once the session is completed. No fresh price is needed to value a flat final account.",
    "gridPos": {
     "h": 4,
     "w": 4,
@@ -1181,7 +1185,7 @@
       "mode": "thresholds"
      },
      "mappings": [],
-     "noValue": "unknown",
+     "noValue": "No net loss",
      "decimals": 0
     },
     "overrides": []
@@ -1241,7 +1245,7 @@
       "mode": "thresholds"
      },
      "mappings": [],
-     "noValue": "unknown",
+     "noValue": "No net loss",
      "decimals": 0
     },
     "overrides": []
@@ -1338,7 +1342,7 @@
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "Legacy five-minute run only; intentionally unavailable for the one-second variant until an exact order-to-signal timestamp join exists. Includes the data fetch, the decision, authorization, any retry after a stale-risk refusal, and the simulated venue.",
+   "description": "No exact signal-to-fill join is currently instrumented for this one-second session. The configured delay is one completed bar; do not infer a measurement from fill timestamps.",
    "gridPos": {
     "h": 4,
     "w": 4,
@@ -1369,7 +1373,7 @@
       "mode": "thresholds"
      },
      "mappings": [],
-     "noValue": "unknown",
+     "noValue": "Not instrumented",
      "decimals": 1
     },
     "overrides": []
@@ -1398,7 +1402,7 @@
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "",
+   "description": "No exact signal-to-fill join is currently instrumented for this one-second session. The configured delay is one completed bar; do not infer a measurement from fill timestamps.",
    "gridPos": {
     "h": 4,
     "w": 4,
@@ -1429,7 +1433,7 @@
       "mode": "thresholds"
      },
      "mappings": [],
-     "noValue": "unknown",
+     "noValue": "Not instrumented",
      "decimals": 1
     },
     "overrides": []
@@ -1785,7 +1789,7 @@
       "mode": "thresholds"
      },
      "mappings": [],
-     "noValue": "unknown",
+     "noValue": "Need 100 samples",
      "decimals": 2
     },
     "overrides": []
@@ -2972,7 +2976,7 @@
       "mode": "thresholds"
      },
      "mappings": [],
-     "noValue": "unknown"
+     "noValue": "No fill samples"
     },
     "overrides": []
    },
@@ -3808,7 +3812,7 @@
    "description": "The gateway's paper position per account and instrument, in lots.",
    "gridPos": {
     "h": 8,
-    "w": 8,
+    "w": 6,
     "x": 0,
     "y": 106
    },
@@ -3867,8 +3871,8 @@
    "description": "Steps at each fill.",
    "gridPos": {
     "h": 8,
-    "w": 8,
-    "x": 8,
+    "w": 6,
+    "x": 6,
     "y": 106
    },
    "targets": [
@@ -3916,8 +3920,8 @@
    "description": "Cumulative paper fees and fees in the last hour, in US cents.",
    "gridPos": {
     "h": 8,
-    "w": 8,
-    "x": 16,
+    "w": 6,
+    "x": 12,
     "y": 106
    },
    "targets": [
@@ -3960,595 +3964,19 @@
    }
   },
   {
-   "type": "text",
-   "id": 70,
-   "title": "Not running",
-   "gridPos": {
-    "x": 0,
-    "y": 114,
-    "w": 24,
-    "h": 3
-   },
-   "options": {
-    "mode": "markdown",
-    "content": "**The weekly volume-strategy panels below (churn, rotate, dip) have no data:** those strategies are not running. The stochastic strategy's volume, cost and stop figures are in its own section above."
-   }
-  },
-  {
-   "type": "row",
-   "title": "Volume strategies: this ISO week against the loss budget",
-   "id": 71,
-   "collapsed": false,
-   "gridPos": {
-    "h": 1,
-    "w": 24,
-    "x": 0,
-    "y": 117
-   },
-   "panels": []
-  },
-  {
-   "type": "stat",
-   "title": "Volume this week",
-   "id": 72,
-   "datasource": {
-    "type": "prometheus",
-    "uid": "velocita-v2-prometheus"
-   },
-   "description": "Filled notional, buys plus sells. ISO week to date (UTC, from Monday 00:00), from the edge's paper book: fills the kernel's position confirmed, costed at the paper venue's fees.",
-   "gridPos": {
-    "h": 6,
-    "w": 4,
-    "x": 0,
-    "y": 118
-   },
-   "targets": [
-    {
-     "expr": "max(velocita_paper_week_volume_usd)",
-     "legendFormat": "",
-     "refId": "A",
-     "instant": true
-    }
-   ],
-   "fieldConfig": {
-    "defaults": {
-     "unit": "currencyUSD",
-     "thresholds": {
-      "mode": "absolute",
-      "steps": [
-       {
-        "color": "blue",
-        "value": null
-       }
-      ]
-     },
-     "color": {
-      "mode": "thresholds"
-     },
-     "mappings": [],
-     "noValue": "unknown"
-    },
-    "overrides": []
-   },
-   "options": {
-    "colorMode": "background",
-    "graphMode": "none",
-    "justifyMode": "center",
-    "textMode": "value",
-    "reduceOptions": {
-     "calcs": [
-      "lastNotNull"
-     ],
-     "fields": "",
-     "values": false
-    },
-    "orientation": "horizontal",
-    "wideLayout": true
-   }
-  },
-  {
-   "type": "stat",
-   "title": "Fees this week",
-   "id": 73,
-   "datasource": {
-    "type": "prometheus",
-    "uid": "velocita-v2-prometheus"
-   },
-   "description": "Paper venue fees on this week's fills, in US cents. ISO week to date (UTC, from Monday 00:00), from the edge's paper book: fills the kernel's position confirmed, costed at the paper venue's fees.",
-   "gridPos": {
-    "h": 6,
-    "w": 4,
-    "x": 4,
-    "y": 118
-   },
-   "targets": [
-    {
-     "expr": "100 * max(velocita_paper_week_fees_usd)",
-     "legendFormat": "",
-     "refId": "A",
-     "instant": true
-    }
-   ],
-   "fieldConfig": {
-    "defaults": {
-     "unit": "suffix:\u00a2",
-     "thresholds": {
-      "mode": "absolute",
-      "steps": [
-       {
-        "color": "blue",
-        "value": null
-       }
-      ]
-     },
-     "color": {
-      "mode": "thresholds"
-     },
-     "mappings": [],
-     "noValue": "unknown",
-     "decimals": 1
-    },
-    "overrides": []
-   },
-   "options": {
-    "colorMode": "background",
-    "graphMode": "none",
-    "justifyMode": "center",
-    "textMode": "value",
-    "reduceOptions": {
-     "calcs": [
-      "lastNotNull"
-     ],
-     "fields": "",
-     "values": false
-    },
-    "orientation": "horizontal",
-    "wideLayout": true
-   }
-  },
-  {
-   "type": "stat",
-   "title": "Net P&L this week",
-   "id": 74,
-   "datasource": {
-    "type": "prometheus",
-    "uid": "velocita-v2-prometheus"
-   },
-   "description": "Realized: each buy's fee at the buy, each sell's price move and fee at the sell. ISO week to date (UTC, from Monday 00:00), from the edge's paper book: fills the kernel's position confirmed, costed at the paper venue's fees.",
-   "gridPos": {
-    "h": 6,
-    "w": 4,
-    "x": 8,
-    "y": 118
-   },
-   "targets": [
-    {
-     "expr": "max(velocita_paper_week_pnl_usd)",
-     "legendFormat": "",
-     "refId": "A",
-     "instant": true
-    }
-   ],
-   "fieldConfig": {
-    "defaults": {
-     "unit": "currencyUSD",
-     "thresholds": {
-      "mode": "absolute",
-      "steps": [
-       {
-        "color": "red",
-        "value": null
-       },
-       {
-        "color": "green",
-        "value": 0
-       }
-      ]
-     },
-     "color": {
-      "mode": "thresholds"
-     },
-     "mappings": [],
-     "noValue": "unknown",
-     "decimals": 2
-    },
-    "overrides": []
-   },
-   "options": {
-    "colorMode": "background",
-    "graphMode": "none",
-    "justifyMode": "center",
-    "textMode": "value",
-    "reduceOptions": {
-     "calcs": [
-      "lastNotNull"
-     ],
-     "fields": "",
-     "values": false
-    },
-    "orientation": "horizontal",
-    "wideLayout": true
-   }
-  },
-  {
-   "type": "stat",
-   "title": "Volume per $ lost",
-   "id": 75,
-   "datasource": {
-    "type": "prometheus",
-    "uid": "velocita-v2-prometheus"
-   },
-   "description": "Dollars of volume bought with each dollar lost this week: the leaderboard's efficiency. 'unknown' while the week has no loss.",
-   "gridPos": {
-    "h": 6,
-    "w": 4,
-    "x": 12,
-    "y": 118
-   },
-   "targets": [
-    {
-     "expr": "max(velocita_paper_week_volume_usd) / (max(velocita_paper_week_loss_usd) > 0)",
-     "legendFormat": "",
-     "refId": "A",
-     "instant": true
-    }
-   ],
-   "fieldConfig": {
-    "defaults": {
-     "unit": "none",
-     "thresholds": {
-      "mode": "absolute",
-      "steps": [
-       {
-        "color": "blue",
-        "value": null
-       }
-      ]
-     },
-     "color": {
-      "mode": "thresholds"
-     },
-     "mappings": [],
-     "noValue": "unknown",
-     "decimals": 0
-    },
-    "overrides": []
-   },
-   "options": {
-    "colorMode": "background",
-    "graphMode": "none",
-    "justifyMode": "center",
-    "textMode": "value",
-    "reduceOptions": {
-     "calcs": [
-      "lastNotNull"
-     ],
-     "fields": "",
-     "values": false
-    },
-    "orientation": "horizontal",
-    "wideLayout": true
-   }
-  },
-  {
-   "type": "stat",
-   "title": "Trades per hour (1h)",
-   "id": 76,
-   "datasource": {
-    "type": "prometheus",
-    "uid": "velocita-v2-prometheus"
-   },
-   "description": "Paper fills per hour over the last hour, from the gateway.",
-   "gridPos": {
-    "h": 6,
-    "w": 4,
-    "x": 16,
-    "y": 118
-   },
-   "targets": [
-    {
-     "expr": "3600 * sum(rate(velocita_gateway_fills_total{strategy=\"stochastic\"}[1h]))",
-     "legendFormat": "",
-     "refId": "A",
-     "instant": true
-    }
-   ],
-   "fieldConfig": {
-    "defaults": {
-     "unit": "none",
-     "thresholds": {
-      "mode": "absolute",
-      "steps": [
-       {
-        "color": "blue",
-        "value": null
-       }
-      ]
-     },
-     "color": {
-      "mode": "thresholds"
-     },
-     "mappings": [],
-     "noValue": "unknown",
-     "decimals": 1
-    },
-    "overrides": []
-   },
-   "options": {
-    "colorMode": "background",
-    "graphMode": "none",
-    "justifyMode": "center",
-    "textMode": "value",
-    "reduceOptions": {
-     "calcs": [
-      "lastNotNull"
-     ],
-     "fields": "",
-     "values": false
-    },
-    "orientation": "horizontal",
-    "wideLayout": true
-   }
-  },
-  {
-   "type": "gauge",
-   "title": "Loss budget used",
-   "id": 77,
-   "datasource": {
-    "type": "prometheus",
-    "uid": "velocita-v2-prometheus"
-   },
-   "description": "This week's realized loss as a share of --weekly-loss-cap-usd (default $12). Above 100 % the edge stops buys (exits only) until Monday 00:00 UTC.",
-   "gridPos": {
-    "h": 6,
-    "w": 4,
-    "x": 20,
-    "y": 118
-   },
-   "targets": [
-    {
-     "expr": "100 * max(velocita_paper_week_loss_usd) / max(velocita_paper_weekly_loss_cap_usd)",
-     "refId": "A",
-     "instant": true
-    }
-   ],
-   "fieldConfig": {
-    "defaults": {
-     "unit": "percent",
-     "min": 0,
-     "max": 100,
-     "thresholds": {
-      "mode": "absolute",
-      "steps": [
-       {
-        "color": "green",
-        "value": null
-       },
-       {
-        "color": "orange",
-        "value": 75
-       },
-       {
-        "color": "red",
-        "value": 100
-       }
-      ]
-     },
-     "color": {
-      "mode": "thresholds"
-     },
-     "noValue": "unknown"
-    },
-    "overrides": []
-   },
-   "options": {
-    "showThresholdMarkers": true,
-    "showThresholdLabels": false,
-    "reduceOptions": {
-     "calcs": [
-      "lastNotNull"
-     ],
-     "fields": "",
-     "values": false
-    }
-   }
-  },
-  {
-   "type": "timeseries",
-   "title": "Weekly volume: observed vs expected",
-   "id": 78,
-   "datasource": {
-    "type": "prometheus",
-    "uid": "velocita-v2-prometheus"
-   },
-   "description": "The paper run against the backtest's prediction interval (the edge's --expected-week-volume-usd LOW,HIGH; absent until configured). Observed restarts at 0 each Monday; the gateway line is a rolling 7 days.",
-   "gridPos": {
-    "h": 8,
-    "w": 8,
-    "x": 0,
-    "y": 124
-   },
-   "targets": [
-    {
-     "expr": "max(velocita_paper_week_volume_usd)",
-     "legendFormat": "observed (ISO week to date)",
-     "refId": "A"
-    },
-    {
-     "expr": "max(velocita_paper_expected_week_volume_usd{bound=\"low\"})",
-     "legendFormat": "expected low",
-     "refId": "B"
-    },
-    {
-     "expr": "max(velocita_paper_expected_week_volume_usd{bound=\"high\"})",
-     "legendFormat": "expected high",
-     "refId": "C"
-    },
-    {
-     "expr": "sum(increase(velocita_gateway_volume_usd_total{strategy=\"stochastic\"}[7d]))",
-     "legendFormat": "gateway fills, last 7 days",
-     "refId": "D"
-    }
-   ],
-   "fieldConfig": {
-    "defaults": {
-     "unit": "currencyUSD",
-     "min": 0,
-     "custom": {
-      "lineWidth": 2,
-      "fillOpacity": 10,
-      "showPoints": "never",
-      "spanNulls": false,
-      "stacking": {
-       "mode": "none"
-      }
-     }
-    },
-    "overrides": []
-   },
-   "options": {
-    "legend": {
-     "displayMode": "list",
-     "placement": "bottom"
-    },
-    "tooltip": {
-     "mode": "multi",
-     "sort": "desc"
-    }
-   }
-  },
-  {
-   "type": "timeseries",
-   "title": "Weekly loss: observed vs expected and the cap",
-   "id": 79,
-   "datasource": {
-    "type": "prometheus",
-    "uid": "velocita-v2-prometheus"
-   },
-   "description": "Loss = max(0, -net P&L of the week). Expected: the edge's --expected-week-loss-usd LOW,HIGH.",
-   "gridPos": {
-    "h": 8,
-    "w": 8,
-    "x": 8,
-    "y": 124
-   },
-   "targets": [
-    {
-     "expr": "max(velocita_paper_week_loss_usd)",
-     "legendFormat": "observed (ISO week to date)",
-     "refId": "A"
-    },
-    {
-     "expr": "max(velocita_paper_expected_week_loss_usd{bound=\"low\"})",
-     "legendFormat": "expected low",
-     "refId": "B"
-    },
-    {
-     "expr": "max(velocita_paper_expected_week_loss_usd{bound=\"high\"})",
-     "legendFormat": "expected high",
-     "refId": "C"
-    },
-    {
-     "expr": "max(velocita_paper_weekly_loss_cap_usd)",
-     "legendFormat": "cap (buys stop above it)",
-     "refId": "D"
-    }
-   ],
-   "fieldConfig": {
-    "defaults": {
-     "unit": "currencyUSD",
-     "min": 0,
-     "custom": {
-      "lineWidth": 2,
-      "fillOpacity": 10,
-      "showPoints": "never",
-      "spanNulls": false,
-      "stacking": {
-       "mode": "none"
-      }
-     }
-    },
-    "overrides": []
-   },
-   "options": {
-    "legend": {
-     "displayMode": "list",
-     "placement": "bottom"
-    },
-    "tooltip": {
-     "mode": "multi",
-     "sort": "desc"
-    }
-   }
-  },
-  {
-   "type": "timeseries",
-   "title": "Buys stopped and withheld",
-   "id": 80,
-   "datasource": {
-    "type": "prometheus",
-    "uid": "velocita-v2-prometheus"
-   },
-   "description": "stopped = 1 while the edge sends exits_only (loss_budget: the week's loss is above the cap; insufficient_balance: flat and the book's cash cannot pay a clip plus fee). withheld = buys the strategy proposed while flat that were never sent.",
-   "gridPos": {
-    "h": 8,
-    "w": 8,
-    "x": 16,
-    "y": 124
-   },
-   "targets": [
-    {
-     "expr": "max by (reason) (velocita_paper_buys_stopped)",
-     "legendFormat": "stopped: {{reason}}",
-     "refId": "A"
-    },
-    {
-     "expr": "sum by (reason) (increase(velocita_paper_buys_withheld_total[1h]))",
-     "legendFormat": "withheld per hour: {{reason}}",
-     "refId": "B"
-    }
-   ],
-   "fieldConfig": {
-    "defaults": {
-     "unit": "none",
-     "min": 0,
-     "custom": {
-      "lineWidth": 2,
-      "fillOpacity": 10,
-      "showPoints": "never",
-      "spanNulls": false,
-      "stacking": {
-       "mode": "none"
-      }
-     }
-    },
-    "overrides": []
-   },
-   "options": {
-    "legend": {
-     "displayMode": "list",
-     "placement": "bottom"
-    },
-    "tooltip": {
-     "mode": "multi",
-     "sort": "desc"
-    }
-   }
-  },
-  {
    "type": "timeseries",
    "title": "Volume by side (USD per hour, 1h)",
-   "id": 81,
+   "id": 70,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "Filled notional per hour from the gateway's fills.",
+   "description": "Filled notional per hour by side, from the gateway's counters.",
    "gridPos": {
     "h": 8,
-    "w": 12,
-    "x": 0,
-    "y": 132
+    "w": 6,
+    "x": 18,
+    "y": 106
    },
    "targets": [
     {
@@ -4567,55 +3995,6 @@
       "showPoints": "never",
       "spanNulls": false,
       "stacking": {
-       "mode": "normal"
-      }
-     }
-    },
-    "overrides": []
-   },
-   "options": {
-    "legend": {
-     "displayMode": "list",
-     "placement": "bottom"
-    },
-    "tooltip": {
-     "mode": "multi",
-     "sort": "desc"
-    }
-   }
-  },
-  {
-   "type": "timeseries",
-   "title": "Fees, last 7 days (cents)",
-   "id": 82,
-   "datasource": {
-    "type": "prometheus",
-    "uid": "velocita-v2-prometheus"
-   },
-   "description": "Venue-reported paper fees over a rolling week, in US cents.",
-   "gridPos": {
-    "h": 8,
-    "w": 12,
-    "x": 12,
-    "y": 132
-   },
-   "targets": [
-    {
-     "expr": "100 * sum(increase(velocita_gateway_fees_usd_total{strategy=\"stochastic\"}[7d]))",
-     "legendFormat": "gateway, rolling 7 days",
-     "refId": "A"
-    }
-   ],
-   "fieldConfig": {
-    "defaults": {
-     "unit": "suffix:\u00a2",
-     "min": 0,
-     "custom": {
-      "lineWidth": 2,
-      "fillOpacity": 10,
-      "showPoints": "never",
-      "spanNulls": false,
-      "stacking": {
        "mode": "none"
       }
      }
@@ -4635,30 +4014,30 @@
   },
   {
    "type": "stat",
-   "title": "Gross P&L this week (before fees)",
-   "id": 83,
+   "title": "Final stop reason",
+   "id": 71,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "Net P&L plus fees: the realized price-move result of this week's closed round trips, before the paper venue's fees. Positive = the strategy's timing made money before costs. ISO week to date (UTC, from Monday 00:00), from the edge's paper book: fills the kernel's position confirmed, costed at the paper venue's fees.",
+   "description": "A checked final snapshot records why the strategy stopped.",
    "gridPos": {
-    "h": 8,
-    "w": 6,
+    "h": 3,
+    "w": 24,
     "x": 0,
-    "y": 140
+    "y": 114
    },
    "targets": [
     {
-     "expr": "max(velocita_paper_week_pnl_usd) + max(velocita_paper_week_fees_usd)",
-     "legendFormat": "",
+     "expr": "velocita_indicator_completed_reason{strategy=\"stochastic\"}",
+     "legendFormat": "{{reason}}",
      "refId": "A",
      "instant": true
     }
    ],
    "fieldConfig": {
     "defaults": {
-     "unit": "currencyUSD",
+     "unit": "none",
      "thresholds": {
       "mode": "absolute",
       "steps": [
@@ -4668,7 +4047,7 @@
        },
        {
         "color": "green",
-        "value": 0
+        "value": 1
        }
       ]
      },
@@ -4676,8 +4055,7 @@
       "mode": "thresholds"
      },
      "mappings": [],
-     "noValue": "unknown",
-     "decimals": 2
+     "noValue": "None (not finalized)"
     },
     "overrides": []
    },
@@ -4685,7 +4063,7 @@
     "colorMode": "background",
     "graphMode": "none",
     "justifyMode": "center",
-    "textMode": "value",
+    "textMode": "name",
     "reduceOptions": {
      "calcs": [
       "lastNotNull"
@@ -4695,65 +4073,6 @@
     },
     "orientation": "horizontal",
     "wideLayout": true
-   }
-  },
-  {
-   "type": "timeseries",
-   "title": "P&L this week: gross, fees, net",
-   "id": 84,
-   "datasource": {
-    "type": "prometheus",
-    "uid": "velocita-v2-prometheus"
-   },
-   "description": "Net = gross - fees. ISO week to date; all three restart at 0 each Monday 00:00 UTC.",
-   "gridPos": {
-    "h": 8,
-    "w": 18,
-    "x": 6,
-    "y": 140
-   },
-   "targets": [
-    {
-     "expr": "max(velocita_paper_week_pnl_usd) + max(velocita_paper_week_fees_usd)",
-     "legendFormat": "gross (before fees)",
-     "refId": "A"
-    },
-    {
-     "expr": "-max(velocita_paper_week_fees_usd)",
-     "legendFormat": "fees",
-     "refId": "B"
-    },
-    {
-     "expr": "max(velocita_paper_week_pnl_usd)",
-     "legendFormat": "net",
-     "refId": "C"
-    }
-   ],
-   "fieldConfig": {
-    "defaults": {
-     "unit": "currencyUSD",
-     "min": 0,
-     "custom": {
-      "lineWidth": 2,
-      "fillOpacity": 10,
-      "showPoints": "never",
-      "spanNulls": false,
-      "stacking": {
-       "mode": "none"
-      }
-     }
-    },
-    "overrides": []
-   },
-   "options": {
-    "legend": {
-     "displayMode": "list",
-     "placement": "bottom"
-    },
-    "tooltip": {
-     "mode": "multi",
-     "sort": "desc"
-    }
    }
   }
  ],

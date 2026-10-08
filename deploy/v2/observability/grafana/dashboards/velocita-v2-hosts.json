@@ -43,10 +43,10 @@
   },
   {
    "type": "link",
-   "title": "Strategy (shadow)",
+   "title": "Strategy edge",
    "url": "/d/velocita-v2-strategy",
    "icon": "dashboard",
-   "tooltip": "Velocita \u2014 Strategy (shadow)",
+   "tooltip": "Velocita \u2014 Strategy edge",
    "targetBlank": false,
    "keepTime": true,
    "includeVars": false,

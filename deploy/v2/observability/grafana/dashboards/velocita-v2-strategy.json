@@ -1,7 +1,7 @@
 {
  "uid": "velocita-v2-strategy",
- "title": "Velocita \u2014 Strategy (shadow)",
- "description": "Active cluster: stochastic paper only. The shadow strategy: live ticks to recorded decisions, the model's signal and the $1,000 virtual book. Nothing here trades.",
+ "title": "Velocita \u2014 Strategy edge",
+ "description": "Active cluster: stochastic paper only. The strategy edge: one-second bars to committed decisions, the funnel to authorized paper orders, and the signal it sends. Paper only.",
  "schemaVersion": 41,
  "version": 1,
  "editable": false,
@@ -14,7 +14,7 @@
   "velocita",
   "v2",
   "strategy",
-  "shadow"
+  "edge"
  ],
  "timezone": "browser",
  "links": [
@@ -44,10 +44,10 @@
   },
   {
    "type": "link",
-   "title": "Strategy (shadow)",
+   "title": "Strategy edge",
    "url": "/d/velocita-v2-strategy",
    "icon": "dashboard",
-   "tooltip": "Velocita \u2014 Strategy (shadow)",
+   "tooltip": "Velocita \u2014 Strategy edge",
    "targetBlank": false,
    "keepTime": true,
    "includeVars": false,
@@ -81,37 +81,22 @@
  ],
  "panels": [
   {
-   "type": "text",
-   "id": 1,
-   "title": "Not running",
-   "gridPos": {
-    "x": 0,
-    "y": 0,
-    "w": 24,
-    "h": 3
-   },
-   "options": {
-    "mode": "markdown",
-    "content": "**The BTC shadow strategy on this page is not running.** The active strategy is the stochastic paper strategy on the *Paper trading* dashboard. Panels below show no data until a shadow strategy is deployed again."
-   }
-  },
-  {
    "type": "row",
-   "title": "Shadow edge: live ticks to recorded decisions (never trades)",
-   "id": 2,
+   "title": "Strategy edge: one-second bars to committed decisions",
+   "id": 1,
    "collapsed": false,
    "gridPos": {
     "h": 1,
     "w": 24,
     "x": 0,
-    "y": 3
+    "y": 0
    },
    "panels": []
   },
   {
    "type": "stat",
    "title": "Submitter ready",
-   "id": 3,
+   "id": 2,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -121,7 +106,7 @@
     "h": 4,
     "w": 6,
     "x": 0,
-    "y": 4
+    "y": 1
    },
    "targets": [
     {
@@ -190,17 +175,17 @@
   {
    "type": "stat",
    "title": "Last decision",
-   "id": 4,
+   "id": 3,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "Seconds since the cluster last recorded a decision. Ticks arrive every few seconds.",
+   "description": "Seconds since the cluster last recorded a decision. One is expected every second.",
    "gridPos": {
     "h": 4,
     "w": 6,
     "x": 6,
-    "y": 4
+    "y": 1
    },
    "targets": [
     {
@@ -222,11 +207,11 @@
        },
        {
         "color": "orange",
-        "value": 30
+        "value": 5
        },
        {
         "color": "red",
-        "value": 120
+        "value": 30
        }
       ]
      },
@@ -257,7 +242,7 @@
   {
    "type": "stat",
    "title": "Rule agreement",
-   "id": 5,
+   "id": 4,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -267,7 +252,7 @@
     "h": 4,
     "w": 6,
     "x": 12,
-    "y": 4
+    "y": 1
    },
    "targets": [
     {
@@ -320,7 +305,7 @@
   {
    "type": "stat",
    "title": "Edge errors",
-   "id": 6,
+   "id": 5,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -330,7 +315,7 @@
     "h": 4,
     "w": 6,
     "x": 18,
-    "y": 4
+    "y": 1
    },
    "targets": [
     {
@@ -383,17 +368,17 @@
   {
    "type": "timeseries",
    "title": "Tick to decision (ms)",
-   "id": 7,
+   "id": 6,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "Active stochastic only: payload delivered to Python -> committed decision reply at the local C++ submitter. Includes indicator/journal work and two Raft commits; excludes HTTP fetch and order execution. Histogram interpolation over sparse windows is not a reliable tail-latency estimate. See Paper trading for sample counts and a gated p99.",
+   "description": "Payload delivered to Python to the committed decision reply at the local C++ submitter. Includes indicator and journal work and two Raft commits; excludes authorization and fills. Bucket interpolation, not exact percentiles.",
    "gridPos": {
     "h": 8,
     "w": 12,
     "x": 0,
-    "y": 8
+    "y": 5
    },
    "targets": [
     {
@@ -437,17 +422,17 @@
   {
    "type": "timeseries",
    "title": "Where the time goes (average ms per tick, 5m)",
-   "id": 8,
+   "id": 7,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "edge = tick received -> submitter read; source_commit = source event committed; decision_commit = decision frame committed. Commit hops include the follower durable-ack delay.",
+   "description": "edge = tick received to submitter read; source_commit = source event committed; decision_commit = decision frame committed. Commit hops include the follower durable-ack delay.",
    "gridPos": {
     "h": 8,
     "w": 12,
     "x": 12,
-    "y": 8
+    "y": 5
    },
    "targets": [
     {
@@ -486,17 +471,17 @@
   {
    "type": "timeseries",
    "title": "Decisions by resolution (per minute)",
-   "id": 9,
+   "id": 8,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "1 = proposed (a real order would have been sized and bounded); 19 = market data stale; 29 = notional cap. Effective action is always none in shadow.",
+   "description": "0 = no action; 1 = an order was proposed, sized and bounded.",
    "gridPos": {
     "h": 8,
     "w": 8,
     "x": 0,
-    "y": 16
+    "y": 13
    },
    "targets": [
     {
@@ -535,17 +520,17 @@
   {
    "type": "timeseries",
    "title": "Rule matched (per minute)",
-   "id": 10,
+   "id": 9,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "rule 0 = trend up (enter long); rule 1 = trend down or flat (exit).",
+   "description": "rule 0 = exit; rule 1 = enter; 65535 = no rule matched (hold).",
    "gridPos": {
     "h": 8,
     "w": 8,
     "x": 8,
-    "y": 16
+    "y": 13
    },
    "targets": [
     {
@@ -584,17 +569,17 @@
   {
    "type": "timeseries",
    "title": "Market data age at decision (ms)",
-   "id": 11,
+   "id": 10,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "Age of the venue's price when the tick reached the edge. The policy refuses above 5 s.",
+   "description": "Bar close to arrival at the edge. The edge drops a bar older than 2 s and the policy refuses one too.",
    "gridPos": {
     "h": 8,
     "w": 8,
     "x": 16,
-    "y": 16
+    "y": 13
    },
    "targets": [
     {
@@ -632,60 +617,60 @@
   },
   {
    "type": "row",
-   "title": "Journey: TrueMarkets tick -> model -> kernel decision -> executor -> TrueMarkets",
-   "id": 12,
+   "title": "Journey: public one-second bar -> edge -> kernel decision -> paper gateway",
+   "id": 11,
    "collapsed": false,
    "gridPos": {
     "h": 1,
     "w": 24,
     "x": 0,
-    "y": 24
+    "y": 21
    },
    "panels": []
   },
   {
    "type": "bargauge",
-   "title": "Tick-to-trade funnel (selected time range)",
-   "id": 13,
+   "title": "Bar-to-order funnel (selected time range)",
+   "id": 12,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "Every stage counted from the edge's metrics for the dashboard's time range. 1 -> 2: True Markets re-sends its last price every second; only a newer price is a tick. 3: the cluster committed a decision frame (shadow_recorded). 4: the rule matched an enter/exit action and the kernel sized a bounded order. 5: what the kernel authorized: always 0 in shadow mode, by design.",
+   "description": "Counted from the edge's metrics over the dashboard's time range. Prometheus increase extrapolates, so small counts can show fractions. The kernel refuses the first request for every order and asks the edge to re-read its position, so 4 is about twice 5.",
    "gridPos": {
     "h": 8,
     "w": 16,
     "x": 0,
-    "y": 25
+    "y": 22
    },
    "targets": [
     {
      "expr": "sum(increase(velocita_shadow_messages_total{strategy=\"stochastic\"}[$__range]))",
-     "legendFormat": "1  TM messages received",
+     "legendFormat": "1  Market messages handled",
      "refId": "A",
      "instant": true
     },
     {
-     "expr": "sum(increase(velocita_shadow_messages_total{strategy=\"stochastic\",outcome=\"tick\"}[$__range]))",
-     "legendFormat": "2  New BTC prices sent to the cluster",
+     "expr": "sum(increase(velocita_shadow_messages_total{strategy=\"stochastic\",outcome=\"forwarded\"}[$__range]))",
+     "legendFormat": "2  Closed bars sent to the cluster",
      "refId": "B",
      "instant": true
     },
     {
-     "expr": "sum(increase(velocita_shadow_decisions_total{strategy=\"stochastic\",decision_code=\"17\"}[$__range]))",
-     "legendFormat": "3  Decisions recorded by the kernel",
+     "expr": "sum(increase(velocita_shadow_decisions_total{strategy=\"stochastic\"}[$__range]))",
+     "legendFormat": "3  Decisions committed by the kernel",
      "refId": "C",
      "instant": true
     },
     {
-     "expr": "sum(increase(velocita_shadow_directives_total{strategy=\"stochastic\",stage=\"proposed\",directive!=\"no_action\"}[$__range]))",
-     "legendFormat": "4  Trades proposed by the strategy",
+     "expr": "sum(increase(velocita_shadow_directives_total{strategy=\"stochastic\",stage=\"proposed\",directive!=\"no_action\"}[$__range])) or vector(0)",
+     "legendFormat": "4  Order requests (each order is asked twice)",
      "refId": "D",
      "instant": true
     },
     {
-     "expr": "sum(increase(velocita_shadow_directives_total{strategy=\"stochastic\",stage=\"effective\",directive!=\"no_action\"}[$__range])) or vector(0)",
-     "legendFormat": "5  Trades authorized by the kernel",
+     "expr": "sum(increase(velocita_indicator_paper_authorizations_total{strategy=\"stochastic\",code=\"applied\"}[$__range])) or vector(0)",
+     "legendFormat": "5  Orders authorized by the kernel",
      "refId": "E",
      "instant": true
     }
@@ -729,23 +714,23 @@
   },
   {
    "type": "text",
-   "title": "6  Venue executor  ->  7  TrueMarkets",
-   "id": 14,
+   "id": 13,
+   "title": "After authorization",
    "gridPos": {
-    "h": 8,
-    "w": 8,
     "x": 16,
-    "y": 25
+    "y": 22,
+    "w": 8,
+    "h": 8
    },
    "options": {
     "mode": "markdown",
-    "content": "**Not built yet, so nothing reaches TrueMarkets.**\n\n- Phase 1 (running): decisions are recorded, never authorized (shadow).\n- Phase 2: gateway + a TrueMarkets *simulator* (measures tick-to-trade; see Paper trading).\n- Live orders need M4-M7 and venue keys; no host holds a key.\n\nA proposal every tick is expected: in shadow no order ever fills, so the strategy never holds the position it asks for."
+    "content": "Authorized orders go to the paper gateway, which fills them in a simulator. See *Paper trading* for orders, fills, position and fees. **Nothing reaches a venue.**"
    }
   },
   {
    "type": "timeseries",
    "title": "Journey per minute",
-   "id": 15,
+   "id": 14,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -755,32 +740,32 @@
     "h": 8,
     "w": 12,
     "x": 0,
-    "y": 33
+    "y": 30
    },
    "targets": [
     {
      "expr": "sum(60 * rate(velocita_shadow_messages_total{strategy=\"stochastic\"}[5m]))",
-     "legendFormat": "TM messages",
+     "legendFormat": "market messages",
      "refId": "A"
     },
     {
-     "expr": "sum(60 * rate(velocita_shadow_messages_total{strategy=\"stochastic\",outcome=\"tick\"}[5m]))",
-     "legendFormat": "new prices (ticks)",
+     "expr": "sum(60 * rate(velocita_shadow_messages_total{strategy=\"stochastic\",outcome=\"forwarded\"}[5m]))",
+     "legendFormat": "bars sent",
      "refId": "B"
     },
     {
-     "expr": "sum(60 * rate(velocita_shadow_decisions_total{strategy=\"stochastic\",decision_code=\"17\"}[5m]))",
-     "legendFormat": "decisions recorded",
+     "expr": "sum(60 * rate(velocita_shadow_decisions_total{strategy=\"stochastic\"}[5m]))",
+     "legendFormat": "decisions committed",
      "refId": "C"
     },
     {
-     "expr": "sum(60 * rate(velocita_shadow_directives_total{strategy=\"stochastic\",stage=\"proposed\",directive!=\"no_action\"}[5m]))",
-     "legendFormat": "trades proposed",
+     "expr": "sum(60 * rate(velocita_shadow_directives_total{strategy=\"stochastic\",stage=\"proposed\",directive!=\"no_action\"}[5m])) or vector(0)",
+     "legendFormat": "order requests",
      "refId": "D"
     },
     {
-     "expr": "sum(60 * rate(velocita_shadow_directives_total{strategy=\"stochastic\",stage=\"effective\",directive!=\"no_action\"}[5m])) or vector(0)",
-     "legendFormat": "trades authorized",
+     "expr": "sum(60 * rate(velocita_indicator_paper_authorizations_total{strategy=\"stochastic\",code=\"applied\"}[5m])) or vector(0)",
+     "legendFormat": "orders authorized",
      "refId": "E"
     }
    ],
@@ -814,17 +799,17 @@
   {
    "type": "timeseries",
    "title": "Messages by outcome (per minute)",
-   "id": 16,
+   "id": 15,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "tick = a newer BTC price; resend = the same price again; throttled = newer, but within the edge's minimum tick interval; other = other topics or symbols; no_history = the daily history is stale (should be 0).",
+   "description": "forwarded = sent to the cluster; stale = older than 2 s; throttled = a second bar in the same wall-clock second; duplicate = already handled; warming_up = indicators not ready; invalid = rejected frame or a bar ahead of the local clock (alert: VelocitaPaperBadMarketData).",
    "gridPos": {
     "h": 8,
     "w": 12,
     "x": 12,
-    "y": 33
+    "y": 30
    },
    "targets": [
     {
@@ -862,688 +847,96 @@
   },
   {
    "type": "row",
-   "title": "Shadow book: $1,000 virtual, filled at measured TrueMarkets costs (never trades)",
-   "id": 17,
+   "title": "Signal and price",
+   "id": 16,
    "collapsed": false,
    "gridPos": {
     "h": 1,
     "w": 24,
     "x": 0,
-    "y": 41
+    "y": 38
    },
    "panels": []
   },
   {
-   "type": "stat",
-   "title": "Position",
+   "type": "timeseries",
+   "title": "Signal flags sent to the kernel",
+   "id": 17,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "1 = the edge asked for an entry or an exit on the last forwarded bar. Sampled at the scrape interval, so a one-second flag can fall between samples; the ledger is exact.",
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 39
+   },
+   "targets": [
+    {
+     "expr": "max(velocita_shadow_feature_micros{strategy=\"stochastic\",name=\"entry_flag\"}) / 1e6",
+     "legendFormat": "entry",
+     "refId": "A"
+    },
+    {
+     "expr": "max(velocita_shadow_feature_micros{strategy=\"stochastic\",name=\"exit_flag\"}) / 1e6",
+     "legendFormat": "exit",
+     "refId": "B"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "SOL proxy close",
    "id": 18,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "daily = acts once per UTC day on the last decision before midnight (like the backtest; this one counts for promotion). tick = acts on every committed decision.",
-   "gridPos": {
-    "h": 4,
-    "w": 6,
-    "x": 0,
-    "y": 42
-   },
-   "targets": [
-    {
-     "expr": "velocita_shadow_book_position{strategy=\"stochastic\"}",
-     "legendFormat": "{{timing}}",
-     "refId": "A",
-     "instant": true
-    }
-   ],
-   "fieldConfig": {
-    "defaults": {
-     "unit": "none",
-     "thresholds": {
-      "mode": "absolute",
-      "steps": [
-       {
-        "color": "green",
-        "value": null
-       }
-      ]
-     },
-     "color": {
-      "mode": "thresholds"
-     },
-     "mappings": [
-      {
-       "type": "value",
-       "options": {
-        "0": {
-         "text": "FLAT (USDC)"
-        },
-        "1": {
-         "text": "LONG (cbBTC)",
-         "color": "blue"
-        }
-       }
-      }
-     ],
-     "noValue": "unknown"
-    },
-    "overrides": []
-   },
-   "options": {
-    "colorMode": "background",
-    "graphMode": "none",
-    "justifyMode": "center",
-    "textMode": "value_and_name",
-    "reduceOptions": {
-     "calcs": [
-      "lastNotNull"
-     ],
-     "fields": "",
-     "values": false
-    },
-    "orientation": "horizontal",
-    "wideLayout": true
-   }
-  },
-  {
-   "type": "stat",
-   "title": "Equity",
-   "id": 19,
-   "datasource": {
-    "type": "prometheus",
-    "uid": "velocita-v2-prometheus"
-   },
-   "description": "Liquidation value: cash plus BTC sold now at the reference price minus the measured sell cost.",
-   "gridPos": {
-    "h": 4,
-    "w": 6,
-    "x": 6,
-    "y": 42
-   },
-   "targets": [
-    {
-     "expr": "velocita_shadow_book_equity_usd{strategy=\"stochastic\"}",
-     "legendFormat": "{{timing}}",
-     "refId": "A",
-     "instant": true
-    }
-   ],
-   "fieldConfig": {
-    "defaults": {
-     "unit": "currencyUSD",
-     "thresholds": {
-      "mode": "absolute",
-      "steps": [
-       {
-        "color": "green",
-        "value": null
-       }
-      ]
-     },
-     "color": {
-      "mode": "thresholds"
-     },
-     "mappings": [],
-     "noValue": "unknown"
-    },
-    "overrides": []
-   },
-   "options": {
-    "colorMode": "background",
-    "graphMode": "none",
-    "justifyMode": "center",
-    "textMode": "value_and_name",
-    "reduceOptions": {
-     "calcs": [
-      "lastNotNull"
-     ],
-     "fields": "",
-     "values": false
-    },
-    "orientation": "horizontal",
-    "wideLayout": true
-   }
-  },
-  {
-   "type": "stat",
-   "title": "Realized P&L",
-   "id": 20,
-   "datasource": {
-    "type": "prometheus",
-    "uid": "velocita-v2-prometheus"
-   },
-   "description": "",
-   "gridPos": {
-    "h": 4,
-    "w": 6,
-    "x": 12,
-    "y": 42
-   },
-   "targets": [
-    {
-     "expr": "velocita_shadow_book_realized_pnl_usd{strategy=\"stochastic\"}",
-     "legendFormat": "{{timing}}",
-     "refId": "A",
-     "instant": true
-    }
-   ],
-   "fieldConfig": {
-    "defaults": {
-     "unit": "currencyUSD",
-     "thresholds": {
-      "mode": "absolute",
-      "steps": [
-       {
-        "color": "red",
-        "value": null
-       },
-       {
-        "color": "green",
-        "value": 0
-       }
-      ]
-     },
-     "color": {
-      "mode": "thresholds"
-     },
-     "mappings": [],
-     "noValue": "unknown"
-    },
-    "overrides": []
-   },
-   "options": {
-    "colorMode": "background",
-    "graphMode": "none",
-    "justifyMode": "center",
-    "textMode": "value_and_name",
-    "reduceOptions": {
-     "calcs": [
-      "lastNotNull"
-     ],
-     "fields": "",
-     "values": false
-    },
-    "orientation": "horizontal",
-    "wideLayout": true
-   }
-  },
-  {
-   "type": "stat",
-   "title": "Fees paid",
-   "id": 21,
-   "datasource": {
-    "type": "prometheus",
-    "uid": "velocita-v2-prometheus"
-   },
-   "description": "Measured all-in cost against the reference price (buy +109.9 bp, sell -123.4 bp on cbBTC).",
-   "gridPos": {
-    "h": 4,
-    "w": 6,
-    "x": 18,
-    "y": 42
-   },
-   "targets": [
-    {
-     "expr": "velocita_shadow_book_fees_usd{strategy=\"stochastic\"}",
-     "legendFormat": "{{timing}}",
-     "refId": "A",
-     "instant": true
-    }
-   ],
-   "fieldConfig": {
-    "defaults": {
-     "unit": "currencyUSD",
-     "thresholds": {
-      "mode": "absolute",
-      "steps": [
-       {
-        "color": "green",
-        "value": null
-       }
-      ]
-     },
-     "color": {
-      "mode": "thresholds"
-     },
-     "mappings": [],
-     "noValue": "unknown"
-    },
-    "overrides": []
-   },
-   "options": {
-    "colorMode": "background",
-    "graphMode": "none",
-    "justifyMode": "center",
-    "textMode": "value_and_name",
-    "reduceOptions": {
-     "calcs": [
-      "lastNotNull"
-     ],
-     "fields": "",
-     "values": false
-    },
-    "orientation": "horizontal",
-    "wideLayout": true
-   }
-  },
-  {
-   "type": "timeseries",
-   "title": "Equity vs buy-and-hold",
-   "id": 22,
-   "datasource": {
-    "type": "prometheus",
-    "uid": "velocita-v2-prometheus"
-   },
-   "description": "Both start at $1,000. The trend rule is expected to trail holding in a rising market and cut drawdowns in a falling one (backtest: +135% vs +169%, max drawdown 57% vs 77%).",
+   "description": "A public price proxy. It is not a True Markets executable quote.",
    "gridPos": {
     "h": 8,
     "w": 12,
-    "x": 0,
-    "y": 46
-   },
-   "targets": [
-    {
-     "expr": "velocita_shadow_book_equity_usd{strategy=\"stochastic\"}",
-     "legendFormat": "{{timing}} book",
-     "refId": "A"
-    },
-    {
-     "expr": "velocita_shadow_hold_equity_usd{strategy=\"stochastic\"}",
-     "legendFormat": "buy and hold (from the first price)",
-     "refId": "B"
-    }
-   ],
-   "fieldConfig": {
-    "defaults": {
-     "unit": "currencyUSD",
-     "min": null,
-     "custom": {
-      "lineWidth": 2,
-      "fillOpacity": 10,
-      "showPoints": "never",
-      "spanNulls": false,
-      "stacking": {
-       "mode": "none"
-      }
-     }
-    },
-    "overrides": []
-   },
-   "options": {
-    "legend": {
-     "displayMode": "list",
-     "placement": "bottom"
-    },
-    "tooltip": {
-     "mode": "multi",
-     "sort": "desc"
-    }
-   }
-  },
-  {
-   "type": "stat",
-   "title": "Round trips",
-   "id": 23,
-   "datasource": {
-    "type": "prometheus",
-    "uid": "velocita-v2-prometheus"
-   },
-   "description": "Completed buy-then-sell pairs; a win returned more than it cost, break-even counts as a loss.",
-   "gridPos": {
-    "h": 8,
-    "w": 6,
     "x": 12,
-    "y": 46
-   },
-   "targets": [
-    {
-     "expr": "velocita_shadow_book_round_trips_total{strategy=\"stochastic\"}",
-     "legendFormat": "{{timing}} {{result}}",
-     "refId": "A",
-     "instant": true
-    }
-   ],
-   "fieldConfig": {
-    "defaults": {
-     "unit": "none",
-     "thresholds": {
-      "mode": "absolute",
-      "steps": [
-       {
-        "color": "green",
-        "value": null
-       }
-      ]
-     },
-     "color": {
-      "mode": "thresholds"
-     },
-     "mappings": [],
-     "noValue": "unknown"
-    },
-    "overrides": []
-   },
-   "options": {
-    "colorMode": "background",
-    "graphMode": "none",
-    "justifyMode": "center",
-    "textMode": "value_and_name",
-    "reduceOptions": {
-     "calcs": [
-      "lastNotNull"
-     ],
-     "fields": "",
-     "values": false
-    },
-    "orientation": "horizontal",
-    "wideLayout": true
-   }
-  },
-  {
-   "type": "stat",
-   "title": "Orders",
-   "id": 24,
-   "datasource": {
-    "type": "prometheus",
-    "uid": "velocita-v2-prometheus"
-   },
-   "description": "Simulated fills. The backtest trades ~9.5 times a year on the daily book.",
-   "gridPos": {
-    "h": 8,
-    "w": 6,
-    "x": 18,
-    "y": 46
-   },
-   "targets": [
-    {
-     "expr": "velocita_shadow_book_trades_total{strategy=\"stochastic\"}",
-     "legendFormat": "{{timing}}",
-     "refId": "A",
-     "instant": true
-    }
-   ],
-   "fieldConfig": {
-    "defaults": {
-     "unit": "none",
-     "thresholds": {
-      "mode": "absolute",
-      "steps": [
-       {
-        "color": "green",
-        "value": null
-       }
-      ]
-     },
-     "color": {
-      "mode": "thresholds"
-     },
-     "mappings": [],
-     "noValue": "unknown"
-    },
-    "overrides": []
-   },
-   "options": {
-    "colorMode": "background",
-    "graphMode": "none",
-    "justifyMode": "center",
-    "textMode": "value_and_name",
-    "reduceOptions": {
-     "calcs": [
-      "lastNotNull"
-     ],
-     "fields": "",
-     "values": false
-    },
-    "orientation": "horizontal",
-    "wideLayout": true
-   }
-  },
-  {
-   "type": "table",
-   "title": "Latest simulated fills (newest first)",
-   "id": 25,
-   "datasource": {
-    "type": "prometheus",
-    "uid": "velocita-v2-prometheus"
-   },
-   "description": "The last 10 fills per book: time, side and the reference price they were costed against.",
-   "gridPos": {
-    "h": 8,
-    "w": 24,
-    "x": 0,
-    "y": 54
-   },
-   "targets": [
-    {
-     "expr": "velocita_shadow_book_fill{strategy=\"stochastic\"} * 1000",
-     "refId": "A",
-     "instant": true,
-     "format": "table"
-    }
-   ],
-   "fieldConfig": {
-    "defaults": {},
-    "overrides": [
-     {
-      "matcher": {
-       "id": "byName",
-       "options": "Value"
-      },
-      "properties": [
-       {
-        "id": "unit",
-        "value": "dateTimeAsIso"
-       },
-       {
-        "id": "displayName",
-        "value": "filled at"
-       }
-      ]
-     }
-    ]
-   },
-   "transformations": [
-    {
-     "id": "organize",
-     "options": {
-      "excludeByName": {
-       "Time": true,
-       "__name__": true,
-       "job": true,
-       "instance": true,
-       "host": true,
-       "cluster": true
-      },
-      "indexByName": {
-       "timing": 0,
-       "n": 1,
-       "side": 2,
-       "price": 3,
-       "Value": 4
-      }
-     }
-    },
-    {
-     "id": "sortBy",
-     "options": {
-      "sort": [
-       {
-        "field": "Value",
-        "desc": true
-       }
-      ]
-     }
-    }
-   ],
-   "options": {
-    "showHeader": true
-   }
-  },
-  {
-   "type": "row",
-   "title": "Model: BTC trend, SMA 125",
-   "id": 26,
-   "collapsed": false,
-   "gridPos": {
-    "h": 1,
-    "w": 24,
-    "x": 0,
-    "y": 62
-   },
-   "panels": []
-  },
-  {
-   "type": "timeseries",
-   "title": "BTC price vs its 125-day average",
-   "id": 27,
-   "datasource": {
-    "type": "prometheus",
-    "uid": "velocita-v2-prometheus"
-   },
-   "description": "The rule: price above its average -> hold BTC (enter long); at or below -> hold USDC (exit).",
-   "gridPos": {
-    "h": 8,
-    "w": 12,
-    "x": 0,
-    "y": 63
+    "y": 39
    },
    "targets": [
     {
      "expr": "max(velocita_shadow_price_usd{strategy=\"stochastic\"})",
-     "legendFormat": "BTC (TrueMarkets reference)",
+     "legendFormat": "Binance SOLUSDT one-second close",
      "refId": "A"
-    },
-    {
-     "expr": "max(velocita_shadow_price_usd{strategy=\"stochastic\"}) / (1 + max(velocita_shadow_feature_micros{strategy=\"stochastic\",name=\"trend\"}) / 1e6)",
-     "legendFormat": "SMA 125 (daily closes + today)",
-     "refId": "B"
     }
    ],
    "fieldConfig": {
     "defaults": {
      "unit": "currencyUSD",
-     "min": null,
-     "custom": {
-      "lineWidth": 2,
-      "fillOpacity": 10,
-      "showPoints": "never",
-      "spanNulls": false,
-      "stacking": {
-       "mode": "none"
-      }
-     }
-    },
-    "overrides": []
-   },
-   "options": {
-    "legend": {
-     "displayMode": "list",
-     "placement": "bottom"
-    },
-    "tooltip": {
-     "mode": "multi",
-     "sort": "desc"
-    }
-   }
-  },
-  {
-   "type": "stat",
-   "title": "Signal",
-   "id": 28,
-   "datasource": {
-    "type": "prometheus",
-    "uid": "velocita-v2-prometheus"
-   },
-   "description": "Price vs SMA 125 in percent. Green (> 0) = the strategy wants BTC; red = it wants USDC.",
-   "gridPos": {
-    "h": 8,
-    "w": 6,
-    "x": 12,
-    "y": 63
-   },
-   "targets": [
-    {
-     "expr": "max(velocita_shadow_feature_micros{strategy=\"stochastic\",name=\"trend\"}) / 1e4",
-     "legendFormat": "",
-     "refId": "A",
-     "instant": true
-    }
-   ],
-   "fieldConfig": {
-    "defaults": {
-     "unit": "percent",
-     "thresholds": {
-      "mode": "absolute",
-      "steps": [
-       {
-        "color": "red",
-        "value": null
-       },
-       {
-        "color": "green",
-        "value": 0.0001
-       }
-      ]
-     },
-     "color": {
-      "mode": "thresholds"
-     },
-     "mappings": [],
-     "noValue": "unknown"
-    },
-    "overrides": []
-   },
-   "options": {
-    "colorMode": "background",
-    "graphMode": "none",
-    "justifyMode": "center",
-    "textMode": "value",
-    "reduceOptions": {
-     "calcs": [
-      "lastNotNull"
-     ],
-     "fields": "",
-     "values": false
-    },
-    "orientation": "horizontal",
-    "wideLayout": true
-   }
-  },
-  {
-   "type": "timeseries",
-   "title": "Other features (percent)",
-   "id": 29,
-   "datasource": {
-    "type": "prometheus",
-    "uid": "velocita-v2-prometheus"
-   },
-   "description": "Computed every tick; the trend rule uses only the signal.",
-   "gridPos": {
-    "h": 8,
-    "w": 6,
-    "x": 18,
-    "y": 63
-   },
-   "targets": [
-    {
-     "expr": "max(velocita_shadow_feature_micros{strategy=\"stochastic\",name=\"ret1\"}) / 1e4",
-     "legendFormat": "1-day return",
-     "refId": "A"
-    },
-    {
-     "expr": "max(velocita_shadow_feature_micros{strategy=\"stochastic\",name=\"dev\"}) / 1e4",
-     "legendFormat": "price vs SMA 20",
-     "refId": "B"
-    },
-    {
-     "expr": "max(velocita_shadow_feature_micros{strategy=\"stochastic\",name=\"vol\"}) / 1e4",
-     "legendFormat": "daily volatility",
-     "refId": "C"
-    }
-   ],
-   "fieldConfig": {
-    "defaults": {
-     "unit": "percent",
      "min": null,
      "custom": {
       "lineWidth": 2,

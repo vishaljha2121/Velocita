@@ -43,10 +43,10 @@
   },
   {
    "type": "link",
-   "title": "Strategy (shadow)",
+   "title": "Strategy edge",
    "url": "/d/velocita-v2-strategy",
    "icon": "dashboard",
-   "tooltip": "Velocita \u2014 Strategy (shadow)",
+   "tooltip": "Velocita \u2014 Strategy edge",
    "targetBlank": false,
    "keepTime": true,
    "includeVars": false,
@@ -1269,7 +1269,7 @@
   },
   {
    "type": "row",
-   "title": "Soak test",
+   "title": "Soak test (blank unless the soak bot reported in the last 10 minutes)",
    "id": 25,
    "collapsed": false,
    "gridPos": {
@@ -1297,7 +1297,7 @@
    },
    "targets": [
     {
-     "expr": "sum(velocita_soak_commands_total{result=\"ok\"})",
+     "expr": "sum(velocita_soak_commands_total{result=\"ok\"}) and on() (time() - max(velocita_soak_last_update_timestamp_seconds) < 600)",
      "legendFormat": "",
      "refId": "A",
      "instant": true
@@ -1319,7 +1319,7 @@
       "mode": "thresholds"
      },
      "mappings": [],
-     "noValue": "unknown"
+     "noValue": "Soak bot not running"
     },
     "overrides": []
    },
@@ -1356,7 +1356,7 @@
    },
    "targets": [
     {
-     "expr": "sum(velocita_soak_commands_total{result!=\"ok\"})",
+     "expr": "sum(velocita_soak_commands_total{result!=\"ok\"}) and on() (time() - max(velocita_soak_last_update_timestamp_seconds) < 600)",
      "legendFormat": "",
      "refId": "A",
      "instant": true
@@ -1382,7 +1382,7 @@
       "mode": "thresholds"
      },
      "mappings": [],
-     "noValue": "unknown"
+     "noValue": "Soak bot not running"
     },
     "overrides": []
    },
@@ -1419,7 +1419,7 @@
    },
    "targets": [
     {
-     "expr": "histogram_quantile(0.99, sum by (le) (rate(velocita_soak_latency_ms_bucket[15m])))",
+     "expr": "histogram_quantile(0.99, sum by (le) (rate(velocita_soak_latency_ms_bucket[15m]))) and on() (time() - max(velocita_soak_last_update_timestamp_seconds) < 600)",
      "legendFormat": "",
      "refId": "A",
      "instant": true
@@ -1449,7 +1449,7 @@
       "mode": "thresholds"
      },
      "mappings": [],
-     "noValue": "unknown"
+     "noValue": "Soak bot not running"
     },
     "overrides": []
    },
@@ -1477,7 +1477,7 @@
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "Seconds since the soak bot last reported. Large = the bot stopped.",
+   "description": "Seconds since the soak bot last reported. Large = the bot stopped; the other soak panels then go blank.",
    "gridPos": {
     "h": 4,
     "w": 6,
@@ -1544,7 +1544,7 @@
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "Soak client start \u2192 committed result. Each command is a NEW client process that starts Aeron and connects first, so this is dominated by cold start, not commit latency.",
+   "description": "Soak client start to committed result. Each command is a new client process that starts Aeron and connects first, so this is dominated by cold start, not commit latency.",
    "gridPos": {
     "h": 8,
     "w": 24,
@@ -1553,17 +1553,17 @@
    },
    "targets": [
     {
-     "expr": "velocita_soak_last_latency_ms",
+     "expr": "velocita_soak_last_latency_ms and on() (time() - max(velocita_soak_last_update_timestamp_seconds) < 600)",
      "legendFormat": "last command",
      "refId": "A"
     },
     {
-     "expr": "histogram_quantile(0.5, sum by (le) (rate(velocita_soak_latency_ms_bucket[5m])))",
+     "expr": "histogram_quantile(0.5, sum by (le) (rate(velocita_soak_latency_ms_bucket[5m]))) and on() (time() - max(velocita_soak_last_update_timestamp_seconds) < 600)",
      "legendFormat": "p50 (5m)",
      "refId": "B"
     },
     {
-     "expr": "histogram_quantile(0.99, sum by (le) (rate(velocita_soak_latency_ms_bucket[5m])))",
+     "expr": "histogram_quantile(0.99, sum by (le) (rate(velocita_soak_latency_ms_bucket[5m]))) and on() (time() - max(velocita_soak_last_update_timestamp_seconds) < 600)",
      "legendFormat": "p99 (5m)",
      "refId": "C"
     }

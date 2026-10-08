@@ -28,14 +28,6 @@
   {
    "row": "Right now: is the cluster safe and able to commit?",
    "type": "stat",
-   "title": "Elections (last hour)",
-   "exprs": [
-    "increase(max(velocita_v2_term)[1h:15s])"
-   ]
-  },
-  {
-   "row": "Right now: is the cluster safe and able to commit?",
-   "type": "stat",
    "title": "Telemetry age",
    "exprs": [
     "max(velocita_v2_telemetry_age_seconds)"
@@ -47,14 +39,6 @@
    "title": "Failed voters",
    "exprs": [
     "sum(velocita_v2_failed)"
-   ]
-  },
-  {
-   "row": "Right now: is the cluster safe and able to commit?",
-   "type": "stat",
-   "title": "Role",
-   "exprs": [
-    "velocita_v2_role{role=\"leader\"} * 3 + velocita_v2_role{role=\"candidate\"} * 2 + velocita_v2_role{role=\"follower\"}"
    ]
   },
   {
@@ -240,43 +224,9 @@
   {
    "row": "Soak test",
    "type": "stat",
-   "title": "Soak commands OK",
-   "exprs": [
-    "sum(velocita_soak_commands_total{result=\"ok\"})"
-   ]
-  },
-  {
-   "row": "Soak test",
-   "type": "stat",
-   "title": "Soak failures",
-   "exprs": [
-    "sum(velocita_soak_commands_total{result!=\"ok\"})"
-   ]
-  },
-  {
-   "row": "Soak test",
-   "type": "stat",
-   "title": "Soak p99 latency (15m)",
-   "exprs": [
-    "histogram_quantile(0.99, sum by (le) (rate(velocita_soak_latency_ms_bucket[15m])))"
-   ]
-  },
-  {
-   "row": "Soak test",
-   "type": "stat",
    "title": "Soak bot heartbeat",
    "exprs": [
     "time() - max(velocita_soak_last_update_timestamp_seconds)"
-   ]
-  },
-  {
-   "row": "Soak test",
-   "type": "timeseries",
-   "title": "Soak round-trip latency (commit, ms)",
-   "exprs": [
-    "velocita_soak_last_latency_ms",
-    "histogram_quantile(0.5, sum by (le) (rate(velocita_soak_latency_ms_bucket[5m])))",
-    "histogram_quantile(0.99, sum by (le) (rate(velocita_soak_latency_ms_bucket[5m])))"
    ]
   },
   {
@@ -354,132 +304,10 @@
   },
   {
    "row": "Journey: TrueMarkets tick -> model -> kernel decision -> executor -> TrueMarkets",
-   "type": "bargauge",
-   "title": "Tick-to-trade funnel (selected time range)",
-   "exprs": [
-    "sum(increase(velocita_shadow_messages_total[$__range]))",
-    "sum(increase(velocita_shadow_messages_total{outcome=\"tick\"}[$__range]))",
-    "sum(increase(velocita_shadow_decisions_total{decision_code=\"17\"}[$__range]))",
-    "sum(increase(velocita_shadow_directives_total{stage=\"proposed\",directive!=\"no_action\"}[$__range]))",
-    "sum(increase(velocita_shadow_directives_total{stage=\"effective\",directive!=\"no_action\"}[$__range])) or vector(0)"
-   ]
-  },
-  {
-   "row": "Journey: TrueMarkets tick -> model -> kernel decision -> executor -> TrueMarkets",
-   "type": "text",
-   "title": "6  Venue executor  ->  7  TrueMarkets",
-   "exprs": []
-  },
-  {
-   "row": "Journey: TrueMarkets tick -> model -> kernel decision -> executor -> TrueMarkets",
-   "type": "timeseries",
-   "title": "Journey per minute",
-   "exprs": [
-    "sum(60 * rate(velocita_shadow_messages_total[5m]))",
-    "sum(60 * rate(velocita_shadow_messages_total{outcome=\"tick\"}[5m]))",
-    "sum(60 * rate(velocita_shadow_decisions_total{decision_code=\"17\"}[5m]))",
-    "sum(60 * rate(velocita_shadow_directives_total{stage=\"proposed\",directive!=\"no_action\"}[5m]))",
-    "sum(60 * rate(velocita_shadow_directives_total{stage=\"effective\",directive!=\"no_action\"}[5m])) or vector(0)"
-   ]
-  },
-  {
-   "row": "Journey: TrueMarkets tick -> model -> kernel decision -> executor -> TrueMarkets",
    "type": "timeseries",
    "title": "Messages by outcome (per minute)",
    "exprs": [
     "sum by (outcome) (60 * rate(velocita_shadow_messages_total[5m]))"
-   ]
-  },
-  {
-   "row": "Shadow book: $1,000 virtual, filled at measured TrueMarkets costs (never trades)",
-   "type": "stat",
-   "title": "Position",
-   "exprs": [
-    "velocita_shadow_book_position"
-   ]
-  },
-  {
-   "row": "Shadow book: $1,000 virtual, filled at measured TrueMarkets costs (never trades)",
-   "type": "stat",
-   "title": "Equity",
-   "exprs": [
-    "velocita_shadow_book_equity_usd"
-   ]
-  },
-  {
-   "row": "Shadow book: $1,000 virtual, filled at measured TrueMarkets costs (never trades)",
-   "type": "stat",
-   "title": "Realized P&L",
-   "exprs": [
-    "velocita_shadow_book_realized_pnl_usd"
-   ]
-  },
-  {
-   "row": "Shadow book: $1,000 virtual, filled at measured TrueMarkets costs (never trades)",
-   "type": "stat",
-   "title": "Fees paid",
-   "exprs": [
-    "velocita_shadow_book_fees_usd"
-   ]
-  },
-  {
-   "row": "Shadow book: $1,000 virtual, filled at measured TrueMarkets costs (never trades)",
-   "type": "timeseries",
-   "title": "Equity vs buy-and-hold",
-   "exprs": [
-    "velocita_shadow_book_equity_usd",
-    "velocita_shadow_hold_equity_usd"
-   ]
-  },
-  {
-   "row": "Shadow book: $1,000 virtual, filled at measured TrueMarkets costs (never trades)",
-   "type": "stat",
-   "title": "Round trips",
-   "exprs": [
-    "velocita_shadow_book_round_trips_total"
-   ]
-  },
-  {
-   "row": "Shadow book: $1,000 virtual, filled at measured TrueMarkets costs (never trades)",
-   "type": "stat",
-   "title": "Orders",
-   "exprs": [
-    "velocita_shadow_book_trades_total"
-   ]
-  },
-  {
-   "row": "Shadow book: $1,000 virtual, filled at measured TrueMarkets costs (never trades)",
-   "type": "table",
-   "title": "Latest simulated fills (newest first)",
-   "exprs": [
-    "velocita_shadow_book_fill * 1000"
-   ]
-  },
-  {
-   "row": "Model: BTC trend, SMA 125",
-   "type": "timeseries",
-   "title": "BTC price vs its 125-day average",
-   "exprs": [
-    "max(velocita_shadow_price_usd)",
-    "max(velocita_shadow_price_usd) / (1 + max(velocita_shadow_feature_micros{name=\"trend\"}) / 1e6)"
-   ]
-  },
-  {
-   "row": "Model: BTC trend, SMA 125",
-   "type": "stat",
-   "title": "Signal",
-   "exprs": [
-    "max(velocita_shadow_feature_micros{name=\"trend\"}) / 1e4"
-   ]
-  },
-  {
-   "row": "Model: BTC trend, SMA 125",
-   "type": "timeseries",
-   "title": "Other features (percent)",
-   "exprs": [
-    "max(velocita_shadow_feature_micros{name=\"ret1\"}) / 1e4",
-    "max(velocita_shadow_feature_micros{name=\"dev\"}) / 1e4",
-    "max(velocita_shadow_feature_micros{name=\"vol\"}) / 1e4"
    ]
   },
   {

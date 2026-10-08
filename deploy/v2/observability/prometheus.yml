@@ -27,7 +27,7 @@ scrape_configs:
         action: keep
     static_configs:
       - targets: ["127.0.0.1:9460"]
-        labels: {host: nuc1}
+        labels: {host: nuc1}  # run-scoped
 
   - job_name: active-paper-pipeline
     scrape_interval: 5s
@@ -45,7 +45,7 @@ scrape_configs:
         replacement: 'velocita_${1}'
     static_configs:
       - targets: ["127.0.0.1:9460"]
-        labels: {host: nuc1}
+        labels: {host: nuc1}  # run-scoped
 
   - job_name: prometheus
     static_configs:
@@ -62,11 +62,11 @@ scrape_configs:
     sample_limit: 500
     static_configs:
       - targets: ["100.72.127.102:11410"]
-        labels: {host: nuc1, strategy: stochastic}
+        labels: {host: nuc1, strategy: stochastic}  # run-scoped
       - targets: ["100.84.151.116:11410"]
-        labels: {host: pi, strategy: stochastic}
+        labels: {host: pi, strategy: stochastic}  # run-scoped
       - targets: ["100.85.36.22:11410"]
-        labels: {host: nuc2, strategy: stochastic}
+        labels: {host: nuc2, strategy: stochastic}  # run-scoped
 
   # Host metrics (CPU, memory, disk latency, temperature, network) plus each
   # host's textfile metrics: the secrets check everywhere, and on nuc1 the edge,

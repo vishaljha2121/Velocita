@@ -108,11 +108,6 @@ PAPER_METRICS = {
     "velocita_gateway_rearms_total", "velocita_gateway_reconciliation_last_match_timestamp_seconds",
     "velocita_gateway_stops_total", "velocita_gateway_stop_cause",
 }
-PAPER_BOOK_METRICS = {
-    "velocita_paper_week_volume_usd", "velocita_paper_week_fees_usd", "velocita_paper_week_pnl_usd",
-    "velocita_paper_week_loss_usd", "velocita_paper_weekly_loss_cap_usd", "velocita_paper_expected_week_volume_usd",
-    "velocita_paper_expected_week_loss_usd", "velocita_paper_buys_stopped", "velocita_paper_buys_withheld_total",
-}
 PAPER_STAGES = {"authorized_to_proof", "proof_to_sent", "sent_to_fill", "fill_to_committed"}
 
 
@@ -161,7 +156,7 @@ class DashboardsAreGeneratedAndLoadable(unittest.TestCase):
 
     def test_no_pre_split_panel_or_query_was_lost(self):
         before = json.loads(PRE_SPLIT.read_text())["panels"]
-        self.assertEqual(len(before), 66)
+        self.assertEqual(len(before), 46)
         after = {(p["type"], p["title"], tuple(legacy_expression(t["expr"]) for t in p.get("targets", [])))
                  for d in dashboards().values() for p in content_panels(d)}
         for panel in before:
@@ -211,24 +206,49 @@ class DashboardsAreGeneratedAndLoadable(unittest.TestCase):
             self.assertEqual(p["fieldConfig"]["defaults"]["unit"], "suffix:¢", p["title"])
             self.assertTrue(all(t["expr"].startswith("100 * ") for t in p["targets"]), p["title"])
 
-    def test_volume_row_shows_the_week_against_the_budget_and_the_expectation(self):
+    def test_gateway_volume_is_drawn_by_side(self):
         paper = next(d for d in dashboards().values() if d["uid"] == "velocita-v2-paper")
-        text = "\n".join(exprs(paper))
-        self.assertEqual(set(re.findall(r"\bvelocita_paper_[a-z_]+", text)), PAPER_BOOK_METRICS)
-        self.assertIn('sum by (side) (3600 * rate(velocita_gateway_volume_usd_total[1h]))', text)
-        budget = [p for p in content_panels(paper) if p["type"] == "gauge"]
-        self.assertEqual(len(budget), 1)
-        self.assertIn("velocita_paper_weekly_loss_cap_usd", budget[0]["targets"][0]["expr"])
-        self.assertEqual((budget[0]["fieldConfig"]["defaults"]["min"], budget[0]["fieldConfig"]["defaults"]["max"]),
-                         (0, 100))
-        for observed, expected in (("velocita_paper_week_volume_usd", "velocita_paper_expected_week_volume_usd"),
-                                   ("velocita_paper_week_loss_usd", "velocita_paper_expected_week_loss_usd")):
-            self.assertTrue(any(p["type"] == "timeseries" and
-                                {observed, expected} <= set(re.findall(r"velocita_paper_[a-z_]+", "".join(
-                                    t["expr"] for t in p["targets"]))) for p in content_panels(paper)),
-                            f"no panel draws {observed} beside {expected}")
-        self.assertEqual([p["title"] for p in paper["panels"] if p["type"] == "row"][-1],
-                         "Volume strategies: this ISO week against the loss budget")
+        self.assertIn('sum by (side) (3600 * rate(velocita_gateway_volume_usd_total[1h]))', "\n".join(exprs(paper)))
+        self.assertEqual(set(re.findall(r"\bvelocita_paper_[a-z_]+", "\n".join(exprs(paper)))), set())
+
+    def test_role_and_election_queries_cannot_come_back_empty_or_extrapolated(self):
+        overview = next(d for d in dashboards().values() if d["uid"] == "velocita-v2-cluster")
+        role = next(p for p in overview["panels"] if p["title"] == "Role")["targets"][0]["expr"]
+        self.assertTrue(role.startswith("max by (host, node) ("), role)
+        self.assertNotIn("} * 3 + ", role)
+        elections = next(p for p in overview["panels"] if p["title"] == "Elections (last hour)")["targets"][0]["expr"]
+        self.assertNotIn("increase(", elections)
+        self.assertIn("min_over_time(", elections)
+
+    def test_soak_panels_go_blank_when_the_bot_is_not_reporting(self):
+        raft = next(d for d in dashboards().values() if d["uid"] == "velocita-v2-raft")
+        soak = [e for e in exprs(raft) if "velocita_soak_" in e and "last_update_timestamp_seconds) <" in e]
+        self.assertEqual(len(soak), 6)
+
+    def test_strategy_dashboard_only_asks_for_metrics_the_edge_exports(self):
+        strategy = next(d for d in dashboards().values() if d["uid"] == "velocita-v2-strategy")
+        text = "\n".join(exprs(strategy))
+        for retired in ("velocita_shadow_book_", "velocita_shadow_hold_", 'outcome="tick"', 'decision_code="17"'):
+            self.assertNotIn(retired, text)
+        self.assertIn('velocita_indicator_paper_authorizations_total{code="applied"}', text)
+
+    def test_a_paper_run_label_scopes_every_run_metric_and_the_scrape_config(self):
+        generator = load_generator()
+        with tempfile.TemporaryDirectory() as tmp:
+            with contextlib.redirect_stdout(io.StringIO()):
+                generator.main(["generate_dashboard.py", tmp, "--paper-run", "run-1"])
+            generator._paper_run = None
+            for path in pathlib.Path(tmp).glob("*.json"):
+                for panel in json.loads(path.read_text())["panels"]:
+                    for target in panel.get("targets", []):
+                        for selector in re.findall(r"velocita_(?:v2|shadow|gateway|indicator)_[a-zA-Z0-9_]+(\{[^}]*\})?", target["expr"]):
+                            self.assertTrue(selector.startswith('{strategy="stochastic",paper_run="run-1"'), target["expr"])
+            config = (pathlib.Path(tmp) / "prometheus.yml").read_text()
+            self.assertEqual(config.count("paper_run: run-1}"), 5)
+            self.assertNotIn("run-scoped", config)
+        with self.assertRaises(SystemExit):
+            generator.main(["generate_dashboard.py", "unused", "--paper-run", 'x"} or vector(1) #'])
+        generator._paper_run = None
 
     def test_new_risk_stopped_is_the_first_and_widest_paper_panel(self):
         paper = next(d for d in dashboards().values() if d["uid"] == "velocita-v2-paper")

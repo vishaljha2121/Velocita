@@ -43,10 +43,10 @@
   },
   {
    "type": "link",
-   "title": "Strategy (shadow)",
+   "title": "Strategy edge",
    "url": "/d/velocita-v2-strategy",
    "icon": "dashboard",
-   "tooltip": "Velocita \u2014 Strategy (shadow)",
+   "tooltip": "Velocita \u2014 Strategy edge",
    "targetBlank": false,
    "keepTime": true,
    "includeVars": false,
@@ -298,7 +298,7 @@
    },
    "targets": [
     {
-     "expr": "increase(max(velocita_v2_term{strategy=\"stochastic\"})[1h:15s])",
+     "expr": "max(velocita_v2_term{strategy=\"stochastic\"}) - min_over_time(max(velocita_v2_term{strategy=\"stochastic\"})[1h:15s])",
      "legendFormat": "",
      "refId": "A",
      "instant": true
@@ -495,7 +495,7 @@
    },
    "targets": [
     {
-     "expr": "velocita_v2_role{strategy=\"stochastic\",role=\"leader\"} * 3 + velocita_v2_role{strategy=\"stochastic\",role=\"candidate\"} * 2 + velocita_v2_role{strategy=\"stochastic\",role=\"follower\"}",
+     "expr": "max by (host, node) (velocita_v2_role{strategy=\"stochastic\",role=\"leader\"} * 3 or velocita_v2_role{strategy=\"stochastic\",role=\"candidate\"} * 2 or velocita_v2_role{strategy=\"stochastic\",role=\"follower\"})",
      "legendFormat": "node {{node}} ({{host}})",
      "refId": "A",
      "instant": true
@@ -1038,7 +1038,7 @@
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "1 = the gateway sends no risk-increasing order. After an election it re-arms by itself once the cluster is quiet and the venue reconciles; after an unknown outcome, a conflict, a control change or a reconciliation mismatch only a restart (after checking the gateway journal) re-arms it.",
+   "description": "1 = the gateway sends no risk-increasing order. After an election it re-arms by itself once the cluster is quiet and the venue reconciles; after an unknown outcome, a conflict, a control change or a reconciliation mismatch only a restart (after checking the gateway journal) re-arms it. An armed gateway alone does not imply an active strategy; check session status and submitter.",
    "gridPos": {
     "h": 4,
     "w": 4,

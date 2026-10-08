@@ -5,6 +5,11 @@ Five focused dashboards share one link bar. Every panel answers one operator
 question. Regenerate after editing (an optional argument writes elsewhere):
     python3 deploy/v2/observability/generate_dashboard.py [out_dir]
 
+A paper run that keeps its own Prometheus label is generated with
+    python3 deploy/v2/observability/generate_dashboard.py out_dir --paper-run RUN
+which scopes every cluster, gateway and strategy query to that run and also
+writes the matching prometheus.yml into out_dir.
+
 The Overview keeps the uid and file name of the former single dashboard
 (velocita-v2-cluster). Provisioning sets disableDeletion, so a removed file
 would leave its dashboard behind as an unprovisioned stale copy; reusing the
@@ -19,7 +24,7 @@ DS = {"type": "prometheus", "uid": "velocita-v2-prometheus"}
 
 OVERVIEW = ("velocita-v2-cluster", "velocita-v2-cluster.json", "Velocita — Overview", "Overview")
 RAFT = ("velocita-v2-raft", "velocita-v2-raft.json", "Velocita — Raft & storage", "Raft & storage")
-STRATEGY = ("velocita-v2-strategy", "velocita-v2-strategy.json", "Velocita — Strategy (shadow)", "Strategy (shadow)")
+STRATEGY = ("velocita-v2-strategy", "velocita-v2-strategy.json", "Velocita — Strategy edge", "Strategy edge")
 PAPER = ("velocita-v2-paper", "velocita-v2-paper.json", "Velocita — Paper trading", "Paper trading")
 HOSTS = ("velocita-v2-hosts", "velocita-v2-hosts.json", "Velocita — Hosts", "Hosts")
 DASHBOARDS = (OVERVIEW, RAFT, STRATEGY, PAPER, HOSTS)
@@ -31,6 +36,17 @@ LINKS = [{"type": "link", "title": short, "url": f"/d/{uid}", "icon": "dashboard
 panels = []
 _next_id = 1
 _y = 0
+_paper_run = None
+SCOPED = re.compile(r'\b(velocita_(?:v2|shadow|gateway|indicator)_[a-zA-Z0-9_]+)(\{[^}]*\})?')
+
+
+def scoped(expr):
+    def active(match):
+        metric, labels = match.group(1), match.group(2)
+        rest = [part for part in (labels[1:-1].split(',') if labels else []) if part and part != 'strategy="stochastic"']
+        run = [f'paper_run="{_paper_run}"'] if _paper_run else []
+        return metric + '{' + ','.join(['strategy="stochastic"', *run, *rest]) + '}'
+    return SCOPED.sub(active, expr)
 
 
 def start():
@@ -99,10 +115,9 @@ def bars(title, targets, x, w, unit="none", h=8, description="", decimals=0):
     })
 
 
-def note(title, content, h=3):
-    panels.append({"type": "text", "id": _id(), "title": title, "gridPos": {"x": 0, "y": _y, "w": 24, "h": h},
+def note(title, content, x, w, h):
+    panels.append({"type": "text", "id": _id(), "title": title, "gridPos": {"x": x, "y": _y, "w": w, "h": h},
                    "options": {"mode": "markdown", "content": content}})
-    advance(h)
 
 
 def advance(h):
@@ -112,12 +127,9 @@ def advance(h):
 
 def finish(board, description, tags):
     uid, file, title, _ = board
-    def active(match):
-        metric, labels = match.group(1), match.group(2)
-        return metric + ('{strategy="stochastic",' + labels[1:] if labels else '{strategy="stochastic"}')
     for panel in panels:
         for target in panel.get('targets', []):
-            target['expr'] = re.sub(r'\b(velocita_(?:v2|shadow|gateway)_[a-zA-Z0-9_]+)(\{[^}]*\})?', active, target['expr'])
+            target['expr'] = scoped(target['expr'])
     description = 'Active cluster: stochastic paper only. ' + description
     return file, {
         "uid": uid, "title": title, "description": description,
@@ -132,12 +144,13 @@ ROLE_MAP = [{"type": "value", "options": {"0": {"text": "none"}, "1": {"text": "
                                           "2": {"text": "candidate", "color": "orange"},
                                           "3": {"text": "LEADER", "color": "blue"}}}]
 READY_MAP = [{"type": "value", "options": {"0": {"text": "NOT READY"}, "1": {"text": "READY"}, "2": {"text": "COMPLETED", "color": "blue"}}}]
-RUN_MAP = [{"type":"value","options":{"0":{"text":"Running window","color":"blue"},"1":{"text":"Completed","color":"blue"},"2":{"text":"Needs finalization","color":"orange"}}}]
+RUN_MAP = [{"type":"value","options":{"0":{"text":"Open (see health)","color":"blue"},"1":{"text":"Completed","color":"blue"},"2":{"text":"Needs finalization","color":"orange"}}}]
 GATEWAY_UP_MAP = [{"type": "value", "options": {"0": {"text": "DOWN"}, "1": {"text": "UP"}}}]
 NEW_RISK_MAP = [{"type": "value", "options": {"0": {"text": "NEW RISK ALLOWED"}, "1": {"text": "NEW RISK STOPPED"}}}]
 NEW_RISK_HELP = ("1 = the gateway sends no risk-increasing order. After an election it re-arms by itself once the "
                  "cluster is quiet and the venue reconciles; after an unknown outcome, a conflict, a control change "
                  "or a reconciliation mismatch only a restart (after checking the gateway journal) re-arms it.")
+ARMED_HELP = " An armed gateway alone does not imply an active strategy; check session status and submitter."
 
 
 def right_now_row():
@@ -149,7 +162,7 @@ def right_now_row():
          description="The voter the followers follow. 'unknown' or -1 means an election is in progress.")
     stat("Term", 'max(velocita_v2_term)', 8, 4,
          description="Raft term. It only changes when an election happens.")
-    stat("Elections (last hour)", 'increase(max(velocita_v2_term)[1h:15s])', 12, 4,
+    stat("Elections (last hour)", 'max(velocita_v2_term) - min_over_time(max(velocita_v2_term)[1h:15s])', 12, 4,
          steps=(("green", None), ("orange", 1), ("red", 5)),
          description="How many times the term increased in the last hour. Healthy steady state: 0.")
     stat("Telemetry age", 'max(velocita_v2_telemetry_age_seconds)', 16, 4, unit="s",
@@ -158,7 +171,8 @@ def right_now_row():
     stat("Failed voters", 'sum(velocita_v2_failed)', 20, 4, steps=(("green", None), ("red", 1)),
          description="Voters that latched a fatal fault and stopped (fail-stop). Must be 0.")
     advance(4)
-    stat("Role", 'velocita_v2_role{role="leader"} * 3 + velocita_v2_role{role="candidate"} * 2 + velocita_v2_role{role="follower"}',
+    stat("Role", 'max by (host, node) (velocita_v2_role{role="leader"} * 3 or velocita_v2_role{role="candidate"} * 2 '
+         'or velocita_v2_role{role="follower"})',
          0, 12, legend="node {{node}} ({{host}})", mappings=ROLE_MAP,
          description="Each voter's role: exactly one LEADER and one follower is healthy.")
     stat("Waiting for quorum", 'max(velocita_v2_log_index{kind="current"} - on(host,node) velocita_v2_log_index{kind="commit"})',
@@ -180,7 +194,7 @@ def right_now_row():
     stat("Paper gateway", 'max(velocita_gateway_up)', 16, 4, steps=(("red", None), ("green", 1)), mappings=GATEWAY_UP_MAP,
          description="The paper-trading gateway process. 'unknown' = not deployed or not scraped.")
     stat("New risk", 'max(velocita_gateway_new_risk_stopped)', 20, 4, steps=(("green", None), ("red", 1)),
-         mappings=NEW_RISK_MAP, description=NEW_RISK_HELP)
+         mappings=NEW_RISK_MAP, description=NEW_RISK_HELP + ARMED_HELP)
     advance(4)
 
 
@@ -316,23 +330,30 @@ def wal_disk_row():
     advance(8)
 
 
+SOAK_FRESH = 'and on() (time() - max(velocita_soak_last_update_timestamp_seconds) < 600)'
+SOAK_IDLE = "Soak bot not running"
+
+
 def soak_row():
-    row("Soak test")
-    stat("Soak commands OK", 'sum(velocita_soak_commands_total{result="ok"})', 0, 6, steps=(("green", None),))
-    stat("Soak failures", 'sum(velocita_soak_commands_total{result!="ok"})', 6, 6, steps=(("green", None), ("red", 1)),
+    row("Soak test (blank unless the soak bot reported in the last 10 minutes)")
+    stat("Soak commands OK", f'sum(velocita_soak_commands_total{{result="ok"}}) {SOAK_FRESH}', 0, 6,
+         steps=(("green", None),), no_value=SOAK_IDLE)
+    stat("Soak failures", f'sum(velocita_soak_commands_total{{result!="ok"}}) {SOAK_FRESH}', 6, 6,
+         steps=(("green", None), ("red", 1)), no_value=SOAK_IDLE,
          description="Timeouts or refusals seen by the soak bot. Pass criterion: 0.")
-    stat("Soak p99 latency (15m)", 'histogram_quantile(0.99, sum by (le) (rate(velocita_soak_latency_ms_bucket[15m])))',
-         12, 6, unit="ms", steps=(("green", None), ("orange", 250), ("red", 1000)))
+    stat("Soak p99 latency (15m)",
+         f'histogram_quantile(0.99, sum by (le) (rate(velocita_soak_latency_ms_bucket[15m]))) {SOAK_FRESH}',
+         12, 6, unit="ms", steps=(("green", None), ("orange", 250), ("red", 1000)), no_value=SOAK_IDLE)
     stat("Soak bot heartbeat", 'time() - max(velocita_soak_last_update_timestamp_seconds)', 18, 6, unit="s",
          steps=(("green", None), ("orange", 30), ("red", 120)),
-         description="Seconds since the soak bot last reported. Large = the bot stopped.")
+         description="Seconds since the soak bot last reported. Large = the bot stopped; the other soak panels then go blank.")
     advance(4)
     series("Soak round-trip latency (commit, ms)", [
-        ('velocita_soak_last_latency_ms', "last command"),
-        ('histogram_quantile(0.5, sum by (le) (rate(velocita_soak_latency_ms_bucket[5m])))', "p50 (5m)"),
-        ('histogram_quantile(0.99, sum by (le) (rate(velocita_soak_latency_ms_bucket[5m])))', "p99 (5m)"),
-    ], 0, 24, unit="ms", description="Soak client start → committed result. Each command is a NEW client process that "
-                                     "starts Aeron and connects first, so this is dominated by cold start, not commit latency.")
+        (f'velocita_soak_last_latency_ms {SOAK_FRESH}', "last command"),
+        (f'histogram_quantile(0.5, sum by (le) (rate(velocita_soak_latency_ms_bucket[5m]))) {SOAK_FRESH}', "p50 (5m)"),
+        (f'histogram_quantile(0.99, sum by (le) (rate(velocita_soak_latency_ms_bucket[5m]))) {SOAK_FRESH}', "p99 (5m)"),
+    ], 0, 24, unit="ms", description="Soak client start to committed result. Each command is a new client process that starts Aeron "
+                                     "and connects first, so this is dominated by cold start, not commit latency.")
     advance(8)
 
 
@@ -347,14 +368,14 @@ def raft():
                         "the disks under the WAL, and the soak bot.", ["raft"])
 
 
-def shadow_edge_row():
-    row("Shadow edge: live ticks to recorded decisions (never trades)")
+def edge_row():
+    row("Strategy edge: one-second bars to committed decisions")
     stat("Submitter ready", '((max(velocita_indicator_run_state{strategy="stochastic"}) == 1) * 0 + 2) or max(velocita_shadow_submitter_ready)', 0, 6,
          steps=(("red", None), ("green", 1)), mappings=READY_MAP,
          description="1 once the policy is installed and the strategy mode is normal.")
     stat("Last decision", 'max(velocita_shadow_last_decision_age_seconds)', 6, 6, unit="s",
-         steps=(("green", None), ("orange", 30), ("red", 120)),
-         description="Seconds since the cluster last recorded a decision. Ticks arrive every few seconds.")
+         steps=(("green", None), ("orange", 5), ("red", 30)),
+         description="Seconds since the cluster last recorded a decision. One is expected every second.")
     stat("Rule agreement", 'sum(velocita_shadow_agreement_total{result="agree"}) / '
          'clamp_min(sum(velocita_shadow_agreement_total), 1)', 12, 6, unit="percentunit",
          steps=(("red", None), ("green", 1)),
@@ -365,139 +386,80 @@ def shadow_edge_row():
     series("Tick to decision (ms)", [
         ('histogram_quantile(0.5, sum by (le) (rate(velocita_shadow_tick_to_decision_ms_bucket[5m])))', "p50 (5m)"),
         ('histogram_quantile(0.99, sum by (le) (rate(velocita_shadow_tick_to_decision_ms_bucket[5m])))', "p99 (5m)"),
-    ], 0, 12, unit="ms", description="Active stochastic only: payload delivered to Python -> committed decision reply at the local C++ submitter. Includes indicator/journal work and two Raft commits; excludes HTTP fetch and order execution. Histogram interpolation over sparse windows is not a reliable tail-latency estimate. See Paper trading for sample counts and a gated p99.")
+    ], 0, 12, unit="ms", description="Payload delivered to Python to the committed decision reply at the local C++ "
+                                     "submitter. Includes indicator and journal work and two Raft commits; excludes "
+                                     "authorization and fills. Bucket interpolation, not exact percentiles.")
     series("Where the time goes (average ms per tick, 5m)", [
         ('sum by (hop) (rate(velocita_shadow_hop_ms_sum[5m])) / '
          'scalar(clamp_min(sum(rate(velocita_shadow_tick_to_decision_ms_count[5m])), 1e-9))', "{{hop}}"),
     ], 12, 12, unit="ms", stack=True,
-           description="edge = tick received -> submitter read; source_commit = source event committed; "
+           description="edge = tick received to submitter read; source_commit = source event committed; "
                        "decision_commit = decision frame committed. Commit hops include the follower durable-ack delay.")
     advance(8)
     series("Decisions by resolution (per minute)", [
         ('sum by (resolution) (60 * rate(velocita_shadow_action_resolutions_total[5m]))', "resolution {{resolution}}"),
-    ], 0, 8, description="1 = proposed (a real order would have been sized and bounded); 19 = market data stale; "
-                         "29 = notional cap. Effective action is always none in shadow.")
+    ], 0, 8, description="0 = no action; 1 = an order was proposed, sized and bounded.")
     series("Rule matched (per minute)", [
         ('sum by (rule) (60 * rate(velocita_shadow_rule_matches_total[5m]))', "rule {{rule}}"),
-    ], 8, 8, description="rule 0 = trend up (enter long); rule 1 = trend down or flat (exit).")
+    ], 8, 8, description="rule 0 = exit; rule 1 = enter; 65535 = no rule matched (hold).")
     series("Market data age at decision (ms)", [('max(velocita_shadow_market_data_age_ms)', "last tick")],
-           16, 8, unit="ms", description="Age of the venue's price when the tick reached the edge. The policy refuses above 5 s.")
+           16, 8, unit="ms", description="Bar close to arrival at the edge. The edge drops a bar older than 2 s and "
+                                         "the policy refuses one too.")
     advance(8)
 
 
 def journey_row():
-    row("Journey: TrueMarkets tick -> model -> kernel decision -> executor -> TrueMarkets")
-    bars("Tick-to-trade funnel (selected time range)", [
-        ("1  TM messages received", 'sum(increase(velocita_shadow_messages_total[$__range]))'),
-        ("2  New BTC prices sent to the cluster", 'sum(increase(velocita_shadow_messages_total{outcome="tick"}[$__range]))'),
-        ("3  Decisions recorded by the kernel", 'sum(increase(velocita_shadow_decisions_total{decision_code="17"}[$__range]))'),
-        ("4  Trades proposed by the strategy",
-         'sum(increase(velocita_shadow_directives_total{stage="proposed",directive!="no_action"}[$__range]))'),
-        ("5  Trades authorized by the kernel",
-         'sum(increase(velocita_shadow_directives_total{stage="effective",directive!="no_action"}[$__range])) or vector(0)'),
-    ], 0, 16, description="Every stage counted from the edge's metrics for the dashboard's time range. 1 -> 2: True Markets "
-                          "re-sends its last price every second; only a newer price is a tick. 3: the cluster committed a "
-                          "decision frame (shadow_recorded). 4: the rule matched an enter/exit action and the kernel sized a "
-                          "bounded order. 5: what the kernel authorized: always 0 in shadow mode, by design.")
-    panels.append({
-        "type": "text", "title": "6  Venue executor  ->  7  TrueMarkets", "id": _id(),
-        "gridPos": {"h": 8, "w": 8, "x": 16, "y": _y},
-        "options": {"mode": "markdown", "content":
-            "**Not built yet, so nothing reaches TrueMarkets.**\n\n"
-            "- Phase 1 (running): decisions are recorded, never authorized (shadow).\n"
-            "- Phase 2: gateway + a TrueMarkets *simulator* (measures tick-to-trade; see Paper trading).\n"
-            "- Live orders need M4-M7 and venue keys; no host holds a key.\n\n"
-            "A proposal every tick is expected: in shadow no order ever fills, so the "
-            "strategy never holds the position it asks for."},
-    })
+    row("Journey: public one-second bar -> edge -> kernel decision -> paper gateway")
+    bars("Bar-to-order funnel (selected time range)", [
+        ("1  Market messages handled", 'sum(increase(velocita_shadow_messages_total[$__range]))'),
+        ("2  Closed bars sent to the cluster", 'sum(increase(velocita_shadow_messages_total{outcome="forwarded"}[$__range]))'),
+        ("3  Decisions committed by the kernel", 'sum(increase(velocita_shadow_decisions_total[$__range]))'),
+        ("4  Order requests (each order is asked twice)",
+         'sum(increase(velocita_shadow_directives_total{stage="proposed",directive!="no_action"}[$__range])) or vector(0)'),
+        ("5  Orders authorized by the kernel",
+         'sum(increase(velocita_indicator_paper_authorizations_total{code="applied"}[$__range])) or vector(0)'),
+    ], 0, 16, description="Counted from the edge's metrics over the dashboard's time range. Prometheus increase "
+                          "extrapolates, so small counts can show fractions. The kernel refuses the first request "
+                          "for every order and asks the edge to re-read its position, so 4 is about twice 5.")
+    note("After authorization", "Authorized orders go to the paper gateway, which fills them in a simulator. "
+         "See *Paper trading* for orders, fills, position and fees. **Nothing reaches a venue.**", 16, 8, 8)
     advance(8)
     series("Journey per minute", [
-        ('sum(60 * rate(velocita_shadow_messages_total[5m]))', "TM messages"),
-        ('sum(60 * rate(velocita_shadow_messages_total{outcome="tick"}[5m]))', "new prices (ticks)"),
-        ('sum(60 * rate(velocita_shadow_decisions_total{decision_code="17"}[5m]))', "decisions recorded"),
-        ('sum(60 * rate(velocita_shadow_directives_total{stage="proposed",directive!="no_action"}[5m]))', "trades proposed"),
-        ('sum(60 * rate(velocita_shadow_directives_total{stage="effective",directive!="no_action"}[5m])) or vector(0)',
-         "trades authorized"),
+        ('sum(60 * rate(velocita_shadow_messages_total[5m]))', "market messages"),
+        ('sum(60 * rate(velocita_shadow_messages_total{outcome="forwarded"}[5m]))', "bars sent"),
+        ('sum(60 * rate(velocita_shadow_decisions_total[5m]))', "decisions committed"),
+        ('sum(60 * rate(velocita_shadow_directives_total{stage="proposed",directive!="no_action"}[5m])) or vector(0)', "order requests"),
+        ('sum(60 * rate(velocita_indicator_paper_authorizations_total{code="applied"}[5m])) or vector(0)', "orders authorized"),
     ], 0, 12, description="The funnel over time (5 min rate).")
     series("Messages by outcome (per minute)", [
         ('sum by (outcome) (60 * rate(velocita_shadow_messages_total[5m]))', "{{outcome}}"),
-    ], 12, 12, stack=True, description="tick = a newer BTC price; resend = the same price again; throttled = newer, but within the "
-                                        "edge's minimum tick interval; other = other topics or symbols; no_history = the "
-                                        "daily history is stale (should be 0).")
+    ], 12, 12, stack=True, description="forwarded = sent to the cluster; stale = older than 2 s; throttled = a second "
+                                        "bar in the same wall-clock second; duplicate = already handled; warming_up = "
+                                        "indicators not ready; invalid = rejected frame or a bar ahead of the local "
+                                        "clock (alert: VelocitaPaperBadMarketData).")
     advance(8)
 
 
-def shadow_book_row():
-    row("Shadow book: $1,000 virtual, filled at measured TrueMarkets costs (never trades)")
-    position_map = [{"type": "value", "options": {"0": {"text": "FLAT (USDC)"}, "1": {"text": "LONG (cbBTC)", "color": "blue"}}}]
-    stat("Position", 'velocita_shadow_book_position', 0, 6, legend="{{timing}}", mappings=position_map,
-         description="daily = acts once per UTC day on the last decision before midnight (like the backtest; this "
-                     "one counts for promotion). tick = acts on every committed decision.")
-    stat("Equity", 'velocita_shadow_book_equity_usd', 6, 6, unit="currencyUSD", legend="{{timing}}",
-         description="Liquidation value: cash plus BTC sold now at the reference price minus the measured sell cost.")
-    stat("Realized P&L", 'velocita_shadow_book_realized_pnl_usd', 12, 6, unit="currencyUSD", legend="{{timing}}",
-         steps=(("red", None), ("green", 0)))
-    stat("Fees paid", 'velocita_shadow_book_fees_usd', 18, 6, unit="currencyUSD", legend="{{timing}}",
-         description="Measured all-in cost against the reference price (buy +109.9 bp, sell -123.4 bp on cbBTC).")
-    advance(4)
-    series("Equity vs buy-and-hold", [
-        ('velocita_shadow_book_equity_usd', "{{timing}} book"),
-        ('velocita_shadow_hold_equity_usd', "buy and hold (from the first price)"),
-    ], 0, 12, unit="currencyUSD", min0=False,
-           description="Both start at $1,000. The trend rule is expected to trail holding in a rising market and cut "
-                       "drawdowns in a falling one (backtest: +135% vs +169%, max drawdown 57% vs 77%).")
-    stat("Round trips", 'velocita_shadow_book_round_trips_total', 12, 6, legend="{{timing}} {{result}}", h=8,
-         description="Completed buy-then-sell pairs; a win returned more than it cost, break-even counts as a loss.")
-    stat("Orders", 'velocita_shadow_book_trades_total', 18, 6, legend="{{timing}}", h=8,
-         description="Simulated fills. The backtest trades ~9.5 times a year on the daily book.")
-    advance(8)
-    panels.append({
-        "type": "table", "title": "Latest simulated fills (newest first)", "id": _id(), "datasource": DS,
-        "description": "The last 10 fills per book: time, side and the reference price they were costed against.",
-        "gridPos": {"h": 8, "w": 24, "x": 0, "y": _y},
-        "targets": [{"expr": 'velocita_shadow_book_fill * 1000', "refId": "A", "instant": True, "format": "table"}],
-        "fieldConfig": {"defaults": {}, "overrides": [
-            {"matcher": {"id": "byName", "options": "Value"},
-             "properties": [{"id": "unit", "value": "dateTimeAsIso"}, {"id": "displayName", "value": "filled at"}]}]},
-        "transformations": [{"id": "organize", "options": {
-            "excludeByName": {"Time": True, "__name__": True, "job": True, "instance": True, "host": True, "cluster": True},
-            "indexByName": {"timing": 0, "n": 1, "side": 2, "price": 3, "Value": 4}}},
-            {"id": "sortBy", "options": {"sort": [{"field": "Value", "desc": True}]}}],
-        "options": {"showHeader": True},
-    })
-    advance(8)
-
-
-def model_row():
-    row("Model: BTC trend, SMA 125")
-    series("BTC price vs its 125-day average", [
-        ('max(velocita_shadow_price_usd)', "BTC (TrueMarkets reference)"),
-        ('max(velocita_shadow_price_usd) / (1 + max(velocita_shadow_feature_micros{name="trend"}) / 1e6)',
-         "SMA 125 (daily closes + today)"),
-    ], 0, 12, unit="currencyUSD", min0=False,
-           description="The rule: price above its average -> hold BTC (enter long); at or below -> hold USDC (exit).")
-    stat("Signal", 'max(velocita_shadow_feature_micros{name="trend"}) / 1e4', 12, 6, unit="percent",
-         steps=(("red", None), ("green", 0.0001)), h=8,
-         description="Price vs SMA 125 in percent. Green (> 0) = the strategy wants BTC; red = it wants USDC.")
-    series("Other features (percent)", [
-        ('max(velocita_shadow_feature_micros{name="ret1"}) / 1e4', "1-day return"),
-        ('max(velocita_shadow_feature_micros{name="dev"}) / 1e4', "price vs SMA 20"),
-        ('max(velocita_shadow_feature_micros{name="vol"}) / 1e4', "daily volatility"),
-    ], 18, 6, unit="percent", min0=False, description="Computed every tick; the trend rule uses only the signal.")
+def signal_row():
+    row("Signal and price")
+    series("Signal flags sent to the kernel", [
+        ('max(velocita_shadow_feature_micros{name="entry_flag"}) / 1e6', "entry"),
+        ('max(velocita_shadow_feature_micros{name="exit_flag"}) / 1e6', "exit"),
+    ], 0, 12, description="1 = the edge asked for an entry or an exit on the last forwarded bar. Sampled at the "
+                          "scrape interval, so a one-second flag can fall between samples; the ledger is exact.")
+    series("SOL proxy close", [('max(velocita_shadow_price_usd)', "Binance SOLUSDT one-second close")],
+           12, 12, unit="currencyUSD", min0=False,
+           description="A public price proxy. It is not a True Markets executable quote.")
     advance(8)
 
 
 def strategy():
     start()
-    note("Not running", "**The BTC shadow strategy on this page is not running.** The active strategy is the "
-         "stochastic paper strategy on the *Paper trading* dashboard. Panels below show no data until a "
-         "shadow strategy is deployed again.")
-    shadow_edge_row()
+    edge_row()
     journey_row()
-    shadow_book_row()
-    model_row()
-    return finish(STRATEGY, "The shadow strategy: live ticks to recorded decisions, the model's signal and the "
-                            "$1,000 virtual book. Nothing here trades.", ["strategy", "shadow"])
+    signal_row()
+    return finish(STRATEGY, "The strategy edge: one-second bars to committed decisions, the funnel to authorized "
+                            "paper orders, and the signal it sends. Paper only.", ["strategy", "edge"])
 
 
 STAGES = ("authorized_to_proof", "proof_to_sent", "sent_to_fill", "fill_to_committed")
@@ -522,7 +484,7 @@ def _stage_quantile(q, stage, window):
 def paper_now_row():
     row("Right now: may the paper gateway take new risk?")
     stat("New risk", 'max(velocita_gateway_new_risk_stopped)', 0, 8, h=6, steps=(("green", None), ("red", 1)),
-         mappings=NEW_RISK_MAP, description=NEW_RISK_HELP + " Alert: VelocitaGatewayNewRiskStopped.")
+         mappings=NEW_RISK_MAP, description=NEW_RISK_HELP + " Alert: VelocitaGatewayNewRiskStopped." + ARMED_HELP)
     stat("Gateway", 'max(velocita_gateway_up)', 8, 4, h=6, steps=(("red", None), ("green", 1)), mappings=GATEWAY_UP_MAP,
          description="1 while the gateway process runs. 'unknown' = not deployed, or its metrics are not scraped.")
     stat("Unknown outcomes (range)", 'sum(increase(velocita_gateway_unknown_outcomes_total[$__range]))', 12, 4, h=6,
@@ -530,8 +492,7 @@ def paper_now_row():
          description="Orders whose venue outcome the gateway could not establish. Each one stops new risk. Must be 0.")
     stat("Since last fill", 'time() - (max(velocita_gateway_last_fill_timestamp_seconds) > 0)', 16, 4, h=6, unit="s",
          steps=(("blue", None),), no_value="no fill since gateway start",
-         description="Seconds since the last paper fill seen by the running gateway (it resets on restart). The daily "
-                     "trend strategy trades a few times a year, so a long gap is normal.")
+         description="Seconds since the last paper fill seen by the running gateway (it resets on restart).")
     stat("Fees paid", '100 * sum(velocita_gateway_fees_usd_total)', 20, 4, h=6, unit=CENTS, decimals=1,
          steps=(("blue", None),), description="All fees charged on paper fills since the gateway's counters began, in US cents.")
     advance(6)
@@ -571,7 +532,7 @@ def rearm_row():
 def tick_to_trade_row():
     row("Stochastic gateway: observed effect -> proof -> send -> fill -> committed")
     stat("Sum of gateway stage means", ' + '.join(f'({_stage_mean(s, "$__range")})' for s in STAGES),
-         0, 4, unit="ms", h=8, steps=(("blue", None),),
+         0, 4, unit="ms", h=8, steps=(("blue", None),), no_value="No fill samples",
          description="Four gateway-clock stage means. Starts when the gateway first observes a deliverable effect. "
                      "Excludes tick processing, decision authorization and the wait before gateway observation. "
                      "Stages may have different sample counts across a window or restart; this sum is not a paired end-to-end latency.")
@@ -621,160 +582,81 @@ def orders_row():
 
 def position_row():
     row("Position and fees")
-    stat("Position (lots)", 'velocita_gateway_position_lots', 0, 8, legend="{{account}} {{instrument}}", h=8,
+    stat("Position (lots)", 'velocita_gateway_position_lots', 0, 6, legend="{{account}} {{instrument}}", h=8,
          steps=(("blue", None),), description="The gateway's paper position per account and instrument, in lots.")
     series("Position over time (lots)", [('velocita_gateway_position_lots', "{{account}} {{instrument}}")],
-           8, 8, min0=False, description="Steps at each fill.")
+           6, 6, min0=False, description="Steps at each fill.")
     series("Fees (cents)", [
         ('100 * sum(velocita_gateway_fees_usd_total)', "total"),
         ('100 * sum(increase(velocita_gateway_fees_usd_total[1h]))', "last hour"),
-    ], 16, 8, unit=CENTS, description="Cumulative paper fees and fees in the last hour, in US cents.")
-    advance(8)
-
-
-def gauge(title, expr, x, w, unit="percent", h=6, description="", maximum=100, steps=(("green", None),)):
-    panels.append({
-        "type": "gauge", "title": title, "id": _id(), "datasource": DS, "description": description,
-        "gridPos": {"h": h, "w": w, "x": x, "y": _y},
-        "targets": [{"expr": expr, "refId": "A", "instant": True}],
-        "fieldConfig": {"defaults": {"unit": unit, "min": 0, "max": maximum, "thresholds": thresholds(*steps),
-                                     "color": {"mode": "thresholds"}, "noValue": "unknown"}, "overrides": []},
-        "options": {"showThresholdMarkers": True, "showThresholdLabels": False,
-                    "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False}},
-    })
-
-
-WEEK_VOLUME = 'max(velocita_paper_week_volume_usd)'
-WEEK_LOSS = 'max(velocita_paper_week_loss_usd)'
-WEEK_PNL = 'max(velocita_paper_week_pnl_usd)'
-WEEK_FEES = 'max(velocita_paper_week_fees_usd)'
-
-
-def volume_row():
-    row("Volume strategies: this ISO week against the loss budget")
-    week = ("ISO week to date (UTC, from Monday 00:00), from the edge's paper book: fills the kernel's position "
-            "confirmed, costed at the paper venue's fees.")
-    stat("Volume this week", WEEK_VOLUME, 0, 4, unit="currencyUSD", h=6, steps=(("blue", None),),
-         description="Filled notional, buys plus sells. " + week)
-    stat("Fees this week", '100 * max(velocita_paper_week_fees_usd)', 4, 4, unit=CENTS, h=6, decimals=1,
-         steps=(("blue", None),), description="Paper venue fees on this week's fills, in US cents. " + week)
-    stat("Net P&L this week", 'max(velocita_paper_week_pnl_usd)', 8, 4, unit="currencyUSD", h=6, decimals=2,
-         steps=(("red", None), ("green", 0)),
-         description="Realized: each buy's fee at the buy, each sell's price move and fee at the sell. " + week)
-    stat("Volume per $ lost", f'{WEEK_VOLUME} / ({WEEK_LOSS} > 0)', 12, 4, h=6, decimals=0,
-         steps=(("blue", None),),
-         description="Dollars of volume bought with each dollar lost this week: the leaderboard's efficiency. "
-                     "'unknown' while the week has no loss.")
-    stat("Trades per hour (1h)", '3600 * sum(rate(velocita_gateway_fills_total[1h]))', 16, 4, h=6, decimals=1,
-         steps=(("blue", None),), description="Paper fills per hour over the last hour, from the gateway.")
-    gauge("Loss budget used", f'100 * {WEEK_LOSS} / max(velocita_paper_weekly_loss_cap_usd)', 20, 4,
-          steps=(("green", None), ("orange", 75), ("red", 100)),
-          description="This week's realized loss as a share of --weekly-loss-cap-usd (default $12). Above 100 % "
-                      "the edge stops buys (exits only) until Monday 00:00 UTC.")
-    advance(6)
-    series("Weekly volume: observed vs expected", [
-        (WEEK_VOLUME, "observed (ISO week to date)"),
-        ('max(velocita_paper_expected_week_volume_usd{bound="low"})', "expected low"),
-        ('max(velocita_paper_expected_week_volume_usd{bound="high"})', "expected high"),
-        ('sum(increase(velocita_gateway_volume_usd_total[7d]))', "gateway fills, last 7 days"),
-    ], 0, 8, unit="currencyUSD",
-           description="The paper run against the backtest's prediction interval (the edge's "
-                       "--expected-week-volume-usd LOW,HIGH; absent until configured). Observed restarts at 0 each "
-                       "Monday; the gateway line is a rolling 7 days.")
-    series("Weekly loss: observed vs expected and the cap", [
-        (WEEK_LOSS, "observed (ISO week to date)"),
-        ('max(velocita_paper_expected_week_loss_usd{bound="low"})', "expected low"),
-        ('max(velocita_paper_expected_week_loss_usd{bound="high"})', "expected high"),
-        ('max(velocita_paper_weekly_loss_cap_usd)', "cap (buys stop above it)"),
-    ], 8, 8, unit="currencyUSD",
-           description="Loss = max(0, -net P&L of the week). Expected: the edge's --expected-week-loss-usd LOW,HIGH.")
-    series("Buys stopped and withheld", [
-        ('max by (reason) (velocita_paper_buys_stopped)', "stopped: {{reason}}"),
-        ('sum by (reason) (increase(velocita_paper_buys_withheld_total[1h]))', "withheld per hour: {{reason}}"),
-    ], 16, 8, description="stopped = 1 while the edge sends exits_only (loss_budget: the week's loss is above the "
-                          "cap; insufficient_balance: flat and the book's cash cannot pay a clip plus fee). "
-                          "withheld = buys the strategy proposed while flat that were never sent.")
-    advance(8)
+    ], 12, 6, unit=CENTS, description="Cumulative paper fees and fees in the last hour, in US cents.")
     series("Volume by side (USD per hour, 1h)", [
         ('sum by (side) (3600 * rate(velocita_gateway_volume_usd_total[1h]))', "{{side}}"),
-    ], 0, 12, unit="currencyUSD", stack=True, description="Filled notional per hour from the gateway's fills.")
-    series("Fees, last 7 days (cents)", [
-        ('100 * sum(increase(velocita_gateway_fees_usd_total[7d]))', "gateway, rolling 7 days"),
-    ], 12, 12, unit=CENTS, description="Venue-reported paper fees over a rolling week, in US cents.")
-    advance(8)
-    stat("Gross P&L this week (before fees)", f'{WEEK_PNL} + {WEEK_FEES}', 0, 6, unit="currencyUSD", h=8,
-         decimals=2, steps=(("red", None), ("green", 0)),
-         description="Net P&L plus fees: the realized price-move result of this week's closed round trips, before "
-                     "the paper venue's fees. Positive = the strategy's timing made money before costs. " + week)
-    series("P&L this week: gross, fees, net", [
-        (f'{WEEK_PNL} + {WEEK_FEES}', "gross (before fees)"),
-        (f'-{WEEK_FEES}', "fees"),
-        (WEEK_PNL, "net"),
-    ], 6, 18, unit="currencyUSD",
-           description="Net = gross - fees. ISO week to date; all three restart at 0 each Monday 00:00 UTC.")
+    ], 18, 6, unit="currencyUSD", description="Filled notional per hour by side, from the gateway's counters.")
     advance(8)
 
 
 def indicator_paper_rows():
-    descriptions={
-        'sma': ('SMA momentum', '10-minute bars',
-            'IF flat AND SMA(20) > SMA(50): buy 0.12 SOL.\n'
-            'ELSE IF long AND SMA(20) <= SMA(50): sell 0.12 SOL.\n'
-            'ELSE: hold. SMA is the average close over the stated number of bars.'),
-        'stochastic': ('Stochastic one-second pilot', '1-second completed bars',
-            'K = SMA10 of stochastic over the trailing 900 seconds; D = SMA30 of K.\n'
-            'Trend = EMA300 > EMA1200 (one-second closes). Flat range K = 50.\n'
-            'IF flat AND 60-second cooldown complete: buy after K crosses above D,\n'
-            'with K >= 60 and positive trend sustained for 3 seconds.\n'
-            'IF long: sell after K < D and K <= 40 for 3 seconds.\n'
-            'ELSE hold. Account and capacity gates override entries.')}
     for strategy in ('stochastic',):
-        title,cadence,rules=descriptions[strategy]
+        title='Stochastic one-second session'
         row(f'{title} — isolated $25 virtual account')
-        content=(f'**{cadence}; long-only SOL/cash.**\n\n```text\n{rules}\n```\n\n'
-            'Public Binance SOLUSDT proxy; signal delayed one second before the next close supplies '
-            'the simulated FOK limit. This is not a True Markets executable quote. '
-            'New fills pay **20 bp (0.20%) per side, fee-only scenario**; the SOL sell fee has '
-            'settlement evidence, buy symmetry is assumed. No fixed slippage charge is added. '
-            'Original $25 funding, prior cash and historical 30 bp fills are preserved. '
-            'Account lifetime panels include the earlier five-minute strategy; the pilot-only '
-            'panels below start at the immutable cutover baseline. No top-ups.\n\n'
-            '**Bounded engineering run:** 30 minutes of entries, up to 5 further minutes for exit, '
-            '2400 frames including retries, at most 40 additional fills plus exit reserve, '
-            'and existing $10 drawdown / 240 lifetime-order stops. Missing data can prevent exit. '
-            'Only one cluster. This pilot does not establish alpha or approve live trading.')
+        content=(
+            '**Ongoing paper session: one-second completed bars; SOL/cash; 0.12 SOL orders.**\n'
+            '\n'
+            '```text\n'
+            'ENTER: K crosses above D, K >= 60, EMA300 > EMA1200;\n'
+            '       all conditions hold for 3 seconds.\n'
+            'EXIT:  K < D and K <= 40 for 3 seconds.\n'
+            'Wait 60 seconds after an exit before re-entry.\n'
+            'STOP:  while flat, cash cannot cover 0.12 SOL plus its fee.\n'
+            '```\n'
+            '\n'
+            'Stochastic range 900 seconds; K smoothing 10 seconds; D smoothing 30 seconds.\n'
+            'Signals use the previous completed second. Public Binance SOLUSDT is a price\n'
+            'proxy; simulated FOK fills use the following close. **20 bp per side, fee-only**;\n'
+            'buy-side symmetry is assumed. This is not proof of True Markets execution or alpha.\n'
+            '\n'
+            '**No scheduled time cutoff.** Continues from **$24.869170**, preserving the\n'
+            'original $25 funding and all four prior fills. Session-only metrics exclude\n'
+            'those prior fills; lifetime and 7/14-day panels include them. One cluster only.\n'
+            'The $10 drawdown, 240 lifetime-order, reconciliation and storage guards remain.\n'
+            'While invested in SOL, low USDC does not block selling. A finalized flat session\n'
+            'keeps its balances and fills visible even after the edge stops.')
         panels.append({'type':'text','id':_id(),'title':f'{title}: rules and assumptions',
             'gridPos':{'x':0,'y':_y,'w':24,'h':10},'options':{'mode':'markdown','content':content}})
         advance(10)
         selector=f'{{strategy="{strategy}"}}'
-        stat('Pilot-only net P&L (20 bp)',f'velocita_indicator_variant_net_pnl_usd{selector}',0,6,unit='currencyUSD',decimals=3)
-        stat('Pilot-only volume',f'velocita_indicator_variant_volume_usd{selector}',6,6,unit='currencyUSD',decimals=2)
-        stat('Pilot-only fees',f'velocita_indicator_variant_fees_usd{selector}',12,6,unit='currencyUSD',decimals=3)
-        stat('Pilot-only fills',f'velocita_indicator_variant_order_count{selector}',18,6,decimals=0)
+        stat('Session-only net P&L (20 bp)',f'velocita_indicator_variant_net_pnl_usd{selector}',0,6,unit='currencyUSD',decimals=3)
+        stat('Session-only volume',f'velocita_indicator_variant_volume_usd{selector}',6,6,unit='currencyUSD',decimals=2)
+        stat('Session-only fees',f'velocita_indicator_variant_fees_usd{selector}',12,6,unit='currencyUSD',decimals=3)
+        stat('Session-only fills',f'velocita_indicator_variant_order_count{selector}',18,6,decimals=0)
         advance(4)
         stat('Session status',f'velocita_indicator_run_state{selector}',0,4,mappings=RUN_MAP,
-             description='Completed requires a validated final ledger and flat account. Running window is not a health assertion; inspect reconciliation and feed alerts.')
+             steps=(("red",None),("green",1)),
+             description='Completed requires flat inventory and a checked final ledger. Running window alone is not a health assertion.')
         stat('Equity after exit cost (account history; new fills 20 bp)',f'velocita_indicator_equity_usd{selector}',4,4,unit='currencyUSD',decimals=2)
         stat('Net P&L since funding (account history; new fills 20 bp)',f'velocita_indicator_net_pnl_usd{selector}',8,4,unit='currencyUSD',decimals=2,
              steps=(("red",None),("green",0)),
-             description='Account lifetime includes old 30 bp fills and new 20 bp fee-only fills. Pilot-only panels isolate the new rules; buy-side 20 bp remains assumed.')
+             description='Account lifetime includes old 30 bp fills and new 20 bp fee-only fills. Session-only panels isolate the new rules; buy-side 20 bp remains assumed.')
         stat('Cash available',f'velocita_indicator_cash_usd{selector}',12,4,unit='currencyUSD',decimals=2)
         stat('SOL inventory',f'velocita_indicator_position_sol{selector}',16,4,decimals=2)
-        stat('Candle age',f'velocita_indicator_price_age_seconds{selector}',20,4,unit='s',
-             steps=(("green",None),("red",5)))
+        stat('Age of last recorded candle',f'velocita_indicator_price_age_seconds{selector}',20,4,unit='s',
+             steps=(("green",None),("red",5)),
+             description='Naturally increases once the session is completed. No fresh price is needed to value a flat final account.')
         advance(4)
         measured='Historical route stress case: same fills re-priced at the September 28 100/98 bp quotes; not the current 20 bp CLI service fee.'
         stat('P&L under historical 100/98 bp stress',f'velocita_indicator_measured_cost_net_pnl_usd{selector}',0,4,unit='currencyUSD',decimals=2,
              steps=(("red",None),("green",0)),description=measured)
         stat('Volume per $1 lost (account history; new fills 20 bp)',f'velocita_indicator_volume_per_usd_lost{{strategy="{strategy}",cost="scenario"}}',4,4,
-             unit='currencyUSD',decimals=0,description='Total buy and sell volume divided by the loss so far, as simulated. Empty while the account is not at a loss.')
+             unit='currencyUSD',decimals=0,no_value='No net loss',description='Total buy and sell volume divided by the loss so far, as simulated. Empty while the account is not at a loss.')
         stat('Volume per $1 lost (100/98 bp stress)',f'velocita_indicator_volume_per_usd_lost{{strategy="{strategy}",cost="measured"}}',8,4,
-             unit='currencyUSD',decimals=0,description=measured+' Plain churn achieves about $101 on SOL.')
+             unit='currencyUSD',decimals=0,no_value='No net loss',description=measured+' Plain churn achieves about $101 on SOL.')
         stat('Drawdown stop used',f'100 * velocita_indicator_drawdown_usd{selector} / 10',12,4,unit='percent',decimals=0,
              steps=(("green",None),("orange",50),("red",80)),description='Share of the $10 drawdown that stops new buys and requests an exit.')
-        stat('Bar close to fill (mean)',f'velocita_indicator_bar_close_to_fill_seconds{{strategy="{strategy}",stat="mean"}}',16,4,unit='s',decimals=1,
-             description='Legacy five-minute run only; intentionally unavailable for the one-second variant until an exact order-to-signal timestamp join exists. Includes the data fetch, the decision, authorization, any retry after a stale-risk refusal, and the simulated venue.')
-        stat('Bar close to fill (max)',f'velocita_indicator_bar_close_to_fill_seconds{{strategy="{strategy}",stat="max"}}',20,4,unit='s',decimals=1)
+        unjoined='No exact signal-to-fill join is currently instrumented for this one-second session. The configured delay is one completed bar; do not infer a measurement from fill timestamps.'
+        for x,name in ((16,'mean'),(20,'max')):
+            stat(f'Bar close to fill ({name})',f'velocita_indicator_bar_close_to_fill_seconds{{strategy="{strategy}",stat="{name}"}}',x,4,unit='s',decimals=1,
+                 no_value='Not instrumented',description=unjoined)
         advance(4)
         series('SOL price with confirmed entries / exits',[
             (f'velocita_indicator_price_usd{selector}','SOL proxy close'),
@@ -796,7 +678,7 @@ def indicator_paper_rows():
              description='Prometheus increase extrapolates between scrapes and handles process counter resets; this is an estimated count, not an exact event ledger.')
         stat('Mean tick to decision',f'sum(increase({metric}_sum{{strategy="{strategy}"}}[$__range])) / ({count} > 0)',6,6,unit='ms',decimals=3,
              description='Payload delivered to Python through receipt of the committed decision at the local C++ submitter. Includes indicators, durable journal and two Raft commits. Excludes HTTP fetch, authorization and fills. Same-host wall clock; clock steps can distort durations.')
-        stat('p99 estimate (100+ samples)',f'histogram_quantile(0.99, sum by (le) (increase({metric}_bucket{{strategy="{strategy}"}}[$__range]))) and on() ({count} >= 100)',12,6,unit='ms',decimals=2,
+        stat('p99 estimate (100+ samples)',f'histogram_quantile(0.99, sum by (le) (increase({metric}_bucket{{strategy="{strategy}"}}[$__range]))) and on() ({count} >= 100)',12,6,unit='ms',decimals=2,no_value='Need 100 samples',
              description='Bucket interpolation, not an exact observed percentile. Hidden below an estimated 100 samples. Five-minute decisions do not characterize high-load tail latency.')
         stat('Rule disagreements',f'velocita_indicator_shadow_agreement_total{{strategy="{strategy}",result="disagree"}}',18,6,decimals=0)
         advance(4)
@@ -831,12 +713,13 @@ def paper():
     tick_to_trade_row()
     orders_row()
     position_row()
-    note("Not running", "**The weekly volume-strategy panels below (churn, rotate, dip) have no data:** those "
-         "strategies are not running. The stochastic strategy's volume, cost and stop figures are in its "
-         "own section above.")
-    volume_row()
-    return finish(PAPER, "Phase 2 paper trading: the gateway against the TrueMarkets simulator. Tick-to-trade by "
-                         "stage, orders, fills, position and fees. No real order is sent.", ["paper", "gateway"])
+    stat('Final stop reason', 'velocita_indicator_completed_reason{strategy="stochastic"}', 0, 24, h=3,
+         steps=(("red", None), ("green", 1)), legend='{{reason}}', no_value='None (not finalized)',
+         description='A checked final snapshot records why the strategy stopped.')
+    panels[-1]['options']['textMode'] = 'name'
+    advance(3)
+    return finish(PAPER, "Paper trading: the gateway against the fill-or-kill simulator. The session's account, "
+                         "gateway stages, orders, fills, position and fees. No real order is sent.", ["paper", "gateway"])
 
 
 def machines_row():
@@ -871,13 +754,37 @@ def build():
     return dict(f() for f in (overview, raft, strategy, paper, hosts))
 
 
+def prometheus_config():
+    lines = (pathlib.Path(__file__).parent / "prometheus.yml").read_text().splitlines()
+    marked = [n for n, line in enumerate(lines) if line.rstrip().endswith("# run-scoped")]
+    if not marked:
+        raise SystemExit("prometheus.yml has no run-scoped targets")
+    for n in marked:
+        body = lines[n][:lines[n].rindex("#")].rstrip()
+        if not body.endswith("}"):
+            raise SystemExit(f"prometheus.yml line {n + 1}: a run-scoped line must end its labels with a brace")
+        lines[n] = f"{body[:-1]}, paper_run: {_paper_run}}}"
+    return "\n".join(lines) + "\n"
+
+
 def main(argv):
-    out_dir = pathlib.Path(argv[1]) if len(argv) > 1 else pathlib.Path(__file__).parent / "grafana" / "dashboards"
+    global _paper_run
+    args = list(argv[1:])
+    if "--paper-run" in args:
+        at = args.index("--paper-run")
+        if at + 1 >= len(args) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", args[at + 1]):
+            raise SystemExit("--paper-run takes letters, digits, dot, dash and underscore")
+        _paper_run = args[at + 1]
+        del args[at:at + 2]
+    out_dir = pathlib.Path(args[0]) if args else pathlib.Path(__file__).parent / "grafana" / "dashboards"
     out_dir.mkdir(parents=True, exist_ok=True)
     for name, dashboard in build().items():
         out = out_dir / name
         out.write_text(json.dumps(dashboard, indent=1) + "\n")
         print(f"wrote {out} with {len(dashboard['panels'])} panels")
+    if _paper_run:
+        (out_dir / "prometheus.yml").write_text(prometheus_config())
+        print(f"wrote {out_dir / 'prometheus.yml'} for paper run {_paper_run}")
 
 
 if __name__ == "__main__":
