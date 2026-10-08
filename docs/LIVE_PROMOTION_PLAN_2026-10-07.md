@@ -33,7 +33,7 @@ Last updated 2026-10-08 13:45 UTC. Status words: **Done** (built, tested, runnin
 | 3 | The archive cannot silently fill (B1) | **Done** 2026-10-08: fewer commands, usage metric, alerts at 70% and 90% | `d542601`, `9dcca2c`, `3264351` |
 | 4 | The kernel checks every fill's price and fee and owns cash, P&L and a loss limit (ADR 0021) | **Done** 2026-10-08: running with a $10 loss limit | `4c04f75`, `f55209e` |
 | 5 | Snapshot room (ADR 0022) | **Partly done**: policy table cut to 8 and running. Receipt table change waits for the week of measurement (from 2026-10-07) | `d8ad46d` |
-| 6 | Callers are authorized by role (ADR 0020) | **Open**. The kernel review lists exactly which commands are unrestricted | review D1 |
+| 6 | Callers are authorized by role (ADR 0020) | **Built** 2026-10-08, not deployed (schema 11, needs a new incarnation) | `11ad1ae` |
 | 7 | An operator flatten path | **Open** | journey step 4.3 |
 | 8 | An operator command to resolve an order in conflict | **Open** (new, from the kernel review) | review D2 |
 | 9 | The signer (ADR 0019 section 1) | **Open**. Approved to build with a test key only | journey step 5 |
@@ -45,8 +45,8 @@ Last updated 2026-10-08 13:45 UTC. Status words: **Done** (built, tested, runnin
 | 15 | Outside heartbeat armed | **Open**: installed, waits for the owner's Healthchecks URL | review B6 |
 | 16 | Drills while holding a position: kill, leader loss, gateway restart | **Open** | journey step 8 |
 | 17 | A live gateway refuses an account with no loss limit | **Open** | ADR 0021 amendment |
-| 18 | Leader steps down when it cannot reach a quorum | **Open** (new, from the kernel review) | review B2 |
-| 19 | Raft library assertions active in release builds | **Open** (new, from the kernel review) | review B3 |
+| 18 | Leader steps down when it cannot reach a quorum | **Built** 2026-10-08, not deployed | `20329b6` |
+| 19 | Raft library assertions active in release builds | **Built** 2026-10-08, not deployed | `83a103e` |
 | 20 | Review of the files the kernel review did not read (node loop, write-ahead log, archive store, codecs, authentication) | **Open** | review, "Not read" |
 | 21 | Review of the research and backtest code | **Open** | owner request 2026-10-07 |
 
