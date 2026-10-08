@@ -5,7 +5,7 @@ from pathlib import Path
 import time
 
 from ..adapters.base import ReadOnlyHttp
-from ..adapters.websocket import ReadOnlyMarketSocket,FrameDecoder,ProtocolError
+from ..adapters.websocket import ReadOnlyMarketSocket,ProtocolError
 from ..safety import enforce
 from .edge import EdgeMetrics,run_once
 from .indicator_paper import Journal,Book,NS
@@ -15,11 +15,7 @@ from .stochastic_second import FastSource,pilot_program,LIMIT,VARIANT,CASH_VARIA
 
 class PublicSecondSocket(ReadOnlyMarketSocket):
     def __init__(self,source,deadline_ns):
-        self._host='data-stream.binance.vision'
-        self._path='/ws/solusdt@kline_1s'
-        self._timeout_s=4;self._max=16384;self._connect=self._tls_connect
-        self._sock=None;self._decoder=FrameDecoder(max_message_bytes=self._max)
-        self._pending=[];self._closed=False
+        super().__init__('data-stream.binance.vision','/ws/solusdt@kline_1s',timeout_s=4,max_message_bytes=16384)
         self.source=source;self.deadline_ns=deadline_ns;self.bootstrap=None
         self.previous=None;self.last_raw=None
 
@@ -46,7 +42,9 @@ class PublicSecondSocket(ReadOnlyMarketSocket):
         if not self.source.cash_run and (time.time_ns()>=self.deadline_ns or self.source.used()>=LIMIT): return None
         if self.bootstrap is not None:
             raw=self.bootstrap;self.bootstrap=None;return raw
-        if self.source.retry_bar is not None and self.last_raw is not None: return self.last_raw
+        if self.source.retry_bar is not None and self.last_raw is not None:
+            raw=self.last_raw;self.last_raw=None;return raw
+        if self.source.needs_bootstrap: raise ProtocolError('indicator state lost; bootstrap again')
         raw=super().recv_text()
         if raw is None: return None
         try:

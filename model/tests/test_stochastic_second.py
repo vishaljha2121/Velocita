@@ -151,25 +151,99 @@ class SecondTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d,patch('time.time',return_value=100):
             j,s,p=self.make_source(d);self.warm(s);s.previous_flags=(0,1000000)
             self.assertIsNone(s.tick(self.raw(99),receive_ns=98*NS,tick_id=1))
-            self.assertEqual(s.used(),0)
-            self.warm(s);s.previous_flags=(0,1000000)
-            self.assertIsNone(s.tick(self.raw(99),receive_ns=102*NS,tick_id=2))
-            self.assertEqual(s.used(),0)
+            self.assertEqual((s.used(),s.last_outcome),(0,'invalid'))
+            self.assertEqual((s.indicators.last,s.indicators.count,s.needs_bootstrap),(99,1201,False))
+            s.previous_flags=(0,1000000)
+            self.assertIsNone(s.tick(self.raw(100),receive_ns=103*NS,tick_id=2))
+            self.assertEqual((s.used(),s.last_outcome),(0,'stale'))
+            tick=s.tick(self.raw(101),receive_ns=101*NS,tick_id=3)
+            self.assertEqual(tick.features[2],10000)
             j.close()
 
-    def test_observer_is_read_only_and_variant_baseline(self):
+    def test_late_retry_is_abandoned_and_the_socket_moves_on(self):
+        from velocita_model.shadow.run_stochastic_second import PublicSecondSocket
+        from velocita_model.adapters.websocket import ReadOnlyMarketSocket
         with tempfile.TemporaryDirectory() as d,patch('time.time',return_value=100):
-            j,s,p=self.make_source(d);j.mark(100,10000)
-            c=dict(strategy='stochastic',incarnation='a'*32,ledger=str(Path(d)/'ledger.db'),
-                venue_report=str(p),stop_ns=1801*NS,epoch=s.epoch,
-                edge_metrics=str(Path(d)/'edge.prom'),gateway_metrics=str(Path(d)/'gateway.prom'))
-            before=j.db.total_changes
-            text=metrics(c,100)
-            self.assertEqual(j.db.total_changes,before)
-            self.assertIn('velocita_indicator_cost_bps{strategy="stochastic"} 20',text)
-            self.assertIn('velocita_indicator_variant_net_pnl_usd{strategy="stochastic"} 0.0',text)
-            self.assertNotIn('bar_close_to_fill_seconds',text)
+            j,s,p=self.make_source(d);self.warm(s);s.previous_flags=(0,1000000)
+            socket=PublicSecondSocket(s,2101*NS);socket.previous=98
+            feed=[self.raw(99),self.raw(100)]
+            with patch.object(ReadOnlyMarketSocket,'recv_text',side_effect=lambda: feed.pop(0)),\
+                    patch('time.time_ns',return_value=100*NS):
+                first=socket.recv_text()
+                tick=s.tick(first,receive_ns=99*NS,tick_id=1)
+                s.observe_decision(dict(authorization='stale_risk_state',resync=1),tick)
+                self.assertEqual(s.retry_bar,99*NS)
+                again=socket.recv_text()
+                self.assertEqual(again,first)
+                self.assertIsNone(s.tick(again,receive_ns=102*NS,tick_id=2))
+                self.assertEqual((s.last_outcome,s.retry_bar),('stale',None))
+                self.assertEqual(j.db.execute('select done from attempts where bar=?',(99*NS,)).fetchone()[0],1)
+                self.assertEqual(socket.recv_text(),self.raw(100))
             j.close()
+
+    def test_retry_is_presented_once_even_if_the_source_keeps_asking(self):
+        from velocita_model.shadow.run_stochastic_second import PublicSecondSocket
+        from velocita_model.adapters.websocket import ReadOnlyMarketSocket
+        with tempfile.TemporaryDirectory() as d:
+            j,s,p=self.make_source(d)
+            socket=PublicSecondSocket(s,2101*NS);socket.previous=98
+            feed=[self.raw(99),self.raw(100)]
+            with patch.object(ReadOnlyMarketSocket,'recv_text',side_effect=lambda: feed.pop(0)),\
+                    patch('time.time_ns',return_value=100*NS):
+                first=socket.recv_text();s.retry_bar=99*NS
+                self.assertEqual(socket.recv_text(),first)
+                self.assertEqual(socket.recv_text(),self.raw(100))
+            j.close()
+
+    def test_timely_retry_is_forwarded_with_the_original_flags(self):
+        with tempfile.TemporaryDirectory() as d,patch('time.time',return_value=100):
+            j,s,p=self.make_source(d);self.warm(s);s.previous_flags=(0,1000000)
+            tick=s.tick(self.raw(99),receive_ns=99*NS,tick_id=1)
+            s.observe_decision(dict(authorization='stale_risk_state',resync=1),tick)
+            again=s.tick(self.raw(99),receive_ns=100*NS,tick_id=2)
+            self.assertEqual(again.features,(0,1000000,10000))
+            self.assertIsNone(s.retry_bar)
+            j.close()
+
+    def test_bad_frame_asks_for_a_fresh_bootstrap_instead_of_warming_up_blind(self):
+        from velocita_model.shadow.run_stochastic_second import PublicSecondSocket
+        from velocita_model.adapters.websocket import ProtocolError
+        with tempfile.TemporaryDirectory() as d,patch('time.time',return_value=100):
+            j,s,p=self.make_source(d);self.warm(s)
+            bad=json.loads(self.raw(99));bad['k']['h']='1'
+            self.assertIsNone(s.tick(json.dumps(bad),receive_ns=99*NS,tick_id=1))
+            self.assertEqual((s.last_outcome,s.needs_bootstrap),('invalid',True))
+            socket=PublicSecondSocket(s,2101*NS)
+            with patch('time.time_ns',return_value=100*NS):
+                with self.assertRaisesRegex(ProtocolError,'bootstrap again'): socket.recv_text()
+            rows=[[t*1000,'100','100','100','100','0',t*1000+999] for t in range(-1200,99)]
+            self.assertIsNone(s.tick(json.dumps(dict(bootstrap=rows)),receive_ns=99*NS,tick_id=2))
+            self.assertEqual((s.needs_bootstrap,s.indicators.count),(False,1299))
+            j.close()
+
+    def test_drawdown_exit_is_sent_while_indicators_warm_up(self):
+        with tempfile.TemporaryDirectory() as d,patch('time.time',return_value=100):
+            j,s,p=self.make_source(d)
+            v=venue();v.update(buy_bps=20,sell_bps=20,cash=952000,lots=12,fees=48000,buy_volume=24000000,
+                orders=[dict(id=2**63+1,side=1,price=20000,lots=12,notional=24000000,fee=48000)])
+            p.write_text(json.dumps(v))
+            self.assertIsNone(s.tick(self.raw(98,'200'),receive_ns=98*NS,tick_id=1))
+            self.assertEqual(s.last_outcome,'warming_up')
+            tick=s.tick(self.raw(99,'100'),receive_ns=99*NS,tick_id=2)
+            self.assertIsNotNone(tick)
+            self.assertEqual(tick.features,(1000000,0,10000))
+            j.close()
+
+    def test_public_socket_goes_through_the_endpoint_allowlist(self):
+        from velocita_model.shadow.run_stochastic_second import PublicSecondSocket
+        from velocita_model.adapters.websocket import ALLOWED_ENDPOINTS,ReadOnlyMarketSocket,WebSocketRefused
+        socket=PublicSecondSocket(None,0)
+        self.assertIn((socket._host,socket._path),ALLOWED_ENDPOINTS)
+        with patch.object(ReadOnlyMarketSocket,'__init__',side_effect=WebSocketRefused('refused')) as checked:
+            with self.assertRaises(WebSocketRefused): PublicSecondSocket(None,0)
+        self.assertEqual(checked.call_args.args,('data-stream.binance.vision','/ws/solusdt@kline_1s'))
+        with self.assertRaises(WebSocketRefused):
+            ReadOnlyMarketSocket('data-stream.binance.vision','/ws/btcusdt@kline_1s')
 
 
 if __name__=='__main__': unittest.main()

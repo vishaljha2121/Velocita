@@ -107,6 +107,7 @@ class FastSource(Source):
         register_epoch(journal,epoch)
         self.epoch=epoch;self.cash_run=epoch['variant']==CASH_VARIANT
         self.terminal_reason=None;self.reset();self.last_sent_bucket=None
+        self.needs_bootstrap=False
 
     def reset(self):
         self.indicators=Indicators();self.signals=Signals();self.previous_flags=None
@@ -126,14 +127,13 @@ class FastSource(Source):
                     self.signals.push(self.indicators.push(candle(row[0],row[6],*row[1:5])))
                 previous=self.signals.previous
                 self.signals=Signals();self.signals.previous=previous
-                self.previous_flags=None
+                self.previous_flags=None;self.needs_bootstrap=False
                 self.last_outcome='warming_up';return None
             k=data['k']
             if data.get('s')!='SOLUSDT' or k['s']!='SOLUSDT' or k['i']!='1s': raise ValueError('stream identity')
             if k['x'] is not True: self.last_outcome='open_bar';return None
             bar=candle(k['t'],k['T'],k['o'],k['h'],k['l'],k['c'])
             event_ns=bar[0]*NS
-            if event_ns>receive_ns: raise ValueError('future candle')
             if self.indicators.last is not None and bar[0]<=self.indicators.last:
                 if self.retry_bar!=event_ns:
                     self.last_outcome='duplicate';return None
@@ -143,22 +143,28 @@ class FastSource(Source):
                 self.previous_flags=self.signals.push(self.indicators.push(bar))
             self.journal.mark(bar[0],int(Decimal(k['c'])*100))
         except (ValueError,KeyError,TypeError,IndexError,InvalidOperation):
-            self.reset();return None
+            self.reset();self.retry_bar=None;self.needs_bootstrap=True;return None
+        retrying=self.retry_bar==event_ns
+        self.retry_bar=None
+        def dropped(outcome):
+            if retrying: self.journal.finish(event_ns)
+            self.last_outcome=outcome;return None
         age=receive_ns-event_ns
-        if age>2*NS: self.last_outcome='stale';return None
+        if age<0: return dropped('invalid')
+        if age>2*NS: return dropped('stale')
+        price=int(Decimal(k['c'])*100)
         if flags is None or self.indicators.count<1200:
-            self.last_outcome='warming_up';return None
-        if not self.cash_run and self.used()>=LIMIT: self.last_outcome='capacity';return None
-        if self.retry_bar==event_ns:
-            self.retry_bar=None
-        else:
+            protective=self.book.gate(event_ns,price) in ('duration','capacity','drawdown')
+            if not (protective and self.book.lots): return dropped('warming_up')
+            flags=(0,0)
+        if not self.cash_run and self.used()>=LIMIT: return dropped('capacity')
+        if not retrying:
             if self.last_sent_bucket==receive_ns//NS:
                 self.last_outcome='throttled';return None
             if not self.journal.attempt(event_ns,receive_ns):
                 self.last_outcome='duplicate';return None
         self.last_sent_bucket=receive_ns//NS
         self.retry_flags=flags
-        price=int(Decimal(k['c'])*100)
         stop=self.book.gate(event_ns,price)
         count=self.journal.db.execute('select count(*) from fills').fetchone()[0]
         if not self.cash_run and count>=len(self.epoch['previous_orders'])+40:

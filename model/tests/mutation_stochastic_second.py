@@ -12,9 +12,17 @@ MUTANTS=[
  ('ema_alpha','stochastic_second.py','2/(self.n+1)','1/(self.n+1)','test_ema_hand_oracle'),
  ('confirmation','stochastic_second.py','self.entry>=3','self.entry>=2','test_cross_confirmation_and_reset'),
  ('delay','stochastic_second.py','flags=self.previous_flags','flags=(0,1000000)','test_one_second_lag_duplicate_and_restart'),
- ('future','stochastic_second.py','if event_ns>receive_ns:', 'if False:', 'test_future_and_stale_never_forward'),
+ ('future','stochastic_second.py','if age<0:', 'if False:', 'test_future_and_stale_never_forward'),
+ ('stale','stochastic_second.py','if age>2*NS:', 'if False:', 'test_future_and_stale_never_forward'),
+ ('retry_cleared','stochastic_second.py','        self.retry_bar=None\n        def dropped','        def dropped','test_late_retry_is_abandoned_and_the_socket_moves_on'),
+ ('retry_finished','stochastic_second.py','if retrying: self.journal.finish(event_ns)','pass','test_late_retry_is_abandoned_and_the_socket_moves_on'),
+ ('present_once','run_stochastic_second.py','raw=self.last_raw;self.last_raw=None;return raw','return self.last_raw','test_retry_is_presented_once_even_if_the_source_keeps_asking'),
+ ('bootstrap_request','stochastic_second.py','self.needs_bootstrap=True','self.needs_bootstrap=False','test_bad_frame_asks_for_a_fresh_bootstrap_instead_of_warming_up_blind'),
+ ('bootstrap_raise','run_stochastic_second.py','if self.source.needs_bootstrap:','if False:','test_bad_frame_asks_for_a_fresh_bootstrap_instead_of_warming_up_blind'),
+ ('warm_stop','stochastic_second.py','if not (protective and self.book.lots):','if True:','test_drawdown_exit_is_sent_while_indicators_warm_up'),
+ ('allowlist','run_stochastic_second.py',"super().__init__('data-stream.binance.vision','/ws/solusdt@kline_1s',timeout_s=4,max_message_bytes=16384)","self._host='data-stream.binance.vision';self._path='/ws/solusdt@kline_1s'",'test_public_socket_goes_through_the_endpoint_allowlist'),
  ('cooldown','stochastic_second.py','event_ns/NS-last_exit<60','event_ns/NS-last_exit<0','test_capacity_cooldown_and_immutable_epoch'),
- ('fee_epoch','indicator_paper.py','order_bps=30 if order_index<len(prior) else cost_bps','order_bps=cost_bps','test_cost_epoch_preserves_previous_fees'),
+ ('fee_epoch','indicator_paper.py',"order_bps=epoch.get('previous_cost_bps',30) if order_index<len(prior) else cost_bps",'order_bps=cost_bps','test_cost_epoch_preserves_previous_fees'),
 ]
 results=[]
 for name,file,before,after,test in MUTANTS:
@@ -26,7 +34,7 @@ for name,file,before,after,test in MUTANTS:
         if before not in s: raise RuntimeError(name)
         p.write_text(s.replace(before,after,1))
         result=subprocess.run([sys.executable,'-m','unittest',f'test_stochastic_second.SecondTests.{test}'],
-            cwd=ROOT/'model/tests',env=dict(os.environ,PYTHONPATH=str(folder/'src')),
+            cwd=ROOT/'model/tests',env=dict(os.environ,PYTHONPATH=str(folder/'src'),NO_COLOR='1',PYTHONDONTWRITEBYTECODE='1'),
             capture_output=True,text=True)
         killed=result.returncode!=0 and f'FAIL: {test}' in result.stderr
         results.append(dict(mutant=name,test=test,killed=killed,output=result.stderr))

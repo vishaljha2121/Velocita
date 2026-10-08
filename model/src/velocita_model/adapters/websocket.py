@@ -32,7 +32,8 @@ _CONTROL = (OP_CLOSE, OP_PING, OP_PONG)
 _GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 ALLOWED_ENDPOINTS: frozenset[tuple[str, str]] = frozenset(
-    {("api.truemarkets.co", "/v1/defi/market"), ("api.uat.truemarkets.co", "/v1/defi/market")}
+    {("api.truemarkets.co", "/v1/defi/market"), ("api.uat.truemarkets.co", "/v1/defi/market"),
+     ("data-stream.binance.vision", "/ws/solusdt@kline_1s")}
 )
 
 _TOPIC = re.compile(
