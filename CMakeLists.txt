@@ -208,6 +208,7 @@ add_library(willemt_raft STATIC
     ${willemt_raft_SOURCE_DIR}/src/raft_server_properties.c
 )
 target_include_directories(willemt_raft PUBLIC ${willemt_raft_SOURCE_DIR}/include)
+target_compile_options(willemt_raft PRIVATE -UNDEBUG)
 
 add_library(velocita_core
     src/benchmark_timing.cpp
