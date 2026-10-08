@@ -103,3 +103,36 @@ was the harness, which could leave a stale binary between mutants. The harness n
 passes the clean tree before each mutant and confirms the mutant was compiled. Every mutant from
 this log was rerun with it: 65 killed, 2 shown to be equivalent (they cannot change behaviour), none
 unexplained. That includes the 15 from the archive and policy metric work.
+
+## 2026-10-08: review fixes and the next incarnation prepared
+
+| Item | Commit |
+|---|---|
+| Indicator lines on the paper dashboard (K, D, EMA 300 s, EMA 1200 s) | `8a15b98` |
+| Archive usage in status captured only while the writer is idle (review A1) | `3264351` |
+| Refused fills kept as evidence while their order is in conflict (review A2) | `f55209e` |
+| Kernel and Raft review | `51a42bc`, `docs/evidence/kernel_raft_review_2026-10-08/REVIEW.md` |
+
+New incarnation `abd1e149a26d4062ba5bbba2d90b3305` is prepared and not started:
+
+- Source `f55209e` shipped to `~/src/ledger-f55209e` on all three hosts, whole-tree checksum
+  `1622acd89b180fbc` matching the Mac export. The directory the monitoring mounts read was not
+  touched.
+- Images `localhost/velocita-v2:ledger-f55209e` (three hosts) and
+  `localhost/velocita-v2-shadow:paper-ledger-f55209e` (nuc1), built at low priority with the full
+  test suite inside the build.
+- `~/ledger-abd1e149/` on each host holds `stage-host.sh`; on nuc1 also `prepare-profile.py`,
+  `activate.py`, `install-monitoring.py`, the dashboards and scrape config for run label
+  `abd1e149a26d4062ba5bbba2d90b3305-ledger-v1`, and the alert rules. The substitutions were
+  dry-run on copies and change only the incarnation, `startup`, and image tags.
+- The owner's ceremony is `docs/evidence/ledger_incarnation_2026-10-08/owner-ceremony.zsh`.
+
+Not done: the cutover. It needs the account flat and the owner at the Mac for the ceremony.
+
+Consequences the owner must accept before cutover: the paper account restarts at $25.00 with no
+order history (the edge and the paper venue both fix funding at exactly $25), the 256-order
+lifetime limit of the paper venue restarts, and the retired incarnation's files move to
+`~/velocita-indicator-paper/retired/stochastic-c8a6a0a7-20261008`.
+
+An image build was started twice on the Pi by mistake and the second was stopped after about
+20 seconds. An election burst at 05:48 to 06:05 UTC (term 3 to 16) predates all of this work.
