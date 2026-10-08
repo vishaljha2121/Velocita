@@ -46,6 +46,7 @@ NodeHealth uniform(std::uint64_t k) {
     h.compaction_floor = h.snapshot_index = static_cast<std::int64_t>(k);
     h.stranded_voters = h.compactions = h.last_compaction_ms = k;
     h.receipts = h.pinned_receipts = h.pinned_receipts_peak = k;
+    h.archive_bytes = h.archive_byte_limit = h.archive_objects = h.archive_object_limit = k;
     return h;
 }
 
@@ -84,6 +85,15 @@ void round_trip_and_refusals() {
     require(receipts && receipts->receipts == 201 && receipts->pinned_receipts == 18 &&
                 receipts->pinned_receipts_peak == 33,
             "receipt fields were swapped or lost on the page");
+    distinct.archive_bytes = 700'000'000;
+    distinct.archive_byte_limit = 1'073'741'824;
+    distinct.archive_objects = 1'209;
+    distinct.archive_object_limit = 4'096;
+    page->publish(distinct);
+    const auto archive = read_node_health(file);
+    require(archive && archive->archive_bytes == 700'000'000 && archive->archive_byte_limit == 1'073'741'824 &&
+                archive->archive_objects == 1'209 && archive->archive_object_limit == 4'096,
+            "archive fields were swapped or lost on the page");
     { std::ofstream(dir.path / "foreign.page", std::ios::binary) << std::string(4096, 'x'); }
     require(!read_node_health(dir.path / "foreign.page").has_value(), "foreign page accepted");
     { std::ofstream(dir.path / "short.page", std::ios::binary) << "VLH"; }

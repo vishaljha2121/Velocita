@@ -43,6 +43,10 @@ struct NodeHealth {
     std::uint64_t receipts{};
     std::uint64_t pinned_receipts{};
     std::uint64_t pinned_receipts_peak{};
+    std::uint64_t archive_bytes{};
+    std::uint64_t archive_byte_limit{};
+    std::uint64_t archive_objects{};
+    std::uint64_t archive_object_limit{};
     constexpr auto operator<=>(const NodeHealth&) const noexcept = default;
 };
 

@@ -750,3 +750,63 @@ tests:
             exp_annotations:
               summary: "The stochastic fill ledger cannot be read"
               description: "The observer cannot open the edge's ledger read-only, or it belongs to another run. The edge is probably stopped. On nuc1: systemctl --user status velocita-paper-stochastic-edge."
+
+  # Archive budget: 1 GiB less the 16 MiB reserve = 1,056,964,608 bytes for
+  # ordinary commands. nuc1 goes from 68% to 71% to 92%; the Pi stays low on
+  # bytes but crosses 70% of its catalog rows (4,092 ordinary rows).
+  - interval: 1m
+    input_series:
+      - series: 'velocita_v2_archive_bytes{job="velocita-v2",host="nuc1",node="1"}'
+        values: '718735933x5 750444872x20 972407439x20'
+      - series: 'velocita_v2_archive_byte_limit{job="velocita-v2",host="nuc1",node="1"}'
+        values: '1073741824x45'
+      - series: 'velocita_v2_archive_segments{job="velocita-v2",host="nuc1",node="1"}'
+        values: '100x45'
+      - series: 'velocita_v2_archive_segment_limit{job="velocita-v2",host="nuc1",node="1"}'
+        values: '4096x45'
+      - series: 'velocita_v2_archive_bytes{job="velocita-v2",host="pi",node="2"}'
+        values: '1000000x45'
+      - series: 'velocita_v2_archive_byte_limit{job="velocita-v2",host="pi",node="2"}'
+        values: '1073741824x45'
+      - series: 'velocita_v2_archive_segments{job="velocita-v2",host="pi",node="2"}'
+        values: '2800x25 3069x20'
+      - series: 'velocita_v2_archive_segment_limit{job="velocita-v2",host="pi",node="2"}'
+        values: '4096x45'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: VelocitaArchiveFilling
+        exp_alerts: []
+      # Above 70% from 6m; ten minutes of that is 16m.
+      - eval_time: 15m
+        alertname: VelocitaArchiveFilling
+        exp_alerts: []
+      - eval_time: 17m
+        alertname: VelocitaArchiveFilling
+        exp_alerts:
+          - exp_labels: {severity: warning, job: velocita-v2, host: nuc1, node: "1"}
+            exp_annotations:
+              summary: "nuc1 archive is 71% of the ordinary budget"
+              description: "When the archive is full every ordinary command is refused, including a strategy exit; only the operator kill path still works. See 'Days until the archive is full' on the Raft dashboard and plan a new incarnation or a larger budget before then."
+      - eval_time: 24m
+        alertname: VelocitaArchiveNearlyFull
+        exp_alerts: []
+      # nuc1 is above 90% from 26m; five minutes of that is 31m. The Pi's rows
+      # are 3069/4092 = 75% from 26m, so it warns from 36m.
+      - eval_time: 32m
+        alertname: VelocitaArchiveNearlyFull
+        exp_alerts:
+          - exp_labels: {severity: critical, job: velocita-v2, host: nuc1, node: "1"}
+            exp_annotations:
+              summary: "nuc1 archive is 92% of the ordinary budget: act now"
+              description: "Ordinary commands stop at 100%. Flatten the position and stop the strategy while commands are still accepted, then start a new incarnation."
+      - eval_time: 37m
+        alertname: VelocitaArchiveFilling
+        exp_alerts:
+          - exp_labels: {severity: warning, job: velocita-v2, host: nuc1, node: "1"}
+            exp_annotations:
+              summary: "nuc1 archive is 92% of the ordinary budget"
+              description: "When the archive is full every ordinary command is refused, including a strategy exit; only the operator kill path still works. See 'Days until the archive is full' on the Raft dashboard and plan a new incarnation or a larger budget before then."
+          - exp_labels: {severity: warning, job: velocita-v2, host: pi, node: "2"}
+            exp_annotations:
+              summary: "pi archive is 75% of the ordinary budget"
+              description: "When the archive is full every ordinary command is refused, including a strategy exit; only the operator kill path still works. See 'Days until the archive is full' on the Raft dashboard and plan a new incarnation or a larger budget before then."

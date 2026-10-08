@@ -1113,6 +1113,12 @@ std::uint64_t ArchiveStore::covered_through() const noexcept {
   return state_ && state_->count ? state_->rows[state_->count - 1].last_index
                                  : 0;
 }
+std::uint64_t ArchiveStore::logical_bytes() const noexcept {
+  return state_ ? state_->logical_bytes : 0;
+}
+std::uint64_t ArchiveStore::object_count() const noexcept {
+  return state_ ? state_->count : 0;
+}
 std::int64_t ArchiveStore::last_term() const noexcept {
   return state_ && state_->count ? state_->rows[state_->count - 1].last_term
                                  : 0;

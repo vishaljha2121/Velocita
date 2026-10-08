@@ -264,6 +264,34 @@ def raft_log_row():
     advance(8)
 
 
+ARCHIVE_USED = ('100 * max by (host) (velocita_v2_archive_bytes / (velocita_v2_archive_byte_limit - 16777216) '
+                'or velocita_v2_archive_segments / (velocita_v2_archive_segment_limit - 4))')
+ARCHIVE_DAYS = ('min by (host) (((velocita_v2_archive_byte_limit - 16777216) - velocita_v2_archive_bytes) / '
+                'clamp_min(deriv(velocita_v2_archive_bytes[6h]), 1e-9) '
+                'or ((velocita_v2_archive_segment_limit - 4) - velocita_v2_archive_segments) / '
+                'clamp_min(deriv(velocita_v2_archive_segments[6h]), 1e-9))')
+
+
+def archive_row():
+    row("Archive: the compacted log, kept on disk under a fixed budget")
+    stat("Archive used (ordinary budget)", ARCHIVE_USED, 0, 6, unit="percent", legend="{{host}}", decimals=1,
+         steps=(("green", None), ("orange", 70), ("red", 90)),
+         description="Bytes or catalog rows used, whichever is closer to its limit. At 100% every ordinary command "
+                     "is refused, including a strategy exit; the operator kill path keeps 16 MiB and 4 rows. "
+                     "Alerts: VelocitaArchiveFilling at 70%, VelocitaArchiveNearlyFull at 90%.")
+    stat("Days until the archive is full", ARCHIVE_DAYS, 6, 6, unit="s", legend="{{host}}",
+         steps=(("red", None), ("orange", 3 * 86400), ("green", 10 * 86400)), no_value="Not growing",
+         description="Remaining ordinary budget at the last six hours' growth. A run with no end date needs a new "
+                     "incarnation or a larger budget before this reaches zero.")
+    series("Archive size", [('velocita_v2_archive_bytes', "{{host}} bytes"),
+                            ('velocita_v2_archive_byte_limit - 16777216', "{{host}} ordinary budget")],
+           12, 6, unit="bytes", description="Grows by one segment at each compaction; it is never trimmed.")
+    series("Archive segments", [('velocita_v2_archive_segments', "{{host}} segments"),
+                                ('velocita_v2_archive_segment_limit - 4', "{{host}} ordinary rows")],
+           18, 6, description="One catalog row per compaction.")
+    advance(8)
+
+
 def progress_row():
     row("Progress: where is work waiting?")
     series("Log positions per voter", [
@@ -360,6 +388,7 @@ def soak_row():
 def raft():
     start()
     raft_log_row()
+    archive_row()
     progress_row()
     refusals_row()
     wal_disk_row()

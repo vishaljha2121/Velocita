@@ -124,6 +124,10 @@ NodeHealth health_of(const NodeStatus& status, std::uint64_t turns, bool failed,
     h.receipts = status.replica.receipts;
     h.pinned_receipts = status.replica.pinned_receipts;
     h.pinned_receipts_peak = status.replica.pinned_receipts_peak;
+    h.archive_bytes = status.replica.archive_bytes;
+    h.archive_byte_limit = status.replica.archive_byte_limit;
+    h.archive_objects = status.replica.archive_objects;
+    h.archive_object_limit = status.replica.archive_object_limit;
     return h;
 }
 

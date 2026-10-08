@@ -543,7 +543,7 @@
   },
   {
    "type": "row",
-   "title": "Progress: where is work waiting?",
+   "title": "Archive: the compacted log, kept on disk under a fixed budget",
    "id": 9,
    "collapsed": false,
    "gridPos": {
@@ -555,9 +555,265 @@
    "panels": []
   },
   {
+   "type": "stat",
+   "title": "Archive used (ordinary budget)",
+   "id": 10,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Bytes or catalog rows used, whichever is closer to its limit. At 100% every ordinary command is refused, including a strategy exit; the operator kill path keeps 16 MiB and 4 rows. Alerts: VelocitaArchiveFilling at 70%, VelocitaArchiveNearlyFull at 90%.",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 0,
+    "y": 14
+   },
+   "targets": [
+    {
+     "expr": "100 * max by (host) (velocita_v2_archive_bytes{strategy=\"stochastic\"} / (velocita_v2_archive_byte_limit{strategy=\"stochastic\"} - 16777216) or velocita_v2_archive_segments{strategy=\"stochastic\"} / (velocita_v2_archive_segment_limit{strategy=\"stochastic\"} - 4))",
+     "legendFormat": "{{host}}",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 70
+       },
+       {
+        "color": "red",
+        "value": 90
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 1
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value_and_name",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Days until the archive is full",
+   "id": 11,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Remaining ordinary budget at the last six hours' growth. A run with no end date needs a new incarnation or a larger budget before this reaches zero.",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 6,
+    "y": 14
+   },
+   "targets": [
+    {
+     "expr": "min by (host) (((velocita_v2_archive_byte_limit{strategy=\"stochastic\"} - 16777216) - velocita_v2_archive_bytes{strategy=\"stochastic\"}) / clamp_min(deriv(velocita_v2_archive_bytes{strategy=\"stochastic\"}[6h]), 1e-9) or ((velocita_v2_archive_segment_limit{strategy=\"stochastic\"} - 4) - velocita_v2_archive_segments{strategy=\"stochastic\"}) / clamp_min(deriv(velocita_v2_archive_segments{strategy=\"stochastic\"}[6h]), 1e-9))",
+     "legendFormat": "{{host}}",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 259200
+       },
+       {
+        "color": "green",
+        "value": 864000
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "Not growing"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value_and_name",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Archive size",
+   "id": 12,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Grows by one segment at each compaction; it is never trimmed.",
+   "gridPos": {
+    "h": 8,
+    "w": 6,
+    "x": 12,
+    "y": 14
+   },
+   "targets": [
+    {
+     "expr": "velocita_v2_archive_bytes{strategy=\"stochastic\"}",
+     "legendFormat": "{{host}} bytes",
+     "refId": "A"
+    },
+    {
+     "expr": "velocita_v2_archive_byte_limit{strategy=\"stochastic\"} - 16777216",
+     "legendFormat": "{{host}} ordinary budget",
+     "refId": "B"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Archive segments",
+   "id": 13,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "One catalog row per compaction.",
+   "gridPos": {
+    "h": 8,
+    "w": 6,
+    "x": 18,
+    "y": 14
+   },
+   "targets": [
+    {
+     "expr": "velocita_v2_archive_segments{strategy=\"stochastic\"}",
+     "legendFormat": "{{host}} segments",
+     "refId": "A"
+    },
+    {
+     "expr": "velocita_v2_archive_segment_limit{strategy=\"stochastic\"} - 4",
+     "legendFormat": "{{host}} ordinary rows",
+     "refId": "B"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "row",
+   "title": "Progress: where is work waiting?",
+   "id": 14,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 22
+   },
+   "panels": []
+  },
+  {
    "type": "timeseries",
    "title": "Log positions per voter",
-   "id": 10,
+   "id": 15,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -567,7 +823,7 @@
     "h": 8,
     "w": 12,
     "x": 0,
-    "y": 14
+    "y": 23
    },
    "targets": [
     {
@@ -621,7 +877,7 @@
   {
    "type": "timeseries",
    "title": "Gaps between stages (entries)",
-   "id": 11,
+   "id": 16,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -631,7 +887,7 @@
     "h": 8,
     "w": 12,
     "x": 12,
-    "y": 14
+    "y": 23
    },
    "targets": [
     {
@@ -680,7 +936,7 @@
   {
    "type": "timeseries",
    "title": "Commit rate",
-   "id": 12,
+   "id": 17,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -690,7 +946,7 @@
     "h": 8,
     "w": 8,
     "x": 0,
-    "y": 22
+    "y": 31
    },
    "targets": [
     {
@@ -729,7 +985,7 @@
   {
    "type": "timeseries",
    "title": "Owner loop turns per second",
-   "id": 13,
+   "id": 18,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -739,7 +995,7 @@
     "h": 8,
     "w": 8,
     "x": 8,
-    "y": 22
+    "y": 31
    },
    "targets": [
     {
@@ -778,7 +1034,7 @@
   {
    "type": "timeseries",
    "title": "Term (elections)",
-   "id": 14,
+   "id": 19,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -788,7 +1044,7 @@
     "h": 8,
     "w": 8,
     "x": 16,
-    "y": 22
+    "y": 31
    },
    "targets": [
     {
@@ -827,20 +1083,20 @@
   {
    "type": "row",
    "title": "Refusals and pressure: is anything being rejected or backed up?",
-   "id": 15,
+   "id": 20,
    "collapsed": false,
    "gridPos": {
     "h": 1,
     "w": 24,
     "x": 0,
-    "y": 30
+    "y": 39
    },
    "panels": []
   },
   {
    "type": "timeseries",
    "title": "Security refusals per minute",
-   "id": 16,
+   "id": 21,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -850,7 +1106,7 @@
     "h": 8,
     "w": 8,
     "x": 0,
-    "y": 31
+    "y": 40
    },
    "targets": [
     {
@@ -894,7 +1150,7 @@
   {
    "type": "timeseries",
    "title": "Caller command refusals per minute",
-   "id": 17,
+   "id": 22,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -904,7 +1160,7 @@
     "h": 8,
     "w": 8,
     "x": 8,
-    "y": 31
+    "y": 40
    },
    "targets": [
     {
@@ -943,7 +1199,7 @@
   {
    "type": "timeseries",
    "title": "Peer pressure per second",
-   "id": 18,
+   "id": 23,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -953,7 +1209,7 @@
     "h": 8,
     "w": 8,
     "x": 16,
-    "y": 31
+    "y": 40
    },
    "targets": [
     {
@@ -997,7 +1253,7 @@
   {
    "type": "timeseries",
    "title": "Results delivered to callers",
-   "id": 19,
+   "id": 24,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1007,7 +1263,7 @@
     "h": 8,
     "w": 12,
     "x": 0,
-    "y": 39
+    "y": 48
    },
    "targets": [
     {
@@ -1051,7 +1307,7 @@
   {
    "type": "timeseries",
    "title": "Restarts and secret reloads",
-   "id": 20,
+   "id": 25,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1061,7 +1317,7 @@
     "h": 8,
     "w": 12,
     "x": 12,
-    "y": 39
+    "y": 48
    },
    "targets": [
     {
@@ -1110,20 +1366,20 @@
   {
    "type": "row",
    "title": "Disk under the WAL (the same panels are on Hosts)",
-   "id": 21,
+   "id": 26,
    "collapsed": false,
    "gridPos": {
     "h": 1,
     "w": 24,
     "x": 0,
-    "y": 47
+    "y": 56
    },
    "panels": []
   },
   {
    "type": "timeseries",
    "title": "Disk write latency (avg ms per write)",
-   "id": 22,
+   "id": 27,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1133,7 +1389,7 @@
     "h": 8,
     "w": 8,
     "x": 0,
-    "y": 48
+    "y": 57
    },
    "targets": [
     {
@@ -1172,7 +1428,7 @@
   {
    "type": "timeseries",
    "title": "Waiting on disk (iowait %)",
-   "id": 23,
+   "id": 28,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1182,7 +1438,7 @@
     "h": 8,
     "w": 8,
     "x": 8,
-    "y": 48
+    "y": 57
    },
    "targets": [
     {
@@ -1221,7 +1477,7 @@
   {
    "type": "timeseries",
    "title": "Root disk free %",
-   "id": 24,
+   "id": 29,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1231,7 +1487,7 @@
     "h": 8,
     "w": 8,
     "x": 16,
-    "y": 48
+    "y": 57
    },
    "targets": [
     {
@@ -1270,20 +1526,20 @@
   {
    "type": "row",
    "title": "Soak test (blank unless the soak bot reported in the last 10 minutes)",
-   "id": 25,
+   "id": 30,
    "collapsed": false,
    "gridPos": {
     "h": 1,
     "w": 24,
     "x": 0,
-    "y": 56
+    "y": 65
    },
    "panels": []
   },
   {
    "type": "stat",
    "title": "Soak commands OK",
-   "id": 26,
+   "id": 31,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1293,7 +1549,7 @@
     "h": 4,
     "w": 6,
     "x": 0,
-    "y": 57
+    "y": 66
    },
    "targets": [
     {
@@ -1342,7 +1598,7 @@
   {
    "type": "stat",
    "title": "Soak failures",
-   "id": 27,
+   "id": 32,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1352,7 +1608,7 @@
     "h": 4,
     "w": 6,
     "x": 6,
-    "y": 57
+    "y": 66
    },
    "targets": [
     {
@@ -1405,7 +1661,7 @@
   {
    "type": "stat",
    "title": "Soak p99 latency (15m)",
-   "id": 28,
+   "id": 33,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1415,7 +1671,7 @@
     "h": 4,
     "w": 6,
     "x": 12,
-    "y": 57
+    "y": 66
    },
    "targets": [
     {
@@ -1472,7 +1728,7 @@
   {
    "type": "stat",
    "title": "Soak bot heartbeat",
-   "id": 29,
+   "id": 34,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1482,7 +1738,7 @@
     "h": 4,
     "w": 6,
     "x": 18,
-    "y": 57
+    "y": 66
    },
    "targets": [
     {
@@ -1539,7 +1795,7 @@
   {
    "type": "timeseries",
    "title": "Soak round-trip latency (commit, ms)",
-   "id": 30,
+   "id": 35,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1549,7 +1805,7 @@
     "h": 8,
     "w": 24,
     "x": 0,
-    "y": 61
+    "y": 70
    },
    "targets": [
     {

@@ -127,7 +127,14 @@ void test_actual_archive_compaction_restart_and_extension(const std::filesystem:
     require(!node.take_committed_result(), "unexpected fourth committed result");
 
     const auto before = node.status();
+    require(before.archive_objects == 1 && before.archive_bytes == first.rows[0].segment_file_length &&
+                before.archive_byte_limit == velocita::v2::kDefaultArchiveLogicalByteLimit &&
+                before.archive_object_limit == velocita::v2::kMaxArchiveCatalogRows,
+            "status does not report the archive's one segment, its bytes and the limits");
     cluster.restart(1);
+    require(cluster.node(1).status().archive_objects == 1 &&
+                cluster.node(1).status().archive_bytes == first.rows[0].segment_file_length,
+            "restart did not recount the archive from the catalog");
     require(cluster.node(1).status().state_digest == before.state_digest &&
                 cluster.node(1).status().applied_index == before.applied_index,
             "restart did not continue from archived compaction state");
@@ -147,6 +154,10 @@ void test_actual_archive_compaction_restart_and_extension(const std::filesystem:
                 second.rows[0] == first.rows[0] && second.rows[1].first_index == 4 &&
                 second.rows[1].last_index == 5,
             "second catalog did not byte-preserve row one and append row two");
+    const auto grown = cluster.node(1).status();
+    require(grown.archive_objects == 2 &&
+                grown.archive_bytes == std::uint64_t{second.rows[0].segment_file_length} + second.rows[1].segment_file_length,
+            "status did not follow the archive after a second compaction");
 }
 
 void create_compacted_fixture(const std::filesystem::path& root) {

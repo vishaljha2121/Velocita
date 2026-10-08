@@ -125,6 +125,8 @@ public:
                                    bool protected_lane) const noexcept;
 
     [[nodiscard]] std::uint64_t covered_through() const noexcept;
+    [[nodiscard]] std::uint64_t logical_bytes() const noexcept;
+    [[nodiscard]] std::uint64_t object_count() const noexcept;
     [[nodiscard]] std::int64_t last_term() const noexcept;
     [[nodiscard]] std::uint64_t catalog_generation() const noexcept;
     [[nodiscard]] std::uint64_t publication_storage_generation() const noexcept;

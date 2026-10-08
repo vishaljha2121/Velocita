@@ -51,6 +51,10 @@ NodeHealth fixture() {
     h.receipts = 200;
     h.pinned_receipts = 17;
     h.pinned_receipts_peak = 31;
+    h.archive_bytes = 700'000'000;
+    h.archive_byte_limit = 1'073'741'824;
+    h.archive_objects = 1'209;
+    h.archive_object_limit = 4'096;
     return h;
 }
 
@@ -95,6 +99,10 @@ void known_voter_renders_every_series() {
         "velocita_v2_receipts{host=\"pi\",node=\"2\",state=\"pinned\"} 17",
         "velocita_v2_pinned_receipts_peak{host=\"pi\",node=\"2\"} 31",
         "velocita_v2_receipt_capacity{host=\"pi\",node=\"2\"} 256",
+        "velocita_v2_archive_bytes{host=\"pi\",node=\"2\"} 700000000",
+        "velocita_v2_archive_byte_limit{host=\"pi\",node=\"2\"} 1073741824",
+        "velocita_v2_archive_segments{host=\"pi\",node=\"2\"} 1209",
+        "velocita_v2_archive_segment_limit{host=\"pi\",node=\"2\"} 4096",
     };
     for (const auto& line : expected) require(has_line(text, line), "missing or wrong line: " + line);
     require(text.find("# TYPE velocita_v2_auth_refusals_total counter\n") != std::string::npos,

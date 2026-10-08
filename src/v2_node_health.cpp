@@ -13,8 +13,8 @@ namespace velocita::v2 {
 namespace {
 
 constexpr std::uint64_t kMagic = 0x3148484C56ULL;
-constexpr std::uint32_t kVersion = 5;
-constexpr std::size_t kCells = 33;
+constexpr std::uint32_t kVersion = 6;
+constexpr std::size_t kCells = 37;
 static_assert(std::atomic<std::uint64_t>::is_always_lock_free,
               "cross-process seqlock cells must be address-free lock-free atomics");
 
@@ -41,7 +41,8 @@ std::array<std::uint64_t, kCells> flatten(const NodeHealth& h) noexcept {
             h.retained_ordinary, h.retained_protected,
             std::bit_cast<std::uint64_t>(h.compaction_floor), std::bit_cast<std::uint64_t>(h.snapshot_index),
             h.stranded_voters, h.compactions, h.last_compaction_ms,
-            h.receipts, h.pinned_receipts, h.pinned_receipts_peak};
+            h.receipts, h.pinned_receipts, h.pinned_receipts_peak,
+            h.archive_bytes, h.archive_byte_limit, h.archive_objects, h.archive_object_limit};
 }
 
 NodeHealth unflatten(const std::array<std::uint64_t, kCells>& v) noexcept {
@@ -60,6 +61,7 @@ NodeHealth unflatten(const std::array<std::uint64_t, kCells>& v) noexcept {
     h.compaction_floor = std::bit_cast<std::int64_t>(v[25]); h.snapshot_index = std::bit_cast<std::int64_t>(v[26]);
     h.stranded_voters = v[27]; h.compactions = v[28]; h.last_compaction_ms = v[29];
     h.receipts = v[30]; h.pinned_receipts = v[31]; h.pinned_receipts_peak = v[32];
+    h.archive_bytes = v[33]; h.archive_byte_limit = v[34]; h.archive_objects = v[35]; h.archive_object_limit = v[36];
     return h;
 }
 

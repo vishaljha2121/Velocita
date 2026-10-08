@@ -117,6 +117,27 @@ groups:
         annotations:
           summary: "{{ $labels.host }} Raft log is full: normal commands are refused"
           description: "The shadow edge cannot record decisions. Operator kill commands still use the protected reserve. Restore the voter pinning the compaction floor, or replace the cluster."
+      # The archive keeps every compacted log entry and has a fixed budget.
+      # Ordinary commands are refused 16 MiB and 4 catalog rows before it; the
+      # operator kill path keeps that reserve. A run with no end date reaches it.
+      - alert: VelocitaArchiveFilling
+        expr: >-
+          velocita_v2_archive_bytes / (velocita_v2_archive_byte_limit - 16777216) > 0.70
+          or velocita_v2_archive_segments / (velocita_v2_archive_segment_limit - 4) > 0.70
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }} archive is {{ $value | humanizePercentage }} of the ordinary budget"
+          description: "When the archive is full every ordinary command is refused, including a strategy exit; only the operator kill path still works. See 'Days until the archive is full' on the Raft dashboard and plan a new incarnation or a larger budget before then."
+      - alert: VelocitaArchiveNearlyFull
+        expr: >-
+          velocita_v2_archive_bytes / (velocita_v2_archive_byte_limit - 16777216) > 0.90
+          or velocita_v2_archive_segments / (velocita_v2_archive_segment_limit - 4) > 0.90
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.host }} archive is {{ $value | humanizePercentage }} of the ordinary budget: act now"
+          description: "Ordinary commands stop at 100%. Flatten the position and stop the strategy while commands are still accepted, then start a new incarnation."
       - alert: VelocitaVoterStranded
         expr: velocita_v2_stranded_voters > 0
         for: 1m

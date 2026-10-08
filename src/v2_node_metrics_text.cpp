@@ -83,6 +83,12 @@ std::string render_node_metrics(const std::optional<NodeHealth>& health, std::st
     gauge("velocita_v2_pinned_receipts_peak", "Most pinned receipts after any command since this process started.",
           h.pinned_receipts_peak);
     gauge("velocita_v2_receipt_capacity", "Fixed receipt table capacity.", kMaxRequestReceipts);
+    gauge("velocita_v2_archive_bytes", "Bytes of compacted log held in the archive.", h.archive_bytes);
+    gauge("velocita_v2_archive_byte_limit", "Archive byte budget; ordinary commands are refused 16 MiB before it.",
+          h.archive_byte_limit);
+    gauge("velocita_v2_archive_segments", "Archive segments in the catalog.", h.archive_objects);
+    gauge("velocita_v2_archive_segment_limit", "Archive catalog rows; ordinary commands are refused 4 rows before it.",
+          h.archive_object_limit);
 
     const auto counter = [&](const char* name, const char* help, std::uint64_t value) {
         w.type(name, "counter", help);
