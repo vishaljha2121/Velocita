@@ -128,6 +128,7 @@ struct ReplicaStatus {
     std::uint64_t archive_objects{};
     std::uint64_t archive_object_limit{};
     std::uint64_t policies{};
+    std::uint64_t quorum_step_downs{};
     std::uint64_t ledger_count{};
     std::array<AccountLedger, kMaxRiskAccounts> ledgers{};
 };
@@ -158,6 +159,7 @@ public:
     void flush_durability();
 
     void start_writer();
+    void set_quorum_silence_limit(std::int64_t milliseconds) noexcept { quorum_silence_limit_ms_ = milliseconds; }
     void stop_writer();
 
     [[nodiscard]] WalMetrics wal_metrics() const;
@@ -258,6 +260,7 @@ private:
     [[nodiscard]] bool accept_persistence_completion();
     void open_archive();
     void note_archive_usage() noexcept;
+    void step_down_without_quorum(int elapsed_ms) noexcept;
     [[nodiscard]] bool archive_admission(std::uint64_t resulting_last_index,
                                          bool protected_lane) const noexcept;
 
@@ -295,6 +298,9 @@ private:
     std::int64_t known_floor_{};
     std::uint64_t polled_through_{};
     std::uint64_t pinned_receipts_peak_{};
+    std::array<std::int64_t, kMaxStaticVoters> peer_silence_ms_{};
+    std::int64_t quorum_silence_limit_ms_{};
+    std::uint64_t quorum_step_downs_{};
     std::uint64_t archive_bytes_seen_{};
     std::uint64_t archive_objects_seen_{};
     std::uint64_t blocks_submitted_{};

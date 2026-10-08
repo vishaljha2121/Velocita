@@ -3106,6 +3106,59 @@ void test_an_isolated_voter_rejoins_without_raising_the_term(const std::filesyst
             "the rejoined voter did not catch up");
 }
 
+void test_a_leader_that_hears_no_quorum_steps_down(const std::filesystem::path& root) {
+    Cluster cluster(root, 3);
+    auto& first = cluster.elect();
+    const auto deaf = first.status().node_id;
+    const auto term = first.status().term;
+    cluster.drop = [deaf](const PeerMessage& message) { return message.recipient_id == deaf; };
+    int stepped_down_at = -1;
+    int replaced_at = -1;
+    for (int round = 0; round < 1200 && replaced_at < 0; ++round) {
+        cluster.step();
+        if (stepped_down_at < 0 && !cluster.node(deaf).is_leader()) stepped_down_at = round;
+        for (const auto& node : cluster.nodes)
+            if (node->is_leader() && node->status().node_id != deaf) replaced_at = round;
+    }
+    require(stepped_down_at >= 175 && stepped_down_at <= 205,
+            "a leader that heard nothing did not step down two election timeouts after its last reply: round " +
+                std::to_string(stepped_down_at));
+    require(replaced_at > stepped_down_at, "no other voter took over from the deaf leader");
+    require(cluster.node(deaf).status().quorum_step_downs == 1, "the step-down was not counted once");
+    cluster.drop = nullptr;
+    cluster.settle(200);
+    auto& successor = cluster.elect();
+    require(successor.status().term > term, "leadership did not move to a later term");
+    for (const auto& node : cluster.nodes)
+        require(node->status().node_id == deaf || node->status().quorum_step_downs == 0,
+                "a healthy voter stepped down");
+}
+
+void test_a_two_voter_leader_steps_down_when_its_only_peer_goes_quiet(const std::filesystem::path& root) {
+    Cluster cluster(root, 2);
+    auto& leader = cluster.elect();
+    const auto leading = leader.status().node_id;
+    cluster.drop = [leading](const PeerMessage& message) { return message.recipient_id == leading; };
+    for (int round = 0; round < 260; ++round) {
+        for (auto& node : cluster.nodes) node->flush_durability();
+        for (auto& node : cluster.nodes) node->tick(10);
+        cluster.route();
+    }
+    require(cluster.node(leading).status().quorum_step_downs >= 1,
+            "one of two voters is not a majority, yet the leader kept leading without it");
+}
+
+void test_a_leader_with_one_silent_follower_keeps_leading(const std::filesystem::path& root) {
+    Cluster cluster(root, 3);
+    auto& leader = cluster.elect();
+    const auto leading = leader.status().node_id;
+    const auto silent = leading == 1 ? 2 : 1;
+    cluster.partitioned.insert(silent);
+    for (int round = 0; round < 600; ++round) cluster.step();
+    require(cluster.node(leading).is_leader() && cluster.node(leading).status().quorum_step_downs == 0,
+            "a leader with a majority still answering stepped down");
+}
+
 void test_a_lost_leader_is_replaced_within_bounded_time(const std::filesystem::path& root) {
     Cluster cluster(root, 3);
     auto& old = cluster.elect();
@@ -3436,6 +3489,9 @@ int main(int argc, char** argv) {
         test_a_prevote_round_counts_only_its_own_grants(fresh("prevote-round"));
         test_an_isolated_voter_rejoins_without_raising_the_term(fresh("prevote-isolated"));
         test_a_lost_leader_is_replaced_within_bounded_time(fresh("prevote-leader-loss"));
+        test_a_leader_that_hears_no_quorum_steps_down(fresh("deaf-leader"));
+        test_a_leader_with_one_silent_follower_keeps_leading(fresh("one-silent"));
+        test_a_two_voter_leader_steps_down_when_its_only_peer_goes_quiet(fresh("two-voter-deaf"));
         test_a_stale_voter_never_campaigns_and_the_complete_log_wins(fresh("prevote-stale-voter"));
         test_prevote_keeps_elections_and_commits_safe_under_partitions(fresh("prevote-safety"));
 

@@ -15,8 +15,8 @@ namespace velocita::v2 {
 namespace {
 
 constexpr std::uint64_t kMagic = 0x3148484C56ULL;
-constexpr std::uint32_t kVersion = 8;
-constexpr std::size_t kScalarCells = 39;
+constexpr std::uint32_t kVersion = 9;
+constexpr std::size_t kScalarCells = 40;
 constexpr std::size_t kLedgerCells = 9;
 constexpr std::size_t kCells = kScalarCells + kNodeHealthLedgers * kLedgerCells;
 static_assert(kNodeHealthLedgers == kMaxRiskAccounts);
@@ -47,7 +47,7 @@ std::array<std::uint64_t, kCells> flatten(const NodeHealth& h) noexcept {
             std::bit_cast<std::uint64_t>(h.compaction_floor), std::bit_cast<std::uint64_t>(h.snapshot_index),
             h.stranded_voters, h.compactions, h.last_compaction_ms,
             h.receipts, h.pinned_receipts, h.pinned_receipts_peak,
-            h.archive_bytes, h.archive_byte_limit, h.archive_objects, h.archive_object_limit, h.policies, h.ledger_count};
+            h.archive_bytes, h.archive_byte_limit, h.archive_objects, h.archive_object_limit, h.policies, h.ledger_count, h.quorum_step_downs};
     for (std::size_t index = 0; index < kNodeHealthLedgers; ++index) {
         const auto& l = h.ledgers[index];
         const std::array<std::uint64_t, kLedgerCells> cells{
@@ -80,6 +80,7 @@ NodeHealth unflatten(const std::array<std::uint64_t, kCells>& v) noexcept {
     h.archive_bytes = v[33]; h.archive_byte_limit = v[34]; h.archive_objects = v[35]; h.archive_object_limit = v[36];
     h.policies = v[37];
     h.ledger_count = v[38];
+    h.quorum_step_downs = v[39];
     for (std::size_t index = 0; index < kNodeHealthLedgers; ++index) {
         const auto at = kScalarCells + index * kLedgerCells;
         h.ledgers[index] = {v[at], v[at + 1], std::bit_cast<std::int64_t>(v[at + 2]),
@@ -134,6 +135,7 @@ NodeHealth node_health_of(const NodeStatus& status, const NodeHealthContext& con
     h.archive_objects = r.archive_objects;
     h.archive_object_limit = r.archive_object_limit;
     h.policies = r.policies;
+    h.quorum_step_downs = r.quorum_step_downs;
     h.ledger_count = std::min<std::uint64_t>(r.ledger_count, kNodeHealthLedgers);
     for (std::size_t index = 0; index < h.ledger_count; ++index) {
         const auto& l = r.ledgers[index];

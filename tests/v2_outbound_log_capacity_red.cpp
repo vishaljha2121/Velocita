@@ -31,6 +31,7 @@ void outbound_payload_growth(const std::filesystem::path& root) {
         require(leader.propose(encoded(command(i, PublishPolicy{policy_artifact()}))).status ==
                     ProposeStatus::admitted,
                 "outbound payload fixture could not admit its bounded16 entries");
+    leader.set_quorum_silence_limit(3'600'000);
     for (int i = 0; i < 128; ++i) leader.tick(200);
     require(leader.status().current_index == 16 && leader.status().applied_index == 0,
             "outbound fixture unexpectedly committed or enlarged its source log");

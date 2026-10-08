@@ -115,6 +115,8 @@ std::string render_node_metrics(const std::optional<NodeHealth>& health, std::st
         w.type(name, "counter", help);
         w.sample(name, value);
     };
+    counter("velocita_v2_quorum_step_downs_total",
+            "Times this voter gave up leadership because a majority stopped answering.", h.quorum_step_downs);
     counter("velocita_v2_owner_turns_total", "Owner-loop turns; stops rising if the loop stalls.", h.turns);
     counter("velocita_v2_auth_refusals_total", "Frames refused by authentication (forged, foreign or malformed).",
             h.auth_refusals);

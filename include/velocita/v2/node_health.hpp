@@ -65,6 +65,7 @@ struct NodeHealth {
     std::uint64_t archive_objects{};
     std::uint64_t archive_object_limit{};
     std::uint64_t policies{};
+    std::uint64_t quorum_step_downs{};
     std::uint64_t ledger_count{};
     std::array<NodeHealthLedger, kNodeHealthLedgers> ledgers{};
     constexpr auto operator<=>(const NodeHealth&) const noexcept = default;

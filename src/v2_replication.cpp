@@ -376,6 +376,7 @@ void ReplicatedKernel::tick(const int elapsed_ms) {
         throw std::runtime_error("raft_periodic failed: " + std::to_string(result));
     }
     require_usable();
+    step_down_without_quorum(elapsed_ms);
 
     if (raft_is_leader(server_) != 0 && raft_get_current_term(server_) == 0) {
         if (raft_set_current_term(server_, 1) != 0) {
@@ -1082,6 +1083,7 @@ ReplicaStatus ReplicatedKernel::status() const {
     value.archive_byte_limit = archive_config_.logical_byte_limit;
     value.archive_object_limit = archive_config_.object_limit;
     value.policies = state_.policy_count;
+    value.quorum_step_downs = quorum_step_downs_;
     value.ledger_count = state_.risk_account_count;
     for (std::size_t index = 0; index < state_.risk_account_count; ++index) {
         const auto& risk = state_.risk_accounts[index];
@@ -1307,6 +1309,24 @@ void ReplicatedKernel::persist_compaction(void* context) {
     self.storage_checkpoints_(StorageCheckpoint::compaction_snapshot_verified);
 }
 
+void ReplicatedKernel::step_down_without_quorum(const int elapsed_ms) noexcept {
+    const bool leading = raft_is_leader(server_) != 0;
+    if (!leading) peer_silence_ms_.fill(0);
+    if (!leading || members_.size() < 2) return;
+    const auto limit = quorum_silence_limit_ms_ > 0
+        ? quorum_silence_limit_ms_ : 2 * static_cast<std::int64_t>(raft_get_election_timeout(server_));
+    std::size_t heard = 1;
+    for (std::size_t index = 0; index < members_.size(); ++index) {
+        if (members_[index] == node_id_) continue;
+        peer_silence_ms_[index] = std::min<std::int64_t>(peer_silence_ms_[index] + elapsed_ms, limit);
+        if (peer_silence_ms_[index] < limit) ++heard;
+    }
+    if (2 * heard > members_.size()) return;
+    raft_become_follower(server_);
+    peer_silence_ms_.fill(0);
+    ++quorum_step_downs_;
+}
+
 void ReplicatedKernel::note_archive_usage() noexcept {
     archive_bytes_seen_ = archive_open_ ? archive_.logical_bytes() : 0;
     archive_objects_seen_ = archive_open_ ? archive_.object_count() : 0;
@@ -1463,6 +1483,10 @@ PeerReceiveResult ReplicatedKernel::receive_peer(std::span<const std::byte> boun
         response.success = value->success ? 1 : 0;
         response.current_idx = value->current_index;
         response.first_idx = value->first_index;
+        if (value->term == raft_get_current_term(server_)) {
+            for (std::size_t index = 0; index < members_.size(); ++index)
+                if (members_[index] == message.sender_id) peer_silence_ms_[index] = 0;
+        }
         result = raft_recv_appendentries_response(server_, sender, &response);
     }
     if (result == RAFT_ERR_PERSIST_PENDING) {

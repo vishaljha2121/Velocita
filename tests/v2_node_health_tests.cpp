@@ -49,6 +49,7 @@ NodeHealth uniform(std::uint64_t k) {
     h.receipts = h.pinned_receipts = h.pinned_receipts_peak = k;
     h.archive_bytes = h.archive_byte_limit = h.archive_objects = h.archive_object_limit = h.policies = k;
     h.ledger_count = k;
+    h.quorum_step_downs = k;
     for (auto& ledger : h.ledgers) {
         const auto signed_k = static_cast<std::int64_t>(k);
         ledger = {k, k, signed_k, signed_k, signed_k, signed_k, signed_k, signed_k, signed_k};
@@ -106,11 +107,12 @@ void round_trip_and_refusals() {
     require(policies && policies->policies == 5 && policies->archive_object_limit == 4'096,
             "policy count was lost on the page");
     distinct.ledger_count = 2;
+    distinct.quorum_step_downs = 77;
     distinct.ledgers[0] = {2, 3, -4, -5, 6, -7, 8, -9, 10};
     distinct.ledgers[3] = {11, 12, 13, 14, 15, 16, 17, 18, 19};
     page->publish(distinct);
     const auto ledgers = read_node_health(file);
-    require(ledgers && ledgers->ledger_count == 2 &&
+    require(ledgers && ledgers->ledger_count == 2 && ledgers->quorum_step_downs == 77 &&
                 ledgers->ledgers[0] == NodeHealthLedger{2, 3, -4, -5, 6, -7, 8, -9, 10} &&
                 ledgers->ledgers[1] == distinct.ledgers[1] && ledgers->ledgers[2] == distinct.ledgers[2] &&
                 ledgers->ledgers[3] == NodeHealthLedger{11, 12, 13, 14, 15, 16, 17, 18, 19},
@@ -130,6 +132,7 @@ void status_maps_to_the_page_field_by_field() {
     s.replica.receipts = 26; s.replica.pinned_receipts = 27; s.replica.pinned_receipts_peak = 28;
     s.replica.archive_bytes = 29; s.replica.archive_byte_limit = 30;
     s.replica.archive_objects = 31; s.replica.archive_object_limit = 32; s.replica.policies = 33;
+    s.replica.quorum_step_downs = 34;
     s.replica.ledger_count = 2;
     s.replica.ledgers[0] = {61, 62, -63, -64, 65, -66, 67, -68, 69};
     s.replica.ledgers[1] = {71, 72, 73, 74, 75, 76, 77, 78, 79};
@@ -150,6 +153,7 @@ void status_maps_to_the_page_field_by_field() {
     want.receipts = 26; want.pinned_receipts = 27; want.pinned_receipts_peak = 28;
     want.archive_bytes = 29; want.archive_byte_limit = 30; want.archive_objects = 31; want.archive_object_limit = 32;
     want.policies = 33;
+    want.quorum_step_downs = 34;
     want.ledger_count = 2;
     want.ledgers[0] = {61, 62, -63, -64, 65, -66, 67, -68, 69};
     want.ledgers[1] = {71, 72, 73, 74, 75, 76, 77, 78, 79};

@@ -142,6 +142,7 @@ void partition_majority_kill(const std::filesystem::path& root, bool prior_proof
         const auto proof = fixture.proof(old, 100);
         require(fixture.authority.accept(proof, 101), "pre-partition proof refused");
     }
+    old.set_quorum_silence_limit(3'600'000);
     fixture.cluster.partitioned.insert(old.status().node_id);
     fixture.cluster.settle(500);
     ReplicatedKernel* majority = nullptr;
