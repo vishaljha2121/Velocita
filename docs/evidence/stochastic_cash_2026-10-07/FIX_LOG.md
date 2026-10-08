@@ -86,3 +86,20 @@ restarted. nuc2's exporter could not be scraped for about 20 seconds at that
 moment, so nuc2 was unreachable or stalled briefly. The cluster recovered by
 itself, and the old edge (which still had the freeze bug) happened not to have
 a trade in flight. Cause not established.
+
+## 2026-10-08: kernel work built, not deployed
+
+| Item | Commit | Verified by |
+|---|---|---|
+| Policy table 16 to 8; slots-used metric; `VelocitaPolicySlotsLow` | `d8ad46d` | 140 of 140 C++ tests |
+| Kernel money ledger, fill price and fee checks, loss limit (ADR 0021) | `4c04f75` | 140 of 140 C++ tests; hand-computed ledger sequences; promtool rule tests |
+| Promotion plan | `c34e414` | n/a |
+
+These change the stored format (both schema versions 9 to 10). A voter built from them refuses the
+running cluster's data, so they need a new incarnation, at a flat moment, with the owner's go-ahead.
+
+Mutation testing: an early run reported one mutant as surviving that was in fact killed. The cause
+was the harness, which could leave a stale binary between mutants. The harness now builds and
+passes the clean tree before each mutant and confirms the mutant was compiled. Every mutant from
+this log was rerun with it: 65 killed, 2 shown to be equivalent (they cannot change behaviour), none
+unexplained. That includes the 15 from the archive and policy metric work.
