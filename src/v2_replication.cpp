@@ -355,6 +355,7 @@ ReplicatedKernel::ReplicatedKernel(VerifiedIdentityStartup startup,
     if (!history_recovery_pending() &&
         !archive_admission(static_cast<std::uint64_t>(raft_get_current_idx(server_)), true))
         throw std::runtime_error("recovery refused: deployment quota cannot cover accepted archive obligations");
+    note_archive_usage();
     segment_ = std::make_unique<WalSegment>(data_dir, startup_.identity(), checkpoints);
     writer_ = std::make_unique<WalWriter>(
         *segment_, arena_, startup_.storage_generation());
@@ -572,6 +573,7 @@ bool ReplicatedKernel::accept_history_recovery_completion() {
     }
     history_recovery_.reset();
     history_recovery_cut_ = 0;
+    note_archive_usage();
     return true;
 }
 
@@ -1075,8 +1077,8 @@ ReplicaStatus ReplicatedKernel::status() const {
     value.receipts = state_.receipt_count;
     value.pinned_receipts = pinned_receipt_count(state_);
     value.pinned_receipts_peak = pinned_receipts_peak_;
-    value.archive_bytes = archive_open_ ? archive_.logical_bytes() : 0;
-    value.archive_objects = archive_open_ ? archive_.object_count() : 0;
+    value.archive_bytes = archive_bytes_seen_;
+    value.archive_objects = archive_objects_seen_;
     value.archive_byte_limit = archive_config_.logical_byte_limit;
     value.archive_object_limit = archive_config_.object_limit;
     value.policies = state_.policy_count;
@@ -1143,6 +1145,7 @@ std::uint64_t ReplicatedKernel::compact() {
                 throw std::runtime_error("failed to cancel a capacity-deferred snapshot");
             }
             compaction_.reset();
+            note_archive_usage();
             return 0;
         }
         if (!compaction_->snapshot_verified) {
@@ -1151,6 +1154,7 @@ std::uint64_t ReplicatedKernel::compact() {
         }
         if (compaction_->rewrite_pending) {
             compaction_.reset();
+            note_archive_usage();
             return cut;
         }
         const bool independent_required =
@@ -1301,6 +1305,11 @@ void ReplicatedKernel::persist_compaction(void* context) {
         throw std::runtime_error("published snapshot did not reload as fenced state");
     job.snapshot_verified = true;
     self.storage_checkpoints_(StorageCheckpoint::compaction_snapshot_verified);
+}
+
+void ReplicatedKernel::note_archive_usage() noexcept {
+    archive_bytes_seen_ = archive_open_ ? archive_.logical_bytes() : 0;
+    archive_objects_seen_ = archive_open_ ? archive_.object_count() : 0;
 }
 
 void ReplicatedKernel::persist_commit_index() {

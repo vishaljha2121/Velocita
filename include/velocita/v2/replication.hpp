@@ -257,6 +257,7 @@ private:
     void collect_persistence();
     [[nodiscard]] bool accept_persistence_completion();
     void open_archive();
+    void note_archive_usage() noexcept;
     [[nodiscard]] bool archive_admission(std::uint64_t resulting_last_index,
                                          bool protected_lane) const noexcept;
 
@@ -294,6 +295,8 @@ private:
     std::int64_t known_floor_{};
     std::uint64_t polled_through_{};
     std::uint64_t pinned_receipts_peak_{};
+    std::uint64_t archive_bytes_seen_{};
+    std::uint64_t archive_objects_seen_{};
     std::uint64_t blocks_submitted_{};
     std::uint64_t backpressure_refusals_{};
     std::uint64_t highest_staged_index_{};
