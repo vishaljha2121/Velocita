@@ -136,3 +136,29 @@ lifetime limit of the paper venue restarts, and the retired incarnation's files 
 
 An image build was started twice on the Pi by mistake and the second was stopped after about
 20 seconds. An election burst at 05:48 to 06:05 UTC (term 3 to 16) predates all of this work.
+
+## 2026-10-08 13:27 to 13:40 UTC: cutover to incarnation abd1e149
+
+The owner approved the cutover, the account reset to $25, and, for this one time, the agent
+running the operator ceremony from the Mac.
+
+1. Account flat (0 lots, 0 pending, 58 orders, cash $23.395609). Edge stopped. Final records
+   captured to `final-paper-session.json`; results written to `RESULTS.md`.
+2. Gateway, observer and all three voters stopped. `stage-host.sh` run on each host: the old
+   run moved to `~/velocita-indicator-paper/retired/stochastic-c8a6a0a7-20261008`, new configs
+   and units installed.
+3. Three voters started from bootstrap (term 1, leader nuc2, commit 0, all ready), then switched
+   to `recover`.
+4. Ceremony from the Mac: kill epoch 1, executor generation 1, catalog install, risk limits with
+   `max_window_loss_micros=10000000`. All four `applied`, indices 1 to 4.
+5. `activate.py`: the first run failed creating the paper state (the gateway could not bind
+   100.72.127.102:44413, "address already in use"; nothing was listening when checked seconds
+   later). No paper state and no kernel command resulted. Its two files were moved to
+   `~/ledger-abd1e149/first-attempt/` and the second run succeeded: paper state $25, profile,
+   policy install, gateway armed, edge and observer started.
+6. Monitoring switched to `~/ledger-abd1e149/` (run label
+   `abd1e149a26d4062ba5bbba2d90b3305-ledger-v1`); Prometheus and Grafana restarted.
+
+After: nine units active, 0 edge errors, reconciled, cash $25.00, kernel ledger published with a
+$10 loss limit, policy slots 1 of 8, K, D and both EMAs published. The strategy was offline for
+about 11 minutes.

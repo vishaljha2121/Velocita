@@ -7,12 +7,13 @@ maps the checkpoint review (`docs/evidence/stochastic_cash_2026-10-07/CHECKPOINT
 
 ## Where the strategy stands
 
-`stochastic_1s_cash_v1`: long-only SOL, 0.12 SOL clips, one-second bars, paper venue. Since
-2026-10-07 the account has traded 26 orders. The system around it is working; the economics are
-not proven:
+`stochastic_1s_cash_v1`: long-only SOL, 0.12 SOL clips, one-second bars, paper venue. Its first
+session made 29 round trips in 17 hours and was flat before fees (`RESULTS.md`). The system around
+it is working; the economics are not proven:
 
 - The paper fee is 20 bp a side. The measured True Markets cost is about 100 bp to buy and 98 bp
-  to sell. At the measured cost the run so far loses about $1 for every $100 of volume.
+  to sell. At the measured cost the first session would have lost $7.96, about $1 for every $101 of
+  volume.
 - The paper price is the Binance SOLUSDT close. A live order fills at True Markets' price.
 - The paper venue always fills completely at the limit.
 
@@ -22,47 +23,66 @@ at 100 bp a side.
 
 ## What must be true before the first real order
 
-| # | Requirement | Status |
-|---|---|---|
-| 1 | The edge cannot freeze or go blind (review A1, A2) | Done, deployed 2026-10-08 |
-| 2 | The market-data allowlist is enforced (A3) | Done, deployed 2026-10-08 |
-| 3 | The archive cannot silently fill (B1) | Edge sends far fewer commands (deployed). Metric and alerts built, not deployed |
-| 4 | The kernel checks every fill's price and fee and owns cash, P&L and a loss limit (B3, ADR 0021) | Built and tested; needs a new incarnation to deploy |
-| 5 | Snapshot room for it (ADR 0022) | Policy table cut to 8. Receipt table change waits for the week of measurement |
-| 6 | Callers are authorized by role (B4, ADR 0020) | Not built |
-| 7 | An operator flatten path (journey step 4.3) | Not built |
-| 8 | The signer (ADR 0019 section 1, journey step 5) | Not built. Needs recorded venue payloads to finish (journey step 3) |
-| 9 | The venue transport (journey step 6) | Not built. Mock-tested only until the owner approves a venue call |
-| 10 | The venue contract questions (journey step 3) | Open; several need the owner or True Markets |
-| 11 | The paper venue can reject, partly fill and time out (review C3) | Not built |
-| 12 | Decide and fill on the venue's own price, with cost measured on both sides (B5) | Not done |
-| 13 | Startup balance reconciliation against the venue (journey step 7) | Not built |
-| 14 | Outside heartbeat armed (B6) | Installed; waits for the owner's Healthchecks URL |
-| 15 | Drills while holding a position: kill, leader loss, gateway restart (journey step 8) | Not done on this deployment |
-| 16 | A live gateway refuses an account with no loss limit | Not built |
+Last updated 2026-10-08 13:45 UTC. Status words: **Done** (built, tested, running on the hosts),
+**Built** (committed and tested, not running), **Open**.
+
+| # | Requirement | Status | Where |
+|---|---|---|---|
+| 1 | The edge cannot freeze or go blind (review A1, A2) | **Done** 2026-10-08 | `0063c86` |
+| 2 | The market-data allowlist is enforced (A3) | **Done** 2026-10-08 | `0063c86` |
+| 3 | The archive cannot silently fill (B1) | **Done** 2026-10-08: fewer commands, usage metric, alerts at 70% and 90% | `d542601`, `9dcca2c`, `3264351` |
+| 4 | The kernel checks every fill's price and fee and owns cash, P&L and a loss limit (ADR 0021) | **Done** 2026-10-08: running with a $10 loss limit | `4c04f75`, `f55209e` |
+| 5 | Snapshot room (ADR 0022) | **Partly done**: policy table cut to 8 and running. Receipt table change waits for the week of measurement (from 2026-10-07) | `d8ad46d` |
+| 6 | Callers are authorized by role (ADR 0020) | **Open**. The kernel review lists exactly which commands are unrestricted | review D1 |
+| 7 | An operator flatten path | **Open** | journey step 4.3 |
+| 8 | An operator command to resolve an order in conflict | **Open** (new, from the kernel review) | review D2 |
+| 9 | The signer (ADR 0019 section 1) | **Open**. Approved to build with a test key only | journey step 5 |
+| 10 | The venue transport | **Open**. Approved to build against a mock only | journey step 6 |
+| 11 | The venue contract questions | **Open**; several need the owner or True Markets | journey step 3 |
+| 12 | The paper venue can reject, partly fill and time out | **Open** | review C3 |
+| 13 | Decide and fill on the venue's own price, with cost measured on both sides | **Open** | review B5 |
+| 14 | Startup balance reconciliation against the venue | **Open** | journey step 7 |
+| 15 | Outside heartbeat armed | **Open**: installed, waits for the owner's Healthchecks URL | review B6 |
+| 16 | Drills while holding a position: kill, leader loss, gateway restart | **Open** | journey step 8 |
+| 17 | A live gateway refuses an account with no loss limit | **Open** | ADR 0021 amendment |
+| 18 | Leader steps down when it cannot reach a quorum | **Open** (new, from the kernel review) | review B2 |
+| 19 | Raft library assertions active in release builds | **Open** (new, from the kernel review) | review B3 |
+| 20 | Review of the files the kernel review did not read (node loop, write-ahead log, archive store, codecs, authentication) | **Open** | review, "Not read" |
+| 21 | Review of the research and backtest code | **Open** | owner request 2026-10-07 |
+
+Count: 4 done, 1 partly done, 16 open.
+
+## What is running now
+
+Incarnation `abd1e149a26d4062ba5bbba2d90b3305`, started 2026-10-08 13:38 UTC.
+
+- Voters and gateway: `localhost/velocita-v2:ledger-f55209e`. Edge and observer:
+  `localhost/velocita-v2-shadow:paper-ledger-f55209e`.
+- Paper account: fresh $25.00, no orders. Kernel loss limit $10, position limit 12 lots,
+  fee cap 30 bp.
+- The previous session's results: `docs/evidence/stochastic_cash_2026-10-07/RESULTS.md`
+  (58 orders, $803.98 volume, net -$1.60, of which fees $1.61).
 
 ## Order of work
 
-1. **Finish and deploy the kernel change (items 3, 4, 5).** One new incarnation carries the ledger,
-   the loss limit, the archive metric and the policy-slot metric. Needs the account flat and the
-   owner's go-ahead. The operator's limits command then sets `max_window_loss_micros=10000000`.
-2. **Roles (item 6) and the flatten path (item 7).** Both are kernel changes; do them before the
-   next incarnation if possible so there is only one more format change.
-3. **Make paper honest about the venue (items 11, 12).** A paper venue that can refuse and partly
+1. ~~Finish and deploy the kernel change (items 3, 4, 5).~~ Done 2026-10-08.
+2. **Roles, flatten, conflict resolution, leader step-down, assertions (items 6, 7, 8, 18, 19).**
+   All are kernel or Raft changes; do them together so there is one more format change, not five.
+3. **Make paper honest about the venue (items 12, 13).** A paper venue that can refuse and partly
    fill, a True Markets reference price for the decision, and the measured fee. This is where the
    strategy's real economics will show, still with no money at risk.
-4. **Signer and transport against mocks (items 8, 9).** Everything that can be built without a
+4. **Signer and transport against mocks (items 9, 10).** Everything that can be built without a
    credential or a venue call.
-5. **Venue contract and balance reconciliation (items 10, 13).** Needs recorded venue replies.
-6. **Drills (item 15), then the journey's steps 9 to 11.** First controlled trade, canary, review.
+5. **The remaining reviews (items 20, 21).**
+6. **Venue contract and balance reconciliation (items 11, 14).** Needs recorded venue replies.
+7. **Drills (item 16), then the journey's steps 9 to 11.** First controlled trade, canary, review.
 
-Steps 1 to 4 need no credential and no venue call. Step 5 onward does, and each needs its own
+Steps 2 to 5 need no credential and no venue call. Step 6 onward does, and each needs its own
 explicit approval.
 
 ## Owner decisions that block progress
 
 - The Healthchecks URL for the outside heartbeat.
-- Go-ahead for the new incarnation (step 1) at a flat moment.
 - Whether the walk-forward research result is accepted as the basis for a canary
   (`STRATEGY_PROMOTION_GATE.md`, Stage 1).
 - Where the signing credential lives at rest and who may start the signer (ADR 0019).
