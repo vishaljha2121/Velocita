@@ -1207,7 +1207,9 @@ std::size_t settle_orphaned_effects(TradingState& state,
             }
             if (result.code == ApplyCode::applied) return true;
             if (result.code != ApplyCode::fill_capacity_exceeded &&
-                result.code != ApplyCode::fill_quantity_conflict) {
+                result.code != ApplyCode::fill_quantity_conflict &&
+                result.code != ApplyCode::fill_price_conflict &&
+                result.code != ApplyCode::fill_fee_conflict) {
                 return false;
             }
             for (std::size_t index = 0; index < state.receipt_count; ++index) {

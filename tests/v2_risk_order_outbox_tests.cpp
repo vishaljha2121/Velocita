@@ -2452,6 +2452,33 @@ void test_a_fill_beyond_the_limit_or_fee_cap_is_a_conflict_and_books_nothing() {
             "a fee exactly at the cap was refused");
 }
 
+void test_a_refused_fill_stays_as_evidence_while_its_order_is_in_conflict() {
+    using namespace velocita::v2;
+    for (const auto& [price, fee, code] : {std::tuple<std::int64_t, std::int64_t, ApplyCode>{12, 3, ApplyCode::fill_price_conflict},
+                                           {11, 4, ApplyCode::fill_fee_conflict}}) {
+        auto h = ledger_harness();
+        const auto order = h.place(Side::buy, 11, 1);
+        require(order.code == ApplyCode::applied, "evidence fixture order was not authorized");
+        require(h.fill(order, Side::buy, price, 1, fee).code == code, "evidence fixture fill was not refused");
+        const auto fill_sequence = h.request;
+        const Command acknowledge{{CallerId{2}, RequestSequence{++h.request}, digest(0xc1)},
+                                  AcknowledgeGatewayResults{RequestSequence{fill_sequence}}};
+        require(catalog_test::apply(h.state, acknowledge, h.scratch).code == ApplyCode::applied,
+                "the gateway acknowledgement was not applied");
+        for (std::size_t filler = 0; filler < 2 * kMaxRequestReceipts; ++filler) {
+            (void)catalog_test::apply(h.state,
+                authorize_decision(++h.request, 0xc2, DecisionId{900'000 + filler}), h.scratch);
+        }
+        bool kept = false;
+        for (std::size_t index = 0; index < h.state.receipt_count; ++index)
+            kept = kept || h.state.receipts[index].result.code == code;
+        require(kept, "a refused fill was swept while its order was still in conflict: code " +
+                    std::to_string(static_cast<int>(code)));
+        require(h.state.orders[h.state.order_count - 1].state == ClusterOrderState::conflict,
+                "the conflicted order did not survive the sweeps");
+    }
+}
+
 void test_loss_limit_stops_new_risk_and_still_lets_the_position_close() {
     using namespace velocita::v2;
     auto h = ledger_harness(400);
@@ -4221,6 +4248,7 @@ int main() {
         test_fills_keep_an_exact_money_ledger();
         test_cost_basis_allocation_conserves_the_last_micro();
         test_a_fill_beyond_the_limit_or_fee_cap_is_a_conflict_and_books_nothing();
+        test_a_refused_fill_stays_as_evidence_while_its_order_is_in_conflict();
         test_loss_limit_stops_new_risk_and_still_lets_the_position_close();
         test_loss_limit_boundary_is_inclusive_and_zero_disables_it();
         test_position_limit_matrix();
