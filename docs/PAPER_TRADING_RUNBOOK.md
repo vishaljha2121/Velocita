@@ -47,6 +47,8 @@ the usual ceremony from the Mac (operator client):
     velocita-v2-client ... --sequence 1 kill-epoch 1
     velocita-v2-client ... --sequence 2 executor-generation 1
     velocita-v2-client ... --sequence 3 install-catalog <ROOT> 1 1
+    velocita-v2-client ... --sequence 4 assign-role 21 strategy
+    velocita-v2-client ... --sequence 5 assign-role 22 gateway
 
 On a fresh cluster the edge's state files start at source generation 1. (Only
 if the tick loop were moved onto caller 12 on an OLD cluster: give the edge a
@@ -116,7 +118,7 @@ Check the summary first, then send (operator key on stdin as usual):
     tools/velocita-secrets client-key caller-9 | velocita-v2-client --caller-key-id 9 --caller-id 7 --key-stdin \
       --incarnation <INC> --session-file ~/.velocita/client.session --response-endpoint 100.91.80.64:42400 \
       --node 1=100.72.127.102:42301 --node 2=100.84.151.116:42302 --node 3=100.85.36.22:42303 \
-      --aeron-dir /tmp/velocita-client --sequence 4 [--dry-run] \
+      --aeron-dir /tmp/velocita-client --sequence 6 [--dry-run] \
       risk-limits account=1 instrument=1 risk_policy_version=1 expected_risk_version=0 \
         kill_epoch=1 executor_generation=1 max_order_lots=25 max_reserved_lots=25 \
         max_order_notional_micros=25000000 max_reserved_exposure_micros=25000000 \

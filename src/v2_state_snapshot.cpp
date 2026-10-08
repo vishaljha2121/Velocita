@@ -190,6 +190,8 @@ private:
         case ApplyCode::fill_price_conflict:
         case ApplyCode::fill_fee_conflict:
         case ApplyCode::loss_limit_reached:
+        case ApplyCode::unauthorized_command:
+        case ApplyCode::caller_role_conflict:
             return true;
     }
     return false;
@@ -503,6 +505,9 @@ private:
     for (std::size_t index = 0; index < state.caller_cursor_count; ++index) {
         const auto& cursor = state.caller_cursors[index];
         if (cursor.caller_id.value() == 0) return false;
+        if (cursor.role != CallerRole::none && cursor.role != CallerRole::strategy &&
+            cursor.role != CallerRole::gateway) return false;
+        if (cursor.role != CallerRole::none && is_operator_caller(cursor.caller_id)) return false;
         for (std::size_t prior = 0; prior < index; ++prior) {
             if (state.caller_cursors[prior].caller_id == cursor.caller_id) {
                 return false;
@@ -1028,6 +1033,7 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
         writer.integral(
             state.caller_cursors[index]
                 .gateway_results_acknowledged_through.value());
+        writer.integral(static_cast<std::uint8_t>(state.caller_cursors[index].role));
     }
 
     writer.integral(static_cast<std::uint16_t>(state.policy_count));
@@ -1442,6 +1448,9 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
             RequestSequence{reader.integral<std::uint64_t>()};
         state.caller_cursors[index].gateway_results_acknowledged_through =
             RequestSequence{reader.integral<std::uint64_t>()};
+        const auto role = reader.integral<std::uint8_t>();
+        if (role > static_cast<std::uint8_t>(CallerRole::gateway)) return false;
+        state.caller_cursors[index].role = static_cast<CallerRole>(role);
     }
 
     state.policy_count = reader.integral<std::uint16_t>();

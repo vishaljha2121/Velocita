@@ -6,6 +6,7 @@
 #include <exception>
 #include "velocita/v2/kernel_codec.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <span>
@@ -14,6 +15,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <variant>
 
 namespace {
 
@@ -198,6 +200,7 @@ void test_control_authority_is_reserved_to_operator_callers() {
 
     {
         TradingState state = catalog_test::state();
+        catalog_test::grant(state, kMaxOperatorCallerId + 1, CallerRole::strategy);
         ApplyScratch scratch;
         const auto ordinary = catalog_test::apply(
             state,
@@ -208,6 +211,135 @@ void test_control_authority_is_reserved_to_operator_callers() {
         require(ordinary.code == ApplyCode::applied && state.source_count == 1,
                 "the operator reservation leaked onto an ordinary command");
     }
+}
+
+void test_each_command_is_accepted_only_from_its_roles() {
+    using namespace velocita::v2;
+    constexpr unsigned op = 1, strategy = 2, gateway = 4;
+    struct Row {
+        CommandBody body;
+        unsigned allowed;
+        const char* name;
+    };
+    const std::array<Row, std::variant_size_v<CommandBody>> rows{{
+        {PublishPolicy{}, op, "PublishPolicy"},
+        {ValidatePolicy{}, op, "ValidatePolicy"},
+        {ActivatePolicy{}, op, "ActivatePolicy"},
+        {SupersedePolicy{}, op, "SupersedePolicy"},
+        {SetStrategyMode{}, op, "SetStrategyMode"},
+        {AdvanceKillEpoch{}, op, "AdvanceKillEpoch"},
+        {SetExecutorGeneration{}, op, "SetExecutorGeneration"},
+        {RecordSourceEvent{}, op | strategy, "RecordSourceEvent"},
+        {EvaluateDecisionFrame{}, op | strategy, "EvaluateDecisionFrame"},
+        {StageExecutablePolicy{}, op, "StageExecutablePolicy"},
+        {ActivateExecutablePolicy{}, op, "ActivateExecutablePolicy"},
+        {AuthorizeDecision{}, op | strategy, "AuthorizeDecision"},
+        {ObserveFill{}, gateway, "ObserveFill"},
+        {RequestCancel{}, op | gateway, "RequestCancel"},
+        {RequestMassCancel{}, op | gateway, "RequestMassCancel"},
+        {ObserveOrderEvent{}, gateway, "ObserveOrderEvent"},
+        {RequestReplace{}, op | gateway, "RequestReplace"},
+        {ConfigureRiskLimits{}, op, "ConfigureRiskLimits"},
+        {AcknowledgeGatewayResults{}, gateway, "AcknowledgeGatewayResults"},
+        {InstallExecutionCatalog{}, op, "InstallExecutionCatalog"},
+        {AssignCallerRole{}, op, "AssignCallerRole"},
+    }};
+    struct Sender {
+        std::uint64_t caller;
+        unsigned role;
+        const char* name;
+    };
+    const std::array<Sender, 5> senders{{
+        {kMaxOperatorCallerId, op, "operator"},
+        {30, strategy, "strategy"},
+        {31, gateway, "gateway"},
+        {32, 0, "known caller without a role"},
+        {33, 0, "unknown caller"},
+    }};
+    for (std::size_t index = 0; index < rows.size(); ++index) {
+        require(rows[index].body.index() == index, "the role table is not in command order");
+        for (const auto& sender : senders) {
+            TradingState state = catalog_test::state();
+            catalog_test::grant(state, 30, CallerRole::strategy);
+            catalog_test::grant(state, 31, CallerRole::gateway);
+            catalog_test::grant(state, 32, CallerRole::none);
+            const auto cursors = state.caller_cursor_count;
+            ApplyScratch scratch;
+            const auto answer = catalog_test::apply(
+                state,
+                Command{CommandIdentity{CallerId{sender.caller}, RequestSequence{1},
+                                        digest(std::byte{0x5a})},
+                        rows[index].body},
+                scratch);
+            const bool refused = answer.code == ApplyCode::unauthorized_command ||
+                                 answer.code == ApplyCode::unauthorized_control;
+            const std::string where = std::string(rows[index].name) + " from " + sender.name;
+            if ((rows[index].allowed & sender.role) != 0) {
+                require(!refused, where + " was refused");
+                continue;
+            }
+            require(refused, where + " was accepted");
+            require(state.state_version == 0 && state.receipt_count == 0 &&
+                        state.caller_cursor_count == cursors,
+                    where + " left a trace in state");
+        }
+    }
+}
+
+void test_a_role_is_assigned_once_and_only_outside_the_operator_band() {
+    using namespace velocita::v2;
+    TradingState state;
+    ApplyScratch scratch;
+    std::uint64_t sequence = 0;
+    const auto assign = [&](const std::uint64_t caller, const CallerRole role) {
+        return catalog_test::apply(
+            state,
+            Command{CommandIdentity{CallerId{1}, RequestSequence{++sequence},
+                                    digest(static_cast<std::byte>(sequence))},
+                    AssignCallerRole{CallerId{caller}, role}},
+            scratch).code;
+    };
+    const auto role_of = [&](const std::uint64_t caller) {
+        for (std::size_t index = 0; index < state.caller_cursor_count; ++index) {
+            if (state.caller_cursors[index].caller_id == CallerId{caller})
+                return state.caller_cursors[index].role;
+        }
+        return CallerRole::none;
+    };
+    require(assign(0, CallerRole::strategy) == ApplyCode::invalid_command &&
+                assign(kMaxOperatorCallerId, CallerRole::gateway) == ApplyCode::invalid_command &&
+                assign(21, CallerRole::none) == ApplyCode::invalid_command &&
+                assign(21, static_cast<CallerRole>(3)) == ApplyCode::invalid_command &&
+                state.caller_cursor_count == 1,
+            "an invalid role assignment was not refused cleanly");
+    require(assign(kMaxOperatorCallerId + 1, CallerRole::strategy) == ApplyCode::applied &&
+                role_of(kMaxOperatorCallerId + 1) == CallerRole::strategy,
+            "the first caller outside the operator band could not be given a role");
+    require(assign(21, CallerRole::strategy) == ApplyCode::applied &&
+                role_of(21) == CallerRole::strategy,
+            "a strategy role was not assigned");
+    require(assign(21, CallerRole::strategy) == ApplyCode::already_applied &&
+                assign(21, CallerRole::gateway) == ApplyCode::caller_role_conflict &&
+                role_of(21) == CallerRole::strategy,
+            "an assigned role could be changed");
+    require(assign(22, CallerRole::gateway) == ApplyCode::applied &&
+                role_of(22) == CallerRole::gateway,
+            "a gateway role was not assigned");
+
+    std::uint64_t next = 40;
+    while (state.caller_cursor_count < state.caller_cursors.size()) {
+        require(assign(next++, CallerRole::gateway) == ApplyCode::applied,
+                "a free caller slot refused a role");
+    }
+    const auto before = state.caller_cursors;
+    require(assign(next, CallerRole::gateway) == ApplyCode::receipt_capacity_exceeded &&
+                role_of(next) == CallerRole::none &&
+                state.caller_cursor_count == state.caller_cursors.size() &&
+                std::equal(before.begin(), before.end(), state.caller_cursors.begin(),
+                           [](const CallerCursor& left, const CallerCursor& right) {
+                               return left.caller_id == right.caller_id && left.role == right.role;
+                           }),
+            "a role was assigned without a caller slot");
 }
 
 void test_boot_and_kill_epoch_are_fail_safe() {
@@ -378,7 +510,9 @@ int main() {
     try {
         test_control_authority_is_reserved_to_operator_callers();
         test_resuming_normal_requires_reconciliation();
-        test_boot_and_kill_epoch_are_fail_safe();
+        test_each_command_is_accepted_only_from_its_roles();
+    test_a_role_is_assigned_once_and_only_outside_the_operator_band();
+    test_boot_and_kill_epoch_are_fail_safe();
         test_kill_epoch_never_regresses();
         test_executor_generation_advance_removes_new_risk_authority();
         test_invalid_mode_is_typed_and_retained();

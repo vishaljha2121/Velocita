@@ -319,7 +319,7 @@ velocita::v2::Command observe_fill(
     observation.quantity = QuantityLots::from_atoms(quantity);
     observation.fee = FeeMicros::from_atoms(3);
     observation.evidence_digest = digest(marker);
-    return {{CallerId{2}, RequestSequence{request}, observation_fingerprint(observation)},
+    return {{CallerId{22}, RequestSequence{request}, observation_fingerprint(observation)},
             ObserveFill{observation}};
 }
 
@@ -353,7 +353,7 @@ velocita::v2::Command observe_order_event(
         observation.venue_order_id = VenueOrderId{70};
     }
     observation.evidence_digest = digest(marker);
-    return {{CallerId{4}, RequestSequence{request}, observation_fingerprint(observation)},
+    return {{CallerId{24}, RequestSequence{request}, observation_fingerprint(observation)},
             ObserveOrderEvent{observation}};
 }
 
@@ -1254,6 +1254,8 @@ void test_authorization_reserves_completion_and_cancel_capacity() {
 void test_caller_prefix_registration_is_atomic_and_bounded() {
     using namespace velocita::v2;
     TradingState state = catalog_test::state();
+    state.caller_cursors = {};
+    state.caller_cursor_count = 0;
     ApplyScratch scratch;
     for (std::uint64_t caller = 1; caller <= kMaxCallerCursors; ++caller) {
         const Command invalid{
@@ -2226,8 +2228,8 @@ void test_risk_configuration_codec_and_restore() {
     const auto encoded = encode_kernel_command(command, bytes);
     require(encoded.error == KernelCodecError::none && encoded.bytes_written == 202,
             "risk configuration lacks its canonical 110-byte body");
-    require(bytes[8] == std::byte{10} && bytes[10] == std::byte{17},
-            "risk configuration schema/kind is not V10/17");
+    require(bytes[8] == std::byte{11} && bytes[10] == std::byte{17},
+            "risk configuration schema/kind is not V11/17");
     std::vector<std::byte> expected;
     const auto put = [&](const std::uint64_t value, const unsigned width) {
         for (unsigned shift = 0; shift < width; shift += 8)
@@ -2461,7 +2463,7 @@ void test_a_refused_fill_stays_as_evidence_while_its_order_is_in_conflict() {
         require(order.code == ApplyCode::applied, "evidence fixture order was not authorized");
         require(h.fill(order, Side::buy, price, 1, fee).code == code, "evidence fixture fill was not refused");
         const auto fill_sequence = h.request;
-        const Command acknowledge{{CallerId{2}, RequestSequence{++h.request}, digest(0xc1)},
+        const Command acknowledge{{CallerId{22}, RequestSequence{++h.request}, digest(0xc1)},
                                   AcknowledgeGatewayResults{RequestSequence{fill_sequence}}};
         require(catalog_test::apply(h.state, acknowledge, h.scratch).code == ApplyCode::applied,
                 "the gateway acknowledgement was not applied");
@@ -3357,7 +3359,7 @@ void test_resolved_orders_release_venue_identity_capacity() {
                 "the fill lost its owning decision");
         const auto ack_request = request++;
         const Command acknowledge{
-            {CallerId{2}, RequestSequence{ack_request}, digest(0x65)},
+            {CallerId{22}, RequestSequence{ack_request}, digest(0x65)},
             AcknowledgeGatewayResults{RequestSequence{fill_request}}};
         require(catalog_test::apply(state, acknowledge, scratch).code == ApplyCode::applied,
                 "sustained venue-identity fixture could not acknowledge its fill");
@@ -3397,7 +3399,7 @@ void test_gateway_acknowledgement_can_drain_a_full_receipt_arena() {
 
     const auto version_before_invalid = state.state_version;
     const Command invalid{
-        {CallerId{2}, RequestSequence{kMaxRequestReceipts + 1}, digest(0x68)},
+        {CallerId{22}, RequestSequence{kMaxRequestReceipts + 1}, digest(0x68)},
         AcknowledgeGatewayResults{
             RequestSequence{kMaxRequestReceipts + 1}}};
     require(catalog_test::apply(state, invalid, scratch).code ==
@@ -3407,7 +3409,7 @@ void test_gateway_acknowledgement_can_drain_a_full_receipt_arena() {
             "an invalid acknowledgement received privileged admission");
 
     const Command acknowledge{
-        {CallerId{2}, RequestSequence{kMaxRequestReceipts + 1}, digest(0x69)},
+        {CallerId{22}, RequestSequence{kMaxRequestReceipts + 1}, digest(0x69)},
         AcknowledgeGatewayResults{RequestSequence{kMaxRequestReceipts}}};
     require(catalog_test::apply(state, acknowledge, scratch).code == ApplyCode::applied,
             "a full receipt arena refused the acknowledgement needed to drain it");
@@ -3432,7 +3434,7 @@ void test_acknowledged_duplicate_fills_do_not_exhaust_receipts() {
     const auto acknowledge = [&](const std::uint64_t through) {
         const auto sequence = request++;
         const Command command{
-            {CallerId{2}, RequestSequence{sequence}, digest(0x6b)},
+            {CallerId{22}, RequestSequence{sequence}, digest(0x6b)},
             AcknowledgeGatewayResults{RequestSequence{through}}};
         return catalog_test::apply(state, command, scratch).code;
     };
@@ -3478,7 +3480,7 @@ velocita::v2::Command reconciled_absent(
     observation.venue_order_id = VenueOrderId{};
     observation.quantity = QuantityLots::from_atoms(0);
     observation.evidence_digest = digest(marker);
-    return {{CallerId{4}, RequestSequence{request},
+    return {{CallerId{24}, RequestSequence{request},
              observation_fingerprint(observation)},
             ObserveOrderEvent{observation}};
 }

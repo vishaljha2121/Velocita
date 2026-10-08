@@ -147,12 +147,21 @@ enum class ApplyCode : std::uint8_t {
     fill_price_conflict,
     fill_fee_conflict,
     loss_limit_reached,
+    unauthorized_command,
+    caller_role_conflict,
+};
+
+enum class CallerRole : std::uint8_t {
+    none = 0,
+    strategy = 1,
+    gateway = 2,
 };
 
 struct CallerCursor {
     CallerId caller_id{};
     RequestSequence expired_below{};
     RequestSequence gateway_results_acknowledged_through{};
+    CallerRole role{CallerRole::none};
 
     constexpr auto operator<=>(const CallerCursor&) const noexcept = default;
 };
@@ -289,6 +298,11 @@ struct AcknowledgeGatewayResults {
     RequestSequence acknowledged_through{};
 };
 
+struct AssignCallerRole {
+    CallerId caller_id{};
+    CallerRole role{CallerRole::none};
+};
+
 struct InstallExecutionCatalog {
     Digest256 catalog_root{};
     KillEpoch expected_kill_epoch{};
@@ -325,7 +339,8 @@ using CommandBody = std::variant<PublishPolicy,
                                  RequestReplace,
                                  ConfigureRiskLimits,
                                  AcknowledgeGatewayResults,
-                                 InstallExecutionCatalog>;
+                                 InstallExecutionCatalog,
+                                 AssignCallerRole>;
 
 struct Command {
     CommandIdentity identity{};

@@ -154,6 +154,17 @@ Arguments parse(int argc, char** argv) {
         a.body = install;
         a.lane = ProposeLane::normal;
         a.digest = verb_digest(verb, {argv[i + 1], argv[i + 2], argv[i + 3]});
+    } else if (verb == "assign-role" && i + 3 == argc) {
+        const std::string role = argv[i + 2];
+        if (role != "strategy" && role != "gateway") throw Usage("role must be strategy or gateway");
+        const auto caller = number(argv[i + 1], "caller id");
+        if (caller <= kMaxOperatorCallerId) throw Usage("an operator caller cannot be given a role");
+        a.body = AssignCallerRole{CallerId{caller}, role == "strategy" ? CallerRole::strategy : CallerRole::gateway};
+        a.lane = ProposeLane::normal;
+        a.digest = verb_digest(verb, {argv[i + 1], argv[i + 2]});
+        a.summary = std::string("ASSIGN-ROLE caller ") + argv[i + 1] + " may act as " + role + " from now on; " +
+                    (role == "strategy" ? "it may record market data, evaluate and authorize decisions"
+                                        : "it may report venue evidence and request cancels") + "\n";
     } else if (verb == "strategy-mode" && i + 4 == argc) {
         const auto mode = parse_strategy_mode(argv[i + 1]);
         if (!mode) throw Usage("strategy mode must be normal, no_new_risk, cancel_only, reduce_only or halted");
@@ -173,7 +184,8 @@ Arguments parse(int argc, char** argv) {
     } else {
         throw Usage("command must be: kill-epoch VALUE | executor-generation VALUE | "
                     "install-catalog ROOT EXPECTED_KILL_EPOCH EXPECTED_EXECUTOR_GENERATION | "
-                    "strategy-mode MODE EXPECTED_KILL_EPOCH EXPECTED_EXECUTOR_GENERATION | risk-limits KEY=VALUE...");
+                    "strategy-mode MODE EXPECTED_KILL_EPOCH EXPECTED_EXECUTOR_GENERATION | risk-limits KEY=VALUE... | "
+                    "assign-role CALLER_ID strategy|gateway");
     }
     if (a.dry_run) return a;
     if (a.key_stdin == !a.key_file.empty()) throw Usage("give exactly one of --key-file or --key-stdin");

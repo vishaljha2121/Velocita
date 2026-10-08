@@ -324,7 +324,7 @@ void test_command_identity_and_kind_are_explicit() {
     const std::array expected_prefix{
         std::byte{'V'}, std::byte{'2'}, std::byte{'K'}, std::byte{'C'},
         std::byte{104}, std::byte{0}, std::byte{0}, std::byte{0},
-        std::byte{10}, std::byte{0},
+        std::byte{11}, std::byte{0},
         std::byte{8}, std::byte{0},
         std::byte{12}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
@@ -338,9 +338,9 @@ void test_command_identity_and_kind_are_explicit() {
                 "fa55af747a17df7a03daa48c43e3f982a05dfbd9b03f85e411728856810a9fcc",
             "V9 changed more than the schema byte of the source command");
     require(frame_hash ==
-                "5c9e9b2a9dcecfde33ffdc0f1aa08dd48c66e739bd73dcf308cfcfa94c7c021c" &&
+                "0b3dfa24d77d9ecc343fa1fe91dc52238b3507dd82dc20b3f9daae5a1aefb355" &&
                 full_hash ==
-                    "47412c2354d6195ee1c7c4b0b1364a4b9d688f184c75f5b880f67ae329cd8d92",
+                    "3c571c8154fad61eebdb5a66ba09021fac8db7cbd20b0dd981367fe9b9672ea2",
             "source-command golden corpus changed: frame=" + frame_hash +
                 " full=" + full_hash);
     auto legacy = bytes;
@@ -377,8 +377,8 @@ void test_decision_kind_is_explicit_and_not_a_variant_ordinal() {
 
 void test_phase4_authorization_command_and_result_are_canonical_v4() {
     using namespace velocita::v2;
-    require(kKernelCodecSchemaVersion == 10,
-            "the kernel money ledger did not move the codec to schema V10");
+    require(kKernelCodecSchemaVersion == 11,
+            "caller roles did not move the codec to schema V11");
 
     const auto original = command(44, AuthorizeDecision{DecisionId{21}});
     std::array<std::byte, kMaxKernelCommandBytes> command_bytes{};
@@ -459,9 +459,9 @@ void test_result_round_trip_is_canonical() {
                 "7e1cfff95c9f37025b1c3ccae5d5adb52399ed2dc7ca89427a9d41205d07c005",
             "V9 changed more than the schema byte of the apply result");
     require(frame_hash ==
-                "b5d6ee00d529eaac37f2fac8dc84f8b06e64e088cbfddd058e78ccc884bb80a4" &&
+                "8d83343006a3354b451b614f29441ebc611c33ecd04392b9156b93fd4dbd2235" &&
                 full_hash ==
-                    "d419cb24dc56a2ba5499dd9a38bb9decf4dd5654a28ef7cbdea68229caa42ca2",
+                    "2345b799ab3c5ec23e4ca5b9f3375bc515051e35976ebbc3aab69d97a9b8de61",
             "apply-result golden corpus changed: frame=" + frame_hash +
                 " full=" + full_hash);
 }
@@ -633,6 +633,58 @@ void test_gateway_result_acknowledgement_is_canonical_v6() {
     require(encode_kernel_command(invalid, bytes).error ==
                 KernelCodecError::invalid_value,
             "a gateway acknowledged its own uncommitted command result");
+}
+
+void test_role_assignment_command_is_canonical() {
+    using namespace velocita::v2;
+    require(static_cast<std::uint16_t>(KernelCommandKind::assign_caller_role) == 21,
+            "role assignment command kind changed");
+    for (const auto role : {CallerRole::strategy, CallerRole::gateway}) {
+        const auto original = command(91, AssignCallerRole{CallerId{0x0102030405060708ULL}, role});
+        std::array<std::byte, kMaxKernelCommandBytes> bytes{};
+        const auto encoded = encode_kernel_command(original, bytes);
+        Command restored;
+        KernelCommandCodecScratch scratch;
+        require(encoded.error == KernelCodecError::none &&
+                    decode_kernel_command({bytes.data(), encoded.bytes_written}, restored, scratch).error ==
+                        KernelCodecError::none &&
+                    std::holds_alternative<AssignCallerRole>(restored.body) &&
+                    std::get<AssignCallerRole>(restored.body).caller_id == CallerId{0x0102030405060708ULL} &&
+                    std::get<AssignCallerRole>(restored.body).role == role,
+                "a role assignment did not round trip canonically");
+        const std::array<std::byte, 9> body{
+            std::byte{8}, std::byte{7}, std::byte{6}, std::byte{5}, std::byte{4}, std::byte{3},
+            std::byte{2}, std::byte{1}, static_cast<std::byte>(role)};
+        std::size_t matches = 0;
+        std::size_t body_offset = 0;
+        for (std::size_t offset = 0; offset + body.size() <= encoded.bytes_written; ++offset) {
+            if (std::equal(body.begin(), body.end(), bytes.begin() + static_cast<std::ptrdiff_t>(offset))) {
+                ++matches;
+                body_offset = offset;
+            }
+        }
+        require(matches == 1, "the role assignment body is not caller id then one role byte");
+        for (const std::uint8_t forged : {std::uint8_t{0}, std::uint8_t{3}, std::uint8_t{255}}) {
+            auto altered = bytes;
+            altered[body_offset + 8] = std::byte{forged};
+            Command rejected;
+            require(decode_kernel_command({altered.data(), encoded.bytes_written}, rejected, scratch).error !=
+                        KernelCodecError::none,
+                    "a role assignment frame with an unknown role decoded");
+        }
+    }
+    std::array<std::byte, kMaxKernelCommandBytes> bytes{};
+    for (const auto& invalid : {AssignCallerRole{CallerId{0}, CallerRole::strategy},
+                                AssignCallerRole{CallerId{kMaxOperatorCallerId}, CallerRole::gateway},
+                                AssignCallerRole{CallerId{21}, CallerRole::none},
+                                AssignCallerRole{CallerId{21}, static_cast<CallerRole>(3)}}) {
+        require(encode_kernel_command(command(92, invalid), bytes).error == KernelCodecError::invalid_value,
+                "an invalid role assignment was encoded");
+    }
+    require(encode_kernel_command(
+                command(92, AssignCallerRole{CallerId{kMaxOperatorCallerId + 1}, CallerRole::strategy}), bytes)
+                    .error == KernelCodecError::none,
+            "the first caller outside the operator band could not be named");
 }
 
 void test_replacement_command_is_canonical_v4() {
@@ -808,6 +860,7 @@ int main() {
         test_phase4_authorization_command_and_result_are_canonical_v4();
         test_fill_command_and_result_are_canonical_v4();
         test_cancel_and_order_event_commands_are_canonical_v4();
+        test_role_assignment_command_is_canonical();
         test_replacement_command_is_canonical_v4();
         test_gateway_result_acknowledgement_is_canonical_v6();
         test_result_round_trip_is_canonical();

@@ -1084,6 +1084,7 @@ ReplicaStatus ReplicatedKernel::status() const {
     value.archive_object_limit = archive_config_.object_limit;
     value.policies = state_.policy_count;
     value.quorum_step_downs = quorum_step_downs_;
+    value.unauthorized_commands = unauthorized_commands_;
     value.ledger_count = state_.risk_account_count;
     for (std::size_t index = 0; index < state_.risk_account_count; ++index) {
         const auto& risk = state_.risk_accounts[index];
@@ -1621,6 +1622,10 @@ int ReplicatedKernel::apply_log(raft_server_t*, void* user_data, raft_entry_t* e
             return RAFT_ERR_SHUTDOWN;
         }
         const auto result = apply(self.state_, command, *self.scratch_, &self.catalog_);
+        if (!self.restoring_ && (result.code == ApplyCode::unauthorized_command ||
+                                 result.code == ApplyCode::unauthorized_control)) {
+            ++self.unauthorized_commands_;
+        }
         self.pinned_receipts_peak_ = std::max<std::uint64_t>(self.pinned_receipts_peak_, pinned_receipt_count(self.state_));
 
         if (!self.restoring_) {

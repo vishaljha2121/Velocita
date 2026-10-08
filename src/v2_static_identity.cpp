@@ -14,8 +14,8 @@
 namespace velocita::v2 {
 namespace {
 
-static_assert(kStateSnapshotSchemaVersion == 10);
-static_assert(kKernelCodecSchemaVersion == 10);
+static_assert(kStateSnapshotSchemaVersion == 11);
+static_assert(kKernelCodecSchemaVersion == 11);
 static_assert(kAuthorityBarrierSchemaVersion == 1);
 static_assert(kExecutionCatalogSchemaVersion == 1);
 

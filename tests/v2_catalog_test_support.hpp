@@ -64,9 +64,24 @@ inline const VerifiedExecutionCatalog& standard_catalog() {
     return value;
 }
 
+inline void grant(TradingState& state, const std::uint64_t caller, const CallerRole role) {
+    for (std::size_t index = 0; index < state.caller_cursor_count; ++index) {
+        if (state.caller_cursors[index].caller_id == CallerId{caller}) {
+            state.caller_cursors[index].role = role;
+            return;
+        }
+    }
+    if (state.caller_cursor_count == state.caller_cursors.size())
+        throw std::logic_error("role fixture has no free caller slot");
+    state.caller_cursors[state.caller_cursor_count++] =
+        {CallerId{caller}, RequestSequence{}, RequestSequence{}, role};
+}
+
 inline TradingState state(const VerifiedExecutionCatalog& value = standard_catalog()) {
     TradingState result;
     result.execution_catalog_root = value.root();
+    grant(result, 22, CallerRole::gateway);
+    grant(result, 24, CallerRole::gateway);
     return result;
 }
 

@@ -8,6 +8,8 @@
 #include <optional>
 #include <span>
 #include <string_view>
+#include <type_traits>
+#include <variant>
 
 namespace velocita::v2 {
 namespace {
@@ -2994,6 +2996,31 @@ enum class CancelDisposition : std::uint8_t {
     return result(state, ApplyCode::applied, next_version);
 }
 
+[[nodiscard]] ApplyResult apply_assign_caller_role(
+    TradingState& state, const AssignCallerRole& command,
+    const std::uint64_t next_version) noexcept {
+    if (command.caller_id.value() == 0 || is_operator_caller(command.caller_id) ||
+        (command.role != CallerRole::strategy && command.role != CallerRole::gateway)) {
+        return result(state, ApplyCode::invalid_command, next_version);
+    }
+    auto* cursor = find_caller_cursor(state, command.caller_id);
+    if (cursor != nullptr && cursor->role == command.role) {
+        return result(state, ApplyCode::already_applied, next_version);
+    }
+    if (cursor != nullptr && cursor->role != CallerRole::none) {
+        return result(state, ApplyCode::caller_role_conflict, next_version);
+    }
+    if (cursor == nullptr) {
+        if (state.caller_cursor_count == state.caller_cursors.size()) {
+            return result(state, ApplyCode::receipt_capacity_exceeded, next_version);
+        }
+        cursor = &state.caller_cursors[state.caller_cursor_count++];
+        *cursor = CallerCursor{command.caller_id, RequestSequence{}, RequestSequence{}};
+    }
+    cursor->role = command.role;
+    return result(state, ApplyCode::applied, next_version);
+}
+
 [[nodiscard]] ApplyCode catalog_installation_code(
     const TradingState& state, const InstallExecutionCatalog& command) noexcept {
     if (command.catalog_root.is_zero()) return ApplyCode::invalid_command;
@@ -3021,6 +3048,9 @@ enum class CancelDisposition : std::uint8_t {
         const auto code = catalog_installation_code(state, *body);
         if (code == ApplyCode::applied) state.execution_catalog_root = body->catalog_root;
         return result(state, code, next_version);
+    }
+    if (const auto* body = std::get_if<AssignCallerRole>(&command.body)) {
+        return apply_assign_caller_role(state, *body, next_version);
     }
     if (state.execution_catalog_root.is_zero() &&
         (std::holds_alternative<PublishPolicy>(command.body) ||
@@ -3303,6 +3333,45 @@ const SourceCursor* find_source_cursor(const TradingState& state,
     return nullptr;
 }
 
+namespace {
+
+inline constexpr unsigned kOperatorRole = 1;
+inline constexpr unsigned kStrategyRole = 2;
+inline constexpr unsigned kGatewayRole = 4;
+
+template <typename T, typename... Kinds>
+inline constexpr bool is_one_of = (std::is_same_v<T, Kinds> || ...);
+
+[[nodiscard]] unsigned roles_allowed(const CommandBody& body) noexcept {
+    return std::visit([](const auto& value) noexcept -> unsigned {
+        using T = std::decay_t<decltype(value)>;
+        if constexpr (is_one_of<T, AdvanceKillEpoch, SetExecutorGeneration, SetStrategyMode,
+                                InstallExecutionCatalog, ConfigureRiskLimits, AssignCallerRole,
+                                PublishPolicy, ValidatePolicy, ActivatePolicy, SupersedePolicy,
+                                StageExecutablePolicy, ActivateExecutablePolicy>) {
+            return kOperatorRole;
+        } else if constexpr (is_one_of<T, RecordSourceEvent, EvaluateDecisionFrame, AuthorizeDecision>) {
+            return kOperatorRole | kStrategyRole;
+        } else if constexpr (is_one_of<T, ObserveFill, ObserveOrderEvent, AcknowledgeGatewayResults>) {
+            return kGatewayRole;
+        } else {
+            static_assert(is_one_of<T, RequestCancel, RequestReplace, RequestMassCancel>,
+                          "decide which caller roles may send this command");
+            return kOperatorRole | kGatewayRole;
+        }
+    }, body);
+}
+
+[[nodiscard]] unsigned role_of(const TradingState& state, const CallerId caller) noexcept {
+    if (is_operator_caller(caller)) return kOperatorRole;
+    const auto* cursor = find_caller_cursor(state, caller);
+    if (cursor == nullptr) return 0;
+    return cursor->role == CallerRole::strategy ? kStrategyRole
+         : cursor->role == CallerRole::gateway ? kGatewayRole : 0;
+}
+
+}
+
 ApplyResult apply(TradingState& state,
                   const Command& command,
                   ApplyScratch&,
@@ -3325,10 +3394,14 @@ ApplyResult apply(TradingState& state,
         std::holds_alternative<SetExecutorGeneration>(command.body) ||
         std::holds_alternative<SetStrategyMode>(command.body) ||
         std::holds_alternative<InstallExecutionCatalog>(command.body) ||
-        std::holds_alternative<ConfigureRiskLimits>(command.body)) {
+        std::holds_alternative<ConfigureRiskLimits>(command.body) ||
+        std::holds_alternative<AssignCallerRole>(command.body)) {
         if (!is_operator_caller(command.identity.caller_id)) {
             return result(state, ApplyCode::unauthorized_control, state.state_version);
         }
+    }
+    if ((roles_allowed(command.body) & role_of(state, command.identity.caller_id)) == 0) {
+        return result(state, ApplyCode::unauthorized_command, state.state_version);
     }
 
     const VenueObservation* observation = nullptr;

@@ -129,6 +129,7 @@ struct ReplicaStatus {
     std::uint64_t archive_object_limit{};
     std::uint64_t policies{};
     std::uint64_t quorum_step_downs{};
+    std::uint64_t unauthorized_commands{};
     std::uint64_t ledger_count{};
     std::array<AccountLedger, kMaxRiskAccounts> ledgers{};
 };
@@ -301,6 +302,7 @@ private:
     std::array<std::int64_t, kMaxStaticVoters> peer_silence_ms_{};
     std::int64_t quorum_silence_limit_ms_{};
     std::uint64_t quorum_step_downs_{};
+    std::uint64_t unauthorized_commands_{};
     std::uint64_t archive_bytes_seen_{};
     std::uint64_t archive_objects_seen_{};
     std::uint64_t blocks_submitted_{};

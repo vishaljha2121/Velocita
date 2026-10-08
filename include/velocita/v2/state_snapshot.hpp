@@ -10,7 +10,7 @@
 
 namespace velocita::v2 {
 
-inline constexpr std::uint16_t kStateSnapshotSchemaVersion = 10;
+inline constexpr std::uint16_t kStateSnapshotSchemaVersion = 11;
 inline constexpr std::size_t kStateSnapshotMagicBytes = 4;
 inline constexpr std::size_t kStateSnapshotLengthBytes = 4;
 inline constexpr std::size_t kStateSnapshotSchemaBytes = 2;
@@ -34,7 +34,7 @@ inline constexpr std::size_t kStateSnapshotDecisionFeatureBytes = 8;
 inline constexpr std::size_t kStateSnapshotRiskAccountBytes = 169;
 inline constexpr std::size_t kStateSnapshotRiskReservationBytes = 57;
 inline constexpr std::size_t kStateSnapshotClusterOrderBytes = 43;
-inline constexpr std::size_t kStateSnapshotCallerCursorBytes = 24;
+inline constexpr std::size_t kStateSnapshotCallerCursorBytes = 25;
 inline constexpr std::size_t kStateSnapshotOutboxEffectBytes = 62;
 inline constexpr std::size_t kStateSnapshotInstrumentBytes = 66;
 inline constexpr std::size_t kStateSnapshotVenueBytes = 21;
@@ -103,7 +103,7 @@ decode_state_snapshot(std::span<const std::byte> snapshot,
                       StateSnapshotScratch& scratch) noexcept;
 
 static_assert(kMaxStateSnapshotBytes < 64U * 1024U);
-static_assert(kMaxStateSnapshotBytes == 61575U);
+static_assert(kMaxStateSnapshotBytes == 61583U);
 static_assert(std::is_nothrow_copy_assignable_v<TradingState>);
 
 }

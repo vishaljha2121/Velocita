@@ -887,3 +887,45 @@ tests:
             exp_annotations:
               summary: "The kernel's fees and the venue report's fees differ by 48000 micro-dollars"
               description: "The kernel books every fill's fee, and the observer reads the venue's. They should be equal for a session that began with its incarnation. A difference means a fill was booked by one and not the other; stop and reconcile before trading on."
+
+  # A refused command is applied by all three voters, so it is reported once,
+  # not three times. nuc2 steps down at 5m.
+  - interval: 1m
+    input_series:
+      - series: 'velocita_v2_unauthorized_commands_total{job="velocita-v2",host="nuc1",node="1"}'
+        values: '0 0 0 2x40'
+      - series: 'velocita_v2_unauthorized_commands_total{job="velocita-v2",host="pi",node="2"}'
+        values: '0 0 0 2x40'
+      - series: 'velocita_v2_unauthorized_commands_total{job="velocita-v2",host="nuc2",node="3"}'
+        values: '0 0 0 2x40'
+      - series: 'velocita_v2_quorum_step_downs_total{job="velocita-v2",host="nuc2",node="3"}'
+        values: '0 0 0 0 0 1x40'
+      - series: 'velocita_v2_quorum_step_downs_total{job="velocita-v2",host="nuc1",node="1"}'
+        values: '0x45'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: VelocitaUnauthorizedCommand
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: VelocitaUnauthorizedCommand
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: "A key sent 2 command(s) its role does not allow"
+              description: "The command was signed by a known key, committed and refused by the kernel (ADR 0020). Either a role was not assigned in the ceremony (assign-role 21 strategy, 22 gateway), or a key is being used for something it should not do. The refusal leaves no receipt: find the command in the Raft log."
+      - eval_time: 20m
+        alertname: VelocitaUnauthorizedCommand
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: VelocitaLeaderSteppedDown
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: VelocitaLeaderSteppedDown
+        exp_alerts:
+          - exp_labels: {severity: warning, job: velocita-v2, host: nuc2, node: "3"}
+            exp_annotations:
+              summary: "nuc2 gave up leadership: it stopped hearing a majority"
+              description: "The leader could send but heard no replies from a majority for two election timeouts, so it stepped down to let another voter lead. Check the network path into nuc2."
+      - eval_time: 20m
+        alertname: VelocitaLeaderSteppedDown
+        exp_alerts: []

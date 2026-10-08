@@ -172,6 +172,7 @@ void observe_outcome(OutcomeCounters& counters, const ApplyResult& result) noexc
         case ApplyCode::fill_quantity_conflict:
         case ApplyCode::fill_price_conflict:
         case ApplyCode::fill_fee_conflict:
+        case ApplyCode::caller_role_conflict:
             ++counters.conflicts;
             return;
         case ApplyCode::decision_capacity_exceeded:

@@ -3106,6 +3106,37 @@ void test_an_isolated_voter_rejoins_without_raising_the_term(const std::filesyst
             "the rejoined voter did not catch up");
 }
 
+void test_commands_refused_by_role_are_counted_on_every_voter(const std::filesystem::path& root) {
+    Cluster cluster(root, 3);
+    cluster.elect();
+    const auto count = [&](const std::uint64_t expected, const char* when) {
+        cluster.settle(30);
+        for (const auto& node : cluster.nodes)
+            require(node->status().unauthorized_commands == expected,
+                    std::string("the unauthorized command count is wrong ") + when + ": voter " +
+                        std::to_string(node->status().node_id) + " has " +
+                        std::to_string(node->status().unauthorized_commands));
+    };
+    require(cluster.commit(command_from(kMaxOperatorCallerId, 1, AdvanceKillEpoch{KillEpoch{1}})).result.code ==
+                ApplyCode::applied, "fixture: the operator command was refused");
+    count(0, "after an allowed command");
+    require(cluster.commit(command_from(kMaxOperatorCallerId + 1, 1,
+                                        SetStrategyMode{StrategyMode::normal, {}, {}})).result.code ==
+                ApplyCode::unauthorized_control, "fixture: a control from an ordinary caller was accepted");
+    count(1, "after a refused control");
+    require(cluster.commit(command_from(kMaxOperatorCallerId + 1, 2,
+                                        AcknowledgeGatewayResults{RequestSequence{1}})).result.code ==
+                ApplyCode::unauthorized_command, "fixture: evidence from a caller without a role was accepted");
+    count(2, "after a refused command");
+
+    const auto restarted = cluster.nodes.front()->status().node_id;
+    cluster.restart(restarted);
+    cluster.settle(200);
+    for (const auto id : cluster.members)
+        require(cluster.node(id).status().unauthorized_commands == (id == restarted ? 0U : 2U),
+                "replaying history after a restart counted old refusals again, or a running voter lost its count");
+}
+
 void test_a_leader_that_hears_no_quorum_steps_down(const std::filesystem::path& root) {
     Cluster cluster(root, 3);
     auto& first = cluster.elect();
@@ -3489,6 +3520,7 @@ int main(int argc, char** argv) {
         test_a_prevote_round_counts_only_its_own_grants(fresh("prevote-round"));
         test_an_isolated_voter_rejoins_without_raising_the_term(fresh("prevote-isolated"));
         test_a_lost_leader_is_replaced_within_bounded_time(fresh("prevote-leader-loss"));
+        test_commands_refused_by_role_are_counted_on_every_voter(fresh("refused-by-role"));
         test_a_leader_that_hears_no_quorum_steps_down(fresh("deaf-leader"));
         test_a_leader_with_one_silent_follower_keeps_leading(fresh("one-silent"));
         test_a_two_voter_leader_steps_down_when_its_only_peer_goes_quiet(fresh("two-voter-deaf"));

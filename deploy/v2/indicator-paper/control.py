@@ -37,6 +37,7 @@ def main():
         run(command)
     elif a.action=='ceremony':
         actions=[['kill-epoch','1'],['executor-generation','1'],['install-catalog',m['catalog_root'],'1','1'],
+            ['assign-role','21','strategy'],['assign-role','22','gateway'],
             ['risk-limits','account=2','instrument=2','risk_policy_version=1','expected_risk_version=0',
              'kill_epoch=1','executor_generation=1','max_order_lots=12','max_reserved_lots=12',
              'max_order_notional_micros=25000000','max_reserved_exposure_micros=25000000',

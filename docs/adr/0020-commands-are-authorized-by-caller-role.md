@@ -1,8 +1,10 @@
 # 0020. Commands are authorized by caller role, not only authenticated
 
 Date: 2026-10-01
-Status: Proposed (architecture review, `docs/ARCHITECTURE_REVIEW_2026-10-01.md` finding A1).
-It needs the owner's decision before implementation. **Blocking for live trading.**
+Status: Accepted and built 2026-10-08 (owner: "continue with the plan", live promotion plan item 6).
+Not deployed: it changes the command and snapshot formats (schema 11), so it needs a new incarnation.
+Origin: architecture review, `docs/ARCHITECTURE_REVIEW_2026-10-01.md` finding A1.
+**Blocking for live trading.**
 
 ## Context
 
@@ -85,3 +87,30 @@ so that the strategy could not change limits, but the separation stops at those 
   bad config would diverge in what it admits, and it is invisible to replay.
 - **Separate Aeron channels per role.** Rejected. Transport topology is not an authorization
   model, and it still leaves the reducer trusting whoever arrives.
+
+## As built (2026-10-08)
+
+- **Where the role lives.** There is no separate table. Each caller already has one entry in the
+  caller cursor table (8 entries), and the role is one more byte on that entry. A caller with a
+  role therefore always has a cursor, and the bound is the same 8. The snapshot grows by 8 bytes.
+- **Assigning a role.** `AssignCallerRole{caller, role}` from an operator caller. The same role
+  again answers `already_applied`; a different role answers `caller_role_conflict`; an operator
+  caller, caller 0 or an unknown role is `invalid_command`; no free entry is
+  `receipt_capacity_exceeded`. A role cannot be removed or changed inside an incarnation.
+- **The check.** `apply` computes the roles allowed for the command and the role of the sender and
+  refuses with `unauthorized_command` when they do not meet. The refusal writes no receipt and
+  creates no cursor. The five control commands from a non-operator keep their older code,
+  `unauthorized_control`.
+- **Exhaustiveness.** The allowlist is a `std::visit` with a `static_assert` in its last branch, so
+  a new command kind does not compile until its roles are chosen. The dispatch in
+  `apply_new_command` is still a `std::get_if` chain; part 3 of the decision is done only for the
+  allowlist.
+- **Client.** `velocita-v2-client ... assign-role CALLER_ID strategy|gateway`.
+- **Ceremony.** After `install-catalog`: `assign-role 21 strategy`, then `assign-role 22 gateway`.
+  Until both are committed the strategy's bars and the gateway's reports are refused.
+- **Tests.** `tests/v2_kernel_control_tests.cpp` holds the table (21 commands × operator, strategy,
+  gateway, a known caller with no role, an unknown caller) and the assignment rules. Codec and
+  snapshot tests cover the bytes. 34 mutants: 31 killed, 3 equivalent (one unreachable branch, two
+  decode checks that a later validation repeats).
+- **Consequence for tests and tools.** Evidence can no longer be sent with an operator key. Every
+  fixture that did so now uses a caller holding the gateway role.

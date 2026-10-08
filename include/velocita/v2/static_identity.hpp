@@ -23,8 +23,8 @@ enum class DeploymentMode : std::uint8_t {
 struct StaticIdentity {
     std::array<std::byte, 16> incarnation{};
     Digest256 catalog_root{};
-    std::uint16_t state_snapshot_schema{10};
-    std::uint16_t command_result_schema{10};
+    std::uint16_t state_snapshot_schema{11};
+    std::uint16_t command_result_schema{11};
     std::uint16_t authority_marker_schema{1};
     std::uint16_t execution_catalog_schema{1};
     std::uint16_t replication_semantics_epoch{1};

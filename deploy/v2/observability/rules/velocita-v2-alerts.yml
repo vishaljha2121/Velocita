@@ -76,6 +76,18 @@ groups:
         annotations:
           summary: "Voter {{ $labels.node }} refused unauthenticated frames"
           description: "Forged, foreign or corrupted traffic reached a voter."
+      - alert: VelocitaUnauthorizedCommand
+        expr: max(increase(velocita_v2_unauthorized_commands_total[10m])) > 0
+        labels: {severity: critical}
+        annotations:
+          summary: "A key sent {{ $value | printf \"%.0f\" }} command(s) its role does not allow"
+          description: "The command was signed by a known key, committed and refused by the kernel (ADR 0020). Either a role was not assigned in the ceremony (assign-role 21 strategy, 22 gateway), or a key is being used for something it should not do. The refusal leaves no receipt: find the command in the Raft log."
+      - alert: VelocitaLeaderSteppedDown
+        expr: increase(velocita_v2_quorum_step_downs_total[10m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }} gave up leadership: it stopped hearing a majority"
+          description: "The leader could send but heard no replies from a majority for two election timeouts, so it stepped down to let another voter lead. Check the network path into {{ $labels.host }}."
       # From deploy/v2/secrets-presence.sh on each voter host (names only; it
       # never reads a secret). Secrets live in RAM, so every reboot needs a push.
       - alert: VelocitaSecretsMissing

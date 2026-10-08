@@ -493,6 +493,8 @@ void shadow_submitter_scenario(Harness& h, const std::string& submitter) {
     const auto installed = h.operator_command(
         3, {"install-catalog", to_hex(catalog_test::standard_catalog().root()), "1", "1"}, leader, 20000);
     require(installed.exit_code == 0, "catalog installation refused: " + installed.output);
+    const auto assigned = h.operator_command(4, {"assign-role", "21", "strategy"}, leader, 20000);
+    require(assigned.exit_code == 0, "strategy role refused: " + assigned.output);
 
     const auto program = h.root / "trend.program";
     {
@@ -588,7 +590,7 @@ void shadow_submitter_scenario(Harness& h, const std::string& submitter) {
     const int status = first.finish();
     require(WIFEXITED(status) && WEXITSTATUS(status) == 0, "submitter did not exit cleanly at end of input");
 
-    const auto limits = h.operator_command(4, {"risk-limits", "account=5", "instrument=4", "risk_policy_version=1",
+    const auto limits = h.operator_command(5, {"risk-limits", "account=5", "instrument=4", "risk_policy_version=1",
         "expected_risk_version=0", "kill_epoch=1", "executor_generation=1", "max_order_lots=1", "max_reserved_lots=2",
         "max_order_notional_micros=10000", "max_reserved_exposure_micros=10000", "initial_margin_ppm=1000000",
         "maximum_fee_ppm=10000", "max_position_lots=1", "allow_short=0", "reason_code=7",
@@ -640,7 +642,7 @@ void shadow_submitter_scenario(Harness& h, const std::string& submitter) {
                 std::string(63, '1') + " exits_only=yes");
     const auto unclear = second.line(std::chrono::seconds(30));
     require(unclear.rfind("ERROR id=26 reason=bad_tick", 0) == 0, "an unclear stop token was guessed: " + unclear);
-    const auto halted = h.operator_command(5, {"strategy-mode", "halted", "1", "1"}, h.await_leader(), 20000);
+    const auto halted = h.operator_command(6, {"strategy-mode", "halted", "1", "1"}, h.await_leader(), 20000);
     require(halted.exit_code == 0, "halt refused: " + halted.output);
     const auto after_halt = paper_tick(second, 27, true);
     require(word(after_halt, "decision_code") == std::to_string(static_cast<int>(DecisionCode::control_halted)) &&

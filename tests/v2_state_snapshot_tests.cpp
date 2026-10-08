@@ -203,6 +203,7 @@ velocita::v2::TradingState phase5_observation_state() {
 velocita::v2::TradingState overfill_conflict_state() {
     using namespace velocita::v2;
     auto state = phase4_state();
+    catalog_test::grant(state, 33, CallerRole::gateway);
     VenueObservation observation;
     observation.kind = VenueObservationKind::fill;
     observation.venue_id = VenueId{7};
@@ -504,7 +505,7 @@ void test_empty_snapshot_has_canonical_layout() {
     const std::array expected_prefix{
         std::byte{'V'}, std::byte{'2'}, std::byte{'S'}, std::byte{'T'},
         std::byte{95}, std::byte{0}, std::byte{0}, std::byte{0},
-        std::byte{10}, std::byte{0},
+        std::byte{11}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{5}};
@@ -523,7 +524,7 @@ void test_empty_snapshot_has_canonical_layout() {
             "V9 changed more than the schema byte of the empty snapshot");
     const auto hash = to_hex(encoded.state_digest);
     require(hash ==
-                "4ff5067a55ca3ea21ca99108d38f68db9dc7239364aec7411cf8c06e29bc2692",
+                "df011d2990764aeb8926f05123495c942dcaa2043a81e06cd73c409d300a4746",
             "empty state golden digest changed: " + hash);
     require(encoded.bytes_written ==
                 kStateSnapshotPayloadOffset + kStateSnapshotEmptyPayloadBytes +
@@ -628,8 +629,8 @@ void test_round_trip_is_canonical_and_excludes_unused_capacity() {
 
 void test_phase4_state_survives_canonical_snapshot() {
     using namespace velocita::v2;
-    require(kStateSnapshotSchemaVersion == 10,
-            "the kernel money ledger did not move snapshots to V10");
+    require(kStateSnapshotSchemaVersion == 11,
+            "caller roles did not move snapshots to V11");
     const auto original = phase4_state();
     std::array<std::byte, kMaxStateSnapshotBytes> storage{};
     const auto encoded = encode_state_snapshot(original, storage);
@@ -897,6 +898,66 @@ void test_snapshot_rejects_cross_linked_or_uncovered_evidence() {
             "snapshot accepted an order revision older than conflict evidence");
 }
 
+void test_caller_roles_survive_and_forged_roles_are_rejected() {
+    using namespace velocita::v2;
+    const auto with_role = [](const CallerRole role) {
+        TradingState state;
+        state.execution_catalog_root = catalog_test::standard_catalog().root();
+        catalog_test::grant(state, 30, CallerRole::strategy);
+        catalog_test::grant(state, 31, role);
+        catalog_test::grant(state, 32, CallerRole::none);
+        return state;
+    };
+    const auto state = with_role(CallerRole::gateway);
+    std::array<std::byte, kMaxStateSnapshotBytes> storage{};
+    const auto encoded = encode_state_snapshot(state, storage);
+    require(encoded.error == StateSnapshotError::none, "a state with caller roles did not encode");
+    TradingState restored;
+    StateSnapshotScratch scratch;
+    require(decode_state_snapshot({storage.data(), encoded.bytes_written}, restored, scratch).error ==
+                StateSnapshotError::none &&
+                restored.caller_cursor_count == 3 &&
+                restored.caller_cursors[0].role == CallerRole::strategy &&
+                restored.caller_cursors[1].role == CallerRole::gateway &&
+                restored.caller_cursors[2].role == CallerRole::none,
+            "caller roles did not survive a snapshot");
+
+    std::array<std::byte, kMaxStateSnapshotBytes> other{};
+    const auto other_encoded = encode_state_snapshot(with_role(CallerRole::strategy), other);
+    require(other_encoded.error == StateSnapshotError::none &&
+                other_encoded.bytes_written == encoded.bytes_written &&
+                other_encoded.state_digest != encoded.state_digest,
+            "the state digest does not bind a caller role");
+    std::size_t role_offset = kStateSnapshotPayloadOffset;
+    while (storage[role_offset] == other[role_offset]) ++role_offset;
+    require(storage[role_offset] == std::byte{2} && other[role_offset] == std::byte{1},
+            "the caller role is not one canonical byte");
+    auto forged = storage;
+    forged[role_offset] = std::byte{3};
+    replace_integrity_digest({forged.data(), encoded.bytes_written});
+    TradingState untouched;
+    require(decode_state_snapshot({forged.data(), encoded.bytes_written}, untouched, scratch).error ==
+                StateSnapshotError::invalid_state && untouched.caller_cursor_count == 0,
+            "a snapshot with an unknown caller role was accepted");
+
+    auto unknown_role = state;
+    unknown_role.caller_cursors[1].role = static_cast<CallerRole>(3);
+    require(encode_state_snapshot(unknown_role, storage).error == StateSnapshotError::invalid_state,
+            "a state with an unknown caller role was encoded");
+    for (const auto role : {CallerRole::strategy, CallerRole::gateway}) {
+        TradingState operator_role;
+        operator_role.execution_catalog_root = catalog_test::standard_catalog().root();
+        operator_role.caller_cursor_count = 1;
+        operator_role.caller_cursors[0] = {CallerId{kMaxOperatorCallerId}, RequestSequence{},
+                                           RequestSequence{}, role};
+        require(encode_state_snapshot(operator_role, storage).error == StateSnapshotError::invalid_state,
+                "a state giving an operator caller a role was encoded");
+        operator_role.caller_cursors[0].caller_id = CallerId{kMaxOperatorCallerId + 1};
+        require(encode_state_snapshot(operator_role, storage).error == StateSnapshotError::none,
+                "the first caller outside the operator band could not hold a role");
+    }
+}
+
 void test_bounds_and_invalid_source_state_fail_closed() {
     using namespace velocita::v2;
     const auto state = populated_state();
@@ -1107,6 +1168,7 @@ int main() {
         test_snapshot_rejects_gateway_local_outbox_states();
         test_snapshot_rejects_an_unknown_observation_origin();
         test_snapshot_rejects_cross_linked_or_uncovered_evidence();
+        test_caller_roles_survive_and_forged_roles_are_rejected();
         test_bounds_and_invalid_source_state_fail_closed();
         test_declared_maximum_is_exact_and_encodable();
         std::cout << "all V2 state snapshot tests passed\n";

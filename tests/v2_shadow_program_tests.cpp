@@ -338,6 +338,7 @@ void a_paper_buy_is_authorized_and_a_second_order_on_the_slot_is_not() {
     Harness h;
     (void)h.setup();
     h.caller = CallerId{21};
+    catalog_test::grant(h.state, 21, CallerRole::strategy);
     require(h.configure_risk(RiskVersion{0}).code == ApplyCode::applied, "risk limits refused");
     const auto up = h.paper_tick(50'000, {});
     require(up.decision_code == DecisionCode::action && up.effective_directive == Directive::place_limit,
@@ -360,6 +361,7 @@ void only_a_frame_bound_to_the_current_risk_version_is_authorized() {
     Harness h;
     (void)h.setup();
     h.caller = CallerId{21};
+    catalog_test::grant(h.state, 21, CallerRole::strategy);
     require(h.configure_risk(RiskVersion{0}).code == ApplyCode::applied, "first configuration refused");
     require(h.configure_risk(RiskVersion{1}).code == ApplyCode::applied, "second configuration refused");
     (void)h.paper_tick(50'000, {});
@@ -464,6 +466,7 @@ void a_withheld_buy_leaves_no_order() {
     Harness h;
     (void)h.setup();
     h.caller = CallerId{21};
+    catalog_test::grant(h.state, 21, CallerRole::strategy);
     require(h.configure_risk(RiskVersion{0}).code == ApplyCode::applied, "risk limits refused");
     const auto up = h.paper_tick(50'000, {});
     require(paper_request(h.program, up, true) == PaperRequest::withheld, "the enter rule's buy was not withheld");

@@ -199,6 +199,8 @@ private:
         case ApplyCode::fill_price_conflict:
         case ApplyCode::fill_fee_conflict:
         case ApplyCode::loss_limit_reached:
+        case ApplyCode::unauthorized_command:
+        case ApplyCode::caller_role_conflict:
             return true;
     }
     return false;
@@ -257,6 +259,7 @@ private:
         case KernelCommandKind::acknowledge_gateway_results:
         case KernelCommandKind::request_mass_cancel:
         case KernelCommandKind::install_execution_catalog:
+        case KernelCommandKind::assign_caller_role:
             return true;
     }
     return false;
@@ -347,6 +350,10 @@ private:
             std::get_if<AcknowledgeGatewayResults>(&command.body)) {
         return body->acknowledged_through.value() != 0 &&
                body->acknowledged_through < command.identity.request_sequence;
+    }
+    if (const auto* body = std::get_if<AssignCallerRole>(&command.body)) {
+        return !is_operator_caller(body->caller_id) && body->caller_id.value() != 0 &&
+               (body->role == CallerRole::strategy || body->role == CallerRole::gateway);
     }
     if (const auto* body = std::get_if<InstallExecutionCatalog>(&command.body)) {
         return !body->catalog_root.is_zero() &&
@@ -499,6 +506,9 @@ private:
     if (std::holds_alternative<AcknowledgeGatewayResults>(body)) {
         return KernelCommandKind::acknowledge_gateway_results;
     }
+    if (std::holds_alternative<AssignCallerRole>(body)) {
+        return KernelCommandKind::assign_caller_role;
+    }
     return KernelCommandKind::install_execution_catalog;
 }
 
@@ -543,6 +553,7 @@ private:
     if (std::holds_alternative<RequestReplace>(body)) return 16;
     if (std::holds_alternative<ConfigureRiskLimits>(body)) return 110;
     if (std::holds_alternative<AcknowledgeGatewayResults>(body)) return 8;
+    if (std::holds_alternative<AssignCallerRole>(body)) return 9;
     if (std::holds_alternative<InstallExecutionCatalog>(body)) {
         return kInstallExecutionCatalogBodyBytes;
     }
@@ -784,6 +795,9 @@ void write_body(Writer& writer, const CommandBody& body) noexcept {
     } else if (const auto* value =
                    std::get_if<AcknowledgeGatewayResults>(&body)) {
         writer.integral(value->acknowledged_through.value());
+    } else if (const auto* value = std::get_if<AssignCallerRole>(&body)) {
+        writer.integral(value->caller_id.value());
+        writer.integral(static_cast<std::uint8_t>(value->role));
     } else if (const auto* value =
                    std::get_if<InstallExecutionCatalog>(&body)) {
         writer.digest(value->catalog_root);
@@ -1132,6 +1146,16 @@ void write_body(Writer& writer, const CommandBody& body) noexcept {
             body = AcknowledgeGatewayResults{
                 RequestSequence{reader.integral<std::uint64_t>()}};
             return true;
+        case KernelCommandKind::assign_caller_role: {
+            AssignCallerRole value;
+            value.caller_id = CallerId{reader.integral<std::uint64_t>()};
+            const auto role = reader.integral<std::uint8_t>();
+            if (role != static_cast<std::uint8_t>(CallerRole::strategy) &&
+                role != static_cast<std::uint8_t>(CallerRole::gateway)) return false;
+            value.role = static_cast<CallerRole>(role);
+            body = value;
+            return true;
+        }
         case KernelCommandKind::install_execution_catalog:
             body = InstallExecutionCatalog{
                 reader.digest(), KillEpoch{reader.integral<std::uint64_t>()},

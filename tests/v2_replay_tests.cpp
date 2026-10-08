@@ -211,9 +211,9 @@ void test_snapshot_plus_suffix_equals_full_byte_replay() {
                            restored_bytes.begin()),
             "full replay and snapshot-plus-suffix did not converge byte-for-byte");
 
-    const auto final_digest = to_hex(full_snapshot.state_digest);
-    require(to_hex(catalog_test::schema7_projection(full)) ==
-                "3be6f42d0748bb6fa7b549febf59ffd6da70363865748e430340f32a38c9359d",
+    const auto final_digest = to_hex(catalog_test::schema7_projection(full));
+    require(final_digest ==
+                "1f748051d0ae9affc597da9b62c6a56298ef2e5e5fa69e21c33a2252fa6a7edb",
             "replay corpus final state changed without reviewed migration: " +
                 final_digest);
 }

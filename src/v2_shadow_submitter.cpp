@@ -403,6 +403,8 @@ std::string_view apply_code_name(ApplyCode code) noexcept {
         case ApplyCode::fill_price_conflict: return "fill_price_conflict";
         case ApplyCode::fill_fee_conflict: return "fill_fee_conflict";
         case ApplyCode::loss_limit_reached: return "loss_limit_reached";
+        case ApplyCode::unauthorized_command: return "unauthorized_command";
+        case ApplyCode::caller_role_conflict: return "caller_role_conflict";
     }
     return "unknown";
 }

@@ -414,7 +414,7 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
                 fill.fee = FeeMicros::from_atoms(3);
                 fill.evidence_digest = digest(0xA00 + fill.execution_id.value());
                 const Command fill_command{
-                    {CallerId{2}, RequestSequence{request++},
+                    {CallerId{22}, RequestSequence{request++},
                      observation_fingerprint(fill)},
                     ObserveFill{fill}};
                 const auto outcome = admit(fill_command, "fill");
@@ -478,7 +478,7 @@ void run_seed(const std::uint64_t seed, Coverage& coverage) {
                 }
                 event.evidence_digest = digest(0xC00 + event.venue_sequence.value());
                 const Command event_command{
-                    {CallerId{4}, RequestSequence{request++},
+                    {CallerId{24}, RequestSequence{request++},
                      observation_fingerprint(event)},
                     ObserveOrderEvent{event}};
                 const auto outcome = admit(event_command, "venue order event");

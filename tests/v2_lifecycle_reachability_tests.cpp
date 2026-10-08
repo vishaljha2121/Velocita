@@ -292,6 +292,9 @@ std::vector<Step> successors(const TradingState& state, std::uint64_t& counter) 
     const auto identity = [&counter](const Digest256& payload) {
         return CommandIdentity{CallerId{1}, RequestSequence{++counter}, payload};
     };
+    const auto evidence_identity = [&counter](const Digest256& payload) {
+        return CommandIdentity{CallerId{22}, RequestSequence{++counter}, payload};
+    };
 
     steps.push_back({{identity(digest(0x91)), RequestCancel{cluster_order}},
                      "RequestCancel"});
@@ -317,7 +320,7 @@ std::vector<Step> successors(const TradingState& state, std::uint64_t& counter) 
             value.price = PriceTicks::from_atoms(11);
         }
         if (validate(value) != ContractError::none) return;
-        steps.push_back({{identity(observation_fingerprint(value)),
+        steps.push_back({{evidence_identity(observation_fingerprint(value)),
                           kind == VenueObservationKind::fill
                               ? CommandBody{ObserveFill{value}}
                               : CommandBody{ObserveOrderEvent{value}}},

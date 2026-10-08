@@ -408,6 +408,10 @@ struct Base {
 };
 
 void prepare_cluster(Cluster& cluster, Caller& operator_caller, Caller& strategy) {
+    require(cluster.commit(operator_caller, AssignCallerRole{CallerId{kStrategy}, CallerRole::strategy}).code ==
+                ApplyCode::applied, "strategy role");
+    require(cluster.commit(operator_caller, AssignCallerRole{CallerId{kGateway}, CallerRole::gateway}).code ==
+                ApplyCode::applied, "gateway role");
     require(cluster.commit(operator_caller, AdvanceKillEpoch{KillEpoch{1}}, ProposeLane::control).code == ApplyCode::applied,
             "kill epoch");
     require(cluster.commit(operator_caller, SetExecutorGeneration{ExecutorGeneration{1}}, ProposeLane::control).code ==

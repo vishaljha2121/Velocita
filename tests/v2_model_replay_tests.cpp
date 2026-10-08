@@ -1129,6 +1129,10 @@ ExpectedRun compare_production_to_model(const std::uint64_t seed,
     ExpectedRun expected;
     TradingState production = catalog_test::state(model_catalog());
     ModelState model;
+    model.caller_cursors.assign(
+        production.caller_cursors.begin(),
+        production.caller_cursors.begin() +
+            static_cast<std::ptrdiff_t>(production.caller_cursor_count));
     ApplyScratch apply_scratch;
     KernelCommandCodecScratch codec_scratch;
 
@@ -1280,7 +1284,7 @@ void test_generated_model_and_snapshot_replay() {
     require(coverage.count(DecisionCode::invalid_frame) != 0,
             "generated corpus never exercised invalid-frame precedence");
     require(actual ==
-                "b452320bc93a5d93891421f81b91f3caa3f9fa69d6d60ea8f39ef32b2f31e40a",
+                "79885aa4f0f7cbe62a3e36f4277f6b6396d3faa87ca9482f9201643a0b923e5c",
             "generated replay corpus changed without review: " + actual);
 
     std::cout << "generated histories=" << kSeedCount

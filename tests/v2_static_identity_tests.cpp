@@ -44,8 +44,8 @@ const std::vector<std::byte>& golden() {
     static const auto bytes = bytes_from_hex(
         "563249447c000000010000000102030405060708090a0b0c0d0e0f10"
         "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"
-        "0a000a0001000100010001000101030011000000010100000100010011000000"
-        "08a4324b57b69508e3785b815ea368a65919f96695b0afcdb09ae5a85503f21d");
+        "0b000b0001000100010001000101030011000000010100000100010011000000"
+        "1b3d30a9e57f85108ab28320f24135276cc02342c3cf0183b618c042aab007bb");
     return bytes;
 }
 
@@ -88,10 +88,10 @@ void test_independent_golden_and_domains() {
     require(verified.valid() && verified.value() == fixture(),
             "golden decoded value differs");
     require(to_hex(verified.manifest_digest()) ==
-                "599621a2f6f5336362106d12208b6491336fcb75e596af59b534a91019493ee0",
+                "4a614f5d781d5d8fbb67a13c76d98dd5be8b161da30e14ce95c240a61798d30b",
             "manifest digest differs from independent hash");
     require(to_hex(verified.authority_domain()) ==
-                "cadedea0d22f13392d1e5f155c3d56cbdc58226790a33930510a32acc5570cff",
+                "63155d1ff7278542da514d6c13664ae0b04ba68ee6b11150909c4fa4771292ae",
             "authority domain differs from independent hash");
 }
 
@@ -172,22 +172,22 @@ void test_header_digest_and_semantic_refusals() {
 }
 
 void test_previous_schema_manifest_is_refused() {
-    require(golden()[60] == std::byte{10} && golden()[62] == std::byte{10},
-            "fixture drifted: the golden identity is not schema 10");
+    require(golden()[60] == std::byte{11} && golden()[62] == std::byte{11},
+            "fixture drifted: the golden identity is not schema 11");
     const auto with_schemas = [](std::uint8_t snapshot, std::uint8_t command) {
         auto bytes = golden();
         bytes[60] = std::byte{snapshot};
         bytes[62] = std::byte{command};
         return with_checksum(bytes);
     };
-    expect_unchanged_failure(with_schemas(9, 9), StaticIdentityCodecError::unsupported_schema,
+    expect_unchanged_failure(with_schemas(10, 10), StaticIdentityCodecError::unsupported_schema,
                              "a previous-schema manifest was accepted by this binary");
-    expect_unchanged_failure(with_schemas(9, 10), StaticIdentityCodecError::unsupported_schema,
+    expect_unchanged_failure(with_schemas(10, 11), StaticIdentityCodecError::unsupported_schema,
                              "a previous-schema snapshot manifest was accepted");
-    expect_unchanged_failure(with_schemas(10, 9), StaticIdentityCodecError::unsupported_schema,
+    expect_unchanged_failure(with_schemas(11, 10), StaticIdentityCodecError::unsupported_schema,
                              "a previous-schema command manifest was accepted");
     StaticIdentity value = fixture();
-    value.command_result_schema = 9;
+    value.command_result_schema = 10;
     std::array<std::byte, kMaxStaticIdentityBytes> output{};
     require(encode_static_identity(value, output).error ==
                 StaticIdentityCodecError::unsupported_schema,
@@ -333,7 +333,7 @@ void test_shared_vs_local_digests() {
                 a.authority_domain() == b.authority_domain(),
             "local ID changed shared digests");
     require(to_hex(sha256_digest(std::span{second}.first(92))) ==
-                "66b235f02d460ad6a2462d7902d5acf10dd2739fe6004ed109f49a0d1eaa2c23",
+                "863b66148ae97ce0b3bd3e254295f3326ba728f9e009c10a8e354ed3d2c496b7",
             "second local file checksum differs from independent hash");
     require(!std::equal(first.end() - 32, first.end(), second.end() - 32),
             "local ID did not change file checksum");

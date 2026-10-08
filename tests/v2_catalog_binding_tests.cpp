@@ -142,29 +142,36 @@ void test_refused_install_does_not_require_candidate_artifact() {
         return Command{{CallerId{1}, RequestSequence{sequence}, root(0x31)},
                        std::move(body)};
     };
+    catalog_test::grant(receipts_full, 22, CallerRole::gateway);
+    auto evidence = [&](const std::uint64_t sequence, CommandBody body) {
+        return Command{{CallerId{22}, RequestSequence{sequence}, root(0x32)}, std::move(body)};
+    };
     require(apply(receipts_full, control(1, AdvanceKillEpoch{KillEpoch{1}}),
                   scratch).code == ApplyCode::applied &&
                 apply(receipts_full,
                       control(2, SetExecutorGeneration{ExecutorGeneration{1}}),
                       scratch).code == ApplyCode::applied &&
+                apply(receipts_full, evidence(1, RequestCancel{ClusterOrderId{77}}),
+                      scratch).code == ApplyCode::order_not_found &&
                 apply(receipts_full,
-                      control(3, AcknowledgeGatewayResults{RequestSequence{1}}),
+                      evidence(2, AcknowledgeGatewayResults{RequestSequence{1}}),
                       scratch).code == ApplyCode::applied,
             "pinned receipt fixture controls did not initialize");
-    std::uint64_t sequence = 3;
-    std::uint64_t epoch = 1;
-    while (receipts_full.receipt_count < receipts_full.receipts.size()) {
-        require(apply(receipts_full,
-                      control(++sequence, AdvanceKillEpoch{KillEpoch{++epoch}}),
-                      scratch).code == ApplyCode::applied,
-                "pinned receipt fixture did not fill through public commands");
+    std::uint64_t sequence = 2;
+    const std::uint64_t epoch = 1;
+    auto filled = ApplyCode::order_not_found;
+    for (std::size_t attempt = 0;
+         attempt < receipts_full.receipts.size() + 8 && filled == ApplyCode::order_not_found;
+         ++attempt) {
+        filled = apply(receipts_full,
+                       evidence(++sequence, RequestCancel{ClusterOrderId{77}}),
+                       scratch).code;
     }
-    require(apply(receipts_full,
-                  control(++sequence, AdvanceKillEpoch{KillEpoch{++epoch}}),
-                  scratch).code == ApplyCode::applied &&
+    require(filled == ApplyCode::receipt_capacity_exceeded &&
                 receipts_full.receipt_count == receipts_full.receipts.size() &&
                 snapshot(receipts_full).size() != 0,
             "public pinned receipt fixture was not canonical");
+    sequence = 2;
     const Command receipt_blocked{
         {CallerId{1}, RequestSequence{++sequence}, root(0x33)},
         InstallExecutionCatalog{proposed, KillEpoch{epoch},

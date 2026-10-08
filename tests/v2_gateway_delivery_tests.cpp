@@ -140,6 +140,7 @@ ExecutablePolicyArtifact executable_policy(const FeatureSchemaArtifact& schema) 
 
 TradingState ready_state() {
     TradingState state = catalog_test::state();
+    catalog_test::grant(state, 26, CallerRole::gateway);
     state.state_version = 2;
     state.strategy_mode = StrategyMode::normal;
     state.kill_epoch = KillEpoch{2};
@@ -390,7 +391,7 @@ Fixture stranded_submit() {
     unknown.cluster_order_id = order;
     unknown.effect_id = fixture.effect_id;
     unknown.evidence_digest = digest(0x7E);
-    const Command report{{CallerId{1}, RequestSequence{3},
+    const Command report{{CallerId{26}, RequestSequence{3},
                           observation_fingerprint(unknown)},
                          ObserveOrderEvent{unknown}};
     require(catalog_test::apply(fixture.state, report, scratch).code == ApplyCode::applied,
@@ -687,7 +688,7 @@ VenueObservation reconciled(const TradingState& state, EffectId effect_id,
 ApplyResult submit_answer(TradingState& state, const VenueObservation& answer,
                           const std::uint64_t sequence) {
     ApplyScratch scratch;
-    const Command command{{CallerId{1}, RequestSequence{sequence},
+    const Command command{{CallerId{26}, RequestSequence{sequence},
                            observation_fingerprint(answer)},
                           ObserveOrderEvent{answer}};
     return catalog_test::apply(state, command, scratch);
@@ -730,7 +731,7 @@ void book_partial_fill(TradingState& state, const EffectId effect_id,
     fill.quantity = QuantityLots::from_atoms(quantity);
     fill.evidence_digest = digest(0x78);
     ApplyScratch scratch;
-    const Command command{{CallerId{1}, RequestSequence{sequence},
+    const Command command{{CallerId{26}, RequestSequence{sequence},
                            observation_fingerprint(fill)},
                           ObserveFill{fill}};
     const auto applied = catalog_test::apply(state, command, scratch);
@@ -943,7 +944,7 @@ void test_a_venue_answer_does_not_discharge_the_commit_obligation() {
     require(record_send(delivery, fixture.effect_id, 0), "record_send failed");
 
     const auto fill = seam_fill(fixture.state, fixture.effect_id, 1);
-    const CommandIdentity identity{CallerId{1}, RequestSequence{8'401},
+    const CommandIdentity identity{CallerId{26}, RequestSequence{8'401},
                                    observation_fingerprint(fill)};
 
     require(record_response(delivery, fixture.effect_id), "record_response failed");
@@ -982,7 +983,7 @@ void test_a_lost_commit_result_moves_the_position_exactly_once() {
     const auto before = fixture.state.risk_accounts[0].position_quantity;
 
     const auto fill = seam_fill(fixture.state, fixture.effect_id, 1);
-    const CommandIdentity identity{CallerId{1}, RequestSequence{8'402},
+    const CommandIdentity identity{CallerId{26}, RequestSequence{8'402},
                                    observation_fingerprint(fill)};
     GatewayEvidenceState evidence;
     require(record_evidence_obligation(evidence, identity, fill, fixture.effect_id, 0),
@@ -1046,7 +1047,7 @@ void test_simulator_evidence_survives_every_pre_ack_crash_cut() {
 
     GatewayEvidenceState abandoned;
     const CommandIdentity abandoned_identity{
-        CallerId{1}, RequestSequence{50'000}, observation_fingerprint(*fill)};
+        CallerId{26}, RequestSequence{50'000}, observation_fingerprint(*fill)};
     require(record_evidence_obligation(abandoned, abandoned_identity, *fill,
                                        fill->effect_id, 0),
             "the crash fixture could not record its obligation");
@@ -1075,7 +1076,7 @@ void test_simulator_evidence_survives_every_pre_ack_crash_cut() {
                         }),
             "apply-before-result lost the unacknowledged venue evidence");
 
-    const Command retry{{CallerId{1}, RequestSequence{50'001},
+    const Command retry{{CallerId{26}, RequestSequence{50'001},
                          observation_fingerprint(*fill)},
                         ObserveFill{*fill}};
     const auto replayed = catalog_test::apply(fixture.state, retry, scratch);
@@ -1099,7 +1100,7 @@ void test_leadership_loss_before_commit_leaves_the_evidence_owned() {
     const auto before = fixture.state.risk_accounts[0].position_quantity;
 
     const auto fill = seam_fill(fixture.state, fixture.effect_id, 1);
-    const CommandIdentity identity{CallerId{1}, RequestSequence{8'403},
+    const CommandIdentity identity{CallerId{26}, RequestSequence{8'403},
                                    observation_fingerprint(fill)};
     GatewayEvidenceState evidence;
     require(record_evidence_obligation(evidence, identity, fill, fixture.effect_id, 0),
@@ -1284,7 +1285,7 @@ void test_a_gateway_crash_cannot_produce_a_second_order() {
             for (const auto& observation : venue.poll(now + 8)) {
                 const bool is_fill = observation.kind == VenueObservationKind::fill;
                 const Command command{
-                    {CallerId{1}, RequestSequence{++sequence},
+                    {CallerId{26}, RequestSequence{++sequence},
                      observation_fingerprint(observation)},
                     is_fill ? CommandBody{ObserveFill{observation}}
                             : CommandBody{ObserveOrderEvent{observation}}};
@@ -1470,7 +1471,7 @@ void test_a_replayed_synthetic_answer_is_caught_by_command_identity() {
                               VenueObservationKind::cancel_reconciled, 8'800);
     answer.quantity = QuantityLots{};
 
-    const CommandIdentity identity{CallerId{1}, RequestSequence{4'420},
+    const CommandIdentity identity{CallerId{26}, RequestSequence{4'420},
                                    observation_fingerprint(answer)};
     ApplyScratch scratch;
     const Command command{identity, ObserveOrderEvent{answer}};
@@ -1488,7 +1489,7 @@ void test_a_replayed_synthetic_answer_is_caught_by_command_identity() {
             "a replayed synthetic answer moved the order");
 
     const auto position = fixture.state.risk_accounts[0].position_quantity;
-    const CommandIdentity fresh{CallerId{1}, RequestSequence{4'421},
+    const CommandIdentity fresh{CallerId{26}, RequestSequence{4'421},
                                 observation_fingerprint(answer)};
     (void)catalog_test::apply(fixture.state, Command{fresh, ObserveOrderEvent{answer}}, scratch);
     require(fixture.state.risk_accounts[0].position_quantity == position,
@@ -2009,7 +2010,7 @@ void test_a_conflicted_order_keeps_accounting_valid_executions() {
     execution.evidence_digest = digest(0x94);
     {
         ApplyScratch fill_scratch;
-        const Command command{{CallerId{1}, RequestSequence{9'503},
+        const Command command{{CallerId{26}, RequestSequence{9'503},
                                observation_fingerprint(execution)},
                               ObserveFill{execution}};
         const auto booked = catalog_test::apply(fixture.state, command, fill_scratch);
@@ -2059,7 +2060,7 @@ void test_a_conflicted_order_keeps_accounting_valid_executions() {
     duplicate.quantity = QuantityLots::from_atoms(remaining_before);
     duplicate.evidence_digest = digest(0x94);
     ApplyScratch scratch;
-    const Command repeat{{CallerId{1}, RequestSequence{9'510},
+    const Command repeat{{CallerId{26}, RequestSequence{9'510},
                           observation_fingerprint(duplicate)},
                          ObserveFill{duplicate}};
     (void)catalog_test::apply(fixture.state, repeat, scratch);
@@ -2086,7 +2087,7 @@ ApplyResult acknowledge_gateway_results(TradingState& state,
                                         const std::uint64_t through) {
     ApplyScratch scratch;
     const auto command_sequence = ++request_sequence;
-    const Command command{{CallerId{1}, RequestSequence{command_sequence},
+    const Command command{{CallerId{26}, RequestSequence{command_sequence},
                            request_digest(command_sequence)},
                           AcknowledgeGatewayResults{RequestSequence{through}}};
     return catalog_test::apply(state, command, scratch);
@@ -2124,7 +2125,7 @@ void test_gateway_acknowledgement_gates_venue_receipt_reclamation() {
         rejected.effect_id = current;
         rejected.evidence_digest = digest(0x91);
         const auto reject_request = ++sequence;
-        Command reject_command{{CallerId{1}, RequestSequence{reject_request},
+        Command reject_command{{CallerId{26}, RequestSequence{reject_request},
                                 observation_fingerprint(rejected)},
                                ObserveOrderEvent{rejected}};
         if (cycle == 0) first_event = reject_command;
@@ -2173,7 +2174,7 @@ void test_gateway_acknowledgement_gates_venue_receipt_reclamation() {
         fixture.state.caller_cursors.begin(),
         fixture.state.caller_cursors.begin() +
             static_cast<std::ptrdiff_t>(fixture.state.caller_cursor_count),
-        [](const CallerCursor& value) { return value.caller_id == CallerId{1}; });
+        [](const CallerCursor& value) { return value.caller_id == CallerId{26}; });
     require(caller != fixture.state.caller_cursors.begin() +
                           static_cast<std::ptrdiff_t>(
                               fixture.state.caller_cursor_count),
@@ -2223,7 +2224,7 @@ void test_conflicting_fill_keeps_exact_evidence_after_acknowledged_sweep() {
     fill.price = PriceTicks::from_atoms(11);
     fill.quantity = QuantityLots::from_atoms(3);
     fill.evidence_digest = digest(0xA7);
-    const Command command{{CallerId{1}, RequestSequence{3},
+    const Command command{{CallerId{26}, RequestSequence{3},
                            observation_fingerprint(fill)},
                           ObserveFill{fill}};
 
@@ -2246,7 +2247,7 @@ void test_conflicting_fill_keeps_exact_evidence_after_acknowledged_sweep() {
                 "receipt-pressure command was not admitted");
     }
 
-    require(has_receipt(fixture.state, CallerId{1}, RequestSequence{3}),
+    require(has_receipt(fixture.state, CallerId{26}, RequestSequence{3}),
             "an acknowledged conflicting fill lost its exact execution receipt");
     require(catalog_test::apply(fixture.state, command, scratch) == conflict,
             "a conflicting fill could not replay its exact retained result");
@@ -2270,7 +2271,7 @@ void test_unacknowledged_full_fill_result_survives_group_and_receipt_sweeps() {
     fill.price = PriceTicks::from_atoms(11);
     fill.quantity = QuantityLots::from_atoms(2);
     fill.evidence_digest = digest(0xA8);
-    const Command command{{CallerId{1}, RequestSequence{3},
+    const Command command{{CallerId{26}, RequestSequence{3},
                            observation_fingerprint(fill)},
                           ObserveFill{fill}};
     const auto result = catalog_test::apply(fixture.state, command, scratch);
@@ -2297,7 +2298,7 @@ void test_unacknowledged_full_fill_result_survives_group_and_receipt_sweeps() {
         (void)catalog_test::apply(fixture.state, pressure, scratch);
     }
 
-    require(has_receipt(fixture.state, CallerId{1}, RequestSequence{3}),
+    require(has_receipt(fixture.state, CallerId{26}, RequestSequence{3}),
             "an unacknowledged applied fill result was reclaimed");
     const auto position_before =
         fixture.state.risk_accounts[0].position_quantity;
@@ -2320,17 +2321,17 @@ void test_gateway_ack_receipt_cannot_expire_an_uncommitted_sequence_gap() {
     rejected.cluster_order_id = order.cluster_order_id;
     rejected.effect_id = order.effect_id;
     rejected.evidence_digest = digest(0xA9);
-    const Command first{{CallerId{2}, RequestSequence{1},
+    const Command first{{CallerId{22}, RequestSequence{1},
                          observation_fingerprint(rejected)},
                         ObserveOrderEvent{rejected}};
     require(catalog_test::apply(fixture.state, first, scratch).code == ApplyCode::applied,
             "the first evidence result did not commit");
 
     auto answer = reconciled(fixture.state, order.effect_id, 88, 0, 704);
-    const Command gap{{CallerId{2}, RequestSequence{2},
+    const Command gap{{CallerId{22}, RequestSequence{2},
                        observation_fingerprint(answer)},
                       ObserveOrderEvent{answer}};
-    const Command ack{{CallerId{2}, RequestSequence{3}, request_digest(3)},
+    const Command ack{{CallerId{22}, RequestSequence{3}, request_digest(3)},
                       AcknowledgeGatewayResults{RequestSequence{1}}};
     require(catalog_test::apply(fixture.state, ack, scratch).code == ApplyCode::applied,
             "the acknowledgement above the sequence gap did not commit");
@@ -2415,7 +2416,7 @@ void test_a_fresh_fill_cannot_be_expired_by_gateway_authored_control_sequences()
     fill.price = PriceTicks::from_atoms(11);
     fill.quantity = QuantityLots::from_atoms(1);
     fill.evidence_digest = digest(0x96);
-    const Command command{{CallerId{1}, RequestSequence{++request_sequence},
+    const Command command{{CallerId{26}, RequestSequence{++request_sequence},
                            observation_fingerprint(fill)},
                           ObserveFill{fill}};
 
@@ -2580,7 +2581,7 @@ void test_repeated_cancel_cycles_cannot_starve_fill_capacity() {
     fill.quantity = QuantityLots::from_atoms(1);
     fill.evidence_digest = digest(0x82);
     ApplyScratch fill_scratch;
-    const Command command{{CallerId{1}, RequestSequence{++sequence},
+    const Command command{{CallerId{26}, RequestSequence{++sequence},
                            observation_fingerprint(fill)},
                           ObserveFill{fill}};
     const auto applied = catalog_test::apply(fixture.state, command, fill_scratch);
@@ -2971,7 +2972,7 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
 
     const auto owe = [&](const VenueObservation& observation) {
         ++evidence_sequence;
-        const CommandIdentity identity{CallerId{2},
+        const CommandIdentity identity{CallerId{22},
                                        RequestSequence{evidence_sequence},
                                        observation_fingerprint(observation)};
         if (!record_evidence_obligation(evidence, identity, observation,
@@ -3044,7 +3045,7 @@ RunOutcome run_seed(const std::uint64_t seed, const FaultPolicy& faults,
             if (acknowledged_evidence_sequence > published_evidence_ack) {
                 const auto ack_sequence = ++evidence_sequence;
                 const Command ack{
-                    {CallerId{2}, RequestSequence{ack_sequence},
+                    {CallerId{22}, RequestSequence{ack_sequence},
                      request_digest(ack_sequence)},
                     AcknowledgeGatewayResults{
                         RequestSequence{acknowledged_evidence_sequence}}};
@@ -4088,7 +4089,7 @@ void conflict_the_order(TradingState& state, const ClusterOrderId order,
     const auto observe = [&](const VenueObservation& observation) {
         ApplyScratch scratch;
         const bool is_fill = observation.kind == VenueObservationKind::fill;
-        const Command command{{CallerId{1}, RequestSequence{++request},
+        const Command command{{CallerId{26}, RequestSequence{++request},
                                observation_fingerprint(observation)},
                               is_fill ? CommandBody{ObserveFill{observation}}
                                       : CommandBody{ObserveOrderEvent{observation}}};
