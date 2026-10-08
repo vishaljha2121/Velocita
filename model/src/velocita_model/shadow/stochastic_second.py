@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 
-from .indicator_paper import NS, Source, PROGRAM, program_text, snapshot
+from .indicator_paper import NS, Book, Source, PROGRAM, program_text, snapshot
 from .edge import Tick
 from ..research import rules
 
@@ -102,6 +102,19 @@ def register_epoch(journal,epoch):
         journal.db.execute('insert or ignore into variant_epoch values (1,?)',(encoded,))
 
 
+class SignalBook(Book):
+    lines=None
+
+    def render(self):
+        text=super().render()
+        if self.lines is None: return text
+        k,d,fast,slow=self.lines
+        return text+(f'velocita_indicator_stochastic{{line="k"}} {k:.4f}\n'
+            f'velocita_indicator_stochastic{{line="d"}} {d:.4f}\n'
+            f'velocita_indicator_ema_usd{{span="300"}} {fast:.4f}\n'
+            f'velocita_indicator_ema_usd{{span="1200"}} {slow:.4f}\n')
+
+
 class FastSource(Source):
     def __init__(self,journal,book,epoch):
         super().__init__('stochastic',journal,book)
@@ -141,7 +154,8 @@ class FastSource(Source):
                 flags=self.retry_flags
             else:
                 flags=self.previous_flags
-                self.previous_flags=self.signals.push(self.indicators.push(bar))
+                self.book.lines=self.indicators.push(bar)
+                self.previous_flags=self.signals.push(self.book.lines)
             self.journal.mark(bar[0],int(Decimal(k['c'])*100))
         except (ValueError,KeyError,TypeError,IndexError,InvalidOperation):
             self.reset();self.retry_bar=None;self.needs_bootstrap=True;return None

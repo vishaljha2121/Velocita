@@ -8,9 +8,9 @@ from ..adapters.base import ReadOnlyHttp
 from ..adapters.websocket import ReadOnlyMarketSocket,ProtocolError
 from ..safety import enforce
 from .edge import EdgeMetrics,run_once
-from .indicator_paper import Journal,Book,NS
+from .indicator_paper import Journal,NS
 from .paper_completion import publish_completion,completed_path
-from .stochastic_second import FastSource,pilot_program,LIMIT,VARIANT,CASH_VARIANT
+from .stochastic_second import FastSource,SignalBook,pilot_program,LIMIT,VARIANT,CASH_VARIANT
 
 
 class PublicSecondSocket(ReadOnlyMarketSocket):
@@ -75,7 +75,7 @@ def main():
     if not command or '--mode' not in command or command[command.index('--mode')+1]!='paper':
         raise ValueError('paper submitter required')
     journal=Journal(c['ledger'],'stochastic',c['incarnation'])
-    book=Book(journal,c['venue_report'],c['stop_ns'],epoch)
+    book=SignalBook(journal,c['venue_report'],c['stop_ns'],epoch)
     source=FastSource(journal,book,epoch)
     connections=0
     def connected():

@@ -726,7 +726,9 @@ def indicator_paper_rows():
         series('SOL price with confirmed entries / exits',[
             (f'velocita_indicator_price_usd{selector}','SOL proxy close'),
             (f'max_over_time(velocita_indicator_fill_marker_usd{{strategy="{strategy}",side="buy"}}[$__interval])','Entry'),
-            (f'max_over_time(velocita_indicator_fill_marker_usd{{strategy="{strategy}",side="sell"}}[$__interval])','Exit')],
+            (f'max_over_time(velocita_indicator_fill_marker_usd{{strategy="{strategy}",side="sell"}}[$__interval])','Exit'),
+            (f'velocita_indicator_ema_usd{{strategy="{strategy}",span="300"}}','EMA 300 s'),
+            (f'velocita_indicator_ema_usd{{strategy="{strategy}",span="1200"}}','EMA 1200 s')],
             0,14,unit='currencyUSD',min0=False,
             description='Markers are confirmed simulated fills, never raw signals. Their chart time has scrape/bucket resolution; exact confirmation times are retained in the ledger. Missed historical times are unknown, not invented. Zoom in to inspect close entries/exits.')
         for name,color in (('Entry','green'),('Exit','red')):
@@ -737,6 +739,15 @@ def indicator_paper_rows():
         series('Equity and drawdown',[(f'velocita_indicator_equity_usd{selector}','Equity'),
             (f'velocita_indicator_drawdown_usd{selector}','Drawdown')],14,10,unit='currencyUSD',min0=False)
         advance(8)
+        series('Stochastic K and D',[
+            (f'velocita_indicator_stochastic{{strategy="{strategy}",line="k"}}','K'),
+            (f'velocita_indicator_stochastic{{strategy="{strategy}",line="d"}}','D'),
+            ('vector(60)','60: entry needs K at or above'),
+            ('vector(40)','40: exit needs K at or below')],
+            0,24,h=6,
+            description='Entry: K crosses above D with K at 60 or more while EMA 300 s is above EMA 1200 s (price chart), held for 3 seconds. '
+                        'Exit: K below D and K at 40 or less for 3 seconds. Sampled at the scrape interval, so a one-second cross can fall between points; the ledger is exact.')
+        advance(6)
         metric=f'velocita_indicator_shadow_tick_to_decision_ms'
         count=f'sum(increase({metric}_count{{strategy="{strategy}"}}[$__range]))'
         stat('Decision samples (range estimate)',count,0,6,decimals=1,

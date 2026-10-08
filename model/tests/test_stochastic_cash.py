@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from velocita_model.shadow.indicator_paper import Journal,Book,NS
-from velocita_model.shadow.stochastic_second import CASH_VARIANT,NO_DEADLINE,FastSource,pilot_program
+from velocita_model.shadow.stochastic_second import CASH_VARIANT,NO_DEADLINE,FastSource,SignalBook,pilot_program
 from velocita_model.shadow.paper_completion import publish_completion,open_completion
 from test_stochastic_second import venue
 
@@ -134,3 +134,20 @@ class CashTests(unittest.TestCase):
             again=self.send(102)
         self.assertIsNotNone(again)
         self.assertEqual(again.features,(0,1000000,10000))
+
+    def test_indicator_lines_are_published_for_the_chart(self):
+        from velocita_model.shadow.indicator_observer import labelled
+        book=SignalBook(self.j,self.c['venue_report'],0,self.epoch)
+        source=FastSource(self.j,book,self.epoch)
+        self.assertNotIn('velocita_indicator_stochastic',book.render())
+        for t in range(-1100,100): source.indicators.push((t,100,100,100,100))
+        with patch('time.time',return_value=100.):
+            source.tick(self.bar(100,'104'),receive_ns=100*NS,tick_id=1)
+        text=book.render()
+        self.assertIn('velocita_indicator_stochastic{line="k"} 55.0000\n',text)
+        self.assertIn('velocita_indicator_stochastic{line="d"} 50.1667\n',text)
+        self.assertIn('velocita_indicator_ema_usd{span="300"} 100.0266\n',text)
+        self.assertIn('velocita_indicator_ema_usd{span="1200"} 100.0067\n',text)
+        self.assertIn('velocita_indicator_buy_stop{reason="drawdown"}',text)
+        self.assertIn('velocita_indicator_ema_usd{strategy="stochastic",span="300"} 100.0266',
+            labelled(text,'stochastic','velocita_indicator_'))
