@@ -85,6 +85,25 @@ std::string render_node_metrics(const std::optional<NodeHealth>& health, std::st
     gauge("velocita_v2_receipt_capacity", "Fixed receipt table capacity.", kMaxRequestReceipts);
     gauge("velocita_v2_policies", "Policy slots used; a slot is never freed within an incarnation.", h.policies);
     gauge("velocita_v2_policy_capacity", "Fixed policy table capacity.", kMaxPolicies);
+    const std::array<std::pair<const char*, const char*>, 7> ledger_metrics{{
+        {"velocita_v2_account_position_lots", "Position the kernel holds for the account, in lots."},
+        {"velocita_v2_account_cash_micros", "Net cash the kernel booked from fills since the account was created."},
+        {"velocita_v2_account_cost_basis_micros", "Cost of the lots held, at average cost."},
+        {"velocita_v2_account_realized_pnl_micros", "Realized P&L after fees since the account was created."},
+        {"velocita_v2_account_fees_paid_micros", "Fees the kernel booked from fills."},
+        {"velocita_v2_account_window_realized_pnl_micros", "Realized P&L since the operator last reset the loss window."},
+        {"velocita_v2_account_max_window_loss_micros", "Loss limit: new risk stops at this realized loss; 0 means none."}}};
+    for (std::size_t metric = 0; metric < ledger_metrics.size(); ++metric) {
+        w.type(ledger_metrics[metric].first, "gauge", ledger_metrics[metric].second);
+        for (std::size_t index = 0; index < h.ledger_count && index < h.ledgers.size(); ++index) {
+            const auto& l = h.ledgers[index];
+            const std::array<std::int64_t, 7> values{l.position_lots, l.cash_micros, l.cost_basis_micros,
+                l.realized_pnl_micros, l.fees_paid_micros, l.window_realized_pnl_micros, l.max_window_loss_micros};
+            w.sample(ledger_metrics[metric].first, values[metric],
+                     ",account=\"" + std::to_string(l.account_id) + "\",instrument=\"" +
+                         std::to_string(l.instrument_id) + "\"");
+        }
+    }
     gauge("velocita_v2_archive_bytes", "Bytes of compacted log held in the archive.", h.archive_bytes);
     gauge("velocita_v2_archive_byte_limit", "Archive byte budget; ordinary commands are refused 16 MiB before it.",
           h.archive_byte_limit);

@@ -26,8 +26,8 @@ VerifiedStaticIdentity identity() {
     auto bytes = hex(
         "563249447c000000010000000102030405060708090a0b0c0d0e0f10"
         "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"
-        "0900090001000100010001000101030011000000010100000100010011000000"
-        "a6326543a7df7e9c89692344318dadf2f97dc3f06b3dabfacdcd3875fb29334d");
+        "0a000a0001000100010001000101030011000000010100000100010011000000"
+        "08a4324b57b69508e3785b815ea368a65919f96695b0afcdb09ae5a85503f21d");
     VerifiedStaticIdentity result;
     require(VerifiedStaticIdentity::decode(bytes, result) == StaticIdentityCodecError::none,
             "identity fixture");
@@ -45,10 +45,10 @@ std::array<std::byte, kBoundMetadataBytes> encode(PersistentMetadata value) {
 void test_golden_and_semantics() {
     const auto expected = hex(
         "56324246010001007000000018000000"
-        "3ce5d6e3e9a886ab694852a129348bbe9413c2b55077a84804efa3cd645cc3e0"
+        "599621a2f6f5336362106d12208b6491336fcb75e596af59b534a91019493ee0"
         "1100000000000000"
         "070000000000000011000000000000000300000000000000"
-        "7f9b0777a1276538f159f47462c75679aec6275c76ef636814044c99db36482b");
+        "d373afebc4257da811cd6c7cf6642b4ef8da0d8b2f696ef4861b7b535c61b1fd");
     const auto actual = encode({7, 17, 3});
     require(std::equal(actual.begin(), actual.end(), expected.begin(), expected.end()),
             "independent metadata golden changed");

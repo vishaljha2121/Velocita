@@ -41,7 +41,7 @@ def main():
              'kill_epoch=1','executor_generation=1','max_order_lots=12','max_reserved_lots=12',
              'max_order_notional_micros=25000000','max_reserved_exposure_micros=25000000',
              'initial_margin_ppm=1000000','maximum_fee_ppm=3000','max_position_lots=12',
-             'allow_short=0','reason_code=20261007']]
+             'allow_short=0','reason_code=20261007','max_window_loss_micros=10000000','reset_loss_window=0']]
         print('Operator commands are sent from the Mac, not from a voter host (ADR 0016, 2026-10-07).')
         print('Run each with velocita-v2-client --key-stdin and the operator key from the Keychain:')
         for sequence,action in enumerate(actions,1):

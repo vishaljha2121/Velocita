@@ -196,6 +196,9 @@ private:
         case ApplyCode::catalog_row_not_found:
         case ApplyCode::catalog_binding_mismatch:
         case ApplyCode::position_limit_exceeded:
+        case ApplyCode::fill_price_conflict:
+        case ApplyCode::fill_fee_conflict:
+        case ApplyCode::loss_limit_reached:
             return true;
     }
     return false;
@@ -538,7 +541,7 @@ private:
         return kVenueObservationPayloadBytes;
     }
     if (std::holds_alternative<RequestReplace>(body)) return 16;
-    if (std::holds_alternative<ConfigureRiskLimits>(body)) return 101;
+    if (std::holds_alternative<ConfigureRiskLimits>(body)) return 110;
     if (std::holds_alternative<AcknowledgeGatewayResults>(body)) return 8;
     if (std::holds_alternative<InstallExecutionCatalog>(body)) {
         return kInstallExecutionCatalogBodyBytes;
@@ -776,6 +779,8 @@ void write_body(Writer& writer, const CommandBody& body) noexcept {
         writer.integral(value->max_position_quantity.atoms());
         writer.integral(static_cast<std::uint8_t>(value->allow_short));
         writer.integral(value->reason_code);
+        writer.integral(value->max_window_loss.atoms());
+        writer.integral(static_cast<std::uint8_t>(value->reset_loss_window));
     } else if (const auto* value =
                    std::get_if<AcknowledgeGatewayResults>(&body)) {
         writer.integral(value->acknowledged_through.value());
@@ -1115,8 +1120,11 @@ void write_body(Writer& writer, const CommandBody& body) noexcept {
             value.max_position_quantity = QuantityLots::from_atoms(reader.integral<std::int64_t>());
             const auto allow_short = reader.integral<std::uint8_t>();
             value.reason_code = reader.integral<std::uint32_t>();
-            if (allow_short > 1) return false;
+            value.max_window_loss = MoneyMicros::from_atoms(reader.integral<std::int64_t>());
+            const auto reset_loss_window = reader.integral<std::uint8_t>();
+            if (allow_short > 1 || reset_loss_window > 1) return false;
             value.allow_short = allow_short == 1;
+            value.reset_loss_window = reset_loss_window == 1;
             body = value;
             return true;
         }

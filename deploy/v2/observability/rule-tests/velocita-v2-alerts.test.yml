@@ -832,3 +832,58 @@ tests:
             exp_annotations:
               summary: "nuc1 has used 75% of its policy slots"
               description: "Each published policy version keeps a slot for the life of the incarnation. When none are left a new strategy version is refused (policy_capacity_exceeded); plan a new incarnation before the next strategy change."
+
+  # Kernel loss limit of $10 (10,000,000 micros), reported by three voters.
+  # Loss goes $7.90 -> $8.00 at 2m -> $10.00 at 6m. Fees agree until 8m, then
+  # the venue report shows one fee the kernel did not book.
+  - interval: 1m
+    input_series:
+      - series: 'velocita_v2_account_max_window_loss_micros{job="velocita-v2",host="nuc1",node="1",account="2",instrument="2"}'
+        values: '10000000x20'
+      - series: 'velocita_v2_account_max_window_loss_micros{job="velocita-v2",host="pi",node="2",account="2",instrument="2"}'
+        values: '10000000x20'
+      - series: 'velocita_v2_account_window_realized_pnl_micros{job="velocita-v2",host="nuc1",node="1",account="2",instrument="2"}'
+        values: '-7900000 -7900000 -8000000x3 -10000000x14'
+      - series: 'velocita_v2_account_window_realized_pnl_micros{job="velocita-v2",host="pi",node="2",account="2",instrument="2"}'
+        values: '-7900000 -7900000 -8000000x3 -10000000x14'
+      - series: 'velocita_v2_account_fees_paid_micros{job="velocita-v2",host="nuc1",node="1",account="2",instrument="2"}'
+        values: '240000x20'
+      - series: 'velocita_indicator_variant_fees_usd{job="indicator-paper",strategy="stochastic"}'
+        values: '0.24x7 0.288x12'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: VelocitaLossLimitNear
+        exp_alerts: []
+      - eval_time: 2m30s
+        alertname: VelocitaLossLimitNear
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: VelocitaLossLimitNear
+        exp_alerts:
+          - exp_labels: {severity: warning, account: "2", instrument: "2"}
+            exp_annotations:
+              summary: "Account 2 is at 80% or more of its loss limit"
+              description: "Realized loss since the last reset, against the kernel's limit. At 100% the kernel refuses every order that adds risk; orders that close the position still pass."
+      - eval_time: 4m
+        alertname: VelocitaLossLimitReached
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: VelocitaLossLimitReached
+        exp_alerts:
+          - exp_labels: {severity: critical, account: "2", instrument: "2"}
+            exp_annotations:
+              summary: "Account 2 reached its loss limit: the kernel refuses new risk"
+              description: "Only an operator risk-limits command with reset_loss_window=1 clears it. Review the losses before resetting."
+      - eval_time: 7m
+        alertname: VelocitaLedgerMismatch
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: VelocitaLedgerMismatch
+        exp_alerts: []
+      - eval_time: 14m
+        alertname: VelocitaLedgerMismatch
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: "The kernel's fees and the venue report's fees differ by 48000 micro-dollars"
+              description: "The kernel books every fill's fee, and the observer reads the venue's. They should be equal for a session that began with its incarnation. A difference means a fill was booked by one and not the other; stop and reconcile before trading on."

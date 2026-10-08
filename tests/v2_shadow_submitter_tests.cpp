@@ -217,7 +217,7 @@ std::vector<std::string> owner_words() {
             "executor_generation=1", "max_order_lots=25", "max_reserved_lots=25",
             "max_order_notional_micros=25000000", "max_reserved_exposure_micros=25000000",
             "initial_margin_ppm=1000000", "maximum_fee_ppm=15000", "max_position_lots=25", "allow_short=0",
-            "reason_code=20260929"};
+            "reason_code=20260929", "max_window_loss_micros=10000000", "reset_loss_window=0"};
 }
 
 void the_risk_limits_verb_builds_every_field() {
@@ -260,7 +260,7 @@ void the_risk_limits_verb_builds_every_field() {
         "account=2", "instrument=3", "risk_policy_version=4", "expected_risk_version=5", "kill_epoch=6",
         "executor_generation=7", "max_order_lots=8", "max_reserved_lots=9", "max_order_notional_micros=10",
         "max_reserved_exposure_micros=11", "initial_margin_ppm=12", "maximum_fee_ppm=13", "max_position_lots=14",
-        "allow_short=1", "reason_code=15"});
+        "allow_short=1", "reason_code=15", "max_window_loss_micros=16", "reset_loss_window=1"});
     require(distinct.limits.has_value(), "distinct limits refused: " + distinct.error);
     const auto& d = *distinct.limits;
     require(d.account_id == AccountId{2} && d.instrument_id == InstrumentId{3} &&
@@ -271,8 +271,21 @@ void the_risk_limits_verb_builds_every_field() {
                 d.max_order_gross_notional == MoneyMicros::from_atoms(10) &&
                 d.max_reserved_exposure == MoneyMicros::from_atoms(11) && d.initial_margin_ppm == 12 &&
                 d.maximum_fee_ppm == 13 && d.max_position_quantity == QuantityLots::from_atoms(14) &&
-                d.allow_short && d.reason_code == 15,
+                d.allow_short && d.reason_code == 15 && d.max_window_loss == MoneyMicros::from_atoms(16) &&
+                d.reset_loss_window,
             "a field was read from another field's word");
+    const auto owner = *parse_risk_limits_verb(owner_words()).limits;
+    require(owner.max_window_loss == MoneyMicros::from_atoms(10'000'000) && !owner.reset_loss_window,
+            "the owner's loss limit or reset flag was not carried");
+    require(risk_limits_canonical(d).find(" max_window_loss_micros=16 reset_loss_window=1") != std::string::npos &&
+                describe_risk_limits(owner).find("reaches $10.000000") != std::string::npos &&
+                describe_risk_limits(owner).find("is kept") != std::string::npos &&
+                describe_risk_limits(d).find("RESETS") != std::string::npos,
+            "the loss limit is missing from what the operator is shown");
+    auto unlimited = owner;
+    unlimited.max_window_loss = {};
+    require(describe_risk_limits(unlimited).find("NONE") != std::string::npos,
+            "a missing loss limit was not called out to the operator");
 }
 
 void bad_risk_limits_are_refused_before_sending() {
@@ -284,6 +297,15 @@ void bad_risk_limits_are_refused_before_sending() {
     auto words = owner_words();
     words.erase(words.begin() + 12);
     refused(words, "missing field", "max_position_lots");
+    words = owner_words();
+    words.erase(words.begin() + 15);
+    refused(words, "missing loss limit", "max_window_loss_micros");
+    words = owner_words();
+    words[16] = "reset_loss_window=2";
+    refused(words, "non-boolean reset", "reset_loss_window");
+    words = owner_words();
+    words[15] = "max_window_loss_micros=-1";
+    refused(words, "negative loss limit", "max_window_loss_micros");
     words = owner_words();
     words[14] = "reason_code=0";
     refused(words, "zero reason code", "reason_code");

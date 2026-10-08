@@ -84,14 +84,14 @@ void run() {
     const std::array<std::byte, kGenerationBaseSealBytes> expected_seal{
         std::byte{0x56}, std::byte{0x32}, std::byte{0x47}, std::byte{0x42},
         std::byte{0x01}, std::byte{0x00}, std::byte{0x01}, std::byte{0x00},
-        std::byte{0xe4}, std::byte{0xf8}, std::byte{0x0e}, std::byte{0x02},
-        std::byte{0xed}, std::byte{0x10}, std::byte{0x2c}, std::byte{0x44},
-        std::byte{0x15}, std::byte{0xb2}, std::byte{0x32}, std::byte{0x41},
-        std::byte{0xe0}, std::byte{0x8e}, std::byte{0x51}, std::byte{0xb7},
-        std::byte{0x34}, std::byte{0xe6}, std::byte{0x2d}, std::byte{0x53},
-        std::byte{0xf9}, std::byte{0x71}, std::byte{0xdf}, std::byte{0x03},
-        std::byte{0x6c}, std::byte{0x3d}, std::byte{0x96}, std::byte{0xd8},
-        std::byte{0x48}, std::byte{0xb9}, std::byte{0xa6}, std::byte{0x7d}};
+        std::byte{0x17}, std::byte{0x05}, std::byte{0xe1}, std::byte{0xdc},
+        std::byte{0xa7}, std::byte{0xa8}, std::byte{0x8e}, std::byte{0xfe},
+        std::byte{0x69}, std::byte{0xc7}, std::byte{0x11}, std::byte{0x2e},
+        std::byte{0xf2}, std::byte{0x78}, std::byte{0x81}, std::byte{0x06},
+        std::byte{0x7e}, std::byte{0xd3}, std::byte{0x3b}, std::byte{0x95},
+        std::byte{0xc7}, std::byte{0x6b}, std::byte{0xdf}, std::byte{0x8f},
+        std::byte{0x15}, std::byte{0xd6}, std::byte{0xb6}, std::byte{0xfe},
+        std::byte{0x67}, std::byte{0x64}, std::byte{0x9b}, std::byte{0x97}};
     require(seal == expected_seal, "generation base literal golden mismatch");
     require(encoded.bytes_written == seal.size() && allocation_probe::count == 0,
             "generation base encode length/allocation mismatch");

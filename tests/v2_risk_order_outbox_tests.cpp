@@ -2220,12 +2220,14 @@ void test_risk_configuration_codec_and_restore() {
     using namespace velocita::v2;
     auto state = ready_state();
     auto command = configure_risk(state, 1);
+    std::get<ConfigureRiskLimits>(command.body).max_window_loss = MoneyMicros::from_atoms(7'000'000);
+    std::get<ConfigureRiskLimits>(command.body).reset_loss_window = true;
     std::array<std::byte, kMaxKernelCommandBytes> bytes{}, again{};
     const auto encoded = encode_kernel_command(command, bytes);
-    require(encoded.error == KernelCodecError::none && encoded.bytes_written == 193,
-            "risk configuration lacks its canonical 101-byte body");
-    require(bytes[8] == std::byte{9} && bytes[10] == std::byte{17},
-            "risk configuration schema/kind is not V9/17");
+    require(encoded.error == KernelCodecError::none && encoded.bytes_written == 202,
+            "risk configuration lacks its canonical 110-byte body");
+    require(bytes[8] == std::byte{10} && bytes[10] == std::byte{17},
+            "risk configuration schema/kind is not V10/17");
     std::vector<std::byte> expected;
     const auto put = [&](const std::uint64_t value, const unsigned width) {
         for (unsigned shift = 0; shift < width; shift += 8)
@@ -2237,7 +2239,9 @@ void test_risk_configuration_codec_and_restore() {
     put(1'000, 64);
     put(1, 8);
     put(1, 32);
-    require(expected.size() == 101 &&
+    put(7'000'000, 64);
+    put(1, 8);
+    require(expected.size() == 110 &&
                 std::equal(expected.begin(), expected.end(), bytes.begin() + 60),
             "risk configuration canonical field order or integer widths changed");
     Command decoded;
@@ -2270,6 +2274,10 @@ void test_risk_configuration_codec_and_restore() {
         require(decode_kernel_command({corrupt.data(), encoded.bytes_written}, decoded, codec_scratch).error ==
                     KernelCodecError::invalid_value, what);
     };
+    reject_body(109, {std::byte{2}}, "reset_loss_window outside {0,1} was decoded");
+    reject_body(101, {std::byte{0xff}, std::byte{0xff}, std::byte{0xff}, std::byte{0xff},
+                      std::byte{0xff}, std::byte{0xff}, std::byte{0xff}, std::byte{0xff}},
+                "a negative loss limit was decoded");
     reject_body(96, {std::byte{2}}, "allow_short outside {0,1} was decoded");
     reject_body(96, {std::byte{0xff}}, "allow_short 0xff was decoded");
     reject_body(97, {std::byte{}, std::byte{}, std::byte{}, std::byte{}},
@@ -2308,6 +2316,209 @@ void test_risk_configuration_codec_and_restore() {
     snapshot[8] = std::byte{8};
     require(decode_state_snapshot({snapshot.data(), saved.bytes_written}, restored, snapshot_scratch).error ==
                 StateSnapshotError::unsupported_schema, "V8 snapshot was reinterpreted as V9");
+}
+
+struct LedgerHarness {
+    velocita::v2::TradingState state;
+    velocita::v2::ApplyScratch scratch;
+    std::uint64_t request{100};
+    std::uint64_t decision{40};
+    std::uint64_t execution{500};
+
+    velocita::v2::ApplyResult place(const velocita::v2::Side side, const std::int64_t price,
+                                    const std::int64_t quantity) {
+        using namespace velocita::v2;
+        append_submit_decision(state, DecisionId{++decision}, price, quantity);
+        state.decision_cold[state.decision_count - 1].proposal.side = side;
+        return catalog_test::apply(state, authorize_decision(++request, 0xb1, DecisionId{decision}), scratch);
+    }
+
+    velocita::v2::ApplyResult fill(const velocita::v2::ApplyResult& order, const velocita::v2::Side side,
+                                   const std::int64_t price, const std::int64_t quantity,
+                                   const std::int64_t fee) {
+        using namespace velocita::v2;
+        auto command = observe_fill(++request, 0xb2, order.cluster_order_id(), order.effect_id(),
+                                    ExecutionId{++execution}, quantity, side, price);
+        auto& observation = std::get<ObserveFill>(command.body).observation;
+        observation.fee = FeeMicros::from_atoms(fee);
+        command.identity.payload_digest = observation_fingerprint(observation);
+        return catalog_test::apply(state, command, scratch);
+    }
+
+    void expect(const std::int64_t position, const std::int64_t cash, const std::int64_t basis,
+                const std::int64_t realized, const std::int64_t fees, const std::string& step) const {
+        const auto& risk = state.risk_accounts[0];
+        require(risk.position_quantity.atoms() == position && risk.cash.atoms() == cash &&
+                    risk.cost_basis.atoms() == basis && risk.realized_pnl.atoms() == realized &&
+                    risk.fees_paid.atoms() == fees && risk.window_realized_pnl.atoms() == realized,
+                step + ": ledger is position=" + std::to_string(risk.position_quantity.atoms()) +
+                    " cash=" + std::to_string(risk.cash.atoms()) + " basis=" + std::to_string(risk.cost_basis.atoms()) +
+                    " realized=" + std::to_string(risk.realized_pnl.atoms()) +
+                    " fees=" + std::to_string(risk.fees_paid.atoms()) +
+                    " window=" + std::to_string(risk.window_realized_pnl.atoms()));
+    }
+};
+
+LedgerHarness ledger_harness(const std::int64_t max_window_loss = 0) {
+    using namespace velocita::v2;
+    LedgerHarness h{ready_state(), {}};
+    if (max_window_loss != 0) {
+        auto command = configure_risk(h.state, 90);
+        std::get<ConfigureRiskLimits>(command.body).max_window_loss = MoneyMicros::from_atoms(max_window_loss);
+        require(catalog_test::apply(h.state, command, h.scratch).code == ApplyCode::applied,
+                "loss limit fixture was not configured");
+    }
+    return h;
+}
+
+void test_fills_keep_an_exact_money_ledger() {
+    using namespace velocita::v2;
+    auto h = ledger_harness();
+    const auto first = h.place(Side::buy, 11, 2);
+    require(first.code == ApplyCode::applied, "ledger buy was not authorized");
+    require(h.fill(first, Side::buy, 11, 1, 3).code == ApplyCode::applied, "buy at the limit was refused");
+    h.expect(1, -1'103, 1'100, -3, 3, "buy 1 at 11, fee 3");
+    require(h.fill(first, Side::buy, 10, 1, 2).code == ApplyCode::applied, "buy below the limit was refused");
+    h.expect(2, -2'105, 2'100, -5, 5, "buy 1 at 10, fee 2");
+
+    const auto trim = h.place(Side::sell, 12, 1);
+    require(trim.code == ApplyCode::applied, "ledger sell was not authorized");
+    require(h.fill(trim, Side::sell, 13, 1, 4).code == ApplyCode::applied, "sell above the limit was refused");
+    h.expect(1, -809, 1'050, 241, 9, "sell 1 of 2 at 13, fee 4");
+
+    const auto reverse = h.place(Side::sell, 9, 3);
+    require(reverse.code == ApplyCode::applied, "reversing sell was not authorized");
+    require(h.fill(reverse, Side::sell, 9, 3, 6).code == ApplyCode::applied, "reversing sell was refused");
+    h.expect(-2, 1'885, 1'800, 85, 15, "sell 3 at 9 through zero, fee 6");
+
+    const auto cover = h.place(Side::buy, 10, 2);
+    require(cover.code == ApplyCode::applied, "covering buy was not authorized");
+    require(h.fill(cover, Side::buy, 8, 2, 4).code == ApplyCode::applied, "covering buy was refused");
+    h.expect(0, 281, 0, 281, 19, "buy 2 at 8 to flat, fee 4");
+}
+
+void test_cost_basis_allocation_conserves_the_last_micro() {
+    using namespace velocita::v2;
+    auto h = ledger_harness();
+    const auto one = h.place(Side::buy, 11, 1);
+    require(one.code == ApplyCode::applied && h.fill(one, Side::buy, 11, 1, 0).code == ApplyCode::applied,
+            "first basis lot was not booked");
+    const auto two = h.place(Side::buy, 10, 2);
+    require(two.code == ApplyCode::applied && h.fill(two, Side::buy, 10, 2, 0).code == ApplyCode::applied,
+            "second basis lots were not booked");
+    h.expect(3, -3'100, 3'100, 0, 0, "three lots costing 3,100");
+    const std::int64_t remaining[] = {2'067, 1'034, 0};
+    std::int64_t proceeds = 0;
+    for (int sold = 0; sold < 3; ++sold) {
+        const auto exit = h.place(Side::sell, 10, 1);
+        require(exit.code == ApplyCode::applied && h.fill(exit, Side::sell, 10, 1, 0).code == ApplyCode::applied,
+                "basis exit was not booked");
+        proceeds += 1'000;
+        h.expect(2 - sold, -3'100 + proceeds, remaining[sold], proceeds - (3'100 - remaining[sold]), 0,
+                 "sell lot " + std::to_string(sold + 1) + " of 3");
+    }
+}
+
+void test_a_fill_beyond_the_limit_or_fee_cap_is_a_conflict_and_books_nothing() {
+    using namespace velocita::v2;
+    struct Case { Side side; std::int64_t limit; std::int64_t price; std::int64_t fee; ApplyCode code; const char* name; };
+    for (const auto& c : {
+             Case{Side::buy, 11, 12, 3, ApplyCode::fill_price_conflict, "buy above its limit"},
+             Case{Side::buy, 11, 11, 4, ApplyCode::fill_fee_conflict, "buy fee one micro over the cap"},
+             Case{Side::buy, 11, 12, 4, ApplyCode::fill_price_conflict, "price is reported before fee"},
+             Case{Side::sell, 12, 11, 3, ApplyCode::fill_price_conflict, "sell below its limit"},
+             Case{Side::sell, 12, 12, 4, ApplyCode::fill_fee_conflict, "sell fee one micro over the cap"}}) {
+        auto h = ledger_harness();
+        const auto held = h.place(Side::buy, 11, 2);
+        require(held.code == ApplyCode::applied && h.fill(held, Side::buy, 11, 2, 0).code == ApplyCode::applied,
+                "conflict fixture could not hold two lots");
+        const auto order = h.place(c.side, c.limit, 1);
+        require(order.code == ApplyCode::applied, std::string(c.name) + ": order was not authorized");
+        const auto before = h.state.risk_accounts[0];
+        const auto reservation = h.state.reservations[h.state.reservation_count - 1];
+        const auto outcome = h.fill(order, c.side, c.price, 1, c.fee);
+        require(outcome.code == c.code, std::string(c.name) + ": code " +
+                    std::to_string(static_cast<int>(outcome.code)));
+        require(h.state.risk_accounts[0] == before &&
+                    h.state.reservations[h.state.reservation_count - 1] == reservation,
+                std::string(c.name) + ": a refused fill changed the account or its reservation");
+        require(h.state.orders[h.state.order_count - 1].state == ClusterOrderState::conflict,
+                std::string(c.name) + ": the order was not marked conflict");
+    }
+    auto h = ledger_harness();
+    const auto order = h.place(Side::buy, 11, 1);
+    require(order.code == ApplyCode::applied &&
+                h.fill(order, Side::buy, 11, 1, 3).code == ApplyCode::applied,
+            "a fee exactly at the cap was refused");
+}
+
+void test_loss_limit_stops_new_risk_and_still_lets_the_position_close() {
+    using namespace velocita::v2;
+    auto h = ledger_harness(400);
+    require(h.state.risk_accounts[0].max_window_loss.atoms() == 400, "loss limit was not stored");
+    const auto entry = h.place(Side::buy, 11, 2);
+    require(entry.code == ApplyCode::applied && h.fill(entry, Side::buy, 11, 2, 0).code == ApplyCode::applied,
+            "loss fixture could not enter");
+    const auto small = h.place(Side::sell, 8, 1);
+    require(small.code == ApplyCode::applied && h.fill(small, Side::sell, 8, 1, 1).code == ApplyCode::applied,
+            "first losing exit was refused");
+    h.expect(1, -1'401, 1'100, -301, 1, "sell 1 at 8, fee 1");
+    const auto still_open = h.place(Side::buy, 11, 1);
+    require(still_open.code == ApplyCode::applied, "a buy was refused 99 micros short of the loss limit");
+    require(h.fill(still_open, Side::buy, 11, 1, 0).code == ApplyCode::applied, "re-entry fill refused");
+    const auto second = h.place(Side::sell, 10, 1);
+    require(second.code == ApplyCode::applied && h.fill(second, Side::sell, 10, 1, 0).code == ApplyCode::applied,
+            "second losing exit was refused");
+    h.expect(1, -1'501, 1'100, -401, 1, "sell 1 at 10 from an average of 11");
+    const auto before = h.state.risk_accounts[0];
+    const auto refused = h.place(Side::buy, 11, 1);
+    require(refused.code == ApplyCode::loss_limit_reached,
+            "a buy was authorized after the window loss passed its limit: code " +
+                std::to_string(static_cast<int>(refused.code)));
+    require(h.state.risk_accounts[0] == before, "a loss-limit refusal changed the account");
+    const auto too_big = h.place(Side::sell, 10, 2);
+    require(too_big.code == ApplyCode::loss_limit_reached,
+            "a sell through zero was treated as position-reducing");
+    const auto close = h.place(Side::sell, 10, 1);
+    require(close.code == ApplyCode::applied && h.fill(close, Side::sell, 10, 1, 0).code == ApplyCode::applied,
+            "the loss limit blocked closing the position");
+    h.expect(0, -501, 0, -501, 1, "flat after the limit");
+
+    auto keep = configure_risk(h.state, 91);
+    std::get<ConfigureRiskLimits>(keep.body).max_window_loss = MoneyMicros::from_atoms(400);
+    require(catalog_test::apply(h.state, keep, h.scratch).code == ApplyCode::applied, "limits update refused");
+    require(h.place(Side::buy, 11, 1).code == ApplyCode::loss_limit_reached,
+            "re-sending limits without a reset cleared the loss window");
+    auto reset = configure_risk(h.state, 92);
+    std::get<ConfigureRiskLimits>(reset.body).max_window_loss = MoneyMicros::from_atoms(400);
+    std::get<ConfigureRiskLimits>(reset.body).reset_loss_window = true;
+    require(catalog_test::apply(h.state, reset, h.scratch).code == ApplyCode::applied, "window reset refused");
+    require(h.state.risk_accounts[0].window_realized_pnl.atoms() == 0 &&
+                h.state.risk_accounts[0].realized_pnl.atoms() == -501,
+            "the reset changed lifetime P&L or left the window");
+    const auto fresh = h.place(Side::buy, 11, 1);
+    require(fresh.code == ApplyCode::applied, "a buy was refused after the operator reset");
+    require(h.fill(fresh, Side::buy, 11, 1, 2).code == ApplyCode::applied, "the post-reset fill was refused");
+    require(h.state.risk_accounts[0].realized_pnl.atoms() == -503 &&
+                h.state.risk_accounts[0].window_realized_pnl.atoms() == -2,
+            "lifetime and window P&L did not diverge after a reset");
+}
+
+void test_loss_limit_boundary_is_inclusive_and_zero_disables_it() {
+    using namespace velocita::v2;
+    for (const auto& [limit, expected] : {std::pair<std::int64_t, ApplyCode>{300, ApplyCode::loss_limit_reached},
+                                          {301, ApplyCode::applied}, {0, ApplyCode::applied}}) {
+        auto h = ledger_harness(limit);
+        const auto entry = h.place(Side::buy, 11, 1);
+        require(entry.code == ApplyCode::applied && h.fill(entry, Side::buy, 11, 1, 0).code == ApplyCode::applied,
+                "boundary fixture could not enter");
+        const auto exit = h.place(Side::sell, 8, 1);
+        require(exit.code == ApplyCode::applied && h.fill(exit, Side::sell, 8, 1, 0).code == ApplyCode::applied,
+                "boundary fixture could not exit");
+        require(h.state.risk_accounts[0].window_realized_pnl.atoms() == -300, "boundary loss is not 300");
+        require(h.place(Side::buy, 11, 1).code == expected,
+                "loss limit " + std::to_string(limit) + " against a loss of 300 gave the wrong answer");
+    }
 }
 
 void test_risk_configuration_updates_preserve_economics() {
@@ -4007,6 +4218,11 @@ int main() {
         }
         test_risk_configuration_updates_preserve_economics();
         test_risk_configuration_codec_and_restore();
+        test_fills_keep_an_exact_money_ledger();
+        test_cost_basis_allocation_conserves_the_last_micro();
+        test_a_fill_beyond_the_limit_or_fee_cap_is_a_conflict_and_books_nothing();
+        test_loss_limit_stops_new_risk_and_still_lets_the_position_close();
+        test_loss_limit_boundary_is_inclusive_and_zero_disables_it();
         test_position_limit_matrix();
         test_position_limit_counts_open_orders_on_both_sides();
         test_negative_position_cap_fails_closed();

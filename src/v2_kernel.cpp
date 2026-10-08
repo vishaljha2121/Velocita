@@ -216,6 +216,61 @@ find_receipt(const TradingState& state, const CommandIdentity& identity) noexcep
     return count;
 }
 
+struct LedgerAfterFill {
+    MoneyMicros cash{};
+    MoneyMicros cost_basis{};
+    MoneyMicros realized_pnl{};
+    MoneyMicros fees_paid{};
+    MoneyMicros window_realized_pnl{};
+};
+
+[[nodiscard]] std::optional<MoneyMicros> fill_notional(
+    const EconomicActionProposal& proposal, const VenueObservation& observation) noexcept {
+    constexpr __int128 limit = std::numeric_limits<std::int64_t>::max();
+    const __int128 quoted = static_cast<__int128>(proposal.price.atoms()) * proposal.quantity.atoms();
+    if (quoted <= 0 || proposal.notional.atoms() <= 0 || proposal.notional.atoms() % quoted != 0 ||
+        observation.price.atoms() <= 0 || observation.quantity.atoms() <= 0) {
+        return std::nullopt;
+    }
+    const __int128 per_tick_lot = proposal.notional.atoms() / quoted;
+    const __int128 per_lot = per_tick_lot * observation.price.atoms();
+    if (per_lot > limit) return std::nullopt;
+    const __int128 value = per_lot * observation.quantity.atoms();
+    if (value > limit) return std::nullopt;
+    return MoneyMicros::from_atoms(static_cast<std::int64_t>(value));
+}
+
+[[nodiscard]] std::optional<LedgerAfterFill> ledger_after_fill(
+    const RiskAccount& risk, const Side side, const QuantityLots quantity,
+    const MoneyMicros notional, const FeeMicros fee) noexcept {
+    constexpr __int128 limit = std::numeric_limits<std::int64_t>::max();
+    const __int128 position = risk.position_quantity.atoms();
+    const __int128 held = position < 0 ? -position : position;
+    const __int128 filled = quantity.atoms();
+    const __int128 gross = notional.atoms();
+    const __int128 charged = fee.atoms();
+    const bool buying = side == Side::buy;
+    const bool closing = buying ? position < 0 : position > 0;
+    const __int128 closed = closing ? std::min(filled, held) : 0;
+    const __int128 closed_gross = gross * closed / filled;
+    const __int128 basis = risk.cost_basis.atoms();
+    const __int128 basis_out = closed == 0 ? 0 : basis * closed / held;
+    const __int128 traded = closed == 0 ? 0 : position > 0 ? closed_gross - basis_out : basis_out - closed_gross;
+    const __int128 pnl = traded - charged;
+    const __int128 values[5] = {
+        risk.cash.atoms() + (buying ? -(gross + charged) : gross - charged),
+        basis - basis_out + (gross - closed_gross),
+        risk.realized_pnl.atoms() + pnl,
+        risk.fees_paid.atoms() + charged,
+        risk.window_realized_pnl.atoms() + pnl,
+    };
+    for (const auto value : values) {
+        if (value > limit || value < -limit) return std::nullopt;
+    }
+    const auto money = [](const __int128 value) { return MoneyMicros::from_atoms(static_cast<std::int64_t>(value)); };
+    return LedgerAfterFill{money(values[0]), money(values[1]), money(values[2]), money(values[3]), money(values[4])};
+}
+
 [[nodiscard]] std::optional<MoneyMicros> ceil_rate_hold(
     const MoneyMicros notional, const std::uint32_t rate_ppm) noexcept {
     constexpr std::int64_t scale = 1'000'000;
@@ -1863,6 +1918,14 @@ struct ReceiptAdmissionAvailability {
         return authorization_result(state, ApplyCode::position_limit_exceeded,
                                     next_version, command.decision_id);
     }
+    const bool reduces_position = buying
+        ? risk->position_quantity.atoms() < 0 && extreme->atoms() <= 0
+        : risk->position_quantity.atoms() > 0 && extreme->atoms() >= 0;
+    if (!reduces_position && risk->max_window_loss.atoms() > 0 &&
+        risk->window_realized_pnl.atoms() <= -risk->max_window_loss.atoms()) {
+        return authorization_result(state, ApplyCode::loss_limit_reached,
+                                    next_version, command.decision_id);
+    }
 
     if (!venue_completion_capacity_available(state, cold.proposal.quantity)) {
         return authorization_result(state,
@@ -2135,6 +2198,29 @@ struct ReceiptAdmissionAvailability {
                            next_version, observation, observation.quantity,
                            ContractError::none, order.decision_id);
     }
+    const auto notional = fill_notional(proposal, observation);
+    const auto fee_cap = notional ? ceil_rate_hold(*notional, risk->maximum_fee_ppm) : std::nullopt;
+    if (!notional || !fee_cap) {
+        return fill_result(state, ApplyCode::risk_arithmetic_overflow,
+                           next_version, observation, observation.quantity,
+                           ContractError::none, order.decision_id);
+    }
+    const bool beyond_limit = proposal.side == Side::buy ? observation.price > proposal.price
+                                                         : observation.price < proposal.price;
+    const bool over_fee = observation.fee.atoms() < 0 || observation.fee.atoms() > fee_cap->atoms();
+    if (beyond_limit || over_fee) {
+        order.state = ClusterOrderState::conflict;
+        order.last_evidence_state_version = next_version;
+        return fill_result(state, beyond_limit ? ApplyCode::fill_price_conflict : ApplyCode::fill_fee_conflict,
+                           next_version, observation, observation.quantity,
+                           ContractError::none, order.decision_id);
+    }
+    const auto ledger = ledger_after_fill(*risk, proposal.side, observation.quantity, *notional, observation.fee);
+    if (!ledger) {
+        return fill_result(state, ApplyCode::position_arithmetic_overflow,
+                           next_version, observation, observation.quantity,
+                           ContractError::none, order.decision_id);
+    }
     const auto next_reserved_quantity = risk->reserved_quantity.checked_sub(
         observation.quantity);
     const auto next_reserved_margin = risk->reserved_margin.checked_sub(
@@ -2161,6 +2247,11 @@ struct ReceiptAdmissionAvailability {
 
     risk->position_quantity = *next_position;
     risk->position_version = PositionVersion{risk->position_version.value() + 1};
+    risk->cash = ledger->cash;
+    risk->cost_basis = ledger->cost_basis;
+    risk->realized_pnl = ledger->realized_pnl;
+    risk->fees_paid = ledger->fees_paid;
+    risk->window_realized_pnl = ledger->window_realized_pnl;
     risk->reserved_quantity = *next_reserved_quantity;
     risk->reserved_margin = *next_reserved_margin;
     risk->reserved_fee = *next_reserved_fee;
@@ -2869,6 +2960,8 @@ enum class CancelDisposition : std::uint8_t {
     configured.maximum_fee_ppm = command.maximum_fee_ppm;
     configured.max_position_quantity = command.max_position_quantity;
     configured.allow_short = command.allow_short;
+    configured.max_window_loss = command.max_window_loss;
+    if (command.reset_loss_window) configured.window_realized_pnl = {};
     if (existing != nullptr) *existing = configured;
     else state.risk_accounts[state.risk_account_count++] = configured;
     auto outcome = result(state, ApplyCode::applied, next_version);

@@ -233,7 +233,7 @@ struct Fixture {
         const auto ec = catalog.encode(execution_bytes);
         check(id.error == StaticIdentityCodecError::none && ec.error == ExecutionCatalogError::none, "fixture encode failed");
         identity_length = id.bytes_written; execution_length = ec.bytes_written;
-        constexpr std::string_view hex = "56324b43380000000900060001000000000000000100000000000000010000000000000000000000000000000000000000000000000000000000000001000000000000007ebfc094cb08c72268b6e92acc835d5b5bbee17c517e564750290c1a437a118b";
+        constexpr std::string_view hex = "56324b43380000000a00060001000000000000000100000000000000010000000000000000000000000000000000000000000000000000000000000001000000000000004c4d7905b073c3f1141a95f18113055108729d74a81dc69a6d6bb6327d3241cd";
         for (std::size_t at = 0; at < hex.size(); at += 2)
             command.push_back(std::byte(std::stoul(std::string(hex.substr(at, 2)), nullptr, 16)));
     }

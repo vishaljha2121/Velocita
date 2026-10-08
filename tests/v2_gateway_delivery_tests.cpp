@@ -4071,6 +4071,17 @@ void rotate_multi_slot_policy(TradingState& state, std::uint64_t& request,
             "the rotated executable policy could not be activated");
 }
 
+PriceTicks limit_price_of(const TradingState& state, const ClusterOrderId order) {
+    for (std::size_t slot = 0; slot < state.order_count; ++slot) {
+        if (state.orders[slot].cluster_order_id != order) continue;
+        for (std::size_t at = 0; at < state.decision_count; ++at) {
+            if (state.decision_hot[at].decision_id == state.orders[slot].decision_id)
+                return state.decision_cold[at].proposal.price;
+        }
+    }
+    throw std::logic_error("the slot fixture's order has no decision");
+}
+
 void conflict_the_order(TradingState& state, const ClusterOrderId order,
                         const EffectId submit_effect, std::uint64_t& request,
                         std::uint64_t& venue_sequence) {
@@ -4103,7 +4114,7 @@ void conflict_the_order(TradingState& state, const ClusterOrderId order,
     auto fill = base(VenueObservationKind::fill);
     fill.execution_id = ExecutionId{venue_sequence};
     fill.side = Side::buy;
-    fill.price = PriceTicks::from_atoms(11);
+    fill.price = limit_price_of(state, order);
     fill.quantity = QuantityLots::from_atoms(1);
     fill.evidence_digest = digest(0x78);
     require(observe(fill) == ApplyCode::applied,

@@ -591,7 +591,8 @@ void shadow_submitter_scenario(Harness& h, const std::string& submitter) {
     const auto limits = h.operator_command(4, {"risk-limits", "account=5", "instrument=4", "risk_policy_version=1",
         "expected_risk_version=0", "kill_epoch=1", "executor_generation=1", "max_order_lots=1", "max_reserved_lots=2",
         "max_order_notional_micros=10000", "max_reserved_exposure_micros=10000", "initial_margin_ppm=1000000",
-        "maximum_fee_ppm=10000", "max_position_lots=1", "allow_short=0", "reason_code=7"}, h.await_leader(), 20000);
+        "maximum_fee_ppm=10000", "max_position_lots=1", "allow_short=0", "reason_code=7",
+        "max_window_loss_micros=0", "reset_loss_window=0"}, h.await_leader(), 20000);
     require(limits.exit_code == 0 && limits.output.find("RISK-LIMITS") != std::string::npos &&
                 word(limits.output.substr(limits.output.find("COMMITTED")), "risk_version") == "1",
             "risk limits were not configured: " + limits.output);

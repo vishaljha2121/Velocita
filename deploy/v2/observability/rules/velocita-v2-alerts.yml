@@ -148,6 +148,34 @@ groups:
         annotations:
           summary: "{{ $labels.host }} has used {{ $value | humanizePercentage }} of its policy slots"
           description: "Each published policy version keeps a slot for the life of the incarnation. When none are left a new strategy version is refused (policy_capacity_exceeded); plan a new incarnation before the next strategy change."
+      # The kernel's own money ledger (ADR 0021). The limit is on realized loss
+      # since the operator last reset it; at the limit only closing orders pass.
+      - alert: VelocitaLossLimitNear
+        expr: >-
+          max by (account, instrument) (velocita_v2_account_max_window_loss_micros) > 0
+          and max by (account, instrument) (-velocita_v2_account_window_realized_pnl_micros)
+          / max by (account, instrument) (velocita_v2_account_max_window_loss_micros) >= 0.8
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "Account {{ $labels.account }} is at 80% or more of its loss limit"
+          description: "Realized loss since the last reset, against the kernel's limit. At 100% the kernel refuses every order that adds risk; orders that close the position still pass."
+      - alert: VelocitaLossLimitReached
+        expr: >-
+          max by (account, instrument) (velocita_v2_account_max_window_loss_micros) > 0
+          and max by (account, instrument) (-velocita_v2_account_window_realized_pnl_micros)
+          >= max by (account, instrument) (velocita_v2_account_max_window_loss_micros)
+        labels: {severity: critical}
+        annotations:
+          summary: "Account {{ $labels.account }} reached its loss limit: the kernel refuses new risk"
+          description: "Only an operator risk-limits command with reset_loss_window=1 clears it. Review the losses before resetting."
+      - alert: VelocitaLedgerMismatch
+        expr: abs(max(velocita_indicator_variant_fees_usd) * 1e6 - max(velocita_v2_account_fees_paid_micros)) > 1
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "The kernel's fees and the venue report's fees differ by {{ $value }} micro-dollars"
+          description: "The kernel books every fill's fee, and the observer reads the venue's. They should be equal for a session that began with its incarnation. A difference means a fill was booked by one and not the other; stop and reconcile before trading on."
       - alert: VelocitaVoterStranded
         expr: velocita_v2_stranded_voters > 0
         for: 1m

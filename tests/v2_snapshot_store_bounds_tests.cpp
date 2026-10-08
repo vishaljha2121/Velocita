@@ -49,8 +49,8 @@ VerifiedStaticIdentity identity() {
     const auto bytes = from_hex(
         "563249447c000000010000000102030405060708090a0b0c0d0e0f10"
         "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"
-        "0900090001000100010001000101030011000000010100000100010011000000"
-        "a6326543a7df7e9c89692344318dadf2f97dc3f06b3dabfacdcd3875fb29334d");
+        "0a000a0001000100010001000101030011000000010100000100010011000000"
+        "08a4324b57b69508e3785b815ea368a65919f96695b0afcdb09ae5a85503f21d");
     VerifiedStaticIdentity result;
     require(VerifiedStaticIdentity::decode(bytes, result) == StaticIdentityCodecError::none,
             "identity fixture refused");
@@ -164,9 +164,9 @@ void test_incompatible_and_foreign_are_typed(const std::filesystem::path& direct
 
     const auto semantic_truncation = from_hex(
         "56324246010003006800000010000000"
-        "3ce5d6e3e9a886ab694852a129348bbe9413c2b55077a84804efa3cd645cc3e0"
+        "599621a2f6f5336362106d12208b6491336fcb75e596af59b534a91019493ee0"
         "11000000000000000b000000000000000700000000000000"
-        "a37722ec7dd6ebce59a0be3b204b0af6e5f156ae2f49665e23d9f822a1b698a6");
+        "5fada866fb73a60e451a47c1c5e0aba78a92a2b8cade973a34bfe91f2cd5552d");
     BoundFrameView literal_view{};
     BoundFrameScratch literal_scratch{};
     require(decode_bound_frame(semantic_truncation, BoundFrameKind::snapshot, id,

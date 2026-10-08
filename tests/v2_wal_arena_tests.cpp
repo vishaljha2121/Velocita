@@ -94,25 +94,25 @@ void test_independent_bound_wal_golden_and_block_version() {
     const auto identity_bytes = hex(
         "563249447c000000010000000102030405060708090a0b0c0d0e0f10"
         "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"
-        "0900090001000100010001000101030011000000010100000100010011000000"
-        "a6326543a7df7e9c89692344318dadf2f97dc3f06b3dabfacdcd3875fb29334d");
+        "0a000a0001000100010001000101030011000000010100000100010011000000"
+        "08a4324b57b69508e3785b815ea368a65919f96695b0afcdb09ae5a85503f21d");
     VerifiedStaticIdentity identity;
     require(VerifiedStaticIdentity::decode(identity_bytes, identity) == StaticIdentityCodecError::none,
             "golden WAL identity failed");
     const auto golden = hex(
-        "5632424601000200d40000007c0000003ce5d6e3e9a886ab694852a129348bbe9413c2b55077a84804efa3cd645cc3e0"
+        "5632424601000200d40000007c000000599621a2f6f5336362106d12208b6491336fcb75e596af59b534a91019493ee0"
         "1100000000000000070000000000000003000000000000000700000000000000"
-        "56324b433800000009000600010000000000000001000000000000000100000000000000000000000000000000000000000000000000000000000000"
-        "01000000000000007ebfc094cb08c72268b6e92acc835d5b5bbee17c517e564750290c1a437a118b"
-        "bce2fbc0c7f096b94faa89f62932f716e6f283cfdbc2a182abb0cd832564ac95");
+        "56324b43380000000a000600010000000000000001000000000000000100000000000000000000000000000000000000000000000000000000000000"
+        "01000000000000004c4d7905b073c3f1141a95f18113055108729d74a81dc69a6d6bb6327d3241cd"
+        "466d26bb7b0016f16c44203240e512d790571c6f55bea3730f7e78f6da7ce82c");
     require(encode_bound_wal_record({7, 3, 7, 0, command_payload(1)}, identity) == golden,
             "bound WAL encoder disagrees with independent golden");
     const auto decoded = decode_bound_wal_record(golden, identity);
     require(decoded.index == 7 && decoded.term == 3 && decoded.entry_id == 7 &&
             decoded.entry_type == 0 && decoded.payload == command_payload(1), "golden WAL fields changed");
     const auto block = frame_block(1, 1, golden);
-    require(block[4] == std::byte{2} && block[28] == std::byte{0x04} &&
-            block[29] == std::byte{0x19} && block[30] == std::byte{0x12} && block[31] == std::byte{0x1d},
+    require(block[4] == std::byte{2} && block[28] == std::byte{0x97} &&
+            block[29] == std::byte{0xee} && block[30] == std::byte{0x7b} && block[31] == std::byte{0x9e},
             "block-v2 version/independent CRC changed");
     for (const auto version : {1, 3}) {
         auto foreign_version = block;

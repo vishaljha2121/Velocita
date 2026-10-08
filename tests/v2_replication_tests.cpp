@@ -441,6 +441,13 @@ std::uint64_t build_authorized_submit(Cluster& cluster) {
     require(cluster.elect().status().policies == 0, "status counted a policy before one was published");
     (void)cluster.commit(command(++sequence, PublishPolicy{policy_artifact()}));
     require(cluster.elect().status().policies == 1, "status did not count the published policy");
+    {
+        const auto status = cluster.elect().status();
+        require(status.ledger_count == 1 && status.ledgers[0].account_id == 5 &&
+                    status.ledgers[0].instrument_id == 4 && status.ledgers[0].position_lots == 0 &&
+                    status.ledgers[0].cash_micros == 0 && status.ledgers[0].max_window_loss_micros == 0,
+                "status does not report the configured account's ledger");
+    }
     (void)cluster.commit(
         command(++sequence, ValidatePolicy{PolicyId{10}, PolicyVersion{1}}));
     (void)cluster.commit(command(++sequence, bundle));

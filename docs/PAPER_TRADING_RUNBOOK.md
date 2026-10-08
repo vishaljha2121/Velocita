@@ -94,6 +94,7 @@ ceil(21,000,000 x 0.015) = 315,000 = $0.315; held $21.315 <= $25.
 | one clip per order | `max_order_lots` | 25 | 0.00025 BTC |
 | one open order | `max_reserved_lots` | 25 | a second 25-lot order would reserve 50 |
 | one position | `max_position_lots` | 25 | position after every open order fills |
+| realized loss | `max_window_loss_micros` | 10000000 | realized loss since the last reset; at the limit only closing orders pass |
 | long-only | `allow_short` | 0 | a sell may only reduce a long |
 | spot, fully funded | `initial_margin_ppm` | 1000000 | the margin hold is the whole notional |
 | fee hold | `maximum_fee_ppm` | 15000 | 1.5 %, above the measured 1.1-1.2 % per side |
@@ -120,7 +121,7 @@ Check the summary first, then send (operator key on stdin as usual):
         kill_epoch=1 executor_generation=1 max_order_lots=25 max_reserved_lots=25 \
         max_order_notional_micros=25000000 max_reserved_exposure_micros=25000000 \
         initial_margin_ppm=1000000 maximum_fee_ppm=15000 max_position_lots=25 allow_short=0 \
-        reason_code=20260929
+        reason_code=20260929 max_window_loss_micros=10000000 reset_loss_window=0
 
 `COMMITTED ... code_name=applied ... risk_version=1`. A new account starts at
 risk version 1 and position version 1, which is what the edge binds by default.
@@ -317,7 +318,7 @@ and K, E the current kill epoch and executor generation:
         kill_epoch=<K> executor_generation=<E> max_order_lots=12 max_reserved_lots=12 \
         max_order_notional_micros=25000000 max_reserved_exposure_micros=25000000 \
         initial_margin_ppm=1000000 maximum_fee_ppm=15000 max_position_lots=12 allow_short=0 \
-        reason_code=20260930
+        reason_code=20260930 max_window_loss_micros=10000000 reset_loss_window=0
 
 The risk version moves to R + 1; the edge re-syncs on its next refusal. If the
 account is long 25 when you switch, either keep `--order-quantity-lots 25` for

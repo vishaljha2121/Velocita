@@ -144,6 +144,9 @@ enum class ApplyCode : std::uint8_t {
     catalog_row_not_found,
     catalog_binding_mismatch,
     position_limit_exceeded,
+    fill_price_conflict,
+    fill_fee_conflict,
+    loss_limit_reached,
 };
 
 struct CallerCursor {
@@ -278,6 +281,8 @@ struct ConfigureRiskLimits {
     QuantityLots max_position_quantity{};
     bool allow_short{};
     std::uint32_t reason_code{};
+    MoneyMicros max_window_loss{};
+    bool reset_loss_window{};
 };
 
 struct AcknowledgeGatewayResults {
@@ -297,7 +302,8 @@ struct InstallExecutionCatalog {
            value.max_order_gross_notional.atoms() > 0 && value.max_reserved_exposure.atoms() > 0 &&
            value.initial_margin_ppm > 0 && value.initial_margin_ppm <= 1'000'000 &&
            value.maximum_fee_ppm <= 1'000'000 &&
-           value.max_position_quantity.atoms() >= 0 && value.reason_code != 0;
+           value.max_position_quantity.atoms() >= 0 && value.reason_code != 0 &&
+           value.max_window_loss.atoms() >= 0;
 }
 
 using CommandBody = std::variant<PublishPolicy,
@@ -661,6 +667,12 @@ struct RiskAccount {
     QuantityLots position_quantity{};
     QuantityLots max_position_quantity{};
     bool allow_short{};
+    MoneyMicros cash{};
+    MoneyMicros cost_basis{};
+    MoneyMicros realized_pnl{};
+    MoneyMicros fees_paid{};
+    MoneyMicros window_realized_pnl{};
+    MoneyMicros max_window_loss{};
 
     constexpr auto operator<=>(const RiskAccount&) const noexcept = default;
 };

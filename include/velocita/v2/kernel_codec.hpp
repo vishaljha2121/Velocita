@@ -10,7 +10,7 @@
 
 namespace velocita::v2 {
 
-inline constexpr std::uint16_t kKernelCodecSchemaVersion = 9;
+inline constexpr std::uint16_t kKernelCodecSchemaVersion = 10;
 inline constexpr std::size_t kKernelCommandMagicBytes = 4;
 inline constexpr std::size_t kKernelCommandLengthBytes = 4;
 inline constexpr std::size_t kKernelCommandSchemaBytes = 2;

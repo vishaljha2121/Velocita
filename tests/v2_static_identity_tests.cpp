@@ -44,8 +44,8 @@ const std::vector<std::byte>& golden() {
     static const auto bytes = bytes_from_hex(
         "563249447c000000010000000102030405060708090a0b0c0d0e0f10"
         "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"
-        "0900090001000100010001000101030011000000010100000100010011000000"
-        "a6326543a7df7e9c89692344318dadf2f97dc3f06b3dabfacdcd3875fb29334d");
+        "0a000a0001000100010001000101030011000000010100000100010011000000"
+        "08a4324b57b69508e3785b815ea368a65919f96695b0afcdb09ae5a85503f21d");
     return bytes;
 }
 
@@ -88,10 +88,10 @@ void test_independent_golden_and_domains() {
     require(verified.valid() && verified.value() == fixture(),
             "golden decoded value differs");
     require(to_hex(verified.manifest_digest()) ==
-                "3ce5d6e3e9a886ab694852a129348bbe9413c2b55077a84804efa3cd645cc3e0",
+                "599621a2f6f5336362106d12208b6491336fcb75e596af59b534a91019493ee0",
             "manifest digest differs from independent hash");
     require(to_hex(verified.authority_domain()) ==
-                "7e5c4627c3e5b7a42702b60e65497d06fe1c581a7283fb758f0831a85928a46b",
+                "cadedea0d22f13392d1e5f155c3d56cbdc58226790a33930510a32acc5570cff",
             "authority domain differs from independent hash");
 }
 
@@ -171,27 +171,27 @@ void test_header_digest_and_semantic_refusals() {
     }
 }
 
-void test_schema8_manifest_is_refused() {
-    require(golden()[60] == std::byte{9} && golden()[62] == std::byte{9},
-            "fixture drifted: the golden identity is not schema 9");
+void test_previous_schema_manifest_is_refused() {
+    require(golden()[60] == std::byte{10} && golden()[62] == std::byte{10},
+            "fixture drifted: the golden identity is not schema 10");
     const auto with_schemas = [](std::uint8_t snapshot, std::uint8_t command) {
         auto bytes = golden();
         bytes[60] = std::byte{snapshot};
         bytes[62] = std::byte{command};
         return with_checksum(bytes);
     };
-    expect_unchanged_failure(with_schemas(8, 8), StaticIdentityCodecError::unsupported_schema,
-                             "a schema-8 manifest was accepted by the V9 binary");
-    expect_unchanged_failure(with_schemas(8, 9), StaticIdentityCodecError::unsupported_schema,
-                             "a schema-8 snapshot manifest was accepted");
-    expect_unchanged_failure(with_schemas(9, 8), StaticIdentityCodecError::unsupported_schema,
-                             "a schema-8 command manifest was accepted");
+    expect_unchanged_failure(with_schemas(9, 9), StaticIdentityCodecError::unsupported_schema,
+                             "a previous-schema manifest was accepted by this binary");
+    expect_unchanged_failure(with_schemas(9, 10), StaticIdentityCodecError::unsupported_schema,
+                             "a previous-schema snapshot manifest was accepted");
+    expect_unchanged_failure(with_schemas(10, 9), StaticIdentityCodecError::unsupported_schema,
+                             "a previous-schema command manifest was accepted");
     StaticIdentity value = fixture();
-    value.command_result_schema = 8;
+    value.command_result_schema = 9;
     std::array<std::byte, kMaxStaticIdentityBytes> output{};
     require(encode_static_identity(value, output).error ==
                 StaticIdentityCodecError::unsupported_schema,
-            "the V9 binary encoded a schema-8 manifest");
+            "the V9 binary encoded a previous-schema manifest");
 }
 
 void test_voter_canonicality_modes_and_sizes() {
@@ -333,7 +333,7 @@ void test_shared_vs_local_digests() {
                 a.authority_domain() == b.authority_domain(),
             "local ID changed shared digests");
     require(to_hex(sha256_digest(std::span{second}.first(92))) ==
-                "3f466085fb710261a7606b5cb198620e698427cee9bb6e410c85074bcb67f194",
+                "66b235f02d460ad6a2462d7902d5acf10dd2739fe6004ed109f49a0d1eaa2c23",
             "second local file checksum differs from independent hash");
     require(!std::equal(first.end() - 32, first.end(), second.end() - 32),
             "local ID did not change file checksum");
@@ -346,7 +346,7 @@ int main() {
         test_independent_golden_and_domains();
         test_lengths_and_failure_preservation();
         test_header_digest_and_semantic_refusals();
-        test_schema8_manifest_is_refused();
+        test_previous_schema_manifest_is_refused();
         test_voter_canonicality_modes_and_sizes();
         test_valid_shared_changes_rebind_domains();
         test_shared_vs_local_digests();

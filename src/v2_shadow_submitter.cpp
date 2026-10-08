@@ -400,6 +400,9 @@ std::string_view apply_code_name(ApplyCode code) noexcept {
         case ApplyCode::catalog_row_not_found: return "catalog_row_not_found";
         case ApplyCode::catalog_binding_mismatch: return "catalog_binding_mismatch";
         case ApplyCode::position_limit_exceeded: return "position_limit_exceeded";
+        case ApplyCode::fill_price_conflict: return "fill_price_conflict";
+        case ApplyCode::fill_fee_conflict: return "fill_fee_conflict";
+        case ApplyCode::loss_limit_reached: return "loss_limit_reached";
     }
     return "unknown";
 }
@@ -416,10 +419,11 @@ std::optional<StrategyMode> parse_strategy_mode(std::string_view name) noexcept 
 
 namespace {
 
-constexpr std::array<std::string_view, 15> kRiskKeys{
+constexpr std::array<std::string_view, 17> kRiskKeys{
     "account", "instrument", "risk_policy_version", "expected_risk_version", "kill_epoch", "executor_generation",
     "max_order_lots", "max_reserved_lots", "max_order_notional_micros", "max_reserved_exposure_micros",
-    "initial_margin_ppm", "maximum_fee_ppm", "max_position_lots", "allow_short", "reason_code"};
+    "initial_margin_ppm", "maximum_fee_ppm", "max_position_lots", "allow_short", "reason_code",
+    "max_window_loss_micros", "reset_loss_window"};
 
 std::string dollars(MoneyMicros micros) {
     const auto atoms = micros.atoms();
@@ -472,6 +476,10 @@ RiskLimitsVerb parse_risk_limits_verb(std::span<const std::string> words) {
         out.error = "field allow_short: must be 0 (long-only) or 1";
         return out;
     }
+    if (n["reset_loss_window"] > 1) {
+        out.error = "field reset_loss_window: must be 0 (keep the loss counted so far) or 1 (start from zero)";
+        return out;
+    }
     if (n["reason_code"] == 0) {
         out.error = "field reason_code: must be non-zero (the audit reference for this change)";
         return out;
@@ -494,6 +502,8 @@ RiskLimitsVerb parse_risk_limits_verb(std::span<const std::string> words) {
     l.max_position_quantity = lots("max_position_lots");
     l.allow_short = n["allow_short"] == 1;
     l.reason_code = static_cast<std::uint32_t>(n["reason_code"]);
+    l.max_window_loss = micros("max_window_loss_micros");
+    l.reset_loss_window = n["reset_loss_window"] == 1;
     if (!valid_risk_limits(l)) {
         out.error = "limits invalid: non-zero account, instrument, risk policy version, order lots, notional and "
                     "exposure; reserved lots >= order lots; margin 1..1000000 ppm; fee <= 1000000 ppm";
@@ -514,7 +524,8 @@ std::string risk_limits_canonical(const ConfigureRiskLimits& l) {
         << " max_reserved_exposure_micros=" << l.max_reserved_exposure.atoms()
         << " initial_margin_ppm=" << l.initial_margin_ppm << " maximum_fee_ppm=" << l.maximum_fee_ppm
         << " max_position_lots=" << l.max_position_quantity.atoms() << " allow_short=" << (l.allow_short ? 1 : 0)
-        << " reason_code=" << l.reason_code;
+        << " reason_code=" << l.reason_code << " max_window_loss_micros=" << l.max_window_loss.atoms()
+        << " reset_loss_window=" << (l.reset_loss_window ? 1 : 0);
     return out.str();
 }
 
@@ -535,6 +546,13 @@ std::string describe_risk_limits(const ConfigureRiskLimits& l) {
         << (l.allow_short ? "shorting allowed" : "long-only: a sell may only reduce a long position") << "\n"
         << "  holds:        initial margin " << percent(l.initial_margin_ppm) << ", fee "
         << percent(l.maximum_fee_ppm) << " of notional\n"
+        << "  loss limit:   "
+        << (l.max_window_loss.atoms() == 0
+                ? std::string("NONE: realized losses never stop new risk")
+                : "new risk stops once realized loss since the last reset reaches " + dollars(l.max_window_loss) +
+                      "; closing a position is always allowed")
+        << "; " << (l.reset_loss_window ? "this command RESETS the loss counted so far to zero"
+                                        : "the loss counted so far is kept") << "\n"
         << "  reason code:  " << l.reason_code << " (audit reference; the kernel does not interpret it)\n";
     return out.str();
 }

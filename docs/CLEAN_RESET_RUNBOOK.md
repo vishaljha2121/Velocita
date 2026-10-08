@@ -196,7 +196,7 @@ empty for the trend strategy.
     tools/velocita-secrets client-key caller-9 | $C $A --sequence 4 --dry-run risk-limits \
       account=1 instrument=1 risk_policy_version=1 expected_risk_version=0 kill_epoch=1 executor_generation=1 \
       max_order_lots=12 max_reserved_lots=12 max_order_notional_micros=25000000 max_reserved_exposure_micros=25000000 \
-      initial_margin_ppm=1000000 maximum_fee_ppm=15000 max_position_lots=12 allow_short=0 reason_code=<YYYYMMDD>
+      initial_margin_ppm=1000000 maximum_fee_ppm=15000 max_position_lots=12 allow_short=0 reason_code=<YYYYMMDD> max_window_loss_micros=10000000 reset_loss_window=0
 
 Read the summary. Then run the same line again without `--dry-run`.
 

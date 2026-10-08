@@ -1,6 +1,7 @@
 #include "velocita/v2/node_health.hpp"
 #include "velocita/v2/node.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <bit>
 #include <fcntl.h>
@@ -14,8 +15,11 @@ namespace velocita::v2 {
 namespace {
 
 constexpr std::uint64_t kMagic = 0x3148484C56ULL;
-constexpr std::uint32_t kVersion = 7;
-constexpr std::size_t kCells = 38;
+constexpr std::uint32_t kVersion = 8;
+constexpr std::size_t kScalarCells = 39;
+constexpr std::size_t kLedgerCells = 9;
+constexpr std::size_t kCells = kScalarCells + kNodeHealthLedgers * kLedgerCells;
+static_assert(kNodeHealthLedgers == kMaxRiskAccounts);
 static_assert(std::atomic<std::uint64_t>::is_always_lock_free,
               "cross-process seqlock cells must be address-free lock-free atomics");
 
@@ -32,7 +36,7 @@ struct NodeHealthPage::Page {
 namespace {
 
 std::array<std::uint64_t, kCells> flatten(const NodeHealth& h) noexcept {
-    return {static_cast<std::uint64_t>(static_cast<std::uint32_t>(h.node_id)), h.pid, h.session_epoch, h.role,
+    std::array<std::uint64_t, kCells> v{static_cast<std::uint64_t>(static_cast<std::uint32_t>(h.node_id)), h.pid, h.session_epoch, h.role,
             h.ready, h.failed, std::bit_cast<std::uint64_t>(h.term),
             static_cast<std::uint64_t>(static_cast<std::uint32_t>(h.leader_id)),
             std::bit_cast<std::uint64_t>(h.current_index), std::bit_cast<std::uint64_t>(h.commit_index),
@@ -43,7 +47,18 @@ std::array<std::uint64_t, kCells> flatten(const NodeHealth& h) noexcept {
             std::bit_cast<std::uint64_t>(h.compaction_floor), std::bit_cast<std::uint64_t>(h.snapshot_index),
             h.stranded_voters, h.compactions, h.last_compaction_ms,
             h.receipts, h.pinned_receipts, h.pinned_receipts_peak,
-            h.archive_bytes, h.archive_byte_limit, h.archive_objects, h.archive_object_limit, h.policies};
+            h.archive_bytes, h.archive_byte_limit, h.archive_objects, h.archive_object_limit, h.policies, h.ledger_count};
+    for (std::size_t index = 0; index < kNodeHealthLedgers; ++index) {
+        const auto& l = h.ledgers[index];
+        const std::array<std::uint64_t, kLedgerCells> cells{
+            l.account_id, l.instrument_id, std::bit_cast<std::uint64_t>(l.position_lots),
+            std::bit_cast<std::uint64_t>(l.cash_micros), std::bit_cast<std::uint64_t>(l.cost_basis_micros),
+            std::bit_cast<std::uint64_t>(l.realized_pnl_micros), std::bit_cast<std::uint64_t>(l.fees_paid_micros),
+            std::bit_cast<std::uint64_t>(l.window_realized_pnl_micros),
+            std::bit_cast<std::uint64_t>(l.max_window_loss_micros)};
+        std::copy(cells.begin(), cells.end(), v.begin() + static_cast<std::ptrdiff_t>(kScalarCells + index * kLedgerCells));
+    }
+    return v;
 }
 
 NodeHealth unflatten(const std::array<std::uint64_t, kCells>& v) noexcept {
@@ -64,6 +79,14 @@ NodeHealth unflatten(const std::array<std::uint64_t, kCells>& v) noexcept {
     h.receipts = v[30]; h.pinned_receipts = v[31]; h.pinned_receipts_peak = v[32];
     h.archive_bytes = v[33]; h.archive_byte_limit = v[34]; h.archive_objects = v[35]; h.archive_object_limit = v[36];
     h.policies = v[37];
+    h.ledger_count = v[38];
+    for (std::size_t index = 0; index < kNodeHealthLedgers; ++index) {
+        const auto at = kScalarCells + index * kLedgerCells;
+        h.ledgers[index] = {v[at], v[at + 1], std::bit_cast<std::int64_t>(v[at + 2]),
+                            std::bit_cast<std::int64_t>(v[at + 3]), std::bit_cast<std::int64_t>(v[at + 4]),
+                            std::bit_cast<std::int64_t>(v[at + 5]), std::bit_cast<std::int64_t>(v[at + 6]),
+                            std::bit_cast<std::int64_t>(v[at + 7]), std::bit_cast<std::int64_t>(v[at + 8])};
+    }
     return h;
 }
 
@@ -111,6 +134,13 @@ NodeHealth node_health_of(const NodeStatus& status, const NodeHealthContext& con
     h.archive_objects = r.archive_objects;
     h.archive_object_limit = r.archive_object_limit;
     h.policies = r.policies;
+    h.ledger_count = std::min<std::uint64_t>(r.ledger_count, kNodeHealthLedgers);
+    for (std::size_t index = 0; index < h.ledger_count; ++index) {
+        const auto& l = r.ledgers[index];
+        h.ledgers[index] = {l.account_id, l.instrument_id, l.position_lots, l.cash_micros, l.cost_basis_micros,
+                            l.realized_pnl_micros, l.fees_paid_micros, l.window_realized_pnl_micros,
+                            l.max_window_loss_micros};
+    }
     return h;
 }
 

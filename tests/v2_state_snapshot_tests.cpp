@@ -345,7 +345,13 @@ void test_snapshot_rejects_unbacked_risk_aggregates() {
 
 void test_snapshot_position_limit_fields_are_canonical() {
     using namespace velocita::v2;
-    const auto original = phase4_state();
+    auto original = phase4_state();
+    original.risk_accounts[original.risk_account_count - 1].cash = MoneyMicros::from_atoms(-11);
+    original.risk_accounts[original.risk_account_count - 1].cost_basis = MoneyMicros::from_atoms(12);
+    original.risk_accounts[original.risk_account_count - 1].realized_pnl = MoneyMicros::from_atoms(-13);
+    original.risk_accounts[original.risk_account_count - 1].fees_paid = MoneyMicros::from_atoms(14);
+    original.risk_accounts[original.risk_account_count - 1].window_realized_pnl = MoneyMicros::from_atoms(-15);
+    original.risk_accounts[original.risk_account_count - 1].max_window_loss = MoneyMicros::from_atoms(16);
     std::array<std::byte, kMaxStateSnapshotBytes> storage{};
     const auto encoded = encode_state_snapshot(original, storage);
     require(encoded.error == StateSnapshotError::none, "position fixture did not encode");
@@ -363,8 +369,35 @@ void test_snapshot_position_limit_fields_are_canonical() {
             expected.push_back(static_cast<std::byte>(
                 (static_cast<std::uint64_t>(value) >> shift) & 0xff));
     expected.push_back(std::byte{1});
-    require(kStateSnapshotRiskAccountBytes == 121 && std::equal(expected.begin(), expected.end(), at(104)),
-            "risk account position fields are not at their canonical offsets");
+    for (const std::int64_t value : {std::int64_t{-11}, std::int64_t{12}, std::int64_t{-13}, std::int64_t{14},
+                                     std::int64_t{-15}, std::int64_t{16}})
+        for (unsigned shift = 0; shift < 64; shift += 8)
+            expected.push_back(static_cast<std::byte>(
+                (static_cast<std::uint64_t>(value) >> shift) & 0xff));
+    const auto last = (original.risk_account_count - 1) * kStateSnapshotRiskAccountBytes;
+    require(kStateSnapshotRiskAccountBytes == 169 && expected.size() == 65 &&
+                std::equal(expected.begin(), expected.end(), at(last + 104)),
+            "risk account position and money fields are not at their canonical offsets");
+    StateSnapshotScratch ledger_scratch;
+    TradingState restored;
+    std::array<std::byte, kMaxStateSnapshotBytes> again{};
+    require(decode_state_snapshot({storage.data(), encoded.bytes_written}, restored, ledger_scratch).error ==
+                StateSnapshotError::none &&
+                restored.risk_accounts[original.risk_account_count - 1] ==
+                    original.risk_accounts[original.risk_account_count - 1] &&
+                encode_state_snapshot(restored, again).error == StateSnapshotError::none && again == storage,
+            "the money ledger did not survive a snapshot round trip");
+    for (const auto bad : {0, 1, 2, 3}) {
+        auto invalid = original;
+        auto& risk = invalid.risk_accounts[invalid.risk_account_count - 1];
+        if (bad == 0) risk.cost_basis = MoneyMicros::from_atoms(-1);
+        if (bad == 1) risk.fees_paid = MoneyMicros::from_atoms(-1);
+        if (bad == 2) risk.max_window_loss = MoneyMicros::from_atoms(-1);
+        if (bad == 3) { risk.position_quantity = {}; risk.cost_basis = MoneyMicros::from_atoms(1); }
+        std::array<std::byte, kMaxStateSnapshotBytes> refused{};
+        require(encode_state_snapshot(invalid, refused).error == StateSnapshotError::invalid_state,
+                "snapshot encoder accepted an impossible money ledger");
+    }
 
     const auto rejected = [&](const std::size_t offset, const std::vector<std::byte>& patch,
                               const std::string& what) {
@@ -471,7 +504,7 @@ void test_empty_snapshot_has_canonical_layout() {
     const std::array expected_prefix{
         std::byte{'V'}, std::byte{'2'}, std::byte{'S'}, std::byte{'T'},
         std::byte{95}, std::byte{0}, std::byte{0}, std::byte{0},
-        std::byte{9}, std::byte{0},
+        std::byte{10}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{5}};
@@ -490,7 +523,7 @@ void test_empty_snapshot_has_canonical_layout() {
             "V9 changed more than the schema byte of the empty snapshot");
     const auto hash = to_hex(encoded.state_digest);
     require(hash ==
-                "ab1e3731b7edc9f6bcc2c0d463842fa9d4e9e9717572cb7a3bcbd84f58290349",
+                "4ff5067a55ca3ea21ca99108d38f68db9dc7239364aec7411cf8c06e29bc2692",
             "empty state golden digest changed: " + hash);
     require(encoded.bytes_written ==
                 kStateSnapshotPayloadOffset + kStateSnapshotEmptyPayloadBytes +
@@ -595,8 +628,8 @@ void test_round_trip_is_canonical_and_excludes_unused_capacity() {
 
 void test_phase4_state_survives_canonical_snapshot() {
     using namespace velocita::v2;
-    require(kStateSnapshotSchemaVersion == 9,
-            "position limits did not move snapshots to V9");
+    require(kStateSnapshotSchemaVersion == 10,
+            "the kernel money ledger did not move snapshots to V10");
     const auto original = phase4_state();
     std::array<std::byte, kMaxStateSnapshotBytes> storage{};
     const auto encoded = encode_state_snapshot(original, storage);

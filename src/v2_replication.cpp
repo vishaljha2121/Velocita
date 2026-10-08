@@ -1080,6 +1080,14 @@ ReplicaStatus ReplicatedKernel::status() const {
     value.archive_byte_limit = archive_config_.logical_byte_limit;
     value.archive_object_limit = archive_config_.object_limit;
     value.policies = state_.policy_count;
+    value.ledger_count = state_.risk_account_count;
+    for (std::size_t index = 0; index < state_.risk_account_count; ++index) {
+        const auto& risk = state_.risk_accounts[index];
+        value.ledgers[index] = {risk.account_id.value(), risk.instrument_id.value(),
+                                risk.position_quantity.atoms(), risk.cash.atoms(), risk.cost_basis.atoms(),
+                                risk.realized_pnl.atoms(), risk.fees_paid.atoms(),
+                                risk.window_realized_pnl.atoms(), risk.max_window_loss.atoms()};
+    }
     if (raft_is_leader(server_) != 0) {
         const auto snapshot = raft_get_snapshot_last_idx(server_);
         for (int i = 0; i < raft_get_num_nodes(server_); ++i) {

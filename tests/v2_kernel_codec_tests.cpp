@@ -324,7 +324,7 @@ void test_command_identity_and_kind_are_explicit() {
     const std::array expected_prefix{
         std::byte{'V'}, std::byte{'2'}, std::byte{'K'}, std::byte{'C'},
         std::byte{104}, std::byte{0}, std::byte{0}, std::byte{0},
-        std::byte{9}, std::byte{0},
+        std::byte{10}, std::byte{0},
         std::byte{8}, std::byte{0},
         std::byte{12}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
@@ -338,9 +338,9 @@ void test_command_identity_and_kind_are_explicit() {
                 "fa55af747a17df7a03daa48c43e3f982a05dfbd9b03f85e411728856810a9fcc",
             "V9 changed more than the schema byte of the source command");
     require(frame_hash ==
-                "3458d2bef8d979a9d7d8ab20d61c4cab5033ae6b9a967ad0d6bd14d947c6b8da" &&
+                "5c9e9b2a9dcecfde33ffdc0f1aa08dd48c66e739bd73dcf308cfcfa94c7c021c" &&
                 full_hash ==
-                    "a20adaad8354630d8024d97273607f186262564550e38ddc15048c791c78f4f6",
+                    "47412c2354d6195ee1c7c4b0b1364a4b9d688f184c75f5b880f67ae329cd8d92",
             "source-command golden corpus changed: frame=" + frame_hash +
                 " full=" + full_hash);
     auto legacy = bytes;
@@ -377,8 +377,8 @@ void test_decision_kind_is_explicit_and_not_a_variant_ordinal() {
 
 void test_phase4_authorization_command_and_result_are_canonical_v4() {
     using namespace velocita::v2;
-    require(kKernelCodecSchemaVersion == 9,
-            "position limits did not move the codec to schema V9");
+    require(kKernelCodecSchemaVersion == 10,
+            "the kernel money ledger did not move the codec to schema V10");
 
     const auto original = command(44, AuthorizeDecision{DecisionId{21}});
     std::array<std::byte, kMaxKernelCommandBytes> command_bytes{};
@@ -459,9 +459,9 @@ void test_result_round_trip_is_canonical() {
                 "7e1cfff95c9f37025b1c3ccae5d5adb52399ed2dc7ca89427a9d41205d07c005",
             "V9 changed more than the schema byte of the apply result");
     require(frame_hash ==
-                "b54c30fe22cc9cd1410d2968bb4b4ff0d1e27782ed5ccb051498b647b698cf0f" &&
+                "b5d6ee00d529eaac37f2fac8dc84f8b06e64e088cbfddd058e78ccc884bb80a4" &&
                 full_hash ==
-                    "1f101f02441fee3ded2e94600e3d5261c2d91aa2ad4987d7035cd30e35b3da8c",
+                    "d419cb24dc56a2ba5499dd9a38bb9decf4dd5654a28ef7cbdea68229caa42ca2",
             "apply-result golden corpus changed: frame=" + frame_hash +
                 " full=" + full_hash);
 }

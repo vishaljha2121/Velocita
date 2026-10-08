@@ -170,6 +170,8 @@ void observe_outcome(OutcomeCounters& counters, const ApplyResult& result) noexc
         case ApplyCode::executable_policy_identity_conflict:
         case ApplyCode::derived_identity_collision:
         case ApplyCode::fill_quantity_conflict:
+        case ApplyCode::fill_price_conflict:
+        case ApplyCode::fill_fee_conflict:
             ++counters.conflicts;
             return;
         case ApplyCode::decision_capacity_exceeded:
@@ -192,6 +194,7 @@ void observe_outcome(OutcomeCounters& counters, const ApplyResult& result) noexc
         case ApplyCode::risk_reconfiguration_blocked:
         case ApplyCode::risk_version_exhausted:
         case ApplyCode::position_limit_exceeded:
+        case ApplyCode::loss_limit_reached:
             ++counters.risk_refusals;
             return;
         case ApplyCode::stale_control_generation:

@@ -187,6 +187,9 @@ private:
         case ApplyCode::catalog_row_not_found:
         case ApplyCode::catalog_binding_mismatch:
         case ApplyCode::position_limit_exceeded:
+        case ApplyCode::fill_price_conflict:
+        case ApplyCode::fill_fee_conflict:
+        case ApplyCode::loss_limit_reached:
             return true;
     }
     return false;
@@ -607,7 +610,10 @@ private:
             risk.reserved_margin.atoms() < 0 || risk.reserved_fee.atoms() < 0 ||
             risk.initial_margin_ppm == 0 || risk.initial_margin_ppm > 1'000'000 ||
             risk.maximum_fee_ppm > 1'000'000 ||
-            risk.max_position_quantity.atoms() < 0) {
+            risk.max_position_quantity.atoms() < 0 ||
+            risk.cost_basis.atoms() < 0 || risk.fees_paid.atoms() < 0 ||
+            risk.max_window_loss.atoms() < 0 ||
+            (risk.position_quantity.atoms() == 0 && risk.cost_basis.atoms() != 0)) {
             return false;
         }
         for (std::size_t prior = 0; prior < index; ++prior) {
@@ -1100,6 +1106,12 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
         writer.integral(risk.position_quantity.atoms());
         writer.integral(risk.max_position_quantity.atoms());
         writer.integral(static_cast<std::uint8_t>(risk.allow_short));
+        writer.integral(risk.cash.atoms());
+        writer.integral(risk.cost_basis.atoms());
+        writer.integral(risk.realized_pnl.atoms());
+        writer.integral(risk.fees_paid.atoms());
+        writer.integral(risk.window_realized_pnl.atoms());
+        writer.integral(risk.max_window_loss.atoms());
     }
 
     writer.integral(static_cast<std::uint16_t>(state.reservation_count));
@@ -1545,6 +1557,12 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
         const auto allow_short = reader.integral<std::uint8_t>();
         if (allow_short > 1) return false;
         risk.allow_short = allow_short == 1;
+        risk.cash = MoneyMicros::from_atoms(reader.integral<std::int64_t>());
+        risk.cost_basis = MoneyMicros::from_atoms(reader.integral<std::int64_t>());
+        risk.realized_pnl = MoneyMicros::from_atoms(reader.integral<std::int64_t>());
+        risk.fees_paid = MoneyMicros::from_atoms(reader.integral<std::int64_t>());
+        risk.window_realized_pnl = MoneyMicros::from_atoms(reader.integral<std::int64_t>());
+        risk.max_window_loss = MoneyMicros::from_atoms(reader.integral<std::int64_t>());
     }
 
     state.reservation_count = reader.integral<std::uint16_t>();

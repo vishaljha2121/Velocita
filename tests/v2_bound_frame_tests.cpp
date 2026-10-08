@@ -29,8 +29,8 @@ VerifiedStaticIdentity identity() {
     auto bytes = from_hex(
         "563249447c000000010000000102030405060708090a0b0c0d0e0f10"
         "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"
-        "0900090001000100010001000101030011000000010100000100010011000000"
-        "a6326543a7df7e9c89692344318dadf2f97dc3f06b3dabfacdcd3875fb29334d");
+        "0a000a0001000100010001000101030011000000010100000100010011000000"
+        "08a4324b57b69508e3785b815ea368a65919f96695b0afcdb09ae5a85503f21d");
     VerifiedStaticIdentity result;
     require(VerifiedStaticIdentity::decode(bytes, result) == StaticIdentityCodecError::none,
             "identity fixture refused");
@@ -73,9 +73,9 @@ void expect_decode(BoundFrameError expected, std::span<const std::byte> bytes,
 void test_independent_golden_and_borrowed_view() {
     const auto expected = from_hex(
         "56324246010004006800000010000000"
-        "3ce5d6e3e9a886ab694852a129348bbe9413c2b55077a84804efa3cd645cc3e0"
+        "599621a2f6f5336362106d12208b6491336fcb75e596af59b534a91019493ee0"
         "00000000000000000102030405060708090a0b0c0d0e0f10"
-        "8d7fd085ec7818f6d5ad19bb00e8e1c91647f398cd08fecf98aeb892c94cd9a6");
+        "eb31e79d7db2d3e9dcda41888f958eaa3faf511dbb6753823e4eafdc64f79e87");
     const std::array payload{std::byte{1}, std::byte{2}, std::byte{3}, std::byte{4},
         std::byte{5}, std::byte{6}, std::byte{7}, std::byte{8}, std::byte{9},
         std::byte{10}, std::byte{11}, std::byte{12}, std::byte{13}, std::byte{14},

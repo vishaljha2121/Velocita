@@ -11,6 +11,21 @@ namespace velocita::v2 {
 
 struct NodeStatus;
 
+inline constexpr std::size_t kNodeHealthLedgers = 4;
+
+struct NodeHealthLedger {
+    std::uint64_t account_id{};
+    std::uint64_t instrument_id{};
+    std::int64_t position_lots{};
+    std::int64_t cash_micros{};
+    std::int64_t cost_basis_micros{};
+    std::int64_t realized_pnl_micros{};
+    std::int64_t fees_paid_micros{};
+    std::int64_t window_realized_pnl_micros{};
+    std::int64_t max_window_loss_micros{};
+    constexpr auto operator<=>(const NodeHealthLedger&) const noexcept = default;
+};
+
 struct NodeHealth {
     std::int32_t node_id{};
     std::uint64_t pid{};
@@ -50,6 +65,8 @@ struct NodeHealth {
     std::uint64_t archive_objects{};
     std::uint64_t archive_object_limit{};
     std::uint64_t policies{};
+    std::uint64_t ledger_count{};
+    std::array<NodeHealthLedger, kNodeHealthLedgers> ledgers{};
     constexpr auto operator<=>(const NodeHealth&) const noexcept = default;
 };
 

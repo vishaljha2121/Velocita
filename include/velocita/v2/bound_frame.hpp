@@ -20,8 +20,8 @@ inline constexpr std::size_t kMaxBoundSnapshotBytes = 104 + kMaxStateSnapshotByt
 inline constexpr std::size_t kMaxBoundPeerBytes = 32768;
 inline constexpr std::size_t kMaxBoundPeerEntries = 16;
 
-static_assert(kMaxKernelCommandBytes == 1789 && kMaxStateSnapshotBytes == 61383);
-static_assert(kMaxBoundWalRecordBytes == 1901 && kMaxBoundSnapshotBytes == 61487);
+static_assert(kMaxKernelCommandBytes == 1789 && kMaxStateSnapshotBytes == 61575);
+static_assert(kMaxBoundWalRecordBytes == 1901 && kMaxBoundSnapshotBytes == 61679);
 
 enum class BoundFrameKind : std::uint16_t {
     metadata = 1, wal_record = 2, snapshot = 3, peer = 4,

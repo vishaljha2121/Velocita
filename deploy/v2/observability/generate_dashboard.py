@@ -632,6 +632,35 @@ def position_row():
     advance(8)
 
 
+def kernel_ledger_row():
+    row("Kernel ledger: what the replicated kernel booked from fills, and its loss limit")
+    account = 'max(velocita_v2_account_%s_micros) / 1e6'
+    stat("Kernel realized P&L", account % "realized_pnl", 0, 4, unit="currencyUSD", decimals=4,
+         steps=(("red", None), ("green", 0)),
+         description="After fees, since this incarnation's account was created. Every voter applies the same "
+                     "fills, so they agree; the largest is shown.")
+    stat("Kernel fees booked", account % "fees_paid", 4, 4, unit="currencyUSD", decimals=4, steps=(("blue", None),),
+         description="Each fill's fee is checked against the fee cap before it is booked.")
+    stat("Kernel net cash from fills", account % "cash", 8, 4, unit="currencyUSD", decimals=4, steps=(("blue", None),),
+         description="Sells minus buys minus fees. Venue cash should equal funding plus this for a session "
+                     "that began with its incarnation.")
+    stat("Loss limit used",
+         '100 * max(-velocita_v2_account_window_realized_pnl_micros) / '
+         '(max(velocita_v2_account_max_window_loss_micros) > 0)', 12, 4, unit="percent", decimals=0,
+         steps=(("green", None), ("orange", 80), ("red", 100)), no_value="No loss limit set",
+         description="Realized loss since the operator last reset it, against the kernel's limit. At 100% the "
+                     "kernel refuses orders that add risk and still authorizes orders that close the position. "
+                     "Alerts: VelocitaLossLimitNear at 80%, VelocitaLossLimitReached at 100%.")
+    stat("Loss limit", account % "max_window_loss", 16, 4, unit="currencyUSD", decimals=2, steps=(("blue", None),),
+         description="Set by the operator's risk-limits command. 0 means no limit.")
+    stat("Kernel fees minus venue fees",
+         'max(velocita_v2_account_fees_paid_micros) - max(velocita_indicator_variant_fees_usd{strategy="stochastic"}) * 1e6',
+         20, 4, decimals=0, steps=(("red", None), ("green", -1), ("red", 2)),
+         description="In micro-dollars; must be 0 for a session that began with its incarnation. "
+                     "Alert: VelocitaLedgerMismatch.")
+    advance(4)
+
+
 def indicator_paper_rows():
     for strategy in ('stochastic',):
         title='Stochastic one-second session'
@@ -745,6 +774,7 @@ def paper():
     paper_now_row()
     panels[0]['title'] = 'Active stochastic paper cluster: gateway status'
     indicator_paper_rows()
+    kernel_ledger_row()
     rearm_row()
     tick_to_trade_row()
     orders_row()

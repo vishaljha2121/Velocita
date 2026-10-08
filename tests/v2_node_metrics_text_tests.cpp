@@ -56,6 +56,9 @@ NodeHealth fixture() {
     h.archive_objects = 1'209;
     h.archive_object_limit = 4'096;
     h.policies = 5;
+    h.ledger_count = 1;
+    h.ledgers[0] = {2, 3, 12, -24'048'000, 24'000'000, -48'000, 48'000, -48'001, 10'000'000};
+    h.ledgers[1] = {9, 9, 9, 9, 9, 9, 9, 9, 9};
     return h;
 }
 
@@ -102,12 +105,20 @@ void known_voter_renders_every_series() {
         "velocita_v2_receipt_capacity{host=\"pi\",node=\"2\"} 256",
         "velocita_v2_policies{host=\"pi\",node=\"2\"} 5",
         "velocita_v2_policy_capacity{host=\"pi\",node=\"2\"} 8",
+        "velocita_v2_account_position_lots{host=\"pi\",node=\"2\",account=\"2\",instrument=\"3\"} 12",
+        "velocita_v2_account_cash_micros{host=\"pi\",node=\"2\",account=\"2\",instrument=\"3\"} -24048000",
+        "velocita_v2_account_cost_basis_micros{host=\"pi\",node=\"2\",account=\"2\",instrument=\"3\"} 24000000",
+        "velocita_v2_account_realized_pnl_micros{host=\"pi\",node=\"2\",account=\"2\",instrument=\"3\"} -48000",
+        "velocita_v2_account_fees_paid_micros{host=\"pi\",node=\"2\",account=\"2\",instrument=\"3\"} 48000",
+        "velocita_v2_account_window_realized_pnl_micros{host=\"pi\",node=\"2\",account=\"2\",instrument=\"3\"} -48001",
+        "velocita_v2_account_max_window_loss_micros{host=\"pi\",node=\"2\",account=\"2\",instrument=\"3\"} 10000000",
         "velocita_v2_archive_bytes{host=\"pi\",node=\"2\"} 700000000",
         "velocita_v2_archive_byte_limit{host=\"pi\",node=\"2\"} 1073741824",
         "velocita_v2_archive_segments{host=\"pi\",node=\"2\"} 1209",
         "velocita_v2_archive_segment_limit{host=\"pi\",node=\"2\"} 4096",
     };
     for (const auto& line : expected) require(has_line(text, line), "missing or wrong line: " + line);
+    require(text.find("account=\"9\"") == std::string::npos, "a ledger beyond the reported count was published");
     require(text.find("# TYPE velocita_v2_auth_refusals_total counter\n") != std::string::npos,
             "counters are not typed as counters");
     require(text.find("# TYPE velocita_v2_term gauge\n") != std::string::npos, "gauges are not typed");

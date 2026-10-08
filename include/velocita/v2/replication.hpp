@@ -91,6 +91,19 @@ struct ProposeOutcome {
     std::int64_t index{};
 };
 
+struct AccountLedger {
+    std::uint64_t account_id{};
+    std::uint64_t instrument_id{};
+    std::int64_t position_lots{};
+    std::int64_t cash_micros{};
+    std::int64_t cost_basis_micros{};
+    std::int64_t realized_pnl_micros{};
+    std::int64_t fees_paid_micros{};
+    std::int64_t window_realized_pnl_micros{};
+    std::int64_t max_window_loss_micros{};
+    constexpr auto operator<=>(const AccountLedger&) const noexcept = default;
+};
+
 struct ReplicaStatus {
     std::int32_t node_id{};
     std::int32_t leader_id{-1};
@@ -115,6 +128,8 @@ struct ReplicaStatus {
     std::uint64_t archive_objects{};
     std::uint64_t archive_object_limit{};
     std::uint64_t policies{};
+    std::uint64_t ledger_count{};
+    std::array<AccountLedger, kMaxRiskAccounts> ledgers{};
 };
 
 struct CommittedOutboxView {
