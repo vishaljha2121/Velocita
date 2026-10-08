@@ -259,9 +259,14 @@ def raft_log_row():
     stat("Last compaction pause", 'velocita_v2_last_compaction_seconds', 16, 4, unit="s", legend="{{host}}", h=8,
          steps=(("green", None), ("orange", 0.5), ("red", 1)),
          description="Raft makes no progress on a node while it compacts; on a leader, near 1 s risks an election.")
-    stat("Compactions", 'velocita_v2_compactions_total', 20, 4, legend="{{host}}", h=8,
+    stat("Compactions", 'velocita_v2_compactions_total', 20, 4, legend="{{host}}", h=4,
          description="Completed compactions per voter since its last restart.")
-    advance(8)
+    advance(4)
+    stat("Policy slots used", 'max(velocita_v2_policies)', 20, 4,
+         steps=(("green", None), ("orange", 6), ("red", 8)),
+         description="Of 8. Every published policy version keeps a slot for the life of the incarnation; at 8 a "
+                     "new strategy version is refused. Alert: VelocitaPolicySlotsLow at 6.")
+    advance(4)
 
 
 ARCHIVE_USED = ('100 * max by (host) (velocita_v2_archive_bytes / (velocita_v2_archive_byte_limit - 16777216) '

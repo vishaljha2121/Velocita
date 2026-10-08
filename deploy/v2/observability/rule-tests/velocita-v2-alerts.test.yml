@@ -810,3 +810,25 @@ tests:
             exp_annotations:
               summary: "pi archive is 75% of the ordinary budget"
               description: "When the archive is full every ordinary command is refused, including a strategy exit; only the operator kill path still works. See 'Days until the archive is full' on the Raft dashboard and plan a new incarnation or a larger budget before then."
+
+  # Policy slots: 5 of 8 is quiet; 6 of 8 (75%) warns after five minutes.
+  - interval: 1m
+    input_series:
+      - series: 'velocita_v2_policies{job="velocita-v2",host="nuc1",node="1"}'
+        values: '5x5 6x10'
+      - series: 'velocita_v2_policy_capacity{job="velocita-v2",host="nuc1",node="1"}'
+        values: '8x15'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: VelocitaPolicySlotsLow
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: VelocitaPolicySlotsLow
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: VelocitaPolicySlotsLow
+        exp_alerts:
+          - exp_labels: {severity: warning, job: velocita-v2, host: nuc1, node: "1"}
+            exp_annotations:
+              summary: "nuc1 has used 75% of its policy slots"
+              description: "Each published policy version keeps a slot for the life of the incarnation. When none are left a new strategy version is refused (policy_capacity_exceeded); plan a new incarnation before the next strategy change."

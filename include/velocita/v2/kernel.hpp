@@ -18,7 +18,7 @@
 
 namespace velocita::v2 {
 
-inline constexpr std::size_t kMaxPolicies = 16;
+inline constexpr std::size_t kMaxPolicies = 8;
 inline constexpr std::size_t kMaxSources = 16;
 inline constexpr std::size_t kMaxSourceEventReceipts = 128;
 inline constexpr std::size_t kMaxRequestReceipts = 256;

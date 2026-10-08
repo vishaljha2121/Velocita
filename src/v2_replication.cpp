@@ -1079,6 +1079,7 @@ ReplicaStatus ReplicatedKernel::status() const {
     value.archive_objects = archive_open_ ? archive_.object_count() : 0;
     value.archive_byte_limit = archive_config_.logical_byte_limit;
     value.archive_object_limit = archive_config_.object_limit;
+    value.policies = state_.policy_count;
     if (raft_is_leader(server_) != 0) {
         const auto snapshot = raft_get_snapshot_last_idx(server_);
         for (int i = 0; i < raft_get_num_nodes(server_); ++i) {

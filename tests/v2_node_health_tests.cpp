@@ -1,4 +1,5 @@
 #include "velocita/v2/node_health.hpp"
+#include "velocita/v2/node.hpp"
 
 #include <atomic>
 #include <filesystem>
@@ -46,7 +47,7 @@ NodeHealth uniform(std::uint64_t k) {
     h.compaction_floor = h.snapshot_index = static_cast<std::int64_t>(k);
     h.stranded_voters = h.compactions = h.last_compaction_ms = k;
     h.receipts = h.pinned_receipts = h.pinned_receipts_peak = k;
-    h.archive_bytes = h.archive_byte_limit = h.archive_objects = h.archive_object_limit = k;
+    h.archive_bytes = h.archive_byte_limit = h.archive_objects = h.archive_object_limit = h.policies = k;
     return h;
 }
 
@@ -94,10 +95,48 @@ void round_trip_and_refusals() {
     require(archive && archive->archive_bytes == 700'000'000 && archive->archive_byte_limit == 1'073'741'824 &&
                 archive->archive_objects == 1'209 && archive->archive_object_limit == 4'096,
             "archive fields were swapped or lost on the page");
+    distinct.policies = 5;
+    page->publish(distinct);
+    const auto policies = read_node_health(file);
+    require(policies && policies->policies == 5 && policies->archive_object_limit == 4'096,
+            "policy count was lost on the page");
     { std::ofstream(dir.path / "foreign.page", std::ios::binary) << std::string(4096, 'x'); }
     require(!read_node_health(dir.path / "foreign.page").has_value(), "foreign page accepted");
     { std::ofstream(dir.path / "short.page", std::ios::binary) << "VLH"; }
     require(!read_node_health(dir.path / "short.page").has_value(), "short page accepted");
+}
+
+void status_maps_to_the_page_field_by_field() {
+    NodeStatus s;
+    s.replica.node_id = 2; s.replica.role = "leader"; s.replica.term = 11; s.replica.leader_id = 3;
+    s.replica.current_index = 104; s.replica.commit_index = 103; s.replica.applied_index = 102;
+    s.replica.retained_ordinary = 21; s.replica.retained_protected = 22;
+    s.replica.compaction_floor = 23; s.replica.snapshot_index = 24; s.replica.stranded_voters = 25;
+    s.replica.receipts = 26; s.replica.pinned_receipts = 27; s.replica.pinned_receipts_peak = 28;
+    s.replica.archive_bytes = 29; s.replica.archive_byte_limit = 30;
+    s.replica.archive_objects = 31; s.replica.archive_object_limit = 32; s.replica.policies = 33;
+    s.ready = true; s.durable_index = 101; s.session_epoch = 12;
+    s.counters.auth_refusals = 41; s.counters.fence_refusals = 42; s.counters.peer_busy_holds = 43;
+    s.counters.peer_backpressure = 44; s.counters.ingress_refusals = 45; s.counters.results_sent = 46;
+    s.counters.results_dropped = 47; s.counters.compactions = 48; s.counters.last_compaction_ms = 49;
+    NodeHealth want;
+    want.node_id = 2; want.pid = 51; want.session_epoch = 12; want.role = 3; want.ready = true; want.failed = true;
+    want.term = 11; want.leader_id = 3; want.current_index = 104; want.commit_index = 103; want.applied_index = 102;
+    want.durable_index = 101; want.turns = 52; want.last_turn_monotonic_ns = 53;
+    want.auth_refusals = 41; want.fence_refusals = 42; want.peer_busy_holds = 43; want.peer_backpressure = 44;
+    want.ingress_refusals = 45; want.results_sent = 46; want.results_dropped = 47;
+    want.secret_reloads = 54; want.secret_reload_failures = 55;
+    want.retained_ordinary = 21; want.retained_protected = 22; want.compaction_floor = 23; want.snapshot_index = 24;
+    want.stranded_voters = 25; want.compactions = 48; want.last_compaction_ms = 49;
+    want.receipts = 26; want.pinned_receipts = 27; want.pinned_receipts_peak = 28;
+    want.archive_bytes = 29; want.archive_byte_limit = 30; want.archive_objects = 31; want.archive_object_limit = 32;
+    want.policies = 33;
+    require(node_health_of(s, NodeHealthContext{51, 52, 53, true, 54, 55}) == want,
+            "a status field reached the wrong health field, or none");
+    for (const auto& [name, code] : {std::pair<const char*, int>{"follower", 1}, {"candidate", 2}, {"none", 0}}) {
+        s.replica.role = name;
+        require(node_health_of(s, NodeHealthContext{}).role == code, std::string("role code for ") + name);
+    }
 }
 
 void concurrent_reads_are_never_torn() {
@@ -137,6 +176,7 @@ void concurrent_reads_are_never_torn() {
 int main() {
     try {
         round_trip_and_refusals();
+        status_maps_to_the_page_field_by_field();
         concurrent_reads_are_never_torn();
         std::cout << "node health tests passed\n";
         return 0;

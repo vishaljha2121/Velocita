@@ -114,6 +114,7 @@ struct ReplicaStatus {
     std::uint64_t archive_byte_limit{};
     std::uint64_t archive_objects{};
     std::uint64_t archive_object_limit{};
+    std::uint64_t policies{};
 };
 
 struct CommittedOutboxView {

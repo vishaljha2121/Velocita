@@ -438,7 +438,9 @@ std::uint64_t build_authorized_submit(Cluster& cluster) {
                                      MoneyMicros::from_atoms(4'000),
                                      MoneyMicros::from_atoms(8'000), 1'000'000,
                                      2'500, QuantityLots::from_atoms(1'000), true, 1}));
+    require(cluster.elect().status().policies == 0, "status counted a policy before one was published");
     (void)cluster.commit(command(++sequence, PublishPolicy{policy_artifact()}));
+    require(cluster.elect().status().policies == 1, "status did not count the published policy");
     (void)cluster.commit(
         command(++sequence, ValidatePolicy{PolicyId{10}, PolicyVersion{1}}));
     (void)cluster.commit(command(++sequence, bundle));

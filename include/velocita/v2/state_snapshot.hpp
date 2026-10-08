@@ -103,7 +103,7 @@ decode_state_snapshot(std::span<const std::byte> snapshot,
                       StateSnapshotScratch& scratch) noexcept;
 
 static_assert(kMaxStateSnapshotBytes < 64U * 1024U);
-static_assert(kMaxStateSnapshotBytes == 65519U);
+static_assert(kMaxStateSnapshotBytes == 61383U);
 static_assert(std::is_nothrow_copy_assignable_v<TradingState>);
 
 }

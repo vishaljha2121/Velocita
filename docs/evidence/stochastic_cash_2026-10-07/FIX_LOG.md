@@ -52,3 +52,37 @@ Docker.
 A1 to A3 need the edge image rebuilt and the edge restarted while flat. B1 needs
 new voter and exporter images (health page version 6) and the rule file copied
 to the host. B2 to B6, B8 and section C are unchanged.
+
+## 2026-10-08 03:03 UTC: edge deployed
+
+Owner approved deploying the edge only while the account was flat. It was
+(venue report: 0 lots, 0 pending reports; kernel position 0).
+
+- Image `localhost/velocita-v2-shadow:paper-cash-d542601`: the running image
+  `paper-cash-9a71762` plus four Python files from commit `d542601`
+  (`adapters/websocket.py`, `shadow/edge.py`, `shadow/run_stochastic_second.py`,
+  `shadow/stochastic_second.py`). File checksums inside the image match the
+  commit. The submitter binary is byte-identical to the previous image. The 25
+  strategy tests pass inside the new image. This is a layer, not a build from
+  the shipped tree; the owner accepted that to avoid a compile on the trading
+  host.
+- Only `velocita-paper-stochastic-edge.service` changed (image tag). The
+  previous unit is `~/edge-d542601/velocita-paper-stochastic-edge.service.before`.
+  The observer, gateway, voters and exporters were not touched.
+- Restart took 15.6 s by the wall clock; the longest gap between recorded
+  candles was 8.8 s. No trade was in flight.
+- After: 0 errors, rule agreement 2 of 2, reconciled, `quiet` bars counted, the
+  metrics file refreshed on quiet bars. Committed entries fell from 60 to 2 per
+  30 seconds, so the archive now grows about thirty times more slowly.
+- The strategy dashboard on nuc1 was replaced with the `d542601` version (new
+  "Last decision" thresholds).
+
+Deployed with this: A1, A2, A3 and ADR 0023 section 2.
+
+## Observation: an election at 00:36:51 UTC
+
+The term went from 2 to 3 and leadership moved from nuc2 to nuc1. No voter
+restarted. nuc2's exporter could not be scraped for about 20 seconds at that
+moment, so nuc2 was unreachable or stalled briefly. The cluster recovered by
+itself, and the old edge (which still had the freeze bug) happened not to have
+a trade in flight. Cause not established.

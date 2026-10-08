@@ -75,60 +75,17 @@ std::optional<NodeSecrets> load_secrets(const NodeConfig& config, std::string& r
     return secrets;
 }
 
-std::uint8_t role_code(const std::string& role) {
-    if (role == "follower") return 1;
-    if (role == "candidate") return 2;
-    if (role == "leader") return 3;
-    return 0;
-}
-
 struct ReloadCounters {
     std::uint64_t applied{};
     std::uint64_t refused{};
 };
 
 NodeHealth health_of(const NodeStatus& status, std::uint64_t turns, bool failed, const ReloadCounters& reloads) {
-    NodeHealth h;
-    h.node_id = status.replica.node_id;
-    h.pid = static_cast<std::uint64_t>(::getpid());
-    h.session_epoch = status.session_epoch;
-    h.role = role_code(std::string(status.replica.role));
-    h.ready = status.ready;
-    h.failed = failed;
-    h.term = status.replica.term;
-    h.leader_id = status.replica.leader_id;
-    h.current_index = status.replica.current_index;
-    h.commit_index = status.replica.commit_index;
-    h.applied_index = status.replica.applied_index;
-    h.durable_index = status.durable_index;
-    h.turns = turns;
-    h.last_turn_monotonic_ns = static_cast<std::uint64_t>(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now().time_since_epoch()).count());
-    const auto& c = status.counters;
-    h.auth_refusals = c.auth_refusals;
-    h.fence_refusals = c.fence_refusals;
-    h.peer_busy_holds = c.peer_busy_holds;
-    h.peer_backpressure = c.peer_backpressure;
-    h.ingress_refusals = c.ingress_refusals;
-    h.results_sent = c.results_sent;
-    h.results_dropped = c.results_dropped;
-    h.secret_reloads = reloads.applied;
-    h.secret_reload_failures = reloads.refused;
-    h.retained_ordinary = status.replica.retained_ordinary;
-    h.retained_protected = status.replica.retained_protected;
-    h.compaction_floor = status.replica.compaction_floor;
-    h.snapshot_index = status.replica.snapshot_index;
-    h.stranded_voters = status.replica.stranded_voters;
-    h.compactions = c.compactions;
-    h.last_compaction_ms = c.last_compaction_ms;
-    h.receipts = status.replica.receipts;
-    h.pinned_receipts = status.replica.pinned_receipts;
-    h.pinned_receipts_peak = status.replica.pinned_receipts_peak;
-    h.archive_bytes = status.replica.archive_bytes;
-    h.archive_byte_limit = status.replica.archive_byte_limit;
-    h.archive_objects = status.replica.archive_objects;
-    h.archive_object_limit = status.replica.archive_object_limit;
-    return h;
+    return node_health_of(status, NodeHealthContext{
+        static_cast<std::uint64_t>(::getpid()), turns,
+        static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now().time_since_epoch()).count()),
+        failed, reloads.applied, reloads.refused});
 }
 
 int run(const Arguments& arguments) {

@@ -138,6 +138,16 @@ groups:
         annotations:
           summary: "{{ $labels.host }} archive is {{ $value | humanizePercentage }} of the ordinary budget: act now"
           description: "Ordinary commands stop at 100%. Flatten the position and stop the strategy while commands are still accepted, then start a new incarnation."
+      # A policy slot is taken by every policy version ever published in an
+      # incarnation and is never freed. At the limit a new strategy cannot be
+      # installed; the running one is unaffected.
+      - alert: VelocitaPolicySlotsLow
+        expr: velocita_v2_policies / velocita_v2_policy_capacity >= 0.75
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }} has used {{ $value | humanizePercentage }} of its policy slots"
+          description: "Each published policy version keeps a slot for the life of the incarnation. When none are left a new strategy version is refused (policy_capacity_exceeded); plan a new incarnation before the next strategy change."
       - alert: VelocitaVoterStranded
         expr: velocita_v2_stranded_voters > 0
         for: 1m

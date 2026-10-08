@@ -83,6 +83,8 @@ std::string render_node_metrics(const std::optional<NodeHealth>& health, std::st
     gauge("velocita_v2_pinned_receipts_peak", "Most pinned receipts after any command since this process started.",
           h.pinned_receipts_peak);
     gauge("velocita_v2_receipt_capacity", "Fixed receipt table capacity.", kMaxRequestReceipts);
+    gauge("velocita_v2_policies", "Policy slots used; a slot is never freed within an incarnation.", h.policies);
+    gauge("velocita_v2_policy_capacity", "Fixed policy table capacity.", kMaxPolicies);
     gauge("velocita_v2_archive_bytes", "Bytes of compacted log held in the archive.", h.archive_bytes);
     gauge("velocita_v2_archive_byte_limit", "Archive byte budget; ordinary commands are refused 16 MiB before it.",
           h.archive_byte_limit);

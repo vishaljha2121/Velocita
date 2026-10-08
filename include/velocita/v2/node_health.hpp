@@ -9,6 +9,8 @@
 
 namespace velocita::v2 {
 
+struct NodeStatus;
+
 struct NodeHealth {
     std::int32_t node_id{};
     std::uint64_t pid{};
@@ -47,10 +49,22 @@ struct NodeHealth {
     std::uint64_t archive_byte_limit{};
     std::uint64_t archive_objects{};
     std::uint64_t archive_object_limit{};
+    std::uint64_t policies{};
     constexpr auto operator<=>(const NodeHealth&) const noexcept = default;
 };
 
 [[nodiscard]] std::optional<NodeHealth> read_node_health(const std::filesystem::path& file);
+
+struct NodeHealthContext {
+    std::uint64_t pid{};
+    std::uint64_t turns{};
+    std::uint64_t monotonic_ns{};
+    bool failed{};
+    std::uint64_t secret_reloads{};
+    std::uint64_t secret_reload_failures{};
+};
+
+[[nodiscard]] NodeHealth node_health_of(const NodeStatus& status, const NodeHealthContext& context) noexcept;
 
 class NodeHealthPage final {
 public:

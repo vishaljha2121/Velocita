@@ -57,3 +57,18 @@ Here is where the 65,519 bytes go. These are worst-case figures, computed from t
   - Add an alert at 75 % receipt fill.
 - **The layout report and the byte-review docs** (`V2_MESSAGE_MEMORY_ATLAS.md`) must be
   regenerated.
+
+## Amendment 2026-10-07: the policy table is cut first
+
+The owner approved cutting `kMaxPolicies` from 16 to 8 now, ahead of the receipt change, to make
+room for ADR 0021. Each slot is 517 bytes (133 fixed plus 32 rules of 12), so this frees 4,136
+bytes: the largest snapshot is 61,383 bytes instead of 65,519.
+
+A policy slot is taken by every policy version published in an incarnation and is never freed, so
+8 is the number of strategy installs one cluster accepts. The voter now publishes
+`velocita_v2_policies` and `velocita_v2_policy_capacity`, and `VelocitaPolicySlotsLow` warns at 6
+of 8.
+
+Still open from the decision above: the receipt table (waiting for a week of the pinned-receipt
+measurement that started on 2026-10-07) and the 10% headroom assertion, which the receipt change is
+needed to meet.

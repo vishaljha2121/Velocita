@@ -1,4 +1,5 @@
 #include "velocita/v2/node_health.hpp"
+#include "velocita/v2/node.hpp"
 
 #include <atomic>
 #include <bit>
@@ -13,8 +14,8 @@ namespace velocita::v2 {
 namespace {
 
 constexpr std::uint64_t kMagic = 0x3148484C56ULL;
-constexpr std::uint32_t kVersion = 6;
-constexpr std::size_t kCells = 37;
+constexpr std::uint32_t kVersion = 7;
+constexpr std::size_t kCells = 38;
 static_assert(std::atomic<std::uint64_t>::is_always_lock_free,
               "cross-process seqlock cells must be address-free lock-free atomics");
 
@@ -42,7 +43,7 @@ std::array<std::uint64_t, kCells> flatten(const NodeHealth& h) noexcept {
             std::bit_cast<std::uint64_t>(h.compaction_floor), std::bit_cast<std::uint64_t>(h.snapshot_index),
             h.stranded_voters, h.compactions, h.last_compaction_ms,
             h.receipts, h.pinned_receipts, h.pinned_receipts_peak,
-            h.archive_bytes, h.archive_byte_limit, h.archive_objects, h.archive_object_limit};
+            h.archive_bytes, h.archive_byte_limit, h.archive_objects, h.archive_object_limit, h.policies};
 }
 
 NodeHealth unflatten(const std::array<std::uint64_t, kCells>& v) noexcept {
@@ -62,9 +63,55 @@ NodeHealth unflatten(const std::array<std::uint64_t, kCells>& v) noexcept {
     h.stranded_voters = v[27]; h.compactions = v[28]; h.last_compaction_ms = v[29];
     h.receipts = v[30]; h.pinned_receipts = v[31]; h.pinned_receipts_peak = v[32];
     h.archive_bytes = v[33]; h.archive_byte_limit = v[34]; h.archive_objects = v[35]; h.archive_object_limit = v[36];
+    h.policies = v[37];
     return h;
 }
 
+}
+
+NodeHealth node_health_of(const NodeStatus& status, const NodeHealthContext& context) noexcept {
+    const auto& r = status.replica;
+    const auto& c = status.counters;
+    NodeHealth h;
+    h.node_id = r.node_id;
+    h.pid = context.pid;
+    h.session_epoch = status.session_epoch;
+    h.role = r.role == "leader" ? 3 : r.role == "candidate" ? 2 : r.role == "follower" ? 1 : 0;
+    h.ready = status.ready;
+    h.failed = context.failed;
+    h.term = r.term;
+    h.leader_id = r.leader_id;
+    h.current_index = r.current_index;
+    h.commit_index = r.commit_index;
+    h.applied_index = r.applied_index;
+    h.durable_index = status.durable_index;
+    h.turns = context.turns;
+    h.last_turn_monotonic_ns = context.monotonic_ns;
+    h.auth_refusals = c.auth_refusals;
+    h.fence_refusals = c.fence_refusals;
+    h.peer_busy_holds = c.peer_busy_holds;
+    h.peer_backpressure = c.peer_backpressure;
+    h.ingress_refusals = c.ingress_refusals;
+    h.results_sent = c.results_sent;
+    h.results_dropped = c.results_dropped;
+    h.secret_reloads = context.secret_reloads;
+    h.secret_reload_failures = context.secret_reload_failures;
+    h.retained_ordinary = r.retained_ordinary;
+    h.retained_protected = r.retained_protected;
+    h.compaction_floor = r.compaction_floor;
+    h.snapshot_index = r.snapshot_index;
+    h.stranded_voters = r.stranded_voters;
+    h.compactions = c.compactions;
+    h.last_compaction_ms = c.last_compaction_ms;
+    h.receipts = r.receipts;
+    h.pinned_receipts = r.pinned_receipts;
+    h.pinned_receipts_peak = r.pinned_receipts_peak;
+    h.archive_bytes = r.archive_bytes;
+    h.archive_byte_limit = r.archive_byte_limit;
+    h.archive_objects = r.archive_objects;
+    h.archive_object_limit = r.archive_object_limit;
+    h.policies = r.policies;
+    return h;
 }
 
 std::unique_ptr<NodeHealthPage> NodeHealthPage::create(const std::filesystem::path& file) {
