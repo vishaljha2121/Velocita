@@ -23,7 +23,7 @@ at 100 bp a side.
 
 ## What must be true before the first real order
 
-Last updated 2026-10-08 13:45 UTC. Status words: **Done** (built, tested, running on the hosts),
+Last updated 2026-10-09 05:10 UTC. Status words: **Done** (built, tested, running on the hosts),
 **Built** (committed and tested, not running), **Open**.
 
 | # | Requirement | Status | Where |
@@ -34,8 +34,8 @@ Last updated 2026-10-08 13:45 UTC. Status words: **Done** (built, tested, runnin
 | 4 | The kernel checks every fill's price and fee and owns cash, P&L and a loss limit (ADR 0021) | **Done** 2026-10-08: running with a $10 loss limit | `4c04f75`, `f55209e` |
 | 5 | Snapshot room (ADR 0022) | **Partly done**: policy table cut to 8 and running. Receipt table change waits for the week of measurement (from 2026-10-07) | `d8ad46d` |
 | 6 | Callers are authorized by role (ADR 0020) | **Built** 2026-10-08, not deployed (schema 11, needs a new incarnation) | `11ad1ae` |
-| 7 | An operator flatten path | **Open** | journey step 4.3 |
-| 8 | An operator command to resolve an order in conflict | **Open** (new, from the kernel review) | review D2 |
+| 7 | An operator flatten path | **Built** 2026-10-09, not deployed: `reduce_only` lets exits through, `flatten` sells the position (ADR 0024) | `04b474b` |
+| 8 | An operator command to resolve an order in conflict | **Built** 2026-10-08, not deployed (ADR 0024) | `9f96cf3` |
 | 9 | The signer (ADR 0019 section 1) | **Open**. Approved to build with a test key only | journey step 5 |
 | 10 | The venue transport | **Open**. Approved to build against a mock only | journey step 6 |
 | 11 | The venue contract questions | **Open**; several need the owner or True Markets | journey step 3 |
@@ -47,10 +47,15 @@ Last updated 2026-10-08 13:45 UTC. Status words: **Done** (built, tested, runnin
 | 17 | A live gateway refuses an account with no loss limit | **Open** | ADR 0021 amendment |
 | 18 | Leader steps down when it cannot reach a quorum | **Built** 2026-10-08, not deployed | `20329b6` |
 | 19 | Raft library assertions active in release builds | **Built** 2026-10-08, not deployed | `83a103e` |
-| 20 | Review of the files the kernel review did not read (node loop, write-ahead log, archive store, codecs, authentication) | **Open** | review, "Not read" |
+| 20 | Review of the files the kernel review did not read (node loop, write-ahead log, archive store, codecs, authentication) | **Partly done** 2026-10-09: node loop, authentication, write-ahead log, archive store and protocol read; three findings to fix, codecs still unread | `REVIEW_2_NODE_AND_STORAGE.md` |
 | 21 | Review of the research and backtest code | **Open** | owner request 2026-10-07 |
 
-Count: 4 done, 1 partly done, 16 open.
+Count: 4 done, 5 built and waiting for a new incarnation (6, 7, 8, 18, 19), 2 partly done (5, 20),
+10 open.
+
+Items 6, 7, 8, 18 and 19 are one deployment: schema 11 needs a new incarnation, the owner's
+approval, a flat account, and the operator ceremony (which now includes the two `assign-role`
+commands).
 
 ## What is running now
 
@@ -66,8 +71,8 @@ Incarnation `abd1e149a26d4062ba5bbba2d90b3305`, started 2026-10-08 13:38 UTC.
 ## Order of work
 
 1. ~~Finish and deploy the kernel change (items 3, 4, 5).~~ Done 2026-10-08.
-2. **Roles, flatten, conflict resolution, leader step-down, assertions (items 6, 7, 8, 18, 19).**
-   All are kernel or Raft changes; do them together so there is one more format change, not five.
+2. ~~Roles, flatten, conflict resolution, leader step-down, assertions (items 6, 7, 8, 18, 19).~~
+   Built 2026-10-09 as one format change (schema 11). Not deployed.
 3. **Make paper honest about the venue (items 12, 13).** A paper venue that can refuse and partly
    fill, a True Markets reference price for the decision, and the measured fee. This is where the
    strategy's real economics will show, still with no money at risk.
