@@ -299,6 +299,14 @@ target_include_directories(velocita_v2_truemarkets_venue PUBLIC include)
 target_link_libraries(velocita_v2_truemarkets_venue PUBLIC velocita_v2_contracts PRIVATE velocita_v2_venue_simulator)
 target_compile_options(velocita_v2_truemarkets_venue PRIVATE -Wall -Wextra -Wpedantic)
 
+# ADR 0019. True Markets over HTTP with the MCP envelope. The only stream it
+# provides connects to the loopback address, so it reaches a local mock and
+# nothing else. No gateway, voter or release image links it.
+add_library(velocita_v2_truemarkets_transport src/v2_truemarkets_transport.cpp)
+target_include_directories(velocita_v2_truemarkets_transport PUBLIC include)
+target_link_libraries(velocita_v2_truemarkets_transport PUBLIC velocita_v2_truemarkets_venue)
+target_compile_options(velocita_v2_truemarkets_transport PRIVATE -Wall -Wextra -Wpedantic)
+
 # ADR 0019 section 1. The inspecting signer. It is a separate process and
 # library; no gateway, voter or release image links or installs it, and it
 # accepts only a test key.
@@ -1030,6 +1038,11 @@ if(BUILD_TESTING)
     target_compile_options(v2-signer-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_dependencies(v2-signer-tests velocita-v2-signer)
     add_test(NAME v2-signer-tests COMMAND v2-signer-tests $<TARGET_FILE:velocita-v2-signer>)
+    add_executable(v2-truemarkets-transport-tests tests/v2_truemarkets_transport_tests.cpp)
+    target_link_libraries(v2-truemarkets-transport-tests PRIVATE velocita_v2_truemarkets_transport velocita_v2_signer
+        velocita_v2_venue_simulator Threads::Threads)
+    target_compile_options(v2-truemarkets-transport-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-truemarkets-transport-tests COMMAND v2-truemarkets-transport-tests)
     add_test(NAME v2-signer-not-in-release-images
         COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_signer_not_shipped.py ${CMAKE_CURRENT_SOURCE_DIR})
 

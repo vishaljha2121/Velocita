@@ -245,3 +245,49 @@ two must run on the same host, as section 1 already places them.
 Tests: 14 in-process tests and one that runs the binary across a restart; a signature vector
 computed independently; 69 mutants, 67 killed, 2 repeated by the payload comparison.
 
+## Amendment 2026-10-09 (2): the venue transport exists, against a local mock only
+
+Same approval as the signer amendment above. It approves nothing further.
+
+What was built (library `velocita_v2_truemarkets_transport`):
+
+- **HTTP.** One request per connection, `Connection: close`. Requests are refused before sending if
+  the host, path or token contains a space or control character, so nothing can be injected into
+  the header. Replies are read by content length, by chunks, or to the close of the stream, within
+  fixed size limits.
+- **The MCP envelope.** A reply is accepted only if it is JSON-RPC 2.0 with the request's own id.
+  The tool's text is recovered exactly, from a plain JSON body or from an event stream. `isError`
+  and a JSON-RPC `error` both arrive at the adapter as a tool error.
+- **One meaning per failure**, in the adapter's terms:
+
+  | What happened | The adapter is told |
+  |---|---|
+  | reply with the tool's text | completed |
+  | reply marked as an error, or any HTTP status outside 2xx except 429 | tool error, with the body |
+  | HTTP 429 | rate limited |
+  | no connection, no reply in time, closed early, not HTTP, another request's id, an envelope it cannot read | no response |
+
+  The adapter already maps "no response" on a committal call to unknown exposure and never resends
+  (section 2). The transport does not retry.
+- **Status reads** are a GET of the path the adapter gives.
+
+What keeps it inert:
+
+- **It can only reach this machine.** The one byte stream provided, `LoopbackStream`, takes a port
+  and always connects to the loopback address. There is no name lookup and no TLS in the library,
+  so it cannot open a connection to the venue.
+- **Not shipped.** No gateway, voter or other binary links it and no image carries it. The same
+  ctest that guards the signer now fails if that changes, if the stream can name another address,
+  or if `kLiveVenueTransportCompiled` stops being false.
+
+What is assumed, not recorded: the shape of the envelope (`result.content[0].text`, `isError`) is
+the MCP convention and matches what `tools/mcp-read.py` reads from the public market-data server.
+The trading server's replies to `get_quote`, `trade_prepare` and `trade_execute` have not been
+recorded, so the fixture shapes in the adapter's tests remain fixtures. They must be replaced from
+recorded replies before anything is armed.
+
+End to end, at mock level: one test sends an order through the adapter, the transport, a local
+mock venue speaking HTTP, and the signer over its Unix socket with the test key. The venue receives
+the test signature of the quoted payload, the fill comes back from a status read, the signer's
+audit log holds one line, and a second send of the same order is refused as a duplicate.
+

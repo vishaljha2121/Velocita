@@ -37,7 +37,7 @@ Last updated 2026-10-09 16:30 UTC. Status words: **Done** (built, tested, runnin
 | 7 | An operator flatten path | **Built** 2026-10-09, not deployed: `reduce_only` lets exits through, `flatten` sells the position (ADR 0024) | `04b474b` |
 | 8 | An operator command to resolve an order in conflict | **Built** 2026-10-08, not deployed (ADR 0024) | `9f96cf3` |
 | 9 | The signer (ADR 0019 section 1) | **Built** 2026-10-09 with a test key and mock payloads only; not shipped in any image. A real key format and a real payload decoder are not built | ADR 0019 amendment |
-| 10 | The venue transport | **Open**. Approved to build against a mock only | journey step 6 |
+| 10 | The venue transport | **Built** 2026-10-09 against a local mock only; it can connect only to the loopback address and is in no image. TLS, the real endpoint and recorded reply shapes are not built | ADR 0019 amendment 2 |
 | 11 | The venue contract questions | **Open**; several need the owner or True Markets | journey step 3 |
 | 12 | The paper venue can reject, partly fill and time out | **Built** 2026-10-09, off by default: four gateway flags switch on faults the venue already simulated. Needs a gateway restart and the owner's choice of rates | runbook 5.2.1 |
 | 13 | Decide and fill on the venue's own price, with cost measured on both sides | **Partly done** 2026-10-09: the price difference is measured and small (9 bp level, 2.5 bp noise, venue 1 to 2 s behind). Open: the paper fee stays 20 bp against a measured 100 bp (owner decision), and executable quotes need a call outside the keyless-GET approval | `docs/evidence/venue_price_basis_2026-10-09/` |
@@ -54,9 +54,9 @@ Last updated 2026-10-09 16:30 UTC. Status words: **Done** (built, tested, runnin
 | 24 | The log writer thread sleeps when idle | **Open** (new) | review 2, finding 3 |
 | 25 | A reconciliation that agrees with a finished order does not stop the gateway | **Built** 2026-10-09 after it stopped the paper run; not deployed | `docs/evidence/gateway_stop_2026-10-09/` |
 
-Count: 4 done, 7 built and waiting for a new incarnation (6, 7, 8, 18, 19, 22, 25), 3 built and
-waiting for a gateway image or inert (9 test key only, 12 off by default, 17), 4 partly done
-(5, 13, 20, 21), 7 open (10, 11, 14, 15, 16, 23, 24).
+Count: 4 done, 7 built and waiting for a new incarnation (6, 7, 8, 18, 19, 22, 25), 4 built and
+waiting for a gateway image or inert (9 test key only, 10 mock only, 12 off by default, 17), 4 partly
+done (5, 13, 20, 21), 6 open (11, 14, 15, 16, 23, 24).
 
 Items 6, 7, 8, 18 and 19 are one deployment: schema 11 needs a new incarnation, the owner's
 approval, a flat account, and the operator ceremony (which now includes the two `assign-role`
