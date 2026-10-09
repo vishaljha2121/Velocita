@@ -22,8 +22,8 @@ Still not read: `v2_kernel_codec.cpp`, `v2_state_snapshot.cpp` beyond the parts 
 ## Summary
 
 No safety defect found. Authentication and the storage formats are careful and fail closed. The
-findings are about staying up: two places where a crash or a misbehaving key stops a voter or fills
-the log, and one constant cost.
+findings are about staying up: a misbehaving key can fill the log, a crash at the wrong moment can
+take a voter out (in one case until the next incarnation), and one constant cost.
 
 ---
 
@@ -40,9 +40,19 @@ refused, the strategy's exits included.
 So a leaked or faulty strategy key cannot change state, but it can spend the cluster's life. The
 new `VelocitaUnauthorizedCommand` alert reports it; nothing stops it.
 
-Fix: the node refuses such a command before proposing it, reading the roles from its own applied
-state. That check is advisory (a voter that is behind may let one through) and the kernel's check
-stays the rule. A per-caller rate limit at ingress would bound a key that stays inside its role.
+Two possible fixes, neither built:
+
+- The leader refuses such a command before proposing it, reading roles from its applied state. This
+  is exact for a wrong-role key, but a leader that has not yet applied everything it holds (just
+  after an election, or with a role assignment still in flight) would refuse a legitimate command,
+  and a refused venue report latches the gateway. It needs a rule for when the leader may trust its
+  own view.
+- A per-caller rate limit at ingress, answered with the retryable `busy`. It cannot refuse wrongly,
+  and it also bounds a key that floods inside its role, which the first fix does not. It bounds the
+  damage rather than preventing it: at 5 commands a second the archive still fills in days, with
+  the 70% alert and the unauthorized-command alert as warning.
+
+The rate limit is the safer first step.
 
 ### 2. Medium: a crash during archive publication stops the voter from starting
 
@@ -57,7 +67,8 @@ the voter then fails at start with "verified archive open refused", which does n
 and no runbook covers it. The window is short (the compaction pause, 0.1 to 0.6 s every 2,048
 entries) and the cluster runs on the other two voters meanwhile.
 
-Fix, in order of size: name the unexpected entry in the error; add the repair to the runbook; then
+The repair is now in `PAPER_TRADING_RUNBOOK.md` section 5.4. Still to do: name the unexpected entry
+in the error; then
 decide whether start-up may delete the two fixed temporary names, which by construction were never
 published.
 
@@ -68,13 +79,19 @@ runnable thread that is one core at 100% per voter, all day. On the Pi it is a q
 machine and heat. It also hides real load in CPU graphs. A condition variable or an eventfd wake
 would remove it; the latency cost is one wake-up.
 
-### 4. Low: a torn final block stops the voter
+### 4. Medium: a torn final block loses the voter until the next incarnation
 
 `visit_segment_records` treats a block that does not decode and is not all zeros as corruption and
 throws. A power loss during a 4,096-byte block write can leave that. The block was never reported
 durable, so dropping it would be safe; the code chooses not to guess
-(`test_a_torn_or_corrupt_block_is_detected_not_guessed`). Same consequence as finding 2: a voter
-that needs a human after a power cut. Worth the same runbook entry.
+(`test_a_torn_or_corrupt_block_is_detected_not_guessed`).
+
+The consequence is larger than in finding 2, because there is no repair. A voter cannot be rebuilt
+from the others until snapshot install exists (the `VelocitaVoterStranded` alert says the same), so
+a torn block takes that voter out until a new incarnation. A second such loss stops the cluster.
+The three hosts have no battery backup. Options: tolerate a torn block only when it is the last
+block of the file, which is the one case where nothing durable can be lost; or build snapshot
+install. The runbook now states the limit.
 
 ### 5. Low: the receive fence forgets across a restart
 

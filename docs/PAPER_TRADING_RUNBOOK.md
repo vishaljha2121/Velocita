@@ -243,6 +243,29 @@ the check above is pending; `not_configured` = never arms),
 `velocita_gateway_last_fill_timestamp_seconds` are read from `paper.state` at
 start (they survive restarts); every other gateway counter is per process.
 
+### 5.4 A voter that will not start after a crash or power cut
+
+Two refusals at start are deliberate and need a person (review of 2026-10-09, findings 2 and 4).
+The cluster keeps running on the other two voters meanwhile.
+
+| Journal line | Cause | Repair |
+|---|---|---|
+| `verified archive open refused` | the voter died while publishing an archive segment and left a file the catalog does not list | below |
+| `corrupt complete WAL block` | a power cut tore the last write-ahead-log block | none yet. Do not edit the file. A voter cannot be rebuilt from the others until snapshot install exists, so it stays out until the next incarnation |
+
+Archive repair, on the affected host, with the voter stopped. The data directory is
+`~/velocita-indicator-paper/<run>/data/kernel/v2-archive`.
+
+1. List it. The expected names are `v2-identity.bin`, `v2-execution-catalog.bin`,
+   `v2-archive-catalog.bin` and segments `s-<64 hex>.bin`.
+2. Move, do not delete, `v2-archive-segment.bin.tmp` and `v2-archive-catalog.bin.tmp` if present,
+   to a directory outside the data root. Neither was ever published.
+3. Start the voter. If it still refuses, one `s-*.bin` segment is not in the catalog. It is the
+   newest by modification time. Move that one file out the same way and start again. The
+   write-ahead log still holds its entries, and the next compaction publishes them again.
+4. If it still refuses, stop. Do not move anything else. The voter stays out until the next
+   incarnation.
+
 ## 6. Halting
 
 | Need | Command (operator client) | Effect |
