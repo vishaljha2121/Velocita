@@ -299,6 +299,20 @@ target_include_directories(velocita_v2_truemarkets_venue PUBLIC include)
 target_link_libraries(velocita_v2_truemarkets_venue PUBLIC velocita_v2_contracts PRIVATE velocita_v2_venue_simulator)
 target_compile_options(velocita_v2_truemarkets_venue PRIVATE -Wall -Wextra -Wpedantic)
 
+# ADR 0019 section 1. The inspecting signer. It is a separate process and
+# library; no gateway, voter or release image links or installs it, and it
+# accepts only a test key.
+add_library(velocita_v2_signer
+    src/v2_signer_core.cpp
+    src/v2_signer_socket.cpp)
+target_include_directories(velocita_v2_signer PUBLIC include)
+target_link_libraries(velocita_v2_signer PUBLIC velocita_v2_contracts)
+target_compile_options(velocita_v2_signer PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(velocita-v2-signer src/v2_signer_main.cpp)
+target_link_libraries(velocita-v2-signer PRIVATE velocita_v2_signer)
+target_compile_options(velocita-v2-signer PRIVATE -Wall -Wextra -Wpedantic)
+
 add_library(velocita_v2_kernel
     src/v2_gateway_authority.cpp
     src/v2_gateway_dispatch.cpp
@@ -1010,6 +1024,14 @@ if(BUILD_TESTING)
     target_link_libraries(v2-truemarkets-venue-tests PRIVATE velocita_v2_kernel velocita_v2_truemarkets_venue)
     target_compile_options(v2-truemarkets-venue-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-truemarkets-venue-tests COMMAND v2-truemarkets-venue-tests)
+
+    add_executable(v2-signer-tests tests/v2_signer_tests.cpp)
+    target_link_libraries(v2-signer-tests PRIVATE velocita_v2_signer Threads::Threads)
+    target_compile_options(v2-signer-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_dependencies(v2-signer-tests velocita-v2-signer)
+    add_test(NAME v2-signer-tests COMMAND v2-signer-tests $<TARGET_FILE:velocita-v2-signer>)
+    add_test(NAME v2-signer-not-in-release-images
+        COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_signer_not_shipped.py ${CMAKE_CURRENT_SOURCE_DIR})
 
     # The adapter library must contain no path to a network: no socket, name
     # resolution or TLS symbol may be referenced by its objects.

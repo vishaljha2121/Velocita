@@ -200,3 +200,48 @@ constant flipped, and a new approval.
 - A failed on-chain settlement after acceptance is released through the resting-order reconciliation
   of ADR 0008 (`order_reconciled` with venue id 0), not through a rejection, because the kernel
   refuses a rejection for an acknowledged submit.
+
+## Amendment 2026-10-09: the signer process exists, with a test key only
+
+The owner approved building the signer with a test key, and the venue transport against a local
+mock, with nothing linked into a release image and the compiled live switch left off. This
+amendment records the signer. It approves nothing further.
+
+What was built (`velocita-v2-signer`, library `velocita_v2_signer`):
+
+- **The decision.** `SignerCore` signs a request only when the caller, venue, account and
+  instrument are the configured ones, the request sequence is above the durable floor, the venue
+  handle has not been signed before, the request has not expired, and every payload decodes to the
+  same side, the same base quantity, the same handle and a quote bound no wider than the intent
+  (buy: debit at most the bound; sell: credit at least the bound). Anything else is refused with a
+  typed verdict.
+- **Order of effects.** The sequence floor is made durable first, then the key is used, then the
+  audit record is written, and only then does the signature leave. If the floor or the audit
+  record cannot be written, no signature is returned.
+- **Replay.** The floor is a 16-byte checksummed file replaced atomically. A restarted signer
+  refuses every sequence it has used. The last 256 signed handles are remembered in memory.
+- **Audit.** One line per decision, signed or refused, appended and synced: sequence, effect,
+  verdict, key version, policy version, signature id, SHA-256 of the first payload.
+- **Socket.** A Unix stream socket, mode 0660. The peer's user id is read from the kernel
+  (`SO_PEERCRED` on Linux) and compared with the one allowed id before any byte is read. One
+  request per connection, length-prefixed and checksummed.
+- **Client.** `SocketSigner` implements the `Signer` interface the adapter already takes. Any
+  failure, timeout or malformed reply is `unavailable`, which the adapter treats as nothing signed.
+
+What keeps it inert:
+
+- **Only a test key.** The one key option is `--test-key-file`, and the file must begin with the
+  line `velocita-test-signing-key-v1`. The signature is an HMAC under that key. No venue accepts it.
+- **Only mock payloads.** The one payload decoder reads the fixture format (`MOCKTX1;...`). A real
+  venue payload does not decode, so it is refused. The decoder for a real transaction is still the
+  largest unbuilt piece, as the Consequences section says.
+- **Not shipped.** No gateway, voter or other binary links the signer library, no image copies the
+  binary and no unit starts it. `v2-signer-not-in-release-images` fails if any of that changes.
+- The gateway still cannot be started against True Markets: `kLiveVenueTransportCompiled` is false.
+
+One limit to know: request expiry compares the gateway's monotonic clock with the signer's, so the
+two must run on the same host, as section 1 already places them.
+
+Tests: 14 in-process tests and one that runs the binary across a restart; a signature vector
+computed independently; 69 mutants, 67 killed, 2 repeated by the payload comparison.
+
