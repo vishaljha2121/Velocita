@@ -16,7 +16,7 @@ bool same_binding(const BoundOrderEffect& a,
 }
 
 bool valid_mode(const StrategyMode mode) noexcept {
-    return mode >= StrategyMode::normal && mode <= StrategyMode::halted;
+    return mode >= StrategyMode::normal && mode <= StrategyMode::flatten;
 }
 
 bool valid_control(const GatewayControlView& control) noexcept {
@@ -57,7 +57,7 @@ std::optional<AuthorityBarrier> GatewayAuthority::begin_request(
         freshness_bound_ == 0 || !nonzero(incarnation_) ||
         authority_domain_.is_zero() || pending_ || accepted_ ||
         !detail::next_authority_sequence(next_sequence_) ||
-        !valid_control(control) || control.strategy_mode != StrategyMode::normal ||
+        !valid_control(control) || !mode_allows_orders(control.strategy_mode) ||
         binding.effect.effect_id.value() == 0 ||
         binding.effect.payload_digest.is_zero() || binding.catalog_root.is_zero() ||
         binding.instrument_spec_version.value() == 0 ||
@@ -142,7 +142,7 @@ bool GatewayAuthority::consume(const BoundOrderEffect& binding,
     accepted_started_at_ = 0;
 
     if (now < started_at || now - started_at > freshness_bound_ ||
-        !valid_control(current) || current.strategy_mode != StrategyMode::normal ||
+        !valid_control(current) || !mode_allows_orders(current.strategy_mode) ||
         current.executor_generation != permission.request.expected_executor_generation ||
         current.kill_epoch != permission.request.expected_kill_epoch ||
         current.strategy_mode != permission.strategy_mode ||

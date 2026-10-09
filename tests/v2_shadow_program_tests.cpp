@@ -2,6 +2,7 @@
 #include "v2_catalog_test_support.hpp"
 #include "velocita/v2/state_snapshot.hpp"
 
+#include <array>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
@@ -105,6 +106,56 @@ struct Harness {
     }
     ApplyResult authorize() { return catalog_test::apply(state, authorize_decision(caller, sequence++,
                                                                                    DecisionId{decisions}), scratch); }
+    ApplyResult set_mode(const StrategyMode mode) {
+        Digest256 digest;
+        digest.bytes[0] = std::byte{0x0e};
+        digest.bytes[1] = static_cast<std::byte>(sequence);
+        return catalog_test::apply(state, Command{{CallerId{7}, RequestSequence{sequence++}, digest},
+            SetStrategyMode{mode, state.kill_epoch, state.executor_generation}}, scratch);
+    }
+    ApplyResult fill(const ApplyResult& order, const Side side, const std::int64_t quantity) {
+        VenueObservation observation;
+        observation.kind = VenueObservationKind::fill;
+        observation.venue_id = VenueId{9};
+        observation.venue_session_id = VenueSessionId{1};
+        observation.venue_sequence = VenueSequence{++executions};
+        observation.cluster_order_id = order.cluster_order_id();
+        observation.effect_id = order.effect_id();
+        observation.execution_id = ExecutionId{executions};
+        observation.venue_order_id = VenueOrderId{700 + executions};
+        observation.side = side;
+        observation.price = PriceTicks::from_atoms(11);
+        observation.quantity = QuantityLots::from_atoms(quantity);
+        observation.evidence_digest.bytes[0] = std::byte{0x66};
+        return catalog_test::apply(state, Command{{CallerId{22}, RequestSequence{sequence++},
+                                                   observation_fingerprint(observation)},
+                                                  ObserveFill{observation}}, scratch);
+    }
+    RiskView view() const {
+        return {state.risk_accounts[0].risk_version, state.risk_accounts[0].position_version, std::nullopt};
+    }
+    std::int64_t position() const { return state.risk_accounts[0].position_quantity.atoms(); }
+    const EconomicActionProposal& last_proposal() const { return state.decision_cold[state.decision_count - 1].proposal; }
+    void trade_as_strategy(const std::int64_t max_order, const std::int64_t max_position) {
+        (void)setup();
+        caller = CallerId{21};
+        catalog_test::grant(state, 21, CallerRole::strategy);
+        catalog_test::grant(state, 22, CallerRole::gateway);
+        max_order_lots = max_order;
+        max_position_lots = max_position;
+        require(configure_risk(RiskVersion{0}).code == ApplyCode::applied, "risk limits refused");
+    }
+    void hold(const std::int64_t lots) {
+        require(paper_tick(50'000, view()).decision_code == DecisionCode::action, "fixture: no entry decision");
+        const auto entry = authorize();
+        const auto bought = entry.code == ApplyCode::applied ? fill(entry, Side::buy, program.order_quantity.atoms()).code
+                                                            : entry.code;
+        require(bought == ApplyCode::applied && position() == lots,
+                "fixture: could not hold the position: code " + std::to_string(static_cast<int>(bought)));
+    }
+    std::uint64_t executions = 0;
+    std::int64_t max_order_lots = 1;
+    std::int64_t max_position_lots = 1;
     ApplyResult configure_risk(RiskVersion expected) {
         ConfigureRiskLimits limits;
         limits.account_id = AccountId{5};
@@ -113,13 +164,13 @@ struct Harness {
         limits.expected_risk_version = expected;
         limits.expected_kill_epoch = state.kill_epoch;
         limits.expected_executor_generation = state.executor_generation;
-        limits.max_order_quantity = QuantityLots::from_atoms(1);
-        limits.max_reserved_quantity = QuantityLots::from_atoms(2);
+        limits.max_order_quantity = QuantityLots::from_atoms(max_order_lots);
+        limits.max_reserved_quantity = QuantityLots::from_atoms(2 * max_order_lots);
         limits.max_order_gross_notional = MoneyMicros::from_atoms(10'000);
         limits.max_reserved_exposure = MoneyMicros::from_atoms(10'000);
         limits.initial_margin_ppm = 1'000'000;
         limits.maximum_fee_ppm = 10'000;
-        limits.max_position_quantity = QuantityLots::from_atoms(1);
+        limits.max_position_quantity = QuantityLots::from_atoms(max_position_lots);
         limits.reason_code = 1;
         Digest256 digest;
         digest.bytes[0] = std::byte{0x0d};
@@ -357,6 +408,185 @@ void a_paper_buy_is_authorized_and_a_second_order_on_the_slot_is_not() {
             "a second order was authorized while the slot's first order is open");
 }
 
+void reduce_only_lets_the_exit_through_and_nothing_else() {
+    Harness h;
+    h.trade_as_strategy(1, 1);
+    require(h.set_mode(StrategyMode::reduce_only).code == ApplyCode::applied, "reduce-only refused");
+    require(h.paper_tick(-50'000, h.view()).decision_code == DecisionCode::control_suppressed,
+            "an exit was proposed in reduce-only with nothing to reduce");
+    require(h.set_mode(StrategyMode::normal).code == ApplyCode::applied, "fixture: normal refused");
+    h.hold(1);
+
+    const auto entry_decided_in_normal = h.paper_tick(50'000, h.view());
+    require(entry_decided_in_normal.decision_code == DecisionCode::action, "fixture: no second entry decision");
+    require(h.set_mode(StrategyMode::reduce_only).code == ApplyCode::applied, "reduce-only refused");
+    require(h.authorize().code == ApplyCode::stale_control_generation && h.state.order_count == 1,
+            "an entry decided in normal mode was authorized in reduce-only");
+
+    const auto entry = h.paper_tick(50'000, h.view());
+    require(entry.decision_code == DecisionCode::control_suppressed &&
+                entry.effective_directive == Directive::no_action && !authorizable(entry),
+            "an entry was not suppressed in reduce-only");
+    const auto exit = h.paper_tick(-50'000, h.view());
+    require(exit.decision_code == DecisionCode::action && exit.effective_directive == Directive::place_limit &&
+                exit.matched_rule_index == 1 && authorizable(exit) &&
+                h.last_proposal().side == Side::sell && h.last_proposal().quantity == QuantityLots::from_atoms(1),
+            "the exit was suppressed in reduce-only");
+    const auto sell = h.authorize();
+    require(sell.code == ApplyCode::applied && submit_permitted(h.state, DecisionId{h.decisions}),
+            "the exit was not authorized and sendable in reduce-only");
+    require(h.paper_tick(-50'000, h.view()).decision_code == DecisionCode::control_suppressed,
+            "a second exit was proposed while the first already covers the position");
+    require(h.fill(sell, Side::sell, 1).code == ApplyCode::applied && h.position() == 0,
+            "the exit fill was refused");
+    require(h.paper_tick(-50'000, h.view()).decision_code == DecisionCode::control_suppressed,
+            "an exit was proposed in reduce-only after the position closed");
+}
+
+void an_order_is_sendable_only_in_the_mode_that_decided_it() {
+    Harness h;
+    h.trade_as_strategy(1, 1);
+    require(h.paper_tick(50'000, h.view()).decision_code == DecisionCode::action, "fixture: no entry decision");
+    const auto buy = h.authorize();
+    const DecisionId buy_decision{h.decisions};
+    require(buy.code == ApplyCode::applied && submit_permitted(h.state, buy_decision),
+            "a normal-mode order was not sendable in normal mode");
+    for (const auto mode : {StrategyMode::reduce_only, StrategyMode::flatten, StrategyMode::no_new_risk,
+                            StrategyMode::cancel_only, StrategyMode::halted}) {
+        require(h.set_mode(mode).code == ApplyCode::applied && !submit_permitted(h.state, buy_decision),
+                "an entry authorized in normal mode stayed sendable in mode " +
+                    std::to_string(static_cast<int>(mode)));
+    }
+    require(h.set_mode(StrategyMode::normal).code == ApplyCode::applied && submit_permitted(h.state, buy_decision),
+            "the entry was not sendable again in normal mode");
+    require(h.fill(buy, Side::buy, 1).code == ApplyCode::applied, "fixture: entry fill refused");
+
+    require(h.set_mode(StrategyMode::reduce_only).code == ApplyCode::applied, "reduce-only refused");
+    require(h.paper_tick(-50'000, h.view()).decision_code == DecisionCode::action, "fixture: no exit decision");
+    require(h.authorize().code == ApplyCode::applied, "fixture: exit not authorized");
+    const DecisionId exit_decision{h.decisions};
+    require(submit_permitted(h.state, exit_decision), "a reduce-only exit was not sendable in reduce-only");
+    require(h.set_mode(StrategyMode::flatten).code == ApplyCode::applied &&
+                !submit_permitted(h.state, exit_decision),
+            "a reduce-only exit stayed sendable after the mode moved to flatten");
+    require(h.set_mode(StrategyMode::halted).code == ApplyCode::applied &&
+                !submit_permitted(h.state, exit_decision),
+            "an exit stayed sendable after a halt");
+    for (const auto mode : {StrategyMode::halted, StrategyMode::no_new_risk, StrategyMode::cancel_only}) {
+        auto forged = h.state;
+        forged.strategy_mode = mode;
+        forged.decision_hot[forged.decision_count - 1].strategy_mode = mode;
+        require(!submit_permitted(forged, exit_decision),
+                "an order was sendable in a mode that allows none because its decision carries that mode");
+    }
+    require(!submit_permitted(h.state, DecisionId{9'999}) &&
+                h.set_mode(StrategyMode::reduce_only).code == ApplyCode::applied &&
+                !submit_permitted(h.state, DecisionId{9'999}),
+            "an unknown decision was sendable");
+}
+
+void an_exit_that_no_longer_reduces_is_refused_at_authorization() {
+    Harness h;
+    h.trade_as_strategy(1, 1);
+    h.hold(1);
+    require(h.set_mode(StrategyMode::reduce_only).code == ApplyCode::applied, "reduce-only refused");
+    require(h.paper_tick(-50'000, h.view()).decision_code == DecisionCode::action, "fixture: no exit decision");
+    for (const auto mode : {StrategyMode::halted, StrategyMode::no_new_risk, StrategyMode::cancel_only}) {
+        auto forged = h;
+        forged.state.strategy_mode = mode;
+        forged.state.decision_hot[forged.state.decision_count - 1].strategy_mode = mode;
+        require(forged.authorize().code == ApplyCode::stale_control_generation,
+                "a decision was authorized in a mode that allows no orders because it carries that mode");
+    }
+    h.state.risk_accounts[0].position_quantity = {};
+    h.state.risk_accounts[0].cost_basis = {};
+    h.state.risk_accounts[0].allow_short = true;
+    require(h.authorize().code == ApplyCode::order_not_reducing && h.state.order_count == 1,
+            "a sell that would open a short was authorized in reduce-only");
+}
+
+void flatten_sells_exactly_the_position_whatever_the_rules_say() {
+    Harness h;
+    h.program.order_quantity = QuantityLots::from_atoms(3);
+    h.trade_as_strategy(3, 3);
+    h.hold(3);
+    h.max_order_lots = 2;
+    require(h.configure_risk(h.state.risk_accounts[0].risk_version).code == ApplyCode::applied,
+            "fixture: the order limit could not be lowered to two lots");
+    require(h.set_mode(StrategyMode::flatten).code == ApplyCode::applied, "flatten refused");
+
+    const auto shadow = h.tick(50'000, 11).second;
+    require(shadow.decision_code == DecisionCode::shadow_recorded, "a shadow frame was acted on in flatten");
+    const auto unpriced = h.tick(50'000, 101, 1, {EvaluationMode::authoritative, h.view().risk_version,
+                                                  h.view().position_version});
+    require(unpriced.second.decision_code == DecisionCode::action_resolution_rejected &&
+                unpriced.second.action_resolution_code == ActionResolutionCode::price_out_of_bounds &&
+                !authorizable(unpriced.second),
+            "flatten proposed an order at a price outside the instrument's bounds");
+
+    const auto first = h.paper_tick(50'000, h.view());
+    require(first.decision_code == DecisionCode::action && first.proposed_directive == Directive::place_limit &&
+                first.effective_directive == Directive::place_limit &&
+                first.matched_rule_index == std::numeric_limits<std::uint16_t>::max() &&
+                first.action_resolution_code == ActionResolutionCode::proposed,
+            "flatten did not turn an entry frame into an order of its own");
+    require(h.last_proposal().side == Side::sell && h.last_proposal().quantity == QuantityLots::from_atoms(2) &&
+                h.last_proposal().price == PriceTicks::from_atoms(11) &&
+                h.last_proposal().notional == MoneyMicros::from_atoms(2'200),
+            "the first flatten order is not a sell of the two lots the order limit allows, at the frame price");
+    require(paper_request(h.program, first, true) == PaperRequest::authorize,
+            "an edge holding back entries would not authorize the flatten order");
+    const auto sell = h.authorize();
+    require(sell.code == ApplyCode::applied && submit_permitted(h.state, DecisionId{h.decisions}),
+            "the flatten order was not authorized and sendable");
+    require(h.paper_tick(-50'000, h.view()).decision_code == DecisionCode::control_suppressed,
+            "flatten proposed a second order while the first is open");
+    require(h.fill(sell, Side::sell, 2).code == ApplyCode::applied && h.position() == 1, "flatten fill refused");
+
+    const auto second = h.paper_tick(50'000, h.view());
+    require(second.decision_code == DecisionCode::action && h.last_proposal().side == Side::sell &&
+                h.last_proposal().quantity == QuantityLots::from_atoms(1),
+            "the second flatten order is not a sell of the one lot left");
+    const auto last = h.authorize();
+    require(last.code == ApplyCode::applied && h.fill(last, Side::sell, 1).code == ApplyCode::applied &&
+                h.position() == 0,
+            "the last lot was not sold");
+    const auto flat = h.paper_tick(50'000, h.view());
+    require(flat.decision_code == DecisionCode::control_suppressed && flat.effective_directive == Directive::no_action &&
+                !authorizable(flat),
+            "flatten proposed an order with no position");
+    std::array<std::byte, kMaxStateSnapshotBytes> bytes{};
+    require(encode_state_snapshot(h.state, bytes).error == StateSnapshotError::none,
+            "the state after a flatten is not canonical");
+}
+
+void flatten_is_capped_by_the_exit_template_and_buys_back_a_short() {
+    {
+        Harness h;
+        h.trade_as_strategy(3, 3);
+        for (int lot = 1; lot <= 3; ++lot) h.hold(lot);
+        require(h.set_mode(StrategyMode::flatten).code == ApplyCode::applied, "flatten refused");
+        require(h.paper_tick(50'000, h.view()).decision_code == DecisionCode::action &&
+                    h.last_proposal().side == Side::sell &&
+                    h.last_proposal().quantity == QuantityLots::from_atoms(1),
+                "flatten sold more than the exit template's one-lot cap in one order");
+    }
+    {
+        Harness h;
+        h.program.order_quantity = QuantityLots::from_atoms(3);
+        h.trade_as_strategy(3, 3);
+        h.state.risk_accounts[0].allow_short = true;
+        h.state.risk_accounts[0].position_quantity = QuantityLots::from_atoms(-2);
+        h.state.risk_accounts[0].cost_basis = MoneyMicros::from_atoms(2'200);
+        require(h.set_mode(StrategyMode::flatten).code == ApplyCode::applied, "flatten refused");
+        require(h.paper_tick(-50'000, h.view()).decision_code == DecisionCode::action &&
+                    h.last_proposal().side == Side::buy &&
+                    h.last_proposal().quantity == QuantityLots::from_atoms(2),
+                "flatten did not buy back exactly a two-lot short");
+        require(h.authorize().code == ApplyCode::applied, "the buy-back was not authorized in flatten");
+    }
+}
+
 void only_a_frame_bound_to_the_current_risk_version_is_authorized() {
     Harness h;
     (void)h.setup();
@@ -528,6 +758,11 @@ int main() {
         setup_requires_an_installed_catalog();
         setup_applies_on_a_fresh_cluster_state();
         a_tick_records_a_shadow_decision_on_the_rule_that_matches();
+        reduce_only_lets_the_exit_through_and_nothing_else();
+        an_order_is_sendable_only_in_the_mode_that_decided_it();
+        an_exit_that_no_longer_reduces_is_refused_at_authorization();
+        flatten_sells_exactly_the_position_whatever_the_rules_say();
+        flatten_is_capped_by_the_exit_template_and_buys_back_a_short();
         a_hold_rule_proposes_no_action();
         a_long_stream_never_wedges_the_bounded_state();
         a_restarted_edge_continues_on_the_next_generation();

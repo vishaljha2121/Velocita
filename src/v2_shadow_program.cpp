@@ -204,7 +204,8 @@ PaperRequest paper_request(const ShadowProgram& program, const ApplyResult& eval
     if (!authorizable(evaluated)) return PaperRequest::none;
     if (!exits_only) return PaperRequest::authorize;
     const auto index = evaluated.matched_rule_index;
-    const bool exit = index < program.rules.size() && program.rules[index].action == ShadowAction::exit;
+    const bool exit = evaluated.strategy_mode == StrategyMode::flatten ||
+                      (index < program.rules.size() && program.rules[index].action == ShadowAction::exit);
     return exit ? PaperRequest::authorize : PaperRequest::withheld;
 }
 

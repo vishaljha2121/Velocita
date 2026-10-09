@@ -31,6 +31,7 @@ namespace {
         case StrategyMode::cancel_only:
         case StrategyMode::reduce_only:
         case StrategyMode::halted:
+        case StrategyMode::flatten:
             return true;
     }
     return false;
@@ -1526,6 +1527,41 @@ struct ReceiptAdmissionAvailability {
     return reclaimed;
 }
 
+[[nodiscard]] bool order_reduces_position(const RiskAccount& risk, const Side side,
+                                          const QuantityLots quantity) noexcept {
+    if (quantity.atoms() <= 0) return false;
+    const auto pending = risk.reserved_quantity.checked_add(quantity);
+    if (!pending) return false;
+    const bool buying = side == Side::buy;
+    const auto extreme = buying ? risk.position_quantity.checked_add(*pending)
+                                : risk.position_quantity.checked_sub(*pending);
+    if (!extreme) return false;
+    return buying ? risk.position_quantity.atoms() < 0 && extreme->atoms() <= 0
+                  : risk.position_quantity.atoms() > 0 && extreme->atoms() >= 0;
+}
+
+[[nodiscard]] bool decision_reduces_position(TradingState& state, const DecisionFrame& frame,
+                                             const Directive directive,
+                                             const EconomicActionProposal& proposal) noexcept {
+    const auto* risk = find_risk_account(state, frame.account_id, frame.instrument_id);
+    return directive == Directive::place_limit && risk != nullptr &&
+           order_reduces_position(*risk, proposal.side, proposal.quantity);
+}
+
+[[nodiscard]] const ActionTemplate* closing_template(const ExecutablePolicyArtifact& executable,
+                                                     const RiskAccount* risk) noexcept {
+    if (risk == nullptr || risk->position_quantity.atoms() == 0 || risk->reserved_quantity.atoms() != 0 ||
+        risk->position_quantity.atoms() == std::numeric_limits<std::int64_t>::min()) {
+        return nullptr;
+    }
+    const auto closing = risk->position_quantity.atoms() > 0 ? Side::sell : Side::buy;
+    for (std::size_t index = 0; index < executable.template_count; ++index) {
+        const auto& candidate = executable.templates[index];
+        if (candidate.directive == Directive::place_limit && candidate.side == closing) return &candidate;
+    }
+    return nullptr;
+}
+
 [[nodiscard]] ApplyResult apply_evaluate_decision(
     TradingState& state,
     const CommandIdentity& identity,
@@ -1637,6 +1673,33 @@ struct ReceiptAdmissionAvailability {
             code = DecisionCode::policy_expired;
         } else if (command.frame.market_data_status != MarketDataStatus::ready) {
             code = DecisionCode::market_data_not_ready;
+        } else if (state.strategy_mode == StrategyMode::flatten &&
+                   command.evaluation_mode == EvaluationMode::authoritative) {
+            executable_bundle = &state.active_executable_policy;
+            const auto* risk = find_risk_account(state, command.frame.account_id, command.frame.instrument_id);
+            const auto* exit = closing_template(executable_bundle->executable_policy, risk);
+            if (exit == nullptr) {
+                code = DecisionCode::control_suppressed;
+            } else {
+                const auto held = risk->position_quantity.atoms() > 0 ? risk->position_quantity.atoms()
+                                                                      : -risk->position_quantity.atoms();
+                const auto quantity = std::min({held, exit->safety_caps.max_quantity.atoms(),
+                                                risk->max_order_quantity.atoms()});
+                const auto resolution = resolve_action(
+                    command.decision_id, policy_record->artifact, command.frame, *exit,
+                    executable_bundle->instrument, executable_bundle->venue,
+                    QuantityLots::from_atoms(quantity));
+                resolution_code = resolution.code;
+                contract_error = resolution.contract_error;
+                proposal = resolution.proposal;
+                if (resolution.code == ActionResolutionCode::proposed) {
+                    code = DecisionCode::action;
+                    proposed = Directive::place_limit;
+                    effective = Directive::place_limit;
+                } else {
+                    code = DecisionCode::action_resolution_rejected;
+                }
+            }
         } else {
             executable_bundle = &state.active_executable_policy;
             const auto evaluation = evaluate_rules(policy_record->artifact, command.frame);
@@ -1671,11 +1734,11 @@ struct ReceiptAdmissionAvailability {
                 if (code == DecisionCode::none) {
                     if (command.evaluation_mode == EvaluationMode::shadow) {
                         code = DecisionCode::shadow_recorded;
-                    } else if ((state.strategy_mode == StrategyMode::no_new_risk ||
+                    } else if (proposed != Directive::cancel && proposed != Directive::no_action &&
+                               (state.strategy_mode == StrategyMode::no_new_risk ||
                                 state.strategy_mode == StrategyMode::cancel_only ||
-                                state.strategy_mode == StrategyMode::reduce_only) &&
-                               proposed != Directive::cancel &&
-                               proposed != Directive::no_action) {
+                                (state.strategy_mode == StrategyMode::reduce_only &&
+                                 !decision_reduces_position(state, command.frame, proposed, proposal)))) {
                         code = DecisionCode::control_suppressed;
                     } else {
                         code = DecisionCode::action;
@@ -1842,7 +1905,9 @@ struct ReceiptAdmissionAvailability {
                                     *exposure);
     }
 
-    if (state.strategy_mode != StrategyMode::normal ||
+    const bool reducing_only = mode_allows_only_reducing_orders(state.strategy_mode);
+    if ((state.strategy_mode != StrategyMode::normal &&
+         !(reducing_only && decision.strategy_mode == state.strategy_mode)) ||
         decision.kill_epoch != state.kill_epoch ||
         decision.executor_generation != state.executor_generation) {
         return authorization_result(state, ApplyCode::stale_control_generation,
@@ -1922,9 +1987,12 @@ struct ReceiptAdmissionAvailability {
         return authorization_result(state, ApplyCode::position_limit_exceeded,
                                     next_version, command.decision_id);
     }
-    const bool reduces_position = buying
-        ? risk->position_quantity.atoms() < 0 && extreme->atoms() <= 0
-        : risk->position_quantity.atoms() > 0 && extreme->atoms() >= 0;
+    const bool reduces_position =
+        order_reduces_position(*risk, cold.proposal.side, cold.proposal.quantity);
+    if (reducing_only && !reduces_position) {
+        return authorization_result(state, ApplyCode::order_not_reducing,
+                                    next_version, command.decision_id);
+    }
     if (!reduces_position && risk->max_window_loss.atoms() > 0 &&
         risk->window_realized_pnl.atoms() <= -risk->max_window_loss.atoms()) {
         return authorization_result(state, ApplyCode::loss_limit_reached,
@@ -3427,6 +3495,18 @@ inline constexpr unsigned kGatewayRole = 4;
 
 template <typename T, typename... Kinds>
 inline constexpr bool is_one_of = (std::is_same_v<T, Kinds> || ...);
+
+}
+
+bool submit_permitted(const TradingState& state, const DecisionId decision_id) noexcept {
+    if (state.strategy_mode == StrategyMode::normal) return true;
+    if (!mode_allows_only_reducing_orders(state.strategy_mode)) return false;
+    const auto index = find_decision_index(state, decision_id);
+    return index != state.decision_count &&
+           state.decision_hot[index].strategy_mode == state.strategy_mode;
+}
+
+namespace {
 
 [[nodiscard]] unsigned roles_allowed(const CommandBody& body) noexcept {
     return std::visit([](const auto& value) noexcept -> unsigned {

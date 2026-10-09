@@ -98,6 +98,7 @@ private:
         case StrategyMode::cancel_only:
         case StrategyMode::reduce_only:
         case StrategyMode::halted:
+        case StrategyMode::flatten:
             return true;
     }
     return false;
@@ -193,6 +194,7 @@ private:
         case ApplyCode::unauthorized_command:
         case ApplyCode::caller_role_conflict:
         case ApplyCode::order_not_in_conflict:
+        case ApplyCode::order_not_reducing:
             return true;
     }
     return false;

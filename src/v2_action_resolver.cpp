@@ -141,7 +141,8 @@ ActionResolution resolve_action(
     const DecisionFrame& frame,
     const ActionTemplate& action,
     const InstrumentExecutionProfile& instrument,
-    const VenueCapabilities& venue) noexcept {
+    const VenueCapabilities& venue,
+    const QuantityLots quantity_override) noexcept {
     if (decision_id.value() == 0) {
         return reject(ActionResolutionCode::invalid_decision_id,
                       ContractError::invalid_identity);
@@ -219,7 +220,9 @@ ActionResolution resolve_action(
 
     const auto price = resolve_price_atoms(action.price_source, frame);
     if (price.code != ActionResolutionCode::proposed) return reject(price.code);
-    const auto quantity = resolve_quantity_atoms(action.quantity_source, frame);
+    const auto quantity = quantity_override.atoms() != 0
+        ? ResolvedInteger{ActionResolutionCode::proposed, quantity_override.atoms()}
+        : resolve_quantity_atoms(action.quantity_source, frame);
     if (quantity.code != ActionResolutionCode::proposed) {
         return reject(quantity.code);
     }

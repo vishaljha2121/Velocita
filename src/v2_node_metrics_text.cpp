@@ -84,6 +84,8 @@ std::string render_node_metrics(const std::optional<NodeHealth>& health, std::st
           h.pinned_receipts_peak);
     gauge("velocita_v2_receipt_capacity", "Fixed receipt table capacity.", kMaxRequestReceipts);
     gauge("velocita_v2_policies", "Policy slots used; a slot is never freed within an incarnation.", h.policies);
+    gauge("velocita_v2_strategy_mode",
+          "Strategy mode: 1 normal, 2 no_new_risk, 3 cancel_only, 4 reduce_only, 5 halted, 6 flatten.", h.strategy_mode);
     gauge("velocita_v2_policy_capacity", "Fixed policy table capacity.", kMaxPolicies);
     const std::array<std::pair<const char*, const char*>, 7> ledger_metrics{{
         {"velocita_v2_account_position_lots", "Position the kernel holds for the account, in lots."},

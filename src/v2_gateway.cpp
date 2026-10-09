@@ -10,9 +10,9 @@ namespace {
 }
 
 [[nodiscard]] bool control_permits(const OrderEffect& effect,
-                                   const StrategyMode mode) noexcept {
+                                   const TradingState& state) noexcept {
     if (effect.operation == EffectOperation::cancel) return true;
-    return mode == StrategyMode::normal;
+    return submit_permitted(state, effect.decision_id);
 }
 
 [[nodiscard]] bool venue_can_represent(const OrderEffect& effect,
@@ -93,7 +93,7 @@ PreSendDecision evaluate_delivery_candidate(const TradingState& state,
     if (effect.kill_epoch != control.kill_epoch) {
         return refuse(PreSendRefusal::stale_kill_epoch);
     }
-    if (!control_permits(effect, control.strategy_mode)) {
+    if (!control_permits(effect, state)) {
         return refuse(PreSendRefusal::control_forbids_new_risk);
     }
 

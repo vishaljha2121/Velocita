@@ -961,13 +961,14 @@ bool ReplicatedKernel::authority_proof_is_current(const AuthorityProofView& proo
         raft_get_commit_idx(server_) < proof.barrier_index ||
         raft_get_last_applied_idx(server_) < proof.barrier_index ||
         arena_.durable_index() < static_cast<std::uint64_t>(proof.barrier_index) ||
-        state_.strategy_mode != StrategyMode::normal ||
+        state_.strategy_mode != proof.strategy_mode ||
         state_.kill_epoch != proof.request.expected_kill_epoch ||
         state_.executor_generation != proof.request.expected_executor_generation ||
         state_.execution_catalog_root != proof.request.catalog_root)
         return false;
     const auto binding = materialize_bound_order_effect(state_, proof.request.effect_id, catalog_);
     if (!binding || *binding != proof.binding ||
+        !submit_permitted(state_, binding->effect.decision_id) ||
         binding->effect.operation != EffectOperation::submit ||
         binding->effect.payload_digest != proof.request.expected_effect_payload_digest ||
         binding->catalog_root != proof.request.catalog_root)
@@ -1085,6 +1086,7 @@ ReplicaStatus ReplicatedKernel::status() const {
     value.policies = state_.policy_count;
     value.quorum_step_downs = quorum_step_downs_;
     value.unauthorized_commands = unauthorized_commands_;
+    value.strategy_mode = static_cast<std::uint64_t>(state_.strategy_mode);
     value.ledger_count = state_.risk_account_count;
     for (std::size_t index = 0; index < state_.risk_account_count; ++index) {
         const auto& risk = state_.risk_accounts[index];
@@ -1591,7 +1593,7 @@ int ReplicatedKernel::apply_log(raft_server_t*, void* user_data, raft_entry_t* e
                         break;
                     }
                 }
-                if (binding && pending_submit && self.state_.strategy_mode == StrategyMode::normal &&
+                if (binding && pending_submit && submit_permitted(self.state_, binding->effect.decision_id) &&
                     self.state_.kill_epoch == request.expected_kill_epoch &&
                     self.state_.executor_generation == request.expected_executor_generation &&
                     self.state_.execution_catalog_root == request.catalog_root &&

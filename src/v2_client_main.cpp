@@ -203,7 +203,7 @@ Arguments parse(int argc, char** argv) {
                                         : "it may report venue evidence and request cancels") + "\n";
     } else if (verb == "strategy-mode" && i + 4 == argc) {
         const auto mode = parse_strategy_mode(argv[i + 1]);
-        if (!mode) throw Usage("strategy mode must be normal, no_new_risk, cancel_only, reduce_only or halted");
+        if (!mode) throw Usage("strategy mode must be normal, no_new_risk, cancel_only, reduce_only, flatten or halted");
         a.body = SetStrategyMode{*mode, KillEpoch{number(argv[i + 2], "expected kill epoch")},
                                  ExecutorGeneration{number(argv[i + 3], "expected executor generation")}};
         a.digest = verb_digest(verb, {argv[i + 1], argv[i + 2], argv[i + 3]});

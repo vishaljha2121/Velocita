@@ -180,6 +180,7 @@ const char* describe(const GatewayStopCause cause) noexcept {
     case GatewayStopCause::corrupt_state: return "corrupt_state";
     case GatewayStopCause::wrong_cluster: return "wrong_cluster";
     case GatewayStopCause::authority: return "authority";
+    case GatewayStopCause::reducing_mode: return "reducing_mode";
     case GatewayStopCause::count: break;
     }
     return "unknown";
@@ -404,7 +405,16 @@ void GatewayLoop::on_state(const LinkOutcome& outcome, Tick now) {
         if (fenced) last_fence_at_ = now;
         const bool was_stopped = authority_->new_risk_stopped();
         authority_->observe_fence(control_, term_);
-        if (control_changed) stop(GatewayStopCause::control_change);
+        const bool entered_reducing_mode =
+            control_.executor_generation == previous.executor_generation &&
+            control_.kill_epoch == previous.kill_epoch && control_.strategy_mode != previous.strategy_mode &&
+            mode_allows_only_reducing_orders(control_.strategy_mode);
+        if (entered_reducing_mode) {
+            last_fence_at_ = now;
+            stop(GatewayStopCause::reducing_mode);
+        } else if (control_changed) {
+            stop(GatewayStopCause::control_change);
+        }
         if (fenced) stop(GatewayStopCause::fence);
         if (!control_changed && !fenced) note_authority(was_stopped);
     }

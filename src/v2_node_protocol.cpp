@@ -146,7 +146,7 @@ Digest256 get_digest(std::span<const std::byte> in, std::size_t at) noexcept {
     return digest;
 }
 
-bool valid_mode(std::uint8_t mode) noexcept { return mode >= 1 && mode <= 5; }
+bool valid_mode(std::uint8_t mode) noexcept { return mode >= 1 && mode <= 6; }
 
 }
 

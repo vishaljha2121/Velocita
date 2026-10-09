@@ -451,6 +451,38 @@ void test_stale_control_authority_is_never_sent() {
     }
 }
 
+void test_a_reducing_order_is_sent_only_in_the_mode_that_decided_it() {
+    const auto fixture = authorized_submit();
+    const auto attempt = [&](const StrategyMode decided, const StrategyMode current) {
+        auto state = fixture.state;
+        for (std::size_t index = 0; index < state.decision_count; ++index)
+            state.decision_hot[index].strategy_mode = decided;
+        state.strategy_mode = current;
+        RecordingTransport transport;
+        const auto decision = deliver(state, fixture.effect_id, matching_control(state),
+                                      capable_venue(), open_quota(), transport);
+        return std::pair{decision.refusal, transport.send_count()};
+    };
+    for (const auto mode : {StrategyMode::reduce_only, StrategyMode::flatten}) {
+        require(attempt(mode, mode) == std::pair{PreSendRefusal::none, std::size_t{1}},
+                "an order decided in a reducing mode was not sent in that mode");
+        require(attempt(StrategyMode::normal, mode) ==
+                    std::pair{PreSendRefusal::control_forbids_new_risk, std::size_t{0}},
+                "an order decided in normal mode was sent in a reducing mode");
+        require(attempt(mode, StrategyMode::normal) == std::pair{PreSendRefusal::none, std::size_t{1}},
+                "normal mode held back an order");
+    }
+    require(attempt(StrategyMode::reduce_only, StrategyMode::flatten) ==
+                std::pair{PreSendRefusal::control_forbids_new_risk, std::size_t{0}} &&
+                attempt(StrategyMode::flatten, StrategyMode::reduce_only) ==
+                    std::pair{PreSendRefusal::control_forbids_new_risk, std::size_t{0}},
+            "an order decided in one reducing mode was sent in the other");
+    for (const auto mode : {StrategyMode::halted, StrategyMode::no_new_risk, StrategyMode::cancel_only}) {
+        require(attempt(mode, mode) == std::pair{PreSendRefusal::control_forbids_new_risk, std::size_t{0}},
+                "an order was sent in a mode that allows none");
+    }
+}
+
 void test_an_expired_authority_lease_stops_new_risk() {
     const auto fixture = authorized_submit();
 
@@ -829,6 +861,7 @@ int main() {
         test_a_permitted_effect_is_sent_with_its_exact_canonical_bytes();
         test_the_guard_reads_no_clock_and_mutates_nothing();
         test_stale_control_authority_is_never_sent();
+        test_a_reducing_order_is_sent_only_in_the_mode_that_decided_it();
         test_an_expired_authority_lease_stops_new_risk();
     test_an_unconfigured_lease_is_expired_not_unlimited();
     test_a_cancel_survives_what_stops_new_risk();

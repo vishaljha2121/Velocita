@@ -55,7 +55,8 @@ struct ActionResolution {
     const DecisionFrame& frame,
     const ActionTemplate& action,
     const InstrumentExecutionProfile& instrument,
-    const VenueCapabilities& venue) noexcept;
+    const VenueCapabilities& venue,
+    QuantityLots quantity_override = {}) noexcept;
 
 static_assert(std::is_trivially_copyable_v<ActionResolution>);
 static_assert(sizeof(ActionResolution) <= kActionResolutionObjectBudgetBytes,

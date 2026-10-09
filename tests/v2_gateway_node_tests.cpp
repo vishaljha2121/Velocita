@@ -78,6 +78,7 @@ const VerifiedExecutionCatalog& paper_catalog() {
     return value;
 }
 bool g_paper = false;
+bool g_exit_template = false;
 const VerifiedExecutionCatalog& fixture_catalog() { return g_paper ? paper_catalog() : catalog_test::standard_catalog(); }
 
 PolicyArtifact policy_artifact() {
@@ -95,6 +96,10 @@ PolicyArtifact policy_artifact() {
     value.risk_policy_version = RiskPolicyVersion{6};
     value.rule_count = 1;
     value.rules[0] = {0, PredicateOperator::greater_than, FeatureMicros::from_atoms(10), Directive::place_limit};
+    if (g_exit_template) {
+        value.rule_count = 2;
+        value.rules[1] = {0, PredicateOperator::less_than, FeatureMicros::from_atoms(3), Directive::place_limit};
+    }
     return value;
 }
 
@@ -127,8 +132,17 @@ StageExecutablePolicy executable_bundle() {
                               QuantityLots::from_atoms(kOrderLots), 0};
     action.safety_caps = {QuantityLots::from_atoms(kOrderLots), MoneyMicros::from_atoms(10'000),
                           PriceTicks::from_atoms(2), PriceTicks::from_atoms(1), 100, action.price_source};
+    if (g_exit_template) {
+        executable.template_count = 2;
+        executable.templates[1] = action;
+        executable.templates[1].side = Side::sell;
+    }
     executable.rule_binding_count = 1;
     executable.rule_template_slots[0] = ActionTemplateSlot{1};
+    if (g_exit_template) {
+        executable.rule_binding_count = 2;
+        executable.rule_template_slots[1] = ActionTemplateSlot{2};
+    }
     executable.artifact_digest = compute_artifact_digest(executable).digest;
     value.instrument = {kInstrumentExecutionProfileSchemaVersion, VenueId{9}, InstrumentId{4},
                         InstrumentSpecVersion{7}, MoneyMicros::from_atoms(100), PriceTicks::from_atoms(1),
@@ -1207,6 +1221,109 @@ void a_control_change_latches_until_an_operator_restart() {
     start(cluster, restarted);
 }
 
+void flatten_rearms_by_itself_and_sells_exactly_the_position() {
+    PaperFixture paper;
+    g_exit_template = true;
+    struct Reset { ~Reset() { g_exit_template = false; } } reset;
+    Base base("v2-gw-flatten");
+    Cluster cluster(base.path, {1, 2});
+    Caller op{kOperatorKey, kOperator}, strategy{kStrategyKey, kStrategy};
+    prepare_cluster(cluster, op, strategy);
+    constexpr Tick kQuiet = 1000;
+    Gateway gateway(cluster, sim::FaultPolicy::clean(), quiet_config(kQuiet));
+    start(cluster, gateway);
+    Tick stopped_at = 0, rearmed_at = 0;
+    cluster.on_round = [&] {
+        gateway.loop.step();
+        const bool seen = stops(gateway.loop.metrics(), GatewayStopCause::reducing_mode) != 0;
+        if (stopped_at == 0 && seen) stopped_at = steady_ms();
+        if (rearmed_at == 0 && seen && !gateway.loop.new_risk_stopped()) rearmed_at = steady_ms();
+    };
+    const auto leader = cluster.elect();
+    const auto held = [&] {
+        const auto* risk = account(cluster.state_of(leader));
+        return risk ? risk->position_quantity.atoms() : -1;
+    };
+    (void)authorize(cluster, strategy);
+    cluster.run_until([&] { return held() == kOrderLots && gateway.loop.evidence().obligation_count == 0; },
+                      "the entry to fill");
+
+    require(cluster.commit(op, SetStrategyMode{StrategyMode::flatten, KillEpoch{1}, ExecutorGeneration{1}},
+                           ProposeLane::control).code == ApplyCode::applied, "mode flatten");
+    cluster.run_until([&] { return stops(gateway.loop.metrics(), GatewayStopCause::reducing_mode) == 1; },
+                      "the gateway to see the flatten mode");
+    require(gateway.loop.new_risk_stopped(), "the gateway kept its old permission across the mode change");
+    require(cluster.commit(strategy, RecordSourceEvent{SourceId{12}, SourceGeneration{1}, SourceSequence{2},
+                                                       digest(0x45)}).code == ApplyCode::applied, "second bar");
+    auto frame = decision_frame();
+    frame.source_sequence = SourceSequence{2};
+    frame.raw_evidence_digest = digest(0x45);
+    frame.event_time_ns = 160;
+    frame.receive_time_ns = 161;
+    frame.features[0] = FeatureMicros::from_atoms(5);
+    frame.position_version = account(cluster.state_of(leader))->position_version;
+    const auto decided =
+        cluster.commit(strategy, EvaluateDecisionFrame{DecisionId{21}, EvaluationMode::authoritative, frame});
+    require(decided.decision_code == DecisionCode::action && decided.effective_directive == Directive::place_limit,
+            "flatten did not decide an order on a frame whose rule does not match");
+    const auto exit = cluster.commit(strategy, AuthorizeDecision{DecisionId{21}});
+    require(exit.code == ApplyCode::applied, "the flatten order was not authorized");
+    cluster.run_until([&] { return held() == 0 && gateway.loop.evidence().obligation_count == 0; },
+                      "the flatten order to fill", 60'000);
+    cluster.run(1500);
+
+    require(gateway.counting.sends.size() == 2 && gateway.counting.sends[1].effect_id == exit.effect_id() &&
+                gateway.counting.sends[1].side == Side::sell &&
+                gateway.counting.sends[1].quantity == QuantityLots::from_atoms(kOrderLots) &&
+                gateway.counting.sends[1].price == PriceTicks::from_atoms(5),
+            "the venue did not receive one sell of the whole position at the frame price");
+    const auto& metrics = gateway.loop.metrics();
+    require(metrics.rearms == 1 && stops(metrics, GatewayStopCause::reducing_mode) == 1 &&
+                stops_other_than(metrics, GatewayStopCause::reducing_mode) == 0 && !gateway.loop.new_risk_stopped(),
+            "the gateway did not re-arm once by itself, or latched another stop");
+    require(metrics.fills_sell == 1, "the flatten fill was not counted");
+    require(rearmed_at >= stopped_at + kQuiet - 100,
+            "the gateway re-armed " + std::to_string(rearmed_at - stopped_at) + " ms after the mode change, inside the " +
+                std::to_string(kQuiet) + " ms quiet period");
+
+    require(cluster.commit(op, SetStrategyMode{StrategyMode::normal, KillEpoch{1}, ExecutorGeneration{1}},
+                           ProposeLane::control).code == ApplyCode::applied, "mode normal");
+    cluster.run_until([&] { return stops(gateway.loop.metrics(), GatewayStopCause::control_change) == 1; },
+                      "the return to normal to latch");
+    cluster.run(3 * kQuiet);
+    require(gateway.loop.new_risk_stopped(), "leaving flatten re-armed new risk without an operator restart");
+}
+
+void a_reducing_mode_that_arrives_with_another_control_change_latches() {
+    PaperFixture paper;
+    for (const bool kill : {false, true}) {
+        Base base(kill ? "v2-gw-flatten-kill" : "v2-gw-flatten-generation");
+        Cluster cluster(base.path, {1, 2});
+        Caller op{kOperatorKey, kOperator}, strategy{kStrategyKey, kStrategy};
+        prepare_cluster(cluster, op, strategy);
+        constexpr Tick kQuiet = 200;
+        Gateway gateway(cluster, sim::FaultPolicy::clean(), quiet_config(kQuiet));
+        start(cluster, gateway);
+        cluster.on_round = {};
+        const KillEpoch epoch{kill ? 2U : 1U};
+        const ExecutorGeneration generation{kill ? 1U : 2U};
+        require((kill ? cluster.commit(op, AdvanceKillEpoch{epoch}, ProposeLane::control)
+                      : cluster.commit(op, SetExecutorGeneration{generation}, ProposeLane::control)).code ==
+                    ApplyCode::applied, "control change");
+        require(cluster.commit(op, SetStrategyMode{StrategyMode::flatten, epoch, generation},
+                               ProposeLane::control).code == ApplyCode::applied, "mode flatten");
+        cluster.on_round = [&] { gateway.loop.step(); };
+        cluster.run_until([&] { return stops(gateway.loop.metrics(), GatewayStopCause::control_change) == 1; },
+                          "the combined change to stop new risk");
+        cluster.run(4 * kQuiet);
+        const auto& metrics = gateway.loop.metrics();
+        require(gateway.loop.new_risk_stopped() && metrics.rearms == 0 &&
+                    stops(metrics, GatewayStopCause::reducing_mode) == 0,
+                std::string("a flatten that came with a new ") + (kill ? "kill epoch" : "executor generation") +
+                    " re-armed without an operator restart");
+    }
+}
+
 void without_allow_new_risk_the_gateway_never_arms() {
     PaperFixture paper;
     Base base("v2-gw-unarmed");
@@ -1458,6 +1575,10 @@ int main() {
          fence_rearms_after_the_quiet_period_and_then_delivers_once},
         {"a_timed_out_state_read_is_a_fence_that_rearms", a_timed_out_state_read_is_a_fence_that_rearms},
         {"a_control_change_latches_until_an_operator_restart", a_control_change_latches_until_an_operator_restart},
+        {"flatten_rearms_by_itself_and_sells_exactly_the_position",
+         flatten_rearms_by_itself_and_sells_exactly_the_position},
+        {"a_reducing_mode_that_arrives_with_another_control_change_latches",
+         a_reducing_mode_that_arrives_with_another_control_change_latches},
         {"without_allow_new_risk_the_gateway_never_arms", without_allow_new_risk_the_gateway_never_arms},
         {"a_restart_beside_a_held_position_with_a_reset_venue_is_a_mismatch",
          a_restart_beside_a_held_position_with_a_reset_venue_is_a_mismatch},

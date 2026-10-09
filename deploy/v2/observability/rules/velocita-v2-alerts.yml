@@ -82,6 +82,13 @@ groups:
         annotations:
           summary: "A key sent {{ $value | printf \"%.0f\" }} command(s) its role does not allow"
           description: "The command was signed by a known key, committed and refused by the kernel (ADR 0020). Either a role was not assigned in the ceremony (assign-role 21 strategy, 22 gateway), or a key is being used for something it should not do. The refusal leaves no receipt: find the command in the Raft log."
+      - alert: VelocitaReducingModeLeftOn
+        expr: max(velocita_v2_strategy_mode) == 4 or max(velocita_v2_strategy_mode) == 6
+        for: 30m
+        labels: {severity: warning}
+        annotations:
+          summary: "The strategy mode has been {{ if eq $value 6.0 }}flatten{{ else }}reduce_only{{ end }} for 30 minutes"
+          description: "In these modes only orders that reduce the position are sent, and flatten sells whatever is held. Decide what comes next: strategy-mode halted to stay out, or strategy-mode normal and a gateway restart to trade again (ADR 0024)."
       - alert: VelocitaLeaderSteppedDown
         expr: increase(velocita_v2_quorum_step_downs_total[10m]) > 0
         labels: {severity: warning}

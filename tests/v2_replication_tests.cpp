@@ -2566,6 +2566,40 @@ void test_authority_result_never_blocks_kill_and_controls_fence_it(const std::fi
             "new controls failed to revoke the ready proof");
 }
 
+void test_no_authority_for_an_entry_once_only_reducing_orders_are_allowed(const std::filesystem::path& root) {
+    for (const auto mode : {StrategyMode::flatten, StrategyMode::reduce_only}) {
+        const auto name = std::to_string(static_cast<int>(mode));
+        {
+            Cluster cluster(root / ("before-" + name), 1, 0xAB);
+            (void)build_authorized_submit(cluster);
+            auto& leader = cluster.elect();
+            require(cluster.commit(command(200, SetStrategyMode{mode, leader.state().kill_epoch,
+                                                               leader.state().executor_generation}))
+                            .result.code == ApplyCode::applied, "fixture: mode change refused");
+            require(leader.status().strategy_mode == static_cast<std::uint64_t>(mode),
+                    "status does not report the strategy mode");
+            require(leader.propose_authority_barrier(live_authority_request(leader)).status ==
+                        ProposeStatus::admitted, "fixture: marker refused");
+            cluster.settle();
+            require(!leader.take_authority_proof(),
+                    "the leader proved authority for an entry while only reducing orders are allowed");
+        }
+        {
+            Cluster cluster(root / ("after-" + name), 1, 0xAB);
+            (void)build_authorized_submit(cluster);
+            auto& leader = cluster.elect();
+            require(leader.propose_authority_barrier(live_authority_request(leader)).status ==
+                        ProposeStatus::admitted, "fixture: marker refused");
+            cluster.settle();
+            require(cluster.commit(command(200, SetStrategyMode{mode, leader.state().kill_epoch,
+                                                               leader.state().executor_generation}))
+                            .result.code == ApplyCode::applied, "fixture: mode change refused");
+            require(!leader.take_authority_proof(),
+                    "a proof for an entry survived the change to a mode that allows only reducing orders");
+        }
+    }
+}
+
 void test_higher_term_revokes_queued_authority(const std::filesystem::path& root) {
     Cluster cluster(root, 3, 0xAB);
     (void)build_authorized_submit(cluster);
@@ -3447,6 +3481,7 @@ int main(int argc, char** argv) {
         test_live_authority_proof_is_exact_and_one_shot(fresh("authority-proof"));
         test_authority_abandonment_drops_subscriber_not_drain(fresh("authority-abandon"));
         test_authority_result_never_blocks_kill_and_controls_fence_it(fresh("authority-result-fence"));
+        test_no_authority_for_an_entry_once_only_reducing_orders_are_allowed(fresh("authority-reducing"));
         test_higher_term_revokes_queued_authority(fresh("authority-term-fence"));
         test_kill_committed_before_marker_apply_yields_no_proof(fresh("authority-kill-before-apply"));
         test_nonpositive_issuer_refuses_marker_admission(fresh("authority-issuer"));

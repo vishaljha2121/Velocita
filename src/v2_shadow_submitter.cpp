@@ -406,6 +406,7 @@ std::string_view apply_code_name(ApplyCode code) noexcept {
         case ApplyCode::unauthorized_command: return "unauthorized_command";
         case ApplyCode::caller_role_conflict: return "caller_role_conflict";
         case ApplyCode::order_not_in_conflict: return "order_not_in_conflict";
+        case ApplyCode::order_not_reducing: return "order_not_reducing";
     }
     return "unknown";
 }
@@ -417,6 +418,7 @@ std::optional<StrategyMode> parse_strategy_mode(std::string_view name) noexcept 
     if (name == "cancel_only") return StrategyMode::cancel_only;
     if (name == "reduce_only") return StrategyMode::reduce_only;
     if (name == "halted") return StrategyMode::halted;
+    if (name == "flatten") return StrategyMode::flatten;
     return std::nullopt;
 }
 

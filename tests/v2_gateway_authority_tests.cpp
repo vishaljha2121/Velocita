@@ -54,6 +54,25 @@ void test_closed_default_and_activation() {
             "activated owner refused valid request");
 }
 
+void test_a_request_begins_only_in_a_mode_that_allows_orders() {
+    for (const auto& [mode, allowed] : {std::pair{StrategyMode::normal, true},
+                                        std::pair{StrategyMode::reduce_only, true},
+                                        std::pair{StrategyMode::flatten, true},
+                                        std::pair{StrategyMode::no_new_risk, false},
+                                        std::pair{StrategyMode::cancel_only, false},
+                                        std::pair{StrategyMode::halted, false},
+                                        std::pair{static_cast<StrategyMode>(0), false},
+                                        std::pair{static_cast<StrategyMode>(7), false}}) {
+        auto owner = authority();
+        owner.activate_after_reconciliation();
+        auto current = control();
+        current.strategy_mode = mode;
+        require(owner.begin_request(binding(), current, 10).has_value() == allowed,
+                allowed ? "an authority request was refused in a mode that allows orders"
+                        : "an authority request began in a mode that allows no orders");
+    }
+}
+
 void test_one_slot_and_monotonic_abandon() {
     auto owner = authority();
     owner.activate_after_reconciliation();
@@ -164,6 +183,7 @@ int main() {
     static_assert(!std::is_move_constructible_v<GatewayAuthority>);
     try {
         test_closed_default_and_activation();
+        test_a_request_begins_only_in_a_mode_that_allows_orders();
         test_one_slot_and_monotonic_abandon();
         test_zero_configuration_and_clock_regression_fail_closed();
         test_local_latches_drop_permission();

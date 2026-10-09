@@ -76,11 +76,12 @@ enum class GatewayStopCause : std::uint8_t {
     corrupt_state,
     wrong_cluster,
     authority,
+    reducing_mode,
     count
 };
 
 [[nodiscard]] constexpr bool rearmable(const GatewayStopCause cause) noexcept {
-    return cause == GatewayStopCause::fence;
+    return cause == GatewayStopCause::fence || cause == GatewayStopCause::reducing_mode;
 }
 
 enum class BookVerdict : std::uint8_t { match, not_comparable, mismatch, unavailable, count };

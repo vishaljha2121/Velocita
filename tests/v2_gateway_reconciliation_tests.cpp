@@ -156,7 +156,7 @@ void a_truncated_pending_list_is_not_comparable() {
             "a venue that could not list every pending order was compared");
 }
 
-void only_a_fence_is_rearmable() {
+void only_a_fence_and_a_reducing_mode_are_rearmable() {
     const std::vector<std::pair<GatewayStopCause, bool>> expected{
         {GatewayStopCause::fence, true},
         {GatewayStopCause::unknown_outcome, false},
@@ -169,6 +169,7 @@ void only_a_fence_is_rearmable() {
         {GatewayStopCause::corrupt_state, false},
         {GatewayStopCause::wrong_cluster, false},
         {GatewayStopCause::authority, false},
+        {GatewayStopCause::reducing_mode, true},
     };
     require(expected.size() == static_cast<std::size_t>(GatewayStopCause::count), "a stop cause is not classified");
     for (const auto& [cause, rearm] : expected)
@@ -202,7 +203,8 @@ void every_cause_and_verdict_renders_from_the_first_scrape() {
     for (const auto& line : lines) require(text.find(line + "\n") != std::string::npos, "missing: " + line);
     const std::vector<std::string> causes{"fence", "unknown_outcome", "conflict", "refused_evidence",
                                           "control_change", "reconciliation_mismatch", "reconciliation_exhausted",
-                                          "capacity", "corrupt_state", "wrong_cluster", "authority"};
+                                          "capacity", "corrupt_state", "wrong_cluster", "authority",
+                                          "reducing_mode"};
     for (const auto& cause : causes) {
         require(text.find("velocita_gateway_stops_total{cause=\"" + cause + "\"} ") != std::string::npos,
                 "stops_total lacks cause " + cause);
@@ -232,7 +234,7 @@ int main() {
         {"a_venue_report_for_an_order_the_kernel_does_not_hold_is_a_mismatch",
          a_venue_report_for_an_order_the_kernel_does_not_hold_is_a_mismatch},
         {"a_truncated_pending_list_is_not_comparable", a_truncated_pending_list_is_not_comparable},
-        {"only_a_fence_is_rearmable", only_a_fence_is_rearmable},
+        {"only_a_fence_and_a_reducing_mode_are_rearmable", only_a_fence_and_a_reducing_mode_are_rearmable},
         {"every_cause_and_verdict_renders_from_the_first_scrape", every_cause_and_verdict_renders_from_the_first_scrape},
     };
     int failures = 0;

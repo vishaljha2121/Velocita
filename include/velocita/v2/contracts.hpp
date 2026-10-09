@@ -84,7 +84,16 @@ enum class StrategyMode : std::uint8_t {
     cancel_only = 3,
     reduce_only = 4,
     halted = 5,
+    flatten = 6,
 };
+
+[[nodiscard]] constexpr bool mode_allows_only_reducing_orders(const StrategyMode mode) noexcept {
+    return mode == StrategyMode::reduce_only || mode == StrategyMode::flatten;
+}
+
+[[nodiscard]] constexpr bool mode_allows_orders(const StrategyMode mode) noexcept {
+    return mode == StrategyMode::normal || mode_allows_only_reducing_orders(mode);
+}
 
 enum class Side : std::uint8_t {
     buy = 1,

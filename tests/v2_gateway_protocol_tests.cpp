@@ -254,9 +254,15 @@ void test_authority_granted_bytes() {
         return decode_authority_granted(bytes, c, v);
     }, "grant");
     auto bad = out;
+    for (const std::uint8_t mode : {std::uint8_t{0}, std::uint8_t{7}}) {
+        bad[477] = std::byte{mode};
+        require(decode_authority_granted(bad, decoded_correlation, decoded) == NodeProtocolError::invalid_value,
+                "strategy mode " + std::to_string(mode) + " accepted");
+    }
     bad[477] = std::byte{6};
-    require(decode_authority_granted(bad, decoded_correlation, decoded) == NodeProtocolError::invalid_value,
-            "strategy mode 6 accepted");
+    require(decode_authority_granted(bad, decoded_correlation, decoded) == NodeProtocolError::none &&
+                decoded.strategy_mode == StrategyMode::flatten,
+            "the flatten mode was refused in a grant");
     bad = out;
     bad[41] ^= std::byte{0xff};
     require(decode_authority_granted(bad, decoded_correlation, decoded) == NodeProtocolError::invalid_value,

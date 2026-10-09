@@ -213,6 +213,7 @@ and on every state read (about every 250 ms), not only after a stop.
 | `conflict`, `reconciliation_exhausted` | the cluster holds a conflict, or a query ran out of attempts | no |
 | `refused_evidence` | the kernel refused a venue report | no |
 | `control_change` | kill epoch, executor generation or strategy mode changed | no: these are the operator's controls; restart the gateway after the change |
+| `reducing_mode` | only the strategy mode changed, to `reduce_only` or `flatten` | yes: like a fence, after the quiet period and the check above |
 | `reconciliation_mismatch` | the venue's book disagrees with the kernel at a comparable cut | no: see below |
 | `capacity`, `corrupt_state`, `wrong_cluster`, `authority` | sequences or evidence queue exhausted; corrupt state; wrong cluster; clock or control regression | no |
 
@@ -247,7 +248,9 @@ start (they survive restarts); every other gateway counter is per process.
 | Need | Command (operator client) | Effect |
 |---|---|---|
 | stop new orders | `strategy-mode halted K E` | control lane; frames record `control_halted`, nothing is sent for authorization |
-| stop new orders, keep evaluating | `strategy-mode no_new_risk K E` (or `reduce_only`, `cancel_only`) | every place-limit proposal, exits included, is `control_suppressed` |
+| stop new orders, keep evaluating | `strategy-mode no_new_risk K E` (or `cancel_only`) | every place-limit proposal, exits included, is `control_suppressed` |
+| stop entries, let the strategy exit | `strategy-mode reduce_only K E` | an order that reduces the position goes through; everything else is `control_suppressed` (ADR 0024) |
+| sell the position now | `strategy-mode flatten K E` | on the next frame (at most 30 s) the kernel orders a sale of exactly the position at the frame price; the gateway re-arms by itself (ADR 0024) |
 | hard stop | `kill-epoch K+1` | halts AND makes every earlier decision unauthorizable |
 | resume | `strategy-mode normal K E` (after a kill: the new K) or re-run setup | refused while any order's outcome is unknown; then restart the gateway (a mode, kill-epoch or generation change latches its new-risk stop, section 5.3) |
 | stop proposing entirely | `systemctl --user stop velocita-v2-shadow-edge` | no frames at all |

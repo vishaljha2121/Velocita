@@ -196,6 +196,7 @@ void observe_outcome(OutcomeCounters& counters, const ApplyResult& result) noexc
         case ApplyCode::risk_version_exhausted:
         case ApplyCode::position_limit_exceeded:
         case ApplyCode::loss_limit_reached:
+        case ApplyCode::order_not_reducing:
             ++counters.risk_refusals;
             return;
         case ApplyCode::stale_control_generation:

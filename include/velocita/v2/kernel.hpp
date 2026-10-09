@@ -150,6 +150,7 @@ enum class ApplyCode : std::uint8_t {
     unauthorized_command,
     caller_role_conflict,
     order_not_in_conflict,
+    order_not_reducing,
 };
 
 enum class CallerRole : std::uint8_t {
@@ -828,6 +829,8 @@ struct BoundOrderEffect {
                                 const VerifiedExecutionCatalog* catalog = nullptr);
 
 [[nodiscard]] std::size_t pinned_receipt_count(const TradingState& state) noexcept;
+
+[[nodiscard]] bool submit_permitted(const TradingState& state, DecisionId decision_id) noexcept;
 
 [[nodiscard]] const PolicyRecord* find_policy(const TradingState& state,
                                               PolicyId policy_id,
