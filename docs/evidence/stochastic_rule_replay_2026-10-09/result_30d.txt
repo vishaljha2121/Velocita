@@ -1,0 +1,8 @@
+window ends 1791525980 (unix seconds), 30 days
+bars 2592000 over 30.00 days; indicator resets on gaps 0; open at end False
+round trips 1475 (49.2 a day); volume $39,835.14 ($1,327.84 a day)
+gross P&L $-0.4956; per round trip -0.034 cents; winners 31.9%; gross per $ of volume -0.12 bp
+holding time: median 526 s, p90 1374 s, in the market 37.3% of the time
+paper, 20 bp a side: fees $79.6715, net $-80.1671 ($-2.6722 a day), volume per $1 lost $497, worst drawdown $80.17, $10 drawdown reached after 3.8 days
+measured, 100 bp buy and 98 bp sell: fees $394.3686, net $-394.8642 ($-13.1621 a day), volume per $1 lost $101, worst drawdown $394.86, $10 drawdown reached after 0.9 days
+per day (round trips, gross $): 35 -0.163, 53 -0.313, 46 +0.454, 62 -0.343, 37 +0.118, 59 -0.124, 40 -0.108, 50 -0.130, 48 +0.306, 50 +0.560, 49 -0.163, 50 -0.054, 52 +0.368, 55 -0.277, 49 -0.187, 50 +0.174, 47 +0.473, 52 -0.077, 48 +0.155, 53 -0.516, 49 -0.038, 46 +0.179, 55 -0.235, 46 +0.203, 51 -0.041, 53 -0.142, 44 -0.066, 50 -0.226, 41 -0.193, 43 -0.130, 12 +0.041

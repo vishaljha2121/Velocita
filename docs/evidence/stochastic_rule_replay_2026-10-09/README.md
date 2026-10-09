@@ -38,6 +38,27 @@ Yes. Restricted to the first paper session (2026-10-07 20:14 to 2026-10-08 13:27
 
 Every full day in the week was negative before fees.
 
+## Thirty days, ending at the same time (`result_30d.txt`)
+
+Added later on 2026-10-09 to check that the week was not unusual.
+
+| | |
+|---|---|
+| Round trips | 1,475, about 49 a day |
+| Volume | $39,835.14, about $1,328 a day |
+| Before fees | -$0.50, which is -0.12 bp of volume |
+| Winning round trips | 31.9% |
+| Time holding a position | 37.3%; median hold 8.8 minutes |
+
+| Cost assumption | Fees | Net for the 30 days | Volume per $1 lost | $10 drawdown reached |
+|---|---|---|---|---|
+| Paper: 20 bp a side | $79.67 | -$80.17 | $497 | after 3.8 days |
+| Measured: 100 bp buy, 98 bp sell | $394.37 | -$394.86 | $101 | after 0.9 days |
+
+Eleven of the thirty full days were positive before fees and nineteen negative; the largest day
+either way was about 50 cents. The month says the same as the week: nothing before costs, so the
+cost is the result.
+
 ## What this says
 
 - **The rule has no edge before costs.** It is flat to slightly negative. That is consistent with
@@ -51,7 +72,7 @@ Every full day in the week was negative before fees.
 
 ## Limits
 
-- One week, one asset, one period of the market.
+- Thirty days, one asset, one period of the market.
 - Fills are at the Binance close. The venue's own price differs by a few basis points
   (`../venue_price_basis_2026-10-09/`), which is small next to the cost.
 - Every order is assumed to fill completely at its limit.
