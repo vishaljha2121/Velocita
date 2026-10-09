@@ -50,7 +50,7 @@ Last updated 2026-10-09 16:30 UTC. Status words: **Done** (built, tested, runnin
 | 20 | Review of the files the kernel review did not read (node loop, write-ahead log, archive store, codecs, authentication) | **Partly done** 2026-10-09: node loop, authentication, write-ahead log, archive store and protocol read; three findings to fix, codecs still unread | `REVIEW_2_NODE_AND_STORAGE.md` |
 | 21 | Review of the research and backtest code | **Partly done** 2026-10-09: the running rule replayed on a week of data with the live code. No edge before costs; the result is the cost. The research code itself is not yet read | `docs/evidence/stochastic_rule_replay_2026-10-09/` |
 | 22 | A leaked or faulty key cannot fill the log: per-caller rate limit at ingress | **Built** 2026-10-09, not deployed (voter image) | review 2, finding 1 |
-| 23 | A voter survives a crash or power cut without a person: archive leftovers and a torn last log block | **Open** (new). Runbook written; there is no repair for a torn block today | review 2, findings 2 and 4 |
+| 23 | A voter survives a crash or power cut without a person: archive leftovers and a torn last log block | **Open**. Done so far: the runbook, and the start-up error now names a stray archive file. Not done: automatic cleanup, and any repair for a torn block | review 2, findings 2 and 4 |
 | 24 | The log writer thread sleeps when idle | **Built** 2026-10-09, not deployed (voter image) | review 2, finding 3 |
 | 25 | A reconciliation that agrees with a finished order does not stop the gateway | **Built** 2026-10-09 after it stopped the paper run; not deployed | `docs/evidence/gateway_stop_2026-10-09/` |
 

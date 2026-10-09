@@ -351,7 +351,8 @@ void VerifiedIdentityStartup::validate_ownership() const {
             std::span(identity_bytes).first(encoded_identity.bytes_written),
             std::span(catalog_bytes).first(encoded_catalog.bytes_written), catalog_, {}, archive_present) !=
                 ArchiveStoreError::none)
-        refuse(Code::invalid_file, "archive owner or historical coverage validation failed");
+        refuse(Code::invalid_file,
+               ("archive owner or historical coverage validation failed" + ArchiveStore::leftovers(root_)).c_str());
     (void)selector_temporary_status();
     const auto selected = inspect_base(root_fd_, identity_, catalog_);
     if (selected.selector != selection_)

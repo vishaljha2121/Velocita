@@ -267,7 +267,7 @@ The cluster keeps running on the other two voters meanwhile.
 
 | Journal line | Cause | Repair |
 |---|---|---|
-| `verified archive open refused` | the voter died while publishing an archive segment and left a file the catalog does not list | below |
+| `archive owner or historical coverage validation failed` or `verified archive open refused` | the voter died while publishing an archive segment and left a file the catalog does not list. The line names any stray file that is not a segment | below |
 | `corrupt complete WAL block` | a power cut tore the last write-ahead-log block | none yet. Do not edit the file. A voter cannot be rebuilt from the others until snapshot install exists, so it stays out until the next incarnation |
 
 Archive repair, on the affected host, with the voter stopped. The data directory is

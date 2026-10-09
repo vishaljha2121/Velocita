@@ -123,7 +123,8 @@ void ReplicatedKernel::open_archive() {
             std::span(identity_bytes).first(identity.bytes_written),
             std::span(catalog_bytes).first(catalog.bytes_written), catalog_, archive_config_, archive_) !=
                 ArchiveStoreError::none)
-        throw std::runtime_error("verified archive open refused");
+        throw std::runtime_error("verified archive open refused" +
+                                 ArchiveStore::leftovers(startup_.root_directory()));
     archive_open_ = true;
 }
 
@@ -594,7 +595,7 @@ void ReplicatedKernel::persist_history_recovery(void* context) {
                 std::span(identity_bytes).first(identity.bytes_written),
                 std::span(catalog_bytes).first(catalog.bytes_written),
                 job.catalog, job.config, *job.archive) != ArchiveStoreError::none)
-            throw std::runtime_error("history recovery archive open failed");
+            throw std::runtime_error("history recovery archive open failed" + ArchiveStore::leftovers(job.root));
     }
     const auto published = job.archive->publish_wal_bridge(
         job.runtime, job.publication, job.cut, job.wal_cap);

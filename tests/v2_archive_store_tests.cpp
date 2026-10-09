@@ -79,6 +79,15 @@ int main(){
     Temp removed_temp;ArchiveStore removed;open_store(removed_temp,removed);require(ArchiveStoreTestAccess::publish(removed,{1,2,1,1,3,0,0},one_record).error==ArchiveStoreError::none,"removed seed");auto old=segments(removed_temp.path);require(old.size()==1,"removed seed segment");std::filesystem::remove(old.front());auto removed_result=ArchiveStoreTestAccess::publish(removed,{2,2,2,2,3,3,0},second_record);require(removed_result.error!=ArchiveStoreError::none&&removed.catalog_generation()==1&&segments(removed_temp.path).empty(),"missing prior segment must refuse before publication");
 
     Temp orphan_temp;ArchiveStore orphan;open_store(orphan_temp,orphan);require(ArchiveStoreTestAccess::publish(orphan,{1,2,1,1,3,0,0},one_record).error==ArchiveStoreError::none,"orphan seed");std::ofstream(orphan_temp.path/"v2-archive"/"v2-archive-segment.bin.tmp").put('x');auto orphan_result=ArchiveStoreTestAccess::publish(orphan,{2,2,2,2,3,3,0},second_record);require(orphan_result.error==ArchiveStoreError::unexpected_entry&&orphan.catalog_generation()==1&&segments(orphan_temp.path).size()==1,"open-store temp must refuse before mutation");
+    require(ArchiveStore::leftovers(orphan_temp.path)==" (the archive directory holds: v2-archive-segment.bin.tmp)","a stray temporary file was not named");
+    std::filesystem::remove(orphan_temp.path/"v2-archive"/"v2-archive-segment.bin.tmp");
+    require(ArchiveStore::leftovers(orphan_temp.path).empty(),"a clean archive directory reported leftovers");
+    for(const char* stray:{"a","b","c","d","e"})std::ofstream(orphan_temp.path/"v2-archive"/stray).put('x');
+    {const auto many=ArchiveStore::leftovers(orphan_temp.path);require(many.rfind(", ...)")==many.size()-6&&std::count(many.begin(),many.end(),',')==4,"more than four leftovers were not cut short");}
+    for(const char* stray:{"a","b","c","d","e"})std::filesystem::remove(orphan_temp.path/"v2-archive"/stray);
+    std::ofstream(orphan_temp.path/"v2-archive"/("s-"+std::string(64,'g')+".bin")).put('x');
+    require(ArchiveStore::leftovers(orphan_temp.path)==" (the archive directory holds: s-"+std::string(64,'g')+".bin)","a name that only looks like a segment was taken for one");
+    require(ArchiveStore::leftovers(orphan_temp.path/"absent").empty(),"a missing directory reported leftovers");
 
     Temp stale_temp;ArchiveStore stale;open_store(stale_temp,stale);require(ArchiveStoreTestAccess::publish(stale,{1,2,1,1,3,0,0},one_record).error==ArchiveStoreError::none,"stale seed");auto stale_result=ArchiveStoreTestAccess::publish(stale,{2,1,2,2,3,3,0},second_record);require(stale_result.error==ArchiveStoreError::stale_generation&&stale.catalog_generation()==1&&segments(stale_temp.path).size()==1,"older storage generation must refuse before writes");
 

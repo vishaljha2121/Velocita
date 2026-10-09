@@ -239,6 +239,29 @@ ArchiveCoverageCapability &ArchiveCoverageCapability::operator=(
   return *this;
 }
 
+std::string ArchiveStore::leftovers(const std::filesystem::path &path) {
+  std::string found;
+  std::size_t listed = 0;
+  try {
+    for (const auto &entry : std::filesystem::directory_iterator(path / archive_name)) {
+      const auto name = entry.path().filename().string();
+      const bool segment = name.size() == 70 && name.rfind("s-", 0) == 0 &&
+                           name.compare(66, 4, ".bin") == 0 &&
+                           name.find_first_not_of("0123456789abcdef", 2) == 66;
+      if (segment || name == identity_name || name == execution_name || name == catalog_name)
+        continue;
+      if (++listed > 4) {
+        found += ", ...";
+        break;
+      }
+      found += (found.empty() ? "" : ", ") + name;
+    }
+  } catch (...) {
+    return {};
+  }
+  return found.empty() ? found : " (the archive directory holds: " + found + ")";
+}
+
 ArchiveStoreError ArchiveStore::verify_existing(
     const std::filesystem::path &path, const VerifiedStaticIdentity &identity,
     std::span<const std::byte> identity_bytes,

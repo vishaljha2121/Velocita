@@ -6,6 +6,7 @@
 #include "velocita/v2/archive_segment.hpp"
 #include "velocita/v2/execution_catalog.hpp"
 
+#include <string>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -104,6 +105,8 @@ public:
         std::span<const std::byte> canonical_execution_catalog_bytes,
         const VerifiedExecutionCatalog& execution_catalog,
         const ArchiveStoreConfig& config, ArchiveStore& destination) noexcept;
+
+    [[nodiscard]] static std::string leftovers(const std::filesystem::path& verified_startup_root);
 
     [[nodiscard]] static ArchiveStoreError verify_existing(
         const std::filesystem::path& verified_startup_root,
