@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <sys/resource.h>
 #include <unistd.h>
 
 namespace {
@@ -144,12 +145,48 @@ void test_exception_is_a_permanent_writer_failure(const std::filesystem::path& r
 
 }
 
+double process_cpu_seconds() {
+    rusage usage{};
+    ::getrusage(RUSAGE_SELF, &usage);
+    return static_cast<double>(usage.ru_utime.tv_sec + usage.ru_stime.tv_sec) +
+           static_cast<double>(usage.ru_utime.tv_usec + usage.ru_stime.tv_usec) / 1e6;
+}
+
+void test_an_idle_writer_rests_and_still_serves_promptly(const std::filesystem::path& root) {
+    WalBlockArena arena;
+    std::filesystem::create_directories(root);
+    WalSegment segment(root, identity());
+    WalWriter writer(segment, arena);
+    writer.start();
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    const auto cpu_before = process_cpu_seconds();
+    const auto wall_before = std::chrono::steady_clock::now();
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    const auto cpu = process_cpu_seconds() - cpu_before;
+    const auto wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - wall_before).count();
+    if (cpu > 0.3 * wall)
+        throw std::runtime_error("an idle writer thread used " + std::to_string(cpu) + " s of CPU in " +
+                                 std::to_string(wall) + " s");
+
+    BlockingJob job;
+    const auto asked = std::chrono::steady_clock::now();
+    if (!writer.submit_maintenance(&run_once, &job)) throw std::runtime_error("an idle writer refused a job");
+    while (!writer.take_maintenance_completion()) {
+        if (std::chrono::steady_clock::now() - asked > std::chrono::milliseconds(250))
+            throw std::runtime_error("a resting writer did not pick up a job within 250 ms");
+        std::this_thread::sleep_for(std::chrono::microseconds(100));
+    }
+    if (job.runs.load() != 1) throw std::runtime_error("the job did not run exactly once");
+    writer.stop();
+}
+
 int main() {
     try {
         TempDirectory temp;
         test_blocking_job_keeps_owner_nonblocking_and_hands_off_payload(temp.path / "normal");
         std::filesystem::create_directories(temp.path / "failure");
         test_exception_is_a_permanent_writer_failure(temp.path / "failure");
+        test_an_idle_writer_rests_and_still_serves_promptly(temp.path / "idle");
         std::cout << "WAL maintenance tests passed\n";
         return EXIT_SUCCESS;
     } catch (const std::exception& error) {

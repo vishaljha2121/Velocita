@@ -3,16 +3,20 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <chrono>
 #include <cstring>
 #include <fcntl.h>
 #include <stdexcept>
 #include <sys/stat.h>
+#include <thread>
 #include <unistd.h>
 
 namespace velocita::v2 {
 namespace {
 
 constexpr std::uint32_t kBlockMagic = 0x32425756U;
+constexpr std::uint32_t kWriterIdleSpins = 256;
+constexpr auto kWriterIdleSleep = std::chrono::microseconds(200);
 constexpr std::uint16_t kBlockVersion = 2;
 
 void visit_segment_records(const int fd, const VerifiedStaticIdentity& identity,
@@ -643,8 +647,16 @@ void WalWriter::start() {
     if (running_.exchange(true, std::memory_order_acq_rel)) return;
     thread_ = std::thread([this] {
         try {
+            std::uint32_t idle_polls = 0;
             while (running_.load(std::memory_order_acquire)) {
-                if (poll() == 0) std::this_thread::yield();
+                if (poll() != 0) {
+                    idle_polls = 0;
+                } else if (idle_polls < kWriterIdleSpins) {
+                    ++idle_polls;
+                    std::this_thread::yield();
+                } else {
+                    std::this_thread::sleep_for(kWriterIdleSleep);
+                }
             }
             while (poll() > 0) {
             }

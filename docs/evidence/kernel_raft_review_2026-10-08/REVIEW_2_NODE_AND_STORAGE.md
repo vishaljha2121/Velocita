@@ -83,6 +83,10 @@ runnable thread that is one core at 100% per voter, all day. On the Pi it is a q
 machine and heat. It also hides real load in CPU graphs. A condition variable or an eventfd wake
 would remove it; the latency cost is one wake-up.
 
+Fixed 2026-10-09 in the simplest safe way: after 256 empty polls in a row the thread sleeps 200
+microseconds between polls, and any work resets the count. An idle writer now uses a few percent of
+a core, and a busy one behaves as before. A test measures the process's CPU with the writer idle.
+
 ### 4. Medium: a torn final block loses the voter until the next incarnation
 
 `visit_segment_records` treats a block that does not decode and is not all zeros as corruption and
