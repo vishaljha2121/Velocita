@@ -660,10 +660,11 @@ struct Service {
             while (!stop.load()) (void)server.serve_once(*rig.core, 20);
         });
     }
-    ~Service() {
+    void finish() {
         stop.store(true);
-        thread.join();
+        if (thread.joinable()) thread.join();
     }
+    ~Service() { finish(); }
 };
 
 void a_client_of_the_allowed_user_gets_a_signature_over_the_socket() {
@@ -683,6 +684,7 @@ void a_client_of_the_allowed_user_gets_a_signature_over_the_socket() {
             "a replay over the socket was not refused");
     const auto mismatch = handle.sign(request_for(payload("buy", 121, 2'500, "q-7"), 12, "q-7"));
     require(mismatch.verdict == SignerVerdict::refused_mismatch, "a mismatch over the socket was not refused");
+    service.finish();
     require(service.server.counters().served == 3 && service.server.counters().peer_refusals == 0,
             "the server did not count three served requests");
 }
@@ -693,8 +695,7 @@ void another_user_is_refused_before_any_byte_is_read() {
     const auto result = client.sign(request_for(kPayload));
     require(result.verdict == SignerVerdict::unavailable && result.signature_count == 0,
             "a peer that is not the allowed user received an answer");
-    for (int waited = 0; waited < 200 && service.server.counters().peer_refusals == 0; ++waited)
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    service.finish();
     require(service.server.counters().peer_refusals == 1 && service.server.counters().served == 0 &&
                 service.rig.order.empty(),
             "the refused peer reached the signer core");

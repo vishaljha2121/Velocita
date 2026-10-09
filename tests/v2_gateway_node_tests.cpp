@@ -419,7 +419,11 @@ struct Cluster {
                                 "committed result did not decode");
                         return result;
                     }
-                    if (response.kind == ResponseKind::refused) round = 4000;
+                    if (response.kind == ResponseKind::refused) {
+                        const auto retry_at = steady_ms() + 500;
+                        while (steady_ms() < retry_at) run(1);
+                        round = 4000;
+                    }
                 }
             }
         }
