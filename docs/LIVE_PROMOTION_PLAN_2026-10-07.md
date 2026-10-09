@@ -44,7 +44,7 @@ Last updated 2026-10-09 05:10 UTC. Status words: **Done** (built, tested, runnin
 | 14 | Startup balance reconciliation against the venue | **Open** | journey step 7 |
 | 15 | Outside heartbeat armed | **Open**: installed, waits for the owner's Healthchecks URL | review B6 |
 | 16 | Drills while holding a position: kill, leader loss, gateway restart | **Open** | journey step 8 |
-| 17 | A live gateway refuses an account with no loss limit | **Open** | ADR 0021 amendment |
+| 17 | A live gateway refuses an account with no loss limit | **Built** 2026-10-09: always on for the live venue, `--require-loss-limit` for paper. Not deployed (gateway image) | `989fe04` |
 | 18 | Leader steps down when it cannot reach a quorum | **Built** 2026-10-08, not deployed | `20329b6` |
 | 19 | Raft library assertions active in release builds | **Built** 2026-10-08, not deployed | `83a103e` |
 | 20 | Review of the files the kernel review did not read (node loop, write-ahead log, archive store, codecs, authentication) | **Partly done** 2026-10-09: node loop, authentication, write-ahead log, archive store and protocol read; three findings to fix, codecs still unread | `REVIEW_2_NODE_AND_STORAGE.md` |
@@ -53,8 +53,9 @@ Last updated 2026-10-09 05:10 UTC. Status words: **Done** (built, tested, runnin
 | 23 | A voter survives a crash or power cut without a person: archive leftovers and a torn last log block | **Open** (new). Runbook written; there is no repair for a torn block today | review 2, findings 2 and 4 |
 | 24 | The log writer thread sleeps when idle | **Open** (new) | review 2, finding 3 |
 
-Count: 4 done, 5 built and waiting for a new incarnation (6, 7, 8, 18, 19), 2 built and inert
-(9 test key only, 12 off by default), 3 partly done (5, 13, 20), 10 open.
+Count: 4 done, 5 built and waiting for a new incarnation (6, 7, 8, 18, 19), 3 built and waiting
+for a gateway image or inert (9 test key only, 12 off by default, 17), 3 partly done (5, 13, 20),
+9 open.
 
 Items 6, 7, 8, 18 and 19 are one deployment: schema 11 needs a new incarnation, the owner's
 approval, a flat account, and the operator ceremony (which now includes the two `assign-role`
