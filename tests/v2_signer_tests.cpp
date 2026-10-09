@@ -698,7 +698,12 @@ void a_reply_with_the_wrong_number_of_signatures_is_unavailable() {
             }
             std::array<std::byte, kMaxResponseBytes> reply{};
             const auto encoded = encode_response(result, reply);
-            (void)::write(connection, reply.data(), encoded.bytes_written);
+            std::size_t sent = 0;
+            while (sent < encoded.bytes_written) {
+                const auto n = ::write(connection, reply.data() + sent, encoded.bytes_written - sent);
+                if (n <= 0) break;
+                sent += static_cast<std::size_t>(n);
+            }
             ::close(connection);
         });
         SocketSigner client(socket, 2'000);
