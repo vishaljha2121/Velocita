@@ -399,6 +399,14 @@ void GatewayLoop::on_state(const LinkOutcome& outcome, Tick now) {
         }
         return;
     }
+    state_stale_ = outcome.reading.applied_index < seen_index_;
+    if (state_stale_) {
+        ++metrics_.stale_state_reads;
+        state_dirty_ = true;
+        last_fence_at_ = now;
+        stop(GatewayStopCause::fence);
+        return;
+    }
     const auto& state = link_.state();
     const auto& reading = outcome.reading;
     if (state.execution_catalog_root != catalog_.root() || reading.authority_domain.is_zero() ||
@@ -622,8 +630,8 @@ void GatewayLoop::poll_venue(Tick now) {
 void GatewayLoop::choose(Tick now) {
     if (phase_ == GatewayPhase::starting || state_dirty_ || now >= last_state_at_ + config_.state_interval) {
         if (phase_ != GatewayPhase::starting && propose_evidence(now)) return;
-        if (phase_ == GatewayPhase::starting && now < last_state_at_ + config_.state_interval && last_state_at_ != 0)
-            return;
+        const bool paced = phase_ == GatewayPhase::starting || state_stale_;
+        if (paced && now < last_state_at_ + config_.state_interval && last_state_at_ != 0) return;
         if (link_.request_state(now, config_.request_timeout)) {
             state_requested_at_ = now;
             in_flight_ = InFlight::state;
@@ -861,6 +869,9 @@ std::string render_gateway_metrics(const GatewayMetrics& m) {
             << m.stops[i] << '\n';
     type("velocita_gateway_rearms_total", "counter", "Automatic re-arms of new risk after a fence.");
     out << "velocita_gateway_rearms_total " << m.rearms << '\n';
+    type("velocita_gateway_stale_state_reads_total", "counter",
+         "State reads discarded because they were older than a result the gateway had already seen committed.");
+    out << "velocita_gateway_stale_state_reads_total " << m.stale_state_reads << '\n';
     type("velocita_gateway_stop_cause", "gauge",
          "1 for each cause currently holding new risk stopped; awaiting_arm = only the arming gate is left.");
     for (std::size_t i = 0; i < kCauses; ++i)

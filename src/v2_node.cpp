@@ -103,7 +103,7 @@ bool V2Node::replace_secrets(NodeSecrets secrets) {
 
 V2Node::V2Node(const NodeConfig& config, const VerifiedExecutionCatalog& catalog, NodeSecrets secrets,
                const std::uint64_t session_epoch, NodeTransport& transport,
-               const MetadataCheckpoints metadata_checkpoints)
+               const MetadataCheckpoints metadata_checkpoints, const StorageCheckpoints storage_checkpoints)
     : node_id_(config.node_id), incarnation_(config.incarnation), session_epoch_(session_epoch),
       budgets_(config.owner), compact_at_entries_(config.compact_at_entries),
       ingress_rate_per_second_(config.ingress_rate_per_second),
@@ -139,7 +139,7 @@ V2Node::V2Node(const NodeConfig& config, const VerifiedExecutionCatalog& catalog
         return VerifiedIdentityStartup::recover(kernel_root, config.static_identity(), catalog);
     }();
     kernel_ = std::make_unique<ReplicatedKernel>(
-        std::move(startup), StorageCheckpoints{}, metadata_checkpoints, ArchiveStoreConfig{},
+        std::move(startup), storage_checkpoints, metadata_checkpoints, ArchiveStoreConfig{},
         HistoryRecoveryConfig{config.max_history_wal_bytes},
         config.archive_destination_identity.value_or(Digest256{}));
     kernel_->start_writer();
@@ -421,7 +421,13 @@ void V2Node::handle_gateway(CallerLink& caller, std::span<const std::byte> body)
         return refuse_gateway(caller, correlation, static_cast<std::uint8_t>(ProposeStatus::persistence_busy));
     if (!kernel_->is_leader())
         return refuse_gateway(caller, correlation, static_cast<std::uint8_t>(ProposeStatus::not_leader));
-    if (request.kind == GatewayRequestKind::state_read) return serve_state(caller, correlation);
+    if (request.kind == GatewayRequestKind::state_read) {
+        if (kernel_->apply_pending()) {
+            ++counters_.gateway_state_reads_deferred;
+            return refuse_gateway(caller, correlation, static_cast<std::uint8_t>(ProposeStatus::persistence_busy));
+        }
+        return serve_state(caller, correlation);
+    }
 
     if (gateway_authority_ && gateway_authority_->barrier == request.barrier) {
         gateway_authority_->correlation = correlation;

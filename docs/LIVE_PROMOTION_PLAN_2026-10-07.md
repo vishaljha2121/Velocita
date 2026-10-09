@@ -48,11 +48,12 @@ Last updated 2026-10-09 16:30 UTC. Status words: **Done** (built, tested, runnin
 | 18 | Leader steps down when it cannot reach a quorum | **Built** 2026-10-08, not deployed | `20329b6` |
 | 19 | Raft library assertions active in release builds | **Built** 2026-10-08, not deployed | `83a103e` |
 | 20 | Review of the files the kernel review did not read (node loop, write-ahead log, archive store, codecs, authentication) | **Done** 2026-10-09: node loop, authentication, write-ahead log, archive store, protocol, codecs, Aeron transport and the skipped kernel ranges read. The second pass's findings are plan items 22 to 24; the third pass found no defect | `REVIEW_2_NODE_AND_STORAGE.md`, `REVIEW_3_CODECS_AND_REMAINDER.md` |
-| 21 | Review of the research and backtest code | **Partly done** 2026-10-09: the running rule replayed on a week of data with the live code. No edge before costs; the result is the cost. The research code itself is not yet read | `docs/evidence/stochastic_rule_replay_2026-10-09/` |
+| 21 | Review of the research and backtest code | **Partly done** 2026-10-09: the running rule replayed on a week and on 30 days of data with the live code. No edge before costs; the result is the cost. The research code itself is not yet read | `docs/evidence/stochastic_rule_replay_2026-10-09/` |
 | 22 | A leaked or faulty key cannot fill the log: per-caller rate limit at ingress | **Built** 2026-10-09, not deployed (voter image) | review 2, finding 1 |
 | 23 | A voter survives a crash or power cut without a person: archive leftovers and a torn last log block | **Open**. Done so far: the runbook, and the start-up error now names a stray archive file. Not done: automatic cleanup, and any repair for a torn block | review 2, findings 2 and 4 |
 | 24 | The log writer thread sleeps when idle | **Built** 2026-10-09, not deployed (voter image) | review 2, finding 3 |
 | 25 | A reconciliation that agrees with a finished order does not stop the gateway | **Built** 2026-10-09 after it stopped the paper run; not deployed | `docs/evidence/gateway_stop_2026-10-09/` |
+| 26 | The gateway never acts on a state older than a result it has seen committed (the cause of the 2026-10-09 stop: a leader with a slow disk served a state read from before a fill its followers had already answered) | **Built** 2026-10-09, not deployed (voter binary and gateway image; no schema change). Reproduced with three voters and a slow leader disk | `docs/evidence/gateway_stop_2026-10-09/` |
 
 Count: 4 done, 8 built and waiting for a new incarnation (6, 7, 8, 18, 19, 22, 24, 25), 4 built and
 waiting for a gateway image or inert (9 test key only, 10 mock only, 12 off by default, 17), 4 partly

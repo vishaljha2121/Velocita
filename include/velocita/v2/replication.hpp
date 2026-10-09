@@ -208,6 +208,7 @@ public:
     }
 
     [[nodiscard]] CommittedOutboxView committed_outbox() const;
+    [[nodiscard]] bool apply_pending() const noexcept;
 
     std::uint64_t compact();
     std::uint64_t compact_within_floor();

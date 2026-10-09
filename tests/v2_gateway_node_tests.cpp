@@ -8,6 +8,7 @@
 #include "velocita/v2/venue_simulator.hpp"
 #include "velocita/v2/venue_transport.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <deque>
 #include <filesystem>
@@ -325,10 +326,20 @@ struct Caller {
     }
 };
 
+std::atomic<std::int32_t> g_slow_disk_voter{0};
+std::atomic<int> g_slow_disk_ms{0};
+
+void slow_disk(const StorageCheckpoint checkpoint, void* voter) {
+    if (checkpoint != StorageCheckpoint::before_block_write ||
+        g_slow_disk_voter.load() != *static_cast<const std::int32_t*>(voter)) return;
+    std::this_thread::sleep_for(std::chrono::milliseconds(g_slow_disk_ms.load()));
+}
+
 struct Cluster {
     std::filesystem::path base;
     Network network;
     std::vector<std::int32_t> voters;
+    std::map<std::int32_t, std::int32_t> disk_owner;
     std::map<std::int32_t, std::unique_ptr<V2Node>> nodes;
     std::map<std::int32_t, std::uint64_t> epochs;
     bool gateway_configured;
@@ -338,12 +349,17 @@ struct Cluster {
         : base(std::move(root)), voters(std::move(ids)), gateway_configured(gateway) {
         for (const auto id : voters) {
             epochs[id] = 1;
+            disk_owner[id] = id;
             nodes[id] = std::make_unique<V2Node>(config_for(base, id, NodeStartup::bootstrap, voters, gateway_configured),
                                                  fixture_catalog(), secrets_for(id, voters), epochs[id],
-                                                 network.at(id));
+                                                 network.at(id), velocita::MetadataCheckpoints{},
+                                                 StorageCheckpoints{&slow_disk, &disk_owner[id]});
         }
     }
-    ~Cluster() { nodes.clear(); }
+    ~Cluster() {
+        g_slow_disk_voter = 0;
+        nodes.clear();
+    }
     V2Node& node(std::int32_t id) { return *nodes.at(id); }
     void stop(std::int32_t id) {
         nodes.erase(id);
@@ -508,6 +524,18 @@ struct CountingVenue {
     static std::size_t poll(void* self, std::span<VenueObservation> out, Tick now) {
         auto& venue = *static_cast<CountingVenue*>(self);
         auto count = venue.inner.poll(out, now);
+        if (venue.hold_fills) {
+            std::size_t kept = 0;
+            for (std::size_t i = 0; i < count; ++i) {
+                if (out[i].kind == VenueObservationKind::fill) venue.held_fills.push_back(out[i]);
+                else out[kept++] = out[i];
+            }
+            count = kept;
+        }
+        while (!venue.hold_fills && count < out.size() && !venue.held_fills.empty()) {
+            out[count++] = venue.held_fills.front();
+            venue.held_fills.erase(venue.held_fills.begin());
+        }
         while (count < out.size() && !venue.injected.empty()) {
             out[count++] = venue.injected.front();
             venue.injected.erase(venue.injected.begin());
@@ -517,8 +545,14 @@ struct CountingVenue {
     static void acknowledge(void* self, const VenueObservation& observation) {
         static_cast<CountingVenue*>(self)->inner.acknowledge(observation);
     }
+    std::size_t queries{};
+    bool hold_fills{};
+    std::vector<VenueObservation> held_fills{};
     static sim::QueryResult query(void* self, ClusterOrderId order, Tick now) {
-        return static_cast<CountingVenue*>(self)->inner.query(order, now);
+        auto& venue = *static_cast<CountingVenue*>(self);
+        ++venue.queries;
+        if (venue.hold_fills) return {};
+        return venue.inner.query(order, now);
     }
     static VenueSessionId session(void* self) { return static_cast<CountingVenue*>(self)->inner.session(); }
     sim::VenueTransport transport() { return {&send, &poll, &acknowledge, &query, &session, this}; }
@@ -1396,17 +1430,30 @@ void a_caller_outside_the_operator_band_is_paced_at_ingress() {
             "an operator caller was rate limited: refused busy " + std::to_string(operator_burst.second));
 }
 
-int round_trips_until_a_stop(const int round_trips) {
+struct SoakResult {
+    int completed{};
+    std::size_t venue_queries{};
+    std::uint64_t deferred_state_reads{};
+};
+
+SoakResult round_trips_until_a_stop(const int round_trips, const std::vector<std::int32_t>& voters = {1, 2},
+                                    const int leader_disk_ms = 0) {
     PaperFixture paper;
     g_exit_template = true;
     struct Reset { ~Reset() { g_exit_template = false; } } reset;
     Base base("v2-gw-soak");
-    Cluster cluster(base.path, {1, 2});
+    Cluster cluster(base.path, voters);
     Caller op{kOperatorKey, kOperator}, strategy{kStrategyKey, kStrategy};
     prepare_cluster(cluster, op, strategy);
     Gateway gateway(cluster);
     start(cluster, gateway);
     const auto leader = cluster.elect();
+    g_slow_disk_ms = leader_disk_ms;
+    g_slow_disk_voter = leader_disk_ms == 0 ? 0 : leader;
+    const auto outcome = [&](const int completed) {
+        return SoakResult{completed, gateway.counting.queries,
+                          cluster.node(leader).status().counters.gateway_state_reads_deferred};
+    };
     std::uint64_t source = 1, decision = 100;
     const auto order = [&](const std::int64_t price, const std::int64_t expected_lots) {
         const auto* risk = account(cluster.state_of(leader));
@@ -1432,19 +1479,123 @@ int round_trips_until_a_stop(const int round_trips) {
         throw std::runtime_error("soak order did not fill");
     };
     for (int trip = 0; trip < round_trips; ++trip) {
-        if (!order(11, kOrderLots) || !order(2, 0)) return trip;
+        if (!order(11, kOrderLots) || !order(2, 0)) return outcome(trip);
         cluster.run(40);
-        if (gateway.loop.new_risk_stopped()) return trip;
+        if (gateway.loop.new_risk_stopped()) return outcome(trip);
     }
-    return round_trips;
+    require(cluster.leader() == leader, "the soak changed leader, so it no longer tests one leader's disk");
+    return outcome(round_trips);
 }
 
 void many_round_trips_never_stop_the_gateway() {
     const char* requested = std::getenv("VELOCITA_SOAK_ROUND_TRIPS");
     const int round_trips = requested ? std::atoi(requested) : 40;
-    const int completed = round_trips_until_a_stop(round_trips);
-    require(completed == round_trips, "the gateway stopped new risk after " + std::to_string(completed) +
-                                          " clean round trips out of " + std::to_string(round_trips));
+    const auto soak = round_trips_until_a_stop(round_trips);
+    require(soak.completed == round_trips, "the gateway stopped new risk after " + std::to_string(soak.completed) +
+                                               " clean round trips out of " + std::to_string(round_trips));
+}
+
+void a_leader_with_a_slow_disk_never_makes_the_gateway_question_a_filled_order() {
+    const int round_trips = 3;
+    const auto soak = round_trips_until_a_stop(round_trips, {1, 2, 3}, 150);
+    require(soak.completed == round_trips, "the gateway stopped new risk after " + std::to_string(soak.completed) +
+                                               " round trips beside a leader with a slow disk");
+    require(soak.deferred_state_reads != 0,
+            "the leader never held a committed entry it had not applied, so the soak did not test the slow disk");
+    require(soak.venue_queries == 0, "the gateway asked the venue about " + std::to_string(soak.venue_queries) +
+                                         " orders it had already reported filled");
+}
+
+struct StateReplay {
+    struct Chunk {
+        StateChunkHeader header;
+        Bytes payload;
+    };
+    std::vector<Chunk> latest, old;
+    bool substitute{};
+
+    bool pass(Network& network, std::span<const std::byte> envelope) {
+        AuthRoute route;
+        VerifiedAuthEnvelope verified;
+        StateChunkView view;
+        if (peek_auth_route(envelope, route) != AuthEnvelopeError::none ||
+            verify_auth_envelope(key(caller_seed(kGatewayKey), AuthRole::response, route.sender, kGatewayKey), envelope,
+                                 verified) != AuthEnvelopeError::none ||
+            decode_state_chunk(verified.body, view) != NodeProtocolError::none)
+            return true;
+        if (!substitute) {
+            if (view.header.chunk_index == 0) latest.clear();
+            latest.push_back({view.header, Bytes(view.chunk.begin(), view.chunk.end())});
+            return true;
+        }
+        if (view.header.chunk_index >= old.size()) return false;
+        auto header = old[view.header.chunk_index].header;
+        header.correlation = view.header.correlation;
+        Bytes body(kMaxStateChunkResponseBytes);
+        const auto framed = encode_state_chunk(header, old[view.header.chunk_index].payload, body);
+        require(framed.error == NodeProtocolError::none, "fixture state chunk did not encode");
+        body.resize(framed.bytes_written);
+        network.responses[kGatewayKey].push_back(
+            seal_response(caller_seed(kGatewayKey), route.sender, verified.header.sequence, body));
+        return false;
+    }
+};
+
+void a_state_read_older_than_a_committed_result_is_discarded_as_a_fence() {
+    Base base("v2-gw-stale-read");
+    Cluster cluster(base.path, {1, 2});
+    Caller op{kOperatorKey, kOperator}, strategy{kStrategyKey, kStrategy};
+    prepare_cluster(cluster, op, strategy);
+    StateReplay replay;
+    cluster.network.gateway_response = [&](std::span<const std::byte> envelope) {
+        return replay.pass(cluster.network, envelope);
+    };
+    Gateway gateway(cluster, sim::FaultPolicy::clean(), quiet_config(300));
+    start(cluster, gateway);
+    const auto leader = cluster.elect();
+    gateway.counting.hold_fills = true;
+    const auto effect = authorize(cluster, strategy);
+    cluster.run_until([&] {
+        const auto* order = order_of(cluster.state_of(leader), effect);
+        return order && order->state == ClusterOrderState::live && gateway.loop.evidence().obligation_count == 0 &&
+               !replay.latest.empty() && replay.latest.size() == replay.latest.front().header.chunk_count &&
+               replay.latest.front().header.applied_index == cluster.node(leader).status().replica.applied_index;
+    }, "a state read that shows the order resting");
+    replay.old = replay.latest;
+
+    gateway.counting.hold_fills = false;
+    const auto& metrics = gateway.loop.metrics();
+    cluster.run_until([&] {
+        const auto* risk = account(cluster.state_of(leader));
+        const auto* producer = cursor(cluster.state_of(leader), kGateway);
+        return risk && risk->position_quantity.atoms() == kOrderLots && gateway.loop.evidence().obligation_count == 0 &&
+               metrics.position_count == 1 && metrics.positions[0].lots == kOrderLots && producer &&
+               producer->gateway_results_acknowledged_through.value() + 2 >= gateway.loop.next_sequence();
+    }, "the fill to commit, be read back and be acknowledged");
+    require(metrics.stale_state_reads == 0 && !gateway.loop.new_risk_stopped(), "a current state read was called stale");
+    const auto fences = stops(metrics, GatewayStopCause::fence);
+    const auto sequences = gateway.loop.next_sequence();
+    const auto queries = gateway.counting.queries;
+
+    replay.substitute = true;
+    const auto began = steady_ms();
+    cluster.run_until([&] { return metrics.stale_state_reads >= 3; }, "three stale state reads");
+    require(steady_ms() - began >= 2 * Gateway::config().state_interval,
+            "stale state reads were retried without waiting for the state interval");
+    require(metrics.positions[0].lots == kOrderLots, "the gateway adopted a state older than its own committed fill");
+    require(gateway.loop.new_risk_stopped() && stops(metrics, GatewayStopCause::fence) == fences + 1 &&
+                stops_other_than(metrics, GatewayStopCause::fence) == 0,
+            "a stale state read was not held as one fence");
+    require(gateway.counting.queries == queries && gateway.loop.next_sequence() == sequences,
+            "the gateway acted on a stale state read that still shows the filled order resting");
+
+    replay.substitute = false;
+    const auto rearms = metrics.rearms;
+    const auto current_again = steady_ms();
+    cluster.run_until([&] { return !gateway.loop.new_risk_stopped(); }, "re-arming once state reads are current again");
+    require(metrics.rearms == rearms + 1 && metrics.positions[0].lots == kOrderLots,
+            "the gateway did not re-arm once on a current state read");
+    require(steady_ms() - current_again >= 150, "the quiet period was not counted from the last stale state read");
 }
 
 void a_refused_report_stops_new_risk_and_says_which_report_and_why() {
@@ -1796,6 +1947,10 @@ int main() {
         {"a_caller_outside_the_operator_band_is_paced_at_ingress",
          a_caller_outside_the_operator_band_is_paced_at_ingress},
         {"many_round_trips_never_stop_the_gateway", many_round_trips_never_stop_the_gateway},
+        {"a_leader_with_a_slow_disk_never_makes_the_gateway_question_a_filled_order",
+         a_leader_with_a_slow_disk_never_makes_the_gateway_question_a_filled_order},
+        {"a_state_read_older_than_a_committed_result_is_discarded_as_a_fence",
+         a_state_read_older_than_a_committed_result_is_discarded_as_a_fence},
         {"a_refused_report_stops_new_risk_and_says_which_report_and_why",
          a_refused_report_stops_new_risk_and_says_which_report_and_why},
         {"flatten_rearms_by_itself_and_sells_exactly_the_position",

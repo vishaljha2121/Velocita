@@ -224,7 +224,7 @@ and on every state read (about every 250 ms), not only after a stop.
 
 | Stop cause (`STOP new_risk cause=`) | What it is | Re-arms by itself? |
 |---|---|---|
-| `fence` | term or leader change, or a state read that timed out | yes: after `--rearm-quiet-ms` (default 30 s) with no further term change, and only through the check above |
+| `fence` | term or leader change, a state read that timed out, or a state read older than a result the gateway has already seen committed (`velocita_gateway_stale_state_reads_total`) | yes: after `--rearm-quiet-ms` (default 30 s) with no further term change, and only through the check above |
 | `unknown_outcome` | a send whose outcome could not be established | no: restart after reconciling the order |
 | `conflict`, `reconciliation_exhausted` | the cluster holds a conflict, or a query ran out of attempts | no |
 | `refused_evidence` | the kernel refused a venue report | no |

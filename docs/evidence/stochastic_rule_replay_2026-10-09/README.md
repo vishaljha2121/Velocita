@@ -55,8 +55,8 @@ Added later on 2026-10-09 to check that the week was not unusual.
 | Paper: 20 bp a side | $79.67 | -$80.17 | $497 | after 3.8 days |
 | Measured: 100 bp buy, 98 bp sell | $394.37 | -$394.86 | $101 | after 0.9 days |
 
-Eleven of the thirty full days were positive before fees and nineteen negative; the largest day
-either way was about 50 cents. The month says the same as the week: nothing before costs, so the
+Ten of the thirty full days were positive before fees and twenty negative; the largest day
+either way was 56 cents. The month says the same as the week: nothing before costs, so the
 cost is the result.
 
 ## What this says

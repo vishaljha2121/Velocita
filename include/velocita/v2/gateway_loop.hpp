@@ -149,6 +149,7 @@ struct GatewayMetrics {
     double heartbeat_timestamp_seconds{};
     std::array<std::uint64_t, static_cast<std::size_t>(GatewayStopCause::count)> stops{};
     std::uint64_t rearms{};
+    std::uint64_t stale_state_reads{};
     std::array<bool, static_cast<std::size_t>(GatewayStopCause::count)> stop_active{};
     bool awaiting_arm{};
     bool not_configured{};
@@ -259,6 +260,7 @@ private:
     Tick last_state_at_{};
     bool have_state_{};
     bool state_dirty_{true};
+    bool state_stale_{};
     std::uint64_t next_sequence_{};
     std::uint64_t acknowledged_through_{};
     std::uint64_t last_evidence_sequence_{};

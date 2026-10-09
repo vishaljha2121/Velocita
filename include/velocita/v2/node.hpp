@@ -55,6 +55,7 @@ struct NodeCounters {
     std::uint64_t compactions{};
     std::uint64_t last_compaction_ms{};
     std::uint64_t gateway_state_reads{};
+    std::uint64_t gateway_state_reads_deferred{};
     std::uint64_t gateway_proofs_sent{};
     std::uint64_t gateway_refusals{};
     std::uint64_t ingress_rate_limited{};
@@ -75,7 +76,7 @@ class V2Node final {
 public:
     V2Node(const NodeConfig& config, const VerifiedExecutionCatalog& catalog, NodeSecrets secrets,
            std::uint64_t session_epoch, NodeTransport& transport,
-           MetadataCheckpoints metadata_checkpoints = {});
+           MetadataCheckpoints metadata_checkpoints = {}, StorageCheckpoints storage_checkpoints = {});
     ~V2Node();
     V2Node(const V2Node&) = delete;
     V2Node& operator=(const V2Node&) = delete;

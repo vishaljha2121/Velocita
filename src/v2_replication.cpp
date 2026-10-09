@@ -1121,6 +1121,10 @@ CommittedOutboxView ReplicatedKernel::committed_outbox() const {
     return view;
 }
 
+bool ReplicatedKernel::apply_pending() const noexcept {
+    return raft_get_commit_idx(server_) > raft_get_last_applied_idx(server_);
+}
+
 std::uint64_t ReplicatedKernel::compact_within_floor() {
     require_usable();
     if (compaction_) return compact();
