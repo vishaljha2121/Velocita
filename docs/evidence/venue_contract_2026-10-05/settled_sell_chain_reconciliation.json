@@ -1,0 +1,79 @@
+{
+  "checked_at": "2026-10-05T19:24:02.628851+00:00",
+  "rpc_method": "getTransaction",
+  "commitment": "finalized",
+  "transaction_found": true,
+  "signature_matches": true,
+  "slot": 453671564,
+  "block_time": 1791228113,
+  "transaction_error": null,
+  "network_fee_lamports": 38000,
+  "native_changes": [
+    {
+      "account_index": 0,
+      "before_lamports": 1647251637,
+      "after_lamports": 1645725197,
+      "delta_lamports": -1526440,
+      "fee_payer": true
+    },
+    {
+      "account_index": 1,
+      "before_lamports": 40296934,
+      "after_lamports": 31896934,
+      "delta_lamports": -8400000,
+      "fee_payer": false
+    },
+    {
+      "account_index": 4,
+      "before_lamports": 0,
+      "after_lamports": 1488440,
+      "delta_lamports": 1488440,
+      "fee_payer": false
+    },
+    {
+      "account_index": 16,
+      "before_lamports": 158089903488,
+      "after_lamports": 158098303488,
+      "delta_lamports": 8400000,
+      "fee_payer": false
+    }
+  ],
+  "token_changes": [
+    {
+      "account_index": 4,
+      "owner_account_index": 1,
+      "asset": "USDC",
+      "decimals": 6,
+      "before_atoms": 0,
+      "after_atoms": 1006989,
+      "delta_atoms": 1006989
+    },
+    {
+      "account_index": 8,
+      "owner_account_index": null,
+      "asset": "USDC",
+      "decimals": 6,
+      "before_atoms": 287081797,
+      "after_atoms": 287083815,
+      "delta_atoms": 2018
+    },
+    {
+      "account_index": 16,
+      "owner_account_index": 15,
+      "asset": "WSOL",
+      "decimals": 9,
+      "before_atoms": 158087863800,
+      "after_atoms": 158096263800,
+      "delta_atoms": 8400000
+    },
+    {
+      "account_index": 18,
+      "owner_account_index": 15,
+      "asset": "USDC",
+      "decimals": 6,
+      "before_atoms": 20202522626,
+      "after_atoms": 20201513619,
+      "delta_atoms": -1009007
+    }
+  ]
+}

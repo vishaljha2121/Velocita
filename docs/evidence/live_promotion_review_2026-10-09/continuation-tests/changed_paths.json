@@ -1,0 +1,50 @@
+[
+  {
+    "path": "include/velocita/v2/signer_service.hpp",
+    "sha256": "e67a4df82e312a12e7a28e0a33b3c932baef4436d1e39be22069e3511e24931d"
+  },
+  {
+    "path": "src/v2_signer_socket.cpp",
+    "sha256": "d49b0aa834f45651f3dc157e315424102344c1e2939d6dab7e1510509dd93a84"
+  },
+  {
+    "path": "src/v2_signer_main.cpp",
+    "sha256": "6b007d40f2c582405fd6bba5c586189b15b077b859a23416c4a7727395d0547f"
+  },
+  {
+    "path": "tests/v2_signer_tests.cpp",
+    "sha256": "a04e8fe71b7d3cd628be9ef768349769e4cdaf007d1405fa2c1aa41d1a7b4ee3"
+  },
+  {
+    "path": "tests/test_roles_stage.py",
+    "sha256": "ff86e9d87a8fe610143d5ccce15c146ab571a3673a40ac1775f17042b9bcd5e1"
+  },
+  {
+    "path": "tests/test_venue_basis_timing.py",
+    "sha256": "033d93d90c132859e65de764b9735b9c2f82f7bfd1a588d4d8a90a6d6481584a"
+  },
+  {
+    "path": "docs/evidence/roles_incarnation_2026-10-09/stage-host.sh",
+    "sha256": "acc968a5f12b93557724b638f21607ea192eed1415a613de8ca0924b8def5ab3"
+  },
+  {
+    "path": "docs/LIVE_PROMOTION_PLAN_2026-10-07.md",
+    "sha256": "98bf1898203e9ee31c20d8198a0e29c4ae8ef83678bad610031f823c21bfd26b"
+  },
+  {
+    "path": "docs/evidence/venue_price_basis_2026-10-09/basis.py",
+    "sha256": "c83e3eb8451196a02859f378113626c21aca8283b0944aba94c471094d943030"
+  },
+  {
+    "path": "docs/evidence/venue_price_basis_2026-10-09/README.md",
+    "sha256": "6e7750e52540d07df9334c2c237af479b04de78369ef100ffa9bbcc6cfdf7f1f"
+  },
+  {
+    "path": "docs/evidence/venue_price_basis_2026-10-09/result_close_available.txt",
+    "sha256": "86d984d6db58b9d0f14167a9b4458dc0b098fc8147926215b424d549a6fb38ca"
+  },
+  {
+    "path": "docs/evidence/venue_price_basis_2026-10-09/close_available_evidence.json",
+    "sha256": "9ac771d64c16980e4af6a72f9a0360feb009f06c21e77733b3840e6c31470e37"
+  }
+]

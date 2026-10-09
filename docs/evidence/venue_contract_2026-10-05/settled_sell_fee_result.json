@@ -1,0 +1,24 @@
+{
+  "status": "finalized_success_verified_on_chain",
+  "transaction_signature": "4QmcU9go1f5eLoQmw9qhg4BjCeHb9igjGgbKBgjzpEAiJFnqgmnpLELaRP4khxf2P7s4cAK5UFeSQ55uiEPpDXea",
+  "sold_sol": "0.0084",
+  "gross_usdc": "1.009007",
+  "fee_transfer_usdc": "0.002018",
+  "net_usdc": "1.006989",
+  "fee_bps_net_plus_fee_basis": "19.99986124972373828922891516",
+  "quoted_fee_usdc": "0.002019",
+  "quoted_net_usdc": "1.007579",
+  "net_quote_shortfall_usdc": "0.000590",
+  "gross_quote_shortfall_usdc": "0.000591",
+  "network_fee_lamports": 38000,
+  "user_was_network_fee_payer": false,
+  "additional_user_sol_debit_lamports": 0,
+  "gateway_order_list_rows": 0,
+  "gateway_order_transaction_list_rows": 0,
+  "scope": "one CLI v0.0.11 legacy-route SOL sell with API-key-derived authentication; not buy fees or other routes",
+  "source_sha256": {
+    "settled_sell_chain_reconciliation.json": "2ad6de1c054d7c32fe450e1721cdefdf036e2bc309be6031873c124165ea8604",
+    "settled_sell_parsed_transfers.json": "c67bf597449d6f459728aee11cc7029a61a9556a8d9340608a86f7cbe8c6bba2",
+    "settled_sell_api_reconciliation.json": "b46930d1552a1ad236daadcd82959ec1a83e48adccccc1e7c329b3e447b8b046"
+  }
+}

@@ -25,7 +25,12 @@ def venue_points(path):
 
 def binance_closes(start, end, cache):
     if cache and pathlib.Path(cache).exists():
-        return {int(k): v for k, v in json.loads(pathlib.Path(cache).read_text()).items()}
+        document = json.loads(pathlib.Path(cache).read_text())
+        if document.get('timestamp_convention') != 'close_available_v1':
+            raise ValueError('cache timestamp convention is not close_available_v1')
+        if document.get('start') != start or document.get('end') != end:
+            raise ValueError('cache interval does not match the requested interval')
+        return {int(k): v for k, v in document['closes'].items()}
     closes = {}
     at = start * 1000
     while at < end * 1000:
@@ -36,11 +41,13 @@ def binance_closes(start, end, cache):
         if not page:
             break
         for row in page:
-            closes[row[0] // 1000] = float(row[4])
+            if row[0] % 1000 or row[6] != row[0] + 999:
+                raise ValueError('invalid one-second candle boundary')
+            closes[(row[6] + 1) // 1000] = float(row[4])
         at = page[-1][0] + 1000
         time.sleep(0.2)
     if cache:
-        pathlib.Path(cache).write_text(json.dumps(closes))
+        pathlib.Path(cache).write_text(json.dumps(dict(timestamp_convention='close_available_v1', start=start, end=end, closes=closes)))
     return closes
 
 

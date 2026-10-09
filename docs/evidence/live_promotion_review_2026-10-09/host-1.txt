@@ -1,0 +1,14 @@
+Fri Oct  9 19:10:45 UTC 2026
+velocita-v2-node-exporter docker.io/prom/node-exporter:v1.10.2
+velocita-paper-stochastic-exporter localhost/velocita-v2:ledger-f55209e
+velocita-paper-stochastic-node localhost/velocita-v2:ledger-f55209e
+velocita_v2_role{host="pi",node="2",role="none"} 0
+velocita_v2_role{host="pi",node="2",role="follower"} 1
+velocita_v2_role{host="pi",node="2",role="candidate"} 0
+velocita_v2_role{host="pi",node="2",role="leader"} 0
+velocita_v2_failed{host="pi",node="2"} 0
+velocita_v2_term{host="pi",node="2"} 13
+velocita_v2_log_index{host="pi",node="2",kind="current"} 20880
+velocita_v2_log_index{host="pi",node="2",kind="commit"} 20876
+velocita_v2_log_index{host="pi",node="2",kind="applied"} 20876
+velocita_v2_log_index{host="pi",node="2",kind="durable"} 20880

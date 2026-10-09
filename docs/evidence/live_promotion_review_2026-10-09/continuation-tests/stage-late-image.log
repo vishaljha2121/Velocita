@@ -1,0 +1,17 @@
+F
+======================================================================
+FAIL: test_missing_shadow_image_blocks_before_state_moves (test_roles_stage.StageTests.test_missing_shadow_image_blocks_before_state_moves)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/tests/test_roles_stage.py", line 68, in test_missing_shadow_image_blocks_before_state_moves
+    self.assert_untouched(self.run_stage(STAGE_TEST_MISSING_IMAGE='paper-roles-2f5d405'))
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/vishaljha/aeron-raft-pi/tests/test_roles_stage.py", line 50, in assert_untouched
+    self.assertTrue((self.live / 'sentinel').exists(), 'live state moved despite failed preflight')
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : live state moved despite failed preflight
+
+----------------------------------------------------------------------
+Ran 1 test in 0.265s
+
+FAILED (failures=1)

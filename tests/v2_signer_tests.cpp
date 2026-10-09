@@ -7,6 +7,8 @@
 #include <csignal>
 #include <cstdlib>
 #include <fstream>
+#include <fcntl.h>
+#include <cerrno>
 #include <functional>
 #include <iostream>
 #include <sstream>
@@ -523,15 +525,19 @@ void the_floor_file_survives_and_never_goes_back() {
     require(FloorFile::open(file, missing) == FloorError::missing, "a missing floor file opened");
     require(FloorFile::create(file) == FloorError::none && FloorFile::create(file) == FloorError::already_exists,
             "a floor file was not created once");
-    FloorFile floor;
-    require(FloorFile::open(file, floor) == FloorError::none && floor.floor() == 0, "a new floor is not zero");
-    const auto store = floor.store();
-    require(store.persist_fn(store.context, 41) && floor.floor() == 41, "the floor did not advance");
-    require(!store.persist_fn(store.context, 41) && !store.persist_fn(store.context, 40) && floor.floor() == 41,
-            "the floor went back or stood still");
-    FloorFile reopened;
-    require(FloorFile::open(file, reopened) == FloorError::none && reopened.floor() == 41,
-            "the floor did not survive a reopen");
+    {
+        FloorFile floor;
+        require(FloorFile::open(file, floor) == FloorError::none && floor.floor() == 0, "a new floor is not zero");
+        const auto store = floor.store();
+        require(store.persist_fn(store.context, 41) && floor.floor() == 41, "the floor did not advance");
+        require(!store.persist_fn(store.context, 41) && !store.persist_fn(store.context, 40) && floor.floor() == 41,
+                "the floor went back or stood still");
+    }
+    {
+        FloorFile reopened;
+        require(FloorFile::open(file, reopened) == FloorError::none && reopened.floor() == 41,
+                "the floor did not survive a reopen");
+    }
     require(!std::filesystem::exists(directory.path / "floor.bin.tmp"), "the floor's temporary file was left behind");
     struct stat info {};
     require(::stat(file.c_str(), &info) == 0 && (info.st_mode & 0777) == 0600, "the floor file is not private");
@@ -554,6 +560,54 @@ void the_floor_file_survives_and_never_goes_back() {
     std::ofstream(file, std::ios::binary | std::ios::trunc) << bytes << 'x';
     FloorFile refused;
     require(FloorFile::open(file, refused) == FloorError::invalid_file, "a floor file with a trailing byte opened");
+}
+
+void a_floor_has_one_owner_until_destruction() {
+    Directory directory("v2-signer-lock");
+    const auto file = directory.path / "floor.bin";
+    require(FloorFile::create(file) == FloorError::none, "fixture: floor create");
+    {
+        FloorFile first, second;
+        require(FloorFile::open(file, first) == FloorError::none, "fixture: first floor owner");
+        require(FloorFile::open(file, second) != FloorError::none,
+                "a second owner opened the live floor");
+        auto store = first.store();
+        require(store.persist_fn(store.context, 100), "floor 100 did not persist");
+        require(FloorFile::open(file, second) != FloorError::none,
+                "replacing the floor inode released ownership");
+    }
+    FloorFile restarted;
+    require(FloorFile::open(file, restarted) == FloorError::none && restarted.floor() == 100,
+            "ownership release lost the durable floor");
+    auto store = restarted.store();
+    require(!store.persist_fn(store.context, 1), "the restarted owner regressed the floor");
+}
+
+void a_socket_has_one_owner_and_recovers_a_stale_path() {
+    Directory directory("v2-signer-lock-socket");
+    const auto path = directory.path / "s.sock";
+    {
+        SignerServer first;
+        require(first.listen(path, ::geteuid()), "fixture: first listener");
+        struct stat before {}, after {};
+        require(::lstat(path.c_str(), &before) == 0, "fixture: socket inode");
+        {
+            SignerServer second;
+            require(!second.listen(path, ::geteuid()), "a second listener stole the live socket");
+        }
+        require(::lstat(path.c_str(), &after) == 0 && before.st_ino == after.st_ino,
+                "a refused listener changed the owner's socket");
+    }
+    require(!std::filesystem::exists(path), "owner did not remove its socket");
+    sockaddr_un address{};
+    address.sun_family = AF_UNIX;
+    std::memcpy(address.sun_path, path.c_str(), path.native().size() + 1);
+    const int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
+    require(fd >= 0 && ::bind(fd, reinterpret_cast<const sockaddr*>(&address), sizeof(address)) == 0,
+            "fixture: stale socket bind");
+    ::close(fd);
+    SignerServer recovered;
+    require(recovered.listen(path, ::geteuid()), "stale socket could not be recovered");
 }
 
 void the_audit_file_only_grows() {
@@ -665,6 +719,45 @@ void a_missing_or_silent_signer_is_unavailable() {
     SignerServer refused;
     require(!refused.listen(directory.path / "file.sock", 1), "the server replaced a regular file with its socket");
     require(!refused.listen(directory.path / std::string(200, 'p'), 1), "a socket path too long was accepted");
+}
+
+void a_full_accept_queue_cannot_extend_the_client_deadline() {
+    Directory directory("v2-signer-full");
+    const auto path = directory.path / "s.sock";
+    SignerServer silent;
+    require(silent.listen(path, ::geteuid()), "fixture: full queue listener");
+    sockaddr_un address{};
+    address.sun_family = AF_UNIX;
+    std::memcpy(address.sun_path, path.c_str(), path.native().size() + 1);
+    std::vector<int> connections;
+    bool full = false;
+    for (int i = 0; i < 64; ++i) {
+        const int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
+        require(fd >= 0 && ::fcntl(fd, F_SETFL, O_NONBLOCK) == 0, "fixture: queue client");
+        connections.push_back(fd);
+        if (::connect(fd, reinterpret_cast<const sockaddr*>(&address), sizeof(address)) != 0) {
+            full = true;
+            break;
+        }
+    }
+    require(full, "fixture: accept queue never filled");
+    const pid_t pid = ::fork();
+    require(pid >= 0, "fixture: deadline child");
+    if (pid == 0) {
+        SocketSigner client(path, 100);
+        const auto result = client.sign(request_for(kPayload));
+        ::_exit(result.verdict == SignerVerdict::unavailable ? 0 : 2);
+    }
+    int status = 0;
+    bool finished = false;
+    for (int i = 0; i < 100; ++i) {
+        if (::waitpid(pid, &status, WNOHANG) == pid) { finished = true; break; }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if (!finished) { ::kill(pid, SIGKILL); ::waitpid(pid, &status, 0); }
+    for (const int fd : connections) ::close(fd);
+    require(finished && WIFEXITED(status) && WEXITSTATUS(status) == 0,
+            "a full accept queue bypassed the client deadline");
 }
 
 void a_reply_with_the_wrong_number_of_signatures_is_unavailable() {
@@ -790,6 +883,12 @@ void the_process_signs_stops_and_restarts_above_its_floor(const std::string& bin
         const auto ready = first.line();
         require(ready.rfind("READY signer test_key_only=1 payloads=mock sequence_floor=0", 0) == 0,
                 "the signer did not report ready with a test key: " + ready);
+        {
+            Process duplicate(binary, args);
+            const auto message = duplicate.line();
+            require(duplicate.finish(false) == 64 && message.find("floor is already owned") != std::string::npos,
+                    "a second process was not refused for floor ownership: " + message);
+        }
         SocketSigner client(socket, 2'000);
         const auto result = client.sign(request);
         require(result.verdict == SignerVerdict::signed_ok && result.signatures[0].view() == kPayloadSignature &&
@@ -859,11 +958,14 @@ int main(int argc, char** argv) {
         {"requests_and_responses_round_trip_and_reject_damage", requests_and_responses_round_trip_and_reject_damage},
         {"the_key_file_must_be_a_test_key", the_key_file_must_be_a_test_key},
         {"the_floor_file_survives_and_never_goes_back", the_floor_file_survives_and_never_goes_back},
+        {"a_floor_has_one_owner_until_destruction", a_floor_has_one_owner_until_destruction},
+        {"a_socket_has_one_owner_and_recovers_a_stale_path", a_socket_has_one_owner_and_recovers_a_stale_path},
         {"the_audit_file_only_grows", the_audit_file_only_grows},
         {"a_client_of_the_allowed_user_gets_a_signature_over_the_socket",
          a_client_of_the_allowed_user_gets_a_signature_over_the_socket},
         {"another_user_is_refused_before_any_byte_is_read", another_user_is_refused_before_any_byte_is_read},
         {"a_missing_or_silent_signer_is_unavailable", a_missing_or_silent_signer_is_unavailable},
+        {"a_full_accept_queue_cannot_extend_the_client_deadline", a_full_accept_queue_cannot_extend_the_client_deadline},
         {"a_reply_with_the_wrong_number_of_signatures_is_unavailable",
          a_reply_with_the_wrong_number_of_signatures_is_unavailable},
     };

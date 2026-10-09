@@ -1,0 +1,2 @@
+FAIL a_floor_has_one_owner_until_destruction: a second owner opened the live floor
+FAIL a_socket_has_one_owner_and_recovers_a_stale_path: a second listener stole the live socket

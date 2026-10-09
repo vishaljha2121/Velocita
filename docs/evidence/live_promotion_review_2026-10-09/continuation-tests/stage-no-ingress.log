@@ -1,0 +1,19 @@
+F
+======================================================================
+FAIL: test_existing_ingress_config_blocks_before_state_moves (test_roles_stage.StageTests.test_existing_ingress_config_blocks_before_state_moves)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/tests/test_roles_stage.py", line 77, in test_existing_ingress_config_blocks_before_state_moves
+    self.assert_untouched(self.run_stage())
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Users/vishaljha/aeron-raft-pi/tests/test_roles_stage.py", line 49, in assert_untouched
+    self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 0 == 0 : RETIRED /Users/vishaljha/aeron-raft-pi/docs/evidence/live_promotion_review_2026-10-09/tmpo_mx5soz/velocita-indicator-paper/retired/stochastic-abd1e149-20261009
+STAGED nuc1 incarnation=348e0b2cd4f639ff404df4eeadee0ee5
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.321s
+
+FAILED (failures=1)

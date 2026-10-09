@@ -11,9 +11,11 @@ maps the checkpoint review (`docs/evidence/stochastic_cash_2026-10-07/CHECKPOINT
 session made 29 round trips in 17 hours and was flat before fees (`RESULTS.md`). The system around
 it is working; the economics are not proven:
 
-- The paper fee is 20 bp a side. The measured True Markets cost is about 100 bp to buy and 98 bp
-  to sell. At the measured cost the first session would have lost $7.96, about $1 for every $101 of
-  volume.
+- The paper fee is 20 bp a side. The finalized October 5 CLI/API-key SOL sell verified about
+  20 bp on that route. The buy fee and complete round-trip execution cost remain unverified.
+  Historical 100/98 bp quotes describe a different route/time and remain a stress scenario,
+  not the proven fee for the intended execution route. See
+  `evidence/venue_contract_2026-10-05/SETTLED_SOL_SELL_FEE.md`.
 - The paper price is the Binance SOLUSDT close. A live order fills at True Markets' price.
 - The paper venue always fills completely at the limit.
 
@@ -23,12 +25,12 @@ at 100 bp a side.
 
 ## What must be true before the first real order
 
-Last updated 2026-10-09 16:30 UTC. Status words: **Done** (built, tested, running on the hosts),
+Last reviewed 2026-10-09 after 19:14 UTC; continuation fixes are included in this source checkpoint, not deployed. Status words: **Done** (built, tested, running on the hosts),
 **Built** (committed and tested, not running), **Open**.
 
 | # | Requirement | Status | Where |
 |---|---|---|---|
-| 1 | The edge cannot freeze or go blind (review A1, A2) | **Done** 2026-10-08 | `0063c86` |
+| 1 | The edge cannot freeze or go blind (review A1, A2) | **Done** 2026-10-08; code deployed, but current edge is stopped (see runtime snapshot) | `0063c86` |
 | 2 | The market-data allowlist is enforced (A3) | **Done** 2026-10-08 | `0063c86` |
 | 3 | The archive cannot silently fill (B1) | **Done** 2026-10-08: fewer commands, usage metric, alerts at 70% and 90% | `d542601`, `9dcca2c`, `3264351` |
 | 4 | The kernel checks every fill's price and fee and owns cash, P&L and a loss limit (ADR 0021) | **Done** 2026-10-08: running with a $10 loss limit | `4c04f75`, `f55209e` |
@@ -40,7 +42,7 @@ Last updated 2026-10-09 16:30 UTC. Status words: **Done** (built, tested, runnin
 | 10 | The venue transport | **Built** 2026-10-09 against a local mock only; it can connect only to the loopback address and is in no image. TLS, the real endpoint and recorded reply shapes are not built | ADR 0019 amendment 2 |
 | 11 | The venue contract questions | **Open**; several need the owner or True Markets | journey step 3 |
 | 12 | The paper venue can reject, partly fill and time out | **Built** 2026-10-09, off by default: four gateway flags switch on faults the venue already simulated. Needs a gateway restart and the owner's choice of rates | runbook 5.2.1 |
-| 13 | Decide and fill on the venue's own price, with cost measured on both sides | **Partly done** 2026-10-09: the price difference is measured and small (9 bp level, 2.5 bp noise, venue 1 to 2 s behind). Open: the paper fee stays 20 bp against a measured 100 bp (owner decision), and executable quotes need a call outside the keyless-GET approval | `docs/evidence/venue_price_basis_2026-10-09/` |
+| 13 | Decide and fill on the venue's own price, with cost measured on both sides | **Partly done** 2026-10-09: the one-second timestamp error is corrected locally; the same history window now peaks at zero shift (correlation 0.551), not a verified 1–2 s lag. Open: executable prices, measured buy fee, and route-specific reconciliation. A 20 bp executed sell does not validate the buy side | `docs/evidence/venue_price_basis_2026-10-09/` |
 | 14 | Startup balance reconciliation against the venue | **Open** | journey step 7 |
 | 15 | Outside heartbeat armed | **Open**: installed, waits for the owner's Healthchecks URL | review B6 |
 | 16 | Drills while holding a position: kill, leader loss, gateway restart | **Open** | journey step 8 |
@@ -48,16 +50,16 @@ Last updated 2026-10-09 16:30 UTC. Status words: **Done** (built, tested, runnin
 | 18 | Leader steps down when it cannot reach a quorum | **Built** 2026-10-08, not deployed | `20329b6` |
 | 19 | Raft library assertions active in release builds | **Built** 2026-10-08, not deployed | `83a103e` |
 | 20 | Review of the files the kernel review did not read (node loop, write-ahead log, archive store, codecs, authentication) | **Done** 2026-10-09: node loop, authentication, write-ahead log, archive store, protocol, codecs, Aeron transport and the skipped kernel ranges read. The second pass's findings are plan items 22 to 24; the third pass found no defect | `REVIEW_2_NODE_AND_STORAGE.md`, `REVIEW_3_CODECS_AND_REMAINDER.md` |
-| 21 | Review of the research and backtest code | **Partly done** 2026-10-09: the running rule replayed on a week and on 30 days of data with the live code. No edge before costs; the result is the cost. The research code itself is not yet read | `docs/evidence/stochastic_rule_replay_2026-10-09/` |
+| 21 | Review of the research and backtest code | **Partly done** 2026-10-09: the running rule replayed on a week and on 30 days of data with the live code. The diagnostic observed near-zero gross P&L; it omits funded-cash/loss gates and marked inventory, so its turnover is not feasible $25-account turnover. Full research review and promotion validation remain open | `docs/evidence/stochastic_rule_replay_2026-10-09/` |
 | 22 | A leaked or faulty key cannot fill the log: per-caller rate limit at ingress | **Built** 2026-10-09, not deployed (voter image) | review 2, finding 1 |
 | 23 | A voter survives a crash or power cut without a person: archive leftovers and a torn last log block | **Open**. Done so far: the runbook, and the start-up error now names a stray archive file. Not done: automatic cleanup, and any repair for a torn block | review 2, findings 2 and 4 |
 | 24 | The log writer thread sleeps when idle | **Built** 2026-10-09, not deployed (voter image) | review 2, finding 3 |
 | 25 | A reconciliation that agrees with a finished order does not stop the gateway | **Built** 2026-10-09 after it stopped the paper run; not deployed | `docs/evidence/gateway_stop_2026-10-09/` |
 | 26 | The gateway never acts on a state older than a result it has seen committed (the cause of the 2026-10-09 stop: a leader with a slow disk served a state read from before a fill its followers had already answered) | **Built** 2026-10-09, not deployed (voter binary and gateway image; no schema change). Reproduced with three voters and a slow leader disk | `docs/evidence/gateway_stop_2026-10-09/` |
 
-Count: 4 done, 8 built and waiting for a new incarnation (6, 7, 8, 18, 19, 22, 24, 25), 4 built and
-waiting for a gateway image or inert (9 test key only, 10 mock only, 12 off by default, 17), 4 partly
-done (5, 13, 20, 21), 5 open (11, 14, 15, 16, 23).
+Count of the 26 table entries: 5 done (1, 2, 3, 4, 20), 13 built (6–10, 12, 17–19, 22, 24–26),
+3 partly done (5, 13, 21), and 5 open (11, 14, 15, 16, 23). Done here records delivered work,
+not a claim that every associated service is currently healthy.
 
 Items 6, 7, 8, 18 and 19 are one deployment: schema 11 needs a new incarnation, the owner's
 approval, a flat account, and the operator ceremony (which now includes the two `assign-role`
@@ -69,8 +71,12 @@ Incarnation `abd1e149a26d4062ba5bbba2d90b3305`, started 2026-10-08 13:38 UTC.
 
 - Voters and gateway: `localhost/velocita-v2:ledger-f55209e`. Edge and observer:
   `localhost/velocita-v2-shadow:paper-ledger-f55209e`.
-- Paper account: fresh $25.00, no orders. Kernel loss limit $10, position limit 12 lots,
-  fee cap 30 bp.
+- Read-only snapshot at 2026-10-09 19:14 UTC: paper cash/equity $22.314889 from $25, flat
+  position; kernel loss limit $10, position limit 12 lots, fee cap 30 bp. All three voters run
+  term 13, nuc1 leads. Current/durable index 20880; commit/applied 20876. The edge service is
+  failed. Runtime caller-11/12 key files are now present (presence only was inspected).
+  The source-command error `code=-1` means the submitter did not obtain an outcome; it does
+  not itself establish a price-feed failure. Recovery/cutover is still pending.
 - The previous session's results: `docs/evidence/stochastic_cash_2026-10-07/RESULTS.md`
   (58 orders, $803.98 volume, net -$1.60, of which fees $1.61).
 
@@ -101,3 +107,16 @@ explicit approval.
   can move the whole account, so the account should hold only the canary capital.
 - Wired Ethernet for the three hosts (journey step 2.3). On 2026-10-08 nuc2 dropped off the network
   for about 20 seconds and leadership moved.
+
+## Continuation after the independent review
+
+See `evidence/live_promotion_review_2026-10-09/CONTINUATION.md` for exact changed paths,
+checks and remaining boundaries. This checkpoint fixes the cutover's ineffective negated-shell
+checks, enforce signer floor/socket ownership, bound socket I/O under one deadline, and
+correct close-availability timestamps. These changes are committed in this checkpoint and are not deployed.
+
+The mock signer remains excluded from release images. No real key decoder, live TLS route,
+venue contract, new loss budget, or real trading is authorized by this continuation. The
+prepared schema-11 ceremony stays owner-run. Build production images from the final committed
+revision; do not build the shared dirty working tree. Preserve and archive the existing run
+before any approved fresh-incarnation change.

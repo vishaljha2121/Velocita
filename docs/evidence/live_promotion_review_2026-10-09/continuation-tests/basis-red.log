@@ -1,0 +1,29 @@
+FF
+======================================================================
+FAIL: test_close_is_available_after_its_interval (test_venue_basis_timing.BasisTimingTests.test_close_is_available_after_its_interval)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/tests/test_venue_basis_timing.py", line 21, in test_close_is_available_after_its_interval
+    self.assertEqual(closes, {2: 11.0, 3: 13.0})
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: {1: 11.0, 2: 13.0} != {2: 11.0, 3: 13.0}
+- {1: 11.0, 2: 13.0}
+?  ^        ^
+
++ {2: 11.0, 3: 13.0}
+?  ^        ^
+
+
+======================================================================
+FAIL: test_old_timestamp_cache_is_refused (test_venue_basis_timing.BasisTimingTests.test_old_timestamp_cache_is_refused)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/tests/test_venue_basis_timing.py", line 29, in test_old_timestamp_cache_is_refused
+    with self.assertRaisesRegex(ValueError, 'timestamp convention'):
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+----------------------------------------------------------------------
+Ran 2 tests in 0.001s
+
+FAILED (failures=2)

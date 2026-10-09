@@ -1,0 +1,33 @@
+Test project /Users/vishaljha/.cache/velocita-review/build-2f5d405
+    Start  20: v2-replication-tests
+1/7 Test  #20: v2-replication-tests ..............   Passed    3.33 sec
+    Start 111: v2-signer-tests
+2/7 Test #111: v2-signer-tests ...................***Failed    0.32 sec
+FAIL a_client_of_the_allowed_user_gets_a_signature_over_the_socket: the signer socket could not be created
+FAIL another_user_is_refused_before_any_byte_is_read: the signer socket could not be created
+FAIL a_missing_or_silent_signer_is_unavailable: fixture: silent socket not created
+FAIL a_reply_with_the_wrong_number_of_signatures_is_unavailable: fixture: fake signer socket
+FAIL the_process_signs_stops_and_restarts_above_its_floor: the signer did not report ready with a test key: velocita-v2-signer: the socket could not be created at /private/var/folders/lj/9xsh1_h90_lc_cmvn_3gk2b80000gn/T/v2-signer-process-0DysGO/s.sock
+
+    Start 112: v2-truemarkets-transport-tests
+3/7 Test #112: v2-truemarkets-transport-tests ....***Failed    0.12 sec
+FAIL calls_reach_a_local_mock_and_every_failure_has_one_meaning: the mock venue could not listen on the loopback address
+FAIL an_order_goes_through_http_the_envelope_and_the_signer_socket: fixture: signer socket
+
+    Start 113: v2-signer-not-in-release-images
+4/7 Test #113: v2-signer-not-in-release-images ...   Passed    0.06 sec
+    Start 129: v2-gateway-node-tests
+5/7 Test #129: v2-gateway-node-tests .............   Passed  177.93 sec
+    Start 130: v2-node-tests
+6/7 Test #130: v2-node-tests .....................   Passed   35.05 sec
+    Start 145: v2-risk-order-outbox-tests
+7/7 Test #145: v2-risk-order-outbox-tests ........   Passed    0.22 sec
+
+71% tests passed, 2 tests failed out of 7
+
+Total Test time (real) = 217.04 sec
+
+The following tests FAILED:
+	111 - v2-signer-tests (Failed)
+	112 - v2-truemarkets-transport-tests (Failed)
+Errors while running CTest

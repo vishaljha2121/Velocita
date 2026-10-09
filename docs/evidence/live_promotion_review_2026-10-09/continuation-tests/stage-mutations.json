@@ -1,0 +1,17 @@
+[
+  {
+    "mutation": "stage-no-stop",
+    "test": "test_every_running_service_blocks_before_state_moves",
+    "killed": true
+  },
+  {
+    "mutation": "stage-late-image",
+    "test": "test_missing_shadow_image_blocks_before_state_moves",
+    "killed": true
+  },
+  {
+    "mutation": "stage-no-ingress",
+    "test": "test_existing_ingress_config_blocks_before_state_moves",
+    "killed": true
+  }
+]

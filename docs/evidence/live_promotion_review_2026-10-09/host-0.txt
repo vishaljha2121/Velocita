@@ -1,0 +1,34 @@
+/home/velocitas/velocita-bench
+/home/velocitas/velocita-dev-build
+/home/velocitas/velocita-indicator-paper
+/home/velocitas/velocita-md
+/home/velocitas/velocita-research
+/home/velocitas/velocita-soak
+/home/velocitas/velocita-v2
+/home/velocitas/velocita-v2-archive
+/home/velocitas/velocita-v2-build.log
+velocita-md-stream docker.io/library/python:3.12-slim
+velocita-v2-grafana docker.io/grafana/grafana:13.1.3
+velocita-v2-alertmanager docker.io/prom/alertmanager:v0.34.1
+velocita-v2-prometheus docker.io/prom/prometheus:v3.13.2
+velocita-ntfy docker.io/binwiederhier/ntfy:v2.25.0
+velocita-v2-node-exporter docker.io/prom/node-exporter:v1.10.2
+velocita-paper-indicator-observer localhost/velocita-v2-shadow:paper-ledger-f55209e
+velocita-paper-stochastic-node localhost/velocita-v2:ledger-f55209e
+velocita-paper-stochastic-exporter localhost/velocita-v2:ledger-f55209e
+velocita-paper-stochastic-gateway localhost/velocita-v2:ledger-f55209e
+velocita_v2_retained_log_entries{host="nuc1",node="1",pool="ordinary"} 377
+velocita_v2_retained_log_entries{host="nuc1",node="1",pool="protected"} 0
+velocita_v2_retained_log_capacity{host="nuc1",node="1",pool="ordinary"} 8128
+velocita_v2_retained_log_capacity{host="nuc1",node="1",pool="protected"} 64
+velocita_v2_account_position_lots{host="nuc1",node="1",account="2",instrument="2"} 0
+velocita_v2_account_cash_micros{host="nuc1",node="1",account="2",instrument="2"} -2685111
+velocita_v2_account_realized_pnl_micros{host="nuc1",node="1",account="2",instrument="2"} -2685111
+velocita_v2_account_fees_paid_micros{host="nuc1",node="1",account="2",instrument="2"} 2533911
+velocita_v2_account_window_realized_pnl_micros{host="nuc1",node="1",account="2",instrument="2"} -2685111
+velocita_v2_account_max_window_loss_micros{host="nuc1",node="1",account="2",instrument="2"} 10000000
+velocita_v2_archive_bytes{host="nuc1",node="1"} 5243345
+velocita_v2_archive_byte_limit{host="nuc1",node="1"} 1073741824
+velocita_v2_archive_segments{host="nuc1",node="1"} 10
+velocita_v2_archive_segment_limit{host="nuc1",node="1"} 4096
+{"status":"success","data":{"alerts":[{"labels":{"alertname":"VelocitaElectionsRecurring","severity":"warning"},"annotations":{"description":"A healthy cluster holds one term for days. Look for what repeats: compaction pauses (VelocitaCompactionPauseLong), a host that reboots, or a link that drops. Each election fences the gateway for 30 s.","summary":"10 elections in 6 hours"},"state":"firing","activeAt":"2026-10-09T18:55:09.317630599Z","value":"1e+01"},{"labels":{"alertname":"VelocitaCommitStalled","host":"nuc1","node":"1","severity":"warning"},"annotations":{"description":"Work is waiting for quorum: the other voter is probably unreachable.","summary":"Leader has had uncommitted entries for 2 minutes"},"state":"firing","activeAt":"2026-10-09T18:58:19.317630599Z","value":"4e+00"},{"labels":{"alertname":"VelocitaMdStreamSilent","severity":"warning","type":"reference_prices"},"annotations":{"description":"The market-data recorder is hung, stopped or disconnected, so research data has a gap. On nuc1: journalctl --user -u velocita-md-stream; systemctl --user restart velocita-md-stream.","summary":"md-stream on nuc1 has recorded no reference prices for 15 minutes"},"state":"firing","activeAt":"2026-10-09T18:49:19.317630599Z","value":"1e+00"},{"labels":{"alertname":"VelocitaMdStreamDbLarge","host":"nuc1","instance":"100.72.127.102:9110","job":"node","severity":"warning"},"annotations":{"description":"Retention keeps about 5 days (~5.5 GB). Check VelocitaMdBackupNotAcked and the velocita-md-archive journal. If most of the file is free pages (velocita_md_stream_db_free_bytes), compact it with md-stream stopped (runbook).","summary":"stream.db on nuc1 is larger than 8 GB"},"state":"firing","activeAt":"2026-10-09T18:49:39.317630599Z","value":"2.0789567488e+10"},{"labels":{"alertname":"VelocitaPaperEdgeStalled","host":"nuc1","instance":"127.0.0.1:9460","job":"indicator-paper","paper_run":"abd1e149a26d4062ba5bbba2d90b3305-ledger-v1","severity":"critical","strategy":"stochastic"},"annotations":{"description":"A new one-second bar should be marked each second. The edge is stopped, cannot reach the price source, or is receiving bad data. It cannot enter or EXIT while this lasts.","summary":"The stochastic edge has seen no completed bar for 14m 1s"},"state":"firing","activeAt":"2026-10-09T18:56:49.317630599Z","value":"8.41510187625885e+02"}]}}

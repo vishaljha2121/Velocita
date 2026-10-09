@@ -1,0 +1,9 @@
+Test project /Users/vishaljha/.cache/velocita-review/build-2f5d405
+    Start 111: v2-signer-tests
+1/2 Test #111: v2-signer-tests ..................   Passed    0.29 sec
+    Start 112: v2-truemarkets-transport-tests
+2/2 Test #112: v2-truemarkets-transport-tests ...   Passed    0.86 sec
+
+100% tests passed out of 2
+
+Total Test time (real) =   1.15 sec

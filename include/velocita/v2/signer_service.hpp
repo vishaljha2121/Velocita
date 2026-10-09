@@ -131,10 +131,14 @@ private:
     std::array<std::byte, kTestKeyBytes> key_{};
 };
 
-enum class FloorError : std::uint8_t { none, missing, already_exists, invalid_file, io_failure };
+enum class FloorError : std::uint8_t { none, missing, already_exists, invalid_file, io_failure, busy };
 
 class FloorFile final {
 public:
+    FloorFile() noexcept = default;
+    ~FloorFile();
+    FloorFile(const FloorFile&) = delete;
+    FloorFile& operator=(const FloorFile&) = delete;
     [[nodiscard]] static FloorError create(const std::filesystem::path& file) noexcept;
     [[nodiscard]] static FloorError open(const std::filesystem::path& file, FloorFile& destination) noexcept;
     [[nodiscard]] std::uint64_t floor() const noexcept { return floor_; }
@@ -144,6 +148,7 @@ private:
     static bool persist(void* context, std::uint64_t floor) noexcept;
     std::filesystem::path file_;
     std::uint64_t floor_{};
+    int lock_fd_{-1};
 };
 
 class AuditFile final {
@@ -183,6 +188,9 @@ public:
 
 private:
     int fd_{-1};
+    int lock_fd_{-1};
+    std::uint64_t socket_device_{};
+    std::uint64_t socket_inode_{};
     std::filesystem::path path_;
     std::uint32_t allowed_uid_{};
     ServerCounters counters_{};

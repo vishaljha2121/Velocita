@@ -1,60 +1,63 @@
-# How far is the venue's SOL price from the price the strategy decides on?
+# SOL reference-price basis: corrected close-availability comparison
 
-Measured 2026-10-09 for live promotion plan item 13 (checkpoint review B5: "the price and the cost
-are not the venue's"). One day of data, 2026-10-08 05:55 to 2026-10-09 05:55 UTC.
+The October 9 review found that `basis.py` labeled a Binance candle close with its opening
+second. The corrected code uses `(close_time_ms + 1) // 1000`, matching the running strategy.
+The same True Markets history window was rechecked on October 9. This corrects a timing
+measurement; it does not introduce or optimize a trading strategy.
 
-## What was compared
+## Inputs and reproducibility
 
-- **Venue:** True Markets' public reference price for SOL, from
-  `GET https://api.truemarkets.co/v1/defi/market/prices/history?symbol=SOL&window=1d&resolution=5s`.
-  No key. 10,108 points. Stored here as `true_markets_sol_1d_5s.json`.
-- **Decision price:** Binance SOLUSDT one-second closes, the series the paper strategy reads.
-  Public, no key, 86,705 bars, fetched by `basis.py` and not stored (it can be fetched again).
+- True Markets SOL reference-price history: `true_markets_sol_1d_5s.json`, unchanged, 10,108
+  points covering October 8 05:55 through October 9 05:55 UTC.
+- Binance SOLUSDT one-second closes: fetched again with public keyless GET requests, retained
+  in `/Users/vishaljha/.cache/velocita-review/continuation/binance-close-available.json`.
+  The cache contains 87,000 closes, including fetch padding outside the comparison window.
+- `close_available_evidence.json` records hashes of the inputs, script and corrected output.
+- `result_close_available.txt` is the corrected output. The original `result.txt` is retained
+  as historical evidence of the opening-time comparison; it is superseded for interpretation.
+- Cache format `close_available_v1` records the timestamp convention and requested interval.
+  The script refuses the older, ambiguous cache format instead of silently reusing it.
 
-Both are GET calls with no credential. Nothing was quoted, signed or sent to an order path.
-`python3 basis.py true_markets_sol_1d_5s.json` reproduces `result.txt`.
+```sh
+python3 -B docs/evidence/venue_price_basis_2026-10-09/basis.py \
+  docs/evidence/venue_price_basis_2026-10-09/true_markets_sol_1d_5s.json \
+  "$HOME/.cache/velocita-review/continuation/binance-close-available.json"
+```
 
-## Results
+With that cache present, reproduction makes no network requests. Both original sources are
+public; no quote, signing or order call was made.
 
-| Question | Answer |
+## Corrected results
+
+| Measure | Result |
 |---|---|
-| Level | The venue's price is 9.4 bp below Binance on average. Hour by hour the mean stays between 7.4 and 10.6 bp below. |
-| Noise around that level | Standard deviation 2.5 bp. 90% of points lie between 5.4 and 13.0 bp below. 0.5% are more than 10 bp from the mean. |
-| Timing | The venue follows Binance by about 1 to 2 seconds. The 5-second returns match best with Binance taken 1 to 2 s earlier (correlation 0.55), and the match falls off faster when Binance is taken later. |
-| How alike the moves are | Half. At 5 seconds the correlation is 0.54, so about half of a venue move at that scale is not in Binance's. |
-| Coverage | The public history is not continuous at 5 s. 998 of 10,107 intervals were longer than 5 s (up to 55 s), which leaves 47% of the day without 5-second points. |
+| Mean venue/Binance basis at equal availability timestamps | -9.39 bp |
+| Standard deviation around that basis | 2.43 bp |
+| 5th / 95th percentiles | -12.96 / -5.36 bp |
+| Hourly mean range | -10.66 to -7.37 bp |
+| Highest five-second return correlation among tested shifts | 0.551 at zero seconds |
+| Correlation at -1 / +1 second | 0.544 / 0.535 |
+| Coverage | 9,109 regular five-second intervals; 998 longer intervals, up to 55 seconds |
 
-## What it means for the paper strategy
+The earlier claim that the venue follows Binance by 1–2 seconds is not supported by the
+corrected timestamps. A shallow peak near zero does not identify an exact latency, establish
+causality, or measure network delivery time. A correlation of 0.551 is not "half the move";
+its square is about 0.304 in a simple contemporaneous linear regression, with no implication
+of tradable predictability.
 
-- **The price source is a small error.** A constant 9 bp offset cancels over a round trip, because
-  both legs carry it. What does not cancel is the noise, about 2.5 bp a leg, so about 3.5 bp a
-  round trip. Paper prices are rounded to one cent, which is 0.9 bp at $110.
-- **The cost assumption is the large one.** Paper charges 20 bp a side, 40 bp a round trip. The
-  measured cost is about 100 bp to buy and 98 bp to sell, 198 bp a round trip. That gap is 45 times
-  the price-source noise.
-- **The signal would differ a little on the venue's own series.** The stochastic rule looks at where
-  the price sits in its 15-minute range. A 2.5 bp disagreement is a few percent of a typical
-  15-minute range, enough to move a crossing by a bar or to flip a marginal one, not enough to
-  change the character of the signal. This is an estimate, not a test: the test is to replay the
-  rule on a recorded venue series.
-- **The strategy cannot simply switch to the venue's public history.** It needs a continuous
-  one-second series and 20 minutes of warm-up, and the history endpoint has no 5-second points for
-  half the day. The venue's WebSocket reference prices, which nuc1 already records, are the
-  candidate; their coverage was not measured here.
+## Execution and cost limits
 
-## What is still unknown
+Reference prices are not executable quotes. USDT/USDC differences, asynchronous observations
+and changing basis can affect fills and signals. A constant relative offset can cancel in
+percentage returns, but this study does not establish constant basis, independent errors
+between legs, or round-trip slippage. It also does not test the strategy on venue data.
 
-- The executable price. A reference price is not a quote. What a live order pays is the venue's
-  quote, which comes from a request-for-quote call that is outside the keyless-GET approval. The
-  100 bp figure comes from the owner's earlier quote capture, not from this measurement.
-- Whether the 1 to 2 second lag is stable. One day is one sample.
-- Whether the basis behaves in a fast market. The day's range was 953 bp, with no sharp move tested
-  separately.
+Paper charges 20 bp per side. The October 5 finalized CLI/API-key SOL sell measured about
+20 bp for that route/account/side/time; the buy fee and complete execution cost are still
+unverified. Historical 100/98 bp quotes remain a separate stress scenario, not a reason to
+label this route as necessarily charging 1%. See
+`../venue_contract_2026-10-05/SETTLED_SOL_SELL_FEE.md`.
 
-## Limits of this measurement
-
-- One day, one asset.
-- The venue's points are compared with the Binance close of the same second. The venue's own
-  timestamps are whole 5-second marks, so timing finer than about a second cannot be read from it.
-- Binance quotes in USDT and the venue in USDC. Part of the 9 bp is the difference between the two
-  dollar tokens, and it can move.
+This history endpoint is not a continuous one-second feed. Gaps in its five-second sampling
+prevent it from being a direct replacement for the current strategy input. Recorded live
+venue-feed coverage and a matching execution contract remain necessary.

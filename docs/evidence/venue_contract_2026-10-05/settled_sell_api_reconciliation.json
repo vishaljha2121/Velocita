@@ -1,0 +1,42 @@
+{
+  "checked_at": "2026-10-05T19:22:55.201543+00:00",
+  "expected_tx_hash": "4QmcU9go1f5eLoQmw9qhg4BjCeHb9igjGgbKBgjzpEAiJFnqgmnpLELaRP4khxf2P7s4cAK5UFeSQ55uiEPpDXea",
+  "reads": [
+    {
+      "path": "/v1/gateway/orders",
+      "http_status": 200,
+      "row_count": 0,
+      "next_page_present": false,
+      "records": []
+    },
+    {
+      "path": "/v1/gateway/transactions?type=order&limit=100",
+      "http_status": 200,
+      "row_count": 0,
+      "next_page_present": false,
+      "records": []
+    },
+    {
+      "path": "/v1/gateway/balances",
+      "http_status": 200,
+      "balances": [
+        {
+          "symbol": "SOL",
+          "chain": "solana",
+          "venue": "defi",
+          "total": "0.031896934",
+          "available": "0.031896934",
+          "held": "0"
+        },
+        {
+          "symbol": "USDC",
+          "chain": "solana",
+          "venue": "defi",
+          "total": "1.006989",
+          "available": "1.006989",
+          "held": "0"
+        }
+      ]
+    }
+  ]
+}

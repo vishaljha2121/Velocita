@@ -1,0 +1,75 @@
+FFFFF
+======================================================================
+FAIL: test_every_running_service_blocks_before_state_moves (test_roles_stage.StageTests.test_every_running_service_blocks_before_state_moves) (service='velocita-paper-stochastic-node')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/tests/test_roles_stage.py", line 62, in test_every_running_service_blocks_before_state_moves
+    self.assert_untouched(self.run_stage(STAGE_TEST_ACTIVE=name))
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/vishaljha/aeron-raft-pi/tests/test_roles_stage.py", line 49, in assert_untouched
+    self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 0 == 0 : RETIRED /Users/vishaljha/aeron-raft-pi/docs/evidence/live_promotion_review_2026-10-09/tmp1lwbblpv/velocita-indicator-paper/retired/stochastic-abd1e149-20261009
+STAGED nuc1 incarnation=348e0b2cd4f639ff404df4eeadee0ee5
+
+
+======================================================================
+FAIL: test_every_running_service_blocks_before_state_moves (test_roles_stage.StageTests.test_every_running_service_blocks_before_state_moves) (service='velocita-paper-stochastic-exporter')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/tests/test_roles_stage.py", line 62, in test_every_running_service_blocks_before_state_moves
+    self.assert_untouched(self.run_stage(STAGE_TEST_ACTIVE=name))
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/vishaljha/aeron-raft-pi/tests/test_roles_stage.py", line 49, in assert_untouched
+    self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 0 == 0 : RETIRED /Users/vishaljha/aeron-raft-pi/docs/evidence/live_promotion_review_2026-10-09/tmppl625og8/velocita-indicator-paper/retired/stochastic-abd1e149-20261009
+STAGED nuc1 incarnation=348e0b2cd4f639ff404df4eeadee0ee5
+
+
+======================================================================
+FAIL: test_every_running_service_blocks_before_state_moves (test_roles_stage.StageTests.test_every_running_service_blocks_before_state_moves) (service='velocita-paper-stochastic-edge')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/tests/test_roles_stage.py", line 62, in test_every_running_service_blocks_before_state_moves
+    self.assert_untouched(self.run_stage(STAGE_TEST_ACTIVE=name))
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/vishaljha/aeron-raft-pi/tests/test_roles_stage.py", line 49, in assert_untouched
+    self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 0 == 0 : RETIRED /Users/vishaljha/aeron-raft-pi/docs/evidence/live_promotion_review_2026-10-09/tmp5r8c075a/velocita-indicator-paper/retired/stochastic-abd1e149-20261009
+STAGED nuc1 incarnation=348e0b2cd4f639ff404df4eeadee0ee5
+
+
+======================================================================
+FAIL: test_every_running_service_blocks_before_state_moves (test_roles_stage.StageTests.test_every_running_service_blocks_before_state_moves) (service='velocita-paper-stochastic-gateway')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/tests/test_roles_stage.py", line 62, in test_every_running_service_blocks_before_state_moves
+    self.assert_untouched(self.run_stage(STAGE_TEST_ACTIVE=name))
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/vishaljha/aeron-raft-pi/tests/test_roles_stage.py", line 49, in assert_untouched
+    self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 0 == 0 : RETIRED /Users/vishaljha/aeron-raft-pi/docs/evidence/live_promotion_review_2026-10-09/tmpd4hcl3tn/velocita-indicator-paper/retired/stochastic-abd1e149-20261009
+STAGED nuc1 incarnation=348e0b2cd4f639ff404df4eeadee0ee5
+
+
+======================================================================
+FAIL: test_every_running_service_blocks_before_state_moves (test_roles_stage.StageTests.test_every_running_service_blocks_before_state_moves) (service='velocita-paper-indicator-observer')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/tests/test_roles_stage.py", line 62, in test_every_running_service_blocks_before_state_moves
+    self.assert_untouched(self.run_stage(STAGE_TEST_ACTIVE=name))
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/vishaljha/aeron-raft-pi/tests/test_roles_stage.py", line 49, in assert_untouched
+    self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 0 == 0 : RETIRED /Users/vishaljha/aeron-raft-pi/docs/evidence/live_promotion_review_2026-10-09/tmp1ll3mp74/velocita-indicator-paper/retired/stochastic-abd1e149-20261009
+STAGED nuc1 incarnation=348e0b2cd4f639ff404df4eeadee0ee5
+
+
+----------------------------------------------------------------------
+Ran 1 test in 1.529s
+
+FAILED (failures=5)

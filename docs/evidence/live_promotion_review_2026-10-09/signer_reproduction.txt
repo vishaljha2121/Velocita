@@ -1,0 +1,3 @@
+Source: committed 2f5d405; public FloorFile/SignerServer API probe; local Unix sockets only.
+first_write_100=1 stale_second_write_1=1 durable_floor=1
+first_listener=1 second_listener_same_path=1

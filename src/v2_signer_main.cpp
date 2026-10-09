@@ -77,6 +77,7 @@ int run(const Arguments& a) {
     signer::FloorFile floor;
     if (const auto opened = signer::FloorFile::open(a.floor_file, floor); opened != signer::FloorError::none)
         throw Usage(opened == signer::FloorError::missing ? "no floor file; the first start needs --init-floor"
+                    : opened == signer::FloorError::busy ? "the floor is already owned or its lock is unavailable"
                                                           : "the floor file is not readable or not valid");
     signer::AuditFile audit;
     if (!audit.open(a.audit_file)) throw Usage("the audit file could not be opened for appending");
