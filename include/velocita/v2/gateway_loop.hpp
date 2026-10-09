@@ -118,6 +118,8 @@ struct GatewayEvent {
     std::int64_t kernel_lots{};
     std::int64_t venue_lots{};
     ClusterOrderId order{};
+    ApplyCode refused_code{ApplyCode::applied};
+    VenueObservationKind refused_kind{};
 };
 
 inline constexpr std::size_t kMaxGatewayEvents = 32;
@@ -215,6 +217,7 @@ private:
     [[nodiscard]] VenueObservation synthetic(VenueObservationKind kind, ClusterOrderId order, EffectId effect,
                                              RequestSequence sequence) const;
     void stop(GatewayStopCause cause) noexcept;
+    void stop_for_refused(const VenueObservation& observation, ApplyCode code) noexcept;
     void note_authority(bool was_stopped) noexcept;
     void gate(const TradingState& state, const StateReading& reading, Tick now);
     [[nodiscard]] std::size_t open_orders(const TradingState& state) const noexcept;

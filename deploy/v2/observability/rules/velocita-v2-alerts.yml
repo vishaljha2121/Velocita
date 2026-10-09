@@ -82,6 +82,12 @@ groups:
         annotations:
           summary: "A key sent {{ $value | printf \"%.0f\" }} command(s) its role does not allow"
           description: "The command was signed by a known key, committed and refused by the kernel (ADR 0020). Either a role was not assigned in the ceremony (assign-role 21 strategy, 22 gateway), or a key is being used for something it should not do. The refusal leaves no receipt: find the command in the Raft log."
+      - alert: VelocitaIngressRateLimited
+        expr: max(increase(velocita_v2_ingress_rate_limited_total[10m])) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "A caller sent commands faster than its ingress rate allows"
+          description: "A voter answered busy to {{ $value | printf \"%.0f\" }} command(s) in 10 minutes because one caller exceeded ingress.rate_per_second. The strategy and the gateway stay far below it in normal use. Look for a client stuck in a retry loop, or a key being used by something else. Operator callers are never limited."
       - alert: VelocitaReducingModeLeftOn
         expr: max(velocita_v2_strategy_mode) == 4 or max(velocita_v2_strategy_mode) == 6
         for: 30m

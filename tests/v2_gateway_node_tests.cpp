@@ -79,6 +79,7 @@ const VerifiedExecutionCatalog& paper_catalog() {
 }
 bool g_paper = false;
 bool g_exit_template = false;
+std::uint32_t g_ingress_rate = 0, g_ingress_burst = 0;
 const VerifiedExecutionCatalog& fixture_catalog() { return g_paper ? paper_catalog() : catalog_test::standard_catalog(); }
 
 PolicyArtifact policy_artifact() {
@@ -270,6 +271,10 @@ NodeConfig config_for(const std::filesystem::path& base, std::int32_t id, NodeSt
     config.callers.push_back({kGatewayKey, kGateway, "/c13", {"127.0.0.1", 40413}});
     if (gateway_configured) config.gateway_caller = kGateway;
     config.max_history_wal_bytes = 1ULL << 30;
+    if (g_ingress_rate != 0) {
+        config.ingress_rate_per_second = g_ingress_rate;
+        config.ingress_burst = g_ingress_burst;
+    }
     config.digest = digest(static_cast<std::uint64_t>(id));
     return config;
 }
@@ -499,8 +504,15 @@ struct CountingVenue {
         venue.sends.push_back(effect);
         return venue.inner.send(effect, now);
     }
+    std::vector<VenueObservation> injected;
     static std::size_t poll(void* self, std::span<VenueObservation> out, Tick now) {
-        return static_cast<CountingVenue*>(self)->inner.poll(out, now);
+        auto& venue = *static_cast<CountingVenue*>(self);
+        auto count = venue.inner.poll(out, now);
+        while (count < out.size() && !venue.injected.empty()) {
+            out[count++] = venue.injected.front();
+            venue.injected.erase(venue.injected.begin());
+        }
+        return count;
     }
     static void acknowledge(void* self, const VenueObservation& observation) {
         static_cast<CountingVenue*>(self)->inner.acknowledge(observation);
@@ -1324,6 +1336,157 @@ void a_reducing_mode_that_arrives_with_another_control_change_latches() {
     }
 }
 
+void a_caller_outside_the_operator_band_is_paced_at_ingress() {
+    g_ingress_rate = 1;
+    g_ingress_burst = 3;
+    struct Reset { ~Reset() { g_ingress_rate = g_ingress_burst = 0; } } reset;
+    Base base("v2-gw-ingress-rate");
+    Cluster cluster(base.path, {1, 2}, false);
+    Caller op{kOperatorKey, kOperator}, strategy{kStrategyKey, kStrategy};
+    prepare_cluster(cluster, op, strategy);
+    const auto leader = cluster.elect();
+    const auto limited = [&] { return cluster.node(leader).status().counters.ingress_rate_limited; };
+    require(limited() == 0, "the operator's setup burst or one strategy command was rate limited");
+
+    const auto wait_ms = [&](const Tick duration) {
+        const auto until = steady_ms() + duration;
+        while (steady_ms() < until) cluster.run(20);
+    };
+    const auto burst = [&](Caller& caller, const std::uint64_t first, const int count) {
+        cluster.network.responses[caller.key_id].clear();
+        for (int index = 0; index < count; ++index) {
+            const Command command{{CallerId{caller.caller_id}, RequestSequence{first + static_cast<std::uint64_t>(index)},
+                                   digest(first + static_cast<std::uint64_t>(index))},
+                                  RecordSourceEvent{SourceId{12}, SourceGeneration{1},
+                                                    SourceSequence{first + static_cast<std::uint64_t>(index)},
+                                                    digest(0x45)}};
+            cluster.network.at(leader).ingress_inbox.push_back(caller.ingress(leader, command, ProposeLane::normal));
+        }
+        int admitted = 0, busy = 0;
+        const auto until = steady_ms() + 5'000;
+        while (steady_ms() < until && admitted + busy < count) {
+            cluster.run(5);
+            auto& queue = cluster.network.responses[caller.key_id];
+            while (!queue.empty()) {
+                auto frame = std::move(queue.front());
+                queue.pop_front();
+                const auto opened = caller.open(frame);
+                NodeResponse response;
+                if (!opened || decode_response(opened->second, response) != NodeProtocolError::none) continue;
+                admitted += response.kind == ResponseKind::admitted ? 1 : 0;
+                busy += response.kind == ResponseKind::refused &&
+                                response.reason == static_cast<std::uint8_t>(IngressRefusal::busy) ? 1 : 0;
+            }
+        }
+        return std::pair{admitted, busy};
+    };
+    wait_ms(6'000);
+    const auto first = burst(strategy, 100, 5);
+    require(first == std::pair{3, 2} && limited() == 2,
+            "five commands at once against a burst of three: admitted " + std::to_string(first.first) +
+                ", refused busy " + std::to_string(first.second) + ", counted " + std::to_string(limited()));
+    wait_ms(2'500);
+    const auto second = burst(strategy, 200, 8);
+    require(second.first >= 1 && second.first <= 3 && second.first + second.second == 8,
+            "eight more after a pause, at one a second with a burst of three: admitted " + std::to_string(second.first) + ", refused busy " +
+                std::to_string(second.second));
+    const auto before = limited();
+    const auto operator_burst = burst(op, 300, 6);
+    require(operator_burst.second == 0 && limited() == before,
+            "an operator caller was rate limited: refused busy " + std::to_string(operator_burst.second));
+}
+
+int round_trips_until_a_stop(const int round_trips) {
+    PaperFixture paper;
+    g_exit_template = true;
+    struct Reset { ~Reset() { g_exit_template = false; } } reset;
+    Base base("v2-gw-soak");
+    Cluster cluster(base.path, {1, 2});
+    Caller op{kOperatorKey, kOperator}, strategy{kStrategyKey, kStrategy};
+    prepare_cluster(cluster, op, strategy);
+    Gateway gateway(cluster);
+    start(cluster, gateway);
+    const auto leader = cluster.elect();
+    std::uint64_t source = 1, decision = 100;
+    const auto order = [&](const std::int64_t price, const std::int64_t expected_lots) {
+        const auto* risk = account(cluster.state_of(leader));
+        require(cluster.commit(strategy, RecordSourceEvent{SourceId{12}, SourceGeneration{1}, SourceSequence{++source},
+                                                           digest(source)}).code == ApplyCode::applied, "soak bar");
+        auto frame = decision_frame();
+        frame.source_sequence = SourceSequence{source};
+        frame.raw_evidence_digest = digest(source);
+        frame.features[0] = FeatureMicros::from_atoms(price);
+        frame.position_version = risk->position_version;
+        frame.risk_version = risk->risk_version;
+        const auto decided =
+            cluster.commit(strategy, EvaluateDecisionFrame{DecisionId{++decision}, EvaluationMode::authoritative, frame});
+        require(decided.decision_code == DecisionCode::action, "soak decision was not an action");
+        require(cluster.commit(strategy, AuthorizeDecision{DecisionId{decision}}).code == ApplyCode::applied,
+                "soak authorization refused");
+        for (int round = 0; round < 40'000; ++round) {
+            cluster.run(1);
+            if (gateway.loop.new_risk_stopped()) return false;
+            const auto* now = account(cluster.state_of(leader));
+            if (now->position_quantity.atoms() == expected_lots && now->reserved_quantity.atoms() == 0) return true;
+        }
+        throw std::runtime_error("soak order did not fill");
+    };
+    for (int trip = 0; trip < round_trips; ++trip) {
+        if (!order(11, kOrderLots) || !order(2, 0)) return trip;
+        cluster.run(40);
+        if (gateway.loop.new_risk_stopped()) return trip;
+    }
+    return round_trips;
+}
+
+void many_round_trips_never_stop_the_gateway() {
+    const char* requested = std::getenv("VELOCITA_SOAK_ROUND_TRIPS");
+    const int round_trips = requested ? std::atoi(requested) : 40;
+    const int completed = round_trips_until_a_stop(round_trips);
+    require(completed == round_trips, "the gateway stopped new risk after " + std::to_string(completed) +
+                                          " clean round trips out of " + std::to_string(round_trips));
+}
+
+void a_refused_report_stops_new_risk_and_says_which_report_and_why() {
+    PaperFixture paper;
+    Base base("v2-gw-refused-report");
+    Cluster cluster(base.path, {1, 2});
+    Caller op{kOperatorKey, kOperator}, strategy{kStrategyKey, kStrategy};
+    prepare_cluster(cluster, op, strategy);
+    Gateway gateway(cluster);
+    start(cluster, gateway);
+    const auto leader = cluster.elect();
+    const auto effect = authorize(cluster, strategy);
+    cluster.run_until([&] {
+        const auto* risk = account(cluster.state_of(leader));
+        return risk && risk->position_quantity.atoms() == kOrderLots && gateway.loop.evidence().obligation_count == 0;
+    }, "the order to fill");
+    (void)drain(gateway.loop);
+    const auto order = cluster.state_of(leader).orders[0].cluster_order_id;
+
+    VenueObservation late;
+    late.kind = VenueObservationKind::order_acknowledged;
+    late.venue_id = VenueId{9};
+    late.venue_session_id = VenueSessionId{1};
+    late.venue_sequence = VenueSequence{900};
+    late.cluster_order_id = order;
+    late.effect_id = effect;
+    late.venue_order_id = VenueOrderId{1};
+    late.evidence_digest = digest(0x6e);
+    gateway.counting.injected.push_back(late);
+    cluster.run_until([&] { return stops(gateway.loop.metrics(), GatewayStopCause::refused_evidence) == 1; },
+                      "the refused report to stop new risk");
+    const auto events = drain(gateway.loop);
+    bool described = false;
+    for (const auto& event : events)
+        described |= event.kind == GatewayEventKind::stopped && event.cause == GatewayStopCause::refused_evidence &&
+                     event.refused_code == ApplyCode::venue_observation_not_applicable &&
+                     event.refused_kind == VenueObservationKind::order_acknowledged && event.order == order;
+    require(described, "the stop event does not name the refused report, its order and the kernel's code");
+    require(gateway.loop.new_risk_stopped() && account(cluster.state_of(leader))->position_quantity.atoms() == kOrderLots,
+            "a refused report did not hold new risk, or changed the position");
+}
+
 void without_allow_new_risk_the_gateway_never_arms() {
     PaperFixture paper;
     Base base("v2-gw-unarmed");
@@ -1630,6 +1793,11 @@ int main() {
         {"a_control_change_latches_until_an_operator_restart", a_control_change_latches_until_an_operator_restart},
         {"a_gateway_that_requires_a_loss_limit_arms_only_while_one_is_set",
          a_gateway_that_requires_a_loss_limit_arms_only_while_one_is_set},
+        {"a_caller_outside_the_operator_band_is_paced_at_ingress",
+         a_caller_outside_the_operator_band_is_paced_at_ingress},
+        {"many_round_trips_never_stop_the_gateway", many_round_trips_never_stop_the_gateway},
+        {"a_refused_report_stops_new_risk_and_says_which_report_and_why",
+         a_refused_report_stops_new_risk_and_says_which_report_and_why},
         {"flatten_rearms_by_itself_and_sells_exactly_the_position",
          flatten_rearms_by_itself_and_sells_exactly_the_position},
         {"a_reducing_mode_that_arrives_with_another_control_change_latches",

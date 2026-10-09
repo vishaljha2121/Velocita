@@ -16,7 +16,7 @@ namespace {
 
 constexpr std::uint64_t kMagic = 0x3148484C56ULL;
 constexpr std::uint32_t kVersion = 9;
-constexpr std::size_t kScalarCells = 42;
+constexpr std::size_t kScalarCells = 43;
 constexpr std::size_t kLedgerCells = 9;
 constexpr std::size_t kCells = kScalarCells + kNodeHealthLedgers * kLedgerCells;
 static_assert(kNodeHealthLedgers == kMaxRiskAccounts);
@@ -48,7 +48,7 @@ std::array<std::uint64_t, kCells> flatten(const NodeHealth& h) noexcept {
             h.stranded_voters, h.compactions, h.last_compaction_ms,
             h.receipts, h.pinned_receipts, h.pinned_receipts_peak,
             h.archive_bytes, h.archive_byte_limit, h.archive_objects, h.archive_object_limit, h.policies, h.ledger_count, h.quorum_step_downs,
-            h.unauthorized_commands, h.strategy_mode};
+            h.unauthorized_commands, h.strategy_mode, h.ingress_rate_limited};
     for (std::size_t index = 0; index < kNodeHealthLedgers; ++index) {
         const auto& l = h.ledgers[index];
         const std::array<std::uint64_t, kLedgerCells> cells{
@@ -84,6 +84,7 @@ NodeHealth unflatten(const std::array<std::uint64_t, kCells>& v) noexcept {
     h.quorum_step_downs = v[39];
     h.unauthorized_commands = v[40];
     h.strategy_mode = v[41];
+    h.ingress_rate_limited = v[42];
     for (std::size_t index = 0; index < kNodeHealthLedgers; ++index) {
         const auto at = kScalarCells + index * kLedgerCells;
         h.ledgers[index] = {v[at], v[at + 1], std::bit_cast<std::int64_t>(v[at + 2]),
@@ -119,6 +120,7 @@ NodeHealth node_health_of(const NodeStatus& status, const NodeHealthContext& con
     h.peer_busy_holds = c.peer_busy_holds;
     h.peer_backpressure = c.peer_backpressure;
     h.ingress_refusals = c.ingress_refusals;
+    h.ingress_rate_limited = c.ingress_rate_limited;
     h.results_sent = c.results_sent;
     h.results_dropped = c.results_dropped;
     h.secret_reloads = context.secret_reloads;

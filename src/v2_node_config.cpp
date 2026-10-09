@@ -127,6 +127,8 @@ struct Draft {
     std::optional<std::uint64_t> max_wal;
     std::optional<std::uint64_t> gateway_caller;
     std::uint32_t compact_at_entries{2048};
+    std::uint32_t ingress_rate_per_second{20};
+    std::uint32_t ingress_burst{200};
     OwnerLoopBudgets owner;
     std::map<std::int32_t, std::optional<Endpoint>> voter_endpoints;
     std::map<std::int32_t, std::optional<std::filesystem::path>> voter_keys;
@@ -183,6 +185,10 @@ void assign(Draft& d, const std::string& key, std::string_view value, std::size_
         const auto entries = bounded_u32(value, 8000, line);
         if (entries < 16) invalid();
         d.compact_at_entries = entries;
+    } else if (key == "ingress.rate_per_second") {
+        d.ingress_rate_per_second = bounded_u32(value, 1000, line);
+    } else if (key == "ingress.burst") {
+        d.ingress_burst = bounded_u32(value, 10000, line);
     } else if (key == "owner.tick_interval_ms") {
         d.owner.tick_interval_ms = bounded_u32(value, 1000, line);
     } else if (key == "owner.peer_fragment_limit") {
@@ -283,6 +289,8 @@ NodeConfig finish(Draft& d, std::string_view text) {
     config.archive_destination_identity = d.archive_destination;
     config.max_history_wal_bytes = *d.max_wal;
     config.compact_at_entries = d.compact_at_entries;
+    config.ingress_rate_per_second = d.ingress_rate_per_second;
+    config.ingress_burst = d.ingress_burst;
     config.owner = d.owner;
     config.digest = sha256_digest(std::span(reinterpret_cast<const std::byte*>(text.data()), text.size()));
     return config;

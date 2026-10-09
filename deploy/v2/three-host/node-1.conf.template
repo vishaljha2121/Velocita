@@ -29,6 +29,11 @@ voter.3.key_file = /run/velocita-secrets/link-1-3.key
 
 # The Mac reaches this voter over Tailscale.
 ingress.endpoint = 100.72.127.102:42301
+# Each caller outside the operator band may send this many commands a second,
+# with this much saved up for a burst. A leaked or looping key then fills the
+# log in weeks, not hours. The strategy sends at most three a second.
+ingress.rate_per_second = 6
+ingress.burst = 60
 
 # Operator caller 9 = CallerId 7; responses to the Mac's Tailscale address.
 caller.9.caller_id = 7

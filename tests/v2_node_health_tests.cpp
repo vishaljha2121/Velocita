@@ -52,6 +52,7 @@ NodeHealth uniform(std::uint64_t k) {
     h.quorum_step_downs = k;
     h.unauthorized_commands = k;
     h.strategy_mode = k;
+    h.ingress_rate_limited = k;
     for (auto& ledger : h.ledgers) {
         const auto signed_k = static_cast<std::int64_t>(k);
         ledger = {k, k, signed_k, signed_k, signed_k, signed_k, signed_k, signed_k, signed_k};
@@ -112,11 +113,12 @@ void round_trip_and_refusals() {
     distinct.quorum_step_downs = 77;
     distinct.unauthorized_commands = 78;
     distinct.strategy_mode = 6;
+    distinct.ingress_rate_limited = 79;
     distinct.ledgers[0] = {2, 3, -4, -5, 6, -7, 8, -9, 10};
     distinct.ledgers[3] = {11, 12, 13, 14, 15, 16, 17, 18, 19};
     page->publish(distinct);
     const auto ledgers = read_node_health(file);
-    require(ledgers && ledgers->ledger_count == 2 && ledgers->quorum_step_downs == 77 && ledgers->unauthorized_commands == 78 && ledgers->strategy_mode == 6 &&
+    require(ledgers && ledgers->ledger_count == 2 && ledgers->quorum_step_downs == 77 && ledgers->unauthorized_commands == 78 && ledgers->strategy_mode == 6 && ledgers->ingress_rate_limited == 79 &&
                 ledgers->ledgers[0] == NodeHealthLedger{2, 3, -4, -5, 6, -7, 8, -9, 10} &&
                 ledgers->ledgers[1] == distinct.ledgers[1] && ledgers->ledgers[2] == distinct.ledgers[2] &&
                 ledgers->ledgers[3] == NodeHealthLedger{11, 12, 13, 14, 15, 16, 17, 18, 19},
@@ -147,12 +149,14 @@ void status_maps_to_the_page_field_by_field() {
     s.counters.auth_refusals = 41; s.counters.fence_refusals = 42; s.counters.peer_busy_holds = 43;
     s.counters.peer_backpressure = 44; s.counters.ingress_refusals = 45; s.counters.results_sent = 46;
     s.counters.results_dropped = 47; s.counters.compactions = 48; s.counters.last_compaction_ms = 49;
+    s.counters.ingress_rate_limited = 50;
     NodeHealth want;
     want.node_id = 2; want.pid = 51; want.session_epoch = 12; want.role = 3; want.ready = true; want.failed = true;
     want.term = 11; want.leader_id = 3; want.current_index = 104; want.commit_index = 103; want.applied_index = 102;
     want.durable_index = 101; want.turns = 52; want.last_turn_monotonic_ns = 53;
     want.auth_refusals = 41; want.fence_refusals = 42; want.peer_busy_holds = 43; want.peer_backpressure = 44;
     want.ingress_refusals = 45; want.results_sent = 46; want.results_dropped = 47;
+    want.ingress_rate_limited = 50;
     want.secret_reloads = 54; want.secret_reload_failures = 55;
     want.retained_ordinary = 21; want.retained_protected = 22; want.compaction_floor = 23; want.snapshot_index = 24;
     want.stranded_voters = 25; want.compactions = 48; want.last_compaction_ms = 49;

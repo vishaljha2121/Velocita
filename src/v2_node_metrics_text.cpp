@@ -131,6 +131,8 @@ std::string render_node_metrics(const std::optional<NodeHealth>& health, std::st
             h.peer_backpressure);
     counter("velocita_v2_ingress_refusals_total", "Caller commands refused (not leader, capacity, impersonation...).",
             h.ingress_refusals);
+    counter("velocita_v2_ingress_rate_limited_total",
+            "Commands refused because their caller sent faster than its ingress rate allows.", h.ingress_rate_limited);
     counter("velocita_v2_results_sent_total", "Committed results delivered to callers.", h.results_sent);
     counter("velocita_v2_results_dropped_total", "Committed results no configured caller could receive.",
             h.results_dropped);

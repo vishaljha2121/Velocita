@@ -40,7 +40,7 @@ refused, the strategy's exits included.
 So a leaked or faulty strategy key cannot change state, but it can spend the cluster's life. The
 new `VelocitaUnauthorizedCommand` alert reports it; nothing stops it.
 
-Two possible fixes, neither built:
+Two possible fixes. The second is now built (see below):
 
 - The leader refuses such a command before proposing it, reading roles from its applied state. This
   is exact for a wrong-role key, but a leader that has not yet applied everything it holds (just
@@ -52,7 +52,11 @@ Two possible fixes, neither built:
   damage rather than preventing it: at 5 commands a second the archive still fills in days, with
   the 70% alert and the unauthorized-command alert as warning.
 
-The rate limit is the safer first step.
+The rate limit is the safer first step, and it is built: each caller outside the operator band
+has a token bucket at every voter (`ingress.rate_per_second`, default 20, and `ingress.burst`,
+default 200; the three-host templates set 6 and 60). A command over the limit is answered `busy`
+before it is proposed, counted in `velocita_v2_ingress_rate_limited_total`, and alerted on.
+Operator callers are never limited, so a kill is never delayed.
 
 ### 2. Medium: a crash during archive publication stops the voter from starting
 
@@ -102,7 +106,19 @@ messages are checked against term and log, commands against the caller's sequenc
 an authority request yields a proof only the gateway's own nonce accepts. It needs an attacker
 inside the tailnet holding recorded traffic.
 
-### 6. Low: smaller points
+### 6. Low, fixed: the voter's clock ran slow
+
+`velocita-v2-node` measured the time since the last turn in whole milliseconds and then moved its
+reference to "now", dropping the fraction every turn. With a 2 ms tick a turn takes a little over
+2 ms, so the voter told Raft that less time had passed than really had: about 13% less at 2.3 ms a
+turn, and a different amount on each host. Election timeouts, heartbeats, the compaction wait and
+the new quorum step-down all ran that much slow. Not a safety problem, because Raft's safety does
+not depend on clocks, but the timeouts were not what the configuration said.
+
+Fixed: the reference now advances by exactly the milliseconds reported, so the remainder carries
+into the next turn (`ElapsedMilliseconds`, with a test of 1,000 turns of 2.3 ms).
+
+### 7. Low: smaller points
 
 - `WalSegment::write_block` and the rewrite writer treat an interrupted `pwrite` (`EINTR`) as a
   failure. Regular-file writes are rarely interrupted, and the result is a stop, not corruption.

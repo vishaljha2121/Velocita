@@ -69,6 +69,7 @@ struct V2Node::CallerLink {
     KeySets::Caller keys;
     SessionSequencer sequencer;
     SessionFence fence{};
+    std::uint64_t tokens_milli{};
 };
 
 std::optional<V2Node::KeySets> V2Node::derive_keys(const NodeSecrets& secrets) const {
@@ -104,7 +105,9 @@ V2Node::V2Node(const NodeConfig& config, const VerifiedExecutionCatalog& catalog
                const std::uint64_t session_epoch, NodeTransport& transport,
                const MetadataCheckpoints metadata_checkpoints)
     : node_id_(config.node_id), incarnation_(config.incarnation), session_epoch_(session_epoch),
-      budgets_(config.owner), compact_at_entries_(config.compact_at_entries), transport_(transport),
+      budgets_(config.owner), compact_at_entries_(config.compact_at_entries),
+      ingress_rate_per_second_(config.ingress_rate_per_second),
+      ingress_burst_milli_(std::uint64_t{config.ingress_burst} * 1000), transport_(transport),
       codec_scratch_(std::make_unique<KernelCommandCodecScratch>()),
       inbound_(kMaxAuthEnvelopeBytes), outbound_(kMaxAuthEnvelopeBytes), gateway_caller_(config.gateway_caller),
       snapshot_(kMaxStateSnapshotBytes), gateway_body_(kMaxStateChunkResponseBytes) {
@@ -123,7 +126,7 @@ V2Node::V2Node(const NodeConfig& config, const VerifiedExecutionCatalog& catalog
     for (const auto& [key_id, caller_id] : caller_ids_)
         callers_.emplace(key_id, std::make_unique<CallerLink>(CallerLink{
                                      key_id, caller_id, std::move(sets->callers.at(key_id)),
-                                     SessionSequencer(session_epoch_)}));
+                                     SessionSequencer(session_epoch_), {}, ingress_burst_milli_}));
 
     const auto kernel_root = config.data_root / "kernel";
     auto startup = [&] {
@@ -158,6 +161,10 @@ void V2Node::turn(const int elapsed_ms) {
         kernel_->tick(elapsed_ms);
         maybe_compact(elapsed_ms);
         send_peers();
+        for (auto& [key_id, caller] : callers_)
+            caller->tokens_milli = std::min(ingress_burst_milli_, caller->tokens_milli +
+                                                                       static_cast<std::uint64_t>(std::max(elapsed_ms, 0)) *
+                                                                           ingress_rate_per_second_);
         if (ingress_open_) receive_ingress();
         send_results();
         service_gateway_authority(elapsed_ms);
@@ -325,7 +332,11 @@ void V2Node::receive_ingress() {
             response.reason = static_cast<std::uint8_t>(IngressRefusal::caller_mismatch);
         } else if (!ready()) {
             response.reason = static_cast<std::uint8_t>(IngressRefusal::not_ready);
+        } else if (!is_operator_caller(command.identity.caller_id) && caller.tokens_milli < 1000) {
+            response.reason = static_cast<std::uint8_t>(IngressRefusal::busy);
+            ++counters_.ingress_rate_limited;
         } else {
+            if (!is_operator_caller(command.identity.caller_id)) caller.tokens_milli -= 1000;
             const auto outcome = kernel_->propose(ingress.command, ingress.lane);
             if (outcome.status == ProposeStatus::admitted) {
                 response.kind = ResponseKind::admitted;

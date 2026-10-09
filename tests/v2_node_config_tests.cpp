@@ -111,6 +111,15 @@ void valid_config_parses_to_hand_built_values() {
     require(c.compact_at_entries == 2048, "compaction threshold default differs");
     const auto tuned = parse_node_config(kValid + "history.compact_at_entries = 64\n");
     require(tuned.config && tuned.config->compact_at_entries == 64, "compaction threshold did not parse");
+    require(c.ingress_rate_per_second == 20 && c.ingress_burst == 200, "ingress rate defaults differ");
+    const auto paced = parse_node_config(kValid + "ingress.rate_per_second = 6\ningress.burst = 60\n");
+    require(paced.config && paced.config->ingress_rate_per_second == 6 && paced.config->ingress_burst == 60,
+            "ingress rate did not parse");
+    require(parse_node_config(kValid + "ingress.rate_per_second = 1000\ningress.burst = 10000\n").config.has_value(),
+            "the largest ingress rate was refused");
+    for (const char* bad : {"ingress.rate_per_second = 0\n", "ingress.rate_per_second = 1001\n",
+                            "ingress.burst = 0\n", "ingress.burst = 10001\n"})
+        require(!parse_node_config(kValid + bad).config, std::string("an ingress rate out of range parsed: ") + bad);
     require(c.owner.tick_interval_ms == 2 && c.owner.peer_fragment_limit == 64 && c.owner.client_fragment_limit == 1,
             "owner budgets or their defaults differ");
     require(c.digest == digest_of(kValid), "config digest is not the digest of the exact bytes");

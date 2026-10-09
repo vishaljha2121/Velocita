@@ -57,6 +57,7 @@ struct NodeCounters {
     std::uint64_t gateway_state_reads{};
     std::uint64_t gateway_proofs_sent{};
     std::uint64_t gateway_refusals{};
+    std::uint64_t ingress_rate_limited{};
 };
 
 inline constexpr int kGatewayAuthorityNodeBoundMs = 5000;
@@ -115,6 +116,8 @@ private:
     std::uint64_t session_epoch_{};
     OwnerLoopBudgets budgets_{};
     std::uint32_t compact_at_entries_{};
+    std::uint64_t ingress_rate_per_second_{};
+    std::uint64_t ingress_burst_milli_{};
     int compact_wait_ms_{};
     std::uint64_t compaction_ms_{};
     NodeTransport& transport_;

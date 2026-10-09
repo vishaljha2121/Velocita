@@ -59,6 +59,7 @@ NodeHealth fixture() {
     h.quorum_step_downs = 4;
     h.unauthorized_commands = 6;
     h.strategy_mode = 4;
+    h.ingress_rate_limited = 8;
     h.ledger_count = 1;
     h.ledgers[0] = {2, 3, 12, -24'048'000, 24'000'000, -48'000, 48'000, -48'001, 10'000'000};
     h.ledgers[1] = {9, 9, 9, 9, 9, 9, 9, 9, 9};
@@ -109,6 +110,7 @@ void known_voter_renders_every_series() {
         "velocita_v2_quorum_step_downs_total{host=\"pi\",node=\"2\"} 4",
         "velocita_v2_unauthorized_commands_total{host=\"pi\",node=\"2\"} 6",
         "velocita_v2_strategy_mode{host=\"pi\",node=\"2\"} 4",
+        "velocita_v2_ingress_rate_limited_total{host=\"pi\",node=\"2\"} 8",
         "velocita_v2_policies{host=\"pi\",node=\"2\"} 5",
         "velocita_v2_policy_capacity{host=\"pi\",node=\"2\"} 8",
         "velocita_v2_account_position_lots{host=\"pi\",node=\"2\",account=\"2\",instrument=\"3\"} 12",

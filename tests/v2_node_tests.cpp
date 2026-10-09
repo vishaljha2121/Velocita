@@ -1,6 +1,27 @@
 #include "v2_node_test_support.hpp"
+#include "velocita/v2/elapsed_ticks.hpp"
 
 namespace {
+
+void elapsed_time_is_counted_without_losing_fractions() {
+    using Clock = std::chrono::steady_clock;
+    const Clock::time_point start{};
+    ElapsedMilliseconds<Clock> clock(start);
+    auto now = start;
+    long total = 0;
+    for (int turn = 0; turn < 1'000; ++turn) {
+        now += std::chrono::microseconds(2'300);
+        const int elapsed = clock.take(now);
+        require(elapsed == 2 || elapsed == 3, "a 2.3 ms turn was counted as " + std::to_string(elapsed) + " ms");
+        total += elapsed;
+    }
+    require(total == 2'300, "1,000 turns of 2.3 ms were counted as " + std::to_string(total) + " ms, not 2,300");
+    require(clock.take(now) == 0 && clock.take(now - std::chrono::seconds(1)) == 0,
+            "time that did not advance, or went back, was counted");
+    require(clock.take(now + std::chrono::microseconds(999)) == 0 &&
+                clock.take(now + std::chrono::microseconds(1'000)) == 1,
+            "a millisecond was counted early or late");
+}
 
 void redirect_admit_and_commit() {
     Base base("v2-node-commit");
@@ -429,6 +450,7 @@ void three_voters_refuse_to_commit_without_a_quorum() {
 
 int main() {
     try {
+        elapsed_time_is_counted_without_losing_fractions();
         redirect_admit_and_commit();
         busy_kernel_holds_frames_instead_of_dropping_them();
         forged_replayed_and_mismatched_frames_have_no_effect();

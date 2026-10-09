@@ -131,6 +131,18 @@ void GatewayLoop::stop(const GatewayStopCause cause) noexcept {
     push({GatewayEventKind::stopped, cause, term_, seen_index_, {}, {}, {}});
 }
 
+void GatewayLoop::stop_for_refused(const VenueObservation& observation, const ApplyCode code) noexcept {
+    const auto bit = std::uint32_t{1} << static_cast<std::size_t>(GatewayStopCause::refused_evidence);
+    const bool fresh = (latched_ & bit) == 0;
+    stop(GatewayStopCause::refused_evidence);
+    if (!fresh || event_count_ == 0) return;
+    auto& event = events_[event_count_ - 1];
+    if (event.kind != GatewayEventKind::stopped || event.cause != GatewayStopCause::refused_evidence) return;
+    event.order = observation.cluster_order_id;
+    event.refused_code = code;
+    event.refused_kind = observation.kind;
+}
+
 void GatewayLoop::note_authority(const bool was_stopped) noexcept {
     if (!was_stopped && authority_ && authority_->new_risk_stopped()) stop(GatewayStopCause::authority);
 }
@@ -535,7 +547,7 @@ void GatewayLoop::on_command(const LinkOutcome& outcome, Tick now) {
     seen_index_ = std::max(seen_index_, outcome.index);
     if (!accepted_code(outcome.result.code)) {
         ++at(metrics_.rejects, GatewayReject::kernel_refused);
-        stop(GatewayStopCause::refused_evidence);
+        stop_for_refused(observation, outcome.result.code);
         return;
     }
     const bool fill = observation.kind == VenueObservationKind::fill;

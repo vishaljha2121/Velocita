@@ -1,5 +1,6 @@
 // velocita-v2-node: runs one voter.
 #include "velocita/aeron_runtime.hpp"
+#include "velocita/v2/elapsed_ticks.hpp"
 #include "velocita/v2/aeron_node_transport.hpp"
 #include "velocita/v2/election_jitter.hpp"
 #include "velocita/v2/node.hpp"
@@ -127,14 +128,13 @@ int run(const Arguments& arguments) {
               << std::endl;
 
     std::uint64_t turns = 0;
-    auto last = Clock::now();
+    ElapsedMilliseconds<Clock> clock(Clock::now());
     auto last_health = Clock::time_point{};
     const auto tick = std::chrono::milliseconds(config.owner.tick_interval_ms);
     try {
         while (!g_stop.load(std::memory_order_relaxed)) {
             const auto now = Clock::now();
-            const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last).count();
-            if (elapsed > 0) last = now;
+            const auto elapsed = clock.take(now);
             if (g_reload.exchange(false, std::memory_order_relaxed)) {
                 std::string why;
                 auto fresh = load_secrets(config, why);
@@ -147,7 +147,7 @@ int run(const Arguments& arguments) {
                               << std::endl;
                 }
             }
-            node.turn(static_cast<int>(elapsed));
+            node.turn(elapsed);
             ++turns;
             if (now - last_health >= std::chrono::milliseconds(100)) {
                 health->publish(health_of(node.status(), turns, false, reloads));
@@ -158,10 +158,7 @@ int run(const Arguments& arguments) {
         node.close_ingress();
         const auto deadline = Clock::now() + std::chrono::seconds(2);
         while (Clock::now() < deadline && !node.quiescent()) {
-            const auto now = Clock::now();
-            const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last).count();
-            if (elapsed > 0) last = now;
-            node.turn(static_cast<int>(elapsed));
+            node.turn(clock.take(Clock::now()));
             std::this_thread::sleep_for(tick);
         }
         health->publish(health_of(node.status(), turns, false, reloads));

@@ -61,6 +61,8 @@ struct NodeConfig {
     std::optional<Digest256> archive_destination_identity;
     std::uint64_t max_history_wal_bytes{};
     std::uint32_t compact_at_entries{2048};
+    std::uint32_t ingress_rate_per_second{20};
+    std::uint32_t ingress_burst{200};
     OwnerLoopBudgets owner;
     Digest256 digest{};
 

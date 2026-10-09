@@ -965,3 +965,25 @@ tests:
             exp_annotations:
               summary: "The strategy mode has been reduce_only for 30 minutes"
               description: "In these modes only orders that reduce the position are sent, and flatten sells whatever is held. Decide what comes next: strategy-mode halted to stay out, or strategy-mode normal and a gateway restart to trade again (ADR 0024)."
+
+  # The leader refuses 40 commands as busy between 3m and 4m; followers refuse none.
+  - interval: 1m
+    input_series:
+      - series: 'velocita_v2_ingress_rate_limited_total{job="velocita-v2",host="nuc1",node="1"}'
+        values: '0 0 0 40x40'
+      - series: 'velocita_v2_ingress_rate_limited_total{job="velocita-v2",host="pi",node="2"}'
+        values: '0x43'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: VelocitaIngressRateLimited
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: VelocitaIngressRateLimited
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "A caller sent commands faster than its ingress rate allows"
+              description: "A voter answered busy to 40 command(s) in 10 minutes because one caller exceeded ingress.rate_per_second. The strategy and the gateway stay far below it in normal use. Look for a client stuck in a retry loop, or a key being used by something else. Operator callers are never limited."
+      - eval_time: 20m
+        alertname: VelocitaIngressRateLimited
+        exp_alerts: []

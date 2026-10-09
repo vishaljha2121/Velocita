@@ -2669,6 +2669,21 @@ enum class CancelDisposition : std::uint8_t {
 
     const bool reconciled_submit =
         observation.kind == VenueObservationKind::order_reconciled;
+    const bool finished = order.state == ClusterOrderState::filled ||
+                          order.state == ClusterOrderState::cancelled ||
+                          order.state == ClusterOrderState::rejected;
+    const bool venue_agrees_it_is_over =
+        order.state == ClusterOrderState::filled
+            ? observation.venue_order_id.value() != 0 &&
+                  observation.quantity == reservation.filled_quantity
+            : observation.venue_order_id.value() == 0 && observation.quantity.atoms() == 0 &&
+                  reservation.filled_quantity.atoms() == 0;
+    if (reconciled_submit && finished && effect->effect_id == order.effect_id &&
+        effect->operation == EffectOperation::submit &&
+        reservation.state == ReservationState::released && venue_agrees_it_is_over) {
+        return venue_event_result(state, ApplyCode::already_applied, next_version,
+                                  observation, ContractError::none, order.decision_id);
+    }
     const bool reconciled_cancel =
         reconciled_submit && effect->operation == EffectOperation::cancel &&
         effect->effect_id == order.effect_id &&

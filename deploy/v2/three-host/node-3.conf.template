@@ -29,6 +29,11 @@ voter.3.endpoint = 100.85.36.22:42203
 
 # The Mac reaches this voter over Tailscale.
 ingress.endpoint = 100.85.36.22:42303
+# Each caller outside the operator band may send this many commands a second,
+# with this much saved up for a burst. A leaked or looping key then fills the
+# log in weeks, not hours. The strategy sends at most three a second.
+ingress.rate_per_second = 6
+ingress.burst = 60
 
 # Operator caller 9 = CallerId 7; responses to the Mac's Tailscale address.
 caller.9.caller_id = 7

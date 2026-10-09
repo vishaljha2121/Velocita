@@ -68,6 +68,7 @@ struct NodeHealth {
     std::uint64_t quorum_step_downs{};
     std::uint64_t unauthorized_commands{};
     std::uint64_t strategy_mode{};
+    std::uint64_t ingress_rate_limited{};
     std::uint64_t ledger_count{};
     std::array<NodeHealthLedger, kNodeHealthLedgers> ledgers{};
     constexpr auto operator<=>(const NodeHealth&) const noexcept = default;

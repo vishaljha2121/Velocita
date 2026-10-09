@@ -685,6 +685,67 @@ void test_fault_reorder_fill_before_ack_converges() {
     require_released(harness.state, effect.cluster_order_id, "reorder");
 }
 
+void test_a_late_reconciliation_that_agrees_with_a_finished_order_is_not_a_refusal() {
+    {
+        Harness harness;
+        PaperVenue venue(config(), PaperFaultPolicy::clean(), 7);
+        const auto effect = authorize_at(harness, 20, kBuyPrice);
+        require(venue.send(effect, 10) == SendOutcome::accepted, "the buy was not accepted");
+        const auto delivered = drain(venue, harness, 100);
+        require(delivered.size() == 2 && delivered[1].result.code == ApplyCode::applied &&
+                    order_of(harness.state, effect.cluster_order_id).state == ClusterOrderState::filled,
+                "fixture: the order did not fill");
+        const auto answer = venue.query(effect.cluster_order_id, 200);
+        const auto before_account = harness.state.risk_accounts[0];
+        const auto before_order = order_of(harness.state, effect.cluster_order_id);
+        auto agreeing = synthetic(harness, VenueObservationKind::order_reconciled, effect);
+        agreeing.venue_order_id = answer.venue_order_id;
+        agreeing.quantity = answer.filled_quantity;
+        require(commit(harness, agreeing).code == ApplyCode::already_applied,
+                "a reconciliation that agrees with a filled order was refused");
+        require(harness.state.risk_accounts[0] == before_account &&
+                    order_of(harness.state, effect.cluster_order_id) == before_order,
+                "an agreeing reconciliation changed the account or the order");
+        for (const std::int64_t wrong : {kLots - 1, kLots + 1, std::int64_t{0}}) {
+            auto disagreeing = synthetic(harness, VenueObservationKind::order_reconciled, effect);
+            disagreeing.venue_order_id = answer.venue_order_id;
+            disagreeing.quantity = QuantityLots::from_atoms(wrong);
+            require(commit(harness, disagreeing).code == ApplyCode::venue_observation_not_applicable,
+                    "a reconciliation reporting " + std::to_string(wrong) + " lots for a filled order was accepted");
+        }
+        auto unknown_to_venue = synthetic(harness, VenueObservationKind::order_reconciled, effect);
+        unknown_to_venue.quantity = answer.filled_quantity;
+        const auto denied_code = commit(harness, unknown_to_venue).code;
+        require(denied_code != ApplyCode::applied && denied_code != ApplyCode::already_applied,
+                "a venue that denies a filled order was taken as agreeing with it");
+        auto denied_and_empty = synthetic(harness, VenueObservationKind::order_reconciled, effect);
+        require(commit(harness, denied_and_empty).code == ApplyCode::venue_observation_not_applicable,
+                "a venue with no record of a filled order was taken as agreeing with it");
+        require(harness.state.risk_accounts[0] == before_account, "a refused reconciliation changed the account");
+    }
+    {
+        Harness harness;
+        PaperVenue venue(config(), only(&PaperFaultPolicy::reject_permille), 7);
+        const auto effect = authorize_at(harness, 20, kBuyPrice);
+        require(venue.send(effect, 10) == SendOutcome::business_rejected, "fixture: the order was not killed");
+        (void)drain(venue, harness, 100);
+        require(order_of(harness.state, effect.cluster_order_id).state == ClusterOrderState::rejected,
+                "fixture: the order is not rejected");
+        const auto denied = synthetic(harness, VenueObservationKind::order_reconciled, effect);
+        require(commit(harness, denied).code == ApplyCode::already_applied,
+                "a venue with no record of a rejected order was not taken as agreeing");
+        auto filled = synthetic(harness, VenueObservationKind::order_reconciled, effect);
+        filled.venue_order_id = VenueOrderId{9};
+        filled.quantity = QuantityLots::from_atoms(1);
+        require(commit(harness, filled).code == ApplyCode::venue_observation_not_applicable,
+                "a fill reported for a rejected order was accepted");
+        auto resting = synthetic(harness, VenueObservationKind::order_reconciled, effect);
+        resting.venue_order_id = VenueOrderId{9};
+        require(commit(harness, resting).code == ApplyCode::venue_observation_not_applicable,
+                "a venue that still holds a rejected order was taken as agreeing it is over");
+    }
+}
+
 void test_fault_drop_response_unknown_then_query_adopts_the_fill() {
     Harness harness;
     PaperVenue venue(config(), only(&PaperFaultPolicy::drop_response_permille), 7);
@@ -1089,6 +1150,8 @@ int main() {
         {"fault_delay_withholds_reports_until_due", test_fault_delay_withholds_reports_until_due},
         {"fault_duplicate_moves_the_position_once", test_fault_duplicate_moves_the_position_once},
         {"fault_reorder_fill_before_ack_converges", test_fault_reorder_fill_before_ack_converges},
+        {"a_late_reconciliation_that_agrees_with_a_finished_order_is_not_a_refusal",
+         test_a_late_reconciliation_that_agrees_with_a_finished_order_is_not_a_refusal},
         {"fault_drop_response_unknown_then_query_adopts_the_fill",
          test_fault_drop_response_unknown_then_query_adopts_the_fill},
         {"fault_drop_request_unknown_then_not_found_releases_and_permits_retry",

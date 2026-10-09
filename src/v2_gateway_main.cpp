@@ -339,7 +339,12 @@ void report_events(GatewayLoop& loop) {
         switch (e.kind) {
         case GatewayEventKind::stopped:
             std::cout << "STOP new_risk cause=" << describe(e.cause)
-                      << " rearmable=" << (rearmable(e.cause) ? 1 : 0) << " term=" << e.term << std::endl;
+                      << " rearmable=" << (rearmable(e.cause) ? 1 : 0) << " term=" << e.term;
+            if (e.refused_code != ApplyCode::applied)
+                std::cout << " kernel_code=" << static_cast<int>(e.refused_code) << " report_kind="
+                          << static_cast<int>(e.refused_kind) << " order=" << e.order.value()
+                          << " applied_index=" << e.applied_index;
+            std::cout << std::endl;
             break;
         case GatewayEventKind::armed:
         case GatewayEventKind::rearmed:
