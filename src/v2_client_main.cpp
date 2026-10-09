@@ -16,6 +16,7 @@
 #include <deque>
 #include <filesystem>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <optional>
 #include <string>
@@ -154,6 +155,41 @@ Arguments parse(int argc, char** argv) {
         a.body = install;
         a.lane = ProposeLane::normal;
         a.digest = verb_digest(verb, {argv[i + 1], argv[i + 2], argv[i + 3]});
+    } else if (verb == "resolve-conflict" && i + 8 == argc) {
+        ResolveOrderConflict fix;
+        fix.cluster_order_id = ClusterOrderId{number(argv[i + 1], "order id")};
+        fix.expected_kill_epoch = KillEpoch{number(argv[i + 2], "expected kill epoch")};
+        fix.expected_executor_generation = ExecutorGeneration{number(argv[i + 3], "expected executor generation")};
+        const auto lots = number(argv[i + 4], "filled lots");
+        const auto ticks = number(argv[i + 5], "price ticks");
+        const auto fee = number(argv[i + 6], "fee micros");
+        constexpr std::uint64_t limit = static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
+        if (lots > limit || ticks > limit || fee > limit) throw Usage("a correction value is too large");
+        if (lots == 0 ? ticks != 0 || fee != 0 : ticks == 0)
+            throw Usage("give a price with a fill, and no price or fee without one");
+        fix.unbooked_quantity = QuantityLots::from_atoms(static_cast<std::int64_t>(lots));
+        fix.unbooked_price = PriceTicks::from_atoms(static_cast<std::int64_t>(ticks));
+        fix.unbooked_fee = FeeMicros::from_atoms(static_cast<std::int64_t>(fee));
+        const std::string evidence = argv[i + 7];
+        if (evidence.size() != 64) throw Usage("evidence digest must be 64 hex digits");
+        for (std::size_t b = 0; b < 32; ++b) {
+            unsigned v = 0;
+            const auto r = std::from_chars(evidence.data() + 2 * b, evidence.data() + 2 * b + 2, v, 16);
+            if (r.ec != std::errc{} || r.ptr != evidence.data() + 2 * b + 2) throw Usage("evidence digest must be hex");
+            fix.evidence_digest.bytes[b] = static_cast<std::byte>(v);
+        }
+        if (fix.cluster_order_id.value() == 0 || fix.evidence_digest.is_zero())
+            throw Usage("the order id and the evidence digest must not be zero");
+        a.body = fix;
+        a.lane = ProposeLane::normal;
+        a.digest = verb_digest(verb, {argv[i + 1], argv[i + 2], argv[i + 3], argv[i + 4], argv[i + 5], argv[i + 6],
+                                      argv[i + 7]});
+        a.summary = std::string("RESOLVE-CONFLICT order ") + argv[i + 1] + ": " +
+                    (lots == 0 ? std::string("book nothing")
+                               : std::string("book ") + argv[i + 4] + " lot(s) at " + argv[i + 5] + " ticks, fee " +
+                                     argv[i + 6] + " micros, with no limit or fee check") +
+                    ", release the rest of its reservation and close it\n"
+                    "The order must be finished at the venue; evidence sha256 " + evidence + "\n";
     } else if (verb == "assign-role" && i + 3 == argc) {
         const std::string role = argv[i + 2];
         if (role != "strategy" && role != "gateway") throw Usage("role must be strategy or gateway");
@@ -185,7 +221,9 @@ Arguments parse(int argc, char** argv) {
         throw Usage("command must be: kill-epoch VALUE | executor-generation VALUE | "
                     "install-catalog ROOT EXPECTED_KILL_EPOCH EXPECTED_EXECUTOR_GENERATION | "
                     "strategy-mode MODE EXPECTED_KILL_EPOCH EXPECTED_EXECUTOR_GENERATION | risk-limits KEY=VALUE... | "
-                    "assign-role CALLER_ID strategy|gateway");
+                    "assign-role CALLER_ID strategy|gateway | "
+                    "resolve-conflict ORDER_ID EXPECTED_KILL_EPOCH EXPECTED_EXECUTOR_GENERATION FILLED_LOTS "
+                    "PRICE_TICKS FEE_MICROS EVIDENCE_SHA256");
     }
     if (a.dry_run) return a;
     if (a.key_stdin == !a.key_file.empty()) throw Usage("give exactly one of --key-file or --key-stdin");

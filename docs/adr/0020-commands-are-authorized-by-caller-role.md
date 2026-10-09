@@ -108,7 +108,7 @@ so that the strategy could not change limits, but the separation stops at those 
 - **Client.** `velocita-v2-client ... assign-role CALLER_ID strategy|gateway`.
 - **Ceremony.** After `install-catalog`: `assign-role 21 strategy`, then `assign-role 22 gateway`.
   Until both are committed the strategy's bars and the gateway's reports are refused.
-- **Tests.** `tests/v2_kernel_control_tests.cpp` holds the table (21 commands × operator, strategy,
+- **Tests.** `tests/v2_kernel_control_tests.cpp` holds the table (22 commands × operator, strategy,
   gateway, a known caller with no role, an unknown caller) and the assignment rules. Codec and
   snapshot tests cover the bytes. 34 mutants: 31 killed, 3 equivalent (one unreachable branch, two
   decode checks that a later validation repeats).

@@ -2481,6 +2481,200 @@ void test_a_refused_fill_stays_as_evidence_while_its_order_is_in_conflict() {
     }
 }
 
+velocita::v2::Command resolve_conflict(const LedgerHarness& h, const std::uint64_t request,
+                                       const velocita::v2::ClusterOrderId order, const std::int64_t quantity,
+                                       const std::int64_t price, const std::int64_t fee) {
+    using namespace velocita::v2;
+    return {{CallerId{9}, RequestSequence{request}, digest(0xd1)},
+            ResolveOrderConflict{order, h.state.kill_epoch, h.state.executor_generation,
+                                 QuantityLots::from_atoms(quantity), PriceTicks::from_atoms(price),
+                                 FeeMicros::from_atoms(fee), digest(0xd2)}};
+}
+
+void require_order_closed(LedgerHarness& h, const velocita::v2::ClusterOrderState expected,
+                          const std::int64_t filled, const std::string& name) {
+    using namespace velocita::v2;
+    const auto& risk = h.state.risk_accounts[0];
+    const auto& order = h.state.orders[h.state.order_count - 1];
+    const auto& reservation = h.state.reservations[order.reservation_index];
+    require(order.state == expected, name + ": order state is " + std::to_string(static_cast<int>(order.state)));
+    require(order.last_evidence_state_version == h.state.state_version,
+            name + ": the order does not record when it was corrected");
+    require(reservation.state == ReservationState::released && reservation.filled_quantity.atoms() == filled &&
+                reservation.remaining_quantity.atoms() == 0 && reservation.remaining_notional.atoms() == 0 &&
+                reservation.margin_hold.atoms() == 0 && reservation.fee_hold.atoms() == 0,
+            name + ": the reservation was not released with " + std::to_string(filled) + " filled");
+    require(risk.reserved_quantity.atoms() == 0 && risk.reserved_margin.atoms() == 0 &&
+                risk.reserved_fee.atoms() == 0,
+            name + ": the account still holds a reservation");
+    for (std::size_t index = 0; index < h.state.outbox_effect_count; ++index) {
+        const auto effect = h.state.outbox_effects[index].state;
+        require(effect == OutboxState::acknowledged || effect == OutboxState::rejected ||
+                    effect == OutboxState::conflict || effect == OutboxState::incomplete,
+                name + ": an effect of the closed order can still be sent");
+    }
+    std::array<std::byte, kMaxStateSnapshotBytes> bytes{};
+    require(encode_state_snapshot(h.state, bytes).error == StateSnapshotError::none,
+            name + ": the corrected state is not canonical");
+    const Command halt{{CallerId{9}, RequestSequence{++h.request}, digest(0xd3)},
+                       SetStrategyMode{StrategyMode::halted, h.state.kill_epoch, h.state.executor_generation}};
+    const Command resume{{CallerId{9}, RequestSequence{++h.request}, digest(0xd4)},
+                         SetStrategyMode{StrategyMode::normal, h.state.kill_epoch, h.state.executor_generation}};
+    (void)catalog_test::apply(h.state, halt, h.scratch);
+    require(h.state.strategy_mode == StrategyMode::halted &&
+                catalog_test::apply(h.state, resume, h.scratch).code == ApplyCode::applied,
+            name + ": the strategy could not resume after the correction");
+}
+
+void test_an_operator_correction_closes_a_conflicted_order() {
+    using namespace velocita::v2;
+    {
+        auto h = ledger_harness();
+        const auto order = h.place(Side::buy, 11, 2);
+        require(order.code == ApplyCode::applied &&
+                    h.fill(order, Side::buy, 12, 2, 3).code == ApplyCode::fill_price_conflict,
+                "price fixture did not reach a conflict");
+        const Command halt{{CallerId{9}, RequestSequence{++h.request}, digest(0xd3)},
+                           SetStrategyMode{StrategyMode::halted, h.state.kill_epoch, h.state.executor_generation}};
+        const Command resume{{CallerId{9}, RequestSequence{++h.request}, digest(0xd4)},
+                             SetStrategyMode{StrategyMode::normal, h.state.kill_epoch, h.state.executor_generation}};
+        require(catalog_test::apply(h.state, halt, h.scratch).code == ApplyCode::applied &&
+                    catalog_test::apply(h.state, resume, h.scratch).code == ApplyCode::reconciliation_required,
+                "fixture: a conflict did not block the return to normal");
+        const auto version = h.state.risk_accounts[0].position_version.value();
+        require(catalog_test::apply(h.state, resolve_conflict(h, ++h.request, order.cluster_order_id(), 2, 12, 3),
+                                    h.scratch).code == ApplyCode::applied,
+                "a correction for the whole order was refused");
+        h.expect(2, -2'403, 2'400, -3, 3, "correction: buy 2 at 12, fee 3");
+        require(h.state.risk_accounts[0].position_version.value() == version + 1,
+                "a correction that changed the position did not advance its version");
+        require_order_closed(h, ClusterOrderState::filled, 2, "whole order");
+        require(catalog_test::apply(h.state, resolve_conflict(h, ++h.request, order.cluster_order_id(), 2, 12, 3),
+                                    h.scratch).code == ApplyCode::order_not_in_conflict,
+                "an order was corrected twice");
+        h.expect(2, -2'403, 2'400, -3, 3, "after a second correction was refused");
+        require(h.place(Side::sell, 12, 1).code == ApplyCode::applied,
+                "the order slot stayed occupied after the correction");
+    }
+    {
+        auto h = ledger_harness();
+        const auto order = h.place(Side::buy, 11, 2);
+        require(order.code == ApplyCode::applied &&
+                    h.fill(order, Side::buy, 11, 2, 9).code == ApplyCode::fill_fee_conflict,
+                "fee fixture did not reach a conflict");
+        const auto version = h.state.risk_accounts[0].position_version;
+        require(catalog_test::apply(h.state, resolve_conflict(h, ++h.request, order.cluster_order_id(), 0, 0, 0),
+                                    h.scratch).code == ApplyCode::applied,
+                "a correction saying nothing filled was refused");
+        h.expect(0, 0, 0, 0, 0, "correction: nothing filled");
+        require(h.state.risk_accounts[0].position_version == version,
+                "a correction that booked nothing advanced the position version");
+        require_order_closed(h, ClusterOrderState::cancelled, 0, "nothing filled");
+    }
+    {
+        auto h = ledger_harness();
+        const auto order = h.place(Side::buy, 11, 3);
+        require(order.code == ApplyCode::applied && h.fill(order, Side::buy, 11, 1, 0).code == ApplyCode::applied &&
+                    h.fill(order, Side::buy, 12, 1, 0).code == ApplyCode::fill_price_conflict,
+                "partial fixture did not reach a conflict");
+        h.expect(1, -1'100, 1'100, 0, 0, "partial fixture before the correction");
+        require(catalog_test::apply(h.state, resolve_conflict(h, ++h.request, order.cluster_order_id(), 1, 12, 2),
+                                    h.scratch).code == ApplyCode::applied,
+                "a correction for part of the order was refused");
+        h.expect(2, -2'302, 2'300, -2, 2, "correction: 1 more at 12, fee 2");
+        require_order_closed(h, ClusterOrderState::filled, 2, "partly filled");
+    }
+    {
+        auto h = ledger_harness();
+        const auto order = h.place(Side::buy, 11, 1);
+        require(order.code == ApplyCode::applied && h.fill(order, Side::buy, 11, 1, 0).code == ApplyCode::applied &&
+                    h.fill(order, Side::buy, 11, 1, 0).code == ApplyCode::fill_quantity_conflict,
+                "overfill fixture did not reach a conflict");
+        require(catalog_test::apply(h.state, resolve_conflict(h, ++h.request, order.cluster_order_id(), 1, 11, 1),
+                                    h.scratch).code == ApplyCode::applied,
+                "a correction for an overfill was refused");
+        h.expect(2, -2'201, 2'200, -1, 1, "correction: overfill of 1 at 11, fee 1");
+        require_order_closed(h, ClusterOrderState::filled, 1, "overfilled");
+    }
+    {
+        auto h = ledger_harness();
+        const auto held = h.place(Side::buy, 11, 2);
+        require(held.code == ApplyCode::applied && h.fill(held, Side::buy, 11, 2, 0).code == ApplyCode::applied,
+                "sell fixture could not hold two lots");
+        const auto order = h.place(Side::sell, 12, 1);
+        require(order.code == ApplyCode::applied &&
+                    h.fill(order, Side::sell, 11, 1, 3).code == ApplyCode::fill_price_conflict,
+                "sell fixture did not reach a conflict");
+        require(catalog_test::apply(h.state, resolve_conflict(h, ++h.request, order.cluster_order_id(), 1, 11, 3),
+                                    h.scratch).code == ApplyCode::applied,
+                "a correction for a sell was refused");
+        h.expect(1, -1'103, 1'100, -3, 3, "correction: sell 1 of 2 at 11, fee 3");
+        require_order_closed(h, ClusterOrderState::filled, 1, "sell");
+    }
+}
+
+void test_a_correction_is_refused_unless_it_names_a_conflict_and_is_well_formed() {
+    using namespace velocita::v2;
+    auto h = ledger_harness();
+    const auto held = h.place(Side::buy, 11, 1);
+    require(held.code == ApplyCode::applied && h.fill(held, Side::buy, 11, 1, 0).code == ApplyCode::applied,
+            "refusal fixture could not fill an order");
+    const auto order = h.place(Side::sell, 12, 1);
+    require(order.code == ApplyCode::applied, "refusal fixture order was not authorized");
+    const auto expect_refused = [&](Command command, const ApplyCode code, const std::string& name) {
+        const auto risk = h.state.risk_accounts[0];
+        const auto orders = h.state.orders;
+        const auto reservations = h.state.reservations;
+        const auto outcome = catalog_test::apply(h.state, command, h.scratch).code;
+        require(outcome == code, name + ": code " + std::to_string(static_cast<int>(outcome)));
+        require(h.state.risk_accounts[0] == risk && h.state.orders == orders &&
+                    h.state.reservations == reservations,
+                name + ": a refused correction changed the account, an order or a reservation");
+    };
+    expect_refused(resolve_conflict(h, ++h.request, order.cluster_order_id(), 1, 11, 0),
+                   ApplyCode::order_not_in_conflict, "an open order");
+    expect_refused(resolve_conflict(h, ++h.request, held.cluster_order_id(), 1, 11, 0),
+                   ApplyCode::order_not_in_conflict, "a filled order");
+    require(h.fill(order, Side::sell, 11, 1, 0).code == ApplyCode::fill_price_conflict,
+            "refusal fixture did not reach a conflict");
+    const auto id = order.cluster_order_id();
+    expect_refused(resolve_conflict(h, ++h.request, ClusterOrderId{id.value() + 1}, 1, 11, 0),
+                   ApplyCode::order_not_found, "an unknown order");
+    auto stale_epoch = resolve_conflict(h, ++h.request, id, 1, 11, 0);
+    std::get<ResolveOrderConflict>(stale_epoch.body).expected_kill_epoch = KillEpoch{h.state.kill_epoch.value() + 1};
+    expect_refused(stale_epoch, ApplyCode::stale_control_generation, "another kill epoch");
+    auto stale_generation = resolve_conflict(h, ++h.request, id, 1, 11, 0);
+    std::get<ResolveOrderConflict>(stale_generation.body).expected_executor_generation =
+        ExecutorGeneration{h.state.executor_generation.value() - 1};
+    expect_refused(stale_generation, ApplyCode::stale_control_generation, "another executor generation");
+    auto no_evidence = resolve_conflict(h, ++h.request, id, 1, 11, 0);
+    std::get<ResolveOrderConflict>(no_evidence.body).evidence_digest = {};
+    expect_refused(no_evidence, ApplyCode::invalid_command, "no evidence digest");
+    expect_refused(resolve_conflict(h, ++h.request, ClusterOrderId{}, 1, 11, 0),
+                   ApplyCode::invalid_command, "no order");
+    expect_refused(resolve_conflict(h, ++h.request, id, -1, 11, 0), ApplyCode::invalid_command, "a negative quantity");
+    expect_refused(resolve_conflict(h, ++h.request, id, -1, 0, 0), ApplyCode::invalid_command,
+                   "a negative quantity with no price");
+    expect_refused(resolve_conflict(h, ++h.request, id, 1, 0, 0), ApplyCode::invalid_command, "a fill with no price");
+    expect_refused(resolve_conflict(h, ++h.request, id, 1, -11, 0), ApplyCode::invalid_command, "a negative price");
+    expect_refused(resolve_conflict(h, ++h.request, id, 1, 11, -1), ApplyCode::invalid_command, "a negative fee");
+    expect_refused(resolve_conflict(h, ++h.request, id, 0, 11, 0), ApplyCode::invalid_command, "a price with no fill");
+    expect_refused(resolve_conflict(h, ++h.request, id, 0, 0, 1), ApplyCode::invalid_command, "a fee with no fill");
+    expect_refused(resolve_conflict(h, ++h.request, id, 1, std::numeric_limits<std::int64_t>::max(), 0),
+                   ApplyCode::position_arithmetic_overflow, "a price that overflows");
+    const auto version = h.state.risk_accounts[0].position_version;
+    h.state.risk_accounts[0].position_version = PositionVersion{std::numeric_limits<std::uint64_t>::max()};
+    expect_refused(resolve_conflict(h, ++h.request, id, 1, 11, 0), ApplyCode::position_arithmetic_overflow,
+                   "an exhausted position version");
+    h.state.risk_accounts[0].position_version = version;
+    auto from_gateway = resolve_conflict(h, ++h.request, id, 1, 11, 0);
+    from_gateway.identity.caller_id = CallerId{22};
+    expect_refused(from_gateway, ApplyCode::unauthorized_control, "a gateway caller");
+    require(catalog_test::apply(h.state, resolve_conflict(h, ++h.request, id, 1, 11, 0), h.scratch).code ==
+                ApplyCode::applied,
+            "the well-formed correction was refused after the malformed ones");
+}
+
 void test_loss_limit_stops_new_risk_and_still_lets_the_position_close() {
     using namespace velocita::v2;
     auto h = ledger_harness(400);
@@ -4251,6 +4445,8 @@ int main() {
         test_cost_basis_allocation_conserves_the_last_micro();
         test_a_fill_beyond_the_limit_or_fee_cap_is_a_conflict_and_books_nothing();
         test_a_refused_fill_stays_as_evidence_while_its_order_is_in_conflict();
+        test_an_operator_correction_closes_a_conflicted_order();
+        test_a_correction_is_refused_unless_it_names_a_conflict_and_is_well_formed();
         test_loss_limit_stops_new_risk_and_still_lets_the_position_close();
         test_loss_limit_boundary_is_inclusive_and_zero_disables_it();
         test_position_limit_matrix();

@@ -243,6 +243,7 @@ void test_each_command_is_accepted_only_from_its_roles() {
         {AcknowledgeGatewayResults{}, gateway, "AcknowledgeGatewayResults"},
         {InstallExecutionCatalog{}, op, "InstallExecutionCatalog"},
         {AssignCallerRole{}, op, "AssignCallerRole"},
+        {ResolveOrderConflict{}, op, "ResolveOrderConflict"},
     }};
     struct Sender {
         std::uint64_t caller;

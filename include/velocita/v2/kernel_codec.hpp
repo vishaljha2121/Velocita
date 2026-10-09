@@ -62,6 +62,7 @@ enum class KernelCommandKind : std::uint16_t {
     request_mass_cancel = 19,
     install_execution_catalog = 20,
     assign_caller_role = 21,
+    resolve_order_conflict = 22,
 };
 
 enum class KernelCodecError : std::uint8_t {

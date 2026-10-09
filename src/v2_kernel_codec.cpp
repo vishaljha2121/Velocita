@@ -201,6 +201,7 @@ private:
         case ApplyCode::loss_limit_reached:
         case ApplyCode::unauthorized_command:
         case ApplyCode::caller_role_conflict:
+        case ApplyCode::order_not_in_conflict:
             return true;
     }
     return false;
@@ -260,6 +261,7 @@ private:
         case KernelCommandKind::request_mass_cancel:
         case KernelCommandKind::install_execution_catalog:
         case KernelCommandKind::assign_caller_role:
+        case KernelCommandKind::resolve_order_conflict:
             return true;
     }
     return false;
@@ -354,6 +356,14 @@ private:
     if (const auto* body = std::get_if<AssignCallerRole>(&command.body)) {
         return !is_operator_caller(body->caller_id) && body->caller_id.value() != 0 &&
                (body->role == CallerRole::strategy || body->role == CallerRole::gateway);
+    }
+    if (const auto* body = std::get_if<ResolveOrderConflict>(&command.body)) {
+        const bool booking = body->unbooked_quantity.atoms() > 0;
+        return body->cluster_order_id.value() != 0 && !body->evidence_digest.is_zero() &&
+               body->expected_kill_epoch.value() != 0 && body->expected_executor_generation.value() != 0 &&
+               body->unbooked_quantity.atoms() >= 0 && body->unbooked_fee.atoms() >= 0 &&
+               (booking ? body->unbooked_price.atoms() > 0
+                        : body->unbooked_price.atoms() == 0 && body->unbooked_fee.atoms() == 0);
     }
     if (const auto* body = std::get_if<InstallExecutionCatalog>(&command.body)) {
         return !body->catalog_root.is_zero() &&
@@ -509,6 +519,9 @@ private:
     if (std::holds_alternative<AssignCallerRole>(body)) {
         return KernelCommandKind::assign_caller_role;
     }
+    if (std::holds_alternative<ResolveOrderConflict>(body)) {
+        return KernelCommandKind::resolve_order_conflict;
+    }
     return KernelCommandKind::install_execution_catalog;
 }
 
@@ -554,6 +567,7 @@ private:
     if (std::holds_alternative<ConfigureRiskLimits>(body)) return 110;
     if (std::holds_alternative<AcknowledgeGatewayResults>(body)) return 8;
     if (std::holds_alternative<AssignCallerRole>(body)) return 9;
+    if (std::holds_alternative<ResolveOrderConflict>(body)) return 48 + kDigestBytes;
     if (std::holds_alternative<InstallExecutionCatalog>(body)) {
         return kInstallExecutionCatalogBodyBytes;
     }
@@ -798,6 +812,14 @@ void write_body(Writer& writer, const CommandBody& body) noexcept {
     } else if (const auto* value = std::get_if<AssignCallerRole>(&body)) {
         writer.integral(value->caller_id.value());
         writer.integral(static_cast<std::uint8_t>(value->role));
+    } else if (const auto* value = std::get_if<ResolveOrderConflict>(&body)) {
+        writer.integral(value->cluster_order_id.value());
+        writer.integral(value->expected_kill_epoch.value());
+        writer.integral(value->expected_executor_generation.value());
+        writer.integral(value->unbooked_quantity.atoms());
+        writer.integral(value->unbooked_price.atoms());
+        writer.integral(value->unbooked_fee.atoms());
+        writer.digest(value->evidence_digest);
     } else if (const auto* value =
                    std::get_if<InstallExecutionCatalog>(&body)) {
         writer.digest(value->catalog_root);
@@ -1153,6 +1175,18 @@ void write_body(Writer& writer, const CommandBody& body) noexcept {
             if (role != static_cast<std::uint8_t>(CallerRole::strategy) &&
                 role != static_cast<std::uint8_t>(CallerRole::gateway)) return false;
             value.role = static_cast<CallerRole>(role);
+            body = value;
+            return true;
+        }
+        case KernelCommandKind::resolve_order_conflict: {
+            ResolveOrderConflict value;
+            value.cluster_order_id = ClusterOrderId{reader.integral<std::uint64_t>()};
+            value.expected_kill_epoch = KillEpoch{reader.integral<std::uint64_t>()};
+            value.expected_executor_generation = ExecutorGeneration{reader.integral<std::uint64_t>()};
+            value.unbooked_quantity = QuantityLots::from_atoms(reader.integral<std::int64_t>());
+            value.unbooked_price = PriceTicks::from_atoms(reader.integral<std::int64_t>());
+            value.unbooked_fee = FeeMicros::from_atoms(reader.integral<std::int64_t>());
+            value.evidence_digest = reader.digest();
             body = value;
             return true;
         }

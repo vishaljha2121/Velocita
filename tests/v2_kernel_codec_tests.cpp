@@ -687,6 +687,71 @@ void test_role_assignment_command_is_canonical() {
             "the first caller outside the operator band could not be named");
 }
 
+void test_conflict_correction_command_is_canonical() {
+    using namespace velocita::v2;
+    require(static_cast<std::uint16_t>(KernelCommandKind::resolve_order_conflict) == 22,
+            "conflict correction command kind changed");
+    const ResolveOrderConflict filled{ClusterOrderId{0x1112131415161718ULL}, KillEpoch{0x2122232425262728ULL},
+                                      ExecutorGeneration{0x3132333435363738ULL},
+                                      QuantityLots::from_atoms(0x4142434445464748LL),
+                                      PriceTicks::from_atoms(0x5152535455565758LL),
+                                      FeeMicros::from_atoms(0x6162636465666768LL), digest(0x7a)};
+    const auto original = command(93, filled);
+    std::array<std::byte, kMaxKernelCommandBytes> bytes{};
+    const auto encoded = encode_kernel_command(original, bytes);
+    Command restored;
+    KernelCommandCodecScratch scratch;
+    require(encoded.error == KernelCodecError::none &&
+                decode_kernel_command({bytes.data(), encoded.bytes_written}, restored, scratch).error ==
+                    KernelCodecError::none &&
+                std::holds_alternative<ResolveOrderConflict>(restored.body),
+            "a conflict correction did not round trip");
+    const auto& back = std::get<ResolveOrderConflict>(restored.body);
+    require(back.cluster_order_id == filled.cluster_order_id &&
+                back.expected_kill_epoch == filled.expected_kill_epoch &&
+                back.expected_executor_generation == filled.expected_executor_generation &&
+                back.unbooked_quantity == filled.unbooked_quantity && back.unbooked_price == filled.unbooked_price &&
+                back.unbooked_fee == filled.unbooked_fee && back.evidence_digest == filled.evidence_digest,
+            "a conflict correction changed a field in transit");
+    std::array<std::byte, 48> words{};
+    for (std::size_t field = 0; field < 6; ++field)
+        for (std::size_t byte = 0; byte < 8; ++byte)
+            words[field * 8 + byte] = static_cast<std::byte>(0x10 * (field + 1) + 8 - byte);
+    std::size_t matches = 0;
+    std::size_t at = 0;
+    for (std::size_t offset = 0; offset + words.size() <= encoded.bytes_written; ++offset) {
+        if (std::equal(words.begin(), words.end(), bytes.begin() + static_cast<std::ptrdiff_t>(offset))) {
+            ++matches;
+            at = offset;
+        }
+    }
+    require(matches == 1 &&
+                std::equal(filled.evidence_digest.bytes.begin(), filled.evidence_digest.bytes.end(),
+                           bytes.begin() + static_cast<std::ptrdiff_t>(at + words.size())),
+            "the correction body is not order, epoch, generation, quantity, price, fee, then the evidence digest");
+
+    auto nothing = filled;
+    nothing.unbooked_quantity = {};
+    nothing.unbooked_price = {};
+    nothing.unbooked_fee = {};
+    require(encode_kernel_command(command(94, nothing), bytes).error == KernelCodecError::none,
+            "a correction saying nothing filled did not encode");
+    const auto refuse = [&](ResolveOrderConflict value, const char* name) {
+        require(encode_kernel_command(command(95, value), bytes).error == KernelCodecError::invalid_value,
+                std::string("an invalid correction was encoded: ") + name);
+    };
+    auto value = filled; value.cluster_order_id = {}; refuse(value, "no order");
+    value = filled; value.expected_kill_epoch = {}; refuse(value, "no kill epoch");
+    value = filled; value.expected_executor_generation = {}; refuse(value, "no executor generation");
+    value = filled; value.evidence_digest = {}; refuse(value, "no evidence");
+    value = filled; value.unbooked_quantity = QuantityLots::from_atoms(-1); refuse(value, "negative quantity");
+    value = filled; value.unbooked_price = {}; refuse(value, "fill without a price");
+    value = filled; value.unbooked_fee = FeeMicros::from_atoms(-1); refuse(value, "negative fee");
+    value = nothing; value.unbooked_quantity = QuantityLots::from_atoms(-1); refuse(value, "negative quantity alone");
+    value = nothing; value.unbooked_price = PriceTicks::from_atoms(1); refuse(value, "price without a fill");
+    value = nothing; value.unbooked_fee = FeeMicros::from_atoms(1); refuse(value, "fee without a fill");
+}
+
 void test_replacement_command_is_canonical_v4() {
     using namespace velocita::v2;
     require(static_cast<std::uint16_t>(KernelCommandKind::request_replace) == 16,
@@ -861,6 +926,7 @@ int main() {
         test_fill_command_and_result_are_canonical_v4();
         test_cancel_and_order_event_commands_are_canonical_v4();
         test_role_assignment_command_is_canonical();
+        test_conflict_correction_command_is_canonical();
         test_replacement_command_is_canonical_v4();
         test_gateway_result_acknowledgement_is_canonical_v6();
         test_result_round_trip_is_canonical();

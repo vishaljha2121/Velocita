@@ -192,6 +192,7 @@ private:
         case ApplyCode::loss_limit_reached:
         case ApplyCode::unauthorized_command:
         case ApplyCode::caller_role_conflict:
+        case ApplyCode::order_not_in_conflict:
             return true;
     }
     return false;

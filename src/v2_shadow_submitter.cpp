@@ -405,6 +405,7 @@ std::string_view apply_code_name(ApplyCode code) noexcept {
         case ApplyCode::loss_limit_reached: return "loss_limit_reached";
         case ApplyCode::unauthorized_command: return "unauthorized_command";
         case ApplyCode::caller_role_conflict: return "caller_role_conflict";
+        case ApplyCode::order_not_in_conflict: return "order_not_in_conflict";
     }
     return "unknown";
 }

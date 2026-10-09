@@ -149,6 +149,7 @@ enum class ApplyCode : std::uint8_t {
     loss_limit_reached,
     unauthorized_command,
     caller_role_conflict,
+    order_not_in_conflict,
 };
 
 enum class CallerRole : std::uint8_t {
@@ -303,6 +304,16 @@ struct AssignCallerRole {
     CallerRole role{CallerRole::none};
 };
 
+struct ResolveOrderConflict {
+    ClusterOrderId cluster_order_id{};
+    KillEpoch expected_kill_epoch{};
+    ExecutorGeneration expected_executor_generation{};
+    QuantityLots unbooked_quantity{};
+    PriceTicks unbooked_price{};
+    FeeMicros unbooked_fee{};
+    Digest256 evidence_digest{};
+};
+
 struct InstallExecutionCatalog {
     Digest256 catalog_root{};
     KillEpoch expected_kill_epoch{};
@@ -340,7 +351,8 @@ using CommandBody = std::variant<PublishPolicy,
                                  ConfigureRiskLimits,
                                  AcknowledgeGatewayResults,
                                  InstallExecutionCatalog,
-                                 AssignCallerRole>;
+                                 AssignCallerRole,
+                                 ResolveOrderConflict>;
 
 struct Command {
     CommandIdentity identity{};

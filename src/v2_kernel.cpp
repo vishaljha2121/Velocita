@@ -3021,6 +3021,89 @@ enum class CancelDisposition : std::uint8_t {
     return result(state, ApplyCode::applied, next_version);
 }
 
+[[nodiscard]] ApplyResult apply_resolve_order_conflict(
+    TradingState& state, const ResolveOrderConflict& command,
+    const std::uint64_t next_version) noexcept {
+    const bool booking = command.unbooked_quantity.atoms() > 0;
+    if (command.cluster_order_id.value() == 0 || command.evidence_digest.is_zero() ||
+        command.unbooked_quantity.atoms() < 0 || command.unbooked_fee.atoms() < 0 ||
+        (booking ? command.unbooked_price.atoms() <= 0
+                 : command.unbooked_price.atoms() != 0 || command.unbooked_fee.atoms() != 0)) {
+        return result(state, ApplyCode::invalid_command, next_version);
+    }
+    if (command.expected_kill_epoch != state.kill_epoch ||
+        command.expected_executor_generation != state.executor_generation) {
+        return result(state, ApplyCode::stale_control_generation, next_version);
+    }
+    std::size_t order_index = 0;
+    while (order_index < state.order_count &&
+           state.orders[order_index].cluster_order_id != command.cluster_order_id) ++order_index;
+    if (order_index == state.order_count) {
+        return result(state, ApplyCode::order_not_found, next_version);
+    }
+    auto& order = state.orders[order_index];
+    if (order.state != ClusterOrderState::conflict) {
+        return result(state, ApplyCode::order_not_in_conflict, next_version);
+    }
+    const auto decision_index = find_decision_index(state, order.decision_id);
+    if (order.reservation_index >= state.reservation_count || decision_index == state.decision_count) {
+        return result(state, ApplyCode::order_not_found, next_version);
+    }
+    auto& reservation = state.reservations[order.reservation_index];
+    const auto& proposal = state.decision_cold[decision_index].proposal;
+    auto* risk = find_risk_account(state, proposal.account_id, proposal.instrument_id);
+    if (risk == nullptr) {
+        return result(state, ApplyCode::risk_account_not_found, next_version);
+    }
+    const auto next_reserved_quantity = risk->reserved_quantity.checked_sub(reservation.remaining_quantity);
+    const auto next_reserved_margin = risk->reserved_margin.checked_sub(reservation.margin_hold);
+    const auto next_reserved_fee = risk->reserved_fee.checked_sub(reservation.fee_hold);
+    if (!next_reserved_quantity || !next_reserved_margin || !next_reserved_fee ||
+        next_reserved_quantity->atoms() < 0 || next_reserved_margin->atoms() < 0 ||
+        next_reserved_fee->atoms() < 0) {
+        return result(state, ApplyCode::risk_arithmetic_overflow, next_version);
+    }
+    auto booked = reservation.filled_quantity;
+    if (booking) {
+        VenueObservation fill;
+        fill.price = command.unbooked_price;
+        fill.quantity = command.unbooked_quantity;
+        const auto notional = fill_notional(proposal, fill);
+        const auto ledger = notional
+            ? ledger_after_fill(*risk, proposal.side, command.unbooked_quantity, *notional, command.unbooked_fee)
+            : std::nullopt;
+        const auto next_position = risk->position_quantity.checked_add(
+            proposal.side == Side::buy ? command.unbooked_quantity
+                                       : QuantityLots::from_atoms(-command.unbooked_quantity.atoms()));
+        const auto total = reservation.filled_quantity.checked_add(command.unbooked_quantity);
+        if (!ledger || !next_position || !total ||
+            risk->position_version.value() == std::numeric_limits<std::uint64_t>::max()) {
+            return result(state, ApplyCode::position_arithmetic_overflow, next_version);
+        }
+        booked = std::min(*total, reservation.original_quantity);
+        risk->position_quantity = *next_position;
+        risk->position_version = PositionVersion{risk->position_version.value() + 1};
+        risk->cash = ledger->cash;
+        risk->cost_basis = ledger->cost_basis;
+        risk->realized_pnl = ledger->realized_pnl;
+        risk->fees_paid = ledger->fees_paid;
+        risk->window_realized_pnl = ledger->window_realized_pnl;
+    }
+    risk->reserved_quantity = *next_reserved_quantity;
+    risk->reserved_margin = *next_reserved_margin;
+    risk->reserved_fee = *next_reserved_fee;
+    reservation.filled_quantity = booked;
+    reservation.remaining_quantity = {};
+    reservation.remaining_notional = {};
+    reservation.margin_hold = {};
+    reservation.fee_hold = {};
+    reservation.state = ReservationState::released;
+    order.state = booked.atoms() > 0 ? ClusterOrderState::filled : ClusterOrderState::cancelled;
+    order.last_evidence_state_version = next_version;
+    (void)settle_orphaned_effects(state, order.cluster_order_id);
+    return result(state, ApplyCode::applied, next_version);
+}
+
 [[nodiscard]] ApplyCode catalog_installation_code(
     const TradingState& state, const InstallExecutionCatalog& command) noexcept {
     if (command.catalog_root.is_zero()) return ApplyCode::invalid_command;
@@ -3051,6 +3134,9 @@ enum class CancelDisposition : std::uint8_t {
     }
     if (const auto* body = std::get_if<AssignCallerRole>(&command.body)) {
         return apply_assign_caller_role(state, *body, next_version);
+    }
+    if (const auto* body = std::get_if<ResolveOrderConflict>(&command.body)) {
+        return apply_resolve_order_conflict(state, *body, next_version);
     }
     if (state.execution_catalog_root.is_zero() &&
         (std::holds_alternative<PublishPolicy>(command.body) ||
@@ -3347,6 +3433,7 @@ inline constexpr bool is_one_of = (std::is_same_v<T, Kinds> || ...);
         using T = std::decay_t<decltype(value)>;
         if constexpr (is_one_of<T, AdvanceKillEpoch, SetExecutorGeneration, SetStrategyMode,
                                 InstallExecutionCatalog, ConfigureRiskLimits, AssignCallerRole,
+                                ResolveOrderConflict,
                                 PublishPolicy, ValidatePolicy, ActivatePolicy, SupersedePolicy,
                                 StageExecutablePolicy, ActivateExecutablePolicy>) {
             return kOperatorRole;
@@ -3395,7 +3482,8 @@ ApplyResult apply(TradingState& state,
         std::holds_alternative<SetStrategyMode>(command.body) ||
         std::holds_alternative<InstallExecutionCatalog>(command.body) ||
         std::holds_alternative<ConfigureRiskLimits>(command.body) ||
-        std::holds_alternative<AssignCallerRole>(command.body)) {
+        std::holds_alternative<AssignCallerRole>(command.body) ||
+        std::holds_alternative<ResolveOrderConflict>(command.body)) {
         if (!is_operator_caller(command.identity.caller_id)) {
             return result(state, ApplyCode::unauthorized_control, state.state_version);
         }
