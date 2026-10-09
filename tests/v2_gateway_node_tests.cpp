@@ -1341,6 +1341,59 @@ void without_allow_new_risk_the_gateway_never_arms() {
             "a gateway without --allow-new-risk armed");
 }
 
+void a_gateway_that_requires_a_loss_limit_arms_only_while_one_is_set() {
+    PaperFixture paper;
+    Base base("v2-gw-loss-limit");
+    Cluster cluster(base.path, {1, 2});
+    Caller op{kOperatorKey, kOperator}, strategy{kStrategyKey, kStrategy};
+    prepare_cluster(cluster, op, strategy);
+    auto config = quiet_config(100);
+    config.require_loss_limit = true;
+    Gateway gateway(cluster, sim::FaultPolicy::clean(), config);
+    cluster.on_round = [&] { gateway.loop.step(); };
+    cluster.run_until([&] { return gateway.loop.metrics().reconciliation == BookVerdict::match; },
+                      "a clean reconciliation");
+    cluster.run(1500);
+    require(gateway.loop.new_risk_stopped() && gateway.loop.metrics().no_loss_limit &&
+                !gateway.loop.metrics().awaiting_arm,
+            "a gateway that requires a loss limit armed for an account that has none");
+
+    const auto leader = cluster.elect();
+    const auto limit = [&](const std::int64_t max_window_loss) {
+        const auto* risk = account(cluster.state_of(leader));
+        ConfigureRiskLimits limits;
+        limits.account_id = risk->account_id;
+        limits.instrument_id = risk->instrument_id;
+        limits.risk_policy_version = risk->risk_policy_version;
+        limits.expected_risk_version = risk->risk_version;
+        limits.expected_kill_epoch = KillEpoch{1};
+        limits.expected_executor_generation = ExecutorGeneration{1};
+        limits.max_order_quantity = risk->max_order_quantity;
+        limits.max_reserved_quantity = risk->max_reserved_quantity;
+        limits.max_order_gross_notional = risk->max_order_gross_notional;
+        limits.max_reserved_exposure = risk->max_reserved_exposure;
+        limits.initial_margin_ppm = risk->initial_margin_ppm;
+        limits.maximum_fee_ppm = risk->maximum_fee_ppm;
+        limits.max_position_quantity = risk->max_position_quantity;
+        limits.allow_short = risk->allow_short;
+        limits.reason_code = 2;
+        limits.max_window_loss = MoneyMicros::from_atoms(max_window_loss);
+        return cluster.commit(op, limits).code;
+    };
+    require(limit(5'000) == ApplyCode::applied, "the loss limit could not be set");
+    cluster.run_until([&] { return !gateway.loop.new_risk_stopped(); }, "the gateway to arm once a loss limit is set");
+    require(!gateway.loop.metrics().no_loss_limit, "the loss-limit gauge stayed on after a limit was set");
+
+    require(limit(0) == ApplyCode::applied, "the loss limit could not be removed");
+    cluster.run_until([&] { return gateway.loop.new_risk_stopped(); }, "the gateway to stop once the limit is removed");
+    cluster.run(1500);
+    const auto& metrics = gateway.loop.metrics();
+    require(gateway.loop.new_risk_stopped() && metrics.no_loss_limit && stops_other_than(metrics, GatewayStopCause::count) == 0,
+            "removing the loss limit did not hold new risk, or latched a stop");
+    require(limit(1) == ApplyCode::applied, "the loss limit could not be set again");
+    cluster.run_until([&] { return !gateway.loop.new_risk_stopped(); }, "the gateway to arm again by itself");
+}
+
 void a_restart_beside_a_held_position_with_a_reset_venue_is_a_mismatch() {
     PaperFixture paper;
     Base base("v2-gw-mismatch");
@@ -1575,6 +1628,8 @@ int main() {
          fence_rearms_after_the_quiet_period_and_then_delivers_once},
         {"a_timed_out_state_read_is_a_fence_that_rearms", a_timed_out_state_read_is_a_fence_that_rearms},
         {"a_control_change_latches_until_an_operator_restart", a_control_change_latches_until_an_operator_restart},
+        {"a_gateway_that_requires_a_loss_limit_arms_only_while_one_is_set",
+         a_gateway_that_requires_a_loss_limit_arms_only_while_one_is_set},
         {"flatten_rearms_by_itself_and_sells_exactly_the_position",
          flatten_rearms_by_itself_and_sells_exactly_the_position},
         {"a_reducing_mode_that_arrives_with_another_control_change_latches",

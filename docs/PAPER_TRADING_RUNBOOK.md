@@ -232,6 +232,7 @@ and on every state read (about every 250 ms), not only after a stop.
 | `reducing_mode` | only the strategy mode changed, to `reduce_only` or `flatten` | yes: like a fence, after the quiet period and the check above |
 | `reconciliation_mismatch` | the venue's book disagrees with the kernel at a comparable cut | no: see below |
 | `capacity`, `corrupt_state`, `wrong_cluster`, `authority` | sequences or evidence queue exhausted; corrupt state; wrong cluster; clock or control regression | no |
+| `no_loss_limit` (gauge only) | the gateway requires a kernel loss limit (`--require-loss-limit`, always for the live venue) and the account has none | yes: as soon as `risk-limits` sets `max_window_loss_micros` above zero |
 
 What re-arm does NOT do: it never re-sends an order whose outcome is unknown,
 never resolves a mismatch, never clears a latched cause, and never re-arms while

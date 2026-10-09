@@ -86,6 +86,7 @@ struct Arguments {
     paper::PaperFaultRates paper_faults;
     bool have_paper_faults{};
     bool allow_new_risk{};
+    bool require_loss_limit{};
     bool arm_live_venue{};
     std::string signer_endpoint;
 };
@@ -146,6 +147,10 @@ Arguments parse(int argc, char** argv) {
         const std::string key = argv[i];
         if (key == "--allow-new-risk") {
             a.allow_new_risk = true;
+            continue;
+        }
+        if (key == "--require-loss-limit") {
+            a.require_loss_limit = true;
             continue;
         }
         if (key == "--arm-live-venue") {
@@ -475,6 +480,7 @@ int run(const Arguments& a) {
     config.state_interval = a.state_interval_ms;
     config.request_timeout = a.timeout_ms;
     config.allow_new_risk = a.allow_new_risk;
+    config.require_loss_limit = a.require_loss_limit || a.venue == "truemarkets";
     config.rearm_quiet = a.rearm_quiet_ms;
     GatewayLoop loop(config, link, catalog.catalog, venue.transport, {&monotonic_ms, &wall_seconds, nullptr},
                      venue.book);

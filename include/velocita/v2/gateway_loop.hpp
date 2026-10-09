@@ -32,6 +32,7 @@ struct GatewayLoopConfig {
     Tick ack_interval{1000};
     SendQuotaView quota_per_second{5, 2};
     bool allow_new_risk{};
+    bool require_loss_limit{};
     Tick rearm_quiet{30'000};
 };
 
@@ -149,6 +150,7 @@ struct GatewayMetrics {
     std::array<bool, static_cast<std::size_t>(GatewayStopCause::count)> stop_active{};
     bool awaiting_arm{};
     bool not_configured{};
+    bool no_loss_limit{};
     BookVerdict reconciliation{BookVerdict::unavailable};
     bool reconciliation_mismatch{};
     std::int64_t reconciliation_kernel_lots{}, reconciliation_venue_lots{};
@@ -216,6 +218,7 @@ private:
     void note_authority(bool was_stopped) noexcept;
     void gate(const TradingState& state, const StateReading& reading, Tick now);
     [[nodiscard]] std::size_t open_orders(const TradingState& state) const noexcept;
+    [[nodiscard]] bool loss_limit_set(const TradingState& state) const noexcept;
     void push(const GatewayEvent& event) noexcept;
     Marks* marks(EffectId effect, bool create) noexcept;
     static Tick transport_clock(void* self) noexcept;

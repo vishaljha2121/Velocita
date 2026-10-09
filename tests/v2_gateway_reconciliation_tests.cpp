@@ -184,6 +184,7 @@ void every_cause_and_verdict_renders_from_the_first_scrape() {
     metrics.reconciliation_kernel_lots = 25;
     metrics.reconciliation_venue_lots = 0;
     metrics.stop_active[static_cast<std::size_t>(GatewayStopCause::reconciliation_mismatch)] = true;
+    metrics.no_loss_limit = true;
     const auto text = render_gateway_metrics(metrics);
     const std::vector<std::string> lines{
         "velocita_gateway_stops_total{cause=\"fence\"} 3",
@@ -197,6 +198,7 @@ void every_cause_and_verdict_renders_from_the_first_scrape() {
         "velocita_gateway_stop_cause{cause=\"reconciliation_mismatch\"} 1",
         "velocita_gateway_stop_cause{cause=\"fence\"} 0",
         "velocita_gateway_stop_cause{cause=\"awaiting_arm\"} 0",
+        "velocita_gateway_stop_cause{cause=\"no_loss_limit\"} 1",
         "velocita_gateway_reconciliation_verdict{verdict=\"unavailable\"} 1",
         "velocita_gateway_reconciliation_verdict{verdict=\"match\"} 0",
     };

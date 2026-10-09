@@ -220,6 +220,15 @@ std::size_t GatewayLoop::open_orders(const TradingState& state) const noexcept {
     return open;
 }
 
+bool GatewayLoop::loss_limit_set(const TradingState& state) const noexcept {
+    for (std::size_t i = 0; i < state.risk_account_count; ++i) {
+        const auto& risk = state.risk_accounts[i];
+        if (risk.account_id == config_.account && risk.instrument_id == config_.instrument)
+            return risk.max_window_loss.atoms() > 0;
+    }
+    return false;
+}
+
 void GatewayLoop::gate(const TradingState& state, const StateReading& reading, const Tick now) {
     sim::VenueBook book{};
     if (book_.present()) book_.read_fn(book_.context, book);
@@ -247,6 +256,11 @@ void GatewayLoop::gate(const TradingState& state, const StateReading& reading, c
     }
     if (comparison.verdict == BookVerdict::match)
         metrics_.reconciliation_last_match_seconds = clock_.wall_seconds(clock_.context);
+    metrics_.no_loss_limit = config_.require_loss_limit && !loss_limit_set(state);
+    if (metrics_.no_loss_limit) {
+        authority_->stop_new_risk();
+        return;
+    }
     if (!authority_->new_risk_stopped()) return;
     if (latched_ != 0 || !config_.allow_new_risk || config_.freshness_bound == 0) return;
     if (fence_pending_ && now < last_fence_at_ + config_.rearm_quiet) return;
@@ -359,7 +373,8 @@ void GatewayLoop::step() {
     for (std::size_t i = 0; i < metrics_.stop_active.size(); ++i)
         metrics_.stop_active[i] = (latched_ >> i) & 1U;
     metrics_.stop_active[static_cast<std::size_t>(GatewayStopCause::fence)] = fence_pending_;
-    metrics_.awaiting_arm = metrics_.new_risk_stopped && latched_ == 0 && !metrics_.not_configured;
+    metrics_.awaiting_arm = metrics_.new_risk_stopped && latched_ == 0 && !metrics_.not_configured &&
+                            !metrics_.no_loss_limit;
 }
 
 void GatewayLoop::on_state(const LinkOutcome& outcome, Tick now) {
@@ -840,7 +855,8 @@ std::string render_gateway_metrics(const GatewayMetrics& m) {
         out << "velocita_gateway_stop_cause{cause=\"" << describe(static_cast<GatewayStopCause>(i)) << "\"} "
             << (m.stop_active[i] ? 1 : 0) << '\n';
     out << "velocita_gateway_stop_cause{cause=\"awaiting_arm\"} " << (m.awaiting_arm ? 1 : 0) << '\n'
-        << "velocita_gateway_stop_cause{cause=\"not_configured\"} " << (m.not_configured ? 1 : 0) << '\n';
+        << "velocita_gateway_stop_cause{cause=\"not_configured\"} " << (m.not_configured ? 1 : 0) << '\n'
+        << "velocita_gateway_stop_cause{cause=\"no_loss_limit\"} " << (m.no_loss_limit ? 1 : 0) << '\n';
     type("velocita_gateway_reconciliation_mismatch", "gauge",
          "1 once the venue's book disagreed with committed state at one cut; latched until restart.");
     out << "velocita_gateway_reconciliation_mismatch " << (m.reconciliation_mismatch ? 1 : 0) << '\n';
