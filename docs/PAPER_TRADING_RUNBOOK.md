@@ -197,6 +197,22 @@ Watch: `velocita_paper_authorizations_total{code}`, `velocita_paper_risk_version
 `velocita_paper_position_version`, `velocita_paper_resyncs_total`, beside the
 existing `velocita_shadow_*` series (names unchanged).
 
+### 5.2.1 Making the paper venue refuse, split and time out
+
+By default the paper venue fills every order completely at its limit. Four gateway flags turn on
+the faults it can already simulate, each as orders per thousand (0 to 1000, default 0):
+
+| Flag | What the venue does | What the system does |
+|---|---|---|
+| `--paper-reject-permille N` | kills the order (as a fill-or-kill that cannot fill) | reservation released; the strategy tries again on a later bar |
+| `--paper-split-permille N` | reports one fill in two pieces | the kernel books each piece |
+| `--paper-lost-request-permille N` | never receives the order; the send times out | the gateway stops new risk (`unknown_outcome`), asks the venue, finds nothing and releases; restart the gateway to resume |
+| `--paper-lost-response-permille N` | fills the order but the reply is lost | the gateway stops new risk, asks the venue and adopts the fill; restart the gateway to resume |
+
+The outcomes are drawn from a seed stored in the paper state file, so a run repeats exactly.
+The two lost-message flags stop trading until someone restarts the gateway. That is what a
+venue timeout does today; turn them on only for a watched session.
+
 ### 5.3 When the gateway stops new risk, and when it re-arms by itself
 
 The gateway arms new risk only at a committed read where (a) the paper venue's

@@ -51,6 +51,15 @@ struct PaperFaultPolicy {
     [[nodiscard]] static constexpr PaperFaultPolicy clean() noexcept { return {}; }
 };
 
+struct PaperFaultRates {
+    std::uint64_t reject_permille{};
+    std::uint64_t split_permille{};
+    std::uint64_t lost_request_permille{};
+    std::uint64_t lost_response_permille{};
+};
+
+[[nodiscard]] std::optional<PaperFaultPolicy> paper_fault_policy(const PaperFaultRates& rates) noexcept;
+
 struct PaperFaults {
     bool delay{};
     bool duplicate{};

@@ -958,6 +958,26 @@ std::vector<std::uint64_t> script(const std::uint64_t seed) {
     return trace;
 }
 
+void test_fault_rates_map_to_the_policy_and_are_bounded() {
+    using namespace velocita::v2::paper;
+    const auto policy = paper_fault_policy({11, 22, 33, 44});
+    require(policy && policy->reject_permille == 11 && policy->split_permille == 22 &&
+                policy->drop_request_permille == 33 && policy->drop_response_permille == 44 &&
+                policy->delay_permille == 0 && policy->duplicate_permille == 0 &&
+                policy->reorder_permille == 0 && policy->query_unavailable_permille == 0 &&
+                policy->split_pieces == 2,
+            "fault rates did not map one to one onto the policy");
+    const auto none = paper_fault_policy({});
+    require(none && none->reject_permille == 0 && none->split_permille == 0 &&
+                none->drop_request_permille == 0 && none->drop_response_permille == 0,
+            "no fault rates did not give the clean policy");
+    require(paper_fault_policy({1'000, 1'000, 1'000, 1'000}).has_value(), "a rate of 1000 was refused");
+    require(!paper_fault_policy({1'001, 0, 0, 0}) && !paper_fault_policy({0, 1'001, 0, 0}) &&
+                !paper_fault_policy({0, 0, 1'001, 0}) && !paper_fault_policy({0, 0, 0, 1'001}) &&
+                !paper_fault_policy({0, 0, 0, 65'536 + 5}),
+            "a rate above 1000 was accepted");
+}
+
 void test_same_seed_same_outputs() {
     const auto first = script(41);
     require(first == script(41), "the same seed and inputs produced different outputs");
@@ -1078,6 +1098,7 @@ int main() {
          test_fault_split_fills_in_pieces_and_the_kernel_books_each},
         {"fault_query_unavailable_concludes_nothing",
          test_fault_query_unavailable_concludes_nothing},
+        {"fault_rates_map_to_the_policy_and_are_bounded", test_fault_rates_map_to_the_policy_and_are_bounded},
         {"same_seed_same_outputs", test_same_seed_same_outputs},
         {"bounded_state_refuses_before_mutation_and_poll_respects_the_caller",
          test_bounded_state_refuses_before_mutation_and_poll_respects_the_caller},

@@ -34,6 +34,20 @@ bool valid(const PaperVenueConfig& config) noexcept {
            config.quote_balance.atoms() >= 0 && config.base_balance.atoms() >= 0;
 }
 
+std::optional<PaperFaultPolicy> paper_fault_policy(const PaperFaultRates& rates) noexcept {
+    constexpr std::uint64_t always = 1'000;
+    if (rates.reject_permille > always || rates.split_permille > always ||
+        rates.lost_request_permille > always || rates.lost_response_permille > always) {
+        return std::nullopt;
+    }
+    auto policy = PaperFaultPolicy::clean();
+    policy.reject_permille = static_cast<std::uint16_t>(rates.reject_permille);
+    policy.split_permille = static_cast<std::uint16_t>(rates.split_permille);
+    policy.drop_request_permille = static_cast<std::uint16_t>(rates.lost_request_permille);
+    policy.drop_response_permille = static_cast<std::uint16_t>(rates.lost_response_permille);
+    return policy;
+}
+
 std::optional<MoneyMicros> paper_notional(const PriceTicks price,
                                           const QuantityLots quantity,
                                           const MoneyMicros quote_micros_per_tick_lot) noexcept {

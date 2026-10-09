@@ -1045,7 +1045,9 @@ if(BUILD_TESTING)
             "corrupt-file|not a paper state file|1|--venue;paper;--paper-state-file;${velocita_paper_garbage}"
             "init-over-file|never replace a file|1|--venue;paper;--paper-state-file;${velocita_paper_garbage};--paper-state-init;--paper-quote-usd;25"
             "quote-on-restart|applies only to the first start||--venue;paper;--paper-state-file;${velocita_paper_garbage};--paper-quote-usd;3"
-            "adopt-without-cost|needs --paper-adopt-cost-micros||--venue;paper;--paper-state-file;${velocita_paper_garbage};--paper-adopt-position;--paper-quote-usd;25")
+            "adopt-without-cost|needs --paper-adopt-cost-micros||--venue;paper;--paper-state-file;${velocita_paper_garbage};--paper-adopt-position;--paper-quote-usd;25"
+            "fault-rate-too-high|must be 0..1000||--venue;paper;--paper-lost-response-permille;1001"
+            "fault-rate-off-paper|apply only to --venue paper||--venue;simulated;--paper-reject-permille;5")
         string(REPLACE "|" ";" velocita_usage_parts "${velocita_usage}")
         list(GET velocita_usage_parts 0 velocita_usage_name)
         list(GET velocita_usage_parts 1 velocita_usage_expect)

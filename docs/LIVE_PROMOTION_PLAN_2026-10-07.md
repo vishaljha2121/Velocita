@@ -39,8 +39,8 @@ Last updated 2026-10-09 05:10 UTC. Status words: **Done** (built, tested, runnin
 | 9 | The signer (ADR 0019 section 1) | **Open**. Approved to build with a test key only | journey step 5 |
 | 10 | The venue transport | **Open**. Approved to build against a mock only | journey step 6 |
 | 11 | The venue contract questions | **Open**; several need the owner or True Markets | journey step 3 |
-| 12 | The paper venue can reject, partly fill and time out | **Open** | review C3 |
-| 13 | Decide and fill on the venue's own price, with cost measured on both sides | **Open** | review B5 |
+| 12 | The paper venue can reject, partly fill and time out | **Built** 2026-10-09, off by default: four gateway flags switch on faults the venue already simulated. Needs a gateway restart and the owner's choice of rates | runbook 5.2.1 |
+| 13 | Decide and fill on the venue's own price, with cost measured on both sides | **Blocked on the owner**: True Markets prices need a token, and this work may only make keyless GET calls. Needs recorded quotes or a read-only token | review B5 |
 | 14 | Startup balance reconciliation against the venue | **Open** | journey step 7 |
 | 15 | Outside heartbeat armed | **Open**: installed, waits for the owner's Healthchecks URL | review B6 |
 | 16 | Drills while holding a position: kill, leader loss, gateway restart | **Open** | journey step 8 |
@@ -53,8 +53,8 @@ Last updated 2026-10-09 05:10 UTC. Status words: **Done** (built, tested, runnin
 | 23 | A voter survives a crash or power cut without a person: archive leftovers and a torn last log block | **Open** (new). Runbook written; there is no repair for a torn block today | review 2, findings 2 and 4 |
 | 24 | The log writer thread sleeps when idle | **Open** (new) | review 2, finding 3 |
 
-Count: 4 done, 5 built and waiting for a new incarnation (6, 7, 8, 18, 19), 2 partly done (5, 20),
-13 open.
+Count: 4 done, 5 built and waiting for a new incarnation (6, 7, 8, 18, 19), 1 built and off by
+default (12), 2 partly done (5, 20), 12 open, of which 1 is blocked on the owner (13).
 
 Items 6, 7, 8, 18 and 19 are one deployment: schema 11 needs a new incarnation, the owner's
 approval, a flat account, and the operator ceremony (which now includes the two `assign-role`

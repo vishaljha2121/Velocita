@@ -83,6 +83,8 @@ struct Arguments {
     std::filesystem::path paper_report_file;
     bool paper_state_init{}, paper_adopt_position{};
     std::uint64_t rearm_quiet_ms{30'000};
+    paper::PaperFaultRates paper_faults;
+    bool have_paper_faults{};
     bool allow_new_risk{};
     bool arm_live_venue{};
     std::string signer_endpoint;
@@ -91,7 +93,8 @@ struct Arguments {
 void check_paper_state(const Arguments& a) {
     const bool bootstrap = a.paper_state_init || a.paper_adopt_position;
     if (a.venue != "paper") {
-        if (!a.paper_state_file.empty() || bootstrap || a.paper_quote_usd || a.paper_adopt_cost_micros)
+        if (!a.paper_state_file.empty() || bootstrap || a.paper_quote_usd || a.paper_adopt_cost_micros ||
+            a.have_paper_faults)
             throw Usage("--paper-* options apply only to --venue paper");
         return;
     }
@@ -199,6 +202,16 @@ Arguments parse(int argc, char** argv) {
         else if (key == "--paper-quote-usd") a.paper_quote_usd = number(value, "paper quote usd");
         else if (key == "--paper-adopt-cost-micros") a.paper_adopt_cost_micros = number(value, "adoption cost micros");
         else if (key == "--paper-state-file") a.paper_state_file = value;
+        else if (key == "--paper-reject-permille" || key == "--paper-split-permille" ||
+                 key == "--paper-lost-request-permille" || key == "--paper-lost-response-permille") {
+            auto& rate = key == "--paper-reject-permille" ? a.paper_faults.reject_permille
+                       : key == "--paper-split-permille" ? a.paper_faults.split_permille
+                       : key == "--paper-lost-request-permille" ? a.paper_faults.lost_request_permille
+                                                                : a.paper_faults.lost_response_permille;
+            rate = number(value, "paper fault rate");
+            a.have_paper_faults = true;
+            if (!paper::paper_fault_policy(a.paper_faults)) throw Usage(key + " must be 0..1000 (orders per thousand)");
+        }
         else if (key == "--rearm-quiet-ms") a.rearm_quiet_ms = number(value, "re-arm quiet period");
         else if (key == "--node") {
             const auto eq = value.find('=');
@@ -295,7 +308,7 @@ Venue make_venue(const Arguments& a, const ExecutionCatalogRow& row) {
         return venue;
     }
     auto opened = paper::DurablePaperVenue::open(a.paper_state_file, paper_config(a, row),
-                                                 paper::PaperFaultPolicy::clean(), a.incarnation);
+                                                 *paper::paper_fault_policy(a.paper_faults), a.incarnation);
     if (opened.error != paper::PaperStateError::none)
         throw Usage("paper state refused: " + std::string(paper::describe(opened.error)));
     venue.paper = std::move(opened.venue);
