@@ -40,7 +40,7 @@ Last updated 2026-10-09 05:10 UTC. Status words: **Done** (built, tested, runnin
 | 10 | The venue transport | **Open**. Approved to build against a mock only | journey step 6 |
 | 11 | The venue contract questions | **Open**; several need the owner or True Markets | journey step 3 |
 | 12 | The paper venue can reject, partly fill and time out | **Built** 2026-10-09, off by default: four gateway flags switch on faults the venue already simulated. Needs a gateway restart and the owner's choice of rates | runbook 5.2.1 |
-| 13 | Decide and fill on the venue's own price, with cost measured on both sides | **Blocked on the owner**: True Markets prices need a token, and this work may only make keyless GET calls. Needs recorded quotes or a read-only token | review B5 |
+| 13 | Decide and fill on the venue's own price, with cost measured on both sides | **Partly done** 2026-10-09: the price difference is measured and small (9 bp level, 2.5 bp noise, venue 1 to 2 s behind). Open: the paper fee stays 20 bp against a measured 100 bp (owner decision), and executable quotes need a call outside the keyless-GET approval | `docs/evidence/venue_price_basis_2026-10-09/` |
 | 14 | Startup balance reconciliation against the venue | **Open** | journey step 7 |
 | 15 | Outside heartbeat armed | **Open**: installed, waits for the owner's Healthchecks URL | review B6 |
 | 16 | Drills while holding a position: kill, leader loss, gateway restart | **Open** | journey step 8 |
@@ -54,8 +54,7 @@ Last updated 2026-10-09 05:10 UTC. Status words: **Done** (built, tested, runnin
 | 24 | The log writer thread sleeps when idle | **Open** (new) | review 2, finding 3 |
 
 Count: 4 done, 5 built and waiting for a new incarnation (6, 7, 8, 18, 19), 2 built and inert
-(9 test key only, 12 off by default), 2 partly done (5, 20), 11 open, of which 1 is blocked on the
-owner (13).
+(9 test key only, 12 off by default), 3 partly done (5, 13, 20), 10 open.
 
 Items 6, 7, 8, 18 and 19 are one deployment: schema 11 needs a new incarnation, the owner's
 approval, a flat account, and the operator ceremony (which now includes the two `assign-role`

@@ -1,0 +1,22 @@
+venue points 10108 over 24.00 h; binance bars 86705
+venue spacing: 9109 intervals of 5 s, 998 longer (longest 55 s); seconds not covered at 5 s: 40845 of 86390
+venue / binance(t-10s) - 1: n=10108 mean=-9.38 bp sd=4.13 p05=-15.61 p95=-3.00 beyond 10 bp of mean=2.92%
+venue / binance(t-5s) - 1: n=10108 mean=-9.38 bp sd=3.04 p05=-13.95 p95=-4.44 beyond 10 bp of mean=0.91%
+venue / binance(t-1s) - 1: n=10108 mean=-9.39 bp sd=2.43 p05=-12.96 p95=-5.36 beyond 10 bp of mean=0.46%
+venue / binance(t+0s) - 1: n=10108 mean=-9.38 bp sd=2.50 p05=-12.95 p95=-5.41 beyond 10 bp of mean=0.50%
+venue / binance(t+1s) - 1: n=10108 mean=-9.37 bp sd=2.70 p05=-13.22 p95=-5.14 beyond 10 bp of mean=0.80%
+venue / binance(t+5s) - 1: n=10108 mean=-9.36 bp sd=3.61 p05=-14.71 p95=-3.89 beyond 10 bp of mean=1.98%
+venue / binance(t+10s) - 1: n=10108 mean=-9.33 bp sd=4.64 p05=-16.17 p95=-2.29 beyond 10 bp of mean=3.96%
+hourly mean basis: min=-10.62 bp max=-7.37 bp over 24 hours
+5 s return correlation with binance shifted -10 s: -0.011 (n=9109)
+5 s return correlation with binance shifted -5 s: +0.249 (n=9109)
+5 s return correlation with binance shifted -3 s: +0.493 (n=9109)
+5 s return correlation with binance shifted -2 s: +0.544 (n=9109)
+5 s return correlation with binance shifted -1 s: +0.551 (n=9109)
+5 s return correlation with binance shifted +0 s: +0.535 (n=9109)
+5 s return correlation with binance shifted +1 s: +0.438 (n=9109)
+5 s return correlation with binance shifted +2 s: +0.328 (n=9109)
+5 s return correlation with binance shifted +3 s: +0.234 (n=9109)
+5 s return correlation with binance shifted +5 s: +0.105 (n=9109)
+5 s return correlation with binance shifted +10 s: +0.028 (n=9109)
+venue price range over the span: 953 bp
