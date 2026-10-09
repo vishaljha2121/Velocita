@@ -1022,8 +1022,13 @@ ApplyResult model_new_command(ModelState& state,
                                  std::is_same_v<T, ConfigureRiskLimits> ||
                                  std::is_same_v<T, RequestMassCancel> ||
                                  std::is_same_v<T, AcknowledgeGatewayResults> ||
-                                 std::is_same_v<T, InstallExecutionCatalog>) {
-                return model_result(state, ApplyCode::invalid_command, version);
+                                 std::is_same_v<T, InstallExecutionCatalog> ||
+                                 std::is_same_v<T, AssignCallerRole> ||
+                                 std::is_same_v<T, ResolveOrderConflict>) {
+                throw std::runtime_error("command outside policy/source reference model");
+            } else {
+                static_assert(std::is_same_v<T, void>,
+                              "CommandBody alternative must be modeled or explicitly excluded");
             }
         },
         body);
@@ -1238,6 +1243,26 @@ void compare_snapshot_suffixes(const std::uint64_t seed,
     }
 }
 
+void test_unmodeled_commands_fail_explicitly() {
+    const std::array<CommandBody, 11> commands{
+        AuthorizeDecision{}, ObserveFill{}, RequestCancel{}, ObserveOrderEvent{},
+        RequestReplace{}, ConfigureRiskLimits{}, RequestMassCancel{},
+        AcknowledgeGatewayResults{}, InstallExecutionCatalog{}, AssignCallerRole{},
+        ResolveOrderConflict{}};
+    for (const auto& body : commands) {
+        ModelState state;
+        bool refused = false;
+        try {
+            (void)model_new_command(state, CommandIdentity{}, body, 1);
+        } catch (const std::runtime_error& error) {
+            require(std::string(error.what()) == "command outside policy/source reference model",
+                    "unmodeled command failed for an unrelated reason");
+            refused = true;
+        }
+        require(refused, "unmodeled command silently accepted by policy/source model");
+    }
+}
+
 void test_generated_model_and_snapshot_replay() {
     std::array<std::byte, kSeedCount * kDigestBytes> final_digests{};
     Coverage coverage;
@@ -1296,6 +1321,7 @@ void test_generated_model_and_snapshot_replay() {
 
 int main() {
     try {
+        test_unmodeled_commands_fail_explicitly();
         test_generated_model_and_snapshot_replay();
         std::cout << "all V2 generated model/replay tests passed\n";
         return 0;
