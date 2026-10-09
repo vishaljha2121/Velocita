@@ -16,8 +16,7 @@ covers part of what that one listed as not read (live promotion plan item 20).
 | `src/v2_node_protocol.cpp` | 350 | All |
 | willemt/raft `raft_node.c` | 192 | All |
 
-Still not read: `v2_kernel_codec.cpp`, `v2_state_snapshot.cpp` beyond the parts changed this week,
-`v2_archive_file.cpp`, the archive segment and catalog codecs, the Aeron transport, and the three unread ranges of `v2_kernel.cpp`.
+The files this pass left unread are covered in `REVIEW_3_CODECS_AND_REMAINDER.md`.
 
 ## Summary
 
