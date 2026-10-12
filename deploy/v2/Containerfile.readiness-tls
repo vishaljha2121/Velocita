@@ -3,8 +3,12 @@ ARG BASE
 FROM ${BASE}
 ARG BASE
 ARG SOURCE_COMMIT
+ARG BUILD_CPU
 
 RUN set -eu; \
+    case "$BUILD_CPU" in ''|*[!0-9]*) exit 64;; esac; \
+    taskset -pc "$BUILD_CPU" $$; \
+    python3 -c 'import json,os,sys; from pathlib import Path; expected=int(sys.argv[1]); assert os.sched_getaffinity(0)=={expected}, "CPU affinity not enforced"; root=Path("/sys/fs/cgroup"); rel=next(line.split(":",2)[2] for line in Path("/proc/self/cgroup").read_text().splitlines() if line.startswith("0::")); node=root/rel.lstrip("/"); candidates=[root,node,*node.parents]; caps=[(str(p/"memory.max"),(p/"memory.max").read_text().strip()) for p in candidates if p.is_relative_to(root) and (p/"memory.max").is_file()]; assert any(v.isdecimal() and 0<int(v)<=1073741824 for _,v in caps), "1GiB memory bound not verified"; print(json.dumps({"cpu":expected,"memory_caps":caps}),flush=True)' "$BUILD_CPU"; \
     test "$(dpkg --print-architecture)" = amd64 && expected=2a79f82cce5de80ab5afc832af64acba549c963e89df509acfaeb5565cb232ee || { test "$(dpkg --print-architecture)" = arm64; expected=7796e188c717e65a9d4793a3b8673dde0124b3514a82b5ff3a060fe68728e97b; }; \
     test "$BASE" = "sha256:$expected"; \
     test "${#SOURCE_COMMIT}" = 40; \
@@ -43,6 +47,9 @@ RUN set -eu; \
       > /opt/velocita-readiness-tls/apt.conf
 
 RUN set -eu; \
+    case "$BUILD_CPU" in ''|*[!0-9]*) exit 64;; esac; \
+    taskset -pc "$BUILD_CPU" $$; \
+    python3 -c 'import json,os,sys; from pathlib import Path; expected=int(sys.argv[1]); assert os.sched_getaffinity(0)=={expected}, "CPU affinity not enforced"; root=Path("/sys/fs/cgroup"); rel=next(line.split(":",2)[2] for line in Path("/proc/self/cgroup").read_text().splitlines() if line.startswith("0::")); node=root/rel.lstrip("/"); candidates=[root,node,*node.parents]; caps=[(str(p/"memory.max"),(p/"memory.max").read_text().strip()) for p in candidates if p.is_relative_to(root) and (p/"memory.max").is_file()]; assert any(v.isdecimal() and 0<int(v)<=1073741824 for _,v in caps), "1GiB memory bound not verified"; print(json.dumps({"cpu":expected,"memory_caps":caps}),flush=True)' "$BUILD_CPU"; \
     export APT_CONFIG=/opt/velocita-readiness-tls/apt.conf; \
     export DEBIAN_FRONTEND=noninteractive; \
     apt-config dump > /opt/velocita-readiness-tls/apt-effective.conf; \

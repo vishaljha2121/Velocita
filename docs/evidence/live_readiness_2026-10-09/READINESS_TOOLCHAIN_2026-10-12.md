@@ -105,3 +105,21 @@ No switch of the production toolchain tag, rebuild of voters, release packaging 
 ## Preparation checks
 
 Only local syntax validation is claimed: shell syntax for both RUN bodies and Python AST parsing of the embedded snippets. Package availability, build success, cgroup support and native fake-TLS behavior remain untested by this document. The first Ubuntu-manpage fetch timed out; Debian's upstream APT manpages supplied the configuration/transport references instead. No package GET or host command was issued during preparation.
+
+
+## Supported host resource controls, second attempt
+
+Initial committed recipe `ff72962` was attempted on nuc1/Pi. Nuc1 Podman 3.4.4
+refused the string `--pull=never`; its supported flag is `--pull-never`. Pi
+Podman 5.7 accepted that syntax, but its build container could not use the cpuset
+controller. Neither attempt reached package installation. Logs are retained;
+no release image changed.
+
+The correction pins the shell inside each build RUN with `taskset`, checks its
+inherited single-CPU affinity, and checks a real cgroup memory limit at or below
+1 GiB before the RUN proceeds. `BUILD_CPU` is required and numeric. Both hosts
+use `--cgroup-parent=velocitabuild.slice --memory=1g --memory-swap=1g`, plus the
+outer taskset/timeout; omit the unsupported `--cpuset-cpus` option. Select
+`--pull-never` for nuc1 and `--pull=never` for Pi. The recipe fails if actual
+resource bounds cannot be read and verified; this is not a silent removal of
+resource control. No existing slice properties or production services change.
