@@ -1,0 +1,235 @@
+{
+  "scope": "Read-only installed metadata, no native compilation, no container execution, no active-service assertion",
+  "hosts": {
+    "nuc1": {
+      "checked_at": "2026-10-12T18:40:28.016712+00:00",
+      "hostname": "bulbazar-NUC",
+      "machine": "x86_64",
+      "commands": {
+        "identity": {
+          "exit": 0,
+          "stdout": "velocitas\n",
+          "stderr": ""
+        },
+        "uname": {
+          "exit": 0,
+          "stdout": "Linux bulbazar-NUC 6.8.0-138-generic #138~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Fri Aug  7 13:43:15 UTC  x86_64 x86_64 x86_64 GNU/Linux\n",
+          "stderr": ""
+        },
+        "os": {
+          "exit": 0,
+          "stdout": "PRETTY_NAME=\"Ubuntu 22.04.5 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"22.04\"\nVERSION=\"22.04.5 LTS (Jammy Jellyfish)\"\nVERSION_CODENAME=jammy\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=jammy\n",
+          "stderr": ""
+        },
+        "compiler": {
+          "exit": 0,
+          "stdout": "c++ (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0\nCopyright (C) 2021 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+          "stderr": ""
+        },
+        "cmake": {
+          "exit": 0,
+          "stdout": "cmake version 3.22.1\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n",
+          "stderr": ""
+        },
+        "curl": {
+          "exit": 0,
+          "stdout": "curl 7.81.0 (x86_64-pc-linux-gnu) libcurl/7.81.0 OpenSSL/3.0.2 zlib/1.2.11 brotli/1.0.9 zstd/1.4.8 libidn2/2.3.2 libpsl/0.21.0 (+libidn2/2.3.2) libssh/0.9.6/openssl/zlib nghttp2/1.43.0 librtmp/2.3 OpenLDAP/2.5.18\nRelease-Date: 2022-01-05\nProtocols: dict file ftp ftps gopher gophers http https imap imaps ldap ldaps mqtt pop3 pop3s rtmp rtsp scp sftp smb smbs smtp smtps telnet tftp \nFeatures: alt-svc AsynchDNS brotli GSS-API HSTS HTTP2 HTTPS-proxy IDN IPv6 Kerberos Largefile libz NTLM NTLM_WB PSL SPNEGO SSL TLS-SRP UnixSockets zstd\n",
+          "stderr": ""
+        },
+        "curl_config": {
+          "exit": 0,
+          "stdout": "libcurl 7.81.0\n",
+          "stderr": ""
+        },
+        "curl_pkg": {
+          "exit": 0,
+          "stdout": "7.81.0\n",
+          "stderr": ""
+        },
+        "curl_include": {
+          "exit": 0,
+          "stdout": "/usr/include/x86_64-linux-gnu\n",
+          "stderr": ""
+        },
+        "openssl": {
+          "exit": 0,
+          "stdout": "OpenSSL 3.0.2 15 Mar 2022 (Library: OpenSSL 3.0.2 15 Mar 2022)\nbuilt on: Thu Sep 17 14:36:24 2026 UTC\nplatform: debian-amd64\noptions:  bn(64,64)\ncompiler: gcc -fPIC -pthread -m64 -Wa,--noexecstack -Wall -Wa,--noexecstack -g -O2 -ffile-prefix-map=/build/openssl-cuB713/openssl-3.0.2=. -flto=auto -ffat-lto-objects -flto=auto -ffat-lto-objects -fstack-protector-strong -Wformat -Werror=format-security -DOPENSSL_TLS_SECURITY_LEVEL=2 -DOPENSSL_USE_NODELETE -DL_ENDIAN -DOPENSSL_PIC -DOPENSSL_BUILDING_OPENSSL -DNDEBUG -Wdate-time -D_FORTIFY_SOURCE=2\nOPENSSLDIR: \"/usr/lib/ssl\"\nENGINESDIR: \"/usr/lib/x86_64-linux-gnu/engines-3\"\nMODULESDIR: \"/usr/lib/x86_64-linux-gnu/ossl-modules\"\nSeeding source: os-specific\nCPUINFO: OPENSSL_ia32cap=0x4ff8e3bfefebffff:0x184001242394a2c3\n",
+          "stderr": ""
+        },
+        "disk": {
+          "exit": 0,
+          "stdout": "Filesystem     1024-blocks      Used Available Capacity Mounted on\n/dev/nvme0n1p2   244506940 164711596  67302288      71% /\n/dev/nvme0n1p2   244506940 164711596  67302288      71% /\n",
+          "stderr": ""
+        },
+        "packages": {
+          "exit": 1,
+          "stdout": "cmake=3.22.1-1ubuntu1.22.04.2\ng++=4:11.2.0-1ubuntu1\nlibcurl4=7.81.0-1ubuntu1.29\nlibcurl4-openssl-dev=7.81.0-1ubuntu1.29\nlibssl-dev=3.0.2-0ubuntu1.30\nopenssl=3.0.2-0ubuntu1.30\npkg-config=0.29.2-1ubuntu3\n",
+          "stderr": "dpkg-query: no packages found matching libcurl4t64\n"
+        },
+        "build_image": {
+          "exit": 0,
+          "stdout": "2a79f82cce5de80ab5afc832af64acba549c963e89df509acfaeb5565cb232ee amd64 linux\n",
+          "stderr": ""
+        },
+        "project_images": {
+          "error": "Command '['podman', 'images', '--filter', 'reference=localhost/velocita*', '--format', '{{.Repository}}:{{.Tag}} {{.ID}} {{.CreatedAt}}']' timed out after 8 seconds"
+        }
+      },
+      "source_commit": "0680b08a5bbfbcaba32a77fbdf5cbe5d0162f40c"
+    },
+    "pi": {
+      "checked_at": "2026-10-12T18:40:27.465168+00:00",
+      "hostname": "vishalkapi",
+      "machine": "aarch64",
+      "commands": {
+        "identity": {
+          "exit": 0,
+          "stdout": "velocitas\n",
+          "stderr": ""
+        },
+        "uname": {
+          "exit": 0,
+          "stdout": "Linux vishalkapi 7.0.0-1020-raspi #20-Ubuntu SMP PREEMPT_DYNAMIC Fri Sep 11 16:02:28 UTC 2026 aarch64 GNU/Linux\n",
+          "stderr": ""
+        },
+        "os": {
+          "exit": 0,
+          "stdout": "PRETTY_NAME=\"Ubuntu 26.04 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"26.04\"\nVERSION=\"26.04 LTS (Resolute Raccoon)\"\nVERSION_CODENAME=resolute\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=resolute\nLOGO=ubuntu-logo\n",
+          "stderr": ""
+        },
+        "compiler": {
+          "exit": 0,
+          "stdout": "c++ (Ubuntu 15.2.0-16ubuntu1) 15.2.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+          "stderr": ""
+        },
+        "cmake": {
+          "exit": 0,
+          "stdout": "cmake version 4.2.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n",
+          "stderr": ""
+        },
+        "curl": {
+          "exit": 0,
+          "stdout": "curl 8.18.0 (aarch64-unknown-linux-gnu) libcurl/8.18.0 OpenSSL/3.5.5 zlib/1.3.1 brotli/1.2.0 zstd/1.5.7 libidn2/2.3.8 libpsl/0.21.2 libssh2/1.11.1 nghttp2/1.68.0 librtmp/2.3 mit-krb5/1.22.1 OpenLDAP/2.6.10\nRelease-Date: 2026-01-07, security patched: 8.18.0-1ubuntu2.7\nProtocols: dict file ftp ftps gopher gophers http https imap imaps ipfs ipns ldap ldaps mqtt pop3 pop3s rtmp rtsp scp sftp smb smbs smtp smtps telnet tftp ws wss\nFeatures: alt-svc AsynchDNS brotli GSS-API HSTS HTTP2 HTTPS-proxy IDN IPv6 Kerberos Largefile libz NTLM PSL SPNEGO SSL threadsafe TLS-SRP UnixSockets zstd\n",
+          "stderr": ""
+        },
+        "curl_config": {
+          "error": "[Errno 2] No such file or directory: 'curl-config'"
+        },
+        "curl_pkg": {
+          "exit": 1,
+          "stdout": "",
+          "stderr": "Package libcurl was not found in the pkg-config search path.\nPerhaps you should add the directory containing `libcurl.pc'\nto the PKG_CONFIG_PATH environment variable\nPackage 'libcurl' not found\n"
+        },
+        "curl_include": {
+          "exit": 1,
+          "stdout": "",
+          "stderr": ""
+        },
+        "openssl": {
+          "exit": 0,
+          "stdout": "OpenSSL 3.5.5 27 Jan 2026 (Library: OpenSSL 3.5.5 27 Jan 2026)\nbuilt on: Wed Sep 30 18:46:30 2026 UTC\nplatform: debian-arm64\noptions:  bn(64,64)\ncompiler: gcc -fPIC -pthread -Wa,--noexecstack -Wall -fzero-call-used-regs=used-gpr -Wa,--noexecstack -g -O2 -Werror=implicit-function-declaration -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -ffile-prefix-map=/build/openssl-JItSJk/openssl-3.5.5=. -fstack-protector-strong -fstack-clash-protection -Wformat -Werror=format-security -mbranch-protection=standard -fdebug-prefix-map=/build/openssl-JItSJk/openssl-3.5.5=/usr/src/openssl-3.5.5-1ubuntu3.7 -DOPENSSL_USE_NODELETE -DOPENSSL_PIC -DOPENSSL_BUILDING_OPENSSL -DZLIB -DZSTD -DNDEBUG -Wdate-time -D_FORTIFY_SOURCE=3\nOPENSSLDIR: \"/usr/lib/ssl\"\nENGINESDIR: \"/usr/lib/aarch64-linux-gnu/engines-3\"\nMODULESDIR: \"/usr/lib/aarch64-linux-gnu/ossl-modules\"\nSeeding source: os-specific JITTER (3060300)\nCPUINFO: OPENSSL_armcap=0xbd\n",
+          "stderr": ""
+        },
+        "disk": {
+          "exit": 0,
+          "stdout": "Filesystem     1024-blocks     Used Available Capacity Mounted on\n/dev/mmcblk0p2    29195984 21283044   6668524      77% /\n/dev/mmcblk0p2    29195984 21283044   6668524      77% /\n",
+          "stderr": ""
+        },
+        "packages": {
+          "exit": 1,
+          "stdout": "cmake=4.2.3-2ubuntu2\ng++=4:15.2.0-5ubuntu1\nlibcurl4=\nlibcurl4t64=8.18.0-1ubuntu2.7\nopenssl=3.5.5-1ubuntu3.7\npkg-config=2.5.1-4\n",
+          "stderr": "dpkg-query: no packages found matching libcurl4-openssl-dev\ndpkg-query: no packages found matching libssl-dev\n"
+        },
+        "build_image": {
+          "exit": 0,
+          "stdout": "7796e188c717e65a9d4793a3b8673dde0124b3514a82b5ff3a060fe68728e97b arm64 linux\n",
+          "stderr": ""
+        },
+        "project_images": {
+          "exit": 0,
+          "stdout": "localhost/velocita-v2:roles-884816d 6624394a0083 2026-10-10 00:45:12 +0000 UTC\nlocalhost/velocita-build-cgroup-proof:a073998-affinity b7132e09766a 2026-10-09 20:48:40 +0000 UTC\nlocalhost/velocita-v2:ledger-f55209e 5553d95b6deb 2026-10-08 12:32:55 +0000 UTC\nlocalhost/velocita-v2:ledger-8a15b98 d3a2f32601bf 2026-10-08 12:11:20 +0000 UTC\nlocalhost/velocita-v2:m3 2233ad1f64df 2026-10-05 19:12:58 +0000 UTC\nlocalhost/velocita-v2:m3-cp081 2233ad1f64df 2026-10-05 19:12:58 +0000 UTC\nlocalhost/velocita-v2:m3-cp079 6ae3fa589e44 2026-10-03 20:49:50 +0000 UTC\nlocalhost/velocita-v2:m3-pre-cp081 6ae3fa589e44 2026-10-03 20:49:50 +0000 UTC\nlocalhost/velocita-dev:2026-10-01 7796e188c717 2026-10-01 20:29:57 +0000 UTC\nlocalhost/velocita-dev:current 7796e188c717 2026-10-01 20:29:57 +0000 UTC\nlocalhost/velocita-v2:m3-p3 96f71410e47d 2026-10-01 14:14:03 +0000 UTC\nlocalhost/velocita-v2:m3-pre-cp079 96f71410e47d 2026-10-01 14:14:03 +0000 UTC\nlocalhost/velocita-v2:m3-pre-p3 8e4e7ecca2ff 2026-09-30 13:51:38 +0000 UTC\n",
+          "stderr": ""
+        }
+      },
+      "source_commit": "0680b08a5bbfbcaba32a77fbdf5cbe5d0162f40c"
+    },
+    "nuc2": {
+      "checked_at": "2026-10-12T18:40:26.030267+00:00",
+      "hostname": "nuc2",
+      "machine": "x86_64",
+      "commands": {
+        "identity": {
+          "exit": 0,
+          "stdout": "velocitas\n",
+          "stderr": ""
+        },
+        "uname": {
+          "exit": 0,
+          "stdout": "Linux nuc2 6.8.0-85-generic #85~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Fri Sep 19 16:18:59 UTC 2 x86_64 x86_64 x86_64 GNU/Linux\n",
+          "stderr": ""
+        },
+        "os": {
+          "exit": 0,
+          "stdout": "PRETTY_NAME=\"Ubuntu 22.04.4 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"22.04\"\nVERSION=\"22.04.4 LTS (Jammy Jellyfish)\"\nVERSION_CODENAME=jammy\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=jammy\n",
+          "stderr": ""
+        },
+        "compiler": {
+          "exit": 0,
+          "stdout": "c++ (Ubuntu 11.4.0-1ubuntu1~22.04.2) 11.4.0\nCopyright (C) 2021 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+          "stderr": ""
+        },
+        "cmake": {
+          "exit": 0,
+          "stdout": "cmake version 3.22.1\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n",
+          "stderr": ""
+        },
+        "curl": {
+          "exit": 0,
+          "stdout": "curl 7.81.0 (x86_64-pc-linux-gnu) libcurl/7.81.0 OpenSSL/3.0.2 zlib/1.2.11 brotli/1.0.9 zstd/1.4.8 libidn2/2.3.2 libpsl/0.21.0 (+libidn2/2.3.2) libssh/0.9.6/openssl/zlib nghttp2/1.43.0 librtmp/2.3 OpenLDAP/2.5.17\nRelease-Date: 2022-01-05\nProtocols: dict file ftp ftps gopher gophers http https imap imaps ldap ldaps mqtt pop3 pop3s rtmp rtsp scp sftp smb smbs smtp smtps telnet tftp \nFeatures: alt-svc AsynchDNS brotli GSS-API HSTS HTTP2 HTTPS-proxy IDN IPv6 Kerberos Largefile libz NTLM NTLM_WB PSL SPNEGO SSL TLS-SRP UnixSockets zstd\n",
+          "stderr": ""
+        },
+        "curl_config": {
+          "exit": 0,
+          "stdout": "libcurl 7.81.0\n",
+          "stderr": ""
+        },
+        "curl_pkg": {
+          "exit": 0,
+          "stdout": "7.81.0\n",
+          "stderr": ""
+        },
+        "curl_include": {
+          "exit": 0,
+          "stdout": "/usr/include/x86_64-linux-gnu\n",
+          "stderr": ""
+        },
+        "openssl": {
+          "exit": 0,
+          "stdout": "OpenSSL 3.0.2 15 Mar 2022 (Library: OpenSSL 3.0.2 15 Mar 2022)\nbuilt on: Thu Sep 18 12:06:16 2025 UTC\nplatform: debian-amd64\noptions:  bn(64,64)\ncompiler: gcc -fPIC -pthread -m64 -Wa,--noexecstack -Wall -Wa,--noexecstack -g -O2 -ffile-prefix-map=/build/openssl-sIScyW/openssl-3.0.2=. -flto=auto -ffat-lto-objects -flto=auto -ffat-lto-objects -fstack-protector-strong -Wformat -Werror=format-security -DOPENSSL_TLS_SECURITY_LEVEL=2 -DOPENSSL_USE_NODELETE -DL_ENDIAN -DOPENSSL_PIC -DOPENSSL_BUILDING_OPENSSL -DNDEBUG -Wdate-time -D_FORTIFY_SOURCE=2\nOPENSSLDIR: \"/usr/lib/ssl\"\nENGINESDIR: \"/usr/lib/x86_64-linux-gnu/engines-3\"\nMODULESDIR: \"/usr/lib/x86_64-linux-gnu/ossl-modules\"\nSeeding source: os-specific\nCPUINFO: OPENSSL_ia32cap=0x7ffaf3bfffebffff:0x18c05fdef3bfa7eb\n",
+          "stderr": ""
+        },
+        "disk": {
+          "exit": 0,
+          "stdout": "Filesystem     1024-blocks      Used Available Capacity Mounted on\n/dev/nvme0n1p2   479079112 197710856 256958864      44% /\n/dev/nvme0n1p2   479079112 197710856 256958864      44% /\n",
+          "stderr": ""
+        },
+        "packages": {
+          "exit": 1,
+          "stdout": "cmake=3.22.1-1ubuntu1.22.04.2\ng++=4:11.2.0-1ubuntu1\nlibcurl4=7.81.0-1ubuntu1.29\nlibcurl4-openssl-dev=7.81.0-1ubuntu1.29\nlibssl-dev=3.0.2-0ubuntu1.20\nopenssl=3.0.2-0ubuntu1.20\npkg-config=0.29.2-1ubuntu3\n",
+          "stderr": "dpkg-query: no packages found matching libcurl4t64\n"
+        },
+        "build_image": {
+          "exit": 0,
+          "stdout": "2a79f82cce5de80ab5afc832af64acba549c963e89df509acfaeb5565cb232ee amd64 linux\n",
+          "stderr": ""
+        },
+        "project_images": {
+          "exit": 0,
+          "stdout": "localhost/velocita-v2:roles-884816d a26fa12f2f02 2026-10-09 23:09:02 +0000 UTC\nlocalhost/velocita-v2:roles-a073998 b2b08a25bb4f 2026-10-09 20:47:49 +0000 UTC\nlocalhost/velocita-build-cgroup-proof:a073998-affinity c1d166ec6504 2026-10-09 20:33:23 +0000 UTC\nlocalhost/velocita-build-cgroup-proof:a073998 124943c03e3f 2026-10-09 20:31:50 +0000 UTC\nlocalhost/velocita-v2:ledger-f55209e 399acf9bb2c2 2026-10-08 12:23:54 +0000 UTC\nlocalhost/velocita-v2:ledger-8a15b98 4add9b6f7080 2026-10-08 12:00:20 +0000 UTC\nlocalhost/velocita-v2:paper-indicators-20261007 c0be27ffc656 2026-10-07 15:53:50 +0000 UTC\nlocalhost/velocita-v2-shadow:paper-indicators-20261007 fce792a75dc0 2026-10-07 15:53:41 +0000 UTC\nlocalhost/velocita-v2:m3 6f5d627f8fa8 2026-10-05 19:05:49 +0000 UTC\nlocalhost/velocita-v2:m3-cp081 6f5d627f8fa8 2026-10-05 19:05:49 +0000 UTC\nlocalhost/velocita-v2:m3-pre-cp081 e580f2311504 2026-10-03 20:37:07 +0000 UTC\nlocalhost/velocita-v2:m3-cp079 e580f2311504 2026-10-03 20:37:07 +0000 UTC\nlocalhost/velocita-dev:current 2a79f82cce5d 2026-10-01 20:24:47 +0000 UTC\nlocalhost/velocita-dev:2026-10-01 2a79f82cce5d 2026-10-01 20:24:47 +0000 UTC\nlocalhost/velocita-v2:m3-pre-cp079 2d2c2980edd4 2026-10-01 14:05:03 +0000 UTC\nlocalhost/velocita-v2:m3-p3 2d2c2980edd4 2026-10-01 14:05:03 +0000 UTC\nlocalhost/velocita-v2:m3-pre-p3 32a0566e4c5b 2026-09-30 13:41:09 +0000 UTC\nlocalhost/velocita-v2:m3-p2 32a0566e4c5b 2026-09-30 13:41:09 +0000 UTC\nlocalhost/velocita-v2:m3-pre-p2 f22a77fa9acc 2026-09-29 19:10:46 +0000 UTC\nlocalhost/velocita-v2:m3-c f22a77fa9acc 2026-09-29 19:10:46 +0000 UTC\nlocalhost/velocita-v2:m3-b 42164a9c83a1 2026-09-29 02:01:32 +0000 UTC\nlocalhost/velocita-v2:m3-pre-c 42164a9c83a1 2026-09-29 02:01:32 +0000 UTC\nlocalhost/velocita-v2:m3-pre-b cb0d0b5e7337 2026-09-28 23:02:08 +0000 UTC\nlocalhost/velocita-v2:m3-ack cb0d0b5e7337 2026-09-28 23:02:08 +0000 UTC\nlocalhost/velocita-v2:m3-pre-ack 2bba12172a20 2026-09-28 22:10:49 +0000 UTC\nlocalhost/velocita-v2:m3-3v 2bba12172a20 2026-09-28 22:10:49 +0000 UTC\nlocalhost/velocita-v2:m3-sep27 2f9c6955a598 2026-09-28 01:15:45 +0000 UTC\n",
+          "stderr": ""
+        }
+      },
+      "source_commit": "0680b08a5bbfbcaba32a77fbdf5cbe5d0162f40c"
+    }
+  }
+}
