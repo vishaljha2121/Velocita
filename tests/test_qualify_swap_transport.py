@@ -36,6 +36,16 @@ class QualificationTests(unittest.TestCase):
             Q.verify_manifest(path, sha, {'compiler': 'approved', 'curl': 'required'})
         Q.verify_manifest(path, sha, {'compiler': 'approved'})
 
+    def test_system_include_flags_are_bounded_pairs(self):
+        actual = '-I/usr/include/aarch64-linux-gnu -isystem /usr/include/mit-krb5 -lcurl'
+        self.assertEqual(Q.flags(actual), actual.split(), 'paired_system_include_accepted')
+        for value in ('-isystem', '-isystem -lcurl', '-isystem relative',
+                      '-isystem /usr/include;echo', '-include /etc/passwd',
+                      '-Wl,-rpath,/unreviewed', '@/unreviewed', '-DUNREVIEWED=1'):
+            with self.subTest(value=value):
+                with self.assertRaises(Q.Refusal, msg='unsafe_pkg_flags_refused'):
+                    Q.flags(value)
+
     def test_manifest_hash_must_match(self):
         path, _ = self.manifest({'compiler': 'approved'})
         with self.assertRaises(Q.Refusal, msg='manifest_hash_must_match'):

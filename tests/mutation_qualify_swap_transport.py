@@ -8,6 +8,8 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 SCRATCH = Path.home() / '.cache/velocita-build/native-transport-20261012'
 MUTANTS = [
+    ('system_include_path', "if index == len(result) or not re.fullmatch(r'/[-a-zA-Z0-9_./+]+', result[index]):",
+     "if index == len(result):", 'test_system_include_flags_are_bounded_pairs', 'unsafe_pkg_flags_refused'),
     ('manifest_content', "if manifest != {'schema': 1, 'fingerprint': actual}:", 'if False:',
      'test_manifest_content_must_match', 'dependency_mismatch_refused_before_compile'),
     ('manifest_hash', "if not re.fullmatch('[0-9a-f]{64}', expected_sha256) or digest(data) != expected_sha256:",

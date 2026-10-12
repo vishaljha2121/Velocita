@@ -102,9 +102,16 @@ def dependencies(path):
 
 def flags(value):
     result = shlex.split(value)
-    if any(not re.fullmatch(r'-(?:I/[-a-zA-Z0-9_./+]+|L/[-a-zA-Z0-9_./+]+|l[a-zA-Z0-9_+.-]+|pthread)',
-                            token) for token in result):
-        raise Refusal('pkg-config returned unsupported flags')
+    index = 0
+    while index < len(result):
+        token = result[index]
+        if token == '-isystem':
+            index += 1
+            if index == len(result) or not re.fullmatch(r'/[-a-zA-Z0-9_./+]+', result[index]):
+                raise Refusal('pkg-config returned invalid system include path')
+        elif not re.fullmatch(r'-(?:I/[-a-zA-Z0-9_./+]+|L/[-a-zA-Z0-9_./+]+|l[a-zA-Z0-9_+.-]+|pthread)', token):
+            raise Refusal('pkg-config returned unsupported flags')
+        index += 1
     return result
 
 
