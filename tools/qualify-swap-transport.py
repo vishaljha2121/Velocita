@@ -162,6 +162,12 @@ def write_json(path, value):
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + '\n')
 
 
+def compile_environment(output):
+    scratch = output / 'compiler-tmp'
+    scratch.mkdir(mode=0o700)
+    return dict(safe_env(), TMPDIR=str(scratch))
+
+
 def run(args):
     source = args.source.resolve()
     output = args.output.resolve()
@@ -195,7 +201,7 @@ def run(args):
                        str(export / 'src/v2_swap_https.cpp'), str(export / 'tests/v2_swap_https_probe.cpp'),
                        *actual['libs'], '-o', str(binary)]
     write_json(output / 'compile-command.json', compile_command)
-    result = subprocess.run(compile_command, env=safe_env(), capture_output=True, timeout=300)
+    result = subprocess.run(compile_command, env=compile_environment(output), capture_output=True, timeout=300)
     (output / 'compile.log').write_bytes(result.stdout + result.stderr)
     if result.returncode:
         raise Refusal('targeted probe compilation failed; inspect compile.log')

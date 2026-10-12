@@ -46,6 +46,13 @@ class QualificationTests(unittest.TestCase):
                 with self.assertRaises(Q.Refusal, msg='unsafe_pkg_flags_refused'):
                     Q.flags(value)
 
+    def test_compiler_scratch_is_explicit_and_private(self):
+        with patch.dict(os.environ, {'TMPDIR': '/untrusted', 'LD_PRELOAD': '/untrusted'}):
+            env = Q.compile_environment(self.root)
+        self.assertEqual(env['TMPDIR'], str(self.root / 'compiler-tmp'), 'compiler_uses_durable_output_scratch')
+        self.assertEqual((self.root / 'compiler-tmp').stat().st_mode & 0o777, 0o700)
+        self.assertNotIn('LD_PRELOAD', env)
+
     def test_manifest_hash_must_match(self):
         path, _ = self.manifest({'compiler': 'approved'})
         with self.assertRaises(Q.Refusal, msg='manifest_hash_must_match'):
