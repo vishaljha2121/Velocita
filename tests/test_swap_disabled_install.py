@@ -88,5 +88,14 @@ class DisabledInstallTests(unittest.TestCase):
                 INSTALL.install(self.base,'0'*64)
             snapshot.assert_not_called();mkdir.assert_not_called();command.assert_not_called()
 
+    def test_replacement_changes_release_only_and_preserves_dormant_policy(self):
+        new=dict(self.m,source_commit='9'*40,binary='/opt/velocita/releases/'+'9'*40+'/velocita-v2-gateway')
+        INSTALL.replacement(self.m,new)
+        for key,value in [('launch_authorized',True),('binary_sha256','0'*64),
+                          ('gateway_caller',24),('incarnation','f'*32),('account_review_sha256','a'*64)]:
+            with self.subTest(key=key),self.assertRaisesRegex(ValueError,'release location only'):
+                INSTALL.replacement(self.m,dict(new,**{key:value}))
+        with self.assertRaises(ValueError): INSTALL.replacement(self.m,self.m)
+
 
 if __name__=='__main__': unittest.main()

@@ -189,7 +189,7 @@ class DescriptorHandoffTests(unittest.TestCase):
             with self.assertRaises(ValueError): self.handoff.open_secret(str(directory / 'fifo'), os.getuid())
             with self.assertRaises(ValueError): self.handoff.open_pinned_public(str(secret), '0' * 64)
 
-    def test_harmless_exec_gets_only_fd3_and_explicit_environment(self):
+    def _assert_harmless_exec_handoff(self, source_fd):
         import os
         base = Path.home() / '.cache/velocita-service-profile-tests-v2'
         base.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -204,12 +204,19 @@ class DescriptorHandoffTests(unittest.TestCase):
                     os.dup2(extra_fd, 100, inheritable=True)
                     os.close(extra_fd)
                     fd = self.handoff.open_secret(str(secret), os.getuid())
+                    # Force both the no-op dup2 case and a distinct source,
+                    # independently of unittest's ambient descriptor allocation.
+                    if fd != source_fd:
+                        os.dup2(fd, source_fd, inheritable=False)
+                        os.close(fd)
+                    os.set_inheritable(source_fd, False)
+                    assert not os.get_inheritable(source_fd)
                     self.handoff.exec_handoff(sys.executable, [sys.executable, '-B', '-c',
                         'import os, errno; assert os.environ.get("SYNTHETIC") == "1"; '
                         'assert "HOME" not in os.environ; '
                         'print(os.read(3,128).decode()); '
                         '\ntry: os.fstat(100)\nexcept OSError as e: assert e.errno == errno.EBADF\n'
-                        'else: raise AssertionError("unrelated descriptor leaked")'], fd,
+                        'else: raise AssertionError("unrelated descriptor leaked")'], source_fd,
                         {'SYNTHETIC': '1', 'PATH': '/usr/bin:/bin', 'TMPDIR': tmp})
                 except BaseException: os._exit(91)
             os.close(write_end)
@@ -225,6 +232,12 @@ class DescriptorHandoffTests(unittest.TestCase):
             _, status = os.waitpid(child, 0)
             self.assertEqual(os.waitstatus_to_exitcode(status), 0)
             self.assertEqual(result, b'synthetic-handoff\n')
+
+    def test_cloexec_fd3_survives_exec_without_unrelated_descriptors(self):
+        self._assert_harmless_exec_handoff(3)
+
+    def test_cloexec_fd7_moves_to_fd3_without_unrelated_descriptors(self):
+        self._assert_harmless_exec_handoff(7)
 
     def test_binary_hash_mismatch_and_unconditional_cli_refusal(self):
         import hashlib

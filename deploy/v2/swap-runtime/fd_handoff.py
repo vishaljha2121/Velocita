@@ -76,8 +76,13 @@ def exec_handoff(binary, argv, secret_fd, environment):
     """
     if not argv or argv[0] != binary or secret_fd < 3:
         raise Refused('invalid exec mapping')
-    os.dup2(secret_fd, 3, inheritable=True)
-    if secret_fd != 3: os.close(secret_fd)
+    if secret_fd == 3:
+        # dup2(fd, fd) is a no-op and can preserve FD_CLOEXEC despite its
+        # inheritable argument. Our protected opens deliberately set CLOEXEC.
+        os.set_inheritable(3, True)
+    else:
+        os.dup2(secret_fd, 3, inheritable=True)
+        os.close(secret_fd)
     # CLOEXEC closes descriptors from our open helpers. Refuse accidental unrelated
     # inherited descriptors too; do not rely on the supervisor's ambient state.
     limit = os.sysconf('SC_OPEN_MAX')

@@ -99,7 +99,28 @@ def command(args):
                           text=True, timeout=30).stdout.strip()
 
 
-def install(base, digest):
+def installed_bytes(path, expected):
+    parent = PROVISION.open_directory(str(Path(path).parent))
+    try:
+        fd = os.open(Path(path).name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+        try:
+            meta = os.fstat(fd)
+            if not stat.S_ISREG(meta.st_mode) or meta.st_uid != 0 or meta.st_nlink != 1 or meta.st_mode & 0o022:
+                raise ValueError('installed artifact ownership/type differs')
+            with os.fdopen(fd,'rb',closefd=False) as stream: raw=stream.read(64*1024**2+1)
+            if raw != expected: raise ValueError('installed artifact differs from previous bundle')
+        finally: os.close(fd)
+    finally: os.close(parent)
+
+
+def replacement(old, new):
+    # A release-only correction cannot change account, caller, catalog or runtime policy.
+    allowed={'source_commit','binary'}
+    if any(old[k] != new[k] for k in PROFILE.FIELDS-allowed) or old['source_commit']==new['source_commit']:
+        raise ValueError('dormant replacement may change release location only')
+
+
+def install(base, digest, previous=None, previous_digest=None):
     PROVISION.require_host_root()
     m, data = payload(base, digest)
     if PROVISION.plan(*PROVISION.snapshot())['actions']:
@@ -111,29 +132,58 @@ def install(base, digest):
     if command(['/usr/bin/findmnt','-n','-o','FSTYPE','--target','/run']) != 'tmpfs':
         raise ValueError('credential parent must be tmpfs')
     paths = destinations(m)
-    for path in paths.values(): fresh(path)
+    old_paths = {}
+    if previous is not None:
+        old, old_data = payload(previous, previous_digest)
+        replacement(old,m)
+        old_paths = destinations(old)
+        for name,path in old_paths.items(): installed_bytes(path,old_data[name])
+    for name,path in paths.items():
+        if path not in old_paths.values(): fresh(path)
+        elif name != 'catalog.bin': fresh(path+'.'+m['source_commit']+'.pending')
     release_parent = '/opt/velocita/releases'
     release = release_parent+'/'+m['source_commit']
-    fresh(release); fresh('/run/velocita-swap-credentials')
+    fresh(release)
+    if previous is None: fresh('/run/velocita-swap-credentials')
+    else:
+        fd=PROVISION.open_directory('/run/velocita-swap-credentials');os.close(fd)
+        for role,uid in (('gateway',29001),('signer',29002)):
+            path=Path('/run/velocita-swap-credentials')/role
+            meta=path.lstat()
+            if not stat.S_ISDIR(meta.st_mode) or (meta.st_uid,meta.st_gid,stat.S_IMODE(meta.st_mode)) != (uid,uid,0o700) or list(path.iterdir()):
+                raise ValueError('replacement requires unchanged empty credential directories')
     for path in ('/opt/velocita', PROFILE.PUBLIC, '/etc/systemd/system', '/run'):
         fd = PROVISION.open_directory(path); os.close(fd)
     if os.path.lexists(release_parent):
         fd = PROVISION.open_directory(release_parent); os.close(fd)
     for role in ('gateway', 'signer'):
         unit = 'velocita-swap-'+role+'.service'
-        if command(['/usr/bin/systemctl','show',unit,'--property=LoadState','--value']) != 'not-found':
-            raise ValueError('existing service definition must not be replaced')
+        if previous is None:
+            if command(['/usr/bin/systemctl','show',unit,'--property=LoadState','--value']) != 'not-found':
+                raise ValueError('existing service definition must not be replaced')
+        else:
+            for key,value in (('LoadState','loaded'),('ActiveState','inactive'),('SubState','dead'),('UnitFileState','static')):
+                if command(['/usr/bin/systemctl','show',unit,'--property='+key,'--value']) != value:
+                    raise ValueError('replacement requires inactive static services')
     # Complete preflight above. No credential content is installed.
     if not os.path.lexists(release_parent): mkdir(release_parent)
     mkdir(release)
-    mkdir('/run/velocita-swap-credentials')
-    for role, uid in (('gateway',29001),('signer',29002)):
-        mkdir('/run/velocita-swap-credentials/'+role, uid, uid, 0o700)
+    if previous is None:
+        mkdir('/run/velocita-swap-credentials')
+        for role, uid in (('gateway',29001),('signer',29002)):
+            mkdir('/run/velocita-swap-credentials/'+role, uid, uid, 0o700)
     for name, path in paths.items():
+        if path in old_paths.values() and name=='catalog.bin': continue
         parent = PROVISION.open_directory(str(Path(path).parent))
         try:
-            RUNTIME.new_file(parent, Path(path).name, data[name],
+            replace = path in old_paths.values()
+            leaf=Path(path).name
+            staged=leaf+'.'+m['source_commit']+'.pending' if replace else leaf
+            RUNTIME.new_file(parent, staged, data[name],
                              0o555 if name == 'velocita-v2-gateway' else 0o444)
+            if replace:
+                installed_bytes(path,old_data[name])
+                os.rename(staged,leaf,src_dir_fd=parent,dst_dir_fd=parent)
             os.fsync(parent)
         finally: os.close(parent)
     units = [paths['velocita-swap-'+r+'.service'] for r in ('gateway','signer')]
@@ -156,9 +206,13 @@ if __name__ == '__main__':
     p.add_argument('--bundle',type=Path,required=True)
     p.add_argument('--bundle-sha256',required=True)
     p.add_argument('--apply',action='store_true')
+    p.add_argument('--previous-bundle',type=Path)
+    p.add_argument('--previous-bundle-sha256')
     args = p.parse_args()
     try:
-        result = install(args.bundle,args.bundle_sha256) if args.apply else \
+        if bool(args.previous_bundle) != bool(args.previous_bundle_sha256):
+            raise ValueError('previous bundle and digest required together')
+        result = install(args.bundle,args.bundle_sha256,args.previous_bundle,args.previous_bundle_sha256) if args.apply else \
             dict(validated=True,source_commit=payload(args.bundle,args.bundle_sha256)[0]['source_commit'],live_admitted=False)
         print(json.dumps(result,indent=2,sort_keys=True))
     except (ValueError,OSError,KeyError,subprocess.SubprocessError) as exc:
