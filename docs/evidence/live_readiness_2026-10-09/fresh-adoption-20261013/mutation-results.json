@@ -1,0 +1,32 @@
+[
+  {
+    "name": "raw_incarnation",
+    "killed": true,
+    "named_assertion": "cpp_incarnation_digest_admitted",
+    "errors": 0
+  },
+  {
+    "name": "api_key_as_wallet",
+    "killed": true,
+    "named_assertion": "wallet_signer_not_api_key_id",
+    "errors": 0
+  },
+  {
+    "name": "wallet_check_removed",
+    "killed": true,
+    "named_assertion": "wrong_wallet_refused",
+    "errors": 0
+  },
+  {
+    "name": "profile_digest_removed",
+    "killed": true,
+    "named_assertion": "document_tampering_refused",
+    "errors": 0
+  },
+  {
+    "name": "existing_profile_allowed",
+    "killed": true,
+    "named_assertion": "existing_profile_refused",
+    "errors": 0
+  }
+]

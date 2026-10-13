@@ -64,7 +64,7 @@ def unsigned(value):
 def check_bindings(manifest, profile_raw, review_raw, history_raw, now_ms, role):
     """Cross-file deployment pins; C++ remains authoritative for economics/recovery."""
     profile, review, history = fields(profile_raw), fields(review_raw), strict_json(history_raw)
-    same = {'schema': '1', 'incarnation': manifest['incarnation'],
+    same = {'schema': '1', 'incarnation': hashlib.sha256(bytes.fromhex(manifest['incarnation'])).hexdigest(),
             'gateway_uid': str(manifest['gateway_uid']), 'signer_uid': str(manifest['signer_uid']),
             'gateway_caller': str(manifest['gateway_caller']), 'signer_caller': str(manifest['signer_caller']),
             'socket': '/run/velocita-swap-signer/sign.sock',

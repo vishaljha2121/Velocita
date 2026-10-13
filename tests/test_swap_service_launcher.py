@@ -17,7 +17,7 @@ T = importlib.util.module_from_spec(spec); spec.loader.exec_module(T)
 
 def documents():
     manifest = T.fixture()
-    profile = dict(schema='1', incarnation=manifest['incarnation'], gateway_uid='2001', signer_uid='2002',
+    profile = dict(schema='1', incarnation=hashlib.sha256(bytes.fromhex(manifest['incarnation'])).hexdigest(), gateway_uid='2001', signer_uid='2002',
         gateway_caller='22', signer_caller='23', socket='/run/velocita-swap-signer/sign.sock',
         owner_wallet='12'*32, user_id='11111111-1111-1111-1111-111111111111', expires_at_ms='9999999')
     history = {'owner_sha256':hashlib.sha256(bytes.fromhex(profile['owner_wallet'])).hexdigest(),
@@ -34,6 +34,16 @@ def documents():
 
 
 class LauncherTests(unittest.TestCase):
+    def test_profile_uses_cpp_incarnation_digest_not_raw_cluster_id(self):
+        m,p,r,h,encode=documents()
+        self.assertEqual(len(m['incarnation']),32)
+        self.assertEqual(len(p['incarnation']),64)
+        try:L.check_bindings(m,encode(p),encode(r),json.dumps(h).encode(),1001000,'signer')
+        except ValueError as e:self.fail('cpp_incarnation_digest_admitted: '+str(e))
+        p['incarnation']=m['incarnation']
+        with self.assertRaises(ValueError,msg='raw_incarnation_not_a_swap_digest'):
+            L.check_bindings(m,encode(p),encode(r),json.dumps(h).encode(),1001000,'signer')
+
     def test_recovery_manifest_never_opens_signer_credentials(self):
         m=dict(T.fixture(),launch_authorized=True,recovery_only=True)
         with patch.object(L,'service_context') as context, patch.object(L.FD,'open_secret') as secret:

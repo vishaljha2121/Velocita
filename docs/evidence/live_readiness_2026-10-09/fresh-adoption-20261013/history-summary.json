@@ -1,0 +1,13 @@
+{
+  "scope": "current main-wallet SOL and legacy USDC accounts",
+  "history_boundary": "RPC returned short final pages; provider archival completeness is not proven",
+  "closed_historical_token_accounts_covered": false,
+  "live_admitted": false,
+  "requires_reviewed_initial_cut": true,
+  "unresolved_tm_orders": 0,
+  "tm_orders": 0,
+  "token_accounts": 1,
+  "transactions": 4,
+  "requests": 20,
+  "result_sha256": "cd02a9f54bde6a3873b23d99418677c85c04951e0932ae8050fd36c2472ad50c"
+}

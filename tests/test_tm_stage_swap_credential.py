@@ -30,10 +30,18 @@ class StageTests(unittest.TestCase):
     def test_reply_identity_refused(self):
         with patch.object(S.subprocess,'run',return_value=subprocess.CompletedProcess([],0,b'{}',b'')):
             with self.assertRaisesRegex(ValueError,'identity'):S.send('gateway',b'token','/home/vishal/.cache/velocita-build/review/credential_handoff.py','a'*64)
-    def test_signer_key_id_checked_before_conversion(self):
-        doc=dict(algorithm='ES256',private_key=dict(kty='EC',crv='P-256'),key_id='1'*32)
+    def test_wallet_signer_id_is_distinct_from_api_key_identifier(self):
+        doc=dict(algorithm='ES256',private_key=dict(kty='EC',crv='P-256'),key_id='11111111-1111-4111-8111-111111111111')
+        p=dict(signer_id='So11111111111111111111111111111111111111112',owner_wallet='069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001')
+        with patch.object(S.SESSION,'read_private',return_value=doc),patch.object(S.SESSION.MINT,'jwk_to_pem',return_value=b'private-fixture'),patch.object(S.H,'validate_secret') as verify:
+            try:result=S.material('signer',Path('unused'),p)
+            except ValueError as e:self.fail('wallet_signer_not_api_key_id: '+str(e))
+            self.assertEqual(result,b'private-fixture');self.assertEqual(verify.call_args.args[:3],('signer',b'private-fixture',p),'exact_public_key_validation_retained')
+    def test_wrong_wallet_refused_before_conversion(self):
+        doc=dict(algorithm='ES256',private_key=dict(kty='EC',crv='P-256'),key_id='11111111-1111-4111-8111-111111111111')
+        p=dict(signer_id='So11111111111111111111111111111111111111112',owner_wallet='01'*32)
         with patch.object(S.SESSION,'read_private',return_value=doc),patch.object(S.SESSION.MINT,'jwk_to_pem') as convert:
-            with self.assertRaisesRegex(ValueError,'identifier',msg='key_id_matches_profile'):S.material('signer',Path('unused'),dict(signer_id='2'*32))
+            with self.assertRaisesRegex(ValueError,'wallet',msg='wrong_wallet_refused'):S.material('signer',Path('unused'),p)
             convert.assert_not_called()
     def test_token_cannot_outlive_session(self):
         with patch.object(S.SESSION,'read_private',return_value={}),patch.object(S.SESSION,'token_pair',return_value=({'access_token':'token'},100)):

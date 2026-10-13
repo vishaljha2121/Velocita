@@ -16,6 +16,7 @@ def load(name,path):
     spec=importlib.util.spec_from_file_location(name,path);module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);return module
 H=load('credential_handoff',ROOT/'deploy/v2/swap-runtime/credential_handoff.py')
 SESSION=load('stage_session',ROOT/'tools/tm-account-session.py')
+HISTORY=load('stage_history',ROOT/'tools/tm-account-history-check.py')
 
 
 def material(role,path,profile):
@@ -28,7 +29,8 @@ def material(role,path,profile):
         jwk=document.get('private_key',{})
         if document.get('algorithm')!='ES256' or jwk.get('kty')!='EC' or jwk.get('crv')!='P-256': raise ValueError('P-256 API key required')
         key_id=document.get('key_id')
-        if not isinstance(key_id,str) or key_id.replace('-','').lower()!=profile.get('signer_id'): raise ValueError('signer identifier mismatch')
+        if not isinstance(key_id,str) or re.fullmatch('[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}',key_id) is None: raise ValueError('API key identifier malformed')
+        if HISTORY.key_bytes(profile.get('signer_id')).hex()!=profile.get('owner_wallet'): raise ValueError('signer wallet mismatch')
         raw=SESSION.MINT.jwk_to_pem(jwk)
     H.validate_secret(role,raw,profile,time.time_ns()//1000000)
     return raw
