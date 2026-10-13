@@ -1,3 +1,4 @@
+#include <cstring>
 #include "velocita/v2/swap_runtime_production.hpp"
 #include "v2_swap_signer_test_support.hpp"
 #include <sstream>

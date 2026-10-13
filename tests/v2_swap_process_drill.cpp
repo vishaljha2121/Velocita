@@ -1,5 +1,6 @@
 // Real gateway processes use production coordinators/journals and authenticated
 // frames to three real V2Node replicas. Venue and settlement authority are fixtures.
+#include <cstring>
 #define main existing_gateway_suite_main
 #include "v2_gateway_node_tests.cpp"
 #undef main
