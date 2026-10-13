@@ -33,3 +33,26 @@ Procedure used:
 Gateway executable migration remains separate and pending. Missing settlement
 feed is expected until the upgraded gateway publishes an authenticated snapshot;
 no production fill or snapshot was fabricated. No Safari access or order sent.
+
+## Executable installation completed
+
+The owner approved helper checkpoint `fb5f413`. NUC1 passed15application,
+7proposal,17transition,9authenticated-read and12upgrade tests. The first upgrade
+filesystem test run correctly rejected group-writable shared cache ancestors;
+a new private test HOME and umask077 passed with unchanged production checks.
+Both original and rerun logs remain in the host helper staging directory.
+
+Root invoked the pinned `upgrade_telemetry.py --apply` from that checkpoint,
+using old manifest SHA256910702fe85f8d5de6746d87c5961f6a48885b4a8bbdcc888fb11007059292947.
+Qualified gateway installed at `/opt/velocita/releases/69679c081ce2d0b8939a89c3c846948c460d8d3e/velocita-v2-gateway`.
+Old manifest/units and preserved hashes are archived under
+`/var/lib/velocita-telemetry-upgrade-69679c0`. Both static units now point to the
+qualified release. Persistent startup guards remain loaded, PIDs remain zero,
+and all account/journal bytes were preserved. No services started.
+
+Fresh renewal account capture completed20read requests, with zero unresolved
+TM orders and unchanged0.040764166SOL /40.006989USDC. Raw evidence is private.
+Initial proposal preparation refused the17780-byte transaction review because
+the helper reused the8192-byte profile parser; no proposal or journal mutation
+occurred. Correct the transaction-only bound to the existing32768-byte contract;
+the runtime profile bound remains8192.

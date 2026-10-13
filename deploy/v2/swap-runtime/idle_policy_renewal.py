@@ -44,7 +44,7 @@ def propose(old,new,before,after,journals,now):
         if R.digest(files['transaction.review'])!=R.L.fields(files['runtime.profile'])['transaction_review_digest']:raise ValueError('transaction pin mismatch')
     if any(old.get(k)!=new.get(k) for k in (set(old)|set(new))-R.P.PENDING_ACCOUNT_PINS):raise ValueError('immutable manifest authority')
     if not old['launch_authorized'] or old.get('initialize_swap_recovery') is not False or old.get('recovery_only',False):raise ValueError('sealed first-use profile required')
-    prior_tx,next_tx=map(R.L.fields,(before['transaction.review'],after['transaction.review']))
+    prior_tx,next_tx=map(R.transaction_fields,(before['transaction.review'],after['transaction.review']))
     if set(prior_tx)!=set(next_tx) or any(prior_tx[k]!=next_tx[k] for k in prior_tx if k!='expires_at_ms'):raise ValueError('expiry-only transaction review')
     expiry=R.L.unsigned(next_tx['expires_at_ms'])
     if not max(now,R.L.unsigned(prior_tx['expires_at_ms']))<expiry<=now+900000:raise ValueError('fresh bounded transaction expiry required')

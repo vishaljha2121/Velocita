@@ -26,6 +26,28 @@ class RenewalTests(unittest.TestCase):
         after['account.review']=t.encode(r);p['account_review_digest']=T.R.digest(after['account.review']);after['runtime.profile']=t.encode(p)
         return old,t.pins(old,after),before,after,journals,10000100
 
+    def test_full_256_address_lookup_review_exceeds_8k_and_renews(self):
+        old,new,before,after,journals,now=self.fixture()
+        for files in (before,after):
+            tx=T.R.L.fields(files['transaction.review'])
+            tx.update(lookup_address_count='256',lookup_addresses=''.join(n.to_bytes(32,'little').hex() for n in range(1,257)))
+            files['transaction.review']=T.TransitionTests.encode(tx)
+            self.assertGreater(len(files['transaction.review']),8192)
+            self.assertLessEqual(len(files['transaction.review']),32768)
+            p=T.R.L.fields(files['runtime.profile']);p['transaction_review_digest']=T.R.digest(files['transaction.review'])
+            review=T.R.L.fields(files['account.review']);review['runtime_identity']=N.runtime_identity(p)
+            files['account.review']=T.TransitionTests.encode(review);p['account_review_digest']=T.R.digest(files['account.review'])
+            files['runtime.profile']=T.TransitionTests.encode(p)
+        old=T.TransitionTests.pins(old,before);new=T.TransitionTests.pins(new,after)
+        try:
+            binding=T.R.journal_bindings(before)
+            record=bytearray(journals['protected-signing']);record[72:104]=binding[4]
+            journals['protected-signing']=T.TransitionTests.checksum(record)
+            result=N.propose(old,new,before,after,journals,now)
+        except ValueError as error:self.fail('full_lookup_renewal_admitted: '+str(error))
+        self.assertEqual(int.from_bytes(result['artifacts']['after/journals/protected-signing'][8:16],'little'),2)
+        self.assertEqual(result['artifacts']['after/transaction.review'],after['transaction.review'])
+
     def test_repeated_pristine_renewal_monotonically_advances_ordinal(self):
         old,new,before,after,journals,now=self.fixture()
         for ordinal in (2,100,2**64-2):

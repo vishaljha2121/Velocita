@@ -30,6 +30,21 @@ L=A.LAUNCH
 
 def digest(raw):return hashlib.sha256(raw).hexdigest()
 
+def transaction_fields(raw):
+    """Transaction reviews include up to 256 lookup addresses; cap at native 32KiB.
+
+    Runtime/account profiles still use service_launcher's independent 8KiB cap.
+    Field grammar is identical: ASCII, nonempty unique names/values, no NUL.
+    """
+    if not raw or len(raw)>32768:raise ValueError('bounded transaction review required')
+    result={}
+    for line in raw.decode('ascii').splitlines():
+        name,equal,value=line.partition('=')
+        if not equal or not name or not value or name in result or '\x00' in line:raise ValueError('transaction review field shape')
+        result[name]=value
+    return result
+
+
 def validate(mode,old,new,before,after,now):
     P.validate(old);P.validate(new)
     if set(before)!=set(A.DOCUMENTS) or set(after)!=set(A.DOCUMENTS):raise ValueError('exact documents required')
@@ -59,7 +74,7 @@ def validate(mode,old,new,before,after,now):
             for h in (old_history,new_history):
                 if h.get('stable_window') is not True or h.get('pagination_exhausted') is not True or any(type(h.get(k)) is not int or h[k]!=0 for k in ('blocking_orders','unsupported_accounts')):raise ValueError('unreviewable account history')
                 if any(type(h[k]) is not int or not 0<=h[k]<=2**63-1 for k in ('base_atoms','quote_atoms')):raise ValueError('account balance atoms')
-            if L.unsigned(L.fields(after['transaction.review'])['expires_at_ms'])<=now:raise ValueError('transaction review expired; separate policy/journal migration required for initialized run')
+            if L.unsigned(transaction_fields(after['transaction.review'])['expires_at_ms'])<=now:raise ValueError('transaction review expired; separate policy/journal migration required for initialized run')
             if new_history['capture_finished_ms']<=old_history['capture_finished_ms']:raise ValueError('fresh account capture required')
     elif mode=='arm':
         if old['launch_authorized'] or old.get('initialize_swap_recovery',False) or not new['launch_authorized'] or new.get('initialize_swap_recovery') is not True:raise ValueError('invalid first-start transition')
@@ -68,7 +83,7 @@ def validate(mode,old,new,before,after,now):
         if not old['launch_authorized'] or old.get('initialize_swap_recovery') is not True or not new['launch_authorized'] or new.get('initialize_swap_recovery') is not False:raise ValueError('invalid recovery transition')
         if before!=after:raise ValueError('startup cannot change reviewed documents')
     else:raise ValueError('unknown transition')
-    tx=L.fields(after['transaction.review'])
+    tx=transaction_fields(after['transaction.review'])
     if L.unsigned(tx['expires_at_ms'])<=now:raise ValueError('transaction review expired; separate policy/journal migration required for initialized run')
     for role in ('gateway','signer'):L.check_bindings(new,after['runtime.profile'],after['account.review'],after['account.history'],now,role)
 
@@ -99,7 +114,7 @@ def journal_bindings(files):
     These hashes bind bytes; native policy validation still owns route admission.
     See v2_swap_{transaction_verifier,signer_session,signing_connection}.cpp.
     """
-    p=L.fields(files['runtime.profile']);tx=L.fields(files['transaction.review'])
+    p=L.fields(files['runtime.profile']);tx=transaction_fields(files['transaction.review'])
     def h(raw):return hashlib.sha256(raw).digest()
     def number(value):return struct.pack('<Q',L.unsigned(value))
     def key(fields,name,size=32):

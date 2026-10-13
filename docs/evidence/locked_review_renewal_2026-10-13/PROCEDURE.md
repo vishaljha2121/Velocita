@@ -28,3 +28,14 @@ A second expiry renewal may replace an old inhibition marker only after validati
 - Four mutation runs each fail a named assertion with zero test errors: bypass exact state, omit native directory lock, skip the fresh authenticated read, and accept a corrupted archive.
 - Existing native hash-parity evidence remains in `../live_fill_wiring_2026-10-13/idle-renewal-parity-20261013/`.
 - No credentials, live host writes, service activation, orders or funds movement were performed by the implementation agent.
+
+## Real review size correction
+
+The first host preparation refused the17780-byte installed transaction review
+before writing a proposal or any journal. It reused the8KiB runtime-profile parser.
+Transaction-only parsing now uses the native contract's32KiB limit with the same
+strictASCII/unique-field grammar. Runtime/account profile limits stay8KiB.
+A256-address lookup fixture reproduces the original failure and now passes;
+32769-byte input is rejected.66relevant local tests pass and two parser mutations
+failed assertions with zeroerrors. This corrects the operational helper only; the
+qualified C++ gateway artifact remains69679c0.

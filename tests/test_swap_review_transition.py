@@ -18,6 +18,15 @@ R=load('review_transition',ROOT/'deploy/v2/swap-runtime/review_transition.py')
 class TransitionTests(unittest.TestCase):
     def setUp(self):
         _,self.old,self.files=T.fixture()
+    def test_transaction_parser_separate_32k_bound_and_strict_fields(self):
+        self.assertTrue(hasattr(R,'transaction_fields'),'separate_transaction_parser_exists')
+        at_limit=b'lookup_addresses='+b'a'*(32768-len(b'lookup_addresses='))
+        self.assertEqual(len(R.transaction_fields(at_limit)['lookup_addresses']),32768-len(b'lookup_addresses='))
+        for invalid in (at_limit+b'a',b'',b'x=1\nx=2\n',b'x=\n',b'=1\n',b'x=1\x00\n',b'x=\xff'):
+            with self.subTest(size=len(invalid)),self.assertRaises(ValueError,msg='transaction_parser_bounds_and_shape'):
+                R.transaction_fields(invalid)
+        with self.assertRaises(ValueError,msg='runtime_profile_limit_remains_8192'):R.L.fields(b'x='+b'a'*8191)
+
     def test_arm_and_seal_preserve_documents(self):
         armed=dict(self.old,launch_authorized=True,initialize_swap_recovery=True)
         R.validate('arm',self.old,armed,self.files,self.files,1001000)
