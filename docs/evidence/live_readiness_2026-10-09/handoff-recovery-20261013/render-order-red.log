@@ -1,0 +1,14 @@
+.........F....
+======================================================================
+FAIL: test_pinned_runtime_and_role_only_mounts (test_swap_service_profile.ServiceProfileTests.test_pinned_runtime_and_role_only_mounts)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/tests/test_swap_service_profile.py", line 114, in test_pinned_runtime_and_role_only_mounts
+    self.assertLess(unit.index('BindReadOnlyPaths=/run/velocita-swap-signer'),unit.index('BindReadOnlyPaths=/etc/resolv.conf'),'normal_unit_preserves_installed_mount_order')
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 785 not less than 750 : normal_unit_preserves_installed_mount_order
+
+----------------------------------------------------------------------
+Ran 14 tests in 0.273s
+
+FAILED (failures=1)

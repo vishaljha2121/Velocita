@@ -1,0 +1,9 @@
+{
+  "unique_warning_lines": [
+    "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:114:119: warning: unused parameter \u2018label\u2019 [-Wunused-parameter]",
+    "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:114:89: warning: unused parameter \u2018keyBuffer\u2019 [-Wunused-parameter]",
+    "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:119: warning: unused parameter \u2018label\u2019 [-Wunused-parameter]",
+    "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:54: warning: unused parameter \u2018counterTypeId\u2019 [-Wunused-parameter]",
+    "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:89: warning: unused parameter \u2018keyBuffer\u2019 [-Wunused-parameter]"
+  ]
+}

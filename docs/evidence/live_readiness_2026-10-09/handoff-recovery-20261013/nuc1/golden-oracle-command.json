@@ -1,0 +1,6 @@
+[
+  "python3",
+  "-B",
+  "/source/tools/v2_schema_goldens.py",
+  "--check"
+]

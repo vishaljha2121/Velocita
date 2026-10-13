@@ -80,3 +80,43 @@ finalized recovery with unchanged signing/submission counts. Nine credential and
 14 service mutations fail named assertions. Initial mutation-harness errors were
 corrected and are not counted as kills. Native qualification is recorded
 separately; these local tests do not claim a real transfer or live settlement.
+
+## Exact release and dormant upgrade
+
+Implementation checkpoint: 1c582e6942673804e776bb757040a3a106a513cb.
+A two-line renderer/test correction in 13cc98b7d8d24a21ce5f9549d989cf88e4ea822e
+preserves normal unit mount order, allowing the installer to verify the old
+installed unit byte-for-byte. No production C++ changed in that correction.
+The original successful qualification is retained under initial-qualified.
+
+The new public bundle is staged on NUC1 under the owner account; all 29 public
+file hashes and the dormant bundle validator passed. Both services remain
+inactive. After final qualification, install the update from the Mac:
+
+    ssh -t vishal@100.72.127.102 'sh "$HOME/.cache/velocita-build/handoff-recovery-13cc98b-20261013/owner-install.sh"'
+
+This replaces only the dormant executable/launcher units and runs daemon-reload.
+It does not transfer credentials, initialize an account, start services or trade.
+The previous 84c353a release remains retained. The source tree mounted by
+observability is not swapped, and no voter/exporter restart is required.
+Exact bundle pins and commands: dormant-upgrade.json and owner-install.sh.
+
+Fresh public account documents still precede real credential adoption.
+Implementation/fixture success is not a real host credential-adoption result.
+
+## Final qualification result
+
+Exact commit 13cc98b passed on both NUC x86_64 and Pi aarch64:
+52 selected C++ tests; 50 account Python tests; 62 service/installer tests;
+17 credential/SSH tests; the actual gateway refusal test, signer isolation and
+schema golden checks; and eight validated fixture process drills per host.
+Native credential tests used generated synthetic keys, never the owner's key.
+Host status/logs and fixture results are in nuc1/ and pi/, with checked artifact
+manifests. New compiler diagnostics are retained in warning-inventory.json;
+cached builds are not claims of a warning-free clean build.
+
+The final NUC gateway SHA-256 is
+09f7c3ff0ea68db58cf55c0045e8fbf35c0dcffe1f01632a21cf77b2107b9d7c,
+identical to the initial qualified C++ build before the renderer correction.
+The dormant upgrade is ready for the owner command above. It has not yet run.
+No real credential adoption, live service start, signature or trade occurred.

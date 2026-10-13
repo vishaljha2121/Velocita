@@ -1,0 +1,109 @@
+Test project /work/build
+      Start  11: v2-swap-integration-tests
+ 1/52 Test  #11: v2-swap-integration-tests ..............   Passed    0.01 sec
+      Start 110: v2-truemarkets-rest-tests
+ 2/52 Test #110: v2-truemarkets-rest-tests ..............   Passed    0.01 sec
+      Start 111: v2-truemarkets-wire-tests
+ 3/52 Test #111: v2-truemarkets-wire-tests ..............   Passed    0.00 sec
+      Start 113: v2-truemarkets-venue-tests
+ 4/52 Test #113: v2-truemarkets-venue-tests .............   Passed    0.01 sec
+      Start 115: v2-truemarkets-transport-tests
+ 5/52 Test #115: v2-truemarkets-transport-tests .........   Passed    0.85 sec
+      Start 121: v2-swap-balance-tests
+ 6/52 Test #121: v2-swap-balance-tests ..................   Passed    0.00 sec
+      Start 122: v2-swap-paper-tests
+ 7/52 Test #122: v2-swap-paper-tests ....................   Passed    0.00 sec
+      Start 123: v2-swap-paper-process-drill
+ 8/52 Test #123: v2-swap-paper-process-drill ............   Passed    0.21 sec
+      Start 127: v2-swap-reconcile-tests
+ 9/52 Test #127: v2-swap-reconcile-tests ................   Passed    0.00 sec
+      Start 129: v2-swap-https-local-fixtures
+10/52 Test #129: v2-swap-https-local-fixtures ...........   Passed    1.75 sec
+      Start 131: v2-swap-owner-accounting-tests
+11/52 Test #131: v2-swap-owner-accounting-tests .........   Passed    0.00 sec
+      Start 134: v2-swap-reconcile-session-tests
+12/52 Test #134: v2-swap-reconcile-session-tests ........   Passed    0.02 sec
+      Start 135: v2-swap-reconcile-store-tests
+13/52 Test #135: v2-swap-reconcile-store-tests ..........   Passed    0.08 sec
+      Start 136: v2-swap-gateway-tls-drill
+14/52 Test #136: v2-swap-gateway-tls-drill ..............   Passed    5.70 sec
+      Start 137: v2-swap-transaction-inspection-tests
+15/52 Test #137: v2-swap-transaction-inspection-tests ...   Passed    0.01 sec
+      Start 138: v2-swap-submission-store-tests
+16/52 Test #138: v2-swap-submission-store-tests .........   Passed    0.14 sec
+      Start 139: v2-swap-authority-tests
+17/52 Test #139: v2-swap-authority-tests ................   Passed    0.00 sec
+      Start 140: v2-swap-authority-storage-tests
+18/52 Test #140: v2-swap-authority-storage-tests ........   Passed    0.07 sec
+      Start 141: v2-swap-submission-resolution-tests
+19/52 Test #141: v2-swap-submission-resolution-tests ....   Passed    0.12 sec
+      Start 142: v2-swap-submission-session-tests
+20/52 Test #142: v2-swap-submission-session-tests .......   Passed    0.07 sec
+      Start 143: v2-swap-submission-gateway-drill
+21/52 Test #143: v2-swap-submission-gateway-drill .......   Passed    4.69 sec
+      Start 144: v2-swap-authority-quorum-drill
+22/52 Test #144: v2-swap-authority-quorum-drill .........   Passed    3.59 sec
+      Start 145: v2-swap-signing-stamp-tests
+23/52 Test #145: v2-swap-signing-stamp-tests ............   Passed    0.00 sec
+      Start 146: v2-swap-rest-codec-tests
+24/52 Test #146: v2-swap-rest-codec-tests ...............   Passed    0.00 sec
+      Start 147: v2-swap-prepare-store-tests
+25/52 Test #147: v2-swap-prepare-store-tests ............   Passed    0.19 sec
+      Start 148: v2-swap-prepare-session-tests
+26/52 Test #148: v2-swap-prepare-session-tests ..........   Passed    0.14 sec
+      Start 149: v2-swap-signer-session-tests
+27/52 Test #149: v2-swap-signer-session-tests ...........   Passed    0.17 sec
+      Start 150: v2-swap-signer-production-gate
+28/52 Test #150: v2-swap-signer-production-gate .........   Passed    0.02 sec
+      Start 151: v2-swap-signer-protocol-tests
+29/52 Test #151: v2-swap-signer-protocol-tests ..........   Passed    0.00 sec
+      Start 152: v2-swap-signer-service-tests
+30/52 Test #152: v2-swap-signer-service-tests ...........   Passed    0.06 sec
+      Start 153: v2-swap-order-status-tests
+31/52 Test #153: v2-swap-order-status-tests .............   Passed    0.21 sec
+      Start 154: v2-swap-order-https-local-fixtures
+32/52 Test #154: v2-swap-order-https-local-fixtures .....   Passed    1.32 sec
+      Start 155: v2-swap-settlement-evidence-tests
+33/52 Test #155: v2-swap-settlement-evidence-tests ......   Passed    0.01 sec
+      Start 156: v2-swap-prepare-https-local-fixtures
+34/52 Test #156: v2-swap-prepare-https-local-fixtures ...   Passed    1.31 sec
+      Start 157: v2-swap-signing-connection-tests
+35/52 Test #157: v2-swap-signing-connection-tests .......   Passed    1.13 sec
+      Start 158: v2-swap-settlement-connection-tests
+36/52 Test #158: v2-swap-settlement-connection-tests ....   Passed    0.08 sec
+      Start 159: v2-swap-runtime-config-tests
+37/52 Test #159: v2-swap-runtime-config-tests ...........   Passed    0.02 sec
+      Start 160: v2-swap-gateway-runtime-tests
+38/52 Test #160: v2-swap-gateway-runtime-tests ..........   Passed   11.48 sec
+      Start 161: v2-swap-process-drill
+39/52 Test #161: v2-swap-process-drill ..................   Passed   70.20 sec
+      Start 162: v2-swap-runtime-production-tests
+40/52 Test #162: v2-swap-runtime-production-tests .......   Passed    0.03 sec
+      Start 163: v2-swap-settlement-lifecycle-tests
+41/52 Test #163: v2-swap-settlement-lifecycle-tests .....   Passed    0.04 sec
+      Start 164: v2-swap-settlement-admission-tests
+42/52 Test #164: v2-swap-settlement-admission-tests .....   Passed    0.28 sec
+      Start 165: v2-swap-runtime-https-fixtures
+43/52 Test #165: v2-swap-runtime-https-fixtures .........   Passed    1.39 sec
+      Start 166: v2-swap-runtime-startup-gate
+44/52 Test #166: v2-swap-runtime-startup-gate ...........   Passed    0.20 sec
+      Start 167: v2-swap-account-setup-tests
+45/52 Test #167: v2-swap-account-setup-tests ............   Passed    0.00 sec
+      Start 168: v2-swap-failed-settlement-tests
+46/52 Test #168: v2-swap-failed-settlement-tests ........   Passed    0.05 sec
+      Start 169: v2-operational-recovery-tests
+47/52 Test #169: v2-operational-recovery-tests ..........   Passed    0.11 sec
+      Start 170: v2-swap-cost-policy-tests
+48/52 Test #170: v2-swap-cost-policy-tests ..............   Passed    0.00 sec
+      Start 171: v2-swap-transaction-review-tests
+49/52 Test #171: v2-swap-transaction-review-tests .......   Passed    0.01 sec
+      Start 172: v2-swap-transaction-verifier-tests
+50/52 Test #172: v2-swap-transaction-verifier-tests .....   Passed    0.01 sec
+      Start 173: v2-swap-signer-verified-tests
+51/52 Test #173: v2-swap-signer-verified-tests ..........   Passed    0.10 sec
+      Start 174: v2-truemarkets-no-network-symbols
+52/52 Test #174: v2-truemarkets-no-network-symbols ......   Passed    0.02 sec
+
+100% tests passed, 0 tests failed out of 52
+
+Total Test time (real) = 105.98 sec

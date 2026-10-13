@@ -3,8 +3,8 @@
 This bundle implements production startup mapping for the existing one-cluster
 arrangement. It does not install or start itself. The default manifest must set
 `launch_authorized=false`; generated review units have no `[Install]` section.
-The qualified C++ real-transaction admission gate remains false. No current
-manifest or paper-trading approval authorizes real signing.
+The C++ real-transaction gate admits only the reviewed bounded profile; current
+dormant manifests refuse launch. Paper approval does not authorize real signing.
 
 ## Process boundary
 
@@ -13,8 +13,10 @@ private state directories and credential files. They share only the signer socke
 group: signer primary group, gateway supplementary group. The signer owns its
 0750 runtime directory and creates a 0660 Unix socket; the gateway cannot replace
 it. The gateway unit is ordered after and bound to the signer unit, so losing the
-signer stops the gateway. Both use `Restart=no`; neither initializes journals or
-retries venue operations automatically.
+signer stops the gateway in normal mode. Explicit `recovery_only=true` removes
+that dependency and socket bind, forbids signer launch and journal initialization,
+and forces read-only venue reconciliation in C++. It may commit a proven
+settlement to Raft. Both use `Restart=no`; no venue retry is automatic.
 
 ADR 0019's owner-approved October 13 amendment permits the signer to contact only
 the three pinned voter IPv4 addresses. `IPAddressDeny=any`, three `/32` allows and
@@ -165,3 +167,13 @@ sudo. The revised probe and synthetic test bundle are staged in
 `~/.cache/velocita-build/swap-services-20261013-r3/` under `vishal`. Run only the
 recorded owner command in the current evidence; do not overwrite the old result
 or silently rerun a failed capture. No sudoers changes are needed.
+
+## Protected credential adoption
+
+Use the reviewed `tools/tm-stage-swap-credential.py` and
+`credential_handoff.py` path described in
+[handoff/recovery evidence](../../../docs/evidence/live_readiness_2026-10-09/handoff-recovery-20261013/README.md).
+Credentials travel over SSH stdin into owner-only tmpfs and are adopted only
+while both services are stopped, against the hash-pinned root-owned profile.
+Initial installation is create-only; explicit old-digest-pinned rotation is
+limited to the gateway bearer. No real credential transfer is implied by tests.

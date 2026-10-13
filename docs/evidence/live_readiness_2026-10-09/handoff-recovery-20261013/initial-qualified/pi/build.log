@@ -1,0 +1,100 @@
+[1/584] Generating CXX dyndep file CMakeFiles/velocita_v2_contracts.dir/CXX.dd
+[2/575] Generating CXX dyndep file CMakeFiles/velocita_v2_evaluator.dir/CXX.dd
+[3/572] Generating CXX dyndep file CMakeFiles/velocita_core.dir/CXX.dd
+[4/564] Generating CXX dyndep file CMakeFiles/velocita_v2_kernel.dir/CXX.dd
+[5/551] Generating CXX dyndep file CMakeFiles/velocita_v2_replication.dir/CXX.dd
+[6/531] Generating CXX dyndep file CMakeFiles/velocita_v2_venue_simulator.dir/CXX.dd
+[7/527] Generating CXX dyndep file CMakeFiles/velocita_v2_node.dir/CXX.dd
+[8/513] Generating CXX dyndep file CMakeFiles/velocita_aeron.dir/CXX.dd
+[9/510] Generating CXX dyndep file CMakeFiles/velocita_v2_truemarkets_venue.dir/CXX.dd
+[10/506] Generating CXX dyndep file CMakeFiles/velocita_v2_swap_recovery.dir/CXX.dd
+[11/503] Generating CXX dyndep file CMakeFiles/velocita_v2_gateway_loop.dir/CXX.dd
+[12/501] Generating CXX dyndep file CMakeFiles/velocita_v2_swap_transaction_verifier.dir/CXX.dd
+[13/491] Generating CXX dyndep file CMakeFiles/velocita_v2_paper_venue.dir/CXX.dd
+[14/488] Generating CXX dyndep file CMakeFiles/velocita_v2_truemarkets_transport.dir/CXX.dd
+[15/486] Generating CXX dyndep file CMakeFiles/velocita_v2_signer.dir/CXX.dd
+[16/483] Generating CXX dyndep file CMakeFiles/velocita_v2_swap_paper_gateway.dir/CXX.dd
+[17/480] Generating CXX dyndep file CMakeFiles/velocita_v2_node_aeron.dir/CXX.dd
+[18/478] Scanning /source/src/v2_gateway_main.cpp for CXX dependencies
+[19/478] Generating CXX dyndep file CMakeFiles/velocita_v2_swap_runtime.dir/CXX.dd
+[20/441] Generating CXX dyndep file CMakeFiles/velocita-v2-signer.dir/CXX.dd
+[21/439] Generating CXX dyndep file CMakeFiles/velocita-v2-gateway.dir/CXX.dd
+[22/439] Generating CXX dyndep file CMakeFiles/velocita-v2-shadow-submitter.dir/CXX.dd
+[23/437] Generating CXX dyndep file CMakeFiles/velocita-v2-node.dir/CXX.dd
+[24/435] Generating CXX dyndep file CMakeFiles/velocita-v2-client.dir/CXX.dd
+[25/433] Generating CXX dyndep file CMakeFiles/velocita-v2-status.dir/CXX.dd
+[26/431] Generating CXX dyndep file CMakeFiles/velocita-v2-exporter.dir/CXX.dd
+[27/429] Generating CXX dyndep file CMakeFiles/velocita-v2-shadow-catalog.dir/CXX.dd
+[28/427] Generating CXX dyndep file CMakeFiles/v2-swap-integration-tests.dir/CXX.dd
+[29/425] Generating CXX dyndep file CMakeFiles/v2-truemarkets-rest-tests.dir/CXX.dd
+[30/423] Generating CXX dyndep file CMakeFiles/v2-truemarkets-wire-tests.dir/CXX.dd
+[31/421] Generating CXX dyndep file CMakeFiles/v2-truemarkets-venue-tests.dir/CXX.dd
+[32/419] Generating CXX dyndep file CMakeFiles/v2-truemarkets-transport-tests.dir/CXX.dd
+[33/417] Generating CXX dyndep file CMakeFiles/v2-swap-balance-tests.dir/CXX.dd
+[34/412] Generating CXX dyndep file CMakeFiles/v2-swap-paper-tests.dir/CXX.dd
+[35/405] Generating CXX dyndep file CMakeFiles/v2-swap-paper-drill.dir/CXX.dd
+[36/398] Generating CXX dyndep file CMakeFiles/v2-swap-reconcile-tests.dir/CXX.dd
+[37/389] Generating CXX dyndep file CMakeFiles/v2-swap-https-probe.dir/CXX.dd
+[38/386] Generating CXX dyndep file CMakeFiles/v2-swap-owner-accounting-tests.dir/CXX.dd
+[39/383] Generating CXX dyndep file CMakeFiles/v2-swap-reconcile-session-tests.dir/CXX.dd
+[40/375] Generating CXX dyndep file CMakeFiles/v2-swap-gateway-tls-drill.dir/CXX.dd
+[41/367] Generating CXX dyndep file CMakeFiles/v2-swap-reconcile-store-tests.dir/CXX.dd
+[42/359] Generating CXX dyndep file CMakeFiles/v2-swap-transaction-inspection-tests.dir/CXX.dd
+[43/350] Generating CXX dyndep file CMakeFiles/v2-swap-submission-store-tests.dir/CXX.dd
+[44/346] Generating CXX dyndep file CMakeFiles/v2-swap-authority-tests.dir/CXX.dd
+[45/344] Generating CXX dyndep file CMakeFiles/v2-swap-authority-storage-tests.dir/CXX.dd
+[46/342] Generating CXX dyndep file CMakeFiles/v2-swap-submission-resolution-tests.dir/CXX.dd
+[47/338] Generating CXX dyndep file CMakeFiles/v2-swap-submission-session-tests.dir/CXX.dd
+[48/334] Generating CXX dyndep file CMakeFiles/v2-swap-submission-gateway-drill.dir/CXX.dd
+[49/321] Generating CXX dyndep file CMakeFiles/v2-swap-signing-stamp-tests.dir/CXX.dd
+[50/318] Generating CXX dyndep file CMakeFiles/v2-swap-rest-codec-tests.dir/CXX.dd
+[51/312] Generating CXX dyndep file CMakeFiles/v2-swap-prepare-store-tests.dir/CXX.dd
+[52/305] Generating CXX dyndep file CMakeFiles/v2-swap-prepare-session-tests.dir/CXX.dd
+[53/298] Generating CXX dyndep file CMakeFiles/v2-swap-signer-session-tests.dir/CXX.dd
+[54/293] Generating CXX dyndep file CMakeFiles/v2-swap-signer-production-gate.dir/CXX.dd
+[55/288] Generating CXX dyndep file CMakeFiles/v2-swap-signer-protocol-tests.dir/CXX.dd
+[56/284] Generating CXX dyndep file CMakeFiles/v2-swap-signer-service-tests.dir/CXX.dd
+[57/277] Generating CXX dyndep file CMakeFiles/v2-swap-order-status-tests.dir/CXX.dd
+[58/267] Generating CXX dyndep file CMakeFiles/v2-swap-order-https-probe.dir/CXX.dd
+[59/255] Generating CXX dyndep file CMakeFiles/v2-swap-settlement-evidence-tests.dir/CXX.dd
+[60/247] Generating CXX dyndep file CMakeFiles/v2-swap-prepare-https-tests.dir/CXX.dd
+[61/238] Generating CXX dyndep file CMakeFiles/v2-swap-signing-connection-tests.dir/CXX.dd
+[62/227] Generating CXX dyndep file CMakeFiles/v2-swap-settlement-connection-tests.dir/CXX.dd
+[63/214] Generating CXX dyndep file CMakeFiles/v2-swap-runtime-config-tests.dir/CXX.dd
+[64/206] Generating CXX dyndep file CMakeFiles/v2-swap-gateway-runtime-tests.dir/CXX.dd
+[65/191] Generating CXX dyndep file CMakeFiles/v2-swap-process-drill.dir/CXX.dd
+[66/176] Generating CXX dyndep file CMakeFiles/v2-swap-runtime-production-tests.dir/CXX.dd
+[67/174] Generating CXX dyndep file CMakeFiles/v2-swap-settlement-lifecycle-tests.dir/CXX.dd
+[68/172] Generating CXX dyndep file CMakeFiles/v2-swap-settlement-admission-tests.dir/CXX.dd
+[69/134] Generating CXX dyndep file CMakeFiles/v2-swap-runtime-https-probe.dir/CXX.dd
+[70/96] Generating CXX dyndep file CMakeFiles/v2-swap-account-setup-tests.dir/CXX.dd
+[71/94] Generating CXX dyndep file CMakeFiles/v2-swap-failed-settlement-tests.dir/CXX.dd
+[72/92] Generating CXX dyndep file CMakeFiles/v2-operational-recovery-tests.dir/CXX.dd
+[73/90] Generating CXX dyndep file CMakeFiles/v2-swap-cost-policy-tests.dir/CXX.dd
+[74/87] Generating CXX dyndep file CMakeFiles/v2-swap-transaction-review-tests.dir/CXX.dd
+[75/85] Generating CXX dyndep file CMakeFiles/v2-swap-transaction-verifier-tests.dir/CXX.dd
+[76/83] Generating CXX dyndep file CMakeFiles/v2-swap-signer-verified-tests.dir/CXX.dd
+[77/78] Building CXX object CMakeFiles/velocita-v2-gateway.dir/src/v2_gateway_main.cpp.o
+In file included from /work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/status/UnsafeBufferPosition.h:21,
+                 from /work/deps/aeron/aeron-client/src/main/cpp_wrapper/Publication.h:29,
+                 from /work/deps/aeron/aeron-client/src/main/cpp_wrapper/Aeron.h:25,
+                 from /source/include/velocita/aeron_runtime.hpp:4,
+                 from /source/src/v2_gateway_main.cpp:2:
+/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h: In lambda function:
+/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:114:89: warning: unused parameter ‘keyBuffer’ [-Wunused-parameter]
+  114 |             [&](std::int32_t counterId, std::int32_t counterTypeId, const AtomicBuffer &keyBuffer, const std::string &label)
+      |                                                                     ~~~~~~~~~~~~~~~~~~~~^~~~~~~~~
+/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:114:119: warning: unused parameter ‘label’ [-Wunused-parameter]
+  114 |             [&](std::int32_t counterId, std::int32_t counterTypeId, const AtomicBuffer &keyBuffer, const std::string &label)
+      |                                                                                                    ~~~~~~~~~~~~~~~~~~~^~~~~
+/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h: In lambda function:
+/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:54: warning: unused parameter ‘counterTypeId’ [-Wunused-parameter]
+  130 |             [&](std::int32_t counterId, std::int32_t counterTypeId, const AtomicBuffer &keyBuffer, const std::string &label)
+      |                                         ~~~~~~~~~~~~~^~~~~~~~~~~~~
+/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:89: warning: unused parameter ‘keyBuffer’ [-Wunused-parameter]
+  130 |             [&](std::int32_t counterId, std::int32_t counterTypeId, const AtomicBuffer &keyBuffer, const std::string &label)
+      |                                                                     ~~~~~~~~~~~~~~~~~~~~^~~~~~~~~
+/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:119: warning: unused parameter ‘label’ [-Wunused-parameter]
+  130 |             [&](std::int32_t counterId, std::int32_t counterTypeId, const AtomicBuffer &keyBuffer, const std::string &label)
+      |                                                                                                    ~~~~~~~~~~~~~~~~~~~^~~~~
+[78/78] Linking CXX executable velocita-v2-gateway
