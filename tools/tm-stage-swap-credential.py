@@ -69,7 +69,7 @@ def main():
     if len(raw)>8192: raise ValueError('bounded profile required')
     H.pin(raw,a.profile_sha256);profile=H.LAUNCH.fields(raw)
     secret=material(a.role,a.private_source,profile)
-    print(json.dumps(send(a.role,secret,a.receiver,a.receiver_sha),sort_keys=True))
+    print(json.dumps(send(a.role,secret,a.receiver,a.receiver_sha256),sort_keys=True))
 
 
 if __name__=='__main__':

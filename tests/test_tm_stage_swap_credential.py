@@ -9,6 +9,14 @@ ROOT=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('stage',ROOT/'tools/tm-stage-swap-credential.py');S=importlib.util.module_from_spec(spec);spec.loader.exec_module(S)
 
 class StageTests(unittest.TestCase):
+    def test_cli_passes_receiver_digest_to_transfer(self):
+        raw=b'schema=1\n';digest=S.hashlib.sha256(raw).hexdigest()
+        args=['stage','--role','gateway','--private-source','/unused','--profile','/profile','--profile-sha256',digest,'--receiver','/home/vishal/.cache/velocita-build/review/credential_handoff.py','--receiver-sha256','a'*64,'--send']
+        with patch.object(S.sys,'argv',args),patch.object(S.H,'harden'),patch.object(S.os,'open',return_value=99),patch.object(S.os,'fstat',return_value=type('Meta',(),{'st_mode':0o100600})()),patch.object(S.os,'read',return_value=raw),patch.object(S.os,'close'),patch.object(S,'material',return_value=b'synthetic'),patch.object(S,'send',return_value={}) as send:
+            try:S.main()
+            except AttributeError as e:self.fail('cli_receiver_digest_reaches_transfer: '+str(e))
+            send.assert_called_once_with('gateway',b'synthetic',args[10],'a'*64)
+
     def test_secret_only_in_stdin(self):
         secret=b'synthetic.private.token';digest=S.hashlib.sha256(secret).hexdigest()
         expected=dict(staged_path='/run/user/1002/velocita-credential-gateway-'+'1'*32,role='gateway',sha256=digest,installed=False)
