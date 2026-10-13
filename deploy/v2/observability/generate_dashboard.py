@@ -823,6 +823,23 @@ def live():
     series('Reviewed USDC snapshots',[(q('reviewed_usdc'),'Verified snapshot')],0,12,unit='suffix: USDC',description='Only changes when reviewed account history is replaced. Sampling this observer does not refresh the wallet evidence.')
     series('Reviewed SOL snapshots',[(q('reviewed_sol'),'Verified snapshot')],12,12,unit='suffix: SOL',description='No inferred fill amounts, proxy marks or paper balance. See account evidence age.')
     advance(8)
+    row('Live position entries / exits — confirmed settlement feed required')
+    stat('Confirmed-fill telemetry',
+         'velocita_live_settlement_feed_ready{run="$live_run"} or on() vector(0)',0,24,
+         mappings=[{"type":"value","options":{"0":{"text":"NOT CONNECTED — fill chart pending","color":"orange"},"1":{"text":"CONNECTED","color":"green"}}}],
+         description='The currently deployed gateway does not export economic settlement events. No data here must not be interpreted as proof of no trades.')
+    advance(4)
+    series('Live SOL entries / exits — effective settled price',[
+        ('velocita_live_fill_effective_price_usdc_per_sol{run="$live_run",side="buy"}', 'Entry / buy'),
+        ('velocita_live_fill_effective_price_usdc_per_sol{run="$live_run",side="sell"}', 'Exit / sell')],
+        0,24,unit='suffix: USDC/SOL',min0=False,
+        description='Awaiting the confirmed-settlement event exporter. Green points will represent confirmed buys; red points confirmed sells. Effective entry price = total USDC debited / net SOL received; effective exit price = net USDC received / SOL debited. A sell can be a partial reduction, not a full close. Quotes, deposits and order submissions are excluded. Do not infer fills from an empty chart while telemetry is not connected.')
+    for name,color in (('Entry / buy','green'),('Exit / sell','red')):
+        panels[-1]['fieldConfig']['overrides'].append({'matcher':{'id':'byName','options':name},
+            'properties':[{'id':'custom.drawStyle','value':'points'},{'id':'custom.showPoints','value':'always'},
+                          {'id':'custom.pointSize','value':9},{'id':'custom.lineWidth','value':0},
+                          {'id':'color','value':{'mode':'fixed','fixedColor':color}}]})
+    advance(8)
     row('Order lifecycle — durable journal evidence')
     for i,(key,title) in enumerate([('prepare','Quote preparation'),('protected_signing','Protected signing'),('submission','Venue submission')]):
         stat(title,q(key+'_phase'),i*8,8,mappings=phase_map,description='1 idle; 2 started; 3 recorded result. A prepared quote, signature or submission result is not proof of a settled fill.')

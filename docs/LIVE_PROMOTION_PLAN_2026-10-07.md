@@ -50,6 +50,13 @@ strategy's fee-only results must be re-evaluated with the observed native-output
 deduction; the conservative MVP cap is not an expected fee. See
 [live observability and economics](evidence/live_observability_2026-10-13/README.md).
 
+**Owner-requested live entry/exit graph:** the Live tab contains a prepared
+green-buy/red-sell chart with an explicit NOT CONNECTED indicator. Finalized,
+Raft-committed settlement amount/time telemetry still needs wiring from the
+production gateway. The local lifecycle journals cannot supply fill prices.
+Do not treat this chart as operational until that producer is qualified; no
+quotes, deposits or paper fills may be substituted. This is an observability
+deliverable, not an extra live-trading gate.
 
 **Reviewed funding/start completed (October13,18:06 EDT):**
 Owner request4 assigned caller22 gateway at index5; request5 initialized the real

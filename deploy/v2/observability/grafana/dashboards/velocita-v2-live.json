@@ -832,7 +832,7 @@
   },
   {
    "type": "row",
-   "title": "Order lifecycle \u2014 durable journal evidence",
+   "title": "Live position entries / exits \u2014 confirmed settlement feed required",
    "id": 14,
    "collapsed": false,
    "gridPos": {
@@ -845,8 +845,211 @@
   },
   {
    "type": "stat",
-   "title": "Quote preparation",
+   "title": "Confirmed-fill telemetry",
    "id": 15,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "The currently deployed gateway does not export economic settlement events. No data here must not be interpreted as proof of no trades.",
+   "gridPos": {
+    "h": 4,
+    "w": 24,
+    "x": 0,
+    "y": 19
+   },
+   "targets": [
+    {
+     "expr": "velocita_live_settlement_feed_ready{run=\"$live_run\"} or on() vector(0)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [
+      {
+       "type": "value",
+       "options": {
+        "0": {
+         "text": "NOT CONNECTED \u2014 fill chart pending",
+         "color": "orange"
+        },
+        "1": {
+         "text": "CONNECTED",
+         "color": "green"
+        }
+       }
+      }
+     ],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Live SOL entries / exits \u2014 effective settled price",
+   "id": 16,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Awaiting the confirmed-settlement event exporter. Green points will represent confirmed buys; red points confirmed sells. Effective entry price = total USDC debited / net SOL received; effective exit price = net USDC received / SOL debited. A sell can be a partial reduction, not a full close. Quotes, deposits and order submissions are excluded. Do not infer fills from an empty chart while telemetry is not connected.",
+   "gridPos": {
+    "h": 8,
+    "w": 24,
+    "x": 0,
+    "y": 23
+   },
+   "targets": [
+    {
+     "expr": "velocita_live_fill_effective_price_usdc_per_sol{run=\"$live_run\",side=\"buy\"}",
+     "legendFormat": "Entry / buy",
+     "refId": "A"
+    },
+    {
+     "expr": "velocita_live_fill_effective_price_usdc_per_sol{run=\"$live_run\",side=\"sell\"}",
+     "legendFormat": "Exit / sell",
+     "refId": "B"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix: USDC/SOL",
+     "min": null,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Entry / buy"
+      },
+      "properties": [
+       {
+        "id": "custom.drawStyle",
+        "value": "points"
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "always"
+       },
+       {
+        "id": "custom.pointSize",
+        "value": 9
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 0
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Exit / sell"
+      },
+      "properties": [
+       {
+        "id": "custom.drawStyle",
+        "value": "points"
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "always"
+       },
+       {
+        "id": "custom.pointSize",
+        "value": 9
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 0
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "row",
+   "title": "Order lifecycle \u2014 durable journal evidence",
+   "id": 17,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 31
+   },
+   "panels": []
+  },
+  {
+   "type": "stat",
+   "title": "Quote preparation",
+   "id": 18,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -856,7 +1059,7 @@
     "h": 4,
     "w": 8,
     "x": 0,
-    "y": 19
+    "y": 32
    },
    "targets": [
     {
@@ -923,7 +1126,7 @@
   {
    "type": "stat",
    "title": "Protected signing",
-   "id": 16,
+   "id": 19,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -933,7 +1136,7 @@
     "h": 4,
     "w": 8,
     "x": 8,
-    "y": 19
+    "y": 32
    },
    "targets": [
     {
@@ -1000,7 +1203,7 @@
   {
    "type": "stat",
    "title": "Venue submission",
-   "id": 17,
+   "id": 20,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1010,7 +1213,7 @@
     "h": 4,
     "w": 8,
     "x": 16,
-    "y": 19
+    "y": 32
    },
    "targets": [
     {
@@ -1077,7 +1280,7 @@
   {
    "type": "stat",
    "title": "Latest effect ID",
-   "id": 18,
+   "id": 21,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1087,7 +1290,7 @@
     "h": 4,
     "w": 6,
     "x": 0,
-    "y": 23
+    "y": 36
    },
    "targets": [
     {
@@ -1137,7 +1340,7 @@
   {
    "type": "stat",
    "title": "Submission journal committed index",
-   "id": 19,
+   "id": 22,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1147,7 +1350,7 @@
     "h": 4,
     "w": 6,
     "x": 6,
-    "y": 23
+    "y": 36
    },
    "targets": [
     {
@@ -1197,7 +1400,7 @@
   {
    "type": "stat",
    "title": "Gateway exit status",
-   "id": 20,
+   "id": 23,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1207,7 +1410,7 @@
     "h": 4,
     "w": 6,
     "x": 12,
-    "y": 23
+    "y": 36
    },
    "targets": [
     {
@@ -1260,7 +1463,7 @@
   {
    "type": "stat",
    "title": "Signer exit status",
-   "id": 21,
+   "id": 24,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1270,7 +1473,7 @@
     "h": 4,
     "w": 6,
     "x": 18,
-    "y": 23
+    "y": 36
    },
    "targets": [
     {
@@ -1323,7 +1526,7 @@
   {
    "type": "timeseries",
    "title": "Durable lifecycle phases",
-   "id": 22,
+   "id": 25,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1333,7 +1536,7 @@
     "h": 8,
     "w": 16,
     "x": 0,
-    "y": 27
+    "y": 40
    },
    "targets": [
     {
@@ -1387,7 +1590,7 @@
   {
    "type": "timeseries",
    "title": "Automatic service restarts",
-   "id": 23,
+   "id": 26,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1397,7 +1600,7 @@
     "h": 8,
     "w": 8,
     "x": 16,
-    "y": 27
+    "y": 40
    },
    "targets": [
     {
@@ -1441,20 +1644,20 @@
   {
    "type": "row",
    "title": "Costs, limits and settlement interpretation",
-   "id": 24,
+   "id": 27,
    "collapsed": false,
    "gridPos": {
     "h": 1,
     "w": 24,
     "x": 0,
-    "y": 35
+    "y": 48
    },
    "panels": []
   },
   {
    "type": "stat",
    "title": "Configured maximum buy output deduction",
-   "id": 25,
+   "id": 28,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1464,7 +1667,7 @@
     "h": 4,
     "w": 12,
     "x": 0,
-    "y": 36
+    "y": 49
    },
    "targets": [
     {
@@ -1514,7 +1717,7 @@
   {
    "type": "stat",
    "title": "Last account evidence time",
-   "id": 26,
+   "id": 29,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1524,7 +1727,7 @@
     "h": 4,
     "w": 12,
     "x": 12,
-    "y": 36
+    "y": 49
    },
    "targets": [
     {
@@ -1571,12 +1774,12 @@
    }
   },
   {
-   "id": 27,
+   "id": 30,
    "type": "text",
    "title": "How to read this supervised MVP",
    "gridPos": {
     "x": 0,
-    "y": 40,
+    "y": 53,
     "w": 24,
     "h": 9
    },

@@ -104,3 +104,26 @@ remove this cost requirement.
   deployment; its empty result was not treated as a provisioning failure.
 - Live URL: http://100.72.127.102:3000/d/velocita-v2-live
 - No Safari, signing, new intent, venue execution or balance reset.
+
+## Entry/exit chart requested by owner
+
+The Live tab now includes a green-entry/red-exit point chart, and an explicit
+NOT CONNECTED indicator. This is dashboard preparation, not completed fill
+instrumentation. Current production gateway journals retain lifecycle state and
+checksums, but do not export economic settlement events. The chart deliberately
+has no fabricated data, no paper markers and no quote-as-fill fallback.
+
+Remaining connection: export finalized, Raft-committed successful settlements from
+the gateway's authenticated state, keyed by incarnation and effect. Publish total
+USDC debit/net SOL credit for buys and net USDC credit/SOL debit for sells, plus
+quantity and confirmation time. A repeated poll/restart must not create another
+marker; failed/unknown outcomes and deposits must not become fills. Preserve
+recorded event time across restarts rather than using file mtime. Show any price
+reference as a separately labeled proxy, with freshness checks. This requires
+production gateway instrumentation and native qualification; the read-only
+collector alone cannot infer it from result digests. No kernel or Raft rule change
+is needed. This is required for the requested chart, not an added trade gate.
+
+The cluster-mode selector was corrected in c05dd8f: live queries use the actual
+incarnation, not the old stochastic paper label. All 26 original queries returned
+samples and Grafana's loaded resource was checked from the host terminal.
