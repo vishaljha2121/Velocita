@@ -1,0 +1,5 @@
+{
+  "returncode": 0,
+  "stdout": "{\"role\":\"signer\",\"uid\":29002,\"caller\":23,\"key_id\":14,\"session_epoch\":2,\"term\":1,\"applied_index\":3,\"leader\":3,\"state_version\":3,\"catalog_root\":\"3b8b7f798e31c6ce39ef6a88ba44fd2644ec8c6e4792ed7beb227fd14a532dfe\",\"authority_domain\":\"29b772a949627cd25c657a527ef2ea79a7b470454de9be9aa842462982b9d95e\",\"state_digest\":\"663d7599b83597d327a2991e11c4f13e9f6184d4400d1daae85309c5a32dc47c\",\"authenticated_voter_read\":true,\"read_only\":true,\"live_admitted\":false}\n",
+  "stderr": ""
+}

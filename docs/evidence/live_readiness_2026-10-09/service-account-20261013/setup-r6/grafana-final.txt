@@ -1,0 +1,23 @@
+{
+  "database": "ok",
+  "version": "13.1.3",
+  "commit": "45a27d64b64a82d666b06aa5c5bb3521587edb0d"
+}[{"Type":"volume","Name":"velocita-v2-grafana-data","Source":"/home/velocitas/.local/share/containers/storage/volumes/velocita-v2-grafana-data/_data","Destination":"/var/lib/grafana","Driver":"local","Mode":"","Options":["nosuid","nodev","rbind"],"RW":true,"Propagation":"rprivate"},{"Type":"bind","Source":"/home/velocitas/src/aeron-raft-pi/deploy/v2/observability/grafana/provisioning","Destination":"/etc/grafana/provisioning","Driver":"","Mode":"","Options":["rbind"],"RW":false,"Propagation":"rprivate"},{"Type":"bind","Source":"/home/velocitas/read-b79e65be-86f4408/observability","Destination":"/etc/grafana/dashboards","Driver":"","Mode":"","Options":["rbind"],"RW":false,"Propagation":"rprivate"}]
+Oct 13 07:34:48 bulbazar-NUC systemd[758]: velocita-v2-grafana.service: Current command vanished from the unit file, execution of the command list won't be resumed.
+Oct 13 07:34:48 bulbazar-NUC systemd[758]: Stopping Velocita V2 Grafana...
+Oct 13 07:34:48 bulbazar-NUC conmon[123189]: logger=server t=2026-10-13T11:34:48.505174089Z level=info msg="Shutdown started" reason="System signal: terminated"
+Oct 13 07:34:48 bulbazar-NUC podman[123113]: logger=server t=2026-10-13T11:34:48.505174089Z level=info msg="Shutdown started" reason="System signal: terminated"
+Oct 13 07:34:48 bulbazar-NUC conmon[123189]: logger=backgroundsvcs.managerAdapter t=2026-10-13T11:34:48.50747109Z level=info msg="module stopped" module=*updatemanager.PluginsService
+Oct 13 07:34:48 bulbazar-NUC podman[123113]: logger=backgroundsvcs.managerAdapter t=2026-10-13T11:34:48.50747109Z level=info msg="module stopped" module=*updatemanager.PluginsService
+Oct 13 07:34:48 bulbazar-NUC podman[123113]: logger=backgroundsvcs.managerAdapter t=2026-10-13T11:34:48.508476027Z level=info msg="module stopped" module=*cleanup.CleanUpService
+Oct 13 07:34:48 bulbazar-NUC conmon[123189]: logger=backgroundsvcs.managerAdapter t=2026-10-13T11:34:48.508476027Z level=info msg="module stopped" module=*cleanup.CleanUpService
+Oct 13 07:34:48 bulbazar-NUC conmon[123189]: logger=backgroundsvcs.managerAdapter t=2026-10-13T11:34:48.508524085Z level=info msg="module stopped" module=*manager.ServiceAccountsService
+Oct 13 07:34:48 bulbazar-NUC conmon[123189]: logger=backgroundsvcs.managerAdapter t=2026-10-13T11:34:48.508644086Z level=info msg="module stopped" module=*authimpl.UserAuthTokenService
+Oct 13 07:34:48 bulbazar-NUC podman[123113]: logger=backgroundsvcs.managerAdapter t=2026-10-13T11:34:48.508524085Z level=info msg="module stopped" module=*manager.ServiceAccountsService
+Oct 13 07:34:48 bulbazar-NUC podman[123113]: logger=backgroundsvcs.managerAdapter t=2026-10-13T11:34:48.508644086Z level=info msg="module stopped" module=*authimpl.UserAuthTokenService
+Oct 13 07:34:48 bulbazar-NUC podman[123113]: logger=backgroundsvcs.managerAdapter t=2026-10-13T11:34:48.508673876Z level=info msg="module stopped" module=*statscollector.Service
+Oct 13 07:34:48 bulbazar-NUC conmon[123189]: logger=backgroundsvcs.managerAdapter t=2026-10-13T11:34:48.508673876Z level=info msg="module stopped" module=*statscollector.Service
+Oct 13 07:34:48 bulbazar-NUC conmon[123189]: logger=backgroundsvcs.managerAdapter t=2026-10-13T11:34:48.507475155Z level=info msg="module stopped" module=*migrations.SecretMigrationProviderImpl
+Oct 13 07:34:48 bulbazar-NUC podman[123113]: logger=backgroundsvcs.managerAdapter t=2026-10-13T11:34:48.507475155Z level=info msg="module stopped" module=*migrations.SecretMigrationProviderImpl
+Oct 13 07:34:48 bulbazar-NUC podman[123113]: logger=backgroundsvcs.managerAdapter t=2026-10-13T11:34:48.507520091Z level=info msg="module stopped" module=*metric.Service
+Oct 13 07:34:48 bulbazar-NUC podman[123113]: logger=backgroundsvcs.managerAdapter t=2026-10-13T11:34:48.510788224Z level=info msg="module stopped" module=*angulardetectorsprovider.Dynamic

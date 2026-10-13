@@ -37,7 +37,20 @@ at 100 bp a side.
 
 ## What must be true before the first real order
 
-Last updated 2026-10-13: selective integration checkpoint `86f4408` is natively qualified on NUC1 and Pi. Coverage: 199 unchanged CTest cases retained, the two corrected native fixtures each pass three repetitions, 44 account checks and independent schema/process oracles pass per architecture. All production executable hashes are unchanged from the full-suite baseline. The owner-authorized capacity pause ended: all three existing voters/exporters are ready at term 17, leader 2, index 17822; paper gateway/observer restored, no reset or new deployment. The strategy edge had already stopped October 12 after market-data timeouts and remains inactive. TM economics and explicit live approval remain deferred/open. See `evidence/live_readiness_2026-10-09/native-integrated-a890307-20261013/RESULT.md`.
+Last updated 2026-10-13: **single-cluster cutover and authenticated production-user
+Raft reads passed**. New incarnation `b79e65be1ea14e219016ec48ea02efef`, qualified
+production C++ `86f4408`, all three voters ready at term1/index3, leader3. Both
+UID29001/caller22 and UID29002/caller23 verified the same state digest using
+separate keys and durable sessions. Production services are installed but inactive;
+launch authorization false. Cluster is halted, catalog-only and unfunded. The
+archived paper strategy is stopped; historical funding, role assignments and loss
+limits were not copied. See [cutover result and commands](evidence/live_readiness_2026-10-09/service-account-20261013/setup-r6/README.md).
+
+Historical native qualification: `86f4408` passed NUC1/Pi qualification (199
+unchanged cases retained, two corrected fixtures each passing three repetitions,
+44 account checks and schema/process oracles per architecture). Production ELF
+hashes remain unchanged. Details below describe earlier dated states unless
+explicitly superseded by the current paragraph above.
 Owner authorization update: POST methods are approved; moving money still requires
 explicit approval. This supersedes the original GET-only method restriction and
 does not authorize live signing, execution, broadcast or automatic promotion.
@@ -125,30 +138,46 @@ step. Old edge/gateway/observer will be persistently masked during qualification
 all old state and unit bytes remain archived for rollback. See
 [approved scope](evidence/live_readiness_2026-10-09/service-account-20261013/setup-r6/APPROVAL.md).
 
-Last recorded paper deployment: `884816deae1c960c9bd6fca18e7a5ff26b15359f`; dated runtime observations appear below.
+October 13 cutover completed: old state and units are hash-verified and archived
+on all three hosts; startup is now `recover`. Mac ceremony committed only kill
+epoch1, executor generation1 and the existing catalog. Authenticated read run
+`782b102342c52aa6` passed under both service UIDs: epoch2, term1, leader3,
+index3/state-version3 and identical decoded state digest. Two earlier attempts
+refused unsafe sandbox `/run` ancestry before session advancement; both are
+retained. Explicit root-owned read-only runtime-parent binds fix the host's
+legacy API-VFS behavior, preserving tmpfs Aeron children and all C++ guards.
+21 focused tests and three named mutation kills cover the final correction
+`ffbb71a`. Dormant production units use the same corrected mount arrangement.
+Monitoring uses the new read-qualification identity and `strategy=none`; trading
+panels explicitly describe the inactive, unfunded state. No venue credentials,
+live opening, policy, risk limits or trading role assignments were installed.
+
+Archived paper deployment: `884816deae1c960c9bd6fca18e7a5ff26b15359f`; dated runtime observations appear below.
 The owner explicitly authorized this deployment and execution of the ceremony from the Mac.
-Status words: **Done** (built, tested, running on the hosts),
+Status words below refer to implementation milestones. Historical paper deployment
+claims do not imply activation in the current unfunded cluster. **Done** (verified
+implementation; see the current paragraph for what runs now),
 **Built** (tested but not deployed or not enabled for the intended check), **Open**.
 
 | # | Requirement | Status | Where |
 |---|---|---|---|
-| 1 | The edge cannot freeze or go blind (review A1, A2) | **Done**; edge restarted on the new paper release 2026-10-10; feed connected and decisions committing | `0063c86` |
+| 1 | The edge cannot freeze or go blind (review A1, A2) | **Implemented/previously deployed**; current edge is masked/inactive for read qualification | `0063c86` |
 | 2 | The market-data allowlist is enforced (A3) | **Done** 2026-10-08 | `0063c86` |
 | 3 | The archive cannot silently fill (B1) | **Done** 2026-10-08: fewer commands, usage metric, alerts at 70% and 90% | `d542601`, `9dcca2c`, `3264351` |
-| 4 | The kernel checks every fill's price and fee and owns cash, P&L and a loss limit (ADR 0021) | **Done** 2026-10-08: running with a $10 loss limit | `4c04f75`, `f55209e` |
+| 4 | The kernel checks every fill's price and fee and owns cash, P&L and a loss limit (ADR 0021) | **Implemented/previously deployed**; old paper run used a $10 loss limit. Current fresh cluster has no account or installed limit | `4c04f75`, `f55209e` |
 | 5 | Snapshot room (ADR 0022) | **Partly done**: policy table cut to 8 and running. Receipt table change waits for the week of measurement (from 2026-10-07) | `d8ad46d` |
-| 6 | Callers are authorized by role (ADR 0020) | **Done** 2026-10-10: schema 11 deployed; callers 21/22 assigned strategy/gateway roles | `11ad1ae` |
+| 6 | Callers are authorized by role (ADR 0020) | **Schema12 code deployed**; gateway22/signer23 registered for authenticated reads. No trading role assignments installed in the new cluster | `11ad1ae` |
 | 7 | An operator flatten path | **Done** 2026-10-10: reduce-only/flatten capability deployed; held-position host drill remains item 16 | `04b474b` |
 | 8 | An operator command to resolve an order in conflict | **Done** 2026-10-10: operator conflict-resolution capability deployed (ADR 0024) | `9f96cf3` |
-| 9 | The signer (ADR 0019 section 1) | **Host-user communication qualified; open for live**: permanent separate UIDs and pinned runtime installed; native Aeron and protected signer IPC pass under these UIDs with synthetic sign/retrieve and wrong-user/key refusal. Protected descriptor startup is wired and tested. Real payloads still refuse. Production units/release installed inactive at45db6a6; real custody/account pins, authenticated deployed-Raft reads and multi-trade rearming remain open | `evidence/live_readiness_2026-10-09/RUNTIME_INTEGRATION_2026-10-12.md` |
-| 10 | The venue transport | **Current runtime composition built locally; disabled**: bounded prepare/sign/execute/recovery coordinator, concrete one-shot execution HTTPS and finalized RPC adapters compile in the optional gateway build. Thirty selected Release checks pass. Real-contract startup gate stays closed; no fixture macro enters that library. Earlier native TLS qualification does not qualify this source | `evidence/live_readiness_2026-10-09/RUNTIME_INTEGRATION_2026-10-12.md` |
+| 9 | The signer (ADR 0019 section 1) | **Host-user communication qualified; open for live**: permanent separate UIDs and pinned runtime installed; native Aeron and protected signer IPC pass under these UIDs with synthetic sign/retrieve and wrong-user/key refusal. Protected descriptor startup is wired and tested. Real payloads still refuse. Production units/release installed inactive at45db6a6; authenticated deployed-Raft reads now pass under both UIDs. Real custody/account pins and multi-trade rearming remain open | `evidence/live_readiness_2026-10-09/RUNTIME_INTEGRATION_2026-10-12.md` |
+| 10 | The venue transport | **Native-qualified components; production services inactive**: bounded prepare/sign/execute/recovery coordinator, concrete one-shot execution HTTPS and finalized RPC adapters compile in the optional gateway build. Thirty selected Release checks pass. Real-contract startup gate stays closed; no fixture macro enters that library. Integrated86f4408 native qualification is recorded; no complete admitted live route or real-money execution is claimed | `evidence/live_readiness_2026-10-09/RUNTIME_INTEGRATION_2026-10-12.md` |
 | 11 | The venue contract questions | **Fee inclusion observed; net-receipt admission open**: two unsigned simulations completed. The captured buy debits 1 USDC total (0.998 principal + 0.002 fee). Raising quoted output triggers Jupiter's slippage rejection, but exact floor rounding is not exposed. Original simulation credits 0.009410957 SOL from swap yet only 0.008860117 SOL net to owner: fixed sponsor return exceeds actual account funding by 550,840 lamports. This captured transaction does not meet the owner-directed sponsorship/net-receipt requirement; no limits relaxed or transaction admitted | journey step 3; `evidence/live_readiness_2026-10-09/ROUTE_A_SIMULATION_RESULT_2026-10-12.md` |
 | 12 | The paper venue can reject, partly fill and time out | **Built and deployed**, faults off: reject/partial-fill/timeout flags available; explicit fault rates and drills still pending | runbook 5.2.1 |
 | 13 | Decide and fill on the venue's own price, with cost measured on both sides | **Partly done** 2026-10-09: the one-second timestamp error is corrected locally; the same history window now peaks at zero shift (correlation 0.551), not a verified 1–2 s lag. Open: executable prices, measured buy fee, and route-specific reconciliation. A 20 bp executed sell does not validate the buy side | `docs/evidence/venue_price_basis_2026-10-09/` |
 | 14 | Startup balance reconciliation against the venue | **Local recovery/accounting extended; live open**: native and classic-token lifecycle replay accounts for temporary WSOL and deposit control. Authenticated order lookup and finalized RPC are composed. Supported successful receipts now produce a private proof in local tests; the fresh TM buy remains economically ineligible. Supported finalized sponsor-paid failures now admit zero-owner-charge settlement locally using an explicit sponsor pin. Charged/unsupported failures retain exposure. Authenticated main-wallet/user checks and a separately hash-pinned opening/account review are wired locally. Fresh exact-atom balances must match managed funds plus reviewed outside activity; startup never imports cash. Recovery-only mode cannot create/sign/execute. Bounded current-owner/current-USDC-account history capture now passed; closed historical accounts and independent provider completeness are not claimed. Actual owner-reviewed live artifacts remain open. Verified live opening balances must come from TM, never paper cash | `evidence/live_readiness_2026-10-09/SETTLEMENT_ADMISSION_LIFECYCLE_2026-10-12.md` |
 | 15 | Outside heartbeat armed | **Open**: October 13 read-only check under velocitas on nuc1 confirms timer installed/active, but `/home/velocitas/.config/velocita/heartbeat-url` absent. Owner confirmed October 13 that no Healthchecks check has been created; therefore no URL exists to install. No external delivery verified | `evidence/live_readiness_2026-10-09/OPERATIONAL_RECOVERY_2026-10-13.md` |
-| 16 | Drills while holding a position: kill, leader loss, gateway restart | **Eight separate-process cases pass locally; native/deployed qualification open**: actual gateway/signer process deaths preserve holds and prevent duplicate sends. New F07 initially exposed a prior-term commit gap after leader loss; a type103 current-term read barrier now resolves it without weakening the durable watermark. Epoch2 prevents older replication binaries from sharing this identity. Earlier combined tests missed this timing | `evidence/live_readiness_2026-10-09/PROCESS_DRILL_2026-10-13.md` |
-| 17 | A live gateway refuses an account with no loss limit | **Done** 2026-10-10: gateway deployed with --require-loss-limit in paper; $10 loss limit installed. This is not live-venue validation | `989fe04` |
+| 16 | Drills while holding a position: kill, leader loss, gateway restart | **Eight separate-process cases and native checkpoint qualification recorded; deployed held-position qualification open**: actual gateway/signer process deaths preserve holds and prevent duplicate sends. New F07 initially exposed a prior-term commit gap after leader loss; a type103 current-term read barrier now resolves it without weakening the durable watermark. Epoch2 prevents older replication binaries from sharing this identity. Earlier combined tests missed this timing | `evidence/live_readiness_2026-10-09/PROCESS_DRILL_2026-10-13.md` |
+| 17 | A live gateway refuses an account with no loss limit | **Implemented/previously deployed** with --require-loss-limit in paper. Current fresh cluster has no funded account or loss limit; this is not live-venue validation | `989fe04` |
 | 18 | Leader steps down when it cannot reach a quorum | **Done** 2026-10-10: quorum-loss step-down implementation deployed; held-position drill remains item 16 | `20329b6` |
 | 19 | Raft library assertions active in release builds | **Done** 2026-10-10: release images include active Raft library assertions | `83a103e` |
 | 20 | Review of the files the kernel review did not read (node loop, write-ahead log, archive store, codecs, authentication) | **Done** 2026-10-09: node loop, authentication, write-ahead log, archive store, protocol, codecs, Aeron transport and the skipped kernel ranges read. The second pass's findings are plan items 22 to 24; the third pass found no defect | `REVIEW_2_NODE_AND_STORAGE.md`, `REVIEW_3_CODECS_AND_REMAINDER.md` |

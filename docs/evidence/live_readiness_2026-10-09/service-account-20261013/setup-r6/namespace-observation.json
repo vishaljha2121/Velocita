@@ -1,0 +1,21 @@
+{
+  "source": "metadata-only service namespace diagnostic stdout from inspect_read_mounts.py",
+  "checked_role": "signer",
+  "run_parent": {
+    "path": "/run",
+    "uid": 0,
+    "gid": 0,
+    "mode": "0755",
+    "read_only": true,
+    "filesystem": "ext4",
+    "source": "/etc/velocita-swap/runtime-roots/signer"
+  },
+  "runtime_child": {
+    "uid": 29002,
+    "gid": 29002,
+    "mode": "0700",
+    "read_only": false,
+    "filesystem": "tmpfs"
+  },
+  "credential_contents_read": false
+}

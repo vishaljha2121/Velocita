@@ -1,0 +1,47 @@
+# INSTALLATION REVIEW: activation requires a separately authorized manifest.
+# No Install section; no automatic recovery-directory initialization.
+[Unit]
+Description=Velocita swap gateway
+After=network-online.target velocita-swap-signer.service
+BindsTo=velocita-swap-signer.service
+
+[Service]
+Type=simple
+User=29001
+Group=29001
+SupplementaryGroups=29002
+RootDirectory=/opt/velocita/runtimes/076701392104f2cebd7b312f2bd483330ddd518cddd678bab23ef6a33fd8e83f/rootfs
+MountAPIVFS=yes
+BindReadOnlyPaths=/etc/velocita-swap/runtime-roots/gateway:/run
+BindReadOnlyPaths=/opt/velocita/releases/45db6a64a3dd14b0c4f3a94dd2e9706309c445d1
+BindReadOnlyPaths=/etc/velocita-swap/public
+BindReadOnlyPaths=/run/velocita-swap-credentials/gateway:/etc/velocita-swap/gateway
+BindReadOnlyPaths=/run/velocita-swap-signer
+BindReadOnlyPaths=/etc/resolv.conf
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+LimitCORE=0
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET
+Environment=AERON_TERM_BUFFER_LENGTH=1048576
+RuntimeDirectory=velocita-swap-gateway
+RuntimeDirectoryMode=0700
+StateDirectory=velocita-swap-gateway
+StateDirectoryMode=0700
+InaccessiblePaths=-/etc/velocita-swap/signer
+InaccessiblePaths=-/var/lib/velocita-swap-signer
+# The default manifest refuses launch before opening any credential.
+ExecStart=/usr/bin/python3 -I -B /opt/velocita/releases/45db6a64a3dd14b0c4f3a94dd2e9706309c445d1/service_launcher.py --manifest /etc/velocita-swap/public/manifest.json --manifest-sha256 6b1eaa74e4ea329a9fc0ff66a7ce5bbcb1dcfb11cf7c6bc4f9f6ef200b16a744 --role gateway --launch
+Restart=no
+TimeoutStopSec=15

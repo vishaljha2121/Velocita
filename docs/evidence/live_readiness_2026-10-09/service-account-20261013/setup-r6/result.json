@@ -1,0 +1,25 @@
+{
+  "status": "authenticated_reads_qualified_live_disabled",
+  "incarnation": "b79e65be1ea14e219016ec48ea02efef",
+  "production_cpp_commit": "86f440806c6adc6f4c1dc9dc7a271e3d95293d76",
+  "dormant_release": "45db6a64a3dd14b0c4f3a94dd2e9706309c445d1",
+  "read_and_unit_profile_commit": "ffbb71a",
+  "monitoring_commit": "eea87c9",
+  "read_run": "782b102342c52aa6",
+  "authenticated_voter_reads": true,
+  "one_cluster_per_host": true,
+  "all_three_ready": true,
+  "strategy_halted": true,
+  "funding_initialized": false,
+  "venue_credentials_installed": false,
+  "live_admitted": false,
+  "mac_focused_tests": 21,
+  "named_mutation_kills": 3,
+  "failed_reads_preserved": [
+    "5c0975bb2b9e3ff6",
+    "945b2658d5921106"
+  ],
+  "state_digest": "663d7599b83597d327a2991e11c4f13e9f6184d4400d1daae85309c5a32dc47c",
+  "catalog_root": "3b8b7f798e31c6ce39ef6a88ba44fd2644ec8c6e4792ed7beb227fd14a532dfe",
+  "authority_domain": "29b772a949627cd25c657a527ef2ea79a7b470454de9be9aa842462982b9d95e"
+}

@@ -1,0 +1,14 @@
+{
+  "node": 1,
+  "archive": "/home/velocitas/velocita-indicator-paper/retired/stochastic-348e0b2c-before-schema12-20261013",
+  "archived_files": 35,
+  "archive_verified": true,
+  "new_incarnation": "b79e65be1ea14e219016ec48ea02efef",
+  "trading_masked": [
+    "velocita-paper-stochastic-edge",
+    "velocita-paper-stochastic-gateway",
+    "velocita-paper-indicator-observer"
+  ],
+  "started": false,
+  "live_admitted": false
+}
