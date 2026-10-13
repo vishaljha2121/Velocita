@@ -1,0 +1,10 @@
+{"role":"signer","pid":919,"epoch":1,"signal":0,"exit":0}
+{"role":"gateway","pid":920,"stage":"accepted","epoch":1,"signal":9,"exit":-1}
+{"role":"signer","pid":921,"epoch":2,"signal":0,"exit":0}
+{"role":"gateway","pid":922,"stage":"unknown","epoch":2,"signal":0,"exit":0}
+{"role":"signer","pid":923,"epoch":3,"signal":0,"exit":0}
+{"role":"gateway","pid":924,"stage":"success","epoch":3,"signal":9,"exit":-1}
+{"role":"signer","pid":925,"epoch":4,"signal":0,"exit":0}
+{"role":"gateway","pid":926,"stage":"success","epoch":4,"signal":0,"exit":0}
+{"role":"signer","pid":927,"epoch":5,"signal":0,"exit":0}
+{"role":"gateway","pid":928,"stage":"success","epoch":5,"signal":0,"exit":0}

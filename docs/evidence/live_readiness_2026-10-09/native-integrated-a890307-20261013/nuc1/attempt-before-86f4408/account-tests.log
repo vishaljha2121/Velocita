@@ -1,0 +1,65 @@
+......................................E..EEE
+======================================================================
+ERROR: test_bad_refresh_preserves_previous_session (test_tm_account_session.AccountSessionTests.test_bad_refresh_preserves_previous_session)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/source/tests/test_tm_account_session.py", line 42, in test_bad_refresh_preserves_previous_session
+    with tempfile.TemporaryDirectory(dir=ROOT) as d:
+         ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/usr/lib/python3.14/tempfile.py", line 907, in __init__
+    self.name = mkdtemp(suffix, prefix, dir)
+                ~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/tempfile.py", line 381, in mkdtemp
+    _os.mkdir(file, 0o700)
+    ~~~~~~~~~^^^^^^^^^^^^^
+OSError: [Errno 30] Read-only file system: '/source/tmp5qwwcdr9'
+
+======================================================================
+ERROR: test_refresh_keeps_rotated_pair_and_private_permissions (test_tm_account_session.AccountSessionTests.test_refresh_keeps_rotated_pair_and_private_permissions)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/source/tests/test_tm_account_session.py", line 28, in test_refresh_keeps_rotated_pair_and_private_permissions
+    with tempfile.TemporaryDirectory(dir=ROOT) as d:
+         ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/usr/lib/python3.14/tempfile.py", line 907, in __init__
+    self.name = mkdtemp(suffix, prefix, dir)
+                ~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/tempfile.py", line 381, in mkdtemp
+    _os.mkdir(file, 0o700)
+    ~~~~~~~~~^^^^^^^^^^^^^
+OSError: [Errno 30] Read-only file system: '/source/tmpjzwbqh_h'
+
+======================================================================
+ERROR: test_session_symlink_refused (test_tm_account_session.AccountSessionTests.test_session_symlink_refused)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/source/tests/test_tm_account_session.py", line 72, in test_session_symlink_refused
+    with tempfile.TemporaryDirectory(dir=ROOT) as d:
+         ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/usr/lib/python3.14/tempfile.py", line 907, in __init__
+    self.name = mkdtemp(suffix, prefix, dir)
+                ~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/tempfile.py", line 381, in mkdtemp
+    _os.mkdir(file, 0o700)
+    ~~~~~~~~~^^^^^^^^^^^^^
+OSError: [Errno 30] Read-only file system: '/source/tmp9mgn2_pb'
+
+======================================================================
+ERROR: test_valid_session_reused_without_auth_network (test_tm_account_session.AccountSessionTests.test_valid_session_reused_without_auth_network)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/source/tests/test_tm_account_session.py", line 53, in test_valid_session_reused_without_auth_network
+    with tempfile.TemporaryDirectory(dir=ROOT) as d:
+         ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/usr/lib/python3.14/tempfile.py", line 907, in __init__
+    self.name = mkdtemp(suffix, prefix, dir)
+                ~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/tempfile.py", line 381, in mkdtemp
+    _os.mkdir(file, 0o700)
+    ~~~~~~~~~^^^^^^^^^^^^^
+OSError: [Errno 30] Read-only file system: '/source/tmpi9vhsqpd'
+
+----------------------------------------------------------------------
+Ran 44 tests in 0.651s
+
+FAILED (errors=4)

@@ -1,0 +1,5 @@
+{"cut":"before-stop","node":1,"term":1,"role":"leader","current":10,"committed":10,"applied":10,"phase":3}
+{"cut":"before-stop","node":2,"term":1,"role":"follower","current":10,"committed":9,"applied":9,"phase":2}
+{"cut":"before-stop","node":3,"term":1,"role":"follower","current":10,"committed":9,"applied":9,"phase":2}
+{"cut":"after-election","node":2,"term":2,"role":"follower","current":10,"committed":9,"applied":9,"phase":2}
+{"cut":"after-election","node":3,"term":2,"role":"leader","current":10,"committed":9,"applied":9,"phase":2}

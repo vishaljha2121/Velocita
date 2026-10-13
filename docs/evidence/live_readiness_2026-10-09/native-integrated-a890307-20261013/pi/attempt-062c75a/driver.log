@@ -1,0 +1,6 @@
+2026-10-13T07:15:43Z configure
+Traceback (most recent call last):
+  File "/work/native-resume.py", line 31, in <module>
+    if p.returncode:raise RuntimeError('build exit='+str(p.returncode))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: build exit=1

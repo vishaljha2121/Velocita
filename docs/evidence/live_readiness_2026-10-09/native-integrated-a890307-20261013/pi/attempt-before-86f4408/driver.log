@@ -1,0 +1,10 @@
+2026-10-13T08:06:13Z configure
+2026-10-13T08:06:21Z regression-preflight
+2026-10-13T08:07:26Z tests
+Traceback (most recent call last):
+  File "/work/native-maintenance.py", line 39, in <module>
+    run(['ctest','--test-dir','/work/build','--output-on-failure','--parallel','1','--output-junit','/work/ctest.xml'], 'tests',3600)
+    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/work/native-maintenance.py", line 14, in run
+    raise RuntimeError(name+' exit='+str(r.returncode))
+RuntimeError: tests exit=8

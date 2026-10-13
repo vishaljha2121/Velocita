@@ -1,0 +1,10 @@
+2026-10-13T07:43:54Z configure
+2026-10-13T07:44:01Z regression-preflight
+Traceback (most recent call last):
+  File "/work/native-nonroot.py", line 35, in <module>
+    run(['ctest','--test-dir','/work/build','--output-on-failure','--parallel','1','-R','^v2-(compaction-persistence-model-tests|generation-base-tests|sol-limit-probe-offline|https-read-local-fixtures|jupiter-idl-reader-offline|owner-settlement-reader-offline|swap-signer-service-tests|swap-runtime-config-tests|swap-runtime-production-tests|swap-runtime-https-fixtures|swap-process-drill|node-process-tests)$'], 'regression-preflight',600)
+    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/work/native-nonroot.py", line 11, in run
+    if r.returncode:raise RuntimeError(name+' exit='+str(r.returncode))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: regression-preflight exit=8

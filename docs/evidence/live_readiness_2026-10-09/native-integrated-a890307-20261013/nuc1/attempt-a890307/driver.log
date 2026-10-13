@@ -1,0 +1,2 @@
+2026-10-13T06:43:43Z configure
+time="2026-10-13T03:15:12-04:00" level=error msg="Could not retrieve exit code from event: died not found: unable to find event"

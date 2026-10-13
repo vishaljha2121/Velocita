@@ -1,0 +1,4 @@
+{"role":"signer","pid":2832,"epoch":1,"signal":0,"exit":0}
+{"role":"gateway","pid":2833,"stage":"sign-request","epoch":1,"signal":9,"exit":-1}
+{"role":"signer","pid":2834,"epoch":2,"signal":0,"exit":0}
+{"role":"gateway","pid":2835,"stage":"sign-fenced","epoch":2,"signal":0,"exit":0}

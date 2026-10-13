@@ -1,0 +1,39 @@
+Test project /work/build
+      Start  72: v2-compaction-persistence-model-tests
+ 1/12 Test  #72: v2-compaction-persistence-model-tests ...   Passed    5.72 sec
+      Start  85: v2-generation-base-tests
+ 2/12 Test  #85: v2-generation-base-tests ................   Passed    0.01 sec
+      Start 125: v2-sol-limit-probe-offline
+ 3/12 Test #125: v2-sol-limit-probe-offline ..............   Passed    0.36 sec
+      Start 126: v2-https-read-local-fixtures
+ 4/12 Test #126: v2-https-read-local-fixtures ............   Passed    1.40 sec
+      Start 128: v2-jupiter-idl-reader-offline
+ 5/12 Test #128: v2-jupiter-idl-reader-offline ...........   Passed    0.19 sec
+      Start 132: v2-owner-settlement-reader-offline
+ 6/12 Test #132: v2-owner-settlement-reader-offline ......   Passed    0.18 sec
+      Start 152: v2-swap-signer-service-tests
+ 7/12 Test #152: v2-swap-signer-service-tests ............   Passed    0.06 sec
+      Start 159: v2-swap-runtime-config-tests
+ 8/12 Test #159: v2-swap-runtime-config-tests ............   Passed    0.02 sec
+      Start 161: v2-swap-process-drill
+ 9/12 Test #161: v2-swap-process-drill ...................   Passed   24.54 sec
+      Start 162: v2-swap-runtime-production-tests
+10/12 Test #162: v2-swap-runtime-production-tests ........   Passed    0.02 sec
+      Start 165: v2-swap-runtime-https-fixtures
+11/12 Test #165: v2-swap-runtime-https-fixtures ..........   Passed    2.09 sec
+      Start 189: v2-node-process-tests
+12/12 Test #189: v2-node-process-tests ...................***Failed   31.54 sec
+node process tests failed: no ready leader: node logs:
+READY node=1 epoch=1 config=64e98a70a51d314ae4bbad2bf31817c431a0c79e5af8460acb118ba4f956ae20
+READY node=2 epoch=1 config=fa24646a3e78908362a04954408739625ce7ba6ed50656c7a89e8fd413c8798b
+
+evidence kept in "/work/tmp-2dc439a-private/v2-node-process-OpkhkQ"
+
+
+92% tests passed, 1 tests failed out of 12
+
+Total Test time (real) =  66.15 sec
+
+The following tests FAILED:
+	189 - v2-node-process-tests (Failed)
+Errors while running CTest

@@ -1,0 +1,39 @@
+[1/21] Scanning /source/tests/v2_swap_process_drill.cpp for CXX dependencies
+[2/21] Scanning /source/tests/v2_node_tests.cpp for CXX dependencies
+[3/21] Generating CXX dyndep file CMakeFiles/v2-swap-process-drill.dir/CXX.dd
+[4/8] Generating CXX dyndep file CMakeFiles/v2-node-tests.dir/CXX.dd
+[5/8] Building CXX object CMakeFiles/v2-swap-process-drill.dir/tests/v2_swap_process_drill.cpp.o
+In file included from /source/tests/v2_swap_process_drill.cpp:5:
+/source/tests/v2_gateway_node_tests.cpp: In constructor ‘{anonymous}::Gateway::Gateway({anonymous}::Cluster&, velocita::v2::sim::FaultPolicy, velocita::v2::GatewayLoopConfig, velocita::v2::GatewayLinkTiming, const {anonymous}::VenueChoice&)’:
+/source/tests/v2_gateway_node_tests.cpp:688:11: warning: missing initializer for member ‘{anonymous}::CountingVenue::injected’ [-Wmissing-field-initializers]
+  688 |           counting{pick(choice), {}},
+      |           ^~~~~~~~~~~~~~~~~~~~~~~~~~
+/source/tests/v2_swap_process_drill.cpp: In member function ‘std::optional<std::pair<int, std::vector<std::byte> > > {anonymous}::Wire::receive()’:
+/source/tests/v2_swap_process_drill.cpp:52:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   52 |         if(incoming.size()<8)return {};std::uint32_t size;std::int32_t node;
+      |         ^~
+/source/tests/v2_swap_process_drill.cpp:52:40: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   52 |         if(incoming.size()<8)return {};std::uint32_t size;std::int32_t node;
+      |                                        ^~~
+/source/tests/v2_swap_process_drill.cpp:54:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   54 |         if(incoming.size()<8+size)return {};Bytes body(incoming.begin()+8,incoming.begin()+8+size);incoming.erase(incoming.begin(),incoming.begin()+8+size);return std::pair{node,std::move(body)};
+      |         ^~
+/source/tests/v2_swap_process_drill.cpp:54:45: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   54 |         if(incoming.size()<8+size)return {};Bytes body(incoming.begin()+8,incoming.begin()+8+size);incoming.erase(incoming.begin(),incoming.begin()+8+size);return std::pair{node,std::move(body)};
+      |                                             ^~~~~
+/source/tests/v2_swap_process_drill.cpp: In member function ‘virtual void {anonymous}::Ports::execute(const velocita::v2::SwapSubmissionIdentity&, std::span<const std::byte>)’:
+/source/tests/v2_swap_process_drill.cpp:90:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   90 |         if(stage=="before-send")die();journal_line(root,"execute");
+      |         ^~
+/source/tests/v2_swap_process_drill.cpp:90:39: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   90 |         if(stage=="before-send")die();journal_line(root,"execute");
+      |                                       ^~~~~~~~~~~~
+/source/tests/v2_swap_process_drill.cpp:91:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   91 |         if(stage=="accepted")die();throw std::runtime_error("fixture accepted response lost");
+      |         ^~
+/source/tests/v2_swap_process_drill.cpp:91:36: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   91 |         if(stage=="accepted")die();throw std::runtime_error("fixture accepted response lost");
+      |                                    ^~~~~
+[6/8] Building CXX object CMakeFiles/v2-node-tests.dir/tests/v2_node_tests.cpp.o
+[7/8] Linking CXX executable v2-swap-process-drill
+[8/8] Linking CXX executable v2-node-tests

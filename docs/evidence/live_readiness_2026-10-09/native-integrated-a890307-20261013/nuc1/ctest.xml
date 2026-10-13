@@ -1,0 +1,1566 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="Linux-c++"
+	tests="201"
+	failures="0"
+	disabled="0"
+	skipped="0"
+	hostname="ab8e072da448"
+	time="524"
+	timestamp="2026-10-13T08:07:23"
+	>
+	<testcase name="core-tests" classname="core-tests" time="0.0254082" status="run">
+		<properties/>
+		<system-out>all core tests passed
+</system-out>
+	</testcase>
+	<testcase name="metrics-tests" classname="metrics-tests" time="0.00520597" status="run">
+		<properties/>
+		<system-out>all metrics tests passed
+</system-out>
+	</testcase>
+	<testcase name="benchmark-tests" classname="benchmark-tests" time="0.00424514" status="run">
+		<properties/>
+		<system-out>benchmark tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-contract-tests" classname="v2-contract-tests" time="0.00439604" status="run">
+		<properties/>
+		<system-out>all V2 contract tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-value-contract-tests" classname="v2-value-contract-tests" time="0.00417775" status="run">
+		<properties/>
+		<system-out>all V2 value-contract tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-payload-codec-tests" classname="v2-payload-codec-tests" time="0.00549458" status="run">
+		<properties/>
+		<system-out>all V2 payload-codec tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-kernel-policy-tests" classname="v2-kernel-policy-tests" time="0.00520474" status="run">
+		<properties/>
+		<system-out>all V2 kernel policy tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-pinned-receipts-tests" classname="v2-pinned-receipts-tests" time="0.00484841" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="v2-venue-wire-tests" classname="v2-venue-wire-tests" time="0.00427099" status="run">
+		<properties/>
+		<system-out>all V2 venue wire tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-venue-transport-tests" classname="v2-venue-transport-tests" time="0.00528143" status="run">
+		<properties/>
+		<system-out>all V2 venue transport tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-integration-tests" classname="v2-swap-integration-tests" time="0.0115343" status="run">
+		<properties/>
+		<system-out>PASS global_controls_fence_pending
+PASS funding_roles_and_exclusion
+PASS paper_restart_and_exact_receipt
+PASS unknown_kill_and_late_settlement
+PASS tampering_and_configuration_change
+</system-out>
+	</testcase>
+	<testcase name="v2-kernel-control-tests" classname="v2-kernel-control-tests" time="0.00585448" status="run">
+		<properties/>
+		<system-out>all V2 kernel control tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-kernel-source-tests" classname="v2-kernel-source-tests" time="0.00529055" status="run">
+		<properties/>
+		<system-out>all V2 kernel source tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-state-snapshot-tests" classname="v2-state-snapshot-tests" time="0.00929225" status="run">
+		<properties/>
+		<system-out>all V2 state snapshot tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-kernel-codec-tests" classname="v2-kernel-codec-tests" time="0.00475076" status="run">
+		<properties/>
+		<system-out>all V2 kernel codec tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-replay-tests" classname="v2-replay-tests" time="0.0052563" status="run">
+		<properties/>
+		<system-out>all V2 replay tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-model-replay-tests" classname="v2-model-replay-tests" time="1.13538" status="run">
+		<properties/>
+		<system-out>generated histories=32 commands_per_history=96 snapshot_cuts_per_history=6 schema7_projection_corpus_digest=79885aa4f0f7cbe62a3e36f4277f6b6396d3faa87ca9482f9201643a0b923e5c
+all V2 generated model/replay tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-venue-simulator-tests" classname="v2-venue-simulator-tests" time="0.0207073" status="run">
+		<properties/>
+		<system-out>all V2 venue simulator tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-spsc-ring-tests" classname="v2-spsc-ring-tests" time="0.578101" status="run">
+		<properties/>
+		<system-out>all V2 SPSC ring tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-wal-arena-tests" classname="v2-wal-arena-tests" time="0.0384341" status="run">
+		<properties/>
+		<system-out>all V2 WAL arena tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-replication-tests" classname="v2-replication-tests" time="14.8147" status="run">
+		<properties/>
+		<system-out>all V2 replication tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-snapshot-membership-tests" classname="v2-snapshot-membership-tests" time="0.196468" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="v2-durable-quorum-tests" classname="v2-durable-quorum-tests" time="0.00419813" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="v2-gateway-tests" classname="v2-gateway-tests" time="0.00759362" status="run">
+		<properties/>
+		<system-out>all V2 gateway tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-lifecycle-reachability-tests" classname="v2-lifecycle-reachability-tests" time="0.159627" status="run">
+		<properties/>
+		<system-out>all V2 lifecycle reachability checks passed
+</system-out>
+	</testcase>
+	<testcase name="v2-gateway-delivery-tests" classname="v2-gateway-delivery-tests" time="0.170012" status="run">
+		<properties/>
+		<system-out>  P1-5 probe: 40 cycles, 18 venue events consumed, order cancel_pending
+all V2 gateway delivery tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-metrics-tests" classname="v2-metrics-tests" time="0.00419699" status="run">
+		<properties/>
+		<system-out>all V2 metrics tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-phase4-property-tests" classname="v2-phase4-property-tests" time="3.8346" status="run">
+		<properties/>
+		<system-out>phase 4 property corpus: 24 seeds, 220 steps each, 3255/4277 commands admitted
+all V2 Phase 4 property tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-rule-evaluator-tests" classname="v2-rule-evaluator-tests" time="0.00449701" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="v2-layout-tests" classname="v2-layout-tests" time="0.00357715" status="run">
+		<properties/>
+		<system-out>all V2 layout tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-decision-kernel-tests" classname="v2-decision-kernel-tests" time="0.00548901" status="run">
+		<properties/>
+		<system-out>all V2 decision kernel tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-action-template-contract-tests" classname="v2-action-template-contract-tests" time="0.00360523" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="v2-action-resolver-tests" classname="v2-action-resolver-tests" time="0.00365507" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="v2-executable-policy-contract-tests" classname="v2-executable-policy-contract-tests" time="0.00361544" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="v2-executable-policy-codec-tests" classname="v2-executable-policy-codec-tests" time="0.00425633" status="run">
+		<properties/>
+		<system-out>all V2 executable-policy codec tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-artifact-digest-tests" classname="v2-artifact-digest-tests" time="0.00415117" status="run">
+		<properties/>
+		<system-out>all V2 artifact-digest tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-execution-catalog-tests" classname="v2-execution-catalog-tests" time="0.00523549" status="run">
+		<properties/>
+		<system-out>v2_execution_catalog_tests: PASS
+</system-out>
+	</testcase>
+	<testcase name="v2-catalog-binding-tests" classname="v2-catalog-binding-tests" time="0.183763" status="run">
+		<properties/>
+		<system-out>v2_catalog_binding_tests: PASS
+</system-out>
+	</testcase>
+	<testcase name="v2-authority-barrier-tests" classname="v2-authority-barrier-tests" time="0.00401921" status="run">
+		<properties/>
+		<system-out>v2 authority barrier tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-authority-storage-failure-tests" classname="v2-authority-storage-failure-tests" time="0.11699" status="run">
+		<properties/>
+		<system-out>v2 authority storage failure tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-gateway-authority-tests" classname="v2-gateway-authority-tests" time="0.00377166" status="run">
+		<properties/>
+		<system-out>v2 gateway authority tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-authority-composition-tests" classname="v2-authority-composition-tests" time="3.42463" status="run">
+		<properties/>
+		<system-out>F4 authority composition passed
+</system-out>
+	</testcase>
+	<testcase name="v2-snapshot-store-bounds-tests" classname="v2-snapshot-store-bounds-tests" time="0.0214935" status="run">
+		<properties/>
+		<system-out>snapshot recovery allocation and binding tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-metadata-persistence-model-tests" classname="v2-metadata-persistence-model-tests" time="0.00869495" status="run">
+		<properties/>
+		<system-out>metadata persistence ordering model passed
+</system-out>
+	</testcase>
+	<testcase name="v2-bound-metadata-persistence-model-tests" classname="v2-bound-metadata-persistence-model-tests" time="0.0126324" status="run">
+		<properties/>
+		<system-out>metadata-model path=absent-temp events=14
+metadata-model path=existing-temp events=21
+metadata-model path=short-write events=15
+bound metadata persistence ordering model passed
+</system-out>
+	</testcase>
+	<testcase name="v2-static-identity-tests" classname="v2-static-identity-tests" time="0.00492049" status="run">
+		<properties/>
+		<system-out>v2 static identity tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-identity-startup-tests" classname="v2-identity-startup-tests" time="0.191722" status="run">
+		<properties/>
+		<system-out>identity startup tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-kernel-startup-tests" classname="v2-kernel-startup-tests" time="0.0831211" status="run">
+		<properties/>
+		<system-out>kernel startup tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-bound-frame-tests" classname="v2-bound-frame-tests" time="0.00757853" status="run">
+		<properties/>
+		<system-out>v2 bound frame tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-bound-peer-tests" classname="v2-bound-peer-tests" time="0.190578" status="run">
+		<properties/>
+		<system-out>bound peer codec/admission/batch progress passed
+</system-out>
+	</testcase>
+	<testcase name="v2-bound-metadata-tests" classname="v2-bound-metadata-tests" time="0.00710864" status="run">
+		<properties/>
+		<system-out>bound metadata tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-history-binding-tests" classname="v2-history-binding-tests" time="0.343118" status="run">
+		<properties/>
+		<system-out>V2 history binding tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-result-ledger-tests" classname="v2-result-ledger-tests" time="0.0051571" status="run">
+		<properties/>
+		<system-out>result ledger tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-result-admission-tests" classname="v2-result-admission-tests" time="2.59813" status="run">
+		<properties/>
+		<system-out>result admission capacity tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-result-admission-edge-tests" classname="v2-result-admission-edge-tests" time="0.496452" status="run">
+		<properties/>
+		<system-out>result admission edge tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-outbound-mailbox-tests" classname="v2-outbound-mailbox-tests" time="0.00529748" status="run">
+		<properties/>
+		<system-out>v2 outbound mailbox tests passed; owner_bytes=66680
+</system-out>
+	</testcase>
+	<testcase name="v2-outbound-saturation-tests" classname="v2-outbound-saturation-tests" time="0.222456" status="run">
+		<properties/>
+		<system-out>heartbeat_requests=512 queued_responses=1
+retained_entries=16 largest_peer_descriptors=1 largest_peer_encoded_bytes=4244
+capacity review diagnostic passed
+</system-out>
+	</testcase>
+	<testcase name="v2-log-saturation-tests" classname="v2-log-saturation-tests" time="19.0073" status="run">
+		<properties/>
+		<system-out>ordinary_log_candidate=8128 actual_log_end=8128 ready_results=0
+capacity review diagnostic passed
+</system-out>
+	</testcase>
+	<testcase name="v2-retained-log-tests" classname="v2-retained-log-tests" time="0.0677551" status="run">
+		<properties/>
+		<system-out>retained log tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-wal-streaming-tests" classname="v2-wal-streaming-tests" time="0.369989" status="run">
+		<properties/>
+		<system-out>WAL streaming tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-incremental-digest-tests" classname="v2-incremental-digest-tests" time="0.0166351" status="run">
+		<properties/>
+		<system-out>incremental digest tests passed; sizeof(Sha256)=112
+</system-out>
+	</testcase>
+	<testcase name="v2-archive-catalog-tests" classname="v2-archive-catalog-tests" time="0.0173776" status="run">
+		<properties/>
+		<system-out>archive catalog tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-archive-store-tests" classname="v2-archive-store-tests" time="5.19073" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="v2-archive-scrub-tests" classname="v2-archive-scrub-tests" time="0.166917" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="v2-wal-maintenance-tests" classname="v2-wal-maintenance-tests" time="0.608569" status="run">
+		<properties/>
+		<system-out>WAL maintenance tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-archive-compaction-tests" classname="v2-archive-compaction-tests" time="0.108657" status="run">
+		<properties/>
+		<system-out>archive compaction integration tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-compaction-fence-tests" classname="v2-compaction-fence-tests" time="0.124617" status="run">
+		<properties/>
+		<system-out>compaction fence tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-archive-startup-tests" classname="v2-archive-startup-tests" time="0.138397" status="run">
+		<properties/>
+		<system-out>archive startup regression tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-archive-persistence-model-tests" classname="v2-archive-persistence-model-tests" time="1.39365" status="run">
+		<properties/>
+		<system-out>archive disk model replacement=0 eager_names=0 cuts=32
+archive disk model replacement=0 eager_names=1 cuts=32
+archive disk model replacement=1 eager_names=0 cuts=27
+archive disk model replacement=1 eager_names=1 cuts=27
+archive persistence model passed 118 sync-sensitive cuts
+</system-out>
+	</testcase>
+	<testcase name="v2-archive-publication-fault-tests" classname="v2-archive-publication-fault-tests" time="7.01992" status="run">
+		<properties/>
+		<system-out>archive quarantine: 32 injected fsync/rename failures and process exits; byte-preserving restart checked
+archive publication: 130 reached EIO sites, 3 successful retries; exact restart history checked
+</system-out>
+	</testcase>
+	<testcase name="v2-compaction-io-fault-tests" classname="v2-compaction-io-fault-tests" time="0.455955" status="run">
+		<properties/>
+		<system-out>integrated compaction I/O fault tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-compaction-persistence-model-tests" classname="v2-compaction-persistence-model-tests" time="5.60339" status="run">
+		<properties/>
+		<system-out>composed persistence model replacement=0 schedule=0 cuts=44
+composed persistence model replacement=0 schedule=1 cuts=44
+composed persistence model replacement=0 schedule=2 cuts=44
+composed persistence model replacement=1 schedule=0 cuts=34
+composed persistence model replacement=1 schedule=1 cuts=34
+composed persistence model replacement=1 schedule=2 cuts=34
+composed archive/snapshot/WAL persistence model passed 234 cuts
+</system-out>
+	</testcase>
+	<testcase name="v2-async-persistence-tests" classname="v2-async-persistence-tests" time="0.14595" status="run">
+		<properties/>
+		<system-out>async persistence fence tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-async-suffix-tests" classname="v2-async-suffix-tests" time="0.287654" status="run">
+		<properties/>
+		<system-out>async suffix tests passed: 16 conflict cuts + 2 worker failures
+</system-out>
+	</testcase>
+	<testcase name="v2-raft-persistence-tests" classname="v2-raft-persistence-tests" time="0.00480893" status="run">
+		<properties/>
+		<system-out>Raft persistence callback tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-persistence-completion-tests" classname="v2-persistence-completion-tests" time="0.255337" status="run">
+		<properties/>
+		<system-out>persistence completion tests passed; job=168 history_job=8952 replica=122440 retry_buffer=32768 bytes
+</system-out>
+	</testcase>
+	<testcase name="v2-async-persistence-model-tests" classname="v2-async-persistence-model-tests" time="1.68478" status="run">
+		<properties/>
+		<system-out>ballot persistence model schedule=0 cuts=5
+async persistence model schedule=0 cuts=20
+ballot persistence model schedule=1 cuts=5
+async persistence model schedule=1 cuts=20
+ballot persistence model schedule=2 cuts=5
+async persistence model schedule=2 cuts=20
+async persistence crash-image model passed 75 cuts
+</system-out>
+	</testcase>
+	<testcase name="v2-archive-segment-tests" classname="v2-archive-segment-tests" time="0.751025" status="run">
+		<properties/>
+		<system-out>archive segment tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-archive-segment-adversarial-tests" classname="v2-archive-segment-adversarial-tests" time="0.0215829" status="run">
+		<properties/>
+		<system-out>archive adversarial tests passed; sizeof(Sha256)=112 scratch=2120 record_view=40 source=24 metadata=80
+</system-out>
+	</testcase>
+	<testcase name="v2-archive-file-tests" classname="v2-archive-file-tests" time="0.012002" status="run">
+		<properties/>
+		<system-out>v2 archive file tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-archive-file-io-tests" classname="v2-archive-file-io-tests" time="0.00466363" status="run">
+		<properties/>
+		<system-out>case=none success=1 reads=43 closes=1
+case=read-EINTR success=1 reads=44 closes=1
+case=open-EINTR success=1 reads=43 closes=1
+case=stat-EINTR success=1 reads=43 closes=1
+case=EOF-EINTR success=1 reads=44 closes=1
+case=read-EIO success=0 reads=2 closes=1
+case=early-EOF success=0 reads=2 closes=1
+case=trailing success=0 reads=43 closes=1
+case=size-change success=0 reads=43 closes=1
+case=inode-change success=0 reads=43 closes=1
+case=link-change success=0 reads=43 closes=1
+case=stat-EIO success=0 reads=43 closes=1
+case=close-EINTR success=0 reads=43 closes=1
+archive file syscall boundary passed: short/open/stat/read/EOF EINTR and eight refusal paths
+</system-out>
+	</testcase>
+	<testcase name="v2-local-generation-tests" classname="v2-local-generation-tests" time="0.00404229" status="run">
+		<properties/>
+		<system-out>v2 local generation tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-local-generation-adversarial-tests" classname="v2-local-generation-adversarial-tests" time="0.00939261" status="run">
+		<properties/>
+		<system-out>transition cells=546 terminal counters recoverable, not advanceable
+native value bytes=56 wire bytes=160
+local generation independent bytes and adversarial checks passed
+</system-out>
+	</testcase>
+	<testcase name="v2-generation-startup-guard-tests" classname="v2-generation-startup-guard-tests" time="0.0209726" status="run">
+		<properties/>
+		<system-out>v2 generation startup guard tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-generation-base-tests" classname="v2-generation-base-tests" time="0.00709919" status="run">
+		<properties/>
+		<system-out>v2 generation base tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-generation-base-files-tests" classname="v2-generation-base-files-tests" time="0.0128011" status="run">
+		<properties/>
+		<system-out>generation base files tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-generation-startup-tests" classname="v2-generation-startup-tests" time="0.0507092" status="run">
+		<properties/>
+		<system-out>v2 generation startup tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-generation-publication-model-tests" classname="v2-generation-publication-model-tests" time="0.0612835" status="run">
+		<properties/>
+		<system-out>generation publication model passed 26 persistence cuts and EIO points
+</system-out>
+	</testcase>
+	<testcase name="v2-result-obligation-tests" classname="v2-result-obligation-tests" time="0.00639839" status="run">
+		<properties/>
+		<system-out>result obligation tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-snapshot-install-preflight-tests" classname="v2-snapshot-install-preflight-tests" time="0.00414367" status="run">
+		<properties/>
+		<system-out>snapshot install preflight tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-install-history-bridge-contract-tests" classname="v2-install-history-bridge-contract-tests" time="1.56137" status="run">
+		<properties/>
+		<system-out>install history bridge contract witnesses passed
+</system-out>
+	</testcase>
+	<testcase name="v2-wal-target-switch-tests" classname="v2-wal-target-switch-tests" time="0.0210353" status="run">
+		<properties/>
+		<system-out>WAL target switch tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-wal-target-switch-adversarial-tests" classname="v2-wal-target-switch-adversarial-tests" time="0.0159601" status="run">
+		<properties/>
+		<system-out>WAL target switch adversarial tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-history-recovery-tests" classname="v2-history-recovery-tests" time="18.1606" status="run">
+		<properties/>
+		<system-out>history recovery tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-auth-envelope-tests" classname="v2-auth-envelope-tests" time="0.007753" status="run">
+		<properties/>
+		<system-out>auth envelope tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-session-fence-tests" classname="v2-session-fence-tests" time="0.0218617" status="run">
+		<properties/>
+		<system-out>session fence tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-session-epoch-persistence-model-tests" classname="v2-session-epoch-persistence-model-tests" time="0.0100171" status="run">
+		<properties/>
+		<system-out>session epoch persistence model passed 15 crash cuts
+</system-out>
+	</testcase>
+	<testcase name="v2-node-config-tests" classname="v2-node-config-tests" time="0.00681879" status="run">
+		<properties/>
+		<system-out>node config tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-deploy-template-tests" classname="v2-deploy-template-tests" time="0.00559544" status="run">
+		<properties/>
+		<system-out>deploy template tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-node-protocol-tests" classname="v2-node-protocol-tests" time="0.00419057" status="run">
+		<properties/>
+		<system-out>node protocol tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-election-jitter-tests" classname="v2-election-jitter-tests" time="0.00509515" status="run">
+		<properties/>
+		<system-out>election jitter tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-shadow-submitter-tests" classname="v2-shadow-submitter-tests" time="0.0140149" status="run">
+		<properties/>
+		<system-out>shadow submitter tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-shadow-program-tests" classname="v2-shadow-program-tests" time="0.0972515" status="run">
+		<properties/>
+		<system-out>shadow program tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-follower-ack-tests" classname="v2-follower-ack-tests" time="0.00370644" status="run">
+		<properties/>
+		<system-out>follower ack tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-shadow-catalog-tests" classname="v2-shadow-catalog-tests" time="0.00513109" status="run">
+		<properties/>
+		<system-out>shadow catalog tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-node-client-tests" classname="v2-node-client-tests" time="13.0058" status="run">
+		<properties/>
+		<system-out>node client tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-paper-venue-tests" classname="v2-paper-venue-tests" time="0.0100777" status="run">
+		<properties/>
+		<system-out>PASS fok_buy_fills_whole_at_limit_with_rounded_up_fee
+PASS round_trip_sell_uses_sell_side_cost_and_returns_flat
+PASS budget_boundary_includes_the_fee
+PASS long_only_sell_without_inventory_is_killed_whole
+PASS only_fill_or_kill_submits_execute
+PASS cancel_is_refused_because_nothing_rests
+PASS resubmitting_a_known_order_is_a_venue_duplicate
+PASS unrenderable_or_misrouted_effects_never_reach_the_book
+PASS fee_arithmetic_is_exact_and_rounds_against_us
+PASS fault_delay_withholds_reports_until_due
+PASS fault_duplicate_moves_the_position_once
+PASS fault_reorder_fill_before_ack_converges
+PASS a_late_reconciliation_that_agrees_with_a_finished_order_is_not_a_refusal
+PASS fault_drop_response_unknown_then_query_adopts_the_fill
+PASS fault_drop_request_unknown_then_not_found_releases_and_permits_retry
+PASS fault_reject_releases_the_reservation
+PASS fault_split_fills_in_pieces_and_the_kernel_books_each
+PASS fault_query_unavailable_concludes_nothing
+PASS fault_rates_map_to_the_policy_and_are_bounded
+PASS same_seed_same_outpu...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="v2-paper-venue-state-tests" classname="v2-paper-venue-state-tests" time="0.0415366" status="run">
+		<properties/>
+		<system-out>PASS fee_epoch_keeps_old_fills_and_charges_new_fee
+PASS two_paper_instances_report_only_their_confirmed_fills
+PASS restored_venue_answers_exactly_as_the_original
+PASS restore_refuses_an_image_of_another_row_or_a_broken_invariant
+PASS encoded_state_round_trips_and_every_corruption_is_refused
+PASS store_is_atomic_and_create_refuses_an_existing_file
+PASS fresh_and_adopted_bootstraps_record_how_the_account_began
+PASS committed_ledger_counts_fills_only_and_never_moves_back
+PASS durable_venue_writes_before_it_answers_and_restart_reproduces_it
+PASS failed_write_latches_the_venue_and_the_file_stays_truthful
+PASS open_refuses_another_cluster_another_venue_and_never_resets
+</system-out>
+	</testcase>
+	<testcase name="v2-gateway-reconciliation-tests" classname="v2-gateway-reconciliation-tests" time="0.00553753" status="run">
+		<properties/>
+		<system-out>PASS equal_position_at_a_clean_cut_matches
+PASS different_position_at_a_clean_cut_is_a_mismatch_with_both_values
+PASS absent_risk_account_is_a_flat_kernel_position
+PASS only_the_served_row_is_compared
+PASS unavailable_venue_concludes_nothing
+PASS a_read_older_than_the_gateway_has_seen_is_not_comparable
+PASS a_read_older_than_the_venue_committed_cut_is_not_comparable
+PASS venue_owned_reports_make_the_cut_not_comparable
+PASS pending_gateway_evidence_makes_the_cut_not_comparable
+PASS an_open_order_makes_the_cut_not_comparable
+PASS a_venue_report_for_an_order_the_kernel_does_not_hold_is_a_mismatch
+PASS a_truncated_pending_list_is_not_comparable
+PASS only_a_fence_and_a_reducing_mode_are_rearmable
+PASS every_cause_and_verdict_renders_from_the_first_scrape
+</system-out>
+	</testcase>
+	<testcase name="v2-truemarkets-rest-tests" classname="v2-truemarkets-rest-tests" time="0.00625306" status="run">
+		<properties/>
+		<system-out>PASS missing_market_class_requires_exact_catalog_binding
+PASS duplicate_read_is_not_a_new_fill
+PASS terminal_cannot_reopen_or_change_execution
+PASS cumulative_regression_requires_reconciliation
+PASS partial_then_complete_is_only_evidence
+PASS incomplete_followup_does_not_erase_evidence
+PASS quote_buy_units_and_vwap_are_independent
+PASS missing_execution_is_not_zero
+PASS complete_requires_positive_fill_and_zero_leaves
+PASS all_statuses_and_partial_cancellation
+PASS identity_and_request_must_match
+PASS no_http_error_proves_absence
+PASS invalid_amounts_never_round_or_overflow
+PASS parsing_is_transactional_and_bounded
+PASS non_defi_and_perp_are_outside_contract
+PASS base_sell_and_owned_output
+</system-out>
+	</testcase>
+	<testcase name="v2-truemarkets-wire-tests" classname="v2-truemarkets-wire-tests" time="0.00420708" status="run">
+		<properties/>
+		<system-out>PASS decimal_parse_is_exact_and_refuses_rounding
+PASS json_validation_refuses_ambiguity_and_garbage
+PASS trade_call_encodes_every_field_explicitly
+PASS execute_and_status_encoding
+PASS recorded_quotes_decode_exactly
+PASS reply_refusals
+PASS fixture_execute_and_status_decode
+7/7 truemarkets wire tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-solana-payload-view-tests" classname="v2-solana-payload-view-tests" time="0.00901632" status="run">
+		<properties/>
+		<system-out>PASS worked_offsets_and_owned_bytes
+PASS truncated_noncanonical_and_bad_indices_refused
+PASS identity_and_envelope_are_explicit
+</system-out>
+	</testcase>
+	<testcase name="v2-truemarkets-venue-tests" classname="v2-truemarkets-venue-tests" time="0.00785204" status="run">
+		<properties/>
+		<system-out>PASS quote_flow_buy_signs_the_quoted_payload_and_books_once
+PASS prepare_flow_round_trip_sell_uses_the_min_credit_bound
+PASS quote_expired_before_submit_sends_nothing_and_permits_a_fresh_quote
+PASS submit_timeout_is_ambiguous_and_never_resent
+PASS submit_timeout_not_executed_is_released_and_retried_as_a_new_order
+PASS quote_flow_lost_submit_without_queryable_id_stays_unknown
+PASS quote_flow_lost_submit_adopts_when_status_accepts_the_quote_id
+PASS failed_settlement_after_acceptance_releases_through_reconciliation
+PASS partial_settlement_books_the_evidence_and_is_a_conflict
+PASS rate_limits_local_and_venue
+PASS prepare_direct_submission_is_unknown_and_adopted_by_status
+PASS prepare_lost_reply_is_unknown_not_pre_send
+PASS quote_beyond_limit_or_fee_cap_is_killed_before_signing
+PASS venue_issue_is_killed_before_signing
+PASS signer_refuses_a_payload_that_exceeds_the_authorization
+PASS quote_identity_mismatch_is_never_signed
+PASS unknown_order_query_is_silence_not_absence
+PASS cancel_is_refused_because_a_swap_cannot...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="v2-signer-tests" classname="v2-signer-tests" time="0.285577" status="run">
+		<properties/>
+		<system-out>all V2 signer tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-truemarkets-transport-tests" classname="v2-truemarkets-transport-tests" time="0.852252" status="run">
+		<properties/>
+		<system-out>all True Markets transport tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-signer-not-in-release-images" classname="v2-signer-not-in-release-images" time="0.133624" status="run">
+		<properties/>
+		<system-out>OK
+</system-out>
+	</testcase>
+	<testcase name="v2-solana-resolved-accounts-tests" classname="v2-solana-resolved-accounts-tests" time="0.00799585" status="run">
+		<properties/>
+		<system-out>PASS account_order_and_privileges
+PASS owned_digests_and_legacy
+PASS forged_decoded_values_are_refused
+PASS lookup_evidence_failures
+PASS aliases_and_failure_atomicity
+PASS maximum_accounts_and_zero_system_key
+</system-out>
+	</testcase>
+	<testcase name="v2-solana-instruction-decode-tests" classname="v2-solana-instruction-decode-tests" time="0.00395635" status="run">
+		<properties/>
+		<system-out>PASS official_program_ids
+PASS compute_oracles
+PASS typed_roles_and_ownership
+PASS exact_shapes
+PASS privileges_and_fixed_programs
+PASS unsupported_never_returns_a_body
+</system-out>
+	</testcase>
+	<testcase name="v2-solana-inspection-pipeline-tests" classname="v2-solana-inspection-pipeline-tests" time="0.00514741" status="run">
+		<properties/>
+		<system-out>PASS six_instruction_topology
+PASS message_privileges_reach_decoder
+PASS changed_lookup_cannot_be_hidden_by_offsets
+</system-out>
+	</testcase>
+	<testcase name="v2-spot-balance-tests" classname="v2-spot-balance-tests" time="0.0038831" status="run">
+		<properties/>
+		<system-out>PASS residual_is_part_of_inventory
+PASS snapshot_cannot_resolve_unknown_activity
+PASS identity_and_freshness_are_required
+PASS malformed_and_overflowing_balances_are_refused
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-balance-tests" classname="v2-swap-balance-tests" time="0.00409787" status="run">
+		<properties/>
+		<system-out>PASS residual_and_sub_lot_atoms
+PASS exact_settlement_projects_once
+PASS binding_and_state_validation
+PASS unresolved_and_conflicted_do_not_match
+PASS signed_range_boundaries
+PASS comparison_remains_independent
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-paper-tests" classname="v2-swap-paper-tests" time="0.00487483" status="run">
+		<properties/>
+		<system-out>PASS funding_and_roles
+PASS fractional_receipt_and_fee_accounting
+PASS insufficient_cash_and_inventory
+PASS pending_unknown_keeps_holds
+PASS one_atom_bounds_conflict_without_booking
+PASS identity_and_canonical_units
+PASS freshness_and_fencing
+PASS safety_floor_and_fee_caps
+PASS deterministic_replay_of_pending_state
+PASS duplicate_and_contradictory_settlement
+PASS role_checks_and_finality
+PASS prepare_and_attempt_are_one_use
+PASS kill_blocks_new_attempt_not_settlement
+PASS sell_cost_basis_and_full_close_remainder
+PASS sales_do_not_replenish_purchase_allowance
+PASS loss_stop_allows_only_sales
+PASS transient_liquidity_is_reserved
+PASS paper_oracle_and_reject
+PASS overflow_is_transactional
+PASS failed_transaction_cannot_hide_charges
+PASS bounded_settlement_history_never_evicts
+PASS record_codec_has_independent_golden_and_rejects_corruption
+PASS all_command_records_replay_exactly
+PASS sell_fee_and_transaction_reuse_conflict
+PASS conservation_across_varied_prices
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-paper-process-drill" classname="v2-swap-paper-process-drill" time="0.217892" status="run">
+		<properties/>
+		<system-out>....
+----------------------------------------------------------------------
+Ran 4 tests in 0.075s
+
+OK
+</system-out>
+	</testcase>
+	<testcase name="v2-readiness-build-boundary" classname="v2-readiness-build-boundary" time="1.95137" status="run">
+		<properties/>
+		<system-out>....................
+----------------------------------------------------------------------
+Ran 20 tests in 1.831s
+
+OK
+</system-out>
+	</testcase>
+	<testcase name="v2-sol-limit-probe-offline" classname="v2-sol-limit-probe-offline" time="0.348261" status="run">
+		<properties/>
+		<system-out>................
+----------------------------------------------------------------------
+Ran 16 tests in 0.086s
+
+OK
+</system-out>
+	</testcase>
+	<testcase name="v2-https-read-local-fixtures" classname="v2-https-read-local-fixtures" time="1.37879" status="run">
+		<properties/>
+		<system-out>----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 36186)
+.Traceback (most recent call last):
+  File "/usr/lib/python3.14/socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/socketserver.py", line 766, in __init__
+    self.handle()
+    ~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/http/server.py", line 496, in handle
+    self.handle_one_request()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/http/server.py", line 464, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/usr/lib/python3.14/socket.py", line 725, in readinto
+    return self._sock.r...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-reconcile-tests" classname="v2-swap-reconcile-tests" time="0.00540898" status="run">
+		<properties/>
+		<system-out>PASS exact_partition_and_response
+PASS rows_and_exact_decimals
+PASS independent_time_and_result_barriers
+PASS external_changes_and_pinned_partition
+PASS unknown_restart_and_late_settlement
+</system-out>
+	</testcase>
+	<testcase name="v2-jupiter-idl-reader-offline" classname="v2-jupiter-idl-reader-offline" time="0.179679" status="run">
+		<properties/>
+		<system-out>......
+----------------------------------------------------------------------
+Ran 6 tests in 0.014s
+
+OK
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-https-local-fixtures" classname="v2-swap-https-local-fixtures" time="1.84134" status="run">
+		<properties/>
+		<system-out>........----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 46224)
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/socketserver.py", line 766, in __init__
+    self.handle()
+    ~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/http/server.py", line 496, in handle
+    self.handle_one_request()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/http/server.py", line 464, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/usr/lib/python3.14/socket.py", line 725, in readinto
+    return self....
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="v2-jupiter-route-decode-tests" classname="v2-jupiter-route-decode-tests" time="0.00457113" status="run">
+		<properties/>
+		<system-out>PASS captured
+PASS shapes
+PASS boundaries
+PASS orders
+PASS direct
+PASS direct_boundaries
+PASS raydium
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-owner-accounting-tests" classname="v2-swap-owner-accounting-tests" time="0.0038678" status="run">
+		<properties/>
+		<system-out>PASS rent
+PASS bounds
+PASS external
+PASS capture
+PASS simulation
+PASS scope
+PASS overflow
+</system-out>
+	</testcase>
+	<testcase name="v2-owner-settlement-reader-offline" classname="v2-owner-settlement-reader-offline" time="0.174486" status="run">
+		<properties/>
+		<system-out>....
+----------------------------------------------------------------------
+Ran 4 tests in 0.008s
+
+OK
+</system-out>
+	</testcase>
+	<testcase name="v2-native-transport-qualification-gates" classname="v2-native-transport-qualification-gates" time="0.309629" status="run">
+		<properties/>
+		<system-out>.......
+----------------------------------------------------------------------
+Ran 7 tests in 0.118s
+
+OK
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-reconcile-session-tests" classname="v2-swap-reconcile-session-tests" time="0.0231127" status="run">
+		<properties/>
+		<system-out>PASS authenticated_state_and_exact_http
+PASS unexplained_delta_is_not_complete
+PASS unseeded_and_bad_identity_never_read_http
+PASS bad_authentication_and_digest_never_read_http
+PASS watermark_during_http_and_monotonicity
+PASS http_failures_and_stale_completion
+PASS concrete_adapter_refuses_unbound_credentials
+PASS pending_state_and_late_identity_remain_closed
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-reconcile-store-tests" classname="v2-swap-reconcile-store-tests" time="0.0814391" status="run">
+		<properties/>
+		<system-out>PASS create_recover_and_exact_bytes
+PASS missing_torn_corrupt_and_binding
+PASS duplicate_monotonic_and_exhaustion
+PASS fault_boundaries_never_publish
+PASS abrupt_exit_recovery
+PASS filesystem_safety_and_single_writer
+PASS invalid_input_and_replaced_file
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-gateway-tls-drill" classname="v2-swap-gateway-tls-drill" time="5.56067" status="run">
+		<properties/>
+		<system-out>.
+----------------------------------------------------------------------
+Ran 1 test in 5.377s
+
+OK
+PASS swap_tls_unknown_restart_reconcile
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-transaction-inspection-tests" classname="v2-swap-transaction-inspection-tests" time="0.0143156" status="run">
+		<properties/>
+		<system-out>PASS oracle
+PASS profile
+PASS identity
+PASS topology
+PASS bounds
+PASS shape
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-submission-store-tests" classname="v2-swap-submission-store-tests" time="0.134323" status="run">
+		<properties/>
+		<system-out>PASS lifecycle_and_exact_bytes
+PASS no_resend_and_identity_guards
+PASS recovery_corruption_and_binding
+PASS durability_failures
+PASS abrupt_exit
+PASS filesystem_guards
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-authority-tests" classname="v2-swap-authority-tests" time="0.00599229" status="run">
+		<properties/>
+		<system-out>PASS exact
+PASS fences
+PASS current_controls_and_expiry
+PASS invalid_digests
+PASS request_wire
+PASS grant_wire
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-authority-storage-tests" classname="v2-swap-authority-storage-tests" time="0.0748339" status="run">
+		<properties/>
+		<system-out>PASS wal_roundtrip_and_refusal
+PASS peer_roundtrip_and_refusal
+PASS archive_roundtrip_and_refusal
+PASS cold_replay_never_grants
+PASS leader_wal_roundtrip_and_refusal
+PASS leader_peer_roundtrip_and_refusal
+PASS leader_archive_roundtrip_and_refusal
+PASS leader_cold_replay_never_grants
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-submission-resolution-tests" classname="v2-swap-submission-resolution-tests" time="0.121483" status="run">
+		<properties/>
+		<system-out>PASS committed_resolution_and_restart
+PASS absent_or_mismatched_settlement
+PASS authenticated_state_and_arithmetic
+PASS canonical_signature_identity_oracle
+PASS known_transaction_mapping_and_journal_change
+PASS timeout_ownership_and_limits
+PASS failed_durability_keeps_resolution_closed
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-submission-session-tests" classname="v2-swap-submission-session-tests" time="0.0700951" status="run">
+		<properties/>
+		<system-out>PASS durable_before_send_and_no_repeat
+PASS payload_copy_and_input_binding
+PASS authenticated_state_fences
+PASS exact_pending_identity
+PASS current_controls_deadline_and_phase
+PASS disk_failure_and_ambiguous_send
+PASS invalid_startup_and_backward_tick
+PASS late_queued_response_and_deadline_overflow
+PASS owned_state_request_cleanup
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-submission-gateway-drill" classname="v2-swap-submission-gateway-drill" time="4.67667" status="run">
+		<properties/>
+		<system-out>PASS swap_submission_lost_reply_leader_loss_restart
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-authority-quorum-drill" classname="v2-swap-authority-quorum-drill" time="3.58584" status="run">
+		<properties/>
+		<system-out>PASS swap_authority_without_quorum_or_after_kill
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-signing-stamp-tests" classname="v2-swap-signing-stamp-tests" time="0.00570764" status="run">
+		<properties/>
+		<system-out>PASS oracle
+PASS public_key
+PASS malformed
+PASS clearing
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-rest-codec-tests" classname="v2-swap-rest-codec-tests" time="0.004888" status="run">
+		<properties/>
+		<system-out>PASS exact_create_requests
+PASS create_refusals_clear_output
+PASS preserve_original_payload
+PASS quote_and_payload_refusals
+PASS unsafe_handle_and_malformed_json
+PASS exact_execute_and_stamp_gate
+PASS nested_payload_ambiguity
+PASS asset_and_amount_bounds
+PASS payload_cardinality_and_capacity
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-prepare-store-tests" classname="v2-swap-prepare-store-tests" time="0.19276" status="run">
+		<properties/>
+		<system-out>PASS owned_payload_and_recovery
+PASS one_shot_and_prior_settlement
+PASS payload_and_request_guards
+PASS corrupt_and_missing_recovery
+PASS durability_and_single_writer
+PASS abrupt_exit_boundaries
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-prepare-session-tests" classname="v2-swap-prepare-session-tests" time="0.141555" status="run">
+		<properties/>
+		<system-out>PASS one_post_and_durable_payload
+PASS unknown_and_bad_response_never_retry
+PASS state_and_timing_fences
+PASS durable_write_failures
+PASS higher_effect_requires_prior_terminal
+PASS lifecycle_and_mapping_guards
+PASS sell_input_and_expired_admission
+PASS fee_inclusive_input_mapping
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-signer-session-tests" classname="v2-swap-signer-session-tests" time="0.141026" status="run">
+		<properties/>
+		<system-out>PASS lost_response_retrieval
+PASS authority_fences
+PASS durable_result
+PASS exact_signature
+PASS restart_replay
+PASS state_fences
+PASS clock_and_storage
+PASS remaining_admission_fences
+PASS crash_recovery
+PASS key_and_domain
+PASS payload_and_economics
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-signer-production-gate" classname="v2-swap-signer-production-gate" time="0.0212235" status="run">
+		<properties/>
+		<system-out>PASS production_gate
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-signer-protocol-tests" classname="v2-swap-signer-protocol-tests" time="0.00421491" status="run">
+		<properties/>
+		<system-out>PASS request
+PASS malformed
+PASS reply
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-signer-service-tests" classname="v2-swap-signer-service-tests" time="0.0836253" status="run">
+		<properties/>
+		<system-out>PASS success
+PASS lost
+PASS peer
+PASS process
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-order-status-tests" classname="v2-swap-order-status-tests" time="0.206201" status="run">
+		<properties/>
+		<system-out>PASS signature
+PASS exact
+PASS refusals
+PASS fences
+PASS conflict
+PASS prepare
+PASS prepare_changes
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-order-https-local-fixtures" classname="v2-swap-order-https-local-fixtures" time="1.18005" status="run">
+		<properties/>
+		<system-out>..----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 39118)
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/socketserver.py", line 766, in __init__
+    self.handle()
+    ~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/http/server.py", line 496, in handle
+    self.handle_one_request()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/http/server.py", line 464, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/usr/lib/python3.14/socket.py", line 725, in readinto
+    return self._sock....
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-settlement-evidence-tests" classname="v2-swap-settlement-evidence-tests" time="0.0107791" status="run">
+		<properties/>
+		<system-out>PASS finalized_request_and_ownership
+PASS read_identity_and_time
+PASS rpc_shape_and_watermark
+PASS exact_transaction_and_conservation
+PASS token_attribution_and_coverage
+PASS property_corroboration
+PASS rpc_capacity_and_base64
+PASS rent_oracle_and_owner_coverage
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-prepare-https-local-fixtures" classname="v2-swap-prepare-https-local-fixtures" time="1.33947" status="run">
+		<properties/>
+		<system-out>...----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 36840)
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/socketserver.py", line 766, in __init__
+    self.handle()
+    ~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/http/server.py", line 496, in handle
+    self.handle_one_request()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/http/server.py", line 464, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/usr/lib/python3.14/socket.py", line 725, in readinto
+    return self._sock...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-signing-connection-tests" classname="v2-swap-signing-connection-tests" time="1.14017" status="run">
+		<properties/>
+		<system-out>PASS restart
+PASS reply
+PASS crash_before_ipc
+PASS signer_storage
+PASS expired_recovery
+PASS missing_recovery
+PASS bounds
+PASS durability
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-settlement-connection-tests" classname="v2-swap-settlement-connection-tests" time="0.0863799" status="run">
+		<properties/>
+		<system-out>PASS retained_connection
+PASS finalized_request_and_ownership
+PASS read_identity_and_time
+PASS rpc_shape_and_watermark
+PASS exact_transaction_and_conservation
+PASS token_attribution_and_coverage
+PASS property_corroboration
+PASS rpc_capacity_and_base64
+PASS rent_oracle_and_owner_coverage
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-runtime-config-tests" classname="v2-swap-runtime-config-tests" time="0.02348" status="run">
+		<properties/>
+		<system-out>PASS valid
+PASS invalid
+PASS identity
+PASS session
+PASS descriptors
+PASS startup
+PASS order
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-gateway-runtime-tests" classname="v2-swap-gateway-runtime-tests" time="11.4455" status="run">
+		<properties/>
+		<system-out>PASS runtime mode 0
+PASS runtime mode 1
+PASS runtime mode 2
+PASS runtime mode 3
+PASS runtime mode 4
+PASS runtime mode 5
+PASS runtime mode 6
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-process-drill" classname="v2-swap-process-drill" time="90.3915" status="run">
+		<properties/>
+		<system-out>PASS F06 before send: uncertain intent holds; zero sends
+PASS F06/F08 mode 1: one send; cash=4000000 base=9000000 fees=2000 purchases=1000000 hold=0 settlements=1
+PASS F06/F08 mode 2: one send; cash=4000000 base=9000000 fees=2000 purchases=1000000 hold=0 settlements=1
+PASS F06/F08 mode 3: one send; cash=4000000 base=9000000 fees=2000 purchases=1000000 hold=0 settlements=1
+PASS F03 durable signing request crash: zero signatures, zero sends, hold retained
+PASS F05 durable signature crash: no execute permission after restart, hold retained
+PASS F06/F08 mode 6: one send; cash=4000000 base=9000000 fees=2000 purchases=1000000 hold=0 settlements=1
+PASS F04 signer SIGKILL after signature: partial result quarantined, zero executes
+Evidence: "/work/home-maintenance-1d2c820/.cache/velocita-build/process-drill-20261013/run-1709"
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-runtime-production-tests" classname="v2-swap-runtime-production-tests" time="0.0257604" status="run">
+		<properties/>
+		<system-out>PASS production profile and admission guards
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-settlement-lifecycle-tests" classname="v2-swap-settlement-lifecycle-tests" time="0.0369752" status="run">
+		<properties/>
+		<system-out>PASS captured_shape_arithmetic
+PASS missing_or_unexplained
+PASS existing_authority_change
+PASS supported_checked_and_sync
+PASS lifetime_and_program_edges
+PASS trace_shape
+PASS net_receipt_bound
+PASS ata_identity
+PASS new_usdc_deposit_control
+PASS observed_size_request
+PASS readonly_event_leaf
+PASS cpi_account_scope
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-settlement-admission-tests" classname="v2-swap-settlement-admission-tests" time="0.230471" status="run">
+		<properties/>
+		<system-out>PASS retained_admission
+PASS fixture_ownership
+PASS bounded_buy_admission
+PASS bounded_sell_admission
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-runtime-https-fixtures" classname="v2-swap-runtime-https-fixtures" time="1.60037" status="run">
+		<properties/>
+		<system-out>......----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 36750)
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/socketserver.py", line 766, in __init__
+    self.handle()
+    ~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/http/server.py", line 496, in handle
+    self.handle_one_request()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/http/server.py", line 464, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/usr/lib/python3.14/socket.py", line 725, in readinto
+    return self._s...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-runtime-startup-gate" classname="v2-swap-runtime-startup-gate" time="0.160071" status="run">
+		<properties/>
+		<system-out>.
+----------------------------------------------------------------------
+Ran 1 test in 0.027s
+
+OK
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-account-setup-tests" classname="v2-swap-account-setup-tests" time="0.004268" status="run">
+		<properties/>
+		<system-out>PASS exact_owner
+PASS identity
+PASS permissions
+PASS ambiguity
+PASS malformed
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-failed-settlement-tests" classname="v2-swap-failed-settlement-tests" time="0.043223" status="run">
+		<properties/>
+		<system-out>PASS fee_only_rollback
+PASS sponsor_policy
+PASS native_rollback
+PASS token_rollback
+PASS failure_shape
+PASS owner_payer
+PASS account_key_codec
+PASS retained_failed_admission
+</system-out>
+	</testcase>
+	<testcase name="v2-operational-recovery-tests" classname="v2-operational-recovery-tests" time="0.105204" status="run">
+		<properties/>
+		<system-out>PASS partial_tail
+PASS zero_gap
+PASS torn_block
+PASS zero_padding
+PASS archive_temporaries
+PASS archive_invalid_history
+PASS archive_unknown
+PASS archive_collision
+PASS archive_bad_file
+</system-out>
+	</testcase>
+	<testcase name="v2-truemarkets-no-network-symbols" classname="v2-truemarkets-no-network-symbols" time="0.0289407" status="run">
+		<properties/>
+		<system-out>-- no network symbols referenced by /work/build/libvelocita_v2_truemarkets_venue.a
+</system-out>
+	</testcase>
+	<testcase name="v2-gateway-truemarkets-refuses-unarmed" classname="v2-gateway-truemarkets-refuses-unarmed" time="0.0285193" status="run">
+		<properties/>
+		<system-out>-- refused as expected: not armed
+</system-out>
+	</testcase>
+	<testcase name="v2-gateway-truemarkets-refuses-signer-only" classname="v2-gateway-truemarkets-refuses-signer-only" time="0.0285383" status="run">
+		<properties/>
+		<system-out>-- refused as expected: not armed
+</system-out>
+	</testcase>
+	<testcase name="v2-gateway-truemarkets-refuses-armed-no-signer" classname="v2-gateway-truemarkets-refuses-armed-no-signer" time="0.0281099" status="run">
+		<properties/>
+		<system-out>-- refused as expected: no signer
+</system-out>
+	</testcase>
+	<testcase name="v2-gateway-truemarkets-refuses-armed-with-signer" classname="v2-gateway-truemarkets-refuses-armed-with-signer" time="0.0282967" status="run">
+		<properties/>
+		<system-out>-- refused as expected: no live venue transport
+</system-out>
+	</testcase>
+	<testcase name="v2-gateway-paper-state-refuses-no-state-file" classname="v2-gateway-paper-state-refuses-no-state-file" time="0.0283203" status="run">
+		<properties/>
+		<system-out>-- refused as expected: --venue paper needs --paper-state-file
+</system-out>
+	</testcase>
+	<testcase name="v2-gateway-paper-state-refuses-base-lots" classname="v2-gateway-paper-state-refuses-base-lots" time="0.0280819" status="run">
+		<properties/>
+		<system-out>-- refused as expected: replaced by the persisted paper state
+</system-out>
+	</testcase>
+	<testcase name="v2-gateway-paper-state-refuses-missing-file" classname="v2-gateway-paper-state-refuses-missing-file" time="0.0290048" status="run">
+		<properties/>
+		<system-out>-- refused as expected: the first start needs --paper-state-init
+</system-out>
+	</testcase>
+	<testcase name="v2-gateway-paper-state-refuses-corrupt-file" classname="v2-gateway-paper-state-refuses-corrupt-file" time="0.0286981" status="run">
+		<properties/>
+		<system-out>-- refused as expected: not a paper state file
+</system-out>
+	</testcase>
+	<testcase name="v2-gateway-paper-state-refuses-init-over-file" classname="v2-gateway-paper-state-refuses-init-over-file" time="0.0291212" status="run">
+		<properties/>
+		<system-out>-- refused as expected: never replace a file
+</system-out>
+	</testcase>
+	<testcase name="v2-gateway-paper-state-refuses-quote-on-restart" classname="v2-gateway-paper-state-refuses-quote-on-restart" time="0.0282654" status="run">
+		<properties/>
+		<system-out>-- refused as expected: applies only to the first start
+</system-out>
+	</testcase>
+	<testcase name="v2-gateway-paper-state-refuses-adopt-without-cost" classname="v2-gateway-paper-state-refuses-adopt-without-cost" time="0.0284142" status="run">
+		<properties/>
+		<system-out>-- refused as expected: needs --paper-adopt-cost-micros
+</system-out>
+	</testcase>
+	<testcase name="v2-gateway-paper-state-refuses-fault-rate-too-high" classname="v2-gateway-paper-state-refuses-fault-rate-too-high" time="0.0290806" status="run">
+		<properties/>
+		<system-out>-- refused as expected: must be 0..1000
+</system-out>
+	</testcase>
+	<testcase name="v2-gateway-paper-state-refuses-fault-rate-off-paper" classname="v2-gateway-paper-state-refuses-fault-rate-off-paper" time="0.0282575" status="run">
+		<properties/>
+		<system-out>-- refused as expected: apply only to --venue paper
+</system-out>
+	</testcase>
+	<testcase name="v2-gateway-protocol-tests" classname="v2-gateway-protocol-tests" time="0.00652681" status="run">
+		<properties/>
+		<system-out>PASS gateway_request_bytes_and_round_trip
+PASS correlation_binds_the_exact_request_body
+PASS refusal_bytes
+PASS state_chunk_geometry
+PASS authority_granted_bytes
+PASS metrics_start_at_zero_with_every_label
+PASS gateway_caller_config
+</system-out>
+	</testcase>
+	<testcase name="v2-gateway-node-tests" classname="v2-gateway-node-tests" time="180.539" status="run">
+		<properties/>
+		<system-out>PASS swap_paper_raft_gateway_restart
+PASS swap_paper_journal_write_failure
+PASS node_refuses_wrong_caller_follower_and_unconfigured_gateway
+PASS authorized_order_is_delivered_once_and_its_fill_moves_the_position
+PASS an_idle_gateway_proposes_nothing_after_acknowledging_its_evidence
+PASS forged_replayed_mismatched_and_stale_proofs_are_refused
+PASS lost_and_duplicated_responses_still_deliver_exactly_once
+PASS leader_change_during_authority_request_sends_nothing
+PASS unknown_outcome_stops_new_risk_and_is_committed
+PASS gateway_started_with_an_unsettled_effect_never_sends_it
+PASS effect_for_another_catalog_row_is_not_sent
+PASS paper_venue_fill_books_position_and_measured_fee
+PASS fence_rearms_after_the_quiet_period_and_then_delivers_once
+PASS a_timed_out_state_read_is_a_fence_that_rearms
+PASS a_control_change_latches_until_an_operator_restart
+PASS a_gateway_that_requires_a_loss_limit_arms_only_while_one_is_set
+PASS a_caller_outside_the_operator_band_is_paced_at_ingress
+PASS many_round_trips_never_stop_the_gateway...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="v2-node-tests" classname="v2-node-tests" time="33.1843" status="run">
+		<properties/>
+		<system-out>node tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-node-files-tests" classname="v2-node-files-tests" time="0.00988948" status="run">
+		<properties/>
+		<system-out>node file tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-node-health-tests" classname="v2-node-health-tests" time="6.73504" status="run">
+		<properties/>
+		<system-out>node health tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-node-process-tests" classname="v2-node-process-tests" time="63.9932" status="run">
+		<properties/>
+		<system-out>node process tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-secrets-presence-tests" classname="v2-secrets-presence-tests" time="0.552854" status="run">
+		<properties/>
+		<system-out>.........
+----------------------------------------------------------------------
+Ran 9 tests in 0.431s
+
+OK
+</system-out>
+	</testcase>
+	<testcase name="v2-observability-layout-tests" classname="v2-observability-layout-tests" time="0.255448" status="run">
+		<properties/>
+		<system-out>...................
+----------------------------------------------------------------------
+Ran 19 tests in 0.128s
+
+OK
+</system-out>
+	</testcase>
+	<testcase name="v2-secrets-tool-tests" classname="v2-secrets-tool-tests" time="0.23116" status="run">
+		<properties/>
+		<system-out>....velocita-secrets: refusing to write raw secret bytes to a terminal; pipe into velocita-v2-client --key-stdin
+..velocita-secrets: link-1-2 already exists; rotate it instead
+..velocita-secrets: link has no rotation to promote
+velocita-secrets: link has no previous secret to retire
+velocita-secrets: link.next already exists: a rotation is in progress
+velocita-secrets: link.next exists: promote before finishing
+velocita-secrets: link.previous still exists: finish the previous rotation first
+.
+----------------------------------------------------------------------
+Ran 9 tests in 0.047s
+
+OK
+velocita-secrets: init ok
+velocita-secrets: rotate-begin ok
+velocita-secrets: rotate-promote ok
+velocita-secrets: init ok
+velocita-secrets: rotate-begin ok
+velocita-secrets: push ok
+velocita-secrets: rotate-promote ok
+velocita-secrets: push ok
+velocita-secrets: rotate-finish ok
+velocita-secrets: push ok
+velocita-secrets: init ok
+velocita-secrets: init ok
+velocita-secrets: rotate-begin ok
+velocita-secrets: rotate-promote ok
+</system-out>
+	</testcase>
+	<testcase name="v2-storage-benchmark-smoke-tests" classname="v2-storage-benchmark-smoke-tests" time="1.07341" status="run">
+		<properties/>
+		<system-out>records=2000
+block_bytes=4096
+arena_blocks=64
+backpressure_waits=373637
+durable_index=2000
+owner_loop_synchronous_median_us=385.182
+owner_loop_synchronous_p99_us=897.83
+owner_loop_synchronous_max_us=21970
+owner_loop_offthread_median_us=0.16
+owner_loop_offthread_p99_us=879.872
+owner_loop_offthread_max_us=3130.64
+median_speedup=2407.39
+</system-out>
+	</testcase>
+	<testcase name="v2-node-metrics-text-tests" classname="v2-node-metrics-text-tests" time="0.0043859" status="run">
+		<properties/>
+		<system-out>node metrics text tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-two-voter-catchup-tests" classname="v2-two-voter-catchup-tests" time="0.223707" status="run">
+		<properties/>
+		<system-out>two-voter catch-up tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-archive-destination-tests" classname="v2-archive-destination-tests" time="0.111698" status="run">
+		<properties/>
+		<system-out>archive destination tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-archive-live-verification-tests" classname="v2-archive-live-verification-tests" time="0.125035" status="run">
+		<properties/>
+		<system-out>live archive verification tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-snapshot-install-ack-contract-tests" classname="v2-snapshot-install-ack-contract-tests" time="0.00389555" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="v2-snapshot-install-results-contract-tests" classname="v2-snapshot-install-results-contract-tests" time="0.0376618" status="run">
+		<properties/>
+		<system-out>cold result contract: S=2 C=4 retained=5 committed_suffix_notifications=0 retained_notifications=1
+snapshot install result contract prerequisite passed
+</system-out>
+	</testcase>
+	<testcase name="v2-executable-policy-kernel-tests" classname="v2-executable-policy-kernel-tests" time="0.00494942" status="run">
+		<properties/>
+		<system-out>all V2 executable-policy kernel tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-risk-order-outbox-tests" classname="v2-risk-order-outbox-tests" time="0.0354804" status="run">
+		<properties/>
+		<system-out>all V2 risk/order/outbox tests passed
+</system-out>
+	</testcase>
+</testsuite>

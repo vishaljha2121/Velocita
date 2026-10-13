@@ -1,0 +1,5 @@
+{
+  "memory.events": "low 0\nhigh 0\nmax 602\noom 1\noom_kill 1\noom_group_kill 0\n",
+  "memory.peak": "1073741824\n",
+  "memory.current": "58130432\n"
+}

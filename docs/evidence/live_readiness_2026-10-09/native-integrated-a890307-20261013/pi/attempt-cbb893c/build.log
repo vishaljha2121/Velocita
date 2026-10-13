@@ -1,0 +1,250 @@
+[1/1010] Generating CXX dyndep file CMakeFiles/velocita_v2_contracts.dir/CXX.dd
+[2/1001] Generating CXX dyndep file CMakeFiles/velocita_v2_evaluator.dir/CXX.dd
+[3/998] Generating CXX dyndep file CMakeFiles/velocita_core.dir/CXX.dd
+[4/990] Generating CXX dyndep file CMakeFiles/velocita_v2_kernel.dir/CXX.dd
+[5/977] Generating CXX dyndep file CMakeFiles/velocita_v2_replication.dir/CXX.dd
+[6/957] Generating CXX dyndep file CMakeFiles/velocita_aeron.dir/CXX.dd
+[7/954] Generating CXX dyndep file CMakeFiles/velocita_v2_node.dir/CXX.dd
+[8/940] Generating CXX dyndep file CMakeFiles/velocita_v2_signer.dir/CXX.dd
+[9/937] Generating CXX dyndep file CMakeFiles/velocita_v2_node_aeron.dir/CXX.dd
+[10/935] Generating CXX dyndep file CMakeFiles/velocita-v2-signer.dir/CXX.dd
+[11/933] Generating CXX dyndep file CMakeFiles/velocita-v2-node.dir/CXX.dd
+[12/931] Generating CXX dyndep file CMakeFiles/velocita-v2-client.dir/CXX.dd
+[13/929] Generating CXX dyndep file CMakeFiles/velocita-v2-status.dir/CXX.dd
+[14/927] Generating CXX dyndep file CMakeFiles/velocita_v2_venue_simulator.dir/CXX.dd
+[15/923] Generating CXX dyndep file CMakeFiles/velocita_v2_truemarkets_venue.dir/CXX.dd
+[16/919] Generating CXX dyndep file CMakeFiles/velocita_v2_swap_recovery.dir/CXX.dd
+[17/916] Generating CXX dyndep file CMakeFiles/velocita_v2_gateway_loop.dir/CXX.dd
+[18/914] Generating CXX dyndep file CMakeFiles/velocita_benchmark.dir/CXX.dd
+[19/912] Generating CXX dyndep file CMakeFiles/velocita_metrics.dir/CXX.dd
+[20/910] Generating CXX dyndep file CMakeFiles/velocita_v2_paper_venue.dir/CXX.dd
+[21/907] Generating CXX dyndep file CMakeFiles/velocita_v2_truemarkets_transport.dir/CXX.dd
+[22/905] Generating CXX dyndep file CMakeFiles/velocita_v2_swap_paper_gateway.dir/CXX.dd
+[23/902] Generating CXX dyndep file CMakeFiles/velocita_v2_swap_runtime.dir/CXX.dd
+[24/865] Scanning /source/tests/v2_swap_process_drill.cpp for CXX dependencies
+[25/865] Generating CXX dyndep file CMakeFiles/velocita-v2-gateway.dir/CXX.dd
+[26/863] Generating CXX dyndep file CMakeFiles/velocita-v2-shadow-submitter.dir/CXX.dd
+[27/861] Generating CXX dyndep file CMakeFiles/velocita-v2-exporter.dir/CXX.dd
+[28/859] Generating CXX dyndep file CMakeFiles/velocita-v2-shadow-catalog.dir/CXX.dd
+[29/857] Generating CXX dyndep file CMakeFiles/v2-storage-benchmark.dir/CXX.dd
+[30/855] Generating CXX dyndep file CMakeFiles/raft-node.dir/CXX.dd
+[31/853] Generating CXX dyndep file CMakeFiles/raft-metrics-exporter.dir/CXX.dd
+[32/851] Generating CXX dyndep file CMakeFiles/benchmark-metrics-exporter.dir/CXX.dd
+[33/849] Generating CXX dyndep file CMakeFiles/raft-client.dir/CXX.dd
+[34/847] Generating CXX dyndep file CMakeFiles/raft-bench.dir/CXX.dd
+[35/845] Generating CXX dyndep file CMakeFiles/raft-bench-merge.dir/CXX.dd
+[36/843] Generating CXX dyndep file CMakeFiles/raft-dump.dir/CXX.dd
+[37/841] Generating CXX dyndep file CMakeFiles/core-tests.dir/CXX.dd
+[38/839] Generating CXX dyndep file CMakeFiles/metrics-tests.dir/CXX.dd
+[39/837] Generating CXX dyndep file CMakeFiles/benchmark-tests.dir/CXX.dd
+[40/835] Generating CXX dyndep file CMakeFiles/v2-contract-tests.dir/CXX.dd
+[41/833] Generating CXX dyndep file CMakeFiles/v2-value-contract-tests.dir/CXX.dd
+[42/831] Generating CXX dyndep file CMakeFiles/v2-payload-codec-tests.dir/CXX.dd
+[43/829] Generating CXX dyndep file CMakeFiles/v2-kernel-policy-tests.dir/CXX.dd
+[44/827] Generating CXX dyndep file CMakeFiles/v2-pinned-receipts-tests.dir/CXX.dd
+[45/825] Generating CXX dyndep file CMakeFiles/v2-venue-wire-tests.dir/CXX.dd
+[46/823] Generating CXX dyndep file CMakeFiles/v2-venue-transport-tests.dir/CXX.dd
+[47/821] Generating CXX dyndep file CMakeFiles/v2-swap-integration-tests.dir/CXX.dd
+[48/819] Generating CXX dyndep file CMakeFiles/v2-kernel-control-tests.dir/CXX.dd
+[49/817] Generating CXX dyndep file CMakeFiles/v2-kernel-source-tests.dir/CXX.dd
+[50/815] Generating CXX dyndep file CMakeFiles/v2-state-snapshot-tests.dir/CXX.dd
+[51/813] Generating CXX dyndep file CMakeFiles/v2-kernel-codec-tests.dir/CXX.dd
+[52/811] Generating CXX dyndep file CMakeFiles/v2-replay-tests.dir/CXX.dd
+[53/809] Generating CXX dyndep file CMakeFiles/v2-model-replay-tests.dir/CXX.dd
+[54/807] Generating CXX dyndep file CMakeFiles/v2-venue-simulator-tests.dir/CXX.dd
+[55/805] Generating CXX dyndep file CMakeFiles/v2-spsc-ring-tests.dir/CXX.dd
+[56/803] Generating CXX dyndep file CMakeFiles/v2-wal-arena-tests.dir/CXX.dd
+[57/801] Generating CXX dyndep file CMakeFiles/v2-replication-tests.dir/CXX.dd
+[58/799] Generating CXX dyndep file CMakeFiles/v2-snapshot-membership-tests.dir/CXX.dd
+[59/797] Generating CXX dyndep file CMakeFiles/v2-durable-quorum-tests.dir/CXX.dd
+[60/795] Generating CXX dyndep file CMakeFiles/v2-gateway-tests.dir/CXX.dd
+[61/793] Generating CXX dyndep file CMakeFiles/v2-lifecycle-reachability-tests.dir/CXX.dd
+[62/791] Generating CXX dyndep file CMakeFiles/v2-gateway-delivery-tests.dir/CXX.dd
+[63/789] Generating CXX dyndep file CMakeFiles/v2-metrics-tests.dir/CXX.dd
+[64/787] Generating CXX dyndep file CMakeFiles/v2-phase4-property-tests.dir/CXX.dd
+[65/785] Generating CXX dyndep file CMakeFiles/v2-rule-evaluator-tests.dir/CXX.dd
+[66/783] Generating CXX dyndep file CMakeFiles/v2-layout-tests.dir/CXX.dd
+[67/781] Generating CXX dyndep file CMakeFiles/v2-decision-kernel-tests.dir/CXX.dd
+[68/779] Generating CXX dyndep file CMakeFiles/v2-action-template-contract-tests.dir/CXX.dd
+[69/777] Generating CXX dyndep file CMakeFiles/v2-action-resolver-tests.dir/CXX.dd
+[70/775] Generating CXX dyndep file CMakeFiles/v2-executable-policy-contract-tests.dir/CXX.dd
+[71/773] Generating CXX dyndep file CMakeFiles/v2-executable-policy-codec-tests.dir/CXX.dd
+[72/771] Generating CXX dyndep file CMakeFiles/v2-artifact-digest-tests.dir/CXX.dd
+[73/769] Generating CXX dyndep file CMakeFiles/v2-execution-catalog-tests.dir/CXX.dd
+[74/766] Generating CXX dyndep file CMakeFiles/v2-catalog-binding-tests.dir/CXX.dd
+[75/763] Generating CXX dyndep file CMakeFiles/v2-authority-barrier-tests.dir/CXX.dd
+[76/761] Generating CXX dyndep file CMakeFiles/v2-authority-storage-failure-tests.dir/CXX.dd
+[77/759] Generating CXX dyndep file CMakeFiles/v2-gateway-authority-tests.dir/CXX.dd
+[78/757] Generating CXX dyndep file CMakeFiles/v2-authority-composition-tests.dir/CXX.dd
+[79/755] Generating CXX dyndep file CMakeFiles/v2-snapshot-store-bounds-tests.dir/CXX.dd
+[80/753] Generating CXX dyndep file CMakeFiles/v2-metadata-persistence-model-tests.dir/CXX.dd
+[81/751] Generating CXX dyndep file CMakeFiles/v2-bound-metadata-persistence-model-tests.dir/CXX.dd
+[82/749] Generating CXX dyndep file CMakeFiles/v2-static-identity-tests.dir/CXX.dd
+[83/747] Generating CXX dyndep file CMakeFiles/v2-identity-startup-tests.dir/CXX.dd
+[84/745] Generating CXX dyndep file CMakeFiles/v2-kernel-startup-tests.dir/CXX.dd
+[85/743] Generating CXX dyndep file CMakeFiles/v2-bound-frame-tests.dir/CXX.dd
+[86/741] Generating CXX dyndep file CMakeFiles/v2-bound-peer-tests.dir/CXX.dd
+[87/739] Generating CXX dyndep file CMakeFiles/v2-bound-metadata-tests.dir/CXX.dd
+[88/737] Generating CXX dyndep file CMakeFiles/v2-history-binding-tests.dir/CXX.dd
+[89/735] Generating CXX dyndep file CMakeFiles/v2-result-ledger-tests.dir/CXX.dd
+[90/733] Generating CXX dyndep file CMakeFiles/v2-result-admission-tests.dir/CXX.dd
+[91/731] Generating CXX dyndep file CMakeFiles/v2-result-admission-edge-tests.dir/CXX.dd
+[92/729] Generating CXX dyndep file CMakeFiles/v2-outbound-mailbox-tests.dir/CXX.dd
+[93/727] Generating CXX dyndep file CMakeFiles/v2-outbound-saturation-tests.dir/CXX.dd
+[94/725] Generating CXX dyndep file CMakeFiles/v2-retained-log-tests.dir/CXX.dd
+[95/723] Generating CXX dyndep file CMakeFiles/v2-wal-streaming-tests.dir/CXX.dd
+[96/721] Generating CXX dyndep file CMakeFiles/v2-incremental-digest-tests.dir/CXX.dd
+[97/719] Generating CXX dyndep file CMakeFiles/v2-archive-segment-tests.dir/CXX.dd
+[98/717] Generating CXX dyndep file CMakeFiles/v2-archive-catalog-tests.dir/CXX.dd
+[99/715] Generating CXX dyndep file CMakeFiles/v2-archive-store-tests.dir/CXX.dd
+[100/713] Generating CXX dyndep file CMakeFiles/v2-archive-scrub-tests.dir/CXX.dd
+[101/711] Generating CXX dyndep file CMakeFiles/v2-wal-maintenance-tests.dir/CXX.dd
+[102/709] Generating CXX dyndep file CMakeFiles/v2-archive-compaction-tests.dir/CXX.dd
+[103/707] Generating CXX dyndep file CMakeFiles/v2-compaction-fence-tests.dir/CXX.dd
+[104/705] Generating CXX dyndep file CMakeFiles/v2-archive-startup-tests.dir/CXX.dd
+[105/703] Generating CXX dyndep file CMakeFiles/v2-archive-persistence-model-tests.dir/CXX.dd
+[106/701] Generating CXX dyndep file CMakeFiles/v2-archive-publication-fault-tests.dir/CXX.dd
+[107/699] Generating CXX dyndep file CMakeFiles/v2-compaction-io-fault-tests.dir/CXX.dd
+[108/698] Generating CXX dyndep file CMakeFiles/v2-compaction-fault-io.dir/CXX.dd
+[109/695] Generating CXX dyndep file CMakeFiles/v2-compaction-model-archive.dir/CXX.dd
+[110/694] Generating CXX dyndep file CMakeFiles/v2-compaction-model-io.dir/CXX.dd
+[111/692] Generating CXX dyndep file CMakeFiles/v2-compaction-persistence-model-tests.dir/CXX.dd
+[112/690] Generating CXX dyndep file CMakeFiles/v2-async-persistence-tests.dir/CXX.dd
+[113/688] Generating CXX dyndep file CMakeFiles/v2-async-suffix-tests.dir/CXX.dd
+[114/686] Generating CXX dyndep file CMakeFiles/v2-raft-persistence-tests.dir/CXX.dd
+[115/684] Generating CXX dyndep file CMakeFiles/v2-persistence-completion-tests.dir/CXX.dd
+[116/682] Generating CXX dyndep file CMakeFiles/v2-async-model-io.dir/CXX.dd
+[117/680] Generating CXX dyndep file CMakeFiles/v2-async-persistence-model-tests.dir/CXX.dd
+[118/678] Generating CXX dyndep file CMakeFiles/v2-archive-segment-adversarial-tests.dir/CXX.dd
+[119/676] Generating CXX dyndep file CMakeFiles/v2-archive-file-tests.dir/CXX.dd
+[120/674] Generating CXX dyndep file CMakeFiles/v2-archive-file-io-tests.dir/CXX.dd
+[121/672] Generating CXX dyndep file CMakeFiles/v2-local-generation-tests.dir/CXX.dd
+[122/670] Generating CXX dyndep file CMakeFiles/v2-local-generation-adversarial-tests.dir/CXX.dd
+[123/668] Generating CXX dyndep file CMakeFiles/v2-generation-startup-guard-tests.dir/CXX.dd
+[124/666] Generating CXX dyndep file CMakeFiles/v2-generation-base-tests.dir/CXX.dd
+[125/664] Generating CXX dyndep file CMakeFiles/v2-generation-base-files-tests.dir/CXX.dd
+[126/662] Generating CXX dyndep file CMakeFiles/v2-generation-startup-tests.dir/CXX.dd
+[127/660] Generating CXX dyndep file CMakeFiles/v2-generation-publication-model-tests.dir/CXX.dd
+[128/658] Generating CXX dyndep file CMakeFiles/v2-result-obligation-tests.dir/CXX.dd
+[129/656] Generating CXX dyndep file CMakeFiles/v2-snapshot-install-preflight-tests.dir/CXX.dd
+[130/654] Generating CXX dyndep file CMakeFiles/v2-install-history-bridge-contract-tests.dir/CXX.dd
+[131/652] Generating CXX dyndep file CMakeFiles/v2-wal-target-switch-tests.dir/CXX.dd
+[132/650] Generating CXX dyndep file CMakeFiles/v2-wal-target-switch-adversarial-tests.dir/CXX.dd
+[133/648] Generating CXX dyndep file CMakeFiles/v2-history-recovery-tests.dir/CXX.dd
+[134/646] Generating CXX dyndep file CMakeFiles/v2-auth-envelope-tests.dir/CXX.dd
+[135/644] Generating CXX dyndep file CMakeFiles/v2-session-fence-tests.dir/CXX.dd
+[136/642] Generating CXX dyndep file CMakeFiles/v2-session-epoch-persistence-model-tests.dir/CXX.dd
+[137/640] Generating CXX dyndep file CMakeFiles/v2-node-config-tests.dir/CXX.dd
+[138/638] Generating CXX dyndep file CMakeFiles/v2-deploy-template-tests.dir/CXX.dd
+[139/636] Generating CXX dyndep file CMakeFiles/v2-node-protocol-tests.dir/CXX.dd
+[140/634] Generating CXX dyndep file CMakeFiles/v2-election-jitter-tests.dir/CXX.dd
+[141/632] Generating CXX dyndep file CMakeFiles/v2-shadow-submitter-tests.dir/CXX.dd
+[142/630] Generating CXX dyndep file CMakeFiles/v2-shadow-program-tests.dir/CXX.dd
+[143/628] Generating CXX dyndep file CMakeFiles/v2-follower-ack-tests.dir/CXX.dd
+[144/626] Generating CXX dyndep file CMakeFiles/v2-shadow-catalog-tests.dir/CXX.dd
+[145/624] Generating CXX dyndep file CMakeFiles/v2-node-client-tests.dir/CXX.dd
+[146/622] Generating CXX dyndep file CMakeFiles/v2-paper-venue-tests.dir/CXX.dd
+[147/620] Generating CXX dyndep file CMakeFiles/v2-paper-venue-state-tests.dir/CXX.dd
+[148/618] Generating CXX dyndep file CMakeFiles/v2-gateway-reconciliation-tests.dir/CXX.dd
+[149/616] Generating CXX dyndep file CMakeFiles/v2-truemarkets-rest-tests.dir/CXX.dd
+[150/614] Generating CXX dyndep file CMakeFiles/v2-truemarkets-wire-tests.dir/CXX.dd
+[151/612] Generating CXX dyndep file CMakeFiles/v2-solana-payload-view-tests.dir/CXX.dd
+[152/609] Generating CXX dyndep file CMakeFiles/v2-truemarkets-venue-tests.dir/CXX.dd
+[153/607] Generating CXX dyndep file CMakeFiles/v2-signer-tests.dir/CXX.dd
+[154/605] Generating CXX dyndep file CMakeFiles/v2-truemarkets-transport-tests.dir/CXX.dd
+[155/603] Generating CXX dyndep file CMakeFiles/v2-solana-resolved-accounts-tests.dir/CXX.dd
+[156/597] Generating CXX dyndep file CMakeFiles/v2-solana-instruction-decode-tests.dir/CXX.dd
+[157/594] Generating CXX dyndep file CMakeFiles/v2-solana-inspection-pipeline-tests.dir/CXX.dd
+[158/587] Generating CXX dyndep file CMakeFiles/v2-spot-balance-tests.dir/CXX.dd
+[159/584] Generating CXX dyndep file CMakeFiles/v2-swap-balance-tests.dir/CXX.dd
+[160/579] Generating CXX dyndep file CMakeFiles/v2-swap-paper-tests.dir/CXX.dd
+[161/572] Generating CXX dyndep file CMakeFiles/v2-swap-paper-drill.dir/CXX.dd
+[162/565] Generating CXX dyndep file CMakeFiles/v2-https-read-probe.dir/CXX.dd
+[163/562] Generating CXX dyndep file CMakeFiles/v2-swap-reconcile-tests.dir/CXX.dd
+[164/553] Generating CXX dyndep file CMakeFiles/v2-swap-https-probe.dir/CXX.dd
+[165/550] Generating CXX dyndep file CMakeFiles/v2-jupiter-route-decode-tests.dir/CXX.dd
+[166/547] Generating CXX dyndep file CMakeFiles/v2-swap-owner-accounting-tests.dir/CXX.dd
+[167/544] Generating CXX dyndep file CMakeFiles/v2-swap-reconcile-session-tests.dir/CXX.dd
+[168/536] Generating CXX dyndep file CMakeFiles/v2-swap-gateway-tls-drill.dir/CXX.dd
+[169/528] Generating CXX dyndep file CMakeFiles/v2-swap-reconcile-store-tests.dir/CXX.dd
+[170/520] Generating CXX dyndep file CMakeFiles/v2-swap-transaction-inspection-tests.dir/CXX.dd
+[171/511] Generating CXX dyndep file CMakeFiles/v2-swap-submission-store-tests.dir/CXX.dd
+[172/507] Generating CXX dyndep file CMakeFiles/v2-swap-authority-tests.dir/CXX.dd
+[173/505] Generating CXX dyndep file CMakeFiles/v2-swap-authority-storage-tests.dir/CXX.dd
+[174/503] Generating CXX dyndep file CMakeFiles/v2-swap-submission-resolution-tests.dir/CXX.dd
+[175/499] Generating CXX dyndep file CMakeFiles/v2-swap-submission-session-tests.dir/CXX.dd
+[176/495] Generating CXX dyndep file CMakeFiles/v2-swap-submission-gateway-drill.dir/CXX.dd
+[177/482] Generating CXX dyndep file CMakeFiles/v2-swap-signing-stamp-tests.dir/CXX.dd
+[178/479] Generating CXX dyndep file CMakeFiles/v2-swap-rest-codec-tests.dir/CXX.dd
+[179/473] Generating CXX dyndep file CMakeFiles/v2-swap-prepare-store-tests.dir/CXX.dd
+[180/466] Generating CXX dyndep file CMakeFiles/v2-swap-prepare-session-tests.dir/CXX.dd
+[181/459] Generating CXX dyndep file CMakeFiles/v2-swap-signer-session-tests.dir/CXX.dd
+[182/454] Generating CXX dyndep file CMakeFiles/v2-swap-signer-production-gate.dir/CXX.dd
+[183/449] Generating CXX dyndep file CMakeFiles/v2-swap-signer-protocol-tests.dir/CXX.dd
+[184/445] Generating CXX dyndep file CMakeFiles/v2-swap-signer-service-tests.dir/CXX.dd
+[185/438] Generating CXX dyndep file CMakeFiles/v2-swap-order-status-tests.dir/CXX.dd
+[186/428] Generating CXX dyndep file CMakeFiles/v2-swap-order-https-probe.dir/CXX.dd
+[187/416] Generating CXX dyndep file CMakeFiles/v2-swap-settlement-evidence-tests.dir/CXX.dd
+[188/408] Generating CXX dyndep file CMakeFiles/v2-swap-prepare-https-tests.dir/CXX.dd
+[189/399] Generating CXX dyndep file CMakeFiles/v2-swap-signing-connection-tests.dir/CXX.dd
+[190/388] Generating CXX dyndep file CMakeFiles/v2-swap-settlement-connection-tests.dir/CXX.dd
+[191/375] Generating CXX dyndep file CMakeFiles/v2-swap-runtime-config-tests.dir/CXX.dd
+[192/367] Generating CXX dyndep file CMakeFiles/v2-swap-gateway-runtime-tests.dir/CXX.dd
+[193/352] Generating CXX dyndep file CMakeFiles/v2-swap-process-drill.dir/CXX.dd
+[194/339] Generating CXX dyndep file CMakeFiles/v2-swap-runtime-production-tests.dir/CXX.dd
+[195/337] Generating CXX dyndep file CMakeFiles/v2-swap-settlement-lifecycle-tests.dir/CXX.dd
+[196/335] Generating CXX dyndep file CMakeFiles/v2-swap-settlement-admission-tests.dir/CXX.dd
+[197/297] Generating CXX dyndep file CMakeFiles/v2-swap-runtime-https-probe.dir/CXX.dd
+[198/259] Generating CXX dyndep file CMakeFiles/v2-swap-account-setup-tests.dir/CXX.dd
+[199/257] Generating CXX dyndep file CMakeFiles/v2-swap-failed-settlement-tests.dir/CXX.dd
+[200/255] Generating CXX dyndep file CMakeFiles/v2-operational-recovery-tests.dir/CXX.dd
+[201/253] Generating CXX dyndep file CMakeFiles/v2-gateway-protocol-tests.dir/CXX.dd
+[202/251] Generating CXX dyndep file CMakeFiles/v2-gateway-node-tests.dir/CXX.dd
+[203/249] Generating CXX dyndep file CMakeFiles/v2-node-tests.dir/CXX.dd
+[204/247] Generating CXX dyndep file CMakeFiles/v2-node-files-tests.dir/CXX.dd
+[205/245] Generating CXX dyndep file CMakeFiles/v2-node-health-tests.dir/CXX.dd
+[206/243] Generating CXX dyndep file CMakeFiles/v2-node-process-tests.dir/CXX.dd
+[207/241] Generating CXX dyndep file CMakeFiles/v2-node-metrics-text-tests.dir/CXX.dd
+[208/239] Generating CXX dyndep file CMakeFiles/v2-two-voter-catchup-tests.dir/CXX.dd
+[209/237] Generating CXX dyndep file CMakeFiles/v2-archive-destination-tests.dir/CXX.dd
+[210/235] Generating CXX dyndep file CMakeFiles/v2-archive-live-verification-tests.dir/CXX.dd
+[211/233] Generating CXX dyndep file CMakeFiles/v2-snapshot-install-ack-contract-tests.dir/CXX.dd
+[212/231] Generating CXX dyndep file CMakeFiles/v2-snapshot-install-results-contract-tests.dir/CXX.dd
+[213/229] Generating CXX dyndep file CMakeFiles/v2-executable-policy-kernel-tests.dir/CXX.dd
+[214/227] Generating CXX dyndep file CMakeFiles/v2-risk-order-outbox-tests.dir/CXX.dd
+[215/225] Generating CXX dyndep file CMakeFiles/v2-layout-report.dir/CXX.dd
+[216/223] Generating CXX dyndep file CMakeFiles/v2-contract-benchmark.dir/CXX.dd
+[217/221] Generating CXX dyndep file CMakeFiles/v2-phase3-benchmark.dir/CXX.dd
+[218/219] Building CXX object CMakeFiles/v2-swap-process-drill.dir/tests/v2_swap_process_drill.cpp.o
+In file included from /source/tests/v2_swap_process_drill.cpp:5:
+/source/tests/v2_gateway_node_tests.cpp: In constructor ‘{anonymous}::Gateway::Gateway({anonymous}::Cluster&, velocita::v2::sim::FaultPolicy, velocita::v2::GatewayLoopConfig, velocita::v2::GatewayLinkTiming, const {anonymous}::VenueChoice&)’:
+/source/tests/v2_gateway_node_tests.cpp:688:11: warning: missing initializer for member ‘{anonymous}::CountingVenue::injected’ [-Wmissing-field-initializers]
+  688 |           counting{pick(choice), {}},
+      |           ^~~~~~~~~~~~~~~~~~~~~~~~~~
+/source/tests/v2_swap_process_drill.cpp: In member function ‘std::optional<std::pair<int, std::vector<std::byte> > > {anonymous}::Wire::receive()’:
+/source/tests/v2_swap_process_drill.cpp:45:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   45 |         if(incoming.size()<8)return {};std::uint32_t size;std::int32_t node;
+      |         ^~
+/source/tests/v2_swap_process_drill.cpp:45:40: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   45 |         if(incoming.size()<8)return {};std::uint32_t size;std::int32_t node;
+      |                                        ^~~
+/source/tests/v2_swap_process_drill.cpp:47:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   47 |         if(incoming.size()<8+size)return {};Bytes body(incoming.begin()+8,incoming.begin()+8+size);incoming.erase(incoming.begin(),incoming.begin()+8+size);return std::pair{node,std::move(body)};
+      |         ^~
+/source/tests/v2_swap_process_drill.cpp:47:45: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   47 |         if(incoming.size()<8+size)return {};Bytes body(incoming.begin()+8,incoming.begin()+8+size);incoming.erase(incoming.begin(),incoming.begin()+8+size);return std::pair{node,std::move(body)};
+      |                                             ^~~~~
+/source/tests/v2_swap_process_drill.cpp: In member function ‘virtual void {anonymous}::Ports::execute(const velocita::v2::SwapSubmissionIdentity&, std::span<const std::byte>)’:
+/source/tests/v2_swap_process_drill.cpp:69:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   69 |         if(stage=="before-send")die();journal_line(root,"execute");
+      |         ^~
+/source/tests/v2_swap_process_drill.cpp:69:39: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   69 |         if(stage=="before-send")die();journal_line(root,"execute");
+      |                                       ^~~~~~~~~~~~
+/source/tests/v2_swap_process_drill.cpp:70:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   70 |         if(stage=="accepted")die();throw std::runtime_error("fixture accepted response lost");
+      |         ^~
+/source/tests/v2_swap_process_drill.cpp:70:36: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   70 |         if(stage=="accepted")die();throw std::runtime_error("fixture accepted response lost");
+      |                                    ^~~~~
+[219/219] Linking CXX executable v2-swap-process-drill

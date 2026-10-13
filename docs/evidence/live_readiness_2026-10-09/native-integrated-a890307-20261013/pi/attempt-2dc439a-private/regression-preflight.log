@@ -1,0 +1,39 @@
+Test project /work/build
+      Start  72: v2-compaction-persistence-model-tests
+ 1/12 Test  #72: v2-compaction-persistence-model-tests ...   Passed    6.32 sec
+      Start  85: v2-generation-base-tests
+ 2/12 Test  #85: v2-generation-base-tests ................   Passed    0.00 sec
+      Start 125: v2-sol-limit-probe-offline
+ 3/12 Test #125: v2-sol-limit-probe-offline ..............   Passed    0.69 sec
+      Start 126: v2-https-read-local-fixtures
+ 4/12 Test #126: v2-https-read-local-fixtures ............   Passed    1.31 sec
+      Start 128: v2-jupiter-idl-reader-offline
+ 5/12 Test #128: v2-jupiter-idl-reader-offline ...........   Passed    0.13 sec
+      Start 132: v2-owner-settlement-reader-offline
+ 6/12 Test #132: v2-owner-settlement-reader-offline ......   Passed    0.18 sec
+      Start 152: v2-swap-signer-service-tests
+ 7/12 Test #152: v2-swap-signer-service-tests ............   Passed    0.54 sec
+      Start 159: v2-swap-runtime-config-tests
+ 8/12 Test #159: v2-swap-runtime-config-tests ............   Passed    0.05 sec
+      Start 161: v2-swap-process-drill
+ 9/12 Test #161: v2-swap-process-drill ...................***Failed   23.84 sec
+FAIL finalized restart resolves exactly once status=4 cause=5
+FAIL case 0: actual gateway SIGKILL observed
+FAIL finalized restart resolves exactly once status=4 cause=5
+PASS F06/F08 mode 1: one send; cash=4000000 base=9000000 fees=2000 purchases=1000000 hold=0 settlements=1
+FAIL case 2: actual gateway SIGKILL observed
+FAIL finalized restart resolves exactly once status=4 cause=5
+FAIL case 3: actual gateway SIGKILL observed
+FAIL finalized restart resolves exactly once status=4 cause=5
+PASS F03 durable signing request crash: zero signatures, zero sends, hold retained
+FAIL case 5: bridge read
+FAIL finalized restart resolves exactly once status=4 cause=5
+FAIL case 6: actual gateway SIGKILL observed
+FAIL case 7: actual signer SIGKILL after signature before result fsync
+Evidence: "/work/home-2dc439a-private/.cache/velocita-build/process-drill-20261013/run-906"
+
+      Start 162: v2-swap-runtime-production-tests
+10/12 Test #162: v2-swap-runtime-production-tests ........   Passed    0.03 sec
+      Start 165: v2-swap-runtime-https-fixtures
+11/12 Test #165: v2-swap-runtime-https-fixtures ..........   Passed    1.71 sec
+      Start 189: v2-node-process-tests

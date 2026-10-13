@@ -1,0 +1,848 @@
+[1/1080] Generating CXX dyndep file CMakeFiles/velocita_v2_contracts.dir/CXX.dd
+[2/1071] Generating CXX dyndep file CMakeFiles/velocita_v2_evaluator.dir/CXX.dd
+[3/1068] Generating CXX dyndep file CMakeFiles/velocita_core.dir/CXX.dd
+[4/1060] Generating CXX dyndep file CMakeFiles/velocita_v2_kernel.dir/CXX.dd
+[5/1047] Generating CXX dyndep file CMakeFiles/velocita_v2_replication.dir/CXX.dd
+[6/1027] Generating CXX dyndep file CMakeFiles/velocita_aeron.dir/CXX.dd
+[7/1024] Generating CXX dyndep file CMakeFiles/velocita_v2_node.dir/CXX.dd
+[8/1010] Generating CXX dyndep file CMakeFiles/velocita_v2_signer.dir/CXX.dd
+[9/1007] Generating CXX dyndep file CMakeFiles/velocita_v2_node_aeron.dir/CXX.dd
+[10/1005] Generating CXX dyndep file CMakeFiles/velocita-v2-signer.dir/CXX.dd
+[11/1003] Generating CXX dyndep file CMakeFiles/velocita-v2-node.dir/CXX.dd
+[12/1001] Generating CXX dyndep file CMakeFiles/velocita-v2-client.dir/CXX.dd
+[13/999] Generating CXX dyndep file CMakeFiles/velocita-v2-status.dir/CXX.dd
+[14/997] Generating CXX dyndep file CMakeFiles/velocita_v2_venue_simulator.dir/CXX.dd
+[15/993] Generating CXX dyndep file CMakeFiles/velocita_v2_truemarkets_venue.dir/CXX.dd
+[16/989] Generating CXX dyndep file CMakeFiles/velocita_v2_swap_recovery.dir/CXX.dd
+[17/986] Generating CXX dyndep file CMakeFiles/velocita_v2_gateway_loop.dir/CXX.dd
+[18/984] Generating CXX dyndep file CMakeFiles/velocita_benchmark.dir/CXX.dd
+[19/982] Generating CXX dyndep file CMakeFiles/velocita_metrics.dir/CXX.dd
+[20/980] Generating CXX dyndep file CMakeFiles/velocita_v2_paper_venue.dir/CXX.dd
+[21/977] Generating CXX dyndep file CMakeFiles/velocita_v2_truemarkets_transport.dir/CXX.dd
+[22/975] Generating CXX dyndep file CMakeFiles/velocita_v2_swap_paper_gateway.dir/CXX.dd
+[23/972] Generating CXX dyndep file CMakeFiles/velocita_v2_swap_runtime.dir/CXX.dd
+[24/935] Scanning /source/tests/v2_swap_process_drill.cpp for CXX dependencies
+[25/935] Scanning /source/tests/v2_swap_runtime_production_tests.cpp for CXX dependencies
+[26/935] Generating CXX dyndep file CMakeFiles/velocita-v2-gateway.dir/CXX.dd
+[27/934] Generating CXX dyndep file CMakeFiles/velocita-v2-shadow-submitter.dir/CXX.dd
+[28/933] Generating CXX dyndep file CMakeFiles/velocita-v2-exporter.dir/CXX.dd
+[29/932] Generating CXX dyndep file CMakeFiles/velocita-v2-shadow-catalog.dir/CXX.dd
+[30/931] Generating CXX dyndep file CMakeFiles/v2-storage-benchmark.dir/CXX.dd
+[31/930] Generating CXX dyndep file CMakeFiles/raft-node.dir/CXX.dd
+[32/929] Generating CXX dyndep file CMakeFiles/raft-metrics-exporter.dir/CXX.dd
+[33/928] Generating CXX dyndep file CMakeFiles/benchmark-metrics-exporter.dir/CXX.dd
+[34/927] Generating CXX dyndep file CMakeFiles/raft-client.dir/CXX.dd
+[35/926] Generating CXX dyndep file CMakeFiles/raft-bench.dir/CXX.dd
+[36/925] Generating CXX dyndep file CMakeFiles/raft-bench-merge.dir/CXX.dd
+[37/924] Generating CXX dyndep file CMakeFiles/raft-dump.dir/CXX.dd
+[38/923] Generating CXX dyndep file CMakeFiles/core-tests.dir/CXX.dd
+[39/922] Generating CXX dyndep file CMakeFiles/metrics-tests.dir/CXX.dd
+[40/921] Generating CXX dyndep file CMakeFiles/benchmark-tests.dir/CXX.dd
+[41/920] Generating CXX dyndep file CMakeFiles/v2-contract-tests.dir/CXX.dd
+[42/919] Generating CXX dyndep file CMakeFiles/v2-value-contract-tests.dir/CXX.dd
+[43/918] Generating CXX dyndep file CMakeFiles/v2-payload-codec-tests.dir/CXX.dd
+[44/917] Generating CXX dyndep file CMakeFiles/v2-kernel-policy-tests.dir/CXX.dd
+[45/916] Generating CXX dyndep file CMakeFiles/v2-pinned-receipts-tests.dir/CXX.dd
+[46/915] Generating CXX dyndep file CMakeFiles/v2-venue-wire-tests.dir/CXX.dd
+[47/914] Generating CXX dyndep file CMakeFiles/v2-venue-transport-tests.dir/CXX.dd
+[48/913] Generating CXX dyndep file CMakeFiles/v2-swap-integration-tests.dir/CXX.dd
+[49/912] Generating CXX dyndep file CMakeFiles/v2-kernel-control-tests.dir/CXX.dd
+[50/911] Generating CXX dyndep file CMakeFiles/v2-kernel-source-tests.dir/CXX.dd
+[51/910] Generating CXX dyndep file CMakeFiles/v2-state-snapshot-tests.dir/CXX.dd
+[52/909] Generating CXX dyndep file CMakeFiles/v2-kernel-codec-tests.dir/CXX.dd
+[53/908] Generating CXX dyndep file CMakeFiles/v2-replay-tests.dir/CXX.dd
+[54/907] Generating CXX dyndep file CMakeFiles/v2-model-replay-tests.dir/CXX.dd
+[55/906] Generating CXX dyndep file CMakeFiles/v2-venue-simulator-tests.dir/CXX.dd
+[56/905] Generating CXX dyndep file CMakeFiles/v2-spsc-ring-tests.dir/CXX.dd
+[57/904] Generating CXX dyndep file CMakeFiles/v2-wal-arena-tests.dir/CXX.dd
+[58/903] Generating CXX dyndep file CMakeFiles/v2-replication-tests.dir/CXX.dd
+[59/902] Generating CXX dyndep file CMakeFiles/v2-snapshot-membership-tests.dir/CXX.dd
+[60/901] Generating CXX dyndep file CMakeFiles/v2-durable-quorum-tests.dir/CXX.dd
+[61/900] Generating CXX dyndep file CMakeFiles/v2-gateway-tests.dir/CXX.dd
+[62/899] Generating CXX dyndep file CMakeFiles/v2-lifecycle-reachability-tests.dir/CXX.dd
+[63/898] Generating CXX dyndep file CMakeFiles/v2-gateway-delivery-tests.dir/CXX.dd
+[64/897] Generating CXX dyndep file CMakeFiles/v2-metrics-tests.dir/CXX.dd
+[65/896] Generating CXX dyndep file CMakeFiles/v2-phase4-property-tests.dir/CXX.dd
+[66/895] Generating CXX dyndep file CMakeFiles/v2-rule-evaluator-tests.dir/CXX.dd
+[67/894] Generating CXX dyndep file CMakeFiles/v2-layout-tests.dir/CXX.dd
+[68/893] Generating CXX dyndep file CMakeFiles/v2-decision-kernel-tests.dir/CXX.dd
+[69/892] Generating CXX dyndep file CMakeFiles/v2-action-template-contract-tests.dir/CXX.dd
+[70/891] Generating CXX dyndep file CMakeFiles/v2-action-resolver-tests.dir/CXX.dd
+[71/890] Generating CXX dyndep file CMakeFiles/v2-executable-policy-contract-tests.dir/CXX.dd
+[72/889] Generating CXX dyndep file CMakeFiles/v2-executable-policy-codec-tests.dir/CXX.dd
+[73/888] Generating CXX dyndep file CMakeFiles/v2-artifact-digest-tests.dir/CXX.dd
+[74/887] Generating CXX dyndep file CMakeFiles/v2-execution-catalog-tests.dir/CXX.dd
+[75/885] Generating CXX dyndep file CMakeFiles/v2-catalog-binding-tests.dir/CXX.dd
+[76/883] Generating CXX dyndep file CMakeFiles/v2-authority-barrier-tests.dir/CXX.dd
+[77/882] Generating CXX dyndep file CMakeFiles/v2-authority-storage-failure-tests.dir/CXX.dd
+[78/881] Generating CXX dyndep file CMakeFiles/v2-gateway-authority-tests.dir/CXX.dd
+[79/880] Generating CXX dyndep file CMakeFiles/v2-authority-composition-tests.dir/CXX.dd
+[80/879] Generating CXX dyndep file CMakeFiles/v2-snapshot-store-bounds-tests.dir/CXX.dd
+[81/878] Generating CXX dyndep file CMakeFiles/v2-metadata-persistence-model-tests.dir/CXX.dd
+[82/877] Generating CXX dyndep file CMakeFiles/v2-bound-metadata-persistence-model-tests.dir/CXX.dd
+[83/876] Generating CXX dyndep file CMakeFiles/v2-static-identity-tests.dir/CXX.dd
+[84/875] Generating CXX dyndep file CMakeFiles/v2-identity-startup-tests.dir/CXX.dd
+[85/874] Generating CXX dyndep file CMakeFiles/v2-kernel-startup-tests.dir/CXX.dd
+[86/873] Generating CXX dyndep file CMakeFiles/v2-bound-frame-tests.dir/CXX.dd
+[87/872] Generating CXX dyndep file CMakeFiles/v2-bound-peer-tests.dir/CXX.dd
+[88/871] Generating CXX dyndep file CMakeFiles/v2-bound-metadata-tests.dir/CXX.dd
+[89/870] Generating CXX dyndep file CMakeFiles/v2-history-binding-tests.dir/CXX.dd
+[90/869] Generating CXX dyndep file CMakeFiles/v2-result-ledger-tests.dir/CXX.dd
+[91/868] Generating CXX dyndep file CMakeFiles/v2-result-admission-tests.dir/CXX.dd
+[92/867] Generating CXX dyndep file CMakeFiles/v2-result-admission-edge-tests.dir/CXX.dd
+[93/866] Generating CXX dyndep file CMakeFiles/v2-outbound-mailbox-tests.dir/CXX.dd
+[94/865] Generating CXX dyndep file CMakeFiles/v2-outbound-saturation-tests.dir/CXX.dd
+[95/864] Generating CXX dyndep file CMakeFiles/v2-retained-log-tests.dir/CXX.dd
+[96/863] Generating CXX dyndep file CMakeFiles/v2-wal-streaming-tests.dir/CXX.dd
+[97/862] Generating CXX dyndep file CMakeFiles/v2-incremental-digest-tests.dir/CXX.dd
+[98/861] Generating CXX dyndep file CMakeFiles/v2-archive-segment-tests.dir/CXX.dd
+[99/860] Generating CXX dyndep file CMakeFiles/v2-archive-catalog-tests.dir/CXX.dd
+[100/859] Generating CXX dyndep file CMakeFiles/v2-archive-store-tests.dir/CXX.dd
+[101/858] Generating CXX dyndep file CMakeFiles/v2-archive-scrub-tests.dir/CXX.dd
+[102/857] Generating CXX dyndep file CMakeFiles/v2-wal-maintenance-tests.dir/CXX.dd
+[103/856] Generating CXX dyndep file CMakeFiles/v2-archive-compaction-tests.dir/CXX.dd
+[104/855] Generating CXX dyndep file CMakeFiles/v2-compaction-fence-tests.dir/CXX.dd
+[105/854] Generating CXX dyndep file CMakeFiles/v2-archive-startup-tests.dir/CXX.dd
+[106/853] Generating CXX dyndep file CMakeFiles/v2-archive-persistence-model-tests.dir/CXX.dd
+[107/852] Generating CXX dyndep file CMakeFiles/v2-archive-publication-fault-tests.dir/CXX.dd
+[108/851] Generating CXX dyndep file CMakeFiles/v2-compaction-io-fault-tests.dir/CXX.dd
+[109/850] Generating CXX dyndep file CMakeFiles/v2-compaction-fault-io.dir/CXX.dd
+[110/848] Generating CXX dyndep file CMakeFiles/v2-compaction-model-archive.dir/CXX.dd
+[111/847] Generating CXX dyndep file CMakeFiles/v2-compaction-model-io.dir/CXX.dd
+[112/845] Generating CXX dyndep file CMakeFiles/v2-compaction-persistence-model-tests.dir/CXX.dd
+[113/844] Generating CXX dyndep file CMakeFiles/v2-async-persistence-tests.dir/CXX.dd
+[114/843] Generating CXX dyndep file CMakeFiles/v2-async-suffix-tests.dir/CXX.dd
+[115/842] Generating CXX dyndep file CMakeFiles/v2-raft-persistence-tests.dir/CXX.dd
+[116/841] Generating CXX dyndep file CMakeFiles/v2-persistence-completion-tests.dir/CXX.dd
+[117/840] Generating CXX dyndep file CMakeFiles/v2-async-model-io.dir/CXX.dd
+[118/838] Generating CXX dyndep file CMakeFiles/v2-async-persistence-model-tests.dir/CXX.dd
+[119/837] Generating CXX dyndep file CMakeFiles/v2-archive-segment-adversarial-tests.dir/CXX.dd
+[120/836] Generating CXX dyndep file CMakeFiles/v2-archive-file-tests.dir/CXX.dd
+[121/835] Generating CXX dyndep file CMakeFiles/v2-archive-file-io-tests.dir/CXX.dd
+[122/834] Generating CXX dyndep file CMakeFiles/v2-local-generation-tests.dir/CXX.dd
+[123/833] Generating CXX dyndep file CMakeFiles/v2-local-generation-adversarial-tests.dir/CXX.dd
+[124/832] Generating CXX dyndep file CMakeFiles/v2-generation-startup-guard-tests.dir/CXX.dd
+[125/831] Generating CXX dyndep file CMakeFiles/v2-generation-base-tests.dir/CXX.dd
+[126/830] Generating CXX dyndep file CMakeFiles/v2-generation-base-files-tests.dir/CXX.dd
+[127/829] Generating CXX dyndep file CMakeFiles/v2-generation-startup-tests.dir/CXX.dd
+[128/828] Generating CXX dyndep file CMakeFiles/v2-generation-publication-model-tests.dir/CXX.dd
+[129/827] Generating CXX dyndep file CMakeFiles/v2-result-obligation-tests.dir/CXX.dd
+[130/826] Generating CXX dyndep file CMakeFiles/v2-snapshot-install-preflight-tests.dir/CXX.dd
+[131/825] Generating CXX dyndep file CMakeFiles/v2-install-history-bridge-contract-tests.dir/CXX.dd
+[132/824] Generating CXX dyndep file CMakeFiles/v2-wal-target-switch-tests.dir/CXX.dd
+[133/823] Generating CXX dyndep file CMakeFiles/v2-wal-target-switch-adversarial-tests.dir/CXX.dd
+[134/822] Generating CXX dyndep file CMakeFiles/v2-history-recovery-tests.dir/CXX.dd
+[135/821] Generating CXX dyndep file CMakeFiles/v2-auth-envelope-tests.dir/CXX.dd
+[136/820] Generating CXX dyndep file CMakeFiles/v2-session-fence-tests.dir/CXX.dd
+[137/819] Generating CXX dyndep file CMakeFiles/v2-session-epoch-persistence-model-tests.dir/CXX.dd
+[138/818] Generating CXX dyndep file CMakeFiles/v2-node-config-tests.dir/CXX.dd
+[139/817] Generating CXX dyndep file CMakeFiles/v2-deploy-template-tests.dir/CXX.dd
+[140/816] Generating CXX dyndep file CMakeFiles/v2-node-protocol-tests.dir/CXX.dd
+[141/815] Generating CXX dyndep file CMakeFiles/v2-election-jitter-tests.dir/CXX.dd
+[142/814] Generating CXX dyndep file CMakeFiles/v2-shadow-submitter-tests.dir/CXX.dd
+[143/813] Generating CXX dyndep file CMakeFiles/v2-shadow-program-tests.dir/CXX.dd
+[144/812] Generating CXX dyndep file CMakeFiles/v2-follower-ack-tests.dir/CXX.dd
+[145/811] Generating CXX dyndep file CMakeFiles/v2-shadow-catalog-tests.dir/CXX.dd
+[146/810] Generating CXX dyndep file CMakeFiles/v2-node-client-tests.dir/CXX.dd
+[147/809] Generating CXX dyndep file CMakeFiles/v2-paper-venue-tests.dir/CXX.dd
+[148/808] Generating CXX dyndep file CMakeFiles/v2-paper-venue-state-tests.dir/CXX.dd
+[149/807] Generating CXX dyndep file CMakeFiles/v2-gateway-reconciliation-tests.dir/CXX.dd
+[150/806] Generating CXX dyndep file CMakeFiles/v2-truemarkets-rest-tests.dir/CXX.dd
+[151/805] Generating CXX dyndep file CMakeFiles/v2-truemarkets-wire-tests.dir/CXX.dd
+[152/804] Generating CXX dyndep file CMakeFiles/v2-solana-payload-view-tests.dir/CXX.dd
+[153/802] Generating CXX dyndep file CMakeFiles/v2-truemarkets-venue-tests.dir/CXX.dd
+[154/801] Generating CXX dyndep file CMakeFiles/v2-signer-tests.dir/CXX.dd
+[155/800] Generating CXX dyndep file CMakeFiles/v2-truemarkets-transport-tests.dir/CXX.dd
+[156/799] Generating CXX dyndep file CMakeFiles/v2-solana-resolved-accounts-tests.dir/CXX.dd
+[157/794] Generating CXX dyndep file CMakeFiles/v2-solana-instruction-decode-tests.dir/CXX.dd
+[158/792] Generating CXX dyndep file CMakeFiles/v2-solana-inspection-pipeline-tests.dir/CXX.dd
+[159/786] Generating CXX dyndep file CMakeFiles/v2-spot-balance-tests.dir/CXX.dd
+[160/784] Generating CXX dyndep file CMakeFiles/v2-swap-balance-tests.dir/CXX.dd
+[161/780] Generating CXX dyndep file CMakeFiles/v2-swap-paper-tests.dir/CXX.dd
+[162/774] Generating CXX dyndep file CMakeFiles/v2-swap-paper-drill.dir/CXX.dd
+[163/768] Generating CXX dyndep file CMakeFiles/v2-https-read-probe.dir/CXX.dd
+[164/766] Generating CXX dyndep file CMakeFiles/v2-swap-reconcile-tests.dir/CXX.dd
+[165/758] Generating CXX dyndep file CMakeFiles/v2-swap-https-probe.dir/CXX.dd
+[166/756] Generating CXX dyndep file CMakeFiles/v2-jupiter-route-decode-tests.dir/CXX.dd
+[167/754] Generating CXX dyndep file CMakeFiles/v2-swap-owner-accounting-tests.dir/CXX.dd
+[168/752] Generating CXX dyndep file CMakeFiles/v2-swap-reconcile-session-tests.dir/CXX.dd
+[169/745] Generating CXX dyndep file CMakeFiles/v2-swap-gateway-tls-drill.dir/CXX.dd
+[170/738] Generating CXX dyndep file CMakeFiles/v2-swap-reconcile-store-tests.dir/CXX.dd
+[171/731] Generating CXX dyndep file CMakeFiles/v2-swap-transaction-inspection-tests.dir/CXX.dd
+[172/723] Generating CXX dyndep file CMakeFiles/v2-swap-submission-store-tests.dir/CXX.dd
+[173/720] Generating CXX dyndep file CMakeFiles/v2-swap-authority-tests.dir/CXX.dd
+[174/719] Generating CXX dyndep file CMakeFiles/v2-swap-authority-storage-tests.dir/CXX.dd
+[175/718] Generating CXX dyndep file CMakeFiles/v2-swap-submission-resolution-tests.dir/CXX.dd
+[176/715] Generating CXX dyndep file CMakeFiles/v2-swap-submission-session-tests.dir/CXX.dd
+[177/712] Generating CXX dyndep file CMakeFiles/v2-swap-submission-gateway-drill.dir/CXX.dd
+[178/700] Generating CXX dyndep file CMakeFiles/v2-swap-signing-stamp-tests.dir/CXX.dd
+[179/698] Generating CXX dyndep file CMakeFiles/v2-swap-rest-codec-tests.dir/CXX.dd
+[180/693] Generating CXX dyndep file CMakeFiles/v2-swap-prepare-store-tests.dir/CXX.dd
+[181/687] Generating CXX dyndep file CMakeFiles/v2-swap-prepare-session-tests.dir/CXX.dd
+[182/681] Generating CXX dyndep file CMakeFiles/v2-swap-signer-session-tests.dir/CXX.dd
+[183/677] Generating CXX dyndep file CMakeFiles/v2-swap-signer-production-gate.dir/CXX.dd
+[184/673] Generating CXX dyndep file CMakeFiles/v2-swap-signer-protocol-tests.dir/CXX.dd
+[185/670] Generating CXX dyndep file CMakeFiles/v2-swap-signer-service-tests.dir/CXX.dd
+[186/664] Generating CXX dyndep file CMakeFiles/v2-swap-order-status-tests.dir/CXX.dd
+[187/655] Generating CXX dyndep file CMakeFiles/v2-swap-order-https-probe.dir/CXX.dd
+[188/644] Generating CXX dyndep file CMakeFiles/v2-swap-settlement-evidence-tests.dir/CXX.dd
+[189/637] Generating CXX dyndep file CMakeFiles/v2-swap-prepare-https-tests.dir/CXX.dd
+[190/629] Generating CXX dyndep file CMakeFiles/v2-swap-signing-connection-tests.dir/CXX.dd
+[191/619] Generating CXX dyndep file CMakeFiles/v2-swap-settlement-connection-tests.dir/CXX.dd
+[192/607] Generating CXX dyndep file CMakeFiles/v2-swap-runtime-config-tests.dir/CXX.dd
+[193/600] Generating CXX dyndep file CMakeFiles/v2-swap-gateway-runtime-tests.dir/CXX.dd
+[194/593] Generating CXX dyndep file CMakeFiles/v2-swap-process-drill.dir/CXX.dd
+[195/593] Generating CXX dyndep file CMakeFiles/v2-swap-runtime-production-tests.dir/CXX.dd
+[196/593] Generating CXX dyndep file CMakeFiles/v2-swap-settlement-lifecycle-tests.dir/CXX.dd
+[197/593] Generating CXX dyndep file CMakeFiles/v2-swap-settlement-admission-tests.dir/CXX.dd
+[198/593] Generating CXX dyndep file CMakeFiles/v2-swap-runtime-https-probe.dir/CXX.dd
+[199/593] Generating CXX dyndep file CMakeFiles/v2-swap-account-setup-tests.dir/CXX.dd
+[200/593] Generating CXX dyndep file CMakeFiles/v2-swap-failed-settlement-tests.dir/CXX.dd
+[201/593] Generating CXX dyndep file CMakeFiles/v2-operational-recovery-tests.dir/CXX.dd
+[202/593] Generating CXX dyndep file CMakeFiles/v2-gateway-protocol-tests.dir/CXX.dd
+[203/593] Generating CXX dyndep file CMakeFiles/v2-gateway-node-tests.dir/CXX.dd
+[204/593] Generating CXX dyndep file CMakeFiles/v2-node-tests.dir/CXX.dd
+[205/593] Generating CXX dyndep file CMakeFiles/v2-node-files-tests.dir/CXX.dd
+[206/593] Generating CXX dyndep file CMakeFiles/v2-node-health-tests.dir/CXX.dd
+[207/593] Generating CXX dyndep file CMakeFiles/v2-node-process-tests.dir/CXX.dd
+[208/593] Generating CXX dyndep file CMakeFiles/v2-node-metrics-text-tests.dir/CXX.dd
+[209/593] Generating CXX dyndep file CMakeFiles/v2-two-voter-catchup-tests.dir/CXX.dd
+[210/593] Generating CXX dyndep file CMakeFiles/v2-archive-destination-tests.dir/CXX.dd
+[211/593] Generating CXX dyndep file CMakeFiles/v2-archive-live-verification-tests.dir/CXX.dd
+[212/593] Generating CXX dyndep file CMakeFiles/v2-snapshot-install-ack-contract-tests.dir/CXX.dd
+[213/593] Generating CXX dyndep file CMakeFiles/v2-snapshot-install-results-contract-tests.dir/CXX.dd
+[214/593] Generating CXX dyndep file CMakeFiles/v2-executable-policy-kernel-tests.dir/CXX.dd
+[215/593] Generating CXX dyndep file CMakeFiles/v2-risk-order-outbox-tests.dir/CXX.dd
+[216/593] Generating CXX dyndep file CMakeFiles/v2-layout-report.dir/CXX.dd
+[217/593] Generating CXX dyndep file CMakeFiles/v2-contract-benchmark.dir/CXX.dd
+[218/593] Generating CXX dyndep file CMakeFiles/v2-phase3-benchmark.dir/CXX.dd
+[219/593] Building CXX object CMakeFiles/v2-swap-gateway-runtime-tests.dir/src/v2_swap_prepare_session.cpp.o
+/source/src/v2_swap_prepare_session.cpp: In member function ‘velocita::v2::SwapPrepareSessionStatus velocita::v2::SwapPrepareSession::finish(velocita::v2::SwapPrepareSessionStatus)’:
+/source/src/v2_swap_prepare_session.cpp:32:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   32 |     if(status_==SwapPrepareSessionStatus::reading_state)link_.abandon();status_=status;return status;
+      |     ^~
+/source/src/v2_swap_prepare_session.cpp:32:73: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   32 |     if(status_==SwapPrepareSessionStatus::reading_state)link_.abandon();status_=status;return status;
+      |                                                                         ^~~~~~~
+[220/593] Building CXX object CMakeFiles/v2-swap-gateway-runtime-tests.dir/src/v2_swap_submission_store.cpp.o
+[221/593] Building CXX object CMakeFiles/v2-swap-gateway-runtime-tests.dir/src/v2_swap_submission_session.cpp.o
+[222/593] Building CXX object CMakeFiles/v2-swap-gateway-runtime-tests.dir/src/v2_swap_submission_resolution.cpp.o
+[223/593] Building CXX object CMakeFiles/v2-swap-gateway-runtime-tests.dir/src/v2_swap_rest_codec.cpp.o
+/source/src/v2_swap_rest_codec.cpp: In function ‘bool velocita::v2::truemarkets::{anonymous}::payload_string(std::string_view, velocita::v2::truemarkets::SwapRestPrepared&)’:
+/source/src/v2_swap_rest_codec.cpp:49:21: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   49 |                     if(code==0 || code>127)return false;c=static_cast<unsigned char>(code);break;
+      |                     ^~
+/source/src/v2_swap_rest_codec.cpp:49:57: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   49 |                     if(code==0 || code>127)return false;c=static_cast<unsigned char>(code);break;
+      |                                                         ^
+[224/593] Building CXX object CMakeFiles/v2-swap-gateway-runtime-tests.dir/src/v2_swap_signing_stamp.cpp.o
+[225/593] Building CXX object CMakeFiles/v2-swap-gateway-runtime-tests.dir/src/v2_truemarkets_wire.cpp.o
+[226/593] Building CXX object CMakeFiles/v2-swap-process-drill.dir/tests/v2_swap_process_drill.cpp.o
+In file included from /source/tests/v2_swap_process_drill.cpp:5:
+/source/tests/v2_gateway_node_tests.cpp: In constructor ‘{anonymous}::Gateway::Gateway({anonymous}::Cluster&, velocita::v2::sim::FaultPolicy, velocita::v2::GatewayLoopConfig, velocita::v2::GatewayLinkTiming, const {anonymous}::VenueChoice&)’:
+/source/tests/v2_gateway_node_tests.cpp:688:11: warning: missing initializer for member ‘{anonymous}::CountingVenue::injected’ [-Wmissing-field-initializers]
+  688 |           counting{pick(choice), {}},
+      |           ^~~~~~~~~~~~~~~~~~~~~~~~~~
+/source/tests/v2_swap_process_drill.cpp: In member function ‘std::optional<std::pair<int, std::vector<std::byte> > > {anonymous}::Wire::receive()’:
+/source/tests/v2_swap_process_drill.cpp:45:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   45 |         if(incoming.size()<8)return {};std::uint32_t size;std::int32_t node;
+      |         ^~
+/source/tests/v2_swap_process_drill.cpp:45:40: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   45 |         if(incoming.size()<8)return {};std::uint32_t size;std::int32_t node;
+      |                                        ^~~
+/source/tests/v2_swap_process_drill.cpp:47:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   47 |         if(incoming.size()<8+size)return {};Bytes body(incoming.begin()+8,incoming.begin()+8+size);incoming.erase(incoming.begin(),incoming.begin()+8+size);return std::pair{node,std::move(body)};
+      |         ^~
+/source/tests/v2_swap_process_drill.cpp:47:45: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   47 |         if(incoming.size()<8+size)return {};Bytes body(incoming.begin()+8,incoming.begin()+8+size);incoming.erase(incoming.begin(),incoming.begin()+8+size);return std::pair{node,std::move(body)};
+      |                                             ^~~~~
+/source/tests/v2_swap_process_drill.cpp: In member function ‘virtual void {anonymous}::Ports::execute(const velocita::v2::SwapSubmissionIdentity&, std::span<const std::byte>)’:
+/source/tests/v2_swap_process_drill.cpp:69:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   69 |         if(stage=="before-send")die();journal_line(root,"execute");
+      |         ^~
+/source/tests/v2_swap_process_drill.cpp:69:39: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   69 |         if(stage=="before-send")die();journal_line(root,"execute");
+      |                                       ^~~~~~~~~~~~
+/source/tests/v2_swap_process_drill.cpp:70:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   70 |         if(stage=="accepted")die();throw std::runtime_error("fixture accepted response lost");
+      |         ^~
+/source/tests/v2_swap_process_drill.cpp:70:36: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   70 |         if(stage=="accepted")die();throw std::runtime_error("fixture accepted response lost");
+      |                                    ^~~~~
+[227/593] Building CXX object CMakeFiles/v2-swap-process-drill.dir/src/v2_swap_gateway_runtime.cpp.o
+/source/src/v2_swap_gateway_runtime.cpp: In member function ‘void velocita::v2::SwapGatewayRuntime::stop(velocita::v2::SwapGatewayRuntimeStatus, velocita::v2::SwapGatewayRuntimeCause)’:
+/source/src/v2_swap_gateway_runtime.cpp:32:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   32 |     if(owns_link_)link_.abandon();owns_link_=false;status_=s;cause_=cause;
+      |     ^~
+/source/src/v2_swap_gateway_runtime.cpp:32:35: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   32 |     if(owns_link_)link_.abandon();owns_link_=false;status_=s;cause_=cause;
+      |                                   ^~~~~~~~~~
+/source/src/v2_swap_gateway_runtime.cpp: In member function ‘void velocita::v2::SwapGatewayRuntime::step(velocita::v2::Tick, uint64_t)’:
+/source/src/v2_swap_gateway_runtime.cpp:54:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   54 |         if(s!=SwapPrepareSessionStatus::prepared)stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::prepare_unknown);return;}
+      |         ^~
+/source/src/v2_swap_gateway_runtime.cpp:54:131: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   54 |         if(s!=SwapPrepareSessionStatus::prepared)stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::prepare_unknown);return;}
+      |                                                                                                                                   ^~~~~~
+/source/src/v2_swap_gateway_runtime.cpp:57:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   57 |         if(s!=SwapSubmissionSessionStatus::needs_reconciliation)stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::state);return;}
+      |         ^~
+/source/src/v2_swap_gateway_runtime.cpp:57:136: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   57 |         if(s!=SwapSubmissionSessionStatus::needs_reconciliation)stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::state);return;}
+      |                                                                                                                                        ^~~~~~
+[228/593] Building CXX object CMakeFiles/v2-swap-process-drill.dir/src/v2_swap_signing_connection.cpp.o
+[229/593] Building CXX object CMakeFiles/v2-swap-process-drill.dir/src/v2_swap_signer_protocol.cpp.o
+/source/src/v2_swap_signer_protocol.cpp: In function ‘std::size_t velocita::v2::swap_signer::encode_request(const Request&, std::span<std::byte>)’:
+/source/src/v2_swap_signer_protocol.cpp:28:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   28 |     if(!valid(r))return 0;const std::size_t n=88+r.handle_size+r.payload_size;if(out.size()<n)return 0;out=out.first(n);std::fill(out.begin(),out.end(),std::byte{});
+      |     ^~
+/source/src/v2_swap_signer_protocol.cpp:28:27: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   28 |     if(!valid(r))return 0;const std::size_t n=88+r.handle_size+r.payload_size;if(out.size()<n)return 0;out=out.first(n);std::fill(out.begin(),out.end(),std::byte{});
+      |                           ^~~~~
+/source/src/v2_swap_signer_protocol.cpp: In function ‘bool velocita::v2::swap_signer::decode_request(std::span<const std::byte>, Request&)’:
+/source/src/v2_swap_signer_protocol.cpp:41:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   41 |     if(!valid(r))return false;out=r;return true;
+      |     ^~
+/source/src/v2_swap_signer_protocol.cpp:41:31: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   41 |     if(!valid(r))return false;out=r;return true;
+      |                               ^~~
+[230/593] Building CXX object CMakeFiles/v2-swap-process-drill.dir/src/v2_swap_signer_service.cpp.o
+/source/src/v2_swap_signer_service.cpp: In function ‘bool velocita::v2::swap_signer::{anonymous}::ready(int, short int, int64_t)’:
+/source/src/v2_swap_signer_service.cpp:28:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   28 |         if(n<0)return false;if(n)return(p.revents&events)!=0;}
+      |         ^~
+/source/src/v2_swap_signer_service.cpp:28:29: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   28 |         if(n<0)return false;if(n)return(p.revents&events)!=0;}
+      |                             ^~
+/source/src/v2_swap_signer_service.cpp: In function ‘bool velocita::v2::swap_signer::{anonymous}::transfer(int, std::span<std::byte>, bool, int64_t)’:
+/source/src/v2_swap_signer_service.cpp:57:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   57 |         if(n<0&&(errno==EINTR||errno==EAGAIN||errno==EWOULDBLOCK))continue;if(n<=0)return false;b=b.subspan(static_cast<std::size_t>(n));
+      |         ^~
+/source/src/v2_swap_signer_service.cpp:57:76: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   57 |         if(n<0&&(errno==EINTR||errno==EAGAIN||errno==EWOULDBLOCK))continue;if(n<=0)return false;b=b.subspan(static_cast<std::size_t>(n));
+      |                                                                            ^~
+/source/src/v2_swap_signer_service.cpp: In function ‘std::size_t velocita::v2::swap_signer::{anonymous}::read_frame(int, std::span<std::byte>, int64_t)’:
+/source/src/v2_swap_signer_service.cpp:61:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   61 |     if(!transfer(fd,b.first(8),false,deadline))return 0;const auto n=frame_length(b.first(8));
+      |     ^~
+/source/src/v2_swap_signer_service.cpp:61:57: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   61 |     if(!transfer(fd,b.first(8),false,deadline))return 0;const auto n=frame_length(b.first(8));
+      |                                                         ^~~~~
+/source/src/v2_swap_signer_service.cpp:62:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   62 |     if(!n || n>b.size() || !transfer(fd,b.subspan(8,n-8),false,deadline))return 0;return n;
+      |     ^~
+/source/src/v2_swap_signer_service.cpp:62:83: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   62 |     if(!n || n>b.size() || !transfer(fd,b.subspan(8,n-8),false,deadline))return 0;return n;
+      |                                                                                   ^~~~~~
+/source/src/v2_swap_signer_service.cpp: In member function ‘bool velocita::v2::swap_signer::Server::serve_once(velocita::v2::SwapSignerSession&, int)’:
+/source/src/v2_swap_signer_service.cpp:113:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  113 |     if(fd_<0 || timeout<=0 || timeout>30000)return false;const auto deadline=now()+timeout;
+      |     ^~
+/source/src/v2_swap_signer_service.cpp:113:58: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  113 |     if(fd_<0 || timeout<=0 || timeout>30000)return false;const auto deadline=now()+timeout;
+      |                                                          ^~~~~
+/source/src/v2_swap_signer_service.cpp:114:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  114 |     if(!ready(fd_,POLLIN,deadline))return false;Fd client(::accept(fd_,nullptr,nullptr));if(client.fd<0 || !prepare(client.fd))return false;
+      |     ^~
+/source/src/v2_swap_signer_service.cpp:114:49: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  114 |     if(!ready(fd_,POLLIN,deadline))return false;Fd client(::accept(fd_,nullptr,nullptr));if(client.fd<0 || !prepare(client.fd))return false;
+      |                                                 ^~
+/source/src/v2_swap_signer_service.cpp: In member function ‘velocita::v2::swap_signer::Reply velocita::v2::swap_signer::Client::request(const velocita::v2::swap_signer::Request&)’:
+/source/src/v2_swap_signer_service.cpp:135:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  135 |     if(!size || timeout_ms_<=0 || timeout_ms_>30000 || !address(path_,addr))return denied;const auto deadline=now()+timeout_ms_;
+      |     ^~
+/source/src/v2_swap_signer_service.cpp:135:91: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  135 |     if(!size || timeout_ms_<=0 || timeout_ms_>30000 || !address(path_,addr))return denied;const auto deadline=now()+timeout_ms_;
+      |                                                                                           ^~~~~
+[231/593] Building CXX object CMakeFiles/v2-swap-process-drill.dir/src/v2_swap_signer_session.cpp.o
+/source/src/v2_swap_signer_session.cpp: In static member function ‘static std::unique_ptr<velocita::v2::SwapSignerKey> velocita::v2::SwapSignerKey::load_inherited_fd(int, std::span<const std::byte, 33>)’:
+/source/src/v2_swap_signer_session.cpp:53:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   53 |         if(n<0 && errno==EINTR)continue;if(n<=0)return {};offset+=static_cast<std::size_t>(n);
+      |         ^~
+/source/src/v2_swap_signer_session.cpp:53:41: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   53 |         if(n<0 && errno==EINTR)continue;if(n<=0)return {};offset+=static_cast<std::size_t>(n);
+      |                                         ^~
+/source/src/v2_swap_signer_session.cpp: In member function ‘velocita::v2::SwapSignerStatus velocita::v2::SwapSignerSession::refuse(velocita::v2::SwapSignerStatus)’:
+/source/src/v2_swap_signer_session.cpp:131:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  131 |     if((status_==SwapSignerStatus::reading_state || status_==SwapSignerStatus::reading_authority))link_.abandon();erase();der_size_=0;stamp_={};status_=status;return status;
+      |     ^~
+/source/src/v2_swap_signer_session.cpp:131:115: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  131 |     if((status_==SwapSignerStatus::reading_state || status_==SwapSignerStatus::reading_authority))link_.abandon();erase();der_size_=0;stamp_={};status_=status;return status;
+      |                                                                                                                   ^~~~~
+[232/593] Building CXX object CMakeFiles/v2-swap-process-drill.dir/src/v2_swap_prepare_store.cpp.o
+[233/593] Building CXX object CMakeFiles/v2-swap-process-drill.dir/src/v2_swap_prepare_session.cpp.o
+/source/src/v2_swap_prepare_session.cpp: In member function ‘velocita::v2::SwapPrepareSessionStatus velocita::v2::SwapPrepareSession::finish(velocita::v2::SwapPrepareSessionStatus)’:
+/source/src/v2_swap_prepare_session.cpp:32:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   32 |     if(status_==SwapPrepareSessionStatus::reading_state)link_.abandon();status_=status;return status;
+      |     ^~
+/source/src/v2_swap_prepare_session.cpp:32:73: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   32 |     if(status_==SwapPrepareSessionStatus::reading_state)link_.abandon();status_=status;return status;
+      |                                                                         ^~~~~~~
+[234/593] Building CXX object CMakeFiles/v2-swap-process-drill.dir/src/v2_swap_submission_store.cpp.o
+[235/593] Building CXX object CMakeFiles/v2-swap-process-drill.dir/src/v2_swap_submission_session.cpp.o
+[236/593] Building CXX object CMakeFiles/v2-swap-process-drill.dir/src/v2_swap_submission_resolution.cpp.o
+[237/593] Building CXX object CMakeFiles/v2-swap-process-drill.dir/src/v2_swap_rest_codec.cpp.o
+/source/src/v2_swap_rest_codec.cpp: In function ‘bool velocita::v2::truemarkets::{anonymous}::payload_string(std::string_view, velocita::v2::truemarkets::SwapRestPrepared&)’:
+/source/src/v2_swap_rest_codec.cpp:49:21: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   49 |                     if(code==0 || code>127)return false;c=static_cast<unsigned char>(code);break;
+      |                     ^~
+/source/src/v2_swap_rest_codec.cpp:49:57: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   49 |                     if(code==0 || code>127)return false;c=static_cast<unsigned char>(code);break;
+      |                                                         ^
+[238/593] Building CXX object CMakeFiles/v2-swap-process-drill.dir/src/v2_swap_signing_stamp.cpp.o
+[239/593] Building CXX object CMakeFiles/v2-swap-process-drill.dir/src/v2_truemarkets_wire.cpp.o
+[240/593] Building CXX object CMakeFiles/v2-swap-runtime-production-tests.dir/tests/v2_swap_runtime_production_tests.cpp.o
+[241/593] Building CXX object CMakeFiles/v2-swap-settlement-lifecycle-tests.dir/tests/v2_swap_settlement_lifecycle_tests.cpp.o
+In file included from /usr/include/c++/15/bits/shared_ptr_base.h:66,
+                 from /usr/include/c++/15/bits/shared_ptr.h:53,
+                 from /usr/include/c++/15/bits/fs_path.h:46,
+                 from /usr/include/c++/15/filesystem:54,
+                 from /source/include/velocita/v2/swap_submission_store.hpp:5,
+                 from /source/include/velocita/v2/swap_settlement_evidence.hpp:4,
+                 from /source/include/velocita/v2/swap_settlement_lifecycle.hpp:2,
+                 from /source/tests/swap_settlement_test_fixture.hpp:2,
+                 from /source/tests/v2_swap_settlement_lifecycle_tests.cpp:1:
+In function ‘_ForwardIterator std::uninitialized_fill_n(_ForwardIterator, _Size, const _Tp&) [with _ForwardIterator = unsigned char*; _Size = long unsigned int; _Tp = unsigned char]’,
+    inlined from ‘constexpr _ForwardIterator std::__uninitialized_fill_n_a(_ForwardIterator, _Size, const _Tp&, allocator<_Tp>&) [with _ForwardIterator = unsigned char*; _Size = long unsigned int; _Tp = unsigned char; _Tp2 = unsigned char]’ at /usr/include/c++/15/bits/stl_uninitialized.h:727:39,
+    inlined from ‘constexpr void std::vector<_Tp, _Alloc>::_M_fill_append(size_type, const value_type&) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/vector.tcc:766:36,
+    inlined from ‘constexpr void std::vector<_Tp, _Alloc>::resize(size_type, const value_type&) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/stl_vector.h:1167:18,
+    inlined from ‘void settlement_lifecycle_fixture::LifecycleFixture::rebuild()’ at /source/tests/swap_settlement_test_fixture.hpp:81:61:
+/usr/include/c++/15/bits/stl_uninitialized.h:553:39: warning: ‘void* __builtin_memset(void*, int, long unsigned int)’ writing between 1 and 129 bytes into a region of size 0 overflows the destination [-Wstringop-overflow=]
+  553 |                       __builtin_memset(__dest, (unsigned char)__x, __n);
+      |                       ~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /usr/include/x86_64-linux-gnu/c++/15/bits/c++allocator.h:33,
+                 from /usr/include/c++/15/bits/allocator.h:46,
+                 from /usr/include/c++/15/string:45,
+                 from /usr/include/c++/15/stdexcept:41,
+                 from /usr/include/c++/15/system_error:45,
+                 from /usr/include/c++/15/bits/fs_fwd.h:35,
+                 from /usr/include/c++/15/filesystem:53:
+In member function ‘_Tp* std::__new_allocator<_Tp>::allocate(size_type, const void*) [with _Tp = unsigned char]’,
+    inlined from ‘constexpr _Tp* std::allocator< <template-parameter-1-1> >::allocate(std::size_t) [with _Tp = unsigned char]’ at /usr/include/c++/15/bits/allocator.h:203:40,
+    inlined from ‘static constexpr _Tp* std::allocator_traits<std::allocator<_CharT> >::allocate(allocator_type&, size_type) [with _Tp = unsigned char]’ at /usr/include/c++/15/bits/alloc_traits.h:614:28,
+    inlined from ‘constexpr std::_Vector_base<_Tp, _Alloc>::pointer std::_Vector_base<_Tp, _Alloc>::_M_allocate(std::size_t) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/stl_vector.h:387:33,
+    inlined from ‘constexpr void std::vector<_Tp, _Alloc>::_M_range_initialize_n(_Iterator, _Sentinel, size_type) [with _Iterator = const unsigned char*; _Sentinel = const unsigned char*; _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/stl_vector.h:1985:23,
+    inlined from ‘constexpr std::vector<_Tp, _Alloc>::vector(std::initializer_list<_Tp>, const allocator_type&) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/stl_vector.h:712:23,
+    inlined from ‘void settlement_lifecycle_fixture::LifecycleFixture::rebuild()’ at /source/tests/swap_settlement_test_fixture.hpp:81:50:
+/usr/include/c++/15/bits/new_allocator.h:151:73: note: at offset 1 into destination object of size 1 allocated by ‘operator new’
+  151 |         return static_cast<_Tp*>(_GLIBCXX_OPERATOR_NEW(__n * sizeof(_Tp)));
+      |                                                                         ^
+[242/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/tests/v2_swap_settlement_admission_tests.cpp.o
+[243/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_gateway_runtime.cpp.o
+[244/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_runtime_config.cpp.o
+[245/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_runtime_production.cpp.o
+[246/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_account_setup.cpp.o
+[247/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_account_review.cpp.o
+[248/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_account_history.cpp.o
+[249/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_reconcile.cpp.o
+[250/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_balance.cpp.o
+[251/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_spot_balance.cpp.o
+[252/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_runtime_https.cpp.o
+[253/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_prepare_store.cpp.o
+[254/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_prepare_session.cpp.o
+[255/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_prepare_https.cpp.o
+[256/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_signing_connection.cpp.o
+[257/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_signer_session.cpp.o
+[258/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_signer_service.cpp.o
+[259/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_signer_protocol.cpp.o
+[260/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_signing_stamp.cpp.o
+[261/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_submission_session.cpp.o
+[262/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_submission_store.cpp.o
+[263/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_submission_resolution.cpp.o
+[264/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_order_status.cpp.o
+[265/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_order_https.cpp.o
+[266/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_settlement_connection.cpp.o
+[267/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_settlement_evidence.cpp.o
+[268/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_settlement_admission.cpp.o
+[269/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_settlement_lifecycle.cpp.o
+[270/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_owner_accounting.cpp.o
+[271/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_solana_instruction_decode.cpp.o
+[272/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_jupiter_route_decode.cpp.o
+[273/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_solana_payload_view.cpp.o
+[274/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_solana_resolved_accounts.cpp.o
+[275/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_rest_codec.cpp.o
+[276/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_https.cpp.o
+[277/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_truemarkets_wire.cpp.o
+[278/593] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_truemarkets_rest.cpp.o
+[279/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/tests/v2_swap_runtime_https_probe.cpp.o
+[280/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_gateway_runtime.cpp.o
+[281/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_runtime_config.cpp.o
+[282/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_runtime_production.cpp.o
+[283/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_account_setup.cpp.o
+[284/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_account_review.cpp.o
+[285/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_account_history.cpp.o
+[286/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_reconcile.cpp.o
+[287/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_balance.cpp.o
+[288/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_spot_balance.cpp.o
+[289/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_runtime_https.cpp.o
+[290/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_prepare_store.cpp.o
+[291/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_prepare_session.cpp.o
+[292/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_prepare_https.cpp.o
+[293/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_signing_connection.cpp.o
+[294/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_signer_session.cpp.o
+[295/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_signer_service.cpp.o
+[296/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_signer_protocol.cpp.o
+[297/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_signing_stamp.cpp.o
+[298/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_submission_session.cpp.o
+[299/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_submission_store.cpp.o
+[300/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_submission_resolution.cpp.o
+[301/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_order_status.cpp.o
+[302/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_order_https.cpp.o
+[303/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_settlement_connection.cpp.o
+[304/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_settlement_evidence.cpp.o
+[305/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_settlement_admission.cpp.o
+[306/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_settlement_lifecycle.cpp.o
+[307/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_owner_accounting.cpp.o
+[308/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_solana_instruction_decode.cpp.o
+[309/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_jupiter_route_decode.cpp.o
+[310/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_solana_payload_view.cpp.o
+[311/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_solana_resolved_accounts.cpp.o
+[312/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_rest_codec.cpp.o
+[313/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_https.cpp.o
+[314/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_truemarkets_wire.cpp.o
+[315/593] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_truemarkets_rest.cpp.o
+[316/593] Building CXX object CMakeFiles/v2-swap-account-setup-tests.dir/tests/v2_swap_account_setup_tests.cpp.o
+[317/593] Building CXX object CMakeFiles/v2-swap-failed-settlement-tests.dir/tests/v2_swap_failed_settlement_tests.cpp.o
+In file included from /usr/include/c++/15/vector:67,
+                 from /source/include/velocita/v2/venue_simulator.hpp:9,
+                 from /source/include/velocita/v2/venue_signer.hpp:5,
+                 from /source/include/velocita/v2/truemarkets_wire.hpp:5,
+                 from /source/include/velocita/v2/swap_rest_codec.hpp:3,
+                 from /source/include/velocita/v2/swap_prepare_store.hpp:4,
+                 from /source/include/velocita/v2/swap_settlement_connection.hpp:2,
+                 from /source/include/velocita/v2/swap_settlement_admission.hpp:2,
+                 from /source/tests/v2_swap_failed_settlement_tests.cpp:1:
+In function ‘_ForwardIterator std::uninitialized_fill_n(_ForwardIterator, _Size, const _Tp&) [with _ForwardIterator = unsigned char*; _Size = long unsigned int; _Tp = unsigned char]’,
+    inlined from ‘constexpr _ForwardIterator std::__uninitialized_fill_n_a(_ForwardIterator, _Size, const _Tp&, allocator<_Tp>&) [with _ForwardIterator = unsigned char*; _Size = long unsigned int; _Tp = unsigned char; _Tp2 = unsigned char]’ at /usr/include/c++/15/bits/stl_uninitialized.h:727:39,
+    inlined from ‘constexpr void std::vector<_Tp, _Alloc>::_M_fill_append(size_type, const value_type&) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/vector.tcc:766:36,
+    inlined from ‘constexpr void std::vector<_Tp, _Alloc>::resize(size_type, const value_type&) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/stl_vector.h:1167:18,
+    inlined from ‘void settlement_lifecycle_fixture::LifecycleFixture::rebuild()’ at /source/tests/swap_settlement_test_fixture.hpp:81:61:
+/usr/include/c++/15/bits/stl_uninitialized.h:553:39: warning: ‘void* __builtin_memset(void*, int, long unsigned int)’ writing between 1 and 129 bytes into a region of size 0 overflows the destination [-Wstringop-overflow=]
+  553 |                       __builtin_memset(__dest, (unsigned char)__x, __n);
+      |                       ~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /usr/include/x86_64-linux-gnu/c++/15/bits/c++allocator.h:33,
+                 from /usr/include/c++/15/bits/allocator.h:46,
+                 from /usr/include/c++/15/vector:65:
+In member function ‘_Tp* std::__new_allocator<_Tp>::allocate(size_type, const void*) [with _Tp = unsigned char]’,
+    inlined from ‘constexpr _Tp* std::allocator< <template-parameter-1-1> >::allocate(std::size_t) [with _Tp = unsigned char]’ at /usr/include/c++/15/bits/allocator.h:203:40,
+    inlined from ‘static constexpr _Tp* std::allocator_traits<std::allocator<_Up> >::allocate(allocator_type&, size_type) [with _Tp = unsigned char]’ at /usr/include/c++/15/bits/alloc_traits.h:614:28,
+    inlined from ‘constexpr std::_Vector_base<_Tp, _Alloc>::pointer std::_Vector_base<_Tp, _Alloc>::_M_allocate(std::size_t) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/stl_vector.h:387:33,
+    inlined from ‘constexpr void std::vector<_Tp, _Alloc>::_M_range_initialize_n(_Iterator, _Sentinel, size_type) [with _Iterator = const unsigned char*; _Sentinel = const unsigned char*; _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/stl_vector.h:1985:23,
+    inlined from ‘constexpr std::vector<_Tp, _Alloc>::vector(std::initializer_list<_Tp>, const allocator_type&) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/stl_vector.h:712:23,
+    inlined from ‘void settlement_lifecycle_fixture::LifecycleFixture::rebuild()’ at /source/tests/swap_settlement_test_fixture.hpp:81:50:
+/usr/include/c++/15/bits/new_allocator.h:151:73: note: at offset 1 into destination object of size 1 allocated by ‘operator new’
+  151 |         return static_cast<_Tp*>(_GLIBCXX_OPERATOR_NEW(__n * sizeof(_Tp)));
+      |                                                                         ^
+[318/593] Building CXX object CMakeFiles/v2-operational-recovery-tests.dir/tests/v2_operational_recovery_tests.cpp.o
+[319/593] Building CXX object CMakeFiles/v2-gateway-protocol-tests.dir/tests/v2_gateway_protocol_tests.cpp.o
+[320/593] Building CXX object CMakeFiles/v2-gateway-node-tests.dir/tests/v2_gateway_node_tests.cpp.o
+/source/tests/v2_gateway_node_tests.cpp: In constructor ‘{anonymous}::Gateway::Gateway({anonymous}::Cluster&, velocita::v2::sim::FaultPolicy, velocita::v2::GatewayLoopConfig, velocita::v2::GatewayLinkTiming, const {anonymous}::VenueChoice&)’:
+/source/tests/v2_gateway_node_tests.cpp:688:11: warning: missing initializer for member ‘{anonymous}::CountingVenue::injected’ [-Wmissing-field-initializers]
+  688 |           counting{pick(choice), {}},
+      |           ^~~~~~~~~~~~~~~~~~~~~~~~~~
+[321/593] Building CXX object CMakeFiles/v2-node-tests.dir/tests/v2_node_tests.cpp.o
+[322/593] Building CXX object CMakeFiles/v2-node-files-tests.dir/tests/v2_node_files_tests.cpp.o
+[323/593] Building CXX object CMakeFiles/v2-node-health-tests.dir/tests/v2_node_health_tests.cpp.o
+[324/593] Building CXX object CMakeFiles/v2-node-process-tests.dir/tests/v2_node_process_tests.cpp.o
+[325/593] Building CXX object CMakeFiles/v2-node-metrics-text-tests.dir/tests/v2_node_metrics_text_tests.cpp.o
+[326/593] Building CXX object CMakeFiles/v2-two-voter-catchup-tests.dir/tests/v2_two_voter_catchup_tests.cpp.o
+[327/593] Building CXX object CMakeFiles/v2-archive-destination-tests.dir/tests/v2_archive_destination_tests.cpp.o
+[328/593] Building CXX object CMakeFiles/v2-archive-live-verification-tests.dir/tests/v2_archive_live_verification_tests.cpp.o
+In file included from /usr/include/c++/15/bits/char_traits.h:59,
+                 from /usr/include/c++/15/string:44,
+                 from /usr/include/c++/15/stdexcept:41,
+                 from /usr/include/c++/15/system_error:45,
+                 from /usr/include/c++/15/bits/fs_fwd.h:35,
+                 from /usr/include/c++/15/filesystem:53,
+                 from /source/include/velocita/storage.hpp:6,
+                 from /source/include/velocita/v2/replication.hpp:4,
+                 from /source/tests/v2_replication_tests.cpp:1,
+                 from /source/tests/v2_archive_live_verification_tests.cpp:2:
+In function ‘constexpr void std::destroy_at(_Tp*) [with _Tp = byte]’,
+    inlined from ‘static constexpr void std::allocator_traits<std::allocator<_CharT> >::destroy(allocator_type&, _Up*) [with _Up = std::byte; _Tp = std::byte]’ at /usr/include/c++/15/bits/alloc_traits.h:698:19,
+    inlined from ‘constexpr void std::vector<_Tp, _Alloc>::pop_back() [with _Tp = std::byte; _Alloc = std::allocator<std::byte>]’ at /usr/include/c++/15/bits/stl_vector.h:1461:24,
+    inlined from ‘void {anonymous}::test_malformed_normal_commands_never_enter_durable_history(const std::filesystem::__cxx11::path&)’ at /source/tests/v2_replication_tests.cpp:2035:23:
+/usr/include/c++/15/bits/stl_construct.h:88:9: warning: array subscript -1 is outside array bounds of ‘std::byte []’ [-Warray-bounds=]
+   88 |         __location->~_Tp();
+      |         ^~~~~~~~~~
+[329/593] Building CXX object CMakeFiles/v2-snapshot-install-ack-contract-tests.dir/tests/v2_snapshot_install_ack_contract_tests.cpp.o
+[330/593] Building CXX object CMakeFiles/v2-snapshot-install-results-contract-tests.dir/tests/v2_snapshot_install_results_contract_tests.cpp.o
+[331/593] Building CXX object CMakeFiles/v2-executable-policy-kernel-tests.dir/tests/v2_executable_policy_kernel_tests.cpp.o
+[332/593] Building CXX object CMakeFiles/v2-risk-order-outbox-tests.dir/tests/v2_risk_order_outbox_tests.cpp.o
+/source/tests/v2_risk_order_outbox_tests.cpp: In function ‘PositionExpectation expected_position_outcome(velocita::v2::Side, int64_t, int64_t, int64_t, int64_t, bool)’:
+/source/tests/v2_risk_order_outbox_tests.cpp:4127:11: warning: ISO C++ does not support ‘__int128’ for ‘p’ [-Wpedantic]
+ 4127 |     const __int128 p = position, r = reserved, q = quantity, m = maximum;
+      |           ^~~~~~~~
+/source/tests/v2_risk_order_outbox_tests.cpp:4127:11: warning: ISO C++ does not support ‘__int128’ for ‘r’ [-Wpedantic]
+/source/tests/v2_risk_order_outbox_tests.cpp:4127:11: warning: ISO C++ does not support ‘__int128’ for ‘q’ [-Wpedantic]
+/source/tests/v2_risk_order_outbox_tests.cpp:4127:11: warning: ISO C++ does not support ‘__int128’ for ‘m’ [-Wpedantic]
+/source/tests/v2_risk_order_outbox_tests.cpp:4129:15: warning: ISO C++ does not support ‘__int128’ for ‘after’ [-Wpedantic]
+ 4129 |         const __int128 after = p + r + q;
+      |               ^~~~~~~~
+/source/tests/v2_risk_order_outbox_tests.cpp:4133:11: warning: ISO C++ does not support ‘__int128’ for ‘after’ [-Wpedantic]
+ 4133 |     const __int128 after = p - r - q;
+      |           ^~~~~~~~
+/source/tests/v2_risk_order_outbox_tests.cpp:4135:11: warning: ISO C++ does not support ‘__int128’ for ‘floor’ [-Wpedantic]
+ 4135 |     const __int128 floor = allow_short ? -m : 0;
+      |           ^~~~~~~~
+[333/593] Building CXX object CMakeFiles/v2-layout-report.dir/src/v2_layout_report.cpp.o
+[334/593] Building CXX object CMakeFiles/v2-contract-benchmark.dir/src/v2_contract_benchmark.cpp.o
+[335/593] Building CXX object CMakeFiles/v2-phase3-benchmark.dir/src/v2_phase3_benchmark.cpp.o
+[336/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/collections/aeron_array_to_ptr_hash_map.c.o
+[337/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/collections/aeron_bit_set.c.o
+[338/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/collections/aeron_hashing.c.o
+[339/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/collections/aeron_int64_counter_map.c.o
+[340/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/collections/aeron_int64_to_ptr_hash_map.c.o
+[341/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/collections/aeron_int64_to_tagged_ptr_hash_map.c.o
+[342/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/collections/aeron_linked_queue.c.o
+[343/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/collections/aeron_map.c.o
+[344/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/collections/aeron_str_to_ptr_hash_map.c.o
+[345/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/concurrent/aeron_atomic.c.o
+[346/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/concurrent/aeron_broadcast_receiver.c.o
+[347/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/concurrent/aeron_broadcast_transmitter.c.o
+[348/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/concurrent/aeron_counters_manager.c.o
+[349/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/concurrent/aeron_distinct_error_log.c.o
+[350/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/concurrent/aeron_logbuffer_descriptor.c.o
+[351/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/concurrent/aeron_mpsc_concurrent_array_queue.c.o
+[352/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/concurrent/aeron_mpsc_rb.c.o
+[353/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/concurrent/aeron_spsc_concurrent_array_queue.c.o
+[354/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/concurrent/aeron_spsc_rb.c.o
+[355/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/concurrent/aeron_term_gap_filler.c.o
+[356/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/concurrent/aeron_term_gap_scanner.c.o
+[357/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/concurrent/aeron_term_rebuilder.c.o
+[358/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/concurrent/aeron_term_scanner.c.o
+[359/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/concurrent/aeron_term_unblocker.c.o
+[360/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/concurrent/aeron_thread.c.o
+[361/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/protocol/aeron_udp_protocol.c.o
+[362/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/reports/aeron_loss_reporter.c.o
+[363/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/status/aeron_local_sockaddr.c.o
+[364/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/util/aeron_arrayutil.c.o
+[365/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/util/aeron_bitutil.c.o
+[366/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/util/aeron_clock.c.o
+[367/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/util/aeron_deque.c.o
+[368/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/util/aeron_dlopen.c.o
+[369/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/util/aeron_env.c.o
+[370/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/util/aeron_error.c.o
+[371/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/util/aeron_fileutil.c.o
+[372/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/util/aeron_http_util.c.o
+[373/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/util/aeron_math.c.o
+[374/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/util/aeron_netutil.c.o
+[375/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/util/aeron_parse_util.c.o
+[376/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/util/aeron_properties_util.c.o
+[377/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/util/aeron_strutil.c.o
+[378/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/util/aeron_symbol_table.c.o
+[379/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/uri/aeron_uri.c.o
+[380/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/uri/aeron_uri_string_builder.c.o
+[381/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/aeron_agent.c.o
+[382/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/aeron_alloc.c.o
+[383/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/aeron_client.c.o
+[384/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/aeron_client_conductor.c.o
+[385/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/aeron_cnc.c.o
+[386/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/aeron_cnc_file_descriptor.c.o
+[387/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/aeron_context.c.o
+[388/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/aeron_counter.c.o
+[389/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/aeron_exclusive_publication.c.o
+[390/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/aeron_fragment_assembler.c.o
+[391/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/aeron_image.c.o
+[392/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/aeron_log_buffer.c.o
+[393/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/aeron_publication.c.o
+[394/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/aeron_socket.c.o
+[395/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/aeron_subscription.c.o
+[396/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/aeron_windows.c.o
+[397/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/aeronc.c.o
+[398/593] Building C object _deps/aeron-build/aeron-client/src/main/c/CMakeFiles/aeron_static.dir/aeron_version.c.o
+[399/593] Linking C shared library _deps/aeron-build/lib/libaeron_driver.so
+[400/593] Building C object _deps/aeron-build/aeron-driver/src/main/c/CMakeFiles/aeronmd.dir/aeronmd.c.o
+[401/593] Building C object _deps/aeron-build/aeron-driver/src/main/c/CMakeFiles/aeronmd_s.dir/aeronmd.c.o
+[402/593] Linking CXX executable velocita-v2-gateway
+[403/593] Linking CXX executable velocita-v2-shadow-submitter
+[404/593] Linking CXX executable velocita-v2-exporter
+[405/593] Linking CXX executable velocita-v2-shadow-catalog
+[406/593] Linking CXX executable v2-storage-benchmark
+[407/593] Linking CXX executable raft-node
+[408/593] Linking CXX executable raft-metrics-exporter
+[409/593] Linking CXX executable benchmark-metrics-exporter
+[410/593] Linking CXX executable raft-client
+[411/593] Linking CXX executable raft-bench
+[412/593] Linking CXX executable raft-bench-merge
+[413/593] Linking CXX executable raft-dump
+[414/593] Linking CXX executable core-tests
+[415/593] Linking CXX executable metrics-tests
+[416/593] Linking CXX executable benchmark-tests
+[417/593] Linking CXX executable v2-contract-tests
+[418/593] Linking CXX executable v2-value-contract-tests
+[419/593] Linking CXX executable v2-payload-codec-tests
+[420/593] Linking CXX executable v2-kernel-policy-tests
+[421/593] Linking CXX executable v2-pinned-receipts-tests
+[422/593] Linking CXX executable v2-venue-wire-tests
+[423/593] Linking CXX executable v2-venue-transport-tests
+[424/593] Linking CXX executable v2-swap-integration-tests
+[425/593] Linking CXX executable v2-kernel-control-tests
+[426/593] Linking CXX executable v2-kernel-source-tests
+[427/593] Linking CXX executable v2-state-snapshot-tests
+[428/593] Linking CXX executable v2-kernel-codec-tests
+[429/593] Linking CXX executable v2-replay-tests
+[430/593] Linking CXX executable v2-model-replay-tests
+[431/593] Linking CXX executable v2-venue-simulator-tests
+[432/593] Linking CXX executable v2-spsc-ring-tests
+[433/593] Linking CXX executable v2-wal-arena-tests
+[434/593] Linking CXX executable v2-replication-tests
+[435/593] Linking CXX executable v2-snapshot-membership-tests
+[436/593] Linking CXX executable v2-durable-quorum-tests
+[437/593] Linking CXX executable v2-gateway-tests
+[438/593] Linking CXX executable v2-lifecycle-reachability-tests
+[439/593] Linking CXX executable v2-gateway-delivery-tests
+[440/593] Linking CXX executable v2-metrics-tests
+[441/593] Linking CXX executable v2-phase4-property-tests
+[442/593] Linking CXX executable v2-rule-evaluator-tests
+[443/593] Linking CXX executable v2-layout-tests
+[444/593] Linking CXX executable v2-decision-kernel-tests
+[445/593] Linking CXX executable v2-action-template-contract-tests
+[446/593] Linking CXX executable v2-action-resolver-tests
+[447/593] Linking CXX executable v2-executable-policy-contract-tests
+[448/593] Linking CXX executable v2-executable-policy-codec-tests
+[449/593] Linking CXX executable v2-artifact-digest-tests
+[450/593] Linking CXX executable v2-execution-catalog-tests
+[451/593] Linking CXX executable v2-catalog-binding-tests
+[452/593] Linking CXX executable v2-authority-barrier-tests
+[453/593] Linking CXX executable v2-authority-storage-failure-tests
+[454/593] Linking CXX executable v2-gateway-authority-tests
+[455/593] Linking CXX executable v2-authority-composition-tests
+[456/593] Linking CXX executable v2-snapshot-store-bounds-tests
+[457/593] Linking CXX executable v2-metadata-persistence-model-tests
+[458/593] Linking CXX executable v2-bound-metadata-persistence-model-tests
+[459/593] Linking CXX executable v2-static-identity-tests
+[460/593] Linking CXX executable v2-identity-startup-tests
+[461/593] Linking CXX executable v2-kernel-startup-tests
+[462/593] Linking CXX executable v2-bound-frame-tests
+[463/593] Linking CXX executable v2-bound-peer-tests
+[464/593] Linking CXX executable v2-bound-metadata-tests
+[465/593] Linking CXX executable v2-history-binding-tests
+[466/593] Linking CXX executable v2-result-ledger-tests
+[467/593] Linking CXX executable v2-result-admission-tests
+[468/593] Linking CXX executable v2-result-admission-edge-tests
+[469/593] Linking CXX executable v2-outbound-mailbox-tests
+[470/593] Linking CXX executable v2-outbound-saturation-tests
+[471/593] Linking CXX executable v2-retained-log-tests
+[472/593] Linking CXX executable v2-wal-streaming-tests
+[473/593] Linking CXX executable v2-incremental-digest-tests
+[474/593] Linking CXX executable v2-archive-segment-tests
+[475/593] Linking CXX executable v2-archive-catalog-tests
+[476/593] Linking CXX executable v2-archive-store-tests
+[477/593] Linking CXX executable v2-archive-scrub-tests
+[478/593] Linking CXX executable v2-wal-maintenance-tests
+[479/593] Linking CXX executable v2-archive-compaction-tests
+[480/593] Linking CXX executable v2-compaction-fence-tests
+[481/593] Linking CXX executable v2-archive-startup-tests
+[482/593] Linking CXX executable v2-archive-persistence-model-tests
+[483/593] Linking CXX executable v2-archive-publication-fault-tests
+[484/593] Linking CXX executable v2-compaction-io-fault-tests
+[485/593] Linking CXX executable v2-compaction-persistence-model-tests
+[486/593] Linking CXX executable v2-async-persistence-tests
+[487/593] Linking CXX executable v2-async-suffix-tests
+[488/593] Linking CXX executable v2-raft-persistence-tests
+[489/593] Linking CXX executable v2-persistence-completion-tests
+[490/593] Linking CXX executable v2-async-persistence-model-tests
+[491/593] Linking CXX executable v2-archive-segment-adversarial-tests
+[492/593] Linking CXX executable v2-archive-file-tests
+[493/593] Linking CXX executable v2-archive-file-io-tests
+[494/593] Linking CXX executable v2-local-generation-tests
+[495/593] Linking CXX executable v2-local-generation-adversarial-tests
+[496/593] Linking CXX executable v2-generation-startup-guard-tests
+[497/593] Linking CXX executable v2-generation-base-tests
+[498/593] Linking CXX executable v2-generation-base-files-tests
+[499/593] Linking CXX executable v2-generation-startup-tests
+[500/593] Linking CXX executable v2-generation-publication-model-tests
+[501/593] Linking CXX executable v2-result-obligation-tests
+[502/593] Linking CXX executable v2-snapshot-install-preflight-tests
+[503/593] Linking CXX executable v2-install-history-bridge-contract-tests
+[504/593] Linking CXX executable v2-wal-target-switch-tests
+[505/593] Linking CXX executable v2-wal-target-switch-adversarial-tests
+[506/593] Linking CXX executable v2-history-recovery-tests
+[507/593] Linking CXX executable v2-auth-envelope-tests
+[508/593] Linking CXX executable v2-session-fence-tests
+[509/593] Linking CXX executable v2-session-epoch-persistence-model-tests
+[510/593] Linking CXX executable v2-node-config-tests
+[511/593] Linking CXX executable v2-deploy-template-tests
+[512/593] Linking CXX executable v2-node-protocol-tests
+[513/593] Linking CXX executable v2-election-jitter-tests
+[514/593] Linking CXX executable v2-shadow-submitter-tests
+[515/593] Linking CXX executable v2-shadow-program-tests
+[516/593] Linking CXX executable v2-follower-ack-tests
+[517/593] Linking CXX executable v2-shadow-catalog-tests
+[518/593] Linking CXX executable v2-node-client-tests
+[519/593] Linking CXX executable v2-paper-venue-tests
+[520/593] Linking CXX executable v2-paper-venue-state-tests
+[521/593] Linking CXX executable v2-gateway-reconciliation-tests
+[522/593] Linking CXX executable v2-truemarkets-rest-tests
+[523/593] Linking CXX executable v2-truemarkets-wire-tests
+[524/593] Linking CXX executable v2-solana-payload-view-tests
+[525/593] Linking CXX executable v2-truemarkets-venue-tests
+[526/593] Linking CXX executable v2-signer-tests
+[527/593] Linking CXX executable v2-truemarkets-transport-tests
+[528/593] Linking CXX executable v2-solana-resolved-accounts-tests
+[529/593] Linking CXX executable v2-solana-instruction-decode-tests
+[530/593] Linking CXX executable v2-solana-inspection-pipeline-tests
+[531/593] Linking CXX executable v2-spot-balance-tests
+[532/593] Linking CXX executable v2-swap-balance-tests
+[533/593] Linking CXX executable v2-swap-paper-tests
+[534/593] Linking CXX executable v2-swap-paper-drill
+[535/593] Linking CXX executable v2-https-read-probe
+[536/593] Linking CXX executable v2-swap-reconcile-tests
+[537/593] Linking CXX executable v2-swap-https-probe
+[538/593] Linking CXX executable v2-jupiter-route-decode-tests
+[539/593] Linking CXX executable v2-swap-owner-accounting-tests
+[540/593] Linking CXX executable v2-swap-reconcile-session-tests
+[541/593] Linking CXX executable v2-swap-gateway-tls-drill
+[542/593] Linking CXX executable v2-swap-reconcile-store-tests
+[543/593] Linking CXX executable v2-swap-transaction-inspection-tests
+[544/593] Linking CXX executable v2-swap-submission-store-tests
+[545/593] Linking CXX executable v2-swap-authority-tests
+[546/593] Linking CXX executable v2-swap-authority-storage-tests
+[547/593] Linking CXX executable v2-swap-submission-resolution-tests
+[548/593] Linking CXX executable v2-swap-submission-session-tests
+[549/593] Linking CXX executable v2-swap-submission-gateway-drill
+[550/593] Linking CXX executable v2-swap-signing-stamp-tests
+[551/593] Linking CXX executable v2-swap-rest-codec-tests
+[552/593] Linking CXX executable v2-swap-prepare-store-tests
+[553/593] Linking CXX executable v2-swap-prepare-session-tests
+[554/593] Linking CXX executable v2-swap-signer-session-tests
+[555/593] Linking CXX executable v2-swap-signer-production-gate
+[556/593] Linking CXX executable v2-swap-signer-protocol-tests
+[557/593] Linking CXX executable v2-swap-signer-service-tests
+[558/593] Linking CXX executable v2-swap-order-status-tests
+[559/593] Linking CXX executable v2-swap-order-https-probe
+[560/593] Linking CXX executable v2-swap-settlement-evidence-tests
+[561/593] Linking CXX executable v2-swap-prepare-https-tests
+[562/593] Linking CXX executable v2-swap-signing-connection-tests
+[563/593] Linking CXX executable v2-swap-settlement-connection-tests
+[564/593] Linking CXX executable v2-swap-runtime-config-tests
+[565/593] Linking CXX executable v2-swap-gateway-runtime-tests
+[566/593] Linking CXX executable v2-swap-process-drill
+[567/593] Linking CXX executable v2-swap-runtime-production-tests
+[568/593] Linking CXX executable v2-swap-settlement-lifecycle-tests
+[569/593] Linking CXX executable v2-swap-settlement-admission-tests
+[570/593] Linking CXX executable v2-swap-runtime-https-probe
+[571/593] Linking CXX executable v2-swap-account-setup-tests
+[572/593] Linking CXX executable v2-swap-failed-settlement-tests
+[573/593] Linking CXX executable v2-operational-recovery-tests
+[574/593] Linking CXX executable v2-gateway-protocol-tests
+[575/593] Linking CXX executable v2-gateway-node-tests
+[576/593] Linking CXX executable v2-node-tests
+[577/593] Linking CXX executable v2-node-files-tests
+[578/593] Linking CXX executable v2-node-health-tests
+[579/593] Linking CXX executable v2-node-process-tests
+[580/593] Linking CXX executable v2-node-metrics-text-tests
+[581/593] Linking CXX executable v2-two-voter-catchup-tests
+[582/593] Linking CXX executable v2-archive-destination-tests
+[583/593] Linking CXX executable v2-archive-live-verification-tests
+[584/593] Linking CXX executable v2-snapshot-install-ack-contract-tests
+[585/593] Linking CXX executable v2-snapshot-install-results-contract-tests
+[586/593] Linking CXX executable v2-executable-policy-kernel-tests
+[587/593] Linking CXX executable v2-risk-order-outbox-tests
+[588/593] Linking CXX executable v2-layout-report
+[589/593] Linking CXX executable v2-contract-benchmark
+[590/593] Linking CXX executable v2-phase3-benchmark
+[591/593] Linking C static library _deps/aeron-build/lib/libaeron_static.a
+[592/593] Linking C executable _deps/aeron-build/binaries/aeronmd
+[593/593] Linking C executable _deps/aeron-build/binaries/aeronmd_s

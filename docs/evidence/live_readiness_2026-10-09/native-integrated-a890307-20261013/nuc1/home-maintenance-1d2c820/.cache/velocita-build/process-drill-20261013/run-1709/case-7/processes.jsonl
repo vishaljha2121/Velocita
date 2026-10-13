@@ -1,0 +1,4 @@
+{"role":"signer","pid":1782,"epoch":1,"signal":9,"exit":-1}
+{"role":"gateway","pid":1783,"stage":"signer-result-crash","epoch":1,"signal":0,"exit":0}
+{"role":"signer","pid":1784,"epoch":2,"signal":0,"exit":0}
+{"role":"gateway","pid":1785,"stage":"sign-fenced","epoch":2,"signal":0,"exit":0}

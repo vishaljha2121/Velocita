@@ -1,0 +1,6 @@
+2026-10-13T06:44:48Z configure
+Traceback (most recent call last):
+  File "/work/native-run.py", line 29, in <module>
+    if p.returncode:raise RuntimeError('build exit='+str(p.returncode))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: build exit=1

@@ -1,0 +1,59 @@
+NUC1
+velocita_v2_up{host="nuc1",node="1"} 1
+velocita_v2_telemetry_age_seconds{host="nuc1",node="1"} 0.013
+velocita_v2_ready{host="nuc1",node="1"} 1
+velocita_v2_failed{host="nuc1",node="1"} 0
+velocita_v2_term{host="nuc1",node="1"} 17
+velocita_v2_leader_id{host="nuc1",node="1"} 2
+velocita_v2_log_index{host="nuc1",node="1",kind="current"} 17822
+velocita_v2_log_index{host="nuc1",node="1",kind="commit"} 17822
+velocita_v2_log_index{host="nuc1",node="1",kind="applied"} 17822
+velocita_v2_log_index{host="nuc1",node="1",kind="durable"} 17822
+Id=velocita-paper-stochastic-node.service
+ActiveState=active
+SubState=running
+
+Id=velocita-paper-stochastic-exporter.service
+ActiveState=active
+SubState=running
+ef4f511ad48bfaaccb85644e1b147b17ac57de33d98a589536f5fb8899e14c9c
+
+Pi
+velocita_v2_up{host="pi",node="2"} 1
+velocita_v2_telemetry_age_seconds{host="pi",node="2"} 0.013
+velocita_v2_ready{host="pi",node="2"} 1
+velocita_v2_failed{host="pi",node="2"} 0
+velocita_v2_term{host="pi",node="2"} 17
+velocita_v2_leader_id{host="pi",node="2"} 2
+velocita_v2_log_index{host="pi",node="2",kind="current"} 17822
+velocita_v2_log_index{host="pi",node="2",kind="commit"} 17822
+velocita_v2_log_index{host="pi",node="2",kind="applied"} 17822
+velocita_v2_log_index{host="pi",node="2",kind="durable"} 17822
+Id=velocita-paper-stochastic-node.service
+ActiveState=active
+SubState=running
+
+Id=velocita-paper-stochastic-exporter.service
+ActiveState=active
+SubState=running
+6624394a00837ede82cba5d8d83ae08fe5b73ad33f1b4c64bed0fb569b8514e2
+
+NUC2
+velocita_v2_up{host="nuc2",node="3"} 1
+velocita_v2_telemetry_age_seconds{host="nuc2",node="3"} 0.050
+velocita_v2_ready{host="nuc2",node="3"} 1
+velocita_v2_failed{host="nuc2",node="3"} 0
+velocita_v2_term{host="nuc2",node="3"} 17
+velocita_v2_leader_id{host="nuc2",node="3"} 2
+velocita_v2_log_index{host="nuc2",node="3",kind="current"} 17822
+velocita_v2_log_index{host="nuc2",node="3",kind="commit"} 17822
+velocita_v2_log_index{host="nuc2",node="3",kind="applied"} 17822
+velocita_v2_log_index{host="nuc2",node="3",kind="durable"} 17822
+Id=velocita-paper-stochastic-node.service
+ActiveState=active
+SubState=running
+
+Id=velocita-paper-stochastic-exporter.service
+ActiveState=active
+SubState=running
+a26fa12f2f02074c5387d7e8f093f754b8298b862cb42cc692ed56a9ab47afd7

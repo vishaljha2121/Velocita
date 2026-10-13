@@ -1,0 +1,10 @@
+2026-10-13T07:19:24Z configure
+2026-10-13T07:24:56Z tests
+Traceback (most recent call last):
+  File "/work/native-resume.py", line 32, in <module>
+    run(['ctest','--test-dir','/work/build','--output-on-failure','--parallel','1','--output-junit','/work/ctest.xml'], 'tests',3600)
+    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/work/native-resume.py", line 9, in run
+    if r.returncode:raise RuntimeError(name+' exit='+str(r.returncode))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: tests exit=8

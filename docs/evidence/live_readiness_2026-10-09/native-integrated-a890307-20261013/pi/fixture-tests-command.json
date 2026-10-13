@@ -1,0 +1,14 @@
+[
+  "ctest",
+  "--test-dir",
+  "/work/build",
+  "--output-on-failure",
+  "--parallel",
+  "1",
+  "--repeat",
+  "until-fail:3",
+  "-R",
+  "^v2-(node-tests|swap-process-drill)$",
+  "--output-junit",
+  "/work/fixture-ctest.xml"
+]

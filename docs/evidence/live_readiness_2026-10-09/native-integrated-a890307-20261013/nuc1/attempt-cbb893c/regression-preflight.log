@@ -1,0 +1,39 @@
+Test project /work/build
+      Start  72: v2-compaction-persistence-model-tests
+ 1/12 Test  #72: v2-compaction-persistence-model-tests ...   Passed    5.73 sec
+      Start  85: v2-generation-base-tests
+ 2/12 Test  #85: v2-generation-base-tests ................   Passed    0.01 sec
+      Start 125: v2-sol-limit-probe-offline
+ 3/12 Test #125: v2-sol-limit-probe-offline ..............   Passed    0.36 sec
+      Start 126: v2-https-read-local-fixtures
+ 4/12 Test #126: v2-https-read-local-fixtures ............   Passed    1.61 sec
+      Start 128: v2-jupiter-idl-reader-offline
+ 5/12 Test #128: v2-jupiter-idl-reader-offline ...........   Passed    0.19 sec
+      Start 132: v2-owner-settlement-reader-offline
+ 6/12 Test #132: v2-owner-settlement-reader-offline ......   Passed    0.18 sec
+      Start 152: v2-swap-signer-service-tests
+ 7/12 Test #152: v2-swap-signer-service-tests ............   Passed    0.06 sec
+      Start 159: v2-swap-runtime-config-tests
+ 8/12 Test #159: v2-swap-runtime-config-tests ............   Passed    0.02 sec
+      Start 161: v2-swap-process-drill
+ 9/12 Test #161: v2-swap-process-drill ...................   Passed   96.35 sec
+      Start 162: v2-swap-runtime-production-tests
+10/12 Test #162: v2-swap-runtime-production-tests ........   Passed    0.02 sec
+      Start 165: v2-swap-runtime-https-fixtures
+11/12 Test #165: v2-swap-runtime-https-fixtures ..........   Passed    1.55 sec
+      Start 189: v2-node-process-tests
+12/12 Test #189: v2-node-process-tests ...................***Failed   31.56 sec
+node process tests failed: no ready leader: node logs:
+READY node=1 epoch=1 config=5fc643e9e2ede6018c6084b51aa838626ea193b2413d15c255b0ae087577460b
+READY node=2 epoch=1 config=23228d48f81bc446b605f1ad2d8ff38cea75af84a3eed4da04707ff73672d940
+
+evidence kept in "/work/tmp-cbb893c/v2-node-process-f3BRzp"
+
+
+92% tests passed, 1 tests failed out of 12
+
+Total Test time (real) = 137.67 sec
+
+The following tests FAILED:
+	189 - v2-node-process-tests (Failed)
+Errors while running CTest

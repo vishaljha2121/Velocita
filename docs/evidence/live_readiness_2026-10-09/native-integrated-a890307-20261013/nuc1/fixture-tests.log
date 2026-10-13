@@ -1,0 +1,17 @@
+Test project /work/build
+    Start 161: v2-swap-process-drill
+    Test #161: v2-swap-process-drill ............   Passed   70.11 sec
+    Start 161: v2-swap-process-drill
+    Test #161: v2-swap-process-drill ............   Passed   70.16 sec
+    Start 161: v2-swap-process-drill
+1/2 Test #161: v2-swap-process-drill ............   Passed   70.12 sec
+    Start 186: v2-node-tests
+    Test #186: v2-node-tests ....................   Passed   33.26 sec
+    Start 186: v2-node-tests
+    Test #186: v2-node-tests ....................   Passed   32.35 sec
+    Start 186: v2-node-tests
+2/2 Test #186: v2-node-tests ....................   Passed   33.26 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Total Test time (real) = 309.27 sec

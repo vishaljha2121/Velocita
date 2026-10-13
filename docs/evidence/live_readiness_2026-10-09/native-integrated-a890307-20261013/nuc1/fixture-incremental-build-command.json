@@ -1,0 +1,7 @@
+[
+  "cmake",
+  "--build",
+  "/work/build",
+  "--parallel",
+  "1"
+]

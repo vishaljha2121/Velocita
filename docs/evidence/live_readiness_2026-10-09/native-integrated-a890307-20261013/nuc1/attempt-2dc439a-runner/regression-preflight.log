@@ -1,0 +1,154 @@
+Test project /work/build
+      Start  72: v2-compaction-persistence-model-tests
+ 1/11 Test  #72: v2-compaction-persistence-model-tests ...   Passed    5.79 sec
+      Start  85: v2-generation-base-tests
+ 2/11 Test  #85: v2-generation-base-tests ................   Passed    0.01 sec
+      Start 125: v2-sol-limit-probe-offline
+ 3/11 Test #125: v2-sol-limit-probe-offline ..............***Failed    0.35 sec
+E.EE......EEEE..
+======================================================================
+ERROR: test_catalog_identity_prevents_a_cefi_request (__main__.SolLimitProbeTests.test_catalog_identity_prevents_a_cefi_request)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/source/cmake/../tests/test_tm_sol_limit_contract_probe.py", line 82, in test_catalog_identity_prevents_a_cefi_request
+    self.run_probe()
+    ~~~~~~~~~~~~~~^^
+  File "/source/cmake/../tests/test_tm_sol_limit_contract_probe.py", line 52, in run_probe
+    return PROBE.run(self.session, self.output, send or self.send)
+           ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/source/tools/tm-sol-limit-contract-probe.py", line 119, in run
+    parent, normalized = ACCOUNT.MINT._open_private_parent(session)
+                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/source/tools/mint-token.py", line 106, in _open_private_parent
+    raise RuntimeError("token parent is writable by another user")
+RuntimeError: token parent is writable by another user
+
+======================================================================
+ERROR: test_exact_request_original_payload_hash_and_replay_refusal (__main__.SolLimitProbeTests.test_exact_request_original_payload_hash_and_replay_refusal)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/source/cmake/../tests/test_tm_sol_limit_contract_probe.py", line 55, in test_exact_request_original_payload_hash_and_replay_refusal
+    result = self.run_probe()
+  File "/source/cmake/../tests/test_tm_sol_limit_contract_probe.py", line 52, in run_probe
+    return PROBE.run(self.session, self.output, send or self.send)
+           ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/source/tools/tm-sol-limit-contract-probe.py", line 119, in run
+    parent, normalized = ACCOUNT.MINT._open_private_parent(session)
+                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/source/tools/mint-token.py", line 106, in _open_private_parent
+    raise RuntimeError("token parent is writable by another user")
+RuntimeError: token parent is writable by another user
+
+======================================================================
+ERROR: test_expiring_session_stops_before_network_without_refresh (__main__.SolLimitProbeTests.test_expiring_session_stops_before_network_without_refresh)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/source/cmake/../tests/test_tm_sol_limit_contract_probe.py", line 75, in test_expiring_session_stops_before_network_without_refresh
+    self.run_probe()
+    ~~~~~~~~~~~~~~^^
+  File "/source/cmake/../tests/test_tm_sol_limit_contract_probe.py", line 52, in run_probe
+    return PROBE.run(self.session, self.output, send or self.send)
+           ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/source/tools/tm-sol-limit-contract-probe.py", line 119, in run
+    parent, normalized = ACCOUNT.MINT._open_private_parent(session)
+                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/source/tools/mint-token.py", line 106, in _open_private_parent
+    raise RuntimeError("token parent is writable by another user")
+RuntimeError: token parent is writable by another user
+
+======================================================================
+ERROR: test_pinned_catalog_sends_only_the_fixed_post (__main__.SolLimitProbeTests.test_pinned_catalog_sends_only_the_fixed_post)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/source/cmake/../tests/test_tm_sol_limit_contract_probe.py", line 181, in test_pinned_catalog_sends_only_the_fixed_post
+    result = PROBE.run(self.session, self.output, self.send, catalog_raw=raw)
+  File "/source/tools/tm-sol-limit-contract-probe.py", line 119, in run
+    parent, normalized = ACCOUNT.MINT._open_private_parent(session)
+                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/source/tools/mint-token.py", line 106, in _open_private_parent
+    raise RuntimeError("token parent is writable by another user")
+RuntimeError: token parent is writable by another user
+
+======================================================================
+ERROR: test_pinned_timeout_blocks_another_post (__main__.SolLimitProbeTests.test_pinned_timeout_blocks_another_post)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/source/cmake/../tests/test_tm_sol_limit_contract_probe.py", line 210, in test_pinned_timeout_blocks_another_post
+    PROBE.run(self.session, self.output, timeout, catalog_raw=raw)
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/source/tools/tm-sol-limit-contract-probe.py", line 119, in run
+    parent, normalized = ACCOUNT.MINT._open_private_parent(session)
+                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/source/tools/mint-token.py", line 106, in _open_private_parent
+    raise RuntimeError("token parent is writable by another user")
+RuntimeError: token parent is writable by another user
+
+======================================================================
+ERROR: test_rejection_is_retained_without_printing_private_error (__main__.SolLimitProbeTests.test_rejection_is_retained_without_printing_private_error)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/source/cmake/../tests/test_tm_sol_limit_contract_probe.py", line 99, in test_rejection_is_retained_without_printing_private_error
+    result = self.run_probe()
+  File "/source/cmake/../tests/test_tm_sol_limit_contract_probe.py", line 52, in run_probe
+    return PROBE.run(self.session, self.output, send or self.send)
+           ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/source/tools/tm-sol-limit-contract-probe.py", line 119, in run
+    parent, normalized = ACCOUNT.MINT._open_private_parent(session)
+                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/source/tools/mint-token.py", line 106, in _open_private_parent
+    raise RuntimeError("token parent is writable by another user")
+RuntimeError: token parent is writable by another user
+
+======================================================================
+ERROR: test_timeout_is_never_retried (__main__.SolLimitProbeTests.test_timeout_is_never_retried)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/source/cmake/../tests/test_tm_sol_limit_contract_probe.py", line 92, in test_timeout_is_never_retried
+    self.run_probe(timeout)
+    ~~~~~~~~~~~~~~^^^^^^^^^
+  File "/source/cmake/../tests/test_tm_sol_limit_contract_probe.py", line 52, in run_probe
+    return PROBE.run(self.session, self.output, send or self.send)
+           ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/source/tools/tm-sol-limit-contract-probe.py", line 119, in run
+    parent, normalized = ACCOUNT.MINT._open_private_parent(session)
+                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/source/tools/mint-token.py", line 106, in _open_private_parent
+    raise RuntimeError("token parent is writable by another user")
+RuntimeError: token parent is writable by another user
+
+----------------------------------------------------------------------
+Ran 16 tests in 0.062s
+
+FAILED (errors=7)
+
+      Start 126: v2-https-read-local-fixtures
+ 4/11 Test #126: v2-https-read-local-fixtures ............   Passed    1.41 sec
+      Start 128: v2-jupiter-idl-reader-offline
+ 5/11 Test #128: v2-jupiter-idl-reader-offline ...........   Passed    0.18 sec
+      Start 132: v2-owner-settlement-reader-offline
+ 6/11 Test #132: v2-owner-settlement-reader-offline ......   Passed    0.18 sec
+      Start 152: v2-swap-signer-service-tests
+ 7/11 Test #152: v2-swap-signer-service-tests ............   Passed    0.06 sec
+      Start 159: v2-swap-runtime-config-tests
+ 8/11 Test #159: v2-swap-runtime-config-tests ............   Passed    0.02 sec
+      Start 162: v2-swap-runtime-production-tests
+ 9/11 Test #162: v2-swap-runtime-production-tests ........   Passed    0.02 sec
+      Start 165: v2-swap-runtime-https-fixtures
+10/11 Test #165: v2-swap-runtime-https-fixtures ..........   Passed    1.40 sec
+      Start 189: v2-node-process-tests
+11/11 Test #189: v2-node-process-tests ...................***Failed   31.69 sec
+node process tests failed: no ready leader: node logs:
+READY node=1 epoch=1 config=a853e42871b552bd6829e373c0c1f33ca7628661049d804e5f75a77d0eccc7bf
+READY node=2 epoch=1 config=21c9b04feca197f9646185537b601dd16c6659ad95ff820aefe08805b3026243
+
+evidence kept in "/work/tmp-2dc439a/v2-node-process-2ozOvn"
+
+
+82% tests passed, 2 tests failed out of 11
+
+Total Test time (real) =  41.14 sec
+
+The following tests FAILED:
+	125 - v2-sol-limit-probe-offline (Failed)
+	189 - v2-node-process-tests (Failed)
+Errors while running CTest

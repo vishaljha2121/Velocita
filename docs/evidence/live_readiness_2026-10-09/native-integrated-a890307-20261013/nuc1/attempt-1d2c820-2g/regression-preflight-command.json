@@ -1,0 +1,10 @@
+[
+  "ctest",
+  "--test-dir",
+  "/work/build",
+  "--output-on-failure",
+  "--parallel",
+  "1",
+  "-R",
+  "^v2-(compaction-persistence-model-tests|generation-base-tests|sol-limit-probe-offline|https-read-local-fixtures|jupiter-idl-reader-offline|owner-settlement-reader-offline|swap-signer-service-tests|swap-runtime-config-tests|swap-runtime-production-tests|swap-runtime-https-fixtures|swap-process-drill|node-process-tests)$"
+]

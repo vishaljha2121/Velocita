@@ -1,0 +1,13 @@
+2026-10-13T08:06:12Z configure
+2026-10-13T08:06:18Z regression-preflight
+2026-10-13T08:07:23Z tests
+2026-10-13T08:16:07Z golden-oracle
+2026-10-13T08:16:07Z golden-literals
+2026-10-13T08:16:07Z account-tests
+Traceback (most recent call last):
+  File "/work/native-maintenance.py", line 42, in <module>
+    run(['python3','-B','-m','unittest','discover','-s','/source/tests','-p','test_tm_account*.py'],'account-tests',60)
+    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/work/native-maintenance.py", line 14, in run
+    raise RuntimeError(name+' exit='+str(r.returncode))
+RuntimeError: account-tests exit=1

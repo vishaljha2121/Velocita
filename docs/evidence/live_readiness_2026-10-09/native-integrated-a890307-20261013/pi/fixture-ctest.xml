@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="Linux-c++"
+	tests="2"
+	failures="0"
+	disabled="0"
+	skipped="0"
+	hostname="11c7cab3688b"
+	time="367"
+	timestamp="2026-10-13T08:33:58"
+	>
+	<testcase name="v2-swap-process-drill" classname="v2-swap-process-drill" time="78.36" status="run">
+		<properties/>
+		<system-out>PASS F06 before send: uncertain intent holds; zero sends
+PASS F06/F08 mode 1: one send; cash=4000000 base=9000000 fees=2000 purchases=1000000 hold=0 settlements=1
+PASS F06/F08 mode 2: one send; cash=4000000 base=9000000 fees=2000 purchases=1000000 hold=0 settlements=1
+PASS F06/F08 mode 3: one send; cash=4000000 base=9000000 fees=2000 purchases=1000000 hold=0 settlements=1
+PASS F03 durable signing request crash: zero signatures, zero sends, hold retained
+PASS F05 durable signature crash: no execute permission after restart, hold retained
+PASS F06/F08 mode 6: one send; cash=4000000 base=9000000 fees=2000 purchases=1000000 hold=0 settlements=1
+PASS F04 signer SIGKILL after signature: partial result quarantined, zero executes
+Evidence: "/work/home-fixture-86f4408/.cache/velocita-build/process-drill-20261013/run-191"
+</system-out>
+	</testcase>
+	<testcase name="v2-node-tests" classname="v2-node-tests" time="44.0825" status="run">
+		<properties/>
+		<system-out>node tests passed
+</system-out>
+	</testcase>
+</testsuite>

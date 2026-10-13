@@ -1,0 +1,60 @@
+-- The C compiler identification is GNU 15.2.0
+-- The CXX compiler identification is GNU 15.2.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Looking up: /dev/urandom
+-- Looking for bsd/stdlib.h
+-- Looking for bsd/stdlib.h - found
+-- Looking for arc4random
+-- Looking for arc4random - found
+-- Looking for posix_memalign
+-- Looking for posix_memalign - found
+-- Looking for reallocf
+-- Looking for reallocf - found
+-- Looking for fallocate
+-- Looking for fallocate - found
+-- Looking for posix_fallocate
+-- Looking for posix_fallocate - found
+-- Looking for F_PREALLOCATE
+-- Looking for F_PREALLOCATE - not found
+-- Found: /dev/urandom
+-- Looking up: /dev/urandom
+-- Looking for uuid/uuid.h
+-- Looking for uuid/uuid.h - found
+-- Looking for uuid_generate
+-- Looking for uuid_generate - found
+-- Looking for poll
+-- Looking for poll - found
+-- Looking for epoll_create
+-- Looking for epoll_create - found
+-- Looking for sys/types.h
+-- Looking for sys/types.h - found
+-- Looking for stdint.h
+-- Looking for stdint.h - found
+-- Looking for stddef.h
+-- Looking for stddef.h - found
+-- Check size of struct mmsghdr
+-- Check size of struct mmsghdr - done
+-- Looking for recvmmsg
+-- Looking for recvmmsg - found
+-- Looking for sendmmsg
+-- Looking for sendmmsg - found
+-- Found: /dev/urandom
+-- Applied the pinned raft durability patch
+-- Found OpenSSL: /usr/lib/x86_64-linux-gnu/libcrypto.so (found suitable version "3.5.5", minimum required is "3") found components: Crypto
+-- Found CURL: /usr/lib/x86_64-linux-gnu/libcurl.so (found suitable version "8.18.0", minimum required is "7.85")
+-- Found Python3: /usr/bin/python3 (found version "3.14.4") found components: Interpreter
+-- Configuring done (3.4s)
+-- Generating done (0.6s)
+-- Build files have been written to: /work/build

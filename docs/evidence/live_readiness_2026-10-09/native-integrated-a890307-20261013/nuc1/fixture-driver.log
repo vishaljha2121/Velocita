@@ -1,0 +1,6 @@
+2026-10-13T08:33:27Z fixture-incremental-build
+2026-10-13T08:34:07Z fixture-tests
+2026-10-13T08:39:16Z account-tests-corrected
+2026-10-13T08:39:17Z final-golden-oracle
+2026-10-13T08:39:17Z final-golden-literals
+{"qualified": true, "commit": "86f440806c6adc6f4c1dc9dc7a271e3d95293d76", "native_ctest_commit": "1d2c820a18066b4616af6bf8cba65fccc32f6005", "equivalence_changed_paths": ["tests/test_tm_account_session.py", "tests/v2_node_tests.cpp", "tests/v2_swap_process_drill.cpp"], "changed_test_binaries": ["v2-node-tests", "v2-swap-process-drill"], "other_executable_hashes_unchanged": true, "baseline_failed_tests": [], "affected_test_repetitions": 3, "arch": "x86_64", "ctest_passed": 201, "account_tests_passed": 44, "process_artifact_cases_validated": 24, "scope": "native optional-runtime Release/offline tests; three test-fixture corrections validated selectively; 199 unchanged CTest cases retained and two affected cases each pass three repetitions; no deployed transport or production UID claim", "affinity": [3], "uid": 1003, "full_suite_resources": {"memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n", "memory.peak": "2745487360\n", "memory.current": "204869632\n"}}
