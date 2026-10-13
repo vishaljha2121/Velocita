@@ -1,0 +1,4 @@
+ASSIGN-ROLE caller 22 may act as gateway from now on; it may report venue evidence and request cancels
+COMMITTED sequence=4 index=5 term=5 code=0 code_name=applied state_version=4 kill_epoch=1 executor_generation=1 strategy_mode=5 from=2 latency_ms=629
+SWAP PAPER FUNDING base_atoms=40764166 quote_atoms=40006989 purchase_debit_cap=1000000 realized_loss_cap=500000
+COMMITTED sequence=5 index=6 term=5 code=0 code_name=applied state_version=5 kill_epoch=1 executor_generation=1 strategy_mode=5 from=2 latency_ms=616

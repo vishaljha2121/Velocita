@@ -1,49 +1,86 @@
-# Funding/start preparation status
+# Reviewed funding/start ceremony completed
 
-October13, around22:02 UTC: owner authorized the funding/start ceremony. The
-ceremony has **not run**. Both production services remain stopped; no replicated
-opening, role change, journal initialization, signing or transaction submission.
+Verified at **2026-10-13 22:06:00 UTC (18:06 EDT)**. Both isolated production
+services are active/running with zero restarts, executing the pinned native
+binary. The single existing cluster remains globally halted. **No buy intent,
+order preparation, signing or transaction execution occurred.** No funds moved.
 
-Fresh authenticated reads under both service users returned term5, leader2,
-applied index4/state_version3 and the same halted/unfunded state digest
-663d7599b83597d327a2991e11c4f13e9f6184d4400d1daae85309c5a32dc47c.
-Each host has exactly one existing stochastic-named voter container. This is a
-container name, not a claim that the old strategy is trading. No hosts restarted.
+## Committed state and running services
 
-One fresh20-request history capture found40.006989USDC,0.040764166SOL,
-four finalized transactions and zero blocking orders. One keyless finalized
-six-account snapshot passed all account/lookup checks at slot456598383.
-Existing limitations remain: snapshot facts do not guarantee execution-time
-state, and provider archival completeness/closed historical accounts are not
-proved. No fresh buy quote was requested.
+| Item | Verified result |
+|---|---|
+| Owner caller role | Request4 committed at index5/term5: caller22 is gateway. Signer23 remains a read-only Raft caller. |
+| Canonical account opening | Request5 committed at index6/term5/state_version5; kill1/generation1, strategy_mode5 (halted). |
+| Actual managed assets | 40.006989USDC and0.040764166SOL. Paper wallet excluded. |
+| SOL opening mark | 4.353100USDC, from one unsigned whole-position quote. A quoted liquidation mark, not a sale or historical acquisition cost. |
+| Bounded purchase scope | Total/per-buy debit cap1,000,000USDC atoms, fee cap2,000, realized-loss cap500,000. Conservative repayment cap2,039,280lamports; zero sponsor credit. No automatic sell or price-guaranteed stop-loss. |
+| Services | signer PID298864 started22:03:37UTC; gateway PID298894 started22:04:08UTC. Both active/running, expected service UIDs, exact executable hash, zero restarts. |
+| Recovery | Protected signer journal plus gateway prepared/submitted/signing-requests/results journals created once from committed index6. All ordinal1; order-bearing journals idle(phase1), effect0, no transaction or request payload. Checksums/private file metadata match. |
+| First-use flag | Removed from future launches without restarting the running processes. Manifest now initialize_swap_recovery=false. Never delete/reinitialize these journals. |
+| Cluster | All three exporters up, term5/leader2, halted. One voter container per host, no voter/exporter/monitoring restart. |
 
-The previous account review expired at21:52:03.602UTC. Its evidence and installed
-files are preserved. The final unsigned valuation/final-history cut is deliberately
-not collected yet, to avoid expiring before the installation steps are ready.
+**Account review expires at22:17:27.845UTC (18:17:27EDT).** These supervised
+services stop when their account review expires; this is not unattended strategy
+operation. Later use requires a fresh review bound to this already-committed
+opening and existing journals. Do not generate another Initialize or reuse the
+initial-adoption helper to reset funding. The helper implemented here intentionally
+refuses refreshing initialized runs; a post-funding review update is a distinct
+recovery-aware operation. No trading authority survives stale evidence.
 
-Prepared review_transition.py handles only exact pinned dormant review refresh,
-explicit first-use flags and later removal of the initialization flag. It cannot
-start services or create trades. It preserves prior files, checks current review,
-identity, credential bindings and exact installed bytes, and refuses nonempty
-journals for refresh/first start.31 focused tests passed(9transition,6adoption,
-16launcher);3targeted mutations failed named assertions with zero test errors.
-The opening builder now accepts an explicit route-evidence directory; its default
-and canonical C++ encoder are unchanged. No C++ or deployed binary changed.
+The next trading step is a separately reviewed fresh single-$1 buy intent and
+normal-mode transition. The old captured buy is expired and must never execute.
+A fresh positive conservative minimum receipt and matching current route remain
+required. This ceremony does not prove end-to-end trade settlement or profitability.
 
-The owner approved the narrow ceremony checkpoint under the committed-deployment-
-source rule. The next steps are: checkpoint only the ceremony helper/test/protocol
-support, prepare fresh final mark/history,
-review the canonical opening and exact bundle hashes, then perform the authorized
-role/funding/start sequence. No normal-mode command or Intent is included.
+## Evidence and implementation
 
-Read-only commands used:
-- Existing authenticated_read_run.py with the pinned helper/catalog/incarnation/
-  authority arguments and new funding-pre-read output (see cluster-read.json).
-- podman ps over SSH on100.72.127.102,100.84.151.116,100.85.36.22.
-- tools/tm-account-history-check.py using the retained setup pin and new private
-  funding-start-prehistory-20261013 output.
-- read_route.py: one getMultipleAccounts, using the fresh history minimum slot,
-  same six retained account identities and a new exclusive capture directory.
-- owner-role.zsh --dry-run only; it sent no command and accessed no caller key.
+Checkpoint **d63f93d** contains the narrowly scoped transition helper, its tests
+and ceremony preparation. Installed service release remains5cdb5e1 and gateway
+bytes remain the qualified13cc98b binary:
+09f7c3ff0ea68db58cf55c0045e8fbf35c0dcffe1f01632a21cf77b2107b9d7c.
+No C++ or native image rebuild was necessary. Shared dirty gateway/kernel/build
+files were not staged.
 
-Raw account responses remain private. No credentials are included here.
+Final manifestSHA:
+910702fe85f8d5de6746d87c5961f6a48885b4a8bbdcc888fb11007059292947.
+Runtime profileSHA:
+f3197e572b0c4b615e9fd05a3e7e18590b18a35079ac7250641382d4701cd661.
+Opening recordSHA:
+10d9d43a3c571d7a9d25e4029342a898b2e27950f4dc81fc5357369a483c5fd3.
+
+31 focused local tests passed(9transition,6adoption,16launcher). The9transition
+tests passed on NUC before use. Three targeted mutations failed named assertions,
+with zero test errors. The transition helper cannot start units or create orders;
+it checks exact prior bytes, hashes, identities, credential bindings and review
+freshness, preserves previous files, and refuses initialized journal replacement.
+
+Fresh service-user reads before the ceremony matched the known unfunded state.
+Two bounded20-request history cuts found unchanged balances, four transactions,
+zero orders and no holds. The one finalized six-account route snapshot passed at
+slot456598383. The single unsigned full-position valuation was followed by the
+final history cut; the qualified C++ opening builder ran4.080seconds after the
+quote. Existing evidence is retained, not overwritten or timestamp-extended.
+Provider archival completeness and closed historical token accounts are not proved;
+account snapshots do not guarantee arbitrary future program/execution state.
+
+See startup-verified.json, voters-after.json, ceremony.log, opening-summary.txt,
+profile-summary.json, transition-summary.json, route-summary.json and
+valuation-summary.json. Raw responses and account bundles remain private.
+No credentials or sudo password are included in this folder.
+
+## Operational observations
+
+- The older Mac operator binary prints `SWAP PAPER FUNDING`. This is a legacy
+  presentation label; the canonical Initialize contains the actual TM balances
+  and matches the account review accepted by the live executable. It does not
+  perform a wallet transfer.
+- Linux tar ignored macOS provenance extended headers during account-bundle
+  transfer. Every operative file was checked by its pinned SHA256 before use.
+  Use COPYFILE_DISABLE=1 for later tar transfers to avoid this harmless noise.
+- The first read-only journal-inspection snippet expected idle enum0; the C++
+  headers define idle=1. That diagnostic assertion failed without modifying
+  files or services. After checking the actual codec/header, the corrected
+  read-only check passed all five journal hashes, phases and metadata. No
+  trading, funding, installation or network request was retried.
+- The interactive sudo cache was invalidated and administrative SSH closed.
+  Role credentials remain protected in their intended tmpfs locations.

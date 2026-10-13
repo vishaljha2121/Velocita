@@ -1,0 +1,10 @@
+base_atoms=40764166
+base_mark_quote_atoms=4353100
+executor_generation=1
+kill_epoch=1
+kind=Initialize
+max_fee_atoms=2000
+max_purchase_atoms=1000000
+opening_digest=8daaf8ed69d67dff71b970d67bf682e9fafee19c0eb596c9ec87f38031a721f9
+quote_atoms=40006989
+record_sha256=10d9d43a3c571d7a9d25e4029342a898b2e27950f4dc81fc5357369a483c5fd3

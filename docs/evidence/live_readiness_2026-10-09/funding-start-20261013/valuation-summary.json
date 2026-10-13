@@ -1,0 +1,35 @@
+{
+  "http_status": 201,
+  "response_sha256": "0e922262a5ca25a11b026155799f02e6e03d787f2622ebc68bec2927b33bee74",
+  "signed": false,
+  "execute_request_sent": false,
+  "do_not_retry": true,
+  "status": "initialized",
+  "payload_count": 1,
+  "payload_sha256": [
+    "cfabd7a6af59d534ad92eb1c1416c8a6d8460fd259ffb4c3e5802434ae03335e"
+  ],
+  "issues_present": false,
+  "quote": {
+    "qty": "0.040764166",
+    "qty_out": "4.3531",
+    "fee": "0.008723"
+  },
+  "verdict": "initialized_unsigned_requires_semantic_review",
+  "quoted_input_atoms": 40764166,
+  "quoted_output_atoms": 4353100,
+  "quoted_explicit_fee_usdc_atoms": 8723,
+  "side": "sell",
+  "history_sha256": "94058f5a448bca371ae7ec0d2c93a982ba9ce0722103dd08c303fb823dcec1f4",
+  "catalog_sha256": "98f9f84a3ef162ea014b09bc4d925502d88d9a56d88e7c8b9e9202ba8424c895",
+  "request_sha256": "5d76bf365ae22dbe0720831405a335bd43a4adb6734a515407638d03b8e2958f",
+  "quote_started_ms": 1791928943577,
+  "quote_received_ms": 1791928943858,
+  "observed_available_sol_atoms": 40764166,
+  "observed_available_usdc_atoms": 40006989,
+  "account_identity_matched": true,
+  "guaranteed_net_receipt_verified": false,
+  "opening_valuation_adopted": false,
+  "quote_only": true,
+  "live_admitted": false
+}

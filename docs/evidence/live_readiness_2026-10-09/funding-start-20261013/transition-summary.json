@@ -1,0 +1,14 @@
+{
+  "refresh": {
+    "bundle_sha256": "9548fffc7aa2e7a747abbe0efca40a0c754f72c5b6667aacb504eefcf69fabeb",
+    "manifest_sha256": "8c2606380262d71f0ea19c0ef03cf902d34dcd031d79d767c8d58feeb5409193"
+  },
+  "arm": {
+    "bundle_sha256": "e9693c6f8b424fc632e107c115800813fe7d3ba42326072af47eae0f23467043",
+    "manifest_sha256": "ba1138cc3a39671aa14cca6d410544ae1bacef119f7c198296cf8970737cc914"
+  },
+  "seal": {
+    "bundle_sha256": "9b0c12f4cf772dea6834f2437f6f157b7cf7715ba6d618efa8a7e00413555b1d",
+    "manifest_sha256": "910702fe85f8d5de6746d87c5961f6a48885b4a8bbdcc888fb11007059292947"
+  }
+}

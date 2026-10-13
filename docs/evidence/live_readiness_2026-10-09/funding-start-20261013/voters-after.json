@@ -1,0 +1,23 @@
+{
+  "100.72.127.102": [
+    "velocita_v2_up{host=\"nuc1\",node=\"1\"} 1",
+    "velocita_v2_role{host=\"nuc1\",node=\"1\",role=\"leader\"} 0",
+    "velocita_v2_term{host=\"nuc1\",node=\"1\"} 5",
+    "velocita_v2_leader_id{host=\"nuc1\",node=\"1\"} 2",
+    "velocita_v2_strategy_mode{host=\"nuc1\",node=\"1\"} 5"
+  ],
+  "100.84.151.116": [
+    "velocita_v2_up{host=\"pi\",node=\"2\"} 1",
+    "velocita_v2_role{host=\"pi\",node=\"2\",role=\"leader\"} 1",
+    "velocita_v2_term{host=\"pi\",node=\"2\"} 5",
+    "velocita_v2_leader_id{host=\"pi\",node=\"2\"} 2",
+    "velocita_v2_strategy_mode{host=\"pi\",node=\"2\"} 5"
+  ],
+  "100.85.36.22": [
+    "velocita_v2_up{host=\"nuc2\",node=\"3\"} 1",
+    "velocita_v2_role{host=\"nuc2\",node=\"3\",role=\"leader\"} 0",
+    "velocita_v2_term{host=\"nuc2\",node=\"3\"} 5",
+    "velocita_v2_leader_id{host=\"nuc2\",node=\"3\"} 2",
+    "velocita_v2_strategy_mode{host=\"nuc2\",node=\"3\"} 5"
+  ]
+}

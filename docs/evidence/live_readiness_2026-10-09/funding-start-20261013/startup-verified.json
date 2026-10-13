@@ -1,0 +1,63 @@
+{
+  "checked_at_ms": 1791929160269,
+  "services": {
+    "gateway": {
+      "MainPID": "298894",
+      "NRestarts": "0",
+      "ExecMainStatus": "0",
+      "ActiveState": "active",
+      "SubState": "running"
+    },
+    "signer": {
+      "MainPID": "298864",
+      "NRestarts": "0",
+      "ExecMainStatus": "0",
+      "ActiveState": "active",
+      "SubState": "running"
+    }
+  },
+  "journals": {
+    "gateway/signing-requests/submission.bin": {
+      "ordinal": 1,
+      "phase": "idle",
+      "phase_value": 1,
+      "index": 6,
+      "effect": 0,
+      "sha256": "ba96b498931369fff6a9353cfc5373c9ac5705284e8f19bc5d63e62fbf696968"
+    },
+    "gateway/submitted/submission.bin": {
+      "ordinal": 1,
+      "phase": "idle",
+      "phase_value": 1,
+      "index": 6,
+      "effect": 0,
+      "sha256": "935fb95355603be7d26eaa5b9dab102c7a8dacdae70d59cb65f00b026ad3b330"
+    },
+    "gateway/results/result.bin": {
+      "ordinal": 1,
+      "index": 6,
+      "sha256": "cb25af2d80000591e2960519b9c3f2bec0eccdfe6a573497b15006042b473bec"
+    },
+    "gateway/prepared/prepare.bin": {
+      "ordinal": 1,
+      "phase": "idle",
+      "phase_value": 1,
+      "index": 6,
+      "effect": 0,
+      "sha256": "52b0e63d2e9bf3451616a5100a2767dc8c0075f97224ab5ff09475b3d2cff3cf"
+    },
+    "signer/protected-signing/submission.bin": {
+      "ordinal": 1,
+      "phase": "idle",
+      "phase_value": 1,
+      "index": 6,
+      "effect": 0,
+      "sha256": "15cdddf984987e19db60312691002b10b71ec9e034b89187fce650549de6c811"
+    }
+  },
+  "manifest_sha256": "910702fe85f8d5de6746d87c5961f6a48885b4a8bbdcc888fb11007059292947",
+  "binary_sha256": "09f7c3ff0ea68db58cf55c0045e8fbf35c0dcffe1f01632a21cf77b2107b9d7c",
+  "initialize_on_restart": false,
+  "socket_ready": true,
+  "no_preparation_or_signing_or_submission_journal_activity": true
+}

@@ -37,6 +37,23 @@ at 100 bp a side.
 
 ## What must be true before the first real order
 
+**Reviewed funding/start completed (October13,18:06 EDT):**
+Owner request4 assigned caller22 gateway at index5; request5 initialized the real
+account opening at index6/term5/state_version5. Managed balances40.006989USDC and
+0.040764166SOL, opening quote mark4.353100USDC, total purchase cap$1, explicit fee
+cap$0.002 and realized-loss cap$0.50. Trading stays globally halted; no Intent,
+preparation, signing or execution occurred. All three voters are up, one cluster.
+
+Signer and gateway are active/running under their separate UIDs, with exact
+qualified native bytes and zero restarts. All five journals are initialized once,
+idle/effect0 at index6. The first-use flag has been removed from future launches.
+Ceremony helper checkpointd63f93d passed31local tests,9NUC tests and3named mutation
+checks. No C++ image rebuild, voter restart or journal reset. **Review expires
+22:17:27.845UTC(18:17EDT): services stop then; a later review must bind the existing
+opening/journals.** Next is a separately reviewed fresh single-$1 buy, not a
+strategy launch. [Evidence and exact command record](evidence/live_readiness_2026-10-09/funding-start-20261013/README.md).
+
+
 **Fresh account/profile adoption completed (October 13, 17:41 EDT):**
 The account/route review, canonical offline opening and protected credential
 adoption are complete. Balances remain40.006989 USDC and 0.040764166 SOL; final
@@ -64,8 +81,8 @@ No ledger funding, service activation, signing or fund movement occurred.
 |---|---|
 | Qualified runtime and dormant installation | Complete. Installed release 5cdb5e1 uses the unchanged qualified 13cc98b gateway binary; no C++ rebuild claimed. No voter, exporter or monitoring restart. |
 | Protected credential handoff and delayed recovery | Real credentials installed and verified in isolated service-user tmpfs. Temporary owner copies removed. Gateway-only reconciliation and bearer rotation were qualified in 13cc98b. |
-| Fresh account/route review and canonical opening | Complete at this snapshot; opening record prepared privately but not committed. Review expires 2026-10-13 21:52:03.602 UTC. Later launch requires refreshed reviewed evidence, not extended timestamps. |
-| Replicated opening and startup ceremony | Pending: reviewed gateway role/funding, explicit first-use journals and bounded startup under a separately authorized live manifest. Do not reuse/overwrite initialized state. |
+| Fresh account/route review and canonical opening | Refreshed and committed at index6. Review expires2026-10-13 22:17:27.845UTC. Later review must preserve this opening and journals. |
+| Replicated opening and startup ceremony | Complete: both services verified active/running, five idle journals, first-use flag removed. Trading remains halted; no Intent or order. |
 | Supervised single buy | Not started. Exactly $1 total USDC debit, effect 1, repayment ≤ 2,039,280 lamports, zero sponsor credit. Obtain a fresh positive net floor; no automatic retry, resize or second trade. |
 
 [Fresh verification, installation evidence and commands](evidence/live_readiness_2026-10-09/fresh-adoption-20261013/README.md).
