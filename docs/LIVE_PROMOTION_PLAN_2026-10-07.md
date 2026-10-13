@@ -116,6 +116,15 @@ and authenticated deployed reads remain open. Read verification requires owner
 approval of the [single-cluster replacement scope](evidence/live_readiness_2026-10-09/service-account-20261013/setup-r5/CUTOVER_SCOPE.md).
 See [final installation evidence](evidence/live_readiness_2026-10-09/service-account-20261013/setup-r5/README.md).
 
+October 13 cutover authorization: owner approved archiving the current paper
+incarnation and replacing it with **one** schema12 cluster for bounded read
+qualification. New incarnation `b79e65be1ea14e219016ec48ea02efef`; qualified
+production C++86f4408. Replacement images package exact previously qualified
+binaries, with no C++ rebuild. No funding or strategy restart is part of this
+step. Old edge/gateway/observer will be persistently masked during qualification;
+all old state and unit bytes remain archived for rollback. See
+[approved scope](evidence/live_readiness_2026-10-09/service-account-20261013/setup-r6/APPROVAL.md).
+
 Last recorded paper deployment: `884816deae1c960c9bd6fca18e7a5ff26b15359f`; dated runtime observations appear below.
 The owner explicitly authorized this deployment and execution of the ceremony from the Mac.
 Status words: **Done** (built, tested, running on the hosts),

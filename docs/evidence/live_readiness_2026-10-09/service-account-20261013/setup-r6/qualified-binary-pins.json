@@ -1,0 +1,20 @@
+{
+  "nuc1": {
+    "velocita-v2-node": "5b1afd55e05350c8871e827528667c43a3542116a454b393b9aecfbfc4fb2932",
+    "velocita-v2-client": "0aa0a92905ac0b1593e0f31af97e64e8aac10b8d973f9584cd59e04cd07bf766",
+    "velocita-v2-status": "8b7a6cc57d64255cb1a4a6b1fbe2a1bdefc43c2d513656d1ff783d3cb96c6d49",
+    "velocita-v2-shadow-catalog": "4101c407740ea99a402ae552451990ac07e273817a705ffaf127ee5d75dd79dc",
+    "velocita-v2-exporter": "b57dc4943f92c551e06899963b0727a3b5b15e5293f4ba862bfe8e8ac2162408",
+    "velocita-v2-shadow-submitter": "067ce69d1cf9501b224883f6e207a75497ff6d18940c055c0dc9e5f37bc4b05b",
+    "velocita-v2-gateway": "d9db106f51382e7bf3bd5f0d51a8d982ae439cf9fe45c2c626dcbab12f088447"
+  },
+  "pi": {
+    "velocita-v2-node": "41b51ee7184ee97c9ffab4b606676345420926533ce65995650216373bbdfae5",
+    "velocita-v2-client": "6f07031ca7d5809ad7d35cc41a0f2598f19404dc4d8efde0db32894f2118b862",
+    "velocita-v2-status": "b04045400d9f934688e709efde799cf554f269910577e49749da40c7b39e926e",
+    "velocita-v2-shadow-catalog": "8ae0ee278fe510d5dca525a4c97d3d54b044e73df4d6e0bc0a732deb5a45875c",
+    "velocita-v2-exporter": "0a8f4063f8635db36cee7f9be1a71a6687993d31346f55258f0aa9a757056cbf",
+    "velocita-v2-shadow-submitter": "734e4e5dec1cb5f3caa1db6cd974e27a70447f1f8a218faabd5221095607b38e",
+    "velocita-v2-gateway": "f25267c3c4dafc7748343682c8df1108b44145c93d57cbd081319816fbfebfaa"
+  }
+}

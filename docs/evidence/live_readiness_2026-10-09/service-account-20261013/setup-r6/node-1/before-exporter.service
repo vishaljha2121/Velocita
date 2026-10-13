@@ -1,0 +1,17 @@
+[Unit]
+Description=velocita-paper-stochastic-exporter
+After=velocita-paper-stochastic-node.service
+BindsTo=velocita-paper-stochastic-node.service
+PartOf=velocita-paper-stochastic-node.service
+
+[Service]
+ExecStart=/usr/bin/podman run --rm --name velocita-paper-stochastic-exporter --network host --userns=keep-id --read-only --security-opt no-new-privileges --cap-drop all --pids-limit 128 --memory 64m --shm-size 256m -e AERON_TERM_BUFFER_LENGTH=1048576 -v %h/velocita-indicator-paper/stochastic/data:/var/lib/velocita-v2:ro --entrypoint /usr/local/bin/velocita-v2-exporter localhost/velocita-v2:roles-884816d --health /var/lib/velocita-v2/node-1/health.page --host nuc1 --listen 100.72.127.102 --port 11410
+ExecStop=/usr/bin/podman stop -t 15 velocita-paper-stochastic-exporter
+ExecStopPost=-/usr/bin/podman rm --ignore velocita-paper-stochastic-exporter
+Restart=on-failure
+RestartPreventExitStatus=64
+RestartSec=10
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

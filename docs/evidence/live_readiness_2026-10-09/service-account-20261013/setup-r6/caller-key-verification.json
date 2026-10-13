@@ -1,0 +1,22 @@
+{
+  "caller14_created": true,
+  "keys_distinct": true,
+  "hosts": [
+    {
+      "host": "100.72.127.102",
+      "caller13_matches_keychain": true,
+      "caller14_matches_keychain": true
+    },
+    {
+      "host": "100.84.151.116",
+      "caller13_matches_keychain": true,
+      "caller14_matches_keychain": true
+    },
+    {
+      "host": "100.85.36.22",
+      "caller13_matches_keychain": true,
+      "caller14_matches_keychain": true
+    }
+  ],
+  "values_recorded": false
+}
