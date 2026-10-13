@@ -1,4 +1,5 @@
 #include "velocita/v2/swap_runtime_config.hpp"
+#include <cstring>
 #include "v2_swap_signer_test_support.hpp"
 #include <sys/resource.h>
 namespace {
