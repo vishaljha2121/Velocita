@@ -37,23 +37,26 @@ at 100 bp a side.
 
 ## What must be true before the first real order
 
-**Confirmed-fill wiring and restart review (October13, implementation):** the
-C++ gateway now prepares authenticated committed settlement snapshots; the local
-observer and chart consume net price/quantity/explicit fees and retain first-seen
-times across restarts. Local tests passed (60 focused Python tests, seven C++ runtime drill modes,
-two C++ mutation kills and real Grafana data-transform checks). Owner approved
-the scoped checkpoint and offline NUC/Pi qualification. Commit `69679c0` passed
-NUC/Pi qualification: 52 native tests, 193 Python tests and eight process-drill
-cases per host. Collector/unit/live dashboard deployed from this commit; Grafana
-loads39panels and observer is healthy. Gateway executable migration and locked
-review renewal remain in progress; both trading services remain stopped. Warnings and binary hashes are retained
-in [qualification evidence](evidence/live_fill_wiring_2026-10-13/QUALIFICATION.md). No Raft/schema change, service activation or trade.
-The proposal-only `refresh-idle` helper preserves all five pristine journals, but
-cannot renew the expired transaction policy: expiry is part of the protected
-signer journal identity. A separate proposal-only idle policy renewal is tested with native hash parity; no journal replacement or funding reset is permitted by this work.
-The continuous stochastic strategy remains beyond the one-effect/$1 runtime and
-needs a reviewed signal-to-swap bridge and repeated-order recovery/budget controls.
-See [current batch](evidence/live_fill_wiring_2026-10-13/README.md).
+**Confirmed-fill wiring and locked renewal (October 13, deployed):** qualified
+C++ producer 69679c0, collector and 39-panel live dashboard are installed. NUC/Pi
+qualification passed 52 native tests,193 Python tests and eight process-drill cases
+per host. Locked renewal helper f6d2567 passed 30 renewal/application and 19 credential
+checks on NUC1. Both protected callers freshly read the original funded Raft
+state at index 6; four gateway journals remain byte-identical and the idle
+protected signer journal advanced from ordinal 1 to 2. Same-account bearer handoff
+completed and its hash/lifetime verified. Both trading services remain inactive
+with persistent startup guards. No service activation, signing or order occurred.
+
+The review expires 23:50:24.625UTC onOctober 13; expiry requires another fresh
+capture/locked renewal before launch. Monitoring is healthy, but no live
+settlement snapshot/fill has been produced while the gateway is stopped. The
+next bounded launch still needs a fresh positive executable receipt floor and
+reviewed removal of both inhibition layers. Continuous stochastic trading remains
+beyond the one-effect/$1 runtime and needs a reviewed signal-to-swap bridge and
+repeated-order recovery/budget controls. See
+[renewal deployment evidence](evidence/locked_review_renewal_2026-10-13/DEPLOYED.md),
+[telemetry deployment](evidence/live_fill_wiring_2026-10-13/TELEMETRY_DEPLOYMENT.md)
+and [native qualification](evidence/live_fill_wiring_2026-10-13/QUALIFICATION.md).
 
 **Live observability and cost review (October 13):** the supervised account review
 expired at22:17:27UTC and both services stopped as designed; journals remain idle.

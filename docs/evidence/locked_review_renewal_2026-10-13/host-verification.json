@@ -1,0 +1,67 @@
+{
+  "account_review_expires_at_ms": 1791935424625,
+  "archive_verified": true,
+  "authenticated_reads": [
+    {
+      "applied_index": 6,
+      "role": "signer",
+      "state_digest": "9cfaf73475bc0841411a069627f01b3b9adf779c07ca2969a59c4aed378f8d5b"
+    },
+    {
+      "applied_index": 6,
+      "role": "gateway",
+      "state_digest": "9cfaf73475bc0841411a069627f01b3b9adf779c07ca2969a59c4aed378f8d5b"
+    }
+  ],
+  "binary_sha256": "bfd31bdddb9dfc6e5423a769b7b4a789c6abfefbaf7cc3c8c3ef2caa791b3604",
+  "bundle_sha256": "8cf0ba91156aa85c01f6c647d727de32e0d360beef2a6cf01d32f9410a13633c",
+  "checked_at_ms": 1791934719372,
+  "credential_handoff_verified": true,
+  "gateway_commit": "69679c081ce2d0b8939a89c3c846948c460d8d3e",
+  "helper_commit": "f6d2567",
+  "journals": {
+    "prepared": {
+      "ordinal": 1,
+      "sha256": "52b0e63d2e9bf3451616a5100a2767dc8c0075f97224ab5ff09475b3d2cff3cf",
+      "unchanged": true
+    },
+    "protected-signing": {
+      "ordinal": 2,
+      "sha256": "ce81cc6fc4ac71312e8e48965962a1a60d00fbef8cf35406f135a564dfddc181",
+      "unchanged": false
+    },
+    "results": {
+      "ordinal": 1,
+      "sha256": "cb25af2d80000591e2960519b9c3f2bec0eccdfe6a573497b15006042b473bec",
+      "unchanged": true
+    },
+    "signing-requests": {
+      "ordinal": 1,
+      "sha256": "ba96b498931369fff6a9353cfc5373c9ac5705284e8f19bc5d63e62fbf696968",
+      "unchanged": true
+    },
+    "submitted": {
+      "ordinal": 1,
+      "sha256": "935fb95355603be7d26eaa5b9dab102c7a8dacdae70d59cb65f00b026ad3b330",
+      "unchanged": true
+    }
+  },
+  "live_admitted": false,
+  "manifest_sha256": "c2d2ce3339361fe6dd2e68f281e0dc1cb0fb3a55de19c8c97b3c1f07d441cf52",
+  "observer_timer_active": true,
+  "orders_submitted": false,
+  "renewal_complete": true,
+  "services": {
+    "velocita-swap-gateway.service": {
+      "ActiveState": "inactive",
+      "MainPID": "0",
+      "RefuseManualStart": "yes"
+    },
+    "velocita-swap-signer.service": {
+      "ActiveState": "inactive",
+      "MainPID": "0",
+      "RefuseManualStart": "yes"
+    }
+  },
+  "services_started": false
+}

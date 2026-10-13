@@ -1,0 +1,27 @@
+{
+  "checked_at_ms": 1791934737471,
+  "prometheus": {
+    "velocita_live_observer_up": [
+      "1"
+    ],
+    "velocita_live_gateway_active": [
+      "0"
+    ],
+    "velocita_live_signer_active": [
+      "0"
+    ],
+    "velocita_live_settlement_feed_ready": [
+      "0"
+    ],
+    "velocita_live_settlement_feed_status": [
+      "0"
+    ],
+    "node_textfile_scrape_error": [
+      "0",
+      "0",
+      "0"
+    ]
+  },
+  "grafana_panels": 39,
+  "no_settlement_feed_expected_while_gateway_stopped": true
+}

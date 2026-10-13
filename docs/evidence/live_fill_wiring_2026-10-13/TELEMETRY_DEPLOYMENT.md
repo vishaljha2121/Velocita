@@ -30,8 +30,8 @@ Procedure used:
    Root observer cache directory has mode0700. Prometheus observer_up=1,
    gateway_active=0, signer_active=0 and every node_textfile_scrape_error=0.
 
-Gateway executable migration remains separate and pending. Missing settlement
-feed is expected until the upgraded gateway publishes an authenticated snapshot;
+At this initial observer-deployment step, executable migration was still pending.
+Missing settlement feed is expected until the upgraded gateway publishes an authenticated snapshot;
 no production fill or snapshot was fabricated. No Safari access or order sent.
 
 ## Executable installation completed
@@ -55,4 +55,18 @@ TM orders and unchanged0.040764166SOL /40.006989USDC. Raw evidence is private.
 Initial proposal preparation refused the17780-byte transaction review because
 the helper reused the8192-byte profile parser; no proposal or journal mutation
 occurred. Correct the transaction-only bound to the existing32768-byte contract;
-the runtime profile bound remains8192.
+the runtime profile bound remains8192. Fixdca6b9a passed66focused checks on NUC1.
+
+## Final stopped-state verification
+
+Locked renewal and same-account bearer handoff completed using helper checkpoint
+`f6d2567`; see `../locked_review_renewal_2026-10-13/DEPLOYED.md`. Fresh authenticated
+gateway/signer reads both returned index6 and the original funded state digest.
+No funding reset, service activation or trade occurred. Qualified producer remains
+69679c0; the Python renewal needed no C++ rebuild.
+
+At23:38:57UTC, the observer was healthy, all three node textfile scrape-error
+metrics were0, gateway/signer active metrics were0, and Grafana still loaded
+39panels/rows. The settlement feed remained absent as expected while its producer
+is stopped. This verifies deployment and monitoring, not a real settled fill.
+See `deploy/monitoring-verification.json` for exact captured values.

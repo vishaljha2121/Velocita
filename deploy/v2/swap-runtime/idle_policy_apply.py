@@ -195,8 +195,9 @@ def inhibit(pin):
                 if read(dest)!=content:raise ValueError('inhibition drop-in differs')
             else:private_new(dest,content,0o444)
         command(prefix+['daemon-reload'])
-        # Stop also converts the known expiry failure into inactive; never reset
-        # recovery data or start/enable anything. Inhibition survives process loss.
+        # Stop processes, but refuse a retained systemd failed state. The owner
+        # must preserve its evidence and explicitly clear that flag separately.
+        # Never reset recovery data or start/enable; inhibition survives loss.
         command(prefix+['stop',*units])
         for unit in units:
             if command(prefix+['show',unit,'--property=ActiveState','--value'])!='inactive':raise ValueError('producer remains active')
