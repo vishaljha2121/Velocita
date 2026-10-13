@@ -5,7 +5,7 @@ continuous stochastic trading. No order, signing, mode change, ledger reset or
 service activation is authorized by this evidence. Current host read: all three
 voters up, globally halted (mode5); gateway and signer stopped, review expired.
 
-## Implemented, awaiting scoped checkpoint/native qualification
+## Implemented and native-qualified; deployment pending
 
 The gateway copies only an accepted authenticated committed state read into a
 bounded observation (at most16 settlements). Quotes, signature responses and
@@ -40,8 +40,7 @@ An expiry-only renewal therefore requires a reviewed, locked journal transition:
 retain the original immutable record; advance the unused protected-signing record
 ordinal and domain; preserve every gateway journal and the original funding;
 update dependent document hashes; authenticate current Raft no-effect/no-pending
-state; and fail closed on partial application. A proposal-only helper is being
-prepared. It cannot grant itself live authority or treat supplied JSON as an
+state; and fail closed on partial application. A proposal-only helper is tested. It cannot grant itself live authority or treat supplied JSON as an
 authenticated voter read. This is a restart correctness issue, not another fee
 experiment or permission to discard journals.
 
@@ -108,3 +107,7 @@ four new Python suites. Original 52-plus CTests, process drills, TLS tests, sche
 goldens and signer-isolation checks remain required. NUC free space was54.5GB,
 Pi3.01GB; launcher requires2.5GB initially and stops below1.8GB. One worker/CPU3,
 2GiB memory, no container network or credentials, no production restart.
+
+Exact committed native qualification has passed on both architectures; see
+[results and follow commands](QUALIFICATION.md). The approved checkpoint is
+`69679c081ce2d0b8939a89c3c846948c460d8d3e`. No live service was started.

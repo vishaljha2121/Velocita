@@ -1,0 +1,7 @@
+{
+  "native_recover_exit": 0,
+  "result": "PASS native recovery accepts renewed idle ordinal2 and rejects old policy domain",
+  "source_commit": "69679c081ce2d0b8939a89c3c846948c460d8d3e",
+  "synthetic_only": true,
+  "initial_compile": "missing required target cache-line macro; corrected to Mac128"
+}

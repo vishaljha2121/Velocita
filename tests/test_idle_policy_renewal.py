@@ -26,6 +26,18 @@ class RenewalTests(unittest.TestCase):
         after['account.review']=t.encode(r);p['account_review_digest']=T.R.digest(after['account.review']);after['runtime.profile']=t.encode(p)
         return old,t.pins(old,after),before,after,journals,10000100
 
+    def test_repeated_pristine_renewal_monotonically_advances_ordinal(self):
+        old,new,before,after,journals,now=self.fixture()
+        for ordinal in (2,100,2**64-2):
+            changed=dict(journals);record=bytearray(changed['protected-signing']);record[8:16]=ordinal.to_bytes(8,'little')
+            changed['protected-signing']=T.TransitionTests.checksum(record)
+            result=N.propose(old,new,before,after,changed,now)
+            new_record=result['artifacts']['after/journals/protected-signing']
+            self.assertEqual(int.from_bytes(new_record[8:16],'little'),ordinal+1,'ordinal_never_reset')
+            self.assertEqual(new_record[104:432],record[104:432])
+        record[8:16]=(2**64-1).to_bytes(8,'little');changed['protected-signing']=T.TransitionTests.checksum(record)
+        with self.assertRaises(ValueError,msg='ordinal_wrap_refused'):N.propose(old,new,before,after,changed,now)
+
     def test_native_cpp_digest_golden(self):
         # Captured from linked production digest functions and DirectBuyFixture;
         # full standalone source/build command retained in the parity evidence.

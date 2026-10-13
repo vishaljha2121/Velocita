@@ -42,7 +42,12 @@ C++ gateway now prepares authenticated committed settlement snapshots; the local
 observer and chart consume net price/quantity/explicit fees and retain first-seen
 times across restarts. Local tests passed (60 focused Python tests, seven C++ runtime drill modes,
 two C++ mutation kills and real Grafana data-transform checks). Owner approved
-the scoped checkpoint and offline NUC/Pi qualification; deployment is pending. No Raft/schema change, service activation or trade.
+the scoped checkpoint and offline NUC/Pi qualification. Commit `69679c0` passed
+NUC/Pi qualification: 52 native tests, 193 Python tests and eight process-drill
+cases per host. Collector/unit/live dashboard deployed from this commit; Grafana
+loads39panels and observer is healthy. Gateway executable migration and locked
+review renewal remain in progress; both trading services remain stopped. Warnings and binary hashes are retained
+in [qualification evidence](evidence/live_fill_wiring_2026-10-13/QUALIFICATION.md). No Raft/schema change, service activation or trade.
 The proposal-only `refresh-idle` helper preserves all five pristine journals, but
 cannot renew the expired transaction policy: expiry is part of the protected
 signer journal identity. A separate proposal-only idle policy renewal is tested with native hash parity; no journal replacement or funding reset is permitted by this work.

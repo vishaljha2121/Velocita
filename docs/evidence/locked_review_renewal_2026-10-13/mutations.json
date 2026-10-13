@@ -1,0 +1,30 @@
+[
+  {
+    "name": "ignore_state",
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "killed": true
+  },
+  {
+    "name": "skip_lock",
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "killed": true
+  },
+  {
+    "name": "skip_fresh_read",
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "killed": true
+  },
+  {
+    "name": "accept_bad_archive",
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "killed": true
+  }
+]

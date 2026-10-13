@@ -65,9 +65,17 @@ def propose(old,new,before,after,journals,now):
     if any(histories[0][k]!=histories[1][k] for k in ('base_atoms','quote_atoms','owner_sha256','user_id_sha256')):raise ValueError('balance or account changed; reconciliation required')
     if histories[1]['capture_finished_ms']<=histories[0]['capture_finished_ms']:raise ValueError('fresh account capture required')
     for role in ('gateway','signer'):R.L.check_bindings(new,after['runtime.profile'],after['account.review'],after['account.history'],now,role)
-    R.validate_idle_journals(old,before,journals)
-    old_record=journals['protected-signing'];record=bytearray(old_record)
-    struct.pack_into('<Q',record,8,2)
+    old_record=journals['protected-signing']
+    ordinal=int.from_bytes(old_record[8:16],'little')
+    if not 1<=ordinal<2**64-1:raise ValueError('protected journal ordinal exhausted')
+    # Repeated expiry renewal is allowed only while every effect remains pristine.
+    # Normalize a COPY for the existing first-use validator, never installed bytes.
+    prior_check=bytearray(old_record);struct.pack_into('<Q',prior_check,8,1)
+    prior_check[-32:]=hashlib.sha256(prior_check[:-32]).digest()
+    if len(old_record)!=464 or hashlib.sha256(old_record[:-32]).digest()!=old_record[-32:]:raise ValueError('original protected journal checksum')
+    R.validate_idle_journals(old,before,dict(journals,**{'protected-signing':bytes(prior_check)}))
+    record=bytearray(old_record)
+    struct.pack_into('<Q',record,8,ordinal+1)
     record[72:104]=R.journal_bindings(after)[4]
     if record[72:104]==old_record[72:104]:raise ValueError('renewal must change protected policy domain')
     record[-32:]=hashlib.sha256(record[:-32]).digest()

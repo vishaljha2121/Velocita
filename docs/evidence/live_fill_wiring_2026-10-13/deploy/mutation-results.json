@@ -1,0 +1,16 @@
+[
+  {
+    "mutation": "manifest_privacy",
+    "tests_run": 1,
+    "assertion_failures": 1,
+    "errors": 0,
+    "killed": true
+  },
+  {
+    "mutation": "journal_lock",
+    "tests_run": 1,
+    "assertion_failures": 1,
+    "errors": 0,
+    "killed": true
+  }
+]
