@@ -205,8 +205,26 @@ int run_worker(Cluster& c,const std::filesystem::path& executable,const std::fil
     }
     ::close(pair[0]);c.network.responses[kGatewayKey].clear();
     {std::ofstream stop(root/"stop-signer");stop<<"stop";}
-    int signer_status{};const auto sign_end=steady_ms()+10000;
-    while(::waitpid(signer_pid,&signer_status,WNOHANG)==0){require(steady_ms()<sign_end,"signer bounded shutdown");::usleep(1000);}
+    int signer_status{};const auto sign_start=steady_ms(),sign_end=sign_start+10000;
+    unsigned shutdown_turns{};
+    // The replicas live in this parent. Waiting for the separate signer must
+    // not freeze all three voters and manufacture a quorum outage between
+    // gateway restarts. Continue the signer's authenticated bridge as well.
+    while(::waitpid(signer_pid,&signer_status,WNOHANG)==0){
+        require(steady_ms()<sign_end,"signer bounded shutdown");
+        while(auto packet=signer_wire.receive()){
+            require(std::find(c.voters.begin(),c.voters.end(),packet->first)!=c.voters.end(),"shutdown signer configured node");
+            if(c.nodes.contains(packet->first))c.network.at(packet->first).ingress_inbox.push_back(std::move(packet->second));
+        }
+        c.run(1);++shutdown_turns;
+        auto& queue=c.network.responses[kSignerKey];
+        while(!queue.empty()){signer_wire.send(0,queue.front());queue.pop_front();}
+        signer_wire.flush();
+    }
+    c.network.responses[kGatewayKey].clear();
+    {std::ofstream log(root/"shutdown.jsonl",std::ios::app);
+        log<<"{\"stage\":\""<<stage<<"\",\"epoch\":"<<epoch<<",\"elapsed_ms\":"<<steady_ms()-sign_start
+           <<",\"voter_turns\":"<<shutdown_turns<<"}\n";}
     signer_guard.pid=0;::close(signer_pair[0]);
     if(stage=="signer-result-crash"){
         require(WIFSIGNALED(signer_status) && WTERMSIG(signer_status)==SIGKILL,"actual signer SIGKILL after signature before result fsync");
