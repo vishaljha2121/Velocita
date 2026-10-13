@@ -1,0 +1,13 @@
+{
+  "files": {
+    "catalog.bin": "8a18bbee0363a626a158aeaebf5c23087ee2268ee67b23cc4987c70f2758ad3f",
+    "fd_handoff.py": "a8ffbfc1aa25830a0a439d282898725b3ba58936a9d7b5bf68fce57f5a78712c",
+    "manifest.json": "b3008f1e3bac9004ff6d0c8bd72d0fdba385c8d93e48159bfdb13a35bc97bb56",
+    "service_launcher.py": "b2d8045a59d810aa9e7ac44a95bc1728aafd84ad78d1b7a75cea7d8987c7d033",
+    "service_profile.py": "d568e9f651b225fe8d8fd781eb20a436fc0ae735ac3714c0a1f696bc363bc62e",
+    "velocita-swap-gateway.service": "ec6771f6e7b850f1d5076255349b373b43bcc51f016610c9aee23758be92b5f1",
+    "velocita-swap-signer.service": "cce1efe4b7307d84214c576533320752dc5a06ef1e9307a233e0337356f54991",
+    "velocita-v2-gateway": "d9db106f51382e7bf3bd5f0d51a8d982ae439cf9fe45c2c626dcbab12f088447"
+  },
+  "schema": 1
+}

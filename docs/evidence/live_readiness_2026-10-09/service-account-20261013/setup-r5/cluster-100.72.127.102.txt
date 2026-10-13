@@ -1,0 +1,15 @@
+bulbazar-NUC
+velocita-paper-stochastic-edge.service     loaded inactive dead    velocita-paper-stochastic-edge
+velocita-paper-stochastic-exporter.service loaded active   running velocita-paper-stochastic-exporter
+velocita-paper-stochastic-gateway.service  loaded active   running velocita-paper-stochastic-gateway
+velocita-paper-stochastic-node.service     loaded active   running velocita-paper-stochastic-node
+velocita-v2-alertmanager docker.io/prom/alertmanager:v0.34.1
+velocita-ntfy docker.io/binwiederhier/ntfy:v2.25.0
+velocita-v2-node-exporter docker.io/prom/node-exporter:v1.10.2
+velocita-v2-prometheus docker.io/prom/prometheus:v3.13.2
+velocita-v2-grafana docker.io/grafana/grafana:13.1.3
+velocita-md-stream docker.io/library/python:3.12-slim
+velocita-paper-stochastic-node localhost/velocita-v2:roles-884816d
+velocita-paper-stochastic-exporter localhost/velocita-v2:roles-884816d
+velocita-paper-stochastic-gateway localhost/velocita-v2:roles-884816d
+velocita-paper-indicator-observer localhost/velocita-v2-shadow:paper-roles-884816d

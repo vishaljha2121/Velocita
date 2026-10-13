@@ -1,0 +1,46 @@
+{
+  "authenticated_voter_reads": false,
+  "credentials_installed": false,
+  "live_admitted": false,
+  "service_states": {
+    "gateway": {
+      "ActiveState": "inactive",
+      "LoadState": "loaded",
+      "SubState": "dead",
+      "UnitFileState": "static"
+    },
+    "signer": {
+      "ActiveState": "inactive",
+      "LoadState": "loaded",
+      "SubState": "dead",
+      "UnitFileState": "static"
+    }
+  },
+  "source_commit": "06df068b7362a3b3abaf0716be659f1cc6a44dfd",
+  "units_installed": true
+}
+RootDirectory=/opt/velocita/runtimes/076701392104f2cebd7b312f2bd483330ddd518cddd678bab23ef6a33fd8e83f/rootfs
+User=29001
+Group=29001
+LoadState=loaded
+ActiveState=inactive
+SubState=dead
+FragmentPath=/etc/systemd/system/velocita-swap-gateway.service
+UnitFileState=static
+
+RootDirectory=/opt/velocita/runtimes/076701392104f2cebd7b312f2bd483330ddd518cddd678bab23ef6a33fd8e83f/rootfs
+User=29002
+Group=29002
+LoadState=loaded
+ActiveState=inactive
+SubState=dead
+FragmentPath=/etc/systemd/system/velocita-swap-signer.service
+UnitFileState=static
+root root 444 /etc/systemd/system/velocita-swap-gateway.service
+root root 444 /etc/systemd/system/velocita-swap-signer.service
+root root 555 /opt/velocita/releases/06df068b7362a3b3abaf0716be659f1cc6a44dfd/velocita-v2-gateway
+root root 755 /run/velocita-swap-credentials
+velocita-swap-gateway velocita-swap-gateway 700 /run/velocita-swap-credentials/gateway
+velocita-swap-signer velocita-swap-socket 700 /run/velocita-swap-credentials/signer
+active
+active

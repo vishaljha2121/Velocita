@@ -1,0 +1,43 @@
+{
+  "authenticated_voter_reads": false,
+  "credentials_installed": false,
+  "live_admitted": false,
+  "service_states": {
+    "gateway": {
+      "ActiveState": "inactive",
+      "LoadState": "loaded",
+      "SubState": "dead",
+      "UnitFileState": "static"
+    },
+    "signer": {
+      "ActiveState": "inactive",
+      "LoadState": "loaded",
+      "SubState": "dead",
+      "UnitFileState": "static"
+    }
+  },
+  "source_commit": "45db6a64a3dd14b0c4f3a94dd2e9706309c445d1",
+  "units_installed": true
+}
+ExecStart={ path=/usr/bin/python3 ; argv[]=/usr/bin/python3 -I -B /opt/velocita/releases/45db6a64a3dd14b0c4f3a94dd2e9706309c445d1/service_launcher.py --manifest /etc/velocita-swap/public/manifest.json --manifest-sha256 b3008f1e3bac9004ff6d0c8bd72d0fdba385c8d93e48159bfdb13a35bc97bb56 --role gateway --launch ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }
+User=29001
+Group=29001
+LoadState=loaded
+ActiveState=inactive
+SubState=dead
+UnitFileState=static
+
+ExecStart={ path=/usr/bin/python3 ; argv[]=/usr/bin/python3 -I -B /opt/velocita/releases/45db6a64a3dd14b0c4f3a94dd2e9706309c445d1/service_launcher.py --manifest /etc/velocita-swap/public/manifest.json --manifest-sha256 b3008f1e3bac9004ff6d0c8bd72d0fdba385c8d93e48159bfdb13a35bc97bb56 --role signer --launch ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }
+User=29002
+Group=29002
+LoadState=loaded
+ActiveState=inactive
+SubState=dead
+UnitFileState=static
+d9db106f51382e7bf3bd5f0d51a8d982ae439cf9fe45c2c626dcbab12f088447  /opt/velocita/releases/45db6a64a3dd14b0c4f3a94dd2e9706309c445d1/velocita-v2-gateway
+a8ffbfc1aa25830a0a439d282898725b3ba58936a9d7b5bf68fce57f5a78712c  /opt/velocita/releases/45db6a64a3dd14b0c4f3a94dd2e9706309c445d1/fd_handoff.py
+ec6771f6e7b850f1d5076255349b373b43bcc51f016610c9aee23758be92b5f1  /etc/systemd/system/velocita-swap-gateway.service
+cce1efe4b7307d84214c576533320752dc5a06ef1e9307a233e0337356f54991  /etc/systemd/system/velocita-swap-signer.service
+root root 755 /opt/velocita/releases/45db6a64a3dd14b0c4f3a94dd2e9706309c445d1
+root root 444 /opt/velocita/releases/45db6a64a3dd14b0c4f3a94dd2e9706309c445d1/fd_handoff.py
+tmpfs

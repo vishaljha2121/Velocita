@@ -1,0 +1,6 @@
+nuc2
+velocita-paper-stochastic-exporter.service loaded active running velocita-paper-stochastic-exporter
+velocita-paper-stochastic-node.service     loaded active running velocita-paper-stochastic-node
+velocita-v2-node-exporter docker.io/prom/node-exporter:v1.10.2
+velocita-paper-stochastic-node localhost/velocita-v2:roles-884816d
+velocita-paper-stochastic-exporter localhost/velocita-v2:roles-884816d

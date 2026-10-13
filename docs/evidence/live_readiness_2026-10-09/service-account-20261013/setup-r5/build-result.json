@@ -1,0 +1,22 @@
+{
+  "source_commit": "86f440806c6adc6f4c1dc9dc7a271e3d95293d76",
+  "runtime_image": "076701392104f2cebd7b312f2bd483330ddd518cddd678bab23ef6a33fd8e83f",
+  "helper_source_sha256": "079299d8a8be7b8ec8433919e263ccf40d78279f048fffd073526f2f039b60b0",
+  "qualified_link_inputs": {
+    "libvelocita_v2_node_aeron.a": "8e778fa17a44ddc59c155ca1c0e3a18bfdcee3f33ebaea7f82e2e10693456647",
+    "libvelocita_v2_node.a": "3630b806925c6b4db9d6304c4c8964cf0a1051d7b4fe8b09be92e7dfa8eab084",
+    "libvelocita_v2_replication.a": "1550841e0252ce3637fa7469605121984ec4a36caa997ac68a9d891c9c71460a",
+    "libvelocita_v2_kernel.a": "fa4195ccaa31b145a496e18d23ad8b38f2ba1c4d538cda6f472b4bef67f0a32b",
+    "libvelocita_v2_evaluator.a": "583d1ffe896bd61cf5ba666c8fde58870f13b053560e948ede69e92a59a4abf8",
+    "libvelocita_v2_contracts.a": "a1724e97d842cbcd00a439ec3816db41d1ede27025cb5ebbe88e8a6280bf8f63",
+    "libvelocita_aeron.a": "df53b4f4e70df1e19e9734903f0fea2e0ae520cc15726bffd31a121ec57646cc",
+    "libvelocita_core.a": "cbc3d3dd6a7a698fc56fefca794d9c2a4346b03c05b040777eb671d5eca9e37b",
+    "libwillemt_raft.a": "4d8e45500da443c66e14d0e0727944c47e46ebe15f20d8f4d6eefce785340036",
+    "_deps/aeron-build/lib/libaeron_driver_static.a": "5dbed8963162d8ec768cd4cc324fcfa3d2c3d91e370088485cec0c504233961f"
+  },
+  "returncode": 0,
+  "production_binary_changed": false,
+  "read_helper_only": true,
+  "helper_source_commit": "06df068b7362a3b3abaf0716be659f1cc6a44dfd",
+  "binary_sha256": "e8b8fa9888d393cfdcab5a8beda3b2891c8ec8d9aa74e7025a5edee5857e0a58"
+}

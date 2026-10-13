@@ -105,6 +105,17 @@ launch authorization is false, and role credential binds source private tmpfs.
 Production trading and any paper-state reset remain unauthorized by this batch.
 See [installation and read review](evidence/live_readiness_2026-10-09/service-account-20261013/setup-r5/ACCOUNT_CALLER_REVIEW.md).
 
+October 13 dormant installation completed at **45db6a6**: both production units
+are loaded/inactive/static, manifest admission false, role tmpfs directories empty.
+Exact qualified gateway ELF reused; no production C++/image rebuild. Native test
+review exposed and fixed FD3 close-on-exec handoff; **38 focused tests pass on Mac
+and NUC1**, with retained earlier failures and named mutation proof. A separate
+schema12 read helper compiled cleanly. Existing three paper voters/exporters and
+gateway remain active; edge remains previously inactive. Account opening/custody
+and authenticated deployed reads remain open. Read verification requires owner
+approval of the [single-cluster replacement scope](evidence/live_readiness_2026-10-09/service-account-20261013/setup-r5/CUTOVER_SCOPE.md).
+See [final installation evidence](evidence/live_readiness_2026-10-09/service-account-20261013/setup-r5/README.md).
+
 Last recorded paper deployment: `884816deae1c960c9bd6fca18e7a5ff26b15359f`; dated runtime observations appear below.
 The owner explicitly authorized this deployment and execution of the ceremony from the Mac.
 Status words: **Done** (built, tested, running on the hosts),
@@ -120,7 +131,7 @@ Status words: **Done** (built, tested, running on the hosts),
 | 6 | Callers are authorized by role (ADR 0020) | **Done** 2026-10-10: schema 11 deployed; callers 21/22 assigned strategy/gateway roles | `11ad1ae` |
 | 7 | An operator flatten path | **Done** 2026-10-10: reduce-only/flatten capability deployed; held-position host drill remains item 16 | `04b474b` |
 | 8 | An operator command to resolve an order in conflict | **Done** 2026-10-10: operator conflict-resolution capability deployed (ADR 0024) | `9f96cf3` |
-| 9 | The signer (ADR 0019 section 1) | **Host-user communication qualified; open for live**: permanent separate UIDs and pinned runtime installed; native Aeron and protected signer IPC pass under these UIDs with synthetic sign/retrieve and wrong-user/key refusal. Protected descriptor startup is wired and tested. Real payloads still refuse. Production unit/release installation, real custody/account pins, authenticated deployed-Raft reads and multi-trade rearming remain open | `evidence/live_readiness_2026-10-09/RUNTIME_INTEGRATION_2026-10-12.md` |
+| 9 | The signer (ADR 0019 section 1) | **Host-user communication qualified; open for live**: permanent separate UIDs and pinned runtime installed; native Aeron and protected signer IPC pass under these UIDs with synthetic sign/retrieve and wrong-user/key refusal. Protected descriptor startup is wired and tested. Real payloads still refuse. Production units/release installed inactive at45db6a6; real custody/account pins, authenticated deployed-Raft reads and multi-trade rearming remain open | `evidence/live_readiness_2026-10-09/RUNTIME_INTEGRATION_2026-10-12.md` |
 | 10 | The venue transport | **Current runtime composition built locally; disabled**: bounded prepare/sign/execute/recovery coordinator, concrete one-shot execution HTTPS and finalized RPC adapters compile in the optional gateway build. Thirty selected Release checks pass. Real-contract startup gate stays closed; no fixture macro enters that library. Earlier native TLS qualification does not qualify this source | `evidence/live_readiness_2026-10-09/RUNTIME_INTEGRATION_2026-10-12.md` |
 | 11 | The venue contract questions | **Fee inclusion observed; net-receipt admission open**: two unsigned simulations completed. The captured buy debits 1 USDC total (0.998 principal + 0.002 fee). Raising quoted output triggers Jupiter's slippage rejection, but exact floor rounding is not exposed. Original simulation credits 0.009410957 SOL from swap yet only 0.008860117 SOL net to owner: fixed sponsor return exceeds actual account funding by 550,840 lamports. This captured transaction does not meet the owner-directed sponsorship/net-receipt requirement; no limits relaxed or transaction admitted | journey step 3; `evidence/live_readiness_2026-10-09/ROUTE_A_SIMULATION_RESULT_2026-10-12.md` |
 | 12 | The paper venue can reject, partly fill and time out | **Built and deployed**, faults off: reject/partial-fill/timeout flags available; explicit fault rates and drills still pending | runbook 5.2.1 |

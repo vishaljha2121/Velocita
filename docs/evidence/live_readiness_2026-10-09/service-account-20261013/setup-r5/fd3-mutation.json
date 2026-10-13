@@ -1,0 +1,7 @@
+{
+  "mutation": "remove explicit FD3 inheritance",
+  "test": "test_cloexec_fd3_survives_exec_without_unrelated_descriptors",
+  "failures": 1,
+  "errors": 0,
+  "killed_by_named_assertion": true
+}

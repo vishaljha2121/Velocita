@@ -161,9 +161,15 @@ and design an explicit audited offline migrator with state-equivalence and
 economic-reconciliation tests. Do not add such a migrator merely to save this
 paper cluster; the archived fresh-incarnation route is the existing mechanism.
 
-### Checked inactive installation without invented account pins
+### Checked inactive installation without invented account pins (initial design alternatives)
 
-The existing full `service_profile.py` manifest cannot honestly be rendered with
+**Implemented follow-up:**45db6a6 retains schema1 and permits explicit nulls only
+for the three account/runtime hashes while launch authorization is false. The
+actual installed units invoke the real launcher, which refuses before credentials.
+No `/usr/bin/false` placeholder or invented account digest was used. The initial
+alternatives below are retained as review history.
+
+The original full `service_profile.py` manifest could not honestly be rendered with
 complete real account pins yet. Its exact schema requires every digest, and the
 runtime/account documents require a fresh reviewed funding/session/custody cut.
 Two minimal safe approaches are available:

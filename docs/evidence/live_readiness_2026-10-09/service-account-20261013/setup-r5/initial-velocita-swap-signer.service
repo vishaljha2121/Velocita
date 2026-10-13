@@ -1,0 +1,49 @@
+# INSTALLATION REVIEW: activation requires a separately authorized manifest.
+# No Install section; no automatic recovery-directory initialization.
+[Unit]
+Description=Velocita swap signer
+After=network-online.target
+
+[Service]
+Type=simple
+User=29002
+Group=29002
+RootDirectory=/opt/velocita/runtimes/076701392104f2cebd7b312f2bd483330ddd518cddd678bab23ef6a33fd8e83f/rootfs
+MountAPIVFS=yes
+BindReadOnlyPaths=/opt/velocita/releases/06df068b7362a3b3abaf0716be659f1cc6a44dfd
+BindReadOnlyPaths=/etc/velocita-swap/public
+BindReadOnlyPaths=/run/velocita-swap-credentials/signer:/etc/velocita-swap/signer
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+LimitCORE=0
+CapabilityBoundingSet=
+AmbientCapabilities=
+Environment=AERON_TERM_BUFFER_LENGTH=1048576
+RuntimeDirectory=velocita-swap-signer
+RuntimeDirectoryMode=0750
+StateDirectory=velocita-swap-signer
+StateDirectoryMode=0700
+InaccessiblePaths=-/etc/velocita-swap/gateway
+InaccessiblePaths=-/var/lib/velocita-swap-gateway
+# Owner-approved 2026-10-13: voter-address-only IP reachability.
+# Host cgroup BPF enforcement qualification remains mandatory.
+PrivateNetwork=no
+IPAddressDeny=any
+RestrictAddressFamilies=AF_UNIX AF_INET
+IPAddressAllow=100.72.127.102/32
+IPAddressAllow=100.84.151.116/32
+IPAddressAllow=100.85.36.22/32
+# The default manifest refuses launch before opening any credential.
+ExecStart=/usr/bin/python3 -I -B /opt/velocita/releases/06df068b7362a3b3abaf0716be659f1cc6a44dfd/service_launcher.py --manifest /etc/velocita-swap/public/manifest.json --manifest-sha256 8a76f72e3fcdf10ece1b4de7714b86ad0bf53b69d546c667fc649178c6ca7e7c --role signer --launch
+Restart=no
+TimeoutStopSec=15

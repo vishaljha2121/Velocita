@@ -1,0 +1,14 @@
+{
+  "source_checkpoint": "45db6a64a3dd14b0c4f3a94dd2e9706309c445d1",
+  "units_installed": true,
+  "units_active": false,
+  "credentials_installed": false,
+  "live_account_reviewed": false,
+  "focused_tests_mac": 38,
+  "focused_tests_nuc1": 38,
+  "read_helper_compiled": true,
+  "authenticated_voter_reads": false,
+  "read_blocker": "existing schema11 cluster requires reviewed single-cluster replacement",
+  "existing_cluster_preserved": true,
+  "live_admitted": false
+}

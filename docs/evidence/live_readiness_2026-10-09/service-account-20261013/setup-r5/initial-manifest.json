@@ -1,0 +1,29 @@
+{
+  "account_history_sha256": null,
+  "account_review_sha256": null,
+  "binary": "/opt/velocita/releases/06df068b7362a3b3abaf0716be659f1cc6a44dfd/velocita-v2-gateway",
+  "binary_sha256": "d9db106f51382e7bf3bd5f0d51a8d982ae439cf9fe45c2c626dcbab12f088447",
+  "catalog_sha256": "8a18bbee0363a626a158aeaebf5c23087ee2268ee67b23cc4987c70f2758ad3f",
+  "gateway_caller": 22,
+  "gateway_gid": 29001,
+  "gateway_key_id": 13,
+  "gateway_response_port": 44413,
+  "gateway_uid": 29001,
+  "host_ip": "100.72.127.102",
+  "incarnation": "348e0b2cd4f639ff404df4eeadee0ee5",
+  "launch_authorized": false,
+  "nodes": [
+    "1=100.72.127.102:44301",
+    "2=100.84.151.116:44302",
+    "3=100.85.36.22:44303"
+  ],
+  "runtime_image_sha256": "076701392104f2cebd7b312f2bd483330ddd518cddd678bab23ef6a33fd8e83f",
+  "runtime_profile_sha256": null,
+  "schema": 1,
+  "signer_caller": 23,
+  "signer_key_id": 14,
+  "signer_response_port": 44414,
+  "signer_uid": 29002,
+  "socket_gid": 29002,
+  "source_commit": "06df068b7362a3b3abaf0716be659f1cc6a44dfd"
+}

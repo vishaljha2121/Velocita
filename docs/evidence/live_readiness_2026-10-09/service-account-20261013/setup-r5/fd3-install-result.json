@@ -1,0 +1,21 @@
+{
+  "authenticated_voter_reads": false,
+  "credentials_installed": false,
+  "live_admitted": false,
+  "service_states": {
+    "gateway": {
+      "ActiveState": "inactive",
+      "LoadState": "loaded",
+      "SubState": "dead",
+      "UnitFileState": "static"
+    },
+    "signer": {
+      "ActiveState": "inactive",
+      "LoadState": "loaded",
+      "SubState": "dead",
+      "UnitFileState": "static"
+    }
+  },
+  "source_commit": "45db6a64a3dd14b0c4f3a94dd2e9706309c445d1",
+  "units_installed": true
+}

@@ -1,0 +1,27 @@
+{
+  "command": [
+    "podman",
+    "run",
+    "--rm",
+    "--pull=never",
+    "--network=none",
+    "--cpuset-cpus=3",
+    "--memory=256m",
+    "--pids-limit=32",
+    "--userns=keep-id",
+    "--user",
+    "1003:1004",
+    "-v",
+    "/home/velocitas/.cache/velocita-build/swap-services-20261013-r5:/probe:ro",
+    "--entrypoint",
+    "/probe/authenticated-read-probe",
+    "076701392104f2cebd7b312f2bd483330ddd518cddd678bab23ef6a33fd8e83f",
+    "--check-config"
+  ],
+  "returncode": 1,
+  "stdout": "",
+  "stderr": "AUTHENTICATED_READ_REFUSED mode and every pin required\n",
+  "native_loader_and_fail_closed_parser": true,
+  "authenticated_voter_reads": false,
+  "live_admitted": false
+}

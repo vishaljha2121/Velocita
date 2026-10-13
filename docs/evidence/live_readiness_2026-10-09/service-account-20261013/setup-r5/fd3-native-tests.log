@@ -1,0 +1,48 @@
+test_accepts_dormant_bundle_with_explicit_unreviewed_account (test_swap_disabled_install.DisabledInstallTests) ... ok
+test_bad_bundle_stops_before_host_mutation (test_swap_disabled_install.DisabledInstallTests) ... ok
+test_refuses_symlink_and_existing_destination (test_swap_disabled_install.DisabledInstallTests) ... ok
+test_rejects_activation_even_with_complete_account_pins (test_swap_disabled_install.DisabledInstallTests) ... ok
+test_rejects_mismatched_binary_and_identity (test_swap_disabled_install.DisabledInstallTests) ... ok
+test_rejects_rehashed_unit_injection (test_swap_disabled_install.DisabledInstallTests) ... ok
+test_replacement_changes_release_only_and_preserves_dormant_policy (test_swap_disabled_install.DisabledInstallTests) ... ok
+test_configuration_failure_never_opens_credentials (test_swap_service_launcher.LauncherTests) ... ok
+test_duplicate_and_ambiguous_input_refuses (test_swap_service_launcher.LauncherTests) ... ok
+test_expiry_keeps_gateway_recovery_but_never_signer (test_swap_service_launcher.LauncherTests) ... ok
+test_false_authorization_refuses_before_secret_or_service_access (test_swap_service_launcher.LauncherTests) ... ok
+test_identity_and_hash_links_and_freshness (test_swap_service_launcher.LauncherTests) ... ok
+test_launch_mapping_transfers_only_expected_secret_and_environment (test_swap_service_launcher.LauncherTests) ... ok
+test_prepare_maps_exact_pinned_documents_without_secrets (test_swap_service_launcher.LauncherTests) ... ok
+test_private_directory_owner_group_mode_and_type (test_swap_service_launcher.LauncherTests) ... ok
+test_runtime_identity_marker_required_before_account_access (test_swap_service_launcher.LauncherTests) ... ok
+test_service_context_refuses_privilege_or_wrong_cgroup (test_swap_service_launcher.LauncherTests) ... ok
+test_wrong_user_or_extra_groups_refuse (test_swap_service_launcher.LauncherTests) ... ok
+test_binary_hash_mismatch_and_unconditional_cli_refusal (test_swap_service_profile.DescriptorHandoffTests) ... ok
+test_cloexec_fd3_survives_exec_without_unrelated_descriptors (test_swap_service_profile.DescriptorHandoffTests) ... ok
+test_cloexec_fd7_moves_to_fd3_without_unrelated_descriptors (test_swap_service_profile.DescriptorHandoffTests) ... ok
+test_private_descriptor_rejects_mode_hardlink_and_symlinks (test_swap_service_profile.DescriptorHandoffTests) ... ok
+test_disabled_pending_profile_refuses_before_context_or_credentials (test_swap_service_profile.ServiceProfileTests) ... ok
+test_disabled_units_and_actual_role_arguments (test_swap_service_profile.ServiceProfileTests) ... ok
+test_fresh_output_only_and_no_secret_contents (test_swap_service_profile.ServiceProfileTests) ... ok
+test_network_proposal_and_peer_identity (test_swap_service_profile.ServiceProfileTests) ... ok
+test_pinned_runtime_and_role_only_mounts (test_swap_service_profile.ServiceProfileTests) ... ok
+test_rejects_identity_collision_root_bool_and_out_of_range (test_swap_service_profile.ServiceProfileTests) ... ok
+test_rejects_injection_unknown_fields_and_nonfixed_addresses (test_swap_service_profile.ServiceProfileTests) ... ok
+test_unreviewed_account_pins_only_in_disabled_manifest (test_swap_service_profile.ServiceProfileTests) ... ok
+
+----------------------------------------------------------------------
+Ran 30 tests in 0.165s
+
+OK
+test_both_roles_validate_without_files_credentials_or_network (test_authenticated_read_probe.AuthenticatedReadProbeArguments) ... ok
+test_each_role_requires_its_registered_response_port (test_authenticated_read_probe.AuthenticatedReadProbeArguments) ... ok
+test_filesystem_refuses_symlink_ancestry_mutable_parents_hardlinks_and_stale_temp (test_authenticated_read_probe.AuthenticatedReadProbeArguments) ... ok
+test_fixture_binary_cannot_run_transport (test_authenticated_read_probe.AuthenticatedReadProbeArguments) ... ok
+test_rejects_aliasing_state_secret_and_catalog_paths (test_authenticated_read_probe.AuthenticatedReadProbeArguments) ... ok
+test_rejects_duplicate_modes_options_and_unsupported_command_flags (test_authenticated_read_probe.AuthenticatedReadProbeArguments) ... ok
+test_rejects_wrong_roles_zero_malformed_pins_and_privileged_ports (test_authenticated_read_probe.AuthenticatedReadProbeArguments) ... ok
+test_requires_explicit_mode_and_all_pins (test_authenticated_read_probe.AuthenticatedReadProbeArguments) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 5.205s
+
+OK
