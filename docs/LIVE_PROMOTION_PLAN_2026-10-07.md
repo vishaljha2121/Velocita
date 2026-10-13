@@ -89,8 +89,21 @@ Authenticated reads from deployed Raft voters are not covered by this local
 transport drill. Production units, real custody, reviewed live account/config
 artifacts and live activation remain open; no credentials, journals or funds
 were adopted, no production binary/image was replaced, and the existing cluster
-was untouched. The service helpers remain uncommitted. See
+was untouched. The service helpers and retained host evidence are checkpointed at `92abb5f`. See
 [evidence and exact commands](evidence/live_readiness_2026-10-09/service-account-20261013/setup-r4/README.md).
+
+October 13 installation/read follow-up: the account/caller review found that the
+currently deployed `884816d` voters accept reads only from gateway caller 22 and
+use snapshot/command schema 11, replication epoch 1. The qualified `86f4408`
+release uses schema 12, epoch 2 and supports independent signer caller 23.
+Persisted static identity rejects an in-place image restart; no supported state
+migrator exists. Authenticated production reads remain **blocked on a reviewed
+single-cluster replacement**, preserving/archiving old paper state before a fresh
+incarnation. The bounded read helper never borrows gateway identity for the
+signer. Dormant installation supports explicit null account pins only while
+launch authorization is false, and role credential binds source private tmpfs.
+Production trading and any paper-state reset remain unauthorized by this batch.
+See [installation and read review](evidence/live_readiness_2026-10-09/service-account-20261013/setup-r5/ACCOUNT_CALLER_REVIEW.md).
 
 Last recorded paper deployment: `884816deae1c960c9bd6fca18e7a5ff26b15359f`; dated runtime observations appear below.
 The owner explicitly authorized this deployment and execution of the ceremony from the Mac.

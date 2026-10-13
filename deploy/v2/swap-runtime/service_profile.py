@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 
 FIELDS = frozenset('schema launch_authorized source_commit binary_sha256 runtime_image_sha256 binary incarnation gateway_uid gateway_gid signer_uid socket_gid gateway_caller signer_caller gateway_key_id signer_key_id gateway_response_port signer_response_port host_ip nodes runtime_profile_sha256 account_review_sha256 account_history_sha256 catalog_sha256'.split())
+PENDING_ACCOUNT_PINS = frozenset(('runtime_profile_sha256', 'account_review_sha256', 'account_history_sha256'))
 BLOCKERS = ['real-transaction-contract-gate',
             'host-identity-and-network-enforcement',
             'fresh-account-pins-and-journal-review', 'separate-live-authorization']
@@ -44,6 +45,10 @@ def validate(m):
         raise ValueError('explicit operator launch authorization required')
     for name, width in [('source_commit', 40), ('incarnation', 32)] + [(k, 64) for k in FIELDS if k.endswith('_sha256')]:
         value = m[name]
+        # Installation can precede the fresh account/custody review. Explicit
+        # nulls record that missing evidence without inventing executable pins.
+        if name in PENDING_ACCOUNT_PINS and value is None and m['launch_authorized'] is False:
+            continue
         if not isinstance(value, str) or re.fullmatch('[0-9a-f]{' + str(width) + '}', value) is None or not int(value, 16):
             raise ValueError('invalid ' + name)
     expected = '/opt/velocita/releases/' + m['source_commit'] + '/velocita-v2-gateway'
@@ -122,7 +127,9 @@ def unit(m, role, nodes):
               'MountAPIVFS=yes',
               'BindReadOnlyPaths=/opt/velocita/releases/' + m['source_commit'],
               'BindReadOnlyPaths=' + PUBLIC,
-              'BindReadOnlyPaths=/etc/velocita-swap/' + role]
+              # Preserve existing in-unit paths, sourcing credentials only from
+              # the separately provisioned role-owned host tmpfs directory.
+              'BindReadOnlyPaths=/run/velocita-swap-credentials/' + role + ':/etc/velocita-swap/' + role]
     if not signer:
         lines += ['BindReadOnlyPaths=/run/velocita-swap-signer',
                   'BindReadOnlyPaths=/etc/resolv.conf']

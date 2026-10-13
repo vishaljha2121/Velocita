@@ -60,9 +60,12 @@ class ServiceProfileTests(unittest.TestCase):
             self.assertIn('RootDirectory=/opt/velocita/runtimes/' + '2'*64 + '/rootfs', unit)
             self.assertIn('MountAPIVFS=yes', unit)
             self.assertIn('BindReadOnlyPaths=/opt/velocita/releases/' + 'a'*40, unit)
-            self.assertIn('BindReadOnlyPaths=/etc/velocita-swap/' + role, unit)
+            self.assertIn('BindReadOnlyPaths=/run/velocita-swap-credentials/' + role +
+                          ':/etc/velocita-swap/' + role + '\n', unit)
             other = 'signer' if role == 'gateway' else 'gateway'
             self.assertNotIn('BindReadOnlyPaths=/etc/velocita-swap/' + other, unit)
+            self.assertNotIn('BindReadOnlyPaths=/run/velocita-swap-credentials/' + other, unit)
+            self.assertNotIn('BindReadOnlyPaths=/etc/velocita-swap/' + role + '\n', unit)
             self.assertNotIn('BindReadOnlyPaths=/etc/velocita-swap\n', unit)
             if role == 'gateway':
                 self.assertIn('BindReadOnlyPaths=/run/velocita-swap-signer', unit)
@@ -71,6 +74,38 @@ class ServiceProfileTests(unittest.TestCase):
                 self.assertNotIn('BindReadOnlyPaths=/etc/resolv.conf', unit)
         del m['runtime_image_sha256']
         with self.assertRaises(ValueError): PROFILE.render(m)
+
+    def test_unreviewed_account_pins_only_in_disabled_manifest(self):
+        pending = ('runtime_profile_sha256', 'account_review_sha256', 'account_history_sha256')
+        for name in pending:
+            m = fixture(); m[name] = None
+            files = PROFILE.render(m)
+            self.assertIsNone(json.loads(files['manifest.json'])[name])
+            m['launch_authorized'] = True
+            with self.subTest(pin=name), self.assertRaises(ValueError): PROFILE.render(m)
+        m = fixture(); m.update({name: None for name in pending})
+        files = PROFILE.render(m)
+        for role in ('gateway', 'signer'):
+            contract = json.loads(files[role + '-launch-contract.json'])
+            for filename in ('runtime.profile', 'account.review', 'account.history'):
+                self.assertIsNone(contract['public_files_sha256']['/etc/velocita-swap/public/' + filename])
+            self.assertEqual(contract['public_files_sha256']['/etc/velocita-swap/public/catalog.bin'], '1'*64)
+        for name in ('source_commit', 'binary_sha256', 'runtime_image_sha256', 'incarnation', 'catalog_sha256'):
+            broken = dict(m); broken[name] = None
+            with self.subTest(required_pin=name), self.assertRaises(ValueError): PROFILE.render(broken)
+
+    def test_disabled_pending_profile_refuses_before_context_or_credentials(self):
+        from unittest.mock import patch
+        spec = importlib.util.spec_from_file_location('pending_launcher', ROOT / 'deploy/v2/swap-runtime/service_launcher.py')
+        launcher = importlib.util.module_from_spec(spec); spec.loader.exec_module(launcher)
+        m = fixture()
+        m.update(runtime_profile_sha256=None, account_review_sha256=None, account_history_sha256=None)
+        for role in ('gateway', 'signer'):
+            with patch.object(launcher, 'prepare') as prepare, patch.object(launcher, 'service_context') as context, \
+                 patch.object(launcher.FD, 'open_secret') as secret:
+                with self.assertRaisesRegex(ValueError, 'operator has not authorized launch'):
+                    launcher.launch(m, role)
+                prepare.assert_not_called(); context.assert_not_called(); secret.assert_not_called()
 
     def test_network_proposal_and_peer_identity(self):
         files = PROFILE.render(fixture())
