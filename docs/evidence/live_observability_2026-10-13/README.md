@@ -1,6 +1,13 @@
 # Live account and execution dashboard
 
-Prepared October13 after reviewed funding/start. No trade was requested or sent.
+**Deployed October13, around22:23UTC, from checkpoint19f67d2.** Grafana unified
+storage contains the new27-panel Live trading dashboard and all six navigation
+links on every dashboard. Prometheus reports observer_up=1 and
+node_textfile_scrape_error=0. The timer succeeds every15seconds; no Grafana,
+voter, exporter or trading service was restarted. Existing panel counts remain
+22/10/80/37/19 for Overview/Hosts/Paper/Raft/Strategy, including their banners.
+
+Prepared after reviewed funding/start. No trade was requested or sent.
 The supervised gateway stopped at22:17:27UTC because its review expired; signer
 stopped normally at22:17:29UTC. Both journals remain idle/effect0/index6.
 
@@ -72,3 +79,28 @@ remove this cost requirement.
 3. Obtain the specific buy authorization, execute once, and reconcile TM status,
    finalized chain receipt and balances before any retry or strategy promotion.
 4. Re-evaluate the strategy economics with that measured receipt/cost evidence.
+
+
+## Deployment and verification record
+
+- Committed the scoped collector, generator, six JSON dashboards, tests and unit
+  files as19f67d2. Unrelated dirty alert/kernel/gateway files stayed unstaged.
+- Staged committed source to the owner cache live-observability-19f67d2-20261013;
+  all three collector/unit hashes matched observer.sha256. systemd-analyze verify
+  passed, with unrelated existing netplan permission/snapd RestartMode warnings.
+  Tar emitted harmless macOS provenance-header warnings; exact bytes were hashed.
+- Owner sudo ran install-observer.sh once. Root-owned source0444 at
+  /opt/velocita/live-observer/live_observer.py; enabled only the observer timer.
+  The root service has the velocitas supplemental group to atomically write the
+  existing group-writable textfile directory; protected journals remain read-only.
+- On the velocitas account, checked all five prior dashboard SHA256s before
+  copying each to ~/.cache/velocita-live-dashboard-19f67d2/before. Added the link
+  while asserting panels unchanged, then created the new dashboard in the
+  actual mounted directory. No source swap or monitoring restart.
+- Read Prometheus over host-local HTTP; real balances, review expiry, idle phase,
+  observer health and zero textfile errors were present.
+- Verified Grafana with a read-only SQLite query of its unified `resource` table,
+  group dashboard.grafana.app. The legacy `dashboard` table is empty on this
+  deployment; its empty result was not treated as a provisioning failure.
+- Live URL: http://100.72.127.102:3000/d/velocita-v2-live
+- No Safari, signing, new intent, venue execution or balance reset.

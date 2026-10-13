@@ -37,6 +37,20 @@ at 100 bp a side.
 
 ## What must be true before the first real order
 
+**Live observability and cost review (October 13):** the supervised account review
+expired at22:17:27UTC and both services stopped as designed; journals remain idle.
+A dedicated Live trading dashboard and read-only local collector are prepared and
+validated (26tests,26PromQL queries,3mutation kills, real-file diagnostic). They
+separate reviewed snapshot balances from current service status and do not infer
+fills/P&L from quotes. Monitoring checkpoint19f67d2 is deployed; Grafana loaded the tab, Prometheus
+scrapes it without errors, and all existing dashboard panels were preserved. Next
+trading step requires refreshing against the existing opening/journals, a fresh
+positive executable receipt floor and the separately reviewed one-$1buy. The
+strategy's fee-only results must be re-evaluated with the observed native-output
+deduction; the conservative MVP cap is not an expected fee. See
+[live observability and economics](evidence/live_observability_2026-10-13/README.md).
+
+
 **Reviewed funding/start completed (October13,18:06 EDT):**
 Owner request4 assigned caller22 gateway at index5; request5 initialized the real
 account opening at index6/term5/state_version5. Managed balances40.006989USDC and
