@@ -4,7 +4,7 @@
   "(velocita_live_signer_active{run=\"b79e65be1ea14e219016ec48ea02efef\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
   "(velocita_live_review_current{run=\"b79e65be1ea14e219016ec48ea02efef\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
   "clamp_min(velocita_live_review_expires_seconds{run=\"b79e65be1ea14e219016ec48ea02efef\"} - time(), 0) and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1)",
-  "max(velocita_v2_strategy_mode{strategy=\"stochastic\"})",
+  "max(velocita_v2_strategy_mode{paper_run=~\"b79e65be1ea14e219016ec48ea02efef.*\"})",
   "(velocita_live_reviewed_usdc{run=\"b79e65be1ea14e219016ec48ea02efef\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
   "(velocita_live_reviewed_sol{run=\"b79e65be1ea14e219016ec48ea02efef\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
   "time() - velocita_live_account_observed_seconds{run=\"b79e65be1ea14e219016ec48ea02efef\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1)",

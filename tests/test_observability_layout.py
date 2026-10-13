@@ -239,7 +239,11 @@ class DashboardsAreGeneratedAndLoadable(unittest.TestCase):
                 generator.main(["generate_dashboard.py", tmp, "--paper-run", "run-1"])
             generator._paper_run = None
             for path in pathlib.Path(tmp).glob("*.json"):
-                for panel in json.loads(path.read_text())["panels"]:
+                board=json.loads(path.read_text())
+                if board['uid']=='velocita-v2-live':
+                    self.assertNotIn('strategy="stochastic"', str(board))
+                    continue
+                for panel in board["panels"]:
                     for target in panel.get("targets", []):
                         for selector in re.findall(r"velocita_(?:v2|shadow|gateway|indicator)_[a-zA-Z0-9_]+(\{[^}]*\})?", target["expr"]):
                             self.assertTrue(selector.startswith('{strategy="stochastic",paper_run="run-1"'), target["expr"])

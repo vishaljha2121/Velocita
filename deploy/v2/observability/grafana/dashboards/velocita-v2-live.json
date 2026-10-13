@@ -464,7 +464,7 @@
    },
    "targets": [
     {
-     "expr": "max(velocita_v2_strategy_mode{strategy=\"stochastic\"})",
+     "expr": "max(velocita_v2_strategy_mode{paper_run=~\"${live_run}.*\"})",
      "legendFormat": "",
      "refId": "A",
      "instant": true

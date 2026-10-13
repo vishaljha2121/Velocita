@@ -130,7 +130,8 @@ def finish(board, description, tags):
     uid, file, title, _ = board
     for panel in panels:
         for target in panel.get('targets', []):
-            target['expr'] = scoped(target['expr'])
+            if board != LIVE:
+                target['expr'] = scoped(target['expr'])
     description = ('Supervised live swap. ' if board == LIVE else 'Active cluster: stochastic paper only. ') + description
     return file, {
         "uid": uid, "title": title, "description": description,
@@ -812,7 +813,7 @@ def live():
     stat('Protected signer',q('signer_active'),8,4,mappings=state_map)
     stat('Review current',q('review_current'),12,4,mappings=[{"type":"value","options":{"0":{"text":"EXPIRED","color":"orange"},"1":{"text":"CURRENT","color":"green"}}}])
     stat('Review time remaining','clamp_min(velocita_live_review_expires_seconds{run="$live_run"} - time(), 0)'+fresh,16,4,unit='s')
-    stat('Cluster trading mode','max(velocita_v2_strategy_mode)',20,4,mappings=[{"type":"value","options":{"1":{"text":"NORMAL","color":"orange"},"2":{"text":"NO NEW RISK"},"3":{"text":"CANCEL ONLY"},"4":{"text":"REDUCE ONLY"},"5":{"text":"HALTED","color":"blue"},"6":{"text":"FLATTEN"}}}])
+    stat('Cluster trading mode','max(velocita_v2_strategy_mode{paper_run=~"${live_run}.*"})',20,4,mappings=[{"type":"value","options":{"1":{"text":"NORMAL","color":"orange"},"2":{"text":"NO NEW RISK"},"3":{"text":"CANCEL ONLY"},"4":{"text":"REDUCE ONLY"},"5":{"text":"HALTED","color":"blue"},"6":{"text":"FLATTEN"}}}])
     advance(4)
     row('Account snapshot — last verified venue balances, not a live wallet poll')
     stat('Last reviewed USDC',q('reviewed_usdc'),0,8,unit='suffix: USDC',decimals=6)
