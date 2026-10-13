@@ -1,0 +1,8 @@
+{
+  "velocita-v2-strategy.json": "161066cb62393f0e6ecd48b49d9f60a65b21ad99b539223fda0419fa2a6abaa1",
+  "velocita-v2-raft.json": "171694e03326d63f1750ed9eb87bbf298db84f77052d2db0c91eb5bc1e9ce310",
+  "velocita-v2-cluster.json": "180214626024532a74c68bf9ac84f72c36ef174cc6ec59f0ff6705e3d61d88bc",
+  "velocita-v2-paper.json": "198814193d5f0982e376eef63557020fc6574404629fe49e4257e5f577e4b967",
+  "prometheus.yml": "53a63c9db5370ae4765881c45c5a79424ebe72672f423852e2bb54b8c92ea476",
+  "velocita-v2-hosts.json": "73c63c5141501d4dcaa874a6062feece19bc967950eec6fd36896df0a2fe6b9a"
+}

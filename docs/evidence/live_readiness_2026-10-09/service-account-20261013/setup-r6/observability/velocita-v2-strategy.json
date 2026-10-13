@@ -1,0 +1,986 @@
+{
+  "uid": "velocita-v2-strategy",
+  "title": "Velocita \u2014 Strategy edge",
+  "description": "Read qualification cluster b79e65be: halted and unfunded. No paper or live strategy is running. Old paper history is archived; empty trading panels are expected. Active cluster: stochastic paper only. The strategy edge: one-second bars to committed decisions, the funnel to authorized paper orders, and the signal it sends. Paper only.",
+  "schemaVersion": 41,
+  "version": 2,
+  "editable": false,
+  "refresh": "10s",
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "tags": [
+    "velocita",
+    "v2",
+    "strategy",
+    "edge"
+  ],
+  "timezone": "browser",
+  "links": [
+    {
+      "type": "link",
+      "title": "Overview",
+      "url": "/d/velocita-v2-cluster",
+      "icon": "dashboard",
+      "tooltip": "Velocita \u2014 Overview",
+      "targetBlank": false,
+      "keepTime": true,
+      "includeVars": false,
+      "asDropdown": false,
+      "tags": []
+    },
+    {
+      "type": "link",
+      "title": "Raft & storage",
+      "url": "/d/velocita-v2-raft",
+      "icon": "dashboard",
+      "tooltip": "Velocita \u2014 Raft & storage",
+      "targetBlank": false,
+      "keepTime": true,
+      "includeVars": false,
+      "asDropdown": false,
+      "tags": []
+    },
+    {
+      "type": "link",
+      "title": "Strategy edge",
+      "url": "/d/velocita-v2-strategy",
+      "icon": "dashboard",
+      "tooltip": "Velocita \u2014 Strategy edge",
+      "targetBlank": false,
+      "keepTime": true,
+      "includeVars": false,
+      "asDropdown": false,
+      "tags": []
+    },
+    {
+      "type": "link",
+      "title": "Paper trading",
+      "url": "/d/velocita-v2-paper",
+      "icon": "dashboard",
+      "tooltip": "Velocita \u2014 Paper trading",
+      "targetBlank": false,
+      "keepTime": true,
+      "includeVars": false,
+      "asDropdown": false,
+      "tags": []
+    },
+    {
+      "type": "link",
+      "title": "Hosts",
+      "url": "/d/velocita-v2-hosts",
+      "icon": "dashboard",
+      "tooltip": "Velocita \u2014 Hosts",
+      "targetBlank": false,
+      "keepTime": true,
+      "includeVars": false,
+      "asDropdown": false,
+      "tags": []
+    }
+  ],
+  "panels": [
+    {
+      "type": "text",
+      "title": "Qualification only \u2014 trading stopped",
+      "id": 99999,
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Read qualification cluster b79e65be: halted and unfunded. No paper or live strategy is running. Old paper history is archived; empty trading panels are expected."
+      }
+    },
+    {
+      "type": "row",
+      "title": "Strategy edge: one-second bars to committed decisions",
+      "id": 1,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 3
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Submitter ready",
+      "id": 2,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "velocita-v2-prometheus"
+      },
+      "description": "1 once the policy is installed and the strategy mode is normal.",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 4
+      },
+      "targets": [
+        {
+          "expr": "((max(velocita_indicator_run_state{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\"}) == 1) * 0 + 2) or max(velocita_shadow_submitter_ready{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\"})",
+          "legendFormat": "",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "NOT READY"
+                },
+                "1": {
+                  "text": "READY"
+                },
+                "2": {
+                  "text": "COMPLETED",
+                  "color": "blue"
+                }
+              }
+            }
+          ],
+          "noValue": "unknown"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "wideLayout": true
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Last decision",
+      "id": 3,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "velocita-v2-prometheus"
+      },
+      "description": "Seconds since the cluster last recorded a decision. The edge sends a bar when it has a signal or a stop, and otherwise one every 30 seconds.",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 4
+      },
+      "targets": [
+        {
+          "expr": "max(velocita_shadow_last_decision_age_seconds{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\"})",
+          "legendFormat": "",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 45
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "noValue": "unknown"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "wideLayout": true
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Rule agreement",
+      "id": 4,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "velocita-v2-prometheus"
+      },
+      "description": "Share of decisions where the cluster matched the rule the Python edge predicted. Must be 100%.",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 4
+      },
+      "targets": [
+        {
+          "expr": "sum(velocita_shadow_agreement_total{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\",result=\"agree\"}) / clamp_min(sum(velocita_shadow_agreement_total{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\"}), 1)",
+          "legendFormat": "",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "noValue": "unknown"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "wideLayout": true
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Edge errors",
+      "id": 5,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "velocita-v2-prometheus"
+      },
+      "description": "Submitter restarts, refused ticks or unparseable output.",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 4
+      },
+      "targets": [
+        {
+          "expr": "sum(velocita_shadow_errors_total{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\"})",
+          "legendFormat": "",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "noValue": "unknown"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "wideLayout": true
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Tick to decision (ms)",
+      "id": 6,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "velocita-v2-prometheus"
+      },
+      "description": "Payload delivered to Python to the committed decision reply at the local C++ submitter. Includes indicator and journal work and two Raft commits; excludes authorization and fills. Bucket interpolation, not exact percentiles.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(velocita_shadow_tick_to_decision_ms_bucket{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\"}[5m])))",
+          "legendFormat": "p50 (5m)",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(velocita_shadow_tick_to_decision_ms_bucket{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\"}[5m])))",
+          "legendFormat": "p99 (5m)",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Where the time goes (average ms per tick, 5m)",
+      "id": 7,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "velocita-v2-prometheus"
+      },
+      "description": "edge = tick received to submitter read; source_commit = source event committed; decision_commit = decision frame committed. Commit hops include the follower durable-ack delay.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by (hop) (rate(velocita_shadow_hop_ms_sum{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\"}[5m])) / scalar(clamp_min(sum(rate(velocita_shadow_tick_to_decision_ms_count{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\"}[5m])), 1e-9))",
+          "legendFormat": "{{hop}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Decisions by resolution (per minute)",
+      "id": 8,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "velocita-v2-prometheus"
+      },
+      "description": "0 = no action; 1 = an order was proposed, sized and bounded.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "sum by (resolution) (60 * rate(velocita_shadow_action_resolutions_total{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\"}[5m]))",
+          "legendFormat": "resolution {{resolution}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Rule matched (per minute)",
+      "id": 9,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "velocita-v2-prometheus"
+      },
+      "description": "rule 0 = exit; rule 1 = enter; 65535 = no rule matched (hold).",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "sum by (rule) (60 * rate(velocita_shadow_rule_matches_total{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\"}[5m]))",
+          "legendFormat": "rule {{rule}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Market data age at decision (ms)",
+      "id": 10,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "velocita-v2-prometheus"
+      },
+      "description": "Bar close to arrival at the edge. The edge drops a bar older than 2 s and the policy refuses one too.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "max(velocita_shadow_market_data_age_ms{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\"})",
+          "legendFormat": "last tick",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Journey: public one-second bar -> edge -> kernel decision -> paper gateway",
+      "id": 11,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "panels": []
+    },
+    {
+      "type": "bargauge",
+      "title": "Bar-to-order funnel (selected time range)",
+      "id": 12,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "velocita-v2-prometheus"
+      },
+      "description": "Counted from the edge's metrics over the dashboard's time range. Prometheus increase extrapolates, so small counts can show fractions. The kernel refuses the first request for every order and asks the edge to re-read its position, so 4 is about twice 5.",
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 0,
+        "y": 25
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(velocita_shadow_messages_total{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\"}[$__range]))",
+          "legendFormat": "1  Market messages handled",
+          "refId": "A",
+          "instant": true
+        },
+        {
+          "expr": "sum(increase(velocita_shadow_messages_total{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\",outcome=\"forwarded\"}[$__range]))",
+          "legendFormat": "2  Closed bars sent to the cluster",
+          "refId": "B",
+          "instant": true
+        },
+        {
+          "expr": "sum(increase(velocita_shadow_decisions_total{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\"}[$__range]))",
+          "legendFormat": "3  Decisions committed by the kernel",
+          "refId": "C",
+          "instant": true
+        },
+        {
+          "expr": "sum(increase(velocita_shadow_directives_total{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\",stage=\"proposed\",directive!=\"no_action\"}[$__range])) or vector(0)",
+          "legendFormat": "4  Order requests (each order is asked twice)",
+          "refId": "D",
+          "instant": true
+        },
+        {
+          "expr": "sum(increase(velocita_indicator_paper_authorizations_total{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\",code=\"applied\"}[$__range])) or vector(0)",
+          "legendFormat": "5  Orders authorized by the kernel",
+          "refId": "E",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "min": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "valueMode": "color",
+        "namePlacement": "left",
+        "sizing": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "type": "text",
+      "id": 13,
+      "title": "After authorization",
+      "gridPos": {
+        "x": 16,
+        "y": 25,
+        "w": 8,
+        "h": 8
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Authorized orders go to the paper gateway, which fills them in a simulator. See *Paper trading* for orders, fills, position and fees. **Nothing reaches a venue.**"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Journey per minute",
+      "id": 14,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "velocita-v2-prometheus"
+      },
+      "description": "The funnel over time (5 min rate).",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 33
+      },
+      "targets": [
+        {
+          "expr": "sum(60 * rate(velocita_shadow_messages_total{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\"}[5m]))",
+          "legendFormat": "market messages",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(60 * rate(velocita_shadow_messages_total{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\",outcome=\"forwarded\"}[5m]))",
+          "legendFormat": "bars sent",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(60 * rate(velocita_shadow_decisions_total{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\"}[5m]))",
+          "legendFormat": "decisions committed",
+          "refId": "C"
+        },
+        {
+          "expr": "sum(60 * rate(velocita_shadow_directives_total{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\",stage=\"proposed\",directive!=\"no_action\"}[5m])) or vector(0)",
+          "legendFormat": "order requests",
+          "refId": "D"
+        },
+        {
+          "expr": "sum(60 * rate(velocita_indicator_paper_authorizations_total{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\",code=\"applied\"}[5m])) or vector(0)",
+          "legendFormat": "orders authorized",
+          "refId": "E"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Messages by outcome (per minute)",
+      "id": 15,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "velocita-v2-prometheus"
+      },
+      "description": "forwarded = sent to the cluster; quiet = nothing to act on, kept local (one bar in 30 s is still sent); stale = older than 2 s; throttled = a second bar in the same wall-clock second; duplicate = already handled; warming_up = indicators not ready; invalid = rejected frame or a bar ahead of the local clock (alert: VelocitaPaperBadMarketData).",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 33
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (60 * rate(velocita_shadow_messages_total{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\"}[5m]))",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Signal and price",
+      "id": 16,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 41
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Signal flags sent to the kernel",
+      "id": 17,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "velocita-v2-prometheus"
+      },
+      "description": "1 = the edge asked for an entry or an exit on the last forwarded bar. Sampled at the scrape interval, so a one-second flag can fall between samples; the ledger is exact.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 42
+      },
+      "targets": [
+        {
+          "expr": "max(velocita_shadow_feature_micros{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\",name=\"entry_flag\"}) / 1e6",
+          "legendFormat": "entry",
+          "refId": "A"
+        },
+        {
+          "expr": "max(velocita_shadow_feature_micros{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\",name=\"exit_flag\"}) / 1e6",
+          "legendFormat": "exit",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "SOL proxy close",
+      "id": 18,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "velocita-v2-prometheus"
+      },
+      "description": "A public price proxy. It is not a True Markets executable quote.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 42
+      },
+      "targets": [
+        {
+          "expr": "max(velocita_shadow_price_usd{strategy=\"none\",paper_run=\"b79e65be1ea14e219016ec48ea02efef-read-qualification\"})",
+          "legendFormat": "Binance SOLUSDT one-second close",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "min": null,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    }
+  ],
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  }
+}
