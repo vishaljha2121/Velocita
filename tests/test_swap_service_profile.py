@@ -148,7 +148,7 @@ class ServiceProfileTests(unittest.TestCase):
             with self.subTest(patch=patch), self.assertRaises(ValueError): PROFILE.render(value)
 
     def test_fresh_output_only_and_no_secret_contents(self):
-        base = Path.home() / '.cache/velocita-tests/service-profile-tests-v2'
+        base = Path.home() / '.cache/velocita-service-profile-tests-v2'
         base.mkdir(mode=0o700, parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=base) as tmp:
             out = Path(tmp) / 'review'
@@ -170,7 +170,7 @@ class DescriptorHandoffTests(unittest.TestCase):
 
     def test_private_descriptor_rejects_mode_hardlink_and_symlinks(self):
         import os
-        base = Path.home() / '.cache/velocita-tests/service-profile-tests-v2'
+        base = Path.home() / '.cache/velocita-service-profile-tests-v2'
         base.mkdir(mode=0o700, parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=base) as tmp:
             directory = Path(tmp); secret = directory / 'synthetic'
@@ -191,7 +191,7 @@ class DescriptorHandoffTests(unittest.TestCase):
 
     def test_harmless_exec_gets_only_fd3_and_explicit_environment(self):
         import os
-        base = Path.home() / '.cache/velocita-tests/service-profile-tests-v2'
+        base = Path.home() / '.cache/velocita-service-profile-tests-v2'
         base.mkdir(mode=0o700, parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=base) as tmp:
             secret = Path(tmp) / 'synthetic'; secret.write_text('synthetic-handoff'); secret.chmod(0o600)
