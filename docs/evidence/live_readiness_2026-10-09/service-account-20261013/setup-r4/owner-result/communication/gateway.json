@@ -1,0 +1,5 @@
+{
+  "returncode": 0,
+  "stdout": "{\"role\":\"gateway\",\"run\":\"21a47de2dd7626ee\",\"nonce\":\"941484e4077542c850ef71da9d65e0bb\",\"uid\":29001,\"gid\":29001,\"aeron_local_transport_passed\":true,\"native_signer_ipc_passed\":true,\"authenticated_voter_reads\":false,\"live_admitted\":false}\n",
+  "stderr": ""
+}

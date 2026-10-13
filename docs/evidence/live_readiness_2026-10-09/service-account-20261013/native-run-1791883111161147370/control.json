@@ -1,0 +1,5 @@
+{
+  "returncode": 0,
+  "stdout": "{\"role\": \"control\", \"uid\": 63510, \"checks\": [{\"protocol\": \"tcp\", \"address\": \"100.72.127.102\", \"error\": null, \"passed\": true}, {\"protocol\": \"tcp\", \"address\": \"100.84.151.116\", \"error\": null, \"passed\": true}, {\"protocol\": \"tcp\", \"address\": \"100.85.36.22\", \"error\": null, \"passed\": true}, {\"protocol\": \"tcp\", \"address\": \"1.1.1.1\", \"error\": null, \"passed\": true}, {\"protocol\": \"udp\", \"address\": \"127.0.0.1\", \"error\": null, \"passed\": true}, {\"protocol\": \"udp\", \"address\": \"1.1.1.1\", \"error\": null, \"passed\": true}], \"passed\": true}\n",
+  "stderr": ""
+}

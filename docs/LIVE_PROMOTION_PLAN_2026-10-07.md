@@ -7,6 +7,17 @@ maps the checkpoint review (`docs/evidence/stochastic_cash_2026-10-07/CHECKPOINT
 
 ## Where the strategy stands
 
+**Post-live learning artifact requested by the owner (2026-10-13):** after the
+live-trading milestone, create an end-to-end networking explainer of the actual
+deployed system. Cover physical hosts/processes, Tailscale/IPs/ports, Aeron data
+and control paths, Raft replication and acknowledgments, gateway/venue HTTPS,
+gateway/signer Unix IPC, Linux users/permissions/cgroup network filtering,
+packet/decision/order/settlement flow, and failure/recovery/troubleshooting.
+Explain the problem, intuition and tradeoffs in developer-friendly terms with
+diagrams and relevant C++ ownership/concurrency details. Verify the deployed
+configuration when writing it. This is deferred documentation, **not a new live
+gate**; do not create the full artifact during current implementation work.
+
 `stochastic_1s_cash_v1`: long-only SOL, 0.12 SOL clips, one-second bars, paper venue. Its first
 session made 29 round trips in 17 hours and was flat before fees (`RESULTS.md`). The system around
 it is working; the economics are not proven:
@@ -30,6 +41,57 @@ Last updated 2026-10-13: selective integration checkpoint `86f4408` is natively 
 Owner authorization update: POST methods are approved; moving money still requires
 explicit approval. This supersedes the original GET-only method restriction and
 does not authorize live signing, execution, broadcast or automatic promotion.
+
+October 13 service/account batch: **preparation verified, deployment still open**.
+Added disabled distinct-UID service review profiles and tested protected
+credential-descriptor mechanics (8 tests; 5 profile mutation checks), and reran
+all 44 account tests. A fresh authenticated setup/balance read and an 18-request
+bounded history capture reconcile 0.031896934 SOL and 1.006989 USDC, with no
+holds or listed unresolved orders. The new unapproved opening proposes managing
+the USDC and leaving existing SOL outside; no ledger was initialized. ADR 0019's
+original `PrivateNetwork=yes` conflicted with the signer's independent Raft transport;
+the owner subsequently approved voter-address-only connectivity and ADR 0019 is
+amended. Fourteen service/network-probe tests pass. The original native enforcement test was
+partially observed, not qualified: the owner-run test under verified administrator
+`vishal` reached all three voters and received EPERM for both excluded UDP
+destinations; excluded TCP timed out instead of the probe's required permission
+error. That original run remains recorded as failed; the corrected successful run
+is documented below. The earlier attempt under
+`velocitas` was denied by sudo policy before the probe started; that account's
+permissions remain unchanged.
+Supervisor mapping is now implemented: hash-pinned root-owned configuration,
+derived argv, UID/GID/groups, private directories, account links and protected FD
+handoff. The revised TCP test uses a controlled loopback listener and before/after
+control services, so a timeout alone cannot pass. **26 synthetic tests pass on
+Mac and NUC1; 5 mutations fail named assertions.** The owner ran the revised privileged probe under `vishal` from
+`swap-services-20261013-r3`: **network_policy_passed=true**, run
+`1791885226758329135`. Saved phase records and matching source hashes were
+independently checked: both controls succeeded, restricted voter connections
+succeeded, excluded TCP produced no controlled-listener connection, and excluded
+UDP returned EPERM. Aeron, production UIDs and live admission remain false. Actual fixed UID/custody, native Aeron/IPC and deployed isolation qualification
+remain in items 9–10. See [current wiring and owner command](evidence/live_readiness_2026-10-09/service-account-20261013/setup-r3/README.md).
+No host services or credentials were installed; no live
+gate changed. See [service/account evidence](evidence/live_readiness_2026-10-09/service-account-20261013/README.md).
+
+October 13 production-user follow-up: **host setup and bounded communication
+qualification passed**. Permanent nologin users 29001 (gateway) and 29002
+(signer/socket group) and private state/credential directories are provisioned.
+The owner authorized sudo for this work; no credential value is retained in this
+tracker or evidence. The pinned image userspace is installed root-owned after a
+22,392-entry content-manifest check. This resolves the observed Ubuntu 26.04
+binary versus Ubuntu 22.04 host GLIBC/GLIBCXX mismatch without a host upgrade.
+Both bounded transient services passed actual Aeron UDP delivery and native
+signer IPC under those real host UIDs, including synthetic sign-once/retrieve
+and wrong-user/key refusal; run `21a47de2dd7626ee`. Both services exited and were
+collected. **64 checks pass on Mac and NUC1.** Existing qualified C++ objects
+were reused; the only new compiled artifact is the isolated synthetic helper.
+Authenticated reads from deployed Raft voters are not covered by this local
+transport drill. Production units, real custody, reviewed live account/config
+artifacts and live activation remain open; no credentials, journals or funds
+were adopted, no production binary/image was replaced, and the existing cluster
+was untouched. The service helpers remain uncommitted. See
+[evidence and exact commands](evidence/live_readiness_2026-10-09/service-account-20261013/setup-r4/README.md).
+
 Last recorded paper deployment: `884816deae1c960c9bd6fca18e7a5ff26b15359f`; dated runtime observations appear below.
 The owner explicitly authorized this deployment and execution of the ceremony from the Mac.
 Status words: **Done** (built, tested, running on the hosts),
@@ -45,7 +107,7 @@ Status words: **Done** (built, tested, running on the hosts),
 | 6 | Callers are authorized by role (ADR 0020) | **Done** 2026-10-10: schema 11 deployed; callers 21/22 assigned strategy/gateway roles | `11ad1ae` |
 | 7 | An operator flatten path | **Done** 2026-10-10: reduce-only/flatten capability deployed; held-position host drill remains item 16 | `04b474b` |
 | 8 | An operator command to resolve an order in conflict | **Done** 2026-10-10: operator conflict-resolution capability deployed (ADR 0024) | `9f96cf3` |
-| 9 | The signer (ADR 0019 section 1) | **Built locally; open for live**: protected inherited-key startup, distinct UID/caller, pinned IPC and durable lost-stamp retrieval now have executable wiring. Real payloads still refuse before signing. Verified real custody/session setup, native qualification and multi-trade rearming remain open | `evidence/live_readiness_2026-10-09/RUNTIME_INTEGRATION_2026-10-12.md` |
+| 9 | The signer (ADR 0019 section 1) | **Host-user communication qualified; open for live**: permanent separate UIDs and pinned runtime installed; native Aeron and protected signer IPC pass under these UIDs with synthetic sign/retrieve and wrong-user/key refusal. Protected descriptor startup is wired and tested. Real payloads still refuse. Production unit/release installation, real custody/account pins, authenticated deployed-Raft reads and multi-trade rearming remain open | `evidence/live_readiness_2026-10-09/RUNTIME_INTEGRATION_2026-10-12.md` |
 | 10 | The venue transport | **Current runtime composition built locally; disabled**: bounded prepare/sign/execute/recovery coordinator, concrete one-shot execution HTTPS and finalized RPC adapters compile in the optional gateway build. Thirty selected Release checks pass. Real-contract startup gate stays closed; no fixture macro enters that library. Earlier native TLS qualification does not qualify this source | `evidence/live_readiness_2026-10-09/RUNTIME_INTEGRATION_2026-10-12.md` |
 | 11 | The venue contract questions | **Fee inclusion observed; net-receipt admission open**: two unsigned simulations completed. The captured buy debits 1 USDC total (0.998 principal + 0.002 fee). Raising quoted output triggers Jupiter's slippage rejection, but exact floor rounding is not exposed. Original simulation credits 0.009410957 SOL from swap yet only 0.008860117 SOL net to owner: fixed sponsor return exceeds actual account funding by 550,840 lamports. This captured transaction does not meet the owner-directed sponsorship/net-receipt requirement; no limits relaxed or transaction admitted | journey step 3; `evidence/live_readiness_2026-10-09/ROUTE_A_SIMULATION_RESULT_2026-10-12.md` |
 | 12 | The paper venue can reject, partly fill and time out | **Built and deployed**, faults off: reject/partial-fill/timeout flags available; explicit fault rates and drills still pending | runbook 5.2.1 |

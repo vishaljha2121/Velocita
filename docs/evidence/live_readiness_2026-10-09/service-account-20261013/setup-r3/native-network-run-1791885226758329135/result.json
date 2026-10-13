@@ -1,0 +1,314 @@
+{
+  "run": "1791885226758329135",
+  "network_policy_passed": true,
+  "aeron_qualified": false,
+  "production_uids_qualified": false,
+  "live_admitted": false,
+  "commands": [
+    [
+      "/usr/bin/sudo",
+      "-n",
+      "/usr/bin/systemd-run",
+      "--quiet",
+      "--wait",
+      "--pipe",
+      "--collect",
+      "--unit=velocita-signer-net-1791885226758329135-before",
+      "--property=DynamicUser=yes",
+      "--property=NoNewPrivileges=yes",
+      "--property=ProtectSystem=strict",
+      "--property=ProtectHome=yes",
+      "--property=PrivateTmp=yes",
+      "--property=PrivateDevices=yes",
+      "--property=ProtectKernelTunables=yes",
+      "--property=ProtectKernelModules=yes",
+      "--property=ProtectControlGroups=yes",
+      "--property=RestrictSUIDSGID=yes",
+      "--property=LockPersonality=yes",
+      "--property=MemoryDenyWriteExecute=yes",
+      "--property=LimitCORE=0",
+      "--property=CapabilityBoundingSet=",
+      "--property=AmbientCapabilities=",
+      "--property=UMask=0077",
+      "--property=RuntimeMaxSec=35",
+      "--property=TimeoutStopSec=2",
+      "--property=MemoryMax=64M",
+      "--property=TasksMax=16",
+      "--property=Restart=no",
+      "--property=PrivateNetwork=no",
+      "--property=RestrictAddressFamilies=AF_UNIX AF_INET",
+      "/usr/bin/python3",
+      "-I",
+      "-B",
+      "-c",
+      "\nimport errno, json, os, socket, sys\nrestricted = sys.argv[1] == 'restricted'\nport = int(sys.argv[2])\nnonce = sys.argv[3].encode()\nvoters = ['100.72.127.102', '100.84.151.116', '100.85.36.22']\nresult = {'role': sys.argv[1], 'uid': os.getuid(), 'checks': []}\nok = os.getuid() != 0\nfor address in voters + ['1.1.1.1', '127.0.0.1']:\n    error = None\n    try:\n        target_port = 22 if address in voters else (port if address == '127.0.0.1' else 443)\n        with socket.create_connection((address, target_port), timeout=2) as channel:\n            if address == '127.0.0.1': channel.sendall(nonce)\n    except OSError as exc:\n        error = exc.errno if exc.errno is not None else 'timeout'\n    expected_deny = restricted and address not in voters\n    # A TCP timeout is provisional: the parent separately requires bracketing\n    # control success and absence of any accepted restricted connection.\n    passed = error in (errno.EPERM, errno.EACCES, 'timeout') if expected_deny else error is None\n    result['checks'].append({'protocol': 'tcp', 'address': address, 'error': error, 'passed': passed})\n    ok = ok and passed\nfor address in ['127.0.0.1', '1.1.1.1']:\n    error = None\n    try:\n        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as channel:\n            channel.settimeout(2)\n            channel.sendto(b'velocita-network-probe', (address, 59998))\n    except OSError as exc:\n        error = exc.errno if exc.errno is not None else 'timeout'\n    passed = error in (errno.EPERM, errno.EACCES) if restricted else error is None\n    result['checks'].append({'protocol': 'udp', 'address': address, 'error': error, 'passed': passed})\n    ok = ok and passed\nresult['passed'] = bool(ok)\nprint(json.dumps(result), flush=True)\nsys.exit(0 if ok else 1)\n",
+      "control",
+      "33901",
+      "26e39e08e2d77f28612440c4e7849727"
+    ],
+    [
+      "/usr/bin/sudo",
+      "-n",
+      "/usr/bin/systemd-run",
+      "--quiet",
+      "--wait",
+      "--pipe",
+      "--collect",
+      "--unit=velocita-signer-net-1791885226758329135-restricted",
+      "--property=DynamicUser=yes",
+      "--property=NoNewPrivileges=yes",
+      "--property=ProtectSystem=strict",
+      "--property=ProtectHome=yes",
+      "--property=PrivateTmp=yes",
+      "--property=PrivateDevices=yes",
+      "--property=ProtectKernelTunables=yes",
+      "--property=ProtectKernelModules=yes",
+      "--property=ProtectControlGroups=yes",
+      "--property=RestrictSUIDSGID=yes",
+      "--property=LockPersonality=yes",
+      "--property=MemoryDenyWriteExecute=yes",
+      "--property=LimitCORE=0",
+      "--property=CapabilityBoundingSet=",
+      "--property=AmbientCapabilities=",
+      "--property=UMask=0077",
+      "--property=RuntimeMaxSec=35",
+      "--property=TimeoutStopSec=2",
+      "--property=MemoryMax=64M",
+      "--property=TasksMax=16",
+      "--property=Restart=no",
+      "--property=PrivateNetwork=no",
+      "--property=IPAddressDeny=any",
+      "--property=RestrictAddressFamilies=AF_UNIX AF_INET",
+      "--property=IPAddressAllow=100.72.127.102/32",
+      "--property=IPAddressAllow=100.84.151.116/32",
+      "--property=IPAddressAllow=100.85.36.22/32",
+      "/usr/bin/python3",
+      "-I",
+      "-B",
+      "-c",
+      "\nimport errno, json, os, socket, sys\nrestricted = sys.argv[1] == 'restricted'\nport = int(sys.argv[2])\nnonce = sys.argv[3].encode()\nvoters = ['100.72.127.102', '100.84.151.116', '100.85.36.22']\nresult = {'role': sys.argv[1], 'uid': os.getuid(), 'checks': []}\nok = os.getuid() != 0\nfor address in voters + ['1.1.1.1', '127.0.0.1']:\n    error = None\n    try:\n        target_port = 22 if address in voters else (port if address == '127.0.0.1' else 443)\n        with socket.create_connection((address, target_port), timeout=2) as channel:\n            if address == '127.0.0.1': channel.sendall(nonce)\n    except OSError as exc:\n        error = exc.errno if exc.errno is not None else 'timeout'\n    expected_deny = restricted and address not in voters\n    # A TCP timeout is provisional: the parent separately requires bracketing\n    # control success and absence of any accepted restricted connection.\n    passed = error in (errno.EPERM, errno.EACCES, 'timeout') if expected_deny else error is None\n    result['checks'].append({'protocol': 'tcp', 'address': address, 'error': error, 'passed': passed})\n    ok = ok and passed\nfor address in ['127.0.0.1', '1.1.1.1']:\n    error = None\n    try:\n        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as channel:\n            channel.settimeout(2)\n            channel.sendto(b'velocita-network-probe', (address, 59998))\n    except OSError as exc:\n        error = exc.errno if exc.errno is not None else 'timeout'\n    passed = error in (errno.EPERM, errno.EACCES) if restricted else error is None\n    result['checks'].append({'protocol': 'udp', 'address': address, 'error': error, 'passed': passed})\n    ok = ok and passed\nresult['passed'] = bool(ok)\nprint(json.dumps(result), flush=True)\nsys.exit(0 if ok else 1)\n",
+      "restricted",
+      "33901",
+      "613c33b13d2b703cc7b2c435dd773627"
+    ],
+    [
+      "/usr/bin/sudo",
+      "-n",
+      "/usr/bin/systemd-run",
+      "--quiet",
+      "--wait",
+      "--pipe",
+      "--collect",
+      "--unit=velocita-signer-net-1791885226758329135-after",
+      "--property=DynamicUser=yes",
+      "--property=NoNewPrivileges=yes",
+      "--property=ProtectSystem=strict",
+      "--property=ProtectHome=yes",
+      "--property=PrivateTmp=yes",
+      "--property=PrivateDevices=yes",
+      "--property=ProtectKernelTunables=yes",
+      "--property=ProtectKernelModules=yes",
+      "--property=ProtectControlGroups=yes",
+      "--property=RestrictSUIDSGID=yes",
+      "--property=LockPersonality=yes",
+      "--property=MemoryDenyWriteExecute=yes",
+      "--property=LimitCORE=0",
+      "--property=CapabilityBoundingSet=",
+      "--property=AmbientCapabilities=",
+      "--property=UMask=0077",
+      "--property=RuntimeMaxSec=35",
+      "--property=TimeoutStopSec=2",
+      "--property=MemoryMax=64M",
+      "--property=TasksMax=16",
+      "--property=Restart=no",
+      "--property=PrivateNetwork=no",
+      "--property=RestrictAddressFamilies=AF_UNIX AF_INET",
+      "/usr/bin/python3",
+      "-I",
+      "-B",
+      "-c",
+      "\nimport errno, json, os, socket, sys\nrestricted = sys.argv[1] == 'restricted'\nport = int(sys.argv[2])\nnonce = sys.argv[3].encode()\nvoters = ['100.72.127.102', '100.84.151.116', '100.85.36.22']\nresult = {'role': sys.argv[1], 'uid': os.getuid(), 'checks': []}\nok = os.getuid() != 0\nfor address in voters + ['1.1.1.1', '127.0.0.1']:\n    error = None\n    try:\n        target_port = 22 if address in voters else (port if address == '127.0.0.1' else 443)\n        with socket.create_connection((address, target_port), timeout=2) as channel:\n            if address == '127.0.0.1': channel.sendall(nonce)\n    except OSError as exc:\n        error = exc.errno if exc.errno is not None else 'timeout'\n    expected_deny = restricted and address not in voters\n    # A TCP timeout is provisional: the parent separately requires bracketing\n    # control success and absence of any accepted restricted connection.\n    passed = error in (errno.EPERM, errno.EACCES, 'timeout') if expected_deny else error is None\n    result['checks'].append({'protocol': 'tcp', 'address': address, 'error': error, 'passed': passed})\n    ok = ok and passed\nfor address in ['127.0.0.1', '1.1.1.1']:\n    error = None\n    try:\n        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as channel:\n            channel.settimeout(2)\n            channel.sendto(b'velocita-network-probe', (address, 59998))\n    except OSError as exc:\n        error = exc.errno if exc.errno is not None else 'timeout'\n    passed = error in (errno.EPERM, errno.EACCES) if restricted else error is None\n    result['checks'].append({'protocol': 'udp', 'address': address, 'error': error, 'passed': passed})\n    ok = ok and passed\nresult['passed'] = bool(ok)\nprint(json.dumps(result), flush=True)\nsys.exit(0 if ok else 1)\n",
+      "control",
+      "33901",
+      "06463a460d6d0b005de3fe79b6dd1227"
+    ]
+  ],
+  "results": [
+    {
+      "phase": "before",
+      "checks": {
+        "role": "control",
+        "uid": 61465,
+        "checks": [
+          {
+            "protocol": "tcp",
+            "address": "100.72.127.102",
+            "error": null,
+            "passed": true
+          },
+          {
+            "protocol": "tcp",
+            "address": "100.84.151.116",
+            "error": null,
+            "passed": true
+          },
+          {
+            "protocol": "tcp",
+            "address": "100.85.36.22",
+            "error": null,
+            "passed": true
+          },
+          {
+            "protocol": "tcp",
+            "address": "1.1.1.1",
+            "error": null,
+            "passed": true
+          },
+          {
+            "protocol": "tcp",
+            "address": "127.0.0.1",
+            "error": null,
+            "passed": true
+          },
+          {
+            "protocol": "udp",
+            "address": "127.0.0.1",
+            "error": null,
+            "passed": true
+          },
+          {
+            "protocol": "udp",
+            "address": "1.1.1.1",
+            "error": null,
+            "passed": true
+          }
+        ],
+        "passed": true
+      },
+      "endpoint": {
+        "accepted_connections": 1,
+        "expected_nonce_received": true
+      }
+    },
+    {
+      "phase": "restricted",
+      "checks": {
+        "role": "restricted",
+        "uid": 62244,
+        "checks": [
+          {
+            "protocol": "tcp",
+            "address": "100.72.127.102",
+            "error": null,
+            "passed": true
+          },
+          {
+            "protocol": "tcp",
+            "address": "100.84.151.116",
+            "error": null,
+            "passed": true
+          },
+          {
+            "protocol": "tcp",
+            "address": "100.85.36.22",
+            "error": null,
+            "passed": true
+          },
+          {
+            "protocol": "tcp",
+            "address": "1.1.1.1",
+            "error": "timeout",
+            "passed": true
+          },
+          {
+            "protocol": "tcp",
+            "address": "127.0.0.1",
+            "error": "timeout",
+            "passed": true
+          },
+          {
+            "protocol": "udp",
+            "address": "127.0.0.1",
+            "error": 1,
+            "passed": true
+          },
+          {
+            "protocol": "udp",
+            "address": "1.1.1.1",
+            "error": 1,
+            "passed": true
+          }
+        ],
+        "passed": true
+      },
+      "endpoint": {
+        "accepted_connections": 0,
+        "expected_nonce_received": false
+      }
+    },
+    {
+      "phase": "after",
+      "checks": {
+        "role": "control",
+        "uid": 63252,
+        "checks": [
+          {
+            "protocol": "tcp",
+            "address": "100.72.127.102",
+            "error": null,
+            "passed": true
+          },
+          {
+            "protocol": "tcp",
+            "address": "100.84.151.116",
+            "error": null,
+            "passed": true
+          },
+          {
+            "protocol": "tcp",
+            "address": "100.85.36.22",
+            "error": null,
+            "passed": true
+          },
+          {
+            "protocol": "tcp",
+            "address": "1.1.1.1",
+            "error": null,
+            "passed": true
+          },
+          {
+            "protocol": "tcp",
+            "address": "127.0.0.1",
+            "error": null,
+            "passed": true
+          },
+          {
+            "protocol": "udp",
+            "address": "127.0.0.1",
+            "error": null,
+            "passed": true
+          },
+          {
+            "protocol": "udp",
+            "address": "1.1.1.1",
+            "error": null,
+            "passed": true
+          }
+        ],
+        "passed": true
+      },
+      "endpoint": {
+        "accepted_connections": 1,
+        "expected_nonce_received": true
+      }
+    }
+  ],
+  "controlled_endpoint": {
+    "address": "127.0.0.1",
+    "port": 33901
+  },
+  "source_sha256": {
+    "network_probe.py": "3e91c70787f3864b1293b86179f2bdcd2d37c99a4a3964ba48306ea1d358e8f5",
+    "service_profile.py": "95a8c8cda40db28c10856ddcb7d794c1767789d7cc898a4c05379542c445a46b"
+  }
+}

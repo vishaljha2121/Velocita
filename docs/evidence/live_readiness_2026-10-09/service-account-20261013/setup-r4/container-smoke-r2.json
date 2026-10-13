@@ -1,0 +1,14 @@
+{
+  "signer": {
+    "returncode": 0,
+    "stdout": "{\"role\":\"signer\",\"run\":\"5b5928602f450d67\",\"nonce\":\"3a1fc66bca4c15889797f44e46ea4fec\",\"uid\":29002,\"gid\":29002,\"aeron_local_transport_passed\":true,\"native_signer_ipc_passed\":true,\"authenticated_voter_reads\":false,\"live_admitted\":false}\n",
+    "stderr": ""
+  },
+  "gateway": {
+    "returncode": 0,
+    "stdout": "{\"role\":\"gateway\",\"run\":\"5b5928602f450d67\",\"nonce\":\"3a1fc66bca4c15889797f44e46ea4fec\",\"uid\":29001,\"gid\":29001,\"aeron_local_transport_passed\":true,\"native_signer_ipc_passed\":true,\"authenticated_voter_reads\":false,\"live_admitted\":false}\n",
+    "stderr": ""
+  },
+  "host_production_uids_qualified": false,
+  "preflight_only": true
+}

@@ -1,0 +1,14 @@
+{
+  "profile_tests": 8,
+  "account_tests": 44,
+  "passed": true,
+  "profile_mutations_killed_by_assertion": 5,
+  "source_sha256": {
+    "deploy/v2/swap-runtime/service_profile.py": "e60711fceb4a40b063f74dc5ddf7efc7e66bd6974f87ba2b821297ceae56209e",
+    "deploy/v2/swap-runtime/fd_handoff.py": "d5ab4b8af6e82a6d7a70e0f339c6bffabc3c00d0910108b2b387957d6fa860fe",
+    "tests/test_swap_service_profile.py": "81293b44c3c5776a6a52b5e4039f9b33bf6d0ad3404e51f176a01a665e8aeaf6"
+  },
+  "native_linux_isolation_qualified": false,
+  "production_launcher_enabled": false,
+  "real_account_signer_pins_adopted": false
+}

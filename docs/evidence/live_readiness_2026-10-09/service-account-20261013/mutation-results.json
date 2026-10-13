@@ -1,0 +1,35 @@
+{
+  "source_sha256": "e60711fceb4a40b063f74dc5ddf7efc7e66bd6974f87ba2b821297ceae56209e",
+  "mutations": [
+    {
+      "mutation": "root_uid",
+      "named_test": "test_rejects_identity_collision_root_bool_and_out_of_range",
+      "assertion_failures": 2,
+      "errors": 0
+    },
+    {
+      "mutation": "shared_uid",
+      "named_test": "test_rejects_identity_collision_root_bool_and_out_of_range",
+      "assertion_failures": 1,
+      "errors": 0
+    },
+    {
+      "mutation": "live_unit",
+      "named_test": "test_disabled_units_and_actual_role_arguments",
+      "assertion_failures": 1,
+      "errors": 0
+    },
+    {
+      "mutation": "signer_egress",
+      "named_test": "test_network_proposal_and_peer_identity",
+      "assertion_failures": 1,
+      "errors": 0
+    },
+    {
+      "mutation": "secret_mode",
+      "named_test": "test_network_proposal_and_peer_identity",
+      "assertion_failures": 1,
+      "errors": 0
+    }
+  ]
+}

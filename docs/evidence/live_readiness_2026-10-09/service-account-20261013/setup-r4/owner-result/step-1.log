@@ -1,0 +1,213 @@
+{
+  "actions": [
+    {
+      "gid": 29001,
+      "kind": "group",
+      "members": [],
+      "name": "velocita-swap-gateway"
+    },
+    {
+      "gid": 29002,
+      "kind": "group",
+      "members": [],
+      "name": "velocita-swap-socket"
+    },
+    {
+      "gid": 29001,
+      "home": "/nonexistent",
+      "kind": "user",
+      "name": "velocita-swap-gateway",
+      "shell": "/usr/sbin/nologin",
+      "uid": 29001
+    },
+    {
+      "gid": 29002,
+      "home": "/nonexistent",
+      "kind": "user",
+      "name": "velocita-swap-signer",
+      "shell": "/usr/sbin/nologin",
+      "uid": 29002
+    },
+    {
+      "gid": 0,
+      "kind": "directory",
+      "mode": 493,
+      "path": "/etc/velocita-swap",
+      "type": "directory",
+      "uid": 0
+    },
+    {
+      "gid": 29002,
+      "kind": "directory",
+      "mode": 488,
+      "path": "/etc/velocita-swap/public",
+      "type": "directory",
+      "uid": 0
+    },
+    {
+      "gid": 29001,
+      "kind": "directory",
+      "mode": 448,
+      "path": "/etc/velocita-swap/gateway",
+      "type": "directory",
+      "uid": 29001
+    },
+    {
+      "gid": 29002,
+      "kind": "directory",
+      "mode": 448,
+      "path": "/etc/velocita-swap/signer",
+      "type": "directory",
+      "uid": 29002
+    },
+    {
+      "gid": 29001,
+      "kind": "directory",
+      "mode": 448,
+      "path": "/var/lib/velocita-swap-gateway",
+      "type": "directory",
+      "uid": 29001
+    },
+    {
+      "gid": 29001,
+      "kind": "directory",
+      "mode": 448,
+      "path": "/var/lib/velocita-swap-gateway/recovery",
+      "type": "directory",
+      "uid": 29001
+    },
+    {
+      "gid": 29001,
+      "kind": "directory",
+      "mode": 448,
+      "path": "/var/lib/velocita-swap-gateway/metrics",
+      "type": "directory",
+      "uid": 29001
+    },
+    {
+      "gid": 29002,
+      "kind": "directory",
+      "mode": 448,
+      "path": "/var/lib/velocita-swap-signer",
+      "type": "directory",
+      "uid": 29002
+    },
+    {
+      "gid": 29002,
+      "kind": "directory",
+      "mode": 448,
+      "path": "/var/lib/velocita-swap-signer/recovery",
+      "type": "directory",
+      "uid": 29002
+    },
+    {
+      "gid": 29002,
+      "kind": "directory",
+      "mode": 448,
+      "path": "/var/lib/velocita-swap-signer/metrics",
+      "type": "directory",
+      "uid": 29002
+    }
+  ],
+  "actions_applied": 14,
+  "credentials_installed": false,
+  "directories": {
+    "/etc/velocita-swap": {
+      "gid": 0,
+      "mode": 493,
+      "type": "directory",
+      "uid": 0
+    },
+    "/etc/velocita-swap/gateway": {
+      "gid": 29001,
+      "mode": 448,
+      "type": "directory",
+      "uid": 29001
+    },
+    "/etc/velocita-swap/public": {
+      "gid": 29002,
+      "mode": 488,
+      "type": "directory",
+      "uid": 0
+    },
+    "/etc/velocita-swap/signer": {
+      "gid": 29002,
+      "mode": 448,
+      "type": "directory",
+      "uid": 29002
+    },
+    "/var/lib/velocita-swap-gateway": {
+      "gid": 29001,
+      "mode": 448,
+      "type": "directory",
+      "uid": 29001
+    },
+    "/var/lib/velocita-swap-gateway/metrics": {
+      "gid": 29001,
+      "mode": 448,
+      "type": "directory",
+      "uid": 29001
+    },
+    "/var/lib/velocita-swap-gateway/recovery": {
+      "gid": 29001,
+      "mode": 448,
+      "type": "directory",
+      "uid": 29001
+    },
+    "/var/lib/velocita-swap-signer": {
+      "gid": 29002,
+      "mode": 448,
+      "type": "directory",
+      "uid": 29002
+    },
+    "/var/lib/velocita-swap-signer/metrics": {
+      "gid": 29002,
+      "mode": 448,
+      "type": "directory",
+      "uid": 29002
+    },
+    "/var/lib/velocita-swap-signer/recovery": {
+      "gid": 29002,
+      "mode": 448,
+      "type": "directory",
+      "uid": 29002
+    }
+  },
+  "existing_state": "preserved; no journal initialization or file inspection",
+  "failure_behavior": "stop on first error; partial creations preserved; no rollback or retry",
+  "gateway_socket_membership": "systemd SupplementaryGroups=29002 only",
+  "groups": [
+    {
+      "gid": 29001,
+      "members": [],
+      "name": "velocita-swap-gateway"
+    },
+    {
+      "gid": 29002,
+      "members": [],
+      "name": "velocita-swap-socket"
+    }
+  ],
+  "host": "bulbazar-NUC",
+  "live_admitted": false,
+  "runtime_directories": "systemd creates at service start",
+  "schema": 1,
+  "units_installed": false,
+  "users": [
+    {
+      "gid": 29001,
+      "home": "/nonexistent",
+      "name": "velocita-swap-gateway",
+      "shell": "/usr/sbin/nologin",
+      "uid": 29001
+    },
+    {
+      "gid": 29002,
+      "home": "/nonexistent",
+      "name": "velocita-swap-signer",
+      "shell": "/usr/sbin/nologin",
+      "uid": 29002
+    }
+  ],
+  "verified": true
+}

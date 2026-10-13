@@ -1,0 +1,25 @@
+{
+  "source_commit": "86f440806c6adc6f4c1dc9dc7a271e3d95293d76",
+  "runtime_image": "076701392104f2cebd7b312f2bd483330ddd518cddd678bab23ef6a33fd8e83f",
+  "helper_source_sha256": "306eb6bb9df481b6347d34e0977484654d773043d2c8bb353b8b0be5cb15044a",
+  "qualified_link_inputs": {
+    "CMakeFiles/v2-swap-signer-service-tests.dir/src/v2_swap_signer_protocol.cpp.o": "77cf7b55796708653051d9f851e3709647136ada3a906e315fded774b8d38528",
+    "CMakeFiles/v2-swap-signer-service-tests.dir/src/v2_swap_signer_service.cpp.o": "11791b26000341b1d8ca02735a27d7d0c3e8188ba9273329c48a56b708e85601",
+    "CMakeFiles/v2-swap-signer-service-tests.dir/src/v2_swap_signer_session.cpp.o": "1ea05b4c244f7aa1de3dae32b3be0af6ea1e4f635813a93ff2fa1ae2bb3abd78",
+    "CMakeFiles/v2-swap-signer-service-tests.dir/src/v2_swap_submission_store.cpp.o": "3a2e45b5543a156ac0445a1f74ccbf239449d5837745d326cf494231ac0dad69",
+    "CMakeFiles/v2-swap-signer-service-tests.dir/src/v2_swap_signing_stamp.cpp.o": "eb0e524460f0250bace8e31d6dd4c8d0c480ec5b64d161c5bd4785ddf1d11be6",
+    "libvelocita_v2_node.a": "3630b806925c6b4db9d6304c4c8964cf0a1051d7b4fe8b09be92e7dfa8eab084",
+    "libvelocita_v2_replication.a": "1550841e0252ce3637fa7469605121984ec4a36caa997ac68a9d891c9c71460a",
+    "libvelocita_v2_kernel.a": "fa4195ccaa31b145a496e18d23ad8b38f2ba1c4d538cda6f472b4bef67f0a32b",
+    "libvelocita_v2_evaluator.a": "583d1ffe896bd61cf5ba666c8fde58870f13b053560e948ede69e92a59a4abf8",
+    "libvelocita_v2_contracts.a": "a1724e97d842cbcd00a439ec3816db41d1ede27025cb5ebbe88e8a6280bf8f63",
+    "libvelocita_aeron.a": "df53b4f4e70df1e19e9734903f0fea2e0ae520cc15726bffd31a121ec57646cc",
+    "libvelocita_core.a": "cbc3d3dd6a7a698fc56fefca794d9c2a4346b03c05b040777eb671d5eca9e37b",
+    "libwillemt_raft.a": "4d8e45500da443c66e14d0e0727944c47e46ebe15f20d8f4d6eefce785340036",
+    "_deps/aeron-build/lib/libaeron_driver_static.a": "5dbed8963162d8ec768cd4cc324fcfa3d2c3d91e370088485cec0c504233961f"
+  },
+  "returncode": 0,
+  "production_binary_changed": false,
+  "test_harness_only": true,
+  "binary_sha256": "96c4e8c474222b76cea9182297bcd2f0f69974f70bdbfaea7b81f69cb574e7bc"
+}

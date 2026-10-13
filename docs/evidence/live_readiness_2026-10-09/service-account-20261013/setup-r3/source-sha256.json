@@ -1,0 +1,11 @@
+{
+  "deploy/v2/swap-runtime/network_probe.py": "3e91c70787f3864b1293b86179f2bdcd2d37c99a4a3964ba48306ea1d358e8f5",
+  "deploy/v2/swap-runtime/service_profile.py": "95a8c8cda40db28c10856ddcb7d794c1767789d7cc898a4c05379542c445a46b",
+  "deploy/v2/swap-runtime/service_launcher.py": "2ab52fa0c2fdd16c84059a2d28b10597ee2a3a429ed7ed54914a6854095a762f",
+  "deploy/v2/swap-runtime/fd_handoff.py": "4903e5c25160c311da75820609b7fdf31fc248f842c636a3b24e516ea9f7e98a",
+  "tests/test_swap_network_probe.py": "29a3e306b61fcbedd7fb3526069ec9f9b0a24784b2600c2269d5aa4eb5f01d79",
+  "tests/test_swap_service_profile.py": "dab6cdfa40b2df8b98e5bbcaea0794296c3b7772e4ce5687fcd5108d8d3dffc2",
+  "tests/test_swap_service_launcher.py": "c5c81753820357c04b8d2a799d6173836b831c1b70166c68e3c90b840f110ee5",
+  "src/v2_gateway_main.cpp": "73a2df71d8d0710ac770c49ab5556f19bd51987b2f05eaaded5566f4be48ed30",
+  "include/velocita/v2/swap_runtime_production.hpp": "8710b0440046f29bf811e55745591bc334a945cc1418d5ac6803dba6bab4f03f"
+}

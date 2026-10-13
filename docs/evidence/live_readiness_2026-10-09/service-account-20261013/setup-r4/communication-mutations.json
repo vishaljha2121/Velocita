@@ -1,0 +1,26 @@
+[
+  {
+    "name": "uid-check",
+    "named_assertion": "test_result_requires_both_native_assertions_exact_uid_and_nonlive_scope",
+    "killed": true,
+    "errors": false
+  },
+  {
+    "name": "ipc-proof",
+    "named_assertion": "test_result_requires_both_native_assertions_exact_uid_and_nonlive_scope",
+    "killed": true,
+    "errors": false
+  },
+  {
+    "name": "image-marker",
+    "named_assertion": "test_rootfs_fixed_image_marker_and_ancestry",
+    "killed": true,
+    "errors": false
+  },
+  {
+    "name": "permanent-groups",
+    "named_assertion": "test_permanent_groups_are_minimal_socket_group_only_in_service",
+    "killed": true,
+    "errors": false
+  }
+]

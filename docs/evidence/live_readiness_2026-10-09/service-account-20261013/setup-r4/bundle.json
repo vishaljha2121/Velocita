@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "files": {
+    "owner_setup.py": "b29c37124322661fe11a5da9f7ace408fae4f1d7f2974671f0d74755820180e1",
+    "provision_services.py": "1bee83740a8bbf50cd7f9a3f0448a445bf8edfc9208a512fe5738628621213e0",
+    "install_runtime.py": "5dabeff869bd789877d6e992e91255715b3234738b057e76eeb40f1bcf12b296",
+    "communication_probe.py": "9041c2ac0c5c732f117257bd05eb7bc020104150cfeab0acfbaad8b45377cf8d",
+    "service_profile.py": "ead0991adc33587f273a863340ee6e76a6768872408a9420a351535d616a6b28",
+    "communication-probe": "96c4e8c474222b76cea9182297bcd2f0f69974f70bdbfaea7b81f69cb574e7bc",
+    "rootfs-manifest.json": "9df2a0625de9fd4e79751610b2c721f85ee3b008d502cdaef0de59996566d4f1"
+  },
+  "helper_sha256": "96c4e8c474222b76cea9182297bcd2f0f69974f70bdbfaea7b81f69cb574e7bc",
+  "runtime_manifest_sha256": "9df2a0625de9fd4e79751610b2c721f85ee3b008d502cdaef0de59996566d4f1",
+  "runtime_source": "/home/velocitas/.cache/velocita-build/swap-services-20261013-r4/rootfs-stage"
+}

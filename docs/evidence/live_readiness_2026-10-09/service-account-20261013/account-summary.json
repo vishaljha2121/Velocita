@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "bootstrap": {
+    "authentication": "refresh",
+    "started_ns": 1791881809262003000,
+    "finished_ns": 1791881809725670000,
+    "requests": [
+      "/v1/account/me/trading",
+      "/v1/gateway/balances"
+    ],
+    "orders_sent": false,
+    "live_admitted": false,
+    "raw_sha256": {
+      "setup.json": "fbf9602f339af07a4ad77e5002f688a8b2b57e604d2d788b77be94b6a46cd9c9",
+      "balances.json": "62c6b00c7135303c005d4bf679833b94d43843ce7750c9c2e992f7847cba7042"
+    }
+  },
+  "identity_matches_retained_account": true,
+  "defi_enabled": true,
+  "holds_zero": true,
+  "history_requests": 18,
+  "history_transactions": 2,
+  "listed_tm_orders": 0,
+  "history_result_sha256": "7978265d0f44006062f645d186c6b4dd63349f3d636b2964abf9fbef746fe4d5",
+  "funding_proposal": {
+    "status": "proposal_requires_owner_review",
+    "live_admitted": false,
+    "ledger_initialized": false,
+    "scope": "sol-usdc-current-accounts",
+    "captured_at_ms": 1791881872055,
+    "proposed_funding": {
+      "managed_base_atoms": 0,
+      "managed_quote_atoms": 1006989,
+      "managed_base_cost_atoms": 0,
+      "outside_base_atoms": 31896934,
+      "outside_quote_atoms": 0,
+      "token_account_rent_included": false
+    },
+    "requested_limits": {
+      "maximum_total_purchases_including_fees_usdc_atoms": 5000000,
+      "loss_stop_usdc_atoms": 500000
+    },
+    "history_evidence_sha256": "bd803a22fd05eb6c7bc43acb17b5836eb41f9aa56a06733bfd1a7f812a569281",
+    "private_proposal_sha256": "a76f67a3eb31e59364e8fa6d289883a51ff04dd3b60c7e3c820b03f7164584ce"
+  },
+  "orders_sent": false,
+  "signed": false,
+  "ledger_initialized": false,
+  "deployed": false,
+  "host_changes": false
+}

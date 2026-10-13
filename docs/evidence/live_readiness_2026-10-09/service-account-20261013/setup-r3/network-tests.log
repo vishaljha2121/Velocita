@@ -1,0 +1,13 @@
+test_shared_policy_and_bounded_nonroot_services (__main__.NetworkProbeTests) ... ok
+test_stop_after_failed_control_and_preserve_evidence (__main__.NetworkProbeTests) ... ok
+test_success_stays_narrow_and_existing_output_refuses (__main__.NetworkProbeTests) ... ok
+test_timeout_cannot_pass_without_brackets_or_when_connection_arrives (__main__.NetworkProbeTests) ... ok
+test_timeout_refusal_missing_coverage_and_allowed_external_do_not_pass (__main__.NetworkProbeTests) ... ok
+test_udp_timeout_still_refuses_and_nonce_must_be_exact (__main__.NetworkProbeTests) ... ok
+test_valid_control_and_restricted_results (__main__.NetworkProbeTests) ... ok
+test_wrong_host_or_root_refuses_before_output_or_commands (__main__.NetworkProbeTests) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.028s
+
+OK

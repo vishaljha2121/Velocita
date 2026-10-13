@@ -1,0 +1,19 @@
+velocita-swap-gateway:x:29001:29001::/nonexistent:/usr/sbin/nologin
+velocita-swap-signer:x:29002:29002::/nonexistent:/usr/sbin/nologin
+velocita-swap-gateway:x:29001:
+velocita-swap-socket:x:29002:
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+0 loaded units listed.
+To show all installed unit files use 'systemctl list-unit-files'.
+drwx------ 2 velocita-swap-gateway velocita-swap-gateway 4096 Oct 13 06:21 /etc/velocita-swap/gateway
+drwx------ 2 velocita-swap-signer  velocita-swap-socket  4096 Oct 13 06:21 /etc/velocita-swap/signer
+drwxr-xr-x 3 root                  root                  4096 Oct 13 06:22 /opt/velocita/runtimes/076701392104f2cebd7b312f2bd483330ddd518cddd678bab23ef6a33fd8e83f
+drwx------ 4 velocita-swap-gateway velocita-swap-gateway 4096 Oct 13 06:21 /var/lib/velocita-swap-gateway
+drwx------ 4 velocita-swap-signer  velocita-swap-socket  4096 Oct 13 06:21 /var/lib/velocita-swap-signer
+{
+  "complete": true,
+  "entries": 22392,
+  "image": "076701392104f2cebd7b312f2bd483330ddd518cddd678bab23ef6a33fd8e83f",
+  "manifest_sha256": "9df2a0625de9fd4e79751610b2c721f85ee3b008d502cdaef0de59996566d4f1",
+  "schema": 1
+}

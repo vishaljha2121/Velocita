@@ -1,0 +1,38 @@
+In file included from /work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/status/UnsafeBufferPosition.h:21,
+                 from /work/deps/aeron/aeron-client/src/main/cpp_wrapper/Publication.h:29,
+                 from /work/deps/aeron/aeron-client/src/main/cpp_wrapper/Aeron.h:25,
+                 from /source/include/velocita/aeron_runtime.hpp:4,
+                 from /probe/communication_probe.cpp:3:
+/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h: In lambda function:
+/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:114:89: warning: unused parameter 'keyBuffer' [-Wunused-parameter]
+  114 |             [&](std::int32_t counterId, std::int32_t counterTypeId, const AtomicBuffer &keyBuffer, const std::string &label)
+      |                                                                     ~~~~~~~~~~~~~~~~~~~~^~~~~~~~~
+/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:114:119: warning: unused parameter 'label' [-Wunused-parameter]
+  114 |             [&](std::int32_t counterId, std::int32_t counterTypeId, const AtomicBuffer &keyBuffer, const std::string &label)
+      |                                                                                                    ~~~~~~~~~~~~~~~~~~~^~~~~
+/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h: In lambda function:
+/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:54: warning: unused parameter 'counterTypeId' [-Wunused-parameter]
+  130 |             [&](std::int32_t counterId, std::int32_t counterTypeId, const AtomicBuffer &keyBuffer, const std::string &label)
+      |                                         ~~~~~~~~~~~~~^~~~~~~~~~~~~
+/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:89: warning: unused parameter 'keyBuffer' [-Wunused-parameter]
+  130 |             [&](std::int32_t counterId, std::int32_t counterTypeId, const AtomicBuffer &keyBuffer, const std::string &label)
+      |                                                                     ~~~~~~~~~~~~~~~~~~~~^~~~~~~~~
+/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:119: warning: unused parameter 'label' [-Wunused-parameter]
+  130 |             [&](std::int32_t counterId, std::int32_t counterTypeId, const AtomicBuffer &keyBuffer, const std::string &label)
+      |                                                                                                    ~~~~~~~~~~~~~~~~~~~^~~~~
+In file included from /probe/communication_probe.cpp:6:
+/work/deps/aeron/aeron-client/src/main/cpp_wrapper/FragmentAssembler.h: In constructor 'aeron::FragmentAssembler::FragmentAssembler(const aeron::concurrent::logbuffer::fragment_handler_t&, std::size_t)':
+/work/deps/aeron/aeron-client/src/main/cpp_wrapper/FragmentAssembler.h:53:57: warning: unused parameter 'initialBufferLength' [-Wunused-parameter]
+   53 |         const fragment_handler_t &delegate, std::size_t initialBufferLength = DEFAULT_FRAGMENT_ASSEMBLY_BUFFER_LENGTH) :
+      |                                             ~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/work/deps/aeron/aeron-client/src/main/cpp_wrapper/FragmentAssembler.h: In member function 'void aeron::FragmentAssembler::deleteSessionBuffer(int32_t)':
+/work/deps/aeron/aeron-client/src/main/cpp_wrapper/FragmentAssembler.h:89:43: warning: unused parameter 'sessionId' [-Wunused-parameter]
+   89 |     void deleteSessionBuffer(std::int32_t sessionId)
+      |                              ~~~~~~~~~~~~~^~~~~~~~~
+/probe/communication_probe.cpp: In function 'std::array<std::byte, 33> {anonymous}::public_from_hex(const std::string&)':
+/probe/communication_probe.cpp:29:5: warning: this 'for' clause does not guard... [-Wmisleading-indentation]
+   29 |     for(unsigned n=0;n<33;++n)key[n]=std::byte((nibble(text[2*n])<<4)|nibble(text[2*n+1]));return key;
+      |     ^~~
+/probe/communication_probe.cpp:29:92: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'for'
+   29 |     for(unsigned n=0;n<33;++n)key[n]=std::byte((nibble(text[2*n])<<4)|nibble(text[2*n+1]));return key;
+      |                                                                                            ^~~~~~

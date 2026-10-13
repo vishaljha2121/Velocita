@@ -67,10 +67,19 @@ touches it; the collector and `model/` still hold nothing.
 
 - **Where it runs.** On nuc1, as its own systemd unit and UID (ch57's local key holder), because the
   quote is short-lived and a remote HSM or cloud KMS is a new external dependency and credential for
-  a $25 canary. It has no network namespace access (`PrivateNetwork=yes`): the gateway transmits the
-  signed payload; the signer only answers on a Unix socket owned by its UID, group-readable by the
+  a $25 canary. **Owner-approved amendment, 2026-10-13:** the integrated signer independently
+  checks and records authority through Raft/Aeron. Replace the original `PrivateNetwork=yes`
+  requirement with `PrivateNetwork=no`, `IPAddressDeny=any` and only the three pinned voter
+  IPv4 `/32` allow entries, with `RestrictAddressFamilies=AF_UNIX AF_INET`. The gateway transmits the
+  signed venue payload; the signer answers signing requests on a Unix socket owned by its UID, group-readable by the
   gateway's UID, with `SO_PEERCRED` checked on every connection. No shell, `NoNewPrivileges`,
   `ProtectSystem=strict`, core dumps disabled, `MemoryDenyWriteExecute`.
+  This is address-level filtering, not a port allowlist: all ports on the voter hosts remain
+  reachable, and those hosts must not relay signer traffic to an outside destination. Target-host
+  enforcement, permitted voter traffic and denied non-voter traffic must be demonstrated before
+  activation; unavailable cgroup-BPF enforcement must not silently remove this boundary. New
+  network sockets must originate in the restricted service, not be inherited from an unrestricted
+  supervisor. This amendment does not approve live signing, deployment or money movement.
 - **Who can use it.** Only the gateway UID, only for `SigningIntent`s it builds from a committed
   `OrderEffect`. The operator loads the credential at signer start (systemd credential or a 0600
   file readable only by the signer UID); rotation restarts the signer, not the gateway.

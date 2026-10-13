@@ -1,0 +1,17 @@
+{
+  "local_tests_passed": 64,
+  "nuc1_tests_passed": 64,
+  "permanent_users_provisioned": true,
+  "runtime_installed": true,
+  "native_communication_run": "21a47de2dd7626ee",
+  "aeron_local_transport_qualified": true,
+  "native_signer_ipc_qualified": true,
+  "production_uid_communication_qualified": true,
+  "authenticated_voter_reads": false,
+  "production_services_installed": false,
+  "credentials_installed": false,
+  "live_admitted": false,
+  "source_pins_match": true,
+  "existing_cluster_modified": false,
+  "committed": false
+}

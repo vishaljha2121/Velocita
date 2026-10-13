@@ -1,0 +1,32 @@
+{
+  "network_design_approved": true,
+  "profile_descriptor_tests": 8,
+  "network_probe_tests": 6,
+  "all_passed": true,
+  "native_network_test": "ran_failed_tcp_errno_assertion",
+  "production_launcher_enabled": false,
+  "live_admitted": false,
+  "source_sha256": {
+    "deploy/v2/swap-runtime/network_probe.py": "7911b4297f3d8ca071f8cf84d32b428424a34f38cfc82abe2508382df57e82ad",
+    "deploy/v2/swap-runtime/service_profile.py": "28eccf88775ffa5f72b6cdafc20e120d73d7ea80b94c156490c6270f03eedd34",
+    "tests/test_swap_network_probe.py": "9f38b02ed9d83af9b8ef0c6e7dab56eb533d8f26c6606333577c924f062263f5",
+    "tests/test_swap_service_profile.py": "274febf40d134c51466bcd43439473302aedecde75253cc5eac12600a46c1d84"
+  },
+  "first_owner_attempt": "velocitas_denied_by_sudo_policy_before_probe_started",
+  "staged_owner_account": {
+    "user": "vishal",
+    "uid": 1002,
+    "sudo_group_verified": true,
+    "source_hashes_match": true,
+    "plan_only_passed": true
+  },
+  "native_run": "1791883111161147370",
+  "native_network_policy_passed": false,
+  "native_observations": {
+    "voter_tcp_connections_passed": 3,
+    "excluded_udp_eperm": 2,
+    "excluded_tcp": "timeout_not_permission_errno",
+    "control_passed": true,
+    "kernel": "6.8.0-138-generic"
+  }
+}

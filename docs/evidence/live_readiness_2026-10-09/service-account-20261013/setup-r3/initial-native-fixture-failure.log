@@ -1,0 +1,47 @@
+test_configuration_failure_never_opens_credentials (test_swap_service_launcher.LauncherTests) ... ok
+test_duplicate_and_ambiguous_input_refuses (test_swap_service_launcher.LauncherTests) ... ok
+test_expiry_keeps_gateway_recovery_but_never_signer (test_swap_service_launcher.LauncherTests) ... ok
+test_false_authorization_refuses_before_secret_or_service_access (test_swap_service_launcher.LauncherTests) ... ok
+test_identity_and_hash_links_and_freshness (test_swap_service_launcher.LauncherTests) ... ok
+test_launch_mapping_transfers_only_expected_secret_and_environment (test_swap_service_launcher.LauncherTests) ... ok
+test_prepare_maps_exact_pinned_documents_without_secrets (test_swap_service_launcher.LauncherTests) ... ok
+test_private_directory_owner_group_mode_and_type (test_swap_service_launcher.LauncherTests) ... ok
+test_service_context_refuses_privilege_or_wrong_cgroup (test_swap_service_launcher.LauncherTests) ... ok
+test_wrong_user_or_extra_groups_refuse (test_swap_service_launcher.LauncherTests) ... ok
+test_binary_hash_mismatch_and_unconditional_cli_refusal (test_swap_service_profile.DescriptorHandoffTests) ... ok
+test_harmless_exec_gets_only_fd3_and_explicit_environment (test_swap_service_profile.DescriptorHandoffTests) ... ERROR
+test_private_descriptor_rejects_mode_hardlink_and_symlinks (test_swap_service_profile.DescriptorHandoffTests) ... ERROR
+test_disabled_units_and_actual_role_arguments (test_swap_service_profile.ServiceProfileTests) ... ok
+test_fresh_output_only_and_no_secret_contents (test_swap_service_profile.ServiceProfileTests) ... ok
+test_network_proposal_and_peer_identity (test_swap_service_profile.ServiceProfileTests) ... ok
+test_rejects_identity_collision_root_bool_and_out_of_range (test_swap_service_profile.ServiceProfileTests) ... ok
+test_rejects_injection_unknown_fields_and_nonfixed_addresses (test_swap_service_profile.ServiceProfileTests) ... ok
+
+======================================================================
+ERROR: test_harmless_exec_gets_only_fd3_and_explicit_environment (test_swap_service_profile.DescriptorHandoffTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/vishal/.cache/velocita-build/swap-services-20261013-r2/tests/test_swap_service_profile.py", line 140, in test_harmless_exec_gets_only_fd3_and_explicit_environment
+    with tempfile.TemporaryDirectory(dir=base) as tmp:
+  File "/usr/lib/python3.10/tempfile.py", line 974, in __init__
+    self.name = mkdtemp(suffix, prefix, dir)
+  File "/usr/lib/python3.10/tempfile.py", line 523, in mkdtemp
+    _os.mkdir(file, 0o700)
+FileNotFoundError: [Errno 2] No such file or directory: '/home/vishal/.cache/velocita-build/service-profile-tests/tmptdqws79o'
+
+======================================================================
+ERROR: test_private_descriptor_rejects_mode_hardlink_and_symlinks (test_swap_service_profile.DescriptorHandoffTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/vishal/.cache/velocita-build/swap-services-20261013-r2/tests/test_swap_service_profile.py", line 123, in test_private_descriptor_rejects_mode_hardlink_and_symlinks
+    fd = self.handoff.open_secret(str(secret), os.getuid()); os.close(fd)
+  File "/home/vishal/.cache/velocita-build/swap-services-20261013-r2/deploy/v2/swap-runtime/fd_handoff.py", line 37, in open_secret
+    fd = _open_components(path, uid)
+  File "/home/vishal/.cache/velocita-build/swap-services-20261013-r2/deploy/v2/swap-runtime/fd_handoff.py", line 28, in _open_components
+    raise Refused('mutable or foreign ancestor')
+handoff.Refused: mutable or foreign ancestor
+
+----------------------------------------------------------------------
+Ran 18 tests in 0.075s
+
+FAILED (errors=2)

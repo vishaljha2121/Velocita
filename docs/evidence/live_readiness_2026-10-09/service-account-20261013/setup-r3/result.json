@@ -1,0 +1,17 @@
+{
+  "local_tests_passed": 26,
+  "nuc1_synthetic_tests_passed": 26,
+  "named_mutations_killed": 5,
+  "mutation_errors": 0,
+  "network_probe_native_status": "passed",
+  "production_services_installed": false,
+  "production_launch_authorized": false,
+  "live_admitted": false,
+  "account_funding_adopted": false,
+  "source_pins_match": true,
+  "network_policy_passed": true,
+  "network_probe_run": "1791885226758329135",
+  "network_probe_evidence": "native-network-run-1791885226758329135/result.json",
+  "aeron_qualified": false,
+  "production_uids_qualified": false
+}

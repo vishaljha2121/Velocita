@@ -1,0 +1,47 @@
+[
+  {
+    "mutation": "tcp_bracket_missing",
+    "test": "NetworkProbeTests.test_timeout_cannot_pass_without_brackets_or_when_connection_arrives",
+    "source_sha256": "3e91c70787f3864b1293b86179f2bdcd2d37c99a4a3964ba48306ea1d358e8f5",
+    "replace": "if received != expected:",
+    "with": "if False:",
+    "assertion_failures": 3,
+    "errors": 0
+  },
+  {
+    "mutation": "after_control_omitted",
+    "test": "NetworkProbeTests.test_success_stays_narrow_and_existing_output_refuses",
+    "source_sha256": "3e91c70787f3864b1293b86179f2bdcd2d37c99a4a3964ba48306ea1d358e8f5",
+    "replace": "(('before', 'control'), ('restricted', 'restricted'), ('after', 'control'))",
+    "with": "(('before', 'control'), ('restricted', 'restricted'))",
+    "assertion_failures": 1,
+    "errors": 0
+  },
+  {
+    "mutation": "launch_authorization_removed",
+    "test": "LauncherTests.test_false_authorization_refuses_before_secret_or_service_access",
+    "source_sha256": "2ab52fa0c2fdd16c84059a2d28b10597ee2a3a429ed7ed54914a6854095a762f",
+    "replace": "if manifest['launch_authorized'] is not True:",
+    "with": "if False:",
+    "assertion_failures": 1,
+    "errors": 0
+  },
+  {
+    "mutation": "runtime_identity_mismatch_ignored",
+    "test": "LauncherTests.test_identity_and_hash_links_and_freshness",
+    "source_sha256": "2ab52fa0c2fdd16c84059a2d28b10597ee2a3a429ed7ed54914a6854095a762f",
+    "replace": "if any(profile.get(k) != v for k, v in same.items()):",
+    "with": "if False:",
+    "assertion_failures": 5,
+    "errors": 0
+  },
+  {
+    "mutation": "expired_signer_review_admitted",
+    "test": "LauncherTests.test_expiry_keeps_gateway_recovery_but_never_signer",
+    "source_sha256": "2ab52fa0c2fdd16c84059a2d28b10597ee2a3a429ed7ed54914a6854095a762f",
+    "replace": "if role == 'signer' and not review_current:",
+    "with": "if False:",
+    "assertion_failures": 1,
+    "errors": 0
+  }
+]
