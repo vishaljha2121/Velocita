@@ -122,13 +122,13 @@ class DashboardsAreGeneratedAndLoadable(unittest.TestCase):
         for name in generated:
             self.assertEqual(committed[name], generated[name], f"{name} is stale: rerun generate_dashboard.py")
 
-    def test_five_dashboards_with_unique_uids_titles_and_panel_ids(self):
+    def test_six_dashboards_with_unique_uids_titles_and_panel_ids(self):
         boards = dashboards()
-        self.assertEqual(len(boards), 5)
+        self.assertEqual(len(boards), 6)
         uids = [d["uid"] for d in boards.values()]
         titles = [d["title"] for d in boards.values()]
-        self.assertEqual(len(set(uids)), 5, uids)
-        self.assertEqual(len(set(titles)), 5, titles)
+        self.assertEqual(len(set(uids)), 6, uids)
+        self.assertEqual(len(set(titles)), 6, titles)
         for name, d in boards.items():
             self.assertTrue(re.fullmatch(r"[a-z0-9-]{1,40}", d["uid"]), f"{name}: uid {d['uid']!r}")
             ids = [p["id"] for p in d["panels"]]

@@ -67,6 +67,18 @@
   },
   {
    "type": "link",
+   "title": "Live trading",
+   "url": "/d/velocita-v2-live",
+   "icon": "dashboard",
+   "tooltip": "Velocita \u2014 Live account & execution",
+   "targetBlank": false,
+   "keepTime": true,
+   "includeVars": false,
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "type": "link",
    "title": "Hosts",
    "url": "/d/velocita-v2-hosts",
    "icon": "dashboard",

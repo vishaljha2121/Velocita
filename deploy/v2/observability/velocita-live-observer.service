@@ -1,0 +1,33 @@
+[Unit]
+Description=Read-only Velocita live account and journal metrics
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+SupplementaryGroups=velocitas
+ExecStart=/usr/bin/python3 -I -B /opt/velocita/live-observer/live_observer.py --write
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+InaccessiblePaths=/run/velocita-swap-credentials
+InaccessiblePaths=/etc/velocita-swap/gateway
+InaccessiblePaths=/etc/velocita-swap/signer
+ReadOnlyPaths=/etc/velocita-swap/public
+ReadOnlyPaths=/var/lib/velocita-swap-gateway
+ReadOnlyPaths=/var/lib/velocita-swap-signer
+ReadWritePaths=/home/velocitas/velocita-v2/textfile
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+AmbientCapabilities=
+UMask=0077
+MemoryMax=64M
+TasksMax=16
+TimeoutStartSec=12
+Restart=no

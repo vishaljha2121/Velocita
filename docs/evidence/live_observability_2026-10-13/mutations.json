@@ -1,0 +1,17 @@
+[
+  {
+    "mutation": "or hashlib.sha256(raw[:-32]).digest()!=raw[-32:]",
+    "killed_by": "test_corrupt_or_unknown_phase_refused",
+    "errors": 0
+  },
+  {
+    "mutation": "account_observed_seconds=captured/1000",
+    "killed_by": "test_balances_keep_evidence_time_not_poll_time",
+    "errors": 0
+  },
+  {
+    "mutation": "now<end and now-captured<=900000",
+    "killed_by": "test_balances_keep_evidence_time_not_poll_time",
+    "errors": 0
+  }
+]

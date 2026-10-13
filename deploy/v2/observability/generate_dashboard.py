@@ -27,7 +27,8 @@ RAFT = ("velocita-v2-raft", "velocita-v2-raft.json", "Velocita — Raft & storag
 STRATEGY = ("velocita-v2-strategy", "velocita-v2-strategy.json", "Velocita — Strategy edge", "Strategy edge")
 PAPER = ("velocita-v2-paper", "velocita-v2-paper.json", "Velocita — Paper trading", "Paper trading")
 HOSTS = ("velocita-v2-hosts", "velocita-v2-hosts.json", "Velocita — Hosts", "Hosts")
-DASHBOARDS = (OVERVIEW, RAFT, STRATEGY, PAPER, HOSTS)
+LIVE = ("velocita-v2-live", "velocita-v2-live.json", "Velocita — Live account & execution", "Live trading")
+DASHBOARDS = (OVERVIEW, RAFT, STRATEGY, PAPER, LIVE, HOSTS)
 
 LINKS = [{"type": "link", "title": short, "url": f"/d/{uid}", "icon": "dashboard", "tooltip": title,
           "targetBlank": False, "keepTime": True, "includeVars": False, "asDropdown": False, "tags": []}
@@ -130,7 +131,7 @@ def finish(board, description, tags):
     for panel in panels:
         for target in panel.get('targets', []):
             target['expr'] = scoped(target['expr'])
-    description = 'Active cluster: stochastic paper only. ' + description
+    description = ('Supervised live swap. ' if board == LIVE else 'Active cluster: stochastic paper only. ') + description
     return file, {
         "uid": uid, "title": title, "description": description,
         "schemaVersion": 41, "version": 1, "editable": False, "refresh": "10s",
@@ -799,6 +800,56 @@ def paper():
                          "gateway stages, orders, fills, position and fees. No real order is sent.", ["paper", "gateway"])
 
 
+def live():
+    start()
+    fresh=' and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1)'
+    def q(name):return '(velocita_live_'+name+'{run="$live_run"}'+fresh+')'
+    state_map=[{"type":"value","options":{"0":{"text":"STOPPED","color":"orange"},"1":{"text":"RUNNING","color":"green"}}}]
+    phase_map=[{"type":"value","options":{"1":{"text":"IDLE","color":"blue"},"2":{"text":"STARTED / UNRESOLVED","color":"orange"},"3":{"text":"RECORDED RESULT","color":"blue"}}}]
+    row('Live operation — service readiness is not trading authorization')
+    stat('Observer healthy', 'velocita_live_observer_up and (time() - velocita_live_observer_observed_seconds < 45)',0,4,steps=(("red",None),("green",1)))
+    stat('Gateway',q('gateway_active'),4,4,mappings=state_map)
+    stat('Protected signer',q('signer_active'),8,4,mappings=state_map)
+    stat('Review current',q('review_current'),12,4,mappings=[{"type":"value","options":{"0":{"text":"EXPIRED","color":"orange"},"1":{"text":"CURRENT","color":"green"}}}])
+    stat('Review time remaining','clamp_min(velocita_live_review_expires_seconds{run="$live_run"} - time(), 0)'+fresh,16,4,unit='s')
+    stat('Cluster trading mode','max(velocita_v2_strategy_mode)',20,4,mappings=[{"type":"value","options":{"1":{"text":"NORMAL","color":"orange"},"2":{"text":"NO NEW RISK"},"3":{"text":"CANCEL ONLY"},"4":{"text":"REDUCE ONLY"},"5":{"text":"HALTED","color":"blue"},"6":{"text":"FLATTEN"}}}])
+    advance(4)
+    row('Account snapshot — last verified venue balances, not a live wallet poll')
+    stat('Last reviewed USDC',q('reviewed_usdc'),0,8,unit='suffix: USDC',decimals=6)
+    stat('Last reviewed SOL',q('reviewed_sol'),8,8,unit='suffix: SOL',decimals=9)
+    stat('Account evidence age','time() - velocita_live_account_observed_seconds{run="$live_run"}'+fresh,16,8,unit='s',steps=(("green",None),("orange",60),("red",900)))
+    advance(4)
+    series('Reviewed USDC snapshots',[(q('reviewed_usdc'),'Verified snapshot')],0,12,unit='suffix: USDC',description='Only changes when reviewed account history is replaced. Sampling this observer does not refresh the wallet evidence.')
+    series('Reviewed SOL snapshots',[(q('reviewed_sol'),'Verified snapshot')],12,12,unit='suffix: SOL',description='No inferred fill amounts, proxy marks or paper balance. See account evidence age.')
+    advance(8)
+    row('Order lifecycle — durable journal evidence')
+    for i,(key,title) in enumerate([('prepare','Quote preparation'),('protected_signing','Protected signing'),('submission','Venue submission')]):
+        stat(title,q(key+'_phase'),i*8,8,mappings=phase_map,description='1 idle; 2 started; 3 recorded result. A prepared quote, signature or submission result is not proof of a settled fill.')
+    advance(4)
+    stat('Latest effect ID',q('submission_effect'),0,6,decimals=0)
+    stat('Submission journal committed index',q('submission_index'),6,6,decimals=0)
+    stat('Gateway exit status',q('gateway_exit_status'),12,6,steps=(("green",None),("orange",1)))
+    stat('Signer exit status',q('signer_exit_status'),18,6,steps=(("green",None),("orange",1)))
+    advance(4)
+    series('Durable lifecycle phases',[(q(k+'_phase'),v) for k,v in [('prepare','Quote'),('signing_request','Signing request'),('protected_signing','Protected signer'),('submission','Submission')]],0,16)
+    series('Automatic service restarts',[(q('gateway_restarts'),'Gateway'),(q('signer_restarts'),'Signer')],16,8,description='Services currently use Restart=no. A stopped service does not imply a failed trade.')
+    advance(8)
+    row('Costs, limits and settlement interpretation')
+    stat('Configured maximum buy output deduction',q('repayment_cap_sol'),0,12,unit='suffix: SOL',decimals=9,description='Conservative signer allowance. It is not an observed fee or expected cost.')
+    stat('Last account evidence time',q('account_observed_seconds')+' * 1000',12,12,unit='dateTimeAsIso')
+    advance(4)
+    panels.append({"id":_id(),"type":"text","title":"How to read this supervised MVP","gridPos":{"x":0,"y":_y,"w":24,"h":9},"options":{"mode":"markdown","content":
+        "**Scope:** one separately authorized $1 total-debit SOL buy; $0.002 explicit fee cap; $0.50 realized-loss limit. No automatic strategy, retries, second trade or sell. The loss limit is not a guaranteed market stop-loss.\n\n"
+        "**Cost evidence:** 20 bp explicit fee plus an observed 0.000550840 SOL buy-output deduction on the prior owner trade. The configured 0.002039280 SOL maximum is a conservative allowance with zero assumed sponsor credit. These are different quantities; neither establishes future route costs.\n\n"
+        "**Balances:** last reviewed TM/on-chain account snapshot. The age above advances even while the observer is healthy. Deposits or trades after that timestamp are not reflected until reconciliation refreshes the evidence.\n\n"
+        "**Settlement:** this view reports durable local stages, not economic settlement. Actual received SOL, final fees, fill price, trade markers and P&L require a verified settlement record. They are deliberately not synthesized from a quote or a submitted transaction. No settled live trade has yet been established by this cluster.\n\n"
+        "**Expiry:** account review expiry stops this supervised runtime. Preserve all recovery journals; never initialize again to restart. Paper metrics remain on the separate Paper trading tab."}})
+    advance(9)
+    name,board=finish(LIVE,'Read-only service status, reviewed account snapshots, durable order progress and cost boundaries.',['live','account','execution'])
+    board['templating']['list']=[{"name":"live_run","label":"Live incarnation","type":"query","datasource":DS,"query":"label_values(velocita_live_reviewed_usdc, run)","refresh":1,"multi":False,"includeAll":False,"current":{"text":"b79e65be1ea14e219016ec48ea02efef","value":"b79e65be1ea14e219016ec48ea02efef"}}]
+    return name,board
+
+
 def machines_row():
     row("Machines: NUC and Pi")
     series("CPU busy %", [('100 * (1 - avg by (host) (rate(node_cpu_seconds_total{mode="idle"}[1m])))', "{{host}}")],
@@ -828,7 +879,7 @@ def hosts():
 
 
 def build():
-    return dict(f() for f in (overview, raft, strategy, paper, hosts))
+    return dict(f() for f in (overview, raft, strategy, paper, live, hosts))
 
 
 def prometheus_config():
