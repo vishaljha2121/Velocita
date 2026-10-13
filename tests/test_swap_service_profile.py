@@ -59,7 +59,8 @@ class ServiceProfileTests(unittest.TestCase):
             unit = PROFILE.render(m)['velocita-swap-' + role + '.service.review']
             self.assertIn('RootDirectory=/opt/velocita/runtimes/' + '2'*64 + '/rootfs', unit)
             self.assertIn('MountAPIVFS=yes', unit)
-            self.assertIn('TemporaryFileSystem=/run:rw,nodev,nosuid,mode=0755\n', unit)
+            self.assertIn('BindReadOnlyPaths=/etc/velocita-swap/runtime-roots/'+role+':/run\n', unit)
+            self.assertNotIn('TemporaryFileSystem=/run', unit)
             self.assertNotIn('BindPaths=/run:/run', unit)
             self.assertIn('BindReadOnlyPaths=/opt/velocita/releases/' + 'a'*40, unit)
             self.assertIn('BindReadOnlyPaths=/run/velocita-swap-credentials/' + role +

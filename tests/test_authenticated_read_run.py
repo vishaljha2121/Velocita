@@ -3,8 +3,10 @@ import importlib.util
 import json
 from pathlib import Path
 import subprocess
+import stat
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -29,7 +31,7 @@ class AuthenticatedReadRunTests(unittest.TestCase):
             for prop in ('RuntimeMaxSec=60','Restart=no','CapabilityBoundingSet=',
                          'NoNewPrivileges=yes','RootDirectory='+str(PROBE.ROOTFS),
                          'User='+str(PROBE.ROLE_UID[role]),'RuntimeDirectoryMode=0700',
-                         'TemporaryFileSystem=/run:rw,nodev,nosuid,mode=0755'):
+                         'BindReadOnlyPaths=/etc/velocita-swap/runtime-roots/'+role+':/run'):
                 self.assertIn('--property='+prop,cmd)
             for prop in PROBE.signer_network_properties(PROBE.VOTERS):
                 self.assertIn('--property='+prop,cmd)
@@ -40,6 +42,7 @@ class AuthenticatedReadRunTests(unittest.TestCase):
             self.assertIn('--property=BindPaths=/run/velocita-authread-'+'ab'*8+'-'+role+
                           ':/run/velocita-authread-'+'ab'*8+'-'+role,cmd)
             self.assertNotIn('--property=BindPaths=/run:/run',cmd)
+            self.assertFalse(any('TemporaryFileSystem=/run' in arg for arg in cmd))
 
     def test_native_result_requires_exact_pins_role_read_assertions_and_types(self):
         def done(data): return subprocess.CompletedProcess([],0,json.dumps(data),'')
@@ -51,6 +54,31 @@ class AuthenticatedReadRunTests(unittest.TestCase):
             with self.subTest(key=key),self.assertRaises(ValueError): PROBE.evaluate('signer',CONFIG,done(data))
         out=json.dumps(evidence('signer'))[:-1]+',"uid":29002}'
         with self.assertRaises(ValueError): PROBE.evaluate('signer',CONFIG,subprocess.CompletedProcess([],0,out,''))
+
+    def test_runtime_namespace_parent_requires_root_owner_group_and0755(self):
+        def private_meta(path):
+            uid=29001 if 'gateway' in str(path) else 29002
+            return SimpleNamespace(st_mode=stat.S_IFREG|0o600,st_uid=uid,st_nlink=1)
+        for uid,gid,mode,good in [(0,0,0o755,True),(29002,0,0o755,False),(0,29002,0o755,False),
+                                  (0,0,0o1777,False),(0,0,0o775,False)]:
+            with patch.object(PROBE,'identities'),patch.object(PROBE,'image_userspace'),\
+                 patch.object(PROBE,'immutable_file'),patch.object(PROBE,'open_pinned_public',return_value=5000),\
+                 patch.object(PROBE,'open_directory',return_value=5001) as opened,\
+                 patch.object(PROBE.os,'fstat',return_value=SimpleNamespace(st_uid=uid,st_gid=gid,st_mode=stat.S_IFDIR|mode)),\
+                 patch.object(PROBE.os,'close') as closed,patch.object(PROBE.Path,'lstat',private_meta):
+                if good:
+                    PROBE.inputs(CONFIG)
+                    self.assertEqual([c.args[0] for c in opened.call_args_list],
+                        ['/etc/velocita-swap/runtime-roots/gateway','/etc/velocita-swap/runtime-roots/signer'])
+                else:
+                    with self.assertRaises(ValueError): PROBE.inputs(CONFIG)
+                closed.assert_any_call(5001)
+        with patch.object(PROBE,'identities'),patch.object(PROBE,'image_userspace'),\
+             patch.object(PROBE,'immutable_file'),patch.object(PROBE,'open_pinned_public',return_value=5000),\
+             patch.object(PROBE.os,'close'),patch.object(PROBE,'open_directory',side_effect=OSError('symlink refused')),\
+             patch.object(PROBE.Path,'lstat') as private:
+            with self.assertRaises(OSError): PROBE.inputs(CONFIG)
+            private.assert_not_called()
 
     def test_collision_guard_checks_paper_and_both_production_units_and_udp_ports(self):
         seen=[]

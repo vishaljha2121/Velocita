@@ -18,6 +18,7 @@ import sys
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 from communication_probe import ROOTFS, ROLE_UID, VOTERS, identities, image_userspace, immutable_file, token
 from fd_handoff import open_pinned_public
+from provision_services import open_directory
 from service_profile import signer_network_properties
 
 HELPER = '/opt/velocita-authenticated-read-probe'
@@ -48,9 +49,9 @@ def command(role, run_id, config):
         'LockPersonality=yes','MemoryDenyWriteExecute=yes','LimitCORE=0','CapabilityBoundingSet=',
         'AmbientCapabilities=','Restart=no','RuntimeMaxSec=60','TimeoutStopSec=2','MemoryMax=512M',
         'TasksMax=32','CPUAffinity=3','CPUQuota=100%','RootDirectory='+str(ROOTFS),'MountAPIVFS=yes',
-        # Pin the namespace's ancestor mode; never accept a writable /run in
-        # the C++ path guard. Expose only the role's explicit runtime bind below.
-        'TemporaryFileSystem=/run:rw,nodev,nosuid,mode=0755',
+        # An explicit bind outranks systemd249's API-VFS /run fallback. The
+        # immutable empty parent is on disk; the role runtime child remains tmpfs.
+        'BindReadOnlyPaths=/etc/velocita-swap/runtime-roots/'+role+':/run',
         'BindReadOnlyPaths=/opt/velocita/qualification/'+config['helper_sha256']+'/authenticated-read-probe:'+HELPER,
         'BindReadOnlyPaths='+CATALOG+':'+CATALOG,
         'BindReadOnlyPaths='+source+'/caller.key:'+key+'/caller.key',
@@ -114,6 +115,12 @@ def inputs(config):
     immutable_file(Path('/opt/velocita/qualification')/config['helper_sha256']/'authenticated-read-probe',config['helper_sha256'])
     fd=open_pinned_public(CATALOG,config['catalog_sha256']);os.close(fd)
     for role,uid in ROLE_UID.items():
+        directory=open_directory('/etc/velocita-swap/runtime-roots/'+role)
+        try:
+            info=os.fstat(directory)
+            if (info.st_uid,info.st_gid,stat.S_IMODE(info.st_mode))!=(0,0,0o755):
+                raise ValueError('root-owned0755 runtime namespace parent required')
+        finally: os.close(directory)
         # Metadata only. Credentials and session bytes are opened only by their role helper.
         for name in ('/run/velocita-swap-credentials/'+role+'/caller.key',
                      '/var/lib/velocita-swap-'+role+'/client.session'):

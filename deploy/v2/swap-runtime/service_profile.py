@@ -125,9 +125,9 @@ def unit(m, role, nodes):
         lines.insert(lines.index('[Service]')-1, 'BindsTo=velocita-swap-signer.service')
     lines += ['RootDirectory=/opt/velocita/runtimes/' + m['runtime_image_sha256'] + '/rootfs',
               'MountAPIVFS=yes',
-              # Keep runtime ancestors root-owned/non-writable. RuntimeDirectory
-              # and the explicit signer socket bind expose only required children.
-              'TemporaryFileSystem=/run:rw,nodev,nosuid,mode=0755',
+              # Explicit bind wins over systemd249's API-VFS /run fallback.
+              # RuntimeDirectory and signer socket children retain their own binds.
+              'BindReadOnlyPaths=/etc/velocita-swap/runtime-roots/' + role + ':/run',
               'BindReadOnlyPaths=/opt/velocita/releases/' + m['source_commit'],
               'BindReadOnlyPaths=' + PUBLIC,
               # Preserve existing in-unit paths, sourcing credentials only from
