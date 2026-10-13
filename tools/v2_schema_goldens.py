@@ -318,6 +318,11 @@ def check_literals(schema, replication_epoch, root):
         values = re.findall(r'block\['+str(offset)+r'\] == std::byte\{0x([0-9a-f]{2})\}', wal_test)
         if values != [format(value, '02x')]:
             raise ValueError('stale numeric WAL CRC oracle at byte '+str(offset))
+    generation_test = pathlib.Path(root, 'tests', 'v2_generation_base_tests.cpp').read_text()
+    seal = re.search(r'expected_seal\{(.*?)\};', generation_test, re.S)
+    if seal is None or bytes(int(value, 16) for value in re.findall(
+            r'std::byte\{0x([0-9a-f]{2})\}', seal.group(1))) != current['generation base seal']:
+        raise ValueError('stale numeric generation-base seal oracle')
     print('no epoch-one dependent literals remain in '+str(len(GOLDEN_TEST_PATHS))+' approved test paths')
 
 

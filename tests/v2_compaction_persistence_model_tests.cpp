@@ -378,6 +378,23 @@ DirectoryImage complete_image(const std::filesystem::path& root) {
     return image;
 }
 
+// Recovery may rename only the two bounded publication temporaries. Compare
+// every byte and every other path, including refusal paths and preexisting files.
+bool preserves_crash_evidence(const DirectoryImage& before, DirectoryImage after) {
+    for (const auto* name : {"v2-archive-segment.bin", "v2-archive-catalog.bin"}) {
+        const auto temporary = std::string("v2-archive/") + name + ".tmp";
+        const auto quarantine = std::string("v2-archive/") + name + ".quarantine";
+        const auto prior = before.find(temporary);
+        if (prior != before.end() && !before.contains(quarantine) && !after.contains(temporary)) {
+            const auto retained = after.find(quarantine);
+            if (retained == after.end() || retained->second != prior->second) return false;
+            after.emplace(temporary, retained->second);
+            after.erase(retained);
+        }
+    }
+    return before == after;
+}
+
 [[maybe_unused]] int exercise(Names schedule, int cut, bool replacement) {
     TempRoot live, recovered;
     const auto recovery_root = recovered.path / "node";
@@ -484,7 +501,7 @@ DirectoryImage complete_image(const std::filesystem::path& root) {
         }
         restart.reset();
     }
-    require(complete_image(recovery_root) == image_before, "restart mutated modeled crash evidence");
+    require(preserves_crash_evidence(image_before, complete_image(recovery_root)), "restart changed crash evidence beyond byte-preserving temporary quarantine");
     if (cut < 0) require(admitted, "successful baseline refused restart");
     return model.events.load();
 }
@@ -493,6 +510,18 @@ DirectoryImage complete_image(const std::filesystem::path& root) {
 #if !defined(V2_COMPACTION_MODEL_FIXTURE_ONLY)
 int main() {
     try {
+        const std::string temporary = "v2-archive/v2-archive-segment.bin.tmp";
+        const std::string quarantine = "v2-archive/v2-archive-segment.bin.quarantine";
+        const DirectoryImage original{{temporary, {std::byte{7}}}, {"wal", {std::byte{9}}}};
+        auto retained = original;
+        retained.emplace(quarantine, retained.at(temporary)); retained.erase(temporary);
+        require(preserves_crash_evidence(original, retained), "oracle rejects byte-preserving quarantine");
+        auto corrupted = retained; corrupted.at(quarantine)[0] = std::byte{8};
+        require(!preserves_crash_evidence(original, corrupted), "oracle accepted corrupt quarantine");
+        auto deleted = retained; deleted.erase(quarantine);
+        require(!preserves_crash_evidence(original, deleted), "oracle accepted discarded evidence");
+        auto changed_wal = retained; changed_wal.at("wal")[0] = std::byte{8};
+        require(!preserves_crash_evidence(original, changed_wal), "oracle accepted unrelated mutation");
         int cuts{};
         for (const bool replacement : {false, true}) for (const Names names : {Names::explicit_sync, Names::eager_all, Names::eager_wal_replace}) {
             const int count = exercise(names, -1, replacement);

@@ -52,6 +52,7 @@ class HttpsReadTests(unittest.TestCase):
                 if self.path == '/v1/gateway/balances':
                     self.send_response(302)
                     self.send_header('Location', '/escape')
+                    self.send_header('Content-Length', '0')
                     self.end_headers()
                     return
                 data = b'{"ok":true}'
