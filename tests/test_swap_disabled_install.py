@@ -88,6 +88,29 @@ class DisabledInstallTests(unittest.TestCase):
                 INSTALL.install(self.base,'0'*64)
             snapshot.assert_not_called();mkdir.assert_not_called();command.assert_not_called()
 
+    def test_existing_raft_caller_is_preserved_but_venue_credentials_refuse(self):
+        from types import SimpleNamespace as Meta
+        import stat
+        uid=29001
+        directory=Meta(st_mode=stat.S_IFDIR|0o700,st_uid=uid,st_gid=uid)
+        caller=Meta(st_mode=stat.S_IFREG|0o600,st_uid=uid,st_gid=uid,st_nlink=1,st_size=32)
+        try:
+            INSTALL.replacement_credential_metadata(uid,directory,{'caller.key':caller})
+        except ValueError as error:
+            self.fail('existing_raft_caller_preserved: '+str(error))
+        INSTALL.replacement_credential_metadata(uid,directory,{})
+        for name in ('signer.pem','session.bearer','unexpected'):
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError,'caller only',msg='venue_credential_blocks_replacement'):
+                INSTALL.replacement_credential_metadata(uid,directory,{name:caller})
+        for field,value in [('st_mode',stat.S_IFLNK|0o600),('st_mode',stat.S_IFREG|0o644),
+                            ('st_uid',29002),('st_gid',29002),('st_nlink',2),('st_size',31)]:
+            bad=Meta(**vars(caller));setattr(bad,field,value)
+            with self.subTest(field=field,value=value), self.assertRaisesRegex(ValueError,'caller metadata',msg='unsafe_caller_metadata_refused'):
+                INSTALL.replacement_credential_metadata(uid,directory,{'caller.key':bad})
+        directory.st_mode=stat.S_IFDIR|0o755
+        with self.assertRaisesRegex(ValueError,'directory',msg='unsafe_credential_directory_refused'):
+            INSTALL.replacement_credential_metadata(uid,directory,{})
+
     def test_replacement_changes_release_only_and_preserves_dormant_policy(self):
         new=dict(self.m,source_commit='9'*40,binary='/opt/velocita/releases/'+'9'*40+'/velocita-v2-gateway', binary_sha256='8'*64)
         try:

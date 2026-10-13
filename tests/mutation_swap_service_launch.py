@@ -16,6 +16,9 @@ INSTALL_TEST = 'test_swap_disabled_install.DisabledInstallTests.test_replacement
 LEGACY_TEST = 'test_swap_service_launcher.LauncherTests.test_legacy_profile_refused_before_secret'
 GUARD = "    transaction_pin = contract['public_files_sha256'].get(PROFILE.PUBLIC+'/transaction.review')\n    if (not isinstance(transaction_pin, str) or re.fullmatch('[0-9a-f]{64}', transaction_pin) is None or\n        transaction_pin == '0'*64):\n        raise FD.Refused('reviewed transaction review required before credential access')\n"
 CASES = [
+    ('caller_directory', INSTALL, "not stat.S_ISDIR(directory.st_mode) or (directory.st_uid,directory.st_gid,stat.S_IMODE(directory.st_mode)) != (uid,uid,0o700)", 'False', 'test_swap_disabled_install.DisabledInstallTests.test_existing_raft_caller_is_preserved_but_venue_credentials_refuse', 'unsafe_credential_directory_refused'),
+    ('caller_inventory', INSTALL, "set(entries)-{'caller.key'}", 'False', 'test_swap_disabled_install.DisabledInstallTests.test_existing_raft_caller_is_preserved_but_venue_credentials_refuse', 'venue_credential_blocks_replacement'),
+    ('caller_metadata', INSTALL, "not stat.S_ISREG(meta.st_mode) or (meta.st_uid,meta.st_gid,stat.S_IMODE(meta.st_mode),meta.st_nlink,meta.st_size) != (uid,uid,0o600,1,32)", 'False', 'test_swap_disabled_install.DisabledInstallTests.test_existing_raft_caller_is_preserved_but_venue_credentials_refuse', 'unsafe_caller_metadata_refused'),
     ('release_hash', INSTALL, "allowed={'source_commit','binary','binary_sha256'}", "allowed={'source_commit','binary'}", INSTALL_TEST, 'new_release_hash_is_allowed'),
     ('release_optional_policy', INSTALL, '(set(old)|set(new))-allowed', 'PROFILE.FIELDS-allowed', INSTALL_TEST, 'replacement_preserves_reviewed_policy'),
     ('release_active', INSTALL, "old['launch_authorized'] or new['launch_authorized'] or\n        ", '', INSTALL_TEST, 'active_replacement_refused'),

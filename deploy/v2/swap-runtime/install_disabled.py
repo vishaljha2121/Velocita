@@ -122,6 +122,17 @@ def replacement(old, new):
         raise ValueError('dormant replacement may change release location only')
 
 
+def replacement_credential_metadata(uid, directory, entries):
+    if not stat.S_ISDIR(directory.st_mode) or (directory.st_uid,directory.st_gid,stat.S_IMODE(directory.st_mode)) != (uid,uid,0o700):
+        raise ValueError('replacement credential directory mismatch')
+    if set(entries)-{'caller.key'}:
+        raise ValueError('replacement permits existing Raft caller only; venue credentials must be absent')
+    if 'caller.key' in entries:
+        meta=entries['caller.key']
+        if not stat.S_ISREG(meta.st_mode) or (meta.st_uid,meta.st_gid,stat.S_IMODE(meta.st_mode),meta.st_nlink,meta.st_size) != (uid,uid,0o600,1,32):
+            raise ValueError('replacement caller metadata mismatch')
+
+
 def install(base, digest, previous=None, previous_digest=None):
     PROVISION.require_host_root()
     m, data = payload(base, digest)
@@ -148,12 +159,15 @@ def install(base, digest, previous=None, previous_digest=None):
     fresh(release)
     if previous is None: fresh('/run/velocita-swap-credentials')
     else:
-        fd=PROVISION.open_directory('/run/velocita-swap-credentials');os.close(fd)
-        for role,uid in (('gateway',29001),('signer',29002)):
-            path=Path('/run/velocita-swap-credentials')/role
-            meta=path.lstat()
-            if not stat.S_ISDIR(meta.st_mode) or (meta.st_uid,meta.st_gid,stat.S_IMODE(meta.st_mode)) != (uid,uid,0o700) or list(path.iterdir()):
-                raise ValueError('replacement requires unchanged empty credential directories')
+        parent=PROVISION.open_directory('/run/velocita-swap-credentials')
+        try:
+            for role,uid in (('gateway',29001),('signer',29002)):
+                fd=os.open(role,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent)
+                try:
+                    entries={name:os.stat(name,dir_fd=fd,follow_symlinks=False) for name in os.listdir(fd)}
+                    replacement_credential_metadata(uid,os.fstat(fd),entries)
+                finally: os.close(fd)
+        finally: os.close(parent)
     for path in ('/opt/velocita', PROFILE.PUBLIC, '/etc/systemd/system', '/run'):
         fd = PROVISION.open_directory(path); os.close(fd)
     if os.path.lexists(release_parent):

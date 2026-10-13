@@ -269,7 +269,11 @@ class DescriptorHandoffTests(unittest.TestCase):
         import hashlib
         import os
         import subprocess
-        executable = Path('/usr/bin/true')
+        original = Path('/usr/bin/true')
+        if original.is_symlink():
+            with self.assertRaises(OSError):
+                self.handoff.open_pinned_public(str(original), '1'*64, True)
+        executable = original.resolve(strict=True)
         digest = hashlib.sha256(executable.read_bytes()).hexdigest()
         fd = self.handoff.open_pinned_public(str(executable), digest, True); os.close(fd)
         with self.assertRaises(ValueError): self.handoff.open_pinned_public(str(executable), '0' * 64, True)
