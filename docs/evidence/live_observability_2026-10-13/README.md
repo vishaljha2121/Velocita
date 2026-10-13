@@ -127,3 +127,9 @@ is needed. This is required for the requested chart, not an added trade gate.
 The cluster-mode selector was corrected in c05dd8f: live queries use the actual
 incarnation, not the old stochastic paper label. All 26 original queries returned
 samples and Grafana's loaded resource was checked from the host terminal.
+
+Chart layout checkpoint b85534d is deployed. Terminal verification confirms
+Grafana loaded all 30 panels/rows; all 29 queries parse. The 26 original queries
+and missing-feed indicator return data. The two fill series are empty because
+the settlement event producer is not yet connected. Current chart deployment is
+not claimed as end-to-end fill telemetry completion.
