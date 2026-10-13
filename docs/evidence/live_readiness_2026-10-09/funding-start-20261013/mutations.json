@@ -1,0 +1,20 @@
+[
+  {
+    "mutation": "credential-identity",
+    "killed_by": "credential_refresh_refused",
+    "errors": 0,
+    "failures": 1
+  },
+  {
+    "mutation": "manifest-identity",
+    "killed_by": "identity_change_refused",
+    "errors": 0,
+    "failures": 1
+  },
+  {
+    "mutation": "journal-empty",
+    "killed_by": "journal_overwrite_refused",
+    "errors": 0,
+    "failures": 1
+  }
+]

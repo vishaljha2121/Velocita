@@ -25,7 +25,7 @@ def write(path,raw):
     with os.fdopen(fd,'wb') as f:f.write(raw);f.flush();os.fsync(f.fileno())
 
 def main():
-    a=argparse.ArgumentParser();a.add_argument('--history',type=Path,required=True);a.add_argument('--valuation',type=Path,required=True);a.add_argument('--manifest',type=Path,required=True);a.add_argument('--output',type=Path,required=True);args=a.parse_args()
+    a=argparse.ArgumentParser();a.add_argument('--history',type=Path,required=True);a.add_argument('--valuation',type=Path,required=True);a.add_argument('--manifest',type=Path,required=True);a.add_argument('--route',type=Path,default=PRIVATE/'fresh-adoption-route-20261013');a.add_argument('--output',type=Path,required=True);args=a.parse_args()
     S.H.harden();now=time.time_ns()//1000000
     cluster=json.loads((HERE/'cluster-read.json').read_bytes())
     if not cluster['authenticated_voter_reads'] or {r['state_digest'] for r in cluster['results']}!={'663d7599b83597d327a2991e11c4f13e9f6184d4400d1daae85309c5a32dc47c'}:raise ValueError('reviewed halted state differs')
@@ -35,10 +35,10 @@ def main():
     if not cut['stable_window'] or cut['blocking_orders'] or cut['unsupported_accounts'] or not cut['pagination_exhausted']:raise ValueError('history refused')
     setup=(args.history/'response-001.json').read_bytes();user,owner=S.HISTORY.identity(json.loads(setup))
     if sha(setup)!=cut['setup_sha256'] or sha(S.HISTORY.key_bytes(owner))!=cut['owner_sha256']:raise ValueError('setup evidence')
-    facts=json.loads((PRIVATE/'fresh-adoption-route-20261013/facts.json').read_bytes())
+    facts=json.loads((args.route/'facts.json').read_bytes())
     if not facts['snapshot_checks_passed'] or facts['account_keys_hex'][1]!=S.HISTORY.key_bytes(owner).hex():raise ValueError('account facts')
     if (facts['owner_lamports'],facts['source']['atoms'])!=(cut['base_atoms'],cut['quote_atoms']):raise ValueError('route snapshot balances differ')
-    if sha((PRIVATE/'fresh-adoption-route-20261013/response.json').read_bytes())!=facts['lookup']['evidence_digest']:raise ValueError('lookup evidence changed')
+    if sha((args.route/'response.json').read_bytes())!=facts['lookup']['evidence_digest']:raise ValueError('lookup evidence changed')
     quote=S.SESSION.read_private(args.valuation/'summary.json')
     if not quote['quote_only'] or quote['side']!='sell' or quote['quoted_input_atoms']!=cut['base_atoms'] or quote['quoted_output_atoms']<=0:raise ValueError('whole position mark required')
     if sha((args.valuation/'response.private.json').read_bytes())!=quote['response_sha256']:raise ValueError('mark evidence changed')
