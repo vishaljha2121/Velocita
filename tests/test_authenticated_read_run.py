@@ -28,7 +28,8 @@ class AuthenticatedReadRunTests(unittest.TestCase):
             cmd=PROBE.command(role,'ab'*8,CONFIG)
             for prop in ('RuntimeMaxSec=60','Restart=no','CapabilityBoundingSet=',
                          'NoNewPrivileges=yes','RootDirectory='+str(PROBE.ROOTFS),
-                         'User='+str(PROBE.ROLE_UID[role]),'RuntimeDirectoryMode=0700'):
+                         'User='+str(PROBE.ROLE_UID[role]),'RuntimeDirectoryMode=0700',
+                         'TemporaryFileSystem=/run:rw,nodev,nosuid,mode=0755'):
                 self.assertIn('--property='+prop,cmd)
             for prop in PROBE.signer_network_properties(PROBE.VOTERS):
                 self.assertIn('--property='+prop,cmd)
@@ -36,6 +37,9 @@ class AuthenticatedReadRunTests(unittest.TestCase):
             self.assertIn('--property=BindReadOnlyPaths=/run/velocita-swap-credentials/'+role+'/caller.key:/etc/velocita-swap/'+role+'/caller.key',cmd)
             self.assertEqual(cmd[cmd.index('--session-file')+1],'/var/lib/velocita-swap-'+role+'/client.session')
             self.assertFalse(any('bearer' in arg or 'signer.pem' in arg or 'arm-live' in arg for arg in cmd))
+            self.assertIn('--property=BindPaths=/run/velocita-authread-'+'ab'*8+'-'+role+
+                          ':/run/velocita-authread-'+'ab'*8+'-'+role,cmd)
+            self.assertNotIn('--property=BindPaths=/run:/run',cmd)
 
     def test_native_result_requires_exact_pins_role_read_assertions_and_types(self):
         def done(data): return subprocess.CompletedProcess([],0,json.dumps(data),'')

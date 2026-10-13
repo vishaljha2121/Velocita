@@ -48,6 +48,9 @@ def command(role, run_id, config):
         'LockPersonality=yes','MemoryDenyWriteExecute=yes','LimitCORE=0','CapabilityBoundingSet=',
         'AmbientCapabilities=','Restart=no','RuntimeMaxSec=60','TimeoutStopSec=2','MemoryMax=512M',
         'TasksMax=32','CPUAffinity=3','CPUQuota=100%','RootDirectory='+str(ROOTFS),'MountAPIVFS=yes',
+        # Pin the namespace's ancestor mode; never accept a writable /run in
+        # the C++ path guard. Expose only the role's explicit runtime bind below.
+        'TemporaryFileSystem=/run:rw,nodev,nosuid,mode=0755',
         'BindReadOnlyPaths=/opt/velocita/qualification/'+config['helper_sha256']+'/authenticated-read-probe:'+HELPER,
         'BindReadOnlyPaths='+CATALOG+':'+CATALOG,
         'BindReadOnlyPaths='+source+'/caller.key:'+key+'/caller.key',
