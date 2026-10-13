@@ -7,6 +7,7 @@
 #include "velocita/v2/swap_gateway_runtime.hpp"
 #include "v2_swap_signer_test_support.hpp"
 #include <csignal>
+#include <cerrno>
 #include <fstream>
 #include <sys/socket.h>
 #include <sys/wait.h>
@@ -22,9 +23,10 @@ unsigned count_line(const std::filesystem::path& root,std::string_view needle){
 }
 [[noreturn]] void die(){::kill(::getpid(),SIGKILL);::_exit(99);}
 struct Wire {
-    int fd;Bytes incoming,outgoing;
-    explicit Wire(int f):fd(f){require(::fcntl(fd,F_SETFL,::fcntl(fd,F_GETFL)|O_NONBLOCK)==0,"bridge nonblocking");}
+    int fd;Bytes incoming,outgoing;bool observe_child_exit{},peer_closed{};
+    explicit Wire(int f,bool observe_exit=false):fd(f),observe_child_exit(observe_exit){require(::fcntl(fd,F_SETFL,::fcntl(fd,F_GETFL)|O_NONBLOCK)==0,"bridge nonblocking");}
     void send(std::int32_t node,std::span<const std::byte> body){
+        if(peer_closed)return;
         require(body.size()<=kMaxAuthEnvelopeBytes,"bridge frame bounded");
         const auto size=static_cast<std::uint32_t>(body.size());
         auto add=[&](const auto& v){const auto b=std::as_bytes(std::span(&v,1));outgoing.insert(outgoing.end(),b.begin(),b.end());};
@@ -36,17 +38,36 @@ struct Wire {
         if(n>0)outgoing.erase(outgoing.begin(),outgoing.begin()+n);
         else if(n<0 && errno==EINTR)continue;
         else if(n<0 && (errno==EAGAIN || errno==EWOULDBLOCK))return;
-        else throw std::runtime_error("bridge write closed");
+        else if(n<0 && observe_child_exit && (errno==EPIPE || errno==ECONNRESET)){
+            peer_closed=true;outgoing.clear();return;
+        }else throw std::runtime_error("bridge write closed errno="+std::to_string(errno));
     }}
     std::optional<std::pair<std::int32_t,Bytes>> receive(){
         std::array<std::byte,16384> buf;
-        for(;;){const auto n=::read(fd,buf.data(),buf.size());if(n>0){incoming.insert(incoming.end(),buf.begin(),buf.begin()+n);require(incoming.size()<8*1024*1024,"bridge inbound bounded");}
-            else if(n<0 && errno==EINTR)continue;else if(n==0 || (n<0 && (errno==EAGAIN || errno==EWOULDBLOCK)))break;else throw std::runtime_error("bridge read");}
+        for(;!peer_closed;){const auto n=::read(fd,buf.data(),buf.size());if(n>0){incoming.insert(incoming.end(),buf.begin(),buf.begin()+n);require(incoming.size()<8*1024*1024,"bridge inbound bounded");}
+            else if(n<0 && errno==EINTR)continue;else if(n==0){if(observe_child_exit){peer_closed=true;outgoing.clear();}break;}
+            else if(n<0 && (errno==EAGAIN || errno==EWOULDBLOCK))break;
+            else if(n<0 && errno==ECONNRESET && observe_child_exit){peer_closed=true;outgoing.clear();break;}
+            else throw std::runtime_error("bridge read errno="+std::to_string(errno));}
         if(incoming.size()<8)return {};std::uint32_t size;std::int32_t node;
         std::memcpy(&size,incoming.data(),4);std::memcpy(&node,incoming.data()+4,4);require(size<=kMaxAuthEnvelopeBytes,"bridge received bound");
         if(incoming.size()<8+size)return {};Bytes body(incoming.begin()+8,incoming.begin()+8+size);incoming.erase(incoming.begin(),incoming.begin()+8+size);return std::pair{node,std::move(body)};
     }
 };
+// Only the parent bridge observes child exit. A killed process can reset a Unix
+// stream with unread data before waitpid reports its exit. Keep draining complete
+// frames, then let the existing waitpid/SIGKILL/economic assertions decide success.
+void dead_peer_bridge_oracle(){
+    int pair[2];require(::socketpair(AF_UNIX,SOCK_STREAM,0,pair)==0,"reset bridge fixture");
+    Wire parent(pair[0],true);const char unread='x';
+    require(::write(pair[0],&unread,1)==1,"reset fixture unread byte");::close(pair[1]);
+    require(!parent.receive() && parent.peer_closed,"dead child reset is observed before waitpid");
+    parent.send(1,{});require(parent.outgoing.empty(),"dead child receives no queued reply");::close(pair[0]);
+    require(::socketpair(AF_UNIX,SOCK_STREAM,0,pair)==0,"strict bridge fixture");
+    Wire worker(pair[0]);::close(pair[1]);bool refused=false;
+    try{worker.send(1,{});}catch(const std::runtime_error&){refused=true;}
+    require(refused,"worker transport failure must remain fatal");::close(pair[0]);
+}
 struct ProcessClient final:ClientTransport {
     Wire wire;explicit ProcessClient(int fd):wire(fd){}
     bool offer_ingress(std::int32_t node,std::span<const std::byte> frame)override{wire.send(node,frame);return true;}
@@ -169,11 +190,11 @@ int run_worker(Cluster& c,const std::filesystem::path& executable,const std::fil
     const auto signer_fd=std::to_string(signer_pair[1]),signer_epoch=std::to_string(epoch);
     const auto signer_pid=::fork();require(signer_pid>=0,"independent signer fork");
     if(signer_pid==0){::close(signer_pair[0]);::execl(executable.c_str(),executable.c_str(),"--signer",root.c_str(),signer_epoch.c_str(),signer_fd.c_str(),nullptr);::_exit(126);}
-    ::close(signer_pair[1]);ChildGuard signer_guard{signer_pid};Wire signer_wire(signer_pair[0]);
+    ::close(signer_pair[1]);ChildGuard signer_guard{signer_pid};Wire signer_wire(signer_pair[0],true);
     int pair[2];require(::socketpair(AF_UNIX,SOCK_STREAM,0,pair)==0,"worker socketpair");
     const auto fd=std::to_string(pair[1]),ep=std::to_string(epoch);const auto child=::fork();require(child>=0,"worker fork");
     if(child==0){::close(pair[0]);::execl(executable.c_str(),executable.c_str(),"--worker",root.c_str(),stage.c_str(),ep.c_str(),fd.c_str(),nullptr);::_exit(126);}
-    ::close(pair[1]);ChildGuard guard{child};Wire wire(pair[0]);bool killed=false;int status{};const auto deadline=steady_ms()+30000;
+    ::close(pair[1]);ChildGuard guard{child};Wire wire(pair[0],true);bool killed=false;int status{};const auto deadline=steady_ms()+30000;
     for(;;){const auto reaped=::waitpid(child,&status,WNOHANG);if(reaped==child){guard.pid=0;break;}require(reaped==0 && steady_ms()<deadline,"worker bounded lifetime");
         while(auto packet=wire.receive()){require(std::find(c.voters.begin(),c.voters.end(),packet->first)!=c.voters.end(),"worker configured node");if(c.nodes.contains(packet->first))c.network.at(packet->first).ingress_inbox.push_back(std::move(packet->second));}
         while(auto packet=signer_wire.receive()){require(std::find(c.voters.begin(),c.voters.end(),packet->first)!=c.voters.end(),"signer configured node");if(c.nodes.contains(packet->first))c.network.at(packet->first).ingress_inbox.push_back(std::move(packet->second));}
@@ -269,6 +290,7 @@ void scenario(const std::filesystem::path& exe,const std::filesystem::path& root
 int main(int argc,char** argv){try{::signal(SIGPIPE,SIG_IGN);g_swap=true;
     if(argc==5 && std::string_view(argv[1])=="--signer")return signer_worker(argv[2],std::stoul(argv[3]),std::stoi(argv[4]));
     if(argc==6 && std::string_view(argv[1])=="--worker")return worker(argv[2],argv[3],std::stoul(argv[4]),std::stoi(argv[5]));
+    dead_peer_bridge_oracle();
     const auto root=argc==4 && std::string_view(argv[1])=="--case"?std::filesystem::path(argv[3]):argc==2?std::filesystem::path(argv[1]):std::filesystem::path(std::getenv("HOME"))/".cache/velocita-build/process-drill-20261013"/("run-"+std::to_string(::getpid()));
     require(!std::filesystem::exists(root),"refuse existing drill evidence directory");std::filesystem::create_directories(root);
     const auto exe=std::filesystem::canonical(argv[0]);unsigned failures=0;
