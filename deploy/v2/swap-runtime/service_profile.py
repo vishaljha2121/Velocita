@@ -143,8 +143,8 @@ def unit(m, role, nodes):
               # the separately provisioned role-owned host tmpfs directory.
               'BindReadOnlyPaths=/run/velocita-swap-credentials/' + role + ':/etc/velocita-swap/' + role]
     if not signer:
-        lines += ['BindReadOnlyPaths=/etc/resolv.conf']
         if not m.get('recovery_only',False): lines += ['BindReadOnlyPaths=/run/velocita-swap-signer']
+        lines += ['BindReadOnlyPaths=/etc/resolv.conf']
     # StateDirectory and RuntimeDirectory are automatically mounted by systemd
     # inside RootDirectory. No other role credentials/state are exposed.
     lines += ['UMask=0077', 'NoNewPrivileges=yes', 'ProtectSystem=strict', 'ProtectHome=yes',

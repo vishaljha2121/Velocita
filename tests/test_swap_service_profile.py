@@ -111,6 +111,7 @@ class ServiceProfileTests(unittest.TestCase):
             if role == 'gateway':
                 self.assertIn('BindReadOnlyPaths=/run/velocita-swap-signer', unit)
                 self.assertIn('BindReadOnlyPaths=/etc/resolv.conf', unit)
+                self.assertLess(unit.index('BindReadOnlyPaths=/run/velocita-swap-signer'),unit.index('BindReadOnlyPaths=/etc/resolv.conf'),'normal_unit_preserves_installed_mount_order')
             else:
                 self.assertNotIn('BindReadOnlyPaths=/etc/resolv.conf', unit)
         del m['runtime_image_sha256']
