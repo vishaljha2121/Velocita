@@ -146,13 +146,14 @@ void test_control_authority_is_reserved_to_operator_callers() {
              limits}) {
         TradingState state = catalog_test::state();
         ApplyScratch scratch;
+        std::array<std::byte, sizeof(TradingState)> untouched{};
+        std::memcpy(untouched.data(), &state, sizeof(state));
         const auto unauthorized =
             catalog_test::apply(state, control_from(kMaxOperatorCallerId + 1, 1, body), scratch);
         require(unauthorized.code == ApplyCode::unauthorized_control,
                 "a control command from a non-operator caller was not refused");
 
-        TradingState untouched = catalog_test::state();
-        require(std::memcmp(&state, &untouched, sizeof(TradingState)) == 0,
+        require(std::memcmp(&state, untouched.data(), sizeof(TradingState)) == 0,
                 "a refused control command still mutated authoritative state");
     }
 
@@ -244,6 +245,7 @@ void test_each_command_is_accepted_only_from_its_roles() {
         {InstallExecutionCatalog{}, op, "InstallExecutionCatalog"},
         {AssignCallerRole{}, op, "AssignCallerRole"},
         {ResolveOrderConflict{}, op, "ResolveOrderConflict"},
+        {ApplySpotSwap{}, op, "ApplySpotSwap"},
     }};
     struct Sender {
         std::uint64_t caller;

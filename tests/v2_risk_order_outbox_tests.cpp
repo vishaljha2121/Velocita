@@ -2228,8 +2228,8 @@ void test_risk_configuration_codec_and_restore() {
     const auto encoded = encode_kernel_command(command, bytes);
     require(encoded.error == KernelCodecError::none && encoded.bytes_written == 202,
             "risk configuration lacks its canonical 110-byte body");
-    require(bytes[8] == std::byte{11} && bytes[10] == std::byte{17},
-            "risk configuration schema/kind is not V11/17");
+    require(bytes[8] == std::byte{12} && bytes[10] == std::byte{17},
+            "risk configuration schema/kind is not V12/17");
     std::vector<std::byte> expected;
     const auto put = [&](const std::uint64_t value, const unsigned width) {
         for (unsigned shift = 0; shift < width; shift += 8)

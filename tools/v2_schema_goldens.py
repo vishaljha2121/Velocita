@@ -8,7 +8,9 @@ state snapshot schema, because the static cluster identity binds both.
     tools/v2_schema_goldens.py --check        # schema 8 must reproduce the
                                               # reviewed V8 literals exactly
     tools/v2_schema_goldens.py --schema 9     # print the V9 vectors
-    tools/v2_schema_goldens.py --rewrite 8 9  # replace V8 literals in tests/
+    tools/v2_schema_goldens.py --rewrite 8 9  # replace exact V8 literals in approved tests
+    tools/v2_schema_goldens.py --rewrite 12 12 --old-replication-epoch 1 --replication-epoch 2
+    tools/v2_schema_goldens.py --check-literals --schema 12 --replication-epoch 2
 
 --check is the generator's own oracle: it re-derives every reviewed schema-8
 vector from its fields, so a wrong layout or domain cannot survive it.
@@ -40,12 +42,14 @@ GENERATION_BASE_DOMAIN = b"velocita.v2.local-generation-base.v1"
 AUTHORITY_BARRIER_ENTRY_TYPE = 101
 
 
-def identity(schema, incarnation, catalog_root, voters, local, mode=1):
+def identity(schema, incarnation, catalog_root, voters, local, mode=1, replication_epoch=1):
+    if type(replication_epoch) is not int or not 1 <= replication_epoch <= 65535:
+        raise ValueError('invalid replication epoch')
     body = bytearray()
     body += u16(1) + u16(0)
     body += incarnation + catalog_root
     body += u16(schema) + u16(schema)
-    body += u16(1) + u16(1) + u16(1) + u16(1)
+    body += u16(1) + u16(1) + u16(replication_epoch) + u16(1)
     body += bytes([1, mode]) + u16(len(voters))
     for voter in voters:
         body += i32(voter)
@@ -63,9 +67,9 @@ def authority(manifest_digest):
     return sha(AUTHORITY_DOMAIN + manifest_digest)
 
 
-def fixture_identity(schema, local=17):
+def fixture_identity(schema, local=17, replication_epoch=1):
     return identity(schema, bytes(range(1, 17)), bytes(range(0x20, 0x40)),
-                    [17, 257, 65537], local)
+                    [17, 257, 65537], local, replication_epoch=replication_epoch)
 
 
 def framed(magic, schema, prefix, payload):
@@ -79,7 +83,7 @@ def advance_kill_epoch_command(schema):
 
 
 def empty_state_snapshot(schema):
-    return framed(b"V2ST", schema, b"", bytes(8) + bytes([5]) + bytes(86))
+    return framed(b"V2ST", schema, b"", bytes(8) + bytes([5]) + bytes(86) + (u16(1) + bytes(1) if schema >= 12 else b""))
 
 
 def bound_frame(kind, manifest_digest, owner, payload):
@@ -138,8 +142,8 @@ STANDARD_CATALOG_ROOT = bytes.fromhex(
     "a17bf680a3bad9b9035efb898745f4d20df2bfd0a82f20cf397e923047c73c64")
 
 
-def generation_base_seal(schema):
-    ident = identity(schema, bytes([0x55]) + bytes(15), STANDARD_CATALOG_ROOT, [1, 2], 1)
+def generation_base_seal(schema, replication_epoch=1):
+    ident = identity(schema, bytes([0x55]) + bytes(15), STANDARD_CATALOG_ROOT, [1, 2], 1, replication_epoch=replication_epoch)
     snapshot = bound_frame(3, manifest(ident), 1,
                            u64(7) + u64(3) + empty_state_snapshot(schema))
     prefix = b"V2GB" + u16(1) + bytes([1, 0])
@@ -147,8 +151,8 @@ def generation_base_seal(schema):
     return prefix + digest
 
 
-def vectors(schema):
-    ident = fixture_identity(schema)
+def vectors(schema, replication_epoch=1):
+    ident = fixture_identity(schema, replication_epoch=replication_epoch)
     m = manifest(ident)
     command = advance_kill_epoch_command(schema)
     marker = authority_marker(authority(m))
@@ -160,7 +164,7 @@ def vectors(schema):
         "static identity": ident,
         "manifest digest": m,
         "authority domain": authority(m),
-        "local 257 checksum": sha(fixture_identity(schema, 257)[:92]),
+        "local 257 checksum": sha(fixture_identity(schema, 257, replication_epoch)[:92]),
         "AdvanceKillEpoch command": command,
         "archive segment": archive_segment(m, 2, [(7, 3, 7, 0, command)]),
         "adversarial archive segment": adversarial,
@@ -172,7 +176,7 @@ def vectors(schema):
         "metadata bound frame": bound_frame(1, m, 17, u64(7) + u64(17) + i64(3)),
         "archive catalog digest": archive_catalog_digest(m, 17),
         "local generation selector": local_generation_selector(m, 17),
-        "generation base seal": generation_base_seal(schema),
+        "generation base seal": generation_base_seal(schema, replication_epoch),
     }
 
 
@@ -213,46 +217,134 @@ def check():
 LITERAL = re.compile(r'((?:"[0-9a-f]+"\s*)+)')
 
 
-def rewrite(old_schema, new_schema, root):
-    old = {name: value.hex() for name, value in vectors(old_schema).items()}
-    new = {name: value.hex() for name, value in vectors(new_schema).items()}
-    mapping = {old[name]: new[name] for name in old}
+GOLDEN_TEST_PATHS = (
+    "v2_static_identity_tests.cpp",
+    "v2_archive_catalog_tests.cpp",
+    "v2_archive_compaction_tests.cpp",
+    "v2_archive_file_io_tests.cpp",
+    "v2_archive_file_tests.cpp",
+    "v2_archive_persistence_model_tests.cpp",
+    "v2_archive_publication_fault_tests.cpp",
+    "v2_archive_reclamation_red.cpp",
+    "v2_archive_scrub_tests.cpp",
+    "v2_archive_segment_adversarial_tests.cpp",
+    "v2_archive_segment_tests.cpp",
+    "v2_archive_store_tests.cpp",
+    "v2_bound_frame_tests.cpp",
+    "v2_bound_metadata_persistence_model_tests.cpp",
+    "v2_bound_metadata_tests.cpp",
+    "v2_local_generation_adversarial_tests.cpp",
+    "v2_snapshot_store_bounds_tests.cpp",
+    "v2_wal_arena_tests.cpp",
+)
+
+
+def rewrite_literals(text, mapping):
+    def replace(match):
+        pieces = re.findall(r'"([0-9a-f]+)"', match.group(1))
+        joined = "".join(pieces)
+        if joined not in mapping or mapping[joined] == joined:
+            return match.group(0)
+        replacement, at = mapping[joined], 0
+        if len(replacement) != len(joined):
+            raise ValueError('golden length change requires explicit layout review')
+        def piece_replace(piece):
+            nonlocal at
+            size = len(piece.group(1))
+            value = replacement[at:at+size]
+            at += size
+            return '"' + value + '"'
+        return re.sub(r'"([0-9a-f]+)"', piece_replace, match.group(1))
+    return LITERAL.sub(replace, text)
+
+
+def rewrite(old_schema, new_schema, root, old_replication_epoch=1, replication_epoch=1):
+    old = {name: value.hex() for name, value in vectors(old_schema, old_replication_epoch).items()}
+    new = {name: value.hex() for name, value in vectors(new_schema, replication_epoch).items()}
+    mapping = {old[name]: new[name] for name in old if old[name] != new[name]}
     changed = []
-    for path in sorted(pathlib.Path(root, "tests").glob("*.cpp")):
+    for name in GOLDEN_TEST_PATHS:
+        path = pathlib.Path(root, "tests", name)
         text = path.read_text()
-
-        def replace(match):
-            pieces = re.findall(r'"([0-9a-f]+)"', match.group(1))
-            joined = "".join(pieces)
-            if joined not in mapping:
-                return match.group(0)
-            replacement, out, at = mapping[joined], match.group(1), 0
-            for piece in pieces:
-                out = out.replace(f'"{piece}"', f'"\0{replacement[at:at + len(piece)]}"', 1)
-                at += len(piece)
-            return out.replace("\0", "")
-
-        updated = LITERAL.sub(replace, text)
+        updated = rewrite_literals(text, mapping)
         if updated != text:
             path.write_text(updated)
             changed.append(path.name)
     print("rewrote:", ", ".join(changed) if changed else "nothing")
+    return changed
+
+
+def check_epoch_consistency():
+    old, new = vectors(12, 1), vectors(12, 2)
+    expected = {
+        'manifest digest': '7b6a13e548fef5ff55053c1c513155ab40409fae8a165c5bd36e064d43a2cd7a',
+        'authority domain': '2af7e8c9814b571e927bba39f81b642aa3b31577fbd12361b3a8c3a36cd3cb19',
+        'local 257 checksum': '567fcb542acaf8d238c9ca9ef927f56a64a878a493d3cb719a34e8f43c6a02e3',
+    }
+    for name, value in expected.items():
+        if new[name].hex() != value:
+            raise ValueError('epoch-two independent oracle mismatch: '+name)
+    if new['static identity'][68:70] != b'\x02\x00' or old['static identity'][68:70] != b'\x01\x00':
+        raise ValueError('replication epoch byte layout changed')
+    if old['AdvanceKillEpoch command'] != new['AdvanceKillEpoch command']:
+        raise ValueError('replication epoch changed command encoding')
+    for name in old.keys() - {'AdvanceKillEpoch command'}:
+        if old[name] == new[name]:
+            raise ValueError('dependent golden did not rebind: '+name)
+    fixture = 'const auto value = "abcd"\n  "ef01";\nrequire(flag == 1, "unchanged");\n'
+    rewritten = rewrite_literals(fixture, {'abcdef01':'11223344'})
+    if rewritten != 'const auto value = "1122"\n  "3344";\nrequire(flag == 1, "unchanged");\n':
+        raise ValueError('exact literal rewrite changed formatting or semantics')
+    if rewrite_literals(rewritten, {'abcdef01':'11223344'}) != rewritten:
+        raise ValueError('rewrite is not idempotent')
+    print('epoch-two independent hashes, dependency rebinding, and exact rewrite checks passed')
+
+
+def check_literals(schema, replication_epoch, root):
+    old = vectors(schema, 1)
+    current = vectors(schema, replication_epoch)
+    obsolete = {value.hex(): name for name, value in old.items() if value != current[name]}
+    stale = []
+    for name in GOLDEN_TEST_PATHS:
+        text = pathlib.Path(root, 'tests', name).read_text()
+        for match in LITERAL.finditer(text):
+            joined = ''.join(re.findall(r'"([0-9a-f]+)"', match.group(1)))
+            if joined in obsolete:
+                stale.append(name+': '+obsolete[joined])
+    if stale:
+        raise ValueError('stale dependent goldens: '+', '.join(stale))
+    wal_test = pathlib.Path(root, 'tests', 'v2_wal_arena_tests.cpp').read_text()
+    for offset, value in enumerate(current['WAL block crc'], 28):
+        values = re.findall(r'block\['+str(offset)+r'\] == std::byte\{0x([0-9a-f]{2})\}', wal_test)
+        if values != [format(value, '02x')]:
+            raise ValueError('stale numeric WAL CRC oracle at byte '+str(offset))
+    print('no epoch-one dependent literals remain in '+str(len(GOLDEN_TEST_PATHS))+' approved test paths')
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--check-literals", action="store_true")
+    parser.add_argument("--replication-epoch", type=int, default=1)
+    parser.add_argument("--old-replication-epoch", type=int, default=1)
     parser.add_argument("--schema", type=int)
     parser.add_argument("--rewrite", nargs=2, type=int, metavar=("OLD", "NEW"))
     args = parser.parse_args()
     if args.check:
-        return check()
+        result = check()
+        if result == 0:
+            check_epoch_consistency()
+        return result
+    if args.check_literals:
+        check_literals(args.schema or 12, args.replication_epoch, pathlib.Path(__file__).resolve().parent.parent)
+        return 0
     if args.rewrite:
         if check() != 0:
             return 1
-        rewrite(*args.rewrite, pathlib.Path(__file__).resolve().parent.parent)
+        check_epoch_consistency()
+        rewrite(*args.rewrite, pathlib.Path(__file__).resolve().parent.parent, args.old_replication_epoch, args.replication_epoch)
         return 0
-    for name, value in vectors(args.schema or 9).items():
+    for name, value in vectors(args.schema or 9, args.replication_epoch).items():
         print(f"{name}: {value.hex()}")
     return 0
 

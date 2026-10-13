@@ -6,6 +6,8 @@
 #include "velocita/v2/node_protocol.hpp"
 #include "velocita/v2/session_fence.hpp"
 #include "velocita/v2/shadow_submitter.hpp"
+#include "velocita/v2/swap_kernel.hpp"
+#include <fstream>
 
 #include "FragmentAssembler.h"
 
@@ -131,7 +133,40 @@ Arguments parse(int argc, char** argv) {
     }
     if (i >= argc) throw Usage("missing command");
     const std::string verb = argv[i];
-    if (verb == "kill-epoch" && i + 2 == argc) {
+    if (verb == "spot-swap-record" && i + 2 == argc) {
+        std::ifstream input(argv[i+1], std::ios::binary);
+        std::array<std::byte, swap::max_record_bytes + 1> bytes{};
+        if (!input) throw Usage("cannot read swap record");
+        input.read(reinterpret_cast<char*>(bytes.data()), bytes.size());
+        const auto count = input.gcount();
+        if (input.bad() || count <= 0 || static_cast<std::size_t>(count) > swap::max_record_bytes)
+            throw Usage("swap record must be one bounded canonical record");
+        swap::Record record;
+        if (swap::decode(std::span(bytes).first(static_cast<std::size_t>(count)), record) != swap::CodecError::none ||
+            (!std::holds_alternative<swap::Initialize>(record.command) && !std::holds_alternative<swap::Intent>(record.command)))
+            throw Usage("owner swap record must initialize paper funding or admit an explicit intent");
+        const auto binding = std::visit([](const auto& value) -> swap::Binding {
+            using T = std::decay_t<decltype(value)>;
+            if constexpr (std::is_same_v<T,swap::Initialize> || std::is_same_v<T,swap::Intent>) return value.binding;
+            else return {};
+        }, record.command);
+        if (!have_incarnation || binding.incarnation != sha256_digest(a.incarnation))
+            throw Usage("swap record is bound to another incarnation");
+        if (const auto* o = std::get_if<swap::Initialize>(&record.command)) {
+            a.summary = "SWAP PAPER FUNDING base_atoms=" + std::to_string(o->base.value()) +
+                " quote_atoms=" + std::to_string(o->quote.value()) + " purchase_debit_cap=" +
+                std::to_string(o->limits.max_purchase_total.value()) + " realized_loss_cap=" +
+                std::to_string(o->limits.max_realized_loss.value()) + "\n";
+        } else {
+            const auto& intent = std::get<swap::Intent>(record.command);
+            a.summary = "SWAP PAPER INTENT side=" + std::to_string(static_cast<unsigned>(intent.side)) +
+                " effect=" + std::to_string(intent.effect.value()) + " max_quote_debit=" +
+                std::to_string(intent.max_quote_debit.value()) + " base_input=" + std::to_string(intent.base_input.value()) +
+                " min_base_receive=" + std::to_string(intent.min_base_receive.value()) +
+                " min_quote_receive=" + std::to_string(intent.min_quote_receive.value()) + "\n";
+        }
+        a.body = ApplySpotSwap{record}; a.digest = swap_record_digest(record); a.lane = ProposeLane::normal;
+    } else if (verb == "kill-epoch" && i + 2 == argc) {
         a.kill_epoch = number(argv[i + 1], "kill epoch");
         a.body = AdvanceKillEpoch{KillEpoch{a.kill_epoch}};
         a.digest = payload_digest(a.kill_epoch);

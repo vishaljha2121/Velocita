@@ -16,6 +16,7 @@ bool final_refusal(std::uint8_t reason) noexcept {
     case static_cast<std::uint8_t>(IngressRefusal::caller_mismatch):
     case static_cast<std::uint8_t>(IngressRefusal::malformed_command):
     case static_cast<std::uint8_t>(IngressRefusal::not_gateway_caller):
+    case static_cast<std::uint8_t>(IngressRefusal::signer_read_only):
     case static_cast<std::uint8_t>(IngressRefusal::authority_lost):
         return true;
     default:
@@ -105,6 +106,18 @@ bool GatewayLink::request_authority(const AuthorityBarrier& barrier, Tick now, T
     if (encoded.error != NodeProtocolError::none) return false;
     const auto bytes = std::span<const std::byte>(body).first(encoded.bytes_written);
     if (!start(LinkRequest::authority, bytes, gateway_correlation(bytes), now, timeout)) return false;
+    pending_.barrier = barrier;
+    return true;
+}
+
+bool GatewayLink::request_swap_authority(const AuthorityBarrier& barrier, Tick now, Tick timeout) {
+    if (busy() || barrier.incarnation != incarnation_) return false;
+    GatewayRequest request{GatewayRequestKind::swap_authority, incarnation_, ++next_request_id_, barrier};
+    std::array<std::byte, kGatewayAuthorityRequestBytes> body{};
+    const auto encoded = encode_gateway_request(request, body);
+    if (encoded.error != NodeProtocolError::none) return false;
+    const auto bytes = std::span<const std::byte>(body).first(encoded.bytes_written);
+    if (!start(LinkRequest::swap_authority, bytes, gateway_correlation(bytes), now, timeout)) return false;
     pending_.barrier = barrier;
     return true;
 }
@@ -243,6 +256,15 @@ void GatewayLink::on_grant(std::int32_t from, std::span<const std::byte> body) {
     settle(LinkStatus::done, from);
 }
 
+void GatewayLink::on_swap_grant(std::int32_t from,std::span<const std::byte> body){
+    ResponseCorrelation correlation;SwapAuthorityProofView view;
+    if(pending_.request!=LinkRequest::swap_authority || decode_swap_authority_granted(body,correlation,view)!=NodeProtocolError::none || correlation!=pending_.correlation){
+        ++counters_.uncorrelated;return;
+    }
+    if(view.request!=pending_.barrier || view.request.incarnation!=incarnation_ || view.issuer_id!=from){++counters_.proofs_refused;return;}
+    outcome_.swap_proof.emplace(SwapAuthorityProof(view));settle(LinkStatus::done,from);
+}
+
 void GatewayLink::handle(std::span<const std::byte> frame, Tick now) {
     AuthRoute route;
     Route* from = nullptr;
@@ -267,6 +289,7 @@ void GatewayLink::handle(std::span<const std::byte> frame, Tick now) {
     case static_cast<std::uint8_t>(ResponseKind::gateway_refused): return on_refusal(route.sender, verified.body, now);
     case static_cast<std::uint8_t>(ResponseKind::state_chunk): return on_chunk(route.sender, verified.body);
     case static_cast<std::uint8_t>(ResponseKind::authority_granted): return on_grant(route.sender, verified.body);
+    case static_cast<std::uint8_t>(ResponseKind::swap_authority_granted): return on_swap_grant(route.sender, verified.body);
     default: return on_command(route.sender, verified.body, now);
     }
 }

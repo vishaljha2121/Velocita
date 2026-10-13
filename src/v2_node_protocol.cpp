@@ -15,7 +15,7 @@ static_assert(static_cast<int>(ProposeLane::normal) == 0 && static_cast<int>(Pro
 constexpr std::size_t kCorrelationBytes = 8 + 32;
 
 bool valid_reason(std::uint8_t reason) noexcept {
-    return (reason >= 2 && reason <= 9) || (reason >= 64 && reason <= 67);
+    return (reason >= 2 && reason <= 9) || (reason >= 64 && reason <= 67) || reason == static_cast<std::uint8_t>(IngressRefusal::signer_read_only);
 }
 
 std::size_t response_size(ResponseKind kind) noexcept {
@@ -25,7 +25,8 @@ std::size_t response_size(ResponseKind kind) noexcept {
         case ResponseKind::committed: return kResponseCommittedBytes;
         case ResponseKind::gateway_refused:
         case ResponseKind::state_chunk:
-        case ResponseKind::authority_granted: return 0;
+        case ResponseKind::authority_granted:
+        case ResponseKind::swap_authority_granted: return 0;
     }
     return 0;
 }
@@ -121,7 +122,7 @@ namespace {
 constexpr std::size_t kBody = 1 + kCorrelationBytes;
 
 bool valid_gateway_reason(std::uint8_t reason) noexcept {
-    return (reason >= 2 && reason <= 9) || (reason >= 64 && reason <= 69);
+    return (reason >= 2 && reason <= 9) || (reason >= 64 && reason <= 70);
 }
 
 void put_correlation(std::span<std::byte> out, const ResponseCorrelation& correlation) noexcept {
@@ -153,11 +154,12 @@ bool valid_mode(std::uint8_t mode) noexcept { return mode >= 1 && mode <= 6; }
 bool is_gateway_request(std::span<const std::byte> body) noexcept {
     const auto kind = response_kind_byte(body);
     return kind == static_cast<std::uint8_t>(GatewayRequestKind::state_read) ||
-           kind == static_cast<std::uint8_t>(GatewayRequestKind::authority);
+           kind == static_cast<std::uint8_t>(GatewayRequestKind::authority) ||
+           kind == static_cast<std::uint8_t>(GatewayRequestKind::swap_authority);
 }
 
 EncodeNodeProtocolResult encode_gateway_request(const GatewayRequest& request, std::span<std::byte> output) noexcept {
-    const bool authority = request.kind == GatewayRequestKind::authority;
+    const bool authority = request.kind == GatewayRequestKind::authority || request.kind == GatewayRequestKind::swap_authority;
     if (!authority && request.kind != GatewayRequestKind::state_read) return {NodeProtocolError::invalid_kind, 0};
     if (request.request_id == 0) return {NodeProtocolError::invalid_value, 0};
     if (authority && request.barrier.incarnation != request.incarnation) return {NodeProtocolError::invalid_value, 0};
@@ -183,7 +185,7 @@ NodeProtocolError decode_gateway_request(std::span<const std::byte> input, Gatew
     if (std::to_integer<std::uint8_t>(input[1]) != kGatewayRequestVersion) return NodeProtocolError::invalid_version;
     GatewayRequest decoded;
     decoded.kind = static_cast<GatewayRequestKind>(std::to_integer<std::uint8_t>(input[0]));
-    const bool authority = decoded.kind == GatewayRequestKind::authority;
+    const bool authority = decoded.kind == GatewayRequestKind::authority || decoded.kind == GatewayRequestKind::swap_authority;
     const auto size = authority ? kGatewayAuthorityRequestBytes : kGatewayStateReadBytes;
     if (input.size() < size) return NodeProtocolError::truncated;
     if (input.size() != size) return NodeProtocolError::length_mismatch;
@@ -316,6 +318,32 @@ EncodeNodeProtocolResult encode_authority_granted(const ResponseCorrelation& cor
     frame[477] = static_cast<std::byte>(view.strategy_mode);
     std::copy(frame.begin(), frame.end(), output.begin());
     return {NodeProtocolError::none, kResponseAuthorityGrantedBytes};
+}
+
+EncodeNodeProtocolResult encode_swap_authority_granted(const ResponseCorrelation& correlation,const SwapAuthorityProofView& view,std::span<std::byte> output)noexcept{
+    if(output.size()<kResponseSwapAuthorityGrantedBytes)return {NodeProtocolError::output_too_small,0};
+    if(!correlation.request_sequence || correlation.payload_digest.is_zero() || view.issuer_id<=0 || view.term<=0 ||
+        view.barrier_index<=0 || view.applied_index<view.barrier_index)return {NodeProtocolError::invalid_value,0};
+    std::array<std::byte,kResponseSwapAuthorityGrantedBytes> frame{};
+    frame[0]=static_cast<std::byte>(ResponseKind::swap_authority_granted);put_correlation(frame,correlation);
+    if(encode_authority_barrier(kAuthorityBarrierEntryType,view.request,std::span(frame).subspan(41,kAuthorityBarrierBytes)).error!=AuthorityBarrierCodecError::none)
+        return {NodeProtocolError::invalid_value,0};
+    put(frame,227,view.issuer_id);put(frame,231,view.term);put(frame,239,view.barrier_index);put(frame,247,view.applied_index);
+    std::copy(frame.begin(),frame.end(),output.begin());return {NodeProtocolError::none,frame.size()};
+}
+NodeProtocolError decode_swap_authority_granted(std::span<const std::byte> input,ResponseCorrelation& correlation,SwapAuthorityProofView& destination)noexcept{
+    if(input.size()<kResponseSwapAuthorityGrantedBytes)return NodeProtocolError::truncated;
+    if(input.size()!=kResponseSwapAuthorityGrantedBytes)return NodeProtocolError::length_mismatch;
+    if(response_kind_byte(input)!=static_cast<std::uint8_t>(ResponseKind::swap_authority_granted))return NodeProtocolError::invalid_kind;
+    SwapAuthorityProofView view;
+    if(decode_authority_barrier(kAuthorityBarrierEntryType,input.subspan(41,kAuthorityBarrierBytes),view.request).error!=AuthorityBarrierCodecError::none)
+        return NodeProtocolError::invalid_value;
+    view.issuer_id=get<std::int32_t>(input,227);view.term=get<std::int64_t>(input,231);
+    view.barrier_index=get<std::int64_t>(input,239);view.applied_index=get<std::int64_t>(input,247);
+    const auto found=get_correlation(input);
+    if(!found.request_sequence || found.payload_digest.is_zero() || view.issuer_id<=0 || view.term<=0 ||
+        view.barrier_index<=0 || view.applied_index<view.barrier_index)return NodeProtocolError::invalid_value;
+    correlation=found;destination=view;return NodeProtocolError::none;
 }
 
 NodeProtocolError decode_authority_granted(std::span<const std::byte> input, ResponseCorrelation& correlation,

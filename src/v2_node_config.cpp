@@ -126,6 +126,7 @@ struct Draft {
     std::optional<Endpoint> ingress;
     std::optional<std::uint64_t> max_wal;
     std::optional<std::uint64_t> gateway_caller;
+    std::optional<std::uint64_t> signer_caller;
     std::uint32_t compact_at_entries{2048};
     std::uint32_t ingress_rate_per_second{20};
     std::uint32_t ingress_burst{200};
@@ -177,6 +178,10 @@ void assign(Draft& d, const std::string& key, std::string_view value, std::size_
         const auto id = decimal(value, std::numeric_limits<std::uint64_t>::max());
         if (!id || *id == 0) invalid();
         d.gateway_caller = *id;
+    } else if (key == "signer.caller") {
+        const auto id = decimal(value, std::numeric_limits<std::uint64_t>::max());
+        if (!id || *id == 0) invalid();
+        d.signer_caller = *id;
     } else if (key == "history.max_wal_bytes") {
         const auto bytes = decimal(value, 1ULL << 30);
         if (!bytes || *bytes == 0) invalid();
@@ -277,6 +282,10 @@ NodeConfig finish(Draft& d, std::string_view text) {
         (*d.gateway_caller <= kMaxOperatorCallerId || !caller_values.contains(*d.gateway_caller)))
         inconsistent("gateway.caller");
     config.gateway_caller = d.gateway_caller;
+    if (d.signer_caller && (*d.signer_caller <= kMaxOperatorCallerId ||
+        !caller_values.contains(*d.signer_caller) || d.signer_caller == d.gateway_caller))
+        inconsistent("signer.caller");
+    config.signer_caller = d.signer_caller;
 
     config.node_id = *d.node_id;
     config.data_root = *d.data_root;

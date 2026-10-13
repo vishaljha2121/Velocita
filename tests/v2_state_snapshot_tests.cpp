@@ -314,7 +314,7 @@ void test_snapshot_rejects_unbacked_risk_aggregates() {
     std::array<std::byte, kMaxStateSnapshotBytes> storage{};
     const auto encoded = encode_state_snapshot(original, storage);
     require(encoded.error == StateSnapshotError::none, "risk fixture did not encode");
-    const auto risk_offset = encoded.bytes_written - kDigestBytes - kDigestBytes -
+    const auto risk_offset = encoded.bytes_written - kDigestBytes - kDigestBytes - 3 -
         (2 + original.outbox_effect_count * kStateSnapshotOutboxEffectBytes) -
         (2 + original.order_count * kStateSnapshotClusterOrderBytes) -
         (2 + original.reservation_count * kStateSnapshotRiskReservationBytes) -
@@ -356,7 +356,7 @@ void test_snapshot_position_limit_fields_are_canonical() {
     std::array<std::byte, kMaxStateSnapshotBytes> storage{};
     const auto encoded = encode_state_snapshot(original, storage);
     require(encoded.error == StateSnapshotError::none, "position fixture did not encode");
-    const auto risk_offset = encoded.bytes_written - kDigestBytes - kDigestBytes -
+    const auto risk_offset = encoded.bytes_written - kDigestBytes - kDigestBytes - 3 -
         (2 + original.outbox_effect_count * kStateSnapshotOutboxEffectBytes) -
         (2 + original.order_count * kStateSnapshotClusterOrderBytes) -
         (2 + original.reservation_count * kStateSnapshotRiskReservationBytes) -
@@ -504,8 +504,8 @@ void test_empty_snapshot_has_canonical_layout() {
 
     const std::array expected_prefix{
         std::byte{'V'}, std::byte{'2'}, std::byte{'S'}, std::byte{'T'},
-        std::byte{95}, std::byte{0}, std::byte{0}, std::byte{0},
-        std::byte{11}, std::byte{0},
+        std::byte{98}, std::byte{0}, std::byte{0}, std::byte{0},
+        std::byte{12}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0},
         std::byte{5}};
@@ -519,18 +519,18 @@ void test_empty_snapshot_has_canonical_layout() {
     auto legacy = storage;
     legacy[kStateSnapshotSchemaOffset] = std::byte{8};
     require(to_hex(sha256_digest({legacy.data() + kStateSnapshotDigestInputOffset,
-                                  digest_offset - kStateSnapshotDigestInputOffset})) ==
+                                  digest_offset - kStateSnapshotDigestInputOffset - 3})) ==
                 "8cc6fdeb97eecd7643512047f336e7fba464d9805688ecb0ad9abb70c7df8d68",
-            "V9 changed more than the schema byte of the empty snapshot");
+            "V12 legacy projection changed beyond the appended swap state");
     const auto hash = to_hex(encoded.state_digest);
     require(hash ==
-                "df011d2990764aeb8926f05123495c942dcaa2043a81e06cd73c409d300a4746",
+                "4362f31e2c01e1b988f7fe28e7a68d30a830f9a09d7753d7c6e341c2853ce224",
             "empty state golden digest changed: " + hash);
     require(encoded.bytes_written ==
                 kStateSnapshotPayloadOffset + kStateSnapshotEmptyPayloadBytes +
                     kDigestBytes,
             "empty snapshot length does not match the declared empty payload");
-    require(kStateSnapshotEmptyPayloadBytes == 95,
+    require(kStateSnapshotEmptyPayloadBytes == 98,
             "V6 empty snapshot header grew without review");
 }
 
@@ -546,11 +546,11 @@ void test_execution_catalog_root_is_appended_and_round_trips() {
     const auto encoded = encode_state_snapshot(state, storage);
     require(encoded.error == StateSnapshotError::none,
             "catalog-root snapshot did not encode");
-    const auto root_offset = encoded.bytes_written - kDigestBytes - kDigestBytes;
+    const auto root_offset = encoded.bytes_written - kDigestBytes - kDigestBytes - 3;
     require(std::equal(state.execution_catalog_root.bytes.begin(),
                        state.execution_catalog_root.bytes.end(),
                        storage.begin() + static_cast<std::ptrdiff_t>(root_offset)),
-            "catalog root was not appended at the end of the snapshot payload");
+            "catalog root must precede the optional swap state");
 
     TradingState restored;
     StateSnapshotScratch scratch;
@@ -629,8 +629,8 @@ void test_round_trip_is_canonical_and_excludes_unused_capacity() {
 
 void test_phase4_state_survives_canonical_snapshot() {
     using namespace velocita::v2;
-    require(kStateSnapshotSchemaVersion == 11,
-            "caller roles did not move snapshots to V11");
+    require(kStateSnapshotSchemaVersion == 12,
+            "swap state requires snapshot schema V12");
     const auto original = phase4_state();
     std::array<std::byte, kMaxStateSnapshotBytes> storage{};
     const auto encoded = encode_state_snapshot(original, storage);

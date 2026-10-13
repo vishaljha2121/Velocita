@@ -27,6 +27,8 @@ constexpr char execution_name[] = "v2-execution-catalog.bin";
 constexpr char catalog_name[] = "v2-archive-catalog.bin";
 constexpr char catalog_temp[] = "v2-archive-catalog.bin.tmp";
 constexpr char segment_temp[] = "v2-archive-segment.bin.tmp";
+constexpr std::array<const char*,2> recovery_temps{segment_temp,catalog_temp};
+constexpr std::array<const char*,2> recovery_names{"v2-archive-segment.bin.quarantine","v2-archive-catalog.bin.quarantine"};
 
 bool sync_fd(int fd) noexcept {
   while (::fsync(fd) != 0) {
@@ -136,6 +138,15 @@ bool no_replace(int dir, const char *from, const char *to) noexcept {
 }
 bool expected_segment_name(std::string_view name, const Digest256 &digest) {
   return name == segment_name_for(digest);
+}
+bool private_recovery_file(int directory, const char* name, std::size_t limit) noexcept {
+  struct stat info{};
+  return ::fstatat(directory, name, &info, AT_SYMLINK_NOFOLLOW) == 0 &&
+         good_file_stat(info) && info.st_size >= 0 &&
+         static_cast<std::uintmax_t>(info.st_size) <= limit;
+}
+std::size_t recovery_limit(std::size_t index) noexcept {
+  return index == 0 ? kMaxArchiveSegmentBytes : kMaxArchiveCatalogBytes;
 }
 bool terminal_digest(std::span<const std::byte> bytes, Digest256 &out) {
   if (bytes.size() < 64)
@@ -406,6 +417,7 @@ ArchiveStoreError ArchiveStore::open(const std::filesystem::path &path,
     }
     if (errno != 0)
       return ArchiveStoreError::ownership_failed;
+    std::array<bool,2> recover{};
     for (const auto &name : names) {
       bool known = name == identity_name || name == execution_name ||
                    (has_catalog && name == catalog_name);
@@ -413,8 +425,23 @@ ArchiveStoreError ArchiveStore::open(const std::filesystem::path &path,
         for (std::size_t i = 0; i < s->count && !known; ++i)
           known = expected_segment_name(name, s->rows[i].segment_digest);
       }
+      for (std::size_t i = 0; i < recovery_names.size(); ++i) {
+        if (name == recovery_names[i] || name == recovery_temps[i]) {
+          if (!private_recovery_file(s->directory, name.c_str(), recovery_limit(i)))
+            return ArchiveStoreError::ownership_failed;
+          known = true;
+          recover[i] = recover[i] || name == recovery_temps[i];
+        }
+      }
       if (!known)
         return ArchiveStoreError::unexpected_entry;
+    }
+    for (std::size_t i = 0; i < recover.size(); ++i) {
+      if (recover[i]) {
+        struct stat occupied{};
+        if (::fstatat(s->directory, recovery_names[i], &occupied, AT_SYMLINK_NOFOLLOW) == 0 || errno != ENOENT)
+          return ArchiveStoreError::publication_failed;
+      }
     }
     auto buffer =
         std::make_unique<std::array<std::byte, kMaxArchiveSegmentBytes>>();
@@ -450,6 +477,11 @@ ArchiveStoreError ArchiveStore::open(const std::filesystem::path &path,
         (has_catalog && !resync_name(s->directory, catalog_name)) ||
         !sync_fd(s->directory))
       return ArchiveStoreError::publication_failed;
+    for (std::size_t i = 0; i < recover.size(); ++i) {
+      if (recover[i] && (!resync_name(s->directory, recovery_temps[i]) ||
+          !no_replace(s->directory, recovery_temps[i], recovery_names[i]) || !sync_fd(s->directory)))
+        return ArchiveStoreError::publication_failed;
+    }
     destination = ArchiveStore(std::move(s));
     return ArchiveStoreError::none;
   } catch (...) {
@@ -489,6 +521,14 @@ ArchiveStoreError ArchiveStore::verify_layout() noexcept {
     std::vector<std::string> allowed{identity_name, execution_name};
     if (s.header.generation) allowed.emplace_back(catalog_name);
     for (std::size_t i = 0; i < s.count; ++i) allowed.push_back(segment_name_for(s.rows[i].segment_digest));
+    for (std::size_t i = 0; i < recovery_names.size(); ++i) {
+      struct stat info{};
+      if (::fstatat(s.directory, recovery_names[i], &info, AT_SYMLINK_NOFOLLOW) == 0) {
+        if (!private_recovery_file(s.directory, recovery_names[i], recovery_limit(i)))
+          return ArchiveStoreError::ownership_failed;
+        allowed.emplace_back(recovery_names[i]);
+      } else if (errno != ENOENT) return ArchiveStoreError::ownership_failed;
+    }
     std::sort(allowed.begin(), allowed.end());
     DirectoryListing listing(::openat(s.directory, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC));
     if (!listing.directory) return ArchiveStoreError::ownership_failed;

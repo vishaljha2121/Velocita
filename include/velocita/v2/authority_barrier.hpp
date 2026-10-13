@@ -11,6 +11,7 @@
 namespace velocita::v2 {
 
 inline constexpr std::int32_t kAuthorityBarrierEntryType = 101;
+inline constexpr std::int32_t kSwapAuthorityBarrierEntryType = 102;
 inline constexpr std::uint16_t kAuthorityBarrierSchemaVersion = 1;
 inline constexpr std::size_t kAuthorityBarrierBodyBytes = 144;
 inline constexpr std::size_t kAuthorityBarrierBytes = 186;

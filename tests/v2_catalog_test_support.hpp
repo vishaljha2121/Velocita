@@ -101,7 +101,7 @@ inline Digest256 schema7_projection(const TradingState& state) {
     const auto encoded = encode_state_snapshot(state, bytes);
     if (encoded.error != StateSnapshotError::none)
         throw std::logic_error("projection fixture invalid");
-    const auto old_payload = encoded.bytes_written - kStateSnapshotPayloadOffset - 2 * kDigestBytes;
+    const auto old_payload = encoded.bytes_written - kStateSnapshotPayloadOffset - 2 * kDigestBytes - 3;
     for (std::size_t i = 0; i < 4; ++i) bytes[4 + i] = std::byte((old_payload >> (8 * i)) & 255);
     bytes[8] = std::byte{7};
     bytes[9] = std::byte{0};

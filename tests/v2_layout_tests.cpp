@@ -100,9 +100,9 @@ void test_phase4_authorization_regions_are_bounded() {
     static_assert(sizeof(ClusterOrder) <= kClusterOrderObjectBudgetBytes);
     static_assert(sizeof(OutboxEffectRecord) <=
                   kOutboxEffectRecordObjectBudgetBytes);
-    require(sizeof(RiskReservation) == kTargetCacheLineBytes,
+    require(sizeof(RiskReservation) == 64 && sizeof(RiskReservation) <= kTargetCacheLineBytes,
             "reservation no longer fits its one-line MVP record");
-    require(sizeof(OutboxEffectRecord) == kTargetCacheLineBytes,
+    require(sizeof(OutboxEffectRecord) == 64 && sizeof(OutboxEffectRecord) <= kTargetCacheLineBytes,
             "outbox identity record no longer fits its one-line MVP record");
 }
 

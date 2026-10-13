@@ -1,5 +1,6 @@
 #include "velocita/v2/bound_wal.hpp"
 #include "velocita/v2/authority_barrier.hpp"
+#include "velocita/v2/leader_read_barrier.hpp"
 #include <algorithm>
 #include <bit>
 #include <limits>
@@ -23,9 +24,12 @@ void validate(const WalRecord& record, const VerifiedStaticIdentity& identity) {
         record.term <= 0) refuse(Error::invalid_payload, "invalid WAL coordinates");
     if (record.payload.size() > kMaxKernelCommandBytes)
         refuse(Error::capacity_exceeded, "WAL payload exceeds canonical bound");
-    if (record.entry_type == kAuthorityBarrierEntryType) {
+    if (record.entry_type == kLeaderReadBarrierEntryType) {
+        if (!valid_leader_read_barrier(record.payload, identity.authority_domain()))
+            refuse(Error::invalid_payload, "invalid WAL leader read barrier");
+    } else if (record.entry_type == kAuthorityBarrierEntryType || record.entry_type == kSwapAuthorityBarrierEntryType) {
         AuthorityBarrier marker;
-        if (decode_authority_barrier(record.entry_type, record.payload, marker).error !=
+        if (decode_authority_barrier(kAuthorityBarrierEntryType, record.payload, marker).error !=
                 AuthorityBarrierCodecError::none || marker.authority_domain != identity.authority_domain())
             refuse(Error::invalid_payload, "invalid WAL authority marker");
     } else {

@@ -289,11 +289,13 @@ target_include_directories(velocita_v2_paper_venue PUBLIC include)
 target_link_libraries(velocita_v2_paper_venue PUBLIC velocita_v2_contracts PRIVATE velocita_v2_venue_simulator)
 target_compile_options(velocita_v2_paper_venue PRIVATE -Wall -Wextra -Wpedantic)
 
+
 # ADR 0019. True Markets adapter state machine and wire encoding. All venue I/O
 # and signing are injected; this library holds no network or TLS code, which
 # the v2-truemarkets-no-network-symbols test checks on its object files.
 add_library(velocita_v2_truemarkets_venue
     src/v2_truemarkets_venue.cpp
+    src/v2_truemarkets_rest.cpp
     src/v2_truemarkets_wire.cpp)
 target_include_directories(velocita_v2_truemarkets_venue PUBLIC include)
 target_link_libraries(velocita_v2_truemarkets_venue PUBLIC velocita_v2_contracts PRIVATE velocita_v2_venue_simulator)
@@ -322,6 +324,10 @@ target_link_libraries(velocita-v2-signer PRIVATE velocita_v2_signer)
 target_compile_options(velocita-v2-signer PRIVATE -Wall -Wextra -Wpedantic)
 
 add_library(velocita_v2_kernel
+    src/v2_swap_authority.cpp
+    src/v2_swap.cpp
+    src/v2_swap_codec.cpp
+    src/v2_swap_kernel.cpp
     src/v2_gateway_authority.cpp
     src/v2_gateway_dispatch.cpp
     src/v2_gateway.cpp
@@ -335,6 +341,16 @@ target_include_directories(velocita_v2_kernel PUBLIC include)
 target_link_libraries(velocita_v2_kernel PUBLIC velocita_v2_contracts
     PRIVATE velocita_v2_evaluator)
 target_compile_options(velocita_v2_kernel PRIVATE -Wall -Wextra -Wpedantic)
+
+add_library(velocita_v2_swap_recovery src/v2_swap_result_watermark.cpp src/v2_swap_reconcile_store.cpp)
+target_include_directories(velocita_v2_swap_recovery PUBLIC include)
+target_link_libraries(velocita_v2_swap_recovery PUBLIC velocita_v2_contracts)
+target_compile_options(velocita_v2_swap_recovery PRIVATE -Wall -Wextra -Wpedantic)
+
+add_library(velocita_v2_swap_paper_gateway src/v2_swap_paper.cpp src/v2_swap_paper_gateway.cpp)
+target_include_directories(velocita_v2_swap_paper_gateway PUBLIC include)
+target_link_libraries(velocita_v2_swap_paper_gateway PUBLIC velocita_v2_gateway_loop velocita_v2_swap_recovery)
+target_compile_options(velocita_v2_swap_paper_gateway PRIVATE -Wall -Wextra -Wpedantic)
 
 # Phase 6. The deterministic reducer behind consensus. Links willemt_raft and
 # velocita_core's payload-generic storage/wire layers; V1's RaftNode is left
@@ -400,9 +416,10 @@ target_link_libraries(velocita_v2_gateway_loop PUBLIC velocita_v2_node velocita_
 target_compile_options(velocita_v2_gateway_loop PRIVATE -Wall -Wextra -Wpedantic)
 
 add_executable(velocita-v2-gateway src/v2_gateway_main.cpp)
-target_link_libraries(velocita-v2-gateway PRIVATE velocita_v2_gateway_loop velocita_v2_paper_venue
+target_link_libraries(velocita-v2-gateway PRIVATE velocita_v2_swap_paper_gateway velocita_v2_gateway_loop velocita_v2_paper_venue
     velocita_v2_truemarkets_venue velocita_v2_node_aeron Threads::Threads)
 target_compile_options(velocita-v2-gateway PRIVATE -Wall -Wextra -Wpedantic)
+include(cmake/SwapRuntime.cmake)
 
 add_executable(velocita-v2-shadow-submitter src/v2_shadow_submitter_main.cpp)
 target_link_libraries(velocita-v2-shadow-submitter PRIVATE velocita_v2_node_aeron Threads::Threads)
@@ -515,6 +532,11 @@ if(BUILD_TESTING)
     target_link_libraries(v2-venue-transport-tests PRIVATE velocita_v2_venue_simulator)
     target_compile_options(v2-venue-transport-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-venue-transport-tests COMMAND v2-venue-transport-tests)
+
+    add_executable(v2-swap-integration-tests tests/v2_swap_integration_tests.cpp)
+    target_link_libraries(v2-swap-integration-tests PRIVATE velocita_v2_swap_paper_gateway)
+    target_compile_options(v2-swap-integration-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-swap-integration-tests COMMAND v2-swap-integration-tests)
 
     add_executable(v2-kernel-control-tests tests/v2_kernel_control_tests.cpp)
     target_link_libraries(v2-kernel-control-tests PRIVATE velocita_v2_kernel)
@@ -1023,10 +1045,21 @@ if(BUILD_TESTING)
     target_compile_options(v2-gateway-reconciliation-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-gateway-reconciliation-tests COMMAND v2-gateway-reconciliation-tests)
 
+    add_executable(v2-truemarkets-rest-tests tests/v2_truemarkets_rest_tests.cpp)
+    target_link_libraries(v2-truemarkets-rest-tests PRIVATE velocita_v2_truemarkets_venue)
+    target_compile_options(v2-truemarkets-rest-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-truemarkets-rest-tests COMMAND v2-truemarkets-rest-tests)
+
     add_executable(v2-truemarkets-wire-tests tests/v2_truemarkets_wire_tests.cpp)
     target_link_libraries(v2-truemarkets-wire-tests PRIVATE velocita_v2_truemarkets_venue)
     target_compile_options(v2-truemarkets-wire-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-truemarkets-wire-tests COMMAND v2-truemarkets-wire-tests)
+
+    add_executable(v2-solana-payload-view-tests
+        tests/v2_solana_payload_view_tests.cpp src/v2_solana_payload_view.cpp)
+    target_link_libraries(v2-solana-payload-view-tests PRIVATE velocita_v2_truemarkets_venue)
+    target_compile_options(v2-solana-payload-view-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-solana-payload-view-tests COMMAND v2-solana-payload-view-tests)
 
     add_executable(v2-truemarkets-venue-tests tests/v2_truemarkets_venue_tests.cpp)
     target_link_libraries(v2-truemarkets-venue-tests PRIVATE velocita_v2_kernel velocita_v2_truemarkets_venue)
@@ -1045,6 +1078,8 @@ if(BUILD_TESTING)
     add_test(NAME v2-truemarkets-transport-tests COMMAND v2-truemarkets-transport-tests)
     add_test(NAME v2-signer-not-in-release-images
         COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_signer_not_shipped.py ${CMAKE_CURRENT_SOURCE_DIR})
+
+    include(cmake/LiveReadinessTests.cmake)
 
     # The adapter library must contain no path to a network: no socket, name
     # resolution or TLS symbol may be referenced by its objects.
@@ -1106,11 +1141,12 @@ if(BUILD_TESTING)
     add_test(NAME v2-gateway-protocol-tests COMMAND v2-gateway-protocol-tests)
 
     add_executable(v2-gateway-node-tests tests/v2_gateway_node_tests.cpp)
-    target_link_libraries(v2-gateway-node-tests PRIVATE velocita_v2_gateway_loop velocita_v2_paper_venue Threads::Threads)
+    target_link_libraries(v2-gateway-node-tests PRIVATE velocita_v2_swap_paper_gateway velocita_v2_gateway_loop velocita_v2_paper_venue Threads::Threads)
     target_compile_options(v2-gateway-node-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-gateway-node-tests COMMAND v2-gateway-node-tests)
-    set_tests_properties(v2-gateway-node-tests PROPERTIES TIMEOUT 600)
-
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/gateway-test-state")
+    set_tests_properties(v2-gateway-node-tests PROPERTIES TIMEOUT 600
+        ENVIRONMENT "TMPDIR=${CMAKE_CURRENT_BINARY_DIR}/gateway-test-state")
     add_executable(v2-node-tests tests/v2_node_tests.cpp)
     target_link_libraries(v2-node-tests PRIVATE velocita_v2_node Threads::Threads)
     target_compile_options(v2-node-tests PRIVATE -Wall -Wextra -Wpedantic)

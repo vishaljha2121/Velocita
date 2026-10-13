@@ -1,10 +1,27 @@
 #include "v2_catalog_test_support.hpp"
+#include "v2_swap_test_support.hpp"
+#include "velocita/v2/swap_paper_gateway.hpp"
+#ifdef VELOCITA_SWAP_SUBMISSION_DRILL
+#include "velocita/v2/swap_submission_session.hpp"
+#include "velocita/v2/swap_submission_resolution.hpp"
+#include "velocita/v2/swap_rest_codec.hpp"
+#include "velocita/v2/swap_prepare_session.hpp"
+#include "velocita/v2/swap_order_status.hpp"
+#ifdef VELOCITA_SWAP_SIGNER_SYNTHETIC_FIXTURE
+#include "v2_swap_signer_test_support.hpp"
+#endif
+#endif
+#ifdef VELOCITA_SWAP_TLS_DRILL
+#include "velocita/v2/swap_reconcile_session.hpp"
+#include "velocita/v2/swap_reconcile_store.hpp"
+#endif
 
 #include "velocita/v2/gateway_dispatch.hpp"
 #include "velocita/v2/gateway_loop.hpp"
 #include "velocita/v2/node.hpp"
 #include "velocita/v2/paper_venue.hpp"
 #include "velocita/v2/paper_venue_store.hpp"
+#include <fstream>
 #include "velocita/v2/venue_simulator.hpp"
 #include "velocita/v2/venue_transport.hpp"
 
@@ -34,8 +51,8 @@ void require(bool condition, const std::string& message) {
     if (!condition) throw std::runtime_error(message);
 }
 
-constexpr std::int32_t kOperatorKey = 11, kStrategyKey = 12, kGatewayKey = 13;
-constexpr std::uint64_t kOperator = 9, kStrategy = 21, kGateway = 22;
+constexpr std::int32_t kOperatorKey = 11, kStrategyKey = 12, kGatewayKey = 13, kSignerKey = 14;
+constexpr std::uint64_t kOperator = 9, kStrategy = 21, kGateway = 22, kSigner = 23;
 const std::array<std::byte, 16> kIncarnation{std::byte{0xAB}, std::byte{0x5A}, std::byte{0x02}};
 constexpr std::uint8_t kLinkSeed = 0x10, kWrongSeed = 0x90;
 
@@ -78,10 +95,11 @@ const VerifiedExecutionCatalog& paper_catalog() {
     }();
     return value;
 }
+bool g_swap = false;
 bool g_paper = false;
 bool g_exit_template = false;
 std::uint32_t g_ingress_rate = 0, g_ingress_burst = 0;
-const VerifiedExecutionCatalog& fixture_catalog() { return g_paper ? paper_catalog() : catalog_test::standard_catalog(); }
+const VerifiedExecutionCatalog& fixture_catalog() { return g_swap ? shadow_catalog::truemarkets_two_row_catalog() : g_paper ? paper_catalog() : catalog_test::standard_catalog(); }
 
 PolicyArtifact policy_artifact() {
     PolicyArtifact value;
@@ -237,6 +255,7 @@ bool FakeTransport::offer_response(std::int32_t caller, std::span<const std::byt
 
 struct GatewayClient final : ClientTransport {
     Network* network{};
+    std::int32_t caller_key{kGatewayKey};
     bool offer_ingress(std::int32_t node, std::span<const std::byte> envelope) override {
         if (network->down.contains(node)) return false;
         if (network->gateway_ingress && !network->gateway_ingress(node, envelope)) return true;
@@ -244,7 +263,7 @@ struct GatewayClient final : ClientTransport {
         return true;
     }
     std::optional<std::size_t> receive_response(std::span<std::byte> buffer) override {
-        auto& queue = network->responses[kGatewayKey];
+        auto& queue = network->responses[caller_key];
         if (queue.empty()) return std::nullopt;
         auto frame = std::move(queue.front());
         queue.pop_front();
@@ -271,6 +290,10 @@ NodeConfig config_for(const std::filesystem::path& base, std::int32_t id, NodeSt
     config.callers.push_back({kStrategyKey, kStrategy, "/c12", {"127.0.0.1", 40412}});
     config.callers.push_back({kGatewayKey, kGateway, "/c13", {"127.0.0.1", 40413}});
     if (gateway_configured) config.gateway_caller = kGateway;
+    if (g_swap) {
+        config.callers.push_back({kSignerKey,kSigner,"/c14",{"127.0.0.1",40414}});
+        config.signer_caller=kSigner;
+    }
     config.max_history_wal_bytes = 1ULL << 30;
     if (g_ingress_rate != 0) {
         config.ingress_rate_per_second = g_ingress_rate;
@@ -286,6 +309,7 @@ NodeSecrets secrets_for(std::int32_t id, const std::vector<std::int32_t>& voters
         if (peer != id) secrets.voters.emplace(peer, SecretSet{secret(link_seed(id, peer))});
     for (const auto caller : {kOperatorKey, kStrategyKey, kGatewayKey})
         secrets.callers.emplace(caller, SecretSet{secret(caller_seed(caller))});
+    if (g_swap) secrets.callers.emplace(kSignerKey,SecretSet{secret(caller_seed(kSignerKey))});
     return secrets;
 }
 
@@ -396,8 +420,10 @@ struct Cluster {
         return leader();
     }
     ApplyResult commit(Caller& caller, CommandBody body, ProposeLane lane = ProposeLane::normal) {
-        const Command command{{CallerId{caller.caller_id}, RequestSequence{caller.next_sequence++},
+        Command command{{CallerId{caller.caller_id}, RequestSequence{caller.next_sequence++},
                                digest(caller.caller_id * 1000 + caller.next_sequence)}, std::move(body)};
+        if (const auto* swap = std::get_if<ApplySpotSwap>(&command.body))
+            command.identity.payload_digest = swap_record_digest(swap->record);
         for (int attempt = 0; attempt < 20; ++attempt) {
             const auto target = elect();
             network.at(target).ingress_inbox.push_back(caller.ingress(target, command, lane));
@@ -497,12 +523,12 @@ EffectId authorize(Cluster& cluster, Caller& strategy) {
     return authorized.effect_id();
 }
 
-std::vector<ClientRoute> gateway_routes(const std::vector<std::int32_t>& voters, std::uint8_t seed) {
+std::vector<ClientRoute> gateway_routes(const std::vector<std::int32_t>& voters, std::uint8_t seed, std::int32_t caller_key=kGatewayKey) {
     std::vector<ClientRoute> routes;
     for (const auto id : voters) {
         std::vector<AuthKey> responses;
-        responses.push_back(key(seed, AuthRole::response, id, kGatewayKey));
-        routes.push_back({id, key(seed, AuthRole::ingress, kGatewayKey, id), std::move(responses)});
+        responses.push_back(key(seed, AuthRole::response, id, caller_key));
+        routes.push_back({id, key(seed, AuthRole::ingress, caller_key, id), std::move(responses)});
     }
     return routes;
 }
@@ -971,9 +997,9 @@ LinkOutcome settle(Cluster& cluster, GatewayLink& link) {
     return std::move(*outcome);
 }
 
-Bytes seal_response(std::uint8_t seed, std::int32_t node, std::uint64_t sequence, std::span<const std::byte> body) {
+Bytes seal_response(std::uint8_t seed, std::int32_t node, std::uint64_t sequence, std::span<const std::byte> body, std::uint64_t epoch = 1) {
     Bytes out(kMaxAuthEnvelopeBytes);
-    const auto env = encode_auth_envelope(key(seed, AuthRole::response, node, kGatewayKey), 1, sequence, body, out);
+    const auto env = encode_auth_envelope(key(seed, AuthRole::response, node, kGatewayKey), epoch, sequence, body, out);
     require(env.error == AuthEnvelopeError::none, "fixture response envelope");
     out.resize(env.bytes_written);
     return out;
@@ -1540,7 +1566,7 @@ struct StateReplay {
         require(framed.error == NodeProtocolError::none, "fixture state chunk did not encode");
         body.resize(framed.bytes_written);
         network.responses[kGatewayKey].push_back(
-            seal_response(caller_seed(kGatewayKey), route.sender, verified.header.sequence, body));
+            seal_response(caller_seed(kGatewayKey), route.sender, verified.header.sequence, body, verified.header.session_epoch));
         return false;
     }
 };
@@ -1925,10 +1951,551 @@ void an_election_during_an_in_flight_order_rearms_only_after_it_settles() {
     require(gateway.counting.sends.size() == 1, "the in-flight order was sent again");
 }
 
+#ifdef VELOCITA_SWAP_TLS_DRILL
+void swap_tls_unknown_restart_reconcile() {
+    using namespace velocita::v2::transport;
+    const char* origin=std::getenv("VELOCITA_SWAP_DRILL_ORIGIN");
+    const char* ca=std::getenv("VELOCITA_SWAP_DRILL_CA");
+    require(origin && ca,"isolated TLS fixture configured");
+    const std::string_view address(origin);
+    require(address.starts_with("https://localhost:") && address.size()>18 &&
+        std::all_of(address.begin()+18,address.end(),[](char c){return c>='0' && c<='9';}),"TLS drill loopback only");
+    g_swap=true;struct Reset {~Reset(){g_swap=false;}} reset;
+    Base base("v2-swap-tls");Cluster c(base.path,{1,2,3});Caller op(kOperatorKey,kOperator);
+    c.elect();
+    require(c.commit(op,AdvanceKillEpoch{KillEpoch{1}},ProposeLane::control).code==ApplyCode::applied,"TLS drill kill epoch");
+    require(c.commit(op,SetExecutorGeneration{ExecutorGeneration{1}},ProposeLane::control).code==ApplyCode::applied,"TLS drill executor");
+    require(c.commit(op,InstallExecutionCatalog{fixture_catalog().root(),KillEpoch{1},ExecutorGeneration{1}}).code==ApplyCode::applied,"TLS drill catalog");
+    require(c.commit(op,AssignCallerRole{CallerId{kGateway},CallerRole::gateway}).code==ApplyCode::applied,"TLS drill gateway role");
+    auto opening=swap_test::opening();opening.binding.incarnation=sha256_digest(kIncarnation);
+    require(c.commit(op,ApplySpotSwap{{swap::Role::operator_role,100,opening}}).code==ApplyCode::applied,"TLS drill funding");
+    require(c.commit(op,SetStrategyMode{StrategyMode::normal,KillEpoch{1},ExecutorGeneration{1}},ProposeLane::control).code==ApplyCode::applied,"TLS drill normal");
+    require(c.commit(op,ApplySpotSwap{{swap::Role::strategy,100,swap_test::buy(opening)}}).code==ApplyCode::applied,"TLS drill intent");
+    GatewayClient wire;wire.network=&c.network;
+    GatewayLink link(1,process_incarnation(0x55),gateway_routes(c.voters,caller_seed(kGatewayKey)),wire);
+    const swap::PaperQuote quote{swap::QuoteAtoms{108'000'000},2000};
+    require(link.request_state(steady_ms(),3000),"paper journal baseline requested");
+    const auto baseline=settle(c,link);
+    require(baseline.status==LinkStatus::done,"paper journal baseline authenticated");
+    const SwapReconcileStoreBinding paper_binding{opening.binding.incarnation,baseline.reading.authority_domain};
+    SwapResultWatermark paper_watermark(opening.binding.incarnation);
+    SwapReconcileStore paper_recovery(base.path/"paper-recovery",paper_binding,paper_watermark);
+    require(paper_recovery.create({paper_binding,baseline.reading.applied_index,baseline.reading.state_digest})==SwapReconcileStoreCode::none,"paper fixture journal initialized");
+    SwapPaperGateway paper(link,CallerId{kGateway},1,1000,quote,opening.binding.incarnation,3000,10,paper_recovery);
+    c.on_round=[&]{if(c.leader() && c.state_of(c.leader()).spot_swap.pending.phase!=swap::Phase::attempted)paper.step(steady_ms(),101);};
+    c.run_until([&]{return c.leader() && c.state_of(c.leader()).spot_swap.pending.phase==swap::Phase::attempted;},"attempt precedes fake HTTPS POST");
+    c.on_round={};
+    if(link.busy()) {const auto attempt_ack=settle(c,link);require(attempt_ack.status==LinkStatus::done &&
+        attempt_ack.result.code==ApplyCode::applied,"attempt acknowledgement authenticated before POST");}
+    const auto late=plan_swap_paper_step(c.state_of(c.leader()),quote,105);
+    require(late.record.has_value() && std::holds_alternative<swap::Settlement>(late.record->command),
+        "independent late settlement fixture available");
+    SwapHttpsConfig config;config.origin=origin;config.ca_bundle=ca;config.timeout_ms=1000;
+    config.routes[0]={SwapHttpsMethod::post,"/fixture/swap"};config.routes[1]={SwapHttpsMethod::get,"/v1/gateway/balances"};config.route_count=2;
+    SwapHttpsClient https(std::move(config));
+    const auto response=https.exchange({SwapHttpsMethod::post,"/fixture/swap","fixture-token",R"({"fixture":true})"});
+    require(response.status==SwapHttpsStatus::transport_failure && response.exposure==SwapHttpsExposure::possibly_sent &&
+        response.body_size==0,"lost HTTPS acknowledgement remains ambiguous");
+    require(!link.busy(),"paper gateway finished committed attempt");
+    swap::Record unknown{swap::Role::gateway,102,swap::MarkUnknown{EffectId{1}}};
+    require(link.submit({{CallerId{kGateway},RequestSequence{1000},swap_record_digest(unknown)},ApplySpotSwap{unknown}},
+        ProposeLane::normal,steady_ms(),3000),"unknown report submitted through gateway link");
+    const auto unknown_ack=settle(c,link);
+    require(unknown_ack.status==LinkStatus::done && unknown_ack.result.code==ApplyCode::applied && unknown_ack.index>0,
+        "unknown report committed through authenticated gateway link");
+    const auto identity=config_for(base.path,c.leader(),NodeStartup::recover,c.voters,true).static_identity();
+    std::array<std::byte,kMaxStaticIdentityBytes> identity_bytes{};
+    const auto encoded=encode_static_identity(identity,identity_bytes);VerifiedStaticIdentity verified;
+    require(VerifiedStaticIdentity::decode(std::span(identity_bytes).first(encoded.bytes_written),verified)==StaticIdentityCodecError::none,
+        "pinned authority domain from cluster configuration");
+    const SwapReconcileStoreBinding durable_binding{opening.binding.incarnation,verified.authority_domain()};
+    const auto durable_path=base.path/"swap-result-watermark";
+    {
+        SwapResultWatermark before_restart(opening.binding.incarnation);
+        SwapReconcileStore durable(durable_path,durable_binding,before_restart);
+        require(durable.create({durable_binding,unknown_ack.index,swap_record_digest(unknown)})==SwapReconcileStoreCode::none &&
+            before_restart.index()==unknown_ack.index,"authenticated unknown result persisted before restart");
+    }
+    c.run_until([&]{return std::all_of(c.nodes.begin(),c.nodes.end(),[](const auto& n){
+        return n.second->applied_state().spot_swap.pending.phase==swap::Phase::unknown;});},"unknown replicated on all voters");
+    for(const auto id:c.voters)c.stop(id);
+    for(const auto id:c.voters){c.network.down.erase(id);++c.epochs[id];c.nodes[id]=std::make_unique<V2Node>(
+        config_for(base.path,id,NodeStartup::recover,c.voters,true),fixture_catalog(),secrets_for(id,c.voters),c.epochs[id],
+        c.network.at(id),velocita::MetadataCheckpoints{},StorageCheckpoints{&slow_disk,&c.disk_owner[id]});
+        require(c.state_of(id).spot_swap.reserved_quote.value()==1'002'000 &&
+            c.state_of(id).spot_swap.pending.phase==swap::Phase::unknown,"WAL recovery retains unknown debit hold");}
+    c.elect();
+    GatewayLink recovered(2,process_incarnation(0x56),gateway_routes(c.voters,caller_seed(kGatewayKey)),wire);
+    struct Clock final:SwapReconcileClock {std::uint64_t now_ms() noexcept override{return steady_ms();}} clock;
+    struct Http final:SwapBalanceGet {
+        SwapHttpsClient& client;unsigned calls{};
+        explicit Http(SwapHttpsClient& c):client(c){}
+        SwapBalanceSessionIdentity identity() const noexcept override{return {digest(700),digest(701)};}
+        SwapHttpsResult get() override{++calls;return client.exchange({SwapHttpsMethod::get,"/v1/gateway/balances","fixture-token",{}});}
+    } http(https);
+    SwapResultWatermark watermark(opening.binding.incarnation);
+    SwapReconcileStore durable(durable_path,durable_binding,watermark);
+    require(durable.recover()==SwapReconcileStoreCode::none && watermark.index()==unknown_ack.index &&
+        durable.latest().result.result_digest==swap_record_digest(unknown),"fresh watermark recovered from durable authenticated result");
+    SwapReconcileSessionConfig session_config;session_config.binding={opening.binding,digest(700),10'000'000};
+    session_config.clock_epoch=digest(702);session_config.session_nonce=digest(703);
+    session_config.outside={digest(700),digest(702),digest(705),steady_ms(),0,0};
+    session_config.http_identity=http.identity();session_config.authority_domain=verified.authority_domain();
+    session_config.max_age_ms=10'000;session_config.state_timeout_ms=3000;
+    SwapReconcileSession session(recovered,http,clock,watermark,session_config);
+    const auto compare=[&]{require(session.start(),"drill reconciliation state read starts");
+        c.run_until([&]{return session.poll()!=SwapReconcileSessionStatus::reading_state;},"drill reconciliation completes");};
+    compare();
+    require(session.result().status==SwapReconcileSessionStatus::comparison_refused && http.calls==0 &&
+        session.result().comparison.code==SwapReconcileCode::projection_refused &&
+        session.result().comparison.projection_code==SwapBalanceCode::unresolved_activity &&
+        session.result().captured.reserved_quote.value()==1'002'000,"unknown state blocks balance GET and retains hold");
+    require(c.commit(op,SetStrategyMode{StrategyMode::halted,KillEpoch{1},ExecutorGeneration{1}},ProposeLane::control).code==ApplyCode::applied,
+        "held-position stop committed");
+    require(recovered.submit({{CallerId{kGateway},RequestSequence{2000},swap_record_digest(*late.record)},ApplySpotSwap{*late.record}},
+        ProposeLane::normal,steady_ms(),3000),"late settlement report submitted");
+    const auto ack=settle(c,recovered);
+    require(ack.status==LinkStatus::done && ack.result.code==ApplyCode::applied &&
+        durable.persist({durable_binding,ack.index,swap_record_digest(*late.record)})==SwapReconcileStoreCode::none &&
+        watermark.index()==ack.index,"late settlement durably covered before balance comparison");
+    compare();
+    require(session.result().status==SwapReconcileSessionStatus::complete && http.calls==1 &&
+        session.result().comparison.comparison.verdict==SpotBalanceVerdict::matching_snapshot_only &&
+        session.result().captured.base.value()==9'259'259 && session.result().captured.quote.value()==3'998'000 &&
+        session.result().captured.reserved_quote.value()==0 && session.result().captured.settlement_count==1,
+        "authenticated state and real HTTPS fixture reconcile exact settlement once");
+    require(recovered.submit({{CallerId{kGateway},RequestSequence{2001},swap_record_digest(*late.record)},ApplySpotSwap{*late.record}},
+        ProposeLane::normal,steady_ms(),3000),"duplicate terminal report submitted");
+    const auto duplicate=settle(c,recovered);
+    require(duplicate.status==LinkStatus::done && duplicate.result.code==ApplyCode::already_applied,
+        "duplicate terminal evidence is idempotent");
+    c.run_until([&]{return std::all_of(c.nodes.begin(),c.nodes.end(),[](const auto& n){
+        const auto& s=n.second->applied_state().spot_swap;return s.settlement_count==1 && s.base.value()==9'259'259 &&
+            s.quote.value()==3'998'000 && s.reserved_quote.value()==0;});},"all voters retain one exact settlement");
+}
+#endif
+
+#ifdef VELOCITA_SWAP_SUBMISSION_DRILL
+void swap_authority_without_quorum_or_after_kill() {
+    for(unsigned mode=0;mode<2;++mode){
+    g_swap=true;struct Reset{~Reset(){g_swap=false;}}reset;
+    Base base("v2-swap-authority-fences");Cluster c(base.path,{1,2,3});Caller op(kOperatorKey,kOperator);
+    c.elect();
+    require(c.commit(op,AdvanceKillEpoch{KillEpoch{1}},ProposeLane::control).code==ApplyCode::applied,"swap kill epoch initialized");
+    require(c.commit(op,SetExecutorGeneration{ExecutorGeneration{1}},ProposeLane::control).code==ApplyCode::applied,"swap executor initialized");
+    require(c.commit(op,InstallExecutionCatalog{fixture_catalog().root(),KillEpoch{1},ExecutorGeneration{1}}).code==ApplyCode::applied,"swap catalog installed");
+    require(c.commit(op,AssignCallerRole{CallerId{kGateway},CallerRole::gateway}).code==ApplyCode::applied,"swap gateway role assigned");
+    auto opening=swap_test::opening();opening.binding.incarnation=sha256_digest(kIncarnation);
+    require(c.commit(op,ApplySpotSwap{{swap::Role::operator_role,100,opening}}).code==ApplyCode::applied,"swap exact funding replicated");
+    require(c.commit(op,SetStrategyMode{StrategyMode::normal,KillEpoch{1},ExecutorGeneration{1}},ProposeLane::control).code==ApplyCode::applied,"swap normal mode enabled");
+    GatewayClient client;client.network=&c.network;
+    GatewayLink link(1,process_incarnation(0x91),gateway_routes(c.voters,caller_seed(kGatewayKey)),client);
+    require(c.commit(op,ApplySpotSwap{{swap::Role::strategy,100,swap_test::buy(opening)}}).code==ApplyCode::applied,"authority fence buy committed");
+    require(link.submit(swap_test::command(kGateway,1,swap::Prepare{EffectId{1},digest(201),digest(202),1},101),
+        ProposeLane::normal,steady_ms(),3000),"authority fence prepared request");
+    require(settle(c,link).status==LinkStatus::done,"authority fence prepared committed");
+    require(link.request_state(steady_ms(),3000),"authority fence state read");
+    const auto observed=settle(c,link);require(observed.status==LinkStatus::done,"authority fence authenticated state");
+    const AuthorityBarrier barrier{link.incarnation(),1,EffectId{1},swap_signing_authority_digest(link.state().spot_swap.pending),
+        KillEpoch{1},ExecutorGeneration{1},opening.binding.catalog,observed.reading.authority_domain};
+    if(mode==0){
+        require(c.commit(op,AdvanceKillEpoch{KillEpoch{2}},ProposeLane::control).code==ApplyCode::applied,"kill committed after signer state read");
+    }else{
+        const auto leader=c.elect();for(const auto id:c.voters)if(id!=leader)c.stop(id);
+    }
+    require(link.request_swap_authority(barrier,steady_ms(),250),"stale or minority authority request starts");
+    const auto refused=settle(c,link);
+    require((refused.status==LinkStatus::refused || refused.status==LinkStatus::timed_out) && !refused.swap_proof,
+        "kill or missing durable quorum cannot produce fresh signing authority");
+    for(const auto& [id,node]:c.nodes){const auto& state=node->applied_state().spot_swap;
+        require(state.pending.phase==swap::Phase::prepared && state.reserved_quote.value()==1'002'000,
+            "authority refusal never sends or releases pending exposure");}
+    }
+}
+
+void swap_submission_lost_reply_leader_loss_restart() {
+    g_swap=true;struct Reset{~Reset(){g_swap=false;}}reset;
+    Base base("v2-swap-submit-drill");Cluster c(base.path,{1,2,3});Caller op(kOperatorKey,kOperator);
+    c.elect();
+    require(c.commit(op,AdvanceKillEpoch{KillEpoch{1}},ProposeLane::control).code==ApplyCode::applied,"swap kill epoch initialized");
+    require(c.commit(op,SetExecutorGeneration{ExecutorGeneration{1}},ProposeLane::control).code==ApplyCode::applied,"swap executor initialized");
+    require(c.commit(op,InstallExecutionCatalog{fixture_catalog().root(),KillEpoch{1},ExecutorGeneration{1}}).code==ApplyCode::applied,"swap catalog installed");
+    require(c.commit(op,AssignCallerRole{CallerId{kGateway},CallerRole::gateway}).code==ApplyCode::applied,"swap gateway role assigned");
+    auto opening=swap_test::opening();opening.binding.incarnation=sha256_digest(kIncarnation);
+    require(c.commit(op,ApplySpotSwap{{swap::Role::operator_role,100,opening}}).code==ApplyCode::applied,"swap exact funding replicated");
+    require(c.commit(op,SetStrategyMode{StrategyMode::normal,KillEpoch{1},ExecutorGeneration{1}},ProposeLane::control).code==ApplyCode::applied,"swap normal mode enabled");
+    GatewayClient client;client.network=&c.network;
+    SwapSubmissionBinding binding;
+    SwapPrepareBinding preparation_binding;
+    constexpr std::string_view handle="synthetic-tm-order";
+    std::array<std::byte,33> public_encoding{};public_encoding[0]=std::byte{2};
+    const std::array<std::byte,8> synthetic_der{std::byte{0x30},std::byte{6},std::byte{2},std::byte{1},
+        std::byte{1},std::byte{2},std::byte{1},std::byte{2}};
+    swap_signing::ApiKeyStamp stamp;
+    require(swap_signing::encode_api_key_stamp(public_encoding,synthetic_der,stamp)==swap_signing::StampCode::encoded,
+        "synthetic stamp formats without any signing operation");
+    truemarkets::SwapRestRequest request;
+    require(truemarkets::encode_swap_rest_execute(*truemarkets::tm_text(handle),stamp,request)==truemarkets::SwapRestCode::encoded,
+        "fixture execute uses actual REST codec");
+    auto bytes=std::as_bytes(std::span(request.body.data(),request.body_size));
+    constexpr std::string_view prepare_payload="VELOCITA SYNTHETIC FEE INCLUSIVE SWAP\n";
+    SwapSubmissionIdentity identity;identity.effect=EffectId{1};identity.payload=sha256_digest(std::as_bytes(std::span(prepare_payload.data(),prepare_payload.size())));
+    identity.execution_request=sha256_digest(bytes);
+    identity.handle_size=handle.size();
+    std::copy(std::as_bytes(std::span(handle.data(),handle.size())).begin(),
+        std::as_bytes(std::span(handle.data(),handle.size())).end(),identity.handle.begin());
+    identity.handle_digest=sha256_digest(std::span(identity.handle).first(identity.handle_size));
+    struct Port final:SwapExecutionPort {
+        unsigned calls{};bool durable{};SwapSubmissionStore* store{};
+        void execute(const SwapSubmissionIdentity& i,std::span<const std::byte> b) override {
+            ++calls;durable=store && store->latest().phase==SwapSubmissionPhase::execute_intent &&
+                store->latest().identity==i && sha256_digest(b)==i.execution_request;
+            throw std::runtime_error("synthetic response lost after venue accepted request");
+        }
+    } port;
+    struct PreparePort final:SwapPreparePort {
+        unsigned calls{};bool durable{};SwapPrepareStore* store{};
+        transport::SwapHttpsResult create(const truemarkets::SwapRestRequest& request)override{
+            ++calls;durable=store && store->latest().phase==SwapPreparePhase::create_intent &&
+                store->latest().operation.request_digest==sha256_digest(std::as_bytes(std::span(request.body.data(),request.body_size)));
+            constexpr std::string_view body=R"({"order_id":"synthetic-tm-order","status":"initialized","payloads":[{"digest":"a71e361bce0c479f89741f87a0248cf21cae63ee745a5d6623d0e5760aabebcc","payload":"VELOCITA SYNTHETIC FEE INCLUSIVE SWAP\n"}],"quote":{"base_asset":"So11111111111111111111111111111111111111112","quote_asset":"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v","fee_asset":"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v","qty":"1","qty_out":"0.009191912","fee":"0.002"}})";
+            transport::SwapHttpsResult result;result.status=transport::SwapHttpsStatus::complete;
+            result.exposure=transport::SwapHttpsExposure::response_received;result.http_status=201;
+            std::copy(body.begin(),body.end(),result.body.begin());result.body_size=body.size();return result;
+        }
+    } prepare_port;
+    {
+        GatewayLink link(1,process_incarnation(0x81),gateway_routes(c.voters,caller_seed(kGatewayKey)),client);
+        require(link.request_state(steady_ms(),3000),"submission bootstrap read requested");const auto baseline=settle(c,link);
+        require(baseline.status==LinkStatus::done,"submission bootstrap authenticated");
+        binding={opening.binding.incarnation,baseline.reading.authority_domain};
+        preparation_binding={opening.binding,binding.authority_domain,fee_inclusive_prepare_mapping_identity()};
+        SwapPrepareStore preparation(base.path/"prepare",preparation_binding);prepare_port.store=&preparation;
+        require(preparation.create({preparation_binding,baseline.reading.applied_index,baseline.reading.state_digest,EffectId{0}})==SwapPrepareStoreCode::none,
+            "virgin prepare bootstrap persists before unsigned create");
+        SwapSubmissionStore store(base.path/"submission",binding);port.store=&store;
+        require(store.create({binding,baseline.reading.applied_index,baseline.reading.state_digest,EffectId{0}})==SwapSubmissionCode::none,
+            "virgin submission bootstrap persists before intent");
+        auto intent=swap_test::buy(opening);intent.quote_input=swap::QuoteAtoms{998'000};
+        intent.max_quote_debit=swap::QuoteAtoms{1'000'000};intent.fee_cap=swap::QuoteAtoms{2'000};
+        require(c.commit(op,ApplySpotSwap{{swap::Role::strategy,100,intent}}).code==ApplyCode::applied,"fee-inclusive buy reservation replicated");
+        SwapPrepareSession prepare_session(link,preparation,prepare_port,{preparation_binding,SwapPrepareInputMapping::fee_inclusive_quote_input,3000});
+        require(prepare_session.start(identity.effect,baseline.reading.applied_index,steady_ms()),"prepare coordinator requests reserved state");
+        c.on_round=[&]{(void)prepare_session.poll(steady_ms(),101);};
+        c.run_until([&]{return prepare_session.status()!=SwapPrepareSessionStatus::reading_state;},"unsigned fixture prepared durably");c.on_round={};
+        const auto* saved=prepare_session.prepared();
+        require(saved && saved->quoted_input==1'000'000 && saved->quoted_fee==2'000 && saved->payload_digest==identity.payload && saved->handle.view()==handle && prepare_port.calls==1 && prepare_port.durable,
+            "one create follows durable intent and exact payload persists before kernel prepare");
+        require(link.submit(swap_test::command(kGateway,1,swap::Prepare{identity.effect,identity.payload,identity.handle_digest,1},101),
+            ProposeLane::normal,steady_ms(),3000),"gateway prepare request issued");
+        const auto prepared=settle(c,link);
+        require(prepared.status==LinkStatus::done && prepared.result.code==ApplyCode::applied,"exact prepared identity replicated");
+        require(link.request_state(steady_ms(),3000),"signer independently reads prepared state");
+        const auto sign_state=settle(c,link);require(sign_state.status==LinkStatus::done,"signer prepared read authenticated");
+        AuthorityBarrier signing_barrier{link.incarnation(),1,identity.effect,swap_signing_authority_digest(link.state().spot_swap.pending),
+            KillEpoch{1},ExecutorGeneration{1},opening.binding.catalog,binding.authority_domain};
+        auto wrong_barrier=signing_barrier;wrong_barrier.expected_effect_payload_digest=digest(255);
+        require(link.request_swap_authority(wrong_barrier,steady_ms(),3000),"mismatched signing authority requested");
+        require(settle(c,link).status==LinkStatus::refused,"current quorum authority refuses different exact swap digest");
+        require(swap_authority_matches(link.state(),signing_barrier,binding.authority_domain),"captured prepared state matches signing barrier");
+        require(swap_authority_matches(c.nodes.at(c.elect())->applied_state(),signing_barrier,binding.authority_domain),"leader prepared state matches signing barrier");
+        require(link.request_swap_authority(signing_barrier,steady_ms(),3000),"exact signing barrier requested");
+        const auto authorization=settle(c,link);
+        if(authorization.status!=LinkStatus::done || !authorization.swap_proof)
+            std::cerr<<"swap authority status="<<static_cast<int>(authorization.status)<<" reason="<<static_cast<int>(authorization.refusal_reason)<<" proof="<<authorization.swap_proof.has_value()<<'\n';
+        require(authorization.status==LinkStatus::done && authorization.swap_proof &&
+            authorization.swap_proof->view().request==signing_barrier && authorization.swap_proof->view().barrier_index>prepared.index &&
+            authorization.swap_proof->view().applied_index>=authorization.swap_proof->view().barrier_index,
+            "current term durable quorum commits exact signing scope before grant");
+#ifdef VELOCITA_SWAP_SIGNER_SYNTHETIC_FIXTURE
+        swap_signer_test::TestKey generated_key(base.path/"signer-test-key.pem");
+        require(bool(generated_key.protected_key),"generated fixture key passes protected loading");
+        const SwapSignerConfig signer_config{opening.binding,binding.authority_domain,digest(221),CallerId{kSigner},1,3000};
+        const auto signer_binding=swap_signer_journal_binding(signer_config,generated_key.public_key);
+        SwapSubmissionStore signer_store(base.path/"signer-result",signer_binding);
+        require(signer_store.create({signer_binding,baseline.reading.applied_index,baseline.reading.state_digest,EffectId{0}})==SwapSubmissionCode::none,
+            "independent signer fence created from authenticated bootstrap");
+        GatewayClient signer_client;signer_client.network=&c.network;signer_client.caller_key=kSignerKey;
+        GatewayLink signer_link(2,process_incarnation(0x85),gateway_routes(c.voters,caller_seed(kSignerKey),kSignerKey),signer_client);
+        auto forbidden_barrier=signing_barrier;forbidden_barrier.incarnation=signer_link.incarnation();
+        require(signer_link.request_authority(forbidden_barrier,steady_ms(),3000),"signer fixed-base authority misuse issued");
+        const auto fixed_refused=settle(c,signer_link);
+        require(fixed_refused.status==LinkStatus::refused && fixed_refused.refusal_reason==static_cast<std::uint8_t>(IngressRefusal::signer_read_only),
+            "signer identity cannot request fixed-base send authority");
+        require(signer_link.submit(swap_test::command(kSigner,1,swap::Attempt{identity.effect,identity.payload},102),
+            ProposeLane::normal,steady_ms(),3000),"signer kernel command misuse issued");
+        const auto command_refused=settle(c,signer_link);
+        require(command_refused.status==LinkStatus::refused && command_refused.refusal_reason==static_cast<std::uint8_t>(IngressRefusal::signer_read_only),
+            "signer identity cannot mutate kernel trading state");
+        const SwapSignerClock signer_clock{[](void*)noexcept{return steady_ms();},[](void*)noexcept{return std::uint64_t{101};},nullptr};
+        SwapSignerSession signer_session(signer_link,signer_store,*generated_key.protected_key,signer_config,signer_clock);
+        const auto signing_bytes=std::as_bytes(std::span(prepare_payload.data(),prepare_payload.size()));
+        require(signer_session.start(identity.effect,1,handle,signing_bytes,prepared.index,20100),"independent signer starts against real three voters");
+        c.on_round=[&]{(void)signer_session.poll();};
+        c.run_until([&]{return signer_session.status()!=SwapSignerStatus::reading_state && signer_session.status()!=SwapSignerStatus::reading_authority;},
+            "independent signer completes fresh durable quorum authorization");c.on_round={};
+        require(signer_session.status()==SwapSignerStatus::signed_once && generated_key.protected_key->signature_attempts()==1 &&
+            generated_key.verifies(signing_bytes,signer_session.signature_der()),"fresh three-voter authority produces one valid exact-byte signature");
+        stamp=signer_session.stamp();
+        require(truemarkets::encode_swap_rest_execute(*truemarkets::tm_text(handle),stamp,request)==truemarkets::SwapRestCode::encoded,
+            "real generated signature feeds the actual execute codec");
+        bytes=std::as_bytes(std::span(request.body.data(),request.body_size));
+        identity.execution_request=sha256_digest(bytes);
+#endif
+        require(link.submit(swap_test::command(kGateway,2,swap::Attempt{identity.effect,identity.payload},102),
+            ProposeLane::normal,steady_ms(),3000),"gateway attempt request issued");
+        const auto attempted=settle(c,link);require(attempted.status==LinkStatus::done && attempted.result.code==ApplyCode::applied,"attempt committed before execute");
+        const auto minimum=attempted.index;
+        c.run_until([&]{return std::all_of(c.nodes.begin(),c.nodes.end(),[](const auto& n){
+            return n.second->applied_state().spot_swap.pending.phase==swap::Phase::attempted;});},"attempt reaches three voters");
+        SwapSubmissionSession session(link,store,port,{opening.binding,binding.authority_domain,3000});
+        require(session.start(identity,bytes,minimum,steady_ms()),"committed attempt requests authenticated submission read");
+        c.on_round=[&]{(void)session.poll(steady_ms(),103);};
+        c.run_until([&]{return session.status()!=SwapSubmissionSessionStatus::reading_state;},"one external fixture submission");c.on_round={};
+        require(port.calls==1 && port.durable && session.status()==SwapSubmissionSessionStatus::needs_reconciliation,
+            "lost response leaves exactly one send with prior durable identity");
+        for(const auto& [id,node]:c.nodes) {
+            const auto& state=node->applied_state().spot_swap;
+            require(state.pending.phase==swap::Phase::attempted && state.reserved_quote.value()==1'000'000 &&
+                state.quote.value()==5'000'000 && state.settlement_count==0,"uncertain send retains exact exposure on all voters");
+        }
+        const auto old=c.elect();c.stop(old);require(c.elect()!=old,"remaining quorum elects replacement leader");
+    }
+    port.store=nullptr;
+    prepare_port.store=nullptr;
+    {
+        GatewayLink link(2,process_incarnation(0x82),gateway_routes(c.voters,caller_seed(kGatewayKey)),client);
+        SwapPrepareStore preparation(base.path/"prepare",preparation_binding);
+        require(preparation.recover()==SwapPrepareStoreCode::none,"restart recovers exact unsigned payload and order mapping");
+        SwapPrepareSession replay_prepare(link,preparation,prepare_port,{preparation_binding,SwapPrepareInputMapping::fee_inclusive_quote_input,3000});
+        require(replay_prepare.prepared() && replay_prepare.prepared()->payload_digest==identity.payload && prepare_port.calls==1,
+            "prepared restart exposes retained bytes without new create");
+        SwapSubmissionStore store(base.path/"submission",binding);require(store.recover()==SwapSubmissionCode::none,"restart recovers external execute identity");
+        port.store=&store;SwapSubmissionSession session(link,store,port,{opening.binding,binding.authority_domain,3000});
+        require(session.status()==SwapSubmissionSessionStatus::needs_reconciliation && !session.start(identity,bytes,10000,steady_ms()),
+            "leader loss and gateway restart cannot resend ambiguous order");
+        for(unsigned n=0;n<10;++n)(void)session.poll(steady_ms(),104);
+        require(port.calls==1,"recovery polls perform zero additional sends");
+        require(link.submit(swap_test::command(kGateway,3,swap::MarkUnknown{identity.effect},104),ProposeLane::normal,
+            steady_ms(),3000),"gateway unknown request issued");
+        const auto unknown=settle(c,link);
+        require(unknown.status==LinkStatus::done && unknown.result.code==ApplyCode::applied,"unknown state replicated after restart");
+        c.run_until([&]{return std::all_of(c.nodes.begin(),c.nodes.end(),[](const auto& n){
+            return n.second->applied_state().spot_swap.pending.phase==swap::Phase::unknown;});},"unknown reaches remaining quorum");
+        for(const auto& [id,node]:c.nodes)require(node->applied_state().spot_swap.reserved_quote.value()==1'000'000 &&
+            node->applied_state().spot_swap.settlement_count==0,"leader failover never releases unresolved hold");
+        require(store.latest().identity==identity && store.latest().phase==SwapSubmissionPhase::execute_intent,
+            "order handle and request binding survive cluster failover");
+        SwapSubmissionResolutionSession unresolved(link,store,{opening.binding,binding.authority_domain,3000});
+        require(unresolved.start(unknown.index,steady_ms()),"unknown journal resolution requests actual state");
+        c.on_round=[&]{(void)unresolved.poll(steady_ms());};
+        c.run_until([&]{return unresolved.status()!=SwapSubmissionResolutionStatus::reading_state;},"unknown resolution completed");c.on_round={};
+        require(unresolved.status()==SwapSubmissionResolutionStatus::needs_reconciliation &&
+            store.latest().phase==SwapSubmissionPhase::execute_intent,"unknown result cannot resolve local journal");
+        SwapSubmissionTransaction signature{};
+        for(std::size_t n=0;n<signature.size();++n)signature[n]=static_cast<std::byte>(n);
+        struct ReadClock final:SwapOrderReadClock {std::uint64_t now_ms()noexcept override{return steady_ms();}} read_clock;
+        struct OrderPort final:SwapOrderGet {
+            unsigned calls{};
+            SwapOrderSessionIdentity identity()const noexcept override{return {digest(214),digest(215)};}
+            transport::SwapHttpsResult get(std::string_view path)override{
+                ++calls;require(path=="/v1/gateway/orders/synthetic-tm-order","recovery reads only saved order handle");
+                constexpr std::string_view body=R"({"order_id":"synthetic-tm-order","asset_id":"495e07ac-fa3e-4179-85b7-b1e8cece3dc4","base_asset":"SOL","quote_asset":"USDC","asset_type":"spot","venue":"defi","status":"complete","type":"market","side":"buy","qty_unit":"quote","qty":"1","executed_qty":"0.01","leaves_qty":"0","executed_vwap":"100","fee":"0.002","tx_hash":"1GMkH3brNXiNNs1tiFZHu4yZSRrzJwxi5wB9bHFtMinfCXNnR1adh8Vo8NTheK4evneedH4qmvjeqcBBNAefgS"})";
+                transport::SwapHttpsResult r;r.status=transport::SwapHttpsStatus::complete;r.exposure=transport::SwapHttpsExposure::response_received;r.http_status=200;
+                r.body_size=body.size();std::copy(body.begin(),body.end(),r.body.begin());return r;
+            }
+        } order_port;
+        SwapOrderStatusReader order_reader(store,preparation,order_port,read_clock,{preparation_binding,order_port.identity(),3000});
+        require(order_reader.read().status==SwapOrderReadStatus::terminal_needs_finality && order_port.calls==1 &&
+            store.latest().transaction==signature && store.latest().phase==SwapSubmissionPhase::execute_intent,
+            "status identity is retained without mistaking complete for settlement finality");
+        for(const auto& [id,node]:c.nodes)require(node->applied_state().spot_swap.reserved_quote.value()==1'000'000 &&
+            node->applied_state().spot_swap.settlement_count==0,"complete REST response alone never releases funds");
+        const auto canonical_transaction=solana_signature_transaction_digest(signature);
+        require(canonical_transaction.has_value(),"synthetic signature has canonical transaction identity");
+        swap::Settlement terminal;terminal.effect=identity.effect;terminal.custody=opening.binding.custody;
+        terminal.payload=identity.payload;terminal.transaction=*canonical_transaction;terminal.evidence=digest(212);
+        terminal.outcome=swap::Outcome::succeeded;terminal.base_credit=swap::BaseAtoms{10'000'000};
+        terminal.quote_debit=swap::QuoteAtoms{1'000'000};terminal.fee=swap::QuoteAtoms{2'000};terminal.finalized=true;
+        require(link.submit(swap_test::command(kGateway,4,terminal,105),ProposeLane::normal,steady_ms(),3000),
+            "synthetic external settlement submitted by authorized gateway");
+        const auto settled=settle(c,link);
+        require(settled.status==LinkStatus::done && settled.result.code==ApplyCode::applied,"synthetic terminal settlement committed");
+        SwapSubmissionResolutionSession resolution(link,store,{opening.binding,binding.authority_domain,3000});
+        require(resolution.start(settled.index,steady_ms()),"terminal journal resolution requests authenticated state");
+        c.on_round=[&]{(void)resolution.poll(steady_ms());};
+        c.run_until([&]{return resolution.status()!=SwapSubmissionResolutionStatus::reading_state;},"authenticated journal resolution completed");c.on_round={};
+        require(resolution.status()==SwapSubmissionResolutionStatus::resolved &&
+            store.latest().phase==SwapSubmissionPhase::resolved && resolution.result().settlement==terminal && port.calls==1,
+            "committed exact terminal resolves journal without another execute");
+        c.run_until([&]{return std::all_of(c.nodes.begin(),c.nodes.end(),[](const auto& n){
+            const auto& state=n.second->applied_state().spot_swap;
+            return state.settlement_count==1 && state.reserved_quote.value()==0 && state.quote.value()==4'000'000 &&
+                state.base.value()==10'000'000;});},"remaining quorum retains exact one settlement and balances");
+    }
+    port.store=nullptr;
+    SwapSubmissionStore recovered(base.path/"submission",binding);
+    require(recovered.recover()==SwapSubmissionCode::none && recovered.latest().phase==SwapSubmissionPhase::resolved &&
+        recovered.latest().identity==identity && port.calls==1,"resolved journal survives another restart without duplicate send");
+}
+#endif
+
+void swap_paper_journal_write_failure() {
+    g_swap = true; struct Reset { ~Reset() { g_swap = false; } } reset;
+    Base base("v2-swap-journal-failure"); Cluster c(base.path,{1,2,3}); Caller op(kOperatorKey,kOperator);
+    c.elect();
+    require(c.commit(op,AdvanceKillEpoch{KillEpoch{1}},ProposeLane::control).code==ApplyCode::applied,"swap kill epoch initialized");
+    require(c.commit(op,SetExecutorGeneration{ExecutorGeneration{1}},ProposeLane::control).code==ApplyCode::applied,"swap executor initialized");
+    require(c.commit(op,InstallExecutionCatalog{fixture_catalog().root(),KillEpoch{1},ExecutorGeneration{1}}).code==ApplyCode::applied,"swap catalog installed");
+    require(c.commit(op,AssignCallerRole{CallerId{kGateway},CallerRole::gateway}).code==ApplyCode::applied,"swap gateway role assigned");
+    auto opening=swap_test::opening();opening.binding.incarnation=sha256_digest(kIncarnation);
+    require(c.commit(op,ApplySpotSwap{{swap::Role::operator_role,100,opening}}).code==ApplyCode::applied,"swap exact funding replicated");
+    require(c.commit(op,SetStrategyMode{StrategyMode::normal,KillEpoch{1},ExecutorGeneration{1}},ProposeLane::control).code==ApplyCode::applied,"swap normal mode enabled");
+    require(c.commit(op,ApplySpotSwap{{swap::Role::strategy,100,swap_test::buy(opening)}}).code==ApplyCode::applied,"explicit buy replicated");
+    const swap::PaperQuote quote{swap::QuoteAtoms{108'000'000},2000};
+    GatewayClient client;client.network=&c.network;
+    GatewayLink link(1,process_incarnation(0x58),gateway_routes(c.voters,caller_seed(kGatewayKey)),client);
+    require(link.request_state(steady_ms(),3000),"fault fixture baseline requested");
+    const auto baseline=settle(c,link);
+    require(baseline.status==LinkStatus::done,"fault fixture baseline authenticated");
+    const SwapReconcileStoreBinding binding{opening.binding.incarnation,baseline.reading.authority_domain};
+    SwapResultWatermark watermark(opening.binding.incarnation);
+    bool fail_sync=false;
+    SwapReconcileStore recovery(base.path/"recovery",binding,watermark,
+        {+[](SwapReconcileStoreStage stage,void* context) noexcept {
+            return !(stage==SwapReconcileStoreStage::temporary_sync && *static_cast<bool*>(context));
+        },&fail_sync});
+    bool refused=false;
+    try { SwapPaperGateway unopened(link,CallerId{kGateway},1,1000,quote,opening.binding.incarnation,3000,10,recovery); }
+    catch(const std::invalid_argument&) { refused=true; }
+    require(refused,"gateway constructor refuses an unopened recovery journal");
+    require(recovery.create({binding,baseline.reading.applied_index,baseline.reading.state_digest})==SwapReconcileStoreCode::none,"fault fixture journal initialized");
+    SwapPaperGateway gateway(link,CallerId{kGateway},1,1000,quote,opening.binding.incarnation,3000,10,recovery);
+    fail_sync=true;
+    c.on_round=[&] {
+        gateway.step(steady_ms(),101);
+        if(recovery.status()!=SwapReconcileStoreCode::none)
+            require(gateway.stopped(),"journal failure stops gateway in the acknowledgement step");
+    };
+    c.run_until([&]{return gateway.stopped();},"gateway halts on durable write failure");
+    c.on_round={};
+    c.run_until([&]{return std::all_of(c.nodes.begin(),c.nodes.end(),[](const auto& node) {
+        return node.second->applied_state().spot_swap.pending.phase==swap::Phase::prepared;
+    });},"prepared record reaches all voters after gateway stops");
+    require(watermark.index()==-1 && recovery.status()==SwapReconcileStoreCode::io_failure,
+        "failed acknowledgement durability closes the visible watermark");
+    for(const auto& [id,node]:c.nodes) {
+        const auto& state=node->applied_state().spot_swap;
+        require(state.pending.phase==swap::Phase::prepared && state.reserved_quote.value()==1'002'000 &&
+            state.settlement_count==0 && state.quote.value()==5'000'000 && state.base.value()==0,
+            "journal failure retains funded cash and hold without attempt or settlement");
+    }
+}
+
+void swap_paper_raft_gateway_restart() {
+    g_swap = true; struct Reset { ~Reset() { g_swap = false; } } reset;
+    Base base("v2-swap-raft"); Cluster c(base.path,{1,2,3}); Caller op(kOperatorKey,kOperator);
+    c.elect();
+    require(c.commit(op,AdvanceKillEpoch{KillEpoch{1}},ProposeLane::control).code==ApplyCode::applied,"swap kill epoch initialized");
+    require(c.commit(op,SetExecutorGeneration{ExecutorGeneration{1}},ProposeLane::control).code==ApplyCode::applied,"swap executor initialized");
+    require(c.commit(op,InstallExecutionCatalog{fixture_catalog().root(),KillEpoch{1},ExecutorGeneration{1}}).code==ApplyCode::applied,"swap catalog installed");
+    require(c.commit(op,AssignCallerRole{CallerId{kGateway},CallerRole::gateway}).code==ApplyCode::applied,"swap gateway role assigned");
+    auto opening=swap_test::opening();opening.binding.incarnation=sha256_digest(kIncarnation);
+    require(c.commit(op,ApplySpotSwap{{swap::Role::operator_role,100,opening}}).code==ApplyCode::applied,"swap exact funding replicated");
+    require(c.commit(op,SetStrategyMode{StrategyMode::normal,KillEpoch{1},ExecutorGeneration{1}},ProposeLane::control).code==ApplyCode::applied,"swap normal mode enabled");
+    require(c.commit(op,ApplySpotSwap{{swap::Role::strategy,100,swap_test::buy(opening)}}).code==ApplyCode::applied,"explicit buy replicated");
+    const swap::PaperQuote quote{swap::QuoteAtoms{108'000'000},2000};
+    GatewayClient client;client.network=&c.network;
+    StateReplay initial_replay;
+    c.network.gateway_response=[&](std::span<const std::byte> envelope){return initial_replay.pass(c.network,envelope);};
+    {
+        GatewayLink link(1,process_incarnation(0x50),gateway_routes(c.voters,caller_seed(kGatewayKey)),client);
+        require(link.request_state(steady_ms(),3000),"journal baseline state requested");
+        const auto baseline=settle(c,link);
+        require(baseline.status==LinkStatus::done,"journal baseline state authenticated");
+        initial_replay.old=initial_replay.latest;
+        require(!initial_replay.old.empty(),"pre-ack snapshot retained for restart fence");
+        c.network.gateway_response={};
+        const SwapReconcileStoreBinding binding{opening.binding.incarnation,baseline.reading.authority_domain};
+        SwapResultWatermark watermark(opening.binding.incarnation);
+        SwapReconcileStore recovery(base.path/"paper-recovery",binding,watermark);
+        require(recovery.create({binding,baseline.reading.applied_index,baseline.reading.state_digest})==SwapReconcileStoreCode::none,"paper journal fixture initialized");
+        SwapPaperGateway gateway(link,CallerId{kGateway},1,1000,quote,opening.binding.incarnation,3000,10,recovery);
+        c.on_round=[&] {
+            if(c.leader()!=0 && c.state_of(c.leader()).spot_swap.pending.phase!=swap::Phase::attempted)
+                gateway.step(steady_ms(),101);
+        };
+        c.run_until([&]{return c.leader()!=0 && c.state_of(c.leader()).spot_swap.pending.phase==swap::Phase::attempted;},"swap attempt committed before restart");
+        require(!gateway.stopped(),"gateway reaches attempted without refusal");
+        require(recovery.latest().result.index>baseline.reading.applied_index && recovery.latest().ordinal>=2,
+            "gateway persists authenticated command acknowledgements before next action");c.on_round={};
+    }
+    c.run_until([&]{return std::all_of(c.nodes.begin(),c.nodes.end(),[&](const auto& n){
+        return n.second->applied_state().spot_swap.pending.phase==swap::Phase::attempted;});},"attempt on all voters");
+    for(const auto id:c.voters) c.stop(id);
+    for(const auto id:c.voters) {
+        c.network.down.erase(id);++c.epochs[id];
+        c.nodes[id]=std::make_unique<V2Node>(config_for(base.path,id,NodeStartup::recover,c.voters,true),
+            fixture_catalog(),secrets_for(id,c.voters),c.epochs[id],c.network.at(id),velocita::MetadataCheckpoints{},
+            StorageCheckpoints{&slow_disk,&c.disk_owner[id]});
+        require(c.state_of(id).spot_swap.reserved_quote.value()==1'002'000,"WAL recovery preserves swap hold");
+    }
+    c.elect();
+    StateReplay replay;
+    c.network.gateway_response=[&](std::span<const std::byte> envelope) {
+        const auto pass=replay.pass(c.network,envelope);
+        if(replay.old.empty() && !replay.latest.empty() && replay.latest.size()==replay.latest.front().header.chunk_count)
+            replay.old=replay.latest;
+        return pass;
+    };
+    GatewayLink link(2,process_incarnation(0x70),gateway_routes(c.voters,caller_seed(kGatewayKey)),client);
+    require(link.request_state(steady_ms(),3000),"restarted journal domain requested");
+    const auto baseline=settle(c,link);
+    require(baseline.status==LinkStatus::done,"restarted journal domain authenticated");
+    const SwapReconcileStoreBinding binding{opening.binding.incarnation,baseline.reading.authority_domain};
+    SwapResultWatermark watermark(opening.binding.incarnation);
+    SwapReconcileStore recovery(base.path/"paper-recovery",binding,watermark);
+    require(recovery.recover()==SwapReconcileStoreCode::none && watermark.index()>0,"gateway restart recovers journal without bootstrap");
+    SwapPaperGateway gateway(link,CallerId{kGateway},1000,2000,quote,opening.binding.incarnation,3000,10,recovery);
+    c.on_round=[&]{gateway.step(steady_ms(),102);};
+    initial_replay.substitute=true;
+    c.network.gateway_response=[&](std::span<const std::byte> envelope){return initial_replay.pass(c.network,envelope);};
+    c.run(100);
+    require(gateway.next_sequence()==1000 && !gateway.stopped(),"recovered durable index fences first stale state before any command");
+    c.network.gateway_response=[&](std::span<const std::byte> envelope) {
+        const auto pass=replay.pass(c.network,envelope);
+        if(replay.old.empty() && !replay.latest.empty() && replay.latest.size()==replay.latest.front().header.chunk_count)
+            replay.old=replay.latest;
+        return pass;
+    };
+    c.run_until([&]{return std::all_of(c.nodes.begin(),c.nodes.end(),[&](const auto& n){
+        return n.second->applied_state().spot_swap.settlement_count==1;});},"paper settlement after voter and gateway restart");
+    for(const auto& [id,node]:c.nodes) {
+        const auto& s=node->applied_state().spot_swap;
+        require(s.base.value()==9'259'259 && s.quote.value()==3'998'000 && s.reserved_quote.value()==0 &&
+            s.fees.value()==2000,"all voters agree on exact atomic fill once");
+    }
+    c.run(100);require(!gateway.stopped(),"paper gateway remains idle after recovered fill");
+    require(!replay.old.empty(),"attempted state captured for stale read check");
+    replay.substitute=true;const auto sequence=gateway.next_sequence();c.run(200);
+    require(gateway.next_sequence()==sequence && !gateway.stopped(),"stale snapshot cannot repeat a committed paper settlement");
+    replay.substitute=false;c.run(100);require(!gateway.stopped(),"fresh snapshot resumes idle polling");
+    c.on_round={};c.network.gateway_response={};
+}
+
 }
 
 int main() {
     const std::vector<std::pair<const char*, void (*)()>> tests{
+#ifdef VELOCITA_SWAP_SUBMISSION_DRILL
+        {"swap_submission_lost_reply_leader_loss_restart",swap_submission_lost_reply_leader_loss_restart},
+        {"swap_authority_without_quorum_or_after_kill",swap_authority_without_quorum_or_after_kill},
+#endif
+#ifdef VELOCITA_SWAP_TLS_DRILL
+        {"swap_tls_unknown_restart_reconcile",swap_tls_unknown_restart_reconcile},
+#endif
+        {"swap_paper_raft_gateway_restart", swap_paper_raft_gateway_restart},
+        {"swap_paper_journal_write_failure", swap_paper_journal_write_failure},
         {"node_refuses_wrong_caller_follower_and_unconfigured_gateway",
          node_refuses_wrong_caller_follower_and_unconfigured_gateway},
         {"authorized_order_is_delivered_once_and_its_fill_moves_the_position",
@@ -1976,8 +2543,10 @@ int main() {
     };
     const char* only = std::getenv("GATEWAY_TEST");
     int failures = 0;
+    std::size_t executed = 0;
     for (const auto& [name, test] : tests) {
         if (only && std::string(only) != name) continue;
+        ++executed;
         try {
             test();
             std::cout << "PASS " << name << std::endl;
@@ -1986,5 +2555,6 @@ int main() {
             std::cout << "FAIL " << name << ": " << error.what() << std::endl;
         }
     }
+    if (executed == 0) { std::cerr << "no matching gateway test\n"; return 1; }
     return failures == 0 ? 0 : 1;
 }

@@ -223,7 +223,7 @@ SignerResult SignerCore::sign(const SigningRequest& request) noexcept {
                                    ? SignerVerdict::refused_mismatch : SignerVerdict::refused_replay);
     }
     if (clock_.now_fn(clock_.context) > intent.not_after) return refuse(request, SignerVerdict::refused_expired);
-    if (request.payload_count == 0 || request.payload_count > kMaxSignPayloads || intent.base_atoms <= 0 ||
+    if (request.payload_count != 1 || intent.base_atoms <= 0 ||
         intent.quote_bound_atoms <= 0 || (intent.side != Side::buy && intent.side != Side::sell)) {
         return refuse(request, SignerVerdict::refused_mismatch);
     }

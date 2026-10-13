@@ -10,7 +10,7 @@
 
 namespace velocita::v2 {
 
-inline constexpr std::uint16_t kStateSnapshotSchemaVersion = 11;
+inline constexpr std::uint16_t kStateSnapshotSchemaVersion = 12;
 inline constexpr std::size_t kStateSnapshotMagicBytes = 4;
 inline constexpr std::size_t kStateSnapshotLengthBytes = 4;
 inline constexpr std::size_t kStateSnapshotSchemaBytes = 2;
@@ -21,7 +21,7 @@ inline constexpr std::size_t kStateSnapshotDigestInputOffset =
 inline constexpr std::size_t kStateSnapshotPayloadOffset =
     kStateSnapshotSchemaOffset + kStateSnapshotSchemaBytes;
 
-inline constexpr std::size_t kStateSnapshotEmptyPayloadBytes = 95;
+inline constexpr std::size_t kStateSnapshotEmptyPayloadBytes = 98;
 inline constexpr std::size_t kStateSnapshotPolicyFixedBytes = 133;
 inline constexpr std::size_t kStateSnapshotPolicyRuleBytes = 12;
 inline constexpr std::size_t kStateSnapshotSourceBytes = 24;
@@ -45,7 +45,7 @@ inline constexpr std::size_t kMaxStateSnapshotExecutableBundleBytes =
     kStateSnapshotExecutableBundleMetadataBytes;
 inline constexpr std::size_t kStateSnapshotFixedBytes =
     kStateSnapshotPayloadOffset + kStateSnapshotEmptyPayloadBytes + kDigestBytes;
-inline constexpr std::size_t kMaxStateSnapshotPayloadBytes =
+inline constexpr std::size_t kMaxStateSnapshotLegacyPayloadBytes =
     kStateSnapshotEmptyPayloadBytes +
     kMaxPolicies *
         (kStateSnapshotPolicyFixedBytes +
@@ -63,6 +63,16 @@ inline constexpr std::size_t kMaxStateSnapshotPayloadBytes =
     kMaxClusterOrders * kStateSnapshotClusterOrderBytes +
     kMaxOutboxEffects * kStateSnapshotOutboxEffectBytes +
     kMaxCallerCursors * kStateSnapshotCallerCursorBytes;
+
+inline constexpr std::size_t kMaxStateSnapshotSwapPayloadBytes =
+    kStateSnapshotEmptyPayloadBytes + swap::max_state_bytes - 1 +
+    kMaxSources * kStateSnapshotSourceBytes +
+    kMaxSourceEventReceipts * kStateSnapshotSourceEventBytes +
+    kMaxRequestReceipts * kStateSnapshotReceiptBytes +
+    kMaxCallerCursors * kStateSnapshotCallerCursorBytes;
+inline constexpr std::size_t kMaxStateSnapshotPayloadBytes =
+    kMaxStateSnapshotLegacyPayloadBytes > kMaxStateSnapshotSwapPayloadBytes
+        ? kMaxStateSnapshotLegacyPayloadBytes : kMaxStateSnapshotSwapPayloadBytes;
 
 inline constexpr std::size_t kMaxStateSnapshotBytes =
     kStateSnapshotPayloadOffset + kMaxStateSnapshotPayloadBytes + kDigestBytes;
@@ -103,7 +113,7 @@ decode_state_snapshot(std::span<const std::byte> snapshot,
                       StateSnapshotScratch& scratch) noexcept;
 
 static_assert(kMaxStateSnapshotBytes < 64U * 1024U);
-static_assert(kMaxStateSnapshotBytes == 61583U);
+static_assert(kMaxStateSnapshotBytes == 61586U);
 static_assert(std::is_nothrow_copy_assignable_v<TradingState>);
 
 }

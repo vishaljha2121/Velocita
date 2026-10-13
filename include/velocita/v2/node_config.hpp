@@ -58,6 +58,7 @@ struct NodeConfig {
     Endpoint ingress_endpoint;
     std::vector<CallerConfig> callers;
     std::optional<std::uint64_t> gateway_caller;
+    std::optional<std::uint64_t> signer_caller;
     std::optional<Digest256> archive_destination_identity;
     std::uint64_t max_history_wal_bytes{};
     std::uint32_t compact_at_entries{2048};

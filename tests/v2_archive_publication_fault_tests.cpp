@@ -10,6 +10,7 @@
 #include <string>
 #include <sys/file.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #if defined(__linux__)
 #include <linux/fs.h>
@@ -24,7 +25,7 @@
 
 namespace archive_fault {
 enum class Call { openat, mkdirat, write, fsync, renameat, no_replace, close };
-enum class Effect { eio, interrupt_once, short_write };
+enum class Effect { eio, interrupt_once, short_write, crash };
 struct Event { Call call; unsigned segment; bool essential; };
 struct Plan {
     std::array<Event, 256> events{};
@@ -44,6 +45,7 @@ bool hit(Call call, bool essential = true) noexcept {
     active->events[active->count++] = {call, active->segment, essential};
     if (active->target != active->count || active->fired) return false;
     active->fired = true;
+    if (active->effect == Effect::crash) ::_exit(78);
     errno = active->effect == Effect::interrupt_once ? EINTR : EIO;
     return true;
 }
@@ -141,8 +143,17 @@ int store_close(int fd) { return archive_fault::close_fd(fd); }
 
 namespace {
 using namespace velocita::v2;
+struct RecoveryTemp {
+    std::filesystem::path path;
+    RecoveryTemp() {
+        const auto root=std::filesystem::path(std::getenv("HOME"))/".cache/velocita-build/archive-publication-fault-tests";
+        std::filesystem::create_directories(root);auto pattern=(root/"case-XXXXXX").string();
+        require(::mkdtemp(pattern.data())!=nullptr,"durable fault scratch created");path=pattern;
+    }
+    ~RecoveryTemp(){std::error_code error;std::filesystem::remove_all(path,error);}
+};
 struct Fixture {
-    Temp temp;
+    RecoveryTemp temp;
     const VerifiedExecutionCatalog& catalog{catalog_test::standard_catalog()};
     StaticIdentity raw{identity_test::identity(17, {17}, catalog)};
     VerifiedStaticIdentity identity{identity_test::verified_identity(raw)};
@@ -151,7 +162,7 @@ struct Fixture {
     std::array<std::byte, kMaxStaticIdentityBytes> identity_bytes{};
     std::size_t identity_size{};
     ArchiveStore store;
-    Source source{hex("56324b43380000000b0006000100000000000000010000000000000001000000000000000000000000000000000000000000000000000000000000000100000000000000c09e6e99301067081b53cb14f6a92f073dd470c59b26b3294ed59e468b8ec22b")};
+    Source source{hex("56324b43380000000c0006000100000000000000010000000000000001000000000000000000000000000000000000000000000000000000000000000100000000000000758705cbffdf0e83b706a857b56ace24f4617b3cbc0c2ab973629d0ba4fff64b")};
     Fixture() {
         const auto row = catalog_test::row(AccountId{5},
             {kInstrumentExecutionProfileSchemaVersion, VenueId{9}, InstrumentId{4},
@@ -204,7 +215,18 @@ void restart(Fixture& f, std::uint64_t old_cut, std::uint64_t candidate,
     const auto verified = ArchiveStore::verify_existing(f.temp.path, f.identity,
         std::span{f.identity_bytes}.first(f.identity_size),
         std::span{f.catalog_bytes}.first(f.catalog_size), f.catalog, {}, present);
-    require(full_image(f.temp.path) == before, "restart verification changed fault evidence");
+    auto preserved = before;
+    if (verified == ArchiveStoreError::none) {
+        for (auto& [name, bytes] : preserved) {
+            if (name == "v2-archive-segment.bin.tmp") name = "v2-archive-segment.bin.quarantine";
+            if (name == "v2-archive-catalog.bin.tmp") name = "v2-archive-catalog.bin.quarantine";
+        }
+        const auto ordered=[](const auto& a,const auto& b){return a.first<b.first;};
+        auto after=full_image(f.temp.path);
+        std::sort(preserved.begin(),preserved.end(),ordered);
+        std::sort(after.begin(),after.end(),ordered);
+        require(after==preserved,"restart quarantine preserves every published and leftover byte");
+    } else require(full_image(f.temp.path)==before,"refused restart preserves all fault evidence");
     if (verified != ArchiveStoreError::none) {
         require(!success && !present, "failed verification advertised usable authority");
         return;
@@ -234,6 +256,46 @@ void restart(Fixture& f, std::uint64_t old_cut, std::uint64_t candidate,
     require(expected.indices.size() == cut, "restart missing history records");
     for (std::size_t i = 0; i < expected.indices.size(); ++i)
         require(expected.indices[i] == i + 1, "restart duplicated or skipped a history index");
+}
+ArchiveImage normalized_quarantine(ArchiveImage image) {
+    for(auto& [name,bytes]:image) {
+        if(name=="v2-archive-segment.bin.quarantine")name="v2-archive-segment.bin.tmp";
+        if(name=="v2-archive-catalog.bin.quarantine")name="v2-archive-catalog.bin.tmp";
+    }
+    std::sort(image.begin(),image.end(),[](const auto& a,const auto& b){return a.first<b.first;});return image;
+}
+archive_fault::Plan quarantine_trial(const char* name,std::size_t target=0,bool crash=false) {
+    Fixture f;require(f.open(f.store)==ArchiveStoreError::none,"quarantine seed open");
+    require(f.first().error==ArchiveStoreError::none,"quarantine seed publication");f.store=ArchiveStore{};
+    const auto path=f.temp.path/"v2-archive"/name;const std::array<char,3> bytes{'a','b','c'};
+    int fd=::open(path.c_str(),O_WRONLY|O_CREAT|O_EXCL,0600);require(fd>=0,"temporary fixture opens");
+    require(::write(fd,bytes.data(),bytes.size())==3 && ::fsync(fd)==0,"temporary fixture durable");::close(fd);
+    const auto before=normalized_quarantine(full_image(f.temp.path));
+    archive_fault::Plan plan;plan.target=target;plan.effect=crash?archive_fault::Effect::crash:archive_fault::Effect::eio;
+    if(crash) {
+        const auto child=::fork();require(child>=0,"quarantine crash child starts");
+        if(child==0){archive_fault::active=&plan;(void)f.open(f.store);::_exit(1);}
+        int status{};require(::waitpid(child,&status,0)==child && WIFEXITED(status) && WEXITSTATUS(status)==78,"quarantine process crashes at requested checkpoint");
+    } else {
+        archive_fault::active=&plan;const auto result=f.open(f.store);archive_fault::active=nullptr;
+        require(!plan.overflow,"quarantine syscall trace bounded");
+        require(target?(plan.fired && result!=ArchiveStoreError::none):result==ArchiveStoreError::none,"quarantine reports persistence failure");
+    }
+    f.store=ArchiveStore{};
+    require(normalized_quarantine(full_image(f.temp.path))==before,"interrupted quarantine preserves every byte");
+    require(f.open(f.store)==ArchiveStoreError::none && f.store.covered_through()==1,"interrupted quarantine restart restores only published history");
+    require(normalized_quarantine(full_image(f.temp.path))==before,"recovered quarantine preserves all original evidence");
+    return plan;
+}
+void quarantine_faults() {
+    unsigned faults{};
+    for(const char* name:{"v2-archive-segment.bin.tmp","v2-archive-catalog.bin.tmp"}) {
+        const auto plan=quarantine_trial(name);
+        for(std::size_t i=0;i<plan.count;++i)if(plan.events[i].call==archive_fault::Call::fsync || plan.events[i].call==archive_fault::Call::no_replace) {
+            (void)quarantine_trial(name,i+1);(void)quarantine_trial(name,i+1,true);faults+=2;
+        }
+    }
+    std::cout<<"archive quarantine: "<<faults<<" injected fsync/rename failures and process exits; byte-preserving restart checked\n";
 }
 enum class Scenario { creation, first, replacement, multiple };
 archive_fault::Plan trial(Scenario scenario, std::size_t target = 0,
@@ -288,6 +350,7 @@ archive_fault::Plan trial(Scenario scenario, std::size_t target = 0,
 }
 int main() {
     try {
+        quarantine_faults();
         std::size_t failed_sites{};
         for (const auto scenario : {Scenario::creation, Scenario::first, Scenario::replacement}) {
             const auto baseline = trial(scenario);

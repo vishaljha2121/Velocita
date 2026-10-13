@@ -12,7 +12,9 @@
 #include "velocita/v2/outbound_mailbox.hpp"
 #include "velocita/v2/bound_metadata.hpp"
 #include "velocita/v2/authority_barrier.hpp"
+#include "velocita/v2/leader_read_barrier.hpp"
 #include "velocita/v2/authority_proof.hpp"
+#include "velocita/v2/swap_authority.hpp"
 #include "velocita/v2/kernel_codec.hpp"
 #include "velocita/v2/snapshot_store.hpp"
 #include "velocita/v2/wal_arena.hpp"
@@ -167,6 +169,7 @@ public:
     [[nodiscard]] WalMetrics wal_metrics() const;
 
     [[nodiscard]] bool is_leader() const;
+    [[nodiscard]] ProposeStatus ensure_current_term_applied();
 
     [[nodiscard]] ProposeOutcome propose(std::span<const std::byte> command_bytes,
                                          ProposeLane lane = ProposeLane::normal);
@@ -186,6 +189,9 @@ public:
     [[nodiscard]] std::size_t retained_log_bytes() const noexcept { return log_payloads_->live_bytes(); }
 
     [[nodiscard]] ProposeOutcome propose_authority_barrier(const AuthorityBarrier& request);
+    [[nodiscard]] ProposeOutcome propose_swap_authority_barrier(const AuthorityBarrier& request);
+    [[nodiscard]] std::optional<SwapAuthorityProof> take_swap_authority_proof();
+    void abandon_swap_authority_request(const AuthorityBarrier& request);
     [[nodiscard]] std::optional<AuthorityProof> take_authority_proof();
     void abandon_authority_request(const AuthorityBarrier& request);
     [[nodiscard]] std::int64_t authority_drain_index() const;
@@ -279,6 +285,9 @@ private:
     };
     std::optional<PendingAuthorityBarrier> pending_authority_barrier_;
     std::optional<AuthorityProof> authority_proof_;
+    std::optional<PendingAuthorityBarrier> pending_swap_authority_;
+    std::optional<SwapAuthorityProof> swap_authority_proof_;
+    [[nodiscard]] bool swap_authority_proof_is_current(const SwapAuthorityProofView&)const noexcept;
     static_assert(sizeof(std::optional<PendingAuthorityBarrier>) <= 192);
     static_assert(sizeof(std::optional<AuthorityProof>) <= 512);
     [[nodiscard]] bool authority_proof_is_current(const AuthorityProofView& proof) const noexcept;

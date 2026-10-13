@@ -14,8 +14,8 @@
 namespace velocita::v2 {
 namespace {
 
-static_assert(kStateSnapshotSchemaVersion == 11);
-static_assert(kKernelCodecSchemaVersion == 11);
+static_assert(kStateSnapshotSchemaVersion == 12);
+static_assert(kKernelCodecSchemaVersion == 12);
 static_assert(kAuthorityBarrierSchemaVersion == 1);
 static_assert(kExecutionCatalogSchemaVersion == 1);
 
@@ -98,7 +98,7 @@ template <std::size_t Size>
         value.command_result_schema != kKernelCodecSchemaVersion ||
         value.authority_marker_schema != 1 ||
         value.execution_catalog_schema != 1 ||
-        value.replication_semantics_epoch != 1 ||
+        value.replication_semantics_epoch != 2 ||
         value.storage_lineage_epoch != 1)
         return StaticIdentityCodecError::unsupported_schema;
     if (value.quorum_durability_mode != 1 || value.voter_count == 0 ||

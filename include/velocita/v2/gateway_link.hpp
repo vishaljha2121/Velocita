@@ -22,7 +22,7 @@ struct GatewayLinkTiming {
     Tick resend_gateway{500};
 };
 
-enum class LinkRequest : std::uint8_t { none, command, state, authority };
+enum class LinkRequest : std::uint8_t { none, command, state, authority, swap_authority };
 enum class LinkStatus : std::uint8_t { idle, pending, done, refused, timed_out };
 
 struct StateReading {
@@ -45,6 +45,7 @@ struct LinkOutcome {
     std::int32_t leader_hint{-1};
     StateReading reading{};
     std::optional<AuthorityProof> proof;
+    std::optional<SwapAuthorityProof> swap_proof;
 };
 
 struct GatewayLinkCounters {
@@ -65,6 +66,7 @@ public:
     [[nodiscard]] bool submit(const Command& command, ProposeLane lane, Tick now, Tick timeout);
     [[nodiscard]] bool request_state(Tick now, Tick timeout);
     [[nodiscard]] bool request_authority(const AuthorityBarrier& barrier, Tick now, Tick timeout);
+    [[nodiscard]] bool request_swap_authority(const AuthorityBarrier& barrier, Tick now, Tick timeout);
 
     LinkOutcome pump(Tick now);
     void abandon() noexcept;
@@ -108,6 +110,7 @@ private:
     void on_refusal(std::int32_t from, std::span<const std::byte> body, Tick now);
     void on_chunk(std::int32_t from, std::span<const std::byte> body);
     void on_grant(std::int32_t from, std::span<const std::byte> body);
+    void on_swap_grant(std::int32_t from, std::span<const std::byte> body);
     void redirect(std::int32_t leader, Tick now);
     void settle(LinkStatus status, std::int32_t from);
 

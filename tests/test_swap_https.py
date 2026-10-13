@@ -41,12 +41,12 @@ class FakeSwapTlsServer:
                     self.connection.shutdown(socket.SHUT_RDWR)
                     self.connection.close()
                     return
-                body = owner.balance_body if mode == 'swap_drill' else b'{"ok":true}'
+                body = owner.balance_body if mode in ('swap_drill', 'prepare') else b'{"ok":true}'
                 if mode == 'exact':
                     body = b'x' * 1024
                 elif mode == 'large':
                     body = b'x' * 1025
-                code = {'redirect': 307, 'rate': 429, 'error': 500, 'unauthorized': 401}.get(mode, 200)
+                code = {'prepare': 201, 'redirect': 307, 'rate': 429, 'error': 500, 'unauthorized': 401}.get(mode, 200)
                 self.send_response(code)
                 if mode == 'redirect':
                     self.send_header('Location', '/v1/gateway/orders/escape')

@@ -122,6 +122,9 @@ void valid_config_parses_to_hand_built_values() {
         require(!parse_node_config(kValid + bad).config, std::string("an ingress rate out of range parsed: ") + bad);
     require(c.owner.tick_interval_ms == 2 && c.owner.peer_fragment_limit == 64 && c.owner.client_fragment_limit == 1,
             "owner budgets or their defaults differ");
+    require(parse_node_config(kValid + "signer.caller = 200\n").config.has_value(), "distinct configured nonoperator signer principal admitted");
+    for (const char* extra : {"signer.caller = 3\n", "signer.caller = 201\n", "signer.caller = 200\ngateway.caller = 200\n"})
+        require(!parse_node_config(kValid + extra).config, "signer principal cannot be operator absent or shared with gateway");
     require(c.digest == digest_of(kValid), "config digest is not the digest of the exact bytes");
 
     StaticIdentity expected;

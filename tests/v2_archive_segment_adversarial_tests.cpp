@@ -29,8 +29,8 @@ VerifiedStaticIdentity identity() {
     const auto bytes = hex(
         "563249447c000000010000000102030405060708090a0b0c0d0e0f10"
         "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"
-        "0b000b0001000100010001000101030011000000010100000100010011000000"
-        "1b3d30a9e57f85108ab28320f24135276cc02342c3cf0183b618c042aab007bb");
+        "0c000c0001000100020001000101030011000000010100000100010011000000"
+        "4a5cd70c7355448c05ae9d61053151ab8202198996d3317eecfc6a857d353719");
     VerifiedStaticIdentity result;
     require(VerifiedStaticIdentity::decode(bytes, result) == StaticIdentityCodecError::none,
             "identity fixture");
@@ -49,21 +49,21 @@ VerifiedStaticIdentity verify(StaticIdentity value) {
 const std::vector<std::byte>& golden() {
     static const auto bytes = hex(
         "56324153010060007402000002000000110000000000000012000000000000000300000000000000"
-        "040000000000000006000000000000004a614f5d781d5d8fbb67a13c76d98dd5be8b161da30e14ce"
-        "95c240a61798d30b0000000000000000110000000000000004000000000000000000008065000000"
+        "040000000000000006000000000000007b6a13e548fef5ff55053c1c513155ab40409fae8a165c5b"
+        "d36e064d43a2cd7a0000000000000000110000000000000004000000000000000000008065000000"
         "ba0000000000000056324142900000000100a0a1a2a3a4a5a6a7a8a9aaabacadaeaf030000000000"
         "00000500000000000000404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d"
         "5e5f07000000000000000b00000000000000808182838485868788898a8b8c8d8e8f909192939495"
-        "969798999a9b9c9d9e9f63155d1ff7278542da514d6c13664ae0b04ba68ee6b11150909c4fa47712"
-        "92aece49c373a81889d8d7040b71bca3001cfadd53075d252978c3dc398e5e95640e0de6cc4e5d6a"
-        "356cb59702388a68b80f9c270fbf429d3a0f4b8d38df0c8dd87d1200000000000000060000000000"
+        "969798999a9b9c9d9e9f2af7e8c9814b571e927bba39f81b642aa3b31577fbd12361b3a8c3a36cd3"
+        "cb1924a61bdbd89462ee32b167a70d07ed8ca4e66ec032be1d73493e64e71fcbba8d7e1997715783"
+        "72d92eb2c9ffa317cb382b5f8c32b94e2cc05122995ce6dfc0a11200000000000000060000000000"
         "0000f9ffffff65000000ba0000000000000056324142900000000100a0a1a2a3a4a5a6a7a8a9aaab"
         "acadaeaf03000000000000000500000000000000404142434445464748494a4b4c4d4e4f50515253"
         "5455565758595a5b5c5d5e5f07000000000000000b00000000000000808182838485868788898a8b"
-        "8c8d8e8f909192939495969798999a9b9c9d9e9f63155d1ff7278542da514d6c13664ae0b04ba68e"
-        "e6b11150909c4fa4771292aece49c373a81889d8d7040b71bca3001cfadd53075d252978c3dc398e"
-        "5e95640e97595c87b66e808b5061c69a419a7cdd3ff82a99bb32a4e913bc05b3ee712b30200db0bc"
-        "c952baf327c2198024e9171db41efbf8b09bec1cbbfe109da3dac1fd");
+        "8c8d8e8f909192939495969798999a9b9c9d9e9f2af7e8c9814b571e927bba39f81b642aa3b31577"
+        "fbd12361b3a8c3a36cd3cb1924a61bdbd89462ee32b167a70d07ed8ca4e66ec032be1d73493e64e7"
+        "1fcbba8dbab7b21e293b566476835ee144aa22b23d53848af045e7dec8a4b7fce090263c0e15be84"
+        "6aad2678fc44abae18a1bccb5ee2aef6c9b03216d9bdaf9ce9285412");
     return bytes;
 }
 std::span<const std::byte> domain(std::string_view value) {
@@ -160,7 +160,7 @@ void test_independent_golden_and_portable_identity() {
         require(metadata.first_index == 17 && metadata.last_index == 18 &&
                 metadata.predecessor_term == 3 && metadata.first_term == 4 && metadata.last_term == 6 &&
                 metadata.record_count == 2 && metadata.total_bytes == 628 &&
-                to_hex(metadata.segment_digest) == "200db0bcc952baf327c2198024e9171db41efbf8b09bec1cbbfe109da3dac1fd",
+                to_hex(metadata.segment_digest) == "0e15be846aad2678fc44abae18a1bccb5ee2aef6c9b03216d9bdaf9ce9285412",
                 "golden metadata mismatch");
         Source source;
         std::array<std::byte, 628> output{};
@@ -189,11 +189,12 @@ void test_every_truncation_and_bit_flip() {
     }
 }
 void test_resealed_semantic_corruption_before_any_visitor() {
+    static_assert(kAuthorityBarrierEntryType != -1 && kSwapAuthorityBarrierEntryType != -1);
     struct Change { std::size_t offset; std::uint64_t value; std::size_t width; };
     for (const auto change : std::array{
         Change{346, 19, 8},
         Change{354, 3, 8},
-        Change{366, 102, 4},
+        Change{366, 0xffffffffU, 4},
         Change{374, 1, 4},
     }) {
         auto bytes = golden();
@@ -253,8 +254,8 @@ void test_partial_consumer_and_source_failure_contract() {
 
 void test_resealed_invalid_command_is_not_skipped() {
     const auto command = hex(
-        "56324b43380000000b000600010000000000000001000000000000000100000000000000000000000000000000000000000000000000000000000000"
-        "0100000000000000c09e6e99301067081b53cb14f6a92f073dd470c59b26b3294ed59e468b8ec22b");
+        "56324b43380000000c000600010000000000000001000000000000000100000000000000000000000000000000000000000000000000000000000000"
+        "0100000000000000758705cbffdf0e83b706a857b56ace24f4617b3cbc0c2ab973629d0ba4fff64b");
     require(command.size() == 100, "command fixture length");
     std::vector<std::byte> bytes(456);
     std::copy_n(golden().begin(), 96, bytes.begin());

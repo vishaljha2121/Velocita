@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.30)
+project(velocita_live_readiness_checks LANGUAGES CXX)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(VELOCITA_TARGET_CACHE_LINE_SIZE "64" CACHE STRING "Target cache line size in bytes")
+include(CTest)
+if(BUILD_TESTING)
+    include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/LiveReadinessTests.cmake")
+endif()

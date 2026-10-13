@@ -150,6 +150,25 @@ void a_request_inside_its_intent_is_signed_persisted_and_audited() {
             "the audit record does not describe the signature");
 }
 
+void multiple_payloads_cannot_each_spend_the_full_intent() {
+    for (const auto side : {Side::buy, Side::sell}) {
+        Rig rig;
+        const auto text = payload(side == Side::buy ? "buy" : "sell", 120, 2'500, "q-1");
+        auto request = request_for(text);
+        request.intent.side = side;
+        request.payload_count = 2;
+        request.payloads[1] = text;
+        const auto result = rig.core->sign(request);
+        require(result.verdict == SignerVerdict::refused_mismatch && result.signature_count == 0,
+                "two 120-base swaps exceed a single 120-base intent and must not be signed");
+        require(rig.persisted == 0 && rig.core->sequence_floor() == 10 &&
+                    rig.order == std::vector<std::string>{"audit"},
+                "multi-payload refusal must precede persistence and key invocation");
+        require(rig.audit.size() == 1 && rig.audit[0].verdict == SignerVerdict::refused_mismatch,
+                "multi-payload refusal must be audited");
+    }
+}
+
 void every_departure_from_the_intent_is_refused_and_nothing_is_signed() {
     struct Case {
         const char* name;
@@ -947,6 +966,7 @@ void the_process_signs_stops_and_restarts_above_its_floor(const std::string& bin
 
 int main(int argc, char** argv) {
     const std::vector<std::pair<const char*, std::function<void()>>> tests{
+        {"multiple_payloads_cannot_each_spend_the_full_intent", multiple_payloads_cannot_each_spend_the_full_intent},
         {"a_request_inside_its_intent_is_signed_persisted_and_audited",
          a_request_inside_its_intent_is_signed_persisted_and_audited},
         {"every_departure_from_the_intent_is_refused_and_nothing_is_signed",

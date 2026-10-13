@@ -5,6 +5,7 @@
 #include "velocita/v2/artifact_digest.hpp"
 #include "velocita/v2/contracts.hpp"
 #include "velocita/v2/execution_catalog.hpp"
+#include "velocita/v2/swap_codec.hpp"
 
 #include <array>
 #include <compare>
@@ -332,6 +333,10 @@ struct InstallExecutionCatalog {
            value.max_window_loss.atoms() >= 0;
 }
 
+struct ApplySpotSwap {
+    swap::Record record{};
+};
+
 using CommandBody = std::variant<PublishPolicy,
                                  ValidatePolicy,
                                  ActivatePolicy,
@@ -353,7 +358,8 @@ using CommandBody = std::variant<PublishPolicy,
                                  AcknowledgeGatewayResults,
                                  InstallExecutionCatalog,
                                  AssignCallerRole,
-                                 ResolveOrderConflict>;
+                                 ResolveOrderConflict,
+                                 ApplySpotSwap>;
 
 struct Command {
     CommandIdentity identity{};
@@ -787,6 +793,7 @@ struct TradingState {
     std::size_t caller_cursor_count{};
     std::array<CallerCursor, kMaxCallerCursors> caller_cursors{};
     Digest256 execution_catalog_root{};
+    swap::State spot_swap{};
 };
 
 struct ApplyScratch final {};

@@ -1,6 +1,6 @@
 #include "velocita/v2/swap_https.hpp"
 
-#ifndef VELOCITA_SWAP_HTTPS_TEST_ONLY
+#if !defined(VELOCITA_SWAP_HTTPS_TEST_ONLY) && !defined(VELOCITA_SWAP_RUNTIME_WIRING)
 #error "Swap HTTPS transport requires explicit test-only opt-in"
 #endif
 
@@ -52,6 +52,7 @@ bool safe_origin(std::string_view origin) noexcept {
     return true;
 }
 bool safe_path(std::string_view path) noexcept {
+    if (path == "/") return true; // Exact allowlisted JSON-RPC root; no prefix matching.
     return path.size() >= 2 && path.size() <= 256 && path.front() == '/' && path.back() != '/' &&
         path.find("//") == std::string_view::npos &&
         std::all_of(path.begin(), path.end(), [](unsigned char c) { return alnum(c) || c == '/' || c == '-' || c == '_'; });

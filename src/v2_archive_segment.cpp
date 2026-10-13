@@ -1,4 +1,5 @@
 #include "velocita/v2/archive_segment.hpp"
+#include "velocita/v2/leader_read_barrier.hpp"
 
 #include <algorithm>
 #include <array>
@@ -62,11 +63,14 @@ ArchiveSegmentError validate_payload(const ArchiveRecordView& record,
         return ArchiveSegmentError::invalid_coordinates;
     if (record.payload.size() > kMaxKernelCommandBytes)
         return ArchiveSegmentError::capacity_exceeded;
-    if (record.entry_type == kAuthorityBarrierEntryType) {
+    if (record.entry_type == kLeaderReadBarrierEntryType)
+        return valid_leader_read_barrier(record.payload, identity.authority_domain())
+            ? ArchiveSegmentError::none : ArchiveSegmentError::invalid_payload;
+    if (record.entry_type == kAuthorityBarrierEntryType || record.entry_type == kSwapAuthorityBarrierEntryType) {
         if (record.payload.size() != kAuthorityBarrierBytes)
             return ArchiveSegmentError::invalid_payload;
         AuthorityBarrier marker;
-        if (decode_authority_barrier(record.entry_type, record.payload, marker).error !=
+        if (decode_authority_barrier(kAuthorityBarrierEntryType, record.payload, marker).error !=
                 AuthorityBarrierCodecError::none ||
             marker.authority_domain != identity.authority_domain())
             return ArchiveSegmentError::invalid_payload;

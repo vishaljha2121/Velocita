@@ -1,4 +1,5 @@
 #include "velocita/v2/kernel.hpp"
+#include "velocita/v2/swap_kernel.hpp"
 #include "velocita/v2/digest.hpp"
 #include "velocita/v2/rule_evaluator.hpp"
 
@@ -783,6 +784,9 @@ template <std::size_t WordCount>
     }
 
     if (command.mode == StrategyMode::normal) {
+        if (state.spot_swap.conflicted || state.spot_swap.pending.phase == swap::Phase::unknown ||
+            state.spot_swap.pending.phase == swap::Phase::attempted)
+            return result(state, ApplyCode::reconciliation_required, next_version);
         for (std::size_t index = 0; index < state.order_count; ++index) {
             const auto order_state = state.orders[index].state;
             if (order_state == ClusterOrderState::submission_unknown ||
@@ -3210,6 +3214,15 @@ enum class CancelDisposition : std::uint8_t {
                                             const Command& command,
                                             const std::uint64_t next_version,
                                             const VerifiedExecutionCatalog* catalog) noexcept {
+    if (const auto* body = std::get_if<ApplySpotSwap>(&command.body))
+        return result(state, apply_spot_swap(state, body->record, catalog), next_version);
+    if (state.spot_swap.initialized &&
+        (std::holds_alternative<PublishPolicy>(command.body) ||
+         std::holds_alternative<EvaluateDecisionFrame>(command.body) ||
+         std::holds_alternative<ConfigureRiskLimits>(command.body) ||
+         std::holds_alternative<AuthorizeDecision>(command.body) ||
+         std::holds_alternative<StageExecutablePolicy>(command.body)))
+        return result(state, ApplyCode::risk_reconfiguration_blocked, next_version);
     if (const auto* body = std::get_if<InstallExecutionCatalog>(&command.body)) {
         const auto code = catalog_installation_code(state, *body);
         if (code == ApplyCode::applied) state.execution_catalog_root = body->catalog_root;
@@ -3424,7 +3437,9 @@ bool proposal_matches_catalog(const EconomicActionProposal& proposal,
 
 bool execution_catalog_bindings_valid(const TradingState& state,
                                       const VerifiedExecutionCatalog& catalog) noexcept {
-    if (!execution_catalog_ready(state.execution_catalog_root, &catalog) ||
+    if (!swap_state_bindings_valid(state) ||
+        (state.spot_swap.initialized && !swap_catalog_matches(state.spot_swap.opening.binding, catalog)) ||
+        !execution_catalog_ready(state.execution_catalog_root, &catalog) ||
         state.policy_count > state.policies.size() ||
         state.decision_count > state.decision_hot.size() ||
         state.outbox_effect_count > state.outbox_effects.size()) return false;
@@ -3526,7 +3541,11 @@ namespace {
 [[nodiscard]] unsigned roles_allowed(const CommandBody& body) noexcept {
     return std::visit([](const auto& value) noexcept -> unsigned {
         using T = std::decay_t<decltype(value)>;
-        if constexpr (is_one_of<T, AdvanceKillEpoch, SetExecutorGeneration, SetStrategyMode,
+        if constexpr (std::is_same_v<T, ApplySpotSwap>) {
+            if (std::holds_alternative<swap::Initialize>(value.record.command) ||
+                std::holds_alternative<swap::Intent>(value.record.command)) return kOperatorRole;
+            return swap::required_role(value.record.command) == swap::Role::gateway ? kGatewayRole : 0;
+        } else if constexpr (is_one_of<T, AdvanceKillEpoch, SetExecutorGeneration, SetStrategyMode,
                                 InstallExecutionCatalog, ConfigureRiskLimits, AssignCallerRole,
                                 ResolveOrderConflict,
                                 PublishPolicy, ValidatePolicy, ActivatePolicy, SupersedePolicy,
@@ -3586,6 +3605,10 @@ ApplyResult apply(TradingState& state,
     if ((roles_allowed(command.body) & role_of(state, command.identity.caller_id)) == 0) {
         return result(state, ApplyCode::unauthorized_command, state.state_version);
     }
+
+    if (const auto* swap = std::get_if<ApplySpotSwap>(&command.body);
+        swap && swap_record_digest(swap->record) != command.identity.payload_digest)
+        return result(state, ApplyCode::invalid_command, state.state_version);
 
     const VenueObservation* observation = nullptr;
     if (const auto* fill = std::get_if<ObserveFill>(&command.body)) {
@@ -3655,6 +3678,7 @@ ApplyResult apply(TradingState& state,
     const auto next_version = state.state_version + 1;
     const auto outcome = apply_new_command(state, command, next_version, catalog);
 
+    synchronize_swap_controls(state);
     state.state_version = next_version;
     state.receipts[state.receipt_count] = RequestReceipt{command.identity, outcome};
     ++state.receipt_count;

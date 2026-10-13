@@ -1,5 +1,6 @@
 #include "velocita/v2/bound_peer.hpp"
 #include "velocita/v2/authority_barrier.hpp"
+#include "velocita/v2/leader_read_barrier.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -79,9 +80,12 @@ Error validate(const PeerMessageView& message, const VerifiedStaticIdentity& ide
         for (const auto& entry : append->entries) {
             if (entry.term <= 0) return Error::invalid_payload;
             if (entry.payload.size() > kMaxKernelCommandBytes) return Error::capacity_exceeded;
-            if (entry.type == kAuthorityBarrierEntryType) {
+            if (entry.type == kLeaderReadBarrierEntryType) {
+                if (!valid_leader_read_barrier(entry.payload, identity.authority_domain()))
+                    return Error::invalid_payload;
+            } else if (entry.type == kAuthorityBarrierEntryType || entry.type == kSwapAuthorityBarrierEntryType) {
                 AuthorityBarrier marker;
-                if (decode_authority_barrier(entry.type, entry.payload, marker).error !=
+                if (decode_authority_barrier(kAuthorityBarrierEntryType, entry.payload, marker).error !=
                         AuthorityBarrierCodecError::none ||
                     marker.authority_domain != identity.authority_domain())
                     return Error::invalid_payload;
@@ -128,9 +132,12 @@ Error validate(const PeerMessage& message, const VerifiedStaticIdentity& identit
         for (const auto& entry : append->entries) {
             if (entry.term <= 0) return Error::invalid_payload;
             if (entry.payload.size() > kMaxKernelCommandBytes) return Error::capacity_exceeded;
-            if (entry.type == kAuthorityBarrierEntryType) {
+            if (entry.type == kLeaderReadBarrierEntryType) {
+                if (!valid_leader_read_barrier(entry.payload, identity.authority_domain()))
+                    return Error::invalid_payload;
+            } else if (entry.type == kAuthorityBarrierEntryType || entry.type == kSwapAuthorityBarrierEntryType) {
                 AuthorityBarrier marker;
-                if (decode_authority_barrier(entry.type, entry.payload, marker).error !=
+                if (decode_authority_barrier(kAuthorityBarrierEntryType, entry.payload, marker).error !=
                         AuthorityBarrierCodecError::none || marker.authority_domain != identity.authority_domain())
                     return Error::invalid_payload;
             } else {

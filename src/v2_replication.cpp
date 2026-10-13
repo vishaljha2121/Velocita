@@ -775,6 +775,43 @@ bool ReplicatedKernel::is_leader() const {
         raft_is_leader(server_) != 0;
 }
 
+ProposeStatus ReplicatedKernel::ensure_current_term_applied() {
+    require_usable();
+    if (compaction_ || persistence_pending()) return ProposeStatus::persistence_busy;
+    if (!is_leader()) return ProposeStatus::not_leader;
+    const auto term = raft_get_current_term(server_);
+    const auto applied = raft_get_last_applied_idx(server_);
+    const auto* applied_entry = raft_get_entry_from_idx(server_, applied);
+    const auto applied_term = applied == raft_get_snapshot_last_idx(server_)
+        ? raft_get_snapshot_last_term(server_) : applied_entry ? applied_entry->term : 0;
+    if (term > 0 && applied > 0 && applied_term == term) return ProposeStatus::admitted;
+    const auto current = raft_get_current_idx(server_);
+    const auto* tail = raft_get_entry_from_idx(server_, current);
+    if (tail && tail->term == term) return ProposeStatus::persistence_busy;
+    if (term <= 0 || current == std::numeric_limits<raft_index_t>::max()) return ProposeStatus::refused;
+    const std::array<bool, 1> control{true};
+    if (arena_.free_blocks() == 0 || !log_payloads_->can_admit(control) ||
+        !archive_admission(static_cast<std::uint64_t>(current) + 1, true)) {
+        ++log_capacity_refusals_;
+        return ProposeStatus::log_capacity_exhausted;
+    }
+    auto bytes = authority_domain_.bytes;
+    msg_entry_t entry{};
+    entry.type = kLeaderReadBarrierEntryType;
+    entry.data.buf = bytes.data();
+    entry.data.len = static_cast<unsigned int>(bytes.size());
+    msg_entry_response_t response{};
+    const auto result = raft_recv_entry(server_, &entry, &response);
+    require_usable();
+    if (result == RAFT_ERR_NOT_LEADER) return ProposeStatus::not_leader;
+    if (result != 0) return ProposeStatus::refused;
+    persist_commit_index();
+    const auto apply = raft_apply_all(server_);
+    if (apply != 0 && apply != RAFT_ERR_PERSIST_PENDING)
+        throw std::runtime_error("leader read barrier apply failed: " + callback_error_);
+    return ProposeStatus::persistence_busy;
+}
+
 ProposeOutcome ReplicatedKernel::propose(const std::span<const std::byte> command_bytes,
                                          const ProposeLane lane) {
     require_usable();
@@ -867,9 +904,14 @@ std::optional<CommittedResult> ReplicatedKernel::take_committed_result() {
 
 void ReplicatedKernel::validate_log_payload(const std::int32_t type,
                                            const std::span<const std::byte> bytes) const {
-    if (type == kAuthorityBarrierEntryType) {
+    if (type == kLeaderReadBarrierEntryType) {
+        if (!valid_leader_read_barrier(bytes, authority_domain_))
+            throw std::runtime_error("invalid leader read barrier domain or length");
+        return;
+    }
+    if (type == kAuthorityBarrierEntryType || type == kSwapAuthorityBarrierEntryType) {
         AuthorityBarrier marker;
-        if (decode_authority_barrier(type, bytes, marker).error != AuthorityBarrierCodecError::none ||
+        if (decode_authority_barrier(kAuthorityBarrierEntryType, bytes, marker).error != AuthorityBarrierCodecError::none ||
             marker.authority_domain != authority_domain_)
             throw std::runtime_error("invalid authority marker or authority domain");
         return;
@@ -913,7 +955,7 @@ ProposeOutcome ReplicatedKernel::propose_authority_barrier(const AuthorityBarrie
             return outcome;
         }
     }
-    if (authority_proof_) {
+    if (authority_proof_ || swap_authority_proof_) {
         outcome.status = ProposeStatus::authority_busy;
         return outcome;
     }
@@ -957,6 +999,101 @@ ProposeOutcome ReplicatedKernel::propose_authority_barrier(const AuthorityBarrie
     return outcome;
 }
 
+ProposeOutcome ReplicatedKernel::propose_swap_authority_barrier(const AuthorityBarrier& request) {
+    require_usable();
+    if (compaction_ || persistence_pending()) return {ProposeStatus::persistence_busy};
+    revoke_stale_authority();
+    ProposeOutcome outcome{ProposeStatus::refused, raft_get_current_leader(server_),
+                           raft_get_current_term(server_), raft_get_current_idx(server_)};
+    if (node_id_ <= 0) return outcome;
+    if (!is_leader() || outcome.term <= 0) {
+        pending_swap_authority_.reset();
+        outcome.status = ProposeStatus::not_leader;
+        return outcome;
+    }
+    std::array<std::byte, kAuthorityBarrierBytes> bytes{};
+    if (!swap_authority_matches(state_, request, authority_domain_) ||
+        encode_authority_barrier(kAuthorityBarrierEntryType, request, bytes).error !=
+            AuthorityBarrierCodecError::none)
+        return outcome;
+
+    if (pending_swap_authority_ &&
+        (pending_swap_authority_->term != outcome.term ||
+         pending_swap_authority_->index <= raft_get_last_applied_idx(server_)))
+        pending_swap_authority_.reset();
+    if (pending_swap_authority_) {
+        const auto& pending = *pending_swap_authority_;
+        if (request.incarnation == pending.request.incarnation &&
+            request.request_sequence == pending.request.request_sequence) {
+            if (request == pending.request) {
+                outcome.status = ProposeStatus::admitted;
+                outcome.index = pending.index;
+            }
+            return outcome;
+        }
+    }
+    if (authority_proof_ || swap_authority_proof_) {
+        outcome.status = ProposeStatus::authority_busy;
+        return outcome;
+    }
+    if (authority_drain_index() != 0) {
+        outcome.status = ProposeStatus::authority_busy;
+        return outcome;
+    }
+    if (arena_.free_blocks() <= kControlLaneReservedBlocks) {
+        outcome.status = ProposeStatus::normal_lane_exhausted;
+        return outcome;
+    }
+    msg_entry_t entry{};
+    entry.id = static_cast<raft_entry_id_t>(request.request_sequence & 0x7FFFFFFFU);
+    const std::array<bool, 1> ordinary{false};
+    if (!log_payloads_->can_admit(ordinary) ||
+        !archive_admission(static_cast<std::uint64_t>(raft_get_current_idx(server_)) + 1, false)) {
+        ++log_capacity_refusals_;
+        outcome.status = ProposeStatus::log_capacity_exhausted;
+        return outcome;
+    }
+    entry.type = kSwapAuthorityBarrierEntryType;
+    entry.data.buf = bytes.data();
+    entry.data.len = static_cast<unsigned int>(bytes.size());
+    msg_entry_response_t response{};
+    const auto result = raft_recv_entry(server_, &entry, &response);
+    require_usable();
+    if (result == RAFT_ERR_NOT_LEADER) {
+        outcome.status = ProposeStatus::not_leader;
+        outcome.leader_id = raft_get_current_leader(server_);
+        return outcome;
+    }
+    if (result != 0) return outcome;
+    pending_swap_authority_ = PendingAuthorityBarrier{request, response.term, response.idx};
+    persist_commit_index();
+    if (const auto applied = raft_apply_all(server_);
+        applied != 0 && applied != RAFT_ERR_PERSIST_PENDING)
+        throw std::runtime_error("authority marker apply failed: " + callback_error_);
+    outcome.status = ProposeStatus::admitted;
+    outcome.index = response.idx;
+    outcome.term = response.term;
+    return outcome;
+}
+
+bool ReplicatedKernel::swap_authority_proof_is_current(const SwapAuthorityProofView& proof)const noexcept{
+    return raft_is_leader(server_)!=0 && raft_get_current_term(server_)==proof.term &&
+        proof.barrier_index>0 && raft_get_commit_idx(server_)>=proof.barrier_index &&
+        raft_get_last_applied_idx(server_)>=proof.barrier_index &&
+        arena_.durable_index()>=static_cast<std::uint64_t>(proof.barrier_index) &&
+        swap_authority_matches(state_,proof.request,authority_domain_);
+}
+std::optional<SwapAuthorityProof> ReplicatedKernel::take_swap_authority_proof(){
+    require_usable();if(compaction_ || persistence_pending())return {};
+    revoke_stale_authority();if(!swap_authority_proof_)return {};
+    auto result=std::move(swap_authority_proof_);swap_authority_proof_.reset();return result;
+}
+void ReplicatedKernel::abandon_swap_authority_request(const AuthorityBarrier& request){
+    require_usable();if(compaction_ || persistence_pending())return;
+    if(pending_swap_authority_ && pending_swap_authority_->request==request)pending_swap_authority_.reset();
+    if(swap_authority_proof_ && swap_authority_proof_->view().request==request)swap_authority_proof_.reset();
+}
+
 bool ReplicatedKernel::authority_proof_is_current(const AuthorityProofView& proof) const noexcept {
     if (raft_is_leader(server_) == 0 || raft_get_current_term(server_) != proof.term ||
         raft_get_commit_idx(server_) < proof.barrier_index ||
@@ -986,6 +1123,9 @@ bool ReplicatedKernel::authority_proof_is_current(const AuthorityProofView& proo
 
 void ReplicatedKernel::revoke_stale_authority() {
     const auto term = raft_get_current_term(server_);
+    if (pending_swap_authority_ && (raft_is_leader(server_) == 0 || pending_swap_authority_->term != term))
+        pending_swap_authority_.reset();
+    if (swap_authority_proof_ && !swap_authority_proof_is_current(swap_authority_proof_->view()))swap_authority_proof_.reset();
     if (pending_authority_barrier_ &&
         (raft_is_leader(server_) == 0 || pending_authority_barrier_->term != term))
         pending_authority_barrier_.reset();
@@ -1018,7 +1158,7 @@ std::int64_t ReplicatedKernel::authority_drain_index() const {
     for (auto index = log_payloads_->last_index();
          index > static_cast<std::uint64_t>(applied) && index >= log_payloads_->first_index(); --index) {
         const auto* entry = raft_get_entry_from_idx(server_, static_cast<raft_index_t>(index));
-        if (entry && entry->type == kAuthorityBarrierEntryType)
+        if (entry && (entry->type == kAuthorityBarrierEntryType || entry->type == kSwapAuthorityBarrierEntryType))
             return static_cast<std::int64_t>(index);
     }
     return 0;
@@ -1399,7 +1539,13 @@ ReplicatedKernel::AdmissionCapacity ReplicatedKernel::admission_capacity(const A
     bool archive_capacity = true;
     for (auto i = first_new; i < append.entries.size(); ++i) {
         const auto& entry = append.entries[i];
-        if (entry.type == kAuthorityBarrierEntryType) {
+        if (entry.type == kLeaderReadBarrierEntryType) {
+            log_classes[log_count++] = true;
+            archive_capacity = archive_capacity && archive_admission(
+                static_cast<std::uint64_t>(prev + 1 + static_cast<std::int64_t>(i)), true);
+            continue;
+        }
+        if (entry.type == kAuthorityBarrierEntryType || entry.type == kSwapAuthorityBarrierEntryType) {
             log_classes[log_count++] = false;
             archive_capacity = archive_capacity && archive_admission(
                 static_cast<std::uint64_t>(prev + 1 + static_cast<std::int64_t>(i)), false);
@@ -1545,7 +1691,8 @@ int ReplicatedKernel::before_apply(raft_server_t*, void* user_data, raft_entry_t
         const auto bytes = std::span<const std::byte>(
             static_cast<const std::byte*>(entry->data.buf), entry->data.len);
         self.validate_log_payload(entry->type, bytes);
-        if (entry->type == kAuthorityBarrierEntryType) return 0;
+        if (entry->type == kAuthorityBarrierEntryType || entry->type == kSwapAuthorityBarrierEntryType ||
+            entry->type == kLeaderReadBarrierEntryType) return 0;
         const auto decoded = decode_kernel_command(bytes, command, *self.codec_scratch_);
         if (decoded.error != KernelCodecError::none ||
             !execution_catalog_ready(required_execution_catalog(self.state_, command),
@@ -1576,6 +1723,18 @@ int ReplicatedKernel::apply_log(raft_server_t*, void* user_data, raft_entry_t* e
         const auto bytes = std::span<const std::byte>(
             static_cast<const std::byte*>(entry->data.buf), entry->data.len);
 
+        if (entry->type == kLeaderReadBarrierEntryType) return 0;
+        if (entry->type == kSwapAuthorityBarrierEntryType) {
+            if (!self.restoring_ && self.pending_swap_authority_ &&
+                self.pending_swap_authority_->index == index && self.pending_swap_authority_->term == entry->term &&
+                raft_is_leader(self.server_) != 0 && raft_get_current_term(self.server_) == entry->term &&
+                raft_get_commit_idx(self.server_) >= index && self.arena_.durable_index() >= static_cast<std::uint64_t>(index) &&
+                !self.swap_authority_proof_ && swap_authority_matches(self.state_,self.pending_swap_authority_->request,self.authority_domain_)) {
+                self.swap_authority_proof_.emplace(SwapAuthorityProof({self.pending_swap_authority_->request,self.node_id_,entry->term,index,index}));
+            }
+            if(self.pending_swap_authority_ && self.pending_swap_authority_->index==index)self.pending_swap_authority_.reset();
+            return 0;
+        }
         if (entry->type == kAuthorityBarrierEntryType) {
             if (!self.restoring_ && self.pending_authority_barrier_ &&
                 self.pending_authority_barrier_->index == index &&
@@ -1752,8 +1911,9 @@ int ReplicatedKernel::log_offer(raft_server_t*, void* user_data, raft_entry_t* e
         const auto bytes = std::span<const std::byte>(begin, entry->data.len);
         Command command;
         DecodeKernelValueResult decoded{};
-        bool control = false;
-        if (entry->type != kAuthorityBarrierEntryType) {
+        bool control = entry->type == kLeaderReadBarrierEntryType;
+        if (entry->type != kAuthorityBarrierEntryType && entry->type != kSwapAuthorityBarrierEntryType &&
+            entry->type != kLeaderReadBarrierEntryType) {
             decoded = decode_kernel_command(bytes, command, *self.codec_scratch_);
             if (decoded.error != KernelCodecError::none)
                 throw std::runtime_error("retained log command did not decode");
@@ -1766,8 +1926,8 @@ int ReplicatedKernel::log_offer(raft_server_t*, void* user_data, raft_entry_t* e
         inserted = true;
         auto* owned = self.log_payloads_->find(static_cast<std::uint64_t>(index));
         const auto payload = self.log_payloads_->payload(static_cast<std::uint64_t>(index));
-        if (entry->type != kAuthorityBarrierEntryType &&
-            (!self.restoring_ || index > self.metadata_.commit_index)) {
+        if (entry->type != kAuthorityBarrierEntryType && entry->type != kSwapAuthorityBarrierEntryType &&
+            entry->type != kLeaderReadBarrierEntryType && (!self.restoring_ || index > self.metadata_.commit_index)) {
             reservation = self.results_->reserve(
                 {command.identity, decoded.frame_digest, entry->term, index}, control);
             if (!reservation) {
@@ -1901,6 +2061,7 @@ int ReplicatedKernel::log_pop(raft_server_t*, void* user_data, raft_entry_t*,
                               const raft_index_t index) {
     auto& self = *static_cast<ReplicatedKernel*>(user_data);
     if (self.storage_failed_) return RAFT_ERR_SHUTDOWN;
+    if(self.pending_swap_authority_ && self.pending_swap_authority_->index>=index)self.pending_swap_authority_.reset();
     if (self.restoring_) {
         if (!self.erase_log_suffix(static_cast<std::uint64_t>(index))) return RAFT_ERR_SHUTDOWN;
         if (self.pending_authority_barrier_ &&
@@ -1921,6 +2082,8 @@ int ReplicatedKernel::log_clear(raft_server_t*, void* user_data, raft_entry_t*,
     if (self.restoring_) {
         if (!self.release_log_results(0)) return RAFT_ERR_SHUTDOWN;
         self.log_payloads_->clear();
+        self.pending_swap_authority_.reset();
+        self.swap_authority_proof_.reset();
         self.pending_authority_barrier_.reset();
         return 0;
     }

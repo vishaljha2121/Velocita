@@ -297,8 +297,8 @@ VerifiedStaticIdentity fixed_identity() {
   const auto bytes =
       hex("563249447c000000010000000102030405060708090a0b0c0d0e0f10"
           "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"
-          "0b000b0001000100010001000101030011000000010100000100010011000000"
-          "1b3d30a9e57f85108ab28320f24135276cc02342c3cf0183b618c042aab007bb");
+          "0c000c0001000100020001000101030011000000010100000100010011000000"
+          "4a5cd70c7355448c05ae9d61053151ab8202198996d3317eecfc6a857d353719");
   VerifiedStaticIdentity result;
   require(VerifiedStaticIdentity::decode(bytes, result) ==
               StaticIdentityCodecError::none,
@@ -347,10 +347,10 @@ struct Fixture {
       : root(std::move(path)) {
     const auto bytes = independently_encoded(old_value, identity);
     const auto golden =
-        hex("563242460100010070000000180000004a614f5d781d5d8fbb67a13c76d98dd5be"
-            "8b161da30e14ce95c240a61798d30b110000000000000007000000000000001100"
-            "0000000000000300000000000000bd1a042fd227ae08b1f4fb86290bfcc3bfee26"
-            "2a442756f4da906c9309f23bf4");
+        hex("563242460100010070000000180000007b6a13e548fef5ff55053c1c513155ab40"
+            "409fae8a165c5bd36e064d43a2cd7a110000000000000007000000000000001100"
+            "0000000000000300000000000000565f4a1d98db2f2789d24bd6f30f69558cbd26"
+            "a473c94a2425bb67ec22029913");
     require(golden.size() == bytes.size(), "fixed golden has wrong size");
     const auto mismatch =
         std::mismatch(bytes.begin(), bytes.end(), golden.begin());

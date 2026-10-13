@@ -114,7 +114,7 @@ void response_decoding_refuses_malformed_input() {
         copy[41] = static_cast<std::byte>(reason);
         expect(copy, Error::invalid_reason, "reason " + std::to_string(reason));
     }
-    for (const int reason : {2, 9, 64, 67}) {
+    for (const int reason : {2, 9, 64, 67, 70}) {
         auto copy = kRefusedNotLeader;
         copy[41] = static_cast<std::byte>(reason);
         NodeResponse out;

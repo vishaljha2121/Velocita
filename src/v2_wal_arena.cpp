@@ -469,25 +469,27 @@ void visit_segment_records(const int fd, const VerifiedStaticIdentity& identity,
     const auto size = static_cast<std::uint64_t>(info.st_size);
 
     std::array<std::byte, kWalBlockBytes> block{};
-    for (std::uint64_t offset = 0; offset + kWalBlockBytes <= size;
-         offset += kWalBlockBytes) {
+    bool padding = false;
+    for (std::uint64_t offset = 0; offset < size; offset += kWalBlockBytes) {
+        const auto expected = static_cast<std::size_t>(std::min<std::uint64_t>(kWalBlockBytes, size - offset));
         std::size_t done = 0;
-        while (done < kWalBlockBytes) {
-            const auto result = ::pread(fd, block.data() + done, kWalBlockBytes - done,
+        while (done < expected) {
+            const auto result = ::pread(fd, block.data() + done, expected - done,
                                         static_cast<off_t>(offset + done));
-            if (result < 0) {
-                if (errno == EINTR) continue;
-                throw std::runtime_error("cannot read WAL segment");
-            }
-            if (result == 0) break;
+            if (result < 0 && errno == EINTR) continue;
+            if (result <= 0) throw std::runtime_error("WAL changed during recovery scan");
             done += static_cast<std::size_t>(result);
         }
-        if (done != kWalBlockBytes) break;
-        const auto decoded = decode_block(block);
-        if (!decoded) {
-            if (std::all_of(block.begin(), block.end(), [](auto byte) { return byte == std::byte{0}; })) break;
+        const auto bytes = std::span(block).first(expected);
+        const bool zero = std::all_of(bytes.begin(), bytes.end(), [](auto byte) { return byte == std::byte{0}; });
+        if (zero) { padding = true; continue; }
+        if (expected != kWalBlockBytes)
+            throw BoundWalError(BoundFrameError::truncated, "nonzero partial WAL block");
+        if (padding)
+            throw BoundWalError(BoundFrameError::invalid_payload, "nonzero WAL block after padding");
+        const auto decoded = decode_block(bytes);
+        if (!decoded)
             throw BoundWalError(BoundFrameError::invalid_payload, "corrupt complete WAL block");
-        }
         const auto records = decode_bound_wal_records(decoded->payload, identity);
         for (const auto& record : records) visitor(record);
     }

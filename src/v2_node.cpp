@@ -109,7 +109,7 @@ V2Node::V2Node(const NodeConfig& config, const VerifiedExecutionCatalog& catalog
       ingress_rate_per_second_(config.ingress_rate_per_second),
       ingress_burst_milli_(std::uint64_t{config.ingress_burst} * 1000), transport_(transport),
       codec_scratch_(std::make_unique<KernelCommandCodecScratch>()),
-      inbound_(kMaxAuthEnvelopeBytes), outbound_(kMaxAuthEnvelopeBytes), gateway_caller_(config.gateway_caller),
+      inbound_(kMaxAuthEnvelopeBytes), outbound_(kMaxAuthEnvelopeBytes), gateway_caller_(config.gateway_caller), signer_caller_(config.signer_caller),
       snapshot_(kMaxStateSnapshotBytes), gateway_body_(kMaxStateChunkResponseBytes) {
     if (session_epoch_ == 0) throw std::runtime_error("node session epoch must be positive");
     for (const auto& voter : config.voters)
@@ -168,6 +168,7 @@ void V2Node::turn(const int elapsed_ms) {
         if (ingress_open_) receive_ingress();
         send_results();
         service_gateway_authority(elapsed_ms);
+        service_swap_authority(elapsed_ms);
     } catch (...) {
         failed_ = true;
         throw;
@@ -330,6 +331,8 @@ void V2Node::receive_ingress() {
         response.correlation = correlation_of(command.identity);
         if (command.identity.caller_id.value() != caller.caller_id) {
             response.reason = static_cast<std::uint8_t>(IngressRefusal::caller_mismatch);
+        } else if (signer_caller_ && caller.caller_id == *signer_caller_) {
+            response.reason = static_cast<std::uint8_t>(IngressRefusal::signer_read_only);
         } else if (!ready()) {
             response.reason = static_cast<std::uint8_t>(IngressRefusal::not_ready);
         } else if (!is_operator_caller(command.identity.caller_id) && caller.tokens_milli < 1000) {
@@ -414,7 +417,10 @@ void V2Node::handle_gateway(CallerLink& caller, std::span<const std::byte> body)
     GatewayRequest request;
     if (decode_gateway_request(body, request) != NodeProtocolError::none)
         return refuse_gateway(caller, correlation, static_cast<std::uint8_t>(IngressRefusal::malformed_command));
-    if (!gateway_caller_ || caller.caller_id != *gateway_caller_)
+    const bool signing_principal=signer_caller_ && caller.caller_id==*signer_caller_;
+    if (signing_principal && request.kind!=GatewayRequestKind::state_read && request.kind!=GatewayRequestKind::swap_authority)
+        return refuse_gateway(caller,correlation,static_cast<std::uint8_t>(IngressRefusal::signer_read_only));
+    if (!signing_principal && (!gateway_caller_ || caller.caller_id != *gateway_caller_))
         return refuse_gateway(caller, correlation, static_cast<std::uint8_t>(IngressRefusal::not_gateway_caller));
     if (!ready()) return refuse_gateway(caller, correlation, static_cast<std::uint8_t>(IngressRefusal::not_ready));
     if (!quiescent())
@@ -422,6 +428,11 @@ void V2Node::handle_gateway(CallerLink& caller, std::span<const std::byte> body)
     if (!kernel_->is_leader())
         return refuse_gateway(caller, correlation, static_cast<std::uint8_t>(ProposeStatus::not_leader));
     if (request.kind == GatewayRequestKind::state_read) {
+        const auto readiness = kernel_->ensure_current_term_applied();
+        if (readiness != ProposeStatus::admitted) {
+            ++counters_.gateway_state_reads_deferred;
+            return refuse_gateway(caller, correlation, static_cast<std::uint8_t>(readiness));
+        }
         if (kernel_->apply_pending()) {
             ++counters_.gateway_state_reads_deferred;
             return refuse_gateway(caller, correlation, static_cast<std::uint8_t>(ProposeStatus::persistence_busy));
@@ -429,6 +440,23 @@ void V2Node::handle_gateway(CallerLink& caller, std::span<const std::byte> body)
         return serve_state(caller, correlation);
     }
 
+    if(request.kind==GatewayRequestKind::swap_authority){
+    if (gateway_swap_authority_ && gateway_swap_authority_->key_id != caller.key_id)
+        return refuse_gateway(caller,correlation,static_cast<std::uint8_t>(ProposeStatus::authority_busy));
+    if (gateway_swap_authority_ && gateway_swap_authority_->barrier == request.barrier) {
+        gateway_swap_authority_->correlation = correlation;
+        return;
+    }
+    if (gateway_swap_authority_) {
+        kernel_->abandon_swap_authority_request(gateway_swap_authority_->barrier);
+        gateway_swap_authority_.reset();
+    }
+    const auto outcome = kernel_->propose_swap_authority_barrier(request.barrier);
+    if (outcome.status != ProposeStatus::admitted)
+        return refuse_gateway(caller, correlation, static_cast<std::uint8_t>(outcome.status));
+    gateway_swap_authority_ = PendingGatewayAuthority{caller.key_id, request.barrier, correlation, 0};
+        return;
+    }
     if (gateway_authority_ && gateway_authority_->barrier == request.barrier) {
         gateway_authority_->correlation = correlation;
         return;
@@ -473,6 +501,39 @@ void V2Node::service_gateway_authority(const int elapsed_ms) {
         kernel_->abandon_authority_request(pending.barrier);
         const auto correlation = pending.correlation;
         gateway_authority_.reset();
+        refuse_gateway(caller, correlation, static_cast<std::uint8_t>(IngressRefusal::authority_lost));
+    }
+}
+void V2Node::service_swap_authority(const int elapsed_ms) {
+    if (!gateway_swap_authority_) return;
+    auto& pending = *gateway_swap_authority_;
+    const auto found = callers_.find(pending.key_id);
+    if (found == callers_.end()) {
+        gateway_swap_authority_.reset();
+        return;
+    }
+    auto& caller = *found->second;
+    if (quiescent() && !kernel_->is_leader()) {
+        kernel_->abandon_swap_authority_request(pending.barrier);
+        const auto correlation = pending.correlation;
+        gateway_swap_authority_.reset();
+        return refuse_gateway(caller, correlation, static_cast<std::uint8_t>(ProposeStatus::not_leader));
+    }
+    if (auto proof = kernel_->take_swap_authority_proof()) {
+        if (proof->view().request != pending.barrier) return;
+        std::array<std::byte, kResponseSwapAuthorityGrantedBytes> body{};
+        if (encode_swap_authority_granted(pending.correlation, proof->view(), body).error != NodeProtocolError::none)
+            throw std::runtime_error("authority proof encoding failed");
+        gateway_swap_authority_.reset();
+        ++counters_.gateway_proofs_sent;
+        if (!offer_body(caller, body)) ++counters_.responses_dropped;
+        return;
+    }
+    pending.waited_ms += std::max(elapsed_ms, 0);
+    if (pending.waited_ms > kGatewayAuthorityNodeBoundMs) {
+        kernel_->abandon_swap_authority_request(pending.barrier);
+        const auto correlation = pending.correlation;
+        gateway_swap_authority_.reset();
         refuse_gateway(caller, correlation, static_cast<std::uint8_t>(IngressRefusal::authority_lost));
     }
 }

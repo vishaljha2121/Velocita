@@ -2,6 +2,7 @@
 
 #include "velocita/v2/digest.hpp"
 #include "velocita/v2/payload.hpp"
+#include "velocita/v2/swap_kernel.hpp"
 
 #include <algorithm>
 #include <array>
@@ -264,6 +265,7 @@ private:
         case KernelCommandKind::install_execution_catalog:
         case KernelCommandKind::assign_caller_role:
         case KernelCommandKind::resolve_order_conflict:
+        case KernelCommandKind::apply_spot_swap:
             return true;
     }
     return false;
@@ -277,6 +279,8 @@ private:
 
 [[nodiscard]] bool valid_command(const Command& command) noexcept {
     if (!present(command.identity)) return false;
+    if (const auto* swap = std::get_if<ApplySpotSwap>(&command.body))
+        return swap_record_digest(swap->record) == command.identity.payload_digest;
     if (const auto* body = std::get_if<PublishPolicy>(&command.body)) {
         return validate(body->artifact) == ContractError::none;
     }
@@ -463,6 +467,7 @@ private:
 }
 
 [[nodiscard]] KernelCommandKind kind_of(const CommandBody& body) noexcept {
+    if (std::holds_alternative<ApplySpotSwap>(body)) return KernelCommandKind::apply_spot_swap;
     if (std::holds_alternative<PublishPolicy>(body)) {
         return KernelCommandKind::publish_policy;
     }
@@ -528,6 +533,10 @@ private:
 }
 
 [[nodiscard]] std::size_t body_size(const CommandBody& body) noexcept {
+    if (const auto* value = std::get_if<ApplySpotSwap>(&body)) {
+        std::array<std::byte, swap::max_record_bytes> bytes{};
+        return 2 + swap::encode(value->record, bytes).size;
+    }
     if (const auto* value = std::get_if<PublishPolicy>(&body)) {
         return kPolicyPayloadPrefixBytes +
                value->artifact.rule_count * kPolicyRuleEncodedBytes;
@@ -735,6 +744,14 @@ void write_observation(Writer& writer,
 }
 
 void write_body(Writer& writer, const CommandBody& body) noexcept {
+    if (const auto* value = std::get_if<ApplySpotSwap>(&body)) {
+        std::array<std::byte, swap::max_record_bytes> bytes{};
+        const auto encoded = swap::encode(value->record, bytes);
+        writer.integral(static_cast<std::uint16_t>(encoded.size));
+        for (const auto byte : std::span(bytes).first(encoded.size))
+            writer.integral(std::to_integer<std::uint8_t>(byte));
+        return;
+    }
     if (const auto* value = std::get_if<PublishPolicy>(&body)) {
         write_policy(writer, value->artifact);
     } else if (const auto* value = std::get_if<ValidatePolicy>(&body)) {
@@ -1031,6 +1048,17 @@ void write_body(Writer& writer, const CommandBody& body) noexcept {
                              const KernelCommandKind kind,
                              CommandBody& body) noexcept {
     switch (kind) {
+        case KernelCommandKind::apply_spot_swap: {
+            const auto size = reader.integral<std::uint16_t>();
+            if (size > swap::max_record_bytes) return false;
+            std::array<std::byte, swap::max_record_bytes> bytes{};
+            for (std::size_t i = 0; i < size; ++i)
+                bytes[i] = static_cast<std::byte>(reader.integral<std::uint8_t>());
+            ApplySpotSwap value;
+            if (swap::decode(std::span(bytes).first(size), value.record) != swap::CodecError::none) return false;
+            body = value;
+            return true;
+        }
         case KernelCommandKind::publish_policy: {
             PublishPolicy value;
             if (!read_policy(reader, value.artifact)) return false;

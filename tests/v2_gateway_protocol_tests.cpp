@@ -96,8 +96,8 @@ void test_gateway_request_bytes_and_round_trip() {
     zero_id[1] = std::byte{2};
     require(decode_gateway_request(zero_id, decoded) == NodeProtocolError::invalid_version, "version 2 accepted");
     zero_id[1] = std::byte{1};
-    zero_id[0] = std::byte{0x12};
-    require(decode_gateway_request(zero_id, decoded) == NodeProtocolError::invalid_kind, "kind 0x12 accepted");
+    zero_id[0] = std::byte{0x13};
+    require(decode_gateway_request(zero_id, decoded) == NodeProtocolError::invalid_kind, "kind 0x13 accepted");
 
     IngressView ingress;
     require(decode_ingress(std::span(out).first(26), ingress) == NodeProtocolError::invalid_lane,
@@ -134,7 +134,7 @@ void test_refusal_bytes() {
         GatewayRefusal ignored;
         return decode_gateway_refusal(bytes, ignored);
     }, "refusal");
-    for (const std::uint8_t reason : {0, 1, 10, 63, 70, 255}) {
+    for (const std::uint8_t reason : {0, 1, 10, 63, 71, 255}) {
         auto copy = out;
         copy[41] = static_cast<std::byte>(reason);
         require(decode_gateway_refusal(std::span(copy).first(54), decoded) == NodeProtocolError::invalid_reason,
@@ -143,7 +143,7 @@ void test_refusal_bytes() {
                 "encoder accepted reason " + std::to_string(reason));
     }
     NodeResponse legacy;
-    for (const std::uint8_t kind : {4, 5, 6}) {
+    for (const std::uint8_t kind : {4, 5, 6, 7}) {
         auto copy = out;
         copy[0] = static_cast<std::byte>(kind);
         require(decode_response(std::span(copy).first(54), legacy) == NodeProtocolError::invalid_kind,

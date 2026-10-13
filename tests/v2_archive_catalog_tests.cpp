@@ -26,8 +26,8 @@ VerifiedStaticIdentity identity() {
     const auto bytes = hex(
         "563249447c000000010000000102030405060708090a0b0c0d0e0f10"
         "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"
-        "0b000b0001000100010001000101030011000000010100000100010011000000"
-        "1b3d30a9e57f85108ab28320f24135276cc02342c3cf0183b618c042aab007bb");
+        "0c000c0001000100020001000101030011000000010100000100010011000000"
+        "4a5cd70c7355448c05ae9d61053151ab8202198996d3317eecfc6a857d353719");
     VerifiedStaticIdentity result;
     require(VerifiedStaticIdentity::decode(bytes, result) == StaticIdentityCodecError::none,
             "identity fixture refused");
@@ -66,7 +66,7 @@ void test_golden_and_round_trip() {
     require(encoded.error == ArchiveCatalogError::none && encoded.bytes_written == 352,
             "golden encode failed");
     require(to_hex(encoded.catalog_digest) ==
-        "5f62e1f862053a7476fe5576e76096324e353c3e7ddab7d8dc11f0e442070ef1",
+        "f53dcc2c410d79228ab948625fedfcb24badd71767bbe827d20b360ffc233034",
         "independent catalog SHA golden mismatch");
     require(bytes[0] == std::byte{'V'} && bytes[3] == std::byte{'C'} &&
             bytes[6] == std::byte{96} && bytes[8] == std::byte{0x60} &&

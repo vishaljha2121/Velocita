@@ -24,8 +24,9 @@ void check(bool ok, const char* why) { if (!ok) throw std::runtime_error(why); }
 struct Temp {
     std::filesystem::path path;
     Temp() {
-        char name[] = "/tmp/v2-archive-disk-XXXXXX";
-        check(::mkdtemp(name) != nullptr, "mkdtemp failed"); path = name;
+        const auto root=std::filesystem::path(std::getenv("HOME"))/".cache/velocita-build/archive-persistence-model-tests";
+        std::filesystem::create_directories(root);auto name=(root/"case-XXXXXX").string();
+        check(::mkdtemp(name.data()) != nullptr, "mkdtemp failed"); path = name;
     }
     ~Temp() { std::error_code ignored; std::filesystem::remove_all(path, ignored); }
 };
@@ -233,7 +234,7 @@ struct Fixture {
         const auto ec = catalog.encode(execution_bytes);
         check(id.error == StaticIdentityCodecError::none && ec.error == ExecutionCatalogError::none, "fixture encode failed");
         identity_length = id.bytes_written; execution_length = ec.bytes_written;
-        constexpr std::string_view hex = "56324b43380000000b0006000100000000000000010000000000000001000000000000000000000000000000000000000000000000000000000000000100000000000000c09e6e99301067081b53cb14f6a92f073dd470c59b26b3294ed59e468b8ec22b";
+        constexpr std::string_view hex = "56324b43380000000c0006000100000000000000010000000000000001000000000000000000000000000000000000000000000000000000000000000100000000000000758705cbffdf0e83b706a857b56ace24f4617b3cbc0c2ab973629d0ba4fff64b";
         for (std::size_t at = 0; at < hex.size(); at += 2)
             command.push_back(std::byte(std::stoul(std::string(hex.substr(at, 2)), nullptr, 16)));
     }
@@ -304,7 +305,19 @@ int exercise(const Fixture& fixture, bool replacement, bool eager, int cut) {
     const auto admitted = ArchiveStore::verify_existing(recovered.path, fixture.identity,
         std::span(fixture.identity_bytes).first(fixture.identity_length),
         std::span(fixture.execution_bytes).first(fixture.execution_length), fixture.catalog, {}, present);
-    check(image(recovered.path) == before, "restart rewrote modeled evidence");
+    auto expected = before;
+    if (admitted == ArchiveStoreError::none && present) {
+        for (const char* base : {"v2-archive-segment.bin", "v2-archive-catalog.bin"}) {
+            const auto prefix = std::string("v2-archive/") + base;
+            auto temporary = expected.extract(prefix + ".tmp");
+            if (!temporary.empty()) {
+                check(!expected.contains(prefix + ".quarantine"), "quarantine cannot replace modeled evidence");
+                temporary.key() = prefix + ".quarantine";
+                expected.insert(std::move(temporary));
+            }
+        }
+    }
+    check(image(recovered.path) == expected, "restart preserves every modeled byte except recognized quarantine names");
     if (admitted == ArchiveStoreError::none && present) {
         ArchiveStore store;
         check(fixture.open(recovered.path, store) == ArchiveStoreError::none, "second verification failed");

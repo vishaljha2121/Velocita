@@ -1024,7 +1024,8 @@ ApplyResult model_new_command(ModelState& state,
                                  std::is_same_v<T, AcknowledgeGatewayResults> ||
                                  std::is_same_v<T, InstallExecutionCatalog> ||
                                  std::is_same_v<T, AssignCallerRole> ||
-                                 std::is_same_v<T, ResolveOrderConflict>) {
+                                 std::is_same_v<T, ResolveOrderConflict> ||
+                                 std::is_same_v<T, ApplySpotSwap>) {
                 throw std::runtime_error("command outside policy/source reference model");
             } else {
                 static_assert(std::is_same_v<T, void>,

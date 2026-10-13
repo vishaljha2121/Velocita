@@ -2,9 +2,13 @@
 #include "velocita/aeron_runtime.hpp"
 #include "velocita/v2/aeron_node_transport.hpp"
 #include "velocita/v2/gateway_loop.hpp"
+#include "velocita/v2/swap_paper_gateway.hpp"
+#ifdef VELOCITA_SWAP_RUNTIME_WIRING
+#include "velocita/v2/swap_runtime_production.hpp"
+#endif
 #include "velocita/v2/node_files.hpp"
-#include "velocita/v2/paper_report.hpp"
 #include "velocita/v2/paper_venue_store.hpp"
+#include "velocita/v2/paper_report.hpp"
 #include "velocita/v2/shadow_submitter.hpp"
 #include "velocita/v2/truemarkets_venue.hpp"
 #include "velocita/v2/venue_simulator.hpp"
@@ -12,6 +16,7 @@
 #include <atomic>
 #include <charconv>
 #include <chrono>
+#include <climits>
 #include <csignal>
 #include <ctime>
 #include <fstream>
@@ -73,6 +78,14 @@ struct Arguments {
     std::map<std::int32_t, Endpoint> nodes;
     std::vector<std::int32_t> order;
     std::string venue;
+    std::string execution_contract{"limit"};
+    std::optional<std::uint64_t> swap_paper_price;
+    std::filesystem::path swap_recovery_dir;
+    bool initialize_swap_recovery{};
+    std::filesystem::path swap_runtime_profile, swap_account_review, swap_account_history;
+    std::string swap_process{"gateway"};
+    int swap_secret_fd{-1};
+    bool have_buy_fee{}, have_sell_fee{};
     std::optional<std::array<std::uint64_t, 5>> row;
     std::uint64_t freshness_ms{};
     std::uint64_t lease_ms{2000}, timeout_ms{3000}, state_interval_ms{250};
@@ -91,7 +104,45 @@ struct Arguments {
     std::string signer_endpoint;
 };
 
+void open_swap_recovery(const Arguments& a, const swap::State& state,
+                        const StateReading& reading, SwapReconcileStore& recovery) {
+    if (a.initialize_swap_recovery && (!state.initialized || state.pending.phase != swap::Phase::none ||
+        state.settlement_count != 0 || state.last_effect != 0 || state.conflicted))
+        throw Usage("initialize swap recovery only on an unused funded account before its first intent");
+    const SwapReconcileStoreBinding binding{sha256_digest(a.incarnation), reading.authority_domain};
+    const auto recovered = a.initialize_swap_recovery
+        ? recovery.create({binding, reading.applied_index, reading.state_digest}) : recovery.recover();
+    if (recovered != SwapReconcileStoreCode::none)
+        throw Usage("swap recovery refused; retain the journal and reconcile before restarting");
+}
+
 void check_paper_state(const Arguments& a) {
+    if(a.venue!="truemarkets" && (!a.swap_runtime_profile.empty() || !a.swap_account_review.empty() || !a.swap_account_history.empty() || a.swap_secret_fd!=-1 || a.swap_process!="gateway"))
+        throw Usage("runtime profile/process/secret settings require truemarkets");
+    if (a.execution_contract == "exact-input-swap") {
+        if(a.venue=="truemarkets" && !a.swap_runtime_profile.empty()) {
+            if(!a.swap_runtime_profile.is_absolute() || !a.swap_account_review.is_absolute() || !a.swap_account_history.is_absolute() || !a.swap_recovery_dir.is_absolute() || a.swap_secret_fd<3 ||
+                (a.swap_process!="gateway" && a.swap_process!="signer") || !a.arm_live_venue || !a.allow_new_risk ||
+                a.swap_paper_price || a.have_buy_fee || a.have_sell_fee ||
+                !a.paper_state_file.empty() || a.paper_state_init || a.paper_adopt_position || a.paper_quote_usd ||
+                a.paper_adopt_cost_micros || a.have_paper_faults || !a.paper_report_file.empty() || !a.signer_endpoint.empty())
+                throw Usage("swap runtime requires an absolute profile and recovery directory, inherited secret FD, explicit arm and risk flags, and no paper settings");
+            return;
+        }
+        if (a.venue != "paper" || !a.swap_paper_price || !*a.swap_paper_price ||
+            !a.have_buy_fee || !a.have_sell_fee || a.buy_fee_bps != a.sell_fee_bps ||
+            a.buy_fee_bps > 10000 ||
+            !a.paper_state_file.empty() || a.paper_state_init || a.paper_adopt_position ||
+            a.paper_quote_usd || a.paper_adopt_cost_micros || a.have_paper_faults ||
+            !a.paper_report_file.empty() || a.arm_live_venue || !a.signer_endpoint.empty() ||
+            !a.allow_new_risk || !a.swap_recovery_dir.is_absolute())
+            throw Usage("exact-input-swap requires paper, allow-new-risk, an absolute swap-recovery-dir, fixed paper-swap-price-micros and equal explicit fees; funding resides in Raft");
+        return;
+    }
+    if (!a.swap_runtime_profile.empty() || !a.swap_account_review.empty() || !a.swap_account_history.empty() || a.swap_secret_fd!=-1 || a.swap_process!="gateway")
+        throw Usage("runtime settings require exact-input-swap and truemarkets");
+    if (a.execution_contract != "limit" || a.swap_paper_price || !a.swap_recovery_dir.empty() || a.initialize_swap_recovery)
+        throw Usage("invalid execution contract or incompatible swap settings");
     const bool bootstrap = a.paper_state_init || a.paper_adopt_position;
     if (a.venue != "paper") {
         if (!a.paper_state_file.empty() || bootstrap || a.paper_quote_usd || a.paper_adopt_cost_micros ||
@@ -161,6 +212,11 @@ Arguments parse(int argc, char** argv) {
             a.paper_state_init = true;
             continue;
         }
+        if (key == "--initialize-swap-recovery") {
+            if (a.initialize_swap_recovery) throw Usage("duplicate --initialize-swap-recovery");
+            a.initialize_swap_recovery = true;
+            continue;
+        }
         if (key == "--paper-adopt-position") {
             a.paper_adopt_position = true;
             continue;
@@ -182,6 +238,17 @@ Arguments parse(int argc, char** argv) {
         else if (key == "--incarnation") a.have_incarnation = hex_bytes(value, a.incarnation);
         else if (key == "--response-endpoint") a.response_endpoint = endpoint(value);
         else if (key == "--venue") a.venue = value;
+        else if (key == "--execution-contract") a.execution_contract = value;
+        else if (key == "--swap-account-history") {if(!a.swap_account_history.empty())throw Usage("duplicate account history");a.swap_account_history=value;}
+        else if (key == "--swap-account-review") {if(!a.swap_account_review.empty())throw Usage("duplicate account review");a.swap_account_review=value;}
+        else if (key == "--swap-runtime-profile") {if(!a.swap_runtime_profile.empty())throw Usage("duplicate swap profile");a.swap_runtime_profile=value;}
+        else if (key == "--swap-process") {if(a.swap_process!="gateway")throw Usage("duplicate swap process");a.swap_process=value;}
+        else if (key == "--swap-secret-fd") {const auto fd=number(value,"secret FD");if(a.swap_secret_fd!=-1 || fd<3 || fd>INT_MAX)throw Usage("invalid inherited secret FD");a.swap_secret_fd=static_cast<int>(fd);}
+        else if (key == "--paper-swap-price-micros") a.swap_paper_price = number(value, "paper swap price");
+        else if (key == "--swap-recovery-dir") {
+            if (!a.swap_recovery_dir.empty()) throw Usage("duplicate --swap-recovery-dir");
+            a.swap_recovery_dir = value;
+        }
         else if (key == "--signer-endpoint") a.signer_endpoint = value;
         else if (key == "--catalog-row") {
             std::array<std::uint64_t, 5> row{};
@@ -198,12 +265,8 @@ Arguments parse(int argc, char** argv) {
         else if (key == "--lease-ms") a.lease_ms = number(value, "lease");
         else if (key == "--timeout-ms") a.timeout_ms = number(value, "timeout");
         else if (key == "--state-interval-ms") a.state_interval_ms = number(value, "state interval");
-        else if (key == "--buy-fee-bps") a.buy_fee_bps = number(value, "buy fee bps");
-        else if (key == "--sell-fee-bps") a.sell_fee_bps = number(value, "sell fee bps");
-        else if (key == "--paper-report-file") {
-            if (!a.paper_report_file.empty()) throw Usage("duplicate --paper-report-file");
-            a.paper_report_file = value;
-        }
+        else if (key == "--buy-fee-bps") { a.buy_fee_bps = number(value, "buy fee bps"); a.have_buy_fee=true; }
+        else if (key == "--sell-fee-bps") { a.sell_fee_bps = number(value, "sell fee bps"); a.have_sell_fee=true; }
         else if (key == "--paper-quote-usd") a.paper_quote_usd = number(value, "paper quote usd");
         else if (key == "--paper-adopt-cost-micros") a.paper_adopt_cost_micros = number(value, "adoption cost micros");
         else if (key == "--paper-state-file") a.paper_state_file = value;
@@ -217,6 +280,10 @@ Arguments parse(int argc, char** argv) {
             a.have_paper_faults = true;
             if (!paper::paper_fault_policy(a.paper_faults)) throw Usage(key + " must be 0..1000 (orders per thousand)");
         }
+        else if (key == "--paper-report-file") {
+            if (!a.paper_report_file.empty()) throw Usage("duplicate --paper-report-file");
+            a.paper_report_file = value;
+        }
         else if (key == "--rearm-quiet-ms") a.rearm_quiet_ms = number(value, "re-arm quiet period");
         else if (key == "--node") {
             const auto eq = value.find('=');
@@ -228,7 +295,14 @@ Arguments parse(int argc, char** argv) {
             throw Usage("unknown argument " + key);
         }
     }
-    if (a.venue == "truemarkets") {
+    if (!a.paper_report_file.empty()) {
+        if (a.venue != "paper") throw Usage("paper report requires the FOK paper backend");
+        for (const auto& protected_path : {a.paper_state_file,a.state_file,a.session_file,a.catalog,a.key_file,a.metrics_textfile})
+            if (!protected_path.empty() && std::filesystem::absolute(a.paper_report_file).lexically_normal() ==
+                    std::filesystem::absolute(protected_path).lexically_normal())
+                throw Usage("paper report path overlaps an input or durable state");
+    }
+    if (a.venue == "truemarkets" && (a.execution_contract!="exact-input-swap" || a.swap_runtime_profile.empty())) {
         const auto refusal = truemarkets::evaluate_live_arming({a.arm_live_venue, a.signer_endpoint});
         if (refusal != truemarkets::LiveArmingRefusal::none)
             throw Usage("--venue truemarkets refused: " + std::string(truemarkets::describe(refusal)));
@@ -236,19 +310,11 @@ Arguments parse(int argc, char** argv) {
     if (a.arm_live_venue || !a.signer_endpoint.empty()) {
         if (a.venue != "truemarkets") throw Usage("--arm-live-venue and --signer-endpoint apply only to --venue truemarkets");
     }
-    if (!a.paper_report_file.empty()) {
-        if (a.venue != "paper") throw Usage("--paper-report-file applies only to --venue paper");
-        for (const auto& protected_path : {a.paper_state_file, a.state_file, a.session_file, a.catalog, a.key_file,
-                                           a.metrics_textfile})
-            if (!protected_path.empty() && std::filesystem::absolute(a.paper_report_file).lexically_normal() ==
-                                               std::filesystem::absolute(protected_path).lexically_normal())
-                throw Usage("--paper-report-file overlaps an input or durable state file");
-    }
     check_paper_state(a);
     if (a.key_file.empty() || a.session_file.empty() || a.state_file.empty() || a.aeron_dir.empty() ||
         a.catalog.empty() || a.metrics_textfile.empty() || !a.have_incarnation || a.nodes.empty() ||
         a.response_endpoint.port == 0 || a.caller_key_id <= 0 || a.caller_id == 0 ||
-        (a.venue != "simulated" && a.venue != "paper"))
+        (a.venue != "simulated" && a.venue != "paper" && !(a.venue=="truemarkets" && a.execution_contract=="exact-input-swap" && !a.swap_runtime_profile.empty())))
         throw Usage("usage: see the header of v2_gateway_main.cpp");
     if (a.buy_fee_bps > 10'000 || a.sell_fee_bps > 10'000) throw Usage("fee bps above 10000");
     if (a.state_interval_ms == 0 || a.state_interval_ms >= a.lease_ms)
@@ -364,6 +430,14 @@ void report_events(GatewayLoop& loop) {
 }
 
 int run(const Arguments& a) {
+    if(!a.swap_runtime_profile.empty()) {
+#ifdef VELOCITA_SWAP_RUNTIME_WIRING
+        if(!swap_runtime_live_contract_admitted())
+            throw Usage("swap runtime wired but real transaction admission remains disabled: net receipt, account control and settlement contract unresolved; no credentials or network opened");
+#else
+        throw Usage("swap runtime was not compiled into this build; no credentials or network opened");
+#endif
+    }
     auto secrets = load_secret_set(a.key_file);
     if (!secrets.secrets) throw Usage("key file refused: " + secrets.failed_file.string());
     std::vector<AuthSecret> keys;
@@ -417,6 +491,151 @@ int run(const Arguments& a) {
     if (a.have_root && a.catalog_root != root) throw Usage("--catalog-root differs from the cluster's catalog");
     const auto catalog = load_catalog_file(a.catalog, root);
     if (catalog.error != NodeFileError::none) throw Usage("catalog file refused against the cluster's root");
+#ifdef VELOCITA_SWAP_RUNTIME_WIRING
+    if(a.execution_contract=="exact-input-swap" && a.venue=="truemarkets") {
+        std::ifstream file(a.swap_runtime_profile,std::ios::binary);std::array<char,8193> buffer{};
+        file.read(buffer.data(),buffer.size());const auto count=file.gcount();
+        if(file.bad() || count<1 || count>8192)throw Usage("runtime profile unreadable or oversized");
+        const auto profile=decode_swap_runtime_profile(std::string_view(buffer.data(),static_cast<std::size_t>(count)));
+        if(!profile)throw Usage("runtime profile schema or pins refused");
+        std::ifstream review_file(a.swap_account_review,std::ios::binary);std::array<char,8193> review_buffer{};
+        review_file.read(review_buffer.data(),review_buffer.size());const auto review_count=review_file.gcount();
+        if(review_file.bad() || review_count<1 || review_count>8192)throw Usage("account review unreadable or oversized");
+        const auto review=decode_swap_account_review({review_buffer.data(),static_cast<std::size_t>(review_count)},profile->account_review_digest);
+        if(!review)throw Usage("account review differs from operator-pinned digest or schema");
+        std::ifstream history_file(a.swap_account_history,std::ios::binary);std::array<char,4097> history_buffer{};
+        history_file.read(history_buffer.data(),history_buffer.size());const auto history_count=history_file.gcount();
+        if(history_file.bad() || history_count<1 || history_count>4096)throw Usage("account history unreadable or oversized");
+        const auto history=decode_swap_account_history_cut({history_buffer.data(),static_cast<std::size_t>(history_count)},review->history_evidence);
+        if(!history || !swap_account_history_identity(*history,*review,profile->gateway.binding))
+            throw Usage("account history differs from reviewed evidence, identity or capture cut");
+        const auto& b=profile->gateway.binding;const auto& state=link.state();
+        if(!swap_state_bindings_valid(state) || !state.spot_swap.initialized || state.spot_swap.opening.binding!=b.allocation ||
+            b.allocation.incarnation!=sha256_digest(a.incarnation) || b.authority_domain!=first->reading.authority_domain ||
+            !swap_catalog_matches(b.allocation,catalog.catalog) ||
+            a.caller_id!=(a.swap_process=="signer"?b.signer_caller.value():b.gateway_caller.value()))
+            throw Usage("runtime configured identity disagrees with authenticated cluster");
+        const auto& current=state.spot_swap;
+        if(!swap_account_review_matches(*review,b,profile->user_id.view(),current))
+            throw Usage("reviewed live funding/account pins disagree with authenticated Raft opening");
+        if(a.initialize_swap_recovery && (current.pending.phase!=swap::Phase::none || current.settlement_count || current.last_effect || current.conflicted))
+            throw Usage("runtime journals initialize only before first intent; never replace an existing run");
+        struct Clock final:SwapFinalizedReadClock {
+            std::uint64_t now_ms()noexcept override {const auto n=std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();return n<0?0:static_cast<std::uint64_t>(n);}
+        } clock;
+        SwapRuntimeCode code;
+        if(a.swap_process=="signer") {
+            if(!swap_account_review_current(*review,clock.now_ms()))throw Usage("account review expired; signer remains closed");
+            auto startup=SwapProtectedSignerStartup::open(profile->signer,SwapInheritedSecretFd(a.swap_secret_fd),code);
+            if(!startup)throw Usage("protected signer startup refused");
+            auto config=startup->session_config();config.account_review_expires_at_ms=std::min(review->expires_at_ms,history->finished_ms>UINT64_MAX-900000?UINT64_MAX:history->finished_ms+900000);const auto binding=swap_signer_journal_binding(config,startup->key().public_key());
+            SwapSubmissionStore journal(a.swap_recovery_dir/"protected-signing",binding);
+            const auto opened=a.initialize_swap_recovery?journal.create({binding,first->reading.applied_index,first->reading.state_digest,EffectId{0}}):journal.recover();
+            if(opened!=SwapSubmissionCode::none)throw Usage("protected signer recovery refused");
+            SwapSignerSession session(link,journal,startup->key(),config,{monotonic_ms,+[](void*p)noexcept{return static_cast<Clock*>(p)->now_ms();},&clock});
+            while(!g_stop.load(std::memory_order_relaxed) && swap_account_review_current(*review,clock.now_ms()) && clock.now_ms()<config.account_review_expires_at_ms) (void)startup->server().serve_once(session,b.ipc_timeout_ms);
+            return 0;
+        }
+        auto credentials=SwapGatewayCredentials::load(profile->gateway,SwapInheritedSecretFd(a.swap_secret_fd),clock.now_ms(),code);
+        if(!credentials)throw Usage("runtime session credentials refused");
+        if(read_swap_account_setup(*credentials,clock,profile->user_id.view(),a.timeout_ms).code!=SwapAccountSetupCode::matching_setup_only)
+            throw Usage("authenticated TM account/main-wallet setup refused");
+        const SwapPrepareBinding prepare_binding{b.allocation,b.authority_domain,fee_inclusive_prepare_mapping_identity()};
+        const SwapSubmissionBinding submission_binding{b.allocation.incarnation,b.authority_domain};
+        const auto signing_binding=swap_signing_connection_binding({prepare_binding,b.signer_public_key});
+        SwapPrepareStore prepared(a.swap_recovery_dir/"prepared",prepare_binding);
+        SwapSubmissionStore submitted(a.swap_recovery_dir/"submitted",submission_binding),signing(a.swap_recovery_dir/"signing-requests",signing_binding);
+        SwapResultWatermark watermark(b.allocation.incarnation);
+        SwapReconcileStore recovery(a.swap_recovery_dir/"results",{b.allocation.incarnation,b.authority_domain},watermark);
+        if(a.initialize_swap_recovery) {
+            if(prepared.create({prepare_binding,first->reading.applied_index,first->reading.state_digest,EffectId{0}})!=SwapPrepareStoreCode::none ||
+                submitted.create({submission_binding,first->reading.applied_index,first->reading.state_digest,EffectId{0}})!=SwapSubmissionCode::none ||
+                signing.create({signing_binding,first->reading.applied_index,first->reading.state_digest,EffectId{0}})!=SwapSubmissionCode::none ||
+                recovery.create({{b.allocation.incarnation,b.authority_domain},first->reading.applied_index,first->reading.state_digest})!=SwapReconcileStoreCode::none)
+                throw Usage("runtime initialization refused; preserve all partial journals");
+        }else if(prepared.recover()!=SwapPrepareStoreCode::none || submitted.recover()!=SwapSubmissionCode::none ||
+            signing.recover()!=SwapSubmissionCode::none || recovery.recover()!=SwapReconcileStoreCode::none)throw Usage("runtime recovery refused");
+        const auto read_started=clock.now_ms();
+        if(!link.request_state(monotonic_ms(nullptr),a.timeout_ms))throw Usage("account admission state read refused");
+        std::optional<LinkOutcome> admission_read;
+        while(!g_stop.load()) {
+            auto outcome=link.pump(monotonic_ms(nullptr));
+            if(outcome.status==LinkStatus::pending){std::this_thread::sleep_for(std::chrono::milliseconds(1));continue;}
+            if(outcome.status==LinkStatus::done)admission_read=std::move(outcome);
+            break;
+        }
+        if(!admission_read || admission_read->request!=LinkRequest::state ||
+            admission_read->reading.authority_domain!=b.authority_domain ||
+            admission_read->reading.applied_index<std::max({watermark.index(),prepared.latest().committed_index,submitted.latest().committed_index}) ||
+            !swap_account_review_matches(*review,b,profile->user_id.view(),link.state().spot_swap))
+            throw Usage("account admission committed read refused");
+        const auto read_received=clock.now_ms();
+        const bool recovery_only=link.state().spot_swap.pending.phase!=swap::Phase::none ||
+            submitted.latest().phase!=SwapSubmissionPhase::idle || prepared.latest().phase!=SwapPreparePhase::idle;
+        SwapAccountStartupAdmission admission{*review,*history,link.state().spot_swap,
+            {b.allocation.incarnation,review->document_digest,admission_read->reading.state_digest,
+             static_cast<std::uint64_t>(admission_read->reading.applied_index),read_started,read_received},recovery_only};
+        if(!recovery_only && !read_swap_reviewed_balance(*credentials,clock,admission,a.timeout_ms))
+            throw Usage("live balance differs from reviewed funding and attributed outside activity, or review expired");
+        SwapProductionGateway gateway(link,recovery,prepared,submitted,signing,*credentials,clock,*profile,
+            {prepare_binding,CallerId{a.caller_id},start.first_sequence,reserved,a.timeout_ms,a.state_interval_ms,recovery_only},admission);
+        auto& loop=gateway.runtime();
+        while(!g_stop.load(std::memory_order_relaxed) && !loop.stopped()) {
+            if(!recovery_only && !swap_account_review_current(*review,clock.now_ms()))throw Usage("account review expired; runtime stopped");
+            loop.step(monotonic_ms(nullptr),clock.now_ms());
+            if(loop.next_sequence()+kReserve/2>=reserved) {
+                const auto next=reserved+kReserve;
+                if(const auto error=extend_reservation(a.state_file,a.incarnation,start.generation,next);!error.empty())throw std::runtime_error(error);
+                reserved=next;loop.extend_sequence_limit(reserved);
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        write_metrics(a.metrics_textfile,"velocita_swap_runtime_stopped 1\nvelocita_swap_runtime_status "+std::to_string(static_cast<int>(loop.status()))+"\nvelocita_swap_runtime_cause "+std::to_string(static_cast<int>(loop.cause()))+"\n");
+        return loop.status()==SwapGatewayRuntimeStatus::complete?0:2;
+    }
+#endif
+    if (a.execution_contract == "exact-input-swap") {
+        const auto& state = link.state();
+        if (!swap_state_bindings_valid(state) || !state.spot_swap.initialized ||
+            !swap_catalog_matches(state.spot_swap.opening.binding, catalog.catalog) ||
+            state.spot_swap.opening.binding.incarnation != sha256_digest(a.incarnation) ||
+            (a.row && *a.row != std::array<std::uint64_t,5>{2,20,2,1,1}))
+            throw Usage("swap gateway requires matching operator-funded SOL paper state and incarnation");
+        const SwapReconcileStoreBinding binding{sha256_digest(a.incarnation), first->reading.authority_domain};
+        SwapResultWatermark watermark(binding.incarnation);
+        SwapReconcileStore recovery(a.swap_recovery_dir, binding, watermark);
+        open_swap_recovery(a, state.spot_swap, first->reading, recovery);
+        SwapPaperGateway loop(link, CallerId{a.caller_id}, start.first_sequence, reserved,
+            {swap::QuoteAtoms{*a.swap_paper_price}, static_cast<std::uint32_t>(a.buy_fee_bps * 100)},
+            sha256_digest(a.incarnation), a.timeout_ms, a.state_interval_ms, recovery);
+        std::cout << "READY gateway venue=paper execution_contract=exact-input-swap engineering_only=1 fixed_price_micros="
+                  << *a.swap_paper_price << std::endl;
+        Tick last_write = 0;
+        while (!g_stop.load(std::memory_order_relaxed) && !loop.stopped()) {
+            const auto now = monotonic_ms(nullptr);
+            const auto wall = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            if (wall < 0) throw Usage("invalid wall clock");
+            loop.step(now, static_cast<std::uint64_t>(wall));
+            if (loop.next_sequence() + kReserve / 2 >= reserved) {
+                const auto next = reserved + kReserve;
+                if (const auto error = extend_reservation(a.state_file, a.incarnation, start.generation, next); !error.empty())
+                    throw std::runtime_error("reservation: " + error);
+                reserved = next; loop.extend_sequence_limit(reserved);
+            }
+            if (now - last_write >= 500) {
+                const auto& swap = link.state().spot_swap;
+                write_metrics(a.metrics_textfile, "velocita_swap_paper_gateway_stopped " + std::to_string(loop.stopped()) +
+                    "\nvelocita_swap_paper_settlements " + std::to_string(swap.settlement_count) +
+                    "\nvelocita_swap_paper_reserved_quote_atoms " + std::to_string(swap.reserved_quote.value()) + "\n");
+                last_write = now;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        write_metrics(a.metrics_textfile, "velocita_swap_paper_gateway_stopped 1\n");
+        std::cout << "STOPPED swap paper gateway; persisted holds remain in Raft" << std::endl;
+        return loop.stopped() ? 2 : 0;
+    }
     std::array<std::uint64_t, 5> key{};
     if (a.row) {
         key = *a.row;
@@ -517,15 +736,13 @@ int run(const Arguments& a) {
         if (now >= last_write + 500) {
             write_metrics(a.metrics_textfile, render_gateway_metrics(loop.metrics()));
             if (!a.paper_report_file.empty())
-                write_metrics(a.paper_report_file,
-                              paper::render_paper_report(*venue.paper, row.account_id,
-                                                         static_cast<std::uint32_t>(a.buy_fee_bps),
-                                                         static_cast<std::uint32_t>(a.sell_fee_bps), wall_seconds(nullptr)));
+                write_metrics(a.paper_report_file,paper::render_paper_report(*venue.paper,row.account_id,
+                    static_cast<std::uint32_t>(a.buy_fee_bps),static_cast<std::uint32_t>(a.sell_fee_bps),wall_seconds(nullptr)));
             last_write = now;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    write_metrics(a.metrics_textfile, render_gateway_metrics(loop.metrics()));
+    write_metrics(a.metrics_textfile,render_gateway_metrics(loop.metrics()));
     std::cout << "STOPPED gateway" << std::endl;
     return 0;
 }

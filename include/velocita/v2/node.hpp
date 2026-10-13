@@ -133,6 +133,7 @@ private:
     std::vector<std::byte> outbound_;
     NodeCounters counters_{};
     std::optional<std::uint64_t> gateway_caller_;
+    std::optional<std::uint64_t> signer_caller_;
     struct PendingGatewayAuthority {
         std::int32_t key_id{};
         AuthorityBarrier barrier{};
@@ -140,6 +141,8 @@ private:
         int waited_ms{};
     };
     std::optional<PendingGatewayAuthority> gateway_authority_;
+    std::optional<PendingGatewayAuthority> gateway_swap_authority_;
+    void service_swap_authority(int elapsed_ms);
     std::vector<std::byte> snapshot_;
     std::vector<std::byte> gateway_body_;
     bool failed_{};

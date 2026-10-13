@@ -1944,15 +1944,19 @@ void test_corruption_of_acknowledged_history_fails_closed(
         }
 
         if (cut < data_end) {
+            const auto damaged = directory_image(dir);
             std::string reason;
             try { Cluster restarted(dir, 1, 0xAB, true); }
             catch (const std::runtime_error& error) { reason = error.what(); }
             require(!reason.empty(),
                     "lost acknowledged WAL history was accepted at cut " +
                         std::to_string(cut));
-            require(reason.find("committed WAL history is missing") != std::string::npos,
+            require(reason.find("committed WAL history is missing") != std::string::npos ||
+                    reason == "nonzero partial WAL block",
                     "recovery refused at cut " + std::to_string(cut) +
                         " without naming the missing committed history: " + reason);
+            require(directory_image(dir) == damaged,
+                    "refused damaged WAL recovery must preserve every existing byte");
             ++recovered_partial;
             continue;
         }
@@ -2763,6 +2767,81 @@ void test_old_term_marker_waits_for_current_term_control(const std::filesystem::
     cluster.settle();
 }
 
+void test_leader_read_barrier_quorum_and_replay(const std::filesystem::path& root) {
+    Cluster cluster(root, 3);
+    auto& leader = cluster.elect();
+    const auto before = leader.status();
+    cluster.partitioned.insert(before.node_id);
+    require(leader.ensure_current_term_applied() == ProposeStatus::persistence_busy,
+            "read barrier cannot admit before quorum commitment");
+    const auto marker = leader.status().current_index;
+    require(marker == before.current_index + 1 && leader.reserved_result_count() == 0 &&
+            leader.status().retained_protected == before.retained_protected + 1,
+            "read barrier appends one protected record without result reservation");
+    for (unsigned n=0; n<50; ++n) {
+        leader.flush_durability();
+        require(leader.ensure_current_term_applied() == ProposeStatus::persistence_busy,
+                "isolated read barrier stays uncommitted");
+    }
+    require(leader.status().current_index == marker && leader.status().applied_index == before.applied_index &&
+            leader.status().state_digest == before.state_digest && !leader.take_committed_result(),
+            "read retries neither append duplicates nor change state");
+    cluster.partitioned.clear();
+    cluster.settle(100);
+    require(leader.ensure_current_term_applied() == ProposeStatus::admitted &&
+            leader.status().applied_index == marker && leader.status().state_digest == before.state_digest &&
+            !leader.take_committed_result() && !leader.take_authority_proof() && !leader.take_swap_authority_proof(),
+            "committed read barrier changes only replication coordinates");
+    for (const auto& replica:cluster.nodes)
+        require(replica->status().retained_protected == 1 && replica->reserved_result_count() == 0 &&
+                replica->ready_result_count() == 0,"followers retain read marker in protected capacity without results");
+    for (unsigned n=0; n<50; ++n)
+        require(leader.ensure_current_term_applied() == ProposeStatus::admitted && leader.status().current_index == marker,
+                "current-term applied state reuses barrier without log growth");
+    for (const auto id:cluster.members) cluster.restart(id);
+    auto& next = cluster.elect();
+    require(next.status().term > before.term && next.ensure_current_term_applied() == ProposeStatus::persistence_busy,
+            "new term cannot reuse prior-term read barrier");
+    cluster.settle(100);
+    require(next.ensure_current_term_applied() == ProposeStatus::admitted && next.status().current_index == marker+1,
+            "new term commits exactly one new read barrier");
+    for (const auto id:cluster.members)
+        require(identity_test::complete_compaction(cluster.node(id)) == static_cast<std::uint64_t>(marker+1),
+                "read-barrier-ended snapshot compacts");
+    require(next.ensure_current_term_applied() == ProposeStatus::admitted && next.status().current_index == marker+1,
+            "compacted current-term snapshot satisfies read barrier");
+    for (const auto id:cluster.members) {
+        cluster.restart(id);
+        require(cluster.node(id).status().applied_index == marker+1 &&
+                cluster.node(id).status().state_digest == before.state_digest && !cluster.node(id).take_committed_result(),
+                "read-barrier snapshot recovery preserves economic state");
+    }
+}
+
+void test_leader_read_barrier_drains_old_authority(const std::filesystem::path& root) {
+    Cluster cluster(root,3);
+    auto& old = cluster.elect();
+    const auto before = old.status();
+    const auto marker = old.propose_authority_barrier(authority_request());
+    require(marker.status == ProposeStatus::admitted,"old authority marker admitted for read drain");
+    old.flush_durability();
+    while (auto message=identity_test::take_outbound_message(old))
+        identity_test::deliver_peer(cluster.node(message->recipient_id),*message,old.static_identity());
+    for (auto& node:cluster.nodes) node->flush_durability();
+    for (const auto id:cluster.members) cluster.restart(id);
+    auto& next=cluster.elect();
+    require(next.status().term > before.term && next.status().applied_index < marker.index &&
+            next.authority_drain_index() == marker.index,"old term authority requires commitment drain");
+    require(next.ensure_current_term_applied() == ProposeStatus::persistence_busy,
+            "read marker admitted despite old authority drain");
+    cluster.settle(100);
+    require(next.ensure_current_term_applied() == ProposeStatus::admitted &&
+            next.status().applied_index == marker.index+1 && next.authority_drain_index() == 0 &&
+            next.status().state_digest == before.state_digest && !next.take_committed_result() &&
+            !next.take_authority_proof() && !next.take_swap_authority_proof(),
+            "read marker drains old authority without granting permission or economic mutation");
+}
+
 void test_authority_pending_retry_is_bounded(const std::filesystem::path& root) {
     Cluster cluster(root, 3, 0xAB);
     auto& leader = cluster.elect();
@@ -2846,7 +2925,7 @@ void test_marker_domain_and_type_refusal_preserves_history(const std::filesystem
     auto valid = marker_entry(1);
     for (int mutation = 0; mutation < 4; ++mutation) {
         auto bad = valid;
-        if (mutation == 0) bad.type = 102;
+        if (mutation == 0) bad.type = 103;
         if (mutation == 1) bad.type = RAFT_LOGTYPE_NORMAL;
         if (mutation == 2) bad.payload.back() ^= std::byte{1};
         if (mutation == 3) {
@@ -3366,7 +3445,11 @@ int main(int argc, char** argv) {
         };
 
         const auto corrections = [&](const std::string& name) {
-            if (name == "authority-noop")
+            if (name == "leader-read-quorum")
+                test_leader_read_barrier_quorum_and_replay(fresh("leader-read-quorum"));
+            else if (name == "leader-read-drain")
+                test_leader_read_barrier_drains_old_authority(fresh("leader-read-drain"));
+            else if (name == "authority-noop")
                 test_authority_marker_is_not_an_economic_command(fresh("authority-noop"));
             else if (name == "authority-old-term")
                 test_old_term_marker_waits_for_current_term_control(fresh("authority-old-term"));
@@ -3475,6 +3558,8 @@ int main(int argc, char** argv) {
             corrections(name);
 
         test_only_committed_commands_invoke_the_reducer(fresh("committed-only"));
+        test_leader_read_barrier_quorum_and_replay(fresh("leader-read-quorum"));
+        test_leader_read_barrier_drains_old_authority(fresh("leader-read-drain"));
         test_authority_marker_is_not_an_economic_command(fresh("authority-noop"));
         test_old_term_marker_waits_for_current_term_control(fresh("authority-old-term"));
         test_authority_pending_retry_is_bounded(fresh("authority-retry"));

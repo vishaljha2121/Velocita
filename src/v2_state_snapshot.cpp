@@ -1,6 +1,7 @@
 #include "velocita/v2/state_snapshot.hpp"
 
 #include "velocita/v2/digest.hpp"
+#include "velocita/v2/swap_kernel.hpp"
 
 #include <algorithm>
 #include <array>
@@ -366,6 +367,7 @@ private:
 }
 
 [[nodiscard]] bool valid_state(const TradingState& state) noexcept {
+    if (!swap_state_bindings_valid(state)) return false;
     if (!known(state.strategy_mode) || state.policy_count > state.policies.size() ||
         state.source_count > state.sources.size() ||
         state.source_event_count > state.source_events.size() ||
@@ -788,7 +790,7 @@ private:
 }
 
 [[nodiscard]] std::size_t payload_size(const TradingState& state) noexcept {
-    auto size = kStateSnapshotEmptyPayloadBytes;
+    auto size = kStateSnapshotEmptyPayloadBytes + (state.spot_swap.initialized ? swap::max_state_bytes - 1 : 0);
     for (std::size_t index = 0; index < state.policy_count; ++index) {
         size += kStateSnapshotPolicyFixedBytes +
                 state.policies[index].artifact.rule_count *
@@ -1160,6 +1162,11 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
         writer.integral(static_cast<std::uint8_t>(effect.operation));
     }
     writer.digest(state.execution_catalog_root);
+    std::array<std::byte, swap::max_state_bytes> bytes{};
+    const auto encoded = swap::encode_state(state.spot_swap, bytes);
+    writer.integral(static_cast<std::uint16_t>(encoded.size));
+    for (const auto byte : std::span(bytes).first(encoded.size))
+        writer.integral(std::to_integer<std::uint8_t>(byte));
 }
 
 [[nodiscard]] PolicyRecord read_policy(Reader& reader) noexcept {
@@ -1628,6 +1635,12 @@ void write_payload(Writer& writer, const TradingState& state) noexcept {
             static_cast<EffectOperation>(reader.integral<std::uint8_t>());
     }
     state.execution_catalog_root = reader.digest();
+    const auto size = reader.integral<std::uint16_t>();
+    if (size > swap::max_state_bytes) return false;
+    std::array<std::byte, swap::max_state_bytes> bytes{};
+    for (std::size_t i = 0; i < size; ++i)
+        bytes[i] = static_cast<std::byte>(reader.integral<std::uint8_t>());
+    if (swap::decode_state(std::span(bytes).first(size), state.spot_swap) != swap::CodecError::none) return false;
     return reader.finished() && valid_state(state);
 }
 

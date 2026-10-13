@@ -28,11 +28,12 @@ enum class IngressRefusal : std::uint8_t {
     busy = 67,
     not_gateway_caller = 68,
     authority_lost = 69,
+    signer_read_only = 70,
 };
 
 enum class ResponseKind : std::uint8_t {
     admitted = 1, refused = 2, committed = 3,
-    gateway_refused = 4, state_chunk = 5, authority_granted = 6,
+    gateway_refused = 4, state_chunk = 5, authority_granted = 6, swap_authority_granted = 7,
 };
 
 struct ResponseCorrelation {
@@ -77,7 +78,7 @@ struct EncodeNodeProtocolResult {
 [[nodiscard]] NodeProtocolError decode_response(
     std::span<const std::byte> input, NodeResponse& destination) noexcept;
 
-enum class GatewayRequestKind : std::uint8_t { state_read = 0x10, authority = 0x11 };
+enum class GatewayRequestKind : std::uint8_t { state_read = 0x10, authority = 0x11, swap_authority = 0x12 };
 inline constexpr std::uint8_t kGatewayRequestVersion = 1;
 inline constexpr std::size_t kGatewayRequestHeaderBytes = 26;
 inline constexpr std::size_t kGatewayStateReadBytes = kGatewayRequestHeaderBytes;
@@ -137,6 +138,9 @@ struct StateChunkView {
 };
 
 inline constexpr std::size_t kResponseAuthorityGrantedBytes = 478;
+inline constexpr std::size_t kResponseSwapAuthorityGrantedBytes=255;
+[[nodiscard]] EncodeNodeProtocolResult encode_swap_authority_granted(const ResponseCorrelation&,const SwapAuthorityProofView&,std::span<std::byte>)noexcept;
+[[nodiscard]] NodeProtocolError decode_swap_authority_granted(std::span<const std::byte>,ResponseCorrelation&,SwapAuthorityProofView&)noexcept;
 static_assert(kResponseAuthorityGrantedBytes == 41 + kAuthorityBarrierBytes + kOrderEffectPayloadBytes + 32 + 8 + 8 + 4 + 8 * 4 + 1);
 
 [[nodiscard]] EncodeNodeProtocolResult encode_gateway_refusal(
