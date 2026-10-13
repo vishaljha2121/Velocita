@@ -113,7 +113,10 @@ int signer_worker(const std::filesystem::path& root,unsigned epoch,int fd){
     SwapSignerSession session(link,store,*key,config,clock);swap_signer::Server server;
     require(server.listen(root/"signer.sock",::geteuid()),"signer protected Unix socket listens");
     while(!std::filesystem::exists(root/"stop-signer")){
-        const auto before=key->signature_attempts();(void)server.serve_once(session,100);
+        // serve_once bounds the entire authenticated request, including Raft
+        // durability, not just the idle accept poll. Keep a finite two-second
+        // fixture budget inside the client's ten-second and worker bounds.
+        const auto before=key->signature_attempts();(void)server.serve_once(session,2000);
         if(key->signature_attempts()>before)journal_line(root,"signature");
     }
     return 0;
