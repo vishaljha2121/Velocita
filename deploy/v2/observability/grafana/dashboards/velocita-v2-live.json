@@ -832,7 +832,7 @@
   },
   {
    "type": "row",
-   "title": "Live position entries / exits \u2014 confirmed settlement feed required",
+   "title": "Live entries / exits \u2014 authenticated Raft settlement records",
    "id": 14,
    "collapsed": false,
    "gridPos": {
@@ -851,16 +851,16 @@
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "The currently deployed gateway does not export economic settlement events. No data here must not be interpreted as proof of no trades.",
+   "description": "Optional authenticated settlement snapshot. Missing or invalid data never means zero trades or zero balances.",
    "gridPos": {
     "h": 4,
-    "w": 24,
+    "w": 8,
     "x": 0,
     "y": 19
    },
    "targets": [
     {
-     "expr": "velocita_live_settlement_feed_ready{run=\"$live_run\"} or on() vector(0)",
+     "expr": "(velocita_live_settlement_feed_status{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
      "legendFormat": "",
      "refId": "A",
      "instant": true
@@ -886,12 +886,20 @@
        "type": "value",
        "options": {
         "0": {
-         "text": "NOT CONNECTED \u2014 fill chart pending",
+         "text": "NOT CONNECTED",
          "color": "orange"
         },
         "1": {
-         "text": "CONNECTED",
+         "text": "CURRENT",
          "color": "green"
+        },
+        "2": {
+         "text": "STALE SNAPSHOT",
+         "color": "orange"
+        },
+        "3": {
+         "text": "INVALID / CONFLICT",
+         "color": "red"
         }
        }
       }
@@ -917,14 +925,137 @@
    }
   },
   {
-   "type": "timeseries",
-   "title": "Live SOL entries / exits \u2014 effective settled price",
+   "type": "stat",
+   "title": "Settlement snapshot age",
    "id": 16,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "Awaiting the confirmed-settlement event exporter. Green points will represent confirmed buys; red points confirmed sells. Effective entry price = total USDC debited / net SOL received; effective exit price = net USDC received / SOL debited. A sell can be a partial reduction, not a full close. Quotes, deposits and order submissions are excluded. Do not infer fills from an empty chart while telemetry is not connected.",
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 8,
+    "x": 8,
+    "y": 19
+   },
+   "targets": [
+    {
+     "expr": "time() - velocita_live_settlement_observed_seconds{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 45
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Settlement committed index",
+   "id": 17,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 8,
+    "x": 16,
+    "y": 19
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_settlement_applied_index{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Live SOL entries / exits \u2014 effective settled price",
+   "id": 18,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Bounded run history: at most 16 finalized successful effects; the kernel stops at capacity. Green buy / red sell; a sell may only reduce a position. X-axis is FIRST CONFIRMED OBSERVATION by this collector, persisted across restarts, not chain execution time. One instant-table row per effect prevents repeated scrape markers. Buy = total USDC debit / net SOL credit; sell = net USDC credit / SOL debit. No quote, pending order or deposit is a fill. Source age is shown above; these are ledger balances, not continuous wallet polls.",
    "gridPos": {
     "h": 8,
     "w": 24,
@@ -933,14 +1064,20 @@
    },
    "targets": [
     {
-     "expr": "velocita_live_fill_effective_price_usdc_per_sol{run=\"$live_run\",side=\"buy\"}",
+     "expr": "max by (effect, side, first_observed_ms, quantity_sol, quote_usdc, fee_usdc) (velocita_live_fill_effective_price_usdc_per_sol{run=\"$live_run\",side=\"buy\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
      "legendFormat": "Entry / buy",
-     "refId": "A"
+     "refId": "A",
+     "instant": true,
+     "range": false,
+     "format": "table"
     },
     {
-     "expr": "velocita_live_fill_effective_price_usdc_per_sol{run=\"$live_run\",side=\"sell\"}",
+     "expr": "max by (effect, side, first_observed_ms, quantity_sol, quote_usdc, fee_usdc) (velocita_live_fill_effective_price_usdc_per_sol{run=\"$live_run\",side=\"sell\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
      "legendFormat": "Exit / sell",
-     "refId": "B"
+     "refId": "B",
+     "instant": true,
+     "range": false,
+     "format": "table"
     }
    ],
    "fieldConfig": {
@@ -1031,25 +1168,561 @@
      "mode": "multi",
      "sort": "desc"
     }
+   },
+   "transformations": [
+    {
+     "id": "organize",
+     "filter": {
+      "id": "byRefId",
+      "options": "A"
+     },
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "effect": true,
+       "side": true,
+       "quantity_sol": true,
+       "quote_usdc": true,
+       "fee_usdc": true,
+       "__name__": true
+      },
+      "indexByName": {
+       "first_observed_ms": 0,
+       "Value": 1,
+       "Value #A": 1
+      },
+      "renameByName": {
+       "first_observed_ms": "First confirmed observation",
+       "Value": "Entry / buy",
+       "Value #A": "Entry / buy"
+      }
+     }
+    },
+    {
+     "id": "organize",
+     "filter": {
+      "id": "byRefId",
+      "options": "B"
+     },
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "effect": true,
+       "side": true,
+       "quantity_sol": true,
+       "quote_usdc": true,
+       "fee_usdc": true,
+       "__name__": true
+      },
+      "indexByName": {
+       "first_observed_ms": 0,
+       "Value": 1,
+       "Value #B": 1
+      },
+      "renameByName": {
+       "first_observed_ms": "First confirmed observation",
+       "Value": "Exit / sell",
+       "Value #B": "Exit / sell"
+      }
+     }
+    },
+    {
+     "id": "convertFieldType",
+     "options": {
+      "conversions": [
+       {
+        "targetField": "first_observed_ms",
+        "destinationType": "number"
+       }
+      ]
+     }
+    },
+    {
+     "id": "convertFieldType",
+     "options": {
+      "conversions": [
+       {
+        "targetField": "first_observed_ms",
+        "destinationType": "time"
+       }
+      ]
+     }
+    },
+    {
+     "id": "sortBy",
+     "options": {
+      "sort": [
+       {
+        "field": "First confirmed observation"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": 19,
+   "type": "table",
+   "title": "Retained confirmed fills \u2014 first-observed time, quantities and explicit fees",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 31,
+    "w": 24,
+    "h": 7
+   },
+   "description": "All successful effects retained for this bounded run, at most 16; no eviction. Effective price already incorporates actual net debit/credit; explicit USDC fee is informational and must not be added twice. Initial and externally deposited holdings are not trade entries.",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max by (effect, side, first_observed_ms, quantity_sol, quote_usdc, fee_usdc) (velocita_live_fill_effective_price_usdc_per_sol{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "instant": true,
+     "range": false,
+     "format": "table"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "__name__": true
+      },
+      "indexByName": {
+       "first_observed_ms": 0,
+       "effect": 1,
+       "side": 2,
+       "quantity_sol": 3,
+       "quote_usdc": 4,
+       "fee_usdc": 5,
+       "Value": 6
+      },
+      "renameByName": {
+       "first_observed_ms": "First confirmed observation",
+       "effect": "Effect",
+       "side": "Side",
+       "quantity_sol": "Net SOL quantity",
+       "quote_usdc": "USDC debit / receipt",
+       "fee_usdc": "Explicit fee USDC",
+       "Value": "Effective USDC/SOL"
+      }
+     }
+    },
+    {
+     "id": "convertFieldType",
+     "options": {
+      "conversions": [
+       {
+        "targetField": "first_observed_ms",
+        "destinationType": "number"
+       },
+       {
+        "targetField": "quantity_sol",
+        "destinationType": "number"
+       },
+       {
+        "targetField": "quote_usdc",
+        "destinationType": "number"
+       },
+       {
+        "targetField": "fee_usdc",
+        "destinationType": "number"
+       }
+      ]
+     }
+    },
+    {
+     "id": "convertFieldType",
+     "options": {
+      "conversions": [
+       {
+        "targetField": "first_observed_ms",
+        "destinationType": "time"
+       }
+      ]
+     }
+    },
+    {
+     "id": "sortBy",
+     "options": {
+      "sort": [
+       {
+        "field": "First confirmed observation",
+        "desc": true
+       }
+      ]
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "decimals": 9
+    },
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Raft ledger USDC",
+   "id": 20,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 0,
+    "y": 38
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_settled_usdc{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix: USDC",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 6
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Raft ledger SOL",
+   "id": 21,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 6,
+    "y": 38
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_settled_sol{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix: SOL",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 9
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Ledger explicit fees",
+   "id": 22,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 12,
+    "y": 38
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_settled_fees_usdc{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix: USDC",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 6
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Ledger realized P&L",
+   "id": 23,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Realized only, from the authenticated ledger and its reviewed opening cost basis. Not marked-to-market equity; does not value open SOL.",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 18,
+    "y": 38
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_settled_realized_pnl_usdc{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix: USDC",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 6
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "SOL position \u2014 authenticated ledger snapshots",
+   "id": 24,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Last observed authenticated Raft balance. Snapshot age above distinguishes held stale state from fresh accounting. External deposits require reconciliation; collector does not poll TM.",
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 42
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_settled_sol{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "Ledger SOL",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix: SOL",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "USDC balance \u2014 authenticated ledger snapshots",
+   "id": 25,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Last observed ledger quote balance, not a continuously polled venue wallet.",
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 42
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_settled_usdc{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "Ledger USDC",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix: USDC",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
    }
   },
   {
    "type": "row",
    "title": "Order lifecycle \u2014 durable journal evidence",
-   "id": 17,
+   "id": 26,
    "collapsed": false,
    "gridPos": {
     "h": 1,
     "w": 24,
     "x": 0,
-    "y": 31
+    "y": 50
    },
    "panels": []
   },
   {
    "type": "stat",
    "title": "Quote preparation",
-   "id": 18,
+   "id": 27,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1059,7 +1732,7 @@
     "h": 4,
     "w": 8,
     "x": 0,
-    "y": 32
+    "y": 51
    },
    "targets": [
     {
@@ -1126,7 +1799,7 @@
   {
    "type": "stat",
    "title": "Protected signing",
-   "id": 19,
+   "id": 28,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1136,7 +1809,7 @@
     "h": 4,
     "w": 8,
     "x": 8,
-    "y": 32
+    "y": 51
    },
    "targets": [
     {
@@ -1203,7 +1876,7 @@
   {
    "type": "stat",
    "title": "Venue submission",
-   "id": 20,
+   "id": 29,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1213,7 +1886,7 @@
     "h": 4,
     "w": 8,
     "x": 16,
-    "y": 32
+    "y": 51
    },
    "targets": [
     {
@@ -1280,7 +1953,7 @@
   {
    "type": "stat",
    "title": "Latest effect ID",
-   "id": 21,
+   "id": 30,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1290,7 +1963,7 @@
     "h": 4,
     "w": 6,
     "x": 0,
-    "y": 36
+    "y": 55
    },
    "targets": [
     {
@@ -1340,7 +2013,7 @@
   {
    "type": "stat",
    "title": "Submission journal committed index",
-   "id": 22,
+   "id": 31,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1350,7 +2023,7 @@
     "h": 4,
     "w": 6,
     "x": 6,
-    "y": 36
+    "y": 55
    },
    "targets": [
     {
@@ -1400,7 +2073,7 @@
   {
    "type": "stat",
    "title": "Gateway exit status",
-   "id": 23,
+   "id": 32,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1410,7 +2083,7 @@
     "h": 4,
     "w": 6,
     "x": 12,
-    "y": 36
+    "y": 55
    },
    "targets": [
     {
@@ -1463,7 +2136,7 @@
   {
    "type": "stat",
    "title": "Signer exit status",
-   "id": 24,
+   "id": 33,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1473,7 +2146,7 @@
     "h": 4,
     "w": 6,
     "x": 18,
-    "y": 36
+    "y": 55
    },
    "targets": [
     {
@@ -1526,7 +2199,7 @@
   {
    "type": "timeseries",
    "title": "Durable lifecycle phases",
-   "id": 25,
+   "id": 34,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1536,7 +2209,7 @@
     "h": 8,
     "w": 16,
     "x": 0,
-    "y": 40
+    "y": 59
    },
    "targets": [
     {
@@ -1590,7 +2263,7 @@
   {
    "type": "timeseries",
    "title": "Automatic service restarts",
-   "id": 26,
+   "id": 35,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1600,7 +2273,7 @@
     "h": 8,
     "w": 8,
     "x": 16,
-    "y": 40
+    "y": 59
    },
    "targets": [
     {
@@ -1644,20 +2317,20 @@
   {
    "type": "row",
    "title": "Costs, limits and settlement interpretation",
-   "id": 27,
+   "id": 36,
    "collapsed": false,
    "gridPos": {
     "h": 1,
     "w": 24,
     "x": 0,
-    "y": 48
+    "y": 67
    },
    "panels": []
   },
   {
    "type": "stat",
    "title": "Configured maximum buy output deduction",
-   "id": 28,
+   "id": 37,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1667,7 +2340,7 @@
     "h": 4,
     "w": 12,
     "x": 0,
-    "y": 49
+    "y": 68
    },
    "targets": [
     {
@@ -1717,7 +2390,7 @@
   {
    "type": "stat",
    "title": "Last account evidence time",
-   "id": 29,
+   "id": 38,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1727,7 +2400,7 @@
     "h": 4,
     "w": 12,
     "x": 12,
-    "y": 49
+    "y": 68
    },
    "targets": [
     {
@@ -1774,18 +2447,18 @@
    }
   },
   {
-   "id": 30,
+   "id": 39,
    "type": "text",
    "title": "How to read this supervised MVP",
    "gridPos": {
     "x": 0,
-    "y": 53,
+    "y": 72,
     "w": 24,
     "h": 9
    },
    "options": {
     "mode": "markdown",
-    "content": "**Scope:** one separately authorized $1 total-debit SOL buy; $0.002 explicit fee cap; $0.50 realized-loss limit. No automatic strategy, retries, second trade or sell. The loss limit is not a guaranteed market stop-loss.\n\n**Cost evidence:** 20 bp explicit fee plus an observed 0.000550840 SOL buy-output deduction on the prior owner trade. The configured 0.002039280 SOL maximum is a conservative allowance with zero assumed sponsor credit. These are different quantities; neither establishes future route costs.\n\n**Balances:** last reviewed TM/on-chain account snapshot. The age above advances even while the observer is healthy. Deposits or trades after that timestamp are not reflected until reconciliation refreshes the evidence.\n\n**Settlement:** this view reports durable local stages, not economic settlement. Actual received SOL, final fees, fill price, trade markers and P&L require a verified settlement record. They are deliberately not synthesized from a quote or a submitted transaction. This view does not yet verify economic settlement amounts.\n\n**Expiry:** account review expiry stops this supervised runtime. Preserve all recovery journals; never initialize again to restart. Paper metrics remain on the separate Paper trading tab."
+    "content": "**Scope:** one separately authorized $1 total-debit SOL buy; $0.002 explicit fee cap; $0.50 realized-loss limit. No automatic strategy, retries, second trade or sell. The loss limit is not a guaranteed market stop-loss.\n\n**Cost evidence:** 20 bp explicit fee plus an observed 0.000550840 SOL buy-output deduction on the prior owner trade. The configured 0.002039280 SOL maximum is a conservative allowance with zero assumed sponsor credit. These are different quantities; neither establishes future route costs.\n\n**Balances:** last reviewed TM/on-chain account snapshot. The age above advances even while the observer is healthy. Deposits or trades after that timestamp are not reflected until reconciliation refreshes the evidence.\n\n**Settlement:** finalized successful authenticated Raft records supply net quantities, effective prices and realized ledger P&L. Markers use the collector\u2019s first confirmed observation time, not the exact execution time, and retain all effects for this bounded run (capacity 16). Missing or stale settlement telemetry is explicit. No quote or submission creates a marker.\n\n**Expiry:** account review expiry stops this supervised runtime. Preserve all recovery journals; never initialize again to restart. Paper metrics remain on the separate Paper trading tab."
    }
   }
  ],

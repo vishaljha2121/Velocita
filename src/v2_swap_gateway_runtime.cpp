@@ -56,6 +56,8 @@ void SwapGatewayRuntime::step(Tick now,std::uint64_t event){
         submitting_.reset();signed_.reset();status_=SwapGatewayRuntimeStatus::running;next_read_=0;
         if(s!=SwapSubmissionSessionStatus::needs_reconciliation)stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::state);return;}
     if(resolving_){const auto s=resolving_->poll(now);if(s==SwapSubmissionResolutionStatus::reading_state)return;
+        if(s==SwapSubmissionResolutionStatus::resolved)
+            observation_=SwapGatewayObservation{link_.state().spot_swap,resolving_->result().reading,event};
         resolving_.reset();stop(s==SwapSubmissionResolutionStatus::resolved?SwapGatewayRuntimeStatus::complete:SwapGatewayRuntimeStatus::blocked,
             s==SwapSubmissionResolutionStatus::resolved?SwapGatewayRuntimeCause::none:SwapGatewayRuntimeCause::settlement_unproven);return;}
     if(!link_.busy()){
@@ -82,6 +84,7 @@ void SwapGatewayRuntime::observed(const StateReading& reading,Tick now,std::uint
     const auto& state=link_.state();const auto& s=state.spot_swap;const auto pending=s.pending;
     if(!swap_state_bindings_valid(state) || !s.initialized || s.conflicted || s.opening.binding!=config_.preparation.allocation || event<s.event_time){
         stop(SwapGatewayRuntimeStatus::failed,SwapGatewayRuntimeCause::identity);return;}
+    observation_=SwapGatewayObservation{s,reading,event};
     if(config_.recovery_only && submissions_.latest().phase!=SwapSubmissionPhase::execute_intent &&
        submissions_.latest().phase!=SwapSubmissionPhase::resolved){
         stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::state);return;

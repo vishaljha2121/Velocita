@@ -1,0 +1,192 @@
+[
+  {
+    "panel": "Observer healthy",
+    "parsed": true,
+    "sample_count": 1
+  },
+  {
+    "panel": "Gateway",
+    "parsed": true,
+    "sample_count": 1
+  },
+  {
+    "panel": "Protected signer",
+    "parsed": true,
+    "sample_count": 1
+  },
+  {
+    "panel": "Review current",
+    "parsed": true,
+    "sample_count": 1
+  },
+  {
+    "panel": "Review time remaining",
+    "parsed": true,
+    "sample_count": 1
+  },
+  {
+    "panel": "Cluster trading mode",
+    "parsed": true,
+    "sample_count": 1
+  },
+  {
+    "panel": "Last reviewed USDC",
+    "parsed": true,
+    "sample_count": 1
+  },
+  {
+    "panel": "Last reviewed SOL",
+    "parsed": true,
+    "sample_count": 1
+  },
+  {
+    "panel": "Account evidence age",
+    "parsed": true,
+    "sample_count": 1
+  },
+  {
+    "panel": "Reviewed USDC snapshots",
+    "parsed": true,
+    "sample_count": 1
+  },
+  {
+    "panel": "Reviewed SOL snapshots",
+    "parsed": true,
+    "sample_count": 1
+  },
+  {
+    "panel": "Confirmed-fill telemetry",
+    "parsed": true,
+    "sample_count": 0
+  },
+  {
+    "panel": "Settlement snapshot age",
+    "parsed": true,
+    "sample_count": 0
+  },
+  {
+    "panel": "Settlement committed index",
+    "parsed": true,
+    "sample_count": 0
+  },
+  {
+    "panel": "Live SOL entries / exits \u2014 effective settled price",
+    "parsed": true,
+    "sample_count": 0
+  },
+  {
+    "panel": "Live SOL entries / exits \u2014 effective settled price",
+    "parsed": true,
+    "sample_count": 0
+  },
+  {
+    "panel": "Retained confirmed fills \u2014 first-observed time, quantities and explicit fees",
+    "parsed": true,
+    "sample_count": 0
+  },
+  {
+    "panel": "Raft ledger USDC",
+    "parsed": true,
+    "sample_count": 0
+  },
+  {
+    "panel": "Raft ledger SOL",
+    "parsed": true,
+    "sample_count": 0
+  },
+  {
+    "panel": "Ledger explicit fees",
+    "parsed": true,
+    "sample_count": 0
+  },
+  {
+    "panel": "Ledger realized P&L",
+    "parsed": true,
+    "sample_count": 0
+  },
+  {
+    "panel": "SOL position \u2014 authenticated ledger snapshots",
+    "parsed": true,
+    "sample_count": 0
+  },
+  {
+    "panel": "USDC balance \u2014 authenticated ledger snapshots",
+    "parsed": true,
+    "sample_count": 0
+  },
+  {
+    "panel": "Quote preparation",
+    "parsed": true,
+    "sample_count": 1
+  },
+  {
+    "panel": "Protected signing",
+    "parsed": true,
+    "sample_count": 1
+  },
+  {
+    "panel": "Venue submission",
+    "parsed": true,
+    "sample_count": 1
+  },
+  {
+    "panel": "Latest effect ID",
+    "parsed": true,
+    "sample_count": 1
+  },
+  {
+    "panel": "Submission journal committed index",
+    "parsed": true,
+    "sample_count": 1
+  },
+  {
+    "panel": "Gateway exit status",
+    "parsed": true,
+    "sample_count": 1
+  },
+  {
+    "panel": "Signer exit status",
+    "parsed": true,
+    "sample_count": 1
+  },
+  {
+    "panel": "Durable lifecycle phases",
+    "parsed": true,
+    "sample_count": 1
+  },
+  {
+    "panel": "Durable lifecycle phases",
+    "parsed": true,
+    "sample_count": 1
+  },
+  {
+    "panel": "Durable lifecycle phases",
+    "parsed": true,
+    "sample_count": 1
+  },
+  {
+    "panel": "Durable lifecycle phases",
+    "parsed": true,
+    "sample_count": 1
+  },
+  {
+    "panel": "Automatic service restarts",
+    "parsed": true,
+    "sample_count": 1
+  },
+  {
+    "panel": "Automatic service restarts",
+    "parsed": true,
+    "sample_count": 1
+  },
+  {
+    "panel": "Configured maximum buy output deduction",
+    "parsed": true,
+    "sample_count": 1
+  },
+  {
+    "panel": "Last account evidence time",
+    "parsed": true,
+    "sample_count": 1
+  }
+]

@@ -37,6 +37,19 @@ at 100 bp a side.
 
 ## What must be true before the first real order
 
+**Confirmed-fill wiring and restart review (October13, implementation):** the
+C++ gateway now prepares authenticated committed settlement snapshots; the local
+observer and chart consume net price/quantity/explicit fees and retain first-seen
+times across restarts. Local tests passed (60 focused Python tests, seven C++ runtime drill modes,
+two C++ mutation kills and real Grafana data-transform checks). Owner approved
+the scoped checkpoint and offline NUC/Pi qualification; deployment is pending. No Raft/schema change, service activation or trade.
+The proposal-only `refresh-idle` helper preserves all five pristine journals, but
+cannot renew the expired transaction policy: expiry is part of the protected
+signer journal identity. A separate proposal-only idle policy renewal is tested with native hash parity; no journal replacement or funding reset is permitted by this work.
+The continuous stochastic strategy remains beyond the one-effect/$1 runtime and
+needs a reviewed signal-to-swap bridge and repeated-order recovery/budget controls.
+See [current batch](evidence/live_fill_wiring_2026-10-13/README.md).
+
 **Live observability and cost review (October 13):** the supervised account review
 expired at22:17:27UTC and both services stopped as designed; journals remain idle.
 A dedicated Live trading dashboard and read-only local collector are prepared and

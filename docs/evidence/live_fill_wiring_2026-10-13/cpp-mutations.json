@@ -1,0 +1,14 @@
+[
+  {
+    "mutation": "wrong_debit",
+    "exit": 1,
+    "named_assertion": "confirmed marker uses all-in debit and net receipt",
+    "killed": true
+  },
+  {
+    "mutation": "failed_as_fill",
+    "exit": 1,
+    "named_assertion": "failed settlement never creates marker",
+    "killed": true
+  }
+]

@@ -3,6 +3,7 @@
 #include "v2_gateway_node_tests.cpp"
 #undef main
 #include "velocita/v2/swap_gateway_runtime.hpp"
+#include "velocita/v2/swap_observability.hpp"
 
 namespace {
 struct RuntimePrepare final:SwapPreparePort {
@@ -83,7 +84,41 @@ void runtime_drill(unsigned mode){
     if(mode==5){require(prepare.calls==0 && signer.calls==0 && execute.calls==0 && runtime->status()==SwapGatewayRuntimeStatus::blocked,
         "recovery-only reserved intent cannot prepare sign or execute");return;}
     require(prepare.calls==1,"one create per effect status="+std::to_string(int(runtime->status()))+" cause="+std::to_string(int(runtime->cause())));
-    if(mode==0){require(runtime->status()==SwapGatewayRuntimeStatus::complete && execute.calls==1 && submission->latest().phase==SwapSubmissionPhase::resolved,"joined lifecycle completes once");
+    require(runtime->observation().has_value(),"authenticated snapshot exported");
+    const auto& observation=*runtime->observation();
+    const auto json=render_swap_observation(observation,kIncarnation);
+    require(json && json->find("\"observed_at_ms\":")!=std::string::npos,"snapshot timestamp exported");
+    if(mode!=0)require(json->find("\"settlements\":[]")!=std::string::npos,"unproven orders never become fill markers");
+    auto wrong=kIncarnation;wrong[0]^=std::byte{1};
+    require(!render_swap_observation(observation,wrong),"snapshot rejects foreign incarnation");
+    if(mode==0){
+        require(json->find("\"base_atoms\":10000000")!=std::string::npos &&
+            json->find("\"quote_atoms\":1000000,\"fee_atoms\":2000")!=std::string::npos,
+            "confirmed marker uses all-in debit and net receipt");
+        auto invalid=observation;invalid.state.settlements[0].finalized=false;
+        require(!render_swap_observation(invalid,kIncarnation),"nonfinalized fill rejected");
+        auto sold=observation;
+        swap::Intent exit;exit.binding=opening.binding;exit.effect=EffectId{2};exit.side=Side::sell;
+        exit.base_input=swap::BaseAtoms{5'000'000};exit.min_quote_receive=swap::QuoteAtoms{250'000};
+        exit.fee_cap=swap::QuoteAtoms{1'000};exit.source_time=111;exit.sign_by=20111;exit.kill_epoch=1;exit.executor_generation=1;
+        require(swap::apply(sold.state,exit,swap::Role::strategy,111)==swap::Code::applied,"sell oracle intent");
+        require(swap::apply(sold.state,swap::Prepare{EffectId{2},digest(221),digest(222),1},swap::Role::gateway,112)==swap::Code::applied,"sell oracle prepare");
+        require(swap::apply(sold.state,swap::Attempt{EffectId{2},digest(221)},swap::Role::gateway,113)==swap::Code::applied,"sell oracle attempt");
+        auto failed=sold;
+        swap::Settlement fill;fill.effect=EffectId{2};fill.custody=opening.binding.custody;fill.payload=digest(221);
+        fill.transaction=digest(223);fill.evidence=digest(224);fill.finalized=true;fill.outcome=swap::Outcome::failed_without_charge;
+        require(swap::apply(failed.state,fill,swap::Role::gateway,114)==swap::Code::applied,"failed oracle settled");
+        failed.observed_at_ms=114;
+        const auto failed_json=render_swap_observation(failed,kIncarnation);
+        require(failed_json && failed_json->find("\"effect\":2")==std::string::npos,"failed settlement never creates marker");
+        fill.outcome=swap::Outcome::succeeded;fill.base_debit=swap::BaseAtoms{5'000'000};
+        fill.quote_credit=swap::QuoteAtoms{600'000};fill.fee=swap::QuoteAtoms{1'000};
+        require(swap::apply(sold.state,fill,swap::Role::gateway,114)==swap::Code::applied,"sell oracle settled");
+        sold.observed_at_ms=114;
+        const auto sold_json=render_swap_observation(sold,kIncarnation);
+        require(sold_json && sold_json->find("\"side\":\"sell\",\"base_atoms\":5000000,\"quote_atoms\":600000,\"fee_atoms\":1000")!=std::string::npos,
+            "partial exit uses net receipt not opening mark or gross quote");
+        require(runtime->status()==SwapGatewayRuntimeStatus::complete && execute.calls==1 && submission->latest().phase==SwapSubmissionPhase::resolved,"joined lifecycle completes once");
         c.run_until([&]{return std::all_of(c.nodes.begin(),c.nodes.end(),[](auto& n){return n.second->applied_state().spot_swap.settlement_count==1;});},"all voters settle");
         for(auto& [id,node]:c.nodes)require(node->applied_state().spot_swap.quote.value()==4000000 && node->applied_state().spot_swap.base.value()==10000000 && node->applied_state().spot_swap.reserved_quote.value()==0,"exact final economics replicated");
     }else{
@@ -103,7 +138,10 @@ void runtime_drill(unsigned mode){
         require(prepare.calls==1 && execute.calls==((mode==1 || mode==6)?1u:0u),"restart never repeats ambiguous POST");
         if(mode==1)require(signer.calls==signing_calls && runtime->cause()==SwapGatewayRuntimeCause::settlement_unproven,"restart of sent request only reconciles without signing");
         if(mode==4)require(runtime->cause()==SwapGatewayRuntimeCause::identity,"oversized signed request refused before span construction");
-        if(mode==6){require(runtime->status()==SwapGatewayRuntimeStatus::complete && signer.calls==signing_calls && execute.calls==1 &&
+        if(mode==6){
+            require(runtime->observation() && runtime->observation()->state.settlement_count==1,
+                "delayed recovery exports confirmed fill without resubmission");
+            require(runtime->status()==SwapGatewayRuntimeStatus::complete && signer.calls==signing_calls && execute.calls==1 &&
             submission->latest().phase==SwapSubmissionPhase::resolved,"recovery-only finalized receipt resolves without signing or resubmission");return;}
         const auto& s=c.state_of(c.elect()).spot_swap;require(s.reserved_quote.value()==1000000 && s.quote.value()==5000000 && s.settlement_count==0,"unknown retains full funds and hold");
     }

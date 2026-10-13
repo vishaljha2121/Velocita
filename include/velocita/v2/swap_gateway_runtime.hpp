@@ -35,6 +35,13 @@ struct SwapGatewayRuntimeConfig {
 };
 enum class SwapGatewayRuntimeStatus:std::uint8_t {running,preparing,submitting,resolving,blocked,failed,complete};
 enum class SwapGatewayRuntimeCause:std::uint8_t {none,state,storage,identity,prepare_unknown,signer_refused,settlement_unproven,sequence_limit};
+// A copy of an authenticated committed read, never a quote or a command response.
+// The timestamp is observation time, not the chain execution timestamp.
+struct SwapGatewayObservation {
+    swap::State state{};
+    StateReading reading{};
+    std::uint64_t observed_at_ms{};
+};
 // One bounded effect per run. A completed run does not automatically rearm its
 // one-use signer or start another purchase. No networking runs in Raft apply.
 class SwapGatewayRuntime final {
@@ -48,6 +55,7 @@ public:
     [[nodiscard]] SwapGatewayRuntimeStatus status()const noexcept{return status_;}
     [[nodiscard]] SwapGatewayRuntimeCause cause()const noexcept{return cause_;}
     [[nodiscard]] std::uint64_t next_sequence()const noexcept{return sequence_;}
+    [[nodiscard]] const std::optional<SwapGatewayObservation>& observation()const noexcept{return observation_;}
     [[nodiscard]] bool stopped()const noexcept{return status_==SwapGatewayRuntimeStatus::blocked || status_==SwapGatewayRuntimeStatus::failed || status_==SwapGatewayRuntimeStatus::complete;}
     void extend_sequence_limit(std::uint64_t limit)noexcept{if(limit>config_.sequence_limit)config_.sequence_limit=limit;}
 private:
@@ -68,5 +76,6 @@ private:
     std::uint64_t sequence_{};std::int64_t seen_index_{};Tick next_read_{},last_tick_{};std::uint64_t last_event_{};
     SwapGatewayRuntimeStatus status_{SwapGatewayRuntimeStatus::running};
     SwapGatewayRuntimeCause cause_{SwapGatewayRuntimeCause::none};
+    std::optional<SwapGatewayObservation> observation_;
 };
 }

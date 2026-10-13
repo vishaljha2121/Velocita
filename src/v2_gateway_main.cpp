@@ -6,6 +6,7 @@
 #ifdef VELOCITA_SWAP_RUNTIME_WIRING
 #include "velocita/v2/swap_runtime_production.hpp"
 #include "velocita/v2/swap_transaction_review.hpp"
+#include "velocita/v2/swap_observability.hpp"
 #endif
 #include "velocita/v2/node_files.hpp"
 #include "velocita/v2/paper_venue_store.hpp"
@@ -614,9 +615,29 @@ int run(const Arguments& a) {
             {prepare_binding,CallerId{a.caller_id},start.first_sequence,reserved,a.timeout_ms,a.state_interval_ms,recovery_only},admission,
             std::span(&transaction_review->lookup,1));
         auto& loop=gateway.runtime();
+        std::int64_t published_observation_index{};
+        std::uint64_t published_observation_ms{};
+        bool observation_warning{};
         while(!g_stop.load(std::memory_order_relaxed) && !loop.stopped()) {
             if(!recovery_only && !swap_account_review_current(*review,clock.now_ms()))throw Usage("account review expired; runtime stopped");
             loop.step(monotonic_ms(nullptr),clock.now_ms());
+            // This is off the Raft path. Only publish the runtime's accepted
+            // committed read, never a quote, signing response or mutable pending state.
+            const auto& observation=loop.observation();
+            if(observation && (observation->reading.applied_index!=published_observation_index ||
+                observation->observed_at_ms>=published_observation_ms+1000 || loop.stopped())) {
+                try {
+                    const auto snapshot=render_swap_observation(*observation,a.incarnation);
+                    if(!snapshot)throw std::runtime_error("invalid observation");
+                    write_metrics(a.metrics_textfile.parent_path()/"settlements.json",*snapshot);
+                    observation_warning=false;
+                }catch(const std::exception&) {
+                    if(!observation_warning)std::cerr<<"WARNING confirmed-settlement telemetry unavailable; no execution retry"<<std::endl;
+                    observation_warning=true;
+                }
+                published_observation_index=observation->reading.applied_index;
+                published_observation_ms=observation->observed_at_ms;
+            }
             if(loop.next_sequence()+kReserve/2>=reserved) {
                 const auto next=reserved+kReserve;
                 if(const auto error=extend_reservation(a.state_file,a.incarnation,start.generation,next);!error.empty())throw std::runtime_error(error);

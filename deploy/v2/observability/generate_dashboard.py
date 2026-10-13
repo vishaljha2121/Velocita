@@ -823,22 +823,60 @@ def live():
     series('Reviewed USDC snapshots',[(q('reviewed_usdc'),'Verified snapshot')],0,12,unit='suffix: USDC',description='Only changes when reviewed account history is replaced. Sampling this observer does not refresh the wallet evidence.')
     series('Reviewed SOL snapshots',[(q('reviewed_sol'),'Verified snapshot')],12,12,unit='suffix: SOL',description='No inferred fill amounts, proxy marks or paper balance. See account evidence age.')
     advance(8)
-    row('Live position entries / exits — confirmed settlement feed required')
-    stat('Confirmed-fill telemetry',
-         'velocita_live_settlement_feed_ready{run="$live_run"} or on() vector(0)',0,24,
-         mappings=[{"type":"value","options":{"0":{"text":"NOT CONNECTED — fill chart pending","color":"orange"},"1":{"text":"CONNECTED","color":"green"}}}],
-         description='The currently deployed gateway does not export economic settlement events. No data here must not be interpreted as proof of no trades.')
+    row('Live entries / exits — authenticated Raft settlement records')
+    stat('Confirmed-fill telemetry',q('settlement_feed_status'),0,8,
+         mappings=[{"type":"value","options":{"0":{"text":"NOT CONNECTED","color":"orange"},"1":{"text":"CURRENT","color":"green"},"2":{"text":"STALE SNAPSHOT","color":"orange"},"3":{"text":"INVALID / CONFLICT","color":"red"}}}],
+         description='Optional authenticated settlement snapshot. Missing or invalid data never means zero trades or zero balances.')
+    stat('Settlement snapshot age','time() - velocita_live_settlement_observed_seconds{run="$live_run"}'+fresh,8,8,unit='s',steps=(("green",None),("orange",45)))
+    stat('Settlement committed index',q('settlement_applied_index'),16,8,decimals=0)
     advance(4)
+    event='velocita_live_fill_effective_price_usdc_per_sol'
     series('Live SOL entries / exits — effective settled price',[
-        ('velocita_live_fill_effective_price_usdc_per_sol{run="$live_run",side="buy"}', 'Entry / buy'),
-        ('velocita_live_fill_effective_price_usdc_per_sol{run="$live_run",side="sell"}', 'Exit / sell')],
+        ('max by (effect, side, first_observed_ms, quantity_sol, quote_usdc, fee_usdc) ('+event+'{run="$live_run",side="buy"}'+fresh+')', 'Entry / buy'),
+        ('max by (effect, side, first_observed_ms, quantity_sol, quote_usdc, fee_usdc) ('+event+'{run="$live_run",side="sell"}'+fresh+')', 'Exit / sell')],
         0,24,unit='suffix: USDC/SOL',min0=False,
-        description='Awaiting the confirmed-settlement event exporter. Green points will represent confirmed buys; red points confirmed sells. Effective entry price = total USDC debited / net SOL received; effective exit price = net USDC received / SOL debited. A sell can be a partial reduction, not a full close. Quotes, deposits and order submissions are excluded. Do not infer fills from an empty chart while telemetry is not connected.')
-    for name,color in (('Entry / buy','green'),('Exit / sell','red')):
-        panels[-1]['fieldConfig']['overrides'].append({'matcher':{'id':'byName','options':name},
+        description='Bounded run history: at most 16 finalized successful effects; the kernel stops at capacity. Green buy / red sell; a sell may only reduce a position. X-axis is FIRST CONFIRMED OBSERVATION by this collector, persisted across restarts, not chain execution time. One instant-table row per effect prevents repeated scrape markers. Buy = total USDC debit / net SOL credit; sell = net USDC credit / SOL debit. No quote, pending order or deposit is a fill. Source age is shown above; these are ledger balances, not continuous wallet polls.')
+    chart=panels[-1]
+    for target in chart['targets']:target.update(instant=True,range=False,format='table')
+    chart['transformations']=[
+        {'id':'convertFieldType','options':{'conversions':[{'targetField':'first_observed_ms','destinationType':'number'}]}},
+        {'id':'convertFieldType','options':{'conversions':[{'targetField':'first_observed_ms','destinationType':'time'}]}},
+    ]
+    for ref,name,color in (('A','Entry / buy','green'),('B','Exit / sell','red')):
+        chart['transformations'].append({'id':'organize','filter':{'id':'byRefId','options':ref},'options':{
+            'excludeByName':{k:True for k in ('Time','effect','side','quantity_sol','quote_usdc','fee_usdc','__name__')},
+            'indexByName':{'first_observed_ms':0,'Value':1,'Value #'+ref:1},
+            'renameByName':{'first_observed_ms':'First confirmed observation','Value':name,'Value #'+ref:name}}})
+        chart['fieldConfig']['overrides'].append({'matcher':{'id':'byName','options':name},
             'properties':[{'id':'custom.drawStyle','value':'points'},{'id':'custom.showPoints','value':'always'},
                           {'id':'custom.pointSize','value':9},{'id':'custom.lineWidth','value':0},
                           {'id':'color','value':{'mode':'fixed','fixedColor':color}}]})
+    # Remove scrape Time BEFORE converting the event timestamp: Grafana's legacy
+    # Time matcher also matches every typed time field.
+    chart['transformations']=chart['transformations'][2:]+chart['transformations'][:2]
+    chart['transformations'].append({'id':'sortBy','options':{'sort':[{'field':'First confirmed observation'}]}})
+    advance(8)
+    panels.append({'id':_id(),'type':'table','title':'Retained confirmed fills — first-observed time, quantities and explicit fees',
+        'datasource':DS,'gridPos':{'x':0,'y':_y,'w':24,'h':7},
+        'description':'All successful effects retained for this bounded run, at most 16; no eviction. Effective price already incorporates actual net debit/credit; explicit USDC fee is informational and must not be added twice. Initial and externally deposited holdings are not trade entries.',
+        'targets':[{'refId':'A','expr':'max by (effect, side, first_observed_ms, quantity_sol, quote_usdc, fee_usdc) ('+event+'{run="$live_run"}'+fresh+')','instant':True,'range':False,'format':'table'}],
+        'transformations':[
+            {'id':'convertFieldType','options':{'conversions':[{'targetField':k,'destinationType':'number'} for k in ('first_observed_ms','quantity_sol','quote_usdc','fee_usdc')]}},
+            {'id':'convertFieldType','options':{'conversions':[{'targetField':'first_observed_ms','destinationType':'time'}]}},
+            {'id':'organize','options':{'excludeByName':{'Time':True,'__name__':True},'indexByName':{'first_observed_ms':0,'effect':1,'side':2,'quantity_sol':3,'quote_usdc':4,'fee_usdc':5,'Value':6},
+                'renameByName':{'first_observed_ms':'First confirmed observation','effect':'Effect','side':'Side','quantity_sol':'Net SOL quantity','quote_usdc':'USDC debit / receipt','fee_usdc':'Explicit fee USDC','Value':'Effective USDC/SOL'}}},
+            {'id':'sortBy','options':{'sort':[{'field':'First confirmed observation','desc':True}]}}],
+        'fieldConfig':{'defaults':{'decimals':9},'overrides':[]},'options':{'showHeader':True}})
+    panels[-1]['transformations']=[panels[-1]['transformations'][2],*panels[-1]['transformations'][:2],panels[-1]['transformations'][3]]
+    advance(7)
+    stat('Raft ledger USDC',q('settled_usdc'),0,6,unit='suffix: USDC',decimals=6)
+    stat('Raft ledger SOL',q('settled_sol'),6,6,unit='suffix: SOL',decimals=9)
+    stat('Ledger explicit fees',q('settled_fees_usdc'),12,6,unit='suffix: USDC',decimals=6)
+    stat('Ledger realized P&L',q('settled_realized_pnl_usdc'),18,6,unit='suffix: USDC',decimals=6,
+         description='Realized only, from the authenticated ledger and its reviewed opening cost basis. Not marked-to-market equity; does not value open SOL.')
+    advance(4)
+    series('SOL position — authenticated ledger snapshots',[(q('settled_sol'),'Ledger SOL')],0,12,unit='suffix: SOL',description='Last observed authenticated Raft balance. Snapshot age above distinguishes held stale state from fresh accounting. External deposits require reconciliation; collector does not poll TM.')
+    series('USDC balance — authenticated ledger snapshots',[(q('settled_usdc'),'Ledger USDC')],12,12,unit='suffix: USDC',description='Last observed ledger quote balance, not a continuously polled venue wallet.')
     advance(8)
     row('Order lifecycle — durable journal evidence')
     for i,(key,title) in enumerate([('prepare','Quote preparation'),('protected_signing','Protected signing'),('submission','Venue submission')]):
@@ -860,7 +898,7 @@ def live():
         "**Scope:** one separately authorized $1 total-debit SOL buy; $0.002 explicit fee cap; $0.50 realized-loss limit. No automatic strategy, retries, second trade or sell. The loss limit is not a guaranteed market stop-loss.\n\n"
         "**Cost evidence:** 20 bp explicit fee plus an observed 0.000550840 SOL buy-output deduction on the prior owner trade. The configured 0.002039280 SOL maximum is a conservative allowance with zero assumed sponsor credit. These are different quantities; neither establishes future route costs.\n\n"
         "**Balances:** last reviewed TM/on-chain account snapshot. The age above advances even while the observer is healthy. Deposits or trades after that timestamp are not reflected until reconciliation refreshes the evidence.\n\n"
-        "**Settlement:** this view reports durable local stages, not economic settlement. Actual received SOL, final fees, fill price, trade markers and P&L require a verified settlement record. They are deliberately not synthesized from a quote or a submitted transaction. This view does not yet verify economic settlement amounts.\n\n"
+        "**Settlement:** finalized successful authenticated Raft records supply net quantities, effective prices and realized ledger P&L. Markers use the collector’s first confirmed observation time, not the exact execution time, and retain all effects for this bounded run (capacity 16). Missing or stale settlement telemetry is explicit. No quote or submission creates a marker.\n\n"
         "**Expiry:** account review expiry stops this supervised runtime. Preserve all recovery journals; never initialize again to restart. Paper metrics remain on the separate Paper trading tab."}})
     advance(9)
     name,board=finish(LIVE,'Read-only service status, reviewed account snapshots, durable order progress and cost boundaries.',['live','account','execution'])

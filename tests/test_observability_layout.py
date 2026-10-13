@@ -254,6 +254,45 @@ class DashboardsAreGeneratedAndLoadable(unittest.TestCase):
             generator.main(["generate_dashboard.py", "unused", "--paper-run", 'x"} or vector(1) #'])
         generator._paper_run = None
 
+    def test_live_fill_markers_use_one_instant_row_and_persisted_observation_time(self):
+        live=next(d for d in dashboards().values() if d['uid']=='velocita-v2-live')
+        chart=next(p for p in live['panels'] if p['title']=='Live SOL entries / exits — effective settled price')
+        self.assertEqual(len(chart['targets']),2)
+        for target in chart['targets']:
+            self.assertTrue(target['instant']);self.assertFalse(target['range'])
+            self.assertEqual(target['format'],'table')
+            self.assertIn('first_observed_ms',target['expr'])
+            self.assertIn('velocita_live_observer_up == 1',target['expr'])
+            self.assertNotIn('or vector(0)',target['expr'])
+        converts=[t for t in chart['transformations'] if t['id']=='convertFieldType']
+        self.assertTrue(all(t['id']=='organize' for t in chart['transformations'][:2]))
+        self.assertEqual([t['options']['conversions'][0]['destinationType'] for t in converts],['number','time'])
+        self.assertTrue(all(t['options']['conversions'][0]['targetField']=='first_observed_ms' for t in converts))
+        organize=[t for t in chart['transformations'] if t['id']=='organize']
+        self.assertEqual([t['filter']['options'] for t in organize],['A','B'])
+        for transform in organize:
+            self.assertTrue(transform['options']['excludeByName']['Time'])
+            self.assertEqual(transform['options']['renameByName']['first_observed_ms'],'First confirmed observation')
+            ref=transform['filter']['options']
+            self.assertEqual(transform['options']['renameByName']['Value #'+ref],transform['options']['renameByName']['Value'])
+        colors={o['matcher']['options']:next(p['value']['fixedColor'] for p in o['properties'] if p['id']=='color') for o in chart['fieldConfig']['overrides']}
+        self.assertEqual(colors,{'Entry / buy':'green','Exit / sell':'red'})
+        self.assertIn('not chain execution time',chart['description'])
+        table=next(p for p in live['panels'] if p['type']=='table')
+        self.assertIn('fee_usdc',table['targets'][0]['expr'])
+        self.assertIn('quantity_sol',table['targets'][0]['expr'])
+
+    def test_live_missing_settlement_metrics_never_default_to_financial_zero(self):
+        live=next(d for d in dashboards().values() if d['uid']=='velocita-v2-live')
+        for expr in exprs(live):
+            if 'velocita_live_settled_' in expr or 'velocita_live_settlement_' in expr:
+                self.assertNotIn('vector(0)',expr)
+        status=next(p for p in live['panels'] if p['title']=='Confirmed-fill telemetry')
+        self.assertEqual(status['fieldConfig']['defaults']['noValue'],'unknown')
+        mappings=status['fieldConfig']['defaults']['mappings'][0]['options']
+        self.assertEqual(mappings['0']['text'],'NOT CONNECTED')
+        self.assertEqual(mappings['2']['text'],'STALE SNAPSHOT')
+
     def test_new_risk_stopped_is_the_first_and_widest_paper_panel(self):
         paper = next(d for d in dashboards().values() if d["uid"] == "velocita-v2-paper")
         first = content_panels(paper)[0]

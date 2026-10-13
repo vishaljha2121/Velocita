@@ -1,0 +1,26 @@
+[
+  {
+    "log": "build-r3.log",
+    "warning": "<repo>/tests/v2_gateway_node_tests.cpp:732:36: warning: missing field 'injected' initializer [-Wmissing-field-initializers]"
+  },
+  {
+    "log": "gateway-build.log",
+    "warning": "<repo>/build/_deps/aeron-src/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:114:89: warning: unused parameter 'keyBuffer' [-Wunused-parameter]"
+  },
+  {
+    "log": "gateway-build.log",
+    "warning": "<repo>/build/_deps/aeron-src/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:114:119: warning: unused parameter 'label' [-Wunused-parameter]"
+  },
+  {
+    "log": "gateway-build.log",
+    "warning": "<repo>/build/_deps/aeron-src/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:54: warning: unused parameter 'counterTypeId' [-Wunused-parameter]"
+  },
+  {
+    "log": "gateway-build.log",
+    "warning": "<repo>/build/_deps/aeron-src/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:89: warning: unused parameter 'keyBuffer' [-Wunused-parameter]"
+  },
+  {
+    "log": "gateway-build.log",
+    "warning": "<repo>/build/_deps/aeron-src/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:119: warning: unused parameter 'label' [-Wunused-parameter]"
+  }
+]

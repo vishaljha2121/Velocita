@@ -1,0 +1,22 @@
+{
+  "python_tests": {
+    "idle_policy_renewal": 6,
+    "review_transition": 16,
+    "account_adoption": 6,
+    "service_launcher": 16
+  },
+  "native_parity": [
+    "gateway_signer_request_domain",
+    "protected_signer_domain",
+    "runtime_identity"
+  ],
+  "renewal_mutation_assertion_failures": {
+    "expiry_only": 1,
+    "ordinal": 1,
+    "authority": 2,
+    "applyable": 1
+  },
+  "mutation_errors": 0,
+  "applied": false,
+  "services_started": false
+}
