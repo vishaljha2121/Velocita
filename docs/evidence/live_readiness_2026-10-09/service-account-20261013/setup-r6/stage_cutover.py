@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Approved one-cluster state retirement; all processes must already be stopped."""
 from pathlib import Path
-import hashlib,json,os,shutil,stat,subprocess,sys
+import hashlib,json,os,re,shutil,stat,subprocess,sys
 node=int(sys.argv[1]);assert node in (1,2,3)
 base=Path.home()/'.cache/velocita-build/swap-cutover-20261013'
 config=base/('node-'+str(node));live=Path.home()/'velocita-indicator-paper/stochastic'
@@ -12,7 +12,7 @@ blocked=['velocita-paper-stochastic-edge','velocita-paper-stochastic-gateway','v
 names=pair+blocked
 for name in names:
  assert subprocess.check_output(['systemctl','--user','show',name+'.service','-p','ActiveState','--value'],text=True).strip()=='inactive',name
-assert not any('velocita-paper-' in n and n.endswith('-node') or n.startswith('velocita-v2-node-') for n in subprocess.check_output(['podman','ps','--format','{{.Names}}'],text=True).splitlines())
+assert not any(re.fullmatch(r'velocita-(?:v2-node-[0-9]+|paper-[a-z]+-node)',n) for n in subprocess.check_output(['podman','ps','--format','{{.Names}}'],text=True).splitlines())
 assert not retired.exists() and live.is_dir() and not live.is_symlink()
 assert (live/'config'/('node-'+str(node)+'.conf')).read_bytes()==(config/'before-node.conf').read_bytes()
 for kind in ('node','exporter'):

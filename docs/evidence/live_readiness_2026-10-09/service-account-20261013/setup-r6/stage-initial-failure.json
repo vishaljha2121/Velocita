@@ -1,0 +1,11 @@
+{
+  "hosts": [
+    1,
+    2,
+    3
+  ],
+  "stage": "preflight before any mutation",
+  "error": "guard incorrectly classified host node-exporter as Raft voter",
+  "correction": "use existing one-cluster guard voter-name grammar",
+  "state_archived": false
+}
