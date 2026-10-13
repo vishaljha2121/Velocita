@@ -1,0 +1,50 @@
+[
+  {
+    "name": "baseline",
+    "passed": true,
+    "exit": 0,
+    "assertion": null,
+    "stdout": "PASS valid\nPASS parser\nPASS scope\nPASS files\n",
+    "stderr": ""
+  },
+  {
+    "name": "scope",
+    "passed": true,
+    "exit": 1,
+    "assertion": "loss_cap_one_atom_refused",
+    "stdout": "PASS valid\nPASS parser\n",
+    "stderr": "FAIL loss_cap_one_atom_refused\n"
+  },
+  {
+    "name": "balances",
+    "passed": true,
+    "exit": 1,
+    "assertion": "balance_discrepancy_refused",
+    "stdout": "PASS valid\nPASS parser\n",
+    "stderr": "FAIL balance_discrepancy_refused\n"
+  },
+  {
+    "name": "mark_age",
+    "passed": true,
+    "exit": 1,
+    "assertion": "stale_mark_refused",
+    "stdout": "PASS valid\nPASS parser\n",
+    "stderr": "FAIL stale_mark_refused\n"
+  },
+  {
+    "name": "net_floor",
+    "passed": true,
+    "exit": 1,
+    "assertion": "one_lamport_receipt_shortfall_refused",
+    "stdout": "PASS valid\nPASS parser\n",
+    "stderr": "FAIL one_lamport_receipt_shortfall_refused\n"
+  },
+  {
+    "name": "quote_age",
+    "passed": true,
+    "exit": 1,
+    "assertion": "expired_quote_refused",
+    "stdout": "PASS valid\nPASS parser\n",
+    "stderr": "FAIL expired_quote_refused\n"
+  }
+]

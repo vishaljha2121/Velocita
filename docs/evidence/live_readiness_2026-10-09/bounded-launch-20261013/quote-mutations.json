@@ -1,0 +1,74 @@
+[
+  {
+    "name": "baseline",
+    "passed": true,
+    "exit_code": 0,
+    "named_assertion": null
+  },
+  {
+    "name": "history_hash",
+    "passed": true,
+    "exit_code": 1,
+    "named_assertion": "history_hash_required"
+  },
+  {
+    "name": "history_age",
+    "passed": true,
+    "exit_code": 1,
+    "named_assertion": "history_freshness_required"
+  },
+  {
+    "name": "sell_exact_size",
+    "passed": true,
+    "exit_code": 1,
+    "named_assertion": "entire_observed_base_exact_decimal"
+  },
+  {
+    "name": "buy_exact_size",
+    "passed": true,
+    "exit_code": 1,
+    "named_assertion": "buy_exactly_one_usdc"
+  },
+  {
+    "name": "balance_cap",
+    "passed": true,
+    "exit_code": 1,
+    "named_assertion": "buy_cannot_exceed_observed_usdc"
+  },
+  {
+    "name": "owner_identity",
+    "passed": true,
+    "exit_code": 1,
+    "named_assertion": "wrong_account_never_quotes"
+  },
+  {
+    "name": "response_input",
+    "passed": true,
+    "exit_code": 1,
+    "named_assertion": "response_input_checked"
+  },
+  {
+    "name": "no_net_guarantee",
+    "passed": true,
+    "exit_code": 1,
+    "named_assertion": "quote_never_claims_guaranteed_net"
+  },
+  {
+    "name": "durable_attempt",
+    "passed": true,
+    "exit_code": 1,
+    "named_assertion": "attempt_durable_before_network"
+  },
+  {
+    "name": "protocol_endpoint",
+    "passed": true,
+    "exit_code": 1,
+    "named_assertion": "forbidden_network_reached"
+  },
+  {
+    "name": "refresh_refusal",
+    "passed": true,
+    "exit_code": 1,
+    "named_assertion": "refresh refused"
+  }
+]

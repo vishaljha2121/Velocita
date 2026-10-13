@@ -1,0 +1,10 @@
+{
+  "previous_commit": "b1c6650c19b2bdcf6c554de93b222020dbe2d1ea",
+  "commit": "73e753d35fce074375df12f3df8be1c053cf07a8",
+  "arch": "aarch64",
+  "toolchain": "3f3cfb3403a2644b27bf21351e26683e62f6ad90fde1f1b1567c8d2279d4fb43",
+  "free_bytes": 3060838400,
+  "bundle_sha256": "76e7d0e704461063843a041418de692df1559a5867d5e3099de43c69adbc3c9a",
+  "runner_sha256": "06d1dbcb3eb68425d439cce9954fa4edc3001709f058dca86b4a8fbba01d4afd",
+  "launcher_sha256": "bc4ff019f85c45ee610646c79117ff3cc05e76545cf638d88eb14a2bbb782357"
+}

@@ -1,0 +1,1178 @@
+[
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 42,
+    "diagnostic": "/source/src/v2_swap_transaction_review.cpp:46:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 48,
+    "diagnostic": "/source/src/v2_swap_transaction_review.cpp:47:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 128,
+    "diagnostic": "/source/src/v2_swap_gateway_runtime.cpp:32:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 135,
+    "diagnostic": "/source/src/v2_swap_gateway_runtime.cpp:54:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 141,
+    "diagnostic": "/source/src/v2_swap_gateway_runtime.cpp:57:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 150,
+    "diagnostic": "/source/src/v2_swap_runtime_production.cpp:15:13: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 157,
+    "diagnostic": "/source/src/v2_swap_runtime_production.cpp:105:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 164,
+    "diagnostic": "/source/src/v2_swap_runtime_production.cpp:113:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 170,
+    "diagnostic": "/source/src/v2_swap_runtime_production.cpp:118:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 177,
+    "diagnostic": "/source/src/v2_swap_runtime_production.cpp:123:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 184,
+    "diagnostic": "/source/src/v2_swap_runtime_production.cpp:134:13: warning: this \u2018for\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 192,
+    "diagnostic": "/source/src/v2_swap_account_review.cpp:50:17: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 200,
+    "diagnostic": "/source/src/v2_swap_account_history.cpp:17:13: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 208,
+    "diagnostic": "/source/src/v2_swap_runtime_https.cpp:41:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 215,
+    "diagnostic": "/source/src/v2_swap_runtime_https.cpp:57:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 224,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:65:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 231,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:163:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 239,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:28:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 246,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:57:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 253,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:61:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 259,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:62:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 266,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:113:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 272,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:114:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 279,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:135:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 287,
+    "diagnostic": "/source/src/v2_swap_settlement_lifecycle.cpp:25:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 294,
+    "diagnostic": "/source/src/v2_swap_settlement_lifecycle.cpp:103:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 301,
+    "diagnostic": "/source/src/v2_swap_settlement_lifecycle.cpp:144:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 307,
+    "diagnostic": "/source/src/v2_swap_settlement_lifecycle.cpp:153:13: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 313,
+    "diagnostic": "/source/src/v2_swap_settlement_lifecycle.cpp:224:13: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 319,
+    "diagnostic": "/source/src/v2_swap_settlement_lifecycle.cpp:225:13: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 388,
+    "diagnostic": "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:114:89: warning: unused parameter \u2018keyBuffer\u2019 [-Wunused-parameter]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 391,
+    "diagnostic": "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:114:119: warning: unused parameter \u2018label\u2019 [-Wunused-parameter]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 395,
+    "diagnostic": "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:54: warning: unused parameter \u2018counterTypeId\u2019 [-Wunused-parameter]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 398,
+    "diagnostic": "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:89: warning: unused parameter \u2018keyBuffer\u2019 [-Wunused-parameter]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 401,
+    "diagnostic": "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:119: warning: unused parameter \u2018label\u2019 [-Wunused-parameter]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 412,
+    "diagnostic": "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:114:89: warning: unused parameter \u2018keyBuffer\u2019 [-Wunused-parameter]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 415,
+    "diagnostic": "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:114:119: warning: unused parameter \u2018label\u2019 [-Wunused-parameter]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 419,
+    "diagnostic": "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:54: warning: unused parameter \u2018counterTypeId\u2019 [-Wunused-parameter]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 422,
+    "diagnostic": "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:89: warning: unused parameter \u2018keyBuffer\u2019 [-Wunused-parameter]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 425,
+    "diagnostic": "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:119: warning: unused parameter \u2018label\u2019 [-Wunused-parameter]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 430,
+    "diagnostic": "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/FragmentAssembler.h:53:57: warning: unused parameter \u2018initialBufferLength\u2019 [-Wunused-parameter]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 434,
+    "diagnostic": "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/FragmentAssembler.h:89:43: warning: unused parameter \u2018sessionId\u2019 [-Wunused-parameter]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 445,
+    "diagnostic": "/usr/include/c++/15/bits/stl_uninitialized.h:273:31: warning: writing 5 bytes into a region of size 0 [-Wstringop-overflow=]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 476,
+    "diagnostic": "/source/tests/v2_gateway_node_tests.cpp:688:11: warning: missing initializer for member \u2018{anonymous}::CountingVenue::injected\u2019 [-Wmissing-field-initializers]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 481,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:65:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 488,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:163:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 496,
+    "diagnostic": "/source/tests/v2_swap_signer_session_tests.cpp:25:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 503,
+    "diagnostic": "/source/tests/v2_swap_signer_session_tests.cpp:102:13: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 511,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:65:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 518,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:163:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 526,
+    "diagnostic": "/source/tests/v2_swap_signer_session_tests.cpp:25:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 533,
+    "diagnostic": "/source/tests/v2_swap_signer_session_tests.cpp:102:13: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 541,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:65:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 548,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:163:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 561,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:28:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 568,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:57:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 575,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:61:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 581,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:62:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 588,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:113:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 594,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:114:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 601,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:135:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 609,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:65:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 616,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:163:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 629,
+    "diagnostic": "/source/tests/v2_gateway_node_tests.cpp:688:11: warning: missing initializer for member \u2018{anonymous}::CountingVenue::injected\u2019 [-Wmissing-field-initializers]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 633,
+    "diagnostic": "/source/tests/v2_swap_gateway_runtime_tests.cpp:32:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 641,
+    "diagnostic": "/source/src/v2_swap_gateway_runtime.cpp:32:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 648,
+    "diagnostic": "/source/src/v2_swap_gateway_runtime.cpp:54:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 654,
+    "diagnostic": "/source/src/v2_swap_gateway_runtime.cpp:57:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 663,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:28:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 670,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:57:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 677,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:61:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 683,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:62:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 690,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:113:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 696,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:114:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 703,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:135:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 711,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:65:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 718,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:163:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 727,
+    "diagnostic": "/source/tests/v2_gateway_node_tests.cpp:688:11: warning: missing initializer for member \u2018{anonymous}::CountingVenue::injected\u2019 [-Wmissing-field-initializers]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 731,
+    "diagnostic": "/source/tests/v2_swap_process_drill.cpp:52:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 737,
+    "diagnostic": "/source/tests/v2_swap_process_drill.cpp:54:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 744,
+    "diagnostic": "/source/tests/v2_swap_process_drill.cpp:90:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 750,
+    "diagnostic": "/source/tests/v2_swap_process_drill.cpp:91:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 758,
+    "diagnostic": "/source/src/v2_swap_gateway_runtime.cpp:32:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 765,
+    "diagnostic": "/source/src/v2_swap_gateway_runtime.cpp:54:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 771,
+    "diagnostic": "/source/src/v2_swap_gateway_runtime.cpp:57:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 780,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:28:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 787,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:57:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 794,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:61:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 800,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:62:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 807,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:113:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 813,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:114:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 820,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:135:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 828,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:65:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 835,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:163:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 882,
+    "diagnostic": "/usr/include/c++/15/bits/stl_construct.h:133:7: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 913,
+    "diagnostic": "/usr/include/c++/15/bits/stl_algobase.h:951:25: warning: \u2018void* __builtin_memset(void*, int, long unsigned int)\u2019 writing between 1 and 128 bytes into a region of size 0 overflows the destination [-Wstringop-overflow=]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 944,
+    "diagnostic": "/usr/include/c++/15/bits/stl_construct.h:133:7: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]"
+  },
+  {
+    "host": "nuc1",
+    "log": "initial-failure/nuc1/build.log",
+    "line": 977,
+    "diagnostic": "/usr/include/c++/15/bits/stl_algobase.h:951:25: warning: \u2018void* __builtin_memset(void*, int, long unsigned int)\u2019 writing between 1 and 128 bytes into a region of size 0 overflows the destination [-Wstringop-overflow=]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 42,
+    "diagnostic": "/source/src/v2_swap_transaction_review.cpp:46:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 48,
+    "diagnostic": "/source/src/v2_swap_transaction_review.cpp:47:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 128,
+    "diagnostic": "/source/src/v2_swap_gateway_runtime.cpp:32:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 135,
+    "diagnostic": "/source/src/v2_swap_gateway_runtime.cpp:54:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 141,
+    "diagnostic": "/source/src/v2_swap_gateway_runtime.cpp:57:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 150,
+    "diagnostic": "/source/src/v2_swap_runtime_production.cpp:15:13: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 157,
+    "diagnostic": "/source/src/v2_swap_runtime_production.cpp:105:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 164,
+    "diagnostic": "/source/src/v2_swap_runtime_production.cpp:113:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 170,
+    "diagnostic": "/source/src/v2_swap_runtime_production.cpp:118:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 177,
+    "diagnostic": "/source/src/v2_swap_runtime_production.cpp:123:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 184,
+    "diagnostic": "/source/src/v2_swap_runtime_production.cpp:134:13: warning: this \u2018for\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 192,
+    "diagnostic": "/source/src/v2_swap_account_review.cpp:50:17: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 200,
+    "diagnostic": "/source/src/v2_swap_account_history.cpp:17:13: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 208,
+    "diagnostic": "/source/src/v2_swap_runtime_https.cpp:41:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 215,
+    "diagnostic": "/source/src/v2_swap_runtime_https.cpp:57:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 224,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:65:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 231,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:163:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 239,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:28:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 246,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:57:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 253,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:61:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 259,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:62:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 266,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:113:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 272,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:114:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 279,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:135:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 287,
+    "diagnostic": "/source/src/v2_swap_settlement_lifecycle.cpp:25:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 294,
+    "diagnostic": "/source/src/v2_swap_settlement_lifecycle.cpp:103:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 301,
+    "diagnostic": "/source/src/v2_swap_settlement_lifecycle.cpp:144:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 307,
+    "diagnostic": "/source/src/v2_swap_settlement_lifecycle.cpp:153:13: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 313,
+    "diagnostic": "/source/src/v2_swap_settlement_lifecycle.cpp:224:13: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 319,
+    "diagnostic": "/source/src/v2_swap_settlement_lifecycle.cpp:225:13: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 388,
+    "diagnostic": "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:114:89: warning: unused parameter \u2018keyBuffer\u2019 [-Wunused-parameter]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 391,
+    "diagnostic": "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:114:119: warning: unused parameter \u2018label\u2019 [-Wunused-parameter]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 395,
+    "diagnostic": "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:54: warning: unused parameter \u2018counterTypeId\u2019 [-Wunused-parameter]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 398,
+    "diagnostic": "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:89: warning: unused parameter \u2018keyBuffer\u2019 [-Wunused-parameter]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 401,
+    "diagnostic": "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:119: warning: unused parameter \u2018label\u2019 [-Wunused-parameter]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 412,
+    "diagnostic": "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:114:89: warning: unused parameter \u2018keyBuffer\u2019 [-Wunused-parameter]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 415,
+    "diagnostic": "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:114:119: warning: unused parameter \u2018label\u2019 [-Wunused-parameter]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 419,
+    "diagnostic": "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:54: warning: unused parameter \u2018counterTypeId\u2019 [-Wunused-parameter]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 422,
+    "diagnostic": "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:89: warning: unused parameter \u2018keyBuffer\u2019 [-Wunused-parameter]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 425,
+    "diagnostic": "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:119: warning: unused parameter \u2018label\u2019 [-Wunused-parameter]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 430,
+    "diagnostic": "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/FragmentAssembler.h:53:57: warning: unused parameter \u2018initialBufferLength\u2019 [-Wunused-parameter]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 434,
+    "diagnostic": "/work/deps/aeron/aeron-client/src/main/cpp_wrapper/FragmentAssembler.h:89:43: warning: unused parameter \u2018sessionId\u2019 [-Wunused-parameter]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 445,
+    "diagnostic": "/usr/include/c++/15/bits/stl_uninitialized.h:273:31: warning: writing 5 bytes into a region of size 0 [-Wstringop-overflow=]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 476,
+    "diagnostic": "/source/tests/v2_gateway_node_tests.cpp:688:11: warning: missing initializer for member \u2018{anonymous}::CountingVenue::injected\u2019 [-Wmissing-field-initializers]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 481,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:65:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 488,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:163:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 496,
+    "diagnostic": "/source/tests/v2_swap_signer_session_tests.cpp:25:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 503,
+    "diagnostic": "/source/tests/v2_swap_signer_session_tests.cpp:102:13: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 511,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:65:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 518,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:163:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 526,
+    "diagnostic": "/source/tests/v2_swap_signer_session_tests.cpp:25:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 533,
+    "diagnostic": "/source/tests/v2_swap_signer_session_tests.cpp:102:13: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 541,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:65:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 548,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:163:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 561,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:28:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 568,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:57:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 575,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:61:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 581,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:62:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 588,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:113:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 594,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:114:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 601,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:135:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 609,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:65:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 616,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:163:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 629,
+    "diagnostic": "/source/tests/v2_gateway_node_tests.cpp:688:11: warning: missing initializer for member \u2018{anonymous}::CountingVenue::injected\u2019 [-Wmissing-field-initializers]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 633,
+    "diagnostic": "/source/tests/v2_swap_gateway_runtime_tests.cpp:32:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 641,
+    "diagnostic": "/source/src/v2_swap_gateway_runtime.cpp:32:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 648,
+    "diagnostic": "/source/src/v2_swap_gateway_runtime.cpp:54:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 654,
+    "diagnostic": "/source/src/v2_swap_gateway_runtime.cpp:57:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 663,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:28:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 670,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:57:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 677,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:61:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 683,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:62:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 690,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:113:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 696,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:114:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 703,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:135:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 711,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:65:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 718,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:163:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 727,
+    "diagnostic": "/source/tests/v2_gateway_node_tests.cpp:688:11: warning: missing initializer for member \u2018{anonymous}::CountingVenue::injected\u2019 [-Wmissing-field-initializers]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 731,
+    "diagnostic": "/source/tests/v2_swap_process_drill.cpp:52:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 737,
+    "diagnostic": "/source/tests/v2_swap_process_drill.cpp:54:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 744,
+    "diagnostic": "/source/tests/v2_swap_process_drill.cpp:90:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 750,
+    "diagnostic": "/source/tests/v2_swap_process_drill.cpp:91:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 758,
+    "diagnostic": "/source/src/v2_swap_gateway_runtime.cpp:32:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 765,
+    "diagnostic": "/source/src/v2_swap_gateway_runtime.cpp:54:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 771,
+    "diagnostic": "/source/src/v2_swap_gateway_runtime.cpp:57:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 780,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:28:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 787,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:57:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 794,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:61:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 800,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:62:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 807,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:113:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 813,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:114:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 820,
+    "diagnostic": "/source/src/v2_swap_signer_service.cpp:135:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 828,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:65:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 835,
+    "diagnostic": "/source/src/v2_swap_signer_session.cpp:163:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 882,
+    "diagnostic": "/usr/include/c++/15/bits/stl_construct.h:133:7: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 913,
+    "diagnostic": "/usr/include/c++/15/bits/stl_algobase.h:951:25: warning: \u2018void* __builtin_memset(void*, int, long unsigned int)\u2019 writing between 1 and 128 bytes into a region of size 0 overflows the destination [-Wstringop-overflow=]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 944,
+    "diagnostic": "/usr/include/c++/15/bits/stl_construct.h:133:7: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]"
+  },
+  {
+    "host": "pi",
+    "log": "initial-failure/pi/build.log",
+    "line": 977,
+    "diagnostic": "/usr/include/c++/15/bits/stl_algobase.h:951:25: warning: \u2018void* __builtin_memset(void*, int, long unsigned int)\u2019 writing between 1 and 128 bytes into a region of size 0 overflows the destination [-Wstringop-overflow=]"
+  }
+]

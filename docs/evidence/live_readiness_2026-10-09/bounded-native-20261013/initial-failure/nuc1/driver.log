@@ -1,0 +1,16 @@
+2026-10-13T14:41:41Z configure
+2026-10-13T14:41:43Z build
+2026-10-13T14:48:49Z test-inventory
+2026-10-13T14:48:51Z tests
+2026-10-13T14:50:39Z account-tests
+2026-10-13T14:50:41Z test_swap_service_launcher
+2026-10-13T14:50:43Z test_swap_service_profile
+Traceback (most recent call last):
+  File "/evidence/native-focused.py", line 107, in <module>
+    run(['python3', '-B', '-m', 'unittest', 'discover', '-s', '/source/tests', '-p',
+    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+         suite], suite.removesuffix('.py'), 120)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/evidence/native-focused.py", line 46, in run
+    raise RuntimeError(name+' exit='+str(process.returncode))
+RuntimeError: test_swap_service_profile exit=1

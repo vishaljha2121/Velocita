@@ -1,0 +1,5 @@
+{"stage":"accepted","epoch":1,"elapsed_ms":1847,"voter_turns":3325}
+{"stage":"unknown","epoch":2,"elapsed_ms":1889,"voter_turns":3397}
+{"stage":"receipt-before-commit","epoch":3,"elapsed_ms":1966,"voter_turns":3542}
+{"stage":"success","epoch":4,"elapsed_ms":1897,"voter_turns":3415}
+{"stage":"success","epoch":5,"elapsed_ms":1981,"voter_turns":3565}

@@ -1,0 +1,8 @@
+{
+  "source_commit": "84c353a7f17581546c84db414b0d759a2ab0e695",
+  "new_bundle_sha256": "7dc71f35fba5bf4f54d74752c161efb60b016fc1c28e2d0a312b15b967b79a56",
+  "previous_bundle_sha256": "a36fa90a90d06a3847457430543b3f581d1b782d241e0e453bc2125fd164082c",
+  "binary_sha256": "001e5526a87a641c1e0f7334853973de73acddb0e22fe9c0d8de02b12933d21e",
+  "launch_authorized": false,
+  "services_started": false
+}

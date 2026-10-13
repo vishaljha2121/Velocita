@@ -1,0 +1,7 @@
+{
+  "commit": "73e753d35fce074375df12f3df8be1c053cf07a8",
+  "arch": "x86_64",
+  "qualified": false,
+  "stage": "failed",
+  "error": "test_swap_service_profile exit=1"
+}

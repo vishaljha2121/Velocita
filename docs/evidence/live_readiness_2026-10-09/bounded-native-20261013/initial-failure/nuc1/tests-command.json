@@ -1,0 +1,13 @@
+[
+  "ctest",
+  "--test-dir",
+  "/work/build",
+  "--output-on-failure",
+  "--stop-on-failure",
+  "--parallel",
+  "1",
+  "-R",
+  "^v2-(swap-|truemarkets-|operational-recovery-tests$)",
+  "--output-junit",
+  "/evidence/ctest.xml"
+]

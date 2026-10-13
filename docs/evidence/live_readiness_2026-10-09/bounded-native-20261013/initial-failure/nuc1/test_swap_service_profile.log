@@ -1,0 +1,18 @@
+E............
+======================================================================
+ERROR: test_binary_hash_mismatch_and_unconditional_cli_refusal (test_swap_service_profile.DescriptorHandoffTests.test_binary_hash_mismatch_and_unconditional_cli_refusal)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/source/tests/test_swap_service_profile.py", line 274, in test_binary_hash_mismatch_and_unconditional_cli_refusal
+    fd = self.handoff.open_pinned_public(str(executable), digest, True); os.close(fd)
+  File "/source/deploy/v2/swap-runtime/fd_handoff.py", line 52, in open_pinned_public
+    fd = _open_components(path, 0)
+  File "/source/deploy/v2/swap-runtime/fd_handoff.py", line 29, in _open_components
+    return os.open(path.split('/')[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK, dir_fd=directory)
+           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: [Errno 40] Too many levels of symbolic links: 'true'
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.139s
+
+FAILED (errors=1)
