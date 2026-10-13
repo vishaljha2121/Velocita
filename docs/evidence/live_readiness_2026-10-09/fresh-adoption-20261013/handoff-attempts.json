@@ -1,0 +1,19 @@
+{
+  "first_attempt": {
+    "stage": "local_cli",
+    "role": "gateway",
+    "result": "AttributeError_receiver_sha_before_send",
+    "ssh_invoked": false,
+    "remote_staging_files_created": false,
+    "automatic_retry": false
+  },
+  "corrected_attempt": {
+    "source_commit": "bb16daf",
+    "gateway_staged": true,
+    "signer_staged": true,
+    "gateway_installed": true,
+    "signer_installed": true,
+    "exact_owner_staging_copies_removed_after_verification": 2,
+    "services_started": false
+  }
+}

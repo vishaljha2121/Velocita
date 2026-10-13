@@ -1,0 +1,53 @@
+{
+  "checked_at_ms": 1791927673532,
+  "source_commit": "5cdb5e1042fbce163a0db1b3af1ac215651e00c7",
+  "binary_sha256": "09f7c3ff0ea68db58cf55c0045e8fbf35c0dcffe1f01632a21cf77b2107b9d7c",
+  "manifest_sha256": "ca4bb2fbec356c6ecdd4ba405d322b954337cd76ae76d181bc42439d586d4442",
+  "profile_sha256": "17370a3cbc1063fd7c8c8c2d2ebd57ea7d471b68e2d40b0e8e894cb4305912f0",
+  "account_documents_installed": true,
+  "credentials_installed": true,
+  "roles": {
+    "gateway": {
+      "uid": 29001,
+      "gid": 29001,
+      "mode": "0o600",
+      "single_link": true,
+      "tmpfs": true,
+      "credential_hash_matches": true,
+      "credential_matches_profile": true,
+      "other_role_cannot_read": true,
+      "unit_matches_manifest": true,
+      "recovery_directory_empty": true,
+      "service": {
+        "ActiveState": "inactive",
+        "SubState": "dead",
+        "UnitFileState": "static"
+      }
+    },
+    "signer": {
+      "uid": 29002,
+      "gid": 29002,
+      "mode": "0o600",
+      "single_link": true,
+      "tmpfs": true,
+      "credential_hash_matches": true,
+      "credential_matches_profile": true,
+      "other_role_cannot_read": true,
+      "unit_matches_manifest": true,
+      "recovery_directory_empty": true,
+      "service": {
+        "ActiveState": "inactive",
+        "SubState": "dead",
+        "UnitFileState": "static"
+      }
+    }
+  },
+  "account_review_current": true,
+  "account_review_expires_ms": 1791928323602,
+  "launch_authorized": false,
+  "ledger_initialized": false,
+  "services_started": false,
+  "signed": false,
+  "broadcast": false,
+  "live_admitted": false
+}

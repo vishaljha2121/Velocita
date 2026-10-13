@@ -1,5 +1,11 @@
 [
   {
+    "name": "receiver_cli_typo",
+    "killed": true,
+    "named_assertion": "cli_receiver_digest_reaches_transfer",
+    "errors": 0
+  },
+  {
     "name": "raw_incarnation",
     "killed": true,
     "named_assertion": "cpp_incarnation_digest_admitted",

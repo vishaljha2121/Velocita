@@ -1,8 +1,11 @@
 # Fresh verification and dormant account adoption
 
-No transaction was signed or submitted. Both live units remain inactive/dead/static;
-the installed dormant manifest remains pinned to
-c4a1fe1ba9ffb2055a11a533efa8280425eca03b88cadc93ccaa57dc9a49d543.
+**Completed dormant adoption at 2026-10-13 21:41:13 UTC.** No transaction was
+signed or submitted. Both live units remain inactive/dead/static. Root-owned
+account documents and both isolated real credentials are installed and verified.
+Installed manifest: ca4bb2fbec356c6ecdd4ba405d322b954337cd76ae76d181bc42439d586d4442.
+Profile: 17370a3cbc1063fd7c8c8c2d2ebd57ea7d471b68e2d40b0e8e894cb4305912f0.
+`installed.json` records exact metadata and cross-role access checks.
 
 The initial account refresh used 20 requests and saw the same four finalized
 transactions, one USDC token account, no TM orders and no blocking orders. Stable
@@ -28,7 +31,7 @@ snapshots are not a promise of future account state. No current Raft authorizati
 was manufactured by the synthetic diagnostic. The expired quote is never executed.
 
 Fresh authenticated reads under both UID29001/caller22/key13 and UID29002/caller23/
-key14 passed: term5, leader2, applied index4, state version3 and the same reviewed
+key14 passed: term5, leader 2, applied index 4, state version 3 and the same reviewed
 halted/catalog-only state digest. Existing recovery directories contain no files.
 The owner explicitly authorized use of interactive sudo; no password was written
 to a file, argv, environment or command output.
@@ -51,16 +54,53 @@ to a file, argv, environment or command output.
    It cannot activate, fund, initialize journals or install credentials. Partial
    failure is retained and cannot be silently retried/overwritten.
 
-42 service tests, six adoption tests and seven credential-export tests pass on Mac and NUC1; 11 credential-handoff tests also pass locally.
-Five targeted mutations fail named assertions, without test/compilation errors.
+42 service tests, six adoption tests and eight credential-export tests pass on Mac and NUC1; 11 credential-handoff tests also pass locally.
+Six targeted mutations fail named assertions, without test/compilation errors.
 The offline capture reader initially used a wrong route-byte offset; preparation
 refused before networking. Correct offset25/length36 was checked against the
 production decoder before the single metadata read. No network retry occurred.
 
-Current work: prepare the final account cut and full-position unsigned sell mark
-late, after the corrected launcher is checkpointed and installed dormant. The
-short account freshness window is not extended to accommodate installation.
-Credential adoption remains separate from activation and actual signing.
+## Final installation and remaining launch boundary
+
+Checkpoint 5cdb5e1 contains the identity corrections and dormant adopter. Its NUC
+release reuses the exact qualified 13cc98b gateway binary SHA256
+09f7c3ff0ea68db58cf55c0045e8fbf35c0dcffe1f01632a21cf77b2107b9d7c:
+no production C++ changed and no gateway rebuild is claimed. The Python changes
+were tested on NUC before installation. All 27 staged release files were hash
+checked, the prior bundle matched before replacement, and old releases remain.
+No source tree swap, voter/exporter restart, second cluster or monitoring restart.
+
+The final 0.040764166 SOL position quote returned 4.351947 USDC net quoted output
+and 0.008721 USDC explicit fee. This is the opening liquidation **quote mark**,
+not a realized sale or guaranteed future receipt. The subsequent 20-request history
+cut again found unchanged balances, four transactions and no blocking orders.
+The production offline builder encoded the complete opening record within 30 seconds
+of the quote and checked profile/account/transaction identities and exact $1 limits.
+The opening record exists privately; it has **not** been submitted to Raft.
+
+One initial gateway handoff invocation failed locally with AttributeError because
+the CLI used receiver_sha instead of receiver_sha256. It did not invoke SSH or
+create a remote credential file. A named CLI-entry regression reproduced this;
+checkpoint bb16daf fixes the argument, after which one corrected handoff per role
+completed. This is a local export-tool change; no second NUC runtime update needed.
+No blind retry or venue request occurred. See handoff-attempts.json.
+
+Root adoption created the four public documents, archived the prior dormant
+manifest/units, updated the disabled manifest hashes and reloaded systemd. Real
+bearer and P-256 PEM were separately installed into role-owned 0700 tmpfs directories,
+with 0600 single-link files under UID/GID 29001 and 29002. Hashes/public-key bindings
+match the profile. Running a read-access check as the opposite service user failed
+for each credential. Both journals are empty, launch_authorized remains false, and
+both units match the rendered manifest and remain inactive/dead/static. Only the
+two exact temporary owner staging copies were deleted after successful verification.
+Sudo cache was invalidated and the interactive administrative session closed.
+
+The account review expires at **2026-10-13 21:52:03.602 UTC (17:52 EDT)**. This
+snapshot is not evergreen launch authority. If launch occurs later, refresh the
+account/mark and explicitly replace the dormant review; do not extend timestamps
+or overwrite initialized journals. The replicated opening and gateway role,
+first-use journal/start ceremony, and a freshly bounded one-buy intent remain
+separate launch work. No trade intent or live service activation was performed.
 
 The earlier owner checkpoint/install authorization covers this required scoped fix.
 A redundant new approval question was withdrawn in chat before proceeding.

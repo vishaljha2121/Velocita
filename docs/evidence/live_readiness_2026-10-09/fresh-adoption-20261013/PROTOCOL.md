@@ -28,3 +28,13 @@ Financial scope remains one effect/$1 total USDC debit, 2,000-atom explicit fee,
 new transaction's positive conservative net receipt and exact rounding; the venue
 $1 minimum size is a separate fact. $0.50 loss allowance is not a guaranteed market
 stop for an unsold position. Prior paper balances are excluded.
+
+## Recorded timing deviation, before finalization
+
+The identity fixes and dormant replacement took longer than the initial account
+cut's 15-minute lifetime. Take one new pre-valuation history cut, then the single
+whole-position unsigned sell quote, followed by the already-planned final history
+cut. Each collector retains the same 110-read/300-second bound and stops on error.
+This is refresh of successfully captured but expired evidence, not retry of an
+error. The quote and final opening mark must be at most 30 seconds old when the
+offline builder runs; no timestamp extension or fabricated observation is allowed.

@@ -37,6 +37,40 @@ at 100 bp a side.
 
 ## What must be true before the first real order
 
+**Fresh account/profile adoption completed (October 13, 17:41 EDT):**
+The account/route review, canonical offline opening and protected credential
+adoption are complete. Balances remain40.006989 USDC and 0.040764166 SOL; final
+history reports no blocking orders. The whole-position unsigned sell quote marked
+opening SOL at 4.351947 USDC; no sale occurred. The fresh captured $1 buy passed
+the production verifier offline with a synthetic intent: 1,000,000 USDC atoms debit
+including 2,000 fee atoms, conservative net minimum 6,819,647 lamports, zero sponsor
+credit. That captured payload is not a current execution instruction.
+
+Installed NUC release 5cdb5e1 fixes the Python wallet/API-key and incarnation/digest
+mismatches and adds dormant account adoption. Its gateway bytes are unchanged from
+qualified 13cc98b (NUC/Pi 52 selected C++ tests plus prior native component/drill suites).
+The local credential exporter is bb16daf, fixing a CLI argument typo discovered
+before SSH; the initial failed transfer moved no credential. 42 service, 6 adoption
+and 8 exporter tests pass on Mac/NUC; 11 local handoff tests and 6 named mutations pass.
+
+Both service principals completed authenticated voter reads: term 5, leader 2,
+applied index 4, state version 3, unchanged reviewed halted state digest. Independent
+post-adoption checks confirm root-owned account hashes, exact bearer/public-key
+pins, role-owned 0600/tmpfs credentials and denied cross-role reads. Both services
+remain inactive/dead/static; launch_authorized=false, recovery directories empty.
+No ledger funding, service activation, signing or fund movement occurred.
+
+| Remaining step | Current evidence/status |
+|---|---|
+| Qualified runtime and dormant installation | Complete. Installed release 5cdb5e1 uses the unchanged qualified 13cc98b gateway binary; no C++ rebuild claimed. No voter, exporter or monitoring restart. |
+| Protected credential handoff and delayed recovery | Real credentials installed and verified in isolated service-user tmpfs. Temporary owner copies removed. Gateway-only reconciliation and bearer rotation were qualified in 13cc98b. |
+| Fresh account/route review and canonical opening | Complete at this snapshot; opening record prepared privately but not committed. Review expires 2026-10-13 21:52:03.602 UTC. Later launch requires refreshed reviewed evidence, not extended timestamps. |
+| Replicated opening and startup ceremony | Pending: reviewed gateway role/funding, explicit first-use journals and bounded startup under a separately authorized live manifest. Do not reuse/overwrite initialized state. |
+| Supervised single buy | Not started. Exactly $1 total USDC debit, effect 1, repayment ≤ 2,039,280 lamports, zero sponsor credit. Obtain a fresh positive net floor; no automatic retry, resize or second trade. |
+
+[Fresh verification, installation evidence and commands](evidence/live_readiness_2026-10-09/fresh-adoption-20261013/README.md).
+Earlier status paragraphs below are historical where superseded by this table.
+
 Last updated 2026-10-13: **single-cluster cutover and authenticated production-user
 Raft reads passed**. New incarnation `b79e65be1ea14e219016ec48ea02efef`, qualified
 production C++ `86f4408`, all three voters ready at term1/index3, leader3. Both

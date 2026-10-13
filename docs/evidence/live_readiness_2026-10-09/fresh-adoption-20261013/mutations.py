@@ -10,6 +10,7 @@ def load(path,name):
  s=importlib.util.spec_from_file_location(name,path);m=importlib.util.module_from_spec(s);s.loader.exec_module(m);return m
 
 cases=[
+ ('receiver_cli_typo','test_tm_stage_swap_credential.py','S','a.receiver,a.receiver_sha256)','a.receiver,a.receiver_sha)','test_cli_passes_receiver_digest_to_transfer','cli_receiver_digest_reaches_transfer'),
  ('raw_incarnation','test_swap_service_launcher.py','L',"hashlib.sha256(bytes.fromhex(manifest['incarnation'])).hexdigest()","manifest['incarnation']",'test_profile_uses_cpp_incarnation_digest_not_raw_cluster_id','cpp_incarnation_digest_admitted'),
  ('api_key_as_wallet','test_tm_stage_swap_credential.py','S',"HISTORY.key_bytes(profile.get('signer_id')).hex()!=profile.get('owner_wallet')","key_id.replace('-','').lower()!=profile.get('signer_id')",'test_wallet_signer_id_is_distinct_from_api_key_identifier','wallet_signer_not_api_key_id'),
  ('wallet_check_removed','test_tm_stage_swap_credential.py','S',"if HISTORY.key_bytes(profile.get('signer_id')).hex()!=profile.get('owner_wallet'): raise ValueError('signer wallet mismatch')","if False: raise ValueError('signer wallet mismatch')",'test_wrong_wallet_refused_before_conversion','wrong_wallet_refused'),
