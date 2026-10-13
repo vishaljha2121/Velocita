@@ -212,13 +212,15 @@ def bundle(base,pin):
     spec=R.L.strict_json(raw)
     if set(spec)!={'schema','evaluated_at_ms','helper_sha256','files'} or type(spec['schema']) is not int or spec['schema']!=1:raise ValueError('exact renewal bundle required')
     names={p+'/'+n for p in ('before','after') for n in ('manifest.json',*R.A.DOCUMENTS)}|{p+'/journals/'+n for p in ('before','after') for n in R.JOURNALS}
+    if 'session-refresh.json' in spec['files']:names.add('session-refresh.json')
     if set(spec['files'])!=names:raise ValueError('exact artifact set required')
     artifacts={n:read(base/n) for n in names}
     if any(R.digest(raw)!=spec['files'][n] for n,raw in artifacts.items()):raise ValueError('artifact pin differs')
     old,new=(R.L.strict_json(artifacts[p+'/manifest.json']) for p in ('before','after'))
     before,after=({n:artifacts[p+'/'+n] for n in R.A.DOCUMENTS} for p in ('before','after'))
     journals={n:artifacts['before/journals/'+n] for n in R.JOURNALS}
-    proposal=N.propose(old,new,before,after,journals,spec['evaluated_at_ms'])
+    witness=R.L.strict_json(artifacts['session-refresh.json']) if 'session-refresh.json' in artifacts else None
+    proposal=N.propose(old,new,before,after,journals,spec['evaluated_at_ms'],session_refresh=witness)
     if proposal['artifacts']!=artifacts:raise ValueError('derived renewal differs from bundle')
     Q.token(spec['helper_sha256'],64)
     return spec,old,new,before,after,proposal
@@ -228,7 +230,8 @@ def apply(base,pin,recover=False):
     R.I.PROVISION.require_host_root();R.H.harden()
     spec,old,new,before,after,proposal=bundle(base,pin)
     now=time.time_ns()//1000000
-    if not recover:N.propose(old,new,before,after,{n:proposal['artifacts']['before/journals/'+n] for n in R.JOURNALS},now)
+    witness=R.L.strict_json(proposal['artifacts']['session-refresh.json']) if 'session-refresh.json' in proposal['artifacts'] else None
+    if not recover:N.propose(old,new,before,after,{n:proposal['artifacts']['before/journals/'+n] for n in R.JOURNALS},now,session_refresh=witness)
     public=Path(R.P.PUBLIC)
     # One owner transition at a time, separate from the native journal locks.
     with directory_locks([public],0):

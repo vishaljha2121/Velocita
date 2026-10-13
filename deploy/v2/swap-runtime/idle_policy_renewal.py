@@ -5,6 +5,7 @@ Every returned proposal is explicitly non-applyable until a native migration
 helper validates an authenticated committed state and controls crash recovery.
 """
 import hashlib
+import json
 from pathlib import Path
 import struct
 import sys
@@ -33,7 +34,7 @@ def runtime_identity(profile):
     return hashlib.sha256(raw).hexdigest()
 
 
-def propose(old,new,before,after,journals,now):
+def propose(old,new,before,after,journals,now,session_refresh=None):
     """Return review artifacts only. Never accepts a purported authenticated proof."""
     if type(now) is not int or not 0<now<=2**64-1:raise ValueError('bounded evaluation time')
     R.P.validate(old);R.P.validate(new)
@@ -50,6 +51,8 @@ def propose(old,new,before,after,journals,now):
     if not max(now,R.L.unsigned(prior_tx['expires_at_ms']))<expiry<=now+900000:raise ValueError('fresh bounded transaction expiry required')
     prior_p,next_p=map(R.L.fields,(before['runtime.profile'],after['runtime.profile']))
     mutable={'transaction_review_digest','account_review_digest'}
+    if session_refresh is not None:
+        mutable|={'bearer_digest','expires_at_ms','session_evidence'}
     if any(prior_p.get(k)!=next_p.get(k) for k in (set(prior_p)|set(next_p))-mutable):raise ValueError('runtime authority or credentials changed')
     prior_r,next_r=map(R.L.fields,(before['account.review'],after['account.review']))
     mutable={'runtime_identity','history_evidence','reviewed_at_ms','expires_at_ms'}
@@ -64,6 +67,20 @@ def propose(old,new,before,after,journals,now):
         if any(type(h.get(k)) is not int or not 0<=h[k]<=2**63-1 for k in ('base_atoms','quote_atoms')):raise ValueError('balance atoms')
     if any(histories[0][k]!=histories[1][k] for k in ('base_atoms','quote_atoms','owner_sha256','user_id_sha256')):raise ValueError('balance or account changed; reconciliation required')
     if histories[1]['capture_finished_ms']<=histories[0]['capture_finished_ms']:raise ValueError('fresh account capture required')
+    if session_refresh is not None:
+        expected={'schema','setup_sha256','history_sha256','bearer_sha256','token_expires_at_ms'}
+        if type(session_refresh) is not dict or set(session_refresh)!=expected or type(session_refresh['schema']) is not int or session_refresh['schema']!=1:raise ValueError('exact session refresh witness required')
+        for name in ('setup_sha256','history_sha256','bearer_sha256'):
+            value=session_refresh[name]
+            if not isinstance(value,str) or len(value)!=64 or any(c not in '0123456789abcdef' for c in value) or not int(value,16):raise ValueError('session witness digest shape')
+        token_expiry=session_refresh['token_expires_at_ms']
+        if type(token_expiry) is not int or not 0<token_expiry<=2**64-1:raise ValueError('session token expiry shape')
+        if session_refresh['setup_sha256']!=histories[1].get('setup_sha256') or session_refresh['history_sha256']!=R.digest(after['account.history']):raise ValueError('session witness account evidence mismatch')
+        if session_refresh['bearer_sha256']!=next_p.get('bearer_digest'):raise ValueError('session witness bearer mismatch')
+        if not now+60000<R.L.unsigned(next_p['expires_at_ms'])<=token_expiry:raise ValueError('session lifetime must be fresh and bounded by token')
+        session={k:v for k,v in session_refresh.items() if k!='token_expires_at_ms'}
+        canonical=(json.dumps(session,sort_keys=True,separators=(',',':'))+'\n').encode()
+        if next_p.get('session_evidence')!=R.digest(canonical):raise ValueError('session evidence does not bind fresh bearer and account capture')
     for role in ('gateway','signer'):R.L.check_bindings(new,after['runtime.profile'],after['account.review'],after['account.history'],now,role)
     old_record=journals['protected-signing']
     ordinal=int.from_bytes(old_record[8:16],'little')
@@ -89,6 +106,8 @@ def propose(old,new,before,after,journals,now):
         artifacts[prefix+'/manifest.json']=R.P.manifest_bytes(manifest)
         artifacts.update({prefix+'/'+name:raw for name,raw in files.items()})
         artifacts.update({prefix+'/journals/'+name:raw for name,raw in records.items()})
+    if session_refresh is not None:
+        artifacts['session-refresh.json']=(json.dumps(session_refresh,sort_keys=True,separators=(',',':'))+'\n').encode()
     report=dict(schema=1,kind='expiry-only-pristine-protected-journal-renewal-proposal',applyable=False,
         authenticated_raft_proof=False,services_started=False,orders_submitted=False,
         original_journal_index=int.from_bytes(old_record[24:32],'little'),original_state_digest=old_record[400:432].hex(),

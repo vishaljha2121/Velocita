@@ -1,0 +1,26 @@
+[
+  {
+    "name": "false_session_evidence",
+    "failures": 1,
+    "errors": 0,
+    "killed": true
+  },
+  {
+    "name": "unbounded_lifetime",
+    "failures": 2,
+    "errors": 0,
+    "killed": true
+  },
+  {
+    "name": "unwitnessed_credentials",
+    "failures": 1,
+    "errors": 0,
+    "killed": true
+  },
+  {
+    "name": "changed_balances",
+    "failures": 2,
+    "errors": 0,
+    "killed": true
+  }
+]

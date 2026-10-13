@@ -1,6 +1,6 @@
 # Locked expiry-only review renewal
 
-Implementation status: tested locally; host installation and source checkpoint are separate main-agent steps. This procedure cannot start a service or submit an order. The prepared bundle renews the transaction-review expiry and associated account-review pins; it cannot change route accounts, quantities, receipt/cost limits, caller identities, credentials, opening balances, or launch flags.
+This procedure cannot start a service or submit an order. The prepared bundle renews the transaction-review expiry and associated account-review pins; it cannot change route accounts, quantities, receipt/cost limits, caller identities, signer keys, opening balances, or launch flags. A separately pinned same-account bearer refresh is supported as described below.
 
 ## Why the locked transition is needed
 
@@ -39,3 +39,30 @@ A256-address lookup fixture reproduces the original failure and now passes;
 32769-byte input is rejected.66relevant local tests pass and two parser mutations
 failed assertions with zeroerrors. This corrects the operational helper only; the
 qualified C++ gateway artifact remains69679c0.
+
+## Expired bearer discovered during host preparation
+
+The installed token expired while telemetry qualification and deployment were in
+progress. The existing protected handoff already supports replacing the gateway
+bearer. The renewal now optionally includes a pinned `session-refresh.json`:
+schema1, authenticated setup/history hashes, bearer SHA256 and actual token expiry.
+The proposal verifies the same owner/user/balances, derives the original canonical
+session-evidence formula from the fresh capture, and updates the runtime-identity
+pin coherently. Without this witness, session-field changes remain forbidden.
+The token bytes are never in the bundle, archive, logs or committed evidence.
+
+After locked document publication, use the committed
+`tm-stage-swap-credential.py` to send the locally verified session over SSH stdin
+to owner-only tmpfs. Then call `credential_handoff.py install --role gateway`
+with the new profile hash and the exact previous bearer hash. Both services must
+be inactive, and all persistent startup guards stay installed. Verify the installed
+bearer hash, role ownership/mode and lifetime; record this as a separate completion.
+The document archive's `complete` marker does not claim credential installation.
+
+If interrupted between these operations, the new profile with an old bearer
+refuses admission. Before an explicit recovery, compare the installed bearer hash
+against the pinned old/new values. If already new, verify and record completion;
+do not repeat replacement with the old hash. No credential bytes are archived.
+Session evidence changes runtime identity but none of the five journal domains;
+only the policy-expiry change advances the protected journal ordinal. This does
+not alter kernel funding or authorize a trade.

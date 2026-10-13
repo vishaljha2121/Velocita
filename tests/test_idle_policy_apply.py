@@ -1,5 +1,6 @@
 """Expiry renewal failure boundaries: real flock and durable filesystem test doubles."""
 import importlib.util
+import json
 import os
 from pathlib import Path
 import tempfile
@@ -17,6 +18,36 @@ class ApplyTests(unittest.TestCase):
         scratch=Path.home()/'.cache/velocita-build/idle-policy-apply-tests';scratch.mkdir(parents=True,exist_ok=True)
         self.tmp=tempfile.TemporaryDirectory(dir=scratch);self.addCleanup(self.tmp.cleanup);self.root=Path(self.tmp.name)
         self.args=N.RenewalTests().fixture();self.proposal=A.N.propose(*self.args)
+
+    def write_bundle(self,proposal,now):
+        base=self.root/'bundle';base.mkdir()
+        for name,raw in proposal['artifacts'].items():
+            target=base/name;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(raw)
+        spec=dict(schema=1,evaluated_at_ms=now,helper_sha256='ab'*32,
+                  files={n:A.R.digest(raw) for n,raw in proposal['artifacts'].items()})
+        raw=json.dumps(spec,sort_keys=True).encode();(base/'renewal.json').write_bytes(raw)
+        return base,A.R.digest(raw)
+
+    def test_original_bundle_retains_exact_artifact_contract(self):
+        base,pin=self.write_bundle(self.proposal,self.args[-1])
+        parsed=A.bundle(base,pin)
+        self.assertEqual(parsed[-1]['artifacts'],self.proposal['artifacts'])
+
+    def test_session_refresh_witness_is_pinned_and_revalidated(self):
+        args,witness=N.RenewalTests().session_fixture()
+        proposal=A.N.propose(*args,session_refresh=witness)
+        base,pin=self.write_bundle(proposal,args[-1])
+        self.assertEqual(A.bundle(base,pin)[-1]['artifacts'],proposal['artifacts'])
+        proof=base/'session-refresh.json';original=proof.read_bytes()
+        proof.write_bytes(original+b' ')
+        with self.assertRaisesRegex(ValueError,'artifact pin',msg='session_witness_byte_pin'):
+            A.bundle(base,pin)
+        altered=json.loads(original);altered['token_expires_at_ms']=args[-1]-1
+        proof.write_bytes(json.dumps(altered).encode())
+        spec=json.loads((base/'renewal.json').read_bytes());spec['files']['session-refresh.json']=A.R.digest(proof.read_bytes())
+        raw=json.dumps(spec).encode();(base/'renewal.json').write_bytes(raw)
+        with self.assertRaises(ValueError,msg='repinned_expired_session_revalidated'):
+            A.bundle(base,A.R.digest(raw))
 
     def test_exact_state_proof_requires_both_live_role_reads(self):
         proof=self.proposal['report'];rows=[dict(role=r,applied_index=6,state_digest=proof['original_state_digest']) for r in ('signer','gateway')]

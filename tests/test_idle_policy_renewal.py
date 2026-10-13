@@ -26,6 +26,86 @@ class RenewalTests(unittest.TestCase):
         after['account.review']=t.encode(r);p['account_review_digest']=T.R.digest(after['account.review']);after['runtime.profile']=t.encode(p)
         return old,t.pins(old,after),before,after,journals,10000100
 
+    def session_fixture(self):
+        old,new,before,after,journals,now=self.fixture()
+        previous=T.R.L.fields(before['runtime.profile']);previous['expires_at_ms']='9000000'
+        before['runtime.profile']=T.TransitionTests.encode(previous);old=T.TransitionTests.pins(old,before)
+        history=json.loads(after['account.history']);history['setup_sha256']='42'*32
+        after['account.history']=json.dumps(history,sort_keys=True,separators=(',',':')).encode()+b'\n'
+        witness=dict(schema=1,setup_sha256=history['setup_sha256'],history_sha256=T.R.digest(after['account.history']),bearer_sha256='ab'*32,token_expires_at_ms=12030000)
+        canonical=lambda value:json.dumps(value,sort_keys=True,separators=(',',':')).encode()+b'\n'
+        session={k:v for k,v in witness.items() if k!='token_expires_at_ms'}
+        profile=T.R.L.fields(after['runtime.profile'])
+        profile.update(bearer_digest=witness['bearer_sha256'],expires_at_ms='12000000',session_evidence=T.R.digest(canonical(session)))
+        review=T.R.L.fields(after['account.review']);review.update(history_evidence=witness['history_sha256'],runtime_identity=N.runtime_identity(profile))
+        after['account.review']=T.TransitionTests.encode(review);profile['account_review_digest']=T.R.digest(after['account.review'])
+        after['runtime.profile']=T.TransitionTests.encode(profile)
+        return (old,T.TransitionTests.pins(new,after),before,after,journals,now),witness
+
+    def test_same_account_bearer_refresh_requires_exact_witness(self):
+        args,witness=self.session_fixture()
+        try:out=N.propose(*args,session_refresh=witness)
+        except (TypeError,ValueError) as error:self.fail('same_account_bearer_refresh_admitted: '+str(error))
+        expected=json.dumps(witness,sort_keys=True,separators=(',',':')).encode()+b'\n'
+        self.assertEqual(out['artifacts']['session-refresh.json'],expected)
+        self.assertEqual(out['report']['artifact_sha256']['session-refresh.json'],T.R.digest(expected))
+        with self.assertRaises(ValueError,msg='no_witness_credential_change_refused'):N.propose(*args)
+        self.assertNotIn('session-refresh.json',N.propose(*self.fixture())['artifacts'])
+
+    def test_session_witness_rejects_tampering_and_short_or_unbounded_expiry(self):
+        args,witness=self.session_fixture()
+        variants=[dict(witness,schema=True),dict(witness,extra=1),{k:v for k,v in witness.items() if k!='setup_sha256'},
+                  dict(witness,setup_sha256='43'*32),dict(witness,history_sha256='44'*32),dict(witness,bearer_sha256='45'*32),
+                  dict(witness,token_expires_at_ms=11999999),dict(witness,token_expires_at_ms=True),dict(witness,token_expires_at_ms=2**64),
+                  dict(witness,setup_sha256='X'*64)]
+        for changed in variants:
+            with self.subTest(changed=changed),self.assertRaises(ValueError,msg='invalid_session_witness_refused'):N.propose(*args,session_refresh=changed)
+        old,new,before,after,journals,now=args
+        changed=dict(after);p=T.R.L.fields(changed['runtime.profile']);p['expires_at_ms']=str(now+60000)
+        changed['runtime.profile']=T.TransitionTests.encode(p)
+        with self.assertRaises(ValueError,msg='session_lifetime_over_60s_required'):
+            N.propose(old,T.TransitionTests.pins(new,changed),before,changed,journals,now,session_refresh=witness)
+
+    def test_session_evidence_is_recomputed_not_merely_nonzero(self):
+        args,witness=self.session_fixture();old,new,before,after,journals,now=args
+        p=T.R.L.fields(after['runtime.profile']);p['session_evidence']='fe'*32
+        review=T.R.L.fields(after['account.review']);review['runtime_identity']=N.runtime_identity(p)
+        after['account.review']=T.TransitionTests.encode(review);p['account_review_digest']=T.R.digest(after['account.review'])
+        after['runtime.profile']=T.TransitionTests.encode(p)
+        with self.assertRaises(ValueError,msg='coherent_but_false_session_evidence_refused'):
+            N.propose(old,T.TransitionTests.pins(new,after),before,after,journals,now,session_refresh=witness)
+
+    def test_refresh_preserves_journal_domains_but_changes_runtime_identity(self):
+        args,witness=self.session_fixture();old,new,before,after,journals,now=args
+        profile=T.R.L.fields(after['runtime.profile']);original=T.R.L.fields(before['runtime.profile'])
+        without=dict(profile,**{k:original[k] for k in ('session_evidence','expires_at_ms')})
+        if 'bearer_digest' in original:without['bearer_digest']=original['bearer_digest']
+        else:without.pop('bearer_digest',None)
+        baseline=dict(after,**{'runtime.profile':T.TransitionTests.encode(without)})
+        self.assertNotEqual(N.runtime_identity(profile),N.runtime_identity(without),'session_changes_runtime_identity')
+        self.assertEqual(T.R.journal_bindings(after),T.R.journal_bindings(baseline),'session_preserves_all_journal_domains')
+        result=N.propose(*args,session_refresh=witness)
+        for name,raw in journals.items():
+            if name!='protected-signing':self.assertEqual(result['artifacts']['after/journals/'+name],raw)
+
+    def test_session_refresh_cannot_change_owner_or_authority(self):
+        args,witness=self.session_fixture();old,new,before,after,journals,now=args
+        for field,value in (('owner_wallet','51'*32),('authority_domain','52'*32),('max_buy_output_deduction_lamports','2039281'),('signer_public_key','02'+'53'*32)):
+            changed=dict(after);p=T.R.L.fields(changed['runtime.profile']);p[field]=value;changed['runtime.profile']=T.TransitionTests.encode(p)
+            with self.subTest(field=field),self.assertRaises(ValueError,msg='same_account_refresh_only'):
+                N.propose(old,T.TransitionTests.pins(new,changed),before,changed,journals,now,session_refresh=witness)
+        for field,value in (('owner_sha256','54'*32),('user_id_sha256','55'*32),('base_atoms',26),('quote_atoms',1000001)):
+            changed=dict(after);history=json.loads(changed['account.history']);history[field]=value
+            changed['account.history']=json.dumps(history).encode();updated=dict(witness,history_sha256=T.R.digest(changed['account.history']))
+            p=T.R.L.fields(changed['runtime.profile'])
+            evidence={k:v for k,v in updated.items() if k!='token_expires_at_ms'}
+            p['session_evidence']=T.R.digest(json.dumps(evidence,sort_keys=True,separators=(',',':')).encode()+b'\n')
+            review=T.R.L.fields(changed['account.review']);review.update(history_evidence=updated['history_sha256'],runtime_identity=N.runtime_identity(p))
+            changed['account.review']=T.TransitionTests.encode(review);p['account_review_digest']=T.R.digest(changed['account.review'])
+            changed['runtime.profile']=T.TransitionTests.encode(p)
+            with self.subTest(field=field),self.assertRaisesRegex(ValueError,'balance or account changed|history account identity mismatch',msg='coherent_changed_account_or_balance_refused'):
+                N.propose(old,T.TransitionTests.pins(new,changed),before,changed,journals,now,session_refresh=updated)
+
     def test_full_256_address_lookup_review_exceeds_8k_and_renews(self):
         old,new,before,after,journals,now=self.fixture()
         for files in (before,after):
