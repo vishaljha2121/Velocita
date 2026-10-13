@@ -12,6 +12,10 @@ spec.loader.exec_module(TM)
 
 
 class AccountSessionTests(unittest.TestCase):
+    def setUp(self):
+        self.scratch = Path.home() / '.cache/velocita-build/test-scratch'
+        self.scratch.mkdir(parents=True, exist_ok=True)
+
     def pair(self, expiry='2099-01-01T00:00:00Z'):
         return dict(access_token='aaa.bbb.ccc', refresh_token='ddd.eee.fff',
                     expires_in=expiry, token_type='Bearer')
@@ -25,7 +29,7 @@ class AccountSessionTests(unittest.TestCase):
                 network.assert_not_called()
 
     def test_refresh_keeps_rotated_pair_and_private_permissions(self):
-        with tempfile.TemporaryDirectory(dir=ROOT) as d:
+        with tempfile.TemporaryDirectory(dir=self.scratch) as d:
             path = Path(d) / 'session.json'
             path.write_text(json.dumps(self.pair('2000-01-01T00:00:00Z')))
             path.chmod(0o600)
@@ -39,7 +43,7 @@ class AccountSessionTests(unittest.TestCase):
                                             {'refresh_token': 'ddd.eee.fff'})
 
     def test_bad_refresh_preserves_previous_session(self):
-        with tempfile.TemporaryDirectory(dir=ROOT) as d:
+        with tempfile.TemporaryDirectory(dir=self.scratch) as d:
             path = Path(d) / 'session.json'
             previous = json.dumps(self.pair('2000-01-01T00:00:00Z'))
             path.write_text(previous)
@@ -50,7 +54,7 @@ class AccountSessionTests(unittest.TestCase):
             self.assertEqual(path.read_text(), previous)
 
     def test_valid_session_reused_without_auth_network(self):
-        with tempfile.TemporaryDirectory(dir=ROOT) as d:
+        with tempfile.TemporaryDirectory(dir=self.scratch) as d:
             path = Path(d) / 'session.json'
             path.write_text(json.dumps(self.pair()))
             path.chmod(0o600)
@@ -69,7 +73,7 @@ class AccountSessionTests(unittest.TestCase):
             TM.balances({'data': [row]})
 
     def test_session_symlink_refused(self):
-        with tempfile.TemporaryDirectory(dir=ROOT) as d:
+        with tempfile.TemporaryDirectory(dir=self.scratch) as d:
             path = Path(d) / 'session.json'
             path.symlink_to(Path(d) / 'elsewhere')
             with self.assertRaisesRegex(RuntimeError, 'not a regular file'):
