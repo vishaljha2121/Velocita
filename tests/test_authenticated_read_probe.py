@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class AuthenticatedReadProbeArguments(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        scratch = Path.home()/'.cache/velocita-build/authenticated-read-parser'
+        scratch = Path.home()/'.cache/velocita-tests/authenticated-read-parser'
         scratch.mkdir(parents=True, exist_ok=True)
         cls.temp = tempfile.TemporaryDirectory(dir=scratch)
         cls.binary = str(Path(cls.temp.name)/'probe')
