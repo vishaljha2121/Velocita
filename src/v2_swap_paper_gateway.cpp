@@ -7,13 +7,19 @@
 namespace velocita::v2 {
 namespace {
 Digest256 paper_digest(const swap::Intent& intent, swap::PaperQuote quote, std::byte tag) noexcept {
-    std::array<std::byte, swap::max_record_bytes + 13> bytes{};
+    std::array<std::byte, swap::max_record_bytes + 31> bytes{};
     const auto encoded = swap::encode({swap::Role::strategy, intent.source_time, intent}, bytes);
     if (encoded.error != swap::CodecError::none) return {};
     auto at = encoded.size;
     bytes[at++] = tag;
     for (unsigned i = 0; i < 8; ++i) bytes[at++] = static_cast<std::byte>((quote.price_per_sol.value() >> (8*i)) & 255);
     for (unsigned i = 0; i < 4; ++i) bytes[at++] = static_cast<std::byte>((quote.fee_ppm >> (8*i)) & 255);
+    if(quote.buy_base_deduction.value() || quote.exact_buy_fee.value() || quote.use_exact_buy_fee){
+        bytes[at++]=std::byte{1}; // Versioned optional cost extension, old identities preserved.
+        for(unsigned i=0;i<8;++i)bytes[at++]=static_cast<std::byte>((quote.buy_base_deduction.value()>>(8*i))&255);
+        for(unsigned i=0;i<8;++i)bytes[at++]=static_cast<std::byte>((quote.exact_buy_fee.value()>>(8*i))&255);
+        bytes[at++]=static_cast<std::byte>(quote.use_exact_buy_fee);
+    }
     return sha256_digest(std::span(bytes).first(at));
 }
 }

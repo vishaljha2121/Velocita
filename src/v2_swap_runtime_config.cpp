@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <fcntl.h>
+#include <limits>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <openssl/core_names.h>
@@ -48,6 +49,7 @@ SwapRuntimeCode validate_swap_runtime_binding(const SwapRuntimeBinding&b)noexcep
        !a.policy.value() || !a.policy_version.value() || !a.risk_policy_version.value() || b.authority_domain.is_zero() ||
        b.account_session.account_and_assets_digest.is_zero() || b.account_session.session_evidence_digest.is_zero() ||
        std::all_of(b.owner_wallet.begin(),b.owner_wallet.end(),[](std::byte x){return x==std::byte{};}))return SwapRuntimeCode::invalid_binding;
+    if(b.max_buy_output_deduction_lamports>static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))return SwapRuntimeCode::invalid_binding;
     if(!b.gateway_uid || !b.signer_uid || b.gateway_uid==b.signer_uid || !b.gateway_caller.value() || !b.signer_caller.value() ||
        b.gateway_caller==b.signer_caller)return SwapRuntimeCode::invalid_principals;
     if(!socket_valid(b))return SwapRuntimeCode::invalid_socket;
@@ -74,7 +76,15 @@ Digest256 swap_runtime_identity_digest(const SwapRuntimeBinding&b)noexcept{
     add64(h,a.account.value());add64(h,a.instrument.value());add64(h,a.policy.value());add64(h,a.policy_version.value());add64(h,a.risk_policy_version.value());
     h.update(b.authority_domain.bytes);h.update(b.account_session.account_and_assets_digest.bytes);h.update(b.account_session.session_evidence_digest.bytes);
     h.update(b.owner_wallet);h.update(b.signer_public_key);add64(h,b.gateway_uid);add64(h,b.signer_uid);add64(h,b.gateway_caller.value());add64(h,b.signer_caller.value());
-    add64(h,b.ipc_timeout_ms);add64(h,b.socket_size);h.update(std::as_bytes(std::span(b.socket.data(),b.socket_size)));return h.finish();
+    add64(h,b.ipc_timeout_ms);add64(h,b.socket_size);h.update(std::as_bytes(std::span(b.socket.data(),b.socket_size)));
+    // Preserve existing zero-cost identities. Nonzero cost authority changes the
+    // reviewed identity and cannot reuse a prior zero-cost account review.
+    if(b.max_buy_output_deduction_lamports){
+        constexpr std::string_view costs="accepted-buy-output-deduction-v1";
+        h.update(std::as_bytes(std::span(costs.data(),costs.size())));
+        add64(h,b.max_buy_output_deduction_lamports);
+    }
+    return h.finish();
 }
 SwapInheritedSecretFd::~SwapInheritedSecretFd(){if(fd_>=3)::close(fd_);}
 SwapInheritedSecretFd::SwapInheritedSecretFd(SwapInheritedSecretFd&&o)noexcept:fd_(o.fd_){o.fd_=-1;}

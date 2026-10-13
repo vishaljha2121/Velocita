@@ -220,6 +220,90 @@ void paper_oracle_and_reject() {
     require(p.code==Code::applied && p.settlement.outcome==Outcome::failed_without_charge,"slippage bound yields sponsored paper failure");
     require(apply(q.s,p.settlement,Role::gateway,103)==Code::applied && q.s.quote==QuoteAtoms{5'000'000} && q.s.purchases==QuoteAtoms{},"failure releases only after terminal evidence");
 }
+Intent observed_cost_buy(const Rig& r) {
+    auto i=r.buy();
+    i.quote_input=QuoteAtoms{998'000}; i.max_quote_debit=QuoteAtoms{1'000'000};
+    i.min_base_receive=BaseAtoms{9'429'160};
+    return i;
+}
+PaperQuote observed_cost_quote() {
+    return {QuoteAtoms{100'000'000},0,BaseAtoms{550'840},QuoteAtoms{2'000},true};
+}
+void paper_observed_cost_oracle_and_full_close() {
+    Rig r; r.s={}; auto o=opening(); o.base={}; o.base_cost={};
+    require(apply(r.s,o,Role::operator_role,100)==Code::applied,"empty inventory initializes");
+    r.start(observed_cost_buy(r)); const auto before=r.s;
+    const auto p=simulate(r.s,observed_cost_quote(),digest(7),digest(8));
+    require(p.code==Code::applied && p.settlement.outcome==Outcome::succeeded &&
+            p.settlement.base_credit==BaseAtoms{9'429'160} &&
+            p.settlement.quote_debit==QuoteAtoms{1'000'000} && p.settlement.fee==QuoteAtoms{2'000},
+            "998000 principal buys 9980000 atoms minus 550840, exact fee makes total 1000000");
+    require(r.s==before,"paper quote calculation cannot mutate reservations or account");
+    require(apply(r.s,p.settlement,Role::gateway,103)==Code::applied,"net receipt books through unchanged reducer");
+    require(r.s.base==BaseAtoms{9'429'160} && r.s.quote==QuoteAtoms{4'000'000} &&
+            r.s.cost==QuoteAtoms{998'000} && r.s.fees==QuoteAtoms{2'000} &&
+            r.s.realized_pnl==-2'000 && r.s.purchases==QuoteAtoms{1'000'000},
+            "deducted inventory retains full principal cost and explicit fee is realized once");
+    auto i=r.sell(2,9'429'160); i.source_time=104; i.min_quote_receive=QuoteAtoms{942'916};
+    require(apply(r.s,i,Role::strategy,104)==Code::applied,"full net inventory reserved");
+    require(apply(r.s,Prepare{i.effect,digest(5),digest(6),1},Role::gateway,105)==Code::applied,"full close prepared");
+    require(apply(r.s,Attempt{i.effect,digest(5)},Role::gateway,106)==Code::applied,"full close attempted");
+    const auto close=simulate(r.s,observed_cost_quote(),digest(9),digest(10));
+    require(close.settlement.quote_credit==QuoteAtoms{942'916} && close.settlement.fee==QuoteAtoms{},
+            "buy deduction and exact buy fee do not apply to a sale");
+    require(apply(r.s,close.settlement,Role::gateway,107)==Code::applied,"full close settles");
+    require(r.s.base==BaseAtoms{} && r.s.cost==QuoteAtoms{} && r.s.quote==QuoteAtoms{4'942'916} &&
+            r.s.realized_pnl==-57'084 && r.s.fees==QuoteAtoms{2'000} && valid_state(r.s),
+            "round trip realizes 55084 receipt loss plus 2000 fee exactly once");
+}
+void paper_observed_cost_boundaries() {
+    for(unsigned which=0;which!=6;++which) {
+        Rig r; auto i=observed_cost_buy(r); auto q=observed_cost_quote();
+        if(which==0) i.min_base_receive=BaseAtoms{9'429'161};
+        if(which==1) q.buy_base_deduction=BaseAtoms{9'980'000};
+        if(which==2) q.buy_base_deduction=BaseAtoms{9'980'001};
+        if(which==3) q.buy_base_deduction=BaseAtoms{std::numeric_limits<std::uint64_t>::max()};
+        if(which==4) q.exact_buy_fee=QuoteAtoms{2'001};
+        if(which==5) q.exact_buy_fee=QuoteAtoms{std::numeric_limits<std::uint64_t>::max()};
+        r.start(i); const auto before=r.s; const auto p=simulate(r.s,q,digest(7),digest(8));
+        require(p.code==Code::applied && p.settlement.outcome==Outcome::failed_without_charge,
+                "net minimum, deduction underflow and exact fee cap fail without charge");
+        require(r.s==before && !p.settlement.base_credit.value() && !p.settlement.base_debit.value() &&
+                !p.settlement.quote_credit.value() && !p.settlement.quote_debit.value() && !p.settlement.fee.value(),
+                "failed paper fills carry zero economic deltas and cannot mutate source state");
+        require(apply(r.s,p.settlement,Role::gateway,103)==Code::applied && r.s.base==before.base &&
+                r.s.quote==before.quote && r.s.cost==before.cost && r.s.realized_pnl==before.realized_pnl &&
+                r.s.fees==before.fees && r.s.purchases==before.purchases && !r.s.reserved_quote.value() &&
+                r.s.pending.phase==Phase::none && valid_state(r.s),
+                "failed cost-aware fills release holds without booking cost or inventory");
+    }
+}
+void paper_exact_fee_mode_and_unchanged_sell() {
+    Rig r; r.start(observed_cost_buy(r)); auto q=observed_cost_quote(); q.fee_ppm=2'000;
+    const auto before=r.s; const auto p=simulate(r.s,q,digest(7),digest(8));
+    require(p.code==Code::invalid && r.s==before,"ambiguous exact and rate buy fees are refused");
+    q.use_exact_buy_fee=false;
+    const auto rate=simulate(r.s,q,digest(7),digest(8));
+    require(rate.code==Code::applied && rate.settlement.outcome==Outcome::succeeded &&
+            rate.settlement.fee==QuoteAtoms{1'996} && rate.settlement.quote_debit==QuoteAtoms{999'996} &&
+            rate.settlement.base_credit==BaseAtoms{9'429'160},
+            "2000 ppm of 998000 principal is 1996 and does not imply the observed exact 2000 fee");
+    q=observed_cost_quote(); q.exact_buy_fee={};
+    const auto zero=simulate(r.s,q,digest(7),digest(8));
+    require(zero.code==Code::applied && zero.settlement.outcome==Outcome::succeeded &&
+            zero.settlement.fee==QuoteAtoms{} && zero.settlement.quote_debit==QuoteAtoms{998'000},
+            "explicit zero quote fee is supported without an amount sentinel");
+    Rig s; auto i=s.sell(1,10'000'000); i.min_quote_receive=QuoteAtoms{998'000}; s.start(i);
+    const auto normal=simulate(s.s,{QuoteAtoms{100'000'000},2'000},digest(7),digest(8));
+    q.fee_ppm=2'000;
+    q.buy_base_deduction=BaseAtoms{std::numeric_limits<std::uint64_t>::max()};
+    q.exact_buy_fee=QuoteAtoms{std::numeric_limits<std::uint64_t>::max()};
+    const auto with_buy_costs=simulate(s.s,q,digest(7),digest(8));
+    require(normal.code==Code::applied && normal.settlement.outcome==Outcome::succeeded &&
+            normal.settlement.quote_credit==QuoteAtoms{998'000} && normal.settlement.fee==QuoteAtoms{2'000} &&
+            with_buy_costs.code==normal.code && with_buy_costs.settlement==normal.settlement,
+            "sell rate fee remains unchanged by all buy-only quote fields");
+}
 void overflow_is_transactional() {
     Rig r; r.s.base=BaseAtoms{std::numeric_limits<std::uint64_t>::max()-1}; r.start(r.buy()); const auto before=r.s;
     require(apply(r.s,r.fill(),Role::gateway,103)==Code::conflict && r.s.base==before.base && r.s.reserved_quote==before.reserved_quote,"unrepresentable settlement freezes and retains evidence authority");
@@ -337,6 +421,9 @@ int main(int argc,char** argv) {
         {"kill_blocks_new_attempt_not_settlement",kill_blocks_new_attempt_not_settlement},{"sell_cost_basis_and_full_close_remainder",sell_cost_basis_and_full_close_remainder},
         {"sales_do_not_replenish_purchase_allowance",sales_do_not_replenish_purchase_allowance},{"loss_stop_allows_only_sales",loss_stop_allows_only_sales},
         {"transient_liquidity_is_reserved",transient_liquidity_is_reserved},{"paper_oracle_and_reject",paper_oracle_and_reject},
+        {"paper_observed_cost_oracle_and_full_close",paper_observed_cost_oracle_and_full_close},
+        {"paper_observed_cost_boundaries",paper_observed_cost_boundaries},
+        {"paper_exact_fee_mode_and_unchanged_sell",paper_exact_fee_mode_and_unchanged_sell},
         {"overflow_is_transactional",overflow_is_transactional},{"failed_transaction_cannot_hide_charges",failed_transaction_cannot_hide_charges},
         {"bounded_settlement_history_never_evicts",bounded_settlement_history_never_evicts},
         {"record_codec_has_independent_golden_and_rejects_corruption",record_codec_has_independent_golden_and_rejects_corruption},

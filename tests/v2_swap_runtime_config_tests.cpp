@@ -31,6 +31,12 @@ void invalid_config(){Scratch s;TestKey key(s.base/"key");auto b=binding(key,s);
     x=b;x.ipc_timeout_ms=0;require(validate_swap_runtime_binding(x)==SwapRuntimeCode::invalid_timeout,"unbounded IPC timeout refuses");
 }
 void identity_binding(){Scratch s;TestKey key(s.base/"key");auto b=binding(key,s);const auto original=swap_runtime_identity_digest(b);require(original!=Digest256{},"valid runtime identity hashes");
+    auto cost=b;cost.max_buy_output_deduction_lamports=550840;
+    require(swap_runtime_identity_digest(cost)!=original,"accepted_cost_cannot_reuse_zero_cost_review");
+    const auto accepted=swap_runtime_identity_digest(cost);++cost.max_buy_output_deduction_lamports;
+    require(swap_runtime_identity_digest(cost)!=accepted,"one_atom_cost_cap_change_changes_runtime_identity");
+    cost.max_buy_output_deduction_lamports=UINT64_MAX;
+    require(validate_swap_runtime_binding(cost)==SwapRuntimeCode::invalid_binding,"oversized_output_cost_refused");
     for(unsigned n=0;n<11;++n){auto x=b;if(n==0)x.allocation.custody=digest(66);if(n==1)x.owner_wallet[0]^=std::byte{1};if(n==2)x.account_session.account_and_assets_digest=digest(67);if(n==3)x.account_session.session_evidence_digest=digest(68);if(n==4)x.gateway_uid+=2;if(n==5)x.signer_uid+=3;if(n==6)x.signer_caller=CallerId{24};if(n==7)x.socket[x.socket_size-1]='X';if(n==8)x.authority_domain=digest(69);if(n==9)x.allocation.policy_version=PolicyVersion{2};if(n==10)x.ipc_timeout_ms=1001;
         require(swap_runtime_identity_digest(x)!=original,"runtime identity binds every account and process pin");}
 }

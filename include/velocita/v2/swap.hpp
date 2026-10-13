@@ -130,6 +130,9 @@ struct State {
 struct PaperQuote {
     QuoteAtoms price_per_sol{};
     std::uint32_t fee_ppm{};
+    BaseAtoms buy_base_deduction{};
+    QuoteAtoms exact_buy_fee{};
+    bool use_exact_buy_fee{};
 };
 
 struct PaperFill {

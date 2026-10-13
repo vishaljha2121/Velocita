@@ -26,6 +26,8 @@ std::optional<SwapRuntimeProfile> decode_swap_runtime_profile(std::string_view d
         a.policy_version=PolicyVersion{number("policy_version")};a.risk_policy_version=RiskPolicyVersion{number("risk_policy_version")};
         hex("account_assets",b.account_session.account_and_assets_digest.bytes);hex("session_evidence",b.account_session.session_evidence_digest.bytes);
         hex("owner_wallet",b.owner_wallet);hex("signer_public_key",b.signer_public_key);
+        if(fields.contains("max_buy_output_deduction_lamports"))
+            b.max_buy_output_deduction_lamports=number("max_buy_output_deduction_lamports");
         hex("account_review_digest",p.account_review_digest.bytes);if(p.account_review_digest.is_zero())return {};
         hex("failure_fee_payer",std::as_writable_bytes(std::span(p.failure_policy.expected_external_fee_payer)));
         const auto& payer=p.failure_policy.expected_external_fee_payer;
@@ -117,7 +119,8 @@ std::optional<VerifiedSwapSettlement> SwapProductionPorts::reconcile(const swap:
     SwapRuntimeFinalizedHttps rpc(timeout_);SwapFinalizedReader reader(rpc,clock_,rpc.provider_identity(),timeout_);
     return admit_retained_swap_settlement(preparation_,submission_,binding_,pending.intent,reader,1,1,
         organization_.view(),signer_.view(),lookups_,[&]{truemarkets::SolanaAccountKey owner{};
-            for(std::size_t n=0;n<owner.size();++n)owner[n]=std::to_integer<std::uint8_t>(credentials_.binding().owner_wallet[n]);return owner;}(),failure_policy_).verified;
+            for(std::size_t n=0;n<owner.size();++n)owner[n]=std::to_integer<std::uint8_t>(credentials_.binding().owner_wallet[n]);return owner;}(),failure_policy_,
+            {swap::BaseAtoms{credentials_.binding().max_buy_output_deduction_lamports}}).verified;
 }
 SwapProductionGateway::SwapProductionGateway(GatewayLink& link,SwapReconcileStore& recovery,SwapPrepareStore& prepared,SwapSubmissionStore& submitted,
     SwapSubmissionStore& signing_requests,SwapGatewayCredentials& credentials,SwapFinalizedReadClock& clock,const SwapRuntimeProfile& profile,

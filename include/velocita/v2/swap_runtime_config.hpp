@@ -15,6 +15,8 @@ struct SwapRuntimeBinding {
     std::uint32_t gateway_uid{},signer_uid{};
     CallerId gateway_caller{},signer_caller{};
     int ipc_timeout_ms{};
+    // Explicit output-atom deduction cap, bound into the reviewed runtime identity.
+    std::uint64_t max_buy_output_deduction_lamports{};
     [[nodiscard]] std::string_view socket_view()const noexcept{return {socket.data(),socket_size};}
 };
 struct SwapGatewayStartupConfig {

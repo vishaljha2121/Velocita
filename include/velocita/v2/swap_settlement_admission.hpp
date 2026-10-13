@@ -19,7 +19,8 @@ private:
     friend SwapSettlementAdmissionResult admit_retained_swap_settlement(
         const SwapPrepareStore&,const SwapSubmissionStore&,const SwapPrepareBinding&,const swap::Intent&,
         SwapFinalizedReader&,std::uint64_t,std::uint64_t,std::string_view,std::string_view,
-        std::span<const truemarkets::SolanaLookupEvidence>,const truemarkets::SolanaAccountKey&,SwapFailureAccountingPolicy);
+        std::span<const truemarkets::SolanaLookupEvidence>,const truemarkets::SolanaAccountKey&,
+        SwapFailureAccountingPolicy,SwapAcceptedBuyCosts);
     explicit VerifiedSwapSettlement(const swap::Settlement& value) noexcept : settlement_(value) {}
 #ifdef VELOCITA_SWAP_SETTLEMENT_SYNTHETIC_FIXTURE
     friend VerifiedSwapSettlement settlement_test_fixture::make_verified(const swap::Settlement&) noexcept;
@@ -53,5 +54,5 @@ struct SwapSettlementAdmissionResult {
     SwapFinalizedReader&, std::uint64_t request_id, std::uint64_t minimum_slot,
     std::string_view organization, std::string_view signer,
     std::span<const truemarkets::SolanaLookupEvidence>, const truemarkets::SolanaAccountKey& owner,
-    SwapFailureAccountingPolicy failure_policy = {});
+    SwapFailureAccountingPolicy failure_policy = {}, SwapAcceptedBuyCosts accepted_buy_costs = {});
 }

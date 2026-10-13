@@ -66,7 +66,64 @@ class OfflineReplay:
         return document['result']
 
 
-def prepare(capture, output):
+def owner_buy_alternative(observations, balances, evidence):
+    """Bind one known external purchase; propose inventory, never authorize adoption."""
+    if evidence.get('rpc_reports_success') is not True or evidence.get('production_live_admitted') is not False:
+        raise ValueError('owner buy evidence must be successful and external')
+    signature = H.key(evidence.get('transaction_signature'), 64)
+    fields = ('slot', 'net_owner_receipt_lamports', 'total_usdc_debit_atoms')
+    if any(type(evidence.get(k)) is not int or not 0 < evidence[k] <= 2**64-1 for k in fields):
+        raise ValueError('owner buy evidence amount or slot')
+    slot, base, quote = (evidence[k] for k in fields)
+    matches = [row for row in observations if row['signature'] == signature]
+    if len(matches) != 1:
+        raise ValueError('owner buy missing or duplicate in fresh history')
+    row = matches[0]
+    if row['failed'] is not False or row['slot'] != slot or row['owner_native_delta'] != base or sum(row['current_usdc_account_deltas'].values()) != -quote:
+        raise ValueError('owner buy fresh history mismatch')
+    if base > balances['SOL'] or quote > 5000000:
+        raise ValueError('owner buy exceeds balance or purchase cap')
+    additional = [r['signature'] for r in observations if r['signature'] != signature and
+                  sum(r['current_usdc_account_deltas'].values()) < 0 and r['owner_native_delta'] > 0]
+    return dict(status='alternative_requires_owner_review', selected=False,
+        signature=signature, slot=slot, classification='owner_cli_buy_outside_kernel',
+        kernel_fill=False, ledger_mutation=False,
+        proposed_funding=dict(managed_base_atoms=base, managed_base_cost_atoms=quote,
+            managed_quote_atoms=balances['USDC'], outside_base_atoms=balances['SOL']-base,
+            outside_quote_atoms=0, token_account_rent_included=False),
+        observed_owner_purchase_spend_atoms=quote,
+        maximum_total_purchase_spend_atoms=5000000,
+        remaining_purchase_spend_atoms_before_other_activity_review=5000000-quote,
+        additional_purchase_like_signatures_require_review=additional,
+        budget_history_complete=False)
+
+
+def select_all_current_inventory(candidate, balances):
+    """Owner-selected inventory only; unknown opening cost prevents executable funding."""
+    if 'owner_buy_alternative' not in candidate:
+        raise ValueError('known purchase evidence required for current all-account proposal')
+    known = candidate['owner_buy_alternative']['proposed_funding']
+    candidate['status'] = 'inventory_selected_opening_valuation_required'
+    candidate['inventory_selection'] = 'all_current_observed_sol_usdc'
+    candidate['proposed_funding'] = dict(managed_base_atoms=balances['SOL'],
+        managed_quote_atoms=balances['USDC'], managed_base_cost_atoms=None,
+        outside_base_atoms=0, outside_quote_atoms=0, token_account_rent_included=False)
+    candidate['opening_valuation'] = dict(status='requires_reviewed_activation_mark',
+        method='mark_all_opening_SOL_at_reviewed_current_executable_sell_price',
+        marked_base_cost_usdc_atoms=None, price_evidence_sha256=None, valued_at_ms=None,
+        known_historical_subset_base_atoms=known['managed_base_atoms'],
+        known_historical_subset_cost_usdc_atoms=known['managed_base_cost_atoms'],
+        unknown_historical_cost_base_atoms=balances['SOL']-known['managed_base_atoms'],
+        pnl_scope='change_since_reviewed_opening_mark_not_historical_return',
+        proposed_opening_mark_convention='executable_net_liquidation_value',
+        double_count_historical_purchase_cost=False)
+    candidate['future_deposits'] = dict(automatically_managed=False,
+        required_before_adoption='fresh_attributed_history_and_reviewed_funding_cut')
+    candidate['unresolved_before_executable_review'].insert(0,
+        'reviewed opening valuation for all managed SOL at activation; historical basis unknown')
+
+
+def prepare(capture, output, owner_buy_evidence=None, owner_buy_sha256=None, all_current_inventory=False):
     manifest_raw = read_private(capture/'manifest.json')
     manifest = H.strict(manifest_raw)
     if not isinstance(manifest, dict) or not 1 <= len(manifest) <= 110:
@@ -111,7 +168,7 @@ def prepare(capture, output):
         raise ValueError('raw observations do not match result')
     if observations['unresolved_tm_orders'] != 0:
         raise ValueError('unresolved TM orders')
-    candidate = dict(schema=1, status='proposal_requires_owner_review', live_admitted=False, ledger_initialized=False,
+    candidate = dict(schema=1, status='proposal_requires_owner_review', launch_authorized=False, live_admitted=False, ledger_initialized=False,
         scope=cut['scope'], user_id=user, owner_wallet=owner,
         history_evidence_sha256=hashlib.sha256(cut_raw).hexdigest(), manifest_sha256=expected['evidence_manifest_sha256'],
         private_result_sha256=hashlib.sha256(result_raw).hexdigest(),
@@ -131,6 +188,21 @@ def prepare(capture, output):
         history_limitations=['current account scope; closed historical token accounts not enumerated',
             'trusted RPC observations, not independently verified archival history',
             'no simultaneous external wallet use during the supervised test; no future-activity guarantee'])
+    if (owner_buy_evidence is None) != (owner_buy_sha256 is None):
+        raise ValueError('owner buy evidence and digest required together')
+    if owner_buy_evidence is not None:
+        evidence_raw = read_private(owner_buy_evidence)
+        if not isinstance(owner_buy_sha256, str) or not re.fullmatch('[0-9a-f]{64}', owner_buy_sha256) or hashlib.sha256(evidence_raw).hexdigest() != owner_buy_sha256:
+            raise ValueError('owner buy evidence digest mismatch')
+        evidence = H.strict(evidence_raw)
+        if not isinstance(evidence, dict):
+            raise ValueError('owner buy evidence shape')
+        candidate['owner_buy_alternative'] = owner_buy_alternative(observations['observations'], balances, evidence)
+        candidate['owner_buy_evidence_sha256'] = owner_buy_sha256
+        candidate['requested_limits']['already_spent_owner_purchase_usdc_atoms'] = candidate['owner_buy_alternative']['observed_owner_purchase_spend_atoms']
+        candidate['requested_limits']['remaining_purchase_usdc_atoms_before_other_activity_review'] = candidate['owner_buy_alternative']['remaining_purchase_spend_atoms_before_other_activity_review']
+    if all_current_inventory:
+        select_all_current_inventory(candidate, balances)
     parent, output = H.TM.MINT._open_private_parent(output)
     try:
         os.mkdir(output.name,mode=0o700,dir_fd=parent)
@@ -139,7 +211,19 @@ def prepare(capture, output):
         os.close(parent)
     raw = (json.dumps(candidate,indent=2)+'\n').encode()
     H.B.private_write(output,'funding-proposal.private.json',raw)
-    summary = {k:candidate[k] for k in ('status','live_admitted','ledger_initialized','scope','captured_at_ms','proposed_funding','requested_limits','history_evidence_sha256')}
+    summary = {k:candidate[k] for k in ('status','launch_authorized','live_admitted','ledger_initialized','scope','captured_at_ms','proposed_funding','requested_limits','history_evidence_sha256')}
+    if 'owner_buy_alternative' in candidate:
+        alternative = candidate['owner_buy_alternative']
+        summary['owner_buy_alternative'] = {k: alternative[k] for k in (
+            'status', 'selected', 'classification', 'kernel_fill', 'ledger_mutation',
+            'proposed_funding', 'observed_owner_purchase_spend_atoms',
+            'maximum_total_purchase_spend_atoms',
+            'remaining_purchase_spend_atoms_before_other_activity_review', 'budget_history_complete')}
+        summary['additional_purchase_like_activity_count'] = len(alternative['additional_purchase_like_signatures_require_review'])
+        summary['owner_buy_evidence_sha256'] = owner_buy_sha256
+    if 'inventory_selection' in candidate:
+        for name in ('inventory_selection', 'opening_valuation', 'future_deposits'):
+            summary[name] = candidate[name]
     summary['private_proposal_sha256'] = hashlib.sha256(raw).hexdigest()
     H.B.private_write(output,'summary.json',(json.dumps(summary,indent=2)+'\n').encode())
     return summary
@@ -149,8 +233,11 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--capture',type=Path,required=True)
     parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('--owner-buy-evidence', type=Path)
+    parser.add_argument('--owner-buy-sha256')
+    parser.add_argument('--all-current-inventory', action='store_true', help='Owner-selected current inventory; requires opening valuation, never funds a ledger')
     args=parser.parse_args()
-    print(json.dumps(prepare(args.capture,args.output),indent=2))
+    print(json.dumps(prepare(args.capture,args.output,args.owner_buy_evidence,args.owner_buy_sha256,args.all_current_inventory),indent=2))
 
 
 if __name__=='__main__':

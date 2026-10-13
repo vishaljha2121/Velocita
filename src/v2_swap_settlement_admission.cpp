@@ -11,7 +11,8 @@ SwapSettlementAdmissionResult admit_retained_swap_settlement(
     const SwapPrepareBinding& binding, const swap::Intent& intent, SwapFinalizedReader& reader,
     std::uint64_t request_id, std::uint64_t minimum_slot, std::string_view organization,
     std::string_view signer, std::span<const truemarkets::SolanaLookupEvidence> lookups,
-    const truemarkets::SolanaAccountKey& owner, SwapFailureAccountingPolicy failure_policy) {
+    const truemarkets::SolanaAccountKey& owner, SwapFailureAccountingPolicy failure_policy,
+    SwapAcceptedBuyCosts accepted_buy_costs) {
     std::array<std::byte,swap::max_record_bytes> bytes{};
     const auto encoded=swap::encode({swap::Role::strategy,intent.source_time,intent},bytes);
     if (encoded.error!=swap::CodecError::none || intent.binding!=binding.allocation ||
@@ -70,7 +71,8 @@ SwapSettlementAdmissionResult admit_retained_swap_settlement(
                                 replay.route_principal_debit==intent.quote_input.value() &&
                                 static_cast<std::uint64_t>(-replay.owner_usdc_atoms)==intent.quote_input.value()+replay.fee_atoms &&
                                 replay.route_input==static_cast<std::uint64_t>(-replay.owner_usdc_atoms) &&
-                                static_cast<std::uint64_t>(replay.owner_wallet_lamports)==replay.route_destination_credit;
+                                observed_buy_cost_within_cap(replay.route_destination_credit,
+                                    static_cast<std::uint64_t>(replay.owner_wallet_lamports),accepted_buy_costs);
                             if(mapping) {
                                 settlement.base_credit=swap::BaseAtoms{static_cast<std::uint64_t>(replay.owner_wallet_lamports)};
                                 settlement.quote_debit=swap::QuoteAtoms{static_cast<std::uint64_t>(-replay.owner_usdc_atoms)};

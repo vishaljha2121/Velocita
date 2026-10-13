@@ -98,6 +98,11 @@ void tampering_and_configuration_change() {
     require(apply(r.s,c,r.scratch,&shadow_catalog::truemarkets_two_row_catalog()).code==ApplyCode::invalid_command && r.s.state_version==before,"tampered payload cannot reuse identity digest");
     auto n=plan_swap_paper_step(r.s,{swap::QuoteAtoms{108'000'000},2000},101);r.swap(n.record->command,22,101);r.snapshot();
     require(!plan_swap_paper_step(r.s,{swap::QuoteAtoms{109'000'000},2000},102).valid,"restart cannot change prepared quote economics");
+    auto changed_cost=swap::PaperQuote{swap::QuoteAtoms{108'000'000},2000};
+    changed_cost.buy_base_deduction=swap::BaseAtoms{550840};
+    require(!plan_swap_paper_step(r.s,changed_cost,102).valid,"restart_cannot_change_prepared_buy_deduction");
+    changed_cost.buy_base_deduction={};changed_cost.exact_buy_fee=swap::QuoteAtoms{2000};changed_cost.use_exact_buy_fee=true;
+    require(!plan_swap_paper_step(r.s,changed_cost,102).valid,"restart_cannot_change_prepared_exact_fee_mode");
     n=plan_swap_paper_step(r.s,{swap::QuoteAtoms{108'000'000},2000},102);
     require(n.record.has_value(),"original prepared quote still permits attempt");r.swap(n.record->command,22,102);r.snapshot();
     require(!plan_swap_paper_step(r.s,{swap::QuoteAtoms{109'000'000},2000},103).valid,"restart cannot change prepared quote economics");

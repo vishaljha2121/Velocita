@@ -116,7 +116,7 @@ SwapSettlementAdmissionResult admit_buy_record(settlement_lifecycle_fixture::Lif
     auto directory=(root/"admission-XXXXXX").string();require(::mkdtemp(directory.data()),"proof fixture scratch");
     struct Cleanup{std::filesystem::path path;~Cleanup(){std::error_code e;std::filesystem::remove_all(path,e);}}cleanup{directory};
     SwapPrepareBinding binding{{digest(1),digest(2),digest(3),AccountId{2},InstrumentId{2},PolicyId{901},PolicyVersion{1},RiskPolicyVersion{1}},digest(4),digest(5)};
-    swap::Intent intent;intent.binding=binding.allocation;intent.effect=EffectId{1};intent.side=Side::buy;intent.quote_input=swap::QuoteAtoms{mode==3?999000U:998000U};intent.fee_cap=swap::QuoteAtoms{mode==4?1999U:2000U};intent.max_quote_debit=swap::QuoteAtoms{1000000};intent.min_base_receive=swap::BaseAtoms{mode==5?9410958U:mode==7?8000000U:9000000U};intent.source_time=1000;intent.sign_by=2000;intent.kill_epoch=1;intent.executor_generation=1;
+    swap::Intent intent;intent.binding=binding.allocation;intent.effect=EffectId{1};intent.side=Side::buy;intent.quote_input=swap::QuoteAtoms{mode==3?999000U:998000U};intent.fee_cap=swap::QuoteAtoms{mode==4?1999U:2000U};intent.max_quote_debit=swap::QuoteAtoms{1000000};intent.min_base_receive=swap::BaseAtoms{mode==5?9410958U:mode==7?8000000U:mode==16?8860118U:mode>=14?8860117U:9000000U};intent.source_time=1000;intent.sign_by=2000;intent.kill_epoch=1;intent.executor_generation=1;
     if(sell){intent.side=Side::sell;intent.quote_input=swap::QuoteAtoms{};intent.max_quote_debit=swap::QuoteAtoms{};intent.min_base_receive=swap::BaseAtoms{};intent.base_input=swap::BaseAtoms{8400000};intent.min_quote_receive=swap::QuoteAtoms{1000000};intent.fee_cap=swap::QuoteAtoms{mode==4?2017U:2018U};}
     const std::uint64_t input=sell?8400000:1000000;
     SwapPrepareStore preparation(std::filesystem::path(directory)/"prepare",binding);SwapSubmissionStore submission(std::filesystem::path(directory)/"submit",{binding.allocation.incarnation,binding.authority_domain});
@@ -128,7 +128,7 @@ SwapSettlementAdmissionResult admit_buy_record(settlement_lifecycle_fixture::Lif
     SwapSubmissionIdentity identity;identity.effect=intent.effect;identity.payload=p.payload_digest;identity.execution_request=digest(11);identity.handle_size=p.handle.length;std::copy_n(reinterpret_cast<const std::byte*>(p.handle.bytes.data()),p.handle.length,identity.handle.begin());identity.handle_digest=sha256_digest(std::span(identity.handle).first(identity.handle_size));
     require(submission.begin(identity,3)==SwapSubmissionCode::none && submission.observe_transaction(identity,f.signature)==SwapSubmissionCode::none,"proof retained execute and transaction");
     const auto checksum=submission.latest().checksum;f.port.body(f.json);SwapFinalizedReader reader(f.port,f.clock,digest(1),20);
-    auto result=admit_retained_swap_settlement(preparation,submission,binding,intent,reader,7,100,"org",address(2),{},key(2));
+    auto result=admit_retained_swap_settlement(preparation,submission,binding,intent,reader,7,100,"org",address(2),{},key(2),{}, {swap::BaseAtoms{mode==14 || mode==16?550840U:mode==15?550839U:0U}});
     require(submission.latest().checksum==checksum && submission.latest().phase==SwapSubmissionPhase::execute_intent,"proof_does_not_resolve_before_kernel_commit");
     if(result.verified){swap::Initialize opening;opening.binding=intent.binding;
         opening.limits={swap::QuoteAtoms{5000000},swap::QuoteAtoms{2000000},swap::QuoteAtoms{10000},swap::QuoteAtoms{500000},swap::BaseAtoms{1000000000},swap::BaseAtoms{3000000},swap::QuoteAtoms{125000000},swap::QuoteAtoms{50000000},10000,20000};
@@ -137,15 +137,15 @@ SwapSettlementAdmissionResult admit_buy_record(settlement_lifecycle_fixture::Lif
         require(swap::apply(state,opening,swap::Role::operator_role,1000)==swap::Code::applied && swap::apply(state,intent,swap::Role::strategy,1000)==swap::Code::applied,"admission_composition_reserves_exact_intent");
         require(swap::apply(state,swap::Prepare{intent.effect,p.payload_digest,identity.handle_digest,1},swap::Role::gateway,1001)==swap::Code::applied && swap::apply(state,swap::Attempt{intent.effect,p.payload_digest},swap::Role::gateway,1002)==swap::Code::applied,"admission_composition_prepares_and_attempts");
         require(swap::apply(state,result.verified->settlement(),swap::Role::gateway,1003)==swap::Code::applied,"admitted_receipt_is_kernel_compatible");
-        require(state.base.value()==(sell?0U:9410957U) && state.quote.value()==(sell?26006989U:24000000U) && state.fees.value()==(sell?2018U:2000U) && state.cost.value()==(sell?0U:998000U) && state.realized_pnl==(sell?6989:-2000) && state.purchases.value()==(sell?0U:1000000U) && state.reserved_base.value()==0 && state.reserved_quote.value()==0 && state.pending.phase==swap::Phase::none,"admitted_atoms_apply_once_without_double_fee");
+        require(state.base.value()==(sell?0U:mode==14?8860117U:9410957U) && state.quote.value()==(sell?26006989U:24000000U) && state.fees.value()==(sell?2018U:2000U) && state.cost.value()==(sell?0U:998000U) && state.realized_pnl==(sell?6989:-2000) && state.purchases.value()==(sell?0U:1000000U) && state.reserved_base.value()==0 && state.reserved_quote.value()==0 && state.pending.phase==swap::Phase::none,"admitted_atoms_apply_once_without_double_fee");
     }
     return result;
 }
-void bounded_buy_admission(){for(unsigned mode=0;mode<14;++mode){settlement_lifecycle_fixture::LifecycleFixture f;
+void bounded_buy_admission(){for(unsigned mode=0;mode<18;++mode){settlement_lifecycle_fixture::LifecycleFixture f;
     std::vector<std::uint8_t> route{193,32,155,51,65,214,156,129,6,1,0,0,0,141,0,100,0,1};
     settlement_lifecycle_fixture::little(route,mode==9?999999:1000000,8);settlement_lifecycle_fixture::little(route,9410957,8);settlement_lifecycle_fixture::little(route,500,2);route.push_back(20);
     f.top[1]={10,{8,13,1,2,3,6,5,11,12,4,10,14,10},route};
-    if(mode!=1 && mode!=7){f.repayment_lamports=1488440;f.top[3].data.clear();settlement_lifecycle_fixture::little(f.top[3].data,2,4);settlement_lifecycle_fixture::little(f.top[3].data,f.repayment_lamports,8);}
+    if(mode!=1 && mode!=7 && mode<14){f.repayment_lamports=1488440;f.top[3].data.clear();settlement_lifecycle_fixture::little(f.top[3].data,2,4);settlement_lifecycle_fixture::little(f.top[3].data,f.repayment_lamports,8);}
     if(mode==2)f.top[1].accounts[9]=3;
     if(mode==6)f.route[0].accounts={3,4,13};
     if(mode==8)f.top[1].program=13;
@@ -155,9 +155,9 @@ void bounded_buy_admission(){for(unsigned mode=0;mode<14;++mode){settlement_life
     if(mode==13){std::vector<std::uint8_t> direct{229,23,203,151,122,227,173,42,1,0,0,0,26,100,0,1};settlement_lifecycle_fixture::little(direct,1000000,8);settlement_lifecycle_fixture::little(direct,9410957,8);settlement_lifecycle_fixture::little(direct,500,2);direct.push_back(20);f.top[1]={10,{8,1,2,5,10,12,4,14,10,3,6,13},direct};}
     f.rebuild();if(mode==6){replace(f.json,"\"amount\":\"6989\"","\"amount\":\"8989\"");replace(f.json,"\"amount\":\"1998000\"","\"amount\":\"1996000\"");}
     const auto result=admit_buy_record(f,mode);
-    if(mode==0 || mode==13){require(result.verified.has_value(),"ABI_bound_finalized_buy_can_construct_private_proof");const auto& s=result.verified->settlement();
+    if(mode==0 || mode==13 || mode==14){require(result.verified.has_value(),"ABI_bound_finalized_buy_can_construct_private_proof");const auto& s=result.verified->settlement();
         require(s.finalized && s.outcome==swap::Outcome::succeeded && s.effect==EffectId{1} && s.custody==digest(3) && s.payload==sha256_digest(std::as_bytes(std::span(f.envelope.data(),f.envelope.size()))) && s.transaction==*solana_signature_transaction_digest(f.signature) && s.evidence==result.observation.evidence.response_digest,"admission_identity_matches_retained_resolution");
-        require(s.base_debit.value()==0 && s.base_credit.value()==9410957 && s.quote_debit.value()==1000000 && s.quote_credit.value()==0 && s.fee.value()==2000,"proof_exact_net_atoms_and_fee");}
+        require(s.base_debit.value()==0 && s.base_credit.value()==(mode==14?8860117U:9410957U) && s.quote_debit.value()==1000000 && s.quote_credit.value()==0 && s.fee.value()==2000,"proof_exact_net_atoms_and_fee");}
     else require(!result.verified,"ambiguous_fee_role_input_or_owner_cost_never_admitted");
 }}
 void bounded_sell_admission(){for(unsigned mode:{0U,4U}){using namespace settlement_lifecycle_fixture;LifecycleFixture f;

@@ -18,6 +18,11 @@ std::string profile(const std::array<std::byte,33>&key){
 }
 void profile_tests(){Scratch scratch;TestKey key(scratch.base/"key");const auto source=profile(key.public_key);
     const auto p=decode_swap_runtime_profile(source);require(p.has_value(),"valid runtime profile decodes");
+    const auto costs=decode_swap_runtime_profile(source+"max_buy_output_deduction_lamports=550840\n");
+    require(costs && costs->gateway.binding.max_buy_output_deduction_lamports==550840 &&
+        costs->signer.binding.max_buy_output_deduction_lamports==550840,"both_processes_receive_explicit_buy_cost_cap");
+    require(swap_runtime_identity_digest(costs->gateway.binding)!=swap_runtime_identity_digest(p->gateway.binding),"cost_profile_requires_new_account_review_identity");
+    require(!decode_swap_runtime_profile(source+"max_buy_output_deduction_lamports=18446744073709551615\n"),"oversized_cost_profile_refused");
     require(p->gateway.binding.allocation.account==AccountId{2} && p->gateway.binding.signer_public_key==key.public_key &&
         p->signer.binding.gateway_caller==CallerId{22} && p->organization.view()=="fixture-org","profile preserves exact typed pins");
     require(!decode_swap_runtime_profile(source+"schema=1\n"),"duplicate profile field refuses");

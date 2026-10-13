@@ -66,6 +66,91 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual(output.stat().st_mode & 0o777, 0o700)
         self.assertTrue(all(p.stat().st_mode & 0o777 == 0o600 for p in output.iterdir()))
 
+    def owner_buy(self):
+        # Worked atom arithmetic: 40,764,166 - 8,867,232 = 31,896,934 outside;
+        # 5,000,000 purchase budget - 1,000,000 already spent = 4,000,000.
+        evidence = dict(transaction_signature=F.SIG, slot=123,
+            rpc_reports_success=True, production_live_admitted=False,
+            net_owner_receipt_lamports=8867232, total_usdc_debit_atoms=1000000)
+        observations = [dict(signature=F.SIG, slot=123, failed=False,
+            owner_native_delta=8867232, current_usdc_account_deltas={F.ACCOUNT:-1000000})]
+        return observations, dict(SOL=40764166, USDC=6989), evidence
+
+    def test_owner_buy_alternative_exact_cost_and_budget_without_authority(self):
+        result = M.owner_buy_alternative(*self.owner_buy())
+        self.assertEqual(result['proposed_funding'], dict(managed_base_atoms=8867232,
+            managed_base_cost_atoms=1000000, managed_quote_atoms=6989,
+            outside_base_atoms=31896934, outside_quote_atoms=0, token_account_rent_included=False))
+        self.assertEqual(result['remaining_purchase_spend_atoms_before_other_activity_review'],4000000)
+        self.assertIs(result['selected'],False)
+        self.assertIs(result['kernel_fill'],False)
+        self.assertIs(result['ledger_mutation'],False)
+        self.assertIs(result['budget_history_complete'],False)
+
+    def test_all_current_inventory_requires_valuation_never_invents_basis(self):
+        obs, balances, evidence = self.owner_buy()
+        candidate = dict(owner_buy_alternative=M.owner_buy_alternative(obs,balances,evidence),
+            unresolved_before_executable_review=[], launch_authorized=False, live_admitted=False,
+            ledger_initialized=False)
+        M.select_all_current_inventory(candidate,balances)
+        self.assertEqual(candidate['proposed_funding'],dict(managed_base_atoms=40764166,
+            managed_quote_atoms=6989,managed_base_cost_atoms=None,outside_base_atoms=0,
+            outside_quote_atoms=0,token_account_rent_included=False))
+        self.assertEqual(candidate['opening_valuation']['unknown_historical_cost_base_atoms'],31896934)
+        self.assertEqual(candidate['opening_valuation']['known_historical_subset_cost_usdc_atoms'],1000000)
+        self.assertIsNone(candidate['opening_valuation']['marked_base_cost_usdc_atoms'])
+        self.assertIsNone(candidate['opening_valuation']['price_evidence_sha256'])
+        self.assertFalse(candidate['future_deposits']['automatically_managed'])
+        self.assertFalse(candidate['launch_authorized'])
+        self.assertFalse(candidate['live_admitted'])
+        self.assertFalse(candidate['ledger_initialized'])
+        self.assertEqual(candidate['status'],'inventory_selected_opening_valuation_required')
+        with self.assertRaisesRegex(ValueError,'known purchase evidence required'):
+            M.select_all_current_inventory({},balances)
+
+    def test_owner_buy_must_match_exact_fresh_history(self):
+        for field, value in [('slot',124),('failed',True),('owner_native_delta',8867233),
+                             ('current_usdc_account_deltas',{F.ACCOUNT:-999999})]:
+            obs, balances, evidence = self.owner_buy()
+            obs[0][field] = value
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError,'fresh history mismatch'):
+                M.owner_buy_alternative(obs,balances,evidence)
+        obs,balances,evidence=self.owner_buy()
+        for rows in ([],obs+obs):
+            with self.assertRaisesRegex(ValueError,'missing or duplicate'):
+                M.owner_buy_alternative(rows,balances,evidence)
+
+    def test_owner_buy_boolean_amount_overallocation_and_cap_refuse(self):
+        for field,value in [('net_owner_receipt_lamports',True),('total_usdc_debit_atoms',0),
+                            ('net_owner_receipt_lamports',2**64)]:
+            obs,balances,evidence=self.owner_buy(); evidence[field]=value
+            with self.subTest(field=field),self.assertRaisesRegex(ValueError,'amount or slot'):
+                M.owner_buy_alternative(obs,balances,evidence)
+        obs,balances,evidence=self.owner_buy(); balances['SOL']=8867231
+        with self.assertRaisesRegex(ValueError,'balance or purchase cap'):
+            M.owner_buy_alternative(obs,balances,evidence)
+        obs,balances,evidence=self.owner_buy()
+        evidence['total_usdc_debit_atoms']=5000001
+        obs[0]['current_usdc_account_deltas'][F.ACCOUNT]=-5000001
+        with self.assertRaisesRegex(ValueError,'balance or purchase cap'):
+            M.owner_buy_alternative(obs,balances,evidence)
+
+    def test_additional_purchase_activity_stays_unreviewed(self):
+        obs,balances,evidence=self.owner_buy()
+        other=dict(obs[0],signature=F.b58(4,64))
+        result=M.owner_buy_alternative(obs+[other],balances,evidence)
+        self.assertEqual(result['additional_purchase_like_signatures_require_review'],[other['signature']])
+        self.assertIs(result['budget_history_complete'],False)
+
+    def test_owner_buy_evidence_requires_paired_digest_before_output(self):
+        capture,output=self.fixture()
+        with self.assertRaisesRegex(ValueError,'required together'):
+            M.prepare(capture,output,capture/'result.private.json')
+        self.assertFalse(output.exists())
+        with self.assertRaisesRegex(ValueError,'digest mismatch'):
+            M.prepare(capture,output,capture/'result.private.json','0'*64)
+        self.assertFalse(output.exists())
+
     def test_boolean_zero_eligibility_rejected(self):
         for name, field in [('baseline-cut.json','blocking_orders'), ('baseline-cut.json','unsupported_accounts'), ('result.private.json','unresolved_tm_orders')]:
             capture, output = self.fixture()

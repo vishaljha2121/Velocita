@@ -589,3 +589,14 @@ if(TARGET velocita_v2_node)
     target_link_libraries(v2-operational-recovery-tests PRIVATE velocita_v2_node)
     add_test(NAME v2-operational-recovery-tests COMMAND v2-operational-recovery-tests)
 endif()
+
+
+# Accepted output-cost arithmetic has no signing or replicated-state authority.
+add_executable(v2-swap-cost-policy-tests
+    "${velocita_readiness_root}/tests/v2_swap_cost_policy_tests.cpp"
+    "${velocita_readiness_root}/src/v2_swap_owner_accounting.cpp")
+target_include_directories(v2-swap-cost-policy-tests PRIVATE "${velocita_readiness_root}/include")
+target_compile_features(v2-swap-cost-policy-tests PRIVATE cxx_std_20)
+target_compile_definitions(v2-swap-cost-policy-tests PRIVATE VELOCITA_TARGET_CACHE_LINE_SIZE=${VELOCITA_TARGET_CACHE_LINE_SIZE})
+target_compile_options(v2-swap-cost-policy-tests PRIVATE -Wall -Wextra -Wpedantic)
+add_test(NAME v2-swap-cost-policy-tests COMMAND v2-swap-cost-policy-tests)

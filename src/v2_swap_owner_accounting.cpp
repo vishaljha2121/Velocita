@@ -3,6 +3,26 @@
 #include <limits>
 
 namespace velocita::v2 {
+BuyNetCostResult bound_buy_net_cost(std::uint64_t gross,std::uint64_t payment,
+    std::uint64_t funding,swap::BaseAtoms minimum,SwapAcceptedBuyCosts policy) noexcept {
+    const auto maximum=static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
+    if(!gross || !minimum.value() || gross>maximum || payment>maximum || funding>maximum ||
+        minimum.value()>maximum || policy.max_output_deduction.value()>maximum)return {};
+    // Surplus external funding is not counted as trade output or profit.
+    const auto deduction=payment>funding?payment-funding:0;
+    BuyNetCostResult result{BuyNetCostCode::deduction_exceeded,deduction,0};
+    if(deduction>policy.max_output_deduction.value())return result;
+    result.code=BuyNetCostCode::minimum_shortfall;
+    if(deduction>=gross)return result;
+    result.minimum_net_receipt=gross-deduction;
+    if(result.minimum_net_receipt>=minimum.value())result.code=BuyNetCostCode::within_arithmetic_bounds_only;
+    return result;
+}
+bool observed_buy_cost_within_cap(std::uint64_t gross,std::uint64_t net,SwapAcceptedBuyCosts policy) noexcept {
+    const auto maximum=static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
+    return gross && net && gross<=maximum && net<=gross &&
+        policy.max_output_deduction.value()<=maximum && gross-net<=policy.max_output_deduction.value();
+}
 namespace {
 constexpr auto maximum = static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
 bool add(std::uint64_t& total,std::uint64_t value) noexcept {
