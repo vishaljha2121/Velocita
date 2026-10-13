@@ -1,4 +1,4 @@
-"""Startup must refuse the unadmitted real route before touching any supplied path."""
+"""Startup refuses missing or unreviewed profiles before opening credentials or network."""
 import os
 from pathlib import Path
 import subprocess
@@ -21,7 +21,7 @@ class GateTests(unittest.TestCase):
                     command += ['--'+flag,str(base/flag)]
                 result=subprocess.run(command,capture_output=True,text=True,timeout=10)
                 self.assertEqual(result.returncode,64,result.stderr)
-                self.assertIn('real transaction admission remains disabled',result.stderr)
+                self.assertIn('runtime profile unreadable or oversized',result.stderr)
                 self.assertIn('no credentials or network opened',result.stderr)
                 self.assertEqual(list(base.iterdir()),[])
 if __name__=='__main__':unittest.main()

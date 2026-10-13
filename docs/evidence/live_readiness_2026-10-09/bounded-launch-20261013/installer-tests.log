@@ -1,0 +1,12 @@
+test_accepts_dormant_bundle_with_explicit_unreviewed_account (test_swap_disabled_install.DisabledInstallTests.test_accepts_dormant_bundle_with_explicit_unreviewed_account) ... ok
+test_bad_bundle_stops_before_host_mutation (test_swap_disabled_install.DisabledInstallTests.test_bad_bundle_stops_before_host_mutation) ... ok
+test_refuses_symlink_and_existing_destination (test_swap_disabled_install.DisabledInstallTests.test_refuses_symlink_and_existing_destination) ... ok
+test_rejects_activation_even_with_complete_account_pins (test_swap_disabled_install.DisabledInstallTests.test_rejects_activation_even_with_complete_account_pins) ... ok
+test_rejects_mismatched_binary_and_identity (test_swap_disabled_install.DisabledInstallTests.test_rejects_mismatched_binary_and_identity) ... ok
+test_rejects_rehashed_unit_injection (test_swap_disabled_install.DisabledInstallTests.test_rejects_rehashed_unit_injection) ... ok
+test_replacement_changes_release_only_and_preserves_dormant_policy (test_swap_disabled_install.DisabledInstallTests.test_replacement_changes_release_only_and_preserves_dormant_policy) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.008s
+
+OK

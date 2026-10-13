@@ -1,0 +1,59 @@
+{
+  "source_sha256": "644a1856a67a09eff627181513269b6cd662f2c44e1bd07414ce8a3152c4bd69",
+  "results": [
+    {
+      "name": "baseline",
+      "case": null,
+      "assertion": null,
+      "exit": 0,
+      "passed": true,
+      "stdout": "PASS verified_signature_and_recovery\nPASS conservative_mvp\nPASS one_buy_scope\nPASS economic_and_context_refusal\nPASS freshness_and_authority\n",
+      "stderr": ""
+    },
+    {
+      "name": "one_buy_scope",
+      "case": "one_buy_scope",
+      "assertion": "mvp_refuses_broader_runtime_purchase_budget",
+      "exit": 1,
+      "passed": true,
+      "stdout": "FAIL one_buy_scope: mvp_refuses_broader_runtime_purchase_budget\n",
+      "stderr": ""
+    },
+    {
+      "name": "proof_deadline",
+      "case": "freshness_and_authority",
+      "assertion": "expired_verified_proof_cannot_sign_after_authority",
+      "exit": 1,
+      "passed": true,
+      "stdout": "FAIL freshness_and_authority: expired_verified_proof_cannot_sign_after_authority\n",
+      "stderr": ""
+    },
+    {
+      "name": "reviewed_context",
+      "case": "economic_and_context_refusal",
+      "assertion": "changed_lookup_context_cannot_reuse_journal",
+      "exit": 1,
+      "passed": true,
+      "stdout": "FAIL economic_and_context_refusal: changed_lookup_context_cannot_reuse_journal\n",
+      "stderr": ""
+    },
+    {
+      "name": "recovery_deadline",
+      "case": "freshness_and_authority",
+      "assertion": "expired_payload_cannot_recover_stamp",
+      "exit": 1,
+      "passed": true,
+      "stdout": "FAIL freshness_and_authority: expired_payload_cannot_recover_stamp\n",
+      "stderr": ""
+    },
+    {
+      "name": "journal_policy",
+      "case": "economic_and_context_refusal",
+      "assertion": "journal_binds_changed_reviewed_policy",
+      "exit": 1,
+      "passed": true,
+      "stdout": "FAIL economic_and_context_refusal: journal_binds_changed_reviewed_policy\n",
+      "stderr": ""
+    }
+  ]
+}

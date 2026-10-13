@@ -1,6 +1,7 @@
 #include "velocita/v2/swap_signer_session.hpp"
 #include "velocita/v2/swap_kernel.hpp"
 #include "velocita/v2/swap_authority.hpp"
+#include "velocita/v2/swap_transaction_review.hpp"
 #include "velocita/v2/digest.hpp"
 #include <algorithm>
 #include <cerrno>
@@ -38,6 +39,17 @@ bool request_identity(EffectId effect,std::uint64_t sequence,std::string_view ha
     put64(std::span(request).subspan(16),static_cast<std::uint64_t>(index));put64(std::span(request).subspan(24),expiry);
     std::copy(out.payload.bytes.begin(),out.payload.bytes.end(),request.begin()+32);
     std::copy(original.bytes.begin(),original.bytes.end(),request.begin()+64);out.execution_request=sha256_digest(request);return true;
+}
+
+std::uint64_t verification_deadline(std::span<const std::byte> payload,
+    const SwapSignerVerificationContext& v,std::uint64_t now,std::uint64_t expiry)noexcept{
+    truemarkets::DecodedSolanaPayload decoded;
+    const auto text=std::string_view(reinterpret_cast<const char*>(payload.data()),payload.size());
+    if(truemarkets::decode_solana_signing_envelope(text,v.organization.view(),v.signer.view(),decoded)!=truemarkets::SolanaParseError::none ||
+        decoded.timestamp_ms<=0 || static_cast<std::uint64_t>(decoded.timestamp_ms)>now)return 0;
+    const auto deadline=std::min({expiry,v.policy.expires_at_ms,
+        static_cast<std::uint64_t>(decoded.timestamp_ms)+v.policy.max_envelope_age_ms});
+    return now<deadline?deadline:0;
 }
 
 }
@@ -105,7 +117,7 @@ bool der_signature(const SwapSubmissionTransaction& raw,std::span<std::byte> der
 }
 }
 SwapSubmissionBinding swap_signer_journal_binding(const SwapSignerConfig& c,std::span<const std::byte,33> pub)noexcept{
-    std::array<std::byte,233> bytes{};constexpr std::string_view label="swap-signer-v2";
+    std::array<std::byte,265> bytes{};constexpr std::string_view label="swap-signer-v2";
     std::copy(label.begin(),label.end(),reinterpret_cast<char*>(bytes.data()));
     put64(std::span(bytes).subspan(16),c.caller.value());put64(std::span(bytes).subspan(24),c.key_version);
     std::copy(c.authority_domain.bytes.begin(),c.authority_domain.bytes.end(),bytes.begin()+32);
@@ -116,13 +128,33 @@ SwapSubmissionBinding swap_signer_journal_binding(const SwapSignerConfig& c,std:
     put64(std::span(bytes).subspan(193),c.binding.account.value());put64(std::span(bytes).subspan(201),c.binding.instrument.value());
     put64(std::span(bytes).subspan(209),c.binding.policy.value());put64(std::span(bytes).subspan(217),c.binding.policy_version.value());
     put64(std::span(bytes).subspan(225),c.binding.risk_policy_version.value());
-    return {c.binding.incarnation,sha256_digest(bytes)};
+    std::copy(c.transaction_policy_digest.bytes.begin(),c.transaction_policy_digest.bytes.end(),bytes.begin()+233);
+    return {c.binding.incarnation,sha256_digest(std::span(bytes).first(c.transaction_policy_digest.is_zero()?233:265))};
 }
-SwapSignerSession::SwapSignerSession(GatewayLink& link,SwapSubmissionStore& store,SwapSignerKey& key,SwapSignerConfig config,SwapSignerClock clock)
-    :link_(link),store_(store),key_(key),config_(config),clock_(clock){
+Digest256 swap_signer_verification_digest(const SwapSignerVerificationContext& v)noexcept{
+    if(v.organization.empty() || v.organization.length>v.organization.bytes.size() ||
+        v.signer.empty() || v.signer.length>v.signer.bytes.size())return {};
+    const auto policy=truemarkets::direct_buy_policy_digest(v.policy);
+    const auto lookup=truemarkets::direct_buy_lookup_digest(std::span(&v.lookup,1));
+    if(policy.is_zero() || lookup.is_zero() || lookup!=v.policy.lookup_image_digest)return {};
+    Sha256 h;constexpr std::string_view label="velocita-signer-verification-v1";
+    h.update(std::as_bytes(std::span(label)));h.update(policy.bytes);h.update(lookup.bytes);
+    std::array<std::byte,8> length{};
+    for(const auto& text:{v.organization,v.signer}){
+        put64(length,text.length);h.update(length);h.update(std::as_bytes(std::span(text.view())));
+    }
+    return h.finish();
+}
+SwapSignerSession::SwapSignerSession(GatewayLink& link,SwapSubmissionStore& store,SwapSignerKey& key,SwapSignerConfig config,SwapSignerClock clock,
+    std::optional<SwapSignerVerificationContext> verification)
+    :link_(link),store_(store),key_(key),config_(config),clock_(clock),verification_(std::move(verification)){
     if(!config_.state_timeout || config_.authority_domain.is_zero() || config_.binding.incarnation.is_zero() ||
         config_.signer_instance.is_zero() || !config_.caller.value() || !config_.key_version || !clock_.monotonic || !clock_.event ||
         store_.status()!=SwapSubmissionCode::none || store_.latest().binding!=swap_signer_journal_binding(config_,key_.public_key()))return;
+    if(verification_){
+        if(config_.transaction_policy_digest.is_zero() || verification_->policy.binding!=config_.binding ||
+            swap_signer_verification_digest(*verification_)!=config_.transaction_policy_digest)return;
+    }else if(!config_.transaction_policy_digest.is_zero())return;
     status_=store_.latest().phase==SwapSubmissionPhase::idle?SwapSignerStatus::idle:SwapSignerStatus::fenced;
 }
 SwapSignerSession::~SwapSignerSession(){if((status_==SwapSignerStatus::reading_state || status_==SwapSignerStatus::reading_authority))link_.abandon();erase();}
@@ -151,7 +183,8 @@ bool SwapSignerSession::start(EffectId effect,std::uint64_t sequence,std::string
 bool SwapSignerSession::clock_valid(const swap::Intent& intent,std::uint64_t state_event)noexcept{
     const auto now=clock_.monotonic(clock_.context);const auto event=clock_.event(clock_.context);
     if(now<last_tick_ || now>=deadline_ || event<last_event_ || event<state_event || event<intent.source_time || event>=intent.sign_by ||
-       (config_.account_review_expires_at_ms && event>=config_.account_review_expires_at_ms))return false;
+       (config_.account_review_expires_at_ms && event>=config_.account_review_expires_at_ms) ||
+       (verification_expires_at_ms_ && event>=verification_expires_at_ms_))return false;
     last_tick_=now;last_event_=event;return true;
 }
 SwapSignerStatus SwapSignerSession::poll(){
@@ -180,6 +213,17 @@ SwapSignerStatus SwapSignerSession::poll(){
         swap.mode==swap::Mode::halted || (pending.intent.side==Side::buy && swap.mode!=swap::Mode::normal) ||
         pending.intent.kill_epoch!=swap.kill_epoch || pending.intent.executor_generation!=swap.executor_generation ||
         pending.intent.sign_by!=expected_sign_by_ || !clock_valid(pending.intent,swap.event_time))return refuse(SwapSignerStatus::refused);
+    if(verification_){
+        const auto& v=*verification_;
+        if(!swap_mvp_buy_scope(swap,v))return refuse(SwapSignerStatus::refused);
+        const auto checked=truemarkets::verify_swap_transaction(
+            std::string_view(reinterpret_cast<const char*>(payload_.data()),size_),v.organization.view(),v.signer.view(),
+            pending,v.policy,std::span(&v.lookup,1),last_event_);
+        if(!checked.verified || checked.verified->payload_digest()!=identity_.payload ||
+            checked.verified->intent_digest()!=truemarkets::verified_swap_intent_digest(pending.intent) ||
+            checked.verified->policy_digest()!=truemarkets::direct_buy_policy_digest(v.policy))return refuse(SwapSignerStatus::refused);
+        verification_expires_at_ms_=checked.verified->expires_at_ms();
+    }else{
 #ifdef VELOCITA_SWAP_SIGNER_SYNTHETIC_FIXTURE
     constexpr std::string_view fixture="VELOCITA SYNTHETIC EXACT INPUT SWAP\n";
     constexpr std::string_view inclusive_fixture="VELOCITA SYNTHETIC FEE INCLUSIVE SWAP\n";
@@ -195,6 +239,7 @@ SwapSignerStatus SwapSignerSession::poll(){
 #else
     return refuse(SwapSignerStatus::refused);
 #endif
+    }
     authority_pending_=pending;state_read_index_=outcome.reading.applied_index;
     authority_request_={link_.incarnation(),sequence_,identity_.effect,swap_signing_authority_digest(pending),
         KillEpoch{pending.intent.kill_epoch},ExecutorGeneration{pending.intent.executor_generation},config_.binding.catalog,config_.authority_domain};
@@ -230,6 +275,11 @@ bool SwapSignerSession::retrieve(EffectId effect,std::uint64_t sequence,std::str
     const auto record=store_.latest();if(record.identity.handle_size<=8 || record.identity.handle_size>104)return false;
     const auto floor=get64(std::span(record.identity.handle).first(8));SwapSubmissionIdentity expected;
     if(event<floor || !request_identity(effect,sequence,handle,payload,minimum_index,expiry,floor,expected) || expected!=record.identity)return false;
+    std::uint64_t verified_expiry{};
+    if(verification_){
+        verified_expiry=verification_deadline(payload,*verification_,event,expiry);
+        if(!verified_expiry)return false;
+    }else{
 #ifdef VELOCITA_SWAP_SIGNER_SYNTHETIC_FIXTURE
     constexpr std::string_view fixture="VELOCITA SYNTHETIC EXACT INPUT SWAP\n";
     constexpr std::string_view inclusive_fixture="VELOCITA SYNTHETIC FEE INCLUSIVE SWAP\n";
@@ -238,9 +288,11 @@ bool SwapSignerSession::retrieve(EffectId effect,std::uint64_t sequence,std::str
 #else
     return false;
 #endif
+    }
     if(!der_signature(record.transaction,der_,der_size_) || !key_.verify(payload,std::span(der_).first(der_size_))){der_size_=0;return false;}
     const auto after=clock_.monotonic(clock_.context);const auto after_event=clock_.event(clock_.context);
-    if(after<now || after>=now+config_.state_timeout || after_event<event || after_event>=expiry || (config_.account_review_expires_at_ms && after_event>=config_.account_review_expires_at_ms) ||
+    if(after<now || after>=now+config_.state_timeout || after_event<event || after_event>=expiry ||
+        (verified_expiry && after_event>=verified_expiry) || (config_.account_review_expires_at_ms && after_event>=config_.account_review_expires_at_ms) ||
         store_.status()!=SwapSubmissionCode::none || store_.latest().checksum!=record.checksum ||
         swap_signing::encode_api_key_stamp(key_.public_key(),std::span(der_).first(der_size_),stamp_)!=swap_signing::StampCode::encoded){
         der_size_=0;stamp_={};return false;

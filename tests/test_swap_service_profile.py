@@ -50,8 +50,31 @@ class ServiceProfileTests(unittest.TestCase):
         for flag in ('--swap-runtime-profile', '--swap-account-review', '--swap-account-history',
                      '--swap-process', '--swap-secret-fd', '--arm-live-venue'):
             self.assertIn('"' + flag + '"', source)
-        gate = (ROOT / 'include/velocita/v2/swap_runtime_production.hpp').read_text()
-        self.assertIn('swap_runtime_live_contract_admitted() noexcept { return false; }', gate)
+        self.assertFalse(json.loads(result['manifest.json'])['launch_authorized'])
+
+    def test_explicit_initialization_is_manifest_pinned_and_never_default(self):
+        ordinary = fixture()
+        initial = dict(ordinary, initialize_swap_recovery=True)
+        try:
+            rendered = PROFILE.render(initial)
+        except ValueError as error:
+            self.fail('explicit_initialization_manifest_supported: '+str(error))
+        for role in ('gateway', 'signer'):
+            args = json.loads(rendered[role+'-launch-contract.json'])['argv']
+            self.assertEqual(args.count('--initialize-swap-recovery'), 1,
+                             'explicit_initialization_reaches_both_roles')
+            for other in (ordinary, dict(ordinary, initialize_swap_recovery=False)):
+                normal = PROFILE.render(other)
+                self.assertNotIn('--initialize-swap-recovery',
+                                 json.loads(normal[role+'-launch-contract.json'])['argv'],
+                                 'normal_start_never_initializes')
+                self.assertNotEqual(rendered['velocita-swap-'+role+'.service.review'],
+                                    normal['velocita-swap-'+role+'.service.review'],
+                                    'initialization_changes_reviewed_manifest_pin')
+            self.assertIn('Restart=no', rendered['velocita-swap-'+role+'.service.review'])
+        for invalid in (None, 0, 1, 'true', [], {}):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(ValueError, 'initialization', msg='initialization_requires_boolean'):
+                PROFILE.render(dict(ordinary, initialize_swap_recovery=invalid))
 
     def test_pinned_runtime_and_role_only_mounts(self):
         m = fixture()

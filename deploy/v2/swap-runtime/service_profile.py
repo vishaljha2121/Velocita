@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 
 FIELDS = frozenset('schema launch_authorized source_commit binary_sha256 runtime_image_sha256 binary incarnation gateway_uid gateway_gid signer_uid socket_gid gateway_caller signer_caller gateway_key_id signer_key_id gateway_response_port signer_response_port host_ip nodes runtime_profile_sha256 account_review_sha256 account_history_sha256 catalog_sha256'.split())
+OPTIONAL_FIELDS = frozenset(('initialize_swap_recovery',))
 PENDING_ACCOUNT_PINS = frozenset(('runtime_profile_sha256', 'account_review_sha256', 'account_history_sha256'))
 BLOCKERS = ['real-transaction-contract-gate',
             'host-identity-and-network-enforcement',
@@ -39,10 +40,12 @@ def ipv4(value):
 
 
 def validate(m):
-    if not isinstance(m, dict) or set(m) != FIELDS or type(m['schema']) is not int or m['schema'] != 1:
+    if not isinstance(m, dict) or not FIELDS <= set(m) or set(m)-FIELDS-OPTIONAL_FIELDS or type(m['schema']) is not int or m['schema'] != 1:
         raise ValueError('exact schema 1 public manifest required')
     if type(m['launch_authorized']) is not bool:
         raise ValueError('explicit operator launch authorization required')
+    if type(m.get('initialize_swap_recovery', False)) is not bool:
+        raise ValueError('initialization must be an explicit boolean')
     for name, width in [('source_commit', 40), ('incarnation', 32)] + [(k, 64) for k in FIELDS if k.endswith('_sha256')]:
         value = m[name]
         # Installation can precede the fresh account/custody review. Explicit
@@ -95,6 +98,7 @@ def launch_contract(m, role):
             '--response-endpoint', m['host_ip'] + ':' + str(m[role + '_response_port']),
             '--freshness-ms', '2000']
     for node in m['nodes']: args.extend(['--node', node])
+    if m.get('initialize_swap_recovery', False): args.append('--initialize-swap-recovery')
     return dict(deployable=False, blockers=BLOCKERS, argv=args,
                 source_commit=m['source_commit'], binary_sha256=m['binary_sha256'],
                 public_files_sha256={PUBLIC + '/' + filename: m[key] for filename, key in (

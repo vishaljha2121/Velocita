@@ -97,6 +97,7 @@ class LauncherTests(unittest.TestCase):
     def test_launch_mapping_transfers_only_expected_secret_and_environment(self):
         m = T.fixture(); m['launch_authorized']=True
         contract=L.PROFILE.launch_contract(m,'gateway')
+        contract['public_files_sha256'][L.PROFILE.PUBLIC+'/transaction.review']='4'*64
         with patch.object(L,'service_context') as context, patch.object(L,'prepare',return_value=(contract,{})), patch.object(L.FD,'open_secret',side_effect=[41,42]) as opened, patch.object(L.os,'close') as close, patch.object(L.FD,'exec_handoff',side_effect=OSError('synthetic exec failure')) as handoff:
             with self.assertRaises(OSError): L.launch(m,'gateway')
             context.assert_called_once_with('gateway')
@@ -104,6 +105,33 @@ class LauncherTests(unittest.TestCase):
             self.assertEqual(handoff.call_args.args[:3],(m['binary'],contract['argv'],42))
             self.assertEqual(set(handoff.call_args.args[3]),{'PATH','LANG','AERON_TERM_BUFFER_LENGTH','TMPDIR'})
             close.assert_any_call(41); close.assert_any_call(42)
+
+    def test_legacy_profile_refused_before_secret(self):
+        m=T.fixture();m['launch_authorized']=True
+        for pin in (None, '', '0'*64, 'z'*64):
+            contract=L.PROFILE.launch_contract(m,'gateway')
+            if pin is not None: contract['public_files_sha256'][L.PROFILE.PUBLIC+'/transaction.review']=pin
+            with self.subTest(pin=pin), patch.object(L,'service_context'), \
+                 patch.object(L,'prepare',return_value=(contract,{})), \
+                 patch.object(L.FD,'open_secret',side_effect=AssertionError('legacy_profile_refused_before_secret')) as opened:
+                with self.assertRaisesRegex(ValueError,'transaction review'):
+                    L.launch(m,'gateway')
+                opened.assert_not_called()
+
+    def test_initialization_exec_failure_never_retries(self):
+        m=dict(T.fixture(),launch_authorized=True,initialize_swap_recovery=True)
+        try:
+            L.PROFILE.validate(m)
+        except ValueError as error:
+            self.fail('explicit_initialization_manifest_supported: '+str(error))
+        contract=L.PROFILE.launch_contract(m,'signer')
+        contract['public_files_sha256'][L.PROFILE.PUBLIC+'/transaction.review']='4'*64
+        with patch.object(L,'service_context'),patch.object(L,'prepare',return_value=(contract,{})), \
+             patch.object(L.FD,'open_secret',side_effect=[41,42]),patch.object(L.os,'close'), \
+             patch.object(L.FD,'exec_handoff',side_effect=OSError('synthetic refusal')) as handoff:
+            with self.assertRaisesRegex(OSError,'synthetic refusal'): L.launch(m,'signer')
+            self.assertEqual(handoff.call_count,1,'initialization_exec_never_retried')
+            self.assertEqual(handoff.call_args.args[1].count('--initialize-swap-recovery'),1)
 
     def test_configuration_failure_never_opens_credentials(self):
         m=T.fixture();m['launch_authorized']=True
@@ -137,6 +165,23 @@ class LauncherTests(unittest.TestCase):
             self.assertFalse(report['live_admitted']);self.assertFalse(report['secrets_opened'])
             self.assertFalse(report['launch_authorized']);secret.assert_not_called()
             self.assertIn('--swap-secret-fd',contract['argv'])
+
+    def test_transaction_review_is_pinned_before_credentials(self):
+        m,p,r,h,encode=documents()
+        document=b'synthetic transaction policy\n'
+        digest=hashlib.sha256(document).hexdigest()
+        p['transaction_review_digest']=digest
+        raw={'runtime.profile':encode(p),'account.review':encode(r),'account.history':json.dumps(h).encode(),
+             'transaction.review':document}
+        calls=[]
+        def read(path,pin,limit):
+            calls.append((path,pin,limit));return raw[path.rsplit('/',1)[-1]]
+        with patch.object(L,'runtime_identity'),patch.object(L,'identity',return_value=(2001,2001)),patch.object(L.FD,'open_pinned_public',side_effect=[40,41]),patch.object(L.os,'read',return_value=b'\x7fELF'),patch.object(L.os,'close'),patch.object(L,'directory'),patch.object(L.FD,'open_secret') as secret:
+            contract,_=L.prepare(m,'gateway',read=read,now_ms=1001000)
+            expected=(L.PROFILE.PUBLIC+'/transaction.review',digest,32768)
+            self.assertIn(expected,calls,'transaction_review_checked_before_secret')
+            self.assertEqual(contract['public_files_sha256'][expected[0]],digest)
+            secret.assert_not_called()
 
     def test_service_context_refuses_privilege_or_wrong_cgroup(self):
         good='CapEff:\t00000000\nCapBnd:\t00000000\nNoNewPrivs:\t1\n'

@@ -153,13 +153,13 @@ Arguments parse(int argc, char** argv) {
         if (!have_incarnation || binding.incarnation != sha256_digest(a.incarnation))
             throw Usage("swap record is bound to another incarnation");
         if (const auto* o = std::get_if<swap::Initialize>(&record.command)) {
-            a.summary = "SWAP PAPER FUNDING base_atoms=" + std::to_string(o->base.value()) +
+            a.summary = "SWAP FUNDING base_atoms=" + std::to_string(o->base.value()) +
                 " quote_atoms=" + std::to_string(o->quote.value()) + " purchase_debit_cap=" +
                 std::to_string(o->limits.max_purchase_total.value()) + " realized_loss_cap=" +
                 std::to_string(o->limits.max_realized_loss.value()) + "\n";
         } else {
             const auto& intent = std::get<swap::Intent>(record.command);
-            a.summary = "SWAP PAPER INTENT side=" + std::to_string(static_cast<unsigned>(intent.side)) +
+            a.summary = "SWAP INTENT side=" + std::to_string(static_cast<unsigned>(intent.side)) +
                 " effect=" + std::to_string(intent.effect.value()) + " max_quote_debit=" +
                 std::to_string(intent.max_quote_debit.value()) + " base_input=" + std::to_string(intent.base_input.value()) +
                 " min_base_receive=" + std::to_string(intent.min_base_receive.value()) +

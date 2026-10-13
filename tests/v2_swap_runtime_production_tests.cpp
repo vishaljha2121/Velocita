@@ -23,6 +23,12 @@ void profile_tests(){Scratch scratch;TestKey key(scratch.base/"key");const auto 
         costs->signer.binding.max_buy_output_deduction_lamports==550840,"both_processes_receive_explicit_buy_cost_cap");
     require(swap_runtime_identity_digest(costs->gateway.binding)!=swap_runtime_identity_digest(p->gateway.binding),"cost_profile_requires_new_account_review_identity");
     require(!decode_swap_runtime_profile(source+"max_buy_output_deduction_lamports=18446744073709551615\n"),"oversized_cost_profile_refused");
+    const auto transaction=decode_swap_runtime_profile(source+"transaction_review_digest="+hex(digest(71).bytes)+"\n");
+    require(transaction && transaction->gateway.binding.transaction_review_digest==digest(71) &&
+        transaction->signer.binding.transaction_review_digest==digest(71),"transaction_review_pin_reaches_both_processes");
+    require(swap_runtime_identity_digest(transaction->gateway.binding)!=swap_runtime_identity_digest(p->gateway.binding),
+        "transaction_review_changes_runtime_account_identity");
+    require(!decode_swap_runtime_profile(source+"transaction_review_digest="+std::string(64,'0')+"\n"),"explicit_zero_transaction_review_refused");
     require(p->gateway.binding.allocation.account==AccountId{2} && p->gateway.binding.signer_public_key==key.public_key &&
         p->signer.binding.gateway_caller==CallerId{22} && p->organization.view()=="fixture-org","profile preserves exact typed pins");
     require(!decode_swap_runtime_profile(source+"schema=1\n"),"duplicate profile field refuses");
@@ -34,7 +40,16 @@ void profile_tests(){Scratch scratch;TestKey key(scratch.base/"key");const auto 
     require(!decode_swap_runtime_profile(same),"owner cannot be configured as external failure sponsor");
     same.replace(at,64,std::string(64,'0'));require(!decode_swap_runtime_profile(same),"missing sponsor identity refuses");
     require(p->failure_policy.expected_external_fee_payer[0]==std::to_integer<std::uint8_t>(digest(2).bytes[0]),"profile preserves independent failure sponsor pin");
-    require(!swap_runtime_live_contract_admitted(),"production wiring never implies transaction admission");
+    require(!swap_runtime_live_contract_admitted(*p,10),"legacy_profile_cannot_admit_live_runtime");
+    auto mvp=*transaction;mvp.gateway.binding.max_buy_output_deduction_lamports=2'039'280;
+    mvp.signer.binding=mvp.gateway.binding;
+    require(swap_runtime_live_contract_admitted(mvp,10),"reviewed_bounded_mvp_profile_admitted");
+    auto invalid=mvp;++invalid.gateway.binding.max_buy_output_deduction_lamports;invalid.signer.binding=invalid.gateway.binding;
+    require(!swap_runtime_live_contract_admitted(invalid,10),"larger_repayment_profile_refused");
+    invalid=mvp;invalid.signer.binding.transaction_review_digest=digest(72);
+    require(!swap_runtime_live_contract_admitted(invalid,10),"different_process_policy_refused");
+    require(!swap_runtime_live_contract_admitted(mvp,1000),"expired_bearer_profile_refused");
+    require(!swap_runtime_live_contract_admitted(SwapRuntimeProfile{},10),"empty_profile_refused");
 }
 void account_review_tests(){
     Scratch scratch;TestKey key(scratch.base/"review-key");

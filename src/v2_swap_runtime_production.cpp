@@ -28,6 +28,10 @@ std::optional<SwapRuntimeProfile> decode_swap_runtime_profile(std::string_view d
         hex("owner_wallet",b.owner_wallet);hex("signer_public_key",b.signer_public_key);
         if(fields.contains("max_buy_output_deduction_lamports"))
             b.max_buy_output_deduction_lamports=number("max_buy_output_deduction_lamports");
+        if(fields.contains("transaction_review_digest")){
+            hex("transaction_review_digest",b.transaction_review_digest.bytes);
+            if(b.transaction_review_digest.is_zero())return {};
+        }
         hex("account_review_digest",p.account_review_digest.bytes);if(p.account_review_digest.is_zero())return {};
         hex("failure_fee_payer",std::as_writable_bytes(std::span(p.failure_policy.expected_external_fee_payer)));
         const auto& payer=p.failure_policy.expected_external_fee_payer;
@@ -44,6 +48,14 @@ std::optional<SwapRuntimeProfile> decode_swap_runtime_profile(std::string_view d
         if(!organization||!signer||!user||!swap_account_user_id_valid(user->view())||!fields.empty()||p.gateway.expires_at_ms<=1 || validate_swap_gateway_startup(p.gateway,1)!=SwapRuntimeCode::valid||validate_swap_signer_startup(p.signer)!=SwapRuntimeCode::valid)return {};
         p.organization=*organization;p.signer_id=*signer;p.user_id=*user;return p;
     }catch(...){return {};}
+}
+bool swap_runtime_live_contract_admitted(const SwapRuntimeProfile& profile,std::uint64_t now)noexcept{
+    const auto& b=profile.gateway.binding;
+    return validate_swap_gateway_startup(profile.gateway,now)==SwapRuntimeCode::valid &&
+        validate_swap_signer_startup(profile.signer)==SwapRuntimeCode::valid &&
+        swap_runtime_identity_digest(b)==swap_runtime_identity_digest(profile.signer.binding) &&
+        !b.transaction_review_digest.is_zero() && b.max_buy_output_deduction_lamports<=2'039'280 &&
+        !profile.account_review_digest.is_zero();
 }
 SwapAccountSetupResult read_swap_account_setup(SwapGatewayCredentials& credentials,
     SwapFinalizedReadClock& clock,std::string_view user,std::uint64_t timeout){

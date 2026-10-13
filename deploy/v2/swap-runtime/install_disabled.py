@@ -114,9 +114,11 @@ def installed_bytes(path, expected):
 
 
 def replacement(old, new):
-    # A release-only correction cannot change account, caller, catalog or runtime policy.
-    allowed={'source_commit','binary'}
-    if any(old[k] != new[k] for k in PROFILE.FIELDS-allowed) or old['source_commit']==new['source_commit']:
+    PROFILE.validate(old); PROFILE.validate(new)
+    allowed={'source_commit','binary','binary_sha256'}
+    if (old['launch_authorized'] or new['launch_authorized'] or
+        any(old.get(k) != new.get(k) for k in (set(old)|set(new))-allowed) or
+        old['source_commit']==new['source_commit']):
         raise ValueError('dormant replacement may change release location only')
 
 

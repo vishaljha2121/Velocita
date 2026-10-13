@@ -17,8 +17,7 @@ struct SwapRuntimeProfile {
 };
 // Public configuration only: exact bounded key=value schema, no secret material.
 [[nodiscard]] std::optional<SwapRuntimeProfile> decode_swap_runtime_profile(std::string_view) noexcept;
-// Implementation wiring is qualified separately from admission of real transactions.
-[[nodiscard]] constexpr bool swap_runtime_live_contract_admitted() noexcept { return false; }
+[[nodiscard]] bool swap_runtime_live_contract_admitted(const SwapRuntimeProfile&,std::uint64_t now_ms) noexcept;
 [[nodiscard]] SwapAccountSetupResult read_swap_account_setup(SwapGatewayCredentials&,
     SwapFinalizedReadClock&,std::string_view expected_user,std::uint64_t timeout_ms);
 struct SwapAccountStartupAdmission {

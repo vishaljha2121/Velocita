@@ -176,11 +176,41 @@ void direct_raydium() {
         two.data.steps[1].kind==JupiterSwapKind::bison_fi_market_backed && two.data.quoted_output_atoms==9'611'459,
         "mixed_variant_offsets");
 }
+void direct_current_variants() {
+    // Hand-written Borsh oracle: Obsidian (109) has no fields; KipseliV3
+    // (181) has one bool. Suffix: 1,000,000 input, 9,410,623 quote, 500bp,20bp.
+    const std::vector<std::uint8_t> obsidian{0xe5,0x17,0xcb,0x97,0x7a,0xe3,0xad,0x2a,1,0,0,0,
+        109,100,0,1,0x40,0x42,0x0f,0,0,0,0,0,0x3f,0x98,0x8f,0,0,0,0,0,0xf4,1,20};
+    const std::vector<std::uint8_t> kipseli{0xe5,0x17,0xcb,0x97,0x7a,0xe3,0xad,0x2a,1,0,0,0,
+        181,0,100,0,1,0x40,0x42,0x0f,0,0,0,0,0,0x3f,0x98,0x8f,0,0,0,0,0,0xf4,1,20};
+    for (const auto& bytes : {obsidian,kipseli}) {
+        const auto r=decode_jupiter_direct_route_data(bytes);
+        require(r.status==Status::decoded_data_only && r.data.step_count==1,
+            "current_variants_decode");
+        require(static_cast<unsigned>(r.data.steps[0].kind)==bytes[12] &&
+            r.data.steps[0].percent==100 && r.data.steps[0].input_index==0 && r.data.steps[0].output_index==1,
+            "current_variant_fields");
+        require(r.data.input_atoms==1'000'000 && r.data.quoted_output_atoms==9'410'623 &&
+            r.data.slippage_bps==500 && r.data.platform_fee_bps==20,"current_variant_suffix_offsets");
+        for(std::size_t n=0;n<bytes.size();++n) {
+            const auto short_r=decode_jupiter_direct_route_data({bytes.data(),n});
+            require(short_r.status==Status::invalid && short_r.data==JupiterDirectRouteData{},
+                "current_variant_truncation");
+        }
+    }
+    auto one=kipseli;one[13]=1;
+    require(decode_jupiter_direct_route_data(one).data.steps[0].side_or_direction==1,"kipseli_bool_one");
+    one[13]=2;const auto bad=decode_jupiter_direct_route_data(one);
+    require(bad.status==Status::invalid && bad.data==JupiterDirectRouteData{},"kipseli_bool_two_refused");
+    auto extra=obsidian;extra.insert(extra.begin()+13,0);
+    require(decode_jupiter_direct_route_data(extra).status==Status::invalid,"obsidian_spurious_field_refused");
+}
+
 }
 int main(int argc, char** argv) {
     const std::pair<const char*,void(*)()> tests[] = {{"captured",captured_oracle},{"shapes",exact_shapes},
         {"boundaries",unsupported_and_boundaries},{"orders",variant_orders},
-        {"direct",direct_capture},{"direct_boundaries",direct_boundaries},{"raydium",direct_raydium}};
+        {"direct",direct_capture},{"direct_boundaries",direct_boundaries},{"raydium",direct_raydium},{"current_variants",direct_current_variants}};
     int failures{}, selected{};
     for (const auto& [name,fn] : tests) {
         if (argc > 1 && std::string_view(argv[1]) != name) continue;

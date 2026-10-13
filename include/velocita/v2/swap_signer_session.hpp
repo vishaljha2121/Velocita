@@ -2,6 +2,8 @@
 #include "velocita/v2/gateway_link.hpp"
 #include "velocita/v2/swap_signing_stamp.hpp"
 #include "velocita/v2/swap_submission_store.hpp"
+#include "velocita/v2/swap_transaction_verifier.hpp"
+#include "velocita/v2/truemarkets_wire.hpp"
 #include <memory>
 
 namespace velocita::v2 {
@@ -36,13 +38,21 @@ struct SwapSignerConfig {
     std::uint64_t key_version{};
     Tick state_timeout{};
     std::uint64_t account_review_expires_at_ms{};
+    Digest256 transaction_policy_digest{};
 };
+struct SwapSignerVerificationContext {
+    truemarkets::TmText organization{}, signer{};
+    truemarkets::DirectBuyVerificationPolicy policy{};
+    truemarkets::SolanaLookupEvidence lookup{};
+};
+[[nodiscard]] Digest256 swap_signer_verification_digest(const SwapSignerVerificationContext&) noexcept;
 [[nodiscard]] SwapSubmissionBinding swap_signer_journal_binding(const SwapSignerConfig&,
     std::span<const std::byte,33> public_key) noexcept;
 enum class SwapSignerStatus : std::uint8_t { closed,idle,reading_state,reading_authority,refused,storage_failed,fenced,signed_once };
 class SwapSignerSession final {
 public:
-    SwapSignerSession(GatewayLink&,SwapSubmissionStore&,SwapSignerKey&,SwapSignerConfig,SwapSignerClock);
+    SwapSignerSession(GatewayLink&,SwapSubmissionStore&,SwapSignerKey&,SwapSignerConfig,SwapSignerClock,
+        std::optional<SwapSignerVerificationContext> verification=std::nullopt);
     ~SwapSignerSession();
     SwapSignerSession(const SwapSignerSession&)=delete;
     SwapSignerSession& operator=(const SwapSignerSession&)=delete;
@@ -66,6 +76,8 @@ private:
     SwapSignerKey& key_;
     SwapSignerConfig config_;
     SwapSignerClock clock_;
+    const std::optional<SwapSignerVerificationContext> verification_;
+    std::uint64_t verification_expires_at_ms_{};
     SwapSubmissionIdentity identity_{};
     Digest256 original_handle_digest_{};
     swap::Pending authority_pending_{};

@@ -89,13 +89,23 @@ class DisabledInstallTests(unittest.TestCase):
             snapshot.assert_not_called();mkdir.assert_not_called();command.assert_not_called()
 
     def test_replacement_changes_release_only_and_preserves_dormant_policy(self):
-        new=dict(self.m,source_commit='9'*40,binary='/opt/velocita/releases/'+'9'*40+'/velocita-v2-gateway')
-        INSTALL.replacement(self.m,new)
-        for key,value in [('launch_authorized',True),('binary_sha256','0'*64),
-                          ('gateway_caller',24),('incarnation','f'*32),('account_review_sha256','a'*64)]:
-            with self.subTest(key=key),self.assertRaisesRegex(ValueError,'release location only'):
+        new=dict(self.m,source_commit='9'*40,binary='/opt/velocita/releases/'+'9'*40+'/velocita-v2-gateway', binary_sha256='8'*64)
+        try:
+            INSTALL.replacement(self.m,new)
+        except ValueError as error:
+            self.fail('new_release_hash_is_allowed: '+str(error))
+        for key,value in [('gateway_caller',24),('incarnation','f'*32),('account_review_sha256','a'*64),
+                          ('initialize_swap_recovery',True)]:
+            with self.subTest(key=key),self.assertRaisesRegex(ValueError,'release location only',msg='replacement_preserves_reviewed_policy'):
                 INSTALL.replacement(self.m,dict(new,**{key:value}))
         with self.assertRaises(ValueError): INSTALL.replacement(self.m,self.m)
+        for key,value in [('binary_sha256','0'*64),('binary','/usr/bin/false')]:
+            with self.subTest(key=key),self.assertRaises(ValueError):
+                INSTALL.replacement(self.m,dict(new,**{key:value}))
+        complete=dict(launch_authorized=True,runtime_profile_sha256='a'*64,
+                      account_review_sha256='b'*64,account_history_sha256='c'*64)
+        with self.assertRaisesRegex(ValueError,'release location only',msg='active_replacement_refused'):
+            INSTALL.replacement(dict(self.m,**complete),dict(new,**complete))
 
 
 if __name__=='__main__': unittest.main()

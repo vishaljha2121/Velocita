@@ -84,6 +84,10 @@ Digest256 swap_runtime_identity_digest(const SwapRuntimeBinding&b)noexcept{
         h.update(std::as_bytes(std::span(costs.data(),costs.size())));
         add64(h,b.max_buy_output_deduction_lamports);
     }
+    if(!b.transaction_review_digest.is_zero()){
+        constexpr std::string_view review="transaction-review-v1";
+        h.update(std::as_bytes(std::span(review)));h.update(b.transaction_review_digest.bytes);
+    }
     return h.finish();
 }
 SwapInheritedSecretFd::~SwapInheritedSecretFd(){if(fd_>=3)::close(fd_);}

@@ -1,0 +1,406 @@
+{
+  "source_sha256": {
+    "include/velocita/v2/swap_transaction_verifier.hpp": "6107877de400a8d4aab9dfee5b2ab4ff5b403f6c29905e0256d1e01fd6130258",
+    "src/v2_swap_transaction_verifier.cpp": "beadc3386d5ea3f035771dd816f018471dad9c87de4292e47f342fdce99d55f0",
+    "tests/v2_swap_transaction_verifier_tests.cpp": "844bb094c752da0dbb1e73adbc21ef8ef64ed44af05862be390d857fd45f2354",
+    "tests/v2_swap_transaction_verifier_test_support.hpp": "8adf67f71537d7ad45dce2ee60a279b85f9b016c66bed69bc21c6b64f6a372da",
+    "include/velocita/v2/jupiter_route_decode.hpp": "a9cf0da87d7e50e97b553f183806657163d4c2fb6e1c5d7150e890ba5673e1bb",
+    "src/v2_jupiter_route_decode.cpp": "34b0258c223261c9feecb195f18978694350960a7974e98dba469817ea778a12",
+    "tests/v2_jupiter_route_decode_tests.cpp": "e10a3d43473959d1148a6f04767d25fb4abb86922241ab7bf0ba18acf6c534fe",
+    "tests/mutation_jupiter_route_decode.py": "3604661280f1f196849231ec105fa716a9f8d55e1e42bc96fb36298e5da46837"
+  },
+  "verifier": {
+    "source_sha256": "beadc3386d5ea3f035771dd816f018471dad9c87de4292e47f342fdce99d55f0",
+    "results": [
+      {
+        "name": "baseline",
+        "case": null,
+        "assertion": null,
+        "exit": 0,
+        "passed": true,
+        "stdout": "PASS oracle\nPASS economics\nPASS topology\nPASS identity\nPASS digests\n",
+        "stderr": ""
+      },
+      {
+        "name": "payload_binding",
+        "case": "identity",
+        "assertion": "prepared_payload_mismatch",
+        "exit": 1,
+        "passed": true,
+        "stdout": "",
+        "stderr": "FAIL identity: prepared_payload_mismatch\n"
+      },
+      {
+        "name": "policy_cost_digest",
+        "case": "digests",
+        "assertion": "policy_cost_bound_digest",
+        "exit": 1,
+        "passed": true,
+        "stdout": "",
+        "stderr": "FAIL digests: policy_cost_bound_digest\n"
+      },
+      {
+        "name": "lookup_provenance",
+        "case": "identity",
+        "assertion": "lookup_provenance_changed",
+        "exit": 1,
+        "passed": true,
+        "stdout": "",
+        "stderr": "FAIL identity: lookup_provenance_changed\n"
+      },
+      {
+        "name": "canonical_dex",
+        "case": "topology",
+        "assertion": "arbitrary_dex_policy_refused",
+        "exit": 1,
+        "passed": true,
+        "stdout": "",
+        "stderr": "FAIL topology: arbitrary_dex_policy_refused\n"
+      },
+      {
+        "name": "extra_instruction",
+        "case": "topology",
+        "assertion": "extra_instruction_refused",
+        "exit": 1,
+        "passed": true,
+        "stdout": "",
+        "stderr": "FAIL topology: extra_instruction_refused\n"
+      },
+      {
+        "name": "close_destination",
+        "case": "topology",
+        "assertion": "rent_recipient_refused",
+        "exit": 1,
+        "passed": true,
+        "stdout": "",
+        "stderr": "FAIL topology: rent_recipient_refused\n"
+      },
+      {
+        "name": "route_roles",
+        "case": "topology",
+        "assertion": "route_account_role_refused",
+        "exit": 1,
+        "passed": true,
+        "stdout": "",
+        "stderr": "FAIL topology: route_account_role_refused\n"
+      },
+      {
+        "name": "fee_divisibility",
+        "case": "economics",
+        "assertion": "fractional_fee_above_divisibility_refused",
+        "exit": 1,
+        "passed": true,
+        "stdout": "",
+        "stderr": "FAIL economics: fractional_fee_above_divisibility_refused\n"
+      },
+      {
+        "name": "floor_rounding",
+        "case": "oracle",
+        "assertion": "supported_buy_verified",
+        "exit": 1,
+        "passed": true,
+        "stdout": "",
+        "stderr": "FAIL oracle: supported_buy_verified\n"
+      },
+      {
+        "name": "funding_credit",
+        "case": "economics",
+        "assertion": "idempotent_zero_funding_refused",
+        "exit": 1,
+        "passed": true,
+        "stdout": "",
+        "stderr": "FAIL economics: idempotent_zero_funding_refused\n"
+      },
+      {
+        "name": "minimum_bound",
+        "case": "economics",
+        "assertion": "one_lamport_receipt_shortfall",
+        "exit": 1,
+        "passed": true,
+        "stdout": "",
+        "stderr": "FAIL economics: one_lamport_receipt_shortfall\n"
+      },
+      {
+        "name": "already_signed",
+        "case": "identity",
+        "assertion": "already_signed_refused",
+        "exit": 1,
+        "passed": true,
+        "stdout": "",
+        "stderr": "FAIL identity: already_signed_refused\n"
+      }
+    ],
+    "named_kills": 12,
+    "test_errors": 0
+  },
+  "decoder": {
+    "files": {
+      "src/v2_jupiter_route_decode.cpp": "34b0258c223261c9feecb195f18978694350960a7974e98dba469817ea778a12",
+      "include/velocita/v2/jupiter_route_decode.hpp": "a9cf0da87d7e50e97b553f183806657163d4c2fb6e1c5d7150e890ba5673e1bb",
+      "tests/v2_jupiter_route_decode_tests.cpp": "e10a3d43473959d1148a6f04767d25fb4abb86922241ab7bf0ba18acf6c534fe",
+      "tests/mutation_jupiter_route_decode.py": "3604661280f1f196849231ec105fa716a9f8d55e1e42bc96fb36298e5da46837"
+    },
+    "results": [
+      {
+        "name": "discriminator",
+        "case": "boundaries",
+        "assertion": "other_instruction_refused",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL boundaries: other_instruction_refused\n"
+      },
+      {
+        "name": "count_capacity",
+        "case": "shapes",
+        "assertion": "eight_steps_fit",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL shapes: eight_steps_fit\n"
+      },
+      {
+        "name": "empty_route",
+        "case": "shapes",
+        "assertion": "empty_route_refused",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL shapes: empty_route_refused\n"
+      },
+      {
+        "name": "enum_range",
+        "case": "shapes",
+        "assertion": "invalid_side_refused",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL shapes: invalid_side_refused\n"
+      },
+      {
+        "name": "step_percent",
+        "case": "captured",
+        "assertion": "deriverse_fields_in_order",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL captured: deriverse_fields_in_order\n"
+      },
+      {
+        "name": "instruction_id",
+        "case": "captured",
+        "assertion": "deriverse_fields_in_order",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL captured: deriverse_fields_in_order\n"
+      },
+      {
+        "name": "input_index",
+        "case": "captured",
+        "assertion": "bison_fields_in_order",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL captured: bison_fields_in_order\n"
+      },
+      {
+        "name": "output_index",
+        "case": "captured",
+        "assertion": "deriverse_fields_in_order",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL captured: deriverse_fields_in_order\n"
+      },
+      {
+        "name": "input_amount",
+        "case": "captured",
+        "assertion": "captured_input_and_quote",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL captured: captured_input_and_quote\n"
+      },
+      {
+        "name": "quote_amount",
+        "case": "captured",
+        "assertion": "captured_input_and_quote",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL captured: captured_input_and_quote\n"
+      },
+      {
+        "name": "slippage",
+        "case": "captured",
+        "assertion": "captured_slippage_and_fee",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL captured: captured_slippage_and_fee\n"
+      },
+      {
+        "name": "fee",
+        "case": "captured",
+        "assertion": "captured_slippage_and_fee",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL captured: captured_slippage_and_fee\n"
+      },
+      {
+        "name": "trailing",
+        "case": "shapes",
+        "assertion": "trailing_bytes_refused",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL shapes: trailing_bytes_refused\n"
+      },
+      {
+        "name": "direct_tag",
+        "case": "direct",
+        "assertion": "shared_not_direct_route",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL direct: shared_not_direct_route\n"
+      },
+      {
+        "name": "direct_variant",
+        "case": "direct_boundaries",
+        "assertion": "direct_unknown_variant_refused",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL direct_boundaries: direct_unknown_variant_refused\n"
+      },
+      {
+        "name": "raydium_support",
+        "case": "raydium",
+        "assertion": "raydium_no_variant_payload",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL raydium: raydium_no_variant_payload\n"
+      },
+      {
+        "name": "raydium_payload",
+        "case": "raydium",
+        "assertion": "raydium_no_variant_payload",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL raydium: raydium_no_variant_payload\n"
+      },
+      {
+        "name": "raydium_kind",
+        "case": "raydium",
+        "assertion": "raydium_no_variant_payload",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL raydium: raydium_no_variant_payload\n"
+      },
+      {
+        "name": "obsidian_support",
+        "case": "current_variants",
+        "assertion": "current_variants_decode",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL current_variants: current_variants_decode\n"
+      },
+      {
+        "name": "kipseli_support",
+        "case": "current_variants",
+        "assertion": "current_variants_decode",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL current_variants: current_variants_decode\n"
+      },
+      {
+        "name": "kipseli_payload",
+        "case": "current_variants",
+        "assertion": "current_variants_decode",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL current_variants: current_variants_decode\n"
+      },
+      {
+        "name": "direct_bool",
+        "case": "direct_boundaries",
+        "assertion": "direct_invalid_bool_refused",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL direct_boundaries: direct_invalid_bool_refused\n"
+      },
+      {
+        "name": "direct_count",
+        "case": "direct_boundaries",
+        "assertion": "direct_eight_steps_fit",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL direct_boundaries: direct_eight_steps_fit\n"
+      },
+      {
+        "name": "direct_input",
+        "case": "direct",
+        "assertion": "direct_route_exact_amounts",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL direct: direct_route_exact_amounts\n"
+      },
+      {
+        "name": "direct_output",
+        "case": "direct",
+        "assertion": "direct_route_exact_amounts",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL direct: direct_route_exact_amounts\n"
+      },
+      {
+        "name": "direct_fee",
+        "case": "direct",
+        "assertion": "direct_route_slippage_and_fee",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL direct: direct_route_slippage_and_fee\n"
+      },
+      {
+        "name": "direct_slippage",
+        "case": "direct",
+        "assertion": "direct_route_slippage_and_fee",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL direct: direct_route_slippage_and_fee\n"
+      },
+      {
+        "name": "direct_trailing",
+        "case": "direct_boundaries",
+        "assertion": "direct_trailing_bytes_refused",
+        "exit": 1,
+        "killed": true,
+        "stdout": "",
+        "stderr": "FAIL direct_boundaries: direct_trailing_bytes_refused\n"
+      }
+    ]
+  },
+  "actual_capture": {
+    "code": "deduction_exceeded",
+    "gross_floor": 8940092,
+    "maximum_deduction": 2039280,
+    "verified": false,
+    "historical_diagnostic_only": true
+  },
+  "live_admitted": false
+}

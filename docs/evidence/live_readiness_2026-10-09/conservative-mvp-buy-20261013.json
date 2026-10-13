@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "scope": "one-sol-buy",
+  "total_usdc_debit_atoms": 1000000,
+  "explicit_usdc_fee_atoms": 2000,
+  "swap_principal_usdc_atoms": 998000,
+  "max_native_repayment_lamports": 2039280,
+  "guaranteed_sponsor_credit_lamports": 0,
+  "test_purchase_budget_usdc_atoms": 1000000,
+  "session_remaining_purchase_budget_usdc_atoms": 4000000,
+  "session_loss_stop_usdc_atoms": 500000,
+  "fresh_net_minimum_required": true,
+  "automatic_retry": false,
+  "automatic_resize": false,
+  "live_admitted": false
+}

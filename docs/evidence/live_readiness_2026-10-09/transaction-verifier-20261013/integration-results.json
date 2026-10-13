@@ -1,0 +1,32 @@
+{
+  "status": "local_working_tree_verified_not_committed_or_deployed",
+  "ctest_passed": 52,
+  "launcher_tests_passed": 12,
+  "signer_named_mutants_killed": 5,
+  "review_loader_named_mutants_killed": 7,
+  "source_sha256": {
+    "include/velocita/v2/swap_signer_session.hpp": "631fc98a1aea2978fc5f07b3331f5970cba8d09ea132bcfee3da97e47fdd8c41",
+    "src/v2_swap_signer_session.cpp": "644a1856a67a09eff627181513269b6cd662f2c44e1bd07414ce8a3152c4bd69",
+    "include/velocita/v2/swap_runtime_config.hpp": "d2d2d3c4d058c03199d12a3c0e2c1b8e5a82de0fb97eb08664f2a92903779bc8",
+    "src/v2_swap_runtime_config.cpp": "862d0a1fc2340d5e4faaa3447f86930e18e1c1c4dd009de1971293698463eaf2",
+    "src/v2_swap_runtime_production.cpp": "75050f7d036c527eab7ee5d7357ff5e19a373c29cefb981a0cc30cffe0da14a5",
+    "include/velocita/v2/swap_transaction_review.hpp": "93833fcca56db3a8f31e525ec802e903b8545b56b9bfb45d419b09ba60a10012",
+    "src/v2_swap_transaction_review.cpp": "f24bdd7cf82eb009882b6d8a02dfad104e1165ece9da08844c515b348dfa8740",
+    "tests/v2_swap_signer_verified_tests.cpp": "1651a607eff75724aa80d66898ca7e15eeda53c5f842326c550655138138741d",
+    "tests/v2_swap_transaction_review_tests.cpp": "0ce512e98020fea4fdba2578607c3c77d5f4c032284cec42a18b9026dabdb45b",
+    "tests/v2_swap_runtime_production_tests.cpp": "d30ef885f5292205e56da45e8a43b1e246f6928ff7d33d3c950ad7039d14877b",
+    "tests/v2_swap_signer_session_tests.cpp": "e2a2a9c7f6cd7d4c05c639ec33a29e2822fbaea3500e35093c09401fdb321b55",
+    "src/v2_gateway_main.cpp": "111c8da580d36646737bd523940ab8fe736dca5ffebe67ee902f6d6be0b4e347",
+    "cmake/SwapTransactionVerifier.cmake": "bbd5fb517504b83aa9a387d654bba62947c989ed96d81dae61afbc4450b37546",
+    "cmake/SwapTransactionVerifierTests.cmake": "e268c8cd3be243bd1b0e6df90fa471523bcdac47a56a5b4e3c238bad0f33d6fc",
+    "cmake/SwapRuntime.cmake": "70f0e38512255b45a785a29dd1594bcd776ff2ea5ee98d2219c9c34cc25913e8",
+    "deploy/v2/swap-runtime/service_launcher.py": "8db3d45258450552945d9419b7c69f7a0fe56f90a5ea37adfe452b9d688327f0",
+    "tests/test_swap_service_launcher.py": "5a3cad4a988ddf55a3d8842c876d49311420da6c9845754f763a8eba76266a15"
+  },
+  "historical_actual_payload_under_conservative_cap": "verified_under_program_contract",
+  "global_live_gate": false,
+  "real_signatures": 0,
+  "live_orders": 0,
+  "launcher_and_profile_tests_passed": 36,
+  "mvp_one_buy_scope_enforced": true
+}

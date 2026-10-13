@@ -1,0 +1,42 @@
+[
+  {
+    "name": "baseline",
+    "assertion": null,
+    "passed": true,
+    "exit": 0,
+    "stdout": "PASS production profile and admission guards\n",
+    "stderr": ""
+  },
+  {
+    "name": "unconditional",
+    "assertion": "legacy_profile_cannot_admit_live_runtime",
+    "passed": true,
+    "exit": 1,
+    "stdout": "",
+    "stderr": "legacy_profile_cannot_admit_live_runtime\n"
+  },
+  {
+    "name": "repayment",
+    "assertion": "larger_repayment_profile_refused",
+    "passed": true,
+    "exit": 1,
+    "stdout": "",
+    "stderr": "larger_repayment_profile_refused\n"
+  },
+  {
+    "name": "identity",
+    "assertion": "different_process_policy_refused",
+    "passed": true,
+    "exit": 1,
+    "stdout": "",
+    "stderr": "different_process_policy_refused\n"
+  },
+  {
+    "name": "expiry",
+    "assertion": "expired_bearer_profile_refused",
+    "passed": true,
+    "exit": 1,
+    "stdout": "",
+    "stderr": "expired_bearer_profile_refused\n"
+  }
+]

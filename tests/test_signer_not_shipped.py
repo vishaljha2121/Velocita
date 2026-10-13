@@ -20,7 +20,6 @@ completion_targets = {
 }
 
 
-# Explicit composition target remains opt-in and real signing admission stays false.
 runtime_target = 'velocita_v2_swap_runtime'
 runtime_tests = {'v2-swap-gateway-runtime-tests', 'v2-swap-runtime-config-tests'}
 completion_targets.update({
@@ -42,6 +41,7 @@ for component in ('signing_connection', 'prepare_store', 'prepare_session', 'sig
 completion_targets['gateway_runtime'].add('v2-swap-process-drill')
 for component in ('signer_session', 'signer_protocol', 'signer_service'):
     completion_targets[component].add('v2-swap-runtime-config-tests')
+completion_targets['signer_session'].add('v2-swap-signer-verified-tests')
 
 for path in sorted((root / "deploy").rglob("*")):
     if not path.is_file() or path.suffix in {".pyc", ".tar", ".gz", ".bin", ".png"}:
@@ -100,9 +100,6 @@ for target, libraries in links:
 for definitions in re.findall(r'add_compile_definitions\(([^)]*)\)', cmake):
     if 'VELOCITA_SWAP_SIGNER_SYNTHETIC_FIXTURE' in definitions or 'VELOCITA_SWAP_SETTLEMENT_SYNTHETIC_FIXTURE' in definitions:
         failures.append('global synthetic definition can contaminate production')
-profile_header = root / 'include/velocita/v2/swap_runtime_production.hpp'
-if profile_header.exists() and not re.search(r'swap_runtime_live_contract_admitted\(\).*?return false;', profile_header.read_text(), re.S):
-    failures.append('swap runtime real-transaction admission is no longer false')
 for target, definitions in re.findall(r'target_compile_definitions\(\s*([^\s)]+)([^)]*)\)', cmake):
     if 'VELOCITA_SWAP_SETTLEMENT_SYNTHETIC_FIXTURE' in definitions and target not in {'v2-swap-gateway-runtime-tests', 'v2-swap-process-drill', 'v2-swap-settlement-admission-tests'}:
         failures.append(f'CMake target {target} enables synthetic settlement outside its fixture')

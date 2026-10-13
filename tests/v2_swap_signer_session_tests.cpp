@@ -147,6 +147,13 @@ void production_gate(){
 }
 void key_and_domain(){
     Rig r;auto changed=r.key.public_key;changed.back()^=std::byte{1};
+    auto reviewed=config();reviewed.transaction_policy_digest=digest(71);
+    require(swap_signer_journal_binding(reviewed,r.key.public_key)!=r.binding,
+        "verification_policy_changes_journal_domain");
+    const auto first_policy=swap_signer_journal_binding(reviewed,r.key.public_key);
+    reviewed.transaction_policy_digest=digest(72);
+    require(swap_signer_journal_binding(reviewed,r.key.public_key)!=first_policy,
+        "changed_verification_policy_cannot_retrieve_prior_signature");
     require(!SwapSignerKey::load_inherited_fd(r.key.fd,changed),"wrong pinned public key refuses");
     require(::fchmod(r.key.fd,0644)==0,"insecure fixture mode");
     require(!SwapSignerKey::load_inherited_fd(r.key.fd,r.key.public_key),"publicly readable private key refuses");

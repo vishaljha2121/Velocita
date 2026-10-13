@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import stat
 import sys
 import time
@@ -142,6 +143,13 @@ def prepare(manifest, role, read=pinned_bytes, now_ms=None):
                 ('account.history', 'account_history_sha256', 4096))}
     result = check_bindings(manifest, data['runtime.profile'], data['account.review'], data['account.history'],
                             time.time_ns()//1000000 if now_ms is None else now_ms, role)
+    transaction_digest = fields(data['runtime.profile']).get('transaction_review_digest')
+    if transaction_digest is not None:
+        if len(transaction_digest) != 64 or any(c not in '0123456789abcdef' for c in transaction_digest) or transaction_digest == '0'*64:
+            raise FD.Refused('transaction review digest shape')
+        path = PROFILE.PUBLIC + '/transaction.review'
+        read(path, transaction_digest, 32768)
+        contract['public_files_sha256'][path] = transaction_digest
     # The pinned catalog file is still checked against the authenticated Raft
     # catalog root by the C++ executable. File SHA256 is not that canonical root.
     binary_fd = FD.open_pinned_public(manifest['binary'], manifest['binary_sha256'], True)
@@ -167,6 +175,10 @@ def launch(manifest, role):
         raise FD.Refused('operator has not authorized launch; no credential opened')
     service_context(role)
     contract, _ = prepare(manifest, role)
+    transaction_pin = contract['public_files_sha256'].get(PROFILE.PUBLIC+'/transaction.review')
+    if (not isinstance(transaction_pin, str) or re.fullmatch('[0-9a-f]{64}', transaction_pin) is None or
+        transaction_pin == '0'*64):
+        raise FD.Refused('reviewed transaction review required before credential access')
     caller = FD.open_secret('/etc/velocita-swap/'+role+'/caller.key', manifest[role+'_uid'])
     os.close(caller)
     secret = FD.open_secret(contract['secret_fd']['path'], manifest[role+'_uid'])

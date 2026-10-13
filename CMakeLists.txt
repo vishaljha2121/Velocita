@@ -419,6 +419,7 @@ add_executable(velocita-v2-gateway src/v2_gateway_main.cpp)
 target_link_libraries(velocita-v2-gateway PRIVATE velocita_v2_swap_paper_gateway velocita_v2_gateway_loop velocita_v2_paper_venue
     velocita_v2_truemarkets_venue velocita_v2_node_aeron Threads::Threads)
 target_compile_options(velocita-v2-gateway PRIVATE -Wall -Wextra -Wpedantic)
+include(cmake/SwapTransactionVerifier.cmake)
 include(cmake/SwapRuntime.cmake)
 
 add_executable(velocita-v2-shadow-submitter src/v2_shadow_submitter_main.cpp)
@@ -1080,6 +1081,7 @@ if(BUILD_TESTING)
         COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_signer_not_shipped.py ${CMAKE_CURRENT_SOURCE_DIR})
 
     include(cmake/LiveReadinessTests.cmake)
+    include(cmake/SwapTransactionVerifierTests.cmake)
 
     # The adapter library must contain no path to a network: no socket, name
     # resolution or TLS symbol may be referenced by its objects.

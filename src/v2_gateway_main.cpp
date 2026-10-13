@@ -5,6 +5,7 @@
 #include "velocita/v2/swap_paper_gateway.hpp"
 #ifdef VELOCITA_SWAP_RUNTIME_WIRING
 #include "velocita/v2/swap_runtime_production.hpp"
+#include "velocita/v2/swap_transaction_review.hpp"
 #endif
 #include "velocita/v2/node_files.hpp"
 #include "velocita/v2/paper_venue_store.hpp"
@@ -430,10 +431,18 @@ void report_events(GatewayLoop& loop) {
 }
 
 int run(const Arguments& a) {
+#ifdef VELOCITA_SWAP_RUNTIME_WIRING
+    std::optional<SwapRuntimeProfile> runtime_profile;
+#endif
     if(!a.swap_runtime_profile.empty()) {
 #ifdef VELOCITA_SWAP_RUNTIME_WIRING
-        if(!swap_runtime_live_contract_admitted())
-            throw Usage("swap runtime wired but real transaction admission remains disabled: net receipt, account control and settlement contract unresolved; no credentials or network opened");
+        std::ifstream file(a.swap_runtime_profile,std::ios::binary);std::array<char,8193> buffer{};
+        file.read(buffer.data(),buffer.size());const auto count=file.gcount();
+        if(file.bad() || count<1 || count>8192)throw Usage("runtime profile unreadable or oversized; no credentials or network opened");
+        runtime_profile=decode_swap_runtime_profile(std::string_view(buffer.data(),static_cast<std::size_t>(count)));
+        const auto now=std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        if(!runtime_profile || now<=0 || !swap_runtime_live_contract_admitted(*runtime_profile,static_cast<std::uint64_t>(now)))
+            throw Usage("runtime requires a reviewed bounded MVP profile; no credentials or network opened");
 #else
         throw Usage("swap runtime was not compiled into this build; no credentials or network opened");
 #endif
@@ -493,11 +502,20 @@ int run(const Arguments& a) {
     if (catalog.error != NodeFileError::none) throw Usage("catalog file refused against the cluster's root");
 #ifdef VELOCITA_SWAP_RUNTIME_WIRING
     if(a.execution_contract=="exact-input-swap" && a.venue=="truemarkets") {
-        std::ifstream file(a.swap_runtime_profile,std::ios::binary);std::array<char,8193> buffer{};
-        file.read(buffer.data(),buffer.size());const auto count=file.gcount();
-        if(file.bad() || count<1 || count>8192)throw Usage("runtime profile unreadable or oversized");
-        const auto profile=decode_swap_runtime_profile(std::string_view(buffer.data(),static_cast<std::size_t>(count)));
-        if(!profile)throw Usage("runtime profile schema or pins refused");
+        const auto& profile=runtime_profile;
+        if(profile->gateway.binding.transaction_review_digest.is_zero())
+            throw Usage("reviewed transaction policy required for live runtime");
+        std::ifstream transaction_file(a.swap_runtime_profile.parent_path()/"transaction.review",std::ios::binary);
+        std::array<char,32769> transaction_buffer{};
+        transaction_file.read(transaction_buffer.data(),transaction_buffer.size());const auto transaction_count=transaction_file.gcount();
+        if(transaction_file.bad() || transaction_count<1 || transaction_count>32768)
+            throw Usage("transaction review unreadable or oversized");
+        const auto transaction_review=decode_swap_transaction_review(
+            {transaction_buffer.data(),static_cast<std::size_t>(transaction_count)},profile->gateway.binding.transaction_review_digest,
+            profile->gateway.binding,profile->organization.view(),profile->signer_id.view());
+        if(!transaction_review || transaction_review->policy.account_keys[0]!=profile->failure_policy.expected_external_fee_payer)
+            throw Usage("transaction review or sponsor differs from pinned runtime");
+
         std::ifstream review_file(a.swap_account_review,std::ios::binary);std::array<char,8193> review_buffer{};
         review_file.read(review_buffer.data(),review_buffer.size());const auto review_count=review_file.gcount();
         if(review_file.bad() || review_count<1 || review_count>8192)throw Usage("account review unreadable or oversized");
@@ -518,6 +536,8 @@ int run(const Arguments& a) {
         const auto& current=state.spot_swap;
         if(!swap_account_review_matches(*review,b,profile->user_id.view(),current))
             throw Usage("reviewed live funding/account pins disagree with authenticated Raft opening");
+        if(!swap_mvp_buy_scope(current,*transaction_review))
+            throw Usage("runtime is restricted to the reviewed single $1 buy and bounded repayment");
         if(a.initialize_swap_recovery && (current.pending.phase!=swap::Phase::none || current.settlement_count || current.last_effect || current.conflicted))
             throw Usage("runtime journals initialize only before first intent; never replace an existing run");
         struct Clock final:SwapFinalizedReadClock {
@@ -528,11 +548,15 @@ int run(const Arguments& a) {
             if(!swap_account_review_current(*review,clock.now_ms()))throw Usage("account review expired; signer remains closed");
             auto startup=SwapProtectedSignerStartup::open(profile->signer,SwapInheritedSecretFd(a.swap_secret_fd),code);
             if(!startup)throw Usage("protected signer startup refused");
-            auto config=startup->session_config();config.account_review_expires_at_ms=std::min(review->expires_at_ms,history->finished_ms>UINT64_MAX-900000?UINT64_MAX:history->finished_ms+900000);const auto binding=swap_signer_journal_binding(config,startup->key().public_key());
+            auto config=startup->session_config();
+            config.account_review_expires_at_ms=std::min(review->expires_at_ms,history->finished_ms>UINT64_MAX-900000?UINT64_MAX:history->finished_ms+900000);
+            config.transaction_policy_digest=swap_signer_verification_digest(*transaction_review);
+            if(config.transaction_policy_digest.is_zero())throw Usage("transaction verification context refused");
+            const auto binding=swap_signer_journal_binding(config,startup->key().public_key());
             SwapSubmissionStore journal(a.swap_recovery_dir/"protected-signing",binding);
             const auto opened=a.initialize_swap_recovery?journal.create({binding,first->reading.applied_index,first->reading.state_digest,EffectId{0}}):journal.recover();
             if(opened!=SwapSubmissionCode::none)throw Usage("protected signer recovery refused");
-            SwapSignerSession session(link,journal,startup->key(),config,{monotonic_ms,+[](void*p)noexcept{return static_cast<Clock*>(p)->now_ms();},&clock});
+            SwapSignerSession session(link,journal,startup->key(),config,{monotonic_ms,+[](void*p)noexcept{return static_cast<Clock*>(p)->now_ms();},&clock},*transaction_review);
             while(!g_stop.load(std::memory_order_relaxed) && swap_account_review_current(*review,clock.now_ms()) && clock.now_ms()<config.account_review_expires_at_ms) (void)startup->server().serve_once(session,b.ipc_timeout_ms);
             return 0;
         }
@@ -578,7 +602,8 @@ int run(const Arguments& a) {
         if(!recovery_only && !read_swap_reviewed_balance(*credentials,clock,admission,a.timeout_ms))
             throw Usage("live balance differs from reviewed funding and attributed outside activity, or review expired");
         SwapProductionGateway gateway(link,recovery,prepared,submitted,signing,*credentials,clock,*profile,
-            {prepare_binding,CallerId{a.caller_id},start.first_sequence,reserved,a.timeout_ms,a.state_interval_ms,recovery_only},admission);
+            {prepare_binding,CallerId{a.caller_id},start.first_sequence,reserved,a.timeout_ms,a.state_interval_ms,recovery_only},admission,
+            std::span(&transaction_review->lookup,1));
         auto& loop=gateway.runtime();
         while(!g_stop.load(std::memory_order_relaxed) && !loop.stopped()) {
             if(!recovery_only && !swap_account_review_current(*review,clock.now_ms()))throw Usage("account review expired; runtime stopped");
