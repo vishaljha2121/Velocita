@@ -173,6 +173,8 @@ def launch(manifest, role):
     if role not in ('gateway', 'signer'): raise FD.Refused('fixed role required')
     if manifest['launch_authorized'] is not True:
         raise FD.Refused('operator has not authorized launch; no credential opened')
+    if role=='signer' and manifest.get('recovery_only',False):
+        raise FD.Refused('recovery cannot start signer')
     service_context(role)
     contract, _ = prepare(manifest, role)
     transaction_pin = contract['public_files_sha256'].get(PROFILE.PUBLIC+'/transaction.review')

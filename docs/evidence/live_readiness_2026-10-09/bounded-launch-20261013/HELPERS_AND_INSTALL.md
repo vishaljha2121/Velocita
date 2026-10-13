@@ -55,7 +55,10 @@ On failure preserve partial state and inspect; do not repeat automatically.
 The old immutable release and its exact public bundle are retained.
 
 Bundle hashes and executable provenance are in `dormant-install.json`; exact
-commands are in `owner-install.sh`. Installation has not yet been confirmed.
+commands are in `owner-install.sh`. Installation is now confirmed by the owner output and an independent SSH check
+of the executable SHA-256 and both loaded units. Both services remain
+inactive/dead/static. See `dormant-installed.json` for the exact verification
+scope; this check did not inspect private credential contents.
 
 ## Remaining launch sequence
 

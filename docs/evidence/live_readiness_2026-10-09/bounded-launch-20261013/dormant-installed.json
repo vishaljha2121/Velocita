@@ -1,0 +1,22 @@
+{
+  "checked_at": "2026-10-13T20:43:37.228504+00:00",
+  "source_commit": "84c353a7f17581546c84db414b0d759a2ab0e695",
+  "owner_reported_installation": true,
+  "independent_ssh_checks": {
+    "binary_sha256": "001e5526a87a641c1e0f7334853973de73acddb0e22fe9c0d8de02b12933d21e",
+    "both_exec_start_release": "84c353a7f17581546c84db414b0d759a2ab0e695",
+    "both_exec_start_manifest_sha256": "819e1bbb975b30bc106aab26eb0ff5540b7e5096ec4a42041c26cd5bcf673bdb",
+    "both_units": {
+      "LoadState": "loaded",
+      "ActiveState": "inactive",
+      "SubState": "dead",
+      "UnitFileState": "static"
+    }
+  },
+  "owner_installer_report": {
+    "credentials_installed": false,
+    "authenticated_voter_reads": false,
+    "live_admitted": false
+  },
+  "scope": "Independent check covers installed binary and loaded unit properties. Installer outcome and unchanged credentials are from owner-provided output; private files were not read."
+}

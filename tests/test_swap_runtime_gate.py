@@ -19,6 +19,17 @@ class GateTests(unittest.TestCase):
                     '--response-endpoint','127.0.0.1:44400','--caller-key-id','13','--caller-id','22']
                 for flag in ['key-file','session-file','state-file','aeron-dir','catalog','metrics-textfile']:
                     command += ['--'+flag,str(base/flag)]
+                if role=='gateway':
+                    for extra in (['--swap-recovery-only','--initialize-swap-recovery'],
+                                  ['--swap-recovery-only','--swap-recovery-only']):
+                        refused=subprocess.run(command+extra,capture_output=True,text=True,timeout=10)
+                        self.assertEqual(refused.returncode,64,refused.stderr)
+                        self.assertIn('recovery',refused.stderr,'recovery_mode_rejects_initialization_and_duplicate')
+                        self.assertNotIn('runtime profile unreadable',refused.stderr,'recovery_refused_before_profile')
+                else:
+                    refused=subprocess.run(command+['--swap-recovery-only'],capture_output=True,text=True,timeout=10)
+                    self.assertEqual(refused.returncode,64,refused.stderr)
+                    self.assertIn('recovery-only requires',refused.stderr,'recovery_mode_never_starts_signer')
                 result=subprocess.run(command,capture_output=True,text=True,timeout=10)
                 self.assertEqual(result.returncode,64,result.stderr)
                 self.assertIn('runtime profile unreadable or oversized',result.stderr)

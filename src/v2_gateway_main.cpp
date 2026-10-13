@@ -83,6 +83,7 @@ struct Arguments {
     std::optional<std::uint64_t> swap_paper_price;
     std::filesystem::path swap_recovery_dir;
     bool initialize_swap_recovery{};
+    bool swap_recovery_only{};
     std::filesystem::path swap_runtime_profile, swap_account_review, swap_account_history;
     std::string swap_process{"gateway"};
     int swap_secret_fd{-1};
@@ -118,6 +119,9 @@ void open_swap_recovery(const Arguments& a, const swap::State& state,
 }
 
 void check_paper_state(const Arguments& a) {
+    if(a.swap_recovery_only && (a.venue!="truemarkets" || a.execution_contract!="exact-input-swap" ||
+       a.swap_process!="gateway" || a.initialize_swap_recovery || a.swap_runtime_profile.empty()))
+        throw Usage("swap recovery-only requires a production gateway and existing journals");
     if(a.venue!="truemarkets" && (!a.swap_runtime_profile.empty() || !a.swap_account_review.empty() || !a.swap_account_history.empty() || a.swap_secret_fd!=-1 || a.swap_process!="gateway"))
         throw Usage("runtime profile/process/secret settings require truemarkets");
     if (a.execution_contract == "exact-input-swap") {
@@ -211,6 +215,11 @@ Arguments parse(int argc, char** argv) {
         }
         if (key == "--paper-state-init") {
             a.paper_state_init = true;
+            continue;
+        }
+        if (key == "--swap-recovery-only") {
+            if(a.swap_recovery_only)throw Usage("duplicate --swap-recovery-only");
+            a.swap_recovery_only=true;
             continue;
         }
         if (key == "--initialize-swap-recovery") {
@@ -594,7 +603,7 @@ int run(const Arguments& a) {
             !swap_account_review_matches(*review,b,profile->user_id.view(),link.state().spot_swap))
             throw Usage("account admission committed read refused");
         const auto read_received=clock.now_ms();
-        const bool recovery_only=link.state().spot_swap.pending.phase!=swap::Phase::none ||
+        const bool recovery_only=a.swap_recovery_only || link.state().spot_swap.pending.phase!=swap::Phase::none ||
             submitted.latest().phase!=SwapSubmissionPhase::idle || prepared.latest().phase!=SwapPreparePhase::idle;
         SwapAccountStartupAdmission admission{*review,*history,link.state().spot_swap,
             {b.allocation.incarnation,review->document_digest,admission_read->reading.state_digest,

@@ -1,0 +1,92 @@
+[
+  {
+    "name": "baseline",
+    "passed": true,
+    "exit_code": 0,
+    "named_assertion": null
+  },
+  {
+    "name": "recovery_dependency",
+    "passed": true,
+    "exit_code": 1,
+    "named_assertion": "recovery_does_not_require_signer"
+  },
+  {
+    "name": "recovery_flag",
+    "passed": true,
+    "exit_code": 1,
+    "named_assertion": "recovery_forced_in_executable"
+  },
+  {
+    "name": "recovery_signer",
+    "passed": true,
+    "exit_code": 1,
+    "named_assertion": "recovery_signer_refused_before_resources"
+  },
+  {
+    "name": "caller_directory",
+    "passed": true,
+    "exit_code": 1,
+    "named_assertion": "unsafe_credential_directory_refused"
+  },
+  {
+    "name": "caller_inventory",
+    "passed": true,
+    "exit_code": 1,
+    "named_assertion": "venue_credential_blocks_replacement"
+  },
+  {
+    "name": "caller_metadata",
+    "passed": true,
+    "exit_code": 1,
+    "named_assertion": "unsafe_caller_metadata_refused"
+  },
+  {
+    "name": "release_hash",
+    "passed": true,
+    "exit_code": 1,
+    "named_assertion": "new_release_hash_is_allowed"
+  },
+  {
+    "name": "release_optional_policy",
+    "passed": true,
+    "exit_code": 1,
+    "named_assertion": "replacement_preserves_reviewed_policy"
+  },
+  {
+    "name": "release_active",
+    "passed": true,
+    "exit_code": 1,
+    "named_assertion": "active_replacement_refused"
+  },
+  {
+    "name": "initialization_type",
+    "passed": true,
+    "exit_code": 1,
+    "named_assertion": "initialization_requires_boolean"
+  },
+  {
+    "name": "initialization_missing",
+    "passed": true,
+    "exit_code": 1,
+    "named_assertion": "explicit_initialization_reaches_both_roles"
+  },
+  {
+    "name": "initialization_default",
+    "passed": true,
+    "exit_code": 1,
+    "named_assertion": "normal_start_never_initializes"
+  },
+  {
+    "name": "initialization_manifest_pin",
+    "passed": true,
+    "exit_code": 1,
+    "named_assertion": "initialization_changes_reviewed_manifest_pin"
+  },
+  {
+    "name": "legacy_before_secret",
+    "passed": true,
+    "exit_code": 1,
+    "named_assertion": "legacy_profile_refused_before_secret"
+  }
+]

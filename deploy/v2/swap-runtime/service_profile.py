@@ -12,7 +12,7 @@ from pathlib import Path
 import re
 
 FIELDS = frozenset('schema launch_authorized source_commit binary_sha256 runtime_image_sha256 binary incarnation gateway_uid gateway_gid signer_uid socket_gid gateway_caller signer_caller gateway_key_id signer_key_id gateway_response_port signer_response_port host_ip nodes runtime_profile_sha256 account_review_sha256 account_history_sha256 catalog_sha256'.split())
-OPTIONAL_FIELDS = frozenset(('initialize_swap_recovery',))
+OPTIONAL_FIELDS = frozenset(('initialize_swap_recovery','recovery_only'))
 PENDING_ACCOUNT_PINS = frozenset(('runtime_profile_sha256', 'account_review_sha256', 'account_history_sha256'))
 BLOCKERS = ['real-transaction-contract-gate',
             'host-identity-and-network-enforcement',
@@ -46,6 +46,10 @@ def validate(m):
         raise ValueError('explicit operator launch authorization required')
     if type(m.get('initialize_swap_recovery', False)) is not bool:
         raise ValueError('initialization must be an explicit boolean')
+    if type(m.get('recovery_only',False)) is not bool:
+        raise ValueError('recovery must be an explicit boolean')
+    if m.get('recovery_only',False) and m.get('initialize_swap_recovery',False):
+        raise ValueError('recovery cannot initialize journals')
     for name, width in [('source_commit', 40), ('incarnation', 32)] + [(k, 64) for k in FIELDS if k.endswith('_sha256')]:
         value = m[name]
         # Installation can precede the fresh account/custody review. Explicit
@@ -99,6 +103,7 @@ def launch_contract(m, role):
             '--freshness-ms', '2000']
     for node in m['nodes']: args.extend(['--node', node])
     if m.get('initialize_swap_recovery', False): args.append('--initialize-swap-recovery')
+    if role=='gateway' and m.get('recovery_only',False): args.append('--swap-recovery-only')
     return dict(deployable=False, blockers=BLOCKERS, argv=args,
                 source_commit=m['source_commit'], binary_sha256=m['binary_sha256'],
                 public_files_sha256={PUBLIC + '/' + filename: m[key] for filename, key in (
@@ -124,7 +129,7 @@ def unit(m, role, nodes):
              'After=network-online.target', '', '[Service]', 'Type=simple',
              'User=' + str(m[role + '_uid']), 'Group=' + str(group)]
     if not signer: lines.append('SupplementaryGroups=' + str(m['socket_gid']))
-    if not signer:
+    if not signer and not m.get('recovery_only',False):
         lines[lines.index('After=network-online.target')] = 'After=network-online.target velocita-swap-signer.service'
         lines.insert(lines.index('[Service]')-1, 'BindsTo=velocita-swap-signer.service')
     lines += ['RootDirectory=/opt/velocita/runtimes/' + m['runtime_image_sha256'] + '/rootfs',
@@ -138,8 +143,8 @@ def unit(m, role, nodes):
               # the separately provisioned role-owned host tmpfs directory.
               'BindReadOnlyPaths=/run/velocita-swap-credentials/' + role + ':/etc/velocita-swap/' + role]
     if not signer:
-        lines += ['BindReadOnlyPaths=/run/velocita-swap-signer',
-                  'BindReadOnlyPaths=/etc/resolv.conf']
+        lines += ['BindReadOnlyPaths=/etc/resolv.conf']
+        if not m.get('recovery_only',False): lines += ['BindReadOnlyPaths=/run/velocita-swap-signer']
     # StateDirectory and RuntimeDirectory are automatically mounted by systemd
     # inside RootDirectory. No other role credentials/state are exposed.
     lines += ['UMask=0077', 'NoNewPrivileges=yes', 'ProtectSystem=strict', 'ProtectHome=yes',

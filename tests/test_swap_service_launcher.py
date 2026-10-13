@@ -34,6 +34,13 @@ def documents():
 
 
 class LauncherTests(unittest.TestCase):
+    def test_recovery_manifest_never_opens_signer_credentials(self):
+        m=dict(T.fixture(),launch_authorized=True,recovery_only=True)
+        with patch.object(L,'service_context') as context, patch.object(L.FD,'open_secret') as secret:
+            with self.assertRaisesRegex(ValueError,'recovery.*signer',msg='recovery_signer_refused_before_resources'):
+                L.launch(m,'signer')
+            context.assert_not_called();secret.assert_not_called()
+
     def test_runtime_identity_marker_required_before_account_access(self):
         m = T.fixture()
         marker = (m['runtime_image_sha256']+'\n').encode()

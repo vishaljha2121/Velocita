@@ -1,0 +1,26 @@
+..........F...
+======================================================================
+FAIL: test_recovery_runs_without_signer_or_initialization (test_swap_service_profile.ServiceProfileTests.test_recovery_runs_without_signer_or_initialization)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/tests/test_swap_service_profile.py", line 81, in test_recovery_runs_without_signer_or_initialization
+    try: rendered=PROFILE.render(m)
+                  ~~~~~~~~~~~~~~^^^
+  File "/Users/vishaljha/aeron-raft-pi/deploy/v2/swap-runtime/service_profile.py", line 176, in render
+    nodes = validate(manifest)
+  File "/Users/vishaljha/aeron-raft-pi/deploy/v2/swap-runtime/service_profile.py", line 44, in validate
+    raise ValueError('exact schema 1 public manifest required')
+ValueError: exact schema 1 public manifest required
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/tests/test_swap_service_profile.py", line 82, in test_recovery_runs_without_signer_or_initialization
+    except ValueError as error: self.fail('recovery_profile_supported: '+str(error))
+                                ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: recovery_profile_supported: exact schema 1 public manifest required
+
+----------------------------------------------------------------------
+Ran 14 tests in 0.283s
+
+FAILED (failures=1)

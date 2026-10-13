@@ -76,6 +76,21 @@ class ServiceProfileTests(unittest.TestCase):
             with self.subTest(invalid=invalid), self.assertRaisesRegex(ValueError, 'initialization', msg='initialization_requires_boolean'):
                 PROFILE.render(dict(ordinary, initialize_swap_recovery=invalid))
 
+    def test_recovery_runs_without_signer_or_initialization(self):
+        m=dict(fixture(), recovery_only=True)
+        try: rendered=PROFILE.render(m)
+        except ValueError as error: self.fail('recovery_profile_supported: '+str(error))
+        unit=rendered['velocita-swap-gateway.service.review']
+        self.assertNotIn('BindsTo=',unit,'recovery_does_not_require_signer')
+        self.assertNotIn('BindReadOnlyPaths=/run/velocita-swap-signer',unit,'recovery_has_no_signer_mount')
+        args=json.loads(rendered['gateway-launch-contract.json'])['argv']
+        self.assertIn('--swap-recovery-only',args,'recovery_forced_in_executable')
+        self.assertNotIn('--initialize-swap-recovery',args)
+        self.assertNotEqual(unit,PROFILE.render(fixture())['velocita-swap-gateway.service.review'])
+        for value in (None,1,'true'):
+            with self.assertRaisesRegex(ValueError,'recovery'): PROFILE.render(dict(fixture(),recovery_only=value))
+        with self.assertRaisesRegex(ValueError,'initialize'): PROFILE.render(dict(m,initialize_swap_recovery=True))
+
     def test_pinned_runtime_and_role_only_mounts(self):
         m = fixture()
         for role in ('gateway', 'signer'):

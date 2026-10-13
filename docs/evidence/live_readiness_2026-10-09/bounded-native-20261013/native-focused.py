@@ -103,7 +103,8 @@ try:
          'test_tm_account*.py'], 'account-tests', 60)
     for suite in ('test_swap_service_launcher.py', 'test_swap_service_profile.py',
                   'test_swap_runtime_install.py', 'test_swap_disabled_install.py',
-                  'test_swap_service_provision.py'):
+                  'test_swap_service_provision.py', 'test_swap_credential_handoff.py',
+                  'test_tm_stage_swap_credential.py'):
         run(['python3', '-B', '-m', 'unittest', 'discover', '-s', '/source/tests', '-p',
              suite], suite.removesuffix('.py'), 120)
     run(['python3', '-B', '/source/tests/test_signer_not_shipped.py', '/source'], 'signer-isolation', 60)
@@ -126,7 +127,8 @@ try:
                   python_suites=['test_tm_account*.py', 'test_swap_service_launcher.py',
                       'test_swap_service_profile.py', 'test_swap_runtime_install.py',
                       'test_swap_disabled_install.py', 'test_swap_service_provision.py',
-                      'test_swap_runtime_gate.py', 'test_signer_not_shipped.py'],
+                      'test_swap_runtime_gate.py', 'test_signer_not_shipped.py',
+                      'test_swap_credential_handoff.py', 'test_tm_stage_swap_credential.py'],
                   ctest_passed=len(cases), process_cases_validated=8, affinity=[3], uid=os.getuid(),
                   binary_sha256={name: hashlib.sha256((work/'build'/name).read_bytes()).hexdigest() for name in binaries})
     (evidence/'status.json').write_text(json.dumps(result, indent=2)+'\n')
