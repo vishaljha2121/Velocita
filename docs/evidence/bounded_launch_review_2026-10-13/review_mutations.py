@@ -9,6 +9,7 @@ source=root/'src/v2_swap_transaction_review.cpp';s=source.read_text()
 flags=['c++','-std=c++20','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-DVELOCITA_TARGET_CACHE_LINE_SIZE=128','-I'+str(root/'include'),'-I'+str(Path.home()/'.cache/velocita-deps/willemt-raft-cp076/include')]
 lib=args.library.resolve()
 mutations=[
+ ('schema3','fields[0]=="3"?truemarkets::DirectBuyRoute::obsidian:','', 'obsidian','obsidian_schema3_decodes'),
  ('schema2','fields[0]=="2"?truemarkets::DirectBuyRoute::byreal_dynamic_v3:truemarkets::DirectBuyRoute::kipseli_v3','truemarkets::DirectBuyRoute::kipseli_v3','byreal','byreal_schema2_decodes'),
  ('raw_digest','sha256_digest(std::as_bytes(std::span(document)))!=expected','false','identities','raw_bytes_digest_refused'),
  ('owner','if(!std::equal(p.account_keys[1].begin()','if(false && !std::equal(p.account_keys[1].begin()','identities','owner_binding_mismatch_refused'),

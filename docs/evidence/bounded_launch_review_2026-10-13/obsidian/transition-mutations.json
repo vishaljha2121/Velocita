@@ -1,0 +1,20 @@
+[
+  {
+    "mutation": "wrong_schema3_domain",
+    "named_assertion": "obsidian_schema3_exact_domain_golden",
+    "killed": true,
+    "exit": 1
+  },
+  {
+    "mutation": "owner_mapping_removed",
+    "named_assertion": "obsidian_caps_and_shared_roles_preserved",
+    "killed": true,
+    "exit": 1
+  },
+  {
+    "mutation": "slippage_cap_mutable",
+    "named_assertion": "obsidian_caps_and_shared_roles_preserved",
+    "killed": true,
+    "exit": 1
+  }
+]

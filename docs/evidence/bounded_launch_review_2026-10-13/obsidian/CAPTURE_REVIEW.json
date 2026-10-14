@@ -1,0 +1,186 @@
+{
+  "checks": {
+    "close_owner_destination": true,
+    "compute_limit": true,
+    "destination_absent": true,
+    "fee_usdc_external_authority": true,
+    "five_instruction_shape": true,
+    "fixed_repayment": true,
+    "header": true,
+    "input_slippage_fee": true,
+    "instructions_sysvar_runtime_account": true,
+    "obsidian_program_identity": true,
+    "pool_input_classic_initialized_undelegated": true,
+    "pool_input_mint_owner": true,
+    "pool_output_classic_initialized_undelegated": true,
+    "pool_output_mint_owner": true,
+    "pool_owner": true,
+    "route_accounts": true,
+    "route_shape": true,
+    "source_classic_initialized_undelegated": true,
+    "source_close_authority_sponsor": true,
+    "source_mint_owner": true,
+    "source_not_native": true,
+    "sponsor_ata_create": true,
+    "wsol_mint": true
+  },
+  "conservative_net_floor_lamports": 6794659,
+  "decoded_jupiter_gross_guard_ceil_lamports": 8833939,
+  "explicit_fee_usdc_atoms": 2000,
+  "guaranteed_sponsor_credit": 0,
+  "live_admitted": false,
+  "pool_vault_key_occurrences": {
+    "11": [
+      176
+    ],
+    "12": [
+      144
+    ]
+  },
+  "program_semantics_independently_verified": false,
+  "quoted_gross_lamports": 9298883,
+  "repayment_lamports": 2039280,
+  "roles": [
+    {
+      "index": 0,
+      "role": "sponsor",
+      "same_key_as_capture1": true,
+      "signer": true,
+      "writable": true
+    },
+    {
+      "index": 1,
+      "role": "owner",
+      "same_key_as_capture1": true,
+      "signer": true,
+      "writable": true
+    },
+    {
+      "index": 2,
+      "role": "owner_usdc_source",
+      "same_key_as_capture1": true,
+      "signer": false,
+      "writable": true
+    },
+    {
+      "index": 3,
+      "role": "owner_wsol_destination",
+      "same_key_as_capture1": true,
+      "signer": false,
+      "writable": true
+    },
+    {
+      "index": 4,
+      "role": "usdc_fee",
+      "same_key_as_capture1": true,
+      "signer": false,
+      "writable": true
+    },
+    {
+      "index": 5,
+      "role": "system_program",
+      "same_key_as_capture1": true,
+      "signer": false,
+      "writable": false
+    },
+    {
+      "index": 6,
+      "role": "compute_budget_program",
+      "same_key_as_capture1": true,
+      "signer": false,
+      "writable": false
+    },
+    {
+      "index": 7,
+      "role": "jupiter_program",
+      "same_key_as_capture1": true,
+      "signer": false,
+      "writable": false
+    },
+    {
+      "index": 8,
+      "role": "classic_token_program",
+      "same_key_as_capture1": true,
+      "signer": false,
+      "writable": false
+    },
+    {
+      "index": 9,
+      "role": "associated_token_program",
+      "same_key_as_capture1": true,
+      "signer": false,
+      "writable": false
+    },
+    {
+      "index": 10,
+      "role": "jupiter_event_authority",
+      "same_key_as_capture1": true,
+      "signer": false,
+      "writable": false
+    },
+    {
+      "index": 11,
+      "role": "pool_usdc_vault",
+      "same_key_as_capture1": false,
+      "signer": false,
+      "writable": true
+    },
+    {
+      "index": 12,
+      "role": "pool_wsol_vault",
+      "same_key_as_capture1": false,
+      "signer": false,
+      "writable": true
+    },
+    {
+      "index": 13,
+      "role": "wsol_mint",
+      "same_key_as_capture1": true,
+      "signer": false,
+      "writable": false
+    },
+    {
+      "index": 14,
+      "role": "instructions_sysvar",
+      "same_key_as_capture1": true,
+      "signer": false,
+      "writable": false
+    },
+    {
+      "index": 15,
+      "role": "pool_and_vault_authority",
+      "same_key_as_capture1": false,
+      "signer": false,
+      "writable": false
+    },
+    {
+      "index": 16,
+      "role": "obsidian_program",
+      "same_key_as_capture1": true,
+      "signer": false,
+      "writable": false
+    }
+  ],
+  "same_pool_as_capture1": false,
+  "schema": 1,
+  "simulation_performed": false,
+  "slippage_bps": 500,
+  "total_input_usdc_atoms": 1000000,
+  "evidence": {
+    "broadcast": false,
+    "hashes": {
+      "accounts-request.json": "208878b8eca67fb42c9376d4fb7b724345a8d6c8f7ce27402f91e2b064979c29",
+      "accounts-response.json": "210790f92f820f28afbd109c3437f2ef5237e4004c253a46209d9659791a48b4",
+      "attempt.json": "9e2e9df6f8fb4db894ac4734d07a4e06176e0690ee28e2f4ee4a37a2d4c52cc3",
+      "lookup-request.json": "144e4e65bffdfab24da55ed1906c812cd6b86969883a30914314834dd88ea466",
+      "lookup-response.json": "32edb9d4c36bdb8328250255752cc4ba92a67a4775fe57c802e65aea45715e5d",
+      "resolved.json": "0cb9bba82a98edb870df44e4c614ec378c82d1eb318dfd91c1818bd73892c016"
+    },
+    "lookup_addresses": 255,
+    "read_only": true,
+    "requests": 2,
+    "signed": false,
+    "slot": 456666427,
+    "table_data_sha256": "4fbd3e53ed77cbcd245c58be21a72c39ce4b31ee69814fb83cd30b2d4b9f1766"
+  }
+}

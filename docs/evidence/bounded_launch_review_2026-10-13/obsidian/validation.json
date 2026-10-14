@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "local_checks_passed": true,
+  "native_qualified": false,
+  "installed": false,
+  "funds_moved": false,
+  "cpp_verifier_groups": 7,
+  "cpp_review_groups": 6,
+  "python_tests": 60,
+  "named_mutation_kills": 33,
+  "captured_layouts_verified_offline": 2,
+  "scope": "historical payloads under exact reviewed accounts and trusted Jupiter/program semantics; not fresh launch admission",
+  "source_sha256": {
+    "include/velocita/v2/swap_transaction_verifier.hpp": "b724c24f1262178ca7237c996f6353d444901cdf39f30098a74780b25af07967",
+    "src/v2_swap_transaction_verifier.cpp": "9a6f19f40a9f5f056d1cedfb6aed047cfd12e3540022f360400f1c5acb19ed95",
+    "src/v2_swap_transaction_review.cpp": "103563a4b7649c5dfff946c9a0e535ce66e8a5396d22ac922ff87fda06ff74aa",
+    "deploy/v2/swap-runtime/review_transition.py": "bc87e1ad98802f55681d4b508340ef927982ef4619776faefb0334576f11759f",
+    "deploy/v2/swap-runtime/idle_policy_renewal.py": "66858bc54d0f1c3b0aa25cf796895431416b1de31f5f047c95be195ca0164f84",
+    "tests/v2_swap_transaction_verifier_test_support.hpp": "c8cb75c571a8d170676d2836c68a536dc6cdbc424f67055fba59a2a4ce4d36fc",
+    "tests/v2_swap_transaction_verifier_tests.cpp": "d8680c2a85c693cda0d263ee3668f2a09f60d5da45bb8fb396cf75eb2cf48c5e",
+    "tests/v2_swap_transaction_review_tests.cpp": "f3c0799d349f83c0c27676d8be2553ff470ac5a8d4a1ac54159f6400210fc43e",
+    "tests/test_idle_policy_renewal.py": "bb4f1a8d2041235714060f01e78a426b948862119e2964922488ad4cad2cce66",
+    "docs/evidence/bounded_launch_review_2026-10-13/mutation_check.py": "9d0c6a15e91c9c2b5ac382c91523187c39ab23df8e3e7befa131c9817b56aafd",
+    "docs/evidence/bounded_launch_review_2026-10-13/review_mutations.py": "53afee4ce2e4eeaf57d6cef9f66191cf905ef60789a18ad638c4f22318128168"
+  },
+  "preparation_failures": [
+    "Initial review compile lacked raft include path; corrected harness",
+    "First extra-instruction mutant caused ASan error, not counted as named kill; bounded topology iteration then 21 named verifier kills",
+    "First review mutation link used wrong archive; corrected dependencies then9 named kills",
+    "First parity assertion compared signing digest to verification label; corrected tuple member and both actual captures match"
+  ]
+}

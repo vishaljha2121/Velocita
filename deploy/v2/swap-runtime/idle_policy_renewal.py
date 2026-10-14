@@ -41,19 +41,28 @@ def route_transition(before,after,witness):
     witness cannot authorize launch or alter financial/caller/opening limits.
     """
     expected={'schema','kind','before_review_sha256','after_review_sha256','contract_evidence_sha256'}
-    if type(witness) is not dict or set(witness)!=expected or type(witness['schema']) is not int or witness['schema']!=1 or witness['kind']!='kipseli-v1-to-byreal-v1':raise ValueError('exact route review witness required')
+    transitions={
+        'kipseli-v1-to-byreal-v1':('1','2',20,27,
+            ((0,0),(1,1),(2,3),(3,4),(4,5),(5,8),(6,9),(7,10),(8,11),(10,13),(11,14),(15,22),(18,25))),
+        'byreal-v1-to-obsidian-v1':('2','3',27,17,
+            ((0,0),(1,1),(3,2),(4,3),(5,4),(8,5),(9,6),(10,7),(11,8),(13,9),(14,10),(22,13))),
+    }
+    if type(witness) is not dict or set(witness)!=expected or type(witness['schema']) is not int or witness['schema']!=1 or not isinstance(witness['kind'],str) or witness['kind'] not in transitions:raise ValueError('exact route review witness required')
     for name in ('before_review_sha256','after_review_sha256','contract_evidence_sha256'):
         value=witness[name]
         if not isinstance(value,str) or len(value)!=64 or any(c not in '0123456789abcdef' for c in value) or not int(value,16):raise ValueError('route review digest shape')
     if witness['before_review_sha256']!=R.digest(before) or witness['after_review_sha256']!=R.digest(after):raise ValueError('route review document pin mismatch')
     prior,current=map(R.transaction_fields,(before,after))
-    if set(prior)!=set(current) or prior['schema']!='1' or current['schema']!='2':raise ValueError('only reviewed Kipseli to Byreal transition')
+    old_schema,new_schema,old_count,new_count,roles=transitions[witness['kind']]
+    if set(prior)!=set(current) or prior['schema']!=old_schema or current['schema']!=new_schema:raise ValueError('only exact reviewed route transition')
     mutable={'schema','account_keys','lookup_table','lookup_slot','lookup_evidence','lookup_address_count','lookup_addresses','expires_at_ms'}
     if any(prior[k]!=current[k] for k in prior if k not in mutable):raise ValueError('route transition cannot change execution limits')
     a,b=prior['account_keys'],current['account_keys']
-    if len(a)!=20*64 or len(b)!=27*64 or any(c not in '0123456789abcdef' for c in a+b):raise ValueError('route account key shapes')
-    # Every owner-facing identity survives the topology index remapping.
-    for old,new in ((0,0),(1,1),(2,3),(3,4),(4,5),(5,8),(6,9),(7,10),(8,11),(10,13),(11,14),(15,22),(18,25)):
+    if len(a)!=old_count*64 or len(b)!=new_count*64 or any(c not in '0123456789abcdef' for c in a+b):raise ValueError('route account key shapes')
+    # Preserve the owner-facing roles present in both explicit account lists.
+    # Obsidian does not include the USDC mint as a separate explicit account;
+    # its source/fee identities remain pinned. Native verification owns admission.
+    for old,new in roles:
         if a[old*64:(old+1)*64]!=b[new*64:(new+1)*64]:raise ValueError('route changed owner-facing account or program')
 
 

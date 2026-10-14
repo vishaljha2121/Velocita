@@ -98,13 +98,49 @@ void byreal(){
     require(!verify_swap_transaction(e,"verifier-fixture",std::string(31,'1')+'3',f.pending,legacy,f.lookup,1001).verified,"legacy_policy_cannot_admit_byreal");
     Fixture old;old.policy.additional_account_keys[0]=key(200);require(!old.run().verified,"legacy_unused_keys_refused");
 }
+void obsidian(){
+    using F=test_support::ObsidianBuyFixture;
+    for(bool omit:{false,true}) {
+        F f;f.omit_price=omit;auto r=f.run();
+        require(r.verified.has_value(),"obsidian_both_layouts_verified");
+        // 9,298,883 * 95/100 = 8,833,938.85; ceil=8,833,939.
+        // Deduct the entire 2,039,280 repayment; sponsor credit is zero.
+        require(r.bounds.total_usdc_debit==1'000'000 && r.bounds.explicit_usdc_fee==2'000 &&
+            r.bounds.gross_sol_floor==8'833'939 && r.bounds.net_sol_floor==6'794'659,
+            "obsidian_independent_economic_oracle");
+        f.pending.intent.min_base_receive=swap::BaseAtoms{6'794'660};require(!f.run().verified,"obsidian_one_lamport_shortfall");
+    }
+    for(bool omit:{false,true}) {
+        F f;f.omit_price=omit;f.wrong_close=true;require(!f.run().verified,"obsidian_both_wrong_close");
+        f=F{};f.omit_price=omit;f.wrong_route_account=true;require(!f.run().verified,"obsidian_both_wrong_route");
+        f=F{};f.omit_price=omit;f.extra=true;require(!f.run().verified,"obsidian_both_extra_instruction");
+        f=F{};f.omit_price=omit;f.payment++;require(!f.run().verified,"obsidian_both_excess_repayment");
+    }
+    F f;f.policy.account_keys[14]=key(230);f.lookup[0].addresses[3]=key(230);
+    f.policy.lookup_image_digest=direct_buy_lookup_digest(f.lookup);require(!f.run().verified,"obsidian_arbitrary_sysvar");
+    f=F{};f.payment++;require(!f.run().verified,"obsidian_excess_repayment");
+    f=F{};f.extra=true;require(!f.run().verified,"obsidian_extra_instruction");
+    f=F{};f.wrong_close=true;require(!f.run().verified,"obsidian_wrong_close_recipient");
+    f=F{};f.wrong_route_account=true;require(!f.run().verified,"obsidian_wrong_route_account");
+    f=F{};f.readonly_unsigned=5;require(!f.run().verified,"obsidian_permission_escalation");
+    f=F{};f.route_kind=156;require(!f.run().verified,"obsidian_wrong_dex");
+    f=F{};f.policy.account_keys[16]=key(231);f.lookup[0].addresses[5]=key(231);
+    f.policy.lookup_image_digest=direct_buy_lookup_digest(f.lookup);require(!f.run().verified,"obsidian_arbitrary_program");
+    f=F{};f.policy.account_keys[17]=key(231);require(!f.run().verified,"obsidian_unused_keys_refused");
+    f=F{};f.policy.additional_account_keys[0]=key(231);require(!f.run().verified,"obsidian_additional_keys_refused");
+    f=F{};f.fee++;require(!f.run().verified,"obsidian_wrong_fee");
+    f=F{};f.input+=10000;require(!f.run().verified,"obsidian_excess_debit");
+    f=F{};f.policy.max_compute_price=0;require(!f.run().verified,"obsidian_price_cap");
+    f.omit_price=true;require(f.run().verified.has_value(),"obsidian_no_price_is_zero");
+    f=F{};f.signed_payload=true;require(!f.run().verified,"obsidian_already_signed");
+}
 static_assert(!std::is_default_constructible_v<VerifiedSwapTransaction>);
 static_assert(!std::is_aggregate_v<VerifiedSwapTransaction>);
 }
 int main(int argc,char** argv){
     unsigned count{},failed{};
     const std::pair<const char*,void(*)()> tests[]={{"oracle",oracle},{"economics",economic_refusals},
-        {"topology",topology_refusals},{"identity",freshness_and_identity},{"digests",digests},{"byreal",byreal}};
+        {"topology",topology_refusals},{"identity",freshness_and_identity},{"digests",digests},{"byreal",byreal},{"obsidian",obsidian}};
     for(auto [name,fn]:tests){if(argc==2 && std::string_view(argv[1])!=name)continue;++count;
         try{fn();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){++failed;std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';}}
     return count==0?2:failed?1:0;

@@ -132,7 +132,8 @@ def journal_bindings(files):
     lookup=h(b'velocita-direct-buy-lookup-v1'+key(tx,'lookup_table')+number(tx['lookup_slot'])+
              key(tx,'lookup_evidence')+number(tx['lookup_address_count'])+key(tx,'lookup_addresses',32*count))
     schemas={'1':(b'velocita-direct-kipseli-buy-v1',640),
-             '2':(b'velocita-direct-byreal-v3-buy-v1',864)}
+             '2':(b'velocita-direct-byreal-v3-buy-v1',864),
+             '3':(b'velocita-direct-obsidian-buy-v1',544)}
     if tx.get('schema') not in schemas:raise ValueError('unsupported transaction review schema')
     policy_label,key_bytes=schemas[tx['schema']]
     policy=h(policy_label+inc+cat+cust+allocation+key(tx,'account_keys',key_bytes)+

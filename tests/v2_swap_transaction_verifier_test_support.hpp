@@ -128,5 +128,49 @@ struct ByrealBuyFixture : DirectBuyFixture {
     SwapTransactionVerification run(std::uint64_t now=1001){auto e=envelope();pending.payload=sha256_digest(std::as_bytes(std::span(e)));
         return verify_swap_transaction(e,"verifier-fixture",std::string(31,'1')+'3',pending,policy,lookup,now);}
 };
+struct ObsidianBuyFixture : DirectBuyFixture {
+    std::uint8_t readonly_unsigned{6};
+    bool omit_price{};
+    ObsidianBuyFixture() {
+        policy.route=DirectBuyRoute::obsidian;
+        policy.account_keys[9]=kSolanaAssociatedTokenProgram;
+        policy.account_keys[10]=from58("D8cy77BBepLMngZx6ZukaTff5hCt1HrWyKk3Hnd9oitf");
+        policy.account_keys[11]=key(12);policy.account_keys[12]=key(13);
+        policy.account_keys[13]=from58("So11111111111111111111111111111111111111112");
+        policy.account_keys[14]=from58("Sysvar1nstructions1111111111111111111111111");policy.account_keys[15]=key(16);
+        policy.account_keys[16]=from58("HBVw6bZtcCaezhcBrmfyXBSBRWCdv72271xQ4GPvms2z");
+        for(unsigned i=17;i<20;++i)policy.account_keys[i]={};
+        lookup[0].address_count=6;
+        for(unsigned i=0;i<6;++i)lookup[0].addresses[i]=policy.account_keys[11+i];
+        policy.lookup_image_digest=direct_buy_lookup_digest(lookup);
+        policy.accepted_costs.max_output_deduction=swap::BaseAtoms{2'039'280};
+        payment=2'039'280;quoted=9'298'883;route_kind=109;
+        pending.intent.min_base_receive=swap::BaseAtoms{6'794'659};
+    }
+    std::string envelope() const {
+        std::vector<std::uint8_t> b{2};b.resize(129);if(signed_payload)b[1]=1;
+        b.insert(b.end(),{128,2,0,readonly_unsigned,11});
+        for(unsigned i=0;i<11;++i)b.insert(b.end(),policy.account_keys[i].begin(),policy.account_keys[i].end());
+        b.insert(b.end(),32,42);b.push_back((omit_price?5:6)+(extra?1:0));
+        const auto ix=[&](unsigned program,std::vector<std::uint8_t> a,std::vector<std::uint8_t> d){
+            b.push_back(program);b.push_back(a.size());b.insert(b.end(),a.begin(),a.end());b.push_back(d.size());b.insert(b.end(),d.begin(),d.end());};
+        ix(6,{}, {2,0xc0,0x5c,0x15,0});if(!omit_price)ix(6,{}, {3,4,0x17,1,0,0,0,0,0});ix(9,{0,3,1,13,5,8},{1});
+        std::vector<std::uint8_t> route{0xe5,0x17,0xcb,0x97,0x7a,0xe3,0xad,0x2a,1,0,0,0,route_kind,route_percent,0,1};
+        le(route,input,8);le(route,quoted,8);le(route,slippage,2);route.push_back(fee);
+        std::vector<std::uint8_t> accounts{8,1,2,3,7,13,4,10,7,16,1,15,12,11,2,3,8,14};
+        if(wrong_route_account)accounts[2]=4;
+        ix(7,accounts,route);ix(8,{3,static_cast<std::uint8_t>(wrong_close?0:1),1},{9});
+        std::vector<std::uint8_t> transfer{2,0,0,0};le(transfer,payment,8);ix(5,{1,0},transfer);if(extra)ix(5,{1,0},transfer);
+        b.push_back(1);b.insert(b.end(),lookup[0].table.begin(),lookup[0].table.end());
+        b.insert(b.end(),{2,0,1,4,2,3,4,5});
+        constexpr std::string_view digits="0123456789abcdef";std::string hex;
+        for(auto c:b){hex+=digits[c>>4];hex+=digits[c&15];}
+        return "{\"organizationId\":\"verifier-fixture\",\"parameters\":{\"signWith\":\""+std::string(31,'1')+
+            "3\",\"type\":\"TRANSACTION_TYPE_SOLANA\",\"unsignedTransaction\":\""+hex+
+            "\"},\"timestampMs\":\""+std::to_string(timestamp)+"\",\"type\":\"ACTIVITY_TYPE_SIGN_TRANSACTION_V2\"}";
+    }
+    SwapTransactionVerification run(std::uint64_t now=1001){auto e=envelope();pending.payload=sha256_digest(std::as_bytes(std::span(e)));
+        return verify_swap_transaction(e,"verifier-fixture",std::string(31,'1')+'3',pending,policy,lookup,now);}
+};
 
 }
