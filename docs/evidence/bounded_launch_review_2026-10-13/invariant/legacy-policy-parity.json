@@ -1,0 +1,22 @@
+{
+  "baseline_commit": "1a46fd88c0ec59aa124ab9a6e27de4c9c039ea8a",
+  "domains": [
+    "kipseli",
+    "byreal",
+    "obsidian",
+    "bison"
+  ],
+  "identical": true,
+  "baseline": [
+    "96d0830f0667c22c5f4f0c775b7a20c70869f37dc3c203f95a91c49062c62624",
+    "2e86d89abed932357c0fb0e418a2a0dad6fa29976f1db2b17472fc801b670311",
+    "1bb096d1e53b28c0aba816bb2ffcbaf704ef154abc9f413ce5a4e7e573b11023",
+    "6e986b75e9d97657442fff5dd70e16a2bfb664e945c1f27242c860b5341bd031"
+  ],
+  "current": [
+    "96d0830f0667c22c5f4f0c775b7a20c70869f37dc3c203f95a91c49062c62624",
+    "2e86d89abed932357c0fb0e418a2a0dad6fa29976f1db2b17472fc801b670311",
+    "1bb096d1e53b28c0aba816bb2ffcbaf704ef154abc9f413ce5a4e7e573b11023",
+    "6e986b75e9d97657442fff5dd70e16a2bfb664e945c1f27242c860b5341bd031"
+  ]
+}

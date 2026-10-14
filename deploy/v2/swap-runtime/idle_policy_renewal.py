@@ -48,6 +48,8 @@ def route_transition(before,after,witness):
             ((0,0),(1,1),(3,2),(4,3),(5,4),(8,5),(9,6),(10,7),(11,8),(13,9),(14,10),(22,13))),
         'byreal-v1-to-bison-market-backed-v1':('2','4',27,20,
             ((0,0),(1,1),(3,2),(4,3),(5,4),(8,5),(9,6),(10,7),(11,8),(13,10),(14,11),(22,15),(25,18))),
+        'byreal-v1-to-invariant-v1':('2','5',27,19,
+            ((0,0),(1,1),(3,2),(4,3),(5,4),(8,5),(9,6),(10,7),(11,8),(13,9),(14,10),(22,15))),
     }
     if type(witness) is not dict or set(witness)!=expected or type(witness['schema']) is not int or witness['schema']!=1 or not isinstance(witness['kind'],str) or witness['kind'] not in transitions:raise ValueError('exact route review witness required')
     for name in ('before_review_sha256','after_review_sha256','contract_evidence_sha256'):
@@ -62,7 +64,7 @@ def route_transition(before,after,witness):
     a,b=prior['account_keys'],current['account_keys']
     if len(a)!=old_count*64 or len(b)!=new_count*64 or any(c not in '0123456789abcdef' for c in a+b):raise ValueError('route account key shapes')
     # Preserve the owner-facing roles present in both explicit account lists.
-    # Obsidian does not include the USDC mint as a separate explicit account;
+    # Obsidian and Invariant omit the USDC mint as a separate explicit account;
     # its source/fee identities remain pinned. Native verification owns admission.
     for old,new in roles:
         if a[old*64:(old+1)*64]!=b[new*64:(new+1)*64]:raise ValueError('route changed owner-facing account or program')

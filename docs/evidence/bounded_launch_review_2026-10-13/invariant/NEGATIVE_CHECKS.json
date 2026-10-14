@@ -1,0 +1,49 @@
+{
+  "baseline_checks": 20,
+  "negative_cases": 14,
+  "results": [
+    {
+      "changed_input_rejected_by": "header_and_permissions"
+    },
+    {
+      "changed_input_rejected_by": "token_state"
+    },
+    {
+      "changed_input_rejected_by": "source_close_authority_is_sponsor"
+    },
+    {
+      "changed_input_rejected_by": "source_and_fee_usdc"
+    },
+    {
+      "changed_input_rejected_by": "destination_absent_and_ata_seeds"
+    },
+    {
+      "changed_input_rejected_by": "pool_mints_vaults_tickmap"
+    },
+    {
+      "changed_input_rejected_by": "state_and_vault_authority"
+    },
+    {
+      "changed_input_rejected_by": "compute_limit"
+    },
+    {
+      "changed_input_rejected_by": "sponsored_ata"
+    },
+    {
+      "changed_input_rejected_by": "jupiter_and_invariant_accounts"
+    },
+    {
+      "changed_input_rejected_by": "single_invariant_x_to_y"
+    },
+    {
+      "changed_input_rejected_by": "captured_amount_fee_slippage"
+    },
+    {
+      "changed_input_rejected_by": "close_to_owner"
+    },
+    {
+      "changed_input_rejected_by": "fixed_repayment_to_sponsor"
+    }
+  ],
+  "production_tests": false
+}

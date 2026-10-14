@@ -1,0 +1,32 @@
+{
+  "scope": "offline synthetic fixtures, no signing/adoption/transport/funds",
+  "red": {
+    "decoder": {
+      "exit": 1,
+      "assertion": "invariant_data_only_decode"
+    },
+    "verifier": {
+      "exit": 1,
+      "assertion": "invariant_exact_five_instruction_layout_verified"
+    }
+  },
+  "green": {
+    "verifier_groups": 9,
+    "decoder_groups": 10,
+    "asan_ubsan_baselines": true
+  },
+  "mutations": {
+    "decoder_named_kills": 37,
+    "decoder_new_invariant_named_kills": 9,
+    "verifier_invariant_named_kills": 19,
+    "compile_or_sanitizer_errors_counted_as_kills": false
+  },
+  "initial_mutation_run_note": "Initial verifier program_sequence mutation failed invariant_every_instruction_program_pinned, not the planned invariant_order_changed_refused assertion. The runner stopped; changed expected assertion to the actual earlier named protection and reran the complete suite successfully. No initial mismatched assertion counted as a kill.",
+  "files_sha256": {
+    "tests/v2_swap_transaction_verifier_test_support.hpp": "f4d1286e12401c30b875d118a50e049868669e1217c75a33fcc25f3f310ef494",
+    "tests/v2_swap_transaction_verifier_tests.cpp": "6d0d92e0903a5642b7cb15c304b33aff92114727e47c2f4a13f556e1bd70f6a5",
+    "tests/v2_jupiter_route_decode_tests.cpp": "4cc50eb91474df7529cc17854a5e3b4d18030a5147308e789c0b42abd0d18102",
+    "tests/mutation_jupiter_route_decode.py": "0bab42250007c791ef6eaef5b43f431551e60a048589f7a23719a318d7a71d72",
+    "docs/evidence/bounded_launch_review_2026-10-13/invariant/verifier_mutations.py": "8a2661dfabe63958c33aeb2e8aee892979742853f5cacbb8f85c635cecdc6716"
+  }
+}

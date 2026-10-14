@@ -187,4 +187,67 @@ struct ObsidianBuyFixture : DirectBuyFixture {
         return verify_swap_transaction(e,"verifier-fixture",std::string(31,'1')+'3',pending,policy,lookup,now);}
 };
 
+// Exact captured Invariant shape; no production encoder or verifier table is
+// reused. Mutable wire fields below permit independent role/order mutations.
+struct InvariantBuyFixture : DirectBuyFixture {
+    std::uint8_t readonly_unsigned{6},readonly_signed{},required_signatures{2};
+    bool include_price{},swap_last_instructions{};
+    int replace_wire_key{-1};
+    std::array<std::uint8_t,5> programs{6,9,7,8,5};
+    std::vector<std::uint8_t> ata_accounts{0,3,1,15,5,8};
+    std::vector<std::uint8_t> route_accounts{8,1,2,3,7,15,4,10,7,17,16,11,14,2,3,12,13,1,18,8,7};
+    std::vector<std::uint8_t> close_accounts{3,1,1},pay_accounts{1,0};
+    std::vector<std::uint8_t> writable_lookup{0,1,2,3},readonly_lookup{4,5,6,7};
+    InvariantBuyFixture() {
+        policy.route=DirectBuyRoute::invariant;
+        for(unsigned i=0;i<19;++i)policy.account_keys[i]=key(i+1);
+        policy.account_keys[19]={};
+        policy.account_keys[5]=kSolanaSystemProgram;policy.account_keys[6]=kSolanaComputeBudgetProgram;
+        policy.account_keys[7]=from58("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4");
+        policy.account_keys[8]=kSolanaClassicTokenProgram;policy.account_keys[9]=kSolanaAssociatedTokenProgram;
+        policy.account_keys[10]=from58("D8cy77BBepLMngZx6ZukaTff5hCt1HrWyKk3Hnd9oitf");
+        policy.account_keys[15]=from58("So11111111111111111111111111111111111111112");
+        policy.account_keys[17]=from58("HyaB3W9q6XdA5xwpU4XnSZV94htfmbmqJXZcEbRaJutt");
+        lookup[0].address_count=8;
+        std::copy_n(policy.account_keys.begin()+11,8,lookup[0].addresses.begin());
+        policy.lookup_image_digest=direct_buy_lookup_digest(lookup);
+        policy.accepted_costs.max_output_deduction=swap::BaseAtoms{2'039'280};
+        policy.max_compute_price=0;
+        payment=2'039'280;quoted=9'420'476;route_kind=18;route_direction=1;
+        pending.intent.min_base_receive=swap::BaseAtoms{6'910'173};
+    }
+    std::string envelope() const {
+        std::vector<std::uint8_t> b{required_signatures};b.resize(1+64*required_signatures);if(signed_payload)b[1]=1;
+        b.insert(b.end(),{128,required_signatures,readonly_signed,readonly_unsigned,11});
+        for(unsigned i=0;i<11;++i){const auto k=replace_wire_key==static_cast<int>(i)?key(230):policy.account_keys[i];
+            b.insert(b.end(),k.begin(),k.end());}
+        b.insert(b.end(),32,42);b.push_back(5+(extra?1:0)+(include_price?1:0));
+        const auto ix=[&](unsigned program,std::vector<std::uint8_t> a,std::vector<std::uint8_t> d){
+            b.push_back(program);b.push_back(a.size());b.insert(b.end(),a.begin(),a.end());
+            b.push_back(d.size());b.insert(b.end(),d.begin(),d.end());};
+        ix(programs[0],{},{2,0xc0,0x5c,0x15,0});
+        if(include_price)ix(6,{},{3,0,0,0,0,0,0,0,0});
+        ix(programs[1],ata_accounts,{1});
+        std::vector<std::uint8_t> route{0xe5,0x17,0xcb,0x97,0x7a,0xe3,0xad,0x2a,1,0,0,0,
+            route_kind,route_direction,route_percent,0,1};
+        le(route,input,8);le(route,quoted,8);le(route,slippage,2);route.push_back(fee);
+        auto a=route_accounts;if(wrong_route_account)a[2]=4;ix(programs[2],a,route);
+        auto close=close_accounts;if(wrong_close)close[1]=0;
+        std::vector<std::uint8_t> transfer{2,0,0,0};le(transfer,payment,8);
+        if(swap_last_instructions){ix(programs[4],pay_accounts,transfer);ix(programs[3],close,{9});}
+        else {ix(programs[3],close,{9});ix(programs[4],pay_accounts,transfer);}
+        if(extra)ix(5,{1,0},transfer);
+        b.push_back(1);b.insert(b.end(),lookup[0].table.begin(),lookup[0].table.end());
+        b.push_back(writable_lookup.size());b.insert(b.end(),writable_lookup.begin(),writable_lookup.end());
+        b.push_back(readonly_lookup.size());b.insert(b.end(),readonly_lookup.begin(),readonly_lookup.end());
+        constexpr std::string_view digits="0123456789abcdef";std::string hex;
+        for(auto c:b){hex+=digits[c>>4];hex+=digits[c&15];}
+        return "{\"organizationId\":\"verifier-fixture\",\"parameters\":{\"signWith\":\""+std::string(31,'1')+
+            "3\",\"type\":\"TRANSACTION_TYPE_SOLANA\",\"unsignedTransaction\":\""+hex+
+            "\"},\"timestampMs\":\""+std::to_string(timestamp)+"\",\"type\":\"ACTIVITY_TYPE_SIGN_TRANSACTION_V2\"}";
+    }
+    SwapTransactionVerification run(std::uint64_t now=1001){auto e=envelope();pending.payload=sha256_digest(std::as_bytes(std::span(e)));
+        return verify_swap_transaction(e,"verifier-fixture",std::string(31,'1')+'3',pending,policy,lookup,now);}
+};
+
 }

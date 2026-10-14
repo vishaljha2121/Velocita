@@ -1,0 +1,32 @@
+[
+  {
+    "mutation": "domain-label",
+    "killed_by": "invariant_schema5_exact_domain_golden",
+    "errors": 0
+  },
+  {
+    "mutation": "schema-key-count",
+    "killed_by": "invariant_schema5_domain_admitted",
+    "errors": 0
+  },
+  {
+    "mutation": "owner-role",
+    "killed_by": "invariant_preserves_caps_and_shared_roles",
+    "errors": 0
+  },
+  {
+    "mutation": "fee-account-role",
+    "killed_by": "invariant_preserves_caps_and_shared_roles",
+    "errors": 0
+  },
+  {
+    "mutation": "slippage-limit",
+    "killed_by": "invariant_preserves_caps_and_shared_roles",
+    "errors": 0
+  },
+  {
+    "mutation": "protected-generation",
+    "killed_by": "invariant_protected_ordinal_advances",
+    "errors": 0
+  }
+]

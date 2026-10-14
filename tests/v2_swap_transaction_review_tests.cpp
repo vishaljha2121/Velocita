@@ -95,7 +95,28 @@ void bison_review(){
     require(truemarkets::direct_buy_policy_digest(r->policy)==truemarkets::direct_buy_policy_digest(tx.policy),"bison_review_digest_matches");
     f.set("schema","1");require(!f.read(),"bison_cannot_use_legacy_schema");
     f.set("schema","4");f.set("account_keys",keys+hex(test_support::key(240)));require(!f.read(),"bison_schema_rejects_extra_key");
-    f.set("account_keys",keys);f.set("schema","5");require(!f.read(),"unknown_schema5_refused");
+    f.set("account_keys",keys);f.set("schema","5");require(!f.read(),"bison_twenty_keys_not_invariant_schema5");
+}
+
+void invariant_review(){
+    Fixture f;test_support::InvariantBuyFixture tx;f.binding.max_buy_output_deduction_lamports=2'039'280;
+    std::string keys;for(std::size_t i=0;i<tx.policy.account_count();++i)keys+=hex(tx.policy.account_key(i));
+    f.set("schema","5");f.set("account_keys",keys);f.set("max_compute_price","0");
+    std::string lookup;for(unsigned i=0;i<8;++i)lookup+=hex(tx.lookup[0].addresses[i]);f.set("lookup_addresses",lookup);
+    auto r=f.read();require(r && r->policy.route==truemarkets::DirectBuyRoute::invariant &&
+        r->policy.account_count()==19,"invariant_schema5_decodes");
+    require(truemarkets::direct_buy_policy_digest(r->policy)==truemarkets::direct_buy_policy_digest(tx.policy),"invariant_review_digest_matches");
+    require(r->policy.account_keys[19]==truemarkets::SolanaAccountKey{} &&
+        std::all_of(r->policy.additional_account_keys.begin(),r->policy.additional_account_keys.end(),
+            [](const auto& k){return k==truemarkets::SolanaAccountKey{};}),"invariant_unused_storage_zero");
+    require(r->policy.binding==f.binding.allocation && r->policy.accepted_costs.max_output_deduction.value()==2'039'280,
+        "invariant_runtime_allocation_and_cost_preserved");
+    for(const auto schema:{"1","2","3","4","6","05"}){
+        f.set("schema",schema);require(!f.read(),"invariant_requires_exact_schema5");
+    }
+    f.set("schema","5");f.set("account_keys",keys+hex(test_support::key(240)));require(!f.read(),"invariant_extra_key_refused");
+    f.set("account_keys",keys.substr(0,18*64));require(!f.read(),"invariant_missing_key_refused");
+    f.set("account_keys",keys);f.binding.owner_wallet[0]^=std::byte{1};require(!f.read(),"invariant_runtime_owner_mismatch_refused");
 }
 
 void bounds(){
@@ -113,7 +134,7 @@ void bounds(){
     f.set("account_keys",keys);require(!f.read(),"account_alias_refused");
 }
 }
-int main(int argc,char** argv){const std::pair<const char*,void(*)()> tests[]={{"valid",valid},{"identities",identities},{"schema",schema},{"bounds",bounds},{"byreal",byreal_review},{"obsidian",obsidian_review},{"bison",bison_review}};
+int main(int argc,char** argv){const std::pair<const char*,void(*)()> tests[]={{"valid",valid},{"identities",identities},{"schema",schema},{"bounds",bounds},{"byreal",byreal_review},{"obsidian",obsidian_review},{"bison",bison_review},{"invariant",invariant_review}};
     unsigned ran{},failed{};for(auto [name,fn]:tests){if(argc==2 && std::string_view(argv[1])!=name)continue;++ran;
         try{fn();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){++failed;std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';}}
     return ran&&!failed?0:1;

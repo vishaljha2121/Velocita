@@ -1,0 +1,14 @@
+Buy a token
+
+Usage:
+  tm buy <token> <amount> [flags]
+
+Flags:
+      --chain string      Blockchain network (solana|base) (default "solana")
+      --dry-run           Print quote without executing
+      --force             Execute without confirmation prompt
+  -h, --help              help for buy
+      --qty-unit string   Quantity unit (base|quote) (default "quote")
+
+Global Flags:
+  -o, --output string   Output format (json|table) (default "table")

@@ -7,7 +7,7 @@
 
 namespace velocita::v2::truemarkets {
 
-enum class DirectBuyRoute : std::uint8_t { kipseli_v3, byreal_dynamic_v3, obsidian, bison_market_backed };
+enum class DirectBuyRoute : std::uint8_t { kipseli_v3, byreal_dynamic_v3, obsidian, bison_market_backed, invariant };
 struct DirectBuyVerificationPolicy {
     swap::Binding binding{};
     std::array<SolanaAccountKey,20> account_keys{};
@@ -15,7 +15,7 @@ struct DirectBuyVerificationPolicy {
     // owned keys for the separately reviewed Byreal topology.
     std::array<SolanaAccountKey,7> additional_account_keys{};
     DirectBuyRoute route{DirectBuyRoute::kipseli_v3};
-    [[nodiscard]] std::size_t account_count() const noexcept { return route==DirectBuyRoute::obsidian?17:route==DirectBuyRoute::byreal_dynamic_v3?27:20; }
+    [[nodiscard]] std::size_t account_count() const noexcept { return route==DirectBuyRoute::invariant?19:route==DirectBuyRoute::obsidian?17:route==DirectBuyRoute::byreal_dynamic_v3?27:20; }
     [[nodiscard]] const SolanaAccountKey& account_key(std::size_t i) const noexcept {
         return i<20?account_keys[i]:additional_account_keys[i-20];
     }

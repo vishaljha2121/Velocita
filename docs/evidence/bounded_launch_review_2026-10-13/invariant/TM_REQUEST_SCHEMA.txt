@@ -1,0 +1,112 @@
+    CreateOrderRequest:
+      type: object
+      description: |
+        Request to create a new order.
+
+        **Identifying the asset** — provide exactly one of `asset_id` or `base_asset`
+        (supplying both or neither is a `400`). `asset_id` is the id from
+        `GET /assets` and is preferred; `base_asset` is the legacy identifier.
+
+        **Choosing the venue** — `venue` defaults to `smart`. For an asset that trades on
+        both venues, `cefi` or `defi` sends the order to that venue's listing whichever
+        listing `asset_id` names, and `smart` lets the conductor choose; the response says
+        which venue it used.
+
+        **Limit orders** (`type: limit`):
+        - `price` is required and must be a positive decimal string
+        - `qty_unit` must be `base`
+        - `chain` is optional (omit for CeFi; include a DeFi chain such as `hypercore-spot` to rest the order on-chain)
+
+        **Market orders** (`type: market`):
+        - `price` is not accepted
+        - Buy orders require `qty_unit: quote`
+        - Sell orders accept `qty_unit: base` or `qty_unit: quote`
+        - `chain` is optional (omit for CeFi, include for DeFi)
+
+        **Perp orders** (a perp `asset_id`, or `chain: hypercore-perp` with `base_asset`):
+        - `leverage` is required to open a position (buy = long, sell = short) and must be between 1 and 50; it must be omitted for non-perp assets
+        - `reduce_only: true` marks the order as a close of the opposite position; `leverage` is then ignored
+        - `qty` is the isolated margin to commit; position notional = `qty` × `leverage`
+        - `qty_unit` may be `quote` (margin) or `base` (position size) on either side
+
+        **Trigger orders** (a `trigger` object, perp-only):
+        - the order rests off-book and fires as a reduce-only market close when the mark price crosses `trigger.price`
+        - a take-profit must rest on the profitable side of the position and a stop-loss on the losing side, or the quote is rejected
+        - `type` must be `market`; `price` and `leverage` must not be sent; `reduce_only` is implied
+      required:
+        - qty
+        - qty_unit
+        - type
+        - side
+      properties:
+        asset_id:
+          type: string
+          format: uuid
+          description: >
+            Asset id from `GET /assets`. Preferred way to identify the asset; chain and venue are derived from it. Provide exactly one of `asset_id` or `base_asset`.
+          example: "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+        base_asset:
+          type: string
+          description: >
+            Legacy asset identifier: asset symbol for CeFi (e.g. `BTC`); token contract address on `chain` for DeFi. Provide exactly one of `asset_id` or `base_asset`.
+          example: "BTC"
+        qty:
+          type: string
+          description: Quantity as a positive decimal string
+          example: "100"
+        price:
+          type: string
+          description: >
+            Limit price per unit of base asset as a decimal string. Required for limit orders; must not be sent for market orders.
+          example: "67500.00"
+        trigger:
+          $ref: "#/components/schemas/Trigger"
+        qty_unit:
+          type: string
+          enum: [base, quote]
+          description: >
+            Unit of the quantity.
+
+            * **base** — Quantity is denominated in the base asset. Required for limit orders. Supported for market sell orders.
+
+            * **quote** — Quantity is denominated in the quote asset. Required for market buy orders. For DeFi sell orders, `base` must be used instead.
+          example: "quote"
+        type:
+          $ref: "#/components/schemas/OrderType"
+        side:
+          $ref: "#/components/schemas/OrderSide"
+        chain:
+          allOf:
+            - $ref: "#/components/schemas/Chain"
+          description: >
+            Blockchain network for DeFi orders. Omit for CeFi orders.
+        leverage:
+          type: integer
+          format: uint16
+          minimum: 1
+          maximum: 50
+          description: >
+            Isolated-margin leverage for a perp order. Required when the resolved asset is a perp (a perp `asset_id`, or `chain: hypercore-perp`) and the order opens a position (not reduce-only); must not be sent for non-perp assets.
+          example: 10
+        reduce_only:
+          type: boolean
+          description: >
+            Marks a perp order as a reduce-only close — it only reduces an existing position and never opens one. Only valid for perp assets.
+          example: false
+        venue:
+          type: string
+          enum: [smart, cefi, defi]
+          default: smart
+          description: >
+            Venue the order should trade on.
+
+            * **smart** — The conductor chooses. For an asset that trades on both venues
+              (a CeFi listing that settles to DeFi and the DeFi listing it settles on), a
+              market order goes to the better price after fees and a limit order to CeFi;
+              when only one venue is open to the user, the order goes there. Otherwise the
+              order goes to the listing `asset_id` names.
+            * **cefi** — The asset's CeFi listing, whichever listing `asset_id` names. `400`
+              when the asset has no CeFi listing.
+            * **defi** — The asset's DeFi listing, whichever listing `asset_id` names. `400`
+              when the asset has no DeFi listing.
+          example: smart

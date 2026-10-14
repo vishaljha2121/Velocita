@@ -1,0 +1,44 @@
+{
+  "source_head": "1a46fd88c0ec59aa124ab9a6e27de4c9c039ea8a",
+  "committed": false,
+  "native_qualified": false,
+  "installed": false,
+  "services_started": false,
+  "signed": false,
+  "broadcast": false,
+  "validation": {
+    "cpp_groups": {
+      "decoder": 10,
+      "verifier": 9,
+      "review": 8
+    },
+    "python_tests": 66,
+    "named_mutation_kills": {
+      "decoder": 37,
+      "verifier": 19,
+      "review": 4,
+      "python": 6
+    },
+    "decoder_verifier_asan_ubsan": true,
+    "actual_capture_passed_offline": true,
+    "cpp_python_parity": true,
+    "legacy_policy_digests_unchanged": true
+  },
+  "original_price_amendment_applied": false,
+  "independent_review_blocking_findings": 0,
+  "production_and_test_sha256": {
+    "deploy/v2/swap-runtime/idle_policy_renewal.py": "a898e37058a428479515ade2d9ca886d60ce4ba209be8db99420e13ea38e3a22",
+    "deploy/v2/swap-runtime/review_transition.py": "92cd23f9a52989f920bb9f8025cfdea707ddac267cd9954730760dde52455c00",
+    "include/velocita/v2/jupiter_route_decode.hpp": "897c80de0c87fc5a1c91fa6e241a01264ae914298c789ef3839ede6ed10a0314",
+    "include/velocita/v2/swap_transaction_verifier.hpp": "7468862c8d977f888c58ace962802acbebfdba34665e9f595de6eea6d95f9e5c",
+    "src/v2_jupiter_route_decode.cpp": "2a60bc24ce102581386b8fca2fddcb6fbe00800df1f56f72112301681a810991",
+    "src/v2_swap_transaction_review.cpp": "bb09482c15d520411b3c83e8e826239156983595a1d0adeddca850fcbce06b3c",
+    "src/v2_swap_transaction_verifier.cpp": "279ddd2671227a89b7c37416315dbd18ef26cff1f37478c0400bee7dbb29c699",
+    "tests/mutation_jupiter_route_decode.py": "0bab42250007c791ef6eaef5b43f431551e60a048589f7a23719a318d7a71d72",
+    "tests/test_idle_policy_renewal.py": "f1879004b9c916e27b66660789f1ba5e279803693c0adba4040c38bad728d4e0",
+    "tests/v2_jupiter_route_decode_tests.cpp": "4cc50eb91474df7529cc17854a5e3b4d18030a5147308e789c0b42abd0d18102",
+    "tests/v2_swap_transaction_review_tests.cpp": "b464444a578346e5be05053ccef0c2ad77553bac80885a9779c367c1a680a4d2",
+    "tests/v2_swap_transaction_verifier_test_support.hpp": "f4d1286e12401c30b875d118a50e049868669e1217c75a33fcc25f3f310ef494",
+    "tests/v2_swap_transaction_verifier_tests.cpp": "6d0d92e0903a5642b7cb15c304b33aff92114727e47c2f4a13f556e1bd70f6a5"
+  }
+}

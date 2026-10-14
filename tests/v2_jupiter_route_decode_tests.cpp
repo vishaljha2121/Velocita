@@ -207,6 +207,42 @@ void direct_current_variants() {
 }
 
 
+std::vector<std::uint8_t> invariant_literal() {
+    // Independent retained-capture Borsh oracle: enum18, bool=true, 100%,0->1;
+    // u64 input 1,000,000; u64 quote 9,420,476; u16 slippage500; u8 fee20.
+    return {0xe5,0x17,0xcb,0x97,0x7a,0xe3,0xad,0x2a,1,0,0,0,
+        18,1,100,0,1,0x40,0x42,0x0f,0,0,0,0,0,
+        0xbc,0xbe,0x8f,0,0,0,0,0,0xf4,1,20};
+}
+void direct_invariant() {
+    auto bytes=invariant_literal();const auto r=decode_jupiter_direct_route_data(bytes);
+    require(r.status==Status::decoded_data_only && r.data.step_count==1,"invariant_data_only_decode");
+    require(r.data.steps[0]==JupiterRouteStep{static_cast<JupiterSwapKind>(18),1,100,0,1,0},
+        "invariant_bool_true_and_account_flow");
+    require(r.data.input_atoms==1'000'000 && r.data.quoted_output_atoms==9'420'476 &&
+        r.data.slippage_bps==500 && r.data.platform_fee_bps==20,"invariant_literal_suffix_offset");
+    const auto saved=r;bytes.assign(bytes.size(),255);require(r==saved,"invariant_owned_result");
+    bytes=invariant_literal();bytes[13]=0;
+    require(decode_jupiter_direct_route_data(bytes).data.steps[0].side_or_direction==0,
+        "invariant_false_is_structural_not_economic_admission");
+    bytes[13]=2;auto bad=decode_jupiter_direct_route_data(bytes);
+    require(bad.status==Status::invalid && bad.data==JupiterDirectRouteData{},"invariant_bool_two_refused");
+    bytes=invariant_literal();
+    for(std::size_t n=0;n<bytes.size();++n){bad=decode_jupiter_direct_route_data({bytes.data(),n});
+        require(bad.status==Status::invalid && bad.data==JupiterDirectRouteData{},"invariant_truncation_clears_result");}
+    bytes.push_back(0);bad=decode_jupiter_direct_route_data(bytes);
+    require(bad.status==Status::invalid && bad.data==JupiterDirectRouteData{},"invariant_trailing_byte_refused");
+    bytes=invariant_literal();bytes.erase(bytes.begin()+13);bad=decode_jupiter_direct_route_data(bytes);
+    require(bad.status==Status::invalid && bad.data==JupiterDirectRouteData{},"invariant_missing_bool_refused");
+    bytes=invariant_literal();bytes[12]=19;bad=decode_jupiter_direct_route_data(bytes);
+    require(bad.status==Status::unsupported && bad.data==JupiterDirectRouteData{},"invariant_neighbor_not_supported");
+    bytes=invariant_literal();bytes[8]=2;bytes.insert(bytes.begin()+17,{18,0,100,1,2});
+    const auto two=decode_jupiter_direct_route_data(bytes);
+    require(two.status==Status::decoded_data_only && two.data.step_count==2 &&
+        two.data.steps[1]==JupiterRouteStep{static_cast<JupiterSwapKind>(18),0,100,1,2,0} &&
+        two.data.quoted_output_atoms==9'420'476,"invariant_multiple_steps_data_only");
+}
+
 void direct_byreal() {
     // Program-owned IDL enum156 has no payload. Hand-worked little-endian
     // oracle from the unsigned route: 1,000,000 in, 9,345,460 out, 500bp,20bp.
@@ -233,7 +269,7 @@ void direct_byreal() {
 int main(int argc, char** argv) {
     const std::pair<const char*,void(*)()> tests[] = {{"captured",captured_oracle},{"shapes",exact_shapes},
         {"boundaries",unsupported_and_boundaries},{"orders",variant_orders},
-        {"direct",direct_capture},{"direct_boundaries",direct_boundaries},{"raydium",direct_raydium},{"current_variants",direct_current_variants},{"byreal",direct_byreal}};
+        {"direct",direct_capture},{"direct_boundaries",direct_boundaries},{"raydium",direct_raydium},{"current_variants",direct_current_variants},{"byreal",direct_byreal},{"invariant",direct_invariant}};
     int failures{}, selected{};
     for (const auto& [name,fn] : tests) {
         if (argc > 1 && std::string_view(argv[1]) != name) continue;

@@ -1,0 +1,27 @@
+[
+  {
+    "name": "baseline",
+    "exit": 0,
+    "killed_by": null
+  },
+  {
+    "name": "wrong-route",
+    "exit": 1,
+    "killed_by": "invariant_schema5_decodes"
+  },
+  {
+    "name": "ignore-key-count",
+    "exit": 1,
+    "killed_by": "invariant_extra_key_refused"
+  },
+  {
+    "name": "ignore-owner",
+    "exit": 1,
+    "killed_by": "invariant_runtime_owner_mismatch_refused"
+  },
+  {
+    "name": "wrong-cost",
+    "exit": 1,
+    "killed_by": "invariant_review_digest_matches"
+  }
+]

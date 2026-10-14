@@ -217,6 +217,74 @@ class RenewalTests(unittest.TestCase):
             with self.subTest(field=field,value=value[:12]),self.assertRaises(ValueError,msg='bison_preserves_caps_and_shared_roles'):
                 N.route_transition(before['transaction.review'],raw,dict(witness,after_review_sha256=T.R.digest(raw)))
 
+    INVARIANT_ROLES=((0,0),(1,1),(3,2),(4,3),(5,4),(8,5),(9,6),
+                     (10,7),(11,8),(13,9),(14,10),(22,15))
+
+    def invariant_fixture(self):
+        args,_=self.obsidian_fixture();old,new,before,after,journals,now=args
+        encode=T.TransitionTests.encode
+        prior=T.R.transaction_fields(before['transaction.review'])['account_keys']
+        keys=[bytes([140+i]).hex()*32 for i in range(19)]
+        for a,b in self.INVARIANT_ROLES:keys[b]=prior[a*64:(a+1)*64]
+        tx=T.R.transaction_fields(after['transaction.review']);tx.update(schema='5',account_keys=''.join(keys))
+        after=dict(after,**{'transaction.review':encode(tx)})
+        profile=T.R.L.fields(after['runtime.profile']);profile['transaction_review_digest']=T.R.digest(after['transaction.review'])
+        review=T.R.L.fields(after['account.review']);review['runtime_identity']=N.runtime_identity(profile)
+        after['account.review']=encode(review);profile['account_review_digest']=T.R.digest(after['account.review'])
+        after['runtime.profile']=encode(profile)
+        witness=dict(schema=1,kind='byreal-v1-to-invariant-v1',before_review_sha256=T.R.digest(before['transaction.review']),
+                     after_review_sha256=T.R.digest(after['transaction.review']),contract_evidence_sha256='d1'*32)
+        return (old,T.TransitionTests.pins(old,after),before,after,journals,now),witness
+
+    def test_invariant_schema5_distinct_domain_and_exact_key_count(self):
+        args,_=self.invariant_fixture()
+        try:current=T.R.journal_bindings(args[3])
+        except ValueError as error:self.fail('invariant_schema5_domain_admitted: '+str(error))
+        old=T.R.journal_bindings(args[2])
+        self.assertEqual(current[:4],old[:4],'invariant_gateway_domains_unchanged')
+        self.assertNotEqual(current[4],old[4],'invariant_protected_domain_distinct')
+        # Independently serialized policy -> verification -> protected-domain vector.
+        self.assertEqual(current[4].hex(),'45e0bf1188b9a970ae0459c70ad2af24a74ee3e6682aaf371051a29c0926044d',
+                         'invariant_schema5_exact_domain_golden')
+        tx=T.R.transaction_fields(args[3]['transaction.review'])
+        for schema,count in [('1',19),('2',19),('3',19),('4',19),('5',18),('5',20),('5',27),('6',19),('05',19)]:
+            raw=T.TransitionTests.encode(dict(tx,schema=schema,account_keys=('27'*32)*count))
+            with self.subTest(schema=schema,count=count),self.assertRaises(ValueError,msg='invariant_exact_nineteen_keys'):
+                T.R.journal_bindings(dict(args[3],**{'transaction.review':raw}))
+
+    def test_invariant_transition_preserves_gateway_journals_and_funding(self):
+        args,witness=self.invariant_fixture()
+        try:out=N.propose(*args,route_review=witness)
+        except ValueError as error:self.fail('invariant_transition_admitted: '+str(error))
+        self.assertFalse(out['report']['applyable'])
+        self.assertFalse(out['report']['services_started'])
+        self.assertFalse(out['report']['orders_submitted'])
+        for name,raw in args[4].items():
+            updated=out['artifacts']['after/journals/'+name]
+            if name!='protected-signing':self.assertEqual(updated,raw,'invariant_gateway_journal_unchanged')
+            else:
+                self.assertEqual(int.from_bytes(updated[8:16],'little'),3,'invariant_protected_ordinal_advances')
+                self.assertEqual(updated[16:72],raw[16:72],'invariant_phase_index_effect_unchanged')
+                self.assertEqual(updated[104:-32],raw[104:-32],'invariant_payload_and_proof_unchanged')
+        with self.assertRaises(ValueError,msg='invariant_explicit_witness_required'):N.propose(*args)
+
+    def test_invariant_exact_transition_kind_caps_roles_and_witness(self):
+        args,witness=self.invariant_fixture();before,after=args[2:4]
+        for kind in ('byreal-v1-to-obsidian-v1','byreal-v1-to-bison-market-backed-v1','obsidian-v1-to-invariant-v1','kipseli-v1-to-invariant-v1'):
+            with self.subTest(kind=kind),self.assertRaises(ValueError,msg='invariant_only_reviewed_byreal_transition'):
+                N.route_transition(before['transaction.review'],after['transaction.review'],dict(witness,kind=kind))
+        for patch in (dict(schema=True),dict(contract_evidence_sha256='00'*32),dict(before_review_sha256='aa'*32),dict(after_review_sha256='bb'*32)):
+            with self.subTest(patch=patch),self.assertRaises(ValueError,msg='invariant_witness_pins'):
+                N.route_transition(before['transaction.review'],after['transaction.review'],dict(witness,**patch))
+        tx=T.R.transaction_fields(after['transaction.review'])
+        changes=[('max_slippage_bps','501'),('max_compute_price','99999'),('max_compute_units','1400001'),('max_envelope_age_ms','30001')]
+        for _,role in self.INVARIANT_ROLES:
+            keys=tx['account_keys'];changes.append(('account_keys',keys[:role*64]+('ff'*32)+keys[(role+1)*64:]))
+        for field,value in changes:
+            raw=T.TransitionTests.encode(dict(tx,**{field:value}))
+            with self.subTest(field=field,value=value[:12]),self.assertRaises(ValueError,msg='invariant_preserves_caps_and_shared_roles'):
+                N.route_transition(before['transaction.review'],raw,dict(witness,after_review_sha256=T.R.digest(raw)))
+
     def test_reviewed_release_and_route_publish_as_one_generation(self):
         args,route,release=self.release_fixture()
         try:out=N.propose(*args,route_review=route,release_review=release)

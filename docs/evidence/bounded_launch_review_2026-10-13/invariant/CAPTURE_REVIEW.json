@@ -1,0 +1,39 @@
+{
+  "checks": {
+    "header_and_permissions": true,
+    "canonical_programs_and_mint": true,
+    "system_owner_and_sponsor": true,
+    "token_state": true,
+    "source_close_authority_is_sponsor": true,
+    "source_and_fee_usdc": true,
+    "destination_absent_and_ata_seeds": true,
+    "event_authority_seeds": true,
+    "anchor_discriminators": true,
+    "pool_mints_vaults_tickmap": true,
+    "state_and_vault_authority": true,
+    "pool_state_authority_seeds": true,
+    "outer_program_sequence": true,
+    "compute_limit": true,
+    "sponsored_ata": true,
+    "jupiter_and_invariant_accounts": true,
+    "single_invariant_x_to_y": true,
+    "captured_amount_fee_slippage": true,
+    "close_to_owner": true,
+    "fixed_repayment_to_sponsor": true
+  },
+  "layout_verified_against_public_source": true,
+  "deployed_source_equivalence_verified": false,
+  "production_verifier_accepts": false,
+  "live_admitted": false,
+  "signed": false,
+  "broadcast": false,
+  "conditional_accounting": {
+    "usdc_debit_atoms": 1000000,
+    "explicit_fee_atoms": 2000,
+    "swap_principal_atoms": 998000,
+    "gross_floor_lamports": 8949453,
+    "repayment_lamports": 2039280,
+    "credited_sponsor_lamports": 0,
+    "net_floor_lamports": 6910173
+  }
+}

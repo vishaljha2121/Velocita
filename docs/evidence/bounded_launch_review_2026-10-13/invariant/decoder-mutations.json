@@ -1,0 +1,343 @@
+{
+  "files": {
+    "src/v2_jupiter_route_decode.cpp": "2a60bc24ce102581386b8fca2fddcb6fbe00800df1f56f72112301681a810991",
+    "include/velocita/v2/jupiter_route_decode.hpp": "897c80de0c87fc5a1c91fa6e241a01264ae914298c789ef3839ede6ed10a0314",
+    "tests/v2_jupiter_route_decode_tests.cpp": "4cc50eb91474df7529cc17854a5e3b4d18030a5147308e789c0b42abd0d18102",
+    "tests/mutation_jupiter_route_decode.py": "0bab42250007c791ef6eaef5b43f431551e60a048589f7a23719a318d7a71d72"
+  },
+  "results": [
+    {
+      "name": "discriminator",
+      "case": "boundaries",
+      "assertion": "other_instruction_refused",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL boundaries: other_instruction_refused\n"
+    },
+    {
+      "name": "count_capacity",
+      "case": "shapes",
+      "assertion": "eight_steps_fit",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL shapes: eight_steps_fit\n"
+    },
+    {
+      "name": "empty_route",
+      "case": "shapes",
+      "assertion": "empty_route_refused",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL shapes: empty_route_refused\n"
+    },
+    {
+      "name": "enum_range",
+      "case": "shapes",
+      "assertion": "invalid_side_refused",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL shapes: invalid_side_refused\n"
+    },
+    {
+      "name": "step_percent",
+      "case": "captured",
+      "assertion": "deriverse_fields_in_order",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL captured: deriverse_fields_in_order\n"
+    },
+    {
+      "name": "instruction_id",
+      "case": "captured",
+      "assertion": "deriverse_fields_in_order",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL captured: deriverse_fields_in_order\n"
+    },
+    {
+      "name": "input_index",
+      "case": "captured",
+      "assertion": "bison_fields_in_order",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL captured: bison_fields_in_order\n"
+    },
+    {
+      "name": "output_index",
+      "case": "captured",
+      "assertion": "deriverse_fields_in_order",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL captured: deriverse_fields_in_order\n"
+    },
+    {
+      "name": "input_amount",
+      "case": "captured",
+      "assertion": "captured_input_and_quote",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL captured: captured_input_and_quote\n"
+    },
+    {
+      "name": "quote_amount",
+      "case": "captured",
+      "assertion": "captured_input_and_quote",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL captured: captured_input_and_quote\n"
+    },
+    {
+      "name": "slippage",
+      "case": "captured",
+      "assertion": "captured_slippage_and_fee",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL captured: captured_slippage_and_fee\n"
+    },
+    {
+      "name": "fee",
+      "case": "captured",
+      "assertion": "captured_slippage_and_fee",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL captured: captured_slippage_and_fee\n"
+    },
+    {
+      "name": "trailing",
+      "case": "shapes",
+      "assertion": "trailing_bytes_refused",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL shapes: trailing_bytes_refused\n"
+    },
+    {
+      "name": "direct_tag",
+      "case": "direct",
+      "assertion": "shared_not_direct_route",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL direct: shared_not_direct_route\n"
+    },
+    {
+      "name": "direct_variant",
+      "case": "direct_boundaries",
+      "assertion": "direct_unknown_variant_refused",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL direct_boundaries: direct_unknown_variant_refused\n"
+    },
+    {
+      "name": "raydium_support",
+      "case": "raydium",
+      "assertion": "raydium_no_variant_payload",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL raydium: raydium_no_variant_payload\n"
+    },
+    {
+      "name": "raydium_payload",
+      "case": "raydium",
+      "assertion": "raydium_no_variant_payload",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL raydium: raydium_no_variant_payload\n"
+    },
+    {
+      "name": "raydium_kind",
+      "case": "raydium",
+      "assertion": "raydium_no_variant_payload",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL raydium: raydium_no_variant_payload\n"
+    },
+    {
+      "name": "obsidian_support",
+      "case": "current_variants",
+      "assertion": "current_variants_decode",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL current_variants: current_variants_decode\n"
+    },
+    {
+      "name": "kipseli_support",
+      "case": "current_variants",
+      "assertion": "current_variants_decode",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL current_variants: current_variants_decode\n"
+    },
+    {
+      "name": "kipseli_payload",
+      "case": "current_variants",
+      "assertion": "current_variants_decode",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL current_variants: current_variants_decode\n"
+    },
+    {
+      "name": "invariant_support",
+      "case": "invariant",
+      "assertion": "invariant_data_only_decode",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL invariant: invariant_data_only_decode\n"
+    },
+    {
+      "name": "invariant_payload",
+      "case": "invariant",
+      "assertion": "invariant_data_only_decode",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL invariant: invariant_data_only_decode\n"
+    },
+    {
+      "name": "invariant_direction",
+      "case": "invariant",
+      "assertion": "invariant_bool_true_and_account_flow",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL invariant: invariant_bool_true_and_account_flow\n"
+    },
+    {
+      "name": "invariant_bool",
+      "case": "invariant",
+      "assertion": "invariant_bool_two_refused",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL invariant: invariant_bool_two_refused\n"
+    },
+    {
+      "name": "invariant_input",
+      "case": "invariant",
+      "assertion": "invariant_literal_suffix_offset",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL invariant: invariant_literal_suffix_offset\n"
+    },
+    {
+      "name": "invariant_quote",
+      "case": "invariant",
+      "assertion": "invariant_literal_suffix_offset",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL invariant: invariant_literal_suffix_offset\n"
+    },
+    {
+      "name": "invariant_fee",
+      "case": "invariant",
+      "assertion": "invariant_literal_suffix_offset",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL invariant: invariant_literal_suffix_offset\n"
+    },
+    {
+      "name": "invariant_slippage",
+      "case": "invariant",
+      "assertion": "invariant_literal_suffix_offset",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL invariant: invariant_literal_suffix_offset\n"
+    },
+    {
+      "name": "invariant_trailing",
+      "case": "invariant",
+      "assertion": "invariant_trailing_byte_refused",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL invariant: invariant_trailing_byte_refused\n"
+    },
+    {
+      "name": "direct_bool",
+      "case": "direct_boundaries",
+      "assertion": "direct_invalid_bool_refused",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL direct_boundaries: direct_invalid_bool_refused\n"
+    },
+    {
+      "name": "direct_count",
+      "case": "direct_boundaries",
+      "assertion": "direct_eight_steps_fit",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL direct_boundaries: direct_eight_steps_fit\n"
+    },
+    {
+      "name": "direct_input",
+      "case": "direct",
+      "assertion": "direct_route_exact_amounts",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL direct: direct_route_exact_amounts\n"
+    },
+    {
+      "name": "direct_output",
+      "case": "direct",
+      "assertion": "direct_route_exact_amounts",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL direct: direct_route_exact_amounts\n"
+    },
+    {
+      "name": "direct_fee",
+      "case": "direct",
+      "assertion": "direct_route_slippage_and_fee",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL direct: direct_route_slippage_and_fee\n"
+    },
+    {
+      "name": "direct_slippage",
+      "case": "direct",
+      "assertion": "direct_route_slippage_and_fee",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL direct: direct_route_slippage_and_fee\n"
+    },
+    {
+      "name": "direct_trailing",
+      "case": "direct_boundaries",
+      "assertion": "direct_trailing_bytes_refused",
+      "exit": 1,
+      "killed": true,
+      "stdout": "",
+      "stderr": "FAIL direct_boundaries: direct_trailing_bytes_refused\n"
+    }
+  ]
+}

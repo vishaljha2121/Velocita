@@ -9,7 +9,7 @@ namespace velocita::v2::truemarkets {
 
 inline constexpr std::size_t kJupiterRouteSteps = 8;
 enum class JupiterRouteStatus : std::uint8_t { unsupported, invalid, decoded_data_only };
-enum class JupiterSwapKind : std::uint8_t { raydium_clmm = 26, obsidian = 109, kipseli_v3 = 181, bison_fi_v2 = 141, byreal_dynamic_v3 = 156, deriverse = 161, bison_fi_market_backed = 177 };
+enum class JupiterSwapKind : std::uint8_t { invariant = 18, raydium_clmm = 26, obsidian = 109, kipseli_v3 = 181, bison_fi_v2 = 141, byreal_dynamic_v3 = 156, deriverse = 161, bison_fi_market_backed = 177 };
 struct JupiterRouteStep {
     JupiterSwapKind kind{};
     std::uint8_t side_or_direction{}, percent{}, input_index{}, output_index{};

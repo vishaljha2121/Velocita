@@ -134,7 +134,8 @@ def journal_bindings(files):
     schemas={'1':(b'velocita-direct-kipseli-buy-v1',640),
              '2':(b'velocita-direct-byreal-v3-buy-v1',864),
              '3':(b'velocita-direct-obsidian-buy-v1',544),
-             '4':(b'velocita-direct-bison-market-backed-buy-v1',640)}
+             '4':(b'velocita-direct-bison-market-backed-buy-v1',640),
+             '5':(b'velocita-direct-invariant-buy-v1',608)}
     if tx.get('schema') not in schemas:raise ValueError('unsupported transaction review schema')
     policy_label,key_bytes=schemas[tx['schema']]
     policy=h(policy_label+inc+cat+cust+allocation+key(tx,'account_keys',key_bytes)+

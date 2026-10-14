@@ -162,13 +162,77 @@ void bison(){
     f=F{};f.policy.additional_account_keys[0]=key(230);refusal(f,Code::invalid_policy,"bison_unused_keys");
     f=F{};f.policy.route=DirectBuyRoute::kipseli_v3;refusal(f,Code::invalid_policy,"bison_not_legacy_policy");
 }
+
+void invariant(){
+    using F=test_support::InvariantBuyFixture;
+    const auto rejected=[](F f,Code code,const char* name){const auto r=f.run();require(r.code==code && !r.verified,name);};
+    F f;auto r=f.run();require(r.code==Code::verified_under_program_contract && r.verified.has_value(),
+        "invariant_exact_five_instruction_layout_verified");
+    // Hand arithmetic: 9,420,476 * 95 / 100 = 8,949,452.2; ceiling=8,949,453.
+    // Deduct all 2,039,280 repayment lamports, without presumed sponsor credit.
+    require(r.bounds.total_usdc_debit==1'000'000 && r.bounds.explicit_usdc_fee==2'000 &&
+        r.bounds.gross_sol_floor==8'949'453 && r.bounds.maximum_sol_deduction==2'039'280 &&
+        r.bounds.net_sol_floor==6'910'173,"invariant_hand_computed_inclusive_fee_and_net_floor");
+    require(r.verified->policy_digest()==direct_buy_policy_digest(f.policy) &&
+        r.verified->payload_digest()==f.pending.payload &&
+        r.verified->intent_digest()==verified_swap_intent_digest(f.pending.intent),"invariant_proof_binds_exact_inputs");
+    f.pending.intent.min_base_receive=swap::BaseAtoms{6'910'174};
+    rejected(f,Code::minimum_shortfall,"invariant_floor_plus_one_refused");
+    f=F{};f.payment++;rejected(f,Code::deduction_exceeded,"invariant_repayment_cap_plus_one");
+    f=F{};f.quoted=1;rejected(f,Code::minimum_shortfall,"invariant_floor_cannot_underflow");
+    f=F{};f.route_direction=0;rejected(f,Code::unsupported_route,"invariant_reverse_direction_refused");
+    f=F{};f.route_direction=2;rejected(f,Code::unsupported_route,"invariant_invalid_direction_refused");
+    f=F{};f.route_kind=181;rejected(f,Code::unsupported_route,"invariant_other_variant_refused");
+    f=F{};f.route_percent=99;rejected(f,Code::unsupported_route,"invariant_partial_route_refused");
+    f=F{};f.input+=10'000;rejected(f,Code::debit_mismatch,"invariant_excess_input_refused");
+    f=F{};f.fee++;rejected(f,Code::debit_mismatch,"invariant_fee_changed_refused");
+    f=F{};f.pending.intent.quote_input=swap::QuoteAtoms{997'999};
+    rejected(f,Code::debit_mismatch,"invariant_principal_not_debit_minus_fee");
+    f=F{};f.slippage=501;rejected(f,Code::unsupported_route,"invariant_slippage_cap_refused");
+    f=F{};f.include_price=true;rejected(f,Code::unsupported_topology,"invariant_even_zero_compute_price_not_reviewed");
+    f=F{};f.extra=true;rejected(f,Code::unsupported_topology,"invariant_extra_instruction_refused");
+    f=F{};f.swap_last_instructions=true;rejected(f,Code::unsupported_topology,"invariant_order_changed_refused");
+    for(std::size_t i=0;i<f.programs.size();++i){f=F{};f.programs[i]=10;
+        rejected(f,Code::unsupported_topology,"invariant_every_instruction_program_pinned");}
+    for(std::size_t i=0;i<f.route_accounts.size();++i){f=F{};f.route_accounts[i]=(f.route_accounts[i]+1)%19;
+        rejected(f,Code::unsupported_topology,"invariant_every_route_role_pinned");}
+    for(std::size_t i=0;i<f.ata_accounts.size();++i){f=F{};f.ata_accounts[i]=(f.ata_accounts[i]+1)%19;
+        rejected(f,Code::unsupported_topology,"invariant_every_ata_role_pinned");}
+    for(std::size_t i=0;i<f.close_accounts.size();++i){f=F{};f.close_accounts[i]=(f.close_accounts[i]+1)%19;
+        rejected(f,Code::unsupported_topology,"invariant_every_close_role_pinned");}
+    for(std::size_t i=0;i<f.pay_accounts.size();++i){f=F{};f.pay_accounts[i]=(f.pay_accounts[i]+1)%19;
+        rejected(f,Code::unsupported_topology,"invariant_every_repayment_role_pinned");}
+    f=F{};f.readonly_unsigned=5;rejected(f,Code::account_mismatch,"invariant_static_permission_escalation");
+    f=F{};f.readonly_unsigned=7;rejected(f,Code::account_mismatch,"invariant_static_permission_removed");
+    f=F{};f.readonly_signed=1;rejected(f,Code::account_mismatch,"invariant_owner_must_be_writable");
+    f=F{};f.required_signatures=3;rejected(f,Code::account_mismatch,"invariant_extra_signer_refused");
+    f=F{};f.writable_lookup.push_back(4);f.readonly_lookup.erase(f.readonly_lookup.begin());
+    rejected(f,Code::account_mismatch,"invariant_lookup_permission_escalation");
+    f=F{};f.readonly_lookup.insert(f.readonly_lookup.begin(),3);f.writable_lookup.pop_back();
+    rejected(f,Code::account_mismatch,"invariant_lookup_permission_removed");
+    f=F{};f.replace_wire_key=2;rejected(f,Code::account_mismatch,"invariant_source_key_changed_in_wire");
+    f=F{};f.signed_payload=true;rejected(f,Code::invalid_envelope,"invariant_already_signed_refused");
+    for(unsigned i:{5,6,7,8,9,10,15,17}){f=F{};f.policy.account_keys[i]=key(230);
+        if(i>=11)f.lookup[0].addresses[i-11]=key(230);
+        f.policy.lookup_image_digest=direct_buy_lookup_digest(f.lookup);
+        rejected(f,Code::invalid_policy,"invariant_canonical_programs_and_mint_pinned");}
+    f=F{};f.policy.account_keys[19]=key(230);rejected(f,Code::invalid_policy,"invariant_twentieth_key_must_be_zero");
+    for(unsigned i=0;i<7;++i){f=F{};f.policy.additional_account_keys[i]=key(230);
+        rejected(f,Code::invalid_policy,"invariant_all_additional_keys_must_be_zero");}
+    f=F{};f.policy.account_keys[14]=f.policy.account_keys[11];
+    rejected(f,Code::invalid_policy,"invariant_duplicate_account_refused");
+    f=F{};const auto digest=direct_buy_policy_digest(f.policy);
+    require(!digest.is_zero(),"invariant_policy_digest_nonzero");
+    f.policy.route=DirectBuyRoute::bison_market_backed;
+    require(direct_buy_policy_digest(f.policy)!=digest && !f.run().verified,"invariant_not_bison_policy");
+}
 static_assert(!std::is_default_constructible_v<VerifiedSwapTransaction>);
 static_assert(!std::is_aggregate_v<VerifiedSwapTransaction>);
 }
 int main(int argc,char** argv){
     unsigned count{},failed{};
     const std::pair<const char*,void(*)()> tests[]={{"oracle",oracle},{"economics",economic_refusals},
-        {"topology",topology_refusals},{"identity",freshness_and_identity},{"digests",digests},{"byreal",byreal},{"obsidian",obsidian},{"bison",bison}};
+        {"topology",topology_refusals},{"identity",freshness_and_identity},{"digests",digests},{"byreal",byreal},{"obsidian",obsidian},{"bison",bison},{"invariant",invariant}};
     for(auto [name,fn]:tests){if(argc==2 && std::string_view(argv[1])!=name)continue;++count;
         try{fn();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){++failed;std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';}}
     return count==0?2:failed?1:0;
