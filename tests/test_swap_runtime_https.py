@@ -80,8 +80,18 @@ class RuntimeHttpsTests(unittest.TestCase):
         self.assertIn(b'"method":"getTransaction"',body)
         self.assertIn(b'"commitment":"finalized"',body)
 
+    def test_keyless_finalized_lookup_account_rpc(self):
+        before=len(self.server.requests)
+        self.assertEqual(self.call('rpc-account'),'complete=1 status=200 size=11 provider=1')
+        self.assertEqual(len(self.server.requests),before+1)
+        method,path,body,_,auth=self.server.requests[-1]
+        self.assertEqual((method,path,auth),('POST','/',None))
+        self.assertIn(b'"method":"getAccountInfo"',body)
+        self.assertIn(b'"commitment":"finalized"',body)
+
     def test_rpc_rejects_other_methods_and_unbounded_timeout(self):
-        for mode in ('rpc-method','rpc-commitment','rpc-signature','rpc-id','rpc-extra','rpc-timeout'):
+        for mode in ('rpc-method','rpc-commitment','rpc-signature','rpc-id','rpc-extra','rpc-timeout',
+                     'rpc-account-commitment','rpc-account-encoding','rpc-account-key'):
             with self.subTest(mode=mode):
                 before=len(self.server.requests)
                 self.assertEqual(self.call(mode),'complete=0 status=0 size=0 provider=1')

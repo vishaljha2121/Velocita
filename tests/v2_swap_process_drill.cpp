@@ -172,7 +172,11 @@ int worker(const std::filesystem::path& root,std::string stage,unsigned incarnat
     crash.armed=stage=="sign-request";
     const auto wait_until=steady_ms()+5000;while(!std::filesystem::exists(root/"signer.sock") && steady_ms()<wait_until)::usleep(500);
     swap_signer::Client signer_client(root/"signer.sock",::geteuid(),pub,10000);
-    SwapDurableSigningPort signing(prepared,sign_requests,signer_client,signing_config);
+    struct DrillLookup final:SwapLookupSource{
+        std::optional<truemarkets::JupiterLookupPrefix> prefix(std::span<const std::byte>)override{
+            truemarkets::JupiterLookupPrefix p;p.table[0]=7;p.count=1;p.addresses[0][0]=1;return p;}
+    } lookup;
+    SwapDurableSigningPort signing(prepared,sign_requests,signer_client,signing_config,lookup);
     CrashSigningPort signing_boundary(signing,stage);
     Ports ports(root,stage,prepared,submitted);SwapGatewayRuntimeConfig config{binding,CallerId{kGateway},incarnation*1000,incarnation*1000+900,5000,1};config.recovery_only=incarnation>1;
     SwapGatewayRuntime runtime(link,recovery,prepared,submitted,ports,signing_boundary,ports,ports,config);

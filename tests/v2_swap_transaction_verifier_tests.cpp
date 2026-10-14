@@ -1,8 +1,6 @@
 #include "v2_swap_transaction_verifier_test_support.hpp"
-#include "velocita/v2/solana_instruction_decode.hpp"
 #include "velocita/v2/digest.hpp"
 
-#include <algorithm>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -13,226 +11,164 @@ using namespace velocita::v2;
 using namespace velocita::v2::truemarkets;
 namespace {
 using Code=SwapTransactionVerificationCode;
-void require(bool ok,const char* name){if(!ok)throw std::runtime_error(name);}
-using Fixture=velocita::v2::test_support::DirectBuyFixture;
-using velocita::v2::test_support::key;
+using test_support::require;
+using test_support::key;
+using Fixture=test_support::RouteFixture;
 void refusal(Fixture f,Code expected,const char* name){const auto r=f.run();require(r.code==expected && !r.verified,name);}
 void oracle(){
     Fixture f;const auto r=f.run();require(r.code==Code::verified_under_program_contract && r.verified.has_value(),"supported_buy_verified");
     require(r.bounds.total_usdc_debit==1'000'000 && r.bounds.explicit_usdc_fee==2'000,"inclusive_debit_oracle");
-    require(r.bounds.gross_sol_floor==8'940'092 && r.bounds.maximum_sol_deduction==550'840 &&
-        r.bounds.net_sol_floor==8'389'252,"net_floor_oracle");
+    require(r.bounds.gross_sol_floor==9'363'569 && r.bounds.maximum_sol_deduction==2'039'280 &&
+        r.bounds.net_sol_floor==7'324'289,"net_floor_rounds_down");
     require(r.verified->payload_digest()==f.pending.payload && r.verified->intent_digest()==verified_swap_intent_digest(f.pending.intent) &&
-        r.verified->policy_digest()==direct_buy_policy_digest(f.policy) && r.verified->expires_at_ms()==1100,"proof_exact_bindings");
-    auto saved=*r.verified;f.payment=0;require(saved.bounds().maximum_sol_deduction==550'840,"proof_owns_data");
+        r.verified->policy_digest()==swap_execution_policy_digest(f.policy) &&
+        r.verified->lookup_digest()==jupiter_lookup_prefix_digest(f.prefix()) && r.verified->expires_at_ms()==1100,"proof_exact_bindings");
+    f.pending.intent.min_base_receive=swap::BaseAtoms{7'324'289};require(f.run().verified.has_value(),"minimum_equal_to_floor_verified");
+    Fixture shorter;shorter.policy.max_envelope_age_ms=80;const auto early=shorter.run();
+    require(early.verified && early.verified->expires_at_ms()==1080,"expiry_is_earliest_of_intent_and_envelope_age");
+    f.pending.intent.min_base_receive=swap::BaseAtoms{7'324'290};refusal(f,Code::minimum_shortfall,"rounded_up_floor_refused");
 }
-void economic_refusals(){
-    Fixture f;f.payment=2'039'280;f.pending.intent.min_base_receive=swap::BaseAtoms{6'000'000};refusal(f,Code::deduction_exceeded,"idempotent_zero_funding_refused");
-    f=Fixture{};f.payment=550'841;refusal(f,Code::deduction_exceeded,"one_lamport_cap_excess");
-    f=Fixture{};f.pending.intent.min_base_receive=swap::BaseAtoms{8'389'253};refusal(f,Code::minimum_shortfall,"one_lamport_receipt_shortfall");
-    f=Fixture{};f.policy.accepted_costs.max_output_deduction=swap::BaseAtoms{2'039'280};
-    f.payment=2'039'280;f.pending.intent.min_base_receive=swap::BaseAtoms{6'900'812};
-    const auto larger=f.run();require(larger.verified && larger.bounds.net_sol_floor==6'900'812,
-        "separate_larger_policy_exact_bound");
-    f.pending.intent.min_base_receive=swap::BaseAtoms{6'900'813};refusal(f,Code::minimum_shortfall,"larger_policy_still_requires_minimum");
+void variants(){
+    for(std::uint8_t variant:{18,109,156,177,181}){Fixture f;f.variant=variant;f.direction=0;
+        require(f.run().verified.has_value(),"reviewed_variant_verified");}
+    Fixture f;f.variant=26;refusal(f,Code::unsupported_route,"decodable_unreviewed_variant_refused");
+    f=Fixture{};f.variant=38;refusal(f,Code::unsupported_route,"undecodable_variant_refused");
+    f=Fixture{};f.variant=177;f.route_tail[0]=11;refusal(f,Code::unsupported_route,"variant_program_absent_refused");
+    f=Fixture{};f.percent=99;refusal(f,Code::unsupported_route,"partial_route_refused");
+    f=Fixture{};f.input_index=1;refusal(f,Code::unsupported_route,"route_input_index_refused");
+    f=Fixture{};f.output_index=2;refusal(f,Code::unsupported_route,"route_output_index_refused");
+    f=Fixture{};f.slippage=501;refusal(f,Code::unsupported_route,"slippage_above_policy_refused");
+}
+void pools(){
+    Fixture first(0),second(1);second.variant=18;
+    const auto a=first.run(),b=second.run();
+    require(a.verified && b.verified,"two_pools_verified");
+    require(swap_execution_policy_digest(first.policy)==swap_execution_policy_digest(second.policy) &&
+        a.verified->policy_digest()==b.verified->policy_digest(),"one_stable_policy_for_both_pools");
+    require(a.verified->lookup_digest()!=b.verified->lookup_digest() && a.verified->payload_digest()!=b.verified->payload_digest(),
+        "attempt_evidence_differs");
+}
+void roles(){
+    Fixture f;f.policy.sponsor=key(90);refusal(f,Code::account_mismatch,"sponsor_changed_refused");
+    f=Fixture{};f.policy.owner_usdc=key(90);refusal(f,Code::account_mismatch,"owner_usdc_absent_refused");
+    f=Fixture{};f.policy.platform_fee=key(90);refusal(f,Code::account_mismatch,"fee_account_absent_refused");
+    f=Fixture{};f.policy.owner_wsol=f.table_entries[4];refusal(f,Code::account_mismatch,"owner_account_from_lookup_refused");
+    f=Fixture{};f.readonly_signed=1;refusal(f,Code::account_mismatch,"owner_must_be_writable");
+    f=Fixture{};f.readonly_unsigned=7;refusal(f,Code::account_mismatch,"fee_account_must_be_writable");
+    f=Fixture{};f.required_signatures=3;refusal(f,Code::account_mismatch,"extra_signer_refused");
+    for(std::size_t i=0;i<f.route_fixed.size();++i){f=Fixture{};f.route_fixed[i]=f.route_fixed[i]==11?12:11;
+        refusal(f,Code::unsupported_topology,"every_jupiter_role_pinned");}
+}
+void instructions(){
+    Fixture f;f.with_price=false;require(f.run().verified.has_value(),"price_instruction_optional");
+    f=Fixture{};f.extra=1;refusal(f,Code::unsupported_topology,"extra_instruction_refused");
+    f=Fixture{};f.with_price=false;f.extra=2;refusal(f,Code::unsupported_topology,"trailing_instructions_without_price_refused");
+    f=Fixture{};f.program_order[1]=5;refusal(f,Code::unsupported_topology,"non_compute_price_slot_refused");
+    f=Fixture{};f.program_order[2]=8;refusal(f,Code::unsupported_topology,"ata_slot_program_refused");
+    f=Fixture{};f.program_order[4]=9;refusal(f,Code::unsupported_topology,"close_slot_program_refused");
+    f=Fixture{};f.ata_accounts[0]=1;refusal(f,Code::unsupported_topology,"owner_funded_ata_refused");
+    f=Fixture{};f.close_accounts[2]=0;refusal(f,Code::unsupported_topology,"close_authority_refused");
+    f=Fixture{};f.pay_accounts={0,0};refusal(f,Code::unsupported_topology,"repayment_source_refused");
+    f=Fixture{};f.route_tail.clear();refusal(f,Code::unsupported_topology,"jupiter_without_route_accounts_refused");
+    f=Fixture{};f.program_order={6,6,9,8,7,5};refusal(f,Code::unsupported_topology,"reordered_instructions_refused");
+    f=Fixture{};f.ata_accounts[2]=0;refusal(f,Code::unsupported_topology,"ata_for_other_wallet_refused");
+    f=Fixture{};f.ata_accounts[3]=11;refusal(f,Code::unsupported_topology,"ata_for_other_mint_refused");
+    f=Fixture{};f.ata_accounts[1]=2;refusal(f,Code::unsupported_topology,"ata_for_source_refused");
+    f=Fixture{};f.close_accounts[1]=0;refusal(f,Code::unsupported_topology,"rent_recipient_refused");
+    f=Fixture{};f.close_accounts[0]=2;refusal(f,Code::unsupported_topology,"close_source_refused");
+    f=Fixture{};f.pay_accounts={0,1};refusal(f,Code::unsupported_topology,"repayment_direction_refused");
+    f=Fixture{};f.pay_accounts={1,4};refusal(f,Code::unsupported_topology,"repayment_recipient_refused");
+    f=Fixture{};f.units=1'400'001;f.policy.max_compute_units=1'400'000;refusal(f,Code::invalid_instruction,"compute_units_capped");
+    f=Fixture{};f.price=71'429;refusal(f,Code::invalid_instruction,"compute_price_capped");
+}
+void lookups(){
+    Fixture f;f.table=key(250);auto e=f.envelope();f.pending.payload=sha256_digest(std::as_bytes(std::span(e)));
+    auto prefix=f.prefix();prefix.table=key(251);
+    require(verify_swap_transaction(e,"verifier-fixture",std::string(31,'1')+'3',f.pending,f.policy,prefix,1001).code==Code::invalid_accounts,
+        "lookup_table_mismatch_refused");
+    f=Fixture{};f.prefix_count=9;refusal(f,Code::invalid_accounts,"short_lookup_prefix_refused");
+    f=Fixture{};f.table_entries[2]=f.policy.owner_usdc;refusal(f,Code::invalid_accounts,"lookup_alias_of_owner_account_refused");
+    f=Fixture{};e=f.envelope();f.pending.payload=sha256_digest(std::as_bytes(std::span(e)));prefix=f.prefix();
+    prefix.addresses[7]=test_support::dex_program(177);
+    require(verify_swap_transaction(e,"verifier-fixture",std::string(31,'1')+'3',f.pending,f.policy,prefix,1001).code==Code::unsupported_route,
+        "substituted_lookup_program_refused");
+}
+void economics(){
+    Fixture f;f.payment=2'039'281;refusal(f,Code::deduction_exceeded,"one_lamport_deduction_excess");
     f=Fixture{};f.input=1'010'000;refusal(f,Code::debit_mismatch,"larger_debit_refused");
     f=Fixture{};f.fee=21;refusal(f,Code::debit_mismatch,"different_fee_refused");
     f=Fixture{};f.pending.intent.quote_input=swap::QuoteAtoms{997'999};refusal(f,Code::debit_mismatch,"principal_mismatch_refused");
     f=Fixture{};f.input=999'999;f.pending.intent.max_quote_debit=swap::QuoteAtoms{999'999};
-    refusal(f,Code::debit_mismatch,"fractional_fee_below_divisibility_refused");
-    f=Fixture{};f.input=1'000'001;f.pending.intent.max_quote_debit=swap::QuoteAtoms{1'000'001};f.pending.intent.quote_input=swap::QuoteAtoms{998'001};
-    refusal(f,Code::debit_mismatch,"fractional_fee_above_divisibility_refused");
+    refusal(f,Code::debit_mismatch,"fractional_fee_refused");
     f=Fixture{};f.quoted=1;refusal(f,Code::minimum_shortfall,"receipt_underflow_refused");
 }
-void topology_refusals(){
-    Fixture f;f.extra=true;refusal(f,Code::unsupported_topology,"extra_instruction_refused");
-    f=Fixture{};f.wrong_close=true;refusal(f,Code::unsupported_topology,"rent_recipient_refused");
-    f=Fixture{};f.wrong_route_account=true;refusal(f,Code::unsupported_topology,"route_account_role_refused");
-    f=Fixture{};f.route_kind=177;refusal(f,Code::unsupported_route,"other_dex_refused");
-    f=Fixture{};f.route_direction=1;refusal(f,Code::unsupported_route,"reverse_direction_refused");
-    f=Fixture{};f.route_percent=99;refusal(f,Code::unsupported_route,"partial_route_refused");
-    f=Fixture{};f.policy.account_keys[17]=key(200);f.lookup[0].addresses[5]=key(200);
-    f.policy.lookup_image_digest=direct_buy_lookup_digest(f.lookup);refusal(f,Code::invalid_policy,"arbitrary_dex_policy_refused");
-}
-void freshness_and_identity(){
+void freshness(){
     Fixture f;f.timestamp=900;refusal(f,Code::invalid_envelope,"stale_envelope_refused");
     f=Fixture{};f.timestamp=1002;refusal(f,Code::invalid_envelope,"future_envelope_refused");
     f=Fixture{};f.signed_payload=true;refusal(f,Code::invalid_envelope,"already_signed_refused");
     f=Fixture{};f.pending.intent.sign_by=1001;refusal(f,Code::invalid_intent,"expired_intent_refused");
-    f=Fixture{};f.policy.expires_at_ms=1001;refusal(f,Code::invalid_policy,"expired_policy_refused");
-    f=Fixture{};f.lookup[0].observed_slot++;refusal(f,Code::invalid_accounts,"lookup_provenance_changed");
     f=Fixture{};f.pending.intent.binding.policy=PolicyId{88};refusal(f,Code::invalid_intent,"intent_binding_changed");
     f=Fixture{};const auto e=f.envelope();f.pending.payload.bytes[0]=std::byte{1};
-    require(verify_swap_transaction(e,"verifier-fixture",std::string(31,'1')+'3',f.pending,f.policy,f.lookup,1001).code==Code::payload_mismatch,
+    require(verify_swap_transaction(e,"verifier-fixture",std::string(31,'1')+'3',f.pending,f.policy,f.prefix(),1001).code==Code::payload_mismatch,
         "prepared_payload_mismatch");
 }
-void digests(){
-    Fixture f;const auto p=direct_buy_policy_digest(f.policy),i=verified_swap_intent_digest(f.pending.intent);
-    require(!p.is_zero() && !i.is_zero(),"nonzero_digests");
-    f.policy.accepted_costs.max_output_deduction=swap::BaseAtoms{550'841};
-    require(direct_buy_policy_digest(f.policy)!=p,"policy_cost_bound_digest");
-    f=Fixture{};f.policy.account_keys[2]=key(230);require(direct_buy_policy_digest(f.policy)!=p,"policy_owner_account_digest");
-    f=Fixture{};f.policy.lookup_image_digest.bytes[1]=std::byte{1};require(direct_buy_policy_digest(f.policy)!=p,"policy_lookup_digest");
-    f=Fixture{};f.pending.intent.min_base_receive=swap::BaseAtoms{1};require(verified_swap_intent_digest(f.pending.intent)!=i,"intent_minimum_digest");
-    f=Fixture{};f.pending.intent.kill_epoch++;require(verified_swap_intent_digest(f.pending.intent)!=i,"intent_epoch_digest");
+void policy(){
+    Fixture f;f.policy.owner_wsol=f.policy.owner_usdc;refusal(f,Code::invalid_policy,"duplicate_policy_key_refused");
+    f=Fixture{};f.policy.platform_fee={};refusal(f,Code::invalid_policy,"zero_policy_key_refused");
+    f=Fixture{};f.policy.max_envelope_age_ms=30'001;refusal(f,Code::invalid_policy,"envelope_age_cap");
+    f=Fixture{};f.policy.binding.catalog={};refusal(f,Code::invalid_policy,"invalid_binding_refused");
+    const auto base=swap_execution_policy_digest(Fixture{}.policy);require(!base.is_zero(),"policy_digest_nonzero");
+    const std::vector<void(*)(SwapExecutionPolicy&)> changes{
+        [](SwapExecutionPolicy& p){p.sponsor=key(91);},[](SwapExecutionPolicy& p){p.owner=key(91);},
+        [](SwapExecutionPolicy& p){p.owner_usdc=key(91);},[](SwapExecutionPolicy& p){p.owner_wsol=key(91);},
+        [](SwapExecutionPolicy& p){p.platform_fee=key(91);},[](SwapExecutionPolicy& p){p.max_envelope_age_ms=99;},
+        [](SwapExecutionPolicy& p){p.max_compute_price=1;},[](SwapExecutionPolicy& p){p.max_compute_units=1;},
+        [](SwapExecutionPolicy& p){p.max_slippage_bps=1;},[](SwapExecutionPolicy& p){p.accepted_costs.max_output_deduction=swap::BaseAtoms{1};},
+        [](SwapExecutionPolicy& p){p.binding.policy_version=PolicyVersion{2};}};
+    for(const auto change:changes){auto p=Fixture{}.policy;change(p);require(swap_execution_policy_digest(p)!=base,"every_policy_field_in_digest");}
+    auto intent=Fixture{}.pending.intent;const auto i=verified_swap_intent_digest(intent);
+    intent.min_base_receive=swap::BaseAtoms{1};require(verified_swap_intent_digest(intent)!=i,"intent_minimum_digest");
 }
-void byreal(){
-    using F=test_support::ByrealBuyFixture;
-    F f;auto r=f.run();require(r.verified && r.code==Code::verified_under_program_contract,"byreal_exact_capture_verified");
-    // 9,345,460*95/100 = 8,878,187; less full repayment = 6,838,907.
-    require(r.bounds.total_usdc_debit==1'000'000 && r.bounds.explicit_usdc_fee==2'000 &&
-        r.bounds.gross_sol_floor==8'878'187 && r.bounds.maximum_sol_deduction==2'039'280 && r.bounds.net_sol_floor==6'838'907,"byreal_economic_oracle");
-    f.pending.intent.min_base_receive=swap::BaseAtoms{6'838'908};require(!f.run().verified,"byreal_one_lamport_shortfall");
-    f=F{};f.payment++;require(!f.run().verified,"byreal_excess_repayment");
-    f=F{};f.input+=10000;require(!f.run().verified,"byreal_excess_debit");
-    f=F{};f.fee++;require(!f.run().verified,"byreal_wrong_fee");
-    f=F{};f.extra=true;require(!f.run().verified,"byreal_extra_instruction");
-    f=F{};f.wrong_close=true;require(!f.run().verified,"byreal_wrong_close_recipient");
-    f=F{};f.wrong_route_account=true;require(!f.run().verified,"byreal_wrong_route_account");
-    f=F{};f.readonly_unsigned=7;require(!f.run().verified,"byreal_permission_escalation");
-    f=F{};f.route_kind=109;require(!f.run().verified,"byreal_other_swap_variant");
-    f=F{};f.signed_payload=true;require(!f.run().verified,"byreal_already_signed");
-    f=F{};f.policy.additional_account_keys[1]=key(231);f.lookup[0].addresses[5]=key(231);
-    f.policy.lookup_image_digest=direct_buy_lookup_digest(f.lookup);require(!f.run().verified,"byreal_arbitrary_program");
-    f=F{};auto e=f.envelope();f.pending.payload=sha256_digest(std::as_bytes(std::span(e)));auto legacy=Fixture{}.policy;
-    require(!verify_swap_transaction(e,"verifier-fixture",std::string(31,'1')+'3',f.pending,legacy,f.lookup,1001).verified,"legacy_policy_cannot_admit_byreal");
-    Fixture old;old.policy.additional_account_keys[0]=key(200);require(!old.run().verified,"legacy_unused_keys_refused");
+std::vector<std::uint8_t> table_account(const std::vector<SolanaAccountKey>& entries){
+    std::vector<std::uint8_t> d{1,0,0,0};d.insert(d.end(),8,255);test_support::le(d,123,8);d.push_back(0);d.push_back(1);
+    d.insert(d.end(),test_support::kLookupAuthority.begin(),test_support::kLookupAuthority.end());d.insert(d.end(),2,0);
+    for(const auto& k:entries)d.insert(d.end(),k.begin(),k.end());
+    return d;
 }
-void obsidian(){
-    using F=test_support::ObsidianBuyFixture;
-    for(bool omit:{false,true}) {
-        F f;f.omit_price=omit;auto r=f.run();
-        require(r.verified.has_value(),"obsidian_both_layouts_verified");
-        // 9,298,883 * 95/100 = 8,833,938.85; ceil=8,833,939.
-        // Deduct the entire 2,039,280 repayment; sponsor credit is zero.
-        require(r.bounds.total_usdc_debit==1'000'000 && r.bounds.explicit_usdc_fee==2'000 &&
-            r.bounds.gross_sol_floor==8'833'939 && r.bounds.net_sol_floor==6'794'659,
-            "obsidian_independent_economic_oracle");
-        f.pending.intent.min_base_receive=swap::BaseAtoms{6'794'660};require(!f.run().verified,"obsidian_one_lamport_shortfall");
-    }
-    for(bool omit:{false,true}) {
-        F f;f.omit_price=omit;f.wrong_close=true;require(!f.run().verified,"obsidian_both_wrong_close");
-        f=F{};f.omit_price=omit;f.wrong_route_account=true;require(!f.run().verified,"obsidian_both_wrong_route");
-        f=F{};f.omit_price=omit;f.extra=true;require(!f.run().verified,"obsidian_both_extra_instruction");
-        f=F{};f.omit_price=omit;f.payment++;require(!f.run().verified,"obsidian_both_excess_repayment");
-    }
-    F f;f.policy.account_keys[14]=key(230);f.lookup[0].addresses[3]=key(230);
-    f.policy.lookup_image_digest=direct_buy_lookup_digest(f.lookup);require(!f.run().verified,"obsidian_arbitrary_sysvar");
-    f=F{};f.payment++;require(!f.run().verified,"obsidian_excess_repayment");
-    f=F{};f.extra=true;require(!f.run().verified,"obsidian_extra_instruction");
-    f=F{};f.wrong_close=true;require(!f.run().verified,"obsidian_wrong_close_recipient");
-    f=F{};f.wrong_route_account=true;require(!f.run().verified,"obsidian_wrong_route_account");
-    f=F{};f.readonly_unsigned=5;require(!f.run().verified,"obsidian_permission_escalation");
-    f=F{};f.route_kind=156;require(!f.run().verified,"obsidian_wrong_dex");
-    f=F{};f.policy.account_keys[16]=key(231);f.lookup[0].addresses[5]=key(231);
-    f.policy.lookup_image_digest=direct_buy_lookup_digest(f.lookup);require(!f.run().verified,"obsidian_arbitrary_program");
-    f=F{};f.policy.account_keys[17]=key(231);require(!f.run().verified,"obsidian_unused_keys_refused");
-    f=F{};f.policy.additional_account_keys[0]=key(231);require(!f.run().verified,"obsidian_additional_keys_refused");
-    f=F{};f.fee++;require(!f.run().verified,"obsidian_wrong_fee");
-    f=F{};f.input+=10000;require(!f.run().verified,"obsidian_excess_debit");
-    f=F{};f.policy.max_compute_price=0;require(!f.run().verified,"obsidian_price_cap");
-    f.omit_price=true;require(f.run().verified.has_value(),"obsidian_no_price_is_zero");
-    f=F{};f.signed_payload=true;require(!f.run().verified,"obsidian_already_signed");
-}
-void bison(){
-    using F=test_support::BisonBuyFixture;
-    F f;auto r=f.run();require(r.verified.has_value(),"bison_exact_layout_verified");
-    require(r.bounds.total_usdc_debit==1'000'000 && r.bounds.explicit_usdc_fee==2'000 &&
-        r.bounds.gross_sol_floor==8'817'231 && r.bounds.maximum_sol_deduction==2'039'280 &&
-        r.bounds.net_sol_floor==6'777'951,"bison_independent_economic_oracle");
-    f.pending.intent.min_base_receive=swap::BaseAtoms{6'777'952};refusal(f,Code::minimum_shortfall,"bison_one_lamport_shortfall");
-    f=F{};f.payment++;refusal(f,Code::deduction_exceeded,"bison_excess_repayment");
-    f=F{};f.route_direction=1;refusal(f,Code::unsupported_route,"bison_reverse_direction");
-    f=F{};f.route_percent=99;refusal(f,Code::unsupported_route,"bison_partial_route");
-    f=F{};f.route_kind=181;refusal(f,Code::unsupported_route,"bison_wrong_variant");
-    f=F{};f.wrong_close=true;refusal(f,Code::unsupported_topology,"bison_wrong_close");
-    f=F{};f.wrong_route_account=true;refusal(f,Code::unsupported_topology,"bison_wrong_route_account");
-    f=F{};f.bison_layout=false;refusal(f,Code::unsupported_topology,"bison_legacy_topology");
-    f=F{};f.extra=true;refusal(f,Code::unsupported_topology,"bison_extra_instruction");
-    f=F{};f.readonly_unsigned=6;refusal(f,Code::account_mismatch,"bison_permission_escalation");
-    f=F{};f.signed_payload=true;refusal(f,Code::invalid_envelope,"bison_already_signed");
-    f=F{};f.input+=10000;refusal(f,Code::debit_mismatch,"bison_excess_debit");
-    f=F{};f.fee++;refusal(f,Code::debit_mismatch,"bison_wrong_fee");
-    for(unsigned index:{9,16,17,19}) {
-        f=F{};f.policy.account_keys[index]=key(230);
-        if(index>=12)f.lookup[0].addresses[index-12]=key(230);
-        f.policy.lookup_image_digest=direct_buy_lookup_digest(f.lookup);
-        refusal(f,Code::invalid_policy,"bison_canonical_readonly_and_program");
-    }
-    f=F{};f.policy.additional_account_keys[0]=key(230);refusal(f,Code::invalid_policy,"bison_unused_keys");
-    f=F{};f.policy.route=DirectBuyRoute::kipseli_v3;refusal(f,Code::invalid_policy,"bison_not_legacy_policy");
-}
-
-void invariant(){
-    using F=test_support::InvariantBuyFixture;
-    const auto rejected=[](F f,Code code,const char* name){const auto r=f.run();require(r.code==code && !r.verified,name);};
-    F f;auto r=f.run();require(r.code==Code::verified_under_program_contract && r.verified.has_value(),
-        "invariant_exact_five_instruction_layout_verified");
-    // Hand arithmetic: 9,420,476 * 95 / 100 = 8,949,452.2; ceiling=8,949,453.
-    // Deduct all 2,039,280 repayment lamports, without presumed sponsor credit.
-    require(r.bounds.total_usdc_debit==1'000'000 && r.bounds.explicit_usdc_fee==2'000 &&
-        r.bounds.gross_sol_floor==8'949'453 && r.bounds.maximum_sol_deduction==2'039'280 &&
-        r.bounds.net_sol_floor==6'910'173,"invariant_hand_computed_inclusive_fee_and_net_floor");
-    require(r.verified->policy_digest()==direct_buy_policy_digest(f.policy) &&
-        r.verified->payload_digest()==f.pending.payload &&
-        r.verified->intent_digest()==verified_swap_intent_digest(f.pending.intent),"invariant_proof_binds_exact_inputs");
-    f.pending.intent.min_base_receive=swap::BaseAtoms{6'910'174};
-    rejected(f,Code::minimum_shortfall,"invariant_floor_plus_one_refused");
-    f=F{};f.payment++;rejected(f,Code::deduction_exceeded,"invariant_repayment_cap_plus_one");
-    f=F{};f.quoted=1;rejected(f,Code::minimum_shortfall,"invariant_floor_cannot_underflow");
-    f=F{};f.route_direction=0;rejected(f,Code::unsupported_route,"invariant_reverse_direction_refused");
-    f=F{};f.route_direction=2;rejected(f,Code::unsupported_route,"invariant_invalid_direction_refused");
-    f=F{};f.route_kind=181;rejected(f,Code::unsupported_route,"invariant_other_variant_refused");
-    f=F{};f.route_percent=99;rejected(f,Code::unsupported_route,"invariant_partial_route_refused");
-    f=F{};f.input+=10'000;rejected(f,Code::debit_mismatch,"invariant_excess_input_refused");
-    f=F{};f.fee++;rejected(f,Code::debit_mismatch,"invariant_fee_changed_refused");
-    f=F{};f.pending.intent.quote_input=swap::QuoteAtoms{997'999};
-    rejected(f,Code::debit_mismatch,"invariant_principal_not_debit_minus_fee");
-    f=F{};f.slippage=501;rejected(f,Code::unsupported_route,"invariant_slippage_cap_refused");
-    f=F{};f.include_price=true;rejected(f,Code::unsupported_topology,"invariant_even_zero_compute_price_not_reviewed");
-    f=F{};f.extra=true;rejected(f,Code::unsupported_topology,"invariant_extra_instruction_refused");
-    f=F{};f.swap_last_instructions=true;rejected(f,Code::unsupported_topology,"invariant_order_changed_refused");
-    for(std::size_t i=0;i<f.programs.size();++i){f=F{};f.programs[i]=10;
-        rejected(f,Code::unsupported_topology,"invariant_every_instruction_program_pinned");}
-    for(std::size_t i=0;i<f.route_accounts.size();++i){f=F{};f.route_accounts[i]=(f.route_accounts[i]+1)%19;
-        rejected(f,Code::unsupported_topology,"invariant_every_route_role_pinned");}
-    for(std::size_t i=0;i<f.ata_accounts.size();++i){f=F{};f.ata_accounts[i]=(f.ata_accounts[i]+1)%19;
-        rejected(f,Code::unsupported_topology,"invariant_every_ata_role_pinned");}
-    for(std::size_t i=0;i<f.close_accounts.size();++i){f=F{};f.close_accounts[i]=(f.close_accounts[i]+1)%19;
-        rejected(f,Code::unsupported_topology,"invariant_every_close_role_pinned");}
-    for(std::size_t i=0;i<f.pay_accounts.size();++i){f=F{};f.pay_accounts[i]=(f.pay_accounts[i]+1)%19;
-        rejected(f,Code::unsupported_topology,"invariant_every_repayment_role_pinned");}
-    f=F{};f.readonly_unsigned=5;rejected(f,Code::account_mismatch,"invariant_static_permission_escalation");
-    f=F{};f.readonly_unsigned=7;rejected(f,Code::account_mismatch,"invariant_static_permission_removed");
-    f=F{};f.readonly_signed=1;rejected(f,Code::account_mismatch,"invariant_owner_must_be_writable");
-    f=F{};f.required_signatures=3;rejected(f,Code::account_mismatch,"invariant_extra_signer_refused");
-    f=F{};f.writable_lookup.push_back(4);f.readonly_lookup.erase(f.readonly_lookup.begin());
-    rejected(f,Code::account_mismatch,"invariant_lookup_permission_escalation");
-    f=F{};f.readonly_lookup.insert(f.readonly_lookup.begin(),3);f.writable_lookup.pop_back();
-    rejected(f,Code::account_mismatch,"invariant_lookup_permission_removed");
-    f=F{};f.replace_wire_key=2;rejected(f,Code::account_mismatch,"invariant_source_key_changed_in_wire");
-    f=F{};f.signed_payload=true;rejected(f,Code::invalid_envelope,"invariant_already_signed_refused");
-    for(unsigned i:{5,6,7,8,9,10,15,17}){f=F{};f.policy.account_keys[i]=key(230);
-        if(i>=11)f.lookup[0].addresses[i-11]=key(230);
-        f.policy.lookup_image_digest=direct_buy_lookup_digest(f.lookup);
-        rejected(f,Code::invalid_policy,"invariant_canonical_programs_and_mint_pinned");}
-    f=F{};f.policy.account_keys[19]=key(230);rejected(f,Code::invalid_policy,"invariant_twentieth_key_must_be_zero");
-    for(unsigned i=0;i<7;++i){f=F{};f.policy.additional_account_keys[i]=key(230);
-        rejected(f,Code::invalid_policy,"invariant_all_additional_keys_must_be_zero");}
-    f=F{};f.policy.account_keys[14]=f.policy.account_keys[11];
-    rejected(f,Code::invalid_policy,"invariant_duplicate_account_refused");
-    f=F{};const auto digest=direct_buy_policy_digest(f.policy);
-    require(!digest.is_zero(),"invariant_policy_digest_nonzero");
-    f.policy.route=DirectBuyRoute::bison_market_backed;
-    require(direct_buy_policy_digest(f.policy)!=digest && !f.run().verified,"invariant_not_bison_policy");
+void lookup_reading(){
+    Fixture f;const auto e=f.envelope();
+    const auto need=jupiter_lookup_requirement(e,"verifier-fixture",std::string(31,'1')+'3');
+    require(need && need->table==f.table && need->count==10,"requirement_is_highest_index_plus_one");
+    require(!jupiter_lookup_requirement(e,"other",std::string(31,'1')+'3'),"requirement_checks_envelope_identity");
+    auto entries=f.table_entries;entries.push_back(key(999));
+    auto data=table_account(entries);const auto prefix=jupiter_lookup_prefix_from_account(*need,data);
+    require(prefix && prefix->table==f.table && prefix->count==10 &&
+        std::equal(prefix->addresses.begin(),prefix->addresses.begin()+10,entries.begin()),"prefix_is_required_entries_only");
+    const auto refused=[&](auto mutate,const char* name){auto d=table_account(entries);mutate(d);
+        require(!jupiter_lookup_prefix_from_account(*need,d),name);};
+    refused([](auto& d){d[0]=2;},"wrong_account_type_refused");
+    refused([](auto& d){d[4]=0;},"deactivated_table_refused");
+    refused([](auto& d){d[21]=0;},"table_without_authority_refused");
+    refused([](auto& d){d[22]^=1;},"other_authority_refused");
+    refused([](auto& d){d[54]=1;},"nonzero_padding_refused");
+    refused([](auto& d){d.pop_back();},"partial_entry_refused");
+    refused([](auto& d){d.resize(56+9*32);},"too_few_entries_refused");
+    JupiterLookupRequirement none{f.table,0};require(!jupiter_lookup_prefix_from_account(none,data),"empty_requirement_refused");
+    const auto a=jupiter_lookup_prefix_digest(*prefix);auto other=*prefix;other.addresses[3]=key(998);
+    require(a!=jupiter_lookup_prefix_digest(other),"lookup_digest_covers_entries");
+    other=*prefix;other.table=key(997);require(a!=jupiter_lookup_prefix_digest(other),"lookup_digest_covers_table");
+    const auto evidence=jupiter_lookup_evidence(*prefix);
+    require(evidence.table==prefix->table && evidence.address_count==10 && !evidence.evidence_digest.is_zero() && evidence.observed_slot,
+        "evidence_for_resolver");
 }
 static_assert(!std::is_default_constructible_v<VerifiedSwapTransaction>);
 static_assert(!std::is_aggregate_v<VerifiedSwapTransaction>);
 }
 int main(int argc,char** argv){
     unsigned count{},failed{};
-    const std::pair<const char*,void(*)()> tests[]={{"oracle",oracle},{"economics",economic_refusals},
-        {"topology",topology_refusals},{"identity",freshness_and_identity},{"digests",digests},{"byreal",byreal},{"obsidian",obsidian},{"bison",bison},{"invariant",invariant}};
+    const std::pair<const char*,void(*)()> tests[]={{"oracle",oracle},{"variants",variants},{"pools",pools},{"roles",roles},
+        {"instructions",instructions},{"lookups",lookups},{"economics",economics},{"freshness",freshness},{"policy",policy},
+        {"lookup_reading",lookup_reading}};
     for(auto [name,fn]:tests){if(argc==2 && std::string_view(argv[1])!=name)continue;++count;
         try{fn();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){++failed;std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';}}
     return count==0?2:failed?1:0;

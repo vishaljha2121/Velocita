@@ -6,9 +6,8 @@
 
 namespace velocita::v2 {
 namespace {
-constexpr std::array<std::string_view,12> names{
-    "schema","account_keys","lookup_table","lookup_slot","lookup_evidence","lookup_address_count",
-    "lookup_addresses","max_envelope_age_ms","max_compute_price","max_compute_units","max_slippage_bps","expires_at_ms"};
+constexpr std::array<std::string_view,9> names{
+    "schema","sponsor","owner_usdc","owner_wsol","platform_fee","max_envelope_age_ms","max_compute_price","max_compute_units","max_slippage_bps"};
 bool number(std::string_view s,std::uint64_t& out)noexcept{
     if(s.empty() || s.front()<'0' || s.front()>'9' || (s.size()>1 && s.front()=='0'))return false;
     const auto r=std::from_chars(s.data(),s.data()+s.size(),out);
@@ -20,6 +19,7 @@ bool hex(std::string_view s,std::span<std::byte> out)noexcept{
     for(std::size_t i=0;i<out.size();++i){const auto hi=digit(s[2*i]),lo=digit(s[2*i+1]);if(hi<0 || lo<0)return false;out[i]=static_cast<std::byte>(hi*16+lo);}
     return true;
 }
+void put64(std::span<std::byte,8> out,std::uint64_t value)noexcept{for(unsigned n=0;n<8;++n)out[n]=static_cast<std::byte>(value>>(8*n));}
 }
 bool swap_mvp_buy_scope(const swap::State& state,const SwapSignerVerificationContext& context)noexcept{
     const auto& limits=state.opening.limits;
@@ -33,9 +33,22 @@ bool swap_mvp_buy_scope(const swap::State& state,const SwapSignerVerificationCon
     return intent.effect.value()==1 && intent.side==Side::buy &&
         intent.max_quote_debit.value()==1'000'000 && intent.quote_input.value()==998'000 && intent.fee_cap.value()==2'000;
 }
+Digest256 swap_signer_verification_digest(const SwapSignerVerificationContext& v)noexcept{
+    if(v.organization.empty() || v.organization.length>v.organization.bytes.size() ||
+        v.signer.empty() || v.signer.length>v.signer.bytes.size())return {};
+    const auto policy=truemarkets::swap_execution_policy_digest(v.policy);
+    if(policy.is_zero())return {};
+    Sha256 h;constexpr std::string_view label="velocita-signer-verification-v2";
+    h.update(std::as_bytes(std::span(label)));h.update(policy.bytes);
+    std::array<std::byte,8> length{};
+    for(const auto& text:{v.organization,v.signer}){
+        put64(length,text.length);h.update(length);h.update(std::as_bytes(std::span(text.view())));
+    }
+    return h.finish();
+}
 std::optional<SwapSignerVerificationContext> decode_swap_transaction_review(std::string_view document,
     const Digest256& expected,const SwapRuntimeBinding& runtime,std::string_view organization,std::string_view signer)noexcept{
-    if(document.empty() || document.size()>32*1024 || expected.is_zero() || sha256_digest(std::as_bytes(std::span(document)))!=expected)return {};
+    if(document.empty() || document.size()>8*1024 || expected.is_zero() || sha256_digest(std::as_bytes(std::span(document)))!=expected)return {};
     std::array<std::string_view,names.size()> fields{};
     while(!document.empty()){
         const auto end=document.find('\n');const auto line=document.substr(0,end);
@@ -46,33 +59,21 @@ std::optional<SwapSignerVerificationContext> decode_swap_transaction_review(std:
         if(it==names.end())return {};const auto index=static_cast<std::size_t>(it-names.begin());
         if(!fields[index].empty())return {};fields[index]=line.substr(equal+1);
     }
-    if(std::any_of(fields.begin(),fields.end(),[](auto s){return s.empty();}) || (fields[0]!="1" && fields[0]!="2" && fields[0]!="3" && fields[0]!="4" && fields[0]!="5"))return {};
+    if(std::any_of(fields.begin(),fields.end(),[](auto s){return s.empty();}) || fields[0]!="6")return {};
     const auto org=truemarkets::tm_text(organization),who=truemarkets::tm_text(signer);
     if(!org || !who)return {};
     SwapSignerVerificationContext result;result.organization=*org;result.signer=*who;
-    auto& p=result.policy;auto& lookup=result.lookup;
+    auto& p=result.policy;
     p.binding=runtime.allocation;p.accepted_costs.max_output_deduction=swap::BaseAtoms{runtime.max_buy_output_deduction_lamports};
-    p.route=fields[0]=="5"?truemarkets::DirectBuyRoute::invariant:fields[0]=="4"?truemarkets::DirectBuyRoute::bison_market_backed:fields[0]=="3"?truemarkets::DirectBuyRoute::obsidian:fields[0]=="2"?truemarkets::DirectBuyRoute::byreal_dynamic_v3:truemarkets::DirectBuyRoute::kipseli_v3;
-    const auto primary_count=std::min(p.account_count(),p.account_keys.size());
-    if(fields[1].size()!=p.account_count()*64 ||
-        !hex(fields[1].substr(0,primary_count*64),std::as_writable_bytes(std::span(p.account_keys).first(primary_count))) ||
-        (fields[0]=="2" && !hex(fields[1].substr(20*64),std::as_writable_bytes(std::span(p.additional_account_keys)))) ||
-        !hex(fields[2],std::as_writable_bytes(std::span(lookup.table))) ||
-        !hex(fields[4],lookup.evidence_digest.bytes))return {};
-    if(!std::equal(p.account_keys[1].begin(),p.account_keys[1].end(),runtime.owner_wallet.begin(),
-        [](auto a,auto b){return a==std::to_integer<std::uint8_t>(b);}))return {};
-    std::uint64_t count{},units{},slippage{};
-    if(!number(fields[3],lookup.observed_slot) || !lookup.observed_slot ||
-        !number(fields[5],count) || !count || count>lookup.addresses.size() ||
-        !number(fields[7],p.max_envelope_age_ms) || !p.max_envelope_age_ms || p.max_envelope_age_ms>30'000 ||
-        !number(fields[8],p.max_compute_price) || !number(fields[9],units) || !units || units>1'400'000 ||
-        !number(fields[10],slippage) || slippage>10'000 || !number(fields[11],p.expires_at_ms) || !p.expires_at_ms ||
+    std::transform(runtime.owner_wallet.begin(),runtime.owner_wallet.end(),p.owner.begin(),[](auto b){return std::to_integer<std::uint8_t>(b);});
+    if(!hex(fields[1],std::as_writable_bytes(std::span(p.sponsor))) || !hex(fields[2],std::as_writable_bytes(std::span(p.owner_usdc))) ||
+        !hex(fields[3],std::as_writable_bytes(std::span(p.owner_wsol))) || !hex(fields[4],std::as_writable_bytes(std::span(p.platform_fee))))return {};
+    std::uint64_t units{},slippage{};
+    if(!number(fields[5],p.max_envelope_age_ms) || !number(fields[6],p.max_compute_price) || !number(fields[7],units) ||
+        !number(fields[8],slippage) || !units || units>1'400'000 || slippage>10'000 ||
         p.max_compute_price>std::numeric_limits<std::uint64_t>::max()/units)return {};
-    lookup.address_count=static_cast<std::uint16_t>(count);
     p.max_compute_units=static_cast<std::uint32_t>(units);p.max_slippage_bps=static_cast<std::uint16_t>(slippage);
-    if(!hex(fields[6],std::as_writable_bytes(std::span(lookup.addresses).first(lookup.address_count))))return {};
-    p.lookup_image_digest=truemarkets::direct_buy_lookup_digest(std::span(&lookup,1));
-    if(p.lookup_image_digest.is_zero() || truemarkets::direct_buy_policy_digest(p).is_zero())return {};
+    if(truemarkets::swap_execution_policy_digest(p).is_zero())return {};
     return result;
 }
 }

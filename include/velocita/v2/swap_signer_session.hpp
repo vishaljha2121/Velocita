@@ -42,8 +42,7 @@ struct SwapSignerConfig {
 };
 struct SwapSignerVerificationContext {
     truemarkets::TmText organization{}, signer{};
-    truemarkets::DirectBuyVerificationPolicy policy{};
-    truemarkets::SolanaLookupEvidence lookup{};
+    truemarkets::SwapExecutionPolicy policy{};
 };
 [[nodiscard]] Digest256 swap_signer_verification_digest(const SwapSignerVerificationContext&) noexcept;
 [[nodiscard]] SwapSubmissionBinding swap_signer_journal_binding(const SwapSignerConfig&,
@@ -57,7 +56,8 @@ public:
     SwapSignerSession(const SwapSignerSession&)=delete;
     SwapSignerSession& operator=(const SwapSignerSession&)=delete;
     [[nodiscard]] bool start(EffectId,std::uint64_t sequence,std::string_view handle,
-        std::span<const std::byte> payload,std::int64_t minimum_index,std::uint64_t expected_sign_by_ms);
+        std::span<const std::byte> payload,std::int64_t minimum_index,std::uint64_t expected_sign_by_ms,
+        const truemarkets::JupiterLookupPrefix& lookup={});
     [[nodiscard]] bool retrieve(EffectId,std::uint64_t sequence,std::string_view handle,
         std::span<const std::byte> payload,std::int64_t minimum_index,std::uint64_t expected_sign_by_ms);
     void cancel_pending() noexcept;
@@ -85,6 +85,7 @@ private:
     std::int64_t state_read_index_{};
     std::uint64_t sequence_{};
     std::array<std::byte,8192> payload_{};
+    truemarkets::JupiterLookupPrefix lookup_{};
     std::size_t size_{};
     std::int64_t minimum_index_{};
     std::uint64_t expected_sign_by_{};

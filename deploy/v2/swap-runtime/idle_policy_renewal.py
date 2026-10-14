@@ -34,6 +34,18 @@ def runtime_identity(profile):
     return hashlib.sha256(raw).hexdigest()
 
 
+STABLE_ROLES={'sponsor':0,'owner_usdc':3,'owner_wsol':4,'platform_fee':5}
+STABLE_LIMITS=('max_envelope_age_ms','max_compute_price','max_compute_units','max_slippage_bps')
+
+def stable_transition(prior,current):
+    """Byreal schema 2 to stable schema 6: owner-facing keys and limits carried over exactly."""
+    if prior.get('schema')!='2' or set(current)!=R.STABLE_FIELDS or current['schema']!='6':raise ValueError('only byreal to stable execution review')
+    keys=prior['account_keys']
+    if len(keys)!=27*64 or any(c not in '0123456789abcdef' for c in keys):raise ValueError('route account key shapes')
+    for name,index in STABLE_ROLES.items():
+        if current[name]!=keys[index*64:(index+1)*64]:raise ValueError('stable review changed owner-facing account')
+    if any(prior[k]!=current[k] for k in STABLE_LIMITS):raise ValueError('route transition cannot change execution limits')
+
 def route_transition(before,after,witness):
     """Validate owner-pinned review scope, not a self-asserted transaction proof.
 
@@ -51,12 +63,14 @@ def route_transition(before,after,witness):
         'byreal-v1-to-invariant-v1':('2','5',27,19,
             ((0,0),(1,1),(3,2),(4,3),(5,4),(8,5),(9,6),(10,7),(11,8),(13,9),(14,10),(22,15))),
     }
-    if type(witness) is not dict or set(witness)!=expected or type(witness['schema']) is not int or witness['schema']!=1 or not isinstance(witness['kind'],str) or witness['kind'] not in transitions:raise ValueError('exact route review witness required')
+    kinds=set(transitions)|{'byreal-v1-to-stable-execution-v1'}
+    if type(witness) is not dict or set(witness)!=expected or type(witness['schema']) is not int or witness['schema']!=1 or not isinstance(witness['kind'],str) or witness['kind'] not in kinds:raise ValueError('exact route review witness required')
     for name in ('before_review_sha256','after_review_sha256','contract_evidence_sha256'):
         value=witness[name]
         if not isinstance(value,str) or len(value)!=64 or any(c not in '0123456789abcdef' for c in value) or not int(value,16):raise ValueError('route review digest shape')
     if witness['before_review_sha256']!=R.digest(before) or witness['after_review_sha256']!=R.digest(after):raise ValueError('route review document pin mismatch')
     prior,current=map(R.transaction_fields,(before,after))
+    if witness['kind']=='byreal-v1-to-stable-execution-v1':return stable_transition(prior,current)
     old_schema,new_schema,old_count,new_count,roles=transitions[witness['kind']]
     if set(prior)!=set(current) or prior['schema']!=old_schema or current['schema']!=new_schema:raise ValueError('only exact reviewed route transition')
     mutable={'schema','account_keys','lookup_table','lookup_slot','lookup_evidence','lookup_address_count','lookup_addresses','expires_at_ms'}
@@ -107,8 +121,9 @@ def propose(old,new,before,after,journals,now,session_refresh=None,route_review=
     prior_tx,next_tx=map(R.transaction_fields,(before['transaction.review'],after['transaction.review']))
     if route_review is not None:route_transition(before['transaction.review'],after['transaction.review'],route_review)
     elif set(prior_tx)!=set(next_tx) or any(prior_tx[k]!=next_tx[k] for k in prior_tx if k!='expires_at_ms'):raise ValueError('expiry-only transaction review')
-    expiry=R.L.unsigned(next_tx['expires_at_ms'])
-    if not max(now,R.L.unsigned(prior_tx['expires_at_ms']))<expiry<=now+900000:raise ValueError('fresh bounded transaction expiry required')
+    if next_tx.get('schema')!='6':
+        expiry=R.L.unsigned(next_tx['expires_at_ms'])
+        if not max(now,R.L.unsigned(prior_tx['expires_at_ms']))<expiry<=now+900000:raise ValueError('fresh bounded transaction expiry required')
     prior_p,next_p=map(R.L.fields,(before['runtime.profile'],after['runtime.profile']))
     mutable={'transaction_review_digest','account_review_digest'}
     if session_refresh is not None:

@@ -1,15 +1,17 @@
 #pragma once
 #include "velocita/v2/contracts.hpp"
 #include "velocita/v2/swap_signing_stamp.hpp"
+#include "velocita/v2/swap_transaction_verifier.hpp"
 #include <span>
 #include <string_view>
 namespace velocita::v2::swap_signer {
-inline constexpr std::size_t kRequestBytes=8376,kReplyBytes=193;
+inline constexpr std::size_t kRequestBytes=88+96+8192+32+32*truemarkets::kMaxLookupPrefix,kReplyBytes=193;
 enum class Operation:std::uint8_t {sign=1,retrieve=2};
 enum class ReplyCode:std::uint8_t {refused=0,signed_once=1,retrieved=2,fenced=3};
 struct Request {
     Operation operation{};EffectId effect{};std::uint64_t sequence{},sign_by_ms{};std::int64_t minimum_index{};
     std::array<char,96> handle{};std::array<std::byte,8192> payload{};std::uint16_t handle_size{},payload_size{};
+    truemarkets::JupiterLookupPrefix lookup{};
     [[nodiscard]] std::string_view handle_view()const noexcept{return {handle.data(),handle_size};}
     [[nodiscard]] std::span<const std::byte> payload_view()const noexcept{return std::span(payload).first(payload_size);}
 };

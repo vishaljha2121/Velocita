@@ -5,10 +5,11 @@
 #include <limits>
 
 namespace velocita::v2 {
-SwapDurableSigningPort::SwapDurableSigningPort(const SwapPrepareStore& p,SwapSubmissionStore& r,swap_signer::Client& client,SwapSigningConnectionConfig c)
-    :preparation_(p),requests_(r),client_(client),config_(c){}
+SwapDurableSigningPort::SwapDurableSigningPort(const SwapPrepareStore& p,SwapSubmissionStore& r,swap_signer::Client& client,SwapSigningConnectionConfig c,
+    SwapLookupSource& lookups)
+    :preparation_(p),requests_(r),client_(client),config_(c),lookups_(lookups){}
 std::optional<SwapSignedExecution> SwapDurableSigningPort::sign_or_retrieve(std::uint64_t seq,std::int64_t index,std::uint64_t expiry){
-    SwapSigningConnection connection(preparation_,requests_,client_,config_);
+    SwapSigningConnection connection(preparation_,requests_,client_,config_,lookups_);
     const bool ok=connection.status()==SwapSigningConnectionStatus::idle?connection.sign(seq,index,expiry):connection.retrieve();
     if(!ok || !connection.execution())return {};
     return *connection.execution();

@@ -8,25 +8,23 @@ namespace {
 using namespace velocita::mvp_builder;
 std::string hx(std::span<const std::uint8_t> value){constexpr char digits[]="0123456789abcdef";std::string s;for(auto n:value){s+=digits[n>>4];s+=digits[n&15];}return s;}
 struct Fixture{
-    velocita::v2::test_support::DirectBuyFixture tx;
+    velocita::v2::test_support::RouteFixture tx;
     std::string profile,history,transaction,opening,intent;
     Fixture(){
-        Fields t{{"schema","1"},{"account_keys",""},{"lookup_table",hx(tx.lookup[0].table)},{"lookup_slot","777"},
-            {"lookup_evidence",to_hex(tx.lookup[0].evidence_digest)},{"lookup_address_count","8"},{"lookup_addresses",""},
-            {"max_envelope_age_ms","100"},{"max_compute_price","71428"},{"max_compute_units","1400000"},{"max_slippage_bps","500"},{"expires_at_ms","2000"}};
-        for(const auto& k:tx.policy.account_keys)t["account_keys"]+=hx(k);
-        for(unsigned n=0;n<8;++n)t["lookup_addresses"]+=hx(tx.lookup[0].addresses[n]);transaction=document(t);
+        transaction=document({{"schema","6"},{"sponsor",hx(tx.policy.sponsor)},{"owner_usdc",hx(tx.policy.owner_usdc)},
+            {"owner_wsol",hx(tx.policy.owner_wsol)},{"platform_fee",hx(tx.policy.platform_fee)},
+            {"max_envelope_age_ms","100"},{"max_compute_price","71428"},{"max_compute_units","1400000"},{"max_slippage_bps","500"}});
         const auto d=to_hex(hash("public-fixture"));const auto& b=tx.policy.binding;
         profile=document({{"schema","1"},{"incarnation",to_hex(b.incarnation)},{"catalog",to_hex(b.catalog)},{"custody",to_hex(b.custody)},
             {"authority_domain",d},{"account","2"},{"instrument","2"},{"policy","99"},{"policy_version","1"},{"risk_policy_version","1"},
-            {"account_assets",d},{"session_evidence",d},{"owner_wallet",hx(tx.policy.account_keys[1])},
+            {"account_assets",d},{"session_evidence",d},{"owner_wallet",hx(tx.policy.owner)},
             {"signer_public_key","036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296"},
             {"max_buy_output_deduction_lamports","2039280"},{"transaction_review_digest",to_hex(hash(transaction))},{"account_review_digest",d},
-            {"failure_fee_payer",hx(tx.policy.account_keys[0])},{"socket","/run/velocita/signer.sock"},{"gateway_uid","29001"},{"signer_uid","29002"},
+            {"failure_fee_payer",hx(tx.policy.sponsor)},{"socket","/run/velocita/signer.sock"},{"gateway_uid","29001"},{"signer_uid","29002"},
             {"gateway_caller","22"},{"signer_caller","23"},{"ipc_timeout_ms","1000"},{"bearer_digest",d},{"expires_at_ms","2000"},
             {"signer_instance",d},{"key_version","1"},{"state_timeout_ms","1000"},{"organization","verifier-fixture"},
             {"signer_id",std::string(31,'1')+'3'},{"user_id","12345678-1234-1234-1234-123456789abc"}});
-        const auto owner=sha256_digest(std::as_bytes(std::span(tx.policy.account_keys[1])));
+        const auto owner=sha256_digest(std::as_bytes(std::span(tx.policy.owner)));
         history="{\"schema\":1,\"scope\":\"sol-usdc-current-accounts\",\"owner_sha256\":\""+to_hex(owner)+"\",\"user_id_sha256\":\""+
             to_hex(hash("12345678-1234-1234-1234-123456789abc"))+"\",\"setup_sha256\":\""+d+"\",\"balances_sha256\":\""+d+
             "\",\"evidence_manifest_sha256\":\""+d+"\",\"capture_started_ms\":900,\"capture_finished_ms\":950,\"start_slot\":7,\"end_slot\":8,"+
@@ -36,7 +34,7 @@ struct Fixture{
             {"max_buy_price_per_sol","145000000"},{"min_sell_price_per_sol","100000000"},{"max_source_age_ms","100"},{"max_sign_lifetime_ms","100"},
             {"valuation_net_quote_atoms","4000000"},{"valuation_observed_ms","990"},{"valuation_evidence_sha256",d}});
         intent=document({{"schema","1"},{"now_ms","1050"},{"source_time_ms","1040"},{"sign_by_ms","1100"},{"kill_epoch","1"},{"executor_generation","1"},
-            {"minimum_base_atoms","6900812"},{"quote_gross_output_lamports","9410623"},{"quote_slippage_bps","500"},{"repayment_lamports","2039280"},
+            {"minimum_base_atoms","6900811"},{"quote_gross_output_lamports","9410623"},{"quote_slippage_bps","500"},{"repayment_lamports","2039280"},
             {"quote_observed_ms","1030"},{"quote_evidence_sha256",d}});
     }
     Fields build()const{return build_opening(profile,history,transaction,opening);}
@@ -56,8 +54,8 @@ void valid(){
     const auto output=build_intent(bundle,f.intent);require(swap::decode(std::as_bytes(std::span(output.at("intent.record"))),r)==swap::CodecError::none,"intent_decodes");
     const auto& i=std::get<swap::Intent>(r.command);
     require(r.role==swap::Role::strategy && r.event_time==1050 && i.effect.value()==1 && i.side==Side::buy && i.quote_input.value()==998'000 &&
-        i.max_quote_debit.value()==1'000'000 && i.fee_cap.value()==2'000 && i.min_base_receive.value()==6'900'812 && i.transient_base_hold.value()==0,"intent_exact_one_buy_oracle");
-    require(fields(output.at("record-summary.txt")).at("conservative_quote_floor")=="6900812","floor_oracle_8940092_minus_2039280");
+        i.max_quote_debit.value()==1'000'000 && i.fee_cap.value()==2'000 && i.min_base_receive.value()==6'900'811 && i.transient_base_hold.value()==0,"intent_exact_one_buy_oracle");
+    require(fields(output.at("record-summary.txt")).at("conservative_quote_floor")=="6900811","floor_oracle_8940091_rounded_down_minus_2039280");
 }
 void parser(){
     rejected([]{(void)fields("schema=1\nschema=1\n");},"duplicate parameter","duplicate_parameter_refused");
@@ -71,7 +69,7 @@ void scope(){
     rejected([&]{(void)build_opening(f.profile,f.history,f.transaction,change(f.opening,"base_atoms","40000001"));},"observed balances do not match all-inventory history","balance_discrepancy_refused");
     rejected([&]{(void)build_opening(f.profile,f.history,f.transaction,change(f.opening,"valuation_observed_ms","899"));},"mark or intent timing bound invalid","stale_mark_refused");
     rejected([&]{(void)build_opening(f.profile,f.history,f.transaction,change(f.opening,"review_expires_ms","2001"));},"review window exceeds current evidence","expiry_refused");
-    auto bundle=f.build();rejected([&]{(void)build_intent(bundle,change(f.intent,"minimum_base_atoms","6900813"));},"conservative quote floor refused","one_lamport_receipt_shortfall_refused");
+    auto bundle=f.build();rejected([&]{(void)build_intent(bundle,change(f.intent,"minimum_base_atoms","6900812"));},"conservative quote floor refused","one_lamport_receipt_shortfall_refused");
     rejected([&]{(void)build_intent(bundle,change(f.intent,"quote_observed_ms","950"));},"fresh quote or intent window refused","expired_quote_refused");
     rejected([&]{(void)build_intent(bundle,change(f.intent,"kill_epoch","2"));},"intent reducer or one-buy scope refused","wrong_epoch_refused");
     auto wrong=f.history;auto begin=wrong.find("\"owner_sha256\":\"")+16;wrong[begin]=wrong[begin]=='a'?'b':'a';
@@ -110,7 +108,7 @@ void amendment(const fs::path& root){
         summary.at("original_opening_record_sha256")==to_hex(hash(bundle.at("opening.record"))) &&
         summary.at("replacement_price")=="147537213","amendment_summary_not_commit_evidence");
     require(read(o,512)==bundle.at("opening.record") && !fs::exists(out/"opening.record"),"amendment_preserves_original_opening");
-    auto lower=change(change(f.intent,"minimum_base_atoms","6777951"),"quote_gross_output_lamports","9281295");
+    auto lower=change(change(f.intent,"minimum_base_atoms","6777951"),"quote_gross_output_lamports","9281296");
     rejected([&]{(void)build_intent(bundle,lower);},"intent reducer or one-buy scope refused","unamended_price_floor_still_refuses");
     bundle["amendment.record"]=bytes;
     const auto intent=build_intent(bundle,lower);const auto description=fields(intent.at("record-summary.txt"));

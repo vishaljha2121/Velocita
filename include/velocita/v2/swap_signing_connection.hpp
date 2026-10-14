@@ -13,11 +13,16 @@ struct SwapSignedExecution {
     truemarkets::SwapRestRequest request{};
 };
 enum class SwapSigningConnectionStatus:std::uint8_t {closed,idle,unresolved,signed_once};
+class SwapLookupSource {
+public:
+    virtual ~SwapLookupSource()=default;
+    [[nodiscard]] virtual std::optional<truemarkets::JupiterLookupPrefix> prefix(std::span<const std::byte> payload)=0;
+};
 // Gateway-side durable IPC request. This is not signing authority: the isolated
 // signer still independently checks the committed intent and current quorum.
 class SwapSigningConnection final {
 public:
-    SwapSigningConnection(const SwapPrepareStore&,SwapSubmissionStore&,swap_signer::Client&,SwapSigningConnectionConfig);
+    SwapSigningConnection(const SwapPrepareStore&,SwapSubmissionStore&,swap_signer::Client&,SwapSigningConnectionConfig,SwapLookupSource&);
     SwapSigningConnection(const SwapSigningConnection&)=delete;
     SwapSigningConnection& operator=(const SwapSigningConnection&)=delete;
     [[nodiscard]] bool sign(std::uint64_t sequence,std::int64_t prepared_index,std::uint64_t sign_by);
@@ -31,6 +36,7 @@ private:
     SwapSubmissionStore& journal_;
     swap_signer::Client& client_;
     SwapSigningConnectionConfig config_;
+    SwapLookupSource& lookups_;
     SwapSigningConnectionStatus status_{SwapSigningConnectionStatus::closed};
     Digest256 preparation_checksum_{},request_checksum_{};
     SwapSignedExecution execution_{};

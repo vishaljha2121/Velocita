@@ -285,6 +285,71 @@ class RenewalTests(unittest.TestCase):
             with self.subTest(field=field,value=value[:12]),self.assertRaises(ValueError,msg='invariant_preserves_caps_and_shared_roles'):
                 N.route_transition(before['transaction.review'],raw,dict(witness,after_review_sha256=T.R.digest(raw)))
 
+    STABLE_DOCUMENT=dict(schema='6',sponsor='01'*32,owner_usdc='04'*32,owner_wsol='05'*32,platform_fee='06'*32)
+
+    def stable_fixture(self):
+        args,_=self.obsidian_fixture();old,new,before,after,journals,now=args
+        encode=T.TransitionTests.encode
+        prior=T.R.transaction_fields(before['transaction.review'])
+        tx=dict(self.STABLE_DOCUMENT,**{k:prior[k] for k in N.STABLE_LIMITS})
+        after=dict(after,**{'transaction.review':encode(tx)})
+        profile=T.R.L.fields(after['runtime.profile']);profile['transaction_review_digest']=T.R.digest(after['transaction.review'])
+        review=T.R.L.fields(after['account.review']);review['runtime_identity']=N.runtime_identity(profile)
+        after['account.review']=encode(review);profile['account_review_digest']=T.R.digest(after['account.review'])
+        after['runtime.profile']=encode(profile)
+        witness=dict(schema=1,kind='byreal-v1-to-stable-execution-v1',before_review_sha256=T.R.digest(before['transaction.review']),
+                     after_review_sha256=T.R.digest(after['transaction.review']),contract_evidence_sha256='d2'*32)
+        return (old,T.TransitionTests.pins(old,after),before,after,journals,now),witness
+
+    def test_stable_schema6_verification_digest_matches_native_golden(self):
+        profile=dict(incarnation='01'+'00'*31,catalog='02'+'00'*31,custody='03'+'00'*31,account='2',instrument='2',policy='99',
+                     policy_version='1',risk_policy_version='1',owner_wallet='00'*31+'02',max_buy_output_deduction_lamports='2039280',
+                     organization='verifier-fixture',signer_id='1'*31+'3')
+        tx=dict(schema='6',sponsor='00'*31+'01',owner_usdc='00'*31+'03',owner_wsol='00'*31+'04',platform_fee='00'*31+'05',
+                max_envelope_age_ms='100',max_compute_price='71428',max_compute_units='1400000',max_slippage_bps='500')
+        self.assertEqual(T.R.verification_digest(profile,tx).hex(),'44708fffdcd7e0b69314f2de4320f80a918d3352e14236debe2e702c41c76282',
+                         'stable_verification_digest_native_golden')
+        for field,value in (('owner_usdc','00'*31+'02'),('platform_fee','00'*32),('max_compute_units','0'),('max_envelope_age_ms','30001'),
+                            ('max_slippage_bps','10001'),('lookup_table','00'*32)):
+            with self.subTest(field=field),self.assertRaises(ValueError,msg='stable_document_bounds'):
+                T.R.verification_digest(profile,dict(tx,**{field:value}))
+
+    def test_stable_schema6_relies_on_account_review_expiry(self):
+        self.assertFalse(T.R.transaction_expired(dict(self.STABLE_DOCUMENT),2**63),'stable_review_has_no_own_expiry')
+        self.assertTrue(T.R.transaction_expired({'schema':'2','expires_at_ms':'100'},100),'legacy_review_expiry_kept')
+        self.assertFalse(T.R.transaction_expired({'schema':'2','expires_at_ms':'101'},100),'legacy_review_unexpired')
+
+    def test_stable_transition_advances_only_protected_journal(self):
+        args,witness=self.stable_fixture()
+        try:out=N.propose(*args,route_review=witness)
+        except ValueError as error:self.fail('stable_transition_admitted: '+str(error))
+        self.assertFalse(out['report']['applyable']);self.assertFalse(out['report']['orders_submitted'])
+        for name,raw in args[4].items():
+            updated=out['artifacts']['after/journals/'+name]
+            if name!='protected-signing':self.assertEqual(updated,raw,'stable_gateway_journal_unchanged')
+            else:
+                self.assertEqual(int.from_bytes(updated[8:16],'little'),3,'stable_protected_ordinal_advances')
+                self.assertEqual(updated[72:104],T.R.journal_bindings(args[3])[4],'stable_protected_domain_bound')
+                self.assertEqual(updated[104:-32],raw[104:-32],'stable_payload_and_proof_unchanged')
+        with self.assertRaises(ValueError,msg='stable_explicit_witness_required'):N.propose(*args)
+
+    def test_stable_transition_requires_exact_roles_limits_and_fields(self):
+        args,witness=self.stable_fixture();before,after=args[2:4]
+        tx=T.R.transaction_fields(after['transaction.review'])
+        changes=[(name,'ff'*32) for name in ('sponsor','owner_usdc','owner_wsol','platform_fee')]+[('max_slippage_bps','501'),('max_compute_price','99999'),
+                 ('max_compute_units','1400001'),('max_envelope_age_ms','30001'),('schema','5'),('expires_at_ms','10800000')]
+        for field,value in changes:
+            raw=T.TransitionTests.encode(dict(tx,**{field:value}))
+            with self.subTest(field=field),self.assertRaises(ValueError,msg='stable_preserves_roles_limits_fields'):
+                N.route_transition(before['transaction.review'],raw,dict(witness,after_review_sha256=T.R.digest(raw)))
+        for kind in ('byreal-v1-to-invariant-v1','kipseli-v1-to-stable-execution-v1'):
+            with self.subTest(kind=kind),self.assertRaises(ValueError,msg='stable_only_from_byreal'):
+                N.route_transition(before['transaction.review'],after['transaction.review'],dict(witness,kind=kind))
+        invariant,invariant_witness=self.invariant_fixture()
+        with self.assertRaises(ValueError,msg='stable_requires_schema2_before'):
+            N.route_transition(invariant[3]['transaction.review'],after['transaction.review'],
+                               dict(witness,before_review_sha256=T.R.digest(invariant[3]['transaction.review'])))
+
     def test_reviewed_release_and_route_publish_as_one_generation(self):
         args,route,release=self.release_fixture()
         try:out=N.propose(*args,route_review=route,release_review=release)

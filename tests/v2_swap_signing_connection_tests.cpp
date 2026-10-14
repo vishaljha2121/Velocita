@@ -4,7 +4,14 @@
 namespace {
 using namespace swap_signer_test;
 using namespace velocita::v2::swap_signer;
+struct FixedLookup final : SwapLookupSource {
+    std::optional<truemarkets::JupiterLookupPrefix> value{};
+    unsigned reads{};
+    FixedLookup(){truemarkets::JupiterLookupPrefix p;p.table[0]=7;p.count=2;p.addresses[0][0]=1;p.addresses[1][0]=2;value=p;}
+    std::optional<truemarkets::JupiterLookupPrefix> prefix(std::span<const std::byte>) override {++reads;return value;}
+};
 struct Setup {
+    FixedLookup lookup;
     Rig signer;
     Fault journal_fault;
     SwapSigningConnectionConfig config;
@@ -29,7 +36,7 @@ struct Setup {
         require(journal->create({swap_signing_connection_binding(config),1,digest(95),EffectId{0}})==SwapSubmissionCode::none,"request bootstrap");
         const auto path=signer.scratch.base/"connection.sock";require(server.listen(path,::geteuid()),"protected fixture listens");
         client=std::make_unique<Client>(path,::geteuid(),signer.key.public_key,500);
-        connection=std::make_unique<SwapSigningConnection>(*preparation,*journal,*client,config);
+        connection=std::make_unique<SwapSigningConnection>(*preparation,*journal,*client,config,lookup);
     }
     pid_t serve(bool sign,bool need_reply=true){const auto child=::fork();require(child>=0,"fork signer");
         if(child==0){const bool ok=server.serve_once(*signer.session,1000);::_exit((ok || !need_reply) && signer.key.protected_key->signature_attempts()==(sign?1U:0U)?0:1);}return child;}
@@ -39,7 +46,7 @@ struct Setup {
         journal=std::make_unique<SwapSubmissionStore>(signer.scratch.base/"gateway-sign-request",swap_signing_connection_binding(config));
         require(journal->recover()==SwapSubmissionCode::none,"gateway request recovers");
         client=std::make_unique<Client>(signer.scratch.base/"connection.sock",::geteuid(),signer.key.public_key,500);
-        connection=std::make_unique<SwapSigningConnection>(*preparation,*journal,*client,config);
+        connection=std::make_unique<SwapSigningConnection>(*preparation,*journal,*client,config,lookup);
         signer.session.reset();signer.store.reset();
         signer.store=std::make_unique<SwapSubmissionStore>(signer.scratch.base/"signer-replay",signer.binding);
         require(signer.store->recover()==SwapSubmissionCode::none,"signer result recovers");
@@ -65,7 +72,7 @@ void rejected_reply_is_not_resigned(){
     Setup s;
     s.connection.reset();auto wrong=s.signer.key.public_key;wrong.back()^=std::byte{1};
     s.client=std::make_unique<Client>(s.signer.scratch.base/"connection.sock",::geteuid(),wrong,500);
-    s.connection=std::make_unique<SwapSigningConnection>(*s.preparation,*s.journal,*s.client,s.config);
+    s.connection=std::make_unique<SwapSigningConnection>(*s.preparation,*s.journal,*s.client,s.config,s.lookup);
     const auto first=s.serve(true);
     require(!s.connection->sign(1,10,20100) && s.journal->latest().phase==SwapSubmissionPhase::execute_intent,
         "rejected IPC reply retains durable signing request");s.joined(first);
@@ -95,7 +102,7 @@ void signer_result_storage_failure(){
     s.signer.store=std::make_unique<SwapSubmissionStore>(s.signer.scratch.base/"signer-replay",s.signer.binding);
     require(s.signer.store->recover()==SwapSubmissionCode::temporary_present,"torn signer result quarantines recovery");
     s.signer.session=std::make_unique<SwapSignerSession>(s.signer.link,*s.signer.store,*s.signer.key.protected_key,swap_signer_test::config(),s.signer.clock.interface());
-    s.connection=std::make_unique<SwapSigningConnection>(*s.preparation,*s.journal,*s.client,s.config);
+    s.connection=std::make_unique<SwapSigningConnection>(*s.preparation,*s.journal,*s.client,s.config,s.lookup);
     require(!s.connection->sign(1,10,20100),"failed signer persistence never reissues sign");
     const auto recovery=s.serve(false);require(!s.connection->retrieve() && !s.connection->execution(),
         "quarantined signer cannot recover an executable stamp");s.joined(recovery);
@@ -109,13 +116,13 @@ void expired_recovery(){
 void missing_request_recovery(){
     Setup s;SwapSubmissionStore missing(s.signer.scratch.base/"never-created-request",swap_signing_connection_binding(s.config));
     require(missing.recover()==SwapSubmissionCode::missing,"missing gateway journal is not a fresh baseline");
-    SwapSigningConnection connection(*s.preparation,missing,*s.client,s.config);
+    SwapSigningConnection connection(*s.preparation,missing,*s.client,s.config,s.lookup);
     require(connection.status()==SwapSigningConnectionStatus::closed && !connection.sign(1,10,20100) &&
         !connection.retrieve() && !connection.execution(),"missing request journal cannot authorize signing or retrieval");
 }
 void bindings_and_bounds(){
     Setup s;auto changed=s.config;changed.signer_public_key.back()^=std::byte{1};
-    SwapSigningConnection wrong(*s.preparation,*s.journal,*s.client,changed);
+    SwapSigningConnection wrong(*s.preparation,*s.journal,*s.client,changed,s.lookup);
     require(wrong.status()==SwapSigningConnectionStatus::closed,"different signer pin cannot reuse request journal");
     require(!s.connection->sign(0,10,20100) && !s.connection->sign(1,9,20100) && !s.connection->sign(1,10,0) &&
         s.journal->latest().phase==SwapSubmissionPhase::idle,"invalid signing metadata cannot journal or contact signer");
@@ -124,6 +131,18 @@ void durability_before_ipc(){
     Setup s;s.journal_fault.armed=true;const auto child=s.serve(false,false);
     require(!s.connection->sign(1,10,20100) && !s.connection->execution(),"gateway fsync failure prevents signing IPC");s.joined(child);
 }
+void lookup_prefix_bound_to_request(){
+    Setup s;s.lookup.value.reset();
+    require(!s.connection->sign(1,10,20100) && s.journal->latest().phase==SwapSubmissionPhase::idle && s.lookup.reads==1,
+        "unavailable lookup prefix refuses before durable request or signer contact");
+    Setup t;const auto first=t.serve(true);require(t.connection->sign(1,10,20100),"prefix request signs");t.joined(first);
+    const auto saved=t.journal->latest().identity;
+    t.reopen();t.lookup.value->addresses[1][0]=3;
+    require(!t.connection->retrieve() && !t.connection->execution(),"changed prefix cannot retrieve original request");
+    t.lookup.value->addresses[1][0]=2;const auto recovery=t.serve(false);
+    require(t.connection->retrieve() && t.connection->execution() && t.journal->latest().identity==saved,"same append-only prefix retrieves original request");
+    t.joined(recovery);
 }
-int main(int argc,char**argv){const std::pair<const char*,void(*)()> cases[]{{"restart",durable_sign_and_restart},{"reply",rejected_reply_is_not_resigned},{"crash_before_ipc",crash_before_ipc},{"signer_storage",signer_result_storage_failure},{"expired_recovery",expired_recovery},{"missing_recovery",missing_request_recovery},{"bounds",bindings_and_bounds},{"durability",durability_before_ipc}};
+}
+int main(int argc,char**argv){const std::pair<const char*,void(*)()> cases[]{{"restart",durable_sign_and_restart},{"reply",rejected_reply_is_not_resigned},{"crash_before_ipc",crash_before_ipc},{"signer_storage",signer_result_storage_failure},{"expired_recovery",expired_recovery},{"missing_recovery",missing_request_recovery},{"bounds",bindings_and_bounds},{"durability",durability_before_ipc},{"lookup",lookup_prefix_bound_to_request}};
     unsigned ran{},failed{};for(auto[name,fn]:cases){if(argc==2&&std::string_view(argv[1])!=name)continue;++ran;try{fn();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception&e){++failed;std::cout<<"FAIL "<<name<<": "<<e.what()<<'\n';}}return ran&&!failed?0:1;}

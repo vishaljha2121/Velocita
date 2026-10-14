@@ -16,10 +16,11 @@ public:
 };
 class SwapDurableSigningPort final:public SwapGatewaySigningPort {
 public:
-    SwapDurableSigningPort(const SwapPrepareStore&,SwapSubmissionStore&,swap_signer::Client&,SwapSigningConnectionConfig);
+    SwapDurableSigningPort(const SwapPrepareStore&,SwapSubmissionStore&,swap_signer::Client&,SwapSigningConnectionConfig,SwapLookupSource&);
     [[nodiscard]] std::optional<SwapSignedExecution> sign_or_retrieve(std::uint64_t,std::int64_t,std::uint64_t)override;
 private:
     const SwapPrepareStore& preparation_;SwapSubmissionStore& requests_;swap_signer::Client& client_;SwapSigningConnectionConfig config_;
+    SwapLookupSource& lookups_;
 };
 class SwapGatewaySettlementPort {
 public:

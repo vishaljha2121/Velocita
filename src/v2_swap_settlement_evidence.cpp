@@ -27,12 +27,13 @@ bool key_from_text(std::string_view text,SolanaAccountKey& out)noexcept{
         for(std::size_t i=32;i-->0;){carry+=unsigned(out[i])*58U;out[i]=carry&255U;carry>>=8;}if(carry)return false;}
     std::size_t first{};while(first<32 && out[first]==0)++first;return first==zeroes;
 }
-std::string signature_text(const SwapSubmissionTransaction& signature){
+std::string base58_text(std::span<const std::byte> bytes){
     std::array<unsigned,88> digits{};std::size_t used=1,zeroes{};
-    while(zeroes<signature.size() && signature[zeroes]==std::byte{})++zeroes;
-    for(auto b:signature){unsigned carry=std::to_integer<unsigned>(b);for(std::size_t i=0;i<used;++i){carry+=digits[i]*256;digits[i]=carry%58;carry/=58;}while(carry){digits[used++]=carry%58;carry/=58;}}
+    while(zeroes<bytes.size() && bytes[zeroes]==std::byte{})++zeroes;
+    for(auto b:bytes){unsigned carry=std::to_integer<unsigned>(b);for(std::size_t i=0;i<used;++i){carry+=digits[i]*256;digits[i]=carry%58;carry/=58;}while(carry){digits[used++]=carry%58;carry/=58;}}
     std::string text(zeroes,'1');for(std::size_t i=used;i-->0;)text+=base58_chars[digits[i]];return text;
 }
+std::string signature_text(const SwapSubmissionTransaction& signature){return base58_text(signature);}
 bool base64_bytes(std::string_view text,std::span<std::uint8_t> target,std::size_t& size)noexcept{
     constexpr std::string_view chars="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     size=0;if(text.empty() || text.size()%4)return false;
@@ -97,6 +98,26 @@ FinalizedReadResult SwapFinalizedReader::read(const SwapSubmissionTransaction& s
     VerifiedFinalizedRead evidence;evidence.body_=response.body;evidence.size_=response.size;evidence.provider_=provider_;evidence.signature_=signature;evidence.slot_=*slot;
     evidence.response_digest_=sha256_digest(std::as_bytes(std::span(document.data(),document.size())));
     return {FinalizedReadCode::attributed_finalized_response,evidence};
+}
+std::optional<JupiterLookupPrefix> read_jupiter_lookup_prefix(SwapFinalizedRpcPort& port,const Digest256& provider,
+    std::uint64_t timeout,std::uint64_t request_id,const JupiterLookupRequirement& need){
+    if(provider.is_zero() || !timeout || !request_id || request_id>maximum || !need.count || need.count>kMaxLookupPrefix ||
+        port.provider_identity()!=provider)return {};
+    const auto body=std::string("{\"jsonrpc\":\"2.0\",\"id\":")+std::to_string(request_id)+",\"method\":\"getAccountInfo\",\"params\":[\""+
+        base58_text(std::as_bytes(std::span(need.table)))+"\",{\"encoding\":\"base64\",\"commitment\":\"finalized\"}]}";
+    SettlementRpcResponse response;try{response=port.request(body,timeout);}catch(...){return {};}
+    if(port.provider_identity()!=provider || !response.transport_complete || response.http_status!=200 || response.size>response.body.size())return {};
+    const std::string_view document(response.body.data(),response.size);
+    if(validate_json_object(document)!=JsonError::none || json_member_string(document,"jsonrpc")!="2.0" ||
+        number(document,"id")!=request_id || json_member_raw(document,"error"))return {};
+    const auto result=json_member_raw(document,"result");const auto value=result?json_member_raw(*result,"value"):std::nullopt;
+    if(!value || *value=="null" || json_member_string(*value,"owner")!="AddressLookupTab1e1111111111111111111111111")return {};
+    const auto data=json_member_raw(*value,"data");std::array<std::string_view,2> items{};
+    const auto count=data?json_array_elements(*data,items):std::nullopt;
+    if(!count || *count!=2 || items[1]!="\"base64\"" || items[0].size()<2 || items[0].front()!='"' || items[0].back()!='"')return {};
+    std::array<std::uint8_t,kLookupTableMetaBytes+32*kMaxLookupPrefix> raw{};std::size_t size{};
+    if(!base64_bytes(items[0].substr(1,items[0].size()-2),raw,size))return {};
+    return jupiter_lookup_prefix_from_account(need,std::span(raw).first(size));
 }
 std::optional<SolanaAccountKey> decode_solana_account_key(std::string_view text) noexcept {
     SolanaAccountKey key{};if(!key_from_text(text,key) || key==SolanaAccountKey{})return {};return key;

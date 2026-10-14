@@ -2,6 +2,7 @@
 #include "velocita/v2/solana_resolved_accounts.hpp"
 #include "velocita/v2/swap_owner_accounting.hpp"
 #include "velocita/v2/swap_submission_store.hpp"
+#include "velocita/v2/swap_transaction_verifier.hpp"
 #include <optional>
 
 namespace velocita::v2 {
@@ -77,6 +78,8 @@ struct SettlementEvidence {
     std::array<SettlementAccountBalance,256> accounts{};
 };
 [[nodiscard]] std::optional<truemarkets::SolanaAccountKey> decode_solana_account_key(std::string_view) noexcept;
+[[nodiscard]] std::optional<truemarkets::JupiterLookupPrefix> read_jupiter_lookup_prefix(SwapFinalizedRpcPort&,
+    const Digest256& provider,std::uint64_t timeout_ms,std::uint64_t request_id,const truemarkets::JupiterLookupRequirement&);
 [[nodiscard]] SettlementEvidence decode_settlement_evidence(const VerifiedFinalizedRead&,
     std::string_view original_envelope,std::string_view organization,std::string_view signer,
     std::span<const truemarkets::SolanaLookupEvidence>,const truemarkets::SolanaAccountKey& owner)noexcept;

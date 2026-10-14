@@ -129,8 +129,45 @@ void retained_connection(){
 #endif
 
 }
+std::vector<std::uint8_t> table_data(unsigned entries,bool active=true){
+    std::vector<std::uint8_t> d{1,0,0,0};d.insert(d.end(),8,active?255:7);d.insert(d.end(),8,1);d.push_back(0);d.push_back(1);
+    d.insert(d.end(),{125,14,163,66,64,83,5,59,187,216,96,247,76,50,240,75,195,220,135,42,223,154,79,78,209,112,194,78,224,244,62,211});
+    d.insert(d.end(),2,0);for(unsigned i=1;i<=entries;++i){const auto k=key(i);d.insert(d.end(),k.begin(),k.end());}
+    return d;
+}
+std::string table_reply(const std::string& data,const std::string& owner="AddressLookupTab1e1111111111111111111111111",const std::string& encoding="base64"){
+    return "{\"jsonrpc\":\"2.0\",\"id\":9,\"result\":{\"context\":{\"slot\":5},\"value\":{\"data\":[\""+data+"\",\""+encoding+
+        "\"],\"executable\":false,\"lamports\":1,\"owner\":\""+owner+"\",\"rentEpoch\":0,\"space\":184}}}";
+}
+void lookup_table_read(){
+    const truemarkets::JupiterLookupRequirement need{key(40),3};
+    Clock clock;Port port;port.clock=&clock;port.body(table_reply(base64(table_data(4))));
+    const auto prefix=read_jupiter_lookup_prefix(port,digest(1),20,9,need);
+    require(prefix && prefix->table==need.table && prefix->count==3 && prefix->addresses[0]==key(1) && prefix->addresses[2]==key(3),
+        "finalized lookup table read yields required prefix");
+    require(port.requested=="{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"getAccountInfo\",\"params\":[\""+address(40)+
+        "\",{\"encoding\":\"base64\",\"commitment\":\"finalized\"}]}" && port.requested_timeout==20,"exact finalized account request");
+    const std::vector<std::string> refused{table_reply(base64(table_data(4)),"11111111111111111111111111111111"),
+        table_reply(base64(table_data(4)),"AddressLookupTab1e1111111111111111111111111","base58"),
+        table_reply("!!!!"),table_reply(base64(table_data(4,false))),table_reply(base64(table_data(2))),
+        "{\"jsonrpc\":\"2.0\",\"id\":9,\"result\":{\"context\":{\"slot\":5},\"value\":null}}",
+        "{\"jsonrpc\":\"2.0\",\"id\":8,\"result\":{\"context\":{\"slot\":5},\"value\":null}}",
+        "{\"jsonrpc\":\"2.0\",\"id\":9,\"error\":{\"code\":-32602,\"message\":\"x\"}}"};
+    auto other_id=table_reply(base64(table_data(4)));replace(other_id,"\"id\":9","\"id\":8");
+    auto with_error=table_reply(base64(table_data(4)));replace(with_error,"\"id\":9,","\"id\":9,\"error\":{\"code\":1},");
+    std::vector<std::string> all=refused;all.push_back(other_id);all.push_back(with_error);
+    for(const auto& body:all){Port bad;bad.clock=&clock;bad.body(body);require(!read_jupiter_lookup_prefix(bad,digest(1),20,9,need),"malformed or foreign table refused");}
+    Port foreign;foreign.clock=&clock;foreign.identity=digest(2);foreign.body(table_reply(base64(table_data(4))));
+    require(!read_jupiter_lookup_prefix(foreign,digest(1),20,9,need) && foreign.calls==0,"unattributed provider is never asked");
+    for(unsigned n=0;n<4;++n){Port bad;bad.clock=&clock;bad.body(table_reply(base64(table_data(4))));
+        if(n==0)bad.identity=digest(2);if(n==1)bad.reply.http_status=503;if(n==2)bad.reply.transport_complete=false;if(n==3)bad.throws=true;
+        require(!read_jupiter_lookup_prefix(bad,digest(1),20,9,need) && bad.calls<2,"unattributed or failed table read refused once");}
+    Port none;none.clock=&clock;none.body(table_reply(base64(table_data(4))));
+    require(!read_jupiter_lookup_prefix(none,digest(1),0,9,need) && !read_jupiter_lookup_prefix(none,digest(1),20,0,need) &&
+        !read_jupiter_lookup_prefix(none,digest(1),20,9,{key(40),0}),"invalid request bounds refused");
+}
 int main(int argc,char** argv){const std::pair<const char*,void(*)()> cases[]={
 #ifdef VELOCITA_SWAP_SETTLEMENT_CONNECTION_TEST_ONLY
 {"retained_connection",retained_connection},
 #endif
-{"finalized_request_and_ownership",finalized_request_and_ownership},{"read_identity_and_time",read_identity_and_time},{"rpc_shape_and_watermark",rpc_shape_and_watermark},{"exact_transaction_and_conservation",exact_transaction_and_conservation},{"token_attribution_and_coverage",token_attribution_and_coverage},{"property_corroboration",property_corroboration},{"rpc_capacity_and_base64",rpc_capacity_and_base64},{"rent_oracle_and_owner_coverage",rent_oracle_and_owner_coverage}};for(auto [name,fn]:cases){if(argc==2 && std::string_view(argv[1])!=name)continue;try{fn();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){std::cout<<"FAIL "<<name<<": "<<e.what()<<'\n';return 1;}}}
+{"finalized_request_and_ownership",finalized_request_and_ownership},{"read_identity_and_time",read_identity_and_time},{"rpc_shape_and_watermark",rpc_shape_and_watermark},{"exact_transaction_and_conservation",exact_transaction_and_conservation},{"token_attribution_and_coverage",token_attribution_and_coverage},{"property_corroboration",property_corroboration},{"rpc_capacity_and_base64",rpc_capacity_and_base64},{"rent_oracle_and_owner_coverage",rent_oracle_and_owner_coverage},{"lookup_table_read",lookup_table_read}};for(auto [name,fn]:cases){if(argc==2 && std::string_view(argv[1])!=name)continue;try{fn();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){std::cout<<"FAIL "<<name<<": "<<e.what()<<'\n';return 1;}}}

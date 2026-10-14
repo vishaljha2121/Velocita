@@ -118,7 +118,7 @@ bool Server::serve_once(SwapSignerSession&session,int timeout){
     Reply reply;reply.request_digest=sha256_digest(std::span(bytes).first(n));
     if(req.operation==Operation::retrieve){
         if(session.retrieve(req.effect,req.sequence,req.handle_view(),req.payload_view(),req.minimum_index,req.sign_by_ms))reply.code=ReplyCode::retrieved;
-    }else if(session.start(req.effect,req.sequence,req.handle_view(),req.payload_view(),req.minimum_index,req.sign_by_ms)){
+    }else if(session.start(req.effect,req.sequence,req.handle_view(),req.payload_view(),req.minimum_index,req.sign_by_ms,req.lookup)){
         while(now()<deadline && (session.status()==SwapSignerStatus::reading_state || session.status()==SwapSignerStatus::reading_authority)){(void)session.poll();if((session.status()==SwapSignerStatus::reading_state || session.status()==SwapSignerStatus::reading_authority))::usleep(1000);}
         session.cancel_pending();if(session.status()==SwapSignerStatus::signed_once)reply.code=ReplyCode::signed_once;
         else if(session.status()==SwapSignerStatus::fenced || session.status()==SwapSignerStatus::storage_failed)reply.code=ReplyCode::fenced;

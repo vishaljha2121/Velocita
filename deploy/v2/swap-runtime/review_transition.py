@@ -74,7 +74,7 @@ def validate(mode,old,new,before,after,now):
             for h in (old_history,new_history):
                 if h.get('stable_window') is not True or h.get('pagination_exhausted') is not True or any(type(h.get(k)) is not int or h[k]!=0 for k in ('blocking_orders','unsupported_accounts')):raise ValueError('unreviewable account history')
                 if any(type(h[k]) is not int or not 0<=h[k]<=2**63-1 for k in ('base_atoms','quote_atoms')):raise ValueError('account balance atoms')
-            if L.unsigned(transaction_fields(after['transaction.review'])['expires_at_ms'])<=now:raise ValueError('transaction review expired; separate policy/journal migration required for initialized run')
+            if transaction_expired(transaction_fields(after['transaction.review']),now):raise ValueError('transaction review expired; separate policy/journal migration required for initialized run')
             if new_history['capture_finished_ms']<=old_history['capture_finished_ms']:raise ValueError('fresh account capture required')
     elif mode=='arm':
         if old['launch_authorized'] or old.get('initialize_swap_recovery',False) or not new['launch_authorized'] or new.get('initialize_swap_recovery') is not True:raise ValueError('invalid first-start transition')
@@ -84,7 +84,7 @@ def validate(mode,old,new,before,after,now):
         if before!=after:raise ValueError('startup cannot change reviewed documents')
     else:raise ValueError('unknown transition')
     tx=transaction_fields(after['transaction.review'])
-    if L.unsigned(tx['expires_at_ms'])<=now:raise ValueError('transaction review expired; separate policy/journal migration required for initialized run')
+    if transaction_expired(tx,now):raise ValueError('transaction review expired; separate policy/journal migration required for initialized run')
     for role in ('gateway','signer'):L.check_bindings(new,after['runtime.profile'],after['account.review'],after['account.history'],now,role)
 
 def bundle(base,pin):
@@ -108,6 +108,64 @@ JOURNALS={'prepared':('gateway','prepare.bin',8768,b'VPRP\1\0\0\0'),
           'protected-signing':('signer','submission.bin',464,b'VSSJ\1\0\0\0'),
           'results':('gateway','result.bin',152,b'VSRW\1\0\0\0')}
 
+STABLE_FIELDS={'schema','sponsor','owner_usdc','owner_wsol','platform_fee',
+               'max_envelope_age_ms','max_compute_price','max_compute_units','max_slippage_bps'}
+STABLE_CONSTANTS=('0479d55bf231c06eee74c56ece681507fdb1b2dea3f48e5102b1cda256bc138f',
+                  'b43ffa27f5d7f64a74c09b1f295879de4b09ab36dfc9dd514b321aa7b38ce5e8',
+                  '069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001',
+                  '7d0ea3424053053bbbd860f74c32f04bc3dc872adf9a4f4ed170c24ee0f43ed3')
+STABLE_CONTRACTS=((18,'fc39066f804ec84d465acc0cafceb1debdfb9e4751e3c99ecb5463ac63cd89c9'),
+                  (109,'f06b836245fa463674a002608d8edcd4e84affb0a4bc9271d2e4991bc0108aab'),
+                  (156,'0634d20f1bf56dd164e3c13c7836a4229ec5ab21ff54528390a51789f3cdbbdb'),
+                  (177,'9f32da9c1f6c1250c09b733923ecc3670d2863e7d46a9c1cf47dfdbbd0d5fe57'),
+                  (181,'2474fcd2b335779c5b0a8f0ac74dbd8b92ba3467ac33ed63a150b935828bd589'))
+
+def _key(fields,name,size=32):
+    value=fields[name]
+    if len(value)!=2*size or any(c not in '0123456789abcdef' for c in value):raise ValueError('journal binding hex field')
+    return bytes.fromhex(value)
+
+def verification_digest(p,tx):
+    """Mirror of swap_signer_verification_digest in v2_swap_transaction_review.cpp."""
+    def h(raw):return hashlib.sha256(raw).digest()
+    def number(value):return struct.pack('<Q',L.unsigned(value))
+    inc,cat,cust=(_key(p,k) for k in ('incarnation','catalog','custody'))
+    allocation=b''.join(number(p[k]) for k in ('account','instrument','policy','policy_version','risk_policy_version'))
+    identity=b''
+    for name in ('organization','signer_id'):
+        value=p[name].encode('ascii');identity+=struct.pack('<Q',len(value))+value
+    if tx.get('schema')=='6':
+        if set(tx)!=STABLE_FIELDS:raise ValueError('exact stable execution review fields')
+        keys=[_key(tx,'sponsor'),_key(p,'owner_wallet'),_key(tx,'owner_usdc'),_key(tx,'owner_wsol'),_key(tx,'platform_fee')]
+        if any(not any(k) for k in keys) or len(set(keys))!=len(keys):raise ValueError('stable execution keys must be distinct and nonzero')
+        age,price,units,slippage,deduction=(L.unsigned(v) for v in (tx['max_envelope_age_ms'],tx['max_compute_price'],tx['max_compute_units'],
+                                                                     tx['max_slippage_bps'],p.get('max_buy_output_deduction_lamports','0')))
+        if not 0<age<=30000 or not 0<units<=1400000 or slippage>10000 or price>(2**64-1)//units or deduction>2**63-1:raise ValueError('stable execution limits')
+        policy=h(b'velocita-swap-execution-policy-v1'+inc+cat+cust+allocation+b''.join(keys)+
+                 b''.join(struct.pack('<Q',v) for v in (age,price,units,slippage,deduction))+
+                 b''.join(bytes.fromhex(k) for k in STABLE_CONSTANTS)+
+                 b''.join(struct.pack('<Q',kind)+bytes.fromhex(program) for kind,program in STABLE_CONTRACTS))
+        return h(b'velocita-signer-verification-v2'+policy+identity)
+    count=L.unsigned(tx['lookup_address_count'])
+    if not 1<=count<=256:raise ValueError('lookup count')
+    lookup=h(b'velocita-direct-buy-lookup-v1'+_key(tx,'lookup_table')+number(tx['lookup_slot'])+
+             _key(tx,'lookup_evidence')+number(tx['lookup_address_count'])+_key(tx,'lookup_addresses',32*count))
+    schemas={'1':(b'velocita-direct-kipseli-buy-v1',640),
+             '2':(b'velocita-direct-byreal-v3-buy-v1',864),
+             '3':(b'velocita-direct-obsidian-buy-v1',544),
+             '4':(b'velocita-direct-bison-market-backed-buy-v1',640),
+             '5':(b'velocita-direct-invariant-buy-v1',608)}
+    if tx.get('schema') not in schemas:raise ValueError('unsupported transaction review schema')
+    policy_label,key_bytes=schemas[tx['schema']]
+    policy=h(policy_label+inc+cat+cust+allocation+_key(tx,'account_keys',key_bytes)+
+             b''.join(number(tx[k]) for k in ('max_envelope_age_ms','max_compute_price','max_compute_units','max_slippage_bps'))+
+             number(p.get('max_buy_output_deduction_lamports','0'))+lookup+number(tx['expires_at_ms']))
+    return h(b'velocita-signer-verification-v1'+policy+lookup+identity)
+
+def transaction_expired(tx,now):
+    """Schemas 1-5 carry their own expiry; the stable schema 6 relies on the account review expiry."""
+    return tx.get('schema')!='6' and L.unsigned(tx['expires_at_ms'])<=now
+
 def journal_bindings(files):
     """Compute every journal domain from unchanged reviewed public identities.
 
@@ -127,25 +185,8 @@ def journal_bindings(files):
     mapping=h(b'velocita.tm.fee-inclusive-principal-plus-cap.v1')
     public=key(p,'signer_public_key',33)
     signing=h(h(b'velocita.gateway.signer-request.v1')+inc+cat+cust+domain+mapping+public+allocation)
-    count=L.unsigned(tx['lookup_address_count'])
-    if not 1<=count<=256:raise ValueError('lookup count')
-    lookup=h(b'velocita-direct-buy-lookup-v1'+key(tx,'lookup_table')+number(tx['lookup_slot'])+
-             key(tx,'lookup_evidence')+number(tx['lookup_address_count'])+key(tx,'lookup_addresses',32*count))
-    schemas={'1':(b'velocita-direct-kipseli-buy-v1',640),
-             '2':(b'velocita-direct-byreal-v3-buy-v1',864),
-             '3':(b'velocita-direct-obsidian-buy-v1',544),
-             '4':(b'velocita-direct-bison-market-backed-buy-v1',640),
-             '5':(b'velocita-direct-invariant-buy-v1',608)}
-    if tx.get('schema') not in schemas:raise ValueError('unsupported transaction review schema')
-    policy_label,key_bytes=schemas[tx['schema']]
-    policy=h(policy_label+inc+cat+cust+allocation+key(tx,'account_keys',key_bytes)+
-             b''.join(number(tx[k]) for k in ('max_envelope_age_ms','max_compute_price','max_compute_units','max_slippage_bps'))+
-             number(p.get('max_buy_output_deduction_lamports','0'))+lookup+number(tx['expires_at_ms']))
-    verification=b'velocita-signer-verification-v1'+policy+lookup
-    for name in ('organization','signer_id'):
-        value=p[name].encode('ascii');verification+=struct.pack('<Q',len(value))+value
     protected=h(b'swap-signer-v2\0\0'+number(p['signer_caller'])+number(p['key_version'])+domain+
-                key(p,'signer_instance')+public+cat+cust+allocation+h(verification))
+                key(p,'signer_instance')+public+cat+cust+allocation+verification_digest(p,tx))
     return inc,cat+cust+allocation+domain+mapping,domain,signing,protected
 
 def validate_idle_journals(manifest,files,journals):

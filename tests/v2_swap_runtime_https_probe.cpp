@@ -18,6 +18,10 @@ int main(int argc,char**argv){
         if(mode=="rpc-signature")body.replace(body.find("1GMk"),4,"0GMk");
         if(mode=="rpc-id")body.replace(body.find("\"id\":1"),6,"\"id\":0");
         if(mode=="rpc-extra")body.insert(body.size()-1,",\"extra\":true");
+        if(mode.starts_with("rpc-account"))body="{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getAccountInfo\",\"params\":[\"G6EBADumzmaYZCPZ6Jfvh2r8Xx3hcSxVLs4f5Zc4y7Xq\",{\"encoding\":\"base64\",\"commitment\":\"finalized\"}]}";
+        if(mode=="rpc-account-commitment")body.replace(body.find("finalized"),9,"confirmed");
+        if(mode=="rpc-account-encoding")body.replace(body.find("\"base64\""),8,"\"jsonParsed\"");
+        if(mode=="rpc-account-key")body.replace(body.find("G6EB"),4,"0GEB");
         const auto result=port->request(body,mode=="rpc-timeout"?501:500);
         std::cout<<"complete="<<result.transport_complete<<" status="<<result.http_status<<" size="<<result.size<<" provider="<<!port->provider_identity().is_zero()<<'\n';return 0;
     }

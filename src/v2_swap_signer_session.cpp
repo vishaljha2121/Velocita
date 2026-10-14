@@ -47,8 +47,7 @@ std::uint64_t verification_deadline(std::span<const std::byte> payload,
     const auto text=std::string_view(reinterpret_cast<const char*>(payload.data()),payload.size());
     if(truemarkets::decode_solana_signing_envelope(text,v.organization.view(),v.signer.view(),decoded)!=truemarkets::SolanaParseError::none ||
         decoded.timestamp_ms<=0 || static_cast<std::uint64_t>(decoded.timestamp_ms)>now)return 0;
-    const auto deadline=std::min({expiry,v.policy.expires_at_ms,
-        static_cast<std::uint64_t>(decoded.timestamp_ms)+v.policy.max_envelope_age_ms});
+    const auto deadline=std::min(expiry,static_cast<std::uint64_t>(decoded.timestamp_ms)+v.policy.max_envelope_age_ms);
     return now<deadline?deadline:0;
 }
 
@@ -131,20 +130,6 @@ SwapSubmissionBinding swap_signer_journal_binding(const SwapSignerConfig& c,std:
     std::copy(c.transaction_policy_digest.bytes.begin(),c.transaction_policy_digest.bytes.end(),bytes.begin()+233);
     return {c.binding.incarnation,sha256_digest(std::span(bytes).first(c.transaction_policy_digest.is_zero()?233:265))};
 }
-Digest256 swap_signer_verification_digest(const SwapSignerVerificationContext& v)noexcept{
-    if(v.organization.empty() || v.organization.length>v.organization.bytes.size() ||
-        v.signer.empty() || v.signer.length>v.signer.bytes.size())return {};
-    const auto policy=truemarkets::direct_buy_policy_digest(v.policy);
-    const auto lookup=truemarkets::direct_buy_lookup_digest(std::span(&v.lookup,1));
-    if(policy.is_zero() || lookup.is_zero() || lookup!=v.policy.lookup_image_digest)return {};
-    Sha256 h;constexpr std::string_view label="velocita-signer-verification-v1";
-    h.update(std::as_bytes(std::span(label)));h.update(policy.bytes);h.update(lookup.bytes);
-    std::array<std::byte,8> length{};
-    for(const auto& text:{v.organization,v.signer}){
-        put64(length,text.length);h.update(length);h.update(std::as_bytes(std::span(text.view())));
-    }
-    return h.finish();
-}
 SwapSignerSession::SwapSignerSession(GatewayLink& link,SwapSubmissionStore& store,SwapSignerKey& key,SwapSignerConfig config,SwapSignerClock clock,
     std::optional<SwapSignerVerificationContext> verification)
     :link_(link),store_(store),key_(key),config_(config),clock_(clock),verification_(std::move(verification)){
@@ -158,11 +143,12 @@ SwapSignerSession::SwapSignerSession(GatewayLink& link,SwapSubmissionStore& stor
     status_=store_.latest().phase==SwapSubmissionPhase::idle?SwapSignerStatus::idle:SwapSignerStatus::fenced;
 }
 SwapSignerSession::~SwapSignerSession(){if((status_==SwapSignerStatus::reading_state || status_==SwapSignerStatus::reading_authority))link_.abandon();erase();}
-void SwapSignerSession::erase()noexcept{OPENSSL_cleanse(payload_.data(),payload_.size());size_=0;}
+void SwapSignerSession::erase()noexcept{OPENSSL_cleanse(payload_.data(),payload_.size());size_=0;lookup_={};}
 SwapSignerStatus SwapSignerSession::refuse(SwapSignerStatus status)noexcept{
     if((status_==SwapSignerStatus::reading_state || status_==SwapSignerStatus::reading_authority))link_.abandon();erase();der_size_=0;stamp_={};status_=status;return status;
 }
-bool SwapSignerSession::start(EffectId effect,std::uint64_t sequence,std::string_view handle,std::span<const std::byte> payload,std::int64_t minimum_index,std::uint64_t expected_sign_by){
+bool SwapSignerSession::start(EffectId effect,std::uint64_t sequence,std::string_view handle,std::span<const std::byte> payload,std::int64_t minimum_index,std::uint64_t expected_sign_by,
+    const truemarkets::JupiterLookupPrefix& lookup){
     if(status_!=SwapSignerStatus::idle || link_.busy())return false;
     const auto now=clock_.monotonic(clock_.context);last_event_=clock_.event(clock_.context);
     if((config_.account_review_expires_at_ms && last_event_>=config_.account_review_expires_at_ms) || !sequence || !expected_sign_by || effect.value()<=store_.latest().identity.effect.value() || minimum_index<=store_.latest().committed_index ||
@@ -176,6 +162,7 @@ bool SwapSignerSession::start(EffectId effect,std::uint64_t sequence,std::string
     }
     original_handle_digest_=sha256_digest(std::as_bytes(std::span(handle.data(),handle.size())));
     std::copy(payload.begin(),payload.end(),payload_.begin());size_=payload.size();minimum_index_=minimum_index;expected_sign_by_=expected_sign_by;sequence_=sequence;
+    lookup_=lookup;
     last_tick_=now;deadline_=now+config_.state_timeout;
     if(!link_.request_state(now,config_.state_timeout)){(void)refuse(SwapSignerStatus::refused);return false;}
     status_=SwapSignerStatus::reading_state;return true;
@@ -218,10 +205,11 @@ SwapSignerStatus SwapSignerSession::poll(){
         if(!swap_mvp_buy_scope(swap,v))return refuse(SwapSignerStatus::refused);
         const auto checked=truemarkets::verify_swap_transaction(
             std::string_view(reinterpret_cast<const char*>(payload_.data()),size_),v.organization.view(),v.signer.view(),
-            pending,v.policy,std::span(&v.lookup,1),last_event_);
+            pending,v.policy,lookup_,last_event_);
         if(!checked.verified || checked.verified->payload_digest()!=identity_.payload ||
             checked.verified->intent_digest()!=truemarkets::verified_swap_intent_digest(pending.intent) ||
-            checked.verified->policy_digest()!=truemarkets::direct_buy_policy_digest(v.policy))return refuse(SwapSignerStatus::refused);
+            checked.verified->policy_digest()!=truemarkets::swap_execution_policy_digest(v.policy) ||
+            checked.verified->lookup_digest()!=truemarkets::jupiter_lookup_prefix_digest(lookup_))return refuse(SwapSignerStatus::refused);
         verification_expires_at_ms_=checked.verified->expires_at_ms();
     }else{
 #ifdef VELOCITA_SWAP_SIGNER_SYNTHETIC_FIXTURE

@@ -523,7 +523,7 @@ int run(const Arguments& a) {
         const auto transaction_review=decode_swap_transaction_review(
             {transaction_buffer.data(),static_cast<std::size_t>(transaction_count)},profile->gateway.binding.transaction_review_digest,
             profile->gateway.binding,profile->organization.view(),profile->signer_id.view());
-        if(!transaction_review || transaction_review->policy.account_keys[0]!=profile->failure_policy.expected_external_fee_payer)
+        if(!transaction_review || transaction_review->policy.sponsor!=profile->failure_policy.expected_external_fee_payer)
             throw Usage("transaction review or sponsor differs from pinned runtime");
 
         std::ifstream review_file(a.swap_account_review,std::ios::binary);std::array<char,8193> review_buffer{};
@@ -612,8 +612,7 @@ int run(const Arguments& a) {
         if(!recovery_only && !read_swap_reviewed_balance(*credentials,clock,admission,a.timeout_ms))
             throw Usage("live balance differs from reviewed funding and attributed outside activity, or review expired");
         SwapProductionGateway gateway(link,recovery,prepared,submitted,signing,*credentials,clock,*profile,
-            {prepare_binding,CallerId{a.caller_id},start.first_sequence,reserved,a.timeout_ms,a.state_interval_ms,recovery_only},admission,
-            std::span(&transaction_review->lookup,1));
+            {prepare_binding,CallerId{a.caller_id},start.first_sequence,reserved,a.timeout_ms,a.state_interval_ms,recovery_only},admission);
         auto& loop=gateway.runtime();
         std::int64_t published_observation_index{};
         std::uint64_t published_observation_ms{};

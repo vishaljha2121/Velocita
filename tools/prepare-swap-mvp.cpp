@@ -75,8 +75,8 @@ Context context(std::string_view profile,std::string_view history,std::string_vi
     auto p=decode_swap_runtime_profile(profile);require(p.has_value() && swap_runtime_live_contract_admitted(*p,now),"runtime profile not admitted");
     require(validate_swap_gateway_startup(p->gateway,now)==SwapRuntimeCode::valid,"runtime credential review expired");
     auto tx=decode_swap_transaction_review(transaction,p->gateway.binding.transaction_review_digest,p->gateway.binding,p->organization.view(),p->signer_id.view());
-    require(tx.has_value() && tx->policy.expires_at_ms>now,"transaction review invalid or expired");
-    require(tx->policy.account_keys[0]==p->failure_policy.expected_external_fee_payer,"sponsor pin differs");
+    require(tx.has_value(),"transaction review invalid or expired");
+    require(tx->policy.sponsor==p->failure_policy.expected_external_fee_payer,"sponsor pin differs");
     auto h=decode_swap_account_history_cut(history,hash(history));require(h.has_value(),"account history refused");
     return {*p,*tx,*h};
 }
@@ -93,7 +93,7 @@ Fields build_opening(std::string profile,std::string history,std::string transac
     opening.base_cost=swap::QuoteAtoms{number(f,"valuation_net_quote_atoms")};const auto mark_time=number(f,"valuation_observed_ms");
     const auto mark_evidence=digest(f,"valuation_evidence_sha256");require(f.empty(),"unknown opening parameter");
     require(now && expires>now && expires-now<=900'000 && c.history.finished_ms<=now && now-c.history.finished_ms<900'000 &&
-        expires-c.history.finished_ms<=900'000 && expires<=c.transaction.policy.expires_at_ms && expires<=c.profile.gateway.expires_at_ms,"review window exceeds current evidence");
+        expires-c.history.finished_ms<=900'000 && expires<=c.profile.gateway.expires_at_ms,"review window exceeds current evidence");
     require(opening.base.value()==c.history.base_atoms && opening.quote.value()==c.history.quote_atoms && opening.quote.value()>=1'000'000,"observed balances do not match all-inventory history");
     require(opening.base.value()>0 && opening.base_cost.value()>0 && l.max_sell_input.value()>0 && l.max_sell_input.value()<=opening.base.value(),"positive full-position executable mark and sell bound required");
     require(l.max_source_age && l.max_source_age<=30'000 && l.max_sign_lifetime && l.max_sign_lifetime<=30'000 &&
@@ -172,8 +172,8 @@ Fields build_intent(const Fields& bundle,std::string parameters){
     require(quoted && quoted<=static_cast<std::uint64_t>(INT64_MAX) && slippage<=c.transaction.policy.max_slippage_bps &&
         repayment<=2'039'280 && quote_time && quote_time<=intent.source_time && intent.source_time<=now &&
         now-quote_time<c.transaction.policy.max_envelope_age_ms && intent.sign_by>now && intent.sign_by-now<=opening.limits.max_sign_lifetime &&
-        intent.sign_by<=r->expires_at_ms && intent.sign_by<=c.transaction.policy.expires_at_ms && intent.sign_by<=c.profile.gateway.expires_at_ms,"fresh quote or intent window refused");
-    const auto factor=10'000-slippage;const auto gross=(quoted/10'000)*factor+((quoted%10'000)*factor+9'999)/10'000;
+        intent.sign_by<=r->expires_at_ms && intent.sign_by<=c.profile.gateway.expires_at_ms,"fresh quote or intent window refused");
+    const auto factor=10'000-slippage;const auto gross=(quoted/10'000)*factor+((quoted%10'000)*factor)/10'000;
     const auto net=bound_buy_net_cost(gross,repayment,0,intent.min_base_receive,c.transaction.policy.accepted_costs);
     require(net.code==BuyNetCostCode::within_arithmetic_bounds_only && intent.min_base_receive.value()>0,"conservative quote floor refused");
     require(swap::apply(state,intent,swap::Role::strategy,now)==swap::Code::applied && swap_mvp_buy_scope(state,c.transaction),"intent reducer or one-buy scope refused");

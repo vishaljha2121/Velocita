@@ -22,8 +22,9 @@ SwapSubmissionBinding swap_signing_connection_binding(const SwapSigningConnectio
         c.preparation.allocation.policy_version.value(),c.preparation.allocation.risk_policy_version.value()}){put64(std::span(bytes).subspan(at),value);at+=8;}
     return {c.preparation.allocation.incarnation,sha256_digest(bytes)};
 }
-SwapSigningConnection::SwapSigningConnection(const SwapPrepareStore& p,SwapSubmissionStore& j,swap_signer::Client& client,SwapSigningConnectionConfig c)
-    :preparation_(p),journal_(j),client_(client),config_(c){
+SwapSigningConnection::SwapSigningConnection(const SwapPrepareStore& p,SwapSubmissionStore& j,swap_signer::Client& client,SwapSigningConnectionConfig c,
+    SwapLookupSource& lookups)
+    :preparation_(p),journal_(j),client_(client),config_(c),lookups_(lookups){
     if(p.status()!=SwapPrepareStoreCode::none || p.latest().phase!=SwapPreparePhase::prepared || p.latest().binding!=c.preparation ||
         j.status()!=SwapSubmissionCode::none || j.latest().binding!=swap_signing_connection_binding(c) ||
         (c.signer_public_key[0]!=std::byte{2} && c.signer_public_key[0]!=std::byte{3}))return;
@@ -43,6 +44,7 @@ bool SwapSigningConnection::assemble(std::uint64_t sequence,std::int64_t index,s
     std::copy_n(p.handle.bytes.begin(),p.handle.length,request.handle.begin());
     std::copy_n(reinterpret_cast<const std::byte*>(p.payload.data()),p.payload_size,request.payload.begin());
     if(sha256_digest(request.payload_view())!=p.payload_digest)return false;
+    const auto lookup=lookups_.prefix(request.payload_view());if(!lookup)return false;request.lookup=*lookup;
     std::array<std::byte,swap_signer::kRequestBytes> frame{};const auto n=swap_signer::encode_request(request,frame);if(!n)return false;
     identity={};identity.effect=request.effect;identity.payload=p.payload_digest;identity.execution_request=sha256_digest(std::span(frame).first(n));
     // Index is the durable record's committed_index; sequence and expiry precede

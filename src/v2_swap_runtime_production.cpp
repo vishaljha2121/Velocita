@@ -94,11 +94,17 @@ bool read_swap_reviewed_balance(SwapGatewayCredentials& credentials,SwapFinalize
             {response.body.data(),response.body_size},start,end);
 }
 SwapProductionPorts::SwapProductionPorts(SwapGatewayCredentials& credentials,SwapPrepareStore& p,SwapSubmissionStore& s,SwapPrepareBinding binding,
-    SwapFinalizedReadClock& clock,truemarkets::TmText org,truemarkets::TmText signer,std::span<const truemarkets::SolanaLookupEvidence> lookups,std::uint64_t timeout,SwapAccountStartupAdmission admission,SwapFailureAccountingPolicy failure_policy)
+    SwapFinalizedReadClock& clock,truemarkets::TmText org,truemarkets::TmText signer,std::uint64_t timeout,SwapAccountStartupAdmission admission,SwapFailureAccountingPolicy failure_policy)
     :credentials_(credentials),preparation_(p),submission_(s),binding_(binding),clock_(clock),organization_(org),signer_(signer),timeout_(timeout),failure_policy_(failure_policy),admission_(std::move(admission)){
-    if(credentials.binding().allocation!=binding.allocation || credentials.binding().authority_domain!=binding.authority_domain || timeout<1 || timeout>60000 || lookups.size()>16)
+    if(credentials.binding().allocation!=binding.allocation || credentials.binding().authority_domain!=binding.authority_domain || timeout<1 || timeout>60000)
         throw std::invalid_argument("production port binding refused");
-    lookups_.assign(lookups.begin(),lookups.end());
+}
+std::optional<truemarkets::JupiterLookupPrefix> SwapProductionPorts::prefix(std::span<const std::byte> payload){
+    const auto need=truemarkets::jupiter_lookup_requirement(std::string_view(reinterpret_cast<const char*>(payload.data()),payload.size()),
+        organization_.view(),signer_.view());
+    if(!need)return {};
+    SwapRuntimeFinalizedHttps rpc(timeout_);
+    return read_jupiter_lookup_prefix(rpc,rpc.provider_identity(),timeout_,1,*need);
 }
 transport::SwapHttpsResult SwapProductionPorts::create(const truemarkets::SwapRestRequest& request){
     transport::SwapHttpsResult refused;refused.status=transport::SwapHttpsStatus::local_refusal;
@@ -128,17 +134,21 @@ std::optional<VerifiedSwapSettlement> SwapProductionPorts::reconcile(const swap:
     struct Clock final:SwapOrderReadClock{SwapFinalizedReadClock& source;explicit Clock(SwapFinalizedReadClock&s):source(s){}std::uint64_t now_ms()noexcept override{return source.now_ms();}} clock(clock_);
     SwapOrderStatusReader order(submission_,preparation_,get,clock,{binding_,identity,timeout_});
     if(order.read().status!=SwapOrderReadStatus::terminal_needs_finality)return {};
+    const auto payload=preparation_.latest().prepared.payload_view();
+    const auto lookup=prefix(std::as_bytes(std::span(payload.data(),payload.size())));if(!lookup)return {};
+    const auto evidence=truemarkets::jupiter_lookup_evidence(*lookup);
     SwapRuntimeFinalizedHttps rpc(timeout_);SwapFinalizedReader reader(rpc,clock_,rpc.provider_identity(),timeout_);
     return admit_retained_swap_settlement(preparation_,submission_,binding_,pending.intent,reader,1,1,
-        organization_.view(),signer_.view(),lookups_,[&]{truemarkets::SolanaAccountKey owner{};
+        organization_.view(),signer_.view(),std::span(&evidence,1),[&]{truemarkets::SolanaAccountKey owner{};
             for(std::size_t n=0;n<owner.size();++n)owner[n]=std::to_integer<std::uint8_t>(credentials_.binding().owner_wallet[n]);return owner;}(),failure_policy_,
             {swap::BaseAtoms{credentials_.binding().max_buy_output_deduction_lamports}}).verified;
 }
 SwapProductionGateway::SwapProductionGateway(GatewayLink& link,SwapReconcileStore& recovery,SwapPrepareStore& prepared,SwapSubmissionStore& submitted,
     SwapSubmissionStore& signing_requests,SwapGatewayCredentials& credentials,SwapFinalizedReadClock& clock,const SwapRuntimeProfile& profile,
-    SwapGatewayRuntimeConfig config,SwapAccountStartupAdmission admission,std::span<const truemarkets::SolanaLookupEvidence> lookups)
-    :client_(credentials.signer_client()),signing_(prepared,signing_requests,*client_,{config.preparation,credentials.binding().signer_public_key}),
-    ports_(credentials,prepared,submitted,config.preparation,clock,profile.organization,profile.signer_id,lookups,config.timeout,admission,profile.failure_policy),
+    SwapGatewayRuntimeConfig config,SwapAccountStartupAdmission admission)
+    :client_(credentials.signer_client()),
+    ports_(credentials,prepared,submitted,config.preparation,clock,profile.organization,profile.signer_id,config.timeout,admission,profile.failure_policy),
+    signing_(prepared,signing_requests,*client_,{config.preparation,credentials.binding().signer_public_key},ports_),
     runtime_(link,recovery,prepared,submitted,ports_,signing_,ports_,ports_,config){
     if(!swap_account_history_identity(admission.history,admission.review,credentials.binding()) ||
         config.recovery_only!=admission.recovery_only || profile.account_review_digest!=admission.review.document_digest ||
