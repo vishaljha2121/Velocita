@@ -1,0 +1,25 @@
+{
+  "results": [
+    {
+      "name": "missing_variant",
+      "named_assertion": "byreal_data_only_decode",
+      "killed": true,
+      "stderr": "FAIL byreal: byreal_data_only_decode\n"
+    },
+    {
+      "name": "extra_boolean",
+      "named_assertion": "byreal_data_only_decode",
+      "killed": true,
+      "stderr": "FAIL byreal: byreal_data_only_decode\n"
+    },
+    {
+      "name": "trailing_bytes",
+      "named_assertion": "byreal_spurious_bool_refused",
+      "killed": true,
+      "stderr": "FAIL byreal: byreal_spurious_bool_refused\n"
+    }
+  ],
+  "named_kills": 3,
+  "test_errors": 0,
+  "harness_note": "Initial third-case expected assertion label was corrected to the earlier spurious-bool rejection; mutant binary was unchanged."
+}

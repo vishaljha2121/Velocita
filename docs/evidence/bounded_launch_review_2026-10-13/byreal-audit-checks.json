@@ -1,0 +1,25 @@
+{
+  "negative_cases": [
+    {
+      "name": "network_fee",
+      "refused_by": "whole native conservation"
+    },
+    {
+      "name": "owner_receipt",
+      "refused_by": "whole native conservation"
+    },
+    {
+      "name": "extra_cpi",
+      "refused_by": "swap CPI coverage"
+    },
+    {
+      "name": "fee",
+      "refused_by": "inclusive fee transfer"
+    },
+    {
+      "name": "receipt_redirect",
+      "refused_by": "checked transfer roles"
+    }
+  ],
+  "hand_integer_oracles": 3
+}

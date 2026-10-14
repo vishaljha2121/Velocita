@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "snapshot_and_simulation_checks_passed": true,
+  "total_usdc_debit": 1000000,
+  "explicit_usdc_fee": 2000,
+  "swap_principal": 998000,
+  "gross_lamports": 9345942,
+  "sponsor_funding_lamports": 1488440,
+  "repayment_lamports": 2039280,
+  "observed_net_lamports": 8795102,
+  "network_fee_paid_by_sponsor_lamports": 110000,
+  "quoted_gross_lamports": 9345460,
+  "slippage_bps": 500,
+  "conservative_net_floor_lamports": 6838907,
+  "guaranteed_sponsor_credit": 0,
+  "rounding_pair_ceiling_discriminated": true,
+  "simulation_only": true,
+  "live_admitted": false,
+  "hashes": {
+    "accounts-response.json": "1128e98d38f5df6edbcc9901e7206608e4d5ce7930514a7f1bd631cbeefb7e0b",
+    "lookup-response.json": "117477ac29fabe07883db8159a7d24333cdbb84acac7e85a6247e87ffc18523e",
+    "baseline-response.json": "4d8005233a92724c8e6c8215d27433aca2d4f8ba299b2e13699b0a86eff0293a",
+    "rounding/0-response.json": "a3e2df96c74c998b244ba0af6495430add199d7edf549071d31d5d10a6891415",
+    "rounding/1-response.json": "9b5d6b4ca2a3e75af68af0a58dd7b6e50c6775be0df4fcc098f7203627aed0a6"
+  }
+}

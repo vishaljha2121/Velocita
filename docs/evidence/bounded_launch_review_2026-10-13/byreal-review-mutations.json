@@ -1,0 +1,83 @@
+{
+  "files": {
+    "src/v2_swap_transaction_review.cpp": "39377be4bce39d532210899efeb376e4cbdd902252db8898de1a228b6c0ad935",
+    "tests/v2_swap_transaction_review_tests.cpp": "1e9c2dfab9b12bc26648746ad71c9eacb5e0fadf9077a5bfd7bdd762ee7be77e",
+    "include/velocita/v2/swap_transaction_review.hpp": "93833fcca56db3a8f31e525ec802e903b8545b56b9bfb45d419b09ba60a10012"
+  },
+  "results": [
+    {
+      "name": "baseline",
+      "killed": true,
+      "exit": 0,
+      "assertion": null,
+      "stdout": "PASS valid\nPASS identities\nPASS schema\nPASS bounds\nPASS byreal\n",
+      "stderr": ""
+    },
+    {
+      "name": "schema2",
+      "killed": true,
+      "exit": 1,
+      "assertion": "byreal_schema2_decodes",
+      "stdout": "",
+      "stderr": "FAIL byreal: byreal_schema2_decodes\n"
+    },
+    {
+      "name": "raw_digest",
+      "killed": true,
+      "exit": 1,
+      "assertion": "raw_bytes_digest_refused",
+      "stdout": "",
+      "stderr": "FAIL identities: raw_bytes_digest_refused\n"
+    },
+    {
+      "name": "owner",
+      "killed": true,
+      "exit": 1,
+      "assertion": "owner_binding_mismatch_refused",
+      "stdout": "",
+      "stderr": "FAIL identities: owner_binding_mismatch_refused\n"
+    },
+    {
+      "name": "duplicate",
+      "killed": true,
+      "exit": 1,
+      "assertion": "duplicate_unknown_or_blank_refused",
+      "stdout": "",
+      "stderr": "FAIL schema: duplicate_unknown_or_blank_refused\n"
+    },
+    {
+      "name": "count_capacity",
+      "killed": true,
+      "exit": 1,
+      "assertion": "maximum_lookup_image_fits",
+      "stdout": "",
+      "stderr": "FAIL valid: maximum_lookup_image_fits\n"
+    },
+    {
+      "name": "units_narrow",
+      "killed": true,
+      "exit": 1,
+      "assertion": "numeric_or_image_bound_refused",
+      "stdout": "",
+      "stderr": "FAIL bounds: numeric_or_image_bound_refused\n"
+    },
+    {
+      "name": "canonical_policy",
+      "killed": true,
+      "exit": 1,
+      "assertion": "canonical_program_required",
+      "stdout": "",
+      "stderr": "FAIL bounds: canonical_program_required\n"
+    },
+    {
+      "name": "runtime_cost",
+      "killed": true,
+      "exit": 1,
+      "assertion": "review_uses_runtime_allocation_and_cost",
+      "stdout": "",
+      "stderr": "FAIL valid: review_uses_runtime_allocation_and_cost\n"
+    }
+  ],
+  "named_kills": 8,
+  "test_errors": 0
+}

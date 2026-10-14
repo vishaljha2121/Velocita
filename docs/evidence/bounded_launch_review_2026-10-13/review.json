@@ -1,0 +1,35 @@
+{
+  "quote": {
+    "http_status": 201,
+    "response_sha256": "1601a54d32f2f9825e614f59b776c4bef2fc8e19179a8ff623373bb694f113ee",
+    "signed": false,
+    "execute_request_sent": false,
+    "do_not_retry": true,
+    "status": "initialized",
+    "payload_count": 1,
+    "payload_sha256": [
+      "906341c517f4da0fbb417c510d04653df3596696290ae0fd498c42b5ec4e6caa"
+    ],
+    "issues_present": false,
+    "quote": {
+      "qty": "1",
+      "qty_out": "0.00934546",
+      "fee": "0.002"
+    },
+    "verdict": "initialized_unsigned_requires_semantic_review"
+  },
+  "post_quote_balances": {
+    "sol_atoms": 40764166,
+    "usdc_atoms": 40006989,
+    "blocking_orders": 0,
+    "captured_at_ms": 1791935575085
+  },
+  "history_sha256": "133ebb3b035e4a6cd79fd57d4582f3e4c8e15b8aab02577bed201c73ff22e684",
+  "static_accounts": 16,
+  "loaded_accounts": 11,
+  "repayment_lamports": 2039280,
+  "net_receipt_verified": false,
+  "signing_or_execution": false,
+  "services_changed": false,
+  "verdict": "not_launchable_current_route_unsupported"
+}

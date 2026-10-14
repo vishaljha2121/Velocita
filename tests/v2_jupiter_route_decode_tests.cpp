@@ -206,11 +206,34 @@ void direct_current_variants() {
     require(decode_jupiter_direct_route_data(extra).status==Status::invalid,"obsidian_spurious_field_refused");
 }
 
+
+void direct_byreal() {
+    // Program-owned IDL enum156 has no payload. Hand-worked little-endian
+    // oracle from the unsigned route: 1,000,000 in, 9,345,460 out, 500bp,20bp.
+    std::vector<std::uint8_t> bytes{0xe5,0x17,0xcb,0x97,0x7a,0xe3,0xad,0x2a,1,0,0,0,
+        156,100,0,1,0x40,0x42,0x0f,0,0,0,0,0,0xb4,0x99,0x8e,0,0,0,0,0,0xf4,1,20};
+    const auto r=decode_jupiter_direct_route_data(bytes);
+    require(r.status==Status::decoded_data_only && r.data.step_count==1,
+        "byreal_data_only_decode");
+    require(static_cast<unsigned>(r.data.steps[0].kind)==156 &&
+        r.data.steps[0].side_or_direction==0 && r.data.steps[0].percent==100 &&
+        r.data.steps[0].input_index==0 && r.data.steps[0].output_index==1 &&
+        r.data.steps[0].instruction_id==0,"byreal_no_variant_payload");
+    require(r.data.input_atoms==1'000'000 && r.data.quoted_output_atoms==9'345'460 &&
+        r.data.slippage_bps==500 && r.data.platform_fee_bps==20,"byreal_exact_suffix_offset");
+    for(std::size_t n=0;n<bytes.size();++n){const auto cut=decode_jupiter_direct_route_data({bytes.data(),n});
+        require(cut.status==Status::invalid && cut.data==JupiterDirectRouteData{},"byreal_truncation_clears_result");}
+    auto extra=bytes;extra.insert(extra.begin()+13,0);
+    require(decode_jupiter_direct_route_data(extra).status==Status::invalid,"byreal_spurious_bool_refused");
+    bytes.push_back(0);
+    require(decode_jupiter_direct_route_data(bytes).status==Status::invalid,"byreal_trailing_bytes_refused");
+}
+
 }
 int main(int argc, char** argv) {
     const std::pair<const char*,void(*)()> tests[] = {{"captured",captured_oracle},{"shapes",exact_shapes},
         {"boundaries",unsupported_and_boundaries},{"orders",variant_orders},
-        {"direct",direct_capture},{"direct_boundaries",direct_boundaries},{"raydium",direct_raydium},{"current_variants",direct_current_variants}};
+        {"direct",direct_capture},{"direct_boundaries",direct_boundaries},{"raydium",direct_raydium},{"current_variants",direct_current_variants},{"byreal",direct_byreal}};
     int failures{}, selected{};
     for (const auto& [name,fn] : tests) {
         if (argc > 1 && std::string_view(argv[1]) != name) continue;

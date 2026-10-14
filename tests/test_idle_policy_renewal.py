@@ -26,6 +26,50 @@ class RenewalTests(unittest.TestCase):
         after['account.review']=t.encode(r);p['account_review_digest']=T.R.digest(after['account.review']);after['runtime.profile']=t.encode(p)
         return old,t.pins(old,after),before,after,journals,10000100
 
+    def route_fixture(self):
+        old,new,before,after,journals,now=self.fixture()
+        tx=T.R.transaction_fields(after['transaction.review'])
+        tx.update(schema='2',account_keys=('27'*32)*27,lookup_slot='43',lookup_evidence='ab'*32)
+        after['transaction.review']=T.TransitionTests.encode(tx)
+        profile=T.R.L.fields(after['runtime.profile']);profile['transaction_review_digest']=T.R.digest(after['transaction.review'])
+        review=T.R.L.fields(after['account.review']);review['runtime_identity']=N.runtime_identity(profile)
+        after['account.review']=T.TransitionTests.encode(review);profile['account_review_digest']=T.R.digest(after['account.review'])
+        after['runtime.profile']=T.TransitionTests.encode(profile)
+        witness=dict(schema=1,kind='kipseli-v1-to-byreal-v1',before_review_sha256=T.R.digest(before['transaction.review']),
+                     after_review_sha256=T.R.digest(after['transaction.review']),contract_evidence_sha256='cd'*32)
+        return (old,T.TransitionTests.pins(new,after),before,after,journals,now),witness
+
+    def test_explicit_route_migration_preserves_replay_and_economic_authority(self):
+        args,witness=self.route_fixture()
+        try:out=N.propose(*args,route_review=witness)
+        except (TypeError,ValueError) as error:self.fail('reviewed_route_transition_admitted: '+str(error))
+        self.assertEqual(out['report']['kind'],'reviewed-route-pristine-protected-journal-transition-proposal')
+        self.assertFalse(out['report']['applyable'])
+        for name,raw in args[4].items():
+            next_raw=out['artifacts']['after/journals/'+name]
+            if name!='protected-signing':self.assertEqual(next_raw,raw,'gateway_journal_unchanged')
+            else:
+                self.assertEqual(int.from_bytes(next_raw[8:16],'little'),2,'ordinal_advanced')
+                self.assertEqual(next_raw[16:72],raw[16:72],'phase_index_effect_identity_preserved')
+                self.assertEqual(next_raw[104:-32],raw[104:-32],'empty_payload_and_original_proof_preserved')
+        with self.assertRaises(ValueError,msg='route_change_requires_explicit_review'):N.propose(*args)
+
+    def test_route_migration_rejects_unpinned_witness_and_changed_caps(self):
+        args,witness=self.route_fixture()
+        for changed in (dict(witness,schema=True),dict(witness,kind='arbitrary'),dict(witness,before_review_sha256='aa'*32),
+                        dict(witness,after_review_sha256='bb'*32),dict(witness,contract_evidence_sha256='00'*32),dict(witness,extra=True)):
+            with self.subTest(changed=changed),self.assertRaises(ValueError,msg='route_review_pins_required'):N.propose(*args,route_review=changed)
+        old,new,before,after,journals,now=args
+        for field,value in (('max_slippage_bps','101'),('max_compute_units','1400001'),('max_envelope_age_ms','30001'),('schema','3'),('account_keys',('28'*32)*27)):
+            changed=dict(after);tx=T.R.transaction_fields(changed['transaction.review']);tx[field]=value;changed['transaction.review']=T.TransitionTests.encode(tx)
+            revised=dict(witness,after_review_sha256=T.R.digest(changed['transaction.review']))
+            with self.subTest(direct_field=field),self.assertRaises(ValueError,msg='route_scope_checked_before_identity'):
+                N.route_transition(before['transaction.review'],changed['transaction.review'],revised)
+            profile=T.R.L.fields(changed['runtime.profile']);profile['transaction_review_digest']=revised['after_review_sha256']
+            changed['runtime.profile']=T.TransitionTests.encode(profile)
+            with self.subTest(field=field),self.assertRaises(ValueError,msg='route_cannot_change_cap_or_owner_accounts'):
+                N.propose(old,T.TransitionTests.pins(new,changed),before,changed,journals,now,route_review=revised)
+
     def session_fixture(self):
         old,new,before,after,journals,now=self.fixture()
         previous=T.R.L.fields(before['runtime.profile']);previous['expires_at_ms']='9000000'

@@ -131,7 +131,11 @@ def journal_bindings(files):
     if not 1<=count<=256:raise ValueError('lookup count')
     lookup=h(b'velocita-direct-buy-lookup-v1'+key(tx,'lookup_table')+number(tx['lookup_slot'])+
              key(tx,'lookup_evidence')+number(tx['lookup_address_count'])+key(tx,'lookup_addresses',32*count))
-    policy=h(b'velocita-direct-kipseli-buy-v1'+inc+cat+cust+allocation+key(tx,'account_keys',640)+
+    schemas={'1':(b'velocita-direct-kipseli-buy-v1',640),
+             '2':(b'velocita-direct-byreal-v3-buy-v1',864)}
+    if tx.get('schema') not in schemas:raise ValueError('unsupported transaction review schema')
+    policy_label,key_bytes=schemas[tx['schema']]
+    policy=h(policy_label+inc+cat+cust+allocation+key(tx,'account_keys',key_bytes)+
              b''.join(number(tx[k]) for k in ('max_envelope_age_ms','max_compute_price','max_compute_units','max_slippage_bps'))+
              number(p.get('max_buy_output_deduction_lamports','0'))+lookup+number(tx['expires_at_ms']))
     verification=b'velocita-signer-verification-v1'+policy+lookup

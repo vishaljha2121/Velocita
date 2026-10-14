@@ -1,0 +1,15 @@
+{
+  "production_verifier_passed": true,
+  "diagnostic": "code=12 gross_floor=8878187 max_deduction=2039280 net_floor=6838907 total_usdc=1000000 fee_usdc=2000 proof=1",
+  "synthetic_intent": true,
+  "actual_raft_authority": false,
+  "capture_sha256": "1601a54d32f2f9825e614f59b776c4bef2fc8e19179a8ff623373bb694f113ee",
+  "lookup_response_sha256": "117477ac29fabe07883db8159a7d24333cdbb84acac7e85a6247e87ffc18523e",
+  "diagnostic_clock_ms": 1791935526081,
+  "quoted_output_lamports": 9345460,
+  "slippage_bps": 500,
+  "conservative_net_floor_lamports": 6838907,
+  "signed": false,
+  "broadcast": false,
+  "live_admitted": false
+}

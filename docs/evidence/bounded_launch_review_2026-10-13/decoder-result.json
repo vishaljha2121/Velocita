@@ -1,0 +1,8 @@
+{
+  "source_commit": "69679c0",
+  "route_variant": 156,
+  "route_data_sha256": "cc56994ba3ce5f6dc4d5459c5c04389b371d0b7aff78a2481b0bea1d50438e64",
+  "decoder_status": "unsupported",
+  "test_passed": true,
+  "full_signer_invoked": false
+}

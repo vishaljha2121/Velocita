@@ -76,13 +76,35 @@ void digests(){
     f=Fixture{};f.pending.intent.min_base_receive=swap::BaseAtoms{1};require(verified_swap_intent_digest(f.pending.intent)!=i,"intent_minimum_digest");
     f=Fixture{};f.pending.intent.kill_epoch++;require(verified_swap_intent_digest(f.pending.intent)!=i,"intent_epoch_digest");
 }
+void byreal(){
+    using F=test_support::ByrealBuyFixture;
+    F f;auto r=f.run();require(r.verified && r.code==Code::verified_under_program_contract,"byreal_exact_capture_verified");
+    // 9,345,460*95/100 = 8,878,187; less full repayment = 6,838,907.
+    require(r.bounds.total_usdc_debit==1'000'000 && r.bounds.explicit_usdc_fee==2'000 &&
+        r.bounds.gross_sol_floor==8'878'187 && r.bounds.maximum_sol_deduction==2'039'280 && r.bounds.net_sol_floor==6'838'907,"byreal_economic_oracle");
+    f.pending.intent.min_base_receive=swap::BaseAtoms{6'838'908};require(!f.run().verified,"byreal_one_lamport_shortfall");
+    f=F{};f.payment++;require(!f.run().verified,"byreal_excess_repayment");
+    f=F{};f.input+=10000;require(!f.run().verified,"byreal_excess_debit");
+    f=F{};f.fee++;require(!f.run().verified,"byreal_wrong_fee");
+    f=F{};f.extra=true;require(!f.run().verified,"byreal_extra_instruction");
+    f=F{};f.wrong_close=true;require(!f.run().verified,"byreal_wrong_close_recipient");
+    f=F{};f.wrong_route_account=true;require(!f.run().verified,"byreal_wrong_route_account");
+    f=F{};f.readonly_unsigned=7;require(!f.run().verified,"byreal_permission_escalation");
+    f=F{};f.route_kind=109;require(!f.run().verified,"byreal_other_swap_variant");
+    f=F{};f.signed_payload=true;require(!f.run().verified,"byreal_already_signed");
+    f=F{};f.policy.additional_account_keys[1]=key(231);f.lookup[0].addresses[5]=key(231);
+    f.policy.lookup_image_digest=direct_buy_lookup_digest(f.lookup);require(!f.run().verified,"byreal_arbitrary_program");
+    f=F{};auto e=f.envelope();f.pending.payload=sha256_digest(std::as_bytes(std::span(e)));auto legacy=Fixture{}.policy;
+    require(!verify_swap_transaction(e,"verifier-fixture",std::string(31,'1')+'3',f.pending,legacy,f.lookup,1001).verified,"legacy_policy_cannot_admit_byreal");
+    Fixture old;old.policy.additional_account_keys[0]=key(200);require(!old.run().verified,"legacy_unused_keys_refused");
+}
 static_assert(!std::is_default_constructible_v<VerifiedSwapTransaction>);
 static_assert(!std::is_aggregate_v<VerifiedSwapTransaction>);
 }
 int main(int argc,char** argv){
     unsigned count{},failed{};
     const std::pair<const char*,void(*)()> tests[]={{"oracle",oracle},{"economics",economic_refusals},
-        {"topology",topology_refusals},{"identity",freshness_and_identity},{"digests",digests}};
+        {"topology",topology_refusals},{"identity",freshness_and_identity},{"digests",digests},{"byreal",byreal}};
     for(auto [name,fn]:tests){if(argc==2 && std::string_view(argv[1])!=name)continue;++count;
         try{fn();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){++failed;std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';}}
     return count==0?2:failed?1:0;

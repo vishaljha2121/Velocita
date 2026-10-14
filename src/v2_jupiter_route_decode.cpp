@@ -66,9 +66,10 @@ JupiterDirectRouteDecodeResult decode_jupiter_direct_route_data(std::span<const 
     for(std::size_t i=0;i<route.step_count;++i){
         auto& step=route.steps[i];
         if(!cursor.integer(1,number))return {Status::invalid,{}};
-        // Program-owned IDL: RaydiumClmm/Obsidian have no payload; Bison/KipseliV3 have a bool.
+        // Program-owned IDL: RaydiumClmm/Obsidian/ByrealDynamicV3 have no payload;
+        // Bison/KipseliV3 have a bool.
         // Decoding either variant remains data only, never economic authority.
-        if(number!=177 && number!=26 && number!=109 && number!=181)return {};
+        if(number!=177 && number!=26 && number!=109 && number!=181 && number!=156)return {};
         step.kind=static_cast<JupiterSwapKind>(number);
         if(step.kind==JupiterSwapKind::bison_fi_market_backed || step.kind==JupiterSwapKind::kipseli_v3){
             if(!cursor.integer(1,number) || number>1)return {Status::invalid,{}};

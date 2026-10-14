@@ -46,13 +46,16 @@ std::optional<SwapSignerVerificationContext> decode_swap_transaction_review(std:
         if(it==names.end())return {};const auto index=static_cast<std::size_t>(it-names.begin());
         if(!fields[index].empty())return {};fields[index]=line.substr(equal+1);
     }
-    if(std::any_of(fields.begin(),fields.end(),[](auto s){return s.empty();}) || fields[0]!="1")return {};
+    if(std::any_of(fields.begin(),fields.end(),[](auto s){return s.empty();}) || (fields[0]!="1" && fields[0]!="2"))return {};
     const auto org=truemarkets::tm_text(organization),who=truemarkets::tm_text(signer);
     if(!org || !who)return {};
     SwapSignerVerificationContext result;result.organization=*org;result.signer=*who;
     auto& p=result.policy;auto& lookup=result.lookup;
     p.binding=runtime.allocation;p.accepted_costs.max_output_deduction=swap::BaseAtoms{runtime.max_buy_output_deduction_lamports};
-    if(!hex(fields[1],std::as_writable_bytes(std::span(p.account_keys))) ||
+    p.route=fields[0]=="2"?truemarkets::DirectBuyRoute::byreal_dynamic_v3:truemarkets::DirectBuyRoute::kipseli_v3;
+    if(fields[1].size()!=p.account_count()*64 ||
+        !hex(fields[1].substr(0,20*64),std::as_writable_bytes(std::span(p.account_keys))) ||
+        (fields[0]=="2" && !hex(fields[1].substr(20*64),std::as_writable_bytes(std::span(p.additional_account_keys)))) ||
         !hex(fields[2],std::as_writable_bytes(std::span(lookup.table))) ||
         !hex(fields[4],lookup.evidence_digest.bytes))return {};
     if(!std::equal(p.account_keys[1].begin(),p.account_keys[1].end(),runtime.owner_wallet.begin(),

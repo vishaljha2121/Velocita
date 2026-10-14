@@ -37,6 +37,20 @@ at 100 bp a side.
 
 ## What must be true before the first real order
 
+**Byreal route qualification (October 13, local implementation):** enum156 is
+identified and the separate schema2 decoder/verifier/review policy passes focused
+local checks, including the retained real envelope under synthetic offline intent
+and time. Conservative capture-specific floor:6,838,907lamports after the full
+2,039,280-lamport repayment, zero guaranteed sponsor credit, $1 inclusive debit.
+Both successful simulation balances and the adjacent rounding boundary reconcile.
+Twenty C++ test groups,52Python tests and29named mutation kills pass; native/Python
+journal-domain parity passes. A pinned route-transition proposal preserves owner
+accounts, all financial limits and the five-journal recovery rules. No host changes,
+commit, service activation, signing or execution occurred. Next: scoped checkpoint,
+exact NUC/Pi qualification, stopped upgrade/locked route adoption and fresh launch
+review. Installed69679c0 still rejects the new route; continuous strategy trading
+is outside the bounded test. See [Byreal evidence](evidence/bounded_launch_review_2026-10-13/BYREAL_RESULT.md).
+
 **Confirmed-fill wiring and locked renewal (October 13, deployed):** qualified
 C++ producer 69679c0, collector and 39-panel live dashboard are installed. NUC/Pi
 qualification passed 52 native tests,193 Python tests and eight process-drill cases

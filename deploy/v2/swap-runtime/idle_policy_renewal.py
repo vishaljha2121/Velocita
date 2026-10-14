@@ -1,4 +1,4 @@
-"""Offline expiry-only renewal proposal; never applies files or authorizes launch.
+"""Offline expiry renewal or explicitly reviewed route-transition proposal; never applies files or authorizes launch.
 
 No command-line apply path exists. Caller JSON is not authenticated Raft proof.
 Every returned proposal is explicitly non-applyable until a native migration
@@ -34,7 +34,30 @@ def runtime_identity(profile):
     return hashlib.sha256(raw).hexdigest()
 
 
-def propose(old,new,before,after,journals,now,session_refresh=None):
+def route_transition(before,after,witness):
+    """Validate owner-pinned review scope, not a self-asserted transaction proof.
+
+    The installed native verifier must separately qualify the new route. This
+    witness cannot authorize launch or alter financial/caller/opening limits.
+    """
+    expected={'schema','kind','before_review_sha256','after_review_sha256','contract_evidence_sha256'}
+    if type(witness) is not dict or set(witness)!=expected or type(witness['schema']) is not int or witness['schema']!=1 or witness['kind']!='kipseli-v1-to-byreal-v1':raise ValueError('exact route review witness required')
+    for name in ('before_review_sha256','after_review_sha256','contract_evidence_sha256'):
+        value=witness[name]
+        if not isinstance(value,str) or len(value)!=64 or any(c not in '0123456789abcdef' for c in value) or not int(value,16):raise ValueError('route review digest shape')
+    if witness['before_review_sha256']!=R.digest(before) or witness['after_review_sha256']!=R.digest(after):raise ValueError('route review document pin mismatch')
+    prior,current=map(R.transaction_fields,(before,after))
+    if set(prior)!=set(current) or prior['schema']!='1' or current['schema']!='2':raise ValueError('only reviewed Kipseli to Byreal transition')
+    mutable={'schema','account_keys','lookup_table','lookup_slot','lookup_evidence','lookup_address_count','lookup_addresses','expires_at_ms'}
+    if any(prior[k]!=current[k] for k in prior if k not in mutable):raise ValueError('route transition cannot change execution limits')
+    a,b=prior['account_keys'],current['account_keys']
+    if len(a)!=20*64 or len(b)!=27*64 or any(c not in '0123456789abcdef' for c in a+b):raise ValueError('route account key shapes')
+    # Every owner-facing identity survives the topology index remapping.
+    for old,new in ((0,0),(1,1),(2,3),(3,4),(4,5),(5,8),(6,9),(7,10),(8,11),(10,13),(11,14),(15,22),(18,25)):
+        if a[old*64:(old+1)*64]!=b[new*64:(new+1)*64]:raise ValueError('route changed owner-facing account or program')
+
+
+def propose(old,new,before,after,journals,now,session_refresh=None,route_review=None):
     """Return review artifacts only. Never accepts a purported authenticated proof."""
     if type(now) is not int or not 0<now<=2**64-1:raise ValueError('bounded evaluation time')
     R.P.validate(old);R.P.validate(new)
@@ -46,7 +69,8 @@ def propose(old,new,before,after,journals,now,session_refresh=None):
     if any(old.get(k)!=new.get(k) for k in (set(old)|set(new))-R.P.PENDING_ACCOUNT_PINS):raise ValueError('immutable manifest authority')
     if not old['launch_authorized'] or old.get('initialize_swap_recovery') is not False or old.get('recovery_only',False):raise ValueError('sealed first-use profile required')
     prior_tx,next_tx=map(R.transaction_fields,(before['transaction.review'],after['transaction.review']))
-    if set(prior_tx)!=set(next_tx) or any(prior_tx[k]!=next_tx[k] for k in prior_tx if k!='expires_at_ms'):raise ValueError('expiry-only transaction review')
+    if route_review is not None:route_transition(before['transaction.review'],after['transaction.review'],route_review)
+    elif set(prior_tx)!=set(next_tx) or any(prior_tx[k]!=next_tx[k] for k in prior_tx if k!='expires_at_ms'):raise ValueError('expiry-only transaction review')
     expiry=R.L.unsigned(next_tx['expires_at_ms'])
     if not max(now,R.L.unsigned(prior_tx['expires_at_ms']))<expiry<=now+900000:raise ValueError('fresh bounded transaction expiry required')
     prior_p,next_p=map(R.L.fields,(before['runtime.profile'],after['runtime.profile']))
@@ -108,7 +132,10 @@ def propose(old,new,before,after,journals,now,session_refresh=None):
         artifacts.update({prefix+'/journals/'+name:raw for name,raw in records.items()})
     if session_refresh is not None:
         artifacts['session-refresh.json']=(json.dumps(session_refresh,sort_keys=True,separators=(',',':'))+'\n').encode()
-    report=dict(schema=1,kind='expiry-only-pristine-protected-journal-renewal-proposal',applyable=False,
+    if route_review is not None:
+        artifacts['route-review.json']=(json.dumps(route_review,sort_keys=True,separators=(',',':'))+'\n').encode()
+    kind='expiry-only-pristine-protected-journal-renewal-proposal' if route_review is None else 'reviewed-route-pristine-protected-journal-transition-proposal'
+    report=dict(schema=1,kind=kind,applyable=False,
         authenticated_raft_proof=False,services_started=False,orders_submitted=False,
         original_journal_index=int.from_bytes(old_record[24:32],'little'),original_state_digest=old_record[400:432].hex(),
         blocking_requirement='native authenticated Raft proof, native digest parity and crash-safe migration helper required',

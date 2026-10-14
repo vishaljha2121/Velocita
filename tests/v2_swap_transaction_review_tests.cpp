@@ -58,6 +58,19 @@ void schema(){
     f=Fixture{};f.set("expires_at_ms","2000\r");require(!f.read(),"carriage_return_refused");
     f=Fixture{};f.set("max_compute_price","");require(!f.read(),"empty_value_refused");
 }
+void byreal_review(){
+    Fixture f;test_support::ByrealBuyFixture tx;f.binding.max_buy_output_deduction_lamports=2'039'280;
+    std::string keys;for(std::size_t i=0;i<tx.policy.account_count();++i)keys+=hex(tx.policy.account_key(i));
+    f.set("schema","2");f.set("account_keys",keys);f.set("lookup_address_count","11");
+    std::string lookup;for(unsigned i=0;i<11;++i)lookup+=hex(tx.lookup[0].addresses[i]);f.set("lookup_addresses",lookup);
+    auto r=f.read();require(r && r->policy.route==truemarkets::DirectBuyRoute::byreal_dynamic_v3 &&
+        r->policy.account_count()==27,"byreal_schema2_decodes");
+    require(truemarkets::direct_buy_policy_digest(r->policy)==truemarkets::direct_buy_policy_digest(tx.policy),"byreal_review_digest_matches");
+    f.set("schema","1");require(!f.read(),"legacy_schema_rejects_27_accounts");
+    f.set("schema","2");f.set("account_keys",keys.substr(0,20*64));require(!f.read(),"byreal_schema_rejects_20_accounts");
+    f.set("account_keys",keys);f.set("schema","3");require(!f.read(),"unknown_review_schema_refused");
+}
+
 void bounds(){
     const std::pair<std::string_view,std::string_view> bad[]={{"lookup_slot","0"},{"lookup_slot","18446744073709551616"},
         {"lookup_address_count","0"},{"lookup_address_count","257"},{"lookup_address_count","9"},
@@ -73,7 +86,7 @@ void bounds(){
     f.set("account_keys",keys);require(!f.read(),"account_alias_refused");
 }
 }
-int main(int argc,char** argv){const std::pair<const char*,void(*)()> tests[]={{"valid",valid},{"identities",identities},{"schema",schema},{"bounds",bounds}};
+int main(int argc,char** argv){const std::pair<const char*,void(*)()> tests[]={{"valid",valid},{"identities",identities},{"schema",schema},{"bounds",bounds},{"byreal",byreal_review}};
     unsigned ran{},failed{};for(auto [name,fn]:tests){if(argc==2 && std::string_view(argv[1])!=name)continue;++ran;
         try{fn();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){++failed;std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';}}
     return ran&&!failed?0:1;

@@ -1,0 +1,25 @@
+{
+  "commit": "6863b33fd0f7874f722e58fe8191009b6061de5d",
+  "sources": [
+    {
+      "url": "https://raw.githubusercontent.com/byreal-git/byreal-clmm/6863b33fd0f7874f722e58fe8191009b6061de5d/programs/amm/src/lib.rs",
+      "sha256": "817898535cfe33359d7239938515aba22cce5763a030769ba88a68ae5d3c68cb"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/byreal-git/byreal-clmm/6863b33fd0f7874f722e58fe8191009b6061de5d/programs/amm/src/instructions/swap_v2.rs",
+      "sha256": "54f4453989e59964e9964850247df83c9e462690ac393e56d14c31e6dacceaeb"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/byreal-git/byreal-clmm/6863b33fd0f7874f722e58fe8191009b6061de5d/idl/byreal_clmm.json",
+      "sha256": "d487ee1027f6ddf65970d53399bb94a30de0fca8ed4e7ab7c0ec97af858beca6"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/byreal-git/byreal-clmm/6863b33fd0f7874f722e58fe8191009b6061de5d/programs/amm/src/instructions/swap_v3_dyn.rs",
+      "sha256": "08abb4ac7570c0b59792accf9168ed42a71ac8e83ad272d7bb914f1065f8b2c4"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/byreal-git/byreal-clmm/6863b33fd0f7874f722e58fe8191009b6061de5d/programs/amm/src/util/token.rs",
+      "sha256": "134d7ef676389c5b29642f4ebd621925c68878b68ebab4763e550770f3e2ab47"
+    }
+  ]
+}

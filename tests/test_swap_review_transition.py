@@ -155,6 +155,22 @@ class TransitionTests(unittest.TestCase):
     def checksum(raw):
         raw=bytearray(raw);raw[-32:]=hashlib.sha256(raw[:-32]).digest();return bytes(raw)
 
+    def test_route_schema_separates_protected_journal_domain(self):
+        _,files=self.initialized()
+        legacy=R.journal_bindings(files)
+        self.assertEqual(legacy[4].hex(),self.JOURNAL_DOMAINS['protected-signing'])
+        tx=R.transaction_fields(files['transaction.review'])
+        tx.update(schema='2',account_keys=('27'*32)*27)
+        new=dict(files,**{'transaction.review':self.encode(tx)})
+        try:current=R.journal_bindings(new)
+        except ValueError as error:self.fail("byreal_schema2_domain_admitted: "+str(error))
+        self.assertEqual(current[:4],legacy[:4],msg='gateway_domains_preserved')
+        self.assertNotEqual(current[4],legacy[4],msg='route_policy_domain_separated')
+        for schema,count in [('1',27),('2',20),('3',27),('02',27)]:
+            bad=dict(tx,schema=schema,account_keys=('27'*32)*count)
+            with self.subTest(schema=schema,count=count),self.assertRaises(ValueError,msg='schema_and_key_count_bound'):
+                R.journal_bindings(dict(files,**{'transaction.review':self.encode(bad)}))
+
     def test_idle_journal_vector_and_all_binding_fields(self):
         manifest,files,journals=self.idle_journals()
         try:R.validate_idle_journals(manifest,files,journals)

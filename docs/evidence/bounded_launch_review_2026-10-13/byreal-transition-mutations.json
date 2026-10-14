@@ -1,0 +1,23 @@
+{
+  "results": [
+    {
+      "name": "review_pin",
+      "named_assertion": "route_review_pins_required",
+      "killed": true,
+      "test_errors": 0
+    },
+    {
+      "name": "execution_caps",
+      "named_assertion": "route_scope_checked_before_identity",
+      "killed": true,
+      "test_errors": 0
+    },
+    {
+      "name": "owner_accounts",
+      "named_assertion": "route_scope_checked_before_identity",
+      "killed": true,
+      "test_errors": 0
+    }
+  ],
+  "named_kills": 3
+}

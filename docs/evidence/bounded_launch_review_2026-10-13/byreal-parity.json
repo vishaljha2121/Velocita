@@ -1,0 +1,8 @@
+{
+  "byreal_native_python_parity": true,
+  "domains": {
+    "x.signing": "a2d18655c81b64434f79fe749c935149c59c5f686096b992228c262049507701",
+    "x.protected": "5992f1822bf46f1da5057ba04d97325f29a071e97932676498a0e7f773fc064d",
+    "x.runtime": "7b407ac7d4aa0769766a5391168976f00666e1a539b94a13a22d88b91d5d2417"
+  }
+}

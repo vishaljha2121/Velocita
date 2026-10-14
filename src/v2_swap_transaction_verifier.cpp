@@ -18,6 +18,9 @@ constexpr SolanaAccountKey kipseli{36,116,252,210,179,53,119,156,91,10,143,10,19
 constexpr SolanaAccountKey usdc{198,250,122,243,190,219,173,58,61,101,243,106,171,201,116,49,177,187,228,194,210,246,224,228,124,166,2,3,69,47,93,97};
 constexpr SolanaAccountKey route_auxiliary{92,182,230,237,49,47,49,220,185,242,92,42,64,40,72,4,223,226,119,102,59,98,177,153,135,151,250,201,221,234,197,87};
 constexpr SolanaAccountKey route_readonly{252,209,61,160,65,85,144,19,207,74,235,161,168,78,215,2,58,212,255,33,168,71,71,255,59,5,171,48,250,130,7,195};
+constexpr SolanaAccountKey byreal{6,52,210,15,27,245,109,209,100,227,193,60,120,54,164,34,158,197,171,33,255,84,82,131,144,165,23,137,243,205,187,219};
+constexpr SolanaAccountKey token2022{6,221,246,225,238,117,143,222,24,66,93,188,228,108,205,218,182,26,252,77,131,185,13,39,254,189,249,40,216,161,139,252};
+constexpr SolanaAccountKey memo{5,74,83,90,153,41,33,6,77,36,232,113,96,218,56,124,124,53,181,221,188,146,187,129,228,31,168,64,65,5,68,141};
 
 void number(Sha256& hash,std::uint64_t value) noexcept {
     std::array<std::byte,8> bytes{};
@@ -39,7 +42,16 @@ bool valid_policy(const DirectBuyVerificationPolicy& p) noexcept {
     if(!valid_binding(p.binding) || !p.expires_at_ms || !p.max_envelope_age_ms || p.max_envelope_age_ms>30'000 ||
         !p.max_compute_units || p.max_compute_units>1'400'000 || p.max_slippage_bps>10'000 ||
         p.accepted_costs.max_output_deduction.value()>max_signed || p.lookup_image_digest.is_zero())return false;
-    for(std::size_t i=0;i<a.size();++i)for(std::size_t j=0;j<i;++j)if(a[i]==a[j])return false;
+    if(p.route!=DirectBuyRoute::kipseli_v3 && p.route!=DirectBuyRoute::byreal_dynamic_v3)return false;
+    for(std::size_t i=0;i<p.account_count();++i)for(std::size_t j=0;j<i;++j)
+        if(p.account_key(i)==p.account_key(j))return false;
+    if(p.route==DirectBuyRoute::byreal_dynamic_v3)
+        return a[8]==kSolanaSystemProgram && a[9]==kSolanaComputeBudgetProgram && a[10]==jupiter &&
+            a[11]==kSolanaClassicTokenProgram && a[13]==kSolanaAssociatedTokenProgram && a[14]==event_authority &&
+            p.account_key(20)==memo && p.account_key(21)==byreal && p.account_key(22)==wrapped_sol &&
+            p.account_key(23)==token2022 && p.account_key(25)==usdc;
+    if(std::any_of(p.additional_account_keys.begin(),p.additional_account_keys.end(),
+        [](const auto& k){return k!=SolanaAccountKey{};}))return false;
     return a[5]==kSolanaSystemProgram && a[6]==kSolanaComputeBudgetProgram && a[7]==jupiter &&
         a[8]==kSolanaClassicTokenProgram && a[9]==route_auxiliary && a[10]==kSolanaAssociatedTokenProgram &&
         a[11]==event_authority && a[15]==wrapped_sol && a[16]==instructions_sysvar && a[17]==kipseli &&
@@ -59,8 +71,8 @@ SolanaInstructionDecodeResult small(const DecodedSolanaPayload& d,const Resolved
 }
 Digest256 direct_buy_policy_digest(const DirectBuyVerificationPolicy& p) noexcept {
     if(!valid_policy(p))return {};
-    Sha256 h;label(h,"velocita-direct-kipseli-buy-v1");binding(h,p.binding);
-    for(const auto& k:p.account_keys)h.update(std::as_bytes(std::span(k)));
+    Sha256 h;label(h,p.route==DirectBuyRoute::kipseli_v3?"velocita-direct-kipseli-buy-v1":"velocita-direct-byreal-v3-buy-v1");binding(h,p.binding);
+    for(std::size_t i=0;i<p.account_count();++i)h.update(std::as_bytes(std::span(p.account_key(i))));
     number(h,p.max_envelope_age_ms);number(h,p.max_compute_price);number(h,p.max_compute_units);
     number(h,p.max_slippage_bps);number(h,p.accepted_costs.max_output_deduction.value());
     h.update(p.lookup_image_digest.bytes);number(h,p.expires_at_ms);return h.finish();
@@ -104,19 +116,27 @@ SwapTransactionVerification verify_swap_transaction(std::string_view envelope,st
     ResolvedSolanaAccounts accounts;
     if(resolve_solana_accounts(d,organization,signer,evidence,accounts)!=SolanaResolutionError::none)
         return {Code::invalid_accounts,{},{}};
-    if(!d.version_zero || d.required_signatures!=2 || d.signer_index!=1 || d.static_key_count!=12 ||
-        accounts.account_count!=20 || accounts.lookup_count!=1)return {Code::account_mismatch,{},{}};
-    for(std::size_t i=0;i<20;++i)
-        if(accounts.accounts[i].key!=p.account_keys[i] || accounts.accounts[i].signer!=(i<2) ||
-            accounts.accounts[i].writable!=(i<5 || (i>=12 && i<15)))return {Code::account_mismatch,{},{}};
-    constexpr std::array<std::uint8_t,6> programs{6,6,10,7,8,5},ata{0,3,1,15,5,8};
-    constexpr std::array<std::uint8_t,3> close{3,1,1};
+    const bool is_byreal=p.route==DirectBuyRoute::byreal_dynamic_v3;
+    if(!d.version_zero || d.required_signatures!=2 || d.signer_index!=1 || d.static_key_count!=(is_byreal?16:12) ||
+        accounts.account_count!=p.account_count() || accounts.lookup_count!=1)return {Code::account_mismatch,{},{}};
+    for(std::size_t i=0;i<p.account_count();++i){
+        const bool writable=is_byreal?(i<8 || (i>=16 && i<20)):(i<5 || (i>=12 && i<15));
+        if(accounts.accounts[i].key!=p.account_key(i) || accounts.accounts[i].signer!=(i<2) ||
+            accounts.accounts[i].writable!=writable)return {Code::account_mismatch,{},{}};
+    }
+    constexpr std::array<std::uint8_t,6> legacy_programs{6,6,10,7,8,5},byreal_programs{9,9,13,10,11,8};
+    constexpr std::array<std::uint8_t,6> legacy_ata{0,3,1,15,5,8},byreal_ata{0,4,1,22,8,11};
+    constexpr std::array<std::uint8_t,3> legacy_close{3,1,1},byreal_close{4,1,1};
     constexpr std::array<std::uint8_t,2> transfer{1,0};
-    constexpr std::array<std::uint8_t,25> route_accounts{8,1,2,3,7,15,4,11,7,17,1,12,14,13,15,18,3,2,8,5,1,9,9,19,16};
+    constexpr std::array<std::uint8_t,25> legacy_route{8,1,2,3,7,15,4,11,7,17,1,12,14,13,15,18,3,2,8,5,1,9,9,19,16};
+    constexpr std::array<std::uint8_t,30> byreal_route{11,1,3,4,10,22,5,14,10,21,1,24,18,3,4,19,17,16,11,23,20,25,22,26,7,2,6,12,15,10};
+    const auto& programs=is_byreal?byreal_programs:legacy_programs;
+    const auto route_accounts=is_byreal?std::span<const std::uint8_t>(byreal_route):std::span<const std::uint8_t>(legacy_route);
     if(d.instruction_count!=6)return {Code::unsupported_topology,{},{}};
     for(std::size_t i=0;i<6;++i)if(d.instructions[i].program_index!=programs[i])return {Code::unsupported_topology,{},{}};
-    if(!indices(d,0,{}) || !indices(d,1,{}) || !indices(d,2,ata) || !indices(d,3,route_accounts) ||
-        !indices(d,4,close) || !indices(d,5,transfer))return {Code::unsupported_topology,{},{}};
+    if(!indices(d,0,{}) || !indices(d,1,{}) || !indices(d,2,is_byreal?byreal_ata:legacy_ata) ||
+        !indices(d,3,route_accounts) || !indices(d,4,is_byreal?byreal_close:legacy_close) || !indices(d,5,transfer))
+        return {Code::unsupported_topology,{},{}};
     const auto compute=small(d,accounts,0),price=small(d,accounts,1),create=small(d,accounts,2),
         closing=small(d,accounts,4),payment=small(d,accounts,5);
     if(!std::holds_alternative<ComputeUnitLimit>(compute.body) || !std::holds_alternative<ComputeUnitPrice>(price.body) ||
@@ -130,7 +150,7 @@ SwapTransactionVerification verify_swap_transaction(std::string_view envelope,st
     const auto decoded=decode_jupiter_direct_route_data(std::span(d.transaction).subspan(ix.data_offset,ix.data_size));
     const auto& route=decoded.data;
     if(decoded.status!=JupiterRouteStatus::decoded_data_only || route.step_count!=1 ||
-        route.steps[0]!=JupiterRouteStep{JupiterSwapKind::kipseli_v3,0,100,0,1,0} ||
+        route.steps[0]!=JupiterRouteStep{is_byreal?JupiterSwapKind::byreal_dynamic_v3:JupiterSwapKind::kipseli_v3,0,100,0,1,0} ||
         !route.quoted_output_atoms || route.quoted_output_atoms>max_signed || route.slippage_bps>p.max_slippage_bps)
         return {Code::unsupported_route,{},{}};
     if(route.platform_fee_bps!=20 || route.input_atoms!=intent.max_quote_debit.value() || route.input_atoms%10'000!=0)

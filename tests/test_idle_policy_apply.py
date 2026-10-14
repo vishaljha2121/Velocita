@@ -49,6 +49,18 @@ class ApplyTests(unittest.TestCase):
         with self.assertRaises(ValueError,msg='repinned_expired_session_revalidated'):
             A.bundle(base,A.R.digest(raw))
 
+    def test_route_review_witness_is_pinned_and_revalidated(self):
+        args,witness=N.RenewalTests().route_fixture()
+        proposal=A.N.propose(*args,route_review=witness)
+        base,pin=self.write_bundle(proposal,args[-1])
+        self.assertEqual(A.bundle(base,pin)[-1]['artifacts'],proposal['artifacts'],'route_bundle_revalidated')
+        proof=base/'route-review.json';original=proof.read_bytes();proof.write_bytes(original+b' ')
+        with self.assertRaisesRegex(ValueError,'artifact pin',msg='route_witness_byte_pin'):A.bundle(base,pin)
+        changed=json.loads(original);changed['after_review_sha256']='ef'*32;proof.write_bytes(json.dumps(changed).encode())
+        spec=json.loads((base/'renewal.json').read_bytes());spec['files']['route-review.json']=A.R.digest(proof.read_bytes())
+        raw=json.dumps(spec).encode();(base/'renewal.json').write_bytes(raw)
+        with self.assertRaisesRegex(ValueError,'route review document pin',msg='repinned_false_route_witness_revalidated'):A.bundle(base,A.R.digest(raw))
+
     def test_exact_state_proof_requires_both_live_role_reads(self):
         proof=self.proposal['report'];rows=[dict(role=r,applied_index=6,state_digest=proof['original_state_digest']) for r in ('signer','gateway')]
         A.exact_state(rows,proof)
