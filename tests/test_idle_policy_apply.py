@@ -1,9 +1,11 @@
 """Expiry renewal failure boundaries: real flock and durable filesystem test doubles."""
 import importlib.util
+from contextlib import contextmanager, ExitStack
 import json
 import os
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -66,6 +68,91 @@ class ApplyTests(unittest.TestCase):
         A.exact_state(rows,proof)
         for changed in ([rows[0]], [rows[0],dict(rows[1],state_digest='ff'*32)], [rows[0],dict(rows[1],applied_index=5)]):
             with self.assertRaises(ValueError,msg='changed_or_incomplete_state_refused'):A.exact_state(changed,proof)
+
+    def test_release_review_is_pinned_and_revalidated(self):
+        args,route,release=N.RenewalTests().release_fixture()
+        proposal=A.N.propose(*args,route_review=route,release_review=release)
+        base,pin=self.write_bundle(proposal,args[-1])
+        self.assertEqual(A.bundle(base,pin)[-1]['artifacts'],proposal['artifacts'])
+        proof=base/'release-review.json';original=proof.read_bytes();proof.write_bytes(original+b' ')
+        with self.assertRaisesRegex(ValueError,'artifact pin',msg='release_witness_byte_pin'):A.bundle(base,pin)
+        changed=json.loads(original);changed['binary_sha256']='ef'*32;proof.write_bytes(json.dumps(changed).encode())
+        spec=json.loads((base/'renewal.json').read_bytes());spec['files']['release-review.json']=A.R.digest(proof.read_bytes())
+        raw=json.dumps(spec).encode();(base/'renewal.json').write_bytes(raw)
+        with self.assertRaisesRegex(ValueError,'qualified release identity',msg='repinned_false_release_revalidated'):A.bundle(base,A.R.digest(raw))
+
+    def test_installed_release_checked_under_locks_before_publication(self):
+        args,route,release=N.RenewalTests().release_fixture()
+        old,new,before,after,journals,now=args
+        proposal=A.N.propose(*args,route_review=route,release_review=release)
+        base,pin=self.write_bundle(proposal,now);parsed=A.bundle(base,pin)
+        public=Path(A.R.P.PUBLIC)
+        installed={public/n:raw for n,raw in before.items()}
+        installed[public/'manifest.json']=A.R.P.manifest_bytes(old)
+        for unit in A.SYSTEM_UNITS:installed[Path('/etc/systemd/system')/unit]=A.R.P.render(old)[unit+'.review'].encode()
+        for name,(role,leaf,_,_) in A.R.JOURNALS.items():
+            installed[Path('/var/lib/velocita-swap-'+role+'/recovery')/name/leaf]=journals[name]
+        active_locks=[]
+        @contextmanager
+        def locks(paths,uid=None):
+            active_locks.append(paths)
+            try:yield
+            finally:active_locks.pop()
+        def metadata(path):
+            uid=29002 if 'velocita-swap-signer' in str(path) else 29001
+            return SimpleNamespace(st_mode=0o100600,st_uid=uid,st_gid=uid,st_nlink=1)
+        # Inject privileged host metadata and service operations only. Exercise
+        # apply's sequencing, release checks, journal checks and publication gate.
+        for corrupt in (None,*release['files']):
+            with self.subTest(corrupt=corrupt),ExitStack() as stack:
+                checked=[]
+                def pinned(path,digest,limit):
+                    self.assertEqual(len(active_locks),2,'release_check_inside_all_locks')
+                    name=Path(path).name;checked.append(name)
+                    self.assertEqual(digest,release['files'][name])
+                    if name==corrupt:raise ValueError('staged artifact differs')
+                for owner,name,kwargs in (
+                    (A,'bundle',dict(return_value=parsed)),(A,'directory_locks',dict(side_effect=locks)),
+                    (A,'inhibit',{}),(A.R.I.PROVISION,'require_host_root',{}),(A.R.H,'harden',{}),
+                    (A.R.L,'directory',{}),(A,'read',dict(side_effect=lambda p:installed[Path(p)])),
+                    (A.R.L,'pinned_bytes',dict(side_effect=pinned)),
+                    (A.time,'time_ns',dict(return_value=now*1000000)),
+                    (A,'command',dict(return_value='inactive'))):
+                    stack.enter_context(mock.patch.object(owner,name,**kwargs))
+                stack.enter_context(mock.patch.object(Path,'lstat',metadata))
+                publish=stack.enter_context(mock.patch.object(A,'checked_publish'))
+                if corrupt is not None:
+                    with self.assertRaisesRegex(ValueError,'staged artifact differs',msg='bad_release_prevents_publication'):A.apply(base,pin)
+                    publish.assert_not_called()
+                else:
+                    result=A.apply(base,pin)
+                    self.assertEqual(set(checked),set(release['files']),'every_release_artifact_checked')
+                    publish.assert_called_once();self.assertFalse(result['services_started'])
+
+    def test_combined_release_route_crash_preserves_generation_archive(self):
+        args,route,release=N.RenewalTests().release_fixture()
+        proposal=A.N.propose(*args,route_review=route,release_review=release)
+        old,new,before,after,_,_=args
+        changes={'manifest':(A.R.P.manifest_bytes(old),A.R.P.manifest_bytes(new)),
+                 **{name:(before[name],after[name]) for name in before},
+                 'protected-signing':tuple(proposal['artifacts'][p+'/journals/protected-signing'] for p in ('before','after')),
+                 **{unit:tuple(A.R.P.render(m)[unit+'.review'].encode() for m in (old,new)) for unit in A.SYSTEM_UNITS}}
+        changed_count=sum(a!=b for a,b in changes.values())
+        for boundary in range(1,changed_count+1):
+            with self.subTest(boundary=boundary):
+                folder=self.root/str(boundary);folder.mkdir();archive=folder/'archive'
+                paths={folder/name:pair for name,pair in changes.items()}
+                for path,(previous,_) in paths.items():path.write_bytes(previous)
+                original=A.replace;count=0
+                def crash(path,raw):
+                    nonlocal count
+                    original(path,raw);count+=1
+                    if count==boundary:raise RuntimeError('combined publication interrupted')
+                with mock.patch.object(A,'replace',side_effect=crash),self.assertRaises(RuntimeError):A.publish(paths,archive,False)
+                A.publish(paths,archive,True)
+                for i,(path,(previous,following)) in enumerate(paths.items()):
+                    self.assertEqual(path.read_bytes(),following,'combined_generation_recovers_forward')
+                    self.assertEqual((archive/('before-'+str(i))).read_bytes(),previous,'prior_generation_preserved')
 
     def test_flock_excludes_native_compatible_second_open(self):
         import fcntl

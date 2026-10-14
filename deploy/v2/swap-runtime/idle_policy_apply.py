@@ -215,6 +215,7 @@ def bundle(base,pin):
     names={p+'/'+n for p in ('before','after') for n in ('manifest.json',*R.A.DOCUMENTS)}|{p+'/journals/'+n for p in ('before','after') for n in R.JOURNALS}
     if 'session-refresh.json' in spec['files']:names.add('session-refresh.json')
     if 'route-review.json' in spec['files']:names.add('route-review.json')
+    if 'release-review.json' in spec['files']:names.add('release-review.json')
     if set(spec['files'])!=names:raise ValueError('exact artifact set required')
     artifacts={n:read(base/n) for n in names}
     if any(R.digest(raw)!=spec['files'][n] for n,raw in artifacts.items()):raise ValueError('artifact pin differs')
@@ -223,7 +224,8 @@ def bundle(base,pin):
     journals={n:artifacts['before/journals/'+n] for n in R.JOURNALS}
     witness=R.L.strict_json(artifacts['session-refresh.json']) if 'session-refresh.json' in artifacts else None
     route=R.L.strict_json(artifacts['route-review.json']) if 'route-review.json' in artifacts else None
-    proposal=N.propose(old,new,before,after,journals,spec['evaluated_at_ms'],session_refresh=witness,route_review=route)
+    release=R.L.strict_json(artifacts['release-review.json']) if 'release-review.json' in artifacts else None
+    proposal=N.propose(old,new,before,after,journals,spec['evaluated_at_ms'],session_refresh=witness,route_review=route,release_review=release)
     if proposal['artifacts']!=artifacts:raise ValueError('derived renewal differs from bundle')
     Q.token(spec['helper_sha256'],64)
     return spec,old,new,before,after,proposal
@@ -235,7 +237,8 @@ def apply(base,pin,recover=False):
     now=time.time_ns()//1000000
     witness=R.L.strict_json(proposal['artifacts']['session-refresh.json']) if 'session-refresh.json' in proposal['artifacts'] else None
     route=R.L.strict_json(proposal['artifacts']['route-review.json']) if 'route-review.json' in proposal['artifacts'] else None
-    if not recover:N.propose(old,new,before,after,{n:proposal['artifacts']['before/journals/'+n] for n in R.JOURNALS},now,session_refresh=witness,route_review=route)
+    release=R.L.strict_json(proposal['artifacts']['release-review.json']) if 'release-review.json' in proposal['artifacts'] else None
+    if not recover:N.propose(old,new,before,after,{n:proposal['artifacts']['before/journals/'+n] for n in R.JOURNALS},now,session_refresh=witness,route_review=route,release_review=release)
     public=Path(R.P.PUBLIC)
     # One owner transition at a time, separate from the native journal locks.
     with directory_locks([public],0):
@@ -258,6 +261,8 @@ def apply(base,pin,recover=False):
             for path,(previous,following) in replacements.items():
                 if read(path) not in ((previous,following) if recover else (previous,)):raise ValueError('installed generation differs')
             R.L.pinned_bytes(new['binary'],new['binary_sha256'],64*1024**2)
+            if release is not None:
+                for name,expected in release['files'].items():R.L.pinned_bytes(str(Path(new['binary']).parent/name),expected,64*1024**2)
             proof_dir=public/('idle-renewal-read-'+pin+'-'+os.urandom(8).hex())
             checked_publish(old,before,spec['helper_sha256'],proof_dir,proposal,replacements,public/('idle-renewal-archive-'+pin),recover)
             command(['/usr/bin/systemctl','daemon-reload'])

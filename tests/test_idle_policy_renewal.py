@@ -70,6 +70,39 @@ class RenewalTests(unittest.TestCase):
             with self.subTest(field=field),self.assertRaises(ValueError,msg='route_cannot_change_cap_or_owner_accounts'):
                 N.propose(old,T.TransitionTests.pins(new,changed),before,changed,journals,now,route_review=revised)
 
+    def release_fixture(self):
+        args,route=self.route_fixture();old,new,before,after,journals,now=args
+        commit='ab'*20;binary='cd'*32
+        new=dict(new,source_commit=commit,binary='/opt/velocita/releases/'+commit+'/velocita-v2-gateway',binary_sha256=binary)
+        release=dict(schema=1,before_source_commit=old['source_commit'],before_binary_sha256=old['binary_sha256'],
+            source_commit=commit,binary_sha256=binary,runtime_image_sha256=old['runtime_image_sha256'],qualification_sha256='ef'*32,
+            files={'velocita-v2-gateway':binary,'service_launcher.py':'a1'*32,'service_profile.py':'a2'*32,'fd_handoff.py':'a3'*32})
+        return (old,new,before,after,journals,now),route,release
+
+    def test_reviewed_release_and_route_publish_as_one_generation(self):
+        args,route,release=self.release_fixture()
+        try:out=N.propose(*args,route_review=route,release_review=release)
+        except (TypeError,ValueError) as error:self.fail('combined_release_route_admitted: '+str(error))
+        self.assertEqual(json.loads(out['artifacts']['release-review.json']),release)
+        self.assertEqual(json.loads(out['artifacts']['before/manifest.json']),args[0])
+        self.assertEqual(json.loads(out['artifacts']['after/manifest.json']),args[1])
+        for name,raw in args[4].items():
+            if name!='protected-signing':self.assertEqual(out['artifacts']['after/journals/'+name],raw,'gateway_journal_unchanged')
+        with self.assertRaises(ValueError,msg='release_change_requires_witness'):N.propose(*args,route_review=route)
+        with self.assertRaises(ValueError,msg='release_requires_reviewed_route'):N.propose(*args,release_review=release)
+
+    def test_release_witness_pins_old_new_identity_and_runtime(self):
+        args,route,release=self.release_fixture()
+        for field,value in [('schema',True),('before_source_commit','00'*20),('before_binary_sha256','aa'*32),('source_commit','ba'*20),
+            ('binary_sha256','bb'*32),('runtime_image_sha256','bc'*32),('qualification_sha256','00'*32),('extra',1),
+            ('files',dict(release['files'],**{'velocita-v2-gateway':'dd'*32})),('files',{'velocita-v2-gateway':release['binary_sha256']})]:
+            with self.subTest(field=field),self.assertRaises(ValueError,msg='release_identity_pin_required'):
+                N.propose(*args,route_review=route,release_review=dict(release,**{field:value}))
+        old,new,before,after,journals,now=args
+        for field,value in [('launch_authorized',False),('gateway_caller',99),('initialize_swap_recovery',True)]:
+            with self.subTest(field=field),self.assertRaises(ValueError,msg='release_cannot_expand_authority'):
+                N.propose(old,dict(new,**{field:value}),before,after,journals,now,route_review=route,release_review=release)
+
     def session_fixture(self):
         old,new,before,after,journals,now=self.fixture()
         previous=T.R.L.fields(before['runtime.profile']);previous['expires_at_ms']='9000000'

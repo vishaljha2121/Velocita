@@ -57,7 +57,25 @@ def route_transition(before,after,witness):
         if a[old*64:(old+1)*64]!=b[new*64:(new+1)*64]:raise ValueError('route changed owner-facing account or program')
 
 
-def propose(old,new,before,after,journals,now,session_refresh=None,route_review=None):
+def release_transition(old,new,witness):
+    """Owner-pinned qualified release identity; no qualification inferred from JSON."""
+    expected={'schema','before_source_commit','before_binary_sha256','source_commit','binary_sha256',
+              'runtime_image_sha256','qualification_sha256','files'}
+    if type(witness) is not dict or set(witness)!=expected or type(witness['schema']) is not int or witness['schema']!=1:raise ValueError('exact release review required')
+    for key,size in (('before_source_commit',40),('source_commit',40),('before_binary_sha256',64),('binary_sha256',64),('runtime_image_sha256',64),('qualification_sha256',64)):
+        value=witness[key]
+        if not isinstance(value,str) or len(value)!=size or any(c not in '0123456789abcdef' for c in value) or not int(value,16):raise ValueError('release review digest shape')
+    if any(witness[k]!=old[v] for k,v in (('before_source_commit','source_commit'),('before_binary_sha256','binary_sha256'))):raise ValueError('prior release identity differs')
+    if any(witness[k]!=new[k] for k in ('source_commit','binary_sha256','runtime_image_sha256')) or old['runtime_image_sha256']!=new['runtime_image_sha256']:raise ValueError('qualified release identity differs')
+    if old['source_commit']==new['source_commit'] or new['binary']!='/opt/velocita/releases/'+new['source_commit']+'/velocita-v2-gateway':raise ValueError('new immutable release required')
+    files=witness['files']
+    if type(files) is not dict or set(files)!={'velocita-v2-gateway','service_launcher.py','service_profile.py','fd_handoff.py'}:raise ValueError('exact release artifacts required')
+    for value in files.values():
+        if not isinstance(value,str) or len(value)!=64 or any(c not in '0123456789abcdef' for c in value) or not int(value,16):raise ValueError('release artifact digest shape')
+    if files['velocita-v2-gateway']!=new['binary_sha256']:raise ValueError('release executable pin differs')
+
+
+def propose(old,new,before,after,journals,now,session_refresh=None,route_review=None,release_review=None):
     """Return review artifacts only. Never accepts a purported authenticated proof."""
     if type(now) is not int or not 0<now<=2**64-1:raise ValueError('bounded evaluation time')
     R.P.validate(old);R.P.validate(new)
@@ -66,7 +84,12 @@ def propose(old,new,before,after,journals,now,session_refresh=None,route_review=
         for name,key in R.A.DOCUMENTS.items():
             if key and R.digest(files[name])!=manifest[key]:raise ValueError('document pin mismatch')
         if R.digest(files['transaction.review'])!=R.L.fields(files['runtime.profile'])['transaction_review_digest']:raise ValueError('transaction pin mismatch')
-    if any(old.get(k)!=new.get(k) for k in (set(old)|set(new))-R.P.PENDING_ACCOUNT_PINS):raise ValueError('immutable manifest authority')
+    mutable_manifest=set(R.P.PENDING_ACCOUNT_PINS)
+    if release_review is not None:
+        if route_review is None:raise ValueError('release transition requires reviewed route')
+        release_transition(old,new,release_review)
+        mutable_manifest|={'source_commit','binary','binary_sha256'}
+    if any(old.get(k)!=new.get(k) for k in (set(old)|set(new))-mutable_manifest):raise ValueError('immutable manifest authority')
     if not old['launch_authorized'] or old.get('initialize_swap_recovery') is not False or old.get('recovery_only',False):raise ValueError('sealed first-use profile required')
     prior_tx,next_tx=map(R.transaction_fields,(before['transaction.review'],after['transaction.review']))
     if route_review is not None:route_transition(before['transaction.review'],after['transaction.review'],route_review)
@@ -134,6 +157,8 @@ def propose(old,new,before,after,journals,now,session_refresh=None,route_review=
         artifacts['session-refresh.json']=(json.dumps(session_refresh,sort_keys=True,separators=(',',':'))+'\n').encode()
     if route_review is not None:
         artifacts['route-review.json']=(json.dumps(route_review,sort_keys=True,separators=(',',':'))+'\n').encode()
+    if release_review is not None:
+        artifacts['release-review.json']=(json.dumps(release_review,sort_keys=True,separators=(',',':'))+'\n').encode()
     kind='expiry-only-pristine-protected-journal-renewal-proposal' if route_review is None else 'reviewed-route-pristine-protected-journal-transition-proposal'
     report=dict(schema=1,kind=kind,applyable=False,
         authenticated_raft_proof=False,services_started=False,orders_submitted=False,

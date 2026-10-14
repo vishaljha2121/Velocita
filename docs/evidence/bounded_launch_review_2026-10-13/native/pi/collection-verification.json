@@ -1,0 +1,23 @@
+{
+  "host": "pi",
+  "commit": "fe54001ce7bbd36c25947cc29ecf70833d161e37",
+  "qualified": true,
+  "verified_artifact_count": 103,
+  "python_test_count": 222,
+  "python_counts": {
+    "test_idle_policy_apply": 18,
+    "test_swap_runtime_install": 13,
+    "test_swap_service_profile": 14,
+    "test_observability_layout": 21,
+    "test_swap_service_launcher": 16,
+    "test_idle_policy_renewal": 15,
+    "test_swap_service_provision": 12,
+    "test_tm_stage_swap_credential": 8,
+    "test_swap_review_transition": 19,
+    "test_swap_credential_handoff": 11,
+    "test_swap_disabled_install": 8,
+    "account-tests": 50,
+    "runtime-gate": 1,
+    "test_live_observer": 16
+  }
+}

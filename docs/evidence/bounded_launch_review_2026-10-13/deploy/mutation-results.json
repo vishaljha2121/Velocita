@@ -1,0 +1,30 @@
+[
+  {
+    "mutation": "skip_release_artifact_checks",
+    "test": "test_installed_release_checked_under_locks_before_publication",
+    "failures": 4,
+    "errors": 0,
+    "killed": true
+  },
+  {
+    "mutation": "skip_prior_release_binding",
+    "test": "test_release_witness_pins_old_new_identity_and_runtime",
+    "failures": 1,
+    "errors": 0,
+    "killed": true
+  },
+  {
+    "mutation": "skip_release_authority_check",
+    "test": "test_release_witness_pins_old_new_identity_and_runtime",
+    "failures": 2,
+    "errors": 0,
+    "killed": true
+  },
+  {
+    "mutation": "skip_existing_start_guards",
+    "test": "test_missing_modified_or_partial_guards_refuse_without_publication",
+    "failures": 3,
+    "errors": 0,
+    "killed": true
+  }
+]
