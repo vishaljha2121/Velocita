@@ -1,0 +1,30 @@
+[
+  {
+    "mutation": "legacy_domain",
+    "named_assertion": "bison_not_legacy_twenty_key_domain",
+    "killed": true,
+    "failures": 1,
+    "errors": 0
+  },
+  {
+    "mutation": "owner_mapping_removed",
+    "named_assertion": "bison_preserves_caps_and_shared_roles",
+    "killed": true,
+    "failures": 1,
+    "errors": 0
+  },
+  {
+    "mutation": "slippage_mutable",
+    "named_assertion": "bison_preserves_caps_and_shared_roles",
+    "killed": true,
+    "failures": 1,
+    "errors": 0
+  },
+  {
+    "mutation": "document_pin_removed",
+    "named_assertion": "bison_witness_pins",
+    "killed": true,
+    "failures": 2,
+    "errors": 0
+  }
+]

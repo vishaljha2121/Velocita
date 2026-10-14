@@ -1,0 +1,30 @@
+[
+  {
+    "name": "amendment_cas",
+    "compiled": true,
+    "exit": 1,
+    "assertion": "amendment_invalid_cas_or_bound_refused",
+    "named_assertion_kill": true
+  },
+  {
+    "name": "future_record",
+    "compiled": true,
+    "exit": 1,
+    "assertion": "future_amendment_refused",
+    "named_assertion_kill": true
+  },
+  {
+    "name": "proposal_commit",
+    "compiled": true,
+    "exit": 1,
+    "assertion": "amendment_summary_not_commit_evidence",
+    "named_assertion_kill": true
+  },
+  {
+    "name": "optional_cli",
+    "compiled": true,
+    "exit": 1,
+    "assertion": "intent_cli_loads_optional_amendment",
+    "named_assertion_kill": true
+  }
+]

@@ -1,0 +1,16 @@
+{
+  "command": [
+    "/Users/vishaljha/.cache/velocita-build/price-amendment-builder-20261014/prepare-swap-mvp",
+    "price-amendment",
+    "--opening-record",
+    "/Users/vishaljha/.cache/velocita-build/obsidian-20261013/builder-final-tests/bundle/opening.record",
+    "--parameters",
+    "/Users/vishaljha/.cache/velocita-build/price-amendment-builder-20261014/red.parameters",
+    "--output",
+    "/Users/vishaljha/.cache/velocita-build/price-amendment-builder-20261014/red-output"
+  ],
+  "exit": 0,
+  "stdout": "PREPARED offline_only=1 network_used=0 funds_moved=0\n",
+  "stderr": "",
+  "assertion": "price_amendment_cli_must_prepare_offline_proposal"
+}

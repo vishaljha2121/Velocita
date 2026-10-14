@@ -101,8 +101,22 @@ struct Control {
     constexpr bool operator==(const Control&) const noexcept = default;
 };
 
+struct AmendBuyPrice {
+    Digest256 opening_digest{}, review_evidence{};
+    QuoteAtoms expected_price{}, replacement_price{};
+    std::uint64_t expected_revision{}, kill_epoch{}, executor_generation{};
+    constexpr bool operator==(const AmendBuyPrice&) const noexcept = default;
+};
+
+struct BuyPriceAmendment {
+    QuoteAtoms price{};
+    Digest256 evidence{};
+    std::uint64_t kill_epoch{}, executor_generation{}, event_time{};
+    constexpr bool operator==(const BuyPriceAmendment&) const noexcept = default;
+};
+
 using Command = std::variant<Initialize, Intent, Prepare, Attempt, MarkUnknown,
-                             ReleaseUnsent, Settlement, Control>;
+                             ReleaseUnsent, Settlement, Control, AmendBuyPrice>;
 
 struct Pending {
     Phase phase{};
@@ -124,6 +138,7 @@ struct State {
     ReleaseUnsent last_release{};
     std::array<Settlement, 16> settlements{};
     std::uint8_t settlement_count{};
+    BuyPriceAmendment buy_price_amendment{};
     constexpr bool operator==(const State&) const noexcept = default;
 };
 
@@ -139,6 +154,9 @@ struct PaperFill {
     Code code{Code::invalid};
     Settlement settlement{};
 };
+
+[[nodiscard]] Digest256 opening_digest(const Initialize&) noexcept;
+[[nodiscard]] QuoteAtoms effective_buy_price(const State&) noexcept;
 
 [[nodiscard]] Code apply(State& state, const Command& command, Role role,
                          std::uint64_t event_time) noexcept;

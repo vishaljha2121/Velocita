@@ -54,6 +54,75 @@ struct Rig {
     }
 };
 
+void buy_price_amendment() {
+    auto o=opening();o.limits.max_purchase_total=QuoteAtoms{1'000'000};o.limits.max_buy_debit=QuoteAtoms{1'000'000};
+    o.limits.max_fee=QuoteAtoms{2'000};o.limits.max_buy_price_per_sol=QuoteAtoms{146'635'156};
+    State initial;require(apply(initial,o,Role::operator_role,100)==Code::applied,"price_opening");
+    initial.mode=Mode::halted;
+    const AmendBuyPrice amendment{opening_digest(o),digest(99),QuoteAtoms{146'635'156},QuoteAtoms{147'537'213},0,1,1};
+    auto s=initial;require(apply(s,amendment,Role::operator_role,101)==Code::applied,"price_amendment_accepted");
+    require(s.opening==initial.opening && s.base==initial.base && s.quote==initial.quote && s.cost==initial.cost &&
+        s.mode==Mode::halted && !s.last_effect && s.buy_price_amendment.price==QuoteAtoms{147'537'213} &&
+        s.buy_price_amendment.evidence==digest(99),"price_amendment_preserves_funding");
+    const auto amended=s;require(apply(s,amendment,Role::operator_role,102)==Code::stale && s==amended,"price_amendment_once");
+    for(auto role:{Role::strategy,Role::gateway}) {s=initial;require(apply(s,amendment,role,101)==Code::unauthorized && s==initial,"price_amendment_operator_only");}
+    for(unsigned n=0;n<12;++n) {
+        s=initial;auto c=amendment;Code expected=Code::invalid;
+        if(n==0){s.mode=Mode::normal;expected=Code::stopped;}
+        if(n==1){s.last_effect=1;expected=Code::busy;}
+        if(n==2){s.reserved_quote=QuoteAtoms{1};expected=Code::busy;}
+        if(n==3){s.quote=QuoteAtoms{s.quote.value()-1};expected=Code::busy;}
+        if(n==4){c.kill_epoch=2;expected=Code::fenced;}
+        if(n==5){c.executor_generation=2;expected=Code::fenced;}
+        if(n==6)c.opening_digest=digest(88);
+        if(n==7){c.expected_price=QuoteAtoms{1};expected=Code::stale;}
+        if(n==8){c.expected_revision=1;expected=Code::stale;}
+        if(n==9)c.review_evidence={};
+        if(n==10)c.replacement_price={};
+        if(n==11)c.replacement_price=QuoteAtoms{UINT64_MAX};
+        const char* names[]={"price_requires_halt","price_no_prior_effect","price_no_reserved_cash","price_balances_unchanged",
+            "price_kill_fence","price_executor_fence","price_opening_pin","price_expected_price","price_expected_revision",
+            "price_evidence_required","price_positive_replacement","price_replacement_no_overflow"};
+        const auto before=s;require(apply(s,c,Role::operator_role,101)==expected && s==before,names[n]);
+    }
+    s=amended;s.mode=Mode::normal;
+    Intent i;i.binding=o.binding;i.effect=EffectId{1};i.side=Side::buy;i.quote_input=QuoteAtoms{998'000};i.max_quote_debit=QuoteAtoms{1'000'000};
+    i.fee_cap=QuoteAtoms{2'000};i.min_base_receive=BaseAtoms{6'777'951};i.source_time=101;i.sign_by=120;i.kill_epoch=1;i.executor_generation=1;
+    auto old=initial;old.mode=Mode::normal;
+    require(apply(old,i,Role::strategy,101)==Code::unsafe_bound,"price_old_bound_still_refuses");
+    auto lower=amendment;lower.replacement_price=QuoteAtoms{147'537'212};auto boundary=initial;
+    require(apply(boundary,lower,Role::operator_role,101)==Code::applied,"price_lower_amendment_valid");boundary.mode=Mode::normal;
+    require(apply(boundary,i,Role::strategy,101)==Code::unsafe_bound,"price_one_micro_boundary");
+    require(apply(s,i,Role::strategy,101)==Code::applied && s.reserved_quote==QuoteAtoms{1'000'000},"price_new_bound_accepts_exact_floor");
+    require(apply(s,Prepare{i.effect,digest(5),digest(6),1},Role::gateway,102)==Code::applied &&
+        apply(s,Attempt{i.effect,digest(5)},Role::gateway,103)==Code::applied,"price_prepare_and_attempt");
+    Settlement x;x.effect=i.effect;x.custody=o.binding.custody;x.payload=digest(5);x.transaction=digest(7);x.evidence=digest(8);
+    x.outcome=Outcome::succeeded;x.base_credit=BaseAtoms{6'777'951};x.quote_debit=QuoteAtoms{1'000'000};x.fee=QuoteAtoms{2'000};x.finalized=true;
+    require(apply(s,x,Role::gateway,104)==Code::applied && valid_state(s),"price_settlement_reconstructs_with_amendment");
+    for(const auto& checkpoint:{initial,amended,s}) {
+        std::array<std::byte,max_state_bytes> bytes{};const auto encoded=encode_state(checkpoint,bytes);State restored;
+        require(encoded.error==CodecError::none && decode_state(std::span(bytes).first(encoded.size),restored)==CodecError::none && restored==checkpoint,"price_snapshot_roundtrip");
+    }
+    for(unsigned n=0;n<6;++n) {
+        auto corrupt=amended;
+        if(n==0)corrupt.buy_price_amendment.price={};
+        if(n==1)corrupt.buy_price_amendment.evidence={};
+        if(n==2)corrupt.buy_price_amendment.event_time=102;
+        if(n==3)corrupt.buy_price_amendment.kill_epoch=2;
+        if(n==4)corrupt.buy_price_amendment.executor_generation=2;
+        if(n==5)corrupt.buy_price_amendment.price=o.limits.max_buy_price_per_sol;
+        require(!valid_state(corrupt),"price_invalid_amendment_state_refused");
+    }
+    std::array<std::byte,max_state_bytes> extended{};auto encoded_state=encode_state(amended,extended);State restored_state;
+    require(encoded_state.error==CodecError::none && encoded_state.size==max_state_bytes,"price_extension_exact_size");
+    extended[legacy_state_bytes]=std::byte{2};
+    require(decode_state(extended,restored_state)==CodecError::format,"price_unknown_extension_tag_refused");
+    extended[legacy_state_bytes]=std::byte{1};
+    require(decode_state(std::span(extended).first(extended.size()-1),restored_state)==CodecError::format,"price_partial_extension_refused");
+    std::array<std::byte,max_record_bytes> bytes{};const Record record{Role::operator_role,101,amendment};
+    const auto encoded=encode(record,bytes);Record restored;
+    require(encoded.error==CodecError::none && decode(std::span(bytes).first(encoded.size),restored)==CodecError::none && restored==record,"price_command_roundtrip");
+}
 void funding_and_roles() {
     State s; const auto before = s;
     require(apply(s, opening(), Role::strategy, 100) == Code::unauthorized && s == before, "strategy cannot fund itself");
@@ -372,7 +441,7 @@ void all_command_records_replay_exactly() {
         require(left==right && original==restored,"replay preserves refusals as well as economic transitions");
         std::array<std::byte,max_state_bytes> checkpoint{};
         const auto saved=encode_state(original,checkpoint);
-        require(saved.error==CodecError::none && saved.size==max_state_bytes,"valid state fits the exact compact snapshot budget");
+        require(saved.error==CodecError::none && saved.size==legacy_state_bytes,"valid state fits the exact compact snapshot budget");
         State from_checkpoint;
         require(decode_state(std::span(checkpoint).first(saved.size),from_checkpoint)==CodecError::none && from_checkpoint==original,"snapshot restores all accounting and reservations");
         auto bad=original;bad.quote=QuoteAtoms{original.quote.value()+1};
@@ -412,7 +481,7 @@ void conservation_across_varied_prices() {
 }
 int main(int argc,char** argv) {
     const std::pair<const char*,void(*)()> cases[]={
-        {"funding_and_roles",funding_and_roles},{"fractional_receipt_and_fee_accounting",fractional_receipt_and_fee_accounting},
+        {"buy_price_amendment",buy_price_amendment},{"funding_and_roles",funding_and_roles},{"fractional_receipt_and_fee_accounting",fractional_receipt_and_fee_accounting},
         {"insufficient_cash_and_inventory",insufficient_cash_and_inventory},{"pending_unknown_keeps_holds",pending_unknown_keeps_holds},
         {"one_atom_bounds_conflict_without_booking",one_atom_bounds_conflict_without_booking},{"identity_and_canonical_units",identity_and_canonical_units},
         {"freshness_and_fencing",freshness_and_fencing},{"safety_floor_and_fee_caps",safety_floor_and_fee_caps},

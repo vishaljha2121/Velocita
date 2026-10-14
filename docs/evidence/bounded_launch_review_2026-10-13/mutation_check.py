@@ -10,6 +10,12 @@ SOURCE=ROOT/'src/v2_swap_transaction_verifier.cpp'
 DEPENDENCIES=['v2_digest.cpp','v2_solana_payload_view.cpp','v2_solana_resolved_accounts.cpp',
  'v2_solana_instruction_decode.cpp','v2_jupiter_route_decode.cpp','v2_swap_owner_accounting.cpp','v2_truemarkets_wire.cpp']
 MUTATIONS=[
+ ('bison_program','a[17]==bison','true','bison','bison_canonical_readonly_and_program'),
+ ('bison_minimum','0,intent.min_base_receive,p.accepted_costs','0,swap::BaseAtoms{1},p.accepted_costs','bison','bison_one_lamport_shortfall'),
+ ('bison_direction','JupiterSwapKind::kipseli_v3,0,100,0,1,0','JupiterSwapKind::kipseli_v3,1,100,0,1,0','bison','bison_exact_layout_verified'),
+ ('bison_close','!indices(d,close_index,is_byreal?byreal_close:legacy_close)','(indices(d,close_index,is_byreal?byreal_close:legacy_close) && false)','bison','bison_wrong_close'),
+ ('bison_permissions','accounts.accounts[i].writable!=writable','(writable && false)','bison','bison_permission_escalation'),
+ ('bison_route_roles','!indices(d,route_index,route_accounts)','(indices(d,route_index,route_accounts) && false)','bison','bison_wrong_route_account'),
  ('obsidian_sysvar','a[14]==instructions_sysvar','true','obsidian','obsidian_arbitrary_sysvar'),
  ('obsidian_program','a[16]==obsidian','true','obsidian','obsidian_arbitrary_program'),
  ('obsidian_minimum','0,intent.min_base_receive,p.accepted_costs','0,swap::BaseAtoms{1},p.accepted_costs','obsidian','obsidian_one_lamport_shortfall'),

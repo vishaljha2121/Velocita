@@ -54,6 +54,25 @@ void funding_roles_and_exclusion() {
     Rig existing; existing.s.risk_account_count=1;
     require(existing.swap(swap_test::opening()).code==ApplyCode::risk_reconfiguration_blocked,"swap funding refuses existing legacy risk account");
 }
+void price_amendment_authority_and_replay() {
+    Rig r;r.fund();const auto original=r.s.spot_swap.opening;
+    const swap::AmendBuyPrice amendment{swap::opening_digest(original),swap_test::digest(99),original.limits.max_buy_price_per_sol,
+        swap::QuoteAtoms{147'537'213},0,1,1};
+    require(r.swap(amendment,22,101).code==ApplyCode::unauthorized_command,"gateway_cannot_amend_price");
+    catalog_test::grant(r.s,23,CallerRole::strategy);
+    require(r.swap(amendment,23,101).code==ApplyCode::unauthorized_command,"strategy_cannot_amend_price");
+    auto command=swap_test::command(9,r.seq++,amendment,101);
+    require(r.send(command).code==ApplyCode::applied,"owner_price_amendment_commits");
+    const auto once=r.s.spot_swap;const auto version=r.s.state_version;
+    require(r.send(command).code==ApplyCode::applied && r.s.spot_swap==once && r.s.state_version==version,"price_same_request_deduplicated");
+    r.snapshot();require(r.s.spot_swap.opening==original && swap::effective_buy_price(r.s.spot_swap)==swap::QuoteAtoms{147'537'213},"price_snapshot_preserves_opening_and_override");
+    require(r.swap(amendment,9,102).code==ApplyCode::request_expired,"price_second_request_stale");
+    require(r.mode(StrategyMode::normal).code==ApplyCode::applied,"price_owner_can_resume");
+    auto i=swap_test::buy(original);i.min_base_receive=swap::BaseAtoms{6'900'000};
+    require(r.swap(i,9,102).code==ApplyCode::applied,"price_intent_uses_committed_override");r.snapshot();
+    Rig competing;competing.fund();require(competing.mode(StrategyMode::normal).code==ApplyCode::applied,"price_unhalt_first");
+    require(competing.swap(amendment,9,101).code==ApplyCode::decision_not_authorizable,"price_amendment_after_unhalt_refused");
+}
 void paper_restart_and_exact_receipt() {
     Rig r;r.reserve();
     const swap::PaperQuote q{swap::QuoteAtoms{108'000'000},2000};
@@ -111,7 +130,8 @@ void tampering_and_configuration_change() {
 }
 }
 int main() {
-    for(const auto& [name,fn]:std::array<std::pair<const char*,void(*)()>,5>{{
+    for(const auto& [name,fn]:std::array<std::pair<const char*,void(*)()>,6>{{
+        {"price_amendment_authority_and_replay",price_amendment_authority_and_replay},
         {"global_controls_fence_pending",global_controls_fence_pending},
         {"funding_roles_and_exclusion",funding_roles_and_exclusion},{"paper_restart_and_exact_receipt",paper_restart_and_exact_receipt},
         {"unknown_kill_and_late_settlement",unknown_kill_and_late_settlement},{"tampering_and_configuration_change",tampering_and_configuration_change}}}) {

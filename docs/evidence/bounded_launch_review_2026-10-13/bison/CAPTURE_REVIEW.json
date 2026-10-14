@@ -1,0 +1,282 @@
+{
+  "schema": 1,
+  "scope": "retained unsigned transaction and later finalized account snapshots",
+  "signed": false,
+  "broadcast": false,
+  "simulation_performed": false,
+  "live_admitted": false,
+  "read_requests": {
+    "getMultipleAccounts": 2,
+    "public_program_label_get": 1
+  },
+  "slot": 456706976,
+  "static_accounts": 12,
+  "resolved_accounts": 20,
+  "header": [
+    2,
+    0,
+    7
+  ],
+  "checks": {
+    "token_2": true,
+    "token_12": true,
+    "token_14": true,
+    "source_close_sponsor": true,
+    "fee_usdc_external": true,
+    "destination_absent": true,
+    "mint_15": true,
+    "mint_18": true,
+    "program": true,
+    "instruction_sysvar": true,
+    "header": true,
+    "program_topology": true,
+    "compute_limit": true,
+    "compute_price": true,
+    "ata": true,
+    "route_accounts": true,
+    "close": true,
+    "repayment": true,
+    "route_abi": true,
+    "amount_fee_slippage": true,
+    "idl_variant": true
+  },
+  "roles": [
+    {
+      "index": 0,
+      "role": "sponsor",
+      "writable": true,
+      "signer": true
+    },
+    {
+      "index": 1,
+      "role": "owner",
+      "writable": true,
+      "signer": true
+    },
+    {
+      "index": 2,
+      "role": "owner_usdc_source",
+      "writable": true,
+      "signer": false
+    },
+    {
+      "index": 3,
+      "role": "owner_wsol_destination",
+      "writable": true,
+      "signer": false
+    },
+    {
+      "index": 4,
+      "role": "usdc_fee",
+      "writable": true,
+      "signer": false
+    },
+    {
+      "index": 5,
+      "role": "system_program",
+      "writable": false,
+      "signer": false
+    },
+    {
+      "index": 6,
+      "role": "compute_budget_program",
+      "writable": false,
+      "signer": false
+    },
+    {
+      "index": 7,
+      "role": "jupiter_program",
+      "writable": false,
+      "signer": false
+    },
+    {
+      "index": 8,
+      "role": "classic_token_program",
+      "writable": false,
+      "signer": false
+    },
+    {
+      "index": 9,
+      "role": "readonly_tick_owned_metadata",
+      "writable": false,
+      "signer": false
+    },
+    {
+      "index": 10,
+      "role": "associated_token_program",
+      "writable": false,
+      "signer": false
+    },
+    {
+      "index": 11,
+      "role": "jupiter_event_authority",
+      "writable": false,
+      "signer": false
+    },
+    {
+      "index": 12,
+      "role": "pool_usdc_vault",
+      "writable": true,
+      "signer": false
+    },
+    {
+      "index": 13,
+      "role": "pool_and_vault_authority",
+      "writable": true,
+      "signer": false
+    },
+    {
+      "index": 14,
+      "role": "pool_wsol_vault",
+      "writable": true,
+      "signer": false
+    },
+    {
+      "index": 15,
+      "role": "wsol_mint",
+      "writable": false,
+      "signer": false
+    },
+    {
+      "index": 16,
+      "role": "instructions_sysvar",
+      "writable": false,
+      "signer": false
+    },
+    {
+      "index": 17,
+      "role": "bison_program",
+      "writable": false,
+      "signer": false
+    },
+    {
+      "index": 18,
+      "role": "usdc_mint",
+      "writable": false,
+      "signer": false
+    },
+    {
+      "index": 19,
+      "role": "readonly_vote_owned_account",
+      "writable": false,
+      "signer": false
+    }
+  ],
+  "instruction_program_indices": [
+    6,
+    6,
+    10,
+    7,
+    8,
+    5
+  ],
+  "instruction_account_indices": [
+    [],
+    [],
+    [
+      0,
+      3,
+      1,
+      15,
+      5,
+      8
+    ],
+    [
+      8,
+      1,
+      2,
+      3,
+      7,
+      15,
+      4,
+      11,
+      7,
+      17,
+      1,
+      13,
+      14,
+      12,
+      3,
+      2,
+      8,
+      8,
+      15,
+      18,
+      16,
+      19,
+      9
+    ],
+    [
+      3,
+      1,
+      1
+    ],
+    [
+      1,
+      0
+    ]
+  ],
+  "jupiter_variant": 177,
+  "a_to_b": false,
+  "direction_evidence": "ABI flag false is verified; route account ordering places WSOL A and USDC B; USDC-to-WSOL B-to-A interpretation is consistent with mints, not an independently audited Bison implementation.",
+  "pool_key_occurrences": {
+    "12": [
+      152
+    ],
+    "14": [
+      120
+    ],
+    "15": [
+      184
+    ],
+    "18": [
+      216
+    ]
+  },
+  "total_input_usdc_atoms": 1000000,
+  "explicit_fee_usdc_atoms": 2000,
+  "swap_principal_under_reviewed_fee_inclusive_contract": 998000,
+  "quoted_gross_lamports": 9281295,
+  "slippage_bps": 500,
+  "conditional_gross_guard_ceil_lamports": 8817231,
+  "repayment_lamports": 2039280,
+  "guaranteed_sponsor_credit": 0,
+  "conditional_net_floor_lamports": 6777951,
+  "trust_limits": [
+    "Account metadata is a later finalized snapshot, not proof at future execution.",
+    "Retained program-owned Jupiter IDL proves enum and bool ABI, not Bison implementation semantics.",
+    "No Bison inner instruction trace or independent deployed source audit was performed.",
+    "Trusted Jupiter/Bison exact-input, fee and output-guard contract remains necessary; owner signer and source token account are supplied to CPI.",
+    "Route CPI does not receive System program or sponsor account; no additional outer native debit exists beyond fixed repayment.",
+    "Readonly tick-owned and Vote-owned roles are identity/owner observations only; no invented oracle/market semantic guarantee.",
+    "Current program upgradeability and future route choice are not constrained by this evidence."
+  ],
+  "hashes": {
+    "obsidian-prelaunch-buy-8dde28e/response.private.json": "824428fd6da9e1547ca2e23dc5d8df720c3fb03f42be4cd250ad454c21725d77",
+    "obsidian-prelaunch-buy-8dde28e/decoded.json": "62e8c873a73037e906afe682e39cd72fdda405af3cfb2f3e0c0eadb34d447da4",
+    "bison-account-review-8dde28e-20261014/lookup-request.json": "047f75c0dfe3bf50f5a3f02b59a6e2c99b63e1c0c2afc425d18281038c960aaa",
+    "bison-account-review-8dde28e-20261014/lookup-response.json": "173ecc97e8d1be04f8bd9dd31cd405898bfd232b4eee0bf45fe34f9fe8d45e74",
+    "bison-account-review-8dde28e-20261014/accounts-request.json": "b69934b001a2ba7dc4586e737843277d5ec7ed7ea97ca42e8c1bae70a6a0ec5f",
+    "bison-account-review-8dde28e-20261014/accounts-response.json": "0cb2d2aabdc2b13cdda0b1ebf44ad09057edbf69e4ced7bd13a34b7606914b4b",
+    "bison-account-review-8dde28e-20261014/resolved.json": "3a4758222519783bd53f47881e2bddd72dd56a3f787980407554434ada3ce738",
+    "bison-account-review-8dde28e-20261014/program-labels.json": "7bb0c048cdb163a9b6dd1717884f25509030fade90eb1bd766c1cbdc2c61adc5"
+  },
+  "sources": [
+    {
+      "path": "docs/evidence/live_readiness_2026-10-09/jupiter-public-idl-20261012.json",
+      "sha256": "ac409554b289a63e035717a516240c93adc4b8d894d4668fde254e73c7cfdb47",
+      "supports": "program-owned Jupiter Swap variant177 BisonFiMarketBacked with a_to_b bool"
+    },
+    {
+      "url": "https://lite-api.jup.ag/swap/v1/program-id-to-label",
+      "supports": "exact program public key maps to BisonFi",
+      "sha256": "7bb0c048cdb163a9b6dd1717884f25509030fade90eb1bd766c1cbdc2c61adc5"
+    },
+    {
+      "url": "https://api.mainnet-beta.solana.com",
+      "method": "getMultipleAccounts",
+      "supports": "exact executable/account ownership, token mints, authorities, flags, table coverage",
+      "raw_private": true
+    }
+  ]
+}

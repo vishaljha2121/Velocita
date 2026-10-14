@@ -1,0 +1,20 @@
+{
+  "proposal_only": true,
+  "applied": false,
+  "network_used": false,
+  "funds_moved": false,
+  "opening_preserved": true,
+  "opening_record_sha256": "10d9d43a3c571d7a9d25e4029342a898b2e27950f4dc81fc5357369a483c5fd3",
+  "opening_digest": "8daaf8ed69d67dff71b970d67bf682e9fafee19c0eb596c9ec87f38031a721f9",
+  "amendment_record_sha256": "7906db85dad9c4fd55d6997a1c45a62be69d9b3a62c3530d5808cb9c7a9e595a",
+  "review_evidence_sha256": "07501e5de8adf60645e88c6b42b6ebaa6c5c431d5022aa0fb2588a2141f4e7ea",
+  "expected_price": 146635156,
+  "replacement_price": 147537213,
+  "expected_revision": 0,
+  "kill_epoch": 1,
+  "executor_generation": 1,
+  "generation_values_are_proposal_inputs_not_current_state_proof": true,
+  "prepared_at_ms": 1791980673203,
+  "record_bytes": 156,
+  "builder_sha256": "72478b2ef5d5e0de8744593ad595b8feadae669f27aab4b2cc90f7dd9c045610"
+}

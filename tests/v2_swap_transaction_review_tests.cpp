@@ -85,6 +85,19 @@ void obsidian_review(){
     f.set("account_keys",keys);f.set("schema","4");require(!f.read(),"unknown_schema4_refused");
 }
 
+void bison_review(){
+    Fixture f;test_support::BisonBuyFixture tx;f.binding.max_buy_output_deduction_lamports=2'039'280;
+    std::string keys;for(std::size_t i=0;i<tx.policy.account_count();++i)keys+=hex(tx.policy.account_key(i));
+    f.set("schema","4");f.set("account_keys",keys);
+    std::string lookup;for(unsigned i=0;i<8;++i)lookup+=hex(tx.lookup[0].addresses[i]);f.set("lookup_addresses",lookup);
+    auto r=f.read();require(r && r->policy.route==truemarkets::DirectBuyRoute::bison_market_backed &&
+        r->policy.account_count()==20,"bison_schema4_decodes");
+    require(truemarkets::direct_buy_policy_digest(r->policy)==truemarkets::direct_buy_policy_digest(tx.policy),"bison_review_digest_matches");
+    f.set("schema","1");require(!f.read(),"bison_cannot_use_legacy_schema");
+    f.set("schema","4");f.set("account_keys",keys+hex(test_support::key(240)));require(!f.read(),"bison_schema_rejects_extra_key");
+    f.set("account_keys",keys);f.set("schema","5");require(!f.read(),"unknown_schema5_refused");
+}
+
 void bounds(){
     const std::pair<std::string_view,std::string_view> bad[]={{"lookup_slot","0"},{"lookup_slot","18446744073709551616"},
         {"lookup_address_count","0"},{"lookup_address_count","257"},{"lookup_address_count","9"},
@@ -100,7 +113,7 @@ void bounds(){
     f.set("account_keys",keys);require(!f.read(),"account_alias_refused");
 }
 }
-int main(int argc,char** argv){const std::pair<const char*,void(*)()> tests[]={{"valid",valid},{"identities",identities},{"schema",schema},{"bounds",bounds},{"byreal",byreal_review},{"obsidian",obsidian_review}};
+int main(int argc,char** argv){const std::pair<const char*,void(*)()> tests[]={{"valid",valid},{"identities",identities},{"schema",schema},{"bounds",bounds},{"byreal",byreal_review},{"obsidian",obsidian_review},{"bison",bison_review}};
     unsigned ran{},failed{};for(auto [name,fn]:tests){if(argc==2 && std::string_view(argv[1])!=name)continue;++ran;
         try{fn();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){++failed;std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';}}
     return ran&&!failed?0:1;

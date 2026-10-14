@@ -91,6 +91,26 @@ Digest256 verb_digest(const std::string& verb, std::initializer_list<std::string
     return sha256_digest(bytes);
 }
 
+swap::Record read_swap_record(const char* path) {
+    std::ifstream input(path, std::ios::binary);
+    std::array<std::byte, swap::max_record_bytes + 1> bytes{};
+    if (!input) throw Usage("cannot read swap record");
+    input.read(reinterpret_cast<char*>(bytes.data()), bytes.size());
+    const auto count = input.gcount();
+    if (input.bad() || count <= 0 || static_cast<std::size_t>(count) > swap::max_record_bytes)
+        throw Usage("swap record must be one bounded canonical record");
+    swap::Record record;
+    const auto original = std::span(bytes).first(static_cast<std::size_t>(count));
+    if (swap::decode(original, record) != swap::CodecError::none)
+        throw Usage("swap record must be one bounded canonical record");
+    std::array<std::byte, swap::max_record_bytes> canonical{};
+    const auto encoded = swap::encode(record, canonical);
+    if (encoded.error != swap::CodecError::none || encoded.size != original.size() ||
+        !std::equal(original.begin(), original.end(), canonical.begin()))
+        throw Usage("swap record must be one bounded canonical record");
+    return record;
+}
+
 Arguments parse(int argc, char** argv) {
     Arguments a;
     bool have_incarnation = false;
@@ -133,23 +153,33 @@ Arguments parse(int argc, char** argv) {
     }
     if (i >= argc) throw Usage("missing command");
     const std::string verb = argv[i];
-    if (verb == "spot-swap-record" && i + 2 == argc) {
-        std::ifstream input(argv[i+1], std::ios::binary);
-        std::array<std::byte, swap::max_record_bytes + 1> bytes{};
-        if (!input) throw Usage("cannot read swap record");
-        input.read(reinterpret_cast<char*>(bytes.data()), bytes.size());
-        const auto count = input.gcount();
-        if (input.bad() || count <= 0 || static_cast<std::size_t>(count) > swap::max_record_bytes)
-            throw Usage("swap record must be one bounded canonical record");
-        swap::Record record;
-        if (swap::decode(std::span(bytes).first(static_cast<std::size_t>(count)), record) != swap::CodecError::none ||
-            (!std::holds_alternative<swap::Initialize>(record.command) && !std::holds_alternative<swap::Intent>(record.command)))
-            throw Usage("owner swap record must initialize paper funding or admit an explicit intent");
-        const auto binding = std::visit([](const auto& value) -> swap::Binding {
+    if (verb == "spot-swap-record" && (i + 2 == argc || i + 3 == argc)) {
+        const auto record = read_swap_record(argv[i+1]);
+        if ((!std::holds_alternative<swap::Initialize>(record.command) && !std::holds_alternative<swap::Intent>(record.command) &&
+             !std::holds_alternative<swap::AmendBuyPrice>(record.command)) || record.role != swap::required_role(record.command))
+            throw Usage("owner swap record must initialize funding, admit an explicit intent or amend the reviewed buy price with its required role");
+        auto binding = std::visit([](const auto& value) -> swap::Binding {
             using T = std::decay_t<decltype(value)>;
             if constexpr (std::is_same_v<T,swap::Initialize> || std::is_same_v<T,swap::Intent>) return value.binding;
             else return {};
         }, record.command);
+        if (const auto* amendment = std::get_if<swap::AmendBuyPrice>(&record.command)) {
+            if (i + 3 != argc) throw Usage("price amendment requires its original opening record");
+            const auto original = read_swap_record(argv[i+2]);
+            const auto* opening = std::get_if<swap::Initialize>(&original.command);
+            if (!opening || original.role != swap::Role::operator_role)
+                throw Usage("price amendment opening must be an operator Initialize record");
+            if (amendment->opening_digest != swap::opening_digest(*opening) ||
+                amendment->expected_price != opening->limits.max_buy_price_per_sol)
+                throw Usage("price amendment differs from supplied original opening");
+            binding = opening->binding;
+            a.summary = "SWAP BUY PRICE AMENDMENT expected_price=" + std::to_string(amendment->expected_price.value()) +
+                " replacement_price=" + std::to_string(amendment->replacement_price.value()) +
+                " opening_digest=" + to_hex(amendment->opening_digest) + " review_evidence=" + to_hex(amendment->review_evidence) +
+                " expected_revision=" + std::to_string(amendment->expected_revision) + "\n";
+        } else if (i + 2 != argc) {
+            throw Usage("Initialize and Intent records do not take an opening argument");
+        }
         if (!have_incarnation || binding.incarnation != sha256_digest(a.incarnation))
             throw Usage("swap record is bound to another incarnation");
         if (const auto* o = std::get_if<swap::Initialize>(&record.command)) {
@@ -157,8 +187,8 @@ Arguments parse(int argc, char** argv) {
                 " quote_atoms=" + std::to_string(o->quote.value()) + " purchase_debit_cap=" +
                 std::to_string(o->limits.max_purchase_total.value()) + " realized_loss_cap=" +
                 std::to_string(o->limits.max_realized_loss.value()) + "\n";
-        } else {
-            const auto& intent = std::get<swap::Intent>(record.command);
+        } else if (const auto* value = std::get_if<swap::Intent>(&record.command)) {
+            const auto& intent = *value;
             a.summary = "SWAP INTENT side=" + std::to_string(static_cast<unsigned>(intent.side)) +
                 " effect=" + std::to_string(intent.effect.value()) + " max_quote_debit=" +
                 std::to_string(intent.max_quote_debit.value()) + " base_input=" + std::to_string(intent.base_input.value()) +
@@ -254,6 +284,7 @@ Arguments parse(int argc, char** argv) {
         a.summary = describe_risk_limits(*parsed.limits);
     } else {
         throw Usage("command must be: kill-epoch VALUE | executor-generation VALUE | "
+                    "spot-swap-record INITIALIZE_OR_INTENT.record | spot-swap-record AMENDMENT.record ORIGINAL_OPENING.record | "
                     "install-catalog ROOT EXPECTED_KILL_EPOCH EXPECTED_EXECUTOR_GENERATION | "
                     "strategy-mode MODE EXPECTED_KILL_EPOCH EXPECTED_EXECUTOR_GENERATION | risk-limits KEY=VALUE... | "
                     "assign-role CALLER_ID strategy|gateway | "

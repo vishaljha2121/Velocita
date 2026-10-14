@@ -3543,7 +3543,8 @@ namespace {
         using T = std::decay_t<decltype(value)>;
         if constexpr (std::is_same_v<T, ApplySpotSwap>) {
             if (std::holds_alternative<swap::Initialize>(value.record.command) ||
-                std::holds_alternative<swap::Intent>(value.record.command)) return kOperatorRole;
+                std::holds_alternative<swap::Intent>(value.record.command) ||
+                std::holds_alternative<swap::AmendBuyPrice>(value.record.command)) return kOperatorRole;
             return swap::required_role(value.record.command) == swap::Role::gateway ? kGatewayRole : 0;
         } else if constexpr (is_one_of<T, AdvanceKillEpoch, SetExecutorGeneration, SetStrategyMode,
                                 InstallExecutionCatalog, ConfigureRiskLimits, AssignCallerRole,

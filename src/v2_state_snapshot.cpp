@@ -790,7 +790,7 @@ private:
 }
 
 [[nodiscard]] std::size_t payload_size(const TradingState& state) noexcept {
-    auto size = kStateSnapshotEmptyPayloadBytes + (state.spot_swap.initialized ? swap::max_state_bytes - 1 : 0);
+    auto size = kStateSnapshotEmptyPayloadBytes + (swap::encoded_state_size(state.spot_swap) - 1);
     for (std::size_t index = 0; index < state.policy_count; ++index) {
         size += kStateSnapshotPolicyFixedBytes +
                 state.policies[index].artifact.rule_count *

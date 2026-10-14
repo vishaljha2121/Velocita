@@ -75,7 +75,8 @@ try:
     targets = sorted({line.split(':', 1)[0] for line in target_lines
                       if ': CXX_EXECUTABLE_LINKER' in line and
                       (line.startswith(('v2-swap-', 'v2-truemarkets-', 'v2-jupiter-', 'velocita-v2-')) or
-                       line.startswith('v2-operational-recovery-tests:'))})
+                       line.startswith(('v2-operational-recovery-tests:', 'v2-state-snapshot-tests:',
+                                        'v2-kernel-codec-tests:', 'v2-kernel-control-tests:', 'v2-model-replay-tests:')))})
     assert {'velocita-v2-node', 'velocita-v2-gateway', 'velocita-v2-signer',
             'v2-jupiter-route-decode-tests', 'v2-swap-process-drill', 'v2-swap-cost-policy-tests',
             'v2-swap-transaction-review-tests', 'v2-swap-transaction-verifier-tests',
@@ -84,7 +85,7 @@ try:
     run(['cmake', '--build', '/work/build', '--parallel', '1', '--target', *targets], 'build', 10800)
     warnings = sorted(set(line.strip() for line in (evidence/'build.log').read_text(errors='replace').splitlines() if 'warning:' in line))
     (evidence/'warnings.json').write_text(json.dumps(dict(unique_warning_lines=warnings), indent=2)+'\n')
-    selection = '^v2-(swap-|truemarkets-|jupiter-|operational-recovery-tests$)'
+    selection = '^v2-(swap-|truemarkets-|jupiter-|operational-recovery-tests$|state-snapshot-tests$|kernel-codec-tests$|kernel-control-tests$|model-replay-tests$)'
     run(['ctest', '--test-dir', '/work/build', '--show-only=json-v1', '-R', selection], 'test-inventory', 30)
     inventory = json.loads((evidence/'test-inventory.log').read_text())
     names = {test['name'] for test in inventory['tests']}
@@ -93,7 +94,8 @@ try:
             'v2-swap-submission-gateway-drill', 'v2-swap-paper-process-drill',
             'v2-swap-transaction-review-tests', 'v2-swap-transaction-verifier-tests',
             'v2-swap-signer-verified-tests'} <= names
-    assert len(names) >= 54
+    assert {'v2-state-snapshot-tests', 'v2-kernel-codec-tests', 'v2-kernel-control-tests', 'v2-model-replay-tests'} <= names
+    assert len(names) >= 58
     run(['ctest', '--test-dir', '/work/build', '--output-on-failure', '--stop-on-failure',
          '--parallel', '1', '-R', selection, '--output-junit', '/evidence/ctest.xml'], 'tests', 1800)
     cases = ET.parse(evidence/'ctest.xml').getroot().findall('.//testcase')
@@ -113,6 +115,9 @@ try:
     os.environ['VELOCITA_SWAP_RUNTIME_GATEWAY']='/work/build/velocita-v2-gateway'
     run(['python3', '-B', '-m', 'unittest', 'discover', '-s', '/source/tests', '-p',
          'test_swap_runtime_gate.py'], 'runtime-gate', 60)
+    run(['python3', '-B', '/source/docs/evidence/bounded_launch_review_2026-10-13/bison/client_amendment_tests.py',
+         '--client', '/work/build/velocita-v2-client', '--output', '/evidence/client-price-amendment'],
+        'client-price-amendment', 60)
     run(['python3', '-B', '/source/tools/v2_schema_goldens.py', '--check'], 'golden-oracle', 30)
     run(['python3', '-B', '/source/tools/v2_schema_goldens.py', '--check-literals', '--schema', '12',
          '--replication-epoch', '2'], 'golden-literals', 30)
@@ -122,7 +127,7 @@ try:
     for case in range(8):
         validate(runs[0], case)
     assert git('rev-parse', 'HEAD') == commit and not git('status', '--porcelain=v1', '--untracked-files=all')
-    binaries = ['velocita-v2-node', 'velocita-v2-gateway', 'velocita-v2-signer', 'v2-swap-process-drill']
+    binaries = ['velocita-v2-node', 'velocita-v2-gateway', 'velocita-v2-signer', 'velocita-v2-client', 'v2-swap-process-drill']
     result = dict(commit=commit, arch=arch, qualified=True, live_admitted=False,
                   scope='production Release capability and selected swap/venue/recovery suite; eight fixture process drills',
                   activation='no production manifest or service changed; build qualification is not launch authorization',

@@ -74,7 +74,7 @@ Code reduce(State& s, const Intent& i, std::uint64_t now) noexcept {
         if (debit > max_money) return Code::overflow;
         if (debit != i.max_quote_debit.value()) return Code::invalid;
         if (debit > l.max_buy_debit.value() || i.transient_base_hold.value() > l.max_transient_base.value() ||
-            i.min_base_receive.value() < ceil_ratio(debit * atom_scale, l.max_buy_price_per_sol.value())) return Code::unsafe_bound;
+            i.min_base_receive.value() < ceil_ratio(debit * atom_scale, effective_buy_price(s).value())) return Code::unsafe_bound;
         if (Wide{s.purchases.value()} + debit > l.max_purchase_total.value()) return Code::purchase_cap;
         if (debit > s.quote.value() || i.transient_base_hold.value() > s.base.value()) return Code::insufficient_funds;
         s.reserved_quote = i.max_quote_debit; s.reserved_base = i.transient_base_hold;
@@ -188,6 +188,21 @@ Code reduce(State& s, const Settlement& x, std::uint64_t) noexcept {
     release(s);
     return Code::applied;
 }
+Code reduce(State& s, const AmendBuyPrice& c, std::uint64_t now) noexcept {
+    if (c.expected_revision || s.buy_price_amendment != BuyPriceAmendment{} ||
+        c.expected_price != s.opening.limits.max_buy_price_per_sol) return Code::stale;
+    if (s.mode != Mode::halted) return Code::stopped;
+    if (s.pending != Pending{} || s.last_effect || s.settlement_count || s.last_release != ReleaseUnsent{} ||
+        s.reserved_base.value() || s.reserved_quote.value() || s.purchases.value() || s.fees.value() || s.realized_pnl ||
+        s.base != s.opening.base || s.quote != s.opening.quote || s.cost != s.opening.base_cost) return Code::busy;
+    if (c.kill_epoch != s.kill_epoch || c.executor_generation != s.executor_generation) return Code::fenced;
+    if (!now || c.opening_digest != opening_digest(s.opening) || c.review_evidence.is_zero() ||
+        !c.replacement_price.value() || c.replacement_price.value()>max_money || c.replacement_price==c.expected_price)
+        return Code::invalid;
+    s.buy_price_amendment={c.replacement_price,c.review_evidence,c.kill_epoch,c.executor_generation,now};
+    return Code::applied;
+}
+
 Code reduce(State& s, const Control& c, std::uint64_t) noexcept {
     if (!mode_valid(c.mode) || c.kill_epoch < s.kill_epoch || c.executor_generation < s.executor_generation) return Code::invalid;
     if (c.kill_epoch == s.kill_epoch && c.executor_generation == s.executor_generation) return Code::invalid;
@@ -196,10 +211,14 @@ Code reduce(State& s, const Control& c, std::uint64_t) noexcept {
 }
 
 template<typename T> constexpr Role role_for() noexcept {
-    if constexpr (std::is_same_v<T,Initialize> || std::is_same_v<T,Control>) return Role::operator_role;
+    if constexpr (std::is_same_v<T,Initialize> || std::is_same_v<T,Control> || std::is_same_v<T,AmendBuyPrice>) return Role::operator_role;
     if constexpr (std::is_same_v<T,Intent>) return Role::strategy;
     return Role::gateway;
 }
+}
+
+QuoteAtoms effective_buy_price(const State& s) noexcept {
+    return s.buy_price_amendment.price.value()?s.buy_price_amendment.price:s.opening.limits.max_buy_price_per_sol;
 }
 
 Role required_role(const Command& command) noexcept {
@@ -227,6 +246,14 @@ bool valid_state(const State& s) noexcept {
         s.settlement_count > s.settlements.size() || !mode_valid(s.mode) ||
         s.kill_epoch < s.opening.kill_epoch || s.executor_generation < s.opening.executor_generation ||
         s.reserved_base.value() > s.base.value() || s.reserved_quote.value() > s.quote.value()) return false;
+    const auto& a=s.buy_price_amendment;
+    if (a != BuyPriceAmendment{}) {
+        if (!a.price.value() || a.price.value()>max_money || a.price==s.opening.limits.max_buy_price_per_sol ||
+            a.evidence.is_zero() || !a.event_time || a.event_time>s.event_time ||
+            a.kill_epoch<s.opening.kill_epoch || a.kill_epoch>s.kill_epoch ||
+            a.executor_generation<s.opening.executor_generation || a.executor_generation>s.executor_generation) return false;
+        baseline.buy_price_amendment=a;
+    }
     for (std::size_t n = 0; n < s.settlements.size(); ++n) {
         const auto& x = s.settlements[n];
         if (n >= s.settlement_count) { if (x != Settlement{}) return false; continue; }

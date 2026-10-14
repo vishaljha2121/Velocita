@@ -118,15 +118,51 @@ Fields build_opening(std::string profile,std::string history,std::string transac
             {"base_atoms",std::to_string(opening.base.value())},{"quote_atoms",std::to_string(opening.quote.value())},{"base_mark_quote_atoms",std::to_string(opening.base_cost.value())},
             {"max_purchase_atoms","1000000"},{"max_fee_atoms","2000"},{"kill_epoch",std::to_string(opening.kill_epoch)},{"executor_generation",std::to_string(opening.executor_generation)}})}};
 }
+swap::Record opening_record(std::string_view bytes,std::uint64_t now){
+    swap::Record decoded;require(swap::decode(std::as_bytes(std::span(bytes)),decoded)==swap::CodecError::none &&
+        decoded.role==swap::Role::operator_role && std::holds_alternative<swap::Initialize>(decoded.command) && canonical(decoded)==bytes && decoded.event_time<=now,"opening record refused");
+    return decoded;
+}
+Fields build_price_amendment(std::string original,std::string parameters){
+    auto f=fields(parameters);require(number(f,"schema")==1,"unsupported parameters schema");const auto now=number(f,"now_ms");
+    const auto decoded=opening_record(original,now);const auto& opening=std::get<swap::Initialize>(decoded.command);
+    const auto& limits=opening.limits;
+    require(limits.max_purchase_total.value()==1'000'000 && limits.max_buy_debit.value()==1'000'000 && limits.max_fee.value()==2'000 &&
+        limits.max_realized_loss.value()>0 && limits.max_realized_loss.value()<=500'000,"amendment requires existing single-buy scope");
+    swap::AmendBuyPrice amendment;amendment.opening_digest=digest(f,"expected_opening_sha256");
+    amendment.review_evidence=digest(f,"review_evidence_sha256");
+    amendment.expected_price=swap::QuoteAtoms{number(f,"expected_price")};amendment.replacement_price=swap::QuoteAtoms{number(f,"replacement_price")};
+    amendment.expected_revision=number(f,"expected_revision");amendment.kill_epoch=number(f,"kill_epoch");amendment.executor_generation=number(f,"executor_generation");
+    require(f.empty(),"unknown amendment parameter");
+    swap::State state;require(swap::apply(state,opening,swap::Role::operator_role,decoded.event_time)==swap::Code::applied,"opening reducer refused");
+    state.mode=swap::Mode::halted;
+    require(swap::apply(state,amendment,swap::Role::operator_role,now)==swap::Code::applied,"price amendment reducer refused");
+    const auto record=canonical({swap::Role::operator_role,now,amendment});
+    return {{"amendment.record",record},{"amendment.parameters",parameters},{"record-summary.txt",document({
+        {"kind","AmendBuyPrice"},{"record_sha256",to_hex(hash(record))},{"original_opening_record_sha256",to_hex(hash(original))},
+        {"opening_digest",to_hex(swap::opening_digest(opening))},{"review_evidence_sha256",to_hex(amendment.review_evidence)},
+        {"expected_price",std::to_string(amendment.expected_price.value())},{"replacement_price",std::to_string(amendment.replacement_price.value())},
+        {"expected_revision",std::to_string(amendment.expected_revision)},{"kill_epoch",std::to_string(amendment.kill_epoch)},
+        {"executor_generation",std::to_string(amendment.executor_generation)},{"proposal_only","1"},{"committed","0"},
+        {"requires_authenticated_commit","1"}})}};
+}
 Fields build_intent(const Fields& bundle,std::string parameters){
     auto f=fields(parameters);require(number(f,"schema")==1,"unsupported parameters schema");const auto now=number(f,"now_ms");
     const auto& profile=bundle.at("runtime.profile");auto c=context(profile,bundle.at("account.history"),bundle.at("transaction.review"),now);
     auto r=decode_swap_account_review(bundle.at("account.review"),c.profile.account_review_digest);require(r.has_value(),"opening review differs");
-    const auto& bytes=bundle.at("opening.record");swap::Record decoded;require(swap::decode(std::as_bytes(std::span(bytes)),decoded)==swap::CodecError::none &&
-        decoded.role==swap::Role::operator_role && std::holds_alternative<swap::Initialize>(decoded.command) && canonical(decoded)==bytes && decoded.event_time<=now,"opening record refused");
+    const auto& bytes=bundle.at("opening.record");const auto decoded=opening_record(bytes,now);
     swap::State state;const auto& opening=std::get<swap::Initialize>(decoded.command);
     require(swap::apply(state,opening,swap::Role::operator_role,decoded.event_time)==swap::Code::applied &&
         swap_mvp_buy_scope(state,c.transaction) && swap_account_history_funding(c.history,*r,c.profile.gateway.binding,state,now),"opening funding expired or differs");
+    const auto amendment=bundle.find("amendment.record");
+    if(amendment!=bundle.end()){
+        swap::Record record;require(swap::decode(std::as_bytes(std::span(amendment->second)),record)==swap::CodecError::none &&
+            record.role==swap::Role::operator_role && std::holds_alternative<swap::AmendBuyPrice>(record.command) &&
+            canonical(record)==amendment->second && record.event_time<=now,"amendment record refused");
+        state.mode=swap::Mode::halted;
+        require(swap::apply(state,record.command,record.role,record.event_time)==swap::Code::applied,"price amendment reducer refused");
+        state.mode=swap::Mode::normal;
+    }
     swap::Intent intent;intent.binding=opening.binding;intent.effect=EffectId{1};intent.side=Side::buy;
     intent.quote_input=swap::QuoteAtoms{998'000};intent.max_quote_debit=swap::QuoteAtoms{1'000'000};intent.fee_cap=swap::QuoteAtoms{2'000};
     intent.min_base_receive=swap::BaseAtoms{number(f,"minimum_base_atoms")};intent.source_time=number(f,"source_time_ms");intent.sign_by=number(f,"sign_by_ms");
@@ -142,24 +178,34 @@ Fields build_intent(const Fields& bundle,std::string parameters){
     require(net.code==BuyNetCostCode::within_arithmetic_bounds_only && intent.min_base_receive.value()>0,"conservative quote floor refused");
     require(swap::apply(state,intent,swap::Role::strategy,now)==swap::Code::applied && swap_mvp_buy_scope(state,c.transaction),"intent reducer or one-buy scope refused");
     const auto record=canonical({swap::Role::strategy,now,intent});
-    return {{"intent.record",record},{"intent.parameters",parameters},{"record-summary.txt",document({{"kind","Intent"},{"record_sha256",to_hex(hash(record))},
+    Fields summary{{"kind","Intent"},{"record_sha256",to_hex(hash(record))},
         {"opening_record_sha256",to_hex(hash(bytes))},{"runtime_profile_sha256",to_hex(hash(profile))},{"quote_evidence_sha256",to_hex(quote_evidence)},
         {"effect","1"},{"principal_atoms","998000"},{"maximum_debit_atoms","1000000"},{"fee_atoms","2000"},
         {"minimum_base_atoms",std::to_string(intent.min_base_receive.value())},{"conservative_quote_floor",std::to_string(net.minimum_net_receipt)},
-        {"repayment_lamports",std::to_string(repayment)},{"guaranteed_sponsor_credit","0"},{"sign_by_ms",std::to_string(intent.sign_by)}})}};
+        {"repayment_lamports",std::to_string(repayment)},{"guaranteed_sponsor_credit","0"},{"sign_by_ms",std::to_string(intent.sign_by)}};
+    if(amendment!=bundle.end()){
+        summary.emplace("amendment_record_sha256",to_hex(hash(amendment->second)));
+        summary.emplace("amendment_committed","0");summary.emplace("requires_authenticated_commit","1");
+    }
+    return {{"intent.record",record},{"intent.parameters",parameters},{"record-summary.txt",document(summary)}};
 }
 int run(int argc,char** argv){
-    require(argc>=2,"mode required: opening or intent");const std::string mode=argv[1];Fields args;
+    require(argc>=2,"mode required: opening, price-amendment or intent");const std::string mode=argv[1];Fields args;
     for(int n=2;n<argc;n+=2){require(n+1<argc && std::string_view(argv[n]).starts_with("--") && args.emplace(argv[n]+2,argv[n+1]).second,"invalid or duplicate CLI argument");}
     const auto output=text(args,"output");const auto parameters=read(text(args,"parameters"),8192);Fields result;
     if(mode=="opening"){
         auto profile=read(text(args,"runtime-profile"),8192),history=read(text(args,"account-history"),4096),transaction=read(text(args,"transaction-review"),32768);
         require(args.empty(),"unknown CLI argument");result=build_opening(profile,history,transaction,parameters);
+    }else if(mode=="price-amendment"){
+        const auto opening=read(text(args,"opening-record"),swap::max_record_bytes);require(args.empty(),"unknown CLI argument");
+        result=build_price_amendment(opening,parameters);
     }else if(mode=="intent"){
         const fs::path bundle=text(args,"bundle");require(args.empty(),"unknown CLI argument");Fields inputs;
         for(const auto& [name,limit]:std::map<std::string,std::size_t>{{"runtime.profile",8192},{"account.history",4096},{"transaction.review",32768},{"account.review",8192},{"opening.record",512}})inputs[name]=read(bundle/name,limit);
+        const auto amendment=bundle/"amendment.record";
+        if(fs::symlink_status(amendment).type()!=fs::file_type::not_found)inputs["amendment.record"]=read(amendment,swap::max_record_bytes);
         result=build_intent(inputs,parameters);
-    }else throw std::runtime_error("mode must be opening or intent");
+    }else throw std::runtime_error("mode must be opening, price-amendment or intent");
     emit(output,result);std::cout<<"PREPARED offline_only=1 network_used=0 funds_moved=0\n";return 0;
 }
 }

@@ -1,0 +1,28 @@
+{
+  "scope": "Python schema4 review domain and explicit pristine Byreal-to-Bison transition only",
+  "tdd_before": {
+    "tests": 3,
+    "failures": 2,
+    "errors": 0,
+    "named_failures": [
+      "bison_schema4_domain_admitted",
+      "bison_transition_admitted"
+    ]
+  },
+  "passing_tests": {
+    "idle_policy_renewal": 23,
+    "swap_review_transition": 19,
+    "idle_policy_apply": 21
+  },
+  "mutation_kills": 4,
+  "mutation_errors": 0,
+  "deployed": false,
+  "committed": false,
+  "services_started": false,
+  "orders_submitted": false,
+  "files": {
+    "deploy/v2/swap-runtime/review_transition.py": "86819df9ca6050fb93d105969b0efae7ee11a7191adf326c948db090504e2869",
+    "deploy/v2/swap-runtime/idle_policy_renewal.py": "2de6dcfc2ab690ad94623355575663c55aca20b01aefbaf2d0ec3fa662345141",
+    "tests/test_idle_policy_renewal.py": "bf0dfa2be216643b9b95f5e39cb7adefc6d873f13327b4cecb803ec5f27243e9"
+  }
+}

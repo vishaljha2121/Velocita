@@ -9,9 +9,7 @@
 
 namespace velocita::v2 {
 Digest256 swap_opening_review_digest(const swap::Initialize& opening) noexcept {
-    std::array<std::byte,swap::max_record_bytes> bytes{};
-    const auto encoded=swap::encode({swap::Role::operator_role,0,opening},bytes);
-    return encoded.error==swap::CodecError::none?sha256_digest(std::span(bytes).first(encoded.size)):Digest256{};
+    return swap::opening_digest(opening);
 }
 std::optional<DeclaredOutsideBalance> reviewed_outside_balance(const SwapAccountReview& r) noexcept {
     if(r.outside_base<0 || r.outside_quote<0 || r.activity_count>r.activity.size() ||

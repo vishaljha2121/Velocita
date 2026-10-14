@@ -26,7 +26,8 @@ struct DirectBuyFixture {
     std::uint64_t payment{550'840},quoted{9'410'623},input{1'000'000},timestamp{1000};
     std::uint8_t route_kind{181},route_direction{},route_percent{100},fee{20};
     std::uint16_t slippage{500};
-    bool extra{},wrong_close{},wrong_route_account{},signed_payload{};
+    bool extra{},wrong_close{},wrong_route_account{},signed_payload{},bison_layout{};
+    std::uint8_t readonly_unsigned{7};
     DirectBuyFixture(){
         auto& p=policy;for(unsigned i=0;i<20;++i)p.account_keys[i]=key(i+1);
         p.account_keys[5]=kSolanaSystemProgram;p.account_keys[6]=kSolanaComputeBudgetProgram;
@@ -54,7 +55,7 @@ struct DirectBuyFixture {
     }
     std::string envelope()const {
         std::vector<std::uint8_t> b{2};b.resize(129);if(signed_payload)b[1]=1;
-        b.insert(b.end(),{128,2,0,7,12});
+        b.insert(b.end(),{128,2,0,readonly_unsigned,12});
         for(unsigned i=0;i<12;++i)b.insert(b.end(),policy.account_keys[i].begin(),policy.account_keys[i].end());
         b.insert(b.end(),32,42);b.push_back(extra?7:6);
         const auto ix=[&](unsigned program,std::vector<std::uint8_t> a,std::vector<std::uint8_t> d){
@@ -66,6 +67,7 @@ struct DirectBuyFixture {
             route_kind,route_direction,route_percent,0,1};
         le(route,input,8);le(route,quoted,8);le(route,slippage,2);route.push_back(fee);
         std::vector<std::uint8_t> accounts{8,1,2,3,7,15,4,11,7,17,1,12,14,13,15,18,3,2,8,5,1,9,9,19,16};
+        if(bison_layout)accounts={8,1,2,3,7,15,4,11,7,17,1,13,14,12,3,2,8,8,15,18,16,19,9};
         if(wrong_route_account)accounts[2]=4;
         ix(7,accounts,route);ix(8,{3,static_cast<std::uint8_t>(wrong_close?0:1),1},{9});
         std::vector<std::uint8_t> transfer{2,0,0,0};le(transfer,payment,8);ix(5,{1,0},transfer);
@@ -80,6 +82,18 @@ struct DirectBuyFixture {
     }
     SwapTransactionVerification run(std::uint64_t now=1001){auto e=envelope();pending.payload=sha256_digest(std::as_bytes(std::span(e)));
         return verify_swap_transaction(e,"verifier-fixture",std::string(31,'1')+'3',pending,policy,lookup,now);}
+};
+struct BisonBuyFixture : DirectBuyFixture {
+    BisonBuyFixture() {
+        bison_layout=true;policy.route=DirectBuyRoute::bison_market_backed;
+        policy.account_keys[9]=from58("4cG31VNF9TzFinNc7BmnjhFvGjxkY3sCETVMtMgbrhPs");
+        policy.account_keys[17]=from58("BiSoNHVpsVZW2F7rx2eQ59yQwKxzU5NvBcmKshCSUypi");
+        std::copy(policy.account_keys.begin()+12,policy.account_keys.end(),lookup[0].addresses.begin());
+        policy.lookup_image_digest=direct_buy_lookup_digest(lookup);
+        policy.accepted_costs.max_output_deduction=swap::BaseAtoms{2'039'280};
+        payment=2'039'280;quoted=9'281'295;route_kind=177;
+        pending.intent.min_base_receive=swap::BaseAtoms{6'777'951};
+    }
 };
 struct ByrealBuyFixture : DirectBuyFixture {
     std::uint8_t readonly_unsigned{8};

@@ -7,7 +7,7 @@
 
 namespace velocita::v2::truemarkets {
 
-enum class DirectBuyRoute : std::uint8_t { kipseli_v3, byreal_dynamic_v3, obsidian };
+enum class DirectBuyRoute : std::uint8_t { kipseli_v3, byreal_dynamic_v3, obsidian, bison_market_backed };
 struct DirectBuyVerificationPolicy {
     swap::Binding binding{};
     std::array<SolanaAccountKey,20> account_keys{};

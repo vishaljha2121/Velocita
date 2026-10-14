@@ -1,0 +1,155 @@
+{
+  "named_kills": 17,
+  "results": [
+    {
+      "name": "baseline",
+      "passed": true,
+      "exit": 0,
+      "assertion": null,
+      "stdout": "PASS buy_price_amendment\n",
+      "stderr": ""
+    },
+    {
+      "name": "operator",
+      "passed": true,
+      "exit": 1,
+      "assertion": "price_amendment_operator_only",
+      "stdout": "FAIL buy_price_amendment: price_amendment_operator_only\n",
+      "stderr": ""
+    },
+    {
+      "name": "once",
+      "passed": true,
+      "exit": 1,
+      "assertion": "price_amendment_once",
+      "stdout": "FAIL buy_price_amendment: price_amendment_once\n",
+      "stderr": ""
+    },
+    {
+      "name": "halt",
+      "passed": true,
+      "exit": 1,
+      "assertion": "price_requires_halt",
+      "stdout": "FAIL buy_price_amendment: price_requires_halt\n",
+      "stderr": ""
+    },
+    {
+      "name": "prior_effect",
+      "passed": true,
+      "exit": 1,
+      "assertion": "price_no_prior_effect",
+      "stdout": "FAIL buy_price_amendment: price_no_prior_effect\n",
+      "stderr": ""
+    },
+    {
+      "name": "holds",
+      "passed": true,
+      "exit": 1,
+      "assertion": "price_no_reserved_cash",
+      "stdout": "FAIL buy_price_amendment: price_no_reserved_cash\n",
+      "stderr": ""
+    },
+    {
+      "name": "balances",
+      "passed": true,
+      "exit": 1,
+      "assertion": "price_balances_unchanged",
+      "stdout": "FAIL buy_price_amendment: price_balances_unchanged\n",
+      "stderr": ""
+    },
+    {
+      "name": "kill",
+      "passed": true,
+      "exit": 1,
+      "assertion": "price_kill_fence",
+      "stdout": "FAIL buy_price_amendment: price_kill_fence\n",
+      "stderr": ""
+    },
+    {
+      "name": "executor",
+      "passed": true,
+      "exit": 1,
+      "assertion": "price_executor_fence",
+      "stdout": "FAIL buy_price_amendment: price_executor_fence\n",
+      "stderr": ""
+    },
+    {
+      "name": "opening",
+      "passed": true,
+      "exit": 1,
+      "assertion": "price_opening_pin",
+      "stdout": "FAIL buy_price_amendment: price_opening_pin\n",
+      "stderr": ""
+    },
+    {
+      "name": "prior_price",
+      "passed": true,
+      "exit": 1,
+      "assertion": "price_expected_price",
+      "stdout": "FAIL buy_price_amendment: price_expected_price\n",
+      "stderr": ""
+    },
+    {
+      "name": "revision",
+      "passed": true,
+      "exit": 1,
+      "assertion": "price_expected_revision",
+      "stdout": "FAIL buy_price_amendment: price_expected_revision\n",
+      "stderr": ""
+    },
+    {
+      "name": "evidence",
+      "passed": true,
+      "exit": 1,
+      "assertion": "price_evidence_required",
+      "stdout": "FAIL buy_price_amendment: price_evidence_required\n",
+      "stderr": ""
+    },
+    {
+      "name": "price",
+      "passed": true,
+      "exit": 1,
+      "assertion": "price_new_bound_accepts_exact_floor",
+      "stdout": "FAIL buy_price_amendment: price_new_bound_accepts_exact_floor\n",
+      "stderr": ""
+    },
+    {
+      "name": "reconstruction",
+      "passed": true,
+      "exit": 1,
+      "assertion": "price_settlement_reconstructs_with_amendment",
+      "stdout": "FAIL buy_price_amendment: price_settlement_reconstructs_with_amendment\n",
+      "stderr": ""
+    },
+    {
+      "name": "snapshot_evidence",
+      "passed": true,
+      "exit": 1,
+      "assertion": "price_invalid_amendment_state_refused",
+      "stdout": "FAIL buy_price_amendment: price_invalid_amendment_state_refused\n",
+      "stderr": ""
+    },
+    {
+      "name": "snapshot_tag",
+      "passed": true,
+      "exit": 1,
+      "assertion": "price_unknown_extension_tag_refused",
+      "stdout": "FAIL buy_price_amendment: price_unknown_extension_tag_refused\n",
+      "stderr": ""
+    },
+    {
+      "name": "kind",
+      "passed": true,
+      "exit": 1,
+      "assertion": "price_command_roundtrip",
+      "stdout": "FAIL buy_price_amendment: price_command_roundtrip\n",
+      "stderr": ""
+    }
+  ],
+  "sources": {
+    "v2_swap.cpp": "c866b69998c40744b31d04469cc774fb8094b8dfe8f96952da0bfed1492ea667",
+    "v2_swap_codec.cpp": "4d19c2336207382782286416c04f9bcdededa7924f3f1ec12cc9251a3590e5db",
+    "v2_swap_paper.cpp": "b9c39af4c31770a12f38e50b5d67419f595e324b024f7dbecd215d532ece1672",
+    "v2_digest.cpp": "c70b91cc0dd7349a61f343448e8322464bf957c50a311bef0998c5d64411ba02"
+  }
+}

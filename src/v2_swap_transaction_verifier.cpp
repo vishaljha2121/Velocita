@@ -24,6 +24,9 @@ constexpr SolanaAccountKey memo{5,74,83,90,153,41,33,6,77,36,232,113,96,218,56,1
 
 constexpr SolanaAccountKey obsidian{240,107,131,98,69,250,70,54,116,160,2,96,141,142,220,212,232,74,255,176,164,188,146,113,210,228,153,27,192,16,138,171};
 
+constexpr SolanaAccountKey bison{159,50,218,156,31,108,18,80,192,155,115,57,35,236,195,103,13,40,99,231,212,106,156,28,244,125,253,187,208,213,254,87};
+constexpr SolanaAccountKey bison_readonly{53,155,99,136,184,36,81,130,108,187,131,187,148,33,122,249,101,134,8,98,159,129,99,79,10,36,73,222,107,80,156,118};
+
 void number(Sha256& hash,std::uint64_t value) noexcept {
     std::array<std::byte,8> bytes{};
     for(unsigned i=0;i<8;++i)bytes[i]=static_cast<std::byte>(value>>(8*i));
@@ -44,7 +47,7 @@ bool valid_policy(const DirectBuyVerificationPolicy& p) noexcept {
     if(!valid_binding(p.binding) || !p.expires_at_ms || !p.max_envelope_age_ms || p.max_envelope_age_ms>30'000 ||
         !p.max_compute_units || p.max_compute_units>1'400'000 || p.max_slippage_bps>10'000 ||
         p.accepted_costs.max_output_deduction.value()>max_signed || p.lookup_image_digest.is_zero())return false;
-    if(p.route!=DirectBuyRoute::kipseli_v3 && p.route!=DirectBuyRoute::byreal_dynamic_v3 && p.route!=DirectBuyRoute::obsidian)return false;
+    if(p.route!=DirectBuyRoute::kipseli_v3 && p.route!=DirectBuyRoute::byreal_dynamic_v3 && p.route!=DirectBuyRoute::obsidian && p.route!=DirectBuyRoute::bison_market_backed)return false;
     for(std::size_t i=0;i<p.account_count();++i)for(std::size_t j=0;j<i;++j)
         if(p.account_key(i)==p.account_key(j))return false;
     if(p.route==DirectBuyRoute::byreal_dynamic_v3)
@@ -61,8 +64,8 @@ bool valid_policy(const DirectBuyVerificationPolicy& p) noexcept {
             a[13]==wrapped_sol && a[14]==instructions_sysvar && a[16]==obsidian;
     }
     return a[5]==kSolanaSystemProgram && a[6]==kSolanaComputeBudgetProgram && a[7]==jupiter &&
-        a[8]==kSolanaClassicTokenProgram && a[9]==route_auxiliary && a[10]==kSolanaAssociatedTokenProgram &&
-        a[11]==event_authority && a[15]==wrapped_sol && a[16]==instructions_sysvar && a[17]==kipseli &&
+        a[8]==kSolanaClassicTokenProgram && a[9]==(p.route==DirectBuyRoute::bison_market_backed?bison_readonly:route_auxiliary) && a[10]==kSolanaAssociatedTokenProgram &&
+        a[11]==event_authority && a[15]==wrapped_sol && a[16]==instructions_sysvar && (p.route==DirectBuyRoute::bison_market_backed?a[17]==bison:a[17]==kipseli) &&
         a[18]==usdc && a[19]==route_readonly;
 }
 bool indices(const DecodedSolanaPayload& d,std::size_t n,std::span<const std::uint8_t> expected) noexcept {
@@ -79,7 +82,7 @@ SolanaInstructionDecodeResult small(const DecodedSolanaPayload& d,const Resolved
 }
 Digest256 direct_buy_policy_digest(const DirectBuyVerificationPolicy& p) noexcept {
     if(!valid_policy(p))return {};
-    Sha256 h;label(h,p.route==DirectBuyRoute::obsidian?"velocita-direct-obsidian-buy-v1":p.route==DirectBuyRoute::kipseli_v3?"velocita-direct-kipseli-buy-v1":"velocita-direct-byreal-v3-buy-v1");binding(h,p.binding);
+    Sha256 h;label(h,p.route==DirectBuyRoute::bison_market_backed?"velocita-direct-bison-market-backed-buy-v1":p.route==DirectBuyRoute::obsidian?"velocita-direct-obsidian-buy-v1":p.route==DirectBuyRoute::kipseli_v3?"velocita-direct-kipseli-buy-v1":"velocita-direct-byreal-v3-buy-v1");binding(h,p.binding);
     for(std::size_t i=0;i<p.account_count();++i)h.update(std::as_bytes(std::span(p.account_key(i))));
     number(h,p.max_envelope_age_ms);number(h,p.max_compute_price);number(h,p.max_compute_units);
     number(h,p.max_slippage_bps);number(h,p.accepted_costs.max_output_deduction.value());
@@ -124,6 +127,7 @@ SwapTransactionVerification verify_swap_transaction(std::string_view envelope,st
     ResolvedSolanaAccounts accounts;
     if(resolve_solana_accounts(d,organization,signer,evidence,accounts)!=SolanaResolutionError::none)
         return {Code::invalid_accounts,{},{}};
+    const bool is_bison=p.route==DirectBuyRoute::bison_market_backed;
     const bool is_obsidian=p.route==DirectBuyRoute::obsidian;
     const bool is_byreal=p.route==DirectBuyRoute::byreal_dynamic_v3;
     if(!d.version_zero || d.required_signatures!=2 || d.signer_index!=1 || d.static_key_count!=(is_obsidian?11:is_byreal?16:12) ||
@@ -142,8 +146,9 @@ SwapTransactionVerification verify_swap_transaction(std::string_view envelope,st
     constexpr std::array<std::uint8_t,6> obsidian_programs{6,6,9,7,8,5};
     constexpr std::array<std::uint8_t,6> obsidian_ata{0,3,1,13,5,8};
     constexpr std::array<std::uint8_t,18> obsidian_route{8,1,2,3,7,13,4,10,7,16,1,15,12,11,2,3,8,14};
+    constexpr std::array<std::uint8_t,23> bison_route{8,1,2,3,7,15,4,11,7,17,1,13,14,12,3,2,8,8,15,18,16,19,9};
     const auto& programs=is_obsidian?obsidian_programs:is_byreal?byreal_programs:legacy_programs;
-    const auto route_accounts=is_obsidian?std::span<const std::uint8_t>(obsidian_route):
+    const auto route_accounts=is_bison?std::span<const std::uint8_t>(bison_route):is_obsidian?std::span<const std::uint8_t>(obsidian_route):
         is_byreal?std::span<const std::uint8_t>(byreal_route):std::span<const std::uint8_t>(legacy_route);
     // Only the observed Obsidian layout may omit compute-price. No other
     // instruction can be skipped, reordered or added; absent price means zero.
@@ -174,7 +179,7 @@ SwapTransactionVerification verify_swap_transaction(std::string_view envelope,st
     const auto decoded=decode_jupiter_direct_route_data(std::span(d.transaction).subspan(ix.data_offset,ix.data_size));
     const auto& route=decoded.data;
     if(decoded.status!=JupiterRouteStatus::decoded_data_only || route.step_count!=1 ||
-        route.steps[0]!=JupiterRouteStep{is_obsidian?JupiterSwapKind::obsidian:is_byreal?JupiterSwapKind::byreal_dynamic_v3:JupiterSwapKind::kipseli_v3,0,100,0,1,0} ||
+        route.steps[0]!=JupiterRouteStep{is_bison?JupiterSwapKind::bison_fi_market_backed:is_obsidian?JupiterSwapKind::obsidian:is_byreal?JupiterSwapKind::byreal_dynamic_v3:JupiterSwapKind::kipseli_v3,0,100,0,1,0} ||
         !route.quoted_output_atoms || route.quoted_output_atoms>max_signed || route.slippage_bps>p.max_slippage_bps)
         return {Code::unsupported_route,{},{}};
     if(route.platform_fee_bps!=20 || route.input_atoms!=intent.max_quote_debit.value() || route.input_atoms%10'000!=0)

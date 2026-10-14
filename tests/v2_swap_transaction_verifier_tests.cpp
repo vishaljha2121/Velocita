@@ -134,13 +134,41 @@ void obsidian(){
     f.omit_price=true;require(f.run().verified.has_value(),"obsidian_no_price_is_zero");
     f=F{};f.signed_payload=true;require(!f.run().verified,"obsidian_already_signed");
 }
+void bison(){
+    using F=test_support::BisonBuyFixture;
+    F f;auto r=f.run();require(r.verified.has_value(),"bison_exact_layout_verified");
+    require(r.bounds.total_usdc_debit==1'000'000 && r.bounds.explicit_usdc_fee==2'000 &&
+        r.bounds.gross_sol_floor==8'817'231 && r.bounds.maximum_sol_deduction==2'039'280 &&
+        r.bounds.net_sol_floor==6'777'951,"bison_independent_economic_oracle");
+    f.pending.intent.min_base_receive=swap::BaseAtoms{6'777'952};refusal(f,Code::minimum_shortfall,"bison_one_lamport_shortfall");
+    f=F{};f.payment++;refusal(f,Code::deduction_exceeded,"bison_excess_repayment");
+    f=F{};f.route_direction=1;refusal(f,Code::unsupported_route,"bison_reverse_direction");
+    f=F{};f.route_percent=99;refusal(f,Code::unsupported_route,"bison_partial_route");
+    f=F{};f.route_kind=181;refusal(f,Code::unsupported_route,"bison_wrong_variant");
+    f=F{};f.wrong_close=true;refusal(f,Code::unsupported_topology,"bison_wrong_close");
+    f=F{};f.wrong_route_account=true;refusal(f,Code::unsupported_topology,"bison_wrong_route_account");
+    f=F{};f.bison_layout=false;refusal(f,Code::unsupported_topology,"bison_legacy_topology");
+    f=F{};f.extra=true;refusal(f,Code::unsupported_topology,"bison_extra_instruction");
+    f=F{};f.readonly_unsigned=6;refusal(f,Code::account_mismatch,"bison_permission_escalation");
+    f=F{};f.signed_payload=true;refusal(f,Code::invalid_envelope,"bison_already_signed");
+    f=F{};f.input+=10000;refusal(f,Code::debit_mismatch,"bison_excess_debit");
+    f=F{};f.fee++;refusal(f,Code::debit_mismatch,"bison_wrong_fee");
+    for(unsigned index:{9,16,17,19}) {
+        f=F{};f.policy.account_keys[index]=key(230);
+        if(index>=12)f.lookup[0].addresses[index-12]=key(230);
+        f.policy.lookup_image_digest=direct_buy_lookup_digest(f.lookup);
+        refusal(f,Code::invalid_policy,"bison_canonical_readonly_and_program");
+    }
+    f=F{};f.policy.additional_account_keys[0]=key(230);refusal(f,Code::invalid_policy,"bison_unused_keys");
+    f=F{};f.policy.route=DirectBuyRoute::kipseli_v3;refusal(f,Code::invalid_policy,"bison_not_legacy_policy");
+}
 static_assert(!std::is_default_constructible_v<VerifiedSwapTransaction>);
 static_assert(!std::is_aggregate_v<VerifiedSwapTransaction>);
 }
 int main(int argc,char** argv){
     unsigned count{},failed{};
     const std::pair<const char*,void(*)()> tests[]={{"oracle",oracle},{"economics",economic_refusals},
-        {"topology",topology_refusals},{"identity",freshness_and_identity},{"digests",digests},{"byreal",byreal},{"obsidian",obsidian}};
+        {"topology",topology_refusals},{"identity",freshness_and_identity},{"digests",digests},{"byreal",byreal},{"obsidian",obsidian},{"bison",bison}};
     for(auto [name,fn]:tests){if(argc==2 && std::string_view(argv[1])!=name)continue;++count;
         try{fn();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){++failed;std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';}}
     return count==0?2:failed?1:0;

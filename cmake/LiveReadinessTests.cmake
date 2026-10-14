@@ -37,7 +37,9 @@ add_executable(v2-swap-balance-tests
     "${velocita_readiness_root}/tests/v2_swap_balance_tests.cpp"
     "${velocita_readiness_root}/src/v2_swap_balance.cpp"
     "${velocita_readiness_root}/src/v2_spot_balance.cpp"
-    "${velocita_readiness_root}/src/v2_swap.cpp")
+    "${velocita_readiness_root}/src/v2_swap.cpp"
+    "${velocita_readiness_root}/src/v2_swap_codec.cpp"
+    "${velocita_readiness_root}/src/v2_digest.cpp")
 target_include_directories(v2-swap-balance-tests PRIVATE "${velocita_readiness_root}/include")
 target_compile_definitions(v2-swap-balance-tests PRIVATE
     VELOCITA_TARGET_CACHE_LINE_SIZE=${VELOCITA_TARGET_CACHE_LINE_SIZE})

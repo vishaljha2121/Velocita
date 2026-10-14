@@ -1,0 +1,37 @@
+[
+  {
+    "name": "opening_digest",
+    "compiled": true,
+    "exit": 1,
+    "assertion": "wrong_opening_digest_must_refuse",
+    "named_assertion_kill": true
+  },
+  {
+    "name": "opening_price",
+    "compiled": true,
+    "exit": 1,
+    "assertion": "wrong_expected_price_must_refuse",
+    "named_assertion_kill": true
+  },
+  {
+    "name": "incarnation",
+    "compiled": true,
+    "exit": 1,
+    "assertion": "matching_pair_wrong_cluster_must_refuse",
+    "named_assertion_kill": true
+  },
+  {
+    "name": "opening_role",
+    "compiled": true,
+    "exit": 1,
+    "assertion": "opening_requires_operator_role",
+    "named_assertion_kill": true
+  },
+  {
+    "name": "amendment_role",
+    "compiled": true,
+    "exit": 1,
+    "assertion": "amendment_requires_operator_role",
+    "named_assertion_kill": true
+  }
+]

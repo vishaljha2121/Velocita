@@ -46,6 +46,8 @@ def route_transition(before,after,witness):
             ((0,0),(1,1),(2,3),(3,4),(4,5),(5,8),(6,9),(7,10),(8,11),(10,13),(11,14),(15,22),(18,25))),
         'byreal-v1-to-obsidian-v1':('2','3',27,17,
             ((0,0),(1,1),(3,2),(4,3),(5,4),(8,5),(9,6),(10,7),(11,8),(13,9),(14,10),(22,13))),
+        'byreal-v1-to-bison-market-backed-v1':('2','4',27,20,
+            ((0,0),(1,1),(3,2),(4,3),(5,4),(8,5),(9,6),(10,7),(11,8),(13,10),(14,11),(22,15),(25,18))),
     }
     if type(witness) is not dict or set(witness)!=expected or type(witness['schema']) is not int or witness['schema']!=1 or not isinstance(witness['kind'],str) or witness['kind'] not in transitions:raise ValueError('exact route review witness required')
     for name in ('before_review_sha256','after_review_sha256','contract_evidence_sha256'):

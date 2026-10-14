@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "local_checks_passed": true,
+  "committed": false,
+  "native_qualified": false,
+  "deployed": false,
+  "price_amendment_applied": false,
+  "funds_moved": false,
+  "ctests_passed": 8,
+  "verifier_test_groups": 8,
+  "review_test_groups": 7,
+  "builder_test_groups": 5,
+  "python_tests": 63,
+  "named_mutation_kills": 70,
+  "retained_capture_verified_offline": true,
+  "trust_scope": "Historical payload under exact reviewed accounts and Jupiter/Bison program contract; not fresh launch admission.",
+  "client_tests": 5
+}

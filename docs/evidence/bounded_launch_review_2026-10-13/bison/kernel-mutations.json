@@ -1,0 +1,29 @@
+{
+  "named_kills": 3,
+  "results": [
+    {
+      "name": "gateway_role",
+      "assertion": "gateway_cannot_amend_price",
+      "passed": true,
+      "exit": 1,
+      "stdout": "",
+      "stderr": "FAIL price_amendment_authority_and_replay: gateway_cannot_amend_price\n"
+    },
+    {
+      "name": "strategy_role",
+      "assertion": "strategy_cannot_amend_price",
+      "passed": true,
+      "exit": 1,
+      "stdout": "",
+      "stderr": "FAIL price_amendment_authority_and_replay: strategy_cannot_amend_price\n"
+    },
+    {
+      "name": "snapshot_length",
+      "assertion": "production snapshot restores swap state",
+      "passed": true,
+      "exit": 1,
+      "stdout": "PASS price_amendment_authority_and_replay\n",
+      "stderr": "FAIL global_controls_fence_pending: production snapshot restores swap state\n"
+    }
+  ]
+}

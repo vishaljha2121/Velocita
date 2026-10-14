@@ -1,0 +1,259 @@
+{
+  "source_sha256": "38c20a7d1b799d36d90c29c887cceb2fef303f1ba3fb9d796f348af999e7cfbe",
+  "results": [
+    {
+      "name": "baseline",
+      "case": null,
+      "assertion": null,
+      "exit": 0,
+      "passed": true,
+      "stdout": "PASS oracle\nPASS economics\nPASS topology\nPASS identity\nPASS digests\nPASS byreal\nPASS obsidian\nPASS bison\n",
+      "stderr": ""
+    },
+    {
+      "name": "bison_program",
+      "case": "bison",
+      "assertion": "bison_canonical_readonly_and_program",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL bison: bison_canonical_readonly_and_program\n"
+    },
+    {
+      "name": "bison_minimum",
+      "case": "bison",
+      "assertion": "bison_one_lamport_shortfall",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL bison: bison_one_lamport_shortfall\n"
+    },
+    {
+      "name": "bison_direction",
+      "case": "bison",
+      "assertion": "bison_exact_layout_verified",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL bison: bison_exact_layout_verified\n"
+    },
+    {
+      "name": "bison_close",
+      "case": "bison",
+      "assertion": "bison_wrong_close",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL bison: bison_wrong_close\n"
+    },
+    {
+      "name": "bison_permissions",
+      "case": "bison",
+      "assertion": "bison_permission_escalation",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL bison: bison_permission_escalation\n"
+    },
+    {
+      "name": "bison_route_roles",
+      "case": "bison",
+      "assertion": "bison_wrong_route_account",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL bison: bison_wrong_route_account\n"
+    },
+    {
+      "name": "obsidian_sysvar",
+      "case": "obsidian",
+      "assertion": "obsidian_arbitrary_sysvar",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL obsidian: obsidian_arbitrary_sysvar\n"
+    },
+    {
+      "name": "obsidian_program",
+      "case": "obsidian",
+      "assertion": "obsidian_arbitrary_program",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL obsidian: obsidian_arbitrary_program\n"
+    },
+    {
+      "name": "obsidian_minimum",
+      "case": "obsidian",
+      "assertion": "obsidian_one_lamport_shortfall",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL obsidian: obsidian_one_lamport_shortfall\n"
+    },
+    {
+      "name": "obsidian_permissions",
+      "case": "obsidian",
+      "assertion": "obsidian_permission_escalation",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL obsidian: obsidian_permission_escalation\n"
+    },
+    {
+      "name": "obsidian_unused",
+      "case": "obsidian",
+      "assertion": "obsidian_unused_keys_refused",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL obsidian: obsidian_unused_keys_refused\n"
+    },
+    {
+      "name": "obsidian_no_price",
+      "case": "obsidian",
+      "assertion": "obsidian_both_layouts_verified",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL obsidian: obsidian_both_layouts_verified\n"
+    },
+    {
+      "name": "byreal_program",
+      "case": "byreal",
+      "assertion": "byreal_arbitrary_program",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL byreal: byreal_arbitrary_program\n"
+    },
+    {
+      "name": "byreal_minimum",
+      "case": "byreal",
+      "assertion": "byreal_one_lamport_shortfall",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL byreal: byreal_one_lamport_shortfall\n"
+    },
+    {
+      "name": "byreal_permissions",
+      "case": "byreal",
+      "assertion": "byreal_permission_escalation",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL byreal: byreal_permission_escalation\n"
+    },
+    {
+      "name": "payload_binding",
+      "case": "identity",
+      "assertion": "prepared_payload_mismatch",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL identity: prepared_payload_mismatch\n"
+    },
+    {
+      "name": "policy_cost_digest",
+      "case": "digests",
+      "assertion": "policy_cost_bound_digest",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL digests: policy_cost_bound_digest\n"
+    },
+    {
+      "name": "lookup_provenance",
+      "case": "identity",
+      "assertion": "lookup_provenance_changed",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL identity: lookup_provenance_changed\n"
+    },
+    {
+      "name": "canonical_dex",
+      "case": "topology",
+      "assertion": "arbitrary_dex_policy_refused",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL topology: arbitrary_dex_policy_refused\n"
+    },
+    {
+      "name": "extra_instruction",
+      "case": "topology",
+      "assertion": "extra_instruction_refused",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL topology: extra_instruction_refused\n"
+    },
+    {
+      "name": "close_destination",
+      "case": "topology",
+      "assertion": "rent_recipient_refused",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL topology: rent_recipient_refused\n"
+    },
+    {
+      "name": "route_roles",
+      "case": "topology",
+      "assertion": "route_account_role_refused",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL topology: route_account_role_refused\n"
+    },
+    {
+      "name": "fee_divisibility",
+      "case": "economics",
+      "assertion": "fractional_fee_above_divisibility_refused",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL economics: fractional_fee_above_divisibility_refused\n"
+    },
+    {
+      "name": "floor_rounding",
+      "case": "oracle",
+      "assertion": "supported_buy_verified",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL oracle: supported_buy_verified\n"
+    },
+    {
+      "name": "funding_credit",
+      "case": "economics",
+      "assertion": "idempotent_zero_funding_refused",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL economics: idempotent_zero_funding_refused\n"
+    },
+    {
+      "name": "minimum_bound",
+      "case": "economics",
+      "assertion": "one_lamport_receipt_shortfall",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL economics: one_lamport_receipt_shortfall\n"
+    },
+    {
+      "name": "already_signed",
+      "case": "identity",
+      "assertion": "already_signed_refused",
+      "exit": 1,
+      "passed": true,
+      "stdout": "",
+      "stderr": "FAIL identity: already_signed_refused\n"
+    }
+  ],
+  "named_kills": 27,
+  "test_errors": 0
+}

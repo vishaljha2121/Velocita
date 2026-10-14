@@ -40,7 +40,8 @@ def main():
               "-DVELOCITA_TARGET_CACHE_LINE_SIZE=128", "-fsanitize=address,undefined",
               "-fno-omit-frame-pointer", "-I" + str(root / "include"),
               str(root / "tests/v2_swap_balance_tests.cpp"),
-              str(root / "src/v2_spot_balance.cpp"), str(root / "src/v2_swap.cpp")]
+              str(root / "src/v2_spot_balance.cpp"), str(root / "src/v2_swap.cpp"),
+              str(root / "src/v2_swap_codec.cpp"), str(root / "src/v2_digest.cpp")]
     baseline = output / "baseline"
     subprocess.run(common + [str(source_path), "-o", str(baseline)], check=True)
     subprocess.run([str(baseline)], check=True)

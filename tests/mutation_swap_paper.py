@@ -54,7 +54,7 @@ MUTANTS = [
      'identity_and_canonical_units', 'wrong identity or mixed input units refused without mutation'),
     ('transient_hold', 'src/v2_swap.cpp', 's.reserved_base = i.transient_base_hold;', 's.reserved_base = {};',
      'transient_liquidity_is_reserved', 'temporary SOL liquidity is held separately'),
-    ('price_safety', 'src/v2_swap.cpp', 'i.min_base_receive.value() < ceil_ratio(debit * atom_scale, l.max_buy_price_per_sol.value())', 'false',
+    ('price_safety', 'src/v2_swap.cpp', 'i.min_base_receive.value() < ceil_ratio(debit * atom_scale, effective_buy_price(s).value())', 'false',
      'safety_floor_and_fee_caps', 'minimum receive must cover all-in 125 USDC per SOL ceiling'),
     ('transaction_reuse', 'src/v2_swap.cpp', 'if (x.transaction == s.settlements[n].transaction)', 'if (false)',
      'sell_fee_and_transaction_reuse_conflict', 'same transaction cannot fund two effects'),

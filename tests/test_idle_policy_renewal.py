@@ -152,6 +152,71 @@ class RenewalTests(unittest.TestCase):
             with self.subTest(field=field,value=value[:12]),self.assertRaises(ValueError,msg='obsidian_caps_and_shared_roles_preserved'):
                 N.route_transition(before['transaction.review'],raw,dict(witness,after_review_sha256=T.R.digest(raw)))
 
+    BISON_ROLES=((0,0),(1,1),(3,2),(4,3),(5,4),(8,5),(9,6),
+                 (10,7),(11,8),(13,10),(14,11),(22,15),(25,18))
+
+    def bison_fixture(self):
+        args,_=self.obsidian_fixture();old,new,before,after,journals,now=args
+        encode=T.TransitionTests.encode
+        prior=T.R.transaction_fields(before['transaction.review'])['account_keys']
+        keys=[bytes([110+i]).hex()*32 for i in range(20)]
+        for a,b in self.BISON_ROLES:keys[b]=prior[a*64:(a+1)*64]
+        tx=T.R.transaction_fields(after['transaction.review']);tx.update(schema='4',account_keys=''.join(keys))
+        after=dict(after,**{'transaction.review':encode(tx)})
+        profile=T.R.L.fields(after['runtime.profile']);profile['transaction_review_digest']=T.R.digest(after['transaction.review'])
+        review=T.R.L.fields(after['account.review']);review['runtime_identity']=N.runtime_identity(profile)
+        after['account.review']=encode(review);profile['account_review_digest']=T.R.digest(after['account.review'])
+        after['runtime.profile']=encode(profile)
+        witness=dict(schema=1,kind='byreal-v1-to-bison-market-backed-v1',before_review_sha256=T.R.digest(before['transaction.review']),
+                     after_review_sha256=T.R.digest(after['transaction.review']),contract_evidence_sha256='cf'*32)
+        return (old,T.TransitionTests.pins(old,after),before,after,journals,now),witness
+
+    def test_bison_schema4_distinct_domain_and_exact_key_count(self):
+        args,_=self.bison_fixture()
+        try:current=T.R.journal_bindings(args[3])
+        except ValueError as error:self.fail('bison_schema4_domain_admitted: '+str(error))
+        old=T.R.journal_bindings(args[2])
+        self.assertEqual(current[:4],old[:4],'bison_gateway_domains_unchanged')
+        self.assertNotEqual(current[4],old[4],'bison_protected_domain_distinct')
+        tx=T.R.transaction_fields(args[3]['transaction.review'])
+        legacy=dict(args[3],**{'transaction.review':T.TransitionTests.encode(dict(tx,schema='1'))})
+        self.assertNotEqual(current[4],T.R.journal_bindings(legacy)[4],'bison_not_legacy_twenty_key_domain')
+        for count in (17,19,21,27):
+            raw=T.TransitionTests.encode(dict(tx,account_keys=('27'*32)*count))
+            with self.subTest(count=count),self.assertRaises(ValueError,msg='bison_exact_twenty_keys'):
+                T.R.journal_bindings(dict(args[3],**{'transaction.review':raw}))
+
+    def test_bison_transition_preserves_all_gateway_journals_and_funding(self):
+        args,witness=self.bison_fixture()
+        try:out=N.propose(*args,route_review=witness)
+        except ValueError as error:self.fail('bison_transition_admitted: '+str(error))
+        self.assertFalse(out['report']['applyable'])
+        for name,raw in args[4].items():
+            updated=out['artifacts']['after/journals/'+name]
+            if name!='protected-signing':self.assertEqual(updated,raw,'bison_gateway_journal_unchanged')
+            else:
+                self.assertEqual(int.from_bytes(updated[8:16],'little'),3,'bison_protected_ordinal_advances')
+                self.assertEqual(updated[16:72],raw[16:72],'bison_phase_index_effect_unchanged')
+                self.assertEqual(updated[104:-32],raw[104:-32],'bison_payload_and_proof_unchanged')
+        with self.assertRaises(ValueError,msg='bison_explicit_witness_required'):N.propose(*args)
+
+    def test_bison_exact_transition_kind_caps_roles_and_witness(self):
+        args,witness=self.bison_fixture();before,after=args[2:4]
+        for kind in ('byreal-v1-to-obsidian-v1','obsidian-v1-to-bison-market-backed-v1','kipseli-v1-to-bison-market-backed-v1'):
+            with self.subTest(kind=kind),self.assertRaises(ValueError,msg='bison_only_reviewed_byreal_transition'):
+                N.route_transition(before['transaction.review'],after['transaction.review'],dict(witness,kind=kind))
+        for patch in (dict(schema=True),dict(contract_evidence_sha256='00'*32),dict(before_review_sha256='aa'*32),dict(after_review_sha256='bb'*32)):
+            with self.subTest(patch=patch),self.assertRaises(ValueError,msg='bison_witness_pins'):
+                N.route_transition(before['transaction.review'],after['transaction.review'],dict(witness,**patch))
+        tx=T.R.transaction_fields(after['transaction.review'])
+        changes=[('max_slippage_bps','501'),('max_compute_price','99999'),('max_compute_units','1400001'),('max_envelope_age_ms','30001')]
+        for _,role in self.BISON_ROLES:
+            keys=tx['account_keys'];changes.append(('account_keys',keys[:role*64]+('ff'*32)+keys[(role+1)*64:]))
+        for field,value in changes:
+            raw=T.TransitionTests.encode(dict(tx,**{field:value}))
+            with self.subTest(field=field,value=value[:12]),self.assertRaises(ValueError,msg='bison_preserves_caps_and_shared_roles'):
+                N.route_transition(before['transaction.review'],raw,dict(witness,after_review_sha256=T.R.digest(raw)))
+
     def test_reviewed_release_and_route_publish_as_one_generation(self):
         args,route,release=self.release_fixture()
         try:out=N.propose(*args,route_review=route,release_review=release)
