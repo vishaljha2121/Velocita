@@ -1,4 +1,5 @@
 #include "velocita/v2/swap_runtime_production.hpp"
+#include <iostream>
 #include "velocita/v2/swap_prepare_https.hpp"
 #include <algorithm>
 #include <charconv>
@@ -159,8 +160,10 @@ std::optional<SwapAccountStartupAdmission> swap_prepare_admission(const SwapAcco
     return admission;
 }
 SwapProductionPorts::SwapProductionPorts(SwapGatewayCredentials& credentials,SwapPrepareStore& p,SwapSubmissionStore& s,SwapPrepareBinding binding,
-    SwapFinalizedReadClock& clock,truemarkets::TmText org,truemarkets::TmText signer,std::uint64_t timeout,SwapAccountStartupAdmission admission,SwapFailureAccountingPolicy failure_policy)
-    :credentials_(credentials),preparation_(p),submission_(s),binding_(binding),clock_(clock),organization_(org),signer_(signer),timeout_(timeout),failure_policy_(failure_policy),admission_(std::move(admission)){
+    SwapFinalizedReadClock& clock,truemarkets::TmText org,truemarkets::TmText signer,std::uint64_t timeout,SwapAccountStartupAdmission admission,SwapFailureAccountingPolicy failure_policy,
+    std::optional<truemarkets::SwapExecutionPolicy> route_policy)
+    :credentials_(credentials),preparation_(p),submission_(s),binding_(binding),clock_(clock),organization_(org),signer_(signer),timeout_(timeout),failure_policy_(failure_policy),
+    route_policy_(route_policy),admission_(std::move(admission)){
     if(credentials.binding().allocation!=binding.allocation || credentials.binding().authority_domain!=binding.authority_domain || timeout<1 || timeout>60000)
         throw std::invalid_argument("production port binding refused");
 }
@@ -170,6 +173,16 @@ std::optional<truemarkets::JupiterLookupPrefix> SwapProductionPorts::prefix(std:
     if(!need)return {};
     SwapRuntimeFinalizedHttps rpc(timeout_);
     return read_jupiter_lookup_prefix(rpc,rpc.provider_identity(),timeout_,1,*need);
+}
+bool SwapProductionPorts::admit(const swap::Pending& candidate,std::string_view payload){
+    if(!route_policy_)return true;
+    const auto lookup=prefix(std::as_bytes(std::span(payload.data(),payload.size())));
+    if(!lookup){std::cerr<<"WARNING route lookup unavailable; effect "<<candidate.intent.effect.value()<<" left unsent"<<std::endl;return false;}
+    const auto checked=truemarkets::verify_swap_transaction(payload,organization_.view(),signer_.view(),candidate,*route_policy_,*lookup,clock_.now_ms());
+    if(!checked.verified){
+        std::cerr<<"WARNING TM route refused code="<<static_cast<unsigned>(checked.code)<<"; effect "<<candidate.intent.effect.value()<<" left unsent"<<std::endl;
+        return false;}
+    return true;
 }
 transport::SwapHttpsResult SwapProductionPorts::create(const truemarkets::SwapRestRequest& request,const SwapPrepareRead& read){
     transport::SwapHttpsResult refused;refused.status=transport::SwapHttpsStatus::local_refusal;
@@ -221,9 +234,9 @@ std::optional<VerifiedSwapSettlement> SwapProductionPorts::reconcile(const swap:
 }
 SwapProductionGateway::SwapProductionGateway(GatewayLink& link,SwapReconcileStore& recovery,SwapPrepareStore& prepared,SwapSubmissionStore& submitted,
     SwapSubmissionStore& signing_requests,SwapGatewayCredentials& credentials,SwapFinalizedReadClock& clock,const SwapRuntimeProfile& profile,
-    SwapGatewayRuntimeConfig config,SwapAccountStartupAdmission admission)
+    SwapGatewayRuntimeConfig config,SwapAccountStartupAdmission admission,std::optional<truemarkets::SwapExecutionPolicy> route_policy)
     :client_(credentials.signer_client()),
-    ports_(credentials,prepared,submitted,config.preparation,clock,profile.organization,profile.signer_id,config.timeout,admission,profile.failure_policy),
+    ports_(credentials,prepared,submitted,config.preparation,clock,profile.organization,profile.signer_id,config.timeout,admission,profile.failure_policy,route_policy),
     signing_(prepared,signing_requests,*client_,{config.preparation,credentials.binding().signer_public_key},ports_),
     runtime_(link,recovery,prepared,submitted,ports_,signing_,ports_,ports_,config){
     if(!swap_account_history_identity(admission.history,admission.review,credentials.binding()) ||

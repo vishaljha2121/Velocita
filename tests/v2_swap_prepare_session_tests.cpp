@@ -97,7 +97,8 @@ struct Port final:SwapPreparePort {
     unsigned calls{};std::string body,path,document{reply()};unsigned http{201};bool throw_after{};
     transport::SwapHttpsStatus status{transport::SwapHttpsStatus::complete};
     transport::SwapHttpsExposure exposure{transport::SwapHttpsExposure::response_received};
-    std::function<void()> during;SwapPrepareRead read{};
+    std::function<void()> during;SwapPrepareRead read{};bool refuse_route{};swap::Pending candidate{};
+    bool admit(const swap::Pending& c,std::string_view payload)override{candidate=c;return !refuse_route && !payload.empty();}
     transport::SwapHttpsResult create(const truemarkets::SwapRestRequest& request,const SwapPrepareRead& committed)override{
         ++calls;body=request.body_view();path=request.path_view();read=committed;if(during)during();
         if(throw_after)throw std::runtime_error("synthetic lost create response");
@@ -161,14 +162,19 @@ void create_receives_fresh_committed_read(){
         read.requested_ms==104 && read.received_ms==107,"create sees the committed read that admitted it and its wall-clock bounds");
 }
 void unknown_and_bad_response_never_retry(){
-    for(unsigned mode=0;mode<5;++mode){Rig r;
+    for(unsigned mode=0;mode<6;++mode){Rig r;
+        if(mode==5)r.port.refuse_route=true;
         if(mode==0)r.port.throw_after=true;
         if(mode==1)r.port.status=transport::SwapHttpsStatus::timeout;
         if(mode==2)r.port.http=500;
         if(mode==3)r.port.document="{}";
         if(mode==4)r.port.exposure=transport::SwapHttpsExposure::possibly_sent;
-        require(r.start(),"ambiguous create fixture starts");require(r.finish()==SwapPrepareSessionStatus::needs_reconciliation && r.port.calls==1 &&
-            !r.session->prepared() && r.store->latest().phase==SwapPreparePhase::create_intent,"lost timeout malformed or unconfirmed create response remains unresolved");
+        require(r.start(),"ambiguous create fixture starts");const auto got=r.finish();
+        require(got==SwapPrepareSessionStatus::needs_reconciliation && r.port.calls==1 &&
+            !r.session->prepared() && r.store->latest().phase==SwapPreparePhase::create_intent,"lost timeout malformed unconfirmed or refused-route create remains unresolved");
+        if(mode==5)require(r.port.candidate.phase==swap::Phase::prepared && r.port.candidate.intent.effect==EffectId{1} &&
+            to_hex(r.port.candidate.payload)=="3a02efff5acd5e623cd99f11791246c191fb38fd52ab29fa4f2bac1fc66f7256" && !r.port.candidate.handle.is_zero(),
+            "route check receives the exact payload digest, handle and committed intent");
         r.restart();require(!r.start() && !r.start(2,20) && r.port.calls==1 && r.session->status()==SwapPrepareSessionStatus::needs_reconciliation,
             "unknown prepare restart blocks both repeat and newer create");}
 }

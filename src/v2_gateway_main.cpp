@@ -614,7 +614,8 @@ int run(const Arguments& a) {
         if(!recovery_only && !read_swap_reviewed_balance(*credentials,clock,admission,a.timeout_ms))
             throw Usage("live balance differs from reviewed funding and attributed outside activity, or review expired");
         SwapProductionGateway gateway(link,recovery,prepared,submitted,signing,*credentials,clock,*profile,
-            {prepare_binding,CallerId{a.caller_id},start.first_sequence,reserved,a.timeout_ms,a.state_interval_ms,recovery_only,5'000,180'000,true},admission);
+            {prepare_binding,CallerId{a.caller_id},start.first_sequence,reserved,a.timeout_ms,a.state_interval_ms,recovery_only,5'000,180'000,true},admission,
+            transaction_review->policy);
         auto& loop=gateway.runtime();
         std::int64_t published_observation_index{};
         std::uint64_t published_observation_ms{};

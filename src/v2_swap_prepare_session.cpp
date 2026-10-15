@@ -107,6 +107,11 @@ SwapPrepareSessionStatus SwapPrepareSession::poll(Tick now,std::uint64_t event_t
         (prepared.quoted_fee>intent.fee_cap.value() ||
          (intent.side==Side::buy && (prepared.quoted_fee>prepared.quoted_input ||
           prepared.quoted_input-prepared.quoted_fee!=intent.quote_input.value()))))return status_;
+    const swap::Pending candidate{swap::Phase::prepared,intent,prepared.payload_digest,
+        sha256_digest(std::as_bytes(std::span(prepared.handle.bytes.data(),prepared.handle.length)))};
+    bool admitted=false;
+    try{admitted=port_.admit(candidate,prepared.payload_view());}catch(...){admitted=false;}
+    if(!admitted)return status_;
     const auto response_digest=sha256_digest(std::as_bytes(std::span(response.body.data(),response.body_size)));
     if(store_.complete(prepared,response_digest)!=SwapPrepareStoreCode::none)return finish(SwapPrepareSessionStatus::storage_failed);
     return finish(SwapPrepareSessionStatus::prepared);

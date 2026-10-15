@@ -21,6 +21,7 @@ class SwapPreparePort {
 public:
     virtual ~SwapPreparePort()=default;
     [[nodiscard]] virtual transport::SwapHttpsResult create(const truemarkets::SwapRestRequest&,const SwapPrepareRead&)=0;
+    [[nodiscard]] virtual bool admit(const swap::Pending&,std::string_view){return true;}
 };
 struct SwapPrepareSessionConfig {
     SwapPrepareBinding binding{};

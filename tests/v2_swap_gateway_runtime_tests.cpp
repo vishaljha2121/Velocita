@@ -7,7 +7,10 @@
 
 namespace {
 struct RuntimePrepare final:SwapPreparePort {
-    SwapPrepareStore* store{};unsigned calls{};bool lose_reply{};
+    SwapPrepareStore* store{};unsigned calls{},admissions{};bool lose_reply{},refuse_route{};
+    bool admit(const swap::Pending& candidate,std::string_view)override{
+        ++admissions;require(candidate.phase==swap::Phase::prepared && !candidate.payload.is_zero() && !candidate.handle.is_zero(),"route check sees the would-be prepared effect");
+        return !refuse_route;}
     transport::SwapHttpsResult create(const truemarkets::SwapRestRequest&,const SwapPrepareRead&)override{
         ++calls;require(store->latest().phase==SwapPreparePhase::create_intent,"create fence durable before network");
         if(lose_reply)throw std::runtime_error("lost create");
@@ -114,6 +117,31 @@ void runtime_drill(unsigned mode){
         c.on_round={};
         for(auto& [id,node]:c.nodes)require(node->applied_state().spot_swap.quote.value()==19'000'000 && node->applied_state().spot_swap.base.value()==60'000'000,
             "six settlement balance oracle replicated");
+        return;
+    }
+    if(mode==15){
+        prepare.refuse_route=true;config.continuous=true;
+        runtime=std::make_unique<SwapGatewayRuntime>(link,*recovery,*prepared,*submission,prepare,signer,execute,settlement,config);
+        c.on_round=[&]{runtime->step(steady_ms(),event_time);};
+        c.run_until([&]{return runtime->stopped() || prepare.admissions==1;},"refused route reaches the gateway check");
+        c.run_until([&]{return runtime->stopped() || std::all_of(c.nodes.begin(),c.nodes.end(),[](auto& n){
+            return n.second->applied_state().spot_swap.pending.phase==swap::Phase::reserved;});},"every voter holds the reservation while the gateway waits");
+        require(!runtime->stopped() && prepare.calls==1 && signer.calls==0 && prepared->latest().phase==SwapPreparePhase::create_intent &&
+            std::all_of(c.nodes.begin(),c.nodes.end(),[](auto& n){return n.second->applied_state().spot_swap.pending.phase==swap::Phase::reserved;}),
+            "refused route is never recorded as prepared and the continuous gateway waits instead of stopping");
+        event_time=intent.sign_by;
+        c.run_until([&]{return runtime->stopped() || std::all_of(c.nodes.begin(),c.nodes.end(),[](auto& n){
+            return n.second->applied_state().spot_swap.last_release.effect==EffectId{1};});},"refused effect released after its signing deadline");
+        require(!runtime->stopped() && prepare.calls==1 && signer.calls==0 && execute.calls==0 && prepared->latest().phase==SwapPreparePhase::released,
+            "release needs no restart, no second create and no signature");
+        prepare.refuse_route=false;settlement.prove=true;event_time=20300;
+        auto second=intent;second.effect=EffectId{2};second.source_time=20300;second.sign_by=40300;
+        require(c.commit(op,ApplySpotSwap{{swap::Role::strategy,20300,second}}).code==ApplyCode::applied,"next intent after the refused route");
+        c.run_until([&]{return runtime->stopped() || std::all_of(c.nodes.begin(),c.nodes.end(),[](auto& n){
+            return n.second->applied_state().spot_swap.settlement_count==1;});},"next effect settles");
+        c.on_round={};
+        require(!runtime->stopped() && prepare.calls==2 && signer.calls==1 && execute.calls==1 &&
+            c.nodes.begin()->second->applied_state().spot_swap.settlements[0].effect==EffectId{2},"the run continues with the next effect");
         return;
     }
     if(mode==13){
@@ -244,4 +272,4 @@ void runtime_drill(unsigned mode){
     }
 }
 }
-int main(int argc,char** argv){try{for(unsigned mode=0;mode<15;++mode){if(argc==2 && mode!=static_cast<unsigned>(std::atoi(argv[1])))continue;runtime_drill(mode);std::cout<<"PASS runtime mode "<<mode<<'\n';}return 0;}catch(const std::exception& e){std::cerr<<"FAIL "<<e.what()<<'\n';return 1;}}
+int main(int argc,char** argv){try{for(unsigned mode=0;mode<16;++mode){if(argc==2 && mode!=static_cast<unsigned>(std::atoi(argv[1])))continue;runtime_drill(mode);std::cout<<"PASS runtime mode "<<mode<<'\n';}return 0;}catch(const std::exception& e){std::cerr<<"FAIL "<<e.what()<<'\n';return 1;}}

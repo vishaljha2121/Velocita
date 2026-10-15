@@ -1,6 +1,8 @@
 #pragma once
 #include "velocita/v2/swap_gateway_runtime.hpp"
 #include "velocita/v2/swap_runtime_https.hpp"
+#include "velocita/v2/swap_transaction_verifier.hpp"
+#include <optional>
 #include "velocita/v2/swap_order_status.hpp"
 #include "velocita/v2/swap_account_setup.hpp"
 #include <vector>
@@ -51,8 +53,10 @@ class SwapProductionPorts final:public SwapPreparePort,public SwapExecutionPort,
 public:
     SwapProductionPorts(SwapGatewayCredentials&,SwapPrepareStore&,SwapSubmissionStore&,SwapPrepareBinding,
         SwapFinalizedReadClock&,truemarkets::TmText organization,truemarkets::TmText signer,
-        std::uint64_t timeout_ms,SwapAccountStartupAdmission,SwapFailureAccountingPolicy={});
+        std::uint64_t timeout_ms,SwapAccountStartupAdmission,SwapFailureAccountingPolicy={},
+        std::optional<truemarkets::SwapExecutionPolicy> route_policy={});
     [[nodiscard]] transport::SwapHttpsResult create(const truemarkets::SwapRestRequest&,const SwapPrepareRead&)override;
+    [[nodiscard]] bool admit(const swap::Pending&,std::string_view payload)override;
     void execute(const SwapSubmissionIdentity&,std::span<const std::byte>)override;
     [[nodiscard]] std::optional<VerifiedSwapSettlement> reconcile(const swap::Pending&)override;
     [[nodiscard]] std::optional<truemarkets::JupiterLookupPrefix> prefix(std::span<const std::byte> payload)override;
@@ -62,6 +66,7 @@ private:
     SwapPrepareBinding binding_;SwapFinalizedReadClock& clock_;truemarkets::TmText organization_,signer_;
     std::uint64_t timeout_{};
     SwapFailureAccountingPolicy failure_policy_{};
+    std::optional<truemarkets::SwapExecutionPolicy> route_policy_{};
     SwapAccountStartupAdmission admission_;
     EffectId created_{},executed_{},reconciling_{};
     unsigned reconcile_attempts_{};
@@ -72,7 +77,8 @@ class SwapProductionGateway final {
 public:
     SwapProductionGateway(GatewayLink&,SwapReconcileStore&,SwapPrepareStore&,SwapSubmissionStore&,
         SwapSubmissionStore& signer_requests,SwapGatewayCredentials&,SwapFinalizedReadClock&,
-        const SwapRuntimeProfile&,SwapGatewayRuntimeConfig,SwapAccountStartupAdmission);
+        const SwapRuntimeProfile&,SwapGatewayRuntimeConfig,SwapAccountStartupAdmission,
+        std::optional<truemarkets::SwapExecutionPolicy> route_policy={});
     [[nodiscard]] SwapGatewayRuntime& runtime()noexcept{return runtime_;}
     [[nodiscard]] const SwapCreateTrace& create_trace()const noexcept{return ports_.create_trace();}
 private:

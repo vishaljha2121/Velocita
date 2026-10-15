@@ -70,7 +70,10 @@ void SwapGatewayRuntime::step(Tick now,std::uint64_t event){
     }
     if(preparing_){const auto s=preparing_->poll(now,event);if(s==SwapPrepareSessionStatus::reading_state)return;
         preparing_.reset();status_=SwapGatewayRuntimeStatus::running;next_read_=0;
-        if(s!=SwapPrepareSessionStatus::prepared)stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::prepare_unknown);return;}
+        if(s==SwapPrepareSessionStatus::prepared)return;
+        if(config_.continuous && !config_.recovery_only && s==SwapPrepareSessionStatus::needs_reconciliation &&
+            preparation_.latest().phase==SwapPreparePhase::create_intent && preparation_.latest().operation.effect==effect_)return;
+        stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::prepare_unknown);return;}
     if(submitting_){const auto s=submitting_->poll(now,event);if(s==SwapSubmissionSessionStatus::reading_state)return;
         submitting_.reset();signed_.reset();status_=SwapGatewayRuntimeStatus::running;next_read_=0;
         if(s!=SwapSubmissionSessionStatus::needs_reconciliation)stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::state);return;}
@@ -154,7 +157,9 @@ void SwapGatewayRuntime::observed(const StateReading& reading,Tick now,std::uint
             if(saved.operation.intent_digest!=swap_record_digest({swap::Role::strategy,pending.intent.source_time,pending.intent})){
                 stop(SwapGatewayRuntimeStatus::failed,SwapGatewayRuntimeCause::identity);return;}
             if(saved.phase==SwapPreparePhase::create_intent){
-                if(event<pending.intent.sign_by){stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::prepare_unknown);return;}
+                if(event<pending.intent.sign_by){
+                    if(config_.continuous && !config_.recovery_only){next_read_=now+(pending.intent.sign_by-event)+1;return;}
+                    stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::prepare_unknown);return;}
                 if(preparation_.release(reading.applied_index,reading.state_digest)!=SwapPrepareStoreCode::none){
                     stop(SwapGatewayRuntimeStatus::failed,SwapGatewayRuntimeCause::storage);return;}
             }
