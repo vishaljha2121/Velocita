@@ -1,0 +1,112 @@
+/evidence/runtime.cpp: In member function ‘void velocita::v2::SwapGatewayRuntime::stop(velocita::v2::SwapGatewayRuntimeStatus, velocita::v2::SwapGatewayRuntimeCause)’:
+/evidence/runtime.cpp:45:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   45 |     if(owns_link_)link_.abandon();owns_link_=false;status_=s;cause_=cause;
+      |     ^~
+/evidence/runtime.cpp:45:35: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   45 |     if(owns_link_)link_.abandon();owns_link_=false;status_=s;cause_=cause;
+      |                                   ^~~~~~~~~~
+/evidence/runtime.cpp: In member function ‘void velocita::v2::SwapGatewayRuntime::step(velocita::v2::Tick, uint64_t)’:
+/evidence/runtime.cpp:80:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   80 |         if(s!=SwapSubmissionSessionStatus::needs_reconciliation)stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::state);return;}
+      |         ^~
+/evidence/runtime.cpp:80:136: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   80 |         if(s!=SwapSubmissionSessionStatus::needs_reconciliation)stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::state);return;}
+      |                                                                                                                                        ^~~~~~
+In file included from /evidence/drill.cpp:7:
+/source/tests/v2_gateway_node_tests.cpp: In constructor ‘{anonymous}::Gateway::Gateway({anonymous}::Cluster&, velocita::v2::sim::FaultPolicy, velocita::v2::GatewayLoopConfig, velocita::v2::GatewayLinkTiming, const {anonymous}::VenueChoice&)’:
+/source/tests/v2_gateway_node_tests.cpp:688:11: warning: missing initializer for member ‘{anonymous}::CountingVenue::injected’ [-Wmissing-field-initializers]
+  688 |           counting{pick(choice), {}},
+      |           ^~~~~~~~~~~~~~~~~~~~~~~~~~
+/evidence/drill.cpp: In member function ‘std::optional<std::pair<int, std::vector<std::byte> > > continuous_drill::Wire::receive()’:
+/evidence/drill.cpp:80:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   80 |         if(incoming.size()<8)return {};std::uint32_t size;std::int32_t node;
+      |         ^~
+/evidence/drill.cpp:80:40: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   80 |         if(incoming.size()<8)return {};std::uint32_t size;std::int32_t node;
+      |                                        ^~~
+/evidence/drill.cpp:82:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   82 |         if(incoming.size()<8+size)return {};Bytes body(incoming.begin()+8,incoming.begin()+8+size);incoming.erase(incoming.begin(),incoming.begin()+8+size);return std::pair{node,std::move(body)};
+      |         ^~
+/evidence/drill.cpp:82:45: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   82 |         if(incoming.size()<8+size)return {};Bytes body(incoming.begin()+8,incoming.begin()+8+size);incoming.erase(incoming.begin(),incoming.begin()+8+size);return std::pair{node,std::move(body)};
+      |                                             ^~~~~
+In file included from /usr/include/c++/15/optional:51,
+                 from /source/include/velocita/v2/domain.hpp:8,
+                 from /source/include/velocita/v2/contracts.hpp:4,
+                 from /source/include/velocita/v2/action_template.hpp:4,
+                 from /source/include/velocita/v2/action_resolver.hpp:4,
+                 from /source/include/velocita/v2/kernel.hpp:4,
+                 from /source/tests/v2_catalog_test_support.hpp:3,
+                 from /source/tests/v2_gateway_node_tests.cpp:1:
+In function ‘constexpr void std::_Construct(_Tp*, _Args&& ...) [with _Tp = unsigned char; _Args = {}]’,
+    inlined from ‘static constexpr _ForwardIterator std::__uninitialized_default_n_1<true>::__uninit_default_n(_ForwardIterator, _Size) [with _ForwardIterator = unsigned char*; _Size = long unsigned int]’ at /usr/include/c++/15/bits/stl_uninitialized.h:894:23,
+    inlined from ‘static constexpr _ForwardIterator std::__uninitialized_default_n_1<true>::__uninit_default_n(_ForwardIterator, _Size) [with _ForwardIterator = unsigned char*; _Size = long unsigned int]’ at /usr/include/c++/15/bits/stl_uninitialized.h:888:9,
+    inlined from ‘constexpr _ForwardIterator std::__uninitialized_default_n(_ForwardIterator, _Size) [with _ForwardIterator = unsigned char*; _Size = long unsigned int]’ at /usr/include/c++/15/bits/stl_uninitialized.h:947:20,
+    inlined from ‘constexpr _ForwardIterator std::__uninitialized_default_n_a(_ForwardIterator, _Size, allocator<_Tp2>&) [with _ForwardIterator = unsigned char*; _Size = long unsigned int; _Tp = unsigned char]’ at /usr/include/c++/15/bits/stl_uninitialized.h:1002:44,
+    inlined from ‘constexpr void std::vector<_Tp, _Alloc>::_M_default_append(size_type) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/vector.tcc:832:35,
+    inlined from ‘constexpr void std::vector<_Tp, _Alloc>::resize(size_type) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/stl_vector.h:1146:21,
+    inlined from ‘std::string velocita::v2::test_support::RouteFixture::envelope()’ at /source/tests/v2_swap_transaction_verifier_test_support.hpp:94:66:
+/usr/include/c++/15/bits/stl_construct.h:133:7: warning: array subscript 1 is outside array bounds of ‘unsigned char [1]’ [-Warray-bounds=]
+  133 |       ::new(static_cast<void*>(__p)) _Tp(std::forward<_Args>(__args)...);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /usr/include/aarch64-linux-gnu/c++/15/bits/c++allocator.h:33,
+                 from /usr/include/c++/15/bits/allocator.h:46,
+                 from /usr/include/c++/15/string:45,
+                 from /source/include/velocita/v2/digest.hpp:11,
+                 from /source/include/velocita/v2/artifact_digest.hpp:4,
+                 from /source/include/velocita/v2/kernel.hpp:5:
+In member function ‘_Tp* std::__new_allocator<_Tp>::allocate(size_type, const void*) [with _Tp = unsigned char]’,
+    inlined from ‘constexpr _Tp* std::allocator< <template-parameter-1-1> >::allocate(std::size_t) [with _Tp = unsigned char]’ at /usr/include/c++/15/bits/allocator.h:203:40,
+    inlined from ‘static constexpr _Tp* std::allocator_traits<std::allocator<_CharT> >::allocate(allocator_type&, size_type) [with _Tp = unsigned char]’ at /usr/include/c++/15/bits/alloc_traits.h:614:28,
+    inlined from ‘constexpr std::_Vector_base<_Tp, _Alloc>::pointer std::_Vector_base<_Tp, _Alloc>::_M_allocate(std::size_t) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/stl_vector.h:387:33,
+    inlined from ‘constexpr void std::vector<_Tp, _Alloc>::_M_range_initialize_n(_Iterator, _Sentinel, size_type) [with _Iterator = const unsigned char*; _Sentinel = const unsigned char*; _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/stl_vector.h:1985:23,
+    inlined from ‘constexpr std::vector<_Tp, _Alloc>::vector(std::initializer_list<_Tp>, const allocator_type&) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/stl_vector.h:712:23,
+    inlined from ‘std::string velocita::v2::test_support::RouteFixture::envelope()’ at /source/tests/v2_swap_transaction_verifier_test_support.hpp:94:56:
+/usr/include/c++/15/bits/new_allocator.h:151:73: note: at offset 1 into object of size 1 allocated by ‘operator new’
+  151 |         return static_cast<_Tp*>(_GLIBCXX_OPERATOR_NEW(__n * sizeof(_Tp)));
+      |                                                                         ^
+In function ‘constexpr _Tp* std::construct_at(_Tp*, _Args&& ...) [with _Tp = unsigned char; _Args = {unsigned char}]’,
+    inlined from ‘static constexpr void std::allocator_traits<std::allocator<_CharT> >::construct(allocator_type&, _Up*, _Args&& ...) [with _Up = unsigned char; _Args = {unsigned char}; _Tp = unsigned char]’ at /usr/include/c++/15/bits/alloc_traits.h:676:21,
+    inlined from ‘constexpr std::vector<_Tp, _Alloc>::reference std::vector<_Tp, _Alloc>::emplace_back(_Args&& ...) [with _Args = {unsigned char}; _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/vector.tcc:117:30,
+    inlined from ‘constexpr void std::vector<_Tp, _Alloc>::push_back(value_type&&) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/stl_vector.h:1434:21,
+    inlined from ‘void velocita::v2::test_support::le(std::vector<unsigned char>&, uint64_t, unsigned int)’ at /source/tests/v2_swap_transaction_verifier_test_support.hpp:21:121,
+    inlined from ‘std::string velocita::v2::test_support::RouteFixture::envelope()’ at /source/tests/v2_swap_transaction_verifier_test_support.hpp:103:46:
+/usr/include/c++/15/bits/stl_construct.h:110:16: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]
+  110 |         return ::new(__loc) _Tp(std::forward<_Args>(__args)...);
+      |                ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In member function ‘_Tp* std::__new_allocator<_Tp>::allocate(size_type, const void*) [with _Tp = unsigned char]’,
+    inlined from ‘constexpr _Tp* std::allocator< <template-parameter-1-1> >::allocate(std::size_t) [with _Tp = unsigned char]’ at /usr/include/c++/15/bits/allocator.h:203:40,
+    inlined from ‘static constexpr _Tp* std::allocator_traits<std::allocator<_CharT> >::allocate(allocator_type&, size_type) [with _Tp = unsigned char]’ at /usr/include/c++/15/bits/alloc_traits.h:614:28,
+    inlined from ‘constexpr std::_Vector_base<_Tp, _Alloc>::pointer std::_Vector_base<_Tp, _Alloc>::_M_allocate(std::size_t) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/stl_vector.h:387:33,
+    inlined from ‘constexpr void std::vector<_Tp, _Alloc>::_M_range_initialize_n(_Iterator, _Sentinel, size_type) [with _Iterator = const unsigned char*; _Sentinel = const unsigned char*; _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/stl_vector.h:1985:23,
+    inlined from ‘constexpr std::vector<_Tp, _Alloc>::vector(std::initializer_list<_Tp>, const allocator_type&) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/stl_vector.h:712:23,
+    inlined from ‘std::string velocita::v2::test_support::RouteFixture::envelope()’ at /source/tests/v2_swap_transaction_verifier_test_support.hpp:103:42:
+/usr/include/c++/15/bits/new_allocator.h:151:73: note: at offset 1 into destination object of size 1 allocated by ‘operator new’
+  151 |         return static_cast<_Tp*>(_GLIBCXX_OPERATOR_NEW(__n * sizeof(_Tp)));
+      |                                                                         ^
+In file included from /usr/include/c++/15/array:45,
+                 from /source/include/velocita/v2/contracts.hpp:7:
+In function ‘constexpr typename __gnu_cxx::__enable_if<(std::__is_byte<_Tp>::__value && (std::__are_same< <template-parameter-1-1>, <template-parameter-1-2> >::__value || std::__memcpyable_integer<_Up>::__width)), void>::__type std::__fill_a1(_Up*, _Up*, const _Tp&) [with _Up = unsigned char; _Tp = unsigned char]’,
+    inlined from ‘constexpr void std::__fill_a(_FIte, _FIte, const _Tp&) [with _FIte = unsigned char*; _Tp = unsigned char]’ at /usr/include/c++/15/bits/stl_algobase.h:979:21,
+    inlined from ‘constexpr _OutputIterator std::__fill_n_a(_OutputIterator, _Size, const _Tp&, random_access_iterator_tag) [with _OutputIterator = unsigned char*; _Size = long unsigned int; _Tp = unsigned char]’ at /usr/include/c++/15/bits/stl_algobase.h:1148:20,
+    inlined from ‘constexpr _OI std::fill_n(_OI, _Size, const _Tp&) [with _OI = unsigned char*; _Size = long unsigned int; _Tp = unsigned char]’ at /usr/include/c++/15/bits/stl_algobase.h:1178:29,
+    inlined from ‘static constexpr _ForwardIterator std::__uninitialized_default_n_1<true>::__uninit_default_n(_ForwardIterator, _Size) [with _ForwardIterator = unsigned char*; _Size = long unsigned int]’ at /usr/include/c++/15/bits/stl_uninitialized.h:896:29,
+    inlined from ‘static constexpr _ForwardIterator std::__uninitialized_default_n_1<true>::__uninit_default_n(_ForwardIterator, _Size) [with _ForwardIterator = unsigned char*; _Size = long unsigned int]’ at /usr/include/c++/15/bits/stl_uninitialized.h:888:9,
+    inlined from ‘constexpr _ForwardIterator std::__uninitialized_default_n(_ForwardIterator, _Size) [with _ForwardIterator = unsigned char*; _Size = long unsigned int]’ at /usr/include/c++/15/bits/stl_uninitialized.h:947:20,
+    inlined from ‘constexpr _ForwardIterator std::__uninitialized_default_n_a(_ForwardIterator, _Size, allocator<_Tp2>&) [with _ForwardIterator = unsigned char*; _Size = long unsigned int; _Tp = unsigned char]’ at /usr/include/c++/15/bits/stl_uninitialized.h:1002:44,
+    inlined from ‘constexpr void std::vector<_Tp, _Alloc>::_M_default_append(size_type) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/vector.tcc:832:35,
+    inlined from ‘constexpr void std::vector<_Tp, _Alloc>::resize(size_type) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/stl_vector.h:1146:21,
+    inlined from ‘std::string velocita::v2::test_support::RouteFixture::envelope()’ at /source/tests/v2_swap_transaction_verifier_test_support.hpp:94:66:
+/usr/include/c++/15/bits/stl_algobase.h:951:25: warning: ‘void* __builtin_memset(void*, int, long unsigned int)’ offset 2 is out of the bounds [0, 1] [-Warray-bounds=]
+  951 |         __builtin_memset(__first, static_cast<unsigned char>(__val), __len);
+      |         ~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/bin/aarch64-linux-gnu-ld.bfd: cannot open dependency file CMakeFiles/v2-swap-continuous-drill.dir/link.d: Read-only file system
+collect2: error: ld returned 1 exit status
+Traceback (most recent call last):
+  File "/evidence/diagnostic.py", line 32, in <module>
+    subprocess.run(cmd,cwd=build,check=True)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/subprocess.py", line 578, in run
+    raise CalledProcessError(retcode, process.args,
+                             output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '['/usr/bin/c++', '/evidence/runtime.o', '-O3', '-DNDEBUG', '-Wl,--dependency-file=CMakeFiles/v2-swap-continuous-drill.dir/link.d', '/evidence/drill.o', '-o', '/evidence/diagnostic', 'libvelocita_v2_swap_runtime.a', 'libvelocita_v2_swap_paper_gateway.a', 'libvelocita_v2_gateway_loop.a', 'libvelocita_v2_paper_venue.a', '/usr/lib/aarch64-linux-gnu/libcrypto.so', 'libvelocita_v2_swap_transaction_verifier.a', '/usr/lib/aarch64-linux-gnu/libcurl.so', '/usr/lib/aarch64-linux-gnu/libcurl.so', 'libvelocita_v2_node.a', 'libvelocita_v2_replication.a', 'libvelocita_v2_kernel.a', 'libvelocita_v2_evaluator.a', 'libvelocita_core.a', 'libwillemt_raft.a', 'libvelocita_v2_swap_recovery.a', 'libvelocita_v2_venue_simulator.a', 'libvelocita_v2_contracts.a']' returned non-zero exit status 1.

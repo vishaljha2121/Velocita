@@ -1,0 +1,22 @@
+[  7%] Built target willemt_raft
+[ 14%] Built target velocita_v2_swap_transaction_verifier
+[ 21%] Built target velocita_v2_contracts
+[ 28%] Built target velocita_core
+[ 28%] Built target velocita_v2_evaluator
+[ 28%] Built target velocita_v2_swap_recovery
+[ 28%] Built target velocita_v2_venue_simulator
+[ 28%] Built target velocita_v2_paper_venue
+[ 35%] Built target velocita_v2_kernel
+[ 50%] Built target velocita_v2_replication
+[ 57%] Built target velocita_v2_node
+[ 64%] Built target velocita_v2_gateway_loop
+[ 71%] Built target velocita_v2_swap_paper_gateway
+[ 92%] Built target velocita_v2_swap_runtime
+[ 92%] Building CXX object CMakeFiles/v2-swap-continuous-drill.dir/tests/v2_swap_continuous_drill.cpp.o
+In file included from /Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/tests/v2_swap_continuous_drill.cpp:7:
+/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/tests/v2_gateway_node_tests.cpp:688:36: warning: missing field 'injected' initializer [-Wmissing-field-initializers]
+  688 |           counting{pick(choice), {}},
+      |                                    ^
+1 warning generated.
+[100%] Linking CXX executable v2-swap-continuous-drill
+[100%] Built target v2-swap-continuous-drill

@@ -1,6 +1,9 @@
 # Explicit strategy intent grant — 2026-10-15
 
-Status: implemented and locally tested, not committed, native-qualified, staged or installed.
+Status: committed as `b490d68`; NUC1 qualified; Pi qualification failed and is under investigation.
+Not staged, installed or activated. A test-only read-recovery correction now passes locally
+(three cases, 18 settlements; two freshly compiled mutation kills), awaiting a scoped checkpoint
+and new native qualification. [Native results](native/RESULTS.md).
 The owner approved implementation/testing; deployment and activation follow qualified review.
 
 ## Problem and correction
@@ -23,7 +26,7 @@ the kernel. [ADR 0016 amendment](../../../adr/0016-strategy-and-operator-callers
 
 Final local result: 11 CTest targets passed, eight CLI tests passed, 15 fresh-compiled mutants
 killed at the named assertions, and three six-trade process scenarios passed (18 settlements).
-Native NUC/Pi qualification has not run for this candidate.
+NUC1 passed native qualification. Pi compiled but failed the initial continuous drill; see the native report.
 
 - New test first failed at `grant_operator_commits` with a refusal stub, before implementation.
 - Kernel integration includes pre-grant refusals, caller and sequence binding, owner-only authority,
@@ -84,4 +87,4 @@ See `results.json`, `candidate-files.json`, `mutations.json`, `legacy-replay.jso
 `warnings.json` and CTest XML files beside this document. Local build uses HEAD 968f18f plus only the
 listed candidate source files in an isolated archive checkout; shared dirty files were not copied.
 All scratch artifacts remain under `$HOME/.cache/velocita-{work,build}/strategy-grant-20261015`.
-The repository was not staged or committed. No installed images or services were changed.
+This source was subsequently committed as `b490d68`. No installed images or services were changed.

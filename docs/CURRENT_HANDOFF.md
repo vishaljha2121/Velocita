@@ -1,5 +1,24 @@
 # Current development handoff
 
+## Strategy grant native status — 2026-10-15 22:06 UTC
+
+Checkpoint `b490d68` is committed. NUC1 passed 59 CTest targets, 407 Python/CLI tests and
+54 continuous fixture settlements. Pi compiled but failed its first continuous case after
+three settlements, before signing effect four. Stop-on-failure evidence is preserved.
+A bounded diagnostic baseline and three-scenario set passed, but do not explain or erase
+the original failure. Pi is **not qualified** and no deployment occurred.
+[Native results and investigation](evidence/automated_launch_2026-10-15/strategy-grant/native/RESULTS.md).
+
+A test-only correction now passes locally: production read-recovery settings plus a controlled
+ordinary-state-read outage. Three cases/18 settlements and two fresh-compiled mutant kills.
+Owner approved the scoped test/evidence checkpoint and new native qualification; no deployment.
+Production trading logic is unchanged. The exact
+original failed operation remains unknown; do not label this a proven root-cause fix.
+At22:06UTC driver inactive, gateway/signer active; producer index14 flat$25, no effects/fees.
+Preserve strategy sequence2/next3, operator next10 subject to verification, all journals and
+funding. Coordinated upgrade and explicit operator grant remain pending; gateway-only
+upgrade is insufficient. Review drains October16 13:41:34UTC, expires13:48:34UTC.
+
 ## Strategy permission correction implemented locally — 2026-10-15 21:06 UTC
 
 The approved explicit operator grant is implemented and tested; it is not committed, native-qualified

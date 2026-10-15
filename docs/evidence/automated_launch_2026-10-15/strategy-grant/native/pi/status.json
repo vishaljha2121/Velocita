@@ -1,0 +1,7 @@
+{
+  "commit": "b490d6843b53d114a49678304089541bfe192c7a",
+  "arch": "aarch64",
+  "qualified": false,
+  "stage": "failed",
+  "error": "tests exit=8"
+}

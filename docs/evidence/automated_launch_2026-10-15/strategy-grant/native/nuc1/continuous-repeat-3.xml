@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="Linux-c++"
+	tests="1"
+	failures="0"
+	disabled="0"
+	skipped="0"
+	hostname="ab8e072da448"
+	time="23"
+	timestamp="2026-10-15T21:33:06"
+	>
+	<testcase name="v2-swap-continuous-drill" classname="v2-swap-continuous-drill" time="23.5278" status="run">
+		<properties/>
+		<system-out>PASS continuous case 0: six real-format verified swaps, six sends, flat inventory
+PASS continuous case 1: six real-format verified swaps, six sends, flat inventory
+PASS continuous case 2: six real-format verified swaps, six sends, flat inventory
+Evidence: "/evidence/home/.cache/velocita-build/continuous-2796"
+</system-out>
+	</testcase>
+</testsuite>

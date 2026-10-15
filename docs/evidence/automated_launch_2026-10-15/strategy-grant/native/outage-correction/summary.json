@@ -1,0 +1,15 @@
+{
+  "status": "locally_tested_not_committed_or_native_qualified",
+  "production_commit": "b490d6843b53d114a49678304089541bfe192c7a",
+  "production_source_files_compared": 277,
+  "production_source_differences": [],
+  "cases": 3,
+  "settlements": 18,
+  "mutants_killed": 2,
+  "fresh_compilation_each": true,
+  "original_pi_failure_explained": false,
+  "source_files": {
+    "tests/v2_swap_continuous_drill.cpp": "4b2dd5d9908c80cfa5f966f286f514b0ac0971f2ba182384bd6fbb109912d81a",
+    "tests/mutation_swap_continuous_outage.py": "dcb37c9f5faf1ac6be8f7852439547a08e57958d9d571aba58a8703d7fe9dfca"
+  }
+}

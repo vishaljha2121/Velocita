@@ -1,0 +1,14 @@
+Test project /work/build
+      Start   1: v2-swap-continuous-drill
+ 1/59 Test   #1: v2-swap-continuous-drill ...............***Failed   18.69 sec
+FAIL continuous drill: gateway continuous lifecycle stopped status=5 cause=1 trace=6 last_sign_ms=340 max_step_ms=367 last_attempt_offered=3
+FAIL continuous drill: worker exits successfully
+
+
+0% tests passed, 1 tests failed out of 1
+
+Total Test time (real) =  18.70 sec
+
+The following tests FAILED:
+	  1 - v2-swap-continuous-drill (Failed)
+Errors while running CTest

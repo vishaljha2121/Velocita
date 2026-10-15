@@ -1,0 +1,6 @@
+{
+  "red_source_sha256": "ed5cfd787c1abd72cbd81cc3b28d7c1d97a2826d23faea475f0460cc62cbaed6",
+  "red_binary_sha256": "6d2d4b818b35521b98ff35f49df738268e2d67f087795decc0520973ae07ad38",
+  "red_assertion": "continuous runtime survives injected regular-state outage",
+  "red_log": "FAIL continuous drill: continuous runtime survives injected regular-state outage\nFAIL continuous drill: worker exits successfully\n"
+}

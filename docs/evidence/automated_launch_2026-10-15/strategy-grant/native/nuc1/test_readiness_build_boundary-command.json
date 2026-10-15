@@ -1,0 +1,11 @@
+[
+  "python3",
+  "-B",
+  "-m",
+  "unittest",
+  "discover",
+  "-s",
+  "/source/tests",
+  "-p",
+  "test_readiness_build_boundary.py"
+]

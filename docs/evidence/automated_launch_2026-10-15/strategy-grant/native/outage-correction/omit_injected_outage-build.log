@@ -1,0 +1,5 @@
+In file included from /Users/vishaljha/.cache/vo-20261015/omit_injected_outage/candidate.cpp:7:
+/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/tests/v2_gateway_node_tests.cpp:688:36: warning: missing field 'injected' initializer [-Wmissing-field-initializers]
+  688 |           counting{pick(choice), {}},
+      |                                    ^
+1 warning generated.

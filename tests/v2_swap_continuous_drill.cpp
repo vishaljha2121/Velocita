@@ -83,7 +83,8 @@ struct Wire {
     }
 };
 struct ProcessClient final:ClientTransport {
-    Wire wire;std::uint64_t last_attempt_offered{};explicit ProcessClient(int fd):wire(fd){}
+    Wire wire;std::uint64_t last_attempt_offered{};bool inject_state_outage{},outage_restored{};Tick outage_started{};unsigned dropped_reads{};
+    explicit ProcessClient(int fd):wire(fd){}
     bool offer_ingress(std::int32_t node,std::span<const std::byte> frame)override{
         AuthRoute route;VerifiedAuthEnvelope verified;
         require(peek_auth_route(frame,route)==AuthEnvelopeError::none &&
@@ -94,6 +95,14 @@ struct ProcessClient final:ClientTransport {
             decode_kernel_command(ingress.command,command,scratch).error==KernelCodecError::none){
             if(const auto* swap=std::get_if<ApplySpotSwap>(&command.body))
                 if(const auto* attempt=std::get_if<swap::Attempt>(&swap->record.command))last_attempt_offered=attempt->effect.value();
+        }
+        GatewayRequest request;
+        if(inject_state_outage && decode_gateway_request(verified.body,request)==NodeProtocolError::none &&
+           request.kind==GatewayRequestKind::state_read && count("create 4")){
+            const auto now=steady_ms();
+            if(!outage_started){outage_started=now;record("state-outage started");}
+            if(now-outage_started<3500){++dropped_reads;return true;}
+            if(!outage_restored){outage_restored=true;record("state-outage restored");}
         }
         wire.send(node,frame);return true;
     }
@@ -314,7 +323,7 @@ struct TransitionSigning final:SwapGatewaySigningPort {
     }
 };
 int gateway_worker(unsigned epoch,int fd,std::string_view crash){
-    ProcessClient transport(fd);GatewayLink link(epoch,process_incarnation(static_cast<std::uint8_t>(0x90+epoch)),gateway_routes({1,2,3},caller_seed(kGatewayKey)),transport);
+    ProcessClient transport(fd);transport.inject_state_outage=crash=="state-outage";GatewayLink link(epoch,process_incarnation(static_cast<std::uint8_t>(0x90+epoch)),gateway_routes({1,2,3},caller_seed(kGatewayKey)),transport);
     const auto out=bootstrap(link);const auto allocation=opening().binding;
     const SwapPrepareBinding binding{allocation,out.reading.authority_domain,fee_inclusive_prepare_mapping_identity()};
     SwapPrepareStore prepared(evidence/"prepared",binding);SwapSubmissionStore submitted(evidence/"submission",{allocation.incarnation,binding.authority_domain});
@@ -344,8 +353,8 @@ int gateway_worker(unsigned epoch,int fd,std::string_view crash){
     const auto until=steady_ms()+5000;while(!std::filesystem::exists(evidence/"s.sock") && steady_ms()<until)::usleep(500);
     swap_signer::Client client(evidence/"s.sock",::geteuid(),public_key(),10'000);
     SwapDurableSigningPort signing(prepared,requests,client,signcfg,ports);TransitionSigning guarded(signing,requests,crash);
-    SwapGatewayRuntimeConfig cfg{binding,CallerId{kGateway},epoch*1000U,epoch*1000U+900U,5000,1};
-    cfg.continuous=true;cfg.recovery_only=admit.recovery_only;
+    SwapGatewayRuntimeConfig cfg{binding,CallerId{kGateway},epoch*1000U,epoch*1000U+900U,3000,250};
+    cfg.continuous=true;cfg.recovery_only=admit.recovery_only;cfg.read_outage=120'000;
     SwapGatewayRuntime runtime(link,recovery,prepared,submitted,ports,guarded,ports,ports,cfg);
     unsigned announced{};Tick max_step_ms{};const auto deadline=steady_ms()+60'000;
     while(!runtime.stopped() && steady_ms()<deadline){const auto started=steady_ms();runtime.step(started,event_ms);max_step_ms=std::max(max_step_ms,steady_ms()-started);
@@ -353,12 +362,13 @@ int gateway_worker(unsigned epoch,int fd,std::string_view crash){
             const auto& state=runtime.observation()->state;
             if(state.pending.phase==swap::Phase::none && state.last_effect>announced && submitted.latest().phase==SwapSubmissionPhase::resolved && requests.latest().phase==SwapSubmissionPhase::resolved && runtime.status()==SwapGatewayRuntimeStatus::running){
                 announced=static_cast<unsigned>(state.last_effect);record("ready "+std::to_string(announced));
-                if(announced==6){require(runtime.status()==SwapGatewayRuntimeStatus::running,"continuous runtime remains operational after six effects");record("timing max_step_ms="+std::to_string(max_step_ms)+" last_sign_ms="+std::to_string(guarded.last_sign_ms)+" last_attempt_offered="+std::to_string(transport.last_attempt_offered));return 0;}
+                if(announced==6){require(!transport.inject_state_outage || (transport.dropped_reads && transport.outage_restored),"controlled state outage was exercised and restored");require(runtime.status()==SwapGatewayRuntimeStatus::running,"continuous runtime remains operational after six effects");record("timing max_step_ms="+std::to_string(max_step_ms)+" last_sign_ms="+std::to_string(guarded.last_sign_ms)+" last_attempt_offered="+std::to_string(transport.last_attempt_offered));return 0;}
             }
         }
         ::usleep(500);
     }
     if(admit.recovery_only){require(runtime.status()==SwapGatewayRuntimeStatus::complete,"recovery-only completes reconciliation without new submission");record("recovery-complete");return 0;}
+    if(transport.inject_state_outage)require(!runtime.stopped(),"continuous runtime survives injected regular-state outage status="+std::to_string(int(runtime.status()))+" cause="+std::to_string(int(runtime.cause())));
     throw std::runtime_error("gateway continuous lifecycle stopped status="+std::to_string(int(runtime.status()))+" cause="+std::to_string(int(runtime.cause()))+" trace="+std::to_string(int(ports.create_trace().stage))+" last_sign_ms="+std::to_string(guarded.last_sign_ms)+" max_step_ms="+std::to_string(max_step_ms)+" last_attempt_offered="+std::to_string(transport.last_attempt_offered));
 }
 struct ChildGuard{pid_t pid;~ChildGuard(){if(pid>0){::kill(pid,SIGKILL);::waitpid(pid,nullptr,0);}}};
@@ -444,12 +454,13 @@ void scenario(const std::filesystem::path& exe,unsigned mode){
         success(run_workers(c,strategy,exe,epoch++,"none",next));
         require(count("recovery-complete")==1 && count("execute ")==3,"recovery-only resolves without another POST");
     }
-    success(run_workers(c,strategy,exe,epoch++,"none",next));
+    success(run_workers(c,strategy,exe,epoch++,mode==0?"state-outage":"none",next));
     c.run_until([&]{return std::all_of(c.nodes.begin(),c.nodes.end(),[](auto& node){return node.second->applied_state().spot_swap.settlement_count==6;});},"six settlements replicated on all voters");
     for(auto& [id,node]:c.nodes){const auto& s=node->applied_state().spot_swap;
         require(s.quote.value()==25'000'000 && s.base.value()==0 && s.cost.value()==0 && s.reserved_quote.value()==0 && s.reserved_base.value()==0 &&
             s.pending.phase==swap::Phase::none && s.settlement_count==6 && s.fees.value()==12'000 && s.purchases.value()==3'000'000,"all replicas exact six-effect economics and flat inventory");}
     require(count("create ")==6 && count("signature ")==6 && count("execute ")==6,"six unique creates signatures and sends despite lost responses and process restarts");
+    require(mode!=0 || (count("state-outage started")==1 && count("state-outage restored")==1),"exactly one controlled read outage exercised");
     std::ofstream result(evidence/"result.json");result<<"{\"case\":"<<mode<<",\"passed\":true,\"production_ports\":true,\"strategy_caller\":21,\"operator_granted_intents\":true,\"real_transaction_verifier\":true,\"real_finalized_receipt_parser\":true,\"synthetic_verified_settlement_factory\":false,\"tls_qualified\":false,\"production_uid_isolation_qualified\":false,\"voters\":3,\"settlements\":6,\"creates\":6,\"signatures\":6,\"executes\":6,\"cash_atoms\":25000000,\"base_atoms\":0,\"fees_atoms\":12000,\"purchase_atoms\":3000000,\"gateway_processes\":"<<epoch-1<<"}\n";
     std::cout<<"PASS continuous case "<<mode<<": six real-format verified swaps, six sends, flat inventory\n";
 }

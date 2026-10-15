@@ -1,0 +1,3 @@
+FAIL continuous drill: real protected signer UDS listens
+FAIL continuous drill: fixture socket length bounded
+FAIL continuous drill: independent signer stopped cleanly

@@ -1,0 +1,60 @@
+[  7%] Built target willemt_raft
+[ 14%] Built target velocita_v2_swap_transaction_verifier
+[ 21%] Built target velocita_v2_contracts
+[ 28%] Built target velocita_core
+[ 28%] Built target velocita_v2_evaluator
+[ 28%] Built target velocita_v2_venue_simulator
+[ 28%] Built target velocita_v2_swap_recovery
+[ 28%] Built target velocita_v2_paper_venue
+[ 35%] Built target velocita_v2_kernel
+[ 50%] Built target velocita_v2_replication
+[ 57%] Built target velocita_v2_node
+[ 64%] Built target velocita_v2_gateway_loop
+[ 71%] Built target velocita_v2_swap_paper_gateway
+[ 92%] Built target velocita_v2_swap_runtime
+[ 92%] Building CXX object CMakeFiles/v2-swap-continuous-drill.dir/tests/v2_swap_continuous_drill.cpp.o
+In file included from /Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/tests/v2_swap_continuous_drill.cpp:7:
+/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/tests/v2_gateway_node_tests.cpp:688:36: warning: missing field 'injected' initializer [-Wmissing-field-initializers]
+  688 |           counting{pick(choice), {}},
+      |                                    ^
+/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/tests/v2_swap_continuous_drill.cpp:99:12: error: use of undeclared identifier 'inject_state_outage'
+   99 |         if(inject_state_outage && decode_gateway_request(verified.body,request)==NodeProtocolError::none &&
+      |            ^~~~~~~~~~~~~~~~~~~
+/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/tests/v2_swap_continuous_drill.cpp:102:17: error: use of undeclared identifier 'outage_started'
+  102 |             if(!outage_started){outage_started=now;record("state-outage started");}
+      |                 ^~~~~~~~~~~~~~
+/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/tests/v2_swap_continuous_drill.cpp:102:33: error: use of undeclared identifier 'outage_started'
+  102 |             if(!outage_started){outage_started=now;record("state-outage started");}
+      |                                 ^~~~~~~~~~~~~~
+/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/tests/v2_swap_continuous_drill.cpp:103:20: error: use of undeclared identifier 'outage_started'
+  103 |             if(now-outage_started<3500){++dropped_reads;return true;}
+      |                    ^~~~~~~~~~~~~~
+/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/tests/v2_swap_continuous_drill.cpp:103:43: error: use of undeclared identifier 'dropped_reads'
+  103 |             if(now-outage_started<3500){++dropped_reads;return true;}
+      |                                           ^~~~~~~~~~~~~
+/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/tests/v2_swap_continuous_drill.cpp:104:17: error: use of undeclared identifier 'outage_restored'
+  104 |             if(!outage_restored){outage_restored=true;record("state-outage restored");}
+      |                 ^~~~~~~~~~~~~~~
+/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/tests/v2_swap_continuous_drill.cpp:104:34: error: use of undeclared identifier 'outage_restored'
+  104 |             if(!outage_restored){outage_restored=true;record("state-outage restored");}
+      |                                  ^~~~~~~~~~~~~~~
+/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/tests/v2_swap_continuous_drill.cpp:325:43: error: no member named 'inject_state_outage' in 'continuous_drill::ProcessClient'
+  325 |     ProcessClient transport(fd);transport.inject_state_outage=crash=="state-outage";GatewayLink link(epoch,process_incarnation(static_cast<std::uint8_t>(0x90+epoch)),gateway_routes({1,2,3},caller_seed(kGatewayKey)),transport);
+      |                                 ~~~~~~~~~ ^
+/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/tests/v2_swap_continuous_drill.cpp:364:53: error: no member named 'inject_state_outage' in 'continuous_drill::ProcessClient'
+  364 |                 if(announced==6){require(!transport.inject_state_outage || (transport.dropped_reads && transport.outage_restored),"controlled state outage was exercised and restored");require(runtime.status()==SwapGatewayRuntimeStatus::running,"continuous runtime remains operational after six effects");record("timing max_step_ms="+std::to_string(max_step_ms)+" last_sign_ms="+std::to_string(guarded.last_sign_ms)+" last_attempt_offered="+std::to_string(transport.last_attempt_offered));return 0;}
+      |                                           ~~~~~~~~~ ^
+/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/tests/v2_swap_continuous_drill.cpp:364:87: error: no member named 'dropped_reads' in 'continuous_drill::ProcessClient'
+  364 |                 if(announced==6){require(!transport.inject_state_outage || (transport.dropped_reads && transport.outage_restored),"controlled state outage was exercised and restored");require(runtime.status()==SwapGatewayRuntimeStatus::running,"continuous runtime remains operational after six effects");record("timing max_step_ms="+std::to_string(max_step_ms)+" last_sign_ms="+std::to_string(guarded.last_sign_ms)+" last_attempt_offered="+std::to_string(transport.last_attempt_offered));return 0;}
+      |                                                                             ~~~~~~~~~ ^
+/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/tests/v2_swap_continuous_drill.cpp:364:114: error: no member named 'outage_restored' in 'continuous_drill::ProcessClient'
+  364 |                 if(announced==6){require(!transport.inject_state_outage || (transport.dropped_reads && transport.outage_restored),"controlled state outage was exercised and restored");require(runtime.status()==SwapGatewayRuntimeStatus::running,"continuous runtime remains operational after six effects");record("timing max_step_ms="+std::to_string(max_step_ms)+" last_sign_ms="+std::to_string(guarded.last_sign_ms)+" last_attempt_offered="+std::to_string(transport.last_attempt_offered));return 0;}
+      |                                                                                                        ~~~~~~~~~ ^
+/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/tests/v2_swap_continuous_drill.cpp:370:18: error: no member named 'inject_state_outage' in 'continuous_drill::ProcessClient'
+  370 |     if(transport.inject_state_outage)require(!runtime.stopped(),"continuous runtime survives injected regular-state outage");
+      |        ~~~~~~~~~ ^
+1 warning and 12 errors generated.
+make[3]: *** [CMakeFiles/v2-swap-continuous-drill.dir/tests/v2_swap_continuous_drill.cpp.o] Error 1
+make[2]: *** [CMakeFiles/v2-swap-continuous-drill.dir/all] Error 2
+make[1]: *** [CMakeFiles/v2-swap-continuous-drill.dir/rule] Error 2
+make: *** [v2-swap-continuous-drill] Error 2

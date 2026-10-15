@@ -1,0 +1,2 @@
+FAIL continuous drill: continuous runtime survives injected regular-state outage
+FAIL continuous drill: worker exits successfully
