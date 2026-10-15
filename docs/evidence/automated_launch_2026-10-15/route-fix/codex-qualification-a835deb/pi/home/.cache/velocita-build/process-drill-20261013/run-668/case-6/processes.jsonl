@@ -1,0 +1,8 @@
+{"role":"signer","pid":730,"epoch":1,"signal":0,"exit":0}
+{"role":"gateway","pid":731,"stage":"accepted","epoch":1,"signal":9,"exit":-1}
+{"role":"signer","pid":732,"epoch":2,"signal":0,"exit":0}
+{"role":"gateway","pid":733,"stage":"unknown","epoch":2,"signal":0,"exit":0}
+{"role":"signer","pid":734,"epoch":3,"signal":0,"exit":0}
+{"role":"gateway","pid":735,"stage":"success","epoch":3,"signal":0,"exit":0}
+{"role":"signer","pid":736,"epoch":4,"signal":0,"exit":0}
+{"role":"gateway","pid":737,"stage":"success","epoch":4,"signal":0,"exit":0}

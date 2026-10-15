@@ -1,0 +1,11 @@
+[
+  "python3",
+  "-B",
+  "-m",
+  "unittest",
+  "discover",
+  "-s",
+  "/source/docs/evidence/automated_launch_2026-10-15",
+  "-p",
+  "test_restore_caller_keys.py"
+]

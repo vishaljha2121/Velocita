@@ -27,10 +27,10 @@ def load(name, path):
 F = load('route_fix_upgrade', HERE.parent/'focused-deploy/upgrade_first_start.py')
 S = load('route_fix_start', HERE.parent/'focused-deploy/start_first_run.py')
 U, T, H = F.U, F.T, F.H
-COMMIT = 'a665615f111e0aab1ab31621d356d9a3143df67e'
+COMMIT = 'a835deb24a001adc19ffca5adad83a94d3b4ccad'
 OLD_COMMIT = '1f8d7b63c03c4ef1c0c916d833cdf8513f42a2dc'
 OLD_MANIFEST = 'f3df32529bc2e3bfd08cb4a82ddecd8fe9b128160b2417ecb7850252cd0668c4'
-ARCHIVE = Path('/var/lib/velocita-route-fix-upgrade-a665615')
+ARCHIVE = Path('/var/lib/velocita-route-fix-upgrade-a835deb')
 VOTERS = S.VOTERS
 
 

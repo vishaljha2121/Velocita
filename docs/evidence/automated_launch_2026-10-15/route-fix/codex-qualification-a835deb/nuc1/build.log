@@ -1,0 +1,354 @@
+[1/618] Generating CXX dyndep file CMakeFiles/velocita_v2_contracts.dir/CXX.dd
+[2/609] Generating CXX dyndep file CMakeFiles/velocita_v2_evaluator.dir/CXX.dd
+[3/606] Generating CXX dyndep file CMakeFiles/velocita_core.dir/CXX.dd
+[4/598] Generating CXX dyndep file CMakeFiles/velocita_v2_kernel.dir/CXX.dd
+[5/585] Generating CXX dyndep file CMakeFiles/velocita_v2_replication.dir/CXX.dd
+[6/565] Generating CXX dyndep file CMakeFiles/velocita_v2_venue_simulator.dir/CXX.dd
+[7/561] Generating CXX dyndep file CMakeFiles/velocita_v2_node.dir/CXX.dd
+[8/547] Generating CXX dyndep file CMakeFiles/velocita_aeron.dir/CXX.dd
+[9/544] Generating CXX dyndep file CMakeFiles/velocita_v2_truemarkets_venue.dir/CXX.dd
+[10/540] Generating CXX dyndep file CMakeFiles/velocita_v2_swap_recovery.dir/CXX.dd
+[11/537] Generating CXX dyndep file CMakeFiles/velocita_v2_gateway_loop.dir/CXX.dd
+[12/535] Generating CXX dyndep file CMakeFiles/velocita_v2_swap_transaction_verifier.dir/CXX.dd
+[13/525] Scanning /source/src/v2_swap_gateway_runtime.cpp for CXX dependencies
+[14/525] Scanning /source/src/v2_swap_runtime_production.cpp for CXX dependencies
+[15/525] Generating CXX dyndep file CMakeFiles/velocita_v2_paper_venue.dir/CXX.dd
+[16/522] Generating CXX dyndep file CMakeFiles/velocita_v2_truemarkets_transport.dir/CXX.dd
+[17/520] Generating CXX dyndep file CMakeFiles/velocita_v2_signer.dir/CXX.dd
+[18/517] Generating CXX dyndep file CMakeFiles/velocita_v2_swap_paper_gateway.dir/CXX.dd
+[19/514] Generating CXX dyndep file CMakeFiles/velocita_v2_node_aeron.dir/CXX.dd
+[20/512] Scanning /source/src/v2_gateway_main.cpp for CXX dependencies
+[21/512] Generating CXX dyndep file CMakeFiles/velocita_v2_swap_runtime.dir/CXX.dd
+[22/478] Scanning /source/tests/v2_swap_continuous_drill.cpp for CXX dependencies
+[23/478] Scanning /source/tests/v2_swap_gateway_runtime_tests.cpp for CXX dependencies
+[24/478] Scanning /source/src/v2_swap_gateway_runtime.cpp for CXX dependencies
+[25/478] Scanning /source/tests/v2_swap_process_drill.cpp for CXX dependencies
+[26/478] Scanning /source/src/v2_swap_gateway_runtime.cpp for CXX dependencies
+[27/478] Scanning /source/tests/v2_swap_runtime_production_tests.cpp for CXX dependencies
+[28/478] Scanning /source/src/v2_swap_gateway_runtime.cpp for CXX dependencies
+[29/478] Scanning /source/src/v2_swap_runtime_production.cpp for CXX dependencies
+[30/478] Scanning /source/src/v2_swap_gateway_runtime.cpp for CXX dependencies
+[31/478] Scanning /source/src/v2_swap_runtime_production.cpp for CXX dependencies
+[32/478] Generating CXX dyndep file CMakeFiles/velocita-v2-signer.dir/CXX.dd
+[33/476] Generating CXX dyndep file CMakeFiles/velocita-v2-gateway.dir/CXX.dd
+[34/476] Building CXX object CMakeFiles/velocita_v2_swap_runtime.dir/src/v2_swap_gateway_runtime.cpp.o
+/source/src/v2_swap_gateway_runtime.cpp: In member function ‘void velocita::v2::SwapGatewayRuntime::stop(velocita::v2::SwapGatewayRuntimeStatus, velocita::v2::SwapGatewayRuntimeCause)’:
+/source/src/v2_swap_gateway_runtime.cpp:44:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   44 |     if(owns_link_)link_.abandon();owns_link_=false;status_=s;cause_=cause;
+      |     ^~
+/source/src/v2_swap_gateway_runtime.cpp:44:35: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   44 |     if(owns_link_)link_.abandon();owns_link_=false;status_=s;cause_=cause;
+      |                                   ^~~~~~~~~~
+/source/src/v2_swap_gateway_runtime.cpp: In member function ‘void velocita::v2::SwapGatewayRuntime::step(velocita::v2::Tick, uint64_t)’:
+/source/src/v2_swap_gateway_runtime.cpp:79:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   79 |         if(s!=SwapSubmissionSessionStatus::needs_reconciliation)stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::state);return;}
+      |         ^~
+/source/src/v2_swap_gateway_runtime.cpp:79:136: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   79 |         if(s!=SwapSubmissionSessionStatus::needs_reconciliation)stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::state);return;}
+      |                                                                                                                                        ^~~~~~
+[35/476] Building CXX object CMakeFiles/velocita_v2_swap_runtime.dir/src/v2_swap_runtime_production.cpp.o
+/source/src/v2_swap_runtime_production.cpp: In function ‘std::optional<velocita::v2::SwapRuntimeProfile> velocita::v2::decode_swap_runtime_profile(std::string_view)’:
+/source/src/v2_swap_runtime_production.cpp:16:13: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   16 |             if(line.empty())return {};const auto equal=line.find('=');
+      |             ^~
+/source/src/v2_swap_runtime_production.cpp:16:39: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   16 |             if(line.empty())return {};const auto equal=line.find('=');
+      |                                       ^~~~~
+/source/src/v2_swap_runtime_production.cpp: In member function ‘virtual velocita::v2::transport::SwapHttpsResult velocita::v2::SwapProductionPorts::create(const velocita::v2::truemarkets::SwapRestRequest&, const velocita::v2::SwapPrepareRead&)’:
+/source/src/v2_swap_runtime_production.cpp:194:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  194 |     if(effect.value()<=created_.value())return refused;created_=effect;
+      |     ^~
+/source/src/v2_swap_runtime_production.cpp:194:56: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  194 |     if(effect.value()<=created_.value())return refused;created_=effect;
+      |                                                        ^~~~~~~~
+/source/src/v2_swap_runtime_production.cpp: In member function ‘virtual void velocita::v2::SwapProductionPorts::execute(const velocita::v2::SwapSubmissionIdentity&, std::span<const std::byte>)’:
+/source/src/v2_swap_runtime_production.cpp:206:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  206 |     if(id.effect.value()<=executed_.value())return;executed_=id.effect;
+      |     ^~
+/source/src/v2_swap_runtime_production.cpp:206:52: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  206 |     if(id.effect.value()<=executed_.value())return;executed_=id.effect;
+      |                                                    ^~~~~~~~~
+/source/src/v2_swap_runtime_production.cpp:211:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  211 |     if(path.size()>request.path.size())return;request.path_size=path.size();std::copy(path.begin(),path.end(),request.path.begin());
+      |     ^~
+/source/src/v2_swap_runtime_production.cpp:211:47: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  211 |     if(path.size()>request.path.size())return;request.path_size=path.size();std::copy(path.begin(),path.end(),request.path.begin());
+      |                                               ^~~~~~~
+/source/src/v2_swap_runtime_production.cpp: In lambda function:
+/source/src/v2_swap_runtime_production.cpp:232:13: warning: this ‘for’ clause does not guard... [-Wmisleading-indentation]
+  232 |             for(std::size_t n=0;n<owner.size();++n)owner[n]=std::to_integer<std::uint8_t>(credentials_.binding().owner_wallet[n]);return owner;}(),failure_policy_,
+      |             ^~~
+/source/src/v2_swap_runtime_production.cpp:232:131: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘for’
+  232 |             for(std::size_t n=0;n<owner.size();++n)owner[n]=std::to_integer<std::uint8_t>(credentials_.binding().owner_wallet[n]);return owner;}(),failure_policy_,
+      |                                                                                                                                   ^~~~~~
+[36/476] Generating CXX dyndep file CMakeFiles/v2-swap-continuous-drill.dir/CXX.dd
+[37/476] Generating CXX dyndep file CMakeFiles/velocita-v2-shadow-submitter.dir/CXX.dd
+[38/474] Generating CXX dyndep file CMakeFiles/velocita-v2-node.dir/CXX.dd
+[39/472] Generating CXX dyndep file CMakeFiles/velocita-v2-client.dir/CXX.dd
+[40/470] Generating CXX dyndep file CMakeFiles/velocita-v2-status.dir/CXX.dd
+[41/468] Generating CXX dyndep file CMakeFiles/velocita-v2-exporter.dir/CXX.dd
+[42/466] Generating CXX dyndep file CMakeFiles/velocita-v2-shadow-catalog.dir/CXX.dd
+[43/464] Generating CXX dyndep file CMakeFiles/v2-swap-integration-tests.dir/CXX.dd
+[44/462] Generating CXX dyndep file CMakeFiles/v2-kernel-control-tests.dir/CXX.dd
+[45/460] Generating CXX dyndep file CMakeFiles/v2-state-snapshot-tests.dir/CXX.dd
+[46/458] Generating CXX dyndep file CMakeFiles/v2-kernel-codec-tests.dir/CXX.dd
+[47/456] Generating CXX dyndep file CMakeFiles/v2-model-replay-tests.dir/CXX.dd
+[48/454] Generating CXX dyndep file CMakeFiles/v2-truemarkets-rest-tests.dir/CXX.dd
+[49/452] Generating CXX dyndep file CMakeFiles/v2-truemarkets-wire-tests.dir/CXX.dd
+[50/450] Generating CXX dyndep file CMakeFiles/v2-truemarkets-venue-tests.dir/CXX.dd
+[51/448] Generating CXX dyndep file CMakeFiles/v2-truemarkets-transport-tests.dir/CXX.dd
+[52/446] Generating CXX dyndep file CMakeFiles/v2-swap-balance-tests.dir/CXX.dd
+[53/439] Generating CXX dyndep file CMakeFiles/v2-swap-paper-tests.dir/CXX.dd
+[54/432] Generating CXX dyndep file CMakeFiles/v2-swap-paper-drill.dir/CXX.dd
+[55/425] Generating CXX dyndep file CMakeFiles/v2-swap-reconcile-tests.dir/CXX.dd
+[56/416] Generating CXX dyndep file CMakeFiles/v2-swap-https-probe.dir/CXX.dd
+[57/413] Generating CXX dyndep file CMakeFiles/v2-jupiter-route-decode-tests.dir/CXX.dd
+[58/410] Generating CXX dyndep file CMakeFiles/v2-swap-owner-accounting-tests.dir/CXX.dd
+[59/407] Generating CXX dyndep file CMakeFiles/v2-swap-reconcile-session-tests.dir/CXX.dd
+[60/399] Generating CXX dyndep file CMakeFiles/v2-swap-gateway-tls-drill.dir/CXX.dd
+[61/391] Generating CXX dyndep file CMakeFiles/v2-swap-reconcile-store-tests.dir/CXX.dd
+[62/383] Generating CXX dyndep file CMakeFiles/v2-swap-transaction-inspection-tests.dir/CXX.dd
+[63/374] Generating CXX dyndep file CMakeFiles/v2-swap-submission-store-tests.dir/CXX.dd
+[64/370] Generating CXX dyndep file CMakeFiles/v2-swap-authority-tests.dir/CXX.dd
+[65/368] Generating CXX dyndep file CMakeFiles/v2-swap-authority-storage-tests.dir/CXX.dd
+[66/366] Generating CXX dyndep file CMakeFiles/v2-swap-submission-resolution-tests.dir/CXX.dd
+[67/362] Generating CXX dyndep file CMakeFiles/v2-swap-submission-session-tests.dir/CXX.dd
+[68/358] Generating CXX dyndep file CMakeFiles/v2-swap-submission-gateway-drill.dir/CXX.dd
+[69/345] Generating CXX dyndep file CMakeFiles/v2-swap-signing-stamp-tests.dir/CXX.dd
+[70/342] Generating CXX dyndep file CMakeFiles/v2-swap-rest-codec-tests.dir/CXX.dd
+[71/336] Generating CXX dyndep file CMakeFiles/v2-swap-prepare-store-tests.dir/CXX.dd
+[72/329] Generating CXX dyndep file CMakeFiles/v2-swap-prepare-session-tests.dir/CXX.dd
+[73/322] Generating CXX dyndep file CMakeFiles/v2-swap-signer-session-tests.dir/CXX.dd
+[74/317] Generating CXX dyndep file CMakeFiles/v2-swap-signer-production-gate.dir/CXX.dd
+[75/312] Generating CXX dyndep file CMakeFiles/v2-swap-signer-protocol-tests.dir/CXX.dd
+[76/308] Generating CXX dyndep file CMakeFiles/v2-swap-signer-service-tests.dir/CXX.dd
+[77/301] Generating CXX dyndep file CMakeFiles/v2-swap-order-status-tests.dir/CXX.dd
+[78/291] Generating CXX dyndep file CMakeFiles/v2-swap-order-https-probe.dir/CXX.dd
+[79/279] Generating CXX dyndep file CMakeFiles/v2-swap-settlement-evidence-tests.dir/CXX.dd
+[80/271] Generating CXX dyndep file CMakeFiles/v2-swap-prepare-https-tests.dir/CXX.dd
+[81/262] Generating CXX dyndep file CMakeFiles/v2-swap-signing-connection-tests.dir/CXX.dd
+[82/251] Generating CXX dyndep file CMakeFiles/v2-swap-settlement-connection-tests.dir/CXX.dd
+[83/238] Generating CXX dyndep file CMakeFiles/v2-swap-runtime-config-tests.dir/CXX.dd
+[84/229] Generating CXX dyndep file CMakeFiles/v2-swap-gateway-runtime-tests.dir/CXX.dd
+[85/217] Generating CXX dyndep file CMakeFiles/v2-swap-process-drill.dir/CXX.dd
+[86/205] Generating CXX dyndep file CMakeFiles/v2-swap-runtime-production-tests.dir/CXX.dd
+[87/205] Generating CXX dyndep file CMakeFiles/v2-swap-settlement-lifecycle-tests.dir/CXX.dd
+[88/204] Generating CXX dyndep file CMakeFiles/v2-swap-settlement-admission-tests.dir/CXX.dd
+[89/169] Generating CXX dyndep file CMakeFiles/v2-swap-runtime-https-probe.dir/CXX.dd
+[90/134] Generating CXX dyndep file CMakeFiles/v2-swap-account-setup-tests.dir/CXX.dd
+[91/133] Generating CXX dyndep file CMakeFiles/v2-swap-failed-settlement-tests.dir/CXX.dd
+[92/132] Generating CXX dyndep file CMakeFiles/v2-operational-recovery-tests.dir/CXX.dd
+[93/130] Generating CXX dyndep file CMakeFiles/v2-swap-cost-policy-tests.dir/CXX.dd
+[94/127] Generating CXX dyndep file CMakeFiles/v2-swap-transaction-review-tests.dir/CXX.dd
+[95/125] Generating CXX dyndep file CMakeFiles/v2-swap-transaction-verifier-tests.dir/CXX.dd
+[96/123] Generating CXX dyndep file CMakeFiles/v2-swap-signer-verified-tests.dir/CXX.dd
+[97/118] Building CXX object CMakeFiles/velocita-v2-gateway.dir/src/v2_gateway_main.cpp.o
+In file included from /work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/status/UnsafeBufferPosition.h:21,
+                 from /work/deps/aeron/aeron-client/src/main/cpp_wrapper/Publication.h:29,
+                 from /work/deps/aeron/aeron-client/src/main/cpp_wrapper/Aeron.h:25,
+                 from /source/include/velocita/aeron_runtime.hpp:4,
+                 from /source/src/v2_gateway_main.cpp:2:
+/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h: In lambda function:
+/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:114:89: warning: unused parameter ‘keyBuffer’ [-Wunused-parameter]
+  114 |             [&](std::int32_t counterId, std::int32_t counterTypeId, const AtomicBuffer &keyBuffer, const std::string &label)
+      |                                                                     ~~~~~~~~~~~~~~~~~~~~^~~~~~~~~
+/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:114:119: warning: unused parameter ‘label’ [-Wunused-parameter]
+  114 |             [&](std::int32_t counterId, std::int32_t counterTypeId, const AtomicBuffer &keyBuffer, const std::string &label)
+      |                                                                                                    ~~~~~~~~~~~~~~~~~~~^~~~~
+/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h: In lambda function:
+/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:54: warning: unused parameter ‘counterTypeId’ [-Wunused-parameter]
+  130 |             [&](std::int32_t counterId, std::int32_t counterTypeId, const AtomicBuffer &keyBuffer, const std::string &label)
+      |                                         ~~~~~~~~~~~~~^~~~~~~~~~~~~
+/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:89: warning: unused parameter ‘keyBuffer’ [-Wunused-parameter]
+  130 |             [&](std::int32_t counterId, std::int32_t counterTypeId, const AtomicBuffer &keyBuffer, const std::string &label)
+      |                                                                     ~~~~~~~~~~~~~~~~~~~~^~~~~~~~~
+/work/deps/aeron/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:119: warning: unused parameter ‘label’ [-Wunused-parameter]
+  130 |             [&](std::int32_t counterId, std::int32_t counterTypeId, const AtomicBuffer &keyBuffer, const std::string &label)
+      |                                                                                                    ~~~~~~~~~~~~~~~~~~~^~~~~
+[98/118] Linking CXX static library libvelocita_v2_swap_runtime.a
+[99/118] Building CXX object CMakeFiles/v2-swap-continuous-drill.dir/tests/v2_swap_continuous_drill.cpp.o
+In file included from /source/tests/v2_swap_continuous_drill.cpp:7:
+/source/tests/v2_gateway_node_tests.cpp: In constructor ‘{anonymous}::Gateway::Gateway({anonymous}::Cluster&, velocita::v2::sim::FaultPolicy, velocita::v2::GatewayLoopConfig, velocita::v2::GatewayLinkTiming, const {anonymous}::VenueChoice&)’:
+/source/tests/v2_gateway_node_tests.cpp:688:11: warning: missing initializer for member ‘{anonymous}::CountingVenue::injected’ [-Wmissing-field-initializers]
+  688 |           counting{pick(choice), {}},
+      |           ^~~~~~~~~~~~~~~~~~~~~~~~~~
+/source/tests/v2_swap_continuous_drill.cpp: In member function ‘std::optional<std::pair<int, std::vector<std::byte> > > continuous_drill::Wire::receive()’:
+/source/tests/v2_swap_continuous_drill.cpp:80:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   80 |         if(incoming.size()<8)return {};std::uint32_t size;std::int32_t node;
+      |         ^~
+/source/tests/v2_swap_continuous_drill.cpp:80:40: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   80 |         if(incoming.size()<8)return {};std::uint32_t size;std::int32_t node;
+      |                                        ^~~
+/source/tests/v2_swap_continuous_drill.cpp:82:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   82 |         if(incoming.size()<8+size)return {};Bytes body(incoming.begin()+8,incoming.begin()+8+size);incoming.erase(incoming.begin(),incoming.begin()+8+size);return std::pair{node,std::move(body)};
+      |         ^~
+/source/tests/v2_swap_continuous_drill.cpp:82:45: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   82 |         if(incoming.size()<8+size)return {};Bytes body(incoming.begin()+8,incoming.begin()+8+size);incoming.erase(incoming.begin(),incoming.begin()+8+size);return std::pair{node,std::move(body)};
+      |                                             ^~~~~
+In file included from /usr/include/c++/15/optional:51,
+                 from /source/include/velocita/v2/domain.hpp:8,
+                 from /source/include/velocita/v2/contracts.hpp:4,
+                 from /source/include/velocita/v2/action_template.hpp:4,
+                 from /source/include/velocita/v2/action_resolver.hpp:4,
+                 from /source/include/velocita/v2/kernel.hpp:4,
+                 from /source/tests/v2_catalog_test_support.hpp:3,
+                 from /source/tests/v2_gateway_node_tests.cpp:1:
+In function ‘constexpr void std::_Construct(_Tp*, _Args&& ...) [with _Tp = unsigned char; _Args = {}]’,
+    inlined from ‘static constexpr _ForwardIterator std::__uninitialized_default_n_1<true>::__uninit_default_n(_ForwardIterator, _Size) [with _ForwardIterator = unsigned char*; _Size = long unsigned int]’ at /usr/include/c++/15/bits/stl_uninitialized.h:894:23,
+    inlined from ‘static constexpr _ForwardIterator std::__uninitialized_default_n_1<true>::__uninit_default_n(_ForwardIterator, _Size) [with _ForwardIterator = unsigned char*; _Size = long unsigned int]’ at /usr/include/c++/15/bits/stl_uninitialized.h:888:9,
+    inlined from ‘constexpr _ForwardIterator std::__uninitialized_default_n(_ForwardIterator, _Size) [with _ForwardIterator = unsigned char*; _Size = long unsigned int]’ at /usr/include/c++/15/bits/stl_uninitialized.h:947:20,
+    inlined from ‘constexpr _ForwardIterator std::__uninitialized_default_n_a(_ForwardIterator, _Size, allocator<_Tp2>&) [with _ForwardIterator = unsigned char*; _Size = long unsigned int; _Tp = unsigned char]’ at /usr/include/c++/15/bits/stl_uninitialized.h:1002:44,
+    inlined from ‘constexpr void std::vector<_Tp, _Alloc>::_M_default_append(size_type) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/vector.tcc:832:35,
+    inlined from ‘constexpr void std::vector<_Tp, _Alloc>::resize(size_type) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/stl_vector.h:1146:21,
+    inlined from ‘std::string velocita::v2::test_support::RouteFixture::envelope()’ at /source/tests/v2_swap_transaction_verifier_test_support.hpp:94:66:
+/usr/include/c++/15/bits/stl_construct.h:133:7: warning: array subscript 1 is outside array bounds of ‘unsigned char [1]’ [-Warray-bounds=]
+  133 |       ::new(static_cast<void*>(__p)) _Tp(std::forward<_Args>(__args)...);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /usr/include/x86_64-linux-gnu/c++/15/bits/c++allocator.h:33,
+                 from /usr/include/c++/15/bits/allocator.h:46,
+                 from /usr/include/c++/15/string:45,
+                 from /source/include/velocita/v2/digest.hpp:11,
+                 from /source/include/velocita/v2/artifact_digest.hpp:4,
+                 from /source/include/velocita/v2/kernel.hpp:5:
+In member function ‘_Tp* std::__new_allocator<_Tp>::allocate(size_type, const void*) [with _Tp = unsigned char]’,
+    inlined from ‘constexpr _Tp* std::allocator< <template-parameter-1-1> >::allocate(std::size_t) [with _Tp = unsigned char]’ at /usr/include/c++/15/bits/allocator.h:203:40,
+    inlined from ‘static constexpr _Tp* std::allocator_traits<std::allocator<_CharT> >::allocate(allocator_type&, size_type) [with _Tp = unsigned char]’ at /usr/include/c++/15/bits/alloc_traits.h:614:28,
+    inlined from ‘constexpr std::_Vector_base<_Tp, _Alloc>::pointer std::_Vector_base<_Tp, _Alloc>::_M_allocate(std::size_t) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/stl_vector.h:387:33,
+    inlined from ‘constexpr void std::vector<_Tp, _Alloc>::_M_range_initialize_n(_Iterator, _Sentinel, size_type) [with _Iterator = const unsigned char*; _Sentinel = const unsigned char*; _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/stl_vector.h:1985:23,
+    inlined from ‘constexpr std::vector<_Tp, _Alloc>::vector(std::initializer_list<_Tp>, const allocator_type&) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/stl_vector.h:712:23,
+    inlined from ‘std::string velocita::v2::test_support::RouteFixture::envelope()’ at /source/tests/v2_swap_transaction_verifier_test_support.hpp:94:56:
+/usr/include/c++/15/bits/new_allocator.h:151:73: note: at offset 1 into object of size 1 allocated by ‘operator new’
+  151 |         return static_cast<_Tp*>(_GLIBCXX_OPERATOR_NEW(__n * sizeof(_Tp)));
+      |                                                                         ^
+In function ‘constexpr _Tp* std::construct_at(_Tp*, _Args&& ...) [with _Tp = unsigned char; _Args = {unsigned char}]’,
+    inlined from ‘static constexpr void std::allocator_traits<std::allocator<_CharT> >::construct(allocator_type&, _Up*, _Args&& ...) [with _Up = unsigned char; _Args = {unsigned char}; _Tp = unsigned char]’ at /usr/include/c++/15/bits/alloc_traits.h:676:21,
+    inlined from ‘constexpr std::vector<_Tp, _Alloc>::reference std::vector<_Tp, _Alloc>::emplace_back(_Args&& ...) [with _Args = {unsigned char}; _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/vector.tcc:117:30,
+    inlined from ‘constexpr void std::vector<_Tp, _Alloc>::push_back(value_type&&) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/stl_vector.h:1434:21,
+    inlined from ‘void velocita::v2::test_support::le(std::vector<unsigned char>&, uint64_t, unsigned int)’ at /source/tests/v2_swap_transaction_verifier_test_support.hpp:21:121,
+    inlined from ‘std::string velocita::v2::test_support::RouteFixture::envelope()’ at /source/tests/v2_swap_transaction_verifier_test_support.hpp:103:46:
+/usr/include/c++/15/bits/stl_construct.h:110:16: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]
+  110 |         return ::new(__loc) _Tp(std::forward<_Args>(__args)...);
+      |                ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In member function ‘_Tp* std::__new_allocator<_Tp>::allocate(size_type, const void*) [with _Tp = unsigned char]’,
+    inlined from ‘constexpr _Tp* std::allocator< <template-parameter-1-1> >::allocate(std::size_t) [with _Tp = unsigned char]’ at /usr/include/c++/15/bits/allocator.h:203:40,
+    inlined from ‘static constexpr _Tp* std::allocator_traits<std::allocator<_CharT> >::allocate(allocator_type&, size_type) [with _Tp = unsigned char]’ at /usr/include/c++/15/bits/alloc_traits.h:614:28,
+    inlined from ‘constexpr std::_Vector_base<_Tp, _Alloc>::pointer std::_Vector_base<_Tp, _Alloc>::_M_allocate(std::size_t) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/stl_vector.h:387:33,
+    inlined from ‘constexpr void std::vector<_Tp, _Alloc>::_M_range_initialize_n(_Iterator, _Sentinel, size_type) [with _Iterator = const unsigned char*; _Sentinel = const unsigned char*; _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/stl_vector.h:1985:23,
+    inlined from ‘constexpr std::vector<_Tp, _Alloc>::vector(std::initializer_list<_Tp>, const allocator_type&) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/stl_vector.h:712:23,
+    inlined from ‘std::string velocita::v2::test_support::RouteFixture::envelope()’ at /source/tests/v2_swap_transaction_verifier_test_support.hpp:103:42:
+/usr/include/c++/15/bits/new_allocator.h:151:73: note: at offset 1 into destination object of size 1 allocated by ‘operator new’
+  151 |         return static_cast<_Tp*>(_GLIBCXX_OPERATOR_NEW(__n * sizeof(_Tp)));
+      |                                                                         ^
+In file included from /usr/include/c++/15/array:45,
+                 from /source/include/velocita/v2/contracts.hpp:7:
+In function ‘constexpr typename __gnu_cxx::__enable_if<(std::__is_byte<_Tp>::__value && (std::__are_same< <template-parameter-1-1>, <template-parameter-1-2> >::__value || std::__memcpyable_integer<_Up>::__width)), void>::__type std::__fill_a1(_Up*, _Up*, const _Tp&) [with _Up = unsigned char; _Tp = unsigned char]’,
+    inlined from ‘constexpr void std::__fill_a(_FIte, _FIte, const _Tp&) [with _FIte = unsigned char*; _Tp = unsigned char]’ at /usr/include/c++/15/bits/stl_algobase.h:979:21,
+    inlined from ‘constexpr _OutputIterator std::__fill_n_a(_OutputIterator, _Size, const _Tp&, random_access_iterator_tag) [with _OutputIterator = unsigned char*; _Size = long unsigned int; _Tp = unsigned char]’ at /usr/include/c++/15/bits/stl_algobase.h:1148:20,
+    inlined from ‘constexpr _OI std::fill_n(_OI, _Size, const _Tp&) [with _OI = unsigned char*; _Size = long unsigned int; _Tp = unsigned char]’ at /usr/include/c++/15/bits/stl_algobase.h:1178:29,
+    inlined from ‘static constexpr _ForwardIterator std::__uninitialized_default_n_1<true>::__uninit_default_n(_ForwardIterator, _Size) [with _ForwardIterator = unsigned char*; _Size = long unsigned int]’ at /usr/include/c++/15/bits/stl_uninitialized.h:896:29,
+    inlined from ‘static constexpr _ForwardIterator std::__uninitialized_default_n_1<true>::__uninit_default_n(_ForwardIterator, _Size) [with _ForwardIterator = unsigned char*; _Size = long unsigned int]’ at /usr/include/c++/15/bits/stl_uninitialized.h:888:9,
+    inlined from ‘constexpr _ForwardIterator std::__uninitialized_default_n(_ForwardIterator, _Size) [with _ForwardIterator = unsigned char*; _Size = long unsigned int]’ at /usr/include/c++/15/bits/stl_uninitialized.h:947:20,
+    inlined from ‘constexpr _ForwardIterator std::__uninitialized_default_n_a(_ForwardIterator, _Size, allocator<_Tp2>&) [with _ForwardIterator = unsigned char*; _Size = long unsigned int; _Tp = unsigned char]’ at /usr/include/c++/15/bits/stl_uninitialized.h:1002:44,
+    inlined from ‘constexpr void std::vector<_Tp, _Alloc>::_M_default_append(size_type) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/vector.tcc:832:35,
+    inlined from ‘constexpr void std::vector<_Tp, _Alloc>::resize(size_type) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]’ at /usr/include/c++/15/bits/stl_vector.h:1146:21,
+    inlined from ‘std::string velocita::v2::test_support::RouteFixture::envelope()’ at /source/tests/v2_swap_transaction_verifier_test_support.hpp:94:66:
+/usr/include/c++/15/bits/stl_algobase.h:951:25: warning: ‘void* __builtin_memset(void*, int, long unsigned int)’ offset 2 is out of the bounds [0, 1] [-Warray-bounds=]
+  951 |         __builtin_memset(__first, static_cast<unsigned char>(__val), __len);
+      |         ~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[100/118] Building CXX object CMakeFiles/v2-swap-gateway-runtime-tests.dir/tests/v2_swap_gateway_runtime_tests.cpp.o
+In file included from /source/tests/v2_swap_gateway_runtime_tests.cpp:3:
+/source/tests/v2_gateway_node_tests.cpp: In constructor ‘{anonymous}::Gateway::Gateway({anonymous}::Cluster&, velocita::v2::sim::FaultPolicy, velocita::v2::GatewayLoopConfig, velocita::v2::GatewayLinkTiming, const {anonymous}::VenueChoice&)’:
+/source/tests/v2_gateway_node_tests.cpp:688:11: warning: missing initializer for member ‘{anonymous}::CountingVenue::injected’ [-Wmissing-field-initializers]
+  688 |           counting{pick(choice), {}},
+      |           ^~~~~~~~~~~~~~~~~~~~~~~~~~
+/source/tests/v2_swap_gateway_runtime_tests.cpp: In member function ‘virtual std::optional<velocita::v2::SwapSignedExecution> {anonymous}::RuntimeSigner::sign_or_retrieve(uint64_t, int64_t, uint64_t)’:
+/source/tests/v2_swap_gateway_runtime_tests.cpp:38:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   38 |         if(oversized)r.request.body_size=65535;return r;
+      |         ^~
+/source/tests/v2_swap_gateway_runtime_tests.cpp:38:48: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   38 |         if(oversized)r.request.body_size=65535;return r;
+      |                                                ^~~~~~
+[101/118] Building CXX object CMakeFiles/v2-swap-gateway-runtime-tests.dir/src/v2_swap_gateway_runtime.cpp.o
+/source/src/v2_swap_gateway_runtime.cpp: In member function ‘void velocita::v2::SwapGatewayRuntime::stop(velocita::v2::SwapGatewayRuntimeStatus, velocita::v2::SwapGatewayRuntimeCause)’:
+/source/src/v2_swap_gateway_runtime.cpp:44:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   44 |     if(owns_link_)link_.abandon();owns_link_=false;status_=s;cause_=cause;
+      |     ^~
+/source/src/v2_swap_gateway_runtime.cpp:44:35: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   44 |     if(owns_link_)link_.abandon();owns_link_=false;status_=s;cause_=cause;
+      |                                   ^~~~~~~~~~
+/source/src/v2_swap_gateway_runtime.cpp: In member function ‘void velocita::v2::SwapGatewayRuntime::step(velocita::v2::Tick, uint64_t)’:
+/source/src/v2_swap_gateway_runtime.cpp:79:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   79 |         if(s!=SwapSubmissionSessionStatus::needs_reconciliation)stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::state);return;}
+      |         ^~
+/source/src/v2_swap_gateway_runtime.cpp:79:136: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   79 |         if(s!=SwapSubmissionSessionStatus::needs_reconciliation)stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::state);return;}
+      |                                                                                                                                        ^~~~~~
+[102/118] Building CXX object CMakeFiles/v2-swap-process-drill.dir/tests/v2_swap_process_drill.cpp.o
+In file included from /source/tests/v2_swap_process_drill.cpp:5:
+/source/tests/v2_gateway_node_tests.cpp: In constructor ‘{anonymous}::Gateway::Gateway({anonymous}::Cluster&, velocita::v2::sim::FaultPolicy, velocita::v2::GatewayLoopConfig, velocita::v2::GatewayLinkTiming, const {anonymous}::VenueChoice&)’:
+/source/tests/v2_gateway_node_tests.cpp:688:11: warning: missing initializer for member ‘{anonymous}::CountingVenue::injected’ [-Wmissing-field-initializers]
+  688 |           counting{pick(choice), {}},
+      |           ^~~~~~~~~~~~~~~~~~~~~~~~~~
+/source/tests/v2_swap_process_drill.cpp: In member function ‘std::optional<std::pair<int, std::vector<std::byte> > > {anonymous}::Wire::receive()’:
+/source/tests/v2_swap_process_drill.cpp:52:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   52 |         if(incoming.size()<8)return {};std::uint32_t size;std::int32_t node;
+      |         ^~
+/source/tests/v2_swap_process_drill.cpp:52:40: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   52 |         if(incoming.size()<8)return {};std::uint32_t size;std::int32_t node;
+      |                                        ^~~
+/source/tests/v2_swap_process_drill.cpp:54:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   54 |         if(incoming.size()<8+size)return {};Bytes body(incoming.begin()+8,incoming.begin()+8+size);incoming.erase(incoming.begin(),incoming.begin()+8+size);return std::pair{node,std::move(body)};
+      |         ^~
+/source/tests/v2_swap_process_drill.cpp:54:45: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   54 |         if(incoming.size()<8+size)return {};Bytes body(incoming.begin()+8,incoming.begin()+8+size);incoming.erase(incoming.begin(),incoming.begin()+8+size);return std::pair{node,std::move(body)};
+      |                                             ^~~~~
+/source/tests/v2_swap_process_drill.cpp: In member function ‘virtual void {anonymous}::Ports::execute(const velocita::v2::SwapSubmissionIdentity&, std::span<const std::byte>)’:
+/source/tests/v2_swap_process_drill.cpp:90:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   90 |         if(stage=="before-send")die();journal_line(root,"execute");
+      |         ^~
+/source/tests/v2_swap_process_drill.cpp:90:39: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   90 |         if(stage=="before-send")die();journal_line(root,"execute");
+      |                                       ^~~~~~~~~~~~
+/source/tests/v2_swap_process_drill.cpp:91:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   91 |         if(stage=="accepted")die();throw std::runtime_error("fixture accepted response lost");
+      |         ^~
+/source/tests/v2_swap_process_drill.cpp:91:36: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   91 |         if(stage=="accepted")die();throw std::runtime_error("fixture accepted response lost");
+      |                                    ^~~~~
+[103/118] Building CXX object CMakeFiles/v2-swap-process-drill.dir/src/v2_swap_gateway_runtime.cpp.o
+/source/src/v2_swap_gateway_runtime.cpp: In member function ‘void velocita::v2::SwapGatewayRuntime::stop(velocita::v2::SwapGatewayRuntimeStatus, velocita::v2::SwapGatewayRuntimeCause)’:
+/source/src/v2_swap_gateway_runtime.cpp:44:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   44 |     if(owns_link_)link_.abandon();owns_link_=false;status_=s;cause_=cause;
+      |     ^~
+/source/src/v2_swap_gateway_runtime.cpp:44:35: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   44 |     if(owns_link_)link_.abandon();owns_link_=false;status_=s;cause_=cause;
+      |                                   ^~~~~~~~~~
+/source/src/v2_swap_gateway_runtime.cpp: In member function ‘void velocita::v2::SwapGatewayRuntime::step(velocita::v2::Tick, uint64_t)’:
+/source/src/v2_swap_gateway_runtime.cpp:79:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   79 |         if(s!=SwapSubmissionSessionStatus::needs_reconciliation)stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::state);return;}
+      |         ^~
+/source/src/v2_swap_gateway_runtime.cpp:79:136: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   79 |         if(s!=SwapSubmissionSessionStatus::needs_reconciliation)stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::state);return;}
+      |                                                                                                                                        ^~~~~~
+[104/118] Building CXX object CMakeFiles/v2-swap-runtime-production-tests.dir/tests/v2_swap_runtime_production_tests.cpp.o
+/source/tests/v2_swap_runtime_production_tests.cpp: In function ‘std::string b64url(std::span<const unsigned char>)’:
+/source/tests/v2_swap_runtime_production_tests.cpp:278:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  278 |     if(bits)out+=a[(acc<<(6-bits))&63];return out;
+      |     ^~
+/source/tests/v2_swap_runtime_production_tests.cpp:278:40: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  278 |     if(bits)out+=a[(acc<<(6-bits))&63];return out;
+      |                                        ^~~~~~
+[105/118] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_gateway_runtime.cpp.o
+[106/118] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_runtime_production.cpp.o
+[107/118] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_gateway_runtime.cpp.o
+[108/118] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_runtime_production.cpp.o
+[109/118] Linking CXX executable velocita-v2-gateway
+[110/118] Linking CXX executable v2-swap-continuous-drill
+[111/118] Linking CXX executable v2-swap-gateway-runtime-tests
+[112/118] Linking CXX executable v2-swap-process-drill
+[113/118] Linking CXX executable v2-swap-runtime-production-tests
+[114/118] Linking CXX executable v2-swap-settlement-lifecycle-tests
+[115/118] Linking CXX executable v2-swap-settlement-admission-tests
+[116/118] Linking CXX executable v2-swap-runtime-https-probe
+[117/118] Linking CXX executable v2-swap-account-setup-tests
+[118/118] Linking CXX executable v2-swap-failed-settlement-tests

@@ -1,0 +1,11 @@
+[
+  "ctest",
+  "--test-dir",
+  "/work/build",
+  "--output-on-failure",
+  "--stop-on-failure",
+  "-R",
+  "^v2-swap-continuous-drill$",
+  "--output-junit",
+  "/evidence/continuous-repeat-2.xml"
+]

@@ -1,0 +1,11 @@
+[
+  "python3",
+  "-B",
+  "-m",
+  "unittest",
+  "discover",
+  "-s",
+  "/source/tests",
+  "-p",
+  "test_idle_policy_renewal.py"
+]
