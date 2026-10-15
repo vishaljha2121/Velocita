@@ -1,0 +1,102 @@
+test_active_service_refuses_apply_before_release (test_upgrade_first_start.UpgradeTests) ... FAIL
+test_apply_preserves_docs_credentials_empty_roots_and_keeps_guards (test_upgrade_first_start.UpgradeTests) ... ERROR
+test_credentials_changing_during_publish_stops_with_guards (test_upgrade_first_start.UpgradeTests) ... FAIL
+test_expired_review_refused_by_actual_launcher_checks (test_upgrade_first_start.UpgradeTests) ... ok
+test_installer_lock_refuses_parallel_apply (test_upgrade_first_start.UpgradeTests) ... ERROR
+test_loaded_guard_required_before_release (test_upgrade_first_start.UpgradeTests) ... FAIL
+test_manifest_only_three_executable_pins_change (test_upgrade_first_start.UpgradeTests) ... ok
+test_nonempty_and_missing_recovery_refused (test_upgrade_first_start.UpgradeTests) ... ok
+test_partial_replacement_preserves_failure_and_loaded_guards (test_upgrade_first_start.UpgradeTests) ... ERROR
+test_payload_rejects_pin_mismatch_before_exec (test_upgrade_first_start.UpgradeTests) ... ok
+test_stopped_rejects_active_pid_and_control_pid (test_upgrade_first_start.UpgradeTests) ... ok
+test_wrong_old_manifest_pin_is_no_mutation (test_upgrade_first_start.UpgradeTests) ... FAIL
+test_wrong_phase_incarnation_runtime_and_same_release_refused (test_upgrade_first_start.UpgradeTests) ... ok
+
+======================================================================
+ERROR: test_apply_preserves_docs_credentials_empty_roots_and_keeps_guards (test_upgrade_first_start.UpgradeTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/velocitas/.cache/velocita-build/focused-deploy-1f8d7b6/source/docs/evidence/automated_launch_2026-10-15/focused-deploy/test_upgrade_first_start.py", line 74, in test_apply_preserves_docs_credentials_empty_roots_and_keeps_guards
+    result=M.apply(self.root,M.U.digest(raw),self.root/'archive')
+  File "/home/velocitas/.cache/velocita-build/focused-deploy-1f8d7b6/source/docs/evidence/automated_launch_2026-10-15/focused-deploy/upgrade_first_start.py", line 100, in apply
+    installer=U.directory(U.PUBLIC)
+  File "/home/velocitas/.cache/velocita-build/focused-deploy-1f8d7b6/source/docs/evidence/live_fill_wiring_2026-10-13/deploy/upgrade_telemetry.py", line 63, in directory
+    if s.st_uid not in (0,ROOT_UID) or s.st_mode&0o022:raise ValueError('root protected directory required')
+ValueError: root protected directory required
+
+======================================================================
+ERROR: test_installer_lock_refuses_parallel_apply (test_upgrade_first_start.UpgradeTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/velocitas/.cache/velocita-build/focused-deploy-1f8d7b6/source/docs/evidence/automated_launch_2026-10-15/focused-deploy/test_upgrade_first_start.py", line 132, in test_installer_lock_refuses_parallel_apply
+    with self.assertRaises(BlockingIOError):M.apply(self.root,M.U.digest(raw),self.root/'archive')
+  File "/home/velocitas/.cache/velocita-build/focused-deploy-1f8d7b6/source/docs/evidence/automated_launch_2026-10-15/focused-deploy/upgrade_first_start.py", line 100, in apply
+    installer=U.directory(U.PUBLIC)
+  File "/home/velocitas/.cache/velocita-build/focused-deploy-1f8d7b6/source/docs/evidence/live_fill_wiring_2026-10-13/deploy/upgrade_telemetry.py", line 63, in directory
+    if s.st_uid not in (0,ROOT_UID) or s.st_mode&0o022:raise ValueError('root protected directory required')
+ValueError: root protected directory required
+
+======================================================================
+ERROR: test_partial_replacement_preserves_failure_and_loaded_guards (test_upgrade_first_start.UpgradeTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/velocitas/.cache/velocita-build/focused-deploy-1f8d7b6/source/docs/evidence/automated_launch_2026-10-15/focused-deploy/test_upgrade_first_start.py", line 141, in test_partial_replacement_preserves_failure_and_loaded_guards
+    with self.assertRaisesRegex(RuntimeError,'injected'):M.apply(self.root,M.U.digest(raw),self.root/'archive')
+  File "/home/velocitas/.cache/velocita-build/focused-deploy-1f8d7b6/source/docs/evidence/automated_launch_2026-10-15/focused-deploy/upgrade_first_start.py", line 100, in apply
+    installer=U.directory(U.PUBLIC)
+  File "/home/velocitas/.cache/velocita-build/focused-deploy-1f8d7b6/source/docs/evidence/live_fill_wiring_2026-10-13/deploy/upgrade_telemetry.py", line 63, in directory
+    if s.st_uid not in (0,ROOT_UID) or s.st_mode&0o022:raise ValueError('root protected directory required')
+ValueError: root protected directory required
+
+======================================================================
+FAIL: test_active_service_refuses_apply_before_release (test_upgrade_first_start.UpgradeTests)
+----------------------------------------------------------------------
+ValueError: root protected directory required
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/velocitas/.cache/velocita-build/focused-deploy-1f8d7b6/source/docs/evidence/automated_launch_2026-10-15/focused-deploy/test_upgrade_first_start.py", line 89, in test_active_service_refuses_apply_before_release
+    with self.assertRaisesRegex(ValueError,'stopped'):M.apply(self.root,M.U.digest(raw),self.root/'archive')
+AssertionError: "stopped" does not match "root protected directory required"
+
+======================================================================
+FAIL: test_credentials_changing_during_publish_stops_with_guards (test_upgrade_first_start.UpgradeTests)
+----------------------------------------------------------------------
+ValueError: root protected directory required
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/velocitas/.cache/velocita-build/focused-deploy-1f8d7b6/source/docs/evidence/automated_launch_2026-10-15/focused-deploy/test_upgrade_first_start.py", line 98, in test_credentials_changing_during_publish_stops_with_guards
+    with self.assertRaisesRegex(ValueError,'credential changed'):M.apply(self.root,M.U.digest(raw),self.root/'archive')
+AssertionError: "credential changed" does not match "root protected directory required"
+
+======================================================================
+FAIL: test_loaded_guard_required_before_release (test_upgrade_first_start.UpgradeTests)
+----------------------------------------------------------------------
+ValueError: root protected directory required
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/velocitas/.cache/velocita-build/focused-deploy-1f8d7b6/source/docs/evidence/automated_launch_2026-10-15/focused-deploy/test_upgrade_first_start.py", line 104, in test_loaded_guard_required_before_release
+    with self.assertRaisesRegex(ValueError,'not loaded'):M.apply(self.root,M.U.digest(raw),self.root/'archive')
+AssertionError: "not loaded" does not match "root protected directory required"
+
+======================================================================
+FAIL: test_wrong_old_manifest_pin_is_no_mutation (test_upgrade_first_start.UpgradeTests)
+----------------------------------------------------------------------
+ValueError: root protected directory required
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/velocitas/.cache/velocita-build/focused-deploy-1f8d7b6/source/docs/evidence/automated_launch_2026-10-15/focused-deploy/test_upgrade_first_start.py", line 113, in test_wrong_old_manifest_pin_is_no_mutation
+    with self.assertRaisesRegex(ValueError,'manifest'):M.apply(self.root,'0'*64,self.root/'archive')
+AssertionError: "manifest" does not match "root protected directory required"
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.116s
+
+FAILED (failures=4, errors=3)

@@ -1,6 +1,6 @@
 # MVP deployment preparation — October 15
 
-**Executable `1f8d7b6` is qualified on NUC/Pi. Its binary payload is staged, not installed. The six-order driver is staged on NUC1, inactive with no driver/client state. The owner approved the scoped Python deployment/observer checkpoint and NUC1 qualification. Those tools are being packaged from committed source before installation. No trading service has started; no venue call, signing or money movement occurred in this preparation.**
+**Executable `1f8d7b6` is qualified on NUC/Pi. Its binary payload is staged, not installed. The six-order driver is staged on NUC1, inactive with no driver/client state. Deployment tools are committed as `24ecbec`; all 37 tests pass on NUC1, and the owner source/observer payload is staged and hash-verified. Installation is pending owner sudo. No trading service has started; no venue call, signing or money movement occurred in this preparation.**
 
 ## Necessary corrections
 
@@ -16,12 +16,12 @@ The observer still enforced 15-minute review/capture lifetimes, whereas the runt
 | Guarded install helper | 13 unit tests passed; 7 named mutation kills; [plan](OWNER_INSTALL_PLAN.md) |
 | Observer | 24 unit tests passed; 7 named mutation kills; [fix](OBSERVER_FIX.md) |
 | Local review preview | [Exact old/new/seal pins](REVIEWED_UPGRADE_PREVIEW.json); not a fresh venue or privileged host read |
-| Owner entry point | [owner-install.sh](owner-install.sh), prepared only; requires committed staged source before use |
+| Owner entry point | [owner-install.sh](owner-install.sh), staged from `24ecbec`; ready for owner-run installation |
 
 ## Next
 
-1. Owner approved the scoped helper/observer checkpoint and staging; source is checkpointed before native qualification.
-2. Stage that exact source on NUC1 and run isolated Python qualification; no new C++ build.
+1. Completed: owner-approved source checkpoint `24ecbec` and NUC1 qualification (13 installer + 24 observer tests).
+2. Completed: exact committed source, pinned binary and observer files staged; see [owner-stage result](OWNER_STAGE_RESULT.json) and [qualification](QUALIFICATION.md). No new C++ build.
 3. Owner runs the prepared installation command: guarded binary replacement, create-only caller restoration and read-only observer update. Trading services and driver remain stopped; share output before proceeding.
 4. Review installed pins and current authorization, verify halted authenticated Raft state, release only the exact new start guards, start signer then gateway while halted and apply the newly pinned seal. The old arm/seal script is superseded.
 5. Verify fresh observer/account/sequence state, then run the supervised six-effect strategy. Preserve its state for any separately approved extension; never re-stage or retry an ambiguous trade.

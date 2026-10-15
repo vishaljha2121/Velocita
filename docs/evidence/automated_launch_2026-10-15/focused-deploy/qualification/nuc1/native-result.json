@@ -1,0 +1,18 @@
+{
+  "source_commit": "24ecbecbedc6333b66d37e8daa946533736f8685",
+  "host": "bulbazar-NUC",
+  "python": "3.10.12 (main, Aug 31 2026, 10:18:17) [GCC 11.4.0]",
+  "checked_at_ms": 1792081798020,
+  "files_verified": 60,
+  "tests": [
+    {
+      "suite": "installer",
+      "exit_code": 1
+    },
+    {
+      "suite": "observer",
+      "exit_code": 0
+    }
+  ],
+  "services_started": false
+}

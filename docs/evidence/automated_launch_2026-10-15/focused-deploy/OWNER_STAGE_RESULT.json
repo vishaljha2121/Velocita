@@ -1,0 +1,15 @@
+{
+  "source_commit": "24ecbecbedc6333b66d37e8daa946533736f8685",
+  "checked_at_ms": 1792081882624,
+  "source_files_verified": 60,
+  "archive_sha256": "38f00305f8d317e67249ca57d269d4157eeb6e09ba7fef269b3c93dc90a9c159",
+  "owner_script_sha256": "e9e6d87964e8f3e35b77cb9a859bce236224d5ce113472291eeee41b71e05ba2",
+  "observer_files": {
+    "live_observer.py": "4d180ef32ff1a59c0677cbc7fdca53b03a15114fc739f8c58749aa672229b58f",
+    "velocita-live-observer.timer": "341cf50e4db10fddb0e3911276c921375269c833f9f9bdc890b7f23039a9294c",
+    "observer.sha256": "7ee504687693f3165e872a01baa03dabafe66b63961cc16676e70b6c4f0606f9",
+    "upgrade-observer.sh": "82e0cafc85ed7b491a2f003508b9faa5d2f9239be97fec56611a3f05a6165ca0"
+  },
+  "installed": false,
+  "services_started": false
+}

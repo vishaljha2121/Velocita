@@ -24,8 +24,10 @@ funded/halted `aae119b9`. Preserve the single cluster and all journals; sudo rem
 
 Deployment preparation: the qualified binary is staged and the six-effect driver is staged
 static/inactive with no client or driver state. Do not stage it again. The owner approved
-the narrow armed-first-start installer and observer 24-hour review correction checkpoint;
-13 installer and 24 observer tests pass locally, with seven named mutation kills each.
+the narrow armed-first-start installer and observer 24-hour review correction checkpoint.
+Tools are committed as `24ecbec`; all 13 installer and 24 observer tests pass on NUC1
+from that source (plus seven local named mutation kills each). Owner source/payloads are
+staged and hash-verified; installation awaits the owner command in the deployment evidence.
 See [deployment preparation](evidence/automated_launch_2026-10-15/focused-deploy/README.md).
 The owner installation retains start guards and requires sudo; trading remains stopped.
 

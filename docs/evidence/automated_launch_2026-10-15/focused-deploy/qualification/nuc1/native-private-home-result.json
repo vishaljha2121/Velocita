@@ -1,0 +1,20 @@
+{
+  "source_commit": "24ecbecbedc6333b66d37e8daa946533736f8685",
+  "host": "bulbazar-NUC",
+  "python": "3.10.12 (main, Aug 31 2026, 10:18:17) [GCC 11.4.0]",
+  "checked_at_ms": 1792081848455,
+  "tests": [
+    {
+      "suite": "installer",
+      "exit_code": 0
+    },
+    {
+      "suite": "observer",
+      "exit_code": 0
+    }
+  ],
+  "isolated_home": "/home/velocitas/.cache/velocita-qualification-home-24ecbec",
+  "umask": "0077",
+  "production_code_changed": false,
+  "services_started": false
+}
