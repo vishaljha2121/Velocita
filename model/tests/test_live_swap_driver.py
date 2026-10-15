@@ -10,7 +10,7 @@ import subprocess
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_live_swap import bars
 from velocita_model.adapters.websocket import ProtocolError
-from velocita_model.shadow.live_swap_driver import Driver, State, extend, observation, client_submitter, main
+from velocita_model.shadow.live_swap_driver import Driver, Metrics, State, extend, observation, client_submitter, main
 
 RUN = 'b' * 32
 EXPIRY = 2_000_000_000_000
@@ -381,6 +381,37 @@ class SubmitResult(unittest.TestCase):
                 patch('velocita_model.shadow.live_swap_driver.subprocess.run') as run:
             self.assertIs(submit(buy_order('100', 1_000), 5, 7), False)
             run.assert_not_called()
+
+
+class StrategyMetrics(Flow):
+    def fill(self, effect, side, base, quote):
+        return dict(effect=effect, side=side, base_atoms=base, quote_atoms=quote, fee_atoms=0, outcome='succeeded')
+
+    def test_price_indicators_and_one_marker_per_new_fill(self):
+        out = self.root / 'velocita-strategy.prom'
+        metrics = Metrics(out, RUN)
+        old = self.fill(1, 'buy', 120_000_000, 12_600_000)
+        self.path.write_bytes(seen(50_000, settlements=[old]))
+        self.driver.rule.signals.previous = (61.0, 55.0, 105.0, 104.0)
+        metrics.write(self.driver, self.bar(1), 50_000)
+        text = out.read_text()
+        self.assertIn(f'velocita_strategy_price_usd{{run="{RUN}"}} {float(self.row[5])}', text)
+        self.assertIn(f'velocita_strategy_ema_usd{{run="{RUN}",span="1200"}} 104.0', text)
+        self.assertIn(f'velocita_strategy_stochastic{{run="{RUN}",line="k"}} 61.0', text)
+        self.assertNotIn('fill_marker', text, 'fills settled before the driver started are not re-marked')
+        sold = self.fill(2, 'sell', 120_000_000, 12_720_000)
+        self.path.write_bytes(seen(51_000, settlements=[old, sold]))
+        metrics.write(self.driver, self.bar(2), 51_000)
+        self.assertIn(f'velocita_strategy_fill_marker_usd{{run="{RUN}",side="sell"}} 106.0', out.read_text(), 'effective price USDC/SOL')
+        self.path.write_bytes(seen(81_000, settlements=[old, sold]))
+        metrics.write(self.driver, self.bar(3), 81_000)
+        self.assertNotIn('fill_marker', out.read_text(), 'a marker lasts thirty seconds')
+
+    def test_metrics_failure_never_reaches_trading(self):
+        metrics = Metrics(self.root / 'missing' / 'velocita-strategy.prom', RUN)
+        self.path.write_bytes(seen(50_000))
+        metrics.write(self.driver, self.bar(1), 50_000)
+        self.assertFalse((self.root / 'missing').exists())
 
 
 if __name__ == '__main__':

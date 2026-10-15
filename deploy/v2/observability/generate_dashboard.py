@@ -823,6 +823,28 @@ def live():
     series('Reviewed USDC snapshots',[(q('reviewed_usdc'),'Verified snapshot')],0,12,unit='suffix: USDC',description='Only changes when reviewed account history is replaced. Sampling this observer does not refresh the wallet evidence.')
     series('Reviewed SOL snapshots',[(q('reviewed_sol'),'Verified snapshot')],12,12,unit='suffix: SOL',description='No inferred fill amounts, proxy marks or paper balance. See account evidence age.')
     advance(8)
+    row('Live SOL price and signal — strategy driver')
+    run='{run="$live_run"}'
+    series('Live SOL price with confirmed entries / exits',[
+        ('velocita_strategy_price_usd'+run,'SOL close (Binance 1 s)'),
+        ('max_over_time(velocita_strategy_fill_marker_usd{run="$live_run",side="buy"}[$__interval])','Entry'),
+        ('max_over_time(velocita_strategy_fill_marker_usd{run="$live_run",side="sell"}[$__interval])','Exit'),
+        ('velocita_strategy_ema_usd{run="$live_run",span="300"}','EMA 300 s'),
+        ('velocita_strategy_ema_usd{run="$live_run",span="1200"}','EMA 1200 s')],
+        0,24,unit='currencyUSD',min0=False,
+        description='The one-second Binance SOLUSDT candles the driver trades on. Green / red points are settled fills at their effective price, shown for 30 seconds from when the driver first sees the settlement.')
+    for name,color in (('Entry','green'),('Exit','red')):
+        panels[-1]['fieldConfig']['overrides'].append({'matcher':{'id':'byName','options':name},
+            'properties':[{'id':'custom.drawStyle','value':'points'},{'id':'custom.showPoints','value':'always'},
+                {'id':'custom.pointSize','value':9},{'id':'custom.lineWidth','value':0},
+                {'id':'color','value':{'mode':'fixed','fixedColor':color}}]})
+    advance(8)
+    series('Live stochastic K and D',[
+        ('velocita_strategy_stochastic{run="$live_run",line="k"}','K'),
+        ('velocita_strategy_stochastic{run="$live_run",line="d"}','D'),
+        ('vector(60)','60: entry needs K at or above'),('vector(40)','40: exit needs K at or below')],
+        0,24,min0=False,description='Entry: K crosses above D with K at 60 or more while EMA 300 s is above EMA 1200 s, held 3 seconds. Exit: K below D with K at 40 or less, held 3 seconds.')
+    advance(8)
     row('Live entries / exits — authenticated Raft settlement records')
     stat('Confirmed-fill telemetry',q('settlement_feed_status'),0,8,
          mappings=[{"type":"value","options":{"0":{"text":"NOT CONNECTED","color":"orange"},"1":{"text":"CURRENT","color":"green"},"2":{"text":"STALE SNAPSHOT","color":"orange"},"3":{"text":"INVALID / CONFLICT","color":"red"}}}],
@@ -902,7 +924,7 @@ def live():
         "**Expiry:** account review expiry stops this supervised runtime. Preserve all recovery journals; never initialize again to restart. Paper metrics remain on the separate Paper trading tab."}})
     advance(9)
     name,board=finish(LIVE,'Read-only service status, reviewed account snapshots, durable order progress and cost boundaries.',['live','account','execution'])
-    board['templating']['list']=[{"name":"live_run","label":"Live incarnation","type":"query","datasource":DS,"query":"label_values(velocita_live_reviewed_usdc, run)","refresh":1,"multi":False,"includeAll":False,"current":{"text":"b79e65be1ea14e219016ec48ea02efef","value":"b79e65be1ea14e219016ec48ea02efef"}}]
+    board['templating']['list']=[{"name":"live_run","label":"Live incarnation","type":"query","datasource":DS,"query":"label_values(velocita_live_reviewed_usdc, run)","refresh":1,"multi":False,"includeAll":False,"current":{"text":"aae119b95ddcea5a206f03ab5ca12c15","value":"aae119b95ddcea5a206f03ab5ca12c15"}}]
     return name,board
 
 

@@ -144,6 +144,46 @@ class Driver:
         return decision.side
 
 
+class Metrics:
+    MARKER_MS = 30_000
+
+    def __init__(self, path, run):
+        self.path, self.run, self.seen, self.markers = Path(path), run, None, []
+
+    def lines(self, driver, kline, now_ms):
+        seen = driver.observe(now_ms)
+        if seen is not None:
+            effects = {row['effect'] for row in seen['settlements']}
+            if self.seen is None:
+                self.seen = effects
+            for row in seen['settlements']:
+                if row['effect'] not in self.seen and row['base_atoms']:
+                    self.markers.append((row['side'], row['quote_atoms'] * 1000 / row['base_atoms'], now_ms + self.MARKER_MS))
+            self.seen |= effects
+        self.markers = [m for m in self.markers if m[2] > now_ms]
+        label = f'run="{self.run}"'
+        out = [f'velocita_strategy_price_usd{{{label}}} {float(kline[5])}', f'velocita_strategy_bar_seconds{{{label}}} {(kline[1] + 1) // 1000}',
+               f'velocita_strategy_sequence{{{label}}} {driver.state.sequence}', f'velocita_strategy_stopped{{{label}}} {int(bool(driver.state.stopped))}']
+        values = driver.rule.signals.previous
+        if values is not None:
+            k, d, fast, slow = values
+            out += [f'velocita_strategy_ema_usd{{{label},span="300"}} {fast}', f'velocita_strategy_ema_usd{{{label},span="1200"}} {slow}',
+                    f'velocita_strategy_stochastic{{{label},line="k"}} {k}', f'velocita_strategy_stochastic{{{label},line="d"}} {d}']
+        for side in ('buy', 'sell'):
+            prices = [m[1] for m in self.markers if m[0] == side]
+            if prices:
+                out.append(f'velocita_strategy_fill_marker_usd{{{label},side="{side}"}} {prices[-1]}')
+        return out
+
+    def write(self, driver, kline, now_ms):
+        try:
+            pending = self.path.with_name(self.path.name + '.pending')
+            pending.write_text('\n'.join(self.lines(driver, kline, now_ms)) + '\n')
+            os.replace(pending, self.path)
+        except (OSError, ValueError, KeyError, TypeError, ZeroDivisionError):
+            pass
+
+
 def client_submitter(client, opening, kill_epoch, executor_generation, timeout_s=30):
     def submit(order, effect, sequence):
         now_ms = time.time_ns() // 1_000_000
@@ -223,6 +263,7 @@ def main():
     submit = client_submitter(config['client'], config['opening_record'], config['kill_epoch'], config['executor_generation'])
     driver = Driver(config['incarnation'], config['observation'], State(config['state']), submit, config.get('max_orders', MAX_ORDERS),
                     review_expires_ms=config['review_expires_ms'])
+    metrics = Metrics(Path(config['observation']).with_name('velocita-strategy.prom'), config['incarnation'])
     while not driver.state.stopped and not driver.tick(time.time_ns() // 1_000_000):
         socket = ReadOnlyMarketSocket('data-stream.binance.vision', '/ws/solusdt@kline_1s', timeout_s=4, max_message_bytes=16384)
         try:
@@ -235,6 +276,7 @@ def main():
                 kline = klines(raw)
                 if kline is not None:
                     print(driver.on_bar(kline, time.time_ns() // 1_000_000), flush=True)
+                    metrics.write(driver, kline, time.time_ns() // 1_000_000)
         except (OSError, ProtocolError, ValueError) as error:
             print('feed restart: ' + type(error).__name__, flush=True)
             if not driver.tick(time.time_ns() // 1_000_000):

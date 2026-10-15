@@ -832,7 +832,7 @@
   },
   {
    "type": "row",
-   "title": "Live entries / exits \u2014 authenticated Raft settlement records",
+   "title": "Live SOL price and signal \u2014 strategy driver",
    "id": 14,
    "collapsed": false,
    "gridPos": {
@@ -844,9 +844,218 @@
    "panels": []
   },
   {
+   "type": "timeseries",
+   "title": "Live SOL price with confirmed entries / exits",
+   "id": 15,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "The one-second Binance SOLUSDT candles the driver trades on. Green / red points are settled fills at their effective price, shown for 30 seconds from when the driver first sees the settlement.",
+   "gridPos": {
+    "h": 8,
+    "w": 24,
+    "x": 0,
+    "y": 19
+   },
+   "targets": [
+    {
+     "expr": "velocita_strategy_price_usd{run=\"$live_run\"}",
+     "legendFormat": "SOL close (Binance 1 s)",
+     "refId": "A"
+    },
+    {
+     "expr": "max_over_time(velocita_strategy_fill_marker_usd{run=\"$live_run\",side=\"buy\"}[$__interval])",
+     "legendFormat": "Entry",
+     "refId": "B"
+    },
+    {
+     "expr": "max_over_time(velocita_strategy_fill_marker_usd{run=\"$live_run\",side=\"sell\"}[$__interval])",
+     "legendFormat": "Exit",
+     "refId": "C"
+    },
+    {
+     "expr": "velocita_strategy_ema_usd{run=\"$live_run\",span=\"300\"}",
+     "legendFormat": "EMA 300 s",
+     "refId": "D"
+    },
+    {
+     "expr": "velocita_strategy_ema_usd{run=\"$live_run\",span=\"1200\"}",
+     "legendFormat": "EMA 1200 s",
+     "refId": "E"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "min": null,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Entry"
+      },
+      "properties": [
+       {
+        "id": "custom.drawStyle",
+        "value": "points"
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "always"
+       },
+       {
+        "id": "custom.pointSize",
+        "value": 9
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 0
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Exit"
+      },
+      "properties": [
+       {
+        "id": "custom.drawStyle",
+        "value": "points"
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "always"
+       },
+       {
+        "id": "custom.pointSize",
+        "value": 9
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 0
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Live stochastic K and D",
+   "id": 16,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Entry: K crosses above D with K at 60 or more while EMA 300 s is above EMA 1200 s, held 3 seconds. Exit: K below D with K at 40 or less, held 3 seconds.",
+   "gridPos": {
+    "h": 8,
+    "w": 24,
+    "x": 0,
+    "y": 27
+   },
+   "targets": [
+    {
+     "expr": "velocita_strategy_stochastic{run=\"$live_run\",line=\"k\"}",
+     "legendFormat": "K",
+     "refId": "A"
+    },
+    {
+     "expr": "velocita_strategy_stochastic{run=\"$live_run\",line=\"d\"}",
+     "legendFormat": "D",
+     "refId": "B"
+    },
+    {
+     "expr": "vector(60)",
+     "legendFormat": "60: entry needs K at or above",
+     "refId": "C"
+    },
+    {
+     "expr": "vector(40)",
+     "legendFormat": "40: exit needs K at or below",
+     "refId": "D"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "min": null,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "row",
+   "title": "Live entries / exits \u2014 authenticated Raft settlement records",
+   "id": 17,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 35
+   },
+   "panels": []
+  },
+  {
    "type": "stat",
    "title": "Confirmed-fill telemetry",
-   "id": 15,
+   "id": 18,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -856,7 +1065,7 @@
     "h": 4,
     "w": 8,
     "x": 0,
-    "y": 19
+    "y": 36
    },
    "targets": [
     {
@@ -927,7 +1136,7 @@
   {
    "type": "stat",
    "title": "Settlement snapshot age",
-   "id": 16,
+   "id": 19,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -937,7 +1146,7 @@
     "h": 4,
     "w": 8,
     "x": 8,
-    "y": 19
+    "y": 36
    },
    "targets": [
     {
@@ -990,7 +1199,7 @@
   {
    "type": "stat",
    "title": "Settlement committed index",
-   "id": 17,
+   "id": 20,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1000,7 +1209,7 @@
     "h": 4,
     "w": 8,
     "x": 16,
-    "y": 19
+    "y": 36
    },
    "targets": [
     {
@@ -1050,7 +1259,7 @@
   {
    "type": "timeseries",
    "title": "Live SOL entries / exits \u2014 effective settled price",
-   "id": 18,
+   "id": 21,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1060,7 +1269,7 @@
     "h": 8,
     "w": 24,
     "x": 0,
-    "y": 23
+    "y": 40
    },
    "targets": [
     {
@@ -1261,7 +1470,7 @@
    ]
   },
   {
-   "id": 19,
+   "id": 22,
    "type": "table",
    "title": "Retained confirmed fills \u2014 first-observed time, quantities and explicit fees",
    "datasource": {
@@ -1270,7 +1479,7 @@
    },
    "gridPos": {
     "x": 0,
-    "y": 31,
+    "y": 48,
     "w": 24,
     "h": 7
    },
@@ -1371,7 +1580,7 @@
   {
    "type": "stat",
    "title": "Raft ledger USDC",
-   "id": 20,
+   "id": 23,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1381,7 +1590,7 @@
     "h": 4,
     "w": 6,
     "x": 0,
-    "y": 38
+    "y": 55
    },
    "targets": [
     {
@@ -1431,7 +1640,7 @@
   {
    "type": "stat",
    "title": "Raft ledger SOL",
-   "id": 21,
+   "id": 24,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1441,7 +1650,7 @@
     "h": 4,
     "w": 6,
     "x": 6,
-    "y": 38
+    "y": 55
    },
    "targets": [
     {
@@ -1491,7 +1700,7 @@
   {
    "type": "stat",
    "title": "Ledger explicit fees",
-   "id": 22,
+   "id": 25,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1501,7 +1710,7 @@
     "h": 4,
     "w": 6,
     "x": 12,
-    "y": 38
+    "y": 55
    },
    "targets": [
     {
@@ -1551,7 +1760,7 @@
   {
    "type": "stat",
    "title": "Ledger realized P&L",
-   "id": 23,
+   "id": 26,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1561,7 +1770,7 @@
     "h": 4,
     "w": 6,
     "x": 18,
-    "y": 38
+    "y": 55
    },
    "targets": [
     {
@@ -1611,7 +1820,7 @@
   {
    "type": "timeseries",
    "title": "SOL position \u2014 authenticated ledger snapshots",
-   "id": 24,
+   "id": 27,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1621,7 +1830,7 @@
     "h": 8,
     "w": 12,
     "x": 0,
-    "y": 42
+    "y": 59
    },
    "targets": [
     {
@@ -1660,7 +1869,7 @@
   {
    "type": "timeseries",
    "title": "USDC balance \u2014 authenticated ledger snapshots",
-   "id": 25,
+   "id": 28,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1670,7 +1879,7 @@
     "h": 8,
     "w": 12,
     "x": 12,
-    "y": 42
+    "y": 59
    },
    "targets": [
     {
@@ -1709,20 +1918,20 @@
   {
    "type": "row",
    "title": "Order lifecycle \u2014 durable journal evidence",
-   "id": 26,
+   "id": 29,
    "collapsed": false,
    "gridPos": {
     "h": 1,
     "w": 24,
     "x": 0,
-    "y": 50
+    "y": 67
    },
    "panels": []
   },
   {
    "type": "stat",
    "title": "Quote preparation",
-   "id": 27,
+   "id": 30,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1732,7 +1941,7 @@
     "h": 4,
     "w": 8,
     "x": 0,
-    "y": 51
+    "y": 68
    },
    "targets": [
     {
@@ -1799,7 +2008,7 @@
   {
    "type": "stat",
    "title": "Protected signing",
-   "id": 28,
+   "id": 31,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1809,7 +2018,7 @@
     "h": 4,
     "w": 8,
     "x": 8,
-    "y": 51
+    "y": 68
    },
    "targets": [
     {
@@ -1876,7 +2085,7 @@
   {
    "type": "stat",
    "title": "Venue submission",
-   "id": 29,
+   "id": 32,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1886,7 +2095,7 @@
     "h": 4,
     "w": 8,
     "x": 16,
-    "y": 51
+    "y": 68
    },
    "targets": [
     {
@@ -1953,7 +2162,7 @@
   {
    "type": "stat",
    "title": "Latest effect ID",
-   "id": 30,
+   "id": 33,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -1963,7 +2172,7 @@
     "h": 4,
     "w": 6,
     "x": 0,
-    "y": 55
+    "y": 72
    },
    "targets": [
     {
@@ -2013,7 +2222,7 @@
   {
    "type": "stat",
    "title": "Submission journal committed index",
-   "id": 31,
+   "id": 34,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -2023,7 +2232,7 @@
     "h": 4,
     "w": 6,
     "x": 6,
-    "y": 55
+    "y": 72
    },
    "targets": [
     {
@@ -2073,7 +2282,7 @@
   {
    "type": "stat",
    "title": "Gateway exit status",
-   "id": 32,
+   "id": 35,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -2083,7 +2292,7 @@
     "h": 4,
     "w": 6,
     "x": 12,
-    "y": 55
+    "y": 72
    },
    "targets": [
     {
@@ -2136,7 +2345,7 @@
   {
    "type": "stat",
    "title": "Signer exit status",
-   "id": 33,
+   "id": 36,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -2146,7 +2355,7 @@
     "h": 4,
     "w": 6,
     "x": 18,
-    "y": 55
+    "y": 72
    },
    "targets": [
     {
@@ -2199,7 +2408,7 @@
   {
    "type": "timeseries",
    "title": "Durable lifecycle phases",
-   "id": 34,
+   "id": 37,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -2209,7 +2418,7 @@
     "h": 8,
     "w": 16,
     "x": 0,
-    "y": 59
+    "y": 76
    },
    "targets": [
     {
@@ -2263,7 +2472,7 @@
   {
    "type": "timeseries",
    "title": "Automatic service restarts",
-   "id": 35,
+   "id": 38,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -2273,7 +2482,7 @@
     "h": 8,
     "w": 8,
     "x": 16,
-    "y": 59
+    "y": 76
    },
    "targets": [
     {
@@ -2317,20 +2526,20 @@
   {
    "type": "row",
    "title": "Costs, limits and settlement interpretation",
-   "id": 36,
+   "id": 39,
    "collapsed": false,
    "gridPos": {
     "h": 1,
     "w": 24,
     "x": 0,
-    "y": 67
+    "y": 84
    },
    "panels": []
   },
   {
    "type": "stat",
    "title": "Configured maximum buy output deduction",
-   "id": 37,
+   "id": 40,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -2340,7 +2549,7 @@
     "h": 4,
     "w": 12,
     "x": 0,
-    "y": 68
+    "y": 85
    },
    "targets": [
     {
@@ -2390,7 +2599,7 @@
   {
    "type": "stat",
    "title": "Last account evidence time",
-   "id": 38,
+   "id": 41,
    "datasource": {
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
@@ -2400,7 +2609,7 @@
     "h": 4,
     "w": 12,
     "x": 12,
-    "y": 68
+    "y": 85
    },
    "targets": [
     {
@@ -2447,12 +2656,12 @@
    }
   },
   {
-   "id": 39,
+   "id": 42,
    "type": "text",
    "title": "How to read this supervised MVP",
    "gridPos": {
     "x": 0,
-    "y": 72,
+    "y": 89,
     "w": 24,
     "h": 9
    },
@@ -2477,8 +2686,8 @@
     "multi": false,
     "includeAll": false,
     "current": {
-     "text": "b79e65be1ea14e219016ec48ea02efef",
-     "value": "b79e65be1ea14e219016ec48ea02efef"
+     "text": "aae119b95ddcea5a206f03ab5ca12c15",
+     "value": "aae119b95ddcea5a206f03ab5ca12c15"
     }
    }
   ]
