@@ -1,0 +1,24 @@
+{
+  "source_commit": "f30e6ccbba0735f60ebacf3ed2dcf637656662bd",
+  "archive_sha256": "1b946c6baa11366b25ccd9c33c0760ab23ff1bbb7236b01d24820da5125516b6",
+  "files_verified": 65,
+  "host": "bulbazar-NUC",
+  "python": "3.10.12 (main, Aug 31 2026, 10:18:17) [GCC 11.4.0]",
+  "checked_at_ms": 1792082906411,
+  "tests": [
+    {
+      "suite": "startup-and-installer",
+      "exit_code": 0
+    },
+    {
+      "suite": "seal",
+      "exit_code": 0
+    },
+    {
+      "suite": "observer",
+      "exit_code": 0
+    }
+  ],
+  "services_started": false,
+  "credentials_read": false
+}

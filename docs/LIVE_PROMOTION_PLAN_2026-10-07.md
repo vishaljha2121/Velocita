@@ -32,7 +32,9 @@ Prepared [first-start/seal wrapper](evidence/automated_launch_2026-10-15/focused
 8 new tests and 6 mutation kills; 13 installer and 19 seal-dependency checks pass.
 Fresh voter health agrees on halted mode 5, term 1, leader 3, index 7. Protected owner
 preflight and native startup admission are still pending; no services have started.
-The new helper needs its scoped committed-source checkpoint before staging/execution.
+The helper is committed as `f30e6cc`; all 64 Python checks passed on NUC1. Its exact
+source and owner command are staged and hash-verified. Await owner execution; services
+remain guarded/stopped and the driver remains inactive.
 
 Next: verify protected resources and fresh authenticated halted state/authorization, then start halted services
 and run the supervised six-effect drill. Do not repeat arm, funding or retirement; never reset

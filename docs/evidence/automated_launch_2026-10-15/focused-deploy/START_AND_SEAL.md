@@ -1,6 +1,6 @@
 # Guarded first start and seal
 
-Requested by owner after successful guarded installation. This is prepared source, not executed startup. Source must be committed and tested on NUC1 before the owner runs it; sudo stays with the owner. No new C++ build is required. Qualified binary remains `1f8d7b6`.
+Requested by owner after successful guarded installation. Source is committed as `f30e6ccbba0735f60ebacf3ed2dcf637656662bd`, qualified on NUC1 and staged for the owner. Startup has not run; sudo stays with the owner. No new C++ build is required. Qualified binary remains `1f8d7b6`.
 
 ## Current evidence
 
@@ -22,4 +22,14 @@ Any failure after the attempt starts restores guards and attempts to stop both s
 
 Eight new orchestration/validation tests passed; 13 installer and 19 existing review-transition tests also passed. Six named mutations were killed by assertions (no import/runtime-error kills): bypassed preflight, gateway started first, omitted failure guard restoration, ignored halted mode, ignored observation freshness and overwritten existing guard. Raw initial RED, GREEN and mutation results are in `qualification/start/`.
 
-Tests use synthetic process/credential interfaces and real guard-file rename checks. Native Python qualification is pending the scoped checkpoint. No production helper was run, no live process was started, and no venue request was sent during preparation. Next: approve the scoped helper/test/evidence checkpoint, qualify committed Python on NUC1, then stage the owner command. Existing runtime source and production units remain unchanged until that owner command runs.
+Tests use synthetic process/credential interfaces and real guard-file rename checks. NUC1/Python 3.10.12 qualification passed from the exact committed archive: 21 startup/installer tests, 19 seal-transition tests and 24 observer tests (64 total). All 65 archive files and the owner copy verified against SHA-256 pins. No production helper was run, no live process was started, and no venue request was sent during preparation. The owner approved this checkpoint. Exact source is staged at `/home/vishal/.cache/velocita-build/focused-start-20261015/source`; qualification logs and staging/hash manifests are in `qualification/start/`. Post-staging readback still shows gateway inactive, signer failed, both PID 0 and RefuseManualStart=yes; driver inactive, PID 0. Existing runtime and units remain unchanged until the owner command runs.
+
+## Ready owner command
+
+On NUC1 as `vishal`:
+
+```sh
+sh "$HOME/.cache/velocita-build/focused-start-20261015/source/docs/evidence/automated_launch_2026-10-15/focused-deploy/owner-start.sh"
+```
+
+It prompts for sudo locally and performs one startup/seal attempt. Expect about one minute for service initialization and checks. Share the output; do not rerun on failure. The existing review must still be current when executed. No mode-normal command or strategy-driver start is included.

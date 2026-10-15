@@ -1,0 +1,25 @@
+test_arm_and_seal_preserve_documents (test_swap_review_transition.TransitionTests) ... ok
+test_cannot_repeat_first_start (test_swap_review_transition.TransitionTests) ... ok
+test_default_only_validates (test_swap_review_transition.TransitionTests) ... ok
+test_expiry_and_file_tampering (test_swap_review_transition.TransitionTests) ... ok
+test_idle_journal_vector_and_all_binding_fields (test_swap_review_transition.TransitionTests) ... ok
+test_idle_refresh_refuses_partial_corrupt_and_nonidle_journals (test_swap_review_transition.TransitionTests) ... ok
+test_immutable_manifest_fields (test_swap_review_transition.TransitionTests) ... ok
+test_initialized_refresh_accepts_new_account_capture_after_old_expiry (test_swap_review_transition.TransitionTests) ... ok
+test_initialized_refresh_cannot_apply_without_exclusive_migration_guard (test_swap_review_transition.TransitionTests) ... ok
+test_initialized_refresh_cannot_change_opening_cost_or_transaction_authority (test_swap_review_transition.TransitionTests) ... ok
+test_initialized_refresh_refuses_expired_transaction_or_launch_expansion (test_swap_review_transition.TransitionTests) ... ok
+test_new_capture_cannot_change_balances_or_hide_blocking_orders (test_swap_review_transition.TransitionTests) ... ok
+test_no_recovery_or_live_refresh (test_swap_review_transition.TransitionTests) ... ok
+test_refresh_preserves_account_and_credential (test_swap_review_transition.TransitionTests) ... ok
+test_route_schema_separates_protected_journal_domain (test_swap_review_transition.TransitionTests) ... ok
+test_seal_requires_both_running_and_all_journals (test_swap_review_transition.TransitionTests) ... ok
+test_state_checks_missing_and_partial_journal_directories (test_swap_review_transition.TransitionTests) ... ok
+test_state_refuses_any_journal (test_swap_review_transition.TransitionTests) ... ok
+test_transaction_parser_separate_32k_bound_and_strict_fields (test_swap_review_transition.TransitionTests) ... ok
+
+----------------------------------------------------------------------
+Ran 19 tests in 0.064s
+
+OK
+{"applied": false, "validated": "arm"}

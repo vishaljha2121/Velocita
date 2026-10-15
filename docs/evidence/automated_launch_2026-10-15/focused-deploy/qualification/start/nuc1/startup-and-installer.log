@@ -1,0 +1,26 @@
+test_failure_never_retries_or_seals_and_restores_guards (test_start_first_run.StartTests) ... ok
+test_first_observation_refuses_stale_future_or_any_effect (test_start_first_run.StartTests) ... ok
+test_guard_moves_preserve_bytes_and_refuse_overwrite_or_tampering (test_start_first_run.StartTests) ... ok
+test_halted_health_rejects_mode_index_missing_and_duplicate (test_start_first_run.StartTests) ... ok
+test_preflight_failure_never_releases_guards_or_starts (test_start_first_run.StartTests) ... ok
+test_stop_failure_still_attempts_both_services_once (test_start_first_run.StartTests) ... ok
+test_success_starts_in_order_and_guards_before_seal (test_start_first_run.StartTests) ... ok
+test_voter_disagreement_refuses_before_any_start (test_start_first_run.StartTests) ... ok
+test_active_service_refuses_apply_before_release (test_upgrade_first_start.UpgradeTests) ... ok
+test_apply_preserves_docs_credentials_empty_roots_and_keeps_guards (test_upgrade_first_start.UpgradeTests) ... ok
+test_credentials_changing_during_publish_stops_with_guards (test_upgrade_first_start.UpgradeTests) ... ok
+test_expired_review_refused_by_actual_launcher_checks (test_upgrade_first_start.UpgradeTests) ... ok
+test_installer_lock_refuses_parallel_apply (test_upgrade_first_start.UpgradeTests) ... ok
+test_loaded_guard_required_before_release (test_upgrade_first_start.UpgradeTests) ... ok
+test_manifest_only_three_executable_pins_change (test_upgrade_first_start.UpgradeTests) ... ok
+test_nonempty_and_missing_recovery_refused (test_upgrade_first_start.UpgradeTests) ... ok
+test_partial_replacement_preserves_failure_and_loaded_guards (test_upgrade_first_start.UpgradeTests) ... ok
+test_payload_rejects_pin_mismatch_before_exec (test_upgrade_first_start.UpgradeTests) ... ok
+test_stopped_rejects_active_pid_and_control_pid (test_upgrade_first_start.UpgradeTests) ... ok
+test_wrong_old_manifest_pin_is_no_mutation (test_upgrade_first_start.UpgradeTests) ... ok
+test_wrong_phase_incarnation_runtime_and_same_release_refused (test_upgrade_first_start.UpgradeTests) ... ok
+
+----------------------------------------------------------------------
+Ran 21 tests in 0.221s
+
+OK
