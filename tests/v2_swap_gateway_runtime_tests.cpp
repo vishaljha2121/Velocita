@@ -119,6 +119,34 @@ void runtime_drill(unsigned mode){
             "six settlement balance oracle replicated");
         return;
     }
+    if(mode==16 || mode==17){
+        config.continuous=true;config.read_outage=mode==16?6000:2000;settlement.prove=true;
+        runtime=std::make_unique<SwapGatewayRuntime>(link,*recovery,*prepared,*submission,prepare,signer,execute,settlement,config);
+        bool outage=true;c.network.gateway_ingress=[&](std::int32_t,std::span<const std::byte>){return !outage;};
+        c.on_round=[&]{runtime->step(steady_ms(),110);};
+        const auto until=steady_ms()+(mode==16?4500:7000);
+        while(steady_ms()<until && !runtime->stopped())c.run(1);
+        if(mode==17){
+            c.on_round={};c.network.gateway_ingress={};
+            require(runtime->stopped() && runtime->status()==SwapGatewayRuntimeStatus::failed && runtime->cause()==SwapGatewayRuntimeCause::state && prepare.calls==0,
+                "an outage longer than the window still stops the gateway");
+            return;
+        }
+        require(!runtime->stopped() && prepare.calls==0,"a short Raft outage does not stop the gateway");
+        outage=false;
+        const auto recovered=steady_ms()+3500;
+        while(steady_ms()<recovered && !runtime->stopped())c.run(1);
+        outage=true;
+        const auto second=steady_ms()+4500;
+        while(steady_ms()<second && !runtime->stopped())c.run(1);
+        require(!runtime->stopped(),"a successful read resets the outage window");
+        outage=false;
+        c.run_until([&]{return runtime->stopped() || std::all_of(c.nodes.begin(),c.nodes.end(),[](auto& n){
+            return n.second->applied_state().spot_swap.settlement_count==1;});},"effect completes after the outage",4000000);
+        c.on_round={};c.network.gateway_ingress={};
+        require(!runtime->stopped() && prepare.calls==1 && signer.calls==1 && execute.calls==1,"the trade completes exactly once after the outage");
+        return;
+    }
     if(mode==15){
         prepare.refuse_route=true;config.continuous=true;
         runtime=std::make_unique<SwapGatewayRuntime>(link,*recovery,*prepared,*submission,prepare,signer,execute,settlement,config);
@@ -272,4 +300,4 @@ void runtime_drill(unsigned mode){
     }
 }
 }
-int main(int argc,char** argv){try{for(unsigned mode=0;mode<16;++mode){if(argc==2 && mode!=static_cast<unsigned>(std::atoi(argv[1])))continue;runtime_drill(mode);std::cout<<"PASS runtime mode "<<mode<<'\n';}return 0;}catch(const std::exception& e){std::cerr<<"FAIL "<<e.what()<<'\n';return 1;}}
+int main(int argc,char** argv){try{for(unsigned mode=0;mode<18;++mode){if(argc==2 && mode!=static_cast<unsigned>(std::atoi(argv[1])))continue;runtime_drill(mode);std::cout<<"PASS runtime mode "<<mode<<'\n';}return 0;}catch(const std::exception& e){std::cerr<<"FAIL "<<e.what()<<'\n';return 1;}}

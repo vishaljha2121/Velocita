@@ -91,7 +91,12 @@ void SwapGatewayRuntime::step(Tick now,std::uint64_t event){
     }
     if(!owns_link_){stop(SwapGatewayRuntimeStatus::failed,SwapGatewayRuntimeCause::state);return;}
     const auto outcome=link_.pump(now);if(outcome.status==LinkStatus::pending || outcome.status==LinkStatus::idle)return;
-    if(outcome.status!=LinkStatus::done){stop(SwapGatewayRuntimeStatus::failed,SwapGatewayRuntimeCause::state);return;}
+    if(outcome.status!=LinkStatus::done){
+        if(outcome.request==LinkRequest::state && config_.read_outage && !config_.recovery_only){
+            owns_link_=false;if(!read_outage_since_)read_outage_since_=now;
+            if(now-read_outage_since_<config_.read_outage){next_read_=now+config_.state_interval;return;}
+        }
+        stop(SwapGatewayRuntimeStatus::failed,SwapGatewayRuntimeCause::state);return;}
     owns_link_=false;
     if(outcome.request==LinkRequest::command){
         if((outcome.result.code!=ApplyCode::applied && outcome.result.code!=ApplyCode::already_applied) || command_digest_.is_zero() ||
@@ -100,6 +105,7 @@ void SwapGatewayRuntime::step(Tick now,std::uint64_t event){
         seen_index_=std::max(seen_index_,outcome.index);command_digest_={};next_read_=0;return;
     }
     if(outcome.request!=LinkRequest::state || outcome.reading.authority_domain!=config_.preparation.authority_domain){stop(SwapGatewayRuntimeStatus::failed,SwapGatewayRuntimeCause::identity);return;}
+    read_outage_since_=0;
     next_read_=now>std::numeric_limits<Tick>::max()-config_.state_interval?std::numeric_limits<Tick>::max():now+config_.state_interval;
     if(outcome.reading.applied_index<seen_index_)return;
     seen_index_=outcome.reading.applied_index;observed(outcome.reading,now,event);
