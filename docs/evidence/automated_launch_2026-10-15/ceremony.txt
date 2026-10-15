@@ -1,0 +1,7 @@
+COMMITTED sequence=1 index=1 term=1 code=0 code_name=applied state_version=1 kill_epoch=1 executor_generation=0 strategy_mode=5 from=3 latency_ms=546
+COMMITTED sequence=2 index=2 term=1 code=0 code_name=applied state_version=2 kill_epoch=1 executor_generation=1 strategy_mode=5 from=3 latency_ms=1450
+COMMITTED sequence=3 index=4 term=1 code=0 code_name=applied state_version=3 kill_epoch=1 executor_generation=1 strategy_mode=5 from=3 latency_ms=53
+ASSIGN-ROLE caller 22 may act as gateway from now on; it may report venue evidence and request cancels
+COMMITTED sequence=4 index=5 term=1 code=0 code_name=applied state_version=4 kill_epoch=1 executor_generation=1 strategy_mode=5 from=3 latency_ms=545
+ASSIGN-ROLE caller 21 may act as strategy from now on; it may record market data, evaluate and authorize decisions
+COMMITTED sequence=5 index=6 term=1 code=0 code_name=applied state_version=5 kill_epoch=1 executor_generation=1 strategy_mode=5 from=3 latency_ms=45

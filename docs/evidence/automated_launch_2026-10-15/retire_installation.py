@@ -1,4 +1,7 @@
-"""Owner sudo: move the stopped b79e65be swap installation aside so the reviewed fresh install can run; deletes and starts nothing."""
+"""Owner sudo: move the stopped b79e65be swap installation aside so the reviewed fresh install can run; deletes and starts nothing.
+
+The provisioned state directories are recreated empty with their original owner and mode; their contents go to the archive.
+"""
 import json
 import os
 from pathlib import Path
@@ -38,6 +41,9 @@ def retire(root, date, run=subprocess.run, uid_check=True):
     require(all(source.lstat().st_dev == device for source, _ in moves) and credentials.stat().st_dev == (root/'run').stat().st_dev,
             'every move must stay on one filesystem')
     meta = public.lstat()
+    states = [root/'var/lib'/n for n in ('velocita-swap-gateway', 'velocita-swap-signer')]
+    require(all((d/sub).is_dir() and not (d/sub).is_symlink() for d in states for sub in ('recovery', 'metrics')), 'expected installation is incomplete; stop and investigate')
+    layout = [(d/sub, (d/sub).lstat()) for d in states for sub in ('', 'recovery', 'metrics')]
     archive.mkdir(mode=0o700)
     for name in ('units', 'state'):
         (archive/name).mkdir(mode=0o700)
@@ -47,6 +53,10 @@ def retire(root, date, run=subprocess.run, uid_check=True):
     public.mkdir()
     os.chown(public, meta.st_uid, meta.st_gid)
     os.chmod(public, stat.S_IMODE(meta.st_mode))
+    for path, before in layout:
+        path.mkdir()
+        os.chown(path, before.st_uid, before.st_gid)
+        os.chmod(path, stat.S_IMODE(before.st_mode))
     run(['/usr/bin/systemctl', 'daemon-reload'], check=True)
     for unit in UNITS:
         state = run(['/usr/bin/systemctl', 'show', unit, '--property=LoadState', '--value'], capture_output=True, text=True, check=True).stdout.strip()

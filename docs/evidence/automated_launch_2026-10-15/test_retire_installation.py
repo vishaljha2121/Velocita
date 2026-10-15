@@ -16,10 +16,14 @@ class Retire(unittest.TestCase):
         scratch.mkdir(parents=True, exist_ok=True)
         self.tmp = tempfile.TemporaryDirectory(dir=scratch)
         self.root = Path(self.tmp.name)
-        for d in ('etc/velocita-swap/public', 'var/lib/velocita-swap-gateway/recovery', 'var/lib/velocita-swap-signer', 'var/lib/velocita-live-observer',
+        for d in ('etc/velocita-swap/public', 'var/lib/velocita-swap-gateway/recovery', 'var/lib/velocita-swap-gateway/metrics', 'var/lib/velocita-swap-signer/recovery',
+                  'var/lib/velocita-swap-signer/metrics', 'var/lib/velocita-live-observer',
                   'run/velocita-swap-credentials/gateway', 'etc/systemd/system'):
             (self.root/d).mkdir(parents=True)
         (self.root/'etc/velocita-swap/public').chmod(0o750)
+        for role in ('gateway', 'signer'):
+            for sub in ('', '/recovery', '/metrics'):
+                (self.root/f'var/lib/velocita-swap-{role}{sub}').chmod(0o700)
         (self.root/'etc/velocita-swap/public/manifest.json').write_text('{}')
         (self.root/'var/lib/velocita-swap-gateway/recovery/prepare.journal').write_text('journal')
         (self.root/'var/lib/velocita-live-observer/settlements.json').write_text('cache')
@@ -52,6 +56,11 @@ class Retire(unittest.TestCase):
         self.assertEqual((self.root/'run/velocita-retired-credentials-b79e65be-20261015/gateway/session.bearer').read_text(), 'secret')
         public = self.root/'etc/velocita-swap/public'
         self.assertEqual((list(public.iterdir()), public.stat().st_mode & 0o777), ([], 0o750))
+        for role in ('gateway', 'signer'):
+            for sub in ('', '/recovery', '/metrics'):
+                fresh = self.root/f'var/lib/velocita-swap-{role}{sub}'
+                self.assertEqual(fresh.stat().st_mode & 0o777, 0o700, 'provisioned state directory recreated with its mode')
+            self.assertEqual(list((self.root/f'var/lib/velocita-swap-{role}/recovery').iterdir()), [], 'recreated empty')
         for unit in R.UNITS:
             self.assertFalse((self.root/'etc/systemd/system'/unit).exists())
         self.assertIn(['/usr/bin/systemctl', 'daemon-reload'], self.calls)
@@ -62,10 +71,10 @@ class Retire(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'inactive'):
             self.retire()
         self.active = 'inactive'
-        (self.root/'var/lib/velocita-swap-signer').rmdir()
+        (self.root/'var/lib/velocita-swap-signer/metrics').rmdir()
         with self.assertRaisesRegex(ValueError, 'incomplete'):
             self.retire()
-        (self.root/'var/lib/velocita-swap-signer').mkdir()
+        (self.root/'var/lib/velocita-swap-signer/metrics').mkdir()
         (self.root/'var/lib/velocita-retired-b79e65be-20261015').mkdir()
         with self.assertRaisesRegex(ValueError, 'preserve'):
             self.retire()
@@ -89,8 +98,8 @@ class Retire(unittest.TestCase):
 
     def test_symlinked_piece_refused(self):
         signer = self.root/'var/lib/velocita-swap-signer'
-        signer.rmdir()
-        signer.symlink_to(self.root/'etc')
+        signer.rename(self.root/'var/lib/elsewhere')
+        signer.symlink_to(self.root/'var/lib/elsewhere')
         with self.assertRaisesRegex(ValueError, 'symlink'):
             self.retire()
 

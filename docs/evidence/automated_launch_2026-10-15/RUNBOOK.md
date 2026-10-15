@@ -28,6 +28,9 @@ Stop at the first refusal. Never retry a partial ceremony; reconcile instead.
    (new incarnation, `startup = bootstrap`), point the units at `qualified-54a5fcb` (`voters.py stage`), start, check
    ready with commit 0, then `voters.py recover`. Nothing is deleted. `tools/cluster-authority-domain` computes the
    new authority domain from the three configs (checked against the live cluster's recorded domain).
+   **Done 2026-10-15 13:30 UTC**: incarnation `aae119b95ddcea5a206f03ab5ca12c15`, authority domain `ce15af7a…`
+   (`authority-domain-aae119b9.txt`); all three voters ready at term 1, commit 0, halted; startup set to recover.
+   The Pi took about seven minutes to create its containers under load.
 8. **owner `!`** — `operator.zsh NEW ceremony --run` from the Mac as operator caller 7/key 9, new session directory:
    seq 1 `kill-epoch 1`, seq 2 `executor-generation 1`, seq 3 `install-catalog <root> 1 1`,
    seq 4 `assign-role 22 gateway`, seq 5 `assign-role 21 strategy`.
