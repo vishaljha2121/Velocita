@@ -67,20 +67,33 @@ void bounds(){
     for(auto [field,value]:bad){Fixture f;f.set(field,value);require(!f.read(),"numeric_bound_refused");}
 }
 }
-void buy_scope(){
+void live_scope(){
     Fixture f;const auto r=f.read();require(r.has_value(),"scope_review_decodes");
     swap::State s;s.initialized=true;s.opening.binding=f.binding.allocation;auto& l=s.opening.limits;
-    l.max_purchase_total=swap::QuoteAtoms{1'000'000};l.max_buy_debit=swap::QuoteAtoms{1'000'000};l.max_fee=swap::QuoteAtoms{2'000};l.max_realized_loss=swap::QuoteAtoms{500'000};
-    auto& i=s.pending.intent;s.pending.phase=swap::Phase::reserved;i.effect=EffectId{1};i.side=Side::buy;
-    i.max_quote_debit=swap::QuoteAtoms{1'000'000};i.quote_input=swap::QuoteAtoms{998'000};i.fee_cap=swap::QuoteAtoms{2'000};s.last_effect=1;
-    require(swap_mvp_buy_scope(s,*r),"first_effect_buy_in_scope");
-    auto next=s;next.pending.intent.effect=EffectId{2};next.last_effect=2;require(!swap_mvp_buy_scope(next,*r),"second_effect_without_release_out_of_scope");
-    next.last_release={EffectId{1},hash("released")};require(swap_mvp_buy_scope(next,*r),"next_effect_after_release_in_scope");
-    auto settled=next;settled.settlement_count=1;require(!swap_mvp_buy_scope(settled,*r),"no_buy_after_a_settlement");
-    settled.pending={};require(swap_mvp_buy_scope(settled,*r),"settled_idle_state_in_scope");
-    settled.settlement_count=2;require(!swap_mvp_buy_scope(settled,*r),"two_settlements_out_of_scope");
+    l.max_purchase_total=swap::QuoteAtoms{3'000'000'000};l.max_buy_debit=swap::QuoteAtoms{25'000'000};l.max_fee=swap::QuoteAtoms{50'000};
+    l.max_realized_loss=swap::QuoteAtoms{10'000'000};l.max_sell_input=swap::BaseAtoms{250'000'000};
+    auto& i=s.pending.intent;s.pending.phase=swap::Phase::reserved;i.effect=EffectId{1};i.side=Side::buy;s.last_effect=1;
+    require(swap_live_scope(s,*r),"buy_at_every_ceiling_in_scope");
+    auto sell=s;sell.pending.intent.side=Side::sell;sell.pending.intent.effect=EffectId{240};sell.last_effect=240;sell.settlement_count=16;sell.settled_total=239;
+    require(swap_live_scope(sell,*r),"sell_at_lifetime_order_limit_in_scope");
+    auto beyond=sell;beyond.pending.intent.effect=EffectId{241};beyond.last_effect=241;require(!swap_live_scope(beyond,*r),"order_241_out_of_scope");
+    auto idle=s;idle.pending={};idle.last_effect=240;require(swap_live_scope(idle,*r),"idle_at_order_limit_in_scope");
+    idle.last_effect=241;require(!swap_live_scope(idle,*r),"idle_past_order_limit_out_of_scope");
+    for(unsigned n=0;n<5;++n){auto wide=s;auto& w=wide.opening.limits;
+        if(n==0)w.max_realized_loss=swap::QuoteAtoms{10'000'001};
+        if(n==1)w.max_buy_debit=swap::QuoteAtoms{25'000'001};
+        if(n==2)w.max_fee=swap::QuoteAtoms{50'001};
+        if(n==3)w.max_sell_input=swap::BaseAtoms{250'000'001};
+        if(n==4)w.max_purchase_total=swap::QuoteAtoms{3'000'000'001};
+        require(!swap_live_scope(wide,*r),"opening_wider_than_owner_envelope_out_of_scope");}
+    auto zero=s;zero.opening.limits.max_realized_loss={};require(!swap_live_scope(zero,*r),"opening_without_loss_limit_out_of_scope");
+    auto conflicted=s;conflicted.conflicted=true;require(!swap_live_scope(conflicted,*r),"conflicted_state_out_of_scope");
+    auto foreign=s;foreign.opening.binding.account=AccountId{99};require(!swap_live_scope(foreign,*r),"foreign_binding_out_of_scope");
+    auto empty=s;empty.initialized=false;require(!swap_live_scope(empty,*r),"uninitialized_out_of_scope");
+    auto transient=s;transient.pending.intent.transient_base_hold=swap::BaseAtoms{1};require(!swap_live_scope(transient,*r),"transient_hold_out_of_scope");
+    auto costly=*r;costly.policy.accepted_costs.max_output_deduction=swap::BaseAtoms{2'039'281};require(!swap_live_scope(s,costly),"repayment_allowance_above_cap_out_of_scope");
 }
-int main(int argc,char** argv){const std::pair<const char*,void(*)()> tests[]={{"valid",valid},{"buy_scope",buy_scope},{"identities",identities},{"schema",schema},{"bounds",bounds}};
+int main(int argc,char** argv){const std::pair<const char*,void(*)()> tests[]={{"valid",valid},{"live_scope",live_scope},{"identities",identities},{"schema",schema},{"bounds",bounds}};
     unsigned ran{},failed{};for(auto [name,fn]:tests){if(argc==2 && std::string_view(argv[1])!=name)continue;++ran;
         try{fn();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){++failed;std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';}}
     return ran&&!failed?0:1;

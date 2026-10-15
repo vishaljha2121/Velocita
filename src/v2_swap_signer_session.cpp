@@ -202,7 +202,7 @@ SwapSignerStatus SwapSignerSession::poll(){
         pending.intent.sign_by!=expected_sign_by_ || !clock_valid(pending.intent,swap.event_time))return refuse(SwapSignerStatus::refused);
     if(verification_){
         const auto& v=*verification_;
-        if(!swap_mvp_buy_scope(swap,v))return refuse(SwapSignerStatus::refused);
+        if(!swap_live_scope(swap,v))return refuse(SwapSignerStatus::refused);
         const auto checked=truemarkets::verify_swap_transaction(
             std::string_view(reinterpret_cast<const char*>(payload_.data()),size_),v.organization.view(),v.signer.view(),
             pending,v.policy,lookup_,last_event_);

@@ -21,17 +21,14 @@ bool hex(std::string_view s,std::span<std::byte> out)noexcept{
 }
 void put64(std::span<std::byte,8> out,std::uint64_t value)noexcept{for(unsigned n=0;n<8;++n)out[n]=static_cast<std::byte>(value>>(8*n));}
 }
-bool swap_mvp_buy_scope(const swap::State& state,const SwapSignerVerificationContext& context)noexcept{
-    const auto& limits=state.opening.limits;
+bool swap_live_scope(const swap::State& state,const SwapSignerVerificationContext& context)noexcept{
+    const auto& l=state.opening.limits;
     if(!state.initialized || state.conflicted || state.opening.binding!=context.policy.binding ||
         context.policy.accepted_costs.max_output_deduction.value()>2'039'280 ||
-        limits.max_purchase_total.value()!=1'000'000 || limits.max_buy_debit.value()!=1'000'000 ||
-        limits.max_fee.value()!=2'000 || !limits.max_realized_loss.value() || limits.max_realized_loss.value()>500'000 ||
-        state.purchases.value()>1'000'000 || state.settlement_count>1)return false;
-    if(state.pending.phase==swap::Phase::none)return true;
-    const auto& intent=state.pending.intent;
-    return !state.settlement_count && (intent.effect.value()==1 || state.last_release.effect.value()+1==intent.effect.value()) && intent.side==Side::buy &&
-        intent.max_quote_debit.value()==1'000'000 && intent.quote_input.value()==998'000 && intent.fee_cap.value()==2'000;
+        !l.max_realized_loss.value() || l.max_realized_loss.value()>10'000'000 || l.max_buy_debit.value()>25'000'000 ||
+        l.max_fee.value()>50'000 || l.max_sell_input.value()>250'000'000 || l.max_purchase_total.value()>3'000'000'000 ||
+        state.last_effect>240)return false;
+    return state.pending.phase==swap::Phase::none || !state.pending.intent.transient_base_hold.value();
 }
 Digest256 swap_signer_verification_digest(const SwapSignerVerificationContext& v)noexcept{
     if(v.organization.empty() || v.organization.length>v.organization.bytes.size() ||

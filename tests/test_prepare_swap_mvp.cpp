@@ -69,14 +69,14 @@ void parser(){
     require(!fields(build_intent(bundle,f.intent).at("record-summary.txt")).contains("assumed_released_effect"),"first_effect_assumes_nothing");
 }
 void scope(){
-    Fixture f;rejected([&]{(void)build_opening(f.profile,f.history,f.transaction,change(f.opening,"max_realized_loss_atoms","500001"));},"opening reducer or one-buy scope refused","loss_cap_one_atom_refused");
+    Fixture f;rejected([&]{(void)build_opening(f.profile,f.history,f.transaction,change(f.opening,"max_realized_loss_atoms","10000001"));},"opening reducer or live scope refused","loss_cap_above_ten_dollars_refused");
     rejected([&]{(void)build_opening(change(f.profile,"max_buy_output_deduction_lamports","2039281"),f.history,f.transaction,f.opening);},"runtime profile not admitted","repayment_cap_one_atom_refused");
     rejected([&]{(void)build_opening(f.profile,f.history,f.transaction,change(f.opening,"base_atoms","40000001"));},"observed balances do not match all-inventory history","balance_discrepancy_refused");
     rejected([&]{(void)build_opening(f.profile,f.history,f.transaction,change(f.opening,"valuation_observed_ms","899"));},"mark or intent timing bound invalid","stale_mark_refused");
     rejected([&]{(void)build_opening(f.profile,f.history,f.transaction,change(f.opening,"review_expires_ms","2001"));},"review window exceeds current evidence","expiry_refused");
     auto bundle=f.build();rejected([&]{(void)build_intent(bundle,change(f.intent,"minimum_base_atoms","6900812"));},"conservative quote floor refused","one_lamport_receipt_shortfall_refused");
     rejected([&]{(void)build_intent(bundle,change(f.intent,"quote_observed_ms","950"));},"fresh quote or intent window refused","expired_quote_refused");
-    rejected([&]{(void)build_intent(bundle,change(f.intent,"kill_epoch","2"));},"intent reducer or one-buy scope refused","wrong_epoch_refused");
+    rejected([&]{(void)build_intent(bundle,change(f.intent,"kill_epoch","2"));},"intent reducer or live scope refused","wrong_epoch_refused");
     auto wrong=f.history;auto begin=wrong.find("\"owner_sha256\":\"")+16;wrong[begin]=wrong[begin]=='a'?'b':'a';
     rejected([&]{(void)build_opening(f.profile,wrong,f.transaction,f.opening);},"history identity or funding refused","wrong_history_owner_refused");
     rejected([&]{(void)build_opening(change(f.profile,"failure_fee_payer",std::string(63,'0')+'9'),f.history,f.transaction,f.opening);},"sponsor pin differs","wrong_sponsor_refused");
@@ -114,7 +114,7 @@ void amendment(const fs::path& root){
         summary.at("replacement_price")=="147537213","amendment_summary_not_commit_evidence");
     require(read(o,512)==bundle.at("opening.record") && !fs::exists(out/"opening.record"),"amendment_preserves_original_opening");
     auto lower=change(change(f.intent,"minimum_base_atoms","6777951"),"quote_gross_output_lamports","9281296");
-    rejected([&]{(void)build_intent(bundle,lower);},"intent reducer or one-buy scope refused","unamended_price_floor_still_refuses");
+    rejected([&]{(void)build_intent(bundle,lower);},"intent reducer or live scope refused","unamended_price_floor_still_refuses");
     bundle["amendment.record"]=bytes;
     const auto intent=build_intent(bundle,lower);const auto description=fields(intent.at("record-summary.txt"));
     require(description.at("amendment_record_sha256")==to_hex(hash(bytes)) && description.at("amendment_committed")=="0" &&
@@ -133,7 +133,7 @@ void amendment(const fs::path& root){
     rejected([&]{(void)build_intent(bundle,change(lower,"now_ms","1019"));},"amendment record refused","future_amendment_refused");
     const auto tighter=build_price_amendment(bundle.at("opening.record"),change(parameters,"replacement_price","147537212"));
     original=bundle;original["amendment.record"]=tighter.at("amendment.record");
-    rejected([&]{(void)build_intent(original,lower);},"intent reducer or one-buy scope refused","amended_price_one_micro_tighter_refuses");
+    rejected([&]{(void)build_intent(original,lower);},"intent reducer or live scope refused","amended_price_one_micro_tighter_refuses");
     swap::Record bad;require(swap::decode(std::as_bytes(std::span(bytes)),bad)==swap::CodecError::none,"bad_amendment_fixture_decodes");
     std::get<swap::AmendBuyPrice>(bad.command).expected_revision=1;original=bundle;original["amendment.record"]=canonical(bad);
     rejected([&]{(void)build_intent(original,lower);},"price amendment reducer refused","intent_rechecks_amendment_revision");

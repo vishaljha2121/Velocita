@@ -8,9 +8,10 @@ struct VerifiedRig : Rig {
     SwapSignerVerificationContext reviewed;
     SwapSignerConfig cfg{config()};
     std::string payload;
-    explicit VerifiedRig(std::uint64_t payment=2'039'280,std::uint64_t age=100,std::uint64_t cap=2'039'280,std::uint64_t minimum=6'819'647,unsigned pool=0)
+    explicit VerifiedRig(std::uint64_t payment=2'039'280,std::uint64_t age=100,std::uint64_t cap=2'039'280,std::uint64_t minimum=6'819'647,unsigned pool=0,bool selling=false)
         :tx(pool){
-        tx.payment=payment;tx.policy.accepted_costs.max_output_deduction=swap::BaseAtoms{cap};tx.pending.intent.min_base_receive=swap::BaseAtoms{minimum};
+        if(selling)tx.make_sell();
+        tx.payment=payment;tx.policy.accepted_costs.max_output_deduction=swap::BaseAtoms{cap};if(!selling)tx.pending.intent.min_base_receive=swap::BaseAtoms{minimum};
         tx.policy.max_envelope_age_ms=age;tx.policy.binding=cfg.binding;tx.pending.intent.binding=cfg.binding;
         reviewed={*truemarkets::tm_text("verifier-fixture"),*truemarkets::tm_text(std::string(31,'1')+"3"),tx.policy};
         cfg.transaction_policy_digest=swap_signer_verification_digest(reviewed);
@@ -22,7 +23,13 @@ struct VerifiedRig : Rig {
         state.opening.limits.max_buy_debit=swap::QuoteAtoms{1'000'000};
         state.opening.limits.max_fee=swap::QuoteAtoms{2'000};
         state.opening.limits.max_realized_loss=swap::QuoteAtoms{500'000};
+        state.opening.limits.max_sell_input=swap::BaseAtoms{250'000'000};
         state.reserved_quote=swap::QuoteAtoms{1'000'000};state.event_time=1000;clock.event=1001;
+        if(selling){
+            state.opening.base=swap::BaseAtoms{120'000'000};state.opening.base_cost=swap::QuoteAtoms{12'000'000};
+            state.base=state.opening.base;state.cost=state.opening.base_cost;state.opening.limits.max_fee=swap::QuoteAtoms{50'000};
+            state.reserved_quote={};state.reserved_base=swap::BaseAtoms{120'000'000};
+        }
         session.reset();store.reset();binding=swap_signer_journal_binding(cfg,key.public_key);
         store=std::make_unique<SwapSubmissionStore>(scratch.base/"verified-replay",binding,SwapSubmissionFaultHook{Fault::proceed,&fault});
         require(store->create({binding,1,digest(51),EffectId{0}})==SwapSubmissionCode::none,"reviewed_journal_created");
@@ -50,30 +57,32 @@ void verified_signature_and_recovery(){
         "verified_restart_returns_same_stamp_without_resigning");
     r.payload.back()=' ';require(!r.recover_stamp() && r.session->stamp().empty(),"changed_payload_cannot_recover_stamp");
 }
-void one_buy_scope(){
-    VerifiedRig r;r.voter.state.spot_swap.opening.limits.max_purchase_total=swap::QuoteAtoms{2'000'000};
-    require(r.begin(),"broader_budget_request_starts");(void)r.finish();
-    require(r.refused_unsigned(),"mvp_refuses_broader_runtime_purchase_budget");
-    VerifiedRig second;second.voter.state.spot_swap.last_effect=2;
-    second.voter.state.spot_swap.pending.intent.effect=EffectId{2};
-    require(second.session->start(EffectId{2},1,handle,second.bytes(),10,1100,second.tx.prefix()),"second_effect_starts_read");(void)second.finish();
-    require(second.session->status()==SwapSignerStatus::refused && second.key.protected_key->signature_attempts()==0,
-        "mvp_refuses_second_effect_even_with_unspent_budget");
-    VerifiedRig released;auto& after=released.voter.state.spot_swap;after.last_effect=2;after.pending.intent.effect=EffectId{2};
-    after.last_release=swap::ReleaseUnsent{EffectId{1},digest(60)};
-    require(released.session->start(EffectId{2},1,handle,released.bytes(),10,1100,released.tx.prefix()) &&
-        released.finish()==SwapSignerStatus::signed_once,"mvp_signs_next_effect_after_the_previous_was_released_unsent");
-    VerifiedRig skipped;auto& gap=skipped.voter.state.spot_swap;gap.last_effect=3;gap.pending.intent.effect=EffectId{3};
-    gap.last_release=swap::ReleaseUnsent{EffectId{1},digest(60)};
-    require(skipped.session->start(EffectId{3},1,handle,skipped.bytes(),10,1100,skipped.tx.prefix()),"gap_effect_starts_read");(void)skipped.finish();
-    require(skipped.session->status()==SwapSignerStatus::refused && skipped.key.protected_key->signature_attempts()==0,
-        "mvp_refuses_effect_that_skips_an_unreleased_predecessor");
-    VerifiedRig loss;loss.voter.state.spot_swap.opening.limits.max_realized_loss=swap::QuoteAtoms{500'001};
-    require(loss.begin(),"broader_loss_request_starts");(void)loss.finish();
-    require(loss.refused_unsigned(),"mvp_refuses_larger_loss_allowance");
+void live_scope(){
+    VerifiedRig budget;budget.voter.state.spot_swap.opening.limits.max_purchase_total=swap::QuoteAtoms{3'000'000'000};
+    require(budget.begin() && budget.finish()==SwapSignerStatus::signed_once,"envelope_purchase_budget_signs");
+    VerifiedRig wider;wider.voter.state.spot_swap.opening.limits.max_purchase_total=swap::QuoteAtoms{3'000'000'001};
+    require(wider.begin(),"wider_budget_request_starts");(void)wider.finish();
+    require(wider.refused_unsigned(),"purchase_budget_above_envelope_refused");
+    VerifiedRig later;auto& next=later.voter.state.spot_swap;next.last_effect=240;next.pending.intent.effect=EffectId{240};
+    require(later.session->start(EffectId{240},1,handle,later.bytes(),10,1100,later.tx.prefix()) && later.finish()==SwapSignerStatus::signed_once,
+        "order_240_signs_without_released_predecessors");
+    VerifiedRig beyond;auto& over=beyond.voter.state.spot_swap;over.last_effect=241;over.pending.intent.effect=EffectId{241};
+    require(beyond.session->start(EffectId{241},1,handle,beyond.bytes(),10,1100,beyond.tx.prefix()),"order_241_starts_read");(void)beyond.finish();
+    require(beyond.session->status()==SwapSignerStatus::refused && beyond.key.protected_key->signature_attempts()==0,"order_241_refused");
+    VerifiedRig loss;loss.voter.state.spot_swap.opening.limits.max_realized_loss=swap::QuoteAtoms{10'000'001};
+    require(loss.begin(),"larger_loss_request_starts");(void)loss.finish();
+    require(loss.refused_unsigned(),"loss_allowance_above_ten_dollars_refused");
     VerifiedRig cost(2'039'280,100,2'039'281);
     require(cost.begin(),"broader_cost_request_starts");(void)cost.finish();
-    require(cost.refused_unsigned(),"mvp_refuses_larger_repayment_allowance");
+    require(cost.refused_unsigned(),"larger_repayment_allowance_refused");
+}
+void sell_signs_under_live_scope(){
+    VerifiedRig r(2'039'280,100,2'039'280,6'819'647,0,true);
+    require(r.begin() && r.finish()==SwapSignerStatus::signed_once,"verified_sell_signs_once");
+    require(r.key.verifies(r.bytes(),r.session->signature_der()),"sell_signature_covers_exact_payload");
+    VerifiedRig floor(2'039'280,100,2'039'280,6'819'647,0,true);floor.voter.state.spot_swap.pending.intent.min_quote_receive=swap::QuoteAtoms{12'437'501};
+    require(floor.begin(),"higher_sell_floor_starts");(void)floor.finish();
+    require(floor.refused_unsigned(),"sell_floor_above_route_refused");
 }
 void conservative_mvp(){
     VerifiedRig r;
@@ -126,7 +135,7 @@ void freshness_and_authority(){
 }
 }
 int main(int argc,char**argv){
-    const std::pair<const char*,void(*)()> cases[]{{"verified_signature_and_recovery",verified_signature_and_recovery},{"conservative_mvp",conservative_mvp},{"one_buy_scope",one_buy_scope},
+    const std::pair<const char*,void(*)()> cases[]{{"verified_signature_and_recovery",verified_signature_and_recovery},{"conservative_mvp",conservative_mvp},{"live_scope",live_scope},{"sell_signs_under_live_scope",sell_signs_under_live_scope},
         {"economic_and_context_refusal",economic_and_context_refusal},{"freshness_and_authority",freshness_and_authority},
         {"second_pool_same_journal",second_pool_same_journal},{"lookup_evidence",lookup_evidence}};
     unsigned ran{},failed{};for(const auto&[name,fn]:cases){if(argc==2 && std::string_view(argv[1])!=name)continue;++ran;

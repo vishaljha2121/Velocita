@@ -546,8 +546,8 @@ int run(const Arguments& a) {
         const auto& current=state.spot_swap;
         if(!swap_account_review_matches(*review,b,profile->user_id.view(),current))
             throw Usage("reviewed live funding/account pins disagree with authenticated Raft opening");
-        if(!swap_mvp_buy_scope(current,*transaction_review))
-            throw Usage("runtime is restricted to the reviewed single $1 buy and bounded repayment");
+        if(!swap_live_scope(current,*transaction_review))
+            throw Usage("runtime opening exceeds the owner-approved live envelope");
         if(a.initialize_swap_recovery && (current.pending.phase!=swap::Phase::none || current.settlement_count || current.last_effect || current.conflicted))
             throw Usage("runtime journals initialize only before first intent; never replace an existing run");
         struct Clock final:SwapFinalizedReadClock {

@@ -102,7 +102,7 @@ Fields build_opening(std::string profile,std::string history,std::string transac
         {"valuation_evidence_sha256",to_hex(mark_evidence)},{"valuation_base_atoms",std::to_string(opening.base.value())},
         {"valuation_net_quote_atoms",std::to_string(opening.base_cost.value())},{"valuation_observed_ms",std::to_string(mark_time)}});
     opening.funding_evidence=hash(funding);swap::State state;
-    require(swap::apply(state,opening,swap::Role::operator_role,now)==swap::Code::applied && swap_mvp_buy_scope(state,c.transaction),"opening reducer or one-buy scope refused");
+    require(swap::apply(state,opening,swap::Role::operator_role,now)==swap::Code::applied && swap_live_scope(state,c.transaction),"opening reducer or live scope refused");
     const auto review=document({{"schema","1"},{"runtime_identity",to_hex(swap_runtime_identity_digest(c.profile.gateway.binding))},
         {"opening_digest",to_hex(swap_opening_review_digest(opening))},{"history_evidence",to_hex(hash(history))},
         {"user_id",std::string(c.profile.user_id.view())},{"reviewed_at_ms",std::to_string(now)},{"expires_at_ms",std::to_string(expires)},
@@ -153,7 +153,7 @@ Fields build_intent(const Fields& bundle,std::string parameters){
     const auto& bytes=bundle.at("opening.record");const auto decoded=opening_record(bytes,now);
     swap::State state;const auto& opening=std::get<swap::Initialize>(decoded.command);
     require(swap::apply(state,opening,swap::Role::operator_role,decoded.event_time)==swap::Code::applied &&
-        swap_mvp_buy_scope(state,c.transaction) && swap_account_history_funding(c.history,*r,c.profile.gateway.binding,state,now),"opening funding expired or differs");
+        swap_live_scope(state,c.transaction) && swap_account_history_funding(c.history,*r,c.profile.gateway.binding,state,now),"opening funding expired or differs");
     const auto amendment=bundle.find("amendment.record");
     if(amendment!=bundle.end()){
         swap::Record record;require(swap::decode(std::as_bytes(std::span(amendment->second)),record)==swap::CodecError::none &&
@@ -181,7 +181,7 @@ Fields build_intent(const Fields& bundle,std::string parameters){
     const auto factor=10'000-slippage;const auto gross=(quoted/10'000)*factor+((quoted%10'000)*factor)/10'000;
     const auto net=bound_buy_net_cost(gross,repayment,0,intent.min_base_receive,c.transaction.policy.accepted_costs);
     require(net.code==BuyNetCostCode::within_arithmetic_bounds_only && intent.min_base_receive.value()>0,"conservative quote floor refused");
-    require(swap::apply(state,intent,swap::Role::strategy,now)==swap::Code::applied && swap_mvp_buy_scope(state,c.transaction),"intent reducer or one-buy scope refused");
+    require(swap::apply(state,intent,swap::Role::strategy,now)==swap::Code::applied && swap_live_scope(state,c.transaction),"intent reducer or live scope refused");
     const auto record=canonical({swap::Role::strategy,now,intent});
     Fields summary{{"kind","Intent"},{"record_sha256",to_hex(hash(record))},
         {"opening_record_sha256",to_hex(hash(bytes))},{"runtime_profile_sha256",to_hex(hash(profile))},{"quote_evidence_sha256",to_hex(quote_evidence)},
