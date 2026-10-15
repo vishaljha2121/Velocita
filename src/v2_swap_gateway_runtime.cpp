@@ -40,7 +40,7 @@ SwapGatewayRuntime::SwapGatewayRuntime(GatewayLink& link,SwapReconcileStore& rec
 }
 SwapGatewayRuntime::~SwapGatewayRuntime(){if(owns_link_)link_.abandon();}
 void SwapGatewayRuntime::stop(SwapGatewayRuntimeStatus s,SwapGatewayRuntimeCause cause)noexcept{
-    preparing_.reset();submitting_.reset();resolving_.reset();signed_.reset();
+    preparing_.reset();submitting_.reset();resolving_.reset();signed_.reset();queued_command_.reset();
     if(owns_link_)link_.abandon();owns_link_=false;status_=s;cause_=cause;
 }
 void SwapGatewayRuntime::command(swap::Command body,Tick now,std::uint64_t event){
@@ -61,6 +61,13 @@ void SwapGatewayRuntime::step(Tick now,std::uint64_t event){
     if(now<last_tick_ || event<last_event_){stop(SwapGatewayRuntimeStatus::failed,SwapGatewayRuntimeCause::state);return;}last_tick_=now;last_event_=event;
     if(recovery_.status()!=SwapReconcileStoreCode::none || preparation_.status()!=SwapPrepareStoreCode::none || submissions_.status()!=SwapSubmissionCode::none){
         stop(SwapGatewayRuntimeStatus::failed,SwapGatewayRuntimeCause::storage);return;}
+    if(queued_command_){
+        if(owns_link_ || link_.busy() || preparing_ || submitting_ || resolving_){
+            stop(SwapGatewayRuntimeStatus::failed,SwapGatewayRuntimeCause::state);return;
+        }
+        auto body=std::move(*queued_command_);queued_command_.reset();
+        command(std::move(body),now,event);return;
+    }
     if(preparing_){const auto s=preparing_->poll(now,event);if(s==SwapPrepareSessionStatus::reading_state)return;
         preparing_.reset();status_=SwapGatewayRuntimeStatus::running;next_read_=0;
         if(s!=SwapPrepareSessionStatus::prepared)stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::prepare_unknown);return;}
@@ -151,14 +158,14 @@ void SwapGatewayRuntime::observed(const StateReading& reading,Tick now,std::uint
                 if(preparation_.release(reading.applied_index,reading.state_digest)!=SwapPrepareStoreCode::none){
                     stop(SwapGatewayRuntimeStatus::failed,SwapGatewayRuntimeCause::storage);return;}
             }
-            command(swap::ReleaseUnsent{effect_,preparation_.latest().response_digest},now,event);return;
+            queued_command_=swap::ReleaseUnsent{effect_,preparation_.latest().response_digest};return;
         }
         if(preparation_.latest().phase==SwapPreparePhase::create_intent){stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::prepare_unknown);return;}
         if(preparation_.latest().phase==SwapPreparePhase::prepared && preparation_.latest().operation.effect==effect_){
             const auto& saved=preparation_.latest();const auto& p=saved.prepared;
             if(saved.operation.effect!=effect_ || saved.operation.intent_digest!=swap_record_digest({swap::Role::strategy,pending.intent.source_time,pending.intent})){
                 stop(SwapGatewayRuntimeStatus::failed,SwapGatewayRuntimeCause::identity);return;}
-            command(swap::Prepare{effect_,p.payload_digest,sha256_digest(std::as_bytes(std::span(p.handle.bytes.data(),p.handle.length))),1},now,event);return;
+            queued_command_=swap::Prepare{effect_,p.payload_digest,sha256_digest(std::as_bytes(std::span(p.handle.bytes.data(),p.handle.length))),1};return;
         }
         preparing_=std::make_unique<SwapPrepareSession>(link_,preparation_,prepare_port_,SwapPrepareSessionConfig{config_.preparation,SwapPrepareInputMapping::fee_inclusive_quote_input,config_.timeout});
         if(!preparing_->start(effect_,reading.applied_index,now,event)){stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::prepare_unknown);return;}
@@ -166,10 +173,13 @@ void SwapGatewayRuntime::observed(const StateReading& reading,Tick now,std::uint
     }
     if(!prepared_matches(pending)){stop(SwapGatewayRuntimeStatus::failed,SwapGatewayRuntimeCause::identity);return;}
     if(pending.phase==swap::Phase::prepared || (pending.phase==swap::Phase::attempted && submissions_.latest().phase!=SwapSubmissionPhase::execute_intent)){
-        if(!signed_){try{signed_=signer_.sign_or_retrieve(sequence_,reading.applied_index,pending.intent.sign_by);}catch(...){signed_.reset();}}
+        const bool fresh_signature=!signed_;
+        if(fresh_signature){try{signed_=signer_.sign_or_retrieve(sequence_,reading.applied_index,pending.intent.sign_by);}catch(...){signed_.reset();}}
         if(!signed_ || signed_->identity.effect!=effect_ || signed_->identity.payload!=pending.payload || signed_->identity.handle_digest!=pending.handle){
             stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::signer_refused);return;}
-        if(pending.phase==swap::Phase::prepared){command(swap::Attempt{effect_,pending.payload},now,event);return;}
+        if(pending.phase==swap::Phase::prepared){queued_command_=swap::Attempt{effect_,pending.payload};return;}
+        // Retrieved signing may block too; re-read with fresh time before starting submission.
+        if(fresh_signature){next_read_=0;return;}
         submitting_=std::make_unique<SwapSubmissionSession>(link_,submissions_,execute_,SwapSubmissionSessionConfig{config_.preparation.allocation,config_.preparation.authority_domain,config_.timeout});
         const auto& request=signed_->request;
         if(!request.body_size || request.body_size>request.body.size()){
@@ -178,7 +188,7 @@ void SwapGatewayRuntime::observed(const StateReading& reading,Tick now,std::uint
             stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::state);return;}
         status_=SwapGatewayRuntimeStatus::submitting;return;
     }
-    if(pending.phase==swap::Phase::attempted){command(swap::MarkUnknown{effect_},now,event);return;}
+    if(pending.phase==swap::Phase::attempted){queued_command_=swap::MarkUnknown{effect_};return;}
     if(pending.phase==swap::Phase::unknown){
         std::optional<VerifiedSwapSettlement> verified;try{verified=settlement_.reconcile(pending);}catch(...){verified.reset();}
         if(!verified){
@@ -188,7 +198,7 @@ void SwapGatewayRuntime::observed(const StateReading& reading,Tick now,std::uint
         const auto& settled=verified->settlement();
         if(settled.effect!=effect_ || settled.payload!=pending.payload || settled.custody!=config_.preparation.allocation.custody){
             stop(SwapGatewayRuntimeStatus::failed,SwapGatewayRuntimeCause::identity);return;}
-        command(settled,now,event);return;
+        queued_command_=settled;return;
     }
     stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::state);
 }

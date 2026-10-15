@@ -73,6 +73,8 @@ private:
     std::unique_ptr<SwapSubmissionSession> submitting_;
     std::unique_ptr<SwapSubmissionResolutionSession> resolving_;
     std::optional<SwapSignedExecution> signed_;
+    // Port calls can block. Start the next Raft deadline on a fresh loop tick.
+    std::optional<swap::Command> queued_command_;
     bool owns_link_{};
     EffectId effect_{};
     Digest256 command_digest_{};

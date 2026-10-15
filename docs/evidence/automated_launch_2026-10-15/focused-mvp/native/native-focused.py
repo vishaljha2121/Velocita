@@ -101,6 +101,11 @@ try:
     cases = ET.parse(evidence/'ctest.xml').getroot().findall('.//testcase')
     assert len(cases) == len(names) and not any(c.find('failure') is not None or
         c.find('error') is not None or c.find('skipped') is not None for c in cases)
+    # Fixed repetitions after the intermittent Pi failure; stop on any failure, never retry until green.
+    for repetition in (2, 3):
+        run(['ctest', '--test-dir', '/work/build', '--output-on-failure', '--stop-on-failure',
+             '-R', '^v2-swap-continuous-drill$', '--output-junit',
+             '/evidence/continuous-repeat-'+str(repetition)+'.xml'], 'continuous-repeat-'+str(repetition), 300)
     run(['python3', '-B', '-m', 'unittest', 'discover', '-s', '/source/tests', '-p',
          'test_tm_account*.py'], 'account-tests', 60)
     for suite in ('test_swap_service_launcher.py', 'test_swap_service_profile.py',
@@ -135,21 +140,22 @@ try:
         ('docs/evidence/automated_launch_2026-10-15', 'test_restore_caller_keys.py', 'focused-restore')):
         run(['python3', '-B', '-m', 'unittest', 'discover', '-s', str(source/directory), '-p', pattern], label, 120)
     continuous = list((evidence/'home/.cache/velocita-build').glob('continuous-*'))
-    assert len(continuous) == 1
+    assert len(continuous) == 3
     continuous_cases = []
-    for case in range(3):
-        row = json.loads((continuous[0]/('c'+str(case))/'result.json').read_text())
-        assert row['case'] == case and row['passed'] and row['voters'] == 3
-        assert all(row[k] == 6 for k in ('settlements', 'creates', 'signatures', 'executes'))
-        assert row['cash_atoms'] == 25_000_000 and row['base_atoms'] == 0
-        assert row['fees_atoms'] == 12_000 and row['purchase_atoms'] == 3_000_000
-        assert row['real_transaction_verifier'] and row['real_finalized_receipt_parser']
-        continuous_cases.append(row)
+    for run_root in sorted(continuous):
+        for case in range(3):
+            row = json.loads((run_root/('c'+str(case))/'result.json').read_text())
+            assert row['case'] == case and row['passed'] and row['voters'] == 3
+            assert all(row[k] == 6 for k in ('settlements', 'creates', 'signatures', 'executes'))
+            assert row['cash_atoms'] == 25_000_000 and row['base_atoms'] == 0
+            assert row['fees_atoms'] == 12_000 and row['purchase_atoms'] == 3_000_000
+            assert row['real_transaction_verifier'] and row['real_finalized_receipt_parser']
+            continuous_cases.append(row)
     (evidence/'continuous-results.json').write_text(json.dumps(continuous_cases, indent=2)+'\n')
     assert git('rev-parse', 'HEAD') == commit and not git('status', '--porcelain=v1', '--untracked-files=all')
     binaries = ['velocita-v2-node', 'velocita-v2-gateway', 'velocita-v2-signer', 'velocita-v2-client', 'v2-swap-process-drill', 'v2-swap-continuous-drill']
     result = dict(commit=commit, arch=arch, qualified=True, live_admitted=False,
-                  scope='production Release capability and selected swap/venue/recovery suite; eight fixture process drills and three six-effect continuous drills',
+                  scope='production Release capability and selected swap/venue/recovery suite; eight fixture process drills and three repetitions of three six-effect continuous drills',
                   activation='no production manifest or service changed; build qualification is not launch authorization',
                   python_suites=['test_tm_account*.py', 'test_swap_service_launcher.py',
                       'test_swap_service_profile.py', 'test_swap_runtime_install.py',
@@ -157,8 +163,10 @@ try:
                       'test_swap_runtime_gate.py', 'test_signer_not_shipped.py',
                       'test_swap_credential_handoff.py', 'test_tm_stage_swap_credential.py',
                       'test_live_observer.py', 'test_observability_layout.py',
-                      'test_swap_review_transition.py', 'test_idle_policy_renewal.py', 'test_idle_policy_apply.py'],
-                  ctest_passed=len(cases), process_cases_validated=8, continuous_cases_validated=3, continuous_effects=18, focused_python_tests=104, affinity=[3], uid=os.getuid(),
+                      'test_swap_review_transition.py', 'test_idle_policy_renewal.py', 'test_idle_policy_apply.py',
+                      'test_readiness_build_boundary.py', 'focused-model', 'focused-stage',
+                      'focused-retirement', 'focused-verify', 'focused-restore'],
+                  ctest_passed=len(cases), process_cases_validated=8, continuous_repetitions=3, continuous_cases_validated=9, continuous_effects=54, focused_python_tests=104, affinity=[3], uid=os.getuid(),
                   binary_sha256={name: hashlib.sha256((work/'build'/name).read_bytes()).hexdigest() for name in binaries})
     (evidence/'status.json').write_text(json.dumps(result, indent=2)+'\n')
     print(json.dumps(result), flush=True)

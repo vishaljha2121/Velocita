@@ -83,8 +83,20 @@ struct Wire {
     }
 };
 struct ProcessClient final:ClientTransport {
-    Wire wire;explicit ProcessClient(int fd):wire(fd){}
-    bool offer_ingress(std::int32_t node,std::span<const std::byte> frame)override{wire.send(node,frame);return true;}
+    Wire wire;std::uint64_t last_attempt_offered{};explicit ProcessClient(int fd):wire(fd){}
+    bool offer_ingress(std::int32_t node,std::span<const std::byte> frame)override{
+        AuthRoute route;VerifiedAuthEnvelope verified;
+        require(peek_auth_route(frame,route)==AuthEnvelopeError::none &&
+            verify_auth_envelope(key(caller_seed(route.sender),AuthRole::ingress,route.sender,node),frame,verified)==AuthEnvelopeError::none,
+            "diagnostic decodes only authenticated fixture ingress");
+        IngressView ingress;Command command;KernelCommandCodecScratch scratch;
+        if(decode_ingress(verified.body,ingress)==NodeProtocolError::none &&
+            decode_kernel_command(ingress.command,command,scratch).error==KernelCodecError::none){
+            if(const auto* swap=std::get_if<ApplySpotSwap>(&command.body))
+                if(const auto* attempt=std::get_if<swap::Attempt>(&swap->record.command))last_attempt_offered=attempt->effect.value();
+        }
+        wire.send(node,frame);return true;
+    }
     std::optional<std::size_t> receive_response(std::span<std::byte> out)override{
         wire.flush();auto r=wire.receive();if(!r)return {};require(r->first==0 && r->second.size()<=out.size(),"worker response framing");
         std::copy(r->second.begin(),r->second.end(),out.begin());return r->second.size();
@@ -286,9 +298,11 @@ SwapAccountStartupAdmission admission(const SwapRuntimeBinding& binding,const Tr
     require(swap_admission_funded(a,binding,event_ms),"production account admission validates managed funding");return a;
 }
 struct TransitionSigning final:SwapGatewaySigningPort {
-    SwapDurableSigningPort& delegate;SwapSubmissionStore& requests;std::string_view crash;
+    SwapDurableSigningPort& delegate;SwapSubmissionStore& requests;std::string_view crash;Tick last_sign_ms{};
     TransitionSigning(SwapDurableSigningPort& d,SwapSubmissionStore& r,std::string_view c):delegate(d),requests(r),crash(c){}
-    std::optional<SwapSignedExecution> sign_or_retrieve(std::uint64_t sequence,std::int64_t index,std::uint64_t expiry)override{return delegate.sign_or_retrieve(sequence,index,expiry);}
+    std::optional<SwapSignedExecution> sign_or_retrieve(std::uint64_t sequence,std::int64_t index,std::uint64_t expiry)override{
+        const auto started=steady_ms();auto result=delegate.sign_or_retrieve(sequence,index,expiry);last_sign_ms=steady_ms()-started;return result;
+    }
     bool settled(const swap::State& state,const StateReading& reading)override{
         if(crash=="before-advance" && state.pending.phase==swap::Phase::none && state.last_effect==2){
             require(count("receipt 2")>=1 && count("execute 2")==1,"effect2 finalized receipt precedes retirement crash");record("crash before-advance 2");::kill(::getpid(),SIGKILL);::_exit(99);}
@@ -333,19 +347,19 @@ int gateway_worker(unsigned epoch,int fd,std::string_view crash){
     SwapGatewayRuntimeConfig cfg{binding,CallerId{kGateway},epoch*1000U,epoch*1000U+900U,5000,1};
     cfg.continuous=true;cfg.recovery_only=admit.recovery_only;
     SwapGatewayRuntime runtime(link,recovery,prepared,submitted,ports,guarded,ports,ports,cfg);
-    unsigned announced{};const auto deadline=steady_ms()+60'000;
-    while(!runtime.stopped() && steady_ms()<deadline){runtime.step(steady_ms(),event_ms);
+    unsigned announced{};Tick max_step_ms{};const auto deadline=steady_ms()+60'000;
+    while(!runtime.stopped() && steady_ms()<deadline){const auto started=steady_ms();runtime.step(started,event_ms);max_step_ms=std::max(max_step_ms,steady_ms()-started);
         if(runtime.observation()){
             const auto& state=runtime.observation()->state;
             if(state.pending.phase==swap::Phase::none && state.last_effect>announced && submitted.latest().phase==SwapSubmissionPhase::resolved && requests.latest().phase==SwapSubmissionPhase::resolved && runtime.status()==SwapGatewayRuntimeStatus::running){
                 announced=static_cast<unsigned>(state.last_effect);record("ready "+std::to_string(announced));
-                if(announced==6){require(runtime.status()==SwapGatewayRuntimeStatus::running,"continuous runtime remains operational after six effects");return 0;}
+                if(announced==6){require(runtime.status()==SwapGatewayRuntimeStatus::running,"continuous runtime remains operational after six effects");record("timing max_step_ms="+std::to_string(max_step_ms)+" last_sign_ms="+std::to_string(guarded.last_sign_ms)+" last_attempt_offered="+std::to_string(transport.last_attempt_offered));return 0;}
             }
         }
         ::usleep(500);
     }
     if(admit.recovery_only){require(runtime.status()==SwapGatewayRuntimeStatus::complete,"recovery-only completes reconciliation without new submission");record("recovery-complete");return 0;}
-    throw std::runtime_error("gateway continuous lifecycle stopped status="+std::to_string(int(runtime.status()))+" cause="+std::to_string(int(runtime.cause()))+" trace="+std::to_string(int(ports.create_trace().stage)));
+    throw std::runtime_error("gateway continuous lifecycle stopped status="+std::to_string(int(runtime.status()))+" cause="+std::to_string(int(runtime.cause()))+" trace="+std::to_string(int(ports.create_trace().stage))+" last_sign_ms="+std::to_string(guarded.last_sign_ms)+" max_step_ms="+std::to_string(max_step_ms)+" last_attempt_offered="+std::to_string(transport.last_attempt_offered));
 }
 struct ChildGuard{pid_t pid;~ChildGuard(){if(pid>0){::kill(pid,SIGKILL);::waitpid(pid,nullptr,0);}}};
 int run_workers(Cluster& cluster,Caller& op,const std::filesystem::path& exe,unsigned epoch,std::string_view crash,unsigned& next){
