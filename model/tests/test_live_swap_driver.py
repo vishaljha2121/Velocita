@@ -152,14 +152,44 @@ class Flow(unittest.TestCase):
 
 
 class GuardRegressions(Flow):
+    def test_bootstrap_backlog_warms_without_requests_then_fresh_bar_can_trade(self):
+        now = self.bar(1)[1] + 1 + 3615
+        self.path.write_bytes(seen(now))
+        count = self.driver.rule.indicators.count
+        for shift in (1, 2):
+            self.driver.rule.previous = (0, 1_000_000)
+            self.assertEqual(self.driver.on_bar(self.bar(shift), now), 'catchup')
+        self.assertEqual(self.driver.rule.indicators.count, count + 2)
+        self.assertEqual((self.sent, self.driver.state.sequence, self.driver.state.inflight_effect), ([], 0, 0))
+        self.assertFalse((self.root / 'state.json').exists(), 'catch-up must not reserve a request')
+        captured = []
+        self.driver.submit = lambda order, effect, sequence: captured.append(order) or True
+        self.driver.rule.previous = (0, 1_000_000)
+        fresh = self.bar(3)[1] + 1 + 500
+        self.path.write_bytes(seen(fresh))
+        self.assertEqual(self.driver.on_bar(self.bar(3), fresh), 'buy')
+        self.assertEqual(captured[0].source_ms, self.bar(3)[1] + 1)
+        self.assertEqual(captured[0].sign_by_ms, self.bar(3)[1] + 1 + 20_000)
+
+    def test_catchup_never_accepts_future_candle_or_missing_second(self):
+        row = self.bar(1)
+        self.path.write_bytes(seen(row[1]))
+        with self.assertRaisesRegex(ProtocolError, 'candle age'):
+            self.driver.on_bar(row, row[1])
+        now = self.bar(3)[1] + 1 + 3615
+        self.path.write_bytes(seen(now))
+        with self.assertRaisesRegex(ProtocolError, 'gap'):
+            self.driver.on_bar(self.bar(3), now)
+        self.assertEqual(self.sent, [])
+
     def test_contiguous_stale_candle_never_submits(self):
         row = self.bar(1)
         now = row[1] + 1 + 300_000
         self.path.write_bytes(seen(now))
         self.driver.rule.previous = (0, 1_000_000)
-        with self.assertRaisesRegex(ProtocolError, 'candle age'):
-            self.driver.on_bar(row, now)
-        self.assertEqual(self.sent, [], 'a fresh account does not freshen old market data')
+        count = self.driver.rule.indicators.count
+        self.assertEqual(self.driver.on_bar(row, now), 'catchup')
+        self.assertEqual((self.sent, self.driver.rule.indicators.count), ([], count + 1), 'old data warms the rule but never trades')
 
     def test_future_candle_never_submits(self):
         row = self.bar(1)
@@ -169,6 +199,17 @@ class GuardRegressions(Flow):
         with self.assertRaisesRegex(ProtocolError, 'candle age'):
             self.driver.on_bar(row, now)
         self.assertEqual(self.sent, [], 'an unclosed future candle cannot trade')
+
+    def test_candle_exactly_at_the_freshness_limit_still_trades(self):
+        row = self.bar(1)
+        now = row[1] + 1 + 2_000
+        self.path.write_bytes(seen(now))
+        self.driver.rule.previous = (0, 1_000_000)
+        self.assertEqual(self.driver.on_bar(row, now), 'buy')
+        self.driver.rule.previous = (0, 1_000_000)
+        later = self.bar(2)[1] + 1 + 2_001
+        self.path.write_bytes(seen(later, last=5, pending=5))
+        self.assertEqual(self.driver.on_bar(self.bar(2), later), 'catchup')
 
     def test_source_time_is_not_replaced_by_decision_time(self):
         row = self.bar(1)

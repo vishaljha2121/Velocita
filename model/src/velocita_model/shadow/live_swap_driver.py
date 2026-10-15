@@ -106,10 +106,14 @@ class Driver:
         last, stamp = self.rule.indicators.last, (kline[1] + 1) // 1000
         if last is not None and stamp <= last:
             return 'duplicate'
-        if not 0 <= now_ms - (kline[1] + 1) <= CANDLE_MAX_AGE_MS:
-            raise ProtocolError('live candle age; warm up again')
+        age = now_ms - (kline[1] + 1)
+        if age < 0:
+            raise ProtocolError('future candle age; warm up again')
         if last is not None and stamp > last + 1:
             raise ProtocolError('live bar gap; warm up again')
+        if age > CANDLE_MAX_AGE_MS:
+            self.warm(kline)
+            return 'catchup'
         if seen is None:
             self.warm(kline)
             return 'stale'
