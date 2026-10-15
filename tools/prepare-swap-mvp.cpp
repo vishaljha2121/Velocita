@@ -118,6 +118,42 @@ Fields build_opening(std::string profile,std::string history,std::string transac
             {"base_atoms",std::to_string(opening.base.value())},{"quote_atoms",std::to_string(opening.quote.value())},{"base_mark_quote_atoms",std::to_string(opening.base_cost.value())},
             {"max_purchase_atoms","1000000"},{"max_fee_atoms","2000"},{"kill_epoch",std::to_string(opening.kill_epoch)},{"executor_generation",std::to_string(opening.executor_generation)}})}};
 }
+Fields build_live_opening(std::string profile,std::string history,std::string transaction,std::string parameters){
+    auto f=fields(parameters);require(number(f,"schema")==1,"unsupported parameters schema");
+    const auto now=number(f,"now_ms"),expires=number(f,"review_expires_ms");auto c=context(profile,history,transaction,now);
+    swap::Initialize opening;opening.binding=c.profile.gateway.binding.allocation;
+    opening.quote=swap::QuoteAtoms{number(f,"managed_quote_atoms")};
+    opening.kill_epoch=number(f,"kill_epoch");opening.executor_generation=number(f,"executor_generation");
+    auto& l=opening.limits;l.max_purchase_total=swap::QuoteAtoms{3'000'000'000};l.max_buy_debit=swap::QuoteAtoms{25'000'000};
+    l.max_fee=swap::QuoteAtoms{50'000};l.max_realized_loss=swap::QuoteAtoms{10'000'000};l.max_sell_input=swap::BaseAtoms{250'000'000};
+    l.max_buy_price_per_sol=swap::QuoteAtoms{number(f,"max_buy_price_per_sol")};l.min_sell_price_per_sol=swap::QuoteAtoms{number(f,"min_sell_price_per_sol")};
+    l.max_source_age=10'000;l.max_sign_lifetime=20'000;require(f.empty(),"unknown opening parameter");
+    require(now && expires>now && expires-now<=kSwapReviewLifetimeMs && c.history.finished_ms<=now && now-c.history.finished_ms<kSwapReviewLifetimeMs &&
+        expires-c.history.finished_ms<=kSwapReviewLifetimeMs && expires<=c.profile.gateway.expires_at_ms,"review window exceeds current evidence");
+    require(opening.quote.value()>=1'000'000 && opening.quote.value()<=c.history.quote_atoms,"managed cash must come from the observed balance");
+    const auto outside_base=c.history.base_atoms,outside_quote=c.history.quote_atoms-opening.quote.value();
+    const auto funding=document({{"schema","2"},{"account_history_sha256",to_hex(hash(history))},{"opening_parameters_sha256",to_hex(hash(parameters))},
+        {"managed_quote_atoms",std::to_string(opening.quote.value())},{"outside_base_atoms",std::to_string(outside_base)},{"outside_quote_atoms",std::to_string(outside_quote)}});
+    opening.funding_evidence=hash(funding);swap::State state;
+    require(swap::apply(state,opening,swap::Role::operator_role,now)==swap::Code::applied && swap_live_scope(state,c.transaction),"opening reducer or live scope refused");
+    const auto review=document({{"schema","1"},{"runtime_identity",to_hex(swap_runtime_identity_digest(c.profile.gateway.binding))},
+        {"opening_digest",to_hex(swap_opening_review_digest(opening))},{"history_evidence",to_hex(hash(history))},
+        {"user_id",std::string(c.profile.user_id.view())},{"reviewed_at_ms",std::to_string(now)},{"expires_at_ms",std::to_string(expires)},
+        {"outside_base",std::to_string(outside_base)},{"outside_quote",std::to_string(outside_quote)},{"activity_count","0"}});
+    auto r=decode_swap_account_review(review,hash(review));require(r.has_value() && swap_account_history_funding(c.history,*r,c.profile.gateway.binding,state,now),"history identity or funding refused");
+    auto pf=fields(profile);require(pf.count("account_review_digest")==1,"profile review field missing");pf["account_review_digest"]=to_hex(hash(review));profile=document(pf);
+    const auto final=context(profile,history,transaction,now);require(final.profile.account_review_digest==r->document_digest &&
+        swap_account_review_matches(*r,final.profile.gateway.binding,final.profile.user_id.view(),state),"final review/profile binding refused");
+    const auto record=canonical({swap::Role::operator_role,now,opening});
+    return {{"runtime.profile",profile},{"account.history",history},{"transaction.review",transaction},{"account.review",review},
+        {"opening.parameters",parameters},{"funding.review",funding},{"opening.record",record},
+        {"record-summary.txt",document({{"kind","LiveInitialize"},{"record_sha256",to_hex(hash(record))},{"opening_digest",to_hex(swap_opening_review_digest(opening))},
+            {"managed_quote_atoms",std::to_string(opening.quote.value())},{"outside_base_atoms",std::to_string(outside_base)},{"outside_quote_atoms",std::to_string(outside_quote)},
+            {"max_purchase_atoms","3000000000"},{"max_buy_debit_atoms","25000000"},{"max_fee_atoms","50000"},{"max_realized_loss_atoms","10000000"},
+            {"max_sell_input_atoms","250000000"},{"max_buy_price_per_sol",std::to_string(l.max_buy_price_per_sol.value())},
+            {"min_sell_price_per_sol",std::to_string(l.min_sell_price_per_sol.value())},{"max_source_age_ms","10000"},{"max_sign_lifetime_ms","20000"},
+            {"review_expires_ms",std::to_string(expires)},{"kill_epoch",std::to_string(opening.kill_epoch)},{"executor_generation",std::to_string(opening.executor_generation)}})}};
+}
 swap::Record opening_record(std::string_view bytes,std::uint64_t now){
     swap::Record decoded;require(swap::decode(std::as_bytes(std::span(bytes)),decoded)==swap::CodecError::none &&
         decoded.role==swap::Role::operator_role && std::holds_alternative<swap::Initialize>(decoded.command) && canonical(decoded)==bytes && decoded.event_time<=now,"opening record refused");
@@ -196,12 +232,15 @@ Fields build_intent(const Fields& bundle,std::string parameters){
     return {{"intent.record",record},{"intent.parameters",parameters},{"record-summary.txt",document(summary)}};
 }
 int run(int argc,char** argv){
-    require(argc>=2,"mode required: opening, price-amendment or intent");const std::string mode=argv[1];Fields args;
+    require(argc>=2,"mode required: opening, live-opening, price-amendment or intent");const std::string mode=argv[1];Fields args;
     for(int n=2;n<argc;n+=2){require(n+1<argc && std::string_view(argv[n]).starts_with("--") && args.emplace(argv[n]+2,argv[n+1]).second,"invalid or duplicate CLI argument");}
     const auto output=text(args,"output");const auto parameters=read(text(args,"parameters"),8192);Fields result;
     if(mode=="opening"){
         auto profile=read(text(args,"runtime-profile"),8192),history=read(text(args,"account-history"),4096),transaction=read(text(args,"transaction-review"),32768);
         require(args.empty(),"unknown CLI argument");result=build_opening(profile,history,transaction,parameters);
+    }else if(mode=="live-opening"){
+        auto profile=read(text(args,"runtime-profile"),8192),history=read(text(args,"account-history"),4096),transaction=read(text(args,"transaction-review"),32768);
+        require(args.empty(),"unknown CLI argument");result=build_live_opening(profile,history,transaction,parameters);
     }else if(mode=="price-amendment"){
         const auto opening=read(text(args,"opening-record"),swap::max_record_bytes);require(args.empty(),"unknown CLI argument");
         result=build_price_amendment(opening,parameters);
@@ -211,7 +250,7 @@ int run(int argc,char** argv){
         const auto amendment=bundle/"amendment.record";
         if(fs::symlink_status(amendment).type()!=fs::file_type::not_found)inputs["amendment.record"]=read(amendment,swap::max_record_bytes);
         result=build_intent(inputs,parameters);
-    }else throw std::runtime_error("mode must be opening, price-amendment or intent");
+    }else throw std::runtime_error("mode must be opening, live-opening, price-amendment or intent");
     emit(output,result);std::cout<<"PREPARED offline_only=1 network_used=0 funds_moved=0\n";return 0;
 }
 }

@@ -14,6 +14,7 @@ PUBLIC=Path('/etc/velocita-swap/public')
 OUTPUT=Path('/home/velocitas/velocita-v2/textfile/velocita-live.prom')
 SETTLEMENT_SOURCE=Path('/var/lib/velocita-swap-gateway/metrics/settlements.json')
 SETTLEMENT_CACHE=Path('/var/lib/velocita-live-observer/settlements.json')
+SETTLEMENT_PUBLISH=Path('/home/velocitas/velocita-v2/textfile/strategy-settlements.json')
 MAX_SETTLEMENTS=16
 MAX_RETAINED=1024
 
@@ -94,6 +95,7 @@ def settlement_snapshot(run,now,persist):
         # concurrently. Tests inject a fixed time through the now argument.
         if now is None:now=time.time_ns()//1000000
         source=settlements(json.loads(raw,object_pairs_hook=unique_object),run,now)
+        if persist:write_file(SETTLEMENT_PUBLISH,json.dumps(source,sort_keys=True)+'\n',0o644)
     except FileNotFoundError:return dict(settlement_feed_ready=0,settlement_feed_status=0)
     except Exception:return dict(settlement_feed_ready=0,settlement_feed_status=3)
     try:

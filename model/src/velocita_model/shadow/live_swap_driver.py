@@ -8,9 +8,9 @@ import time
 
 from ..adapters.base import ReadOnlyHttp
 from ..adapters.websocket import ProtocolError, ReadOnlyMarketSocket
-from .live_swap import Account, LiveRule, Order, Stop
+from .live_swap import MAX_ORDERS, Account, LiveRule, Order, Stop
 
-OBSERVATION_MAX_AGE_MS = 5_000
+OBSERVATION_MAX_AGE_MS = 12_000
 INFLIGHT_TIMEOUT_MS = 20_000
 OBSERVATION_KEYS = {'schema', 'incarnation', 'observed_at_ms', 'applied_index', 'base_atoms', 'quote_atoms', 'fees_atoms',
                     'realized_pnl_atoms', 'last_effect', 'pending_effect', 'settlements'}
@@ -50,9 +50,9 @@ class State:
 
 
 class Driver:
-    def __init__(self, run, observation_path, state, submit):
+    def __init__(self, run, observation_path, state, submit, max_orders=MAX_ORDERS):
         self.run, self.observation_path, self.state, self.submit = run, Path(observation_path), state, submit
-        self.rule = LiveRule()
+        self.rule = LiveRule(max_orders)
 
     def warm(self, kline):
         self.rule.bar(*kline, Account(0, 0, 0, 0, True), 0, None)
@@ -134,12 +134,34 @@ def bootstrap(driver):
         driver.warm((row[0], row[6], row[1], row[2], row[3], row[4]))
 
 
+def extend(config_path, max_orders):
+    config = json.loads(Path(config_path).read_text())
+    current = config.get('max_orders', MAX_ORDERS)
+    if type(max_orders) is not int or not current < max_orders <= MAX_ORDERS:
+        raise ValueError('a higher order limit up to 240 is required')
+    state = State(config['state'])
+    if state.stopped not in (None, 'capacity'):
+        raise ValueError('only a capacity stop can be extended')
+    config['max_orders'] = max_orders
+    pending = Path(config_path).with_suffix('.pending')
+    pending.write_text(json.dumps(config, indent=2) + '\n')
+    os.replace(pending, config_path)
+    state.stopped = None
+    state.save()
+    return dict(max_orders=max_orders, sequence=state.sequence)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, required=True)
-    config = json.loads(parser.parse_args().config.read_text())
+    parser.add_argument('--extend', type=int)
+    args = parser.parse_args()
+    if args.extend is not None:
+        print(json.dumps(extend(args.config, args.extend)))
+        return 0
+    config = json.loads(args.config.read_text())
     submit = client_submitter(config['client'], config['opening_record'], config['kill_epoch'], config['executor_generation'])
-    driver = Driver(config['incarnation'], config['observation'], State(config['state']), submit)
+    driver = Driver(config['incarnation'], config['observation'], State(config['state']), submit, config.get('max_orders', MAX_ORDERS))
     while not driver.state.stopped:
         socket = ReadOnlyMarketSocket('data-stream.binance.vision', '/ws/solusdt@kline_1s', timeout_s=4, max_message_bytes=16384)
         try:

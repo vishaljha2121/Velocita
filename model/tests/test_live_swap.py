@@ -55,11 +55,11 @@ class Parity(unittest.TestCase):
 class Sizes(unittest.TestCase):
     def test_buy_spends_whole_cents_for_twelve_hundredths_sol(self):
         order = buy_order('105.08', 1_000)
-        self.assertEqual(order, Order('buy', 12_640_000, 110_400_000, 25_280, 1_000, 11_000))
+        self.assertEqual(order, Order('buy', 12_640_000, 110_400_000, 25_280, 1_000, 21_000))
         self.assertGreaterEqual((order.amount - order.fee_cap) * 1000, 120_000_000 * 105.08, 'principal buys at least 0.12 SOL')
 
     def test_sell_sells_the_whole_position_with_floor_and_fee_margin(self):
-        self.assertEqual(sell_order(120_000_000, '105.08', 2_000), Order('sell', 120_000_000, 11_853_024, 26_786, 2_000, 12_000))
+        self.assertEqual(sell_order(120_000_000, '105.08', 2_000), Order('sell', 120_000_000, 11_853_024, 26_786, 2_000, 22_000))
 
 
 class Gating(unittest.TestCase):
@@ -106,6 +106,22 @@ class Gating(unittest.TestCase):
             self.assertEqual(rule.bar(*self.next_bar(row, 2), account(**change), 0, None), Stop(reason))
         rule, row = self.warmed()
         self.assertIsNone(rule.bar(*self.next_bar(row), account(pnl=-9_999_999, orders=239), 0, None), 'just inside both limits')
+
+    def test_drill_order_limit_exits_then_stops(self):
+        rule, rows = LiveRule(6), bars(1_300)
+        for row in rows:
+            rule.bar(*row, account(pending=True), row[0], None)
+        start = rows[-1][0] + 1000
+        self.assertEqual(rule.bar(start, start + 999, *rows[-1][2:], account(base=5, orders=6), 0, None).side, 'sell')
+        self.assertEqual(rule.bar(start + 1000, start + 1999, *rows[-1][2:], account(orders=6), 0, None), Stop('capacity'))
+        wider = LiveRule(7)
+        for row in rows:
+            wider.bar(*row, account(pending=True), row[0], None)
+        wider.previous = (0, 1_000_000)
+        self.assertEqual(wider.bar(start, start + 999, *rows[-1][2:], account(orders=6), 0, None).side, 'buy', 'six orders under a limit of seven still trade')
+        for bad in (0, 241, '6', 6.0):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                LiveRule(bad)
 
     def test_flat_run_stops_when_cash_cannot_buy_the_clip(self):
         rule, row = self.warmed()

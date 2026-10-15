@@ -36,7 +36,7 @@ def validate(old,new,files,now):
         key,sep,value=line.partition('=')
         if not sep or not key or not value or key in transaction or '\x00' in line:raise ValueError('transaction review fields')
         transaction[key]=value
-    if LAUNCH.unsigned(transaction['expires_at_ms'])<=now:raise ValueError('transaction review expired')
+    if transaction.get('schema')!='6' and LAUNCH.unsigned(transaction['expires_at_ms'])<=now:raise ValueError('transaction review expired')
     if (new['gateway_uid'],new['gateway_gid'],new['signer_uid'],new['socket_gid'],new['gateway_caller'],new['signer_caller'],new['gateway_key_id'],new['signer_key_id'])!=(29001,29001,29002,29002,22,23,13,14):
         raise ValueError('fixed production principals required')
 

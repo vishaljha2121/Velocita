@@ -3,7 +3,7 @@ Description=Refresh local live observability every 15 seconds
 
 [Timer]
 OnBootSec=15s
-OnUnitActiveSec=15s
+OnUnitActiveSec=5s
 AccuracySec=1s
 Unit=velocita-live-observer.service
 

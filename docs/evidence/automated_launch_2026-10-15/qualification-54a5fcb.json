@@ -1,0 +1,36 @@
+{
+  "nuc1": {
+    "activation": "no production manifest or service changed; build qualification is not launch authorization",
+    "arch": "x86_64",
+    "binary_sha256": {
+      "v2-swap-process-drill": "6a196f3eb5287e760369b73d186986d473d4aec37e30d1ca7a0a387ab7e597c6",
+      "velocita-v2-client": "9ca83f11b1e3551f09012c4e7c8c42b498d7698a078dac4b82bfd935bcb34062",
+      "velocita-v2-gateway": "5c58c7f52074db196cc612ffb5fb86d6ab2fcf2949b16718a290f7363d5a63c7",
+      "velocita-v2-node": "2be0ce3a173ffb402188097c9dd481e19d7b51ae8ae32a068b5f339a7a95731d",
+      "velocita-v2-signer": "bab9f37523472d81132b655547d4193c1808e2d45ce1950ce56af54859cbc239"
+    },
+    "commit": "54a5fcb05821c5d10120b32ff6e1dccdb7f3e831",
+    "ctest_passed": 58,
+    "live_admitted": false,
+    "process_cases_validated": 8,
+    "qualified": true,
+    "scope": "production Release capability and selected swap/venue/recovery suite; eight fixture process drills"
+  },
+  "pi": {
+    "activation": "no production manifest or service changed; build qualification is not launch authorization",
+    "arch": "aarch64",
+    "binary_sha256": {
+      "v2-swap-process-drill": "65daa5e0afcc156c1d1261331921f7684dd461b625f52aa8540b7993860efad5",
+      "velocita-v2-client": "c438799c2b666fb631cb1784e5d3a768349d2e8f204cdff2c4af395a6683dfd4",
+      "velocita-v2-gateway": "a466e7b4dee48959dc16a89c31db88c2617b938c343c7f2e934431bd83c841d5",
+      "velocita-v2-node": "dadc72dff79eaa3fe043b6036051bc3c8c4be98e651c032532ec2a8256e41b33",
+      "velocita-v2-signer": "ac1371a00ce7bb5068cd2b7fbb4ba71e92ca712b59ac6bc867dcda124774d463"
+    },
+    "commit": "54a5fcb05821c5d10120b32ff6e1dccdb7f3e831",
+    "ctest_passed": 58,
+    "live_admitted": false,
+    "process_cases_validated": 8,
+    "qualified": true,
+    "scope": "production Release capability and selected swap/venue/recovery suite; eight fixture process drills"
+  }
+}

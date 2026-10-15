@@ -119,19 +119,25 @@ class ConfirmedSettlementsTests(unittest.TestCase):
     def test_optional_missing_invalid_stale_and_fresh_source(self):
         scratch=Path.home()/'.cache/velocita-build/live-observer-tests';scratch.mkdir(parents=True,exist_ok=True)
         with tempfile.TemporaryDirectory(dir=scratch) as root:
-            source=Path(root)/'source.json';cache=Path(root)/'cache.json'
-            with patch.object(O,'SETTLEMENT_SOURCE',source),patch.object(O,'SETTLEMENT_CACHE',cache):
+            source=Path(root)/'source.json';cache=Path(root)/'cache.json';published=Path(root)/'published.json'
+            with patch.object(O,'SETTLEMENT_SOURCE',source),patch.object(O,'SETTLEMENT_CACHE',cache),patch.object(O,'SETTLEMENT_PUBLISH',published):
                 absent=O.settlement_snapshot(self.RUN,1000100,False)
                 self.assertEqual(absent,{'settlement_feed_ready':0,'settlement_feed_status':0})
                 source.write_text(json.dumps(self.source()))
+                O.settlement_snapshot(self.RUN,1000100,False)
+                self.assertFalse(published.exists(),'a read-only pass publishes nothing')
                 fresh=O.settlement_snapshot(self.RUN,1000100,True)
                 self.assertEqual(fresh['settlement_feed_status'],1)
+                self.assertEqual(json.loads(published.read_text()),self.source(),'the validated producer snapshot is published unchanged')
+                self.assertEqual(published.stat().st_mode&0o777,0o644,'the strategy driver can read the published snapshot')
                 stale=O.settlement_snapshot(self.RUN,1050000,True)
                 self.assertEqual(stale['settlement_feed_status'],2)
                 self.assertEqual(stale['settlement_observed_seconds'],1000)
                 self.assertEqual(stale['settlement_events'][0]['first_observed_ms'],1000100)
+                kept=published.read_text()
                 source.write_text('{broken')
                 bad=O.settlement_snapshot(self.RUN,1050000,True)
+                self.assertEqual(published.read_text(),kept,'an invalid producer snapshot is never published')
                 self.assertEqual(bad,{'settlement_feed_ready':0,'settlement_feed_status':3})
                 self.assertNotIn('settled_sol',bad)
     def test_symlink_source_refused(self):

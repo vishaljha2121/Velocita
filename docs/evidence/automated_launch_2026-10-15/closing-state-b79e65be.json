@@ -1,0 +1,83 @@
+{
+  "captured_utc": "2026-10-15T13:01:27Z",
+  "incarnation": "b79e65be1ea14e219016ec48ea02efef",
+  "nuc1_services": [
+    "inactive",
+    "inactive",
+    "inactive"
+  ],
+  "voters": {
+    "1": {
+      "applied": [
+        24.0
+      ],
+      "commit": [
+        24.0
+      ],
+      "failed": [
+        0.0
+      ],
+      "leader": [],
+      "ready": [
+        1.0
+      ],
+      "strategy_mode": [
+        5.0
+      ],
+      "term": [
+        16.0
+      ],
+      "up": [
+        1.0
+      ]
+    },
+    "2": {
+      "applied": [
+        24.0
+      ],
+      "commit": [
+        24.0
+      ],
+      "failed": [
+        0.0
+      ],
+      "leader": [],
+      "ready": [
+        1.0
+      ],
+      "strategy_mode": [
+        5.0
+      ],
+      "term": [
+        16.0
+      ],
+      "up": [
+        1.0
+      ]
+    },
+    "3": {
+      "applied": [
+        24.0
+      ],
+      "commit": [
+        24.0
+      ],
+      "failed": [
+        0.0
+      ],
+      "leader": [],
+      "ready": [
+        1.0
+      ],
+      "strategy_mode": [
+        5.0
+      ],
+      "term": [
+        16.0
+      ],
+      "up": [
+        1.0
+      ]
+    }
+  }
+}

@@ -49,6 +49,18 @@ class AdoptionTests(unittest.TestCase):
         changed=dict(files);changed['account.history']=b'{"owner_sha256":"wrong"}'
         new=dict(new,account_history_sha256=hashlib.sha256(changed['account.history']).hexdigest())
         with self.assertRaises(ValueError,msg='wrong_identity_refused'):A.validate(old,new,changed,1001000)
+    def test_stable_schema_six_review_relies_on_the_account_review_expiry(self):
+        old,new,files=fixture()
+        stable=b'schema=6\nsponsor=11\n'
+        profile=A.LAUNCH.fields(files['runtime.profile']);profile['transaction_review_digest']=hashlib.sha256(stable).hexdigest()
+        files=dict(files,**{'transaction.review':stable,'runtime.profile':''.join(k+'='+v+'\n' for k,v in profile.items()).encode()})
+        new=dict(new,runtime_profile_sha256=hashlib.sha256(files['runtime.profile']).hexdigest())
+        A.validate(old,new,files,1001000)
+        unexpired=dict(files,**{'transaction.review':b'schema=5\nexpires_at_ms=1000999\n'})
+        profile['transaction_review_digest']=hashlib.sha256(unexpired['transaction.review']).hexdigest()
+        unexpired['runtime.profile']=''.join(k+'='+v+'\n' for k,v in profile.items()).encode()
+        with self.assertRaisesRegex(ValueError,'expired'):
+            A.validate(old,dict(new,runtime_profile_sha256=hashlib.sha256(unexpired['runtime.profile']).hexdigest()),unexpired,1001000)
     def test_service_state_must_be_inactive_static(self):
         with patch.object(A.INSTALL,'command',return_value='inactive'):
             with self.assertRaisesRegex(ValueError,'inactive static',msg='unit_state_refused'):A.stopped()

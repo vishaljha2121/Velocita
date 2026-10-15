@@ -90,6 +90,43 @@ std::string amendment_parameters(const Fields& bundle){
         {"expected_price","146635156"},{"replacement_price","147537213"},
         {"expected_revision","0"},{"kill_epoch","1"},{"executor_generation","1"}});
 }
+std::string live_parameters(){return document({{"schema","1"},{"now_ms","1000"},{"review_expires_ms","1800"},{"managed_quote_atoms","25000000"},
+    {"kill_epoch","1"},{"executor_generation","1"},{"max_buy_price_per_sol","200000000"},{"min_sell_price_per_sol","20000000"}});}
+void live(){
+    Fixture f;const auto bundle=build_live_opening(f.profile,f.history,f.transaction,live_parameters());swap::Record r;
+    require(swap::decode(std::as_bytes(std::span(bundle.at("opening.record"))),r)==swap::CodecError::none && r.role==swap::Role::operator_role && r.event_time==1000,"live_opening_decodes");
+    const auto& o=std::get<swap::Initialize>(r.command);const auto& l=o.limits;
+    require(o.base.value()==0 && o.base_cost.value()==0 && o.quote.value()==25'000'000,"live_opening_manages_only_twenty_five_dollars_cash");
+    require(l.max_purchase_total.value()==3'000'000'000 && l.max_buy_debit.value()==25'000'000 && l.max_fee.value()==50'000 && l.max_realized_loss.value()==10'000'000 &&
+        l.max_sell_input.value()==250'000'000 && l.max_buy_price_per_sol.value()==200'000'000 && l.min_sell_price_per_sol.value()==20'000'000 &&
+        l.max_source_age==10'000 && l.max_sign_lifetime==20'000 && l.max_transient_base.value()==0,"live_opening_owner_envelope");
+    const auto review=fields(bundle.at("account.review"));
+    require(review.at("outside_base")=="40000000" && review.at("outside_quote")=="15000000" && review.at("expires_at_ms")=="1800","the_rest_of_the_wallet_is_outside_balance");
+    const auto funding=fields(bundle.at("funding.review"));
+    require(o.funding_evidence==hash(bundle.at("funding.review")) && funding.at("managed_quote_atoms")=="25000000" && funding.at("outside_base_atoms")=="40000000" &&
+        funding.at("outside_quote_atoms")=="15000000" && funding.at("account_history_sha256")==to_hex(hash(f.history)),"funding_review_pins_the_partition");
+    const auto p=decode_swap_runtime_profile(bundle.at("runtime.profile"));require(p && p->account_review_digest==hash(bundle.at("account.review")),"profile_pins_live_review");
+    swap::State state;require(swap::apply(state,o,swap::Role::operator_role,1000)==swap::Code::applied,"live_state_opens");
+    const auto buy=swap::strategy_buy(o.binding,EffectId{1},swap::QuoteAtoms{12'260'000},swap::BaseAtoms{110'400'000},1000,21'000,1,1);
+    require(buy && swap::apply(state,*buy,swap::Role::strategy,1001)==swap::Code::applied,"driver_clip_at_101_96_dollars_is_admitted");
+    swap::State fresh;require(swap::apply(fresh,o,swap::Role::operator_role,1000)==swap::Code::applied,"second_state_opens");
+    const auto dear=swap::strategy_buy(o.binding,EffectId{1},swap::QuoteAtoms{25'000'000},swap::BaseAtoms{110'400'000},1000,21'000,1,1);
+    require(dear && swap::apply(fresh,*dear,swap::Role::strategy,1001)==swap::Code::unsafe_bound,"buy_above_the_price_cap_refused");
+    const auto late=swap::strategy_buy(o.binding,EffectId{1},swap::QuoteAtoms{12'260'000},swap::BaseAtoms{110'400'000},1000,21'002,1,1);
+    require(late && swap::apply(fresh,*late,swap::Role::strategy,1001)==swap::Code::expired,"signing_window_longer_than_twenty_seconds_refused");
+    for(const auto& [key,value]:std::vector<std::pair<std::string,std::string>>{{"managed_quote_atoms","40000001"},{"managed_quote_atoms","999999"}})
+        rejected([&]{(void)build_live_opening(f.profile,f.history,f.transaction,change(live_parameters(),key,value));},"managed cash must come from the observed balance","managed_cash_bounded_by_wallet");
+    require(fields(build_live_opening(f.profile,f.history,f.transaction,change(live_parameters(),"managed_quote_atoms","40000000")).at("account.review")).at("outside_quote")=="0","whole_cash_may_be_managed");
+    for(const auto& [key,value]:std::vector<std::pair<std::string,std::string>>{{"max_buy_price_per_sol","0"},{"min_sell_price_per_sol","0"},{"kill_epoch","0"}})
+        rejected([&]{(void)build_live_opening(f.profile,f.history,f.transaction,change(live_parameters(),key,value));},"opening reducer or live scope refused","zero_bounds_refused");
+    rejected([&]{(void)build_live_opening(f.profile,f.history,f.transaction,live_parameters()+"base_atoms=1\n");},"unknown opening parameter","live_unknown_parameter_refused");
+    const auto day=change(f.profile,"expires_at_ms","200000000");const auto limit=std::to_string(950+kSwapReviewLifetimeMs);
+    require(fields(build_live_opening(day,f.history,f.transaction,change(live_parameters(),"review_expires_ms",limit)).at("account.review")).at("expires_at_ms")==limit,"review_may_last_a_day_from_the_history_cut");
+    rejected([&]{(void)build_live_opening(day,f.history,f.transaction,change(live_parameters(),"review_expires_ms",std::to_string(951+kSwapReviewLifetimeMs)));},
+        "review window exceeds current evidence","review_past_a_day_from_the_history_cut_refused");
+    rejected([&]{(void)build_live_opening(f.profile,f.history,f.transaction,change(live_parameters(),"review_expires_ms","2001"));},"review window exceeds current evidence","review_past_profile_refused");
+    rejected([&]{(void)build_live_opening(f.profile,f.history,f.transaction,change(live_parameters(),"now_ms","949"));},"review window exceeds current evidence","review_before_history_refused");
+}
 int command(std::vector<std::string> args){
     std::vector<char*> argv;for(auto& arg:args)argv.push_back(arg.data());return run(static_cast<int>(argv.size()),argv.data());
 }
@@ -168,6 +205,6 @@ void files(const fs::path& root){
 }
 int main(int argc,char** argv){
     try{require(argc==2,"fresh scratch directory argument required");const fs::path root=argv[1];require(fs::create_directory(root),"scratch already exists");
-        valid();std::cout<<"PASS valid\n";parser();std::cout<<"PASS parser\n";scope();std::cout<<"PASS scope\n";amendment(root);std::cout<<"PASS amendment\n";files(root);std::cout<<"PASS files\n";return 0;
+        valid();std::cout<<"PASS valid\n";parser();std::cout<<"PASS parser\n";scope();std::cout<<"PASS scope\n";live();std::cout<<"PASS live\n";amendment(root);std::cout<<"PASS amendment\n";files(root);std::cout<<"PASS files\n";return 0;
     }catch(const std::exception& e){std::cerr<<"FAIL "<<e.what()<<'\n';return 1;}
 }

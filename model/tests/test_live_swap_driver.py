@@ -8,7 +8,7 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_live_swap import bars
 from velocita_model.adapters.websocket import ProtocolError
-from velocita_model.shadow.live_swap_driver import Driver, State, observation
+from velocita_model.shadow.live_swap_driver import Driver, State, extend, observation
 
 RUN = 'b' * 32
 
@@ -22,10 +22,10 @@ def seen(now_ms, base=0, quote=10**9, pnl=0, last=0, pending=0, **extra):
 
 class Observation(unittest.TestCase):
     def test_fresh_committed_observation_is_read(self):
-        self.assertEqual(observation(seen(1_000, last=3), RUN, 6_000)['last_effect'], 3)
+        self.assertEqual(observation(seen(1_000, last=3), RUN, 13_000)['last_effect'], 3)
 
     def test_stale_or_future_observation_is_not_acted_on(self):
-        self.assertIsNone(observation(seen(1_000), RUN, 6_001))
+        self.assertIsNone(observation(seen(1_000), RUN, 13_001))
         self.assertIsNone(observation(seen(1_001), RUN, 1_000))
 
     def test_foreign_or_malformed_observation_refused(self):
@@ -104,6 +104,30 @@ class Flow(unittest.TestCase):
         again.rule.previous = (1_000_000, 0)
         again.on_bar(self.bar(2), 50_000)
         self.assertEqual(self.sent[-1], ('sell', 6, 2))
+
+    def test_drill_limit_reaches_the_rule(self):
+        self.assertEqual(Driver(RUN, self.path, State(self.root / 'other.json'), self.record, 6).rule.max_orders, 6)
+        self.assertEqual(self.driver.rule.max_orders, 240)
+
+    def test_extend_keeps_the_sequence_and_clears_only_a_capacity_stop(self):
+        config = self.root / 'driver.json'
+        config.write_text(json.dumps(dict(state=str(self.root / 'state.json'), max_orders=6, client=['x'])))
+        self.driver.state.sequence, self.driver.state.stopped = 6, 'capacity'
+        self.driver.state.save()
+        self.assertEqual(extend(config, 240), dict(max_orders=240, sequence=6))
+        self.assertEqual(json.loads(config.read_text()), dict(state=str(self.root / 'state.json'), max_orders=240, client=['x']))
+        self.assertEqual((State(self.root / 'state.json').stopped, State(self.root / 'state.json').sequence), (None, 6))
+        for limit in (240, 241, 6, '240'):
+            with self.subTest(limit=limit), self.assertRaises(ValueError):
+                extend(config, limit)
+        config.write_text(json.dumps(dict(state=str(self.root / 'state.json'), max_orders=6)))
+        for reason in ('drawdown', 'insufficient_balance'):
+            state = State(self.root / 'state.json')
+            state.stopped = reason
+            state.save()
+            with self.subTest(reason=reason), self.assertRaisesRegex(ValueError, 'capacity'):
+                extend(config, 240)
+        self.assertEqual(json.loads(config.read_text())['max_orders'], 6, 'a refused extension changes nothing')
 
     def test_duplicate_bar_skipped_and_gap_restarts_the_feed(self):
         self.path.write_bytes(seen(50_000))

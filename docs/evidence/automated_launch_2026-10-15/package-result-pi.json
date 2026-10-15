@@ -1,0 +1,12 @@
+{
+  "base_image": "46d634ca806f7524758e85ae1171783520e14b123152d31a4f807405fa843903",
+  "binary_sha256": {
+    "velocita-v2-client": "c438799c2b666fb631cb1784e5d3a768349d2e8f204cdff2c4af395a6683dfd4",
+    "velocita-v2-exporter": "0a8f4063f8635db36cee7f9be1a71a6687993d31346f55258f0aa9a757056cbf",
+    "velocita-v2-node": "dadc72dff79eaa3fe043b6036051bc3c8c4be98e651c032532ec2a8256e41b33"
+  },
+  "compiled": false,
+  "image": "localhost/velocita-v2:qualified-54a5fcb",
+  "image_id": "4057ade83cbf26a471d856c11e919557981189309d42723fef194eb2278aaba4",
+  "source_commit": "54a5fcb05821c5d10120b32ff6e1dccdb7f3e831"
+}

@@ -9,7 +9,7 @@ WARMUP_BARS = 1200
 REENTRY_SECONDS = 60
 MAX_ORDERS = 240
 DRAWDOWN_ATOMS = 10_000_000
-SIGN_LIFETIME_MS = 10_000
+SIGN_LIFETIME_MS = 20_000
 BUY_FLOOR = Decimal('0.92')
 SELL_FLOOR = Decimal('0.94')
 SELL_FEE_MARGIN = Decimal('1.06')
@@ -54,7 +54,10 @@ def sell_order(base_atoms, price, now_ms):
 
 
 class LiveRule:
-    def __init__(self):
+    def __init__(self, max_orders=MAX_ORDERS):
+        if type(max_orders) is not int or not 1 <= max_orders <= MAX_ORDERS:
+            raise ValueError('order limit must be 1 to 240')
+        self.max_orders = max_orders
         self.reset()
 
     def reset(self):
@@ -71,7 +74,7 @@ class LiveRule:
         if account.pending:
             return None
         held = account.base_atoms > 0
-        stop = 'drawdown' if account.realized_pnl_atoms <= -DRAWDOWN_ATOMS else 'capacity' if account.orders >= MAX_ORDERS else None
+        stop = 'drawdown' if account.realized_pnl_atoms <= -DRAWDOWN_ATOMS else 'capacity' if account.orders >= self.max_orders else None
         if flags is None or self.indicators.count < WARMUP_BARS:
             if not (stop and held):
                 return None
