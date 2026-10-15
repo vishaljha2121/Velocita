@@ -1,0 +1,25 @@
+{
+  "source_commit": "1f8d7b63c03c4ef1c0c916d833cdf8513f42a2dc",
+  "verified": true,
+  "installed": false,
+  "services_started": false,
+  "artifacts": [
+    {
+      "user": "vishal",
+      "files": {
+        "velocita-v2-gateway": "8d0fab33246d85628cac6471c3926205fd5710f96a55731106324a101cc9abcf",
+        "service_launcher.py": "5f1123d9093cd75c69cfe57b1c19239e05d4420d7f787a6d383ccaa84a49fe38",
+        "service_profile.py": "c03c0ee6e1fbea24d8c6a03bf9d4756c04155889bfd89da2fc710377be03841c",
+        "fd_handoff.py": "a8ffbfc1aa25830a0a439d282898725b3ba58936a9d7b5bf68fce57f5a78712c"
+      }
+    },
+    {
+      "user": "velocitas",
+      "files": {
+        "model.tar": "10457cc0e0029779ca7f214f22f250ac0c8b63f1f4201758eb631ce9add40bbe",
+        "stage_driver.py": "61f3c64b1f17260592559606a977b84b998344e4626bed05f07a50e249634336",
+        "opening.record": "2f329e441584fbda843187ffd251f8ac000ea383506b0ba4623586ef604d9b95"
+      }
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+.....F.......
+======================================================================
+FAIL: test_loaded_guard_required_before_release (upgrade_tests.UpgradeTests.test_loaded_guard_required_before_release)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/docs/evidence/automated_launch_2026-10-15/focused-deploy/test_upgrade_first_start.py", line 104, in test_loaded_guard_required_before_release
+    with self.assertRaisesRegex(ValueError,'not loaded'):M.apply(self.root,M.U.digest(raw),self.root/'archive')
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.055s
+
+FAILED (failures=1)

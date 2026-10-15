@@ -1,0 +1,26 @@
+{"tests": 1, "failures": 1, "errors": 0}
+test_day_review_remains_current_after_fifteen_minutes (test_live_observer.ReviewWindowTests.test_day_review_remains_current_after_fifteen_minutes) ... FAIL
+
+======================================================================
+FAIL: test_day_review_remains_current_after_fifteen_minutes (test_live_observer.ReviewWindowTests.test_day_review_remains_current_after_fifteen_minutes)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/driver/observer-isolated/tests/test_live_observer.py", line 59, in test_day_review_remains_current_after_fifteen_minutes
+    data=O.account(self.history(),self.review(),10000000)
+  File "/Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/driver/observer-isolated/deploy/v2/observability/live_observer.py", line 157, in account
+    if not captured<=start<=now or not start<end<=start+REVIEW_LIFETIME_MS or start-captured>REVIEW_LIFETIME_MS:raise ValueError('review timestamps')
+                                                                                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: review timestamps
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/driver/observer-isolated/tests/test_live_observer.py", line 61, in test_day_review_remains_current_after_fifteen_minutes
+    self.fail('approved day-long review must remain observable: '+str(error))
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: approved day-long review must remain observable: review timestamps
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (failures=1)

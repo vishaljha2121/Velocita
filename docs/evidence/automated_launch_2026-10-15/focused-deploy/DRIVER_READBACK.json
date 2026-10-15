@@ -1,0 +1,50 @@
+{
+  "checked_at_ms": 1792080720589,
+  "checked_at_utc": "2026-10-15T16:12:00.589Z",
+  "host": "100.72.127.102",
+  "user": "velocitas",
+  "uid": 1003,
+  "home": "/home/velocitas",
+  "incarnation": "aae119b95ddcea5a206f03ab5ca12c15",
+  "driver_root_exists": false,
+  "driver_state": "missing",
+  "config": "missing",
+  "observation": "missing",
+  "strategy_caller_key_metadata": {
+    "uid": 1003,
+    "gid": 1004,
+    "mode": "0600",
+    "size": 32,
+    "links": 1
+  },
+  "driver_unit": {
+    "LoadState": "not-found",
+    "ActiveState": "inactive",
+    "SubState": "dead",
+    "FragmentPath": ""
+  },
+  "client_image": {
+    "tag": "localhost/velocita-v2:qualified-54a5fcb",
+    "id": "ddf59cea34198ca4a130dbdbd31b7eee5aeec5ccb499c86cc831a8dfb6a263f6",
+    "created": "2026-10-15 12:59:57.768733898 +0000 UTC"
+  },
+  "observed_voter_containers": [
+    "velocita-paper-stochastic-node",
+    "velocita-paper-stochastic-exporter"
+  ],
+  "public_input_checks": {
+    "qualified_commit": "1f8d7b63c03c4ef1c0c916d833cdf8513f42a2dc",
+    "model_archive_sha256": "10457cc0e0029779ca7f214f22f250ac0c8b63f1f4201758eb631ce9add40bbe",
+    "stage_driver_sha256": "61f3c64b1f17260592559606a977b84b998344e4626bed05f07a50e249634336",
+    "opening_record_sha256": "2f329e441584fbda843187ffd251f8ac000ea383506b0ba4623586ef604d9b95",
+    "opening_record_bytes": 340,
+    "review_expires_ms": 1792158514459,
+    "managed_quote_atoms": 25000000
+  },
+  "limits": [
+    "Read-only SSH inventory; no private key contents, sudo, venue calls, remote writes or starts.",
+    "No authenticated Raft state or sequence proof.",
+    "Existing client image compatibility assessed from unchanged client, codec and kernel protocol source.",
+    "Snapshot precedes subsequent main-agent staging; recheck actual state rather than repeating stage."
+  ]
+}

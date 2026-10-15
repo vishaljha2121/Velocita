@@ -22,6 +22,13 @@ artifacts. Fresh process inventory confirms one production voter per host, gatew
 signer failed on NUC1, PID 0. This does not replace the last owner authenticated readback of
 funded/halted `aae119b9`. Preserve the single cluster and all journals; sudo remains owner-only.
 
+Deployment preparation: the qualified binary is staged and the six-effect driver is staged
+static/inactive with no client or driver state. Do not stage it again. The owner approved
+the narrow armed-first-start installer and observer 24-hour review correction checkpoint;
+13 installer and 24 observer tests pass locally, with seven named mutation kills each.
+See [deployment preparation](evidence/automated_launch_2026-10-15/focused-deploy/README.md).
+The owner installation retains start guards and requires sudo; trading remains stopped.
+
 Next: review/install the exact qualified runtime and driver, restore caller keys using the
 create-only helper, verify protected resources and fresh authorization, then start halted services
 and run the supervised six-effect drill. Do not repeat arm, funding or retirement; never reset

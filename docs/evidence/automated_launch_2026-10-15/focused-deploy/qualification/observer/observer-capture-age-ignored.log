@@ -1,0 +1,16 @@
+{"tests": 1, "failures": 1, "errors": 0}
+test_exact_day_review_and_capture_expiry_boundaries (test_live_observer.ReviewWindowTests.test_exact_day_review_and_capture_expiry_boundaries) ... FAIL
+
+======================================================================
+FAIL: test_exact_day_review_and_capture_expiry_boundaries (test_live_observer.ReviewWindowTests.test_exact_day_review_and_capture_expiry_boundaries)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/driver/observer-isolated/tests/test_live_observer.py", line 75, in test_exact_day_review_and_capture_expiry_boundaries
+    self.assertEqual(old_cut['review_current'],0,'a newer review cannot revive an old capture')
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0 : a newer review cannot revive an old capture
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (failures=1)

@@ -1,0 +1,29 @@
+test_full_window_may_drop_older_fills_which_the_cache_keeps (test_live_observer.ConfirmedSettlementsTests.test_full_window_may_drop_older_fills_which_the_cache_keeps) ... ok
+test_hand_calculated_net_buy_and_sell_prices (test_live_observer.ConfirmedSettlementsTests.test_hand_calculated_net_buy_and_sell_prices) ... ok
+test_incarnation_future_and_schema_are_strict (test_live_observer.ConfirmedSettlementsTests.test_incarnation_future_and_schema_are_strict) ... ok
+test_optional_missing_invalid_stale_and_fresh_source (test_live_observer.ConfirmedSettlementsTests.test_optional_missing_invalid_stale_and_fresh_source) ... ok
+test_partial_window_or_newer_gap_still_refused (test_live_observer.ConfirmedSettlementsTests.test_partial_window_or_newer_gap_still_refused) ... ok
+test_prior_effect_cannot_disappear_even_at_a_new_index (test_live_observer.ConfirmedSettlementsTests.test_prior_effect_cannot_disappear_even_at_a_new_index) ... ok
+test_production_validation_clock_is_sampled_after_source_read (test_live_observer.ConfirmedSettlementsTests.test_production_validation_clock_is_sampled_after_source_read) ... ok
+test_quote_pending_failed_duplicates_and_unknown_fields_rejected (test_live_observer.ConfirmedSettlementsTests.test_quote_pending_failed_duplicates_and_unknown_fields_rejected) ... ok
+test_restart_keeps_first_observation_and_conflict_fails_closed (test_live_observer.ConfirmedSettlementsTests.test_restart_keeps_first_observation_and_conflict_fails_closed) ... ok
+test_same_index_cannot_change_balances_or_add_trade (test_live_observer.ConfirmedSettlementsTests.test_same_index_cannot_change_balances_or_add_trade) ... ok
+test_symlink_source_refused (test_live_observer.ConfirmedSettlementsTests.test_symlink_source_refused) ... ok
+test_attempt_is_not_settlement (test_live_observer.LiveObserverTests.test_attempt_is_not_settlement) ... ok
+test_balances_keep_evidence_time_not_poll_time (test_live_observer.LiveObserverTests.test_balances_keep_evidence_time_not_poll_time) ... ok
+test_corrupt_or_unknown_phase_refused (test_live_observer.LiveObserverTests.test_corrupt_or_unknown_phase_refused) ... ok
+test_error_drops_balances_instead_of_republishing_stale_as_fresh (test_live_observer.LiveObserverTests.test_error_drops_balances_instead_of_republishing_stale_as_fresh) ... ok
+test_fixed_labels_no_arbitrary_secret_output (test_live_observer.LiveObserverTests.test_fixed_labels_no_arbitrary_secret_output) ... ok
+test_future_or_unstable_account_refused (test_live_observer.LiveObserverTests.test_future_or_unstable_account_refused) ... ok
+test_idle_is_one_not_zero_and_not_a_fill (test_live_observer.LiveObserverTests.test_idle_is_one_not_zero_and_not_a_fill) ... ok
+test_released_prepare_journal_is_observed (test_live_observer.LiveObserverTests.test_released_prepare_journal_is_observed) ... ok
+test_day_review_remains_current_after_fifteen_minutes (test_live_observer.ReviewWindowTests.test_day_review_remains_current_after_fifteen_minutes) ... ok
+test_day_review_snapshot_publishes_original_producer_timestamp (test_live_observer.ReviewWindowTests.test_day_review_snapshot_publishes_original_producer_timestamp) ... ok
+test_exact_day_review_and_capture_expiry_boundaries (test_live_observer.ReviewWindowTests.test_exact_day_review_and_capture_expiry_boundaries) ... ok
+test_old_fifteen_minute_review_retains_its_own_cutoff (test_live_observer.ReviewWindowTests.test_old_fifteen_minute_review_retains_its_own_cutoff) ... ok
+test_overlong_or_future_and_malformed_review_times_refused (test_live_observer.ReviewWindowTests.test_overlong_or_future_and_malformed_review_times_refused) ... ok
+
+----------------------------------------------------------------------
+Ran 24 tests in 0.007s
+
+OK

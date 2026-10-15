@@ -1,0 +1,17 @@
+{"tests": 1, "failures": 1, "errors": 0}
+test_overlong_or_future_and_malformed_review_times_refused (test_live_observer.ReviewWindowTests.test_overlong_or_future_and_malformed_review_times_refused) ... 
+  test_overlong_or_future_and_malformed_review_times_refused (test_live_observer.ReviewWindowTests.test_overlong_or_future_and_malformed_review_times_refused) (history={'base_atoms': 40764166, 'quote_atoms': 40006989, 'capture_finished_ms': 1000000, 'stable_window': True, 'blocking_orders': 0, 'unsupported_accounts': 0, 'pagination_exhausted': True}, review={'reviewed_at_ms': '+1001000', 'expires_at_ms': '1900000'}) ... FAIL
+
+======================================================================
+FAIL: test_overlong_or_future_and_malformed_review_times_refused (test_live_observer.ReviewWindowTests.test_overlong_or_future_and_malformed_review_times_refused) (history={'base_atoms': 40764166, 'quote_atoms': 40006989, 'capture_finished_ms': 1000000, 'stable_window': True, 'blocking_orders': 0, 'unsupported_accounts': 0, 'pagination_exhausted': True}, review={'reviewed_at_ms': '+1001000', 'expires_at_ms': '1900000'})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/driver/observer-isolated/tests/test_live_observer.py", line 122, in test_overlong_or_future_and_malformed_review_times_refused
+    with self.subTest(history=history,review=review),self.assertRaises(ValueError):
+                                                     ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (failures=1)

@@ -17,6 +17,7 @@ SETTLEMENT_CACHE=Path('/var/lib/velocita-live-observer/settlements.json')
 SETTLEMENT_PUBLISH=Path('/home/velocitas/velocita-v2/textfile/strategy-settlements.json')
 MAX_SETTLEMENTS=16
 MAX_RETAINED=1024
+REVIEW_LIFETIME_MS=86_400_000
 
 def integer(value,low=0,high=2**64-1):
     if type(value) is not int or not low<=value<=high:raise ValueError('integer range')
@@ -148,13 +149,16 @@ def journal(raw,kind):
     return dict(ordinal=ordinal,phase=phase,index=index,effect=effect)
 
 def account(history,review,now):
-    captured=history['capture_finished_ms'];start=int(review['reviewed_at_ms']);end=int(review['expires_at_ms'])
+    captured=integer(history['capture_finished_ms'],1);now=integer(now,1)
+    times=[review['reviewed_at_ms'],review['expires_at_ms']]
+    if any(type(value) is not str or not value.isascii() or not value.isdecimal() for value in times):raise ValueError('review timestamps')
+    start,end=(integer(int(value),1) for value in times)
     if not history['stable_window'] or history['blocking_orders'] or history['unsupported_accounts'] or not history['pagination_exhausted']:raise ValueError('unreviewable history')
-    if not 0<captured<=start<=now or not start<end<=start+900000:raise ValueError('review timestamps')
+    if not captured<=start<=now or not start<end<=start+REVIEW_LIFETIME_MS or start-captured>REVIEW_LIFETIME_MS:raise ValueError('review timestamps')
     base,quote=history['base_atoms'],history['quote_atoms']
     if any(type(v) is not int or v<0 or v>2**63-1 for v in (base,quote)):raise ValueError('balance atoms')
     return dict(reviewed_sol=base/1e9,reviewed_usdc=quote/1e6,account_observed_seconds=captured/1000,
-                review_expires_seconds=end/1000,review_current=int(now<end and now-captured<=900000))
+                review_expires_seconds=end/1000,review_current=int(now<end and now-captured<=REVIEW_LIFETIME_MS))
 
 def snapshot(now,persist=False):
     manifest_raw=read(PUBLIC/'manifest.json');m=json.loads(manifest_raw)

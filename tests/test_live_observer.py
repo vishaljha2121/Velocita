@@ -6,6 +6,7 @@ from pathlib import Path
 import struct
 import unittest
 import tempfile
+import types
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -46,6 +47,81 @@ class LiveObserverTests(unittest.TestCase):
         self.assertNotIn('bearer',text)
     def test_fixed_labels_no_arbitrary_secret_output(self):
         with self.assertRaises(ValueError):O.render({'run':'unsafe"','reviewed_usdc':1},2000)
+
+class ReviewWindowTests(unittest.TestCase):
+    def history(self, captured=1000000):
+        return dict(base_atoms=40764166,quote_atoms=40006989,capture_finished_ms=captured,
+                    stable_window=True,blocking_orders=0,unsupported_accounts=0,pagination_exhausted=True)
+    def review(self, start=1001000, end=87400000):
+        return dict(reviewed_at_ms=str(start),expires_at_ms=str(end))
+    def test_day_review_remains_current_after_fifteen_minutes(self):
+        try:
+            data=O.account(self.history(),self.review(),10000000)
+        except ValueError as error:
+            self.fail('approved day-long review must remain observable: '+str(error))
+        self.assertEqual(data['review_current'],1,'ten million ms is inside both approved review and capture lifetimes')
+        self.assertEqual(data['account_observed_seconds'],1000,'old capture is never retimestamped as a fresh wallet read')
+    def test_exact_day_review_and_capture_expiry_boundaries(self):
+        try:
+            before=O.account(self.history(),self.review(1000000,87400000),87399999)
+            expired=O.account(self.history(),self.review(1000000,87400000),87400000)
+            at_cut=O.account(self.history(),self.review(1001000,87401000),87400000)
+            old_cut=O.account(self.history(),self.review(1001000,87401000),87400001)
+        except ValueError as error:
+            self.fail('valid day-long boundary snapshots must remain observable: '+str(error))
+        self.assertEqual(before['review_current'],1)
+        self.assertEqual(expired['review_current'],0,'review expiry is exclusive')
+        self.assertEqual(at_cut['review_current'],1,'capture age equal to24h matches launcher contract')
+        self.assertEqual(old_cut['review_current'],0,'a newer review cannot revive an old capture')
+    def test_old_fifteen_minute_review_retains_its_own_cutoff(self):
+        review=self.review(1001000,1900000)
+        self.assertEqual(O.account(self.history(),review,1899999)['review_current'],1)
+        self.assertEqual(O.account(self.history(),review,1900000)['review_current'],0)
+    def test_day_review_snapshot_publishes_original_producer_timestamp(self):
+        now=10000000;run='a'*32;owner='11'*32;user='synthetic-user'
+        history=dict(self.history(),owner_sha256=hashlib.sha256(bytes.fromhex(owner)).hexdigest(),
+                     user_id_sha256=hashlib.sha256(user.encode()).hexdigest())
+        history_raw=json.dumps(history).encode()
+        review_raw=('reviewed_at_ms=1001000\nexpires_at_ms=87400000\nhistory_evidence='+hashlib.sha256(history_raw).hexdigest()+'\n').encode()
+        profile_raw=('owner_wallet='+owner+'\nuser_id='+user+'\naccount_review_digest='+hashlib.sha256(review_raw).hexdigest()+
+                     '\nmax_buy_output_deduction_lamports=2039280\n').encode()
+        docs={'runtime.profile':profile_raw,'account.review':review_raw,'account.history':history_raw}
+        manifest=dict(incarnation=run,**{key:hashlib.sha256(docs[leaf]).hexdigest() for leaf,key in
+                      [('runtime.profile','runtime_profile_sha256'),('account.review','account_review_sha256'),('account.history','account_history_sha256')]})
+        source=dict(schema=2,incarnation=run,observed_at_ms=now-50,applied_index=8,base_atoms=0,quote_atoms=25000000,
+                    fees_atoms=0,realized_pnl_atoms=0,last_effect=0,pending_effect=0,settlements=[])
+        fixtures=LiveObserverTests()
+        def read(path):
+            if path==O.PUBLIC/'manifest.json':return json.dumps(manifest).encode()
+            if path.parent==O.PUBLIC:return docs[path.name]
+            if path==O.SETTLEMENT_SOURCE:return json.dumps(source).encode()
+            if path==O.SETTLEMENT_CACHE:raise FileNotFoundError
+            return fixtures.prepare(1) if path.name=='prepare.bin' else fixtures.journal()
+        with patch.object(O,'read',side_effect=read),patch.object(O,'write_file') as write, \
+                patch.object(O.time,'time_ns',return_value=now*1000000), \
+                patch.object(O.subprocess,'check_output',return_value='ActiveState=active\nSubState=running\nExecMainStatus=0\nNRestarts=0\n'), \
+                patch.object(Path,'stat',return_value=types.SimpleNamespace(st_mtime=10)):
+            try:data=O.snapshot(now,True)
+            except ValueError as error:self.fail('approved day-long review must reach snapshot publication: '+str(error))
+        published=[call for call in write.call_args_list if call.args[0]==O.SETTLEMENT_PUBLISH]
+        self.assertEqual(len(published),1,'validated current producer snapshot reaches strategy')
+        self.assertEqual(json.loads(published[0].args[1]),source,'observer does not freshen producer timestamp')
+        self.assertEqual(data['review_current'],1)
+        self.assertEqual(data['account_observed_seconds'],1000)
+        self.assertEqual(data['settlement_observed_seconds'],9999.95)
+
+    def test_overlong_or_future_and_malformed_review_times_refused(self):
+        cases=[(self.history(),self.review(1000000,87400001),1001000),
+               (self.history(),self.review(87400001,87400002),87400001),
+               (self.history(1001001),self.review(1001000,1900000),1002000),
+               (self.history(),self.review(1001000,1900000),1000999),
+               (self.history(True),self.review(),1001000),
+               (self.history(),dict(reviewed_at_ms='+1001000',expires_at_ms='1900000'),1002000),
+               (self.history(),dict(reviewed_at_ms=True,expires_at_ms='1900000'),1002000)]
+        for history,review,now in cases:
+            with self.subTest(history=history,review=review),self.assertRaises(ValueError):
+                O.account(history,review,now)
+
 
 class ConfirmedSettlementsTests(unittest.TestCase):
     RUN='a'*32

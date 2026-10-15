@@ -1,0 +1,14 @@
+...F.........
+======================================================================
+FAIL: test_expired_review_refused_by_actual_launcher_checks (upgrade_tests.UpgradeTests.test_expired_review_refused_by_actual_launcher_checks)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/docs/evidence/automated_launch_2026-10-15/focused-deploy/test_upgrade_first_start.py", line 109, in test_expired_review_refused_by_actual_launcher_checks
+    with self.assertRaises(ValueError):M.validate_review(old,docs)
+         ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.053s
+
+FAILED (failures=1)

@@ -1,0 +1,5 @@
+{
+  "exit": 0,
+  "stdout": "{\"image\": \"localhost/velocita-v2:qualified-54a5fcb\", \"max_orders\": 6, \"opening_sha256\": \"2f329e441584fbda843187ffd251f8ac000ea383506b0ba4623586ef604d9b95\", \"review_expires_ms\": 1792158514459, \"staged\": \"/home/velocitas/velocita-strategy/aae119b95ddcea5a206f03ab5ca12c15\", \"started\": false, \"unit\": \"velocita-strategy-driver.service\"}\n",
+  "stderr": ""
+}

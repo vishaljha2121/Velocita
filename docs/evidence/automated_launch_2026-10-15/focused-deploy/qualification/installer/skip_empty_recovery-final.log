@@ -1,0 +1,14 @@
+.......F.....
+======================================================================
+FAIL: test_nonempty_and_missing_recovery_refused (upgrade_tests.UpgradeTests.test_nonempty_and_missing_recovery_refused) (condition='nonempty')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/docs/evidence/automated_launch_2026-10-15/focused-deploy/test_upgrade_first_start.py", line 124, in test_nonempty_and_missing_recovery_refused
+    for u in M.U.UNITS:self.assertFalse((M.U.SYSTEMD/(u+'.d')/M.U.GUARD_NAME).exists())
+                       ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: True is not false
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.051s
+
+FAILED (failures=1)

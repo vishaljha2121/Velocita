@@ -1,0 +1,18 @@
+test_active_service_refuses_apply_before_release (test_upgrade_first_start.UpgradeTests.test_active_service_refuses_apply_before_release) ... ok
+test_apply_preserves_docs_credentials_empty_roots_and_keeps_guards (test_upgrade_first_start.UpgradeTests.test_apply_preserves_docs_credentials_empty_roots_and_keeps_guards) ... ok
+test_credentials_changing_during_publish_stops_with_guards (test_upgrade_first_start.UpgradeTests.test_credentials_changing_during_publish_stops_with_guards) ... ok
+test_expired_review_refused_by_actual_launcher_checks (test_upgrade_first_start.UpgradeTests.test_expired_review_refused_by_actual_launcher_checks) ... ok
+test_installer_lock_refuses_parallel_apply (test_upgrade_first_start.UpgradeTests.test_installer_lock_refuses_parallel_apply) ... ok
+test_loaded_guard_required_before_release (test_upgrade_first_start.UpgradeTests.test_loaded_guard_required_before_release) ... ok
+test_manifest_only_three_executable_pins_change (test_upgrade_first_start.UpgradeTests.test_manifest_only_three_executable_pins_change) ... ok
+test_nonempty_and_missing_recovery_refused (test_upgrade_first_start.UpgradeTests.test_nonempty_and_missing_recovery_refused) ... ok
+test_partial_replacement_preserves_failure_and_loaded_guards (test_upgrade_first_start.UpgradeTests.test_partial_replacement_preserves_failure_and_loaded_guards) ... ok
+test_payload_rejects_pin_mismatch_before_exec (test_upgrade_first_start.UpgradeTests.test_payload_rejects_pin_mismatch_before_exec) ... ok
+test_stopped_rejects_active_pid_and_control_pid (test_upgrade_first_start.UpgradeTests.test_stopped_rejects_active_pid_and_control_pid) ... ok
+test_wrong_old_manifest_pin_is_no_mutation (test_upgrade_first_start.UpgradeTests.test_wrong_old_manifest_pin_is_no_mutation) ... ok
+test_wrong_phase_incarnation_runtime_and_same_release_refused (test_upgrade_first_start.UpgradeTests.test_wrong_phase_incarnation_runtime_and_same_release_refused) ... ok
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.078s
+
+OK

@@ -1,0 +1,44 @@
+[
+  {
+    "name": "permit_unsealed_false",
+    "killed": true,
+    "returncode": 1,
+    "log": "/Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/deploy-tests/permit_unsealed_false-final.log"
+  },
+  {
+    "name": "skip_manifest_pin",
+    "killed": true,
+    "returncode": 1,
+    "log": "/Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/deploy-tests/skip_manifest_pin-final.log"
+  },
+  {
+    "name": "skip_empty_recovery",
+    "killed": true,
+    "returncode": 1,
+    "log": "/Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/deploy-tests/skip_empty_recovery-final.log"
+  },
+  {
+    "name": "skip_stopped_checks",
+    "killed": true,
+    "returncode": 1,
+    "log": "/Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/deploy-tests/skip_stopped_checks-final.log"
+  },
+  {
+    "name": "skip_credential_preservation",
+    "killed": true,
+    "returncode": 1,
+    "log": "/Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/deploy-tests/skip_credential_preservation-final.log"
+  },
+  {
+    "name": "skip_loaded_guard",
+    "killed": true,
+    "returncode": 1,
+    "log": "/Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/deploy-tests/skip_loaded_guard-final.log"
+  },
+  {
+    "name": "skip_current_review",
+    "killed": true,
+    "returncode": 1,
+    "log": "/Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/deploy-tests/skip_current_review-final.log"
+  }
+]

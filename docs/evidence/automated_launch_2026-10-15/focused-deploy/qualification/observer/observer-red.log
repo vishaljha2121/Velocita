@@ -1,0 +1,61 @@
+...................FF.FF
+======================================================================
+FAIL: test_day_review_remains_current_after_fifteen_minutes (test_live_observer.ReviewWindowTests.test_day_review_remains_current_after_fifteen_minutes)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/tests/test_live_observer.py", line 58, in test_day_review_remains_current_after_fifteen_minutes
+    data=O.account(self.history(),self.review(),10000000)
+  File "/Users/vishaljha/aeron-raft-pi/deploy/v2/observability/live_observer.py", line 153, in account
+    if not 0<captured<=start<=now or not start<end<=start+900000:raise ValueError('review timestamps')
+                                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: review timestamps
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/tests/test_live_observer.py", line 60, in test_day_review_remains_current_after_fifteen_minutes
+    self.fail('approved day-long review must remain observable: '+str(error))
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: approved day-long review must remain observable: review timestamps
+
+======================================================================
+FAIL: test_exact_day_review_and_capture_expiry_boundaries (test_live_observer.ReviewWindowTests.test_exact_day_review_and_capture_expiry_boundaries)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/tests/test_live_observer.py", line 65, in test_exact_day_review_and_capture_expiry_boundaries
+    before=O.account(self.history(),self.review(1000000,87400000),87399999)
+  File "/Users/vishaljha/aeron-raft-pi/deploy/v2/observability/live_observer.py", line 153, in account
+    if not 0<captured<=start<=now or not start<end<=start+900000:raise ValueError('review timestamps')
+                                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: review timestamps
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/tests/test_live_observer.py", line 70, in test_exact_day_review_and_capture_expiry_boundaries
+    self.fail('valid day-long boundary snapshots must remain observable: '+str(error))
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: valid day-long boundary snapshots must remain observable: review timestamps
+
+======================================================================
+FAIL: test_overlong_or_future_and_malformed_review_times_refused (test_live_observer.ReviewWindowTests.test_overlong_or_future_and_malformed_review_times_refused) (history={'base_atoms': 40764166, 'quote_atoms': 40006989, 'capture_finished_ms': 1000000, 'stable_window': True, 'blocking_orders': 0, 'unsupported_accounts': 0, 'pagination_exhausted': True}, review={'reviewed_at_ms': '87400001', 'expires_at_ms': '87400002'})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/tests/test_live_observer.py", line 88, in test_overlong_or_future_and_malformed_review_times_refused
+    with self.subTest(history=history,review=review),self.assertRaises(ValueError):
+                                                     ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_overlong_or_future_and_malformed_review_times_refused (test_live_observer.ReviewWindowTests.test_overlong_or_future_and_malformed_review_times_refused) (history={'base_atoms': 40764166, 'quote_atoms': 40006989, 'capture_finished_ms': 1000000, 'stable_window': True, 'blocking_orders': 0, 'unsupported_accounts': 0, 'pagination_exhausted': True}, review={'reviewed_at_ms': '+1001000', 'expires_at_ms': '1900000'})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/tests/test_live_observer.py", line 88, in test_overlong_or_future_and_malformed_review_times_refused
+    with self.subTest(history=history,review=review),self.assertRaises(ValueError):
+                                                     ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+----------------------------------------------------------------------
+Ran 23 tests in 0.004s
+
+FAILED (failures=4)

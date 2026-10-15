@@ -1,0 +1,14 @@
+...........F.
+======================================================================
+FAIL: test_wrong_old_manifest_pin_is_no_mutation (upgrade_tests.UpgradeTests.test_wrong_old_manifest_pin_is_no_mutation)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/docs/evidence/automated_launch_2026-10-15/focused-deploy/test_upgrade_first_start.py", line 113, in test_wrong_old_manifest_pin_is_no_mutation
+    with self.assertRaisesRegex(ValueError,'manifest'):M.apply(self.root,'0'*64,self.root/'archive')
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.056s
+
+FAILED (failures=1)

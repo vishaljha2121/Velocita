@@ -1,0 +1,18 @@
+F............
+======================================================================
+FAIL: test_active_service_refuses_apply_before_release (upgrade_tests.UpgradeTests.test_active_service_refuses_apply_before_release)
+----------------------------------------------------------------------
+ValueError: systemd has not loaded both persistent start guards
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/docs/evidence/automated_launch_2026-10-15/focused-deploy/test_upgrade_first_start.py", line 89, in test_active_service_refuses_apply_before_release
+    with self.assertRaisesRegex(ValueError,'stopped'):M.apply(self.root,M.U.digest(raw),self.root/'archive')
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: "stopped" does not match "systemd has not loaded both persistent start guards"
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.049s
+
+FAILED (failures=1)

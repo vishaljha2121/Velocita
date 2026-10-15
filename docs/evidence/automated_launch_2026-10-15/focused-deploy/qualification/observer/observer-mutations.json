@@ -1,0 +1,58 @@
+[
+  {
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "name": "old-fifteen-minute-window",
+    "test": "test_live_observer.ReviewWindowTests.test_day_review_remains_current_after_fifteen_minutes",
+    "killed": true
+  },
+  {
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "name": "capture-age-ignored",
+    "test": "test_live_observer.ReviewWindowTests.test_exact_day_review_and_capture_expiry_boundaries",
+    "killed": true
+  },
+  {
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "name": "review-expiry-ignored",
+    "test": "test_live_observer.ReviewWindowTests.test_exact_day_review_and_capture_expiry_boundaries",
+    "killed": true
+  },
+  {
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "name": "overlong-review",
+    "test": "test_live_observer.ReviewWindowTests.test_overlong_or_future_and_malformed_review_times_refused",
+    "killed": true
+  },
+  {
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "name": "old-history-review",
+    "test": "test_live_observer.ReviewWindowTests.test_overlong_or_future_and_malformed_review_times_refused",
+    "killed": true
+  },
+  {
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "name": "future-review",
+    "test": "test_live_observer.ReviewWindowTests.test_overlong_or_future_and_malformed_review_times_refused",
+    "killed": true
+  },
+  {
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "name": "malformed-review",
+    "test": "test_live_observer.ReviewWindowTests.test_overlong_or_future_and_malformed_review_times_refused",
+    "killed": true
+  }
+]

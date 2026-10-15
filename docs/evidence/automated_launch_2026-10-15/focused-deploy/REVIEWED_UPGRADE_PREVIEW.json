@@ -1,0 +1,11 @@
+{
+  "scope": "local retained public review documents; not installed-state read or fresh venue reconciliation",
+  "old_manifest_sha256": "f139936f89cae8de526f82c02b41aa3be1b2ec668efdfb7492281bb8d5d2568a",
+  "new_manifest_sha256": "bf8c44952fef8c6f5e2e01b63e1e65ebad17e0dc780802e3ec126f3ba61a797f",
+  "seal_bundle_sha256": "0ddf2b8191ba2a19337719554707d13ef7dba9a9181e3461d1c7214f690d0eab",
+  "sealed_manifest_sha256": "f3df32529bc2e3bfd08cb4a82ddecd8fe9b128160b2417ecb7850252cd0668c4",
+  "review_bindings_current": true,
+  "source_commit": "1f8d7b63c03c4ef1c0c916d833cdf8513f42a2dc",
+  "binary_sha256": "8d0fab33246d85628cac6471c3926205fd5710f96a55731106324a101cc9abcf",
+  "applied": false
+}

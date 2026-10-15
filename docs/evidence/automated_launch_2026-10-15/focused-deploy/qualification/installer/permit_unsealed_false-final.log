@@ -1,0 +1,14 @@
+............F
+======================================================================
+FAIL: test_wrong_phase_incarnation_runtime_and_same_release_refused (upgrade_tests.UpgradeTests.test_wrong_phase_incarnation_runtime_and_same_release_refused) (k='initialize_swap_recovery')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/docs/evidence/automated_launch_2026-10-15/focused-deploy/test_upgrade_first_start.py", line 33, in test_wrong_phase_incarnation_runtime_and_same_release_refused
+    with self.subTest(k=k),self.assertRaises(ValueError):M.next_manifest(dict(self.old(),**{k:v}),M.H.LAUNCH.PROFILE)
+                           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.049s
+
+FAILED (failures=1)
