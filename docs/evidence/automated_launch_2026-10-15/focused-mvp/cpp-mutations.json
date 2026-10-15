@@ -1,0 +1,37 @@
+[
+  {
+    "name": "one_use_signer",
+    "killed": true,
+    "exit": 1,
+    "expected": "next settled effect starts independently authorized read",
+    "source_sha256": "2db949532a345d892d46168cd3aab28b914ea9e2b2b0a768bece26b75a523aad"
+  },
+  {
+    "name": "unproven_predecessor",
+    "killed": true,
+    "exit": 1,
+    "expected": "missing prior settlement cannot advance fence or sign",
+    "source_sha256": "5dc6e5ed6ebbf77d597f58556e71ac8e03f00fa6542ce868cd1d8e85aaae8798"
+  },
+  {
+    "name": "one_effect_runtime",
+    "killed": true,
+    "exit": 1,
+    "expected": "continuous runtime stays ready after each settlement",
+    "source_sha256": "404e9159621c29b605408adc42a26a2bae810f7ff68f7e772c09581f0c8543ef"
+  },
+  {
+    "name": "no_original_funding_recovery",
+    "killed": true,
+    "exit": 1,
+    "expected": "restart after settled buy retains original reviewed funding",
+    "source_sha256": "287eec74ca5ef7118c5c443a93d2993bf152e28fd6e9e113e436fc31003a55f9"
+  },
+  {
+    "name": "no_settled_startup",
+    "killed": true,
+    "exit": 1,
+    "expected": "settled old submission restarts normally while idle",
+    "source_sha256": "a52a536028f4b3972aef77fbca50a14364b1a4391c8295080a1c956be0d7dc1d"
+  }
+]

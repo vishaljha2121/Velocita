@@ -1,0 +1,36 @@
+UpdateCTestConfiguration  from :/Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make/DartConfiguration.tcl
+Parse Config file:/Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make/DartConfiguration.tcl
+Test project /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 1
+    Start   1: v2-swap-continuous-drill
+
+1: Test command: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make/v2-swap-continuous-drill
+1: Working Directory: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make
+1: Test timeout computed to be: 240
+1: PASS continuous case 0: six real-format verified swaps, six sends, flat inventory
+1: PASS continuous case 1: six real-format verified swaps, six sends, flat inventory
+1: PASS continuous case 2: six real-format verified swaps, six sends, flat inventory
+1: Evidence: "/Users/vishaljha/.cache/velocita-build/continuous-90236"
+1/2 Test   #1: v2-swap-continuous-drill ...........   Passed   23.60 sec
+test 162
+    Start 162: v2-swap-runtime-production-tests
+
+162: Test command: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make/v2-swap-runtime-production-tests
+162: Working Directory: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make
+162: Test timeout computed to be: 1500
+162: PASS production profile and admission guards
+2/2 Test #162: v2-swap-runtime-production-tests ...   Passed    0.25 sec
+
+The following tests passed:
+	v2-swap-continuous-drill
+	v2-swap-runtime-production-tests
+
+100% tests passed out of 2
+
+Total Test time (real) =  23.85 sec

@@ -1,0 +1,197 @@
+UpdateCTestConfiguration  from :/Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make/DartConfiguration.tcl
+Parse Config file:/Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make/DartConfiguration.tcl
+Test project /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 1
+      Start   1: v2-swap-continuous-drill
+
+1: Test command: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make/v2-swap-continuous-drill
+1: Working Directory: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make
+1: Test timeout computed to be: 240
+1: PASS continuous case 0: six real-format verified swaps, six sends, flat inventory
+1: PASS continuous case 1: six real-format verified swaps, six sends, flat inventory
+1: PASS continuous case 2: six real-format verified swaps, six sends, flat inventory
+1: Evidence: "/Users/vishaljha/.cache/velocita-build/continuous-89724"
+ 1/12 Test   #1: v2-swap-continuous-drill ..............   Passed   23.51 sec
+test 141
+      Start 141: v2-swap-submission-resolution-tests
+
+141: Test command: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make/v2-swap-submission-resolution-tests
+141: Working Directory: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make
+141: Test timeout computed to be: 1500
+141: PASS committed_resolution_and_restart
+141: PASS absent_or_mismatched_settlement
+141: PASS authenticated_state_and_arithmetic
+141: PASS canonical_signature_identity_oracle
+141: PASS known_transaction_mapping_and_journal_change
+141: PASS timeout_ownership_and_limits
+141: PASS failed_durability_keeps_resolution_closed
+ 2/12 Test #141: v2-swap-submission-resolution-tests ...   Passed    0.21 sec
+test 142
+      Start 142: v2-swap-submission-session-tests
+
+142: Test command: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make/v2-swap-submission-session-tests
+142: Working Directory: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make
+142: Test timeout computed to be: 1500
+142: PASS durable_before_send_and_no_repeat
+142: PASS payload_copy_and_input_binding
+142: PASS authenticated_state_fences
+142: PASS exact_pending_identity
+142: PASS current_controls_deadline_and_phase
+142: PASS disk_failure_and_ambiguous_send
+142: PASS invalid_startup_and_backward_tick
+142: PASS late_queued_response_and_deadline_overflow
+142: PASS owned_state_request_cleanup
+ 3/12 Test #142: v2-swap-submission-session-tests ......   Passed    0.17 sec
+test 148
+      Start 148: v2-swap-prepare-session-tests
+
+148: Test command: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make/v2-swap-prepare-session-tests
+148: Working Directory: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make
+148: Test timeout computed to be: 1500
+148: PASS one_post_and_durable_payload
+148: PASS create_receives_fresh_committed_read
+148: PASS unknown_and_bad_response_never_retry
+148: PASS state_and_timing_fences
+148: PASS durable_write_failures
+148: PASS higher_effect_requires_prior_terminal
+148: PASS lifecycle_and_mapping_guards
+148: PASS sell_input_and_expired_admission
+148: PASS fee_inclusive_input_mapping
+ 4/12 Test #148: v2-swap-prepare-session-tests .........   Passed    0.20 sec
+test 149
+      Start 149: v2-swap-signer-session-tests
+
+149: Test command: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make/v2-swap-signer-session-tests
+149: Working Directory: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make
+149: Test timeout computed to be: 1500
+149: PASS lost_response_retrieval
+149: PASS authority_fences
+149: PASS durable_result
+149: PASS exact_signature
+149: PASS restart_replay
+149: PASS state_fences
+149: PASS clock_and_storage
+149: PASS remaining_admission_fences
+149: PASS crash_recovery
+149: PASS key_and_domain
+149: PASS payload_and_economics
+149: PASS authenticate
+ 5/12 Test #149: v2-swap-signer-session-tests ..........   Passed    0.19 sec
+test 150
+      Start 150: v2-swap-signer-production-gate
+
+150: Test command: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make/v2-swap-signer-production-gate "production_gate"
+150: Working Directory: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make
+150: Test timeout computed to be: 1500
+150: PASS production_gate
+ 6/12 Test #150: v2-swap-signer-production-gate ........   Passed    0.14 sec
+test 152
+      Start 152: v2-swap-signer-service-tests
+
+152: Test command: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make/v2-swap-signer-service-tests
+152: Working Directory: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make
+152: Test timeout computed to be: 30
+152: PASS success
+152: PASS lost
+152: PASS peer
+152: PASS process
+ 7/12 Test #152: v2-swap-signer-service-tests ..........   Passed    0.19 sec
+test 157
+      Start 157: v2-swap-signing-connection-tests
+
+157: Test command: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make/v2-swap-signing-connection-tests
+157: Working Directory: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make
+157: Test timeout computed to be: 30
+157: PASS restart
+157: PASS reply
+157: PASS crash_before_ipc
+157: PASS signer_storage
+157: PASS expired_recovery
+157: PASS missing_recovery
+157: PASS bounds
+157: PASS durability
+157: PASS lookup
+ 8/12 Test #157: v2-swap-signing-connection-tests ......   Passed    1.22 sec
+test 159
+      Start 159: v2-swap-runtime-config-tests
+
+159: Test command: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make/v2-swap-runtime-config-tests
+159: Working Directory: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make
+159: Test timeout computed to be: 30
+159: PASS valid
+159: PASS invalid
+159: PASS identity
+159: PASS session
+159: PASS api-key
+159: PASS token-ipc
+159: PASS descriptors
+159: PASS startup
+159: PASS order
+ 9/12 Test #159: v2-swap-runtime-config-tests ..........   Passed    0.19 sec
+test 160
+      Start 160: v2-swap-gateway-runtime-tests
+
+160: Test command: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make/v2-swap-gateway-runtime-tests
+160: Working Directory: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make
+160: Test timeout computed to be: 120
+160: PASS runtime mode 0
+160: PASS runtime mode 1
+160: PASS runtime mode 2
+160: PASS runtime mode 3
+160: PASS runtime mode 4
+160: PASS runtime mode 5
+160: PASS runtime mode 6
+160: PASS runtime mode 7
+160: PASS runtime mode 8
+160: PASS runtime mode 9
+160: PASS runtime mode 10
+10/12 Test #160: v2-swap-gateway-runtime-tests .........   Passed   20.48 sec
+test 162
+      Start 162: v2-swap-runtime-production-tests
+
+162: Test command: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make/v2-swap-runtime-production-tests
+162: Working Directory: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make
+162: Test timeout computed to be: 1500
+162: PASS production profile and admission guards
+11/12 Test #162: v2-swap-runtime-production-tests ......   Passed    0.01 sec
+test 173
+      Start 173: v2-swap-signer-verified-tests
+
+173: Test command: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make/v2-swap-signer-verified-tests
+173: Working Directory: /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make
+173: Test timeout computed to be: 1500
+173: PASS predecessor_refusals
+173: PASS six_settled_signatures
+173: PASS verified_signature_and_recovery
+173: PASS conservative_mvp
+173: PASS live_scope
+173: PASS sell_signs_under_live_scope
+173: PASS economic_and_context_refusal
+173: PASS freshness_and_authority
+173: PASS second_pool_same_journal
+173: PASS lookup_evidence
+12/12 Test #173: v2-swap-signer-verified-tests .........   Passed    0.21 sec
+
+The following tests passed:
+	v2-swap-continuous-drill
+	v2-swap-submission-resolution-tests
+	v2-swap-submission-session-tests
+	v2-swap-prepare-session-tests
+	v2-swap-signer-session-tests
+	v2-swap-signer-production-gate
+	v2-swap-signer-service-tests
+	v2-swap-signing-connection-tests
+	v2-swap-runtime-config-tests
+	v2-swap-gateway-runtime-tests
+	v2-swap-runtime-production-tests
+	v2-swap-signer-verified-tests
+
+100% tests passed out of 12
+
+Total Test time (real) =  46.73 sec

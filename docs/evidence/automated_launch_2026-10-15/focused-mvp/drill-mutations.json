@@ -1,0 +1,16 @@
+[
+  {
+    "mutation": "lifetime-create-latch",
+    "returncode": 1,
+    "expected_assertion": "gateway continuous lifecycle stopped status=4 cause=4",
+    "named_assertion_kill": true,
+    "output": "FAIL continuous drill: gateway continuous lifecycle stopped status=4 cause=4 trace=2\nFAIL continuous drill: worker exits successfully\n"
+  },
+  {
+    "mutation": "skip-signing-request-resolve",
+    "returncode": 1,
+    "expected_assertion": "settled effect retires durable signing request before next trade",
+    "named_assertion_kill": true,
+    "output": "FAIL continuous drill: settled effect retires durable signing request before next trade\nFAIL continuous drill: worker exits successfully\n"
+  }
+]

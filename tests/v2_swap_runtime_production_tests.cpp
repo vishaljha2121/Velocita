@@ -148,9 +148,52 @@ void account_history_tests(){
     require(swap_account_history_identity(*cut,edge,p.gateway.binding),"review exactly one day after the history cut");
     ++edge.reviewed_at_ms;require(!swap_account_history_identity(*cut,edge,p.gateway.binding),"review more than one day after the history cut refused");
     SwapAccountStartupAdmission admission{review,*cut,swap::State{},state,{},false};
-    require(swap_admission_funded(admission,p.gateway.binding,1200),"admission funds from its startup state whatever the current state");
+    require(!swap_admission_funded(admission,p.gateway.binding,1200),"funding refuses an absent current authenticated state");
+    admission.state=state;
+    require(swap_admission_funded(admission,p.gateway.binding,1200),"matching original current and funding state admitted");
     admission.state=state;admission.funding_state=swap::State{};
-    require(!swap_admission_funded(admission,p.gateway.binding,1200),"admission never funds from the current state");
+    require(!swap_admission_funded(admission,p.gateway.binding,1200),"missing opening in funding snapshot cannot fall back");
+    auto bought=state;
+    require(swap::apply(bought,swap_test::buy(opening),swap::Role::strategy,1150)==swap::Code::applied,"restart buy reserves");
+    require(swap::apply(bought,swap::Prepare{EffectId{1},digest(21),digest(22),1},swap::Role::gateway,1151)==swap::Code::applied,"restart buy prepares");
+    require(swap::apply(bought,swap::Attempt{EffectId{1},digest(21)},swap::Role::gateway,1152)==swap::Code::applied,"restart buy attempts");
+    const swap::Settlement fill{EffectId{1},opening.binding.custody,digest(21),digest(23),digest(24),swap::Outcome::succeeded,
+        swap::BaseAtoms{0},swap::BaseAtoms{9'000'000},swap::QuoteAtoms{1'002'000},swap::QuoteAtoms{0},swap::QuoteAtoms{2'000},true};
+    require(swap::apply(bought,fill,swap::Role::gateway,1153)==swap::Code::applied && swap::valid_state(bought),"restart buy finalized");
+    require(bought.base.value()==9'000'000 && bought.quote.value()==3'998'000,"restart accounting oracle 5000000 minus 1002000");
+    SwapAccountStartupAdmission restarted{review,*cut,bought,bought,
+        {opening.binding.incarnation,review.document_digest,digest(31),20,1170,1171},false};
+    require(!swap_account_history_funding(*cut,review,p.gateway.binding,bought,1200),"old funding cut is not the post-trade wallet");
+    require(swap_admission_funded(restarted,p.gateway.binding,1200),"restart after settled buy retains original reviewed funding");
+    const auto unchanged=bought;
+    const std::string wallet=R"({"data":[{"symbol":"SOL","chain":"solana","venue":"defi","total":"0.009000035","available":"0.009000035","held":"0"},{"symbol":"USDC","chain":"solana","venue":"defi","total":"3.998033","available":"3.998033","held":"0"}]})";
+    require(swap_reviewed_balance_matches(review,p.gateway.binding,bought,restarted.barrier,wallet,1172,1173),
+        "restart wallet equals current managed balances plus unchanged outside35lamports33USDCatoms");
+    auto unexplained=wallet;auto at=unexplained.find("0.009000035");unexplained.replace(at,11,"0.009000036");
+    at=unexplained.find("0.009000035");unexplained.replace(at,11,"0.009000036");
+    require(!swap_reviewed_balance_matches(review,p.gateway.binding,bought,restarted.barrier,unexplained,1172,1173),
+        "restart funding fallback never absorbs an unexplained current wallet atom");
+    require(!swap_reviewed_balance_matches(review,p.gateway.binding,state,restarted.barrier,wallet,1172,1173),
+        "opening balances must not replace current balances for wallet comparison");
+    require(bought==unchanged && restarted.state==bought && restarted.funding_state==bought,"funding fallback does not mutate current or funding snapshots");
+    auto bad=restarted;bad.state.opening.funding_evidence=digest(56);bad.funding_state.opening=bad.state.opening;
+    require(!swap_admission_funded(bad,p.gateway.binding,1200),"fallback cannot accept a different pinned opening");
+    bad=restarted;++bad.history.quote_atoms;
+    require(!swap_admission_funded(bad,p.gateway.binding,1200),"fallback cannot accept one unmatched historical quote atom");
+    require(!swap_admission_funded(restarted,p.gateway.binding,review.expires_at_ms),"fallback cannot extend the review lifetime");
+    auto renewed_source=source;
+    auto replace=[&](std::string_view from,std::string_view to){const auto offset=renewed_source.find(from);
+        require(offset!=std::string::npos,"renewed history fixture field exists");renewed_source.replace(offset,from.size(),to);};
+    replace("\"capture_started_ms\":1000","\"capture_started_ms\":1160");
+    replace("\"capture_finished_ms\":1050","\"capture_finished_ms\":1170");
+    replace("\"base_atoms\":35","\"base_atoms\":9000035");
+    replace("\"quote_atoms\":5000033","\"quote_atoms\":3998033");
+    const auto renewed_cut=decode(renewed_source);require(renewed_cut.has_value(),"renewed current history decodes");
+    auto renewed=restarted;renewed.history=*renewed_cut;renewed.review.history_evidence=renewed_cut->document;
+    renewed.review.document_digest=digest(78);renewed.review.reviewed_at_ms=1180;renewed.review.expires_at_ms=1180+kSwapReviewLifetimeMs;
+    require(swap_admission_funded(renewed,p.gateway.binding,1200),"new reviewed history matching current balances remains supported");
+    renewed.funding_state=state;
+    require(!swap_admission_funded(renewed,p.gateway.binding,1200),"new current cut cannot be paired with stale original funding balances");
 }
 
 }
@@ -198,6 +241,8 @@ void startup_recovery_tests(){
     idle.mode=swap::Mode::normal;auto reserved=idle;require(swap::apply(reserved,swap_test::buy(opening),swap::Role::strategy,100)==swap::Code::applied,"startup fixture reserved");
     auto prepared=reserved;require(swap::apply(prepared,swap::Prepare{EffectId{1},digest(7),digest(8),1},swap::Role::gateway,101)==swap::Code::applied,"startup fixture prepared");
     using P=SwapPreparePhase;using S=SwapSubmissionPhase;
+    auto corrupt=idle;corrupt.settlement_count=corrupt.settlements.size()+1;
+    require(swap_startup_recovery_only(corrupt,P::prepared,EffectId{1},S::resolved),"out-of-bounds settlement count never traversed during startup");
     require(!swap_startup_recovery_only(idle,P::idle,EffectId{0},S::idle) && !swap_startup_recovery_only(idle,P::released,EffectId{1},S::idle),
         "idle or released journal with no pending effect runs normally");
     require(!swap_startup_recovery_only(reserved,P::idle,EffectId{0},S::idle) && !swap_startup_recovery_only(reserved,P::create_intent,EffectId{1},S::idle) &&
@@ -205,6 +250,27 @@ void startup_recovery_tests(){
     require(swap_startup_recovery_only(reserved,P::create_intent,EffectId{2},S::idle) && swap_startup_recovery_only(idle,P::create_intent,EffectId{1},S::idle) &&
         swap_startup_recovery_only(reserved,P::prepared,EffectId{1},S::idle) && swap_startup_recovery_only(prepared,P::prepared,EffectId{1},S::idle) &&
         swap_startup_recovery_only(reserved,P::idle,EffectId{0},S::execute_intent),"foreign create, prepared bytes or sent request recover only");
+    auto settled=prepared;
+    require(swap::apply(settled,swap::Attempt{EffectId{1},digest(7)},swap::Role::gateway,102)==swap::Code::applied,"startup previous effect attempts");
+    const swap::Settlement fill{EffectId{1},opening.binding.custody,digest(7),digest(9),digest(10),swap::Outcome::succeeded,
+        swap::BaseAtoms{0},swap::BaseAtoms{9'000'000},swap::QuoteAtoms{1'002'000},swap::QuoteAtoms{0},swap::QuoteAtoms{2'000},true};
+    require(swap::apply(settled,fill,swap::Role::gateway,103)==swap::Code::applied,"startup previous effect finalized");
+    require(!swap_startup_recovery_only(settled,P::prepared,EffectId{1},S::resolved),"settled old submission restarts normally while idle");
+    require(!swap_startup_recovery_only(settled,P::prepared,EffectId{1},S::execute_intent),"settled old unresolved journal can finish durable retirement");
+    auto next=settled;
+    require(swap::apply(next,swap_test::buy(opening,2),swap::Role::strategy,104)==swap::Code::applied,"startup next effect reserves");
+    require(!swap_startup_recovery_only(next,P::prepared,EffectId{1},S::resolved),"settled old preparation permits a new reserved effect");
+    require(swap_startup_recovery_only(next,P::prepared,EffectId{2},S::resolved),"current prepared bytes without settlement stay recovery only");
+    require(swap::apply(next,swap::Prepare{EffectId{2},digest(11),digest(12),1},swap::Role::gateway,105)==swap::Code::applied,"startup current effect prepares");
+    require(swap_startup_recovery_only(next,P::prepared,EffectId{2},S::resolved),"current prepared Raft effect requires supervised recovery after restart");
+    require(swap::apply(next,swap::Attempt{EffectId{2},digest(11)},swap::Role::gateway,106)==swap::Code::applied,"startup current effect attempts");
+    require(swap_startup_recovery_only(next,P::prepared,EffectId{2},S::execute_intent),"current attempted effect cannot restart with new trade authority");
+    auto unproven=settled;unproven.settlements[0].finalized=false;
+    require(swap_startup_recovery_only(unproven,P::prepared,EffectId{1},S::resolved),"nonfinalized predecessor cannot admit normal startup");
+    unproven=settled;unproven.settlements[0].evidence={};
+    require(swap_startup_recovery_only(unproven,P::prepared,EffectId{1},S::resolved),"missing predecessor evidence cannot admit normal startup");
+    unproven=settled;unproven.settlements[0].custody=digest(99);
+    require(swap_startup_recovery_only(unproven,P::prepared,EffectId{1},S::resolved),"foreign predecessor custody cannot admit normal startup");
 }
 std::string b64url(std::span<const std::uint8_t> bytes){
     constexpr char a[]="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";std::string out;std::uint32_t acc{};int bits{};

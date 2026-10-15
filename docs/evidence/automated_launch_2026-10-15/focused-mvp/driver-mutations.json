@@ -1,0 +1,130 @@
+[
+  {
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "name": "stale-candle",
+    "test": "test_live_swap_driver.GuardRegressions.test_contiguous_stale_candle_never_submits",
+    "killed": true
+  },
+  {
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "name": "future-candle",
+    "test": "test_live_swap_driver.GuardRegressions.test_future_candle_never_submits",
+    "killed": true
+  },
+  {
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "name": "source-time",
+    "test": "test_live_swap_driver.GuardRegressions.test_source_time_is_not_replaced_by_decision_time",
+    "killed": true
+  },
+  {
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "name": "deadline-does-not-extend",
+    "test": "test_live_swap_driver.GuardRegressions.test_source_time_is_not_replaced_by_decision_time",
+    "killed": true
+  },
+  {
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "name": "exit-reservation",
+    "test": "test_live_swap_driver.GuardRegressions.test_final_effect_slot_is_reserved_for_exit",
+    "killed": true
+  },
+  {
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "name": "hard-effect-limit",
+    "test": "test_live_swap_driver.GuardRegressions.test_no_sell_after_effect_ceiling",
+    "killed": true
+  },
+  {
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "name": "drain-exit",
+    "test": "test_live_swap_driver.GuardRegressions.test_review_drain_exits_without_an_indicator_signal",
+    "killed": true
+  },
+  {
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "name": "flat-drain-without-feed",
+    "test": "test_live_swap_driver.BoundaryRecovery.test_flat_drain_is_durable_without_market_data",
+    "killed": true
+  },
+  {
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "name": "exit-cutoff",
+    "test": "test_live_swap_driver.GuardRegressions.test_review_exit_deadline_does_not_start_late_sell",
+    "killed": true
+  },
+  {
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "name": "hard-expiry-pending",
+    "test": "test_live_swap_driver.BoundaryRecovery.test_hard_expiry_records_pending_without_a_new_candle",
+    "killed": true
+  },
+  {
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "name": "stalled-socket-deadline",
+    "test": "test_live_swap_driver.BoundaryRecovery.test_main_checks_expiry_when_socket_stalls",
+    "killed": true
+  },
+  {
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "name": "ambiguous-result",
+    "test": "test_live_swap_driver.BoundaryRecovery.test_ambiguous_submission_stays_durable_across_restart",
+    "killed": true
+  },
+  {
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "name": "no-retry-timeout",
+    "test": "test_live_swap_driver.Flow.test_unseen_submission_stops_without_retrying_after_deadline",
+    "killed": true
+  },
+  {
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "name": "stage-expiry-pin",
+    "test": "test_stage_driver.Stage.test_stages_pinned_driver_without_starting_it",
+    "killed": true
+  },
+  {
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "name": "stage-drain-margin",
+    "test": "test_stage_driver.Stage.test_review_cutoff_must_leave_the_entire_entry_drain_window",
+    "killed": true
+  },
+  {
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "name": "client-send-age",
+    "test": "test_live_swap_driver.SubmitResult.test_stale_at_client_send_does_not_launch_a_process",
+    "killed": true
+  }
+]

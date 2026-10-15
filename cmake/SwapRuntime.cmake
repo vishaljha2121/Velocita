@@ -46,3 +46,7 @@ if(VELOCITA_BUILD_SWAP_RUNTIME)
     target_link_libraries(velocita-v2-gateway PRIVATE velocita_v2_swap_runtime)
     target_compile_definitions(velocita-v2-gateway PRIVATE VELOCITA_SWAP_RUNTIME_WIRING=1)
 endif()
+
+if(BUILD_TESTING AND VELOCITA_BUILD_SWAP_RUNTIME)
+    include(cmake/SwapContinuousTests.cmake)
+endif()

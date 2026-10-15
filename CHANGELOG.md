@@ -13,6 +13,19 @@ release-engineering work.
 
 ## [V2] - In development
 
+### Automated launch correctness batch — 2026-10-15 (local, not deployed)
+
+- Allow consecutive gateway/signer effects only after authenticated predecessor settlement;
+  preserve durable per-effect create/sign/execute fences and independent signing authority.
+- Separate historical funding validation from current settled-wallet reconciliation on restart.
+- Preserve Raft caller keys during retirement and validate their protected metadata/access;
+  prepare an owner-run, create-only restoration helper for the failed startup.
+- Reject stale/future candles, reserve exit capacity, stop ambiguous driver submissions, and
+  drain before the unchanged review cutoff with explicit unresolved-exposure stops.
+- Qualify with six-effect lifecycle tests and a production-adapter fake-HTTPS drill; exact
+  results and deployment status live in `docs/evidence/automated_launch_2026-10-15/focused-mvp/`.
+
+
 ### Stochastic paper strategy, with the independent review's fixes — 2026-10-07 (CP-082)
 
 - **Strategy.** A stochastic-momentum paper strategy on five-minute SOL bars (policy 127, feature

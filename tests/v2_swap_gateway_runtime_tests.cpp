@@ -18,6 +18,7 @@ struct RuntimePrepare final:SwapPreparePort {
 };
 struct RuntimeSigner final:SwapGatewaySigningPort {
     SwapPrepareStore* store{};unsigned calls{};bool refuse{},oversized{};
+    bool settled(const swap::State&,const StateReading&)override{return true;}
     std::optional<SwapSignedExecution> sign_or_retrieve(std::uint64_t,std::int64_t index,std::uint64_t)override{
         ++calls;require(index>store->latest().committed_index,"sign only after kernel prepare committed");if(refuse)return {};
         const auto& saved=store->latest();SwapSignedExecution r;auto& id=r.identity;
@@ -44,7 +45,7 @@ struct RuntimeSettlement final:SwapGatewaySettlementPort {
     SwapSubmissionStore* store{};bool prove{};unsigned calls{},unproven{};
     std::optional<VerifiedSwapSettlement> reconcile(const swap::Pending& p)override{
         ++calls;if(!prove || calls<=unproven)return {};
-        SwapSubmissionTransaction signature{};for(std::size_t n=0;n<signature.size();++n)signature[n]=static_cast<std::byte>(n);
+        SwapSubmissionTransaction signature{};for(std::size_t n=0;n<signature.size();++n)signature[n]=static_cast<std::byte>(n+p.intent.effect.value());
         require(store->observe_transaction(store->latest().identity,signature)==SwapSubmissionCode::none,"fake authenticated order lookup persists signature");
         swap::Settlement s;s.effect=p.intent.effect;s.custody=p.intent.binding.custody;s.payload=p.payload;
         s.transaction=*solana_signature_transaction_digest(signature);s.evidence=digest(210);s.finalized=true;s.outcome=swap::Outcome::succeeded;
@@ -60,6 +61,7 @@ void runtime_drill(unsigned mode){
     require(c.commit(op,InstallExecutionCatalog{fixture_catalog().root(),KillEpoch{1},ExecutorGeneration{1}}).code==ApplyCode::applied,"catalog");
     require(c.commit(op,AssignCallerRole{CallerId{kGateway},CallerRole::gateway}).code==ApplyCode::applied,"gateway role");
     auto opening=swap_test::opening();opening.binding.incarnation=sha256_digest(kIncarnation);
+    if(mode==10){opening.quote=swap::QuoteAtoms{25'000'000};opening.limits.max_purchase_total=swap::QuoteAtoms{25'000'000};}
     require(c.commit(op,ApplySpotSwap{{swap::Role::operator_role,100,opening}}).code==ApplyCode::applied,"funded");
     require(c.commit(op,SetStrategyMode{StrategyMode::normal,KillEpoch{1},ExecutorGeneration{1}},ProposeLane::control).code==ApplyCode::applied,"normal");
     auto intent=swap_test::buy(opening);intent.quote_input=swap::QuoteAtoms{998000};intent.max_quote_debit=swap::QuoteAtoms{1000000};
@@ -76,12 +78,38 @@ void runtime_drill(unsigned mode){
     require(c.commit(op,ApplySpotSwap{{swap::Role::strategy,100,intent}}).code==ApplyCode::applied,"reserve all-in one dollar");
     RuntimePrepare prepare;prepare.store=prepared.get();prepare.lose_reply=mode==2 || mode==7;
     RuntimeSigner signer;signer.store=prepared.get();signer.refuse=mode==3;signer.oversized=mode==4;
-    RuntimeExecute execute;execute.store=submission.get();RuntimeSettlement settlement;settlement.store=submission.get();settlement.prove=mode==0 || mode==8 || mode==9;
+    RuntimeExecute execute;execute.store=submission.get();RuntimeSettlement settlement;settlement.store=submission.get();settlement.prove=mode==0 || mode==8 || mode==9 || mode==10;
     if(mode==8 || mode==9)settlement.unproven=mode==8?2:1000;
     SwapGatewayRuntimeConfig config{binding,CallerId{kGateway},1,10000,3000,1};
-    config.recovery_only=mode==5;
+    config.recovery_only=mode==5;config.continuous=mode==10;
     if(mode==8 || mode==9){config.settlement_retry=20;config.settlement_window=mode==8?5000:300;}
     auto runtime=std::make_unique<SwapGatewayRuntime>(link,*recovery,*prepared,*submission,prepare,signer,execute,settlement,config);
+    if(mode==10){
+        c.on_round=[&]{runtime->step(steady_ms(),110);};
+        for(unsigned n=1;n<=6;++n){
+            c.run_until([&]{return runtime->stopped() || (submission->latest().phase==SwapSubmissionPhase::resolved &&
+                std::all_of(c.nodes.begin(),c.nodes.end(),[&](auto& node){return node.second->applied_state().spot_swap.settlement_count==n;}));},"six effect terminal transition");
+            require(!runtime->stopped(),"continuous runtime stays ready after each settlement");
+            require(prepare.calls==n && execute.calls==n && signer.calls==n,"one create sign execute per effect");
+            if(n==6)break;
+            auto next=intent;next.effect=EffectId{n+1};
+            require(c.commit(op,ApplySpotSwap{{swap::Role::strategy,110,next}}).code==ApplyCode::applied,"next intent while previous journals retained");
+            if(n==2 || n==4){
+                config.first_sequence=runtime->next_sequence();runtime.reset();prepared.reset();submission.reset();recovery.reset();
+                watermark=std::make_unique<SwapResultWatermark>(opening.binding.incarnation);
+                prepared=std::make_unique<SwapPrepareStore>(base.path/"prepared",binding);
+                submission=std::make_unique<SwapSubmissionStore>(base.path/"submission",SwapSubmissionBinding{opening.binding.incarnation,domain});
+                recovery=std::make_unique<SwapReconcileStore>(base.path/"recovery",SwapReconcileStoreBinding{opening.binding.incarnation,domain},*watermark);
+                require(prepared->recover()==SwapPrepareStoreCode::none && submission->recover()==SwapSubmissionCode::none && recovery->recover()==SwapReconcileStoreCode::none,"continuous restart journals recover");
+                prepare.store=prepared.get();signer.store=prepared.get();execute.store=submission.get();settlement.store=submission.get();
+                runtime=std::make_unique<SwapGatewayRuntime>(link,*recovery,*prepared,*submission,prepare,signer,execute,settlement,config);
+            }
+        }
+        c.on_round={};
+        for(auto& [id,node]:c.nodes)require(node->applied_state().spot_swap.quote.value()==19'000'000 && node->applied_state().spot_swap.base.value()==60'000'000,
+            "six settlement balance oracle replicated");
+        return;
+    }
     c.on_round=[&]{runtime->step(steady_ms(),110);};c.run_until([&]{return runtime->stopped();},"runtime reaches bounded terminal");c.on_round={};
     if(mode==5){require(prepare.calls==0 && signer.calls==0 && execute.calls==0 && runtime->status()==SwapGatewayRuntimeStatus::blocked,
         "recovery-only reserved intent cannot prepare sign or execute");return;}
@@ -186,4 +214,4 @@ void runtime_drill(unsigned mode){
     }
 }
 }
-int main(int argc,char** argv){try{for(unsigned mode=0;mode<10;++mode){if(argc==2 && mode!=static_cast<unsigned>(std::atoi(argv[1])))continue;runtime_drill(mode);std::cout<<"PASS runtime mode "<<mode<<'\n';}return 0;}catch(const std::exception& e){std::cerr<<"FAIL "<<e.what()<<'\n';return 1;}}
+int main(int argc,char** argv){try{for(unsigned mode=0;mode<11;++mode){if(argc==2 && mode!=static_cast<unsigned>(std::atoi(argv[1])))continue;runtime_drill(mode);std::cout<<"PASS runtime mode "<<mode<<'\n';}return 0;}catch(const std::exception& e){std::cerr<<"FAIL "<<e.what()<<'\n';return 1;}}

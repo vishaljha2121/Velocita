@@ -1,0 +1,19 @@
+{
+  "case": "flat after effect 239; last allowed effect buys; next effect attempts exit",
+  "driver_actions": [
+    "buy",
+    "sell"
+  ],
+  "submitted_side_and_effect": [
+    [
+      "buy",
+      240
+    ],
+    [
+      "sell",
+      241
+    ]
+  ],
+  "signer_scope_source": "src/v2_swap_transaction_review.cpp:30 rejects state.last_effect > 240",
+  "network_or_trade": false
+}

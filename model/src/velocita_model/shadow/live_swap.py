@@ -39,18 +39,20 @@ class Stop:
     reason: str
 
 
-def buy_order(price, now_ms):
+def buy_order(price, now_ms, source_ms=None):
+    source_ms = now_ms if source_ms is None else source_ms
     principal = CLIP_LAMPORTS * Decimal(str(price)) / 1000
     total = int((principal / Decimal('0.998') / 10_000).to_integral_value(ROUND_CEILING)) * 10_000
     floor = int((CLIP_LAMPORTS * BUY_FLOOR).to_integral_value(ROUND_FLOOR))
-    return Order('buy', total, floor, total // 10_000 * 20, now_ms, now_ms + SIGN_LIFETIME_MS)
+    return Order('buy', total, floor, total // 10_000 * 20, source_ms, source_ms + SIGN_LIFETIME_MS)
 
 
-def sell_order(base_atoms, price, now_ms):
+def sell_order(base_atoms, price, now_ms, source_ms=None):
+    source_ms = now_ms if source_ms is None else source_ms
     expected = base_atoms * Decimal(str(price)) / 1000
     floor = int((expected * SELL_FLOOR).to_integral_value(ROUND_FLOOR))
     fee_cap = int((expected * SELL_FEE_MARGIN / 499).to_integral_value(ROUND_CEILING))
-    return Order('sell', base_atoms, floor, fee_cap, now_ms, now_ms + SIGN_LIFETIME_MS)
+    return Order('sell', base_atoms, floor, fee_cap, source_ms, source_ms + SIGN_LIFETIME_MS)
 
 
 class LiveRule:
@@ -65,7 +67,7 @@ class LiveRule:
         self.signals = Signals()
         self.previous = None
 
-    def bar(self, start_ms, end_ms, o, h, l, c, account, now_ms, last_exit_s):
+    def bar(self, start_ms, end_ms, o, h, l, c, account, now_ms, last_exit_s, draining=False):
         bar = candle(start_ms, end_ms, o, h, l, c)
         if self.indicators.last is not None and bar[0] != self.indicators.last + 1:
             self.reset()
@@ -74,7 +76,11 @@ class LiveRule:
         if account.pending:
             return None
         held = account.base_atoms > 0
-        stop = 'drawdown' if account.realized_pnl_atoms <= -DRAWDOWN_ATOMS else 'capacity' if account.orders >= self.max_orders else None
+        if account.orders >= self.max_orders:
+            return Stop('capacity_exposure' if held else 'capacity')
+        stop = ('drawdown' if account.realized_pnl_atoms <= -DRAWDOWN_ATOMS else
+                'capacity' if account.orders + 1 >= self.max_orders else
+                'review_drained' if draining else None)
         if flags is None or self.indicators.count < WARMUP_BARS:
             if not (stop and held):
                 return None
@@ -85,10 +91,10 @@ class LiveRule:
         if stop:
             exit_flag, entry_flag = 1, 0
         if held:
-            return sell_order(account.base_atoms, c, now_ms) if exit_flag else None
+            return sell_order(account.base_atoms, c, now_ms, end_ms + 1) if exit_flag else None
         if stop:
             return Stop(stop)
-        order = buy_order(c, now_ms)
+        order = buy_order(c, now_ms, end_ms + 1)
         if order.amount > account.quote_atoms:
             return Stop('insufficient_balance')
         return order if entry_flag else None

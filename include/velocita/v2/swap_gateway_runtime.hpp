@@ -11,6 +11,7 @@ namespace velocita::v2 {
 class SwapGatewaySigningPort {
 public:
     virtual ~SwapGatewaySigningPort()=default;
+    [[nodiscard]] virtual bool settled(const swap::State&,const StateReading&){return false;}
     [[nodiscard]] virtual std::optional<SwapSignedExecution> sign_or_retrieve(
         std::uint64_t sequence,std::int64_t prepared_index,std::uint64_t sign_by)=0;
 };
@@ -18,6 +19,7 @@ class SwapDurableSigningPort final:public SwapGatewaySigningPort {
 public:
     SwapDurableSigningPort(const SwapPrepareStore&,SwapSubmissionStore&,swap_signer::Client&,SwapSigningConnectionConfig,SwapLookupSource&);
     [[nodiscard]] std::optional<SwapSignedExecution> sign_or_retrieve(std::uint64_t,std::int64_t,std::uint64_t)override;
+    [[nodiscard]] bool settled(const swap::State&,const StateReading&)override;
 private:
     const SwapPrepareStore& preparation_;SwapSubmissionStore& requests_;swap_signer::Client& client_;SwapSigningConnectionConfig config_;
     SwapLookupSource& lookups_;
@@ -34,6 +36,7 @@ struct SwapGatewayRuntimeConfig {
     Tick timeout{},state_interval{};
     bool recovery_only{};
     Tick settlement_retry{},settlement_window{};
+    bool continuous{};
 };
 enum class SwapGatewayRuntimeStatus:std::uint8_t {running,preparing,submitting,resolving,blocked,failed,complete};
 enum class SwapGatewayRuntimeCause:std::uint8_t {none,state,storage,identity,prepare_unknown,signer_refused,settlement_unproven,sequence_limit};
@@ -44,8 +47,6 @@ struct SwapGatewayObservation {
     StateReading reading{};
     std::uint64_t observed_at_ms{};
 };
-// One bounded effect per run. A completed run does not automatically rearm its
-// one-use signer or start another purchase. No networking runs in Raft apply.
 class SwapGatewayRuntime final {
 public:
     SwapGatewayRuntime(GatewayLink&,SwapReconcileStore&,SwapPrepareStore&,SwapSubmissionStore&,

@@ -18,7 +18,7 @@ class Retire(unittest.TestCase):
         self.root = Path(self.tmp.name)
         for d in ('etc/velocita-swap/public', 'var/lib/velocita-swap-gateway/recovery', 'var/lib/velocita-swap-gateway/metrics', 'var/lib/velocita-swap-signer/recovery',
                   'var/lib/velocita-swap-signer/metrics', 'var/lib/velocita-live-observer',
-                  'run/velocita-swap-credentials/gateway', 'etc/systemd/system'):
+                  'run/velocita-swap-credentials/gateway', 'run/velocita-swap-credentials/signer', 'etc/systemd/system'):
             (self.root/d).mkdir(parents=True)
         (self.root/'etc/velocita-swap/public').chmod(0o750)
         for role in ('gateway', 'signer'):
@@ -28,6 +28,10 @@ class Retire(unittest.TestCase):
         (self.root/'var/lib/velocita-swap-gateway/recovery/prepare.journal').write_text('journal')
         (self.root/'var/lib/velocita-live-observer/settlements.json').write_text('cache')
         (self.root/'run/velocita-swap-credentials/gateway/session.bearer').write_text('secret')
+        for role in ('gateway', 'signer'):
+            key = self.root/f'run/velocita-swap-credentials/{role}/caller.key'
+            key.write_bytes(bytes(range(32)))
+            key.chmod(0o600)
         for unit in R.UNITS:
             (self.root/'etc/systemd/system'/unit).write_text('[Service]\n')
             (self.root/'etc/systemd/system'/(unit + '.d')).mkdir()
@@ -65,6 +69,25 @@ class Retire(unittest.TestCase):
             self.assertFalse((self.root/'etc/systemd/system'/unit).exists())
         self.assertIn(['/usr/bin/systemctl', 'daemon-reload'], self.calls)
         self.assertEqual((result['deleted'], result['started']), (False, False))
+
+    def test_retirement_preserves_caller_keys_in_place(self):
+        before = {role: (self.root/f'run/velocita-swap-credentials/{role}/caller.key').stat()
+                  for role in ('gateway', 'signer')}
+        self.retire()
+        for role, meta in before.items():
+            path = self.root/f'run/velocita-swap-credentials/{role}/caller.key'
+            self.assertTrue(path.exists(), 'retirement must preserve active caller key')
+            self.assertEqual(path.read_bytes(), bytes(range(32)))
+            current = path.stat()
+            self.assertEqual((current.st_dev, current.st_ino, current.st_uid, current.st_gid, current.st_mode),
+                             (meta.st_dev, meta.st_ino, meta.st_uid, meta.st_gid, meta.st_mode))
+        self.assertFalse((self.root/'run/velocita-retired-credentials-b79e65be-20261015/gateway/caller.key').exists())
+
+    def test_unexpected_credential_leaf_refuses_before_mutation(self):
+        (self.root/'run/velocita-swap-credentials/gateway/unreviewed').write_text('unknown')
+        with self.assertRaisesRegex(ValueError, 'credential layout'):
+            self.retire()
+        self.assertTrue((self.root/'etc/velocita-swap/public/manifest.json').exists())
 
     def test_refusals_move_nothing(self):
         self.active = 'active'

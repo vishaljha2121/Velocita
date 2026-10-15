@@ -12,6 +12,9 @@ from .live_swap import MAX_ORDERS, Account, LiveRule, Order, Stop
 
 OBSERVATION_MAX_AGE_MS = 12_000
 INFLIGHT_TIMEOUT_MS = 20_000
+CANDLE_MAX_AGE_MS = 2_000
+ENTRY_DRAIN_MS = 420_000
+EXIT_DRAIN_MS = 210_000
 OBSERVATION_KEYS = {'schema', 'incarnation', 'observed_at_ms', 'applied_index', 'base_atoms', 'quote_atoms', 'fees_atoms',
                     'realized_pnl_atoms', 'last_effect', 'pending_effect', 'settlements'}
 
@@ -50,39 +53,72 @@ class State:
 
 
 class Driver:
-    def __init__(self, run, observation_path, state, submit, max_orders=MAX_ORDERS):
+    def __init__(self, run, observation_path, state, submit, max_orders=MAX_ORDERS, *, review_expires_ms):
         self.run, self.observation_path, self.state, self.submit = run, Path(observation_path), state, submit
+        if type(review_expires_ms) is not int or review_expires_ms <= 0:
+            raise ValueError('positive reviewed expiry required')
+        self.review_expires_ms = review_expires_ms
         self.rule = LiveRule(max_orders)
 
     def warm(self, kline):
         self.rule.bar(*kline, Account(0, 0, 0, 0, True), 0, None)
 
-    def on_bar(self, kline, now_ms):
+    def stop(self, reason):
+        self.state.stopped = reason
+        self.state.save()
+        return reason
+
+    def observe(self, now_ms):
+        try:
+            return observation(self.observation_path.read_bytes(), self.run, now_ms)
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+
+    def tick(self, now_ms):
+        return self.check(now_ms, self.observe(now_ms))
+
+    def check(self, now_ms, seen):
         if self.state.stopped:
             return self.state.stopped
+        inflight = self.state.inflight_effect
+        if inflight and seen is not None and inflight <= seen['last_effect']:
+            self.state.inflight_effect = 0
+            self.state.save()
+        pending = bool(self.state.inflight_effect or (seen and seen['pending_effect']))
+        if now_ms >= self.review_expires_ms:
+            reason = ('pending' if pending else 'unknown' if seen is None else
+                      'exposure' if seen['base_atoms'] else 'flat')
+            return self.stop('review_expired_' + reason)
+        if self.state.inflight_effect and now_ms - self.state.inflight_ms > INFLIGHT_TIMEOUT_MS:
+            return self.stop('submission_unconfirmed')
+        if now_ms >= self.review_expires_ms - ENTRY_DRAIN_MS and not pending:
+            if seen is not None and not seen['base_atoms']:
+                return self.stop('review_drained')
+            if now_ms >= self.review_expires_ms - EXIT_DRAIN_MS:
+                return self.stop('review_exit_deadline_' + ('unknown' if seen is None else 'exposure'))
+        return None
+
+    def on_bar(self, kline, now_ms):
+        seen = self.observe(now_ms)
+        stopped = self.check(now_ms, seen)
+        if stopped:
+            return stopped
         last, stamp = self.rule.indicators.last, (kline[1] + 1) // 1000
         if last is not None and stamp <= last:
             return 'duplicate'
+        if not 0 <= now_ms - (kline[1] + 1) <= CANDLE_MAX_AGE_MS:
+            raise ProtocolError('live candle age; warm up again')
         if last is not None and stamp > last + 1:
             raise ProtocolError('live bar gap; warm up again')
-        try:
-            seen = observation(self.observation_path.read_bytes(), self.run, now_ms)
-        except (OSError, ValueError, KeyError, TypeError):
-            seen = None
         if seen is None:
             self.warm(kline)
             return 'stale'
-        inflight = self.state.inflight_effect
-        if inflight and (inflight <= seen['last_effect'] or now_ms - self.state.inflight_ms > INFLIGHT_TIMEOUT_MS):
-            self.state.inflight_effect = 0
-            self.state.save()
         pending = bool(seen['pending_effect'] or self.state.inflight_effect)
         account = Account(seen['base_atoms'], seen['quote_atoms'], seen['realized_pnl_atoms'], seen['last_effect'], pending)
-        decision = self.rule.bar(*kline, account, now_ms, self.state.last_exit_s)
+        decision = self.rule.bar(*kline, account, now_ms, self.state.last_exit_s,
+                                 draining=now_ms >= self.review_expires_ms - ENTRY_DRAIN_MS)
         if isinstance(decision, Stop):
-            self.state.stopped = decision.reason
-            self.state.save()
-            return decision.reason
+            return self.stop(decision.reason)
         if not isinstance(decision, Order):
             return 'held' if pending else 'quiet'
         effect = seen['last_effect'] + 1
@@ -91,7 +127,13 @@ class Driver:
         if decision.side == 'sell':
             self.state.last_exit_s = (kline[1] + 1) // 1000
         self.state.save()
-        if not self.submit(decision, effect, self.state.sequence):
+        try:
+            accepted = self.submit(decision, effect, self.state.sequence)
+        except (OSError, subprocess.SubprocessError):
+            accepted = None
+        if accepted is None:
+            return self.stop('submission_unconfirmed')
+        if accepted is not True:
             self.state.inflight_effect = 0
             self.state.save()
             return 'refused'
@@ -100,11 +142,21 @@ class Driver:
 
 def client_submitter(client, opening, kill_epoch, executor_generation, timeout_s=30):
     def submit(order, effect, sequence):
+        now_ms = time.time_ns() // 1_000_000
+        if not 0 <= now_ms - order.source_ms <= CANDLE_MAX_AGE_MS or now_ms >= order.sign_by_ms:
+            return False
         argv = [*client, '--sequence', str(sequence), 'spot-swap-intent', str(opening), order.side, str(effect), str(order.amount),
                 str(order.min_receive), str(order.fee_cap), str(order.source_ms), str(order.sign_by_ms),
                 str(kill_epoch), str(executor_generation)]
         result = subprocess.run(argv, capture_output=True, text=True, timeout=timeout_s, stdin=subprocess.DEVNULL)
-        return result.returncode == 0 and 'code_name=applied' in result.stdout
+        lines = [line for line in result.stdout.splitlines() if line.startswith('COMMITTED ')]
+        if len(lines) == 1 and lines[0].startswith(f'COMMITTED sequence={sequence} '):
+            fields = dict(field.split('=', 1) for field in lines[0].split()[1:] if '=' in field)
+            if fields.get('code_name') == 'applied' and result.returncode == 0:
+                return True
+            if fields.get('code_name') and fields['code_name'] != 'applied' and result.returncode == 1:
+                return False
+        return None
     return submit
 
 
@@ -134,8 +186,12 @@ def bootstrap(driver):
         driver.warm((row[0], row[6], row[1], row[2], row[3], row[4]))
 
 
-def extend(config_path, max_orders):
+def extend(config_path, max_orders, now_ms=None):
     config = json.loads(Path(config_path).read_text())
+    now_ms = time.time_ns() // 1_000_000 if now_ms is None else now_ms
+    expiry = config.get('review_expires_ms')
+    if type(expiry) is not int or expiry <= now_ms:
+        raise ValueError('unexpired review required')
     current = config.get('max_orders', MAX_ORDERS)
     if type(max_orders) is not int or not current < max_orders <= MAX_ORDERS:
         raise ValueError('a higher order limit up to 240 is required')
@@ -161,13 +217,14 @@ def main():
         return 0
     config = json.loads(args.config.read_text())
     submit = client_submitter(config['client'], config['opening_record'], config['kill_epoch'], config['executor_generation'])
-    driver = Driver(config['incarnation'], config['observation'], State(config['state']), submit, config.get('max_orders', MAX_ORDERS))
-    while not driver.state.stopped:
+    driver = Driver(config['incarnation'], config['observation'], State(config['state']), submit, config.get('max_orders', MAX_ORDERS),
+                    review_expires_ms=config['review_expires_ms'])
+    while not driver.state.stopped and not driver.tick(time.time_ns() // 1_000_000):
         socket = ReadOnlyMarketSocket('data-stream.binance.vision', '/ws/solusdt@kline_1s', timeout_s=4, max_message_bytes=16384)
         try:
             socket.open()
             bootstrap(driver)
-            while not driver.state.stopped:
+            while not driver.state.stopped and not driver.tick(time.time_ns() // 1_000_000):
                 raw = socket.recv_text()
                 if raw is None:
                     break
@@ -176,7 +233,8 @@ def main():
                     print(driver.on_bar(kline, time.time_ns() // 1_000_000), flush=True)
         except (OSError, ProtocolError, ValueError) as error:
             print('feed restart: ' + type(error).__name__, flush=True)
-            time.sleep(2)
+            if not driver.tick(time.time_ns() // 1_000_000):
+                time.sleep(2)
         finally:
             socket.close()
     print('stopped: ' + driver.state.stopped, flush=True)

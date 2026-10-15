@@ -1,5 +1,39 @@
 # Promoting the stochastic paper strategy to live: plan and status
 
+## Focused correction batch locally qualified — 2026-10-15
+
+Owner-authorized F1–F5 corrections are implemented and qualified locally. Start with the
+[batch report](evidence/automated_launch_2026-10-15/focused-mvp/README.md) and
+[exact source/results manifest](evidence/automated_launch_2026-10-15/focused-mvp/QUALIFICATION.json).
+104 Python tests, 12 CTest targets and 33 named mutation checks pass. Three production-path
+fake-venue cases each complete six alternating effects, including process crashes before/after
+journal retirement and after venue acceptance. No duplicated execution POSTs; no reset of journals.
+The production gateway executable builds from HEAD plus the isolated scoped overlay.
+
+Not committed, NUC/Pi-qualified, installed or started live. No host, funding, credential or venue
+actions in this batch; last owner readback still describes a funded/halted cluster with absent
+active caller keys and a failed signer. Next: scoped commit under the owner's commit-only-when-asked
+rule, exact-checkpoint NUC/Pi qualification, then installation and owner caller-key restoration.
+`src/v2_gateway_main.cpp` has unrelated dirty changes: stage only the one-line continuous-mode
+change using the recorded scoped patch. Do not stage shared dirty files whole. Preserve one cluster,
+funding and journals. Recheck the recorded review expiry (2026-10-16 13:48:34 UTC) before launch.
+Current unfinished create/prepared crashes may require supervised recovery; the qualified automatic
+continuation boundary is completed settlement. Prior review below describes the unfixed baseline.
+
+## Post-Claude review — 2026-10-15
+
+The [Codex review](evidence/automated_launch_2026-10-15/CODEX_REVIEW.md) supersedes older
+next-step advice to restore keys and immediately run the automated drill. New cluster
+`aae119b9` is funded and halted; the signer failed64 and the gateway remains inactive.
+Owner readback confirms both caller keys are in the retired tmpfs directory, absent from
+the active paths, with no recovery files printed. More materially, the production gateway
+still completes after one settled effect. The review also reproduces stale-candle trading
+and an order-cap exit conflict, and identifies the missing pre-expiry drain guarantee.
+Resolve these correctness issues and qualify the multi-effect lifecycle before the live
+drill. No services, funding, credentials or production code changed in this review.
+See [Claude's handoff](handoffs/AUTOMATED_LAUNCH_HANDOFF_2026-10-15.md) for the recorded
+owner decisions and deployment pins; its startup continuation is subject to this review.
+
 Written 2026-10-07 after the owner said the paper strategy looks good and asked for a plan to promote
 it. **Live trading is not approved by this document.** It orders the work, says what is done, and
 names the owner decisions. `LIVE_TRADING_JOURNEY.md` remains the step-by-step gate list; this file

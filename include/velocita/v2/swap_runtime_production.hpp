@@ -63,7 +63,7 @@ private:
     std::uint64_t timeout_{};
     SwapFailureAccountingPolicy failure_policy_{};
     SwapAccountStartupAdmission admission_;
-    bool created_{},executed_{};
+    EffectId created_{},executed_{},reconciling_{};
     unsigned reconcile_attempts_{};
     SwapCreateTrace trace_{};
 };

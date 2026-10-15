@@ -8,11 +8,13 @@ import subprocess
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('stage_driver', Path(__file__).resolve().parents[1]/'deploy/v2/strategy/stage_driver.py')
 S = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(S)
 RUN = 'a' * 32
+EXPIRY = 2_000_000_000_000
 IMAGE = 'localhost/velocita-v2:qualified-54a5fcb'
 
 
@@ -47,10 +49,10 @@ class Stage(unittest.TestCase):
 
     def stage(self, **change):
         args = dict(archive=self.archive, archive_sha=hashlib.sha256(self.archive.read_bytes()).hexdigest(), opening=self.opening,
-                    opening_sha=hashlib.sha256(b'opening-bytes').hexdigest(), image=IMAGE, incarnation=RUN, kill_epoch=1, executor_generation=1, max_orders=6)
+                    opening_sha=hashlib.sha256(b'opening-bytes').hexdigest(), image=IMAGE, incarnation=RUN, kill_epoch=1, executor_generation=1, max_orders=6, review_expires_ms=EXPIRY)
         args.update(change)
         return S.stage(self.home, 1002, args['archive'], args['archive_sha'], args['opening'], args['opening_sha'], args['image'],
-                       args['incarnation'], args['kill_epoch'], args['executor_generation'], args['max_orders'], run=self.run_)
+                       args['incarnation'], args['kill_epoch'], args['executor_generation'], args['max_orders'], args['review_expires_ms'], run=self.run_)
 
     def test_stages_pinned_driver_without_starting_it(self):
         result = self.stage()
@@ -62,6 +64,7 @@ class Stage(unittest.TestCase):
         self.assertEqual((config['incarnation'], config['opening_record'], config['kill_epoch'], config['executor_generation'], config['max_orders']),
                          (RUN, '/config/opening.record', 1, 1, 6))
         self.assertEqual(config['observation'], str(self.home/'velocita-v2/textfile/strategy-settlements.json'))
+        self.assertEqual(config.get('review_expires_ms'), EXPIRY, 'staging preserves the exact reviewed cutoff')
         client = config['client']
         self.assertEqual(client[client.index(IMAGE) + 1:client.index(IMAGE) + 5], ['--caller-key-id', '12', '--caller-id', '21'], 'strategy caller 21 with key slot 12')
         self.assertIn('/run/user/1002/velocita-secrets/caller-12.key:/run/velocita-secrets/caller-12.key:ro', client)
@@ -77,10 +80,21 @@ class Stage(unittest.TestCase):
     def test_refuses_unpinned_inputs_and_wrong_identity(self):
         for change, reason in ((dict(opening_sha='0' * 64), 'pin'), (dict(archive_sha='0' * 64), 'pin'), (dict(incarnation='A' * 32), 'incarnation'),
                                (dict(image='docker.io/velocita:latest'), 'image'), (dict(kill_epoch=0), 'epochs'), (dict(executor_generation=0), 'epochs'),
-                               (dict(max_orders=0), 'order limit'), (dict(max_orders=241), 'order limit'), (dict(max_orders='6'), 'order limit')):
+                               (dict(max_orders=0), 'order limit'), (dict(max_orders=241), 'order limit'), (dict(max_orders='6'), 'order limit'),
+                               (dict(review_expires_ms=0), 'review expiry'), (dict(review_expires_ms='2000000000000'), 'review expiry'),
+                               (dict(review_expires_ms=True), 'review expiry')):
             with self.subTest(change=change), self.assertRaisesRegex(ValueError, reason):
                 self.stage(**change)
         self.assertFalse((self.home/'velocita-strategy').exists())
+
+    def test_review_cutoff_must_leave_the_entire_entry_drain_window(self):
+        with patch.object(S.time, 'time_ns', return_value=1_000_000_000):
+            with self.assertRaisesRegex(ValueError, 'review expiry'):
+                self.stage(review_expires_ms=421_000)
+            result = self.stage(review_expires_ms=421_001)
+        self.assertEqual(result['review_expires_ms'], 421_001)
+        config = json.loads((self.home/'velocita-strategy'/RUN/'driver.json').read_text())
+        self.assertEqual(config['review_expires_ms'], 421_001)
 
     def test_refuses_a_running_driver_or_an_existing_stage(self):
         self.active = 'active'

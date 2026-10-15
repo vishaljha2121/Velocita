@@ -92,7 +92,12 @@ SwapAccountSetupResult read_swap_account_setup(SwapGatewayCredentials& credentia
     return verify_swap_account_setup({response.body.data(),response.body_size},user,owner);
 }
 bool swap_admission_funded(const SwapAccountStartupAdmission& admission,const SwapRuntimeBinding& binding,std::uint64_t now) noexcept {
-    return swap_account_history_funding(admission.history,admission.review,binding,admission.funding_state,now);
+    if(!swap::valid_state(admission.state) || admission.state.conflicted ||
+        admission.state.opening!=admission.funding_state.opening)return false;
+    if(swap_account_history_funding(admission.history,admission.review,binding,admission.funding_state,now))return true;
+    swap::State original;
+    if(swap::apply(original,admission.state.opening,swap::Role::operator_role,admission.state.event_time)!=swap::Code::applied)return false;
+    return swap_account_history_funding(admission.history,admission.review,binding,original,now);
 }
 bool read_swap_reviewed_balance(SwapGatewayCredentials& credentials,SwapFinalizedReadClock& clock,
     const SwapAccountStartupAdmission& admission,std::uint64_t timeout){
@@ -121,8 +126,15 @@ std::optional<swap::State> swap_unsent_funding_state(const swap::State& state) n
 }
 bool swap_startup_recovery_only(const swap::State& state,SwapPreparePhase prepared,EffectId prepared_effect,SwapSubmissionPhase submitted) noexcept {
     const auto& pending=state.pending;
-    if(submitted!=SwapSubmissionPhase::idle || (pending.phase!=swap::Phase::none && pending.phase!=swap::Phase::reserved) ||
-        prepared==SwapPreparePhase::prepared)return true;
+    if(state.settlement_count>state.settlements.size() ||
+        (pending.phase!=swap::Phase::none && pending.phase!=swap::Phase::reserved))return true;
+    bool settled=false;
+    if(prepared_effect.value())for(std::size_t n=0;n<state.settlement_count;++n){
+        const auto& prior=state.settlements[n];
+        if(prior.effect==prepared_effect && prior.finalized && !prior.transaction.is_zero() && !prior.evidence.is_zero() &&
+            prior.custody==state.opening.binding.custody)settled=true;
+    }
+    if((submitted!=SwapSubmissionPhase::idle || prepared==SwapPreparePhase::prepared) && !settled)return true;
     return prepared==SwapPreparePhase::create_intent && (pending.phase!=swap::Phase::reserved || pending.intent.effect!=prepared_effect);
 }
 SwapCreateTrace swap_create_trace(const transport::SwapHttpsResult& r) noexcept {
@@ -162,9 +174,11 @@ std::optional<truemarkets::JupiterLookupPrefix> SwapProductionPorts::prefix(std:
 transport::SwapHttpsResult SwapProductionPorts::create(const truemarkets::SwapRestRequest& request,const SwapPrepareRead& read){
     transport::SwapHttpsResult refused;refused.status=transport::SwapHttpsStatus::local_refusal;
     trace_.stage=SwapCreateStage::latched;
-    if(created_ || admission_.recovery_only)return refused;created_=true;
+    if(admission_.recovery_only)return refused;
     trace_.stage=SwapCreateStage::journal;
     if(preparation_.status()!=SwapPrepareStoreCode::none || preparation_.latest().binding!=binding_ || preparation_.latest().phase!=SwapPreparePhase::create_intent)return refused;
+    const auto effect=preparation_.latest().operation.effect;
+    if(effect.value()<=created_.value())return refused;created_=effect;
     trace_.stage=SwapCreateStage::admission;
     const auto fresh=swap_prepare_admission(admission_,read);if(!fresh)return refused;
     trace_.stage=SwapCreateStage::balance;
@@ -176,7 +190,7 @@ transport::SwapHttpsResult SwapProductionPorts::create(const truemarkets::SwapRe
 }
 void SwapProductionPorts::execute(const SwapSubmissionIdentity& id,std::span<const std::byte> bytes){
     if(admission_.recovery_only || !swap_admission_funded(admission_,credentials_.binding(),clock_.now_ms()))return;
-    if(executed_)return;executed_=true;
+    if(id.effect.value()<=executed_.value())return;executed_=id.effect;
     if(submission_.status()!=SwapSubmissionCode::none || submission_.latest().phase!=SwapSubmissionPhase::execute_intent || submission_.latest().identity!=id ||
         preparation_.status()!=SwapPrepareStoreCode::none || preparation_.latest().binding!=binding_ || preparation_.latest().phase!=SwapPreparePhase::prepared ||
         id.effect!=preparation_.latest().operation.effect || id.payload!=preparation_.latest().prepared.payload_digest || bytes.empty() || bytes.size()>1024)return;
@@ -186,6 +200,8 @@ void SwapProductionPorts::execute(const SwapSubmissionIdentity& id,std::span<con
     SwapRuntimeExecutionHttps port(credentials_,clock_,id,request,timeout_);port.execute(id,bytes);
 }
 std::optional<VerifiedSwapSettlement> SwapProductionPorts::reconcile(const swap::Pending& pending){
+    if(!pending.intent.effect.value() || pending.intent.effect.value()<reconciling_.value())return {};
+    if(pending.intent.effect!=reconciling_){reconciling_=pending.intent.effect;reconcile_attempts_=0;}
     if(++reconcile_attempts_>64)return {};
     const auto bearer=credentials_.bearer(clock_.now_ms());if(bearer.empty())return {};
     const auto& session=credentials_.binding().account_session;

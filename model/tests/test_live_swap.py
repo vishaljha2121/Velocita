@@ -100,25 +100,25 @@ class Gating(unittest.TestCase):
         self.assertEqual(rule.bar(*self.next_bar(row, 2), account(), 0, exited).side, 'buy')
 
     def test_stops_exit_a_position_then_end_the_run(self):
-        for change, reason in ((dict(pnl=-10_000_000), 'drawdown'), (dict(orders=240), 'capacity')):
+        for change, reason in ((dict(pnl=-10_000_000), 'drawdown'), (dict(orders=239), 'capacity')):
             rule, row = self.warmed()
             self.assertEqual(rule.bar(*self.next_bar(row), account(base=5, **change), 0, None).side, 'sell', reason)
             self.assertEqual(rule.bar(*self.next_bar(row, 2), account(**change), 0, None), Stop(reason))
         rule, row = self.warmed()
-        self.assertIsNone(rule.bar(*self.next_bar(row), account(pnl=-9_999_999, orders=239), 0, None), 'just inside both limits')
+        self.assertIsNone(rule.bar(*self.next_bar(row), account(pnl=-9_999_999, orders=238), 0, None), 'just inside both limits')
 
     def test_drill_order_limit_exits_then_stops(self):
         rule, rows = LiveRule(6), bars(1_300)
         for row in rows:
             rule.bar(*row, account(pending=True), row[0], None)
         start = rows[-1][0] + 1000
-        self.assertEqual(rule.bar(start, start + 999, *rows[-1][2:], account(base=5, orders=6), 0, None).side, 'sell')
+        self.assertEqual(rule.bar(start, start + 999, *rows[-1][2:], account(base=5, orders=5), 0, None).side, 'sell')
         self.assertEqual(rule.bar(start + 1000, start + 1999, *rows[-1][2:], account(orders=6), 0, None), Stop('capacity'))
-        wider = LiveRule(7)
+        wider = LiveRule(8)
         for row in rows:
             wider.bar(*row, account(pending=True), row[0], None)
         wider.previous = (0, 1_000_000)
-        self.assertEqual(wider.bar(start, start + 999, *rows[-1][2:], account(orders=6), 0, None).side, 'buy', 'six orders under a limit of seven still trade')
+        self.assertEqual(wider.bar(start, start + 999, *rows[-1][2:], account(orders=6), 0, None).side, 'buy', 'six effects leave two slots under a limit of eight')
         for bad in (0, 241, '6', 6.0):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 LiveRule(bad)

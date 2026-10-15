@@ -37,9 +37,13 @@ the verifier. The isolated signer already holds that key, under its own UID.
   strict UTC ISO-8601 time. It caches the token and mints again once 2 minutes or less remain. It
   refuses a token that arrives with 2 minutes or less left, and returns no token after the review
   window ends or after the clock moves backwards.
-- **Renewal.** No automatic daily renewal. The run is expected to end at the drawdown or order
-  limit within a day. If it does not, the services close at the window end with no effect in
-  flight, and a person reviews and restarts them.
+- **Renewal.** No automatic daily renewal. The review expiry remains a hard authorization cutoff.
+  Correction from the October 15 review: a cutoff alone does not prove that inventory is flat or
+  that no effect is in flight. The focused driver correction inhibits entries and requests an
+  eligible exit 420 seconds before expiry, stops initiating exits 210 seconds before expiry, and
+  records a durable pending/exposure/unknown stop if it cannot finish. These margins do not
+  guarantee settlement during a feed or venue failure. A person reviews any unfinished exposure
+  and renews authority before further activity; expiry is never silently extended.
 
 ## Consequences
 
@@ -48,3 +52,15 @@ is unchanged: it can obtain bearer tokens and cannot sign a transaction. A compr
 ask for authentication signatures until the review window ends, which is no more than the bearer it
 already held. Each mint is one signer request and one TM POST, and happens about once per TM token
 lifetime.
+
+
+## Implementation correction — 2026-10-15, local qualification
+
+The [focused correction protocol](../evidence/automated_launch_2026-10-15/focused-mvp/PROTOCOL.md)
+closes a separate implementation gap: widening the signing envelope did not make the gateway
+and signer journals support consecutive effects. The correction advances each durable fence only
+after an authenticated Raft settlement matches its predecessor. The signer performs its own read
+and a fresh authority barrier for the next effect. Existing journal formats, economic verification,
+funding, caller identities and per-effect no-resubmit protections remain in force. This is a lifecycle
+implementation correction, not broader signing authority. Native qualification and installation
+remain separate from local tests.

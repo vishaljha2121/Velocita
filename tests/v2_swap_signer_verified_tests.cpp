@@ -1,5 +1,6 @@
 #include "v2_swap_signer_test_support.hpp"
 #include "v2_swap_transaction_verifier_test_support.hpp"
+#include "velocita/v2/swap_settlement_fence.hpp"
 
 namespace {
 using namespace swap_signer_test;
@@ -56,6 +57,62 @@ void verified_signature_and_recovery(){
     require(r.recover_stamp() && r.session->stamp().view()==stamp && r.key.protected_key->signature_attempts()==1,
         "verified_restart_returns_same_stamp_without_resigning");
     r.payload.back()=' ';require(!r.recover_stamp() && r.session->stamp().empty(),"changed_payload_cannot_recover_stamp");
+}
+void six_settled_signatures(){
+    VerifiedRig r;
+    auto& state=r.voter.state.spot_swap;
+    state.opening.quote=swap::QuoteAtoms{25'000'000};state.quote=state.opening.quote;
+    state.opening.limits.max_purchase_total=swap::QuoteAtoms{3'000'000'000};
+    for(unsigned n=1;n<=6;++n){
+        require(r.session->start(EffectId{n},n,handle,r.bytes(),r.voter.index,state.pending.intent.sign_by,r.tx.prefix()),
+            "next settled effect starts independently authorized read");
+        require(r.finish()==SwapSignerStatus::signed_once,"six distinct effects sign in one protected session");
+        require(r.key.protected_key->signature_attempts()==n,"exactly one signature per effect");
+        const auto prior=state.pending;
+        require(swap::apply(state,swap::Attempt{EffectId{n},prior.payload},swap::Role::gateway,r.clock.event)==swap::Code::applied,"attempt applied");
+        swap::Settlement fill;fill.effect=EffectId{n};fill.custody=state.opening.binding.custody;fill.payload=prior.payload;
+        fill.transaction=digest(100+n);fill.evidence=digest(120+n);fill.finalized=true;fill.outcome=swap::Outcome::succeeded;
+        fill.quote_debit=swap::QuoteAtoms{1'000'000};fill.base_credit=swap::BaseAtoms{8'000'000};fill.fee=swap::QuoteAtoms{2'000};
+        require(swap::apply(state,fill,swap::Role::gateway,r.clock.event)==swap::Code::applied,"settlement applied");
+        if(n==6)break;
+        auto next=prior.intent;next.effect=EffectId{n+1};next.source_time+=1000;next.sign_by+=1000;
+        r.clock.event+=1000;r.tx.timestamp+=1000;r.payload=r.tx.envelope();r.voter.index+=10;
+        require(swap::apply(state,next,swap::Role::strategy,r.clock.event)==swap::Code::applied,"next intent applied");
+        require(swap::apply(state,swap::Prepare{next.effect,sha256_digest(r.bytes()),prior.handle,1},swap::Role::gateway,r.clock.event)==swap::Code::applied,"next prepare applied");
+        if(n==2 || n==4){r.session.reset();r.store.reset();
+            r.store=std::make_unique<SwapSubmissionStore>(r.scratch.base/"verified-replay",r.binding);
+            require(r.store->recover()==SwapSubmissionCode::none,"restart retains previous signature fence");r.reopen();}
+    }
+    require(state.settlement_count==6 && state.quote.value()==19'000'000,"six verified signatures preserve settlement accounting");
+}
+void predecessor_refusals(){
+    VerifiedRig r;require(r.begin() && r.finish()==SwapSignerStatus::signed_once,"predecessor signed");
+    const auto fence=r.store->latest();auto& state=r.voter.state.spot_swap;
+    state.last_effect=2;state.pending.intent.effect=EffectId{2};r.voter.index=20;
+    require(r.session->start(EffectId{2},2,handle,r.bytes(),20,1100,r.tx.prefix()),"next effect may ask for proof");
+    require(r.finish()==SwapSignerStatus::refused && r.key.protected_key->signature_attempts()==1 &&
+        r.store->latest().checksum==fence.checksum && r.voter.authority_requests==1,"missing prior settlement cannot advance fence or sign");
+    auto proven=state;proven.pending={};proven.settlement_count=1;
+    auto& settled=proven.settlements[0];settled.effect=fence.identity.effect;settled.payload=fence.identity.payload;
+    settled.custody=state.opening.binding.custody;settled.finalized=true;settled.transaction=digest(80);settled.evidence=digest(81);
+    require(swap_settled_predecessor(proven,fence,state.opening.binding.custody),"exact terminal predecessor proof admitted");
+    for(unsigned n=0;n<8;++n){auto bad=proven;
+        if(n==0)bad.settlements[0].payload=digest(82);
+        if(n==1)bad.settlements[0].custody=digest(82);
+        if(n==2)bad.settlements[0].finalized=false;
+        if(n==3)bad.settlements[0].transaction={};
+        if(n==4)bad.settlements[0].evidence={};
+        if(n==5){bad.settlement_count=2;bad.settlements[1]=bad.settlements[0];}
+        if(n==6){bad.pending.phase=swap::Phase::unknown;bad.pending.intent.effect=fence.identity.effect;}
+        if(n==7)bad.settlement_count=0;
+        require(!swap_settled_predecessor(bad,fence,state.opening.binding.custody),"incomplete or conflicting predecessor refused");
+    }
+    VerifiedRig replay;require(replay.begin() && replay.finish()==SwapSignerStatus::signed_once,"replay fixture signed");
+    require(!replay.begin() && replay.key.protected_key->signature_attempts()==1,"same effect cannot request a second signature");
+    VerifiedRig stale;require(stale.begin() && stale.finish()==SwapSignerStatus::signed_once,"stale fixture signed");
+    stale.voter.state.spot_swap.last_effect=2;stale.voter.state.spot_swap.pending.intent.effect=EffectId{2};
+    require(stale.session->start(EffectId{2},2,handle,stale.bytes(),20,1100,stale.tx.prefix()),"stale proof requested");
+    require(stale.finish()==SwapSignerStatus::refused && stale.key.protected_key->signature_attempts()==1,"stale committed read cannot advance signer");
 }
 void live_scope(){
     VerifiedRig budget;budget.voter.state.spot_swap.opening.limits.max_purchase_total=swap::QuoteAtoms{3'000'000'000};
@@ -135,7 +192,7 @@ void freshness_and_authority(){
 }
 }
 int main(int argc,char**argv){
-    const std::pair<const char*,void(*)()> cases[]{{"verified_signature_and_recovery",verified_signature_and_recovery},{"conservative_mvp",conservative_mvp},{"live_scope",live_scope},{"sell_signs_under_live_scope",sell_signs_under_live_scope},
+    const std::pair<const char*,void(*)()> cases[]{{"predecessor_refusals",predecessor_refusals},{"six_settled_signatures",six_settled_signatures},{"verified_signature_and_recovery",verified_signature_and_recovery},{"conservative_mvp",conservative_mvp},{"live_scope",live_scope},{"sell_signs_under_live_scope",sell_signs_under_live_scope},
         {"economic_and_context_refusal",economic_and_context_refusal},{"freshness_and_authority",freshness_and_authority},
         {"second_pool_same_journal",second_pool_same_journal},{"lookup_evidence",lookup_evidence}};
     unsigned ran{},failed{};for(const auto&[name,fn]:cases){if(argc==2 && std::string_view(argv[1])!=name)continue;++ran;

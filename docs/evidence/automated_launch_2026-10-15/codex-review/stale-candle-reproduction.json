@@ -1,0 +1,8 @@
+{
+  "case": "five-minute-old contiguous candle with current account observation",
+  "result": "buy",
+  "orders_sent": 1,
+  "bar_age_ms": 300000,
+  "intent_source_age_ms": 0,
+  "network_or_trade": false
+}

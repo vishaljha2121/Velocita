@@ -1,0 +1,31 @@
+{
+  "reviewed_head": "12d0be6",
+  "comparison_base": "2e5642a",
+  "production_release": "54a5fcb",
+  "checked_at_utc": "2026-10-15T14:15:38.759362+00:00",
+  "python_checks": {
+    "live_rule_and_driver": 24,
+    "stage_driver": 4,
+    "retire_installation": 6,
+    "all_passed": true
+  },
+  "test_source": "git archive 12d0be6 into durable scratch; unrelated dirty source excluded",
+  "native_qualification": "Retained 54a5fcb record: 58 selected CTests and eight one-effect process cases per architecture; not rerun by this review",
+  "reproductions": [
+    "five-minute-old candle submits a buy with source time equal to now",
+    "last allowed effect buys; driver then emits effect 241 sell but signer scope rejects last_effect > 240"
+  ],
+  "current_service_observation": {
+    "signer": "failed, ExecMainStatus=64, RefuseManualStart=no",
+    "gateway": "inactive, ExecMainStatus=0, RefuseManualStart=no"
+  },
+  "owner_readback": {
+    "active_caller_keys": "both missing",
+    "retired_gateway_key_metadata": "uid=29001 gid=29001 mode=600 nlink=1 size=32",
+    "retired_signer_key_metadata": "uid=29002 gid=29002 mode=600 nlink=1 size=32",
+    "recovery_files_printed": 0,
+    "latest_signer_error": "REFUSED: startup pins, authorization or protected resources failed validation",
+    "limitation": "Generic log confirms refusal, not exclusivity of cause; missing required keys are a confirmed blocker."
+  },
+  "scope": "Read-only host checks, committed-source review, offline tests and documentation. No credentials read, sudo run, venue requests, services changed, keys moved, trades, commits or staging."
+}

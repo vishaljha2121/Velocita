@@ -1,5 +1,36 @@
 # Current development handoff
 
+## Focused correction batch locally qualified — 2026-10-15
+
+Owner-authorized F1–F5 corrections are implemented and qualified locally. Start with the
+[batch report](evidence/automated_launch_2026-10-15/focused-mvp/README.md) and
+[exact source/results manifest](evidence/automated_launch_2026-10-15/focused-mvp/QUALIFICATION.json).
+104 Python tests, 12 CTest targets and 33 named mutation checks pass. Three production-path
+fake-venue cases each complete six alternating effects, including process crashes before/after
+journal retirement and after venue acceptance. No duplicated execution POSTs; no reset of journals.
+The production gateway executable builds from HEAD plus the isolated scoped overlay.
+
+Not committed, NUC/Pi-qualified, installed or started live. No host, funding, credential or venue
+actions in this batch; last owner readback still describes a funded/halted cluster with absent
+active caller keys and a failed signer. Next: scoped commit under the owner's commit-only-when-asked
+rule, exact-checkpoint NUC/Pi qualification, then installation and owner caller-key restoration.
+`src/v2_gateway_main.cpp` has unrelated dirty changes: stage only the one-line continuous-mode
+change using the recorded scoped patch. Do not stage shared dirty files whole. Preserve one cluster,
+funding and journals. Recheck the recorded review expiry (2026-10-16 13:48:34 UTC) before launch.
+Current unfinished create/prepared crashes may require supervised recovery; the qualified automatic
+continuation boundary is completed settlement. Prior review below describes the unfixed baseline.
+
+## Current review entry point — 2026-10-15
+
+Claude's continuation is committed through `12d0be6`; production release is `54a5fcb`.
+Read [its launch handoff](handoffs/AUTOMATED_LAUNCH_HANDOFF_2026-10-15.md), then the
+[post-handoff correctness review](evidence/automated_launch_2026-10-15/CODEX_REVIEW.md).
+The new incarnation `aae119b9` is funded/halted; signer failed64, gateway inactive. The
+missing caller keys are confirmed, but repairing startup alone does not enable repeated
+trades: the production runtime still terminates after one effect. Review findings and
+minimal remediation precede the six-order drill. No implementation/deployment performed
+in this review. Earlier October14 and paper sections below are historical.
+
 ## Authoritative checkpoint — 2026-10-07 stochastic paper
 
 Start with [BASELINE_2026-10-07_STOCHASTIC.md](BASELINE_2026-10-07_STOCHASTIC.md)

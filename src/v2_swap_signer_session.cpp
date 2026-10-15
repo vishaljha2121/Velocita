@@ -3,6 +3,7 @@
 #include "velocita/v2/swap_authority.hpp"
 #include "velocita/v2/swap_transaction_review.hpp"
 #include "velocita/v2/digest.hpp"
+#include "velocita/v2/swap_settlement_fence.hpp"
 #include <algorithm>
 #include <cerrno>
 #include <fcntl.h>
@@ -162,8 +163,11 @@ SwapSignerStatus SwapSignerSession::refuse(SwapSignerStatus status)noexcept{
 }
 bool SwapSignerSession::start(EffectId effect,std::uint64_t sequence,std::string_view handle,std::span<const std::byte> payload,std::int64_t minimum_index,std::uint64_t expected_sign_by,
     const truemarkets::JupiterLookupPrefix& lookup){
-    if(status_!=SwapSignerStatus::idle || link_.busy())return false;
-    const auto now=clock_.monotonic(clock_.context);last_event_=clock_.event(clock_.context);
+    if((status_!=SwapSignerStatus::idle && status_!=SwapSignerStatus::signed_once && status_!=SwapSignerStatus::fenced) || link_.busy())return false;
+    verification_expires_at_ms_=0;der_size_=0;stamp_={};
+    const auto now=clock_.monotonic(clock_.context);const auto event=clock_.event(clock_.context);
+    if(now<last_tick_ || event<last_event_){(void)refuse(SwapSignerStatus::refused);return false;}
+    last_event_=event;
     if((config_.account_review_expires_at_ms && last_event_>=config_.account_review_expires_at_ms) || !sequence || !expected_sign_by || effect.value()<=store_.latest().identity.effect.value() || minimum_index<=store_.latest().committed_index ||
         handle.empty() || handle.size()>96 || payload.empty() || payload.size()>payload_.size() ||
         now>std::numeric_limits<Tick>::max()-config_.state_timeout ||
@@ -240,6 +244,14 @@ SwapSignerStatus SwapSignerSession::poll(){
 #else
     return refuse(SwapSignerStatus::refused);
 #endif
+    }
+    if(store_.latest().phase!=SwapSubmissionPhase::idle){
+        const auto previous=store_.latest();
+        if(previous.identity.effect.value()>=pending.intent.effect.value() || outcome.reading.applied_index<=previous.committed_index ||
+            !swap_settled_predecessor(swap,previous,config_.binding.custody))return refuse(SwapSignerStatus::refused);
+        if(previous.phase==SwapSubmissionPhase::execute_intent &&
+            store_.resolve({previous.identity,outcome.reading.applied_index,outcome.reading.state_digest})!=SwapSubmissionCode::none)
+            return refuse(SwapSignerStatus::storage_failed);
     }
     authority_pending_=pending;state_read_index_=outcome.reading.applied_index;
     authority_request_={link_.incarnation(),sequence_,identity_.effect,swap_signing_authority_digest(pending),

@@ -29,7 +29,7 @@ SwapSigningConnection::SwapSigningConnection(const SwapPrepareStore& p,SwapSubmi
         j.status()!=SwapSubmissionCode::none || j.latest().binding!=swap_signing_connection_binding(c) ||
         (c.signer_public_key[0]!=std::byte{2} && c.signer_public_key[0]!=std::byte{3}))return;
     preparation_checksum_=p.latest().checksum;
-    if(j.latest().phase==SwapSubmissionPhase::idle)status_=SwapSigningConnectionStatus::idle;
+    if(j.latest().phase==SwapSubmissionPhase::idle || j.latest().phase==SwapSubmissionPhase::resolved)status_=SwapSigningConnectionStatus::idle;
     if(j.latest().phase==SwapSubmissionPhase::execute_intent)status_=SwapSigningConnectionStatus::unresolved;
 }
 bool SwapSigningConnection::assemble(std::uint64_t sequence,std::int64_t index,std::uint64_t expiry,swap_signer::Request& request,SwapSubmissionIdentity& identity)const{
@@ -55,7 +55,7 @@ bool SwapSigningConnection::assemble(std::uint64_t sequence,std::int64_t index,s
 }
 bool SwapSigningConnection::sign(std::uint64_t sequence,std::int64_t index,std::uint64_t expiry){
     if(status_!=SwapSigningConnectionStatus::idle || journal_.status()!=SwapSubmissionCode::none ||
-        journal_.latest().binding!=swap_signing_connection_binding(config_) || journal_.latest().phase!=SwapSubmissionPhase::idle)return false;
+        journal_.latest().binding!=swap_signing_connection_binding(config_) || (journal_.latest().phase!=SwapSubmissionPhase::idle && journal_.latest().phase!=SwapSubmissionPhase::resolved))return false;
     swap_signer::Request request;SwapSubmissionIdentity identity;
     if(!assemble(sequence,index,expiry,request,identity))return false;
     if(journal_.begin(identity,index)!=SwapSubmissionCode::none){status_=SwapSigningConnectionStatus::closed;return false;}
