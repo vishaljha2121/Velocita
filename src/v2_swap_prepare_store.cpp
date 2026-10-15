@@ -96,6 +96,7 @@ bool valid_record(const SwapPrepareRecord& r) noexcept {
         r.operation.input.side==Side{} && !r.operation.input.quantity_atoms && r.response_digest.is_zero() && empty_prepared(r.prepared);
     if(!valid_operation(r.operation))return false;
     if(r.phase==SwapPreparePhase::create_intent)return r.response_digest.is_zero() && empty_prepared(r.prepared);
+    if(r.phase==SwapPreparePhase::released)return !r.response_digest.is_zero() && empty_prepared(r.prepared);
     return r.phase==SwapPreparePhase::prepared && !r.response_digest.is_zero() && valid_prepared(r.prepared,r.operation);
 }
 Bytes encode(const SwapPrepareRecord& r) noexcept {
@@ -261,5 +262,12 @@ SwapPrepareStoreCode SwapPrepareStore::complete(const truemarkets::SwapRestPrepa
     if(response_digest.is_zero() || !valid_prepared(prepared,latest_.operation))return fail(Code::invalid_input);
     auto record=latest_;record.prepared=prepared;record.response_digest=response_digest;record.phase=SwapPreparePhase::prepared;
     return replace(record);
+}
+SwapPrepareStoreCode SwapPrepareStore::release(std::int64_t index,Digest256 state_digest) {
+    if(status_!=Code::none)return Code::closed;
+    if(latest_.phase!=SwapPreparePhase::create_intent)return fail(Code::bad_transition);
+    if(state_digest.is_zero() || index<latest_.committed_index)return fail(Code::invalid_input);
+    auto record=latest_;record.phase=SwapPreparePhase::released;record.response_digest=latest_.checksum;
+    record.committed_index=index;record.state_digest=state_digest;return replace(record);
 }
 }

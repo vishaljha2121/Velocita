@@ -216,6 +216,7 @@ def bundle(base,pin):
     if 'session-refresh.json' in spec['files']:names.add('session-refresh.json')
     if 'route-review.json' in spec['files']:names.add('route-review.json')
     if 'release-review.json' in spec['files']:names.add('release-review.json')
+    if 'baseline.json' in spec['files']:names.add('baseline.json')
     if set(spec['files'])!=names:raise ValueError('exact artifact set required')
     artifacts={n:read(base/n) for n in names}
     if any(R.digest(raw)!=spec['files'][n] for n,raw in artifacts.items()):raise ValueError('artifact pin differs')
@@ -225,7 +226,8 @@ def bundle(base,pin):
     witness=R.L.strict_json(artifacts['session-refresh.json']) if 'session-refresh.json' in artifacts else None
     route=R.L.strict_json(artifacts['route-review.json']) if 'route-review.json' in artifacts else None
     release=R.L.strict_json(artifacts['release-review.json']) if 'release-review.json' in artifacts else None
-    proposal=N.propose(old,new,before,after,journals,spec['evaluated_at_ms'],session_refresh=witness,route_review=route,release_review=release)
+    baseline=R.L.strict_json(artifacts['baseline.json']) if 'baseline.json' in artifacts else None
+    proposal=N.propose(old,new,before,after,journals,spec['evaluated_at_ms'],session_refresh=witness,route_review=route,release_review=release,baseline=baseline)
     if proposal['artifacts']!=artifacts:raise ValueError('derived renewal differs from bundle')
     Q.token(spec['helper_sha256'],64)
     return spec,old,new,before,after,proposal
@@ -238,7 +240,8 @@ def apply(base,pin,recover=False):
     witness=R.L.strict_json(proposal['artifacts']['session-refresh.json']) if 'session-refresh.json' in proposal['artifacts'] else None
     route=R.L.strict_json(proposal['artifacts']['route-review.json']) if 'route-review.json' in proposal['artifacts'] else None
     release=R.L.strict_json(proposal['artifacts']['release-review.json']) if 'release-review.json' in proposal['artifacts'] else None
-    if not recover:N.propose(old,new,before,after,{n:proposal['artifacts']['before/journals/'+n] for n in R.JOURNALS},now,session_refresh=witness,route_review=route,release_review=release)
+    baseline=R.L.strict_json(proposal['artifacts']['baseline.json']) if 'baseline.json' in proposal['artifacts'] else None
+    if not recover:N.propose(old,new,before,after,{n:proposal['artifacts']['before/journals/'+n] for n in R.JOURNALS},now,session_refresh=witness,route_review=route,release_review=release,baseline=baseline)
     public=Path(R.P.PUBLIC)
     # One owner transition at a time, separate from the native journal locks.
     with directory_locks([public],0):

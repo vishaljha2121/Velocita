@@ -61,7 +61,12 @@ void parser(){
     rejected([]{(void)fields("schema=1\nschema=1\n");},"duplicate parameter","duplicate_parameter_refused");
     for(auto value:{"-1","+1","01","18446744073709551616","1junk"}){Fields f{{"n",value}};rejected([&]{(void)number(f,"n");},"invalid unsigned parameter","strict_integer_refused");}
     Fixture f;rejected([&]{(void)build_opening(f.profile,f.history,f.transaction,f.opening+"effect=2\n");},"unknown opening parameter","opening_unknown_refused");
-    auto bundle=f.build();rejected([&]{(void)build_intent(bundle,f.intent+"effect=2\n");},"unknown intent parameter","second_effect_parameter_refused");
+    auto bundle=f.build();rejected([&]{(void)build_intent(bundle,f.intent+"effect=0\n");},"intent effect must follow released predecessors","zero_effect_refused");
+    const auto next=build_intent(bundle,f.intent+"effect=2\n");swap::Record r;
+    require(swap::decode(std::as_bytes(std::span(next.at("intent.record"))),r)==swap::CodecError::none && std::get<swap::Intent>(r.command).effect.value()==2 &&
+        fields(next.at("record-summary.txt")).at("assumed_released_effect")=="1" && fields(next.at("record-summary.txt")).at("effect")=="2",
+        "next_effect_builds_assuming_its_predecessor_was_released");
+    require(!fields(build_intent(bundle,f.intent).at("record-summary.txt")).contains("assumed_released_effect"),"first_effect_assumes_nothing");
 }
 void scope(){
     Fixture f;rejected([&]{(void)build_opening(f.profile,f.history,f.transaction,change(f.opening,"max_realized_loss_atoms","500001"));},"opening reducer or one-buy scope refused","loss_cap_one_atom_refused");

@@ -374,6 +374,59 @@ class RenewalTests(unittest.TestCase):
             with self.subTest(field=field),self.assertRaises(ValueError,msg='release_cannot_expand_authority'):
                 N.propose(old,dict(new,**{field:value}),before,after,journals,now,route_review=route,release_review=release)
 
+    def installed_stable(self,phase=None,effect=1,ordinal=2):
+        args,witness=self.stable_fixture();out=N.propose(*args,route_review=witness)
+        old,before=args[1],args[3];journals={n:out['artifacts']['after/journals/'+n] for n in args[4]}
+        if phase:
+            raw=bytearray(journals['prepared']);raw[8:16]=ordinal.to_bytes(8,'little');raw[16:24]=phase.to_bytes(8,'little')
+            raw[32:40]=effect.to_bytes(8,'little');raw[240:272]=b'\x11'*32;raw[272:304]=b'\x22'*32
+            journals['prepared']=T.TransitionTests.checksum(raw)
+        encode=T.TransitionTests.encode
+        after=dict(before);h=json.loads(before['account.history']);h['capture_finished_ms']+=1000;after['account.history']=json.dumps(h).encode()
+        p=T.R.L.fields(before['runtime.profile']);r=T.R.L.fields(before['account.review'])
+        r.update(history_evidence=T.R.digest(after['account.history']),reviewed_at_ms=str(int(r['reviewed_at_ms'])+1000),expires_at_ms=str(int(r['expires_at_ms'])+1000))
+        after['account.review']=encode(r);p['account_review_digest']=T.R.digest(after['account.review']);after['runtime.profile']=encode(p)
+        commit='9a'*20;binary='9b'*32
+        new=dict(T.TransitionTests.pins(old,after),source_commit=commit,binary='/opt/velocita/releases/'+commit+'/velocita-v2-gateway',binary_sha256=binary)
+        release=dict(schema=1,before_source_commit=old['source_commit'],before_binary_sha256=old['binary_sha256'],source_commit=commit,binary_sha256=binary,
+            runtime_image_sha256=old['runtime_image_sha256'],qualification_sha256='ef'*32,
+            files={'velocita-v2-gateway':binary,'service_launcher.py':'a1'*32,'service_profile.py':'a2'*32,'fd_handoff.py':'a3'*32})
+        top=max(int.from_bytes(raw[16:24] if n=='results' else raw[24:32],'little') for n,raw in journals.items())
+        return (old,new,before,after,journals,args[5]+1000),release,dict(schema=1,state_digest='5a'*32,applied_index=top+3)
+
+    def test_release_over_unchanged_stable_review_keeps_journals_and_pins_baseline(self):
+        args,release,baseline=self.installed_stable()
+        try:out=N.propose(*args,release_review=release,baseline=baseline)
+        except ValueError as error:self.fail('release_only_renewal_admitted: '+str(error))
+        for name,raw in args[4].items():self.assertEqual(out['artifacts']['after/journals/'+name],raw,'unchanged_review_keeps_every_journal')
+        self.assertEqual((out['report']['original_state_digest'],out['report']['original_journal_index']),(baseline['state_digest'],baseline['applied_index']),
+                         'reviewed_baseline_replaces_pristine_state')
+        self.assertEqual(json.loads(out['artifacts']['baseline.json']),baseline,'baseline_published_with_bundle')
+        changed=dict(args[3]);tx=T.R.transaction_fields(changed['transaction.review']);tx['max_slippage_bps']='400'
+        changed['transaction.review']=T.TransitionTests.encode(tx)
+        with self.assertRaises(ValueError,msg='changed_review_still_requires_route'):N.propose(args[0],args[1],args[2],changed,args[4],args[5],release_review=release,baseline=baseline)
+
+    def test_unsent_prepare_journal_renews_only_with_binding_and_effect(self):
+        for phase in (2,4):
+            args,release,baseline=self.installed_stable(phase)
+            try:N.propose(*args,release_review=release,baseline=baseline)
+            except ValueError as error:self.fail('unsent_prepare_admitted: '+str(error))
+        for phase,effect,ordinal in ((3,1,2),(2,0,2),(4,1,1),(5,1,2)):
+            args,release,baseline=self.installed_stable(phase,effect,ordinal)
+            with self.subTest(phase=phase,effect=effect,ordinal=ordinal),self.assertRaises(ValueError,msg='prepared_or_malformed_journal_refused'):
+                N.propose(*args,release_review=release,baseline=baseline)
+        args,release,baseline=self.installed_stable(2);journals=dict(args[4]);raw=bytearray(journals['prepared']);raw[100]^=1
+        journals['prepared']=T.TransitionTests.checksum(raw)
+        with self.assertRaises(ValueError,msg='foreign_prepare_binding_refused'):N.propose(*args[:4],journals,args[5],release_review=release,baseline=baseline)
+
+    def test_baseline_must_be_exact_and_not_precede_journals(self):
+        args,release,baseline=self.installed_stable(2)
+        top=baseline['applied_index']-3
+        for change in (dict(schema=2),dict(state_digest='00'*32),dict(state_digest='5a'*31),dict(applied_index=top-1),dict(applied_index=True),dict(extra=1)):
+            with self.subTest(change=change),self.assertRaises(ValueError,msg='baseline_exact'):
+                N.propose(*args,release_review=release,baseline=dict(baseline,**change))
+        N.propose(*args,release_review=release,baseline=dict(baseline,applied_index=top))
+
     def session_fixture(self):
         old,new,before,after,journals,now=self.fixture()
         previous=T.R.L.fields(before['runtime.profile']);previous['expires_at_ms']='9000000'

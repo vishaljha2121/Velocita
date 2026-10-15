@@ -604,9 +604,10 @@ int run(const Arguments& a) {
             !swap_account_review_matches(*review,b,profile->user_id.view(),link.state().spot_swap))
             throw Usage("account admission committed read refused");
         const auto read_received=clock.now_ms();
-        const bool recovery_only=a.swap_recovery_only || link.state().spot_swap.pending.phase!=swap::Phase::none ||
-            submitted.latest().phase!=SwapSubmissionPhase::idle || prepared.latest().phase!=SwapPreparePhase::idle;
-        SwapAccountStartupAdmission admission{*review,*history,link.state().spot_swap,
+        const auto funded=swap_unsent_funding_state(link.state().spot_swap);
+        const bool recovery_only=a.swap_recovery_only || !funded || swap_startup_recovery_only(link.state().spot_swap,prepared.latest().phase,
+            prepared.latest().operation.effect,submitted.latest().phase);
+        SwapAccountStartupAdmission admission{*review,*history,funded?*funded:link.state().spot_swap,
             {b.allocation.incarnation,review->document_digest,admission_read->reading.state_digest,
              static_cast<std::uint64_t>(admission_read->reading.applied_index),read_started,read_received},recovery_only};
         if(!recovery_only && !read_swap_reviewed_balance(*credentials,clock,admission,a.timeout_ms))
@@ -644,7 +645,9 @@ int run(const Arguments& a) {
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
-        write_metrics(a.metrics_textfile,"velocita_swap_runtime_stopped 1\nvelocita_swap_runtime_status "+std::to_string(static_cast<int>(loop.status()))+"\nvelocita_swap_runtime_cause "+std::to_string(static_cast<int>(loop.cause()))+"\n");
+        const auto& trace=gateway.create_trace();
+        if(trace.error_size)write_metrics(a.metrics_textfile.parent_path()/"create-error.txt",std::string(trace.error_view()));
+        write_metrics(a.metrics_textfile,"velocita_swap_runtime_stopped 1\nvelocita_swap_runtime_status "+std::to_string(static_cast<int>(loop.status()))+"\nvelocita_swap_runtime_cause "+std::to_string(static_cast<int>(loop.cause()))+"\n"+render_swap_create_trace(trace));
         return loop.status()==SwapGatewayRuntimeStatus::complete?0:2;
     }
 #endif

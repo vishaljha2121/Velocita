@@ -198,6 +198,10 @@ def validate_idle_journals(manifest,files,journals):
         raw=journals[name]
         if len(raw)!=size or raw[:8]!=magic or hashlib.sha256(raw[:-32]).digest()!=raw[-32:]:raise ValueError('journal checksum or schema')
         u64=lambda at:struct.unpack_from('<Q',raw,at)[0]
+        if name=='prepared' and u64(16) in (2,4):
+            if not u64(8)>=2 or not u64(32) or raw[40:72]!=inc or raw[72:240]!=prepare or not any(raw[240:272]) or not any(raw[272:304]):
+                raise ValueError('unsent prepare journal binding or effect')
+            continue
         if u64(8)!=1:raise ValueError('only pristine initialized journals may refresh')
         if name=='results':
             index=u64(16);proof=raw[88:120]

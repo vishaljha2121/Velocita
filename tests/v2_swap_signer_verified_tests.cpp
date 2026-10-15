@@ -59,6 +59,15 @@ void one_buy_scope(){
     require(second.session->start(EffectId{2},1,handle,second.bytes(),10,1100,second.tx.prefix()),"second_effect_starts_read");(void)second.finish();
     require(second.session->status()==SwapSignerStatus::refused && second.key.protected_key->signature_attempts()==0,
         "mvp_refuses_second_effect_even_with_unspent_budget");
+    VerifiedRig released;auto& after=released.voter.state.spot_swap;after.last_effect=2;after.pending.intent.effect=EffectId{2};
+    after.last_release=swap::ReleaseUnsent{EffectId{1},digest(60)};
+    require(released.session->start(EffectId{2},1,handle,released.bytes(),10,1100,released.tx.prefix()) &&
+        released.finish()==SwapSignerStatus::signed_once,"mvp_signs_next_effect_after_the_previous_was_released_unsent");
+    VerifiedRig skipped;auto& gap=skipped.voter.state.spot_swap;gap.last_effect=3;gap.pending.intent.effect=EffectId{3};
+    gap.last_release=swap::ReleaseUnsent{EffectId{1},digest(60)};
+    require(skipped.session->start(EffectId{3},1,handle,skipped.bytes(),10,1100,skipped.tx.prefix()),"gap_effect_starts_read");(void)skipped.finish();
+    require(skipped.session->status()==SwapSignerStatus::refused && skipped.key.protected_key->signature_attempts()==0,
+        "mvp_refuses_effect_that_skips_an_unreleased_predecessor");
     VerifiedRig loss;loss.voter.state.spot_swap.opening.limits.max_realized_loss=swap::QuoteAtoms{500'001};
     require(loss.begin(),"broader_loss_request_starts");(void)loss.finish();
     require(loss.refused_unsigned(),"mvp_refuses_larger_loss_allowance");

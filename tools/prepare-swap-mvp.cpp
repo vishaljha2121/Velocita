@@ -163,7 +163,12 @@ Fields build_intent(const Fields& bundle,std::string parameters){
         require(swap::apply(state,record.command,record.role,record.event_time)==swap::Code::applied,"price amendment reducer refused");
         state.mode=swap::Mode::normal;
     }
-    swap::Intent intent;intent.binding=opening.binding;intent.effect=EffectId{1};intent.side=Side::buy;
+    const auto effect=f.contains("effect")?number(f,"effect"):1;require(effect>=1,"intent effect must follow released predecessors");
+    if(effect>1){
+        constexpr std::string_view assumed="velocita.offline-builder.assumed-prior-release.v1";
+        state.last_effect=effect-1;state.last_release={EffectId{effect-1},sha256_digest(std::as_bytes(std::span(assumed)))};
+    }
+    swap::Intent intent;intent.binding=opening.binding;intent.effect=EffectId{effect};intent.side=Side::buy;
     intent.quote_input=swap::QuoteAtoms{998'000};intent.max_quote_debit=swap::QuoteAtoms{1'000'000};intent.fee_cap=swap::QuoteAtoms{2'000};
     intent.min_base_receive=swap::BaseAtoms{number(f,"minimum_base_atoms")};intent.source_time=number(f,"source_time_ms");intent.sign_by=number(f,"sign_by_ms");
     intent.kill_epoch=number(f,"kill_epoch");intent.executor_generation=number(f,"executor_generation");
@@ -180,9 +185,10 @@ Fields build_intent(const Fields& bundle,std::string parameters){
     const auto record=canonical({swap::Role::strategy,now,intent});
     Fields summary{{"kind","Intent"},{"record_sha256",to_hex(hash(record))},
         {"opening_record_sha256",to_hex(hash(bytes))},{"runtime_profile_sha256",to_hex(hash(profile))},{"quote_evidence_sha256",to_hex(quote_evidence)},
-        {"effect","1"},{"principal_atoms","998000"},{"maximum_debit_atoms","1000000"},{"fee_atoms","2000"},
+        {"effect",std::to_string(effect)},{"principal_atoms","998000"},{"maximum_debit_atoms","1000000"},{"fee_atoms","2000"},
         {"minimum_base_atoms",std::to_string(intent.min_base_receive.value())},{"conservative_quote_floor",std::to_string(net.minimum_net_receipt)},
         {"repayment_lamports",std::to_string(repayment)},{"guaranteed_sponsor_credit","0"},{"sign_by_ms",std::to_string(intent.sign_by)}};
+    if(effect>1)summary.emplace("assumed_released_effect",std::to_string(effect-1));
     if(amendment!=bundle.end()){
         summary.emplace("amendment_record_sha256",to_hex(hash(amendment->second)));
         summary.emplace("amendment_committed","0");summary.emplace("requires_authenticated_commit","1");

@@ -81,6 +81,20 @@ class ApplyTests(unittest.TestCase):
         raw=json.dumps(spec).encode();(base/'renewal.json').write_bytes(raw)
         with self.assertRaisesRegex(ValueError,'qualified release identity',msg='repinned_false_release_revalidated'):A.bundle(base,A.R.digest(raw))
 
+    def test_baseline_is_pinned_revalidated_and_drives_exact_state(self):
+        args,release,baseline=N.RenewalTests().installed_stable(4)
+        proposal=A.N.propose(*args,release_review=release,baseline=baseline)
+        base,pin=self.write_bundle(proposal,args[-1])
+        parsed=A.bundle(base,pin)[-1];self.assertEqual(parsed['artifacts'],proposal['artifacts'])
+        rows=[dict(role=r,applied_index=baseline['applied_index'],state_digest=baseline['state_digest']) for r in ('signer','gateway')]
+        A.exact_state(rows,parsed['report'])
+        with self.assertRaises(ValueError,msg='baseline_not_original_journal_state'):
+            A.exact_state([dict(row,state_digest=proposal['artifacts']['before/journals/protected-signing'][400:432].hex()) for row in rows],parsed['report'])
+        proof=base/'baseline.json';changed=dict(baseline,applied_index=0);proof.write_bytes(json.dumps(changed).encode())
+        spec=json.loads((base/'renewal.json').read_bytes());spec['files']['baseline.json']=A.R.digest(proof.read_bytes())
+        raw=json.dumps(spec).encode();(base/'renewal.json').write_bytes(raw)
+        with self.assertRaisesRegex(ValueError,'baseline must not precede',msg='repinned_stale_baseline_revalidated'):A.bundle(base,A.R.digest(raw))
+
     def test_installed_release_checked_under_locks_before_publication(self):
         args,route,release=N.RenewalTests().release_fixture()
         old,new,before,after,journals,now=args

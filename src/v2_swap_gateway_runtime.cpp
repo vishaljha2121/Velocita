@@ -94,6 +94,8 @@ void SwapGatewayRuntime::observed(const StateReading& reading,Tick now,std::uint
         stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::state);return;
     }
     if(pending.phase==swap::Phase::none){
+        if(preparation_.latest().phase==SwapPreparePhase::released && s.last_release.effect==preparation_.latest().operation.effect &&
+            effect_==s.last_release.effect)effect_={};
         if(submissions_.latest().phase==SwapSubmissionPhase::execute_intent){
             resolving_=std::make_unique<SwapSubmissionResolutionSession>(link_,submissions_,SwapSubmissionResolutionConfig{config_.preparation.allocation,config_.preparation.authority_domain,config_.timeout});
             if(!resolving_->start(reading.applied_index,now)){stop(SwapGatewayRuntimeStatus::failed,SwapGatewayRuntimeCause::state);return;}
@@ -109,6 +111,17 @@ void SwapGatewayRuntime::observed(const StateReading& reading,Tick now,std::uint
             stop(SwapGatewayRuntimeStatus::failed,SwapGatewayRuntimeCause::identity);return;}
     }
     if(pending.phase==swap::Phase::reserved){
+        const auto& saved=preparation_.latest();
+        if((saved.phase==SwapPreparePhase::create_intent || saved.phase==SwapPreparePhase::released) && saved.operation.effect==effect_){
+            if(saved.operation.intent_digest!=swap_record_digest({swap::Role::strategy,pending.intent.source_time,pending.intent})){
+                stop(SwapGatewayRuntimeStatus::failed,SwapGatewayRuntimeCause::identity);return;}
+            if(saved.phase==SwapPreparePhase::create_intent){
+                if(event<pending.intent.sign_by){stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::prepare_unknown);return;}
+                if(preparation_.release(reading.applied_index,reading.state_digest)!=SwapPrepareStoreCode::none){
+                    stop(SwapGatewayRuntimeStatus::failed,SwapGatewayRuntimeCause::storage);return;}
+            }
+            command(swap::ReleaseUnsent{effect_,preparation_.latest().response_digest},now,event);return;
+        }
         if(preparation_.latest().phase==SwapPreparePhase::create_intent){stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::prepare_unknown);return;}
         if(preparation_.latest().phase==SwapPreparePhase::prepared){
             const auto& saved=preparation_.latest();const auto& p=saved.prepared;
@@ -117,7 +130,7 @@ void SwapGatewayRuntime::observed(const StateReading& reading,Tick now,std::uint
             command(swap::Prepare{effect_,p.payload_digest,sha256_digest(std::as_bytes(std::span(p.handle.bytes.data(),p.handle.length))),1},now,event);return;
         }
         preparing_=std::make_unique<SwapPrepareSession>(link_,preparation_,prepare_port_,SwapPrepareSessionConfig{config_.preparation,SwapPrepareInputMapping::fee_inclusive_quote_input,config_.timeout});
-        if(!preparing_->start(effect_,reading.applied_index,now)){stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::prepare_unknown);return;}
+        if(!preparing_->start(effect_,reading.applied_index,now,event)){stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::prepare_unknown);return;}
         status_=SwapGatewayRuntimeStatus::preparing;return;
     }
     if(!prepared_matches(pending)){stop(SwapGatewayRuntimeStatus::failed,SwapGatewayRuntimeCause::identity);return;}

@@ -8,7 +8,7 @@
 namespace {
 struct RuntimePrepare final:SwapPreparePort {
     SwapPrepareStore* store{};unsigned calls{};bool lose_reply{};
-    transport::SwapHttpsResult create(const truemarkets::SwapRestRequest&)override{
+    transport::SwapHttpsResult create(const truemarkets::SwapRestRequest&,const SwapPrepareRead&)override{
         ++calls;require(store->latest().phase==SwapPreparePhase::create_intent,"create fence durable before network");
         if(lose_reply)throw std::runtime_error("lost create");
         constexpr std::string_view body=R"({"order_id":"synthetic-tm-order","status":"initialized","payloads":[{"digest":"a71e361bce0c479f89741f87a0248cf21cae63ee745a5d6623d0e5760aabebcc","payload":"VELOCITA SYNTHETIC FEE INCLUSIVE SWAP\n"}],"quote":{"base_asset":"So11111111111111111111111111111111111111112","quote_asset":"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v","fee_asset":"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v","qty":"1","qty_out":"0.009191912","fee":"0.002"}})";
@@ -74,7 +74,7 @@ void runtime_drill(unsigned mode){
     auto recovery=std::make_unique<SwapReconcileStore>(base.path/"recovery",SwapReconcileStoreBinding{opening.binding.incarnation,domain},*watermark);
     require(recovery->create({{opening.binding.incarnation,domain},baseline.reading.applied_index,baseline.reading.state_digest})==SwapReconcileStoreCode::none,"watermark bootstrap");
     require(c.commit(op,ApplySpotSwap{{swap::Role::strategy,100,intent}}).code==ApplyCode::applied,"reserve all-in one dollar");
-    RuntimePrepare prepare;prepare.store=prepared.get();prepare.lose_reply=mode==2;
+    RuntimePrepare prepare;prepare.store=prepared.get();prepare.lose_reply=mode==2 || mode==7;
     RuntimeSigner signer;signer.store=prepared.get();signer.refuse=mode==3;signer.oversized=mode==4;
     RuntimeExecute execute;execute.store=submission.get();RuntimeSettlement settlement;settlement.store=submission.get();settlement.prove=mode==0;
     SwapGatewayRuntimeConfig config{binding,CallerId{kGateway},1,10000,3000,1};
@@ -84,6 +84,33 @@ void runtime_drill(unsigned mode){
     if(mode==5){require(prepare.calls==0 && signer.calls==0 && execute.calls==0 && runtime->status()==SwapGatewayRuntimeStatus::blocked,
         "recovery-only reserved intent cannot prepare sign or execute");return;}
     require(prepare.calls==1,"one create per effect status="+std::to_string(int(runtime->status()))+" cause="+std::to_string(int(runtime->cause())));
+    if(mode==7){
+        require(runtime->cause()==SwapGatewayRuntimeCause::prepare_unknown,"lost create before sign_by stays unknown");
+        auto next=runtime->next_sequence();runtime.reset();config.first_sequence=next;
+        prepared.reset();submission.reset();recovery.reset();watermark=std::make_unique<SwapResultWatermark>(opening.binding.incarnation);
+        prepared=std::make_unique<SwapPrepareStore>(base.path/"prepared",binding);
+        submission=std::make_unique<SwapSubmissionStore>(base.path/"submission",SwapSubmissionBinding{opening.binding.incarnation,domain});
+        recovery=std::make_unique<SwapReconcileStore>(base.path/"recovery",SwapReconcileStoreBinding{opening.binding.incarnation,domain},*watermark);
+        require(prepared->recover()==SwapPrepareStoreCode::none && submission->recover()==SwapSubmissionCode::none && recovery->recover()==SwapReconcileStoreCode::none,"release restart journals recover");
+        const auto created=prepared->latest().checksum;
+        prepare.store=prepared.get();prepare.lose_reply=false;signer.store=prepared.get();execute.store=submission.get();settlement.store=submission.get();settlement.prove=true;
+        runtime=std::make_unique<SwapGatewayRuntime>(link,*recovery,*prepared,*submission,prepare,signer,execute,settlement,config);
+        auto applied=[&]()->const swap::State&{return c.nodes.begin()->second->applied_state().spot_swap;};
+        c.on_round=[&]{runtime->step(steady_ms(),20300);};
+        c.run_until([&]{return runtime->stopped() || std::all_of(c.nodes.begin(),c.nodes.end(),[](auto& n){
+            return n.second->applied_state().spot_swap.last_release.effect==EffectId{1};});},"expired unsent effect released");
+        require(!runtime->stopped() && prepare.calls==1 && signer.calls==0 && prepared->latest().phase==SwapPreparePhase::released &&
+            prepared->latest().operation.effect==EffectId{1} && prepared->latest().response_digest==created,"journal releases the unsent create before Raft");
+        require(applied().last_release.effect==EffectId{1} && applied().last_release.evidence==created && applied().reserved_quote.value()==0 &&
+            applied().quote.value()==5000000,"Raft releases the unsent reservation with the create record as evidence");
+        auto second=intent;second.effect=EffectId{2};second.source_time=20300;second.sign_by=40300;
+        require(c.commit(op,ApplySpotSwap{{swap::Role::strategy,20300,second}}).code==ApplyCode::applied,"second intent after release");
+        c.run_until([&]{return runtime->stopped();},"second effect reaches terminal");c.on_round={};
+        c.run_until([&]{return std::all_of(c.nodes.begin(),c.nodes.end(),[](auto& n){return n.second->applied_state().spot_swap.settlement_count==1;});},"all voters settle effect two");
+        require(runtime->status()==SwapGatewayRuntimeStatus::complete && prepare.calls==2 && execute.calls==1 && applied().settlement_count==1 &&
+            applied().settlements[0].effect==EffectId{2} && applied().reserved_quote.value()==0,"same run buys once with the next effect after release");
+        return;
+    }
     require(runtime->observation().has_value(),"authenticated snapshot exported");
     const auto& observation=*runtime->observation();
     const auto json=render_swap_observation(observation,kIncarnation);
@@ -147,4 +174,4 @@ void runtime_drill(unsigned mode){
     }
 }
 }
-int main(int argc,char** argv){try{for(unsigned mode=0;mode<7;++mode){if(argc==2 && mode!=static_cast<unsigned>(std::atoi(argv[1])))continue;runtime_drill(mode);std::cout<<"PASS runtime mode "<<mode<<'\n';}return 0;}catch(const std::exception& e){std::cerr<<"FAIL "<<e.what()<<'\n';return 1;}}
+int main(int argc,char** argv){try{for(unsigned mode=0;mode<8;++mode){if(argc==2 && mode!=static_cast<unsigned>(std::atoi(argv[1])))continue;runtime_drill(mode);std::cout<<"PASS runtime mode "<<mode<<'\n';}return 0;}catch(const std::exception& e){std::cerr<<"FAIL "<<e.what()<<'\n';return 1;}}

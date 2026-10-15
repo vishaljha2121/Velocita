@@ -67,7 +67,20 @@ void bounds(){
     for(auto [field,value]:bad){Fixture f;f.set(field,value);require(!f.read(),"numeric_bound_refused");}
 }
 }
-int main(int argc,char** argv){const std::pair<const char*,void(*)()> tests[]={{"valid",valid},{"identities",identities},{"schema",schema},{"bounds",bounds}};
+void buy_scope(){
+    Fixture f;const auto r=f.read();require(r.has_value(),"scope_review_decodes");
+    swap::State s;s.initialized=true;s.opening.binding=f.binding.allocation;auto& l=s.opening.limits;
+    l.max_purchase_total=swap::QuoteAtoms{1'000'000};l.max_buy_debit=swap::QuoteAtoms{1'000'000};l.max_fee=swap::QuoteAtoms{2'000};l.max_realized_loss=swap::QuoteAtoms{500'000};
+    auto& i=s.pending.intent;s.pending.phase=swap::Phase::reserved;i.effect=EffectId{1};i.side=Side::buy;
+    i.max_quote_debit=swap::QuoteAtoms{1'000'000};i.quote_input=swap::QuoteAtoms{998'000};i.fee_cap=swap::QuoteAtoms{2'000};s.last_effect=1;
+    require(swap_mvp_buy_scope(s,*r),"first_effect_buy_in_scope");
+    auto next=s;next.pending.intent.effect=EffectId{2};next.last_effect=2;require(!swap_mvp_buy_scope(next,*r),"second_effect_without_release_out_of_scope");
+    next.last_release={EffectId{1},hash("released")};require(swap_mvp_buy_scope(next,*r),"next_effect_after_release_in_scope");
+    auto settled=next;settled.settlement_count=1;require(!swap_mvp_buy_scope(settled,*r),"no_buy_after_a_settlement");
+    settled.pending={};require(swap_mvp_buy_scope(settled,*r),"settled_idle_state_in_scope");
+    settled.settlement_count=2;require(!swap_mvp_buy_scope(settled,*r),"two_settlements_out_of_scope");
+}
+int main(int argc,char** argv){const std::pair<const char*,void(*)()> tests[]={{"valid",valid},{"buy_scope",buy_scope},{"identities",identities},{"schema",schema},{"bounds",bounds}};
     unsigned ran{},failed{};for(auto [name,fn]:tests){if(argc==2 && std::string_view(argv[1])!=name)continue;++ran;
         try{fn();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){++failed;std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';}}
     return ran&&!failed?0:1;

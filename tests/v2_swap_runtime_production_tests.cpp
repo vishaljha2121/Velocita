@@ -139,4 +139,55 @@ void account_history_tests(){
 }
 
 }
-int main(){try{profile_tests();account_review_tests();account_history_tests();std::cout<<"PASS production profile and admission guards\n";return 0;}catch(const std::exception&e){std::cerr<<e.what()<<'\n';return 1;}}
+void unsent_funding_tests(){
+    auto opening=swap_test::opening();swap::State idle;require(swap::apply(idle,opening,swap::Role::operator_role,100)==swap::Code::applied,"unsent fixture initialized");
+    idle.mode=swap::Mode::normal;
+    require(swap_unsent_funding_state(idle)==idle,"state without pending effect is its own funding state");
+    auto reserved=idle;require(swap::apply(reserved,swap_test::buy(opening),swap::Role::strategy,100)==swap::Code::applied,"unsent fixture reserved");
+    const auto funded=swap_unsent_funding_state(reserved);
+    require(funded && funded->pending==swap::Pending{} && !funded->reserved_quote.value() && !funded->reserved_base.value() &&
+        funded->base==reserved.base && funded->quote==reserved.quote && funded->last_effect==1 && swap::valid_state(*funded),
+        "reserved but unsent effect funds exactly the pre-intent balances");
+    auto prepared=reserved;require(swap::apply(prepared,swap::Prepare{EffectId{1},digest(7),digest(8),1},swap::Role::gateway,101)==swap::Code::applied,"unsent fixture prepared");
+    require(!swap_unsent_funding_state(prepared),"prepared effect may be on chain and has no unsent funding state");
+    SwapAccountStartupAdmission startup;startup.state=idle;startup.barrier={digest(1),digest(2),digest(3),40,1000,1010};
+    SwapPrepareRead read{{1,1,3,41,digest(4),digest(5)},reserved,2000,2010};
+    const auto fresh=swap_prepare_admission(startup,read);
+    require(fresh && fresh->state==*funded && fresh->barrier.incarnation==digest(1) && fresh->barrier.clock_epoch==digest(2) &&
+        fresh->barrier.read_evidence_digest==digest(5) && fresh->barrier.applied_index==41 && fresh->barrier.request_started_ms==2000 &&
+        fresh->barrier.received_at_ms==2010,"create admission uses the fresh committed read as its balance barrier");
+    for(unsigned mode=0;mode<5;++mode){auto bad=read;
+        if(mode==0)bad.reading.applied_index=39;
+        if(mode==1)bad.reading.state_digest={};
+        if(mode==2)bad.received_ms=1999;
+        if(mode==3)bad.state=prepared;
+        if(mode==4)bad.requested_ms=0;
+        require(!swap_prepare_admission(startup,bad),"older, unproven, inverted or non-unsent read refuses create admission");}
+}
+void create_trace_tests(){
+    transport::SwapHttpsResult r;r.status=transport::SwapHttpsStatus::complete;r.exposure=transport::SwapHttpsExposure::response_received;r.http_status=409;
+    const std::string error=R"({"error":"order already open"})";r.body_size=error.size();std::copy(error.begin(),error.end(),r.body.begin());
+    auto t=swap_create_trace(r);
+    require(t.stage==SwapCreateStage::exchanged && t.http_status==409 && t.body_size==error.size() &&
+        t.body_digest==sha256_digest(std::as_bytes(std::span(error))) && t.error_view()==error,"refused create keeps status, digest and its error body");
+    require(render_swap_create_trace(t)=="velocita_swap_create_stage 6\nvelocita_swap_create_transport 0\nvelocita_swap_create_exposure 2\n"
+        "velocita_swap_create_http_status 409\nvelocita_swap_create_body_bytes "+std::to_string(error.size())+"\n","create trace renders as bounded metrics");
+    r.http_status=201;t=swap_create_trace(r);require(t.error_view().empty() && t.body_size==error.size(),"successful create body is never retained");
+    const std::string large(5000,'x');r.http_status=500;r.body_size=large.size();std::copy(large.begin(),large.end(),r.body.begin());
+    t=swap_create_trace(r);require(t.error_view()==std::string(1024,'x') && t.body_size==5000,"error body is bounded to 1 KiB");
+    require(render_swap_create_trace(SwapCreateTrace{}).starts_with("velocita_swap_create_stage 0\n"),"uncalled create renders stage zero");
+}
+void startup_recovery_tests(){
+    auto opening=swap_test::opening();swap::State idle;require(swap::apply(idle,opening,swap::Role::operator_role,100)==swap::Code::applied,"startup fixture initialized");
+    idle.mode=swap::Mode::normal;auto reserved=idle;require(swap::apply(reserved,swap_test::buy(opening),swap::Role::strategy,100)==swap::Code::applied,"startup fixture reserved");
+    auto prepared=reserved;require(swap::apply(prepared,swap::Prepare{EffectId{1},digest(7),digest(8),1},swap::Role::gateway,101)==swap::Code::applied,"startup fixture prepared");
+    using P=SwapPreparePhase;using S=SwapSubmissionPhase;
+    require(!swap_startup_recovery_only(idle,P::idle,EffectId{0},S::idle) && !swap_startup_recovery_only(idle,P::released,EffectId{1},S::idle),
+        "idle or released journal with no pending effect runs normally");
+    require(!swap_startup_recovery_only(reserved,P::idle,EffectId{0},S::idle) && !swap_startup_recovery_only(reserved,P::create_intent,EffectId{1},S::idle) &&
+        !swap_startup_recovery_only(reserved,P::released,EffectId{1},S::idle),"reserved effect with no signature path runs normally");
+    require(swap_startup_recovery_only(reserved,P::create_intent,EffectId{2},S::idle) && swap_startup_recovery_only(idle,P::create_intent,EffectId{1},S::idle) &&
+        swap_startup_recovery_only(reserved,P::prepared,EffectId{1},S::idle) && swap_startup_recovery_only(prepared,P::prepared,EffectId{1},S::idle) &&
+        swap_startup_recovery_only(reserved,P::idle,EffectId{0},S::execute_intent),"foreign create, prepared bytes or sent request recover only");
+}
+int main(){try{profile_tests();account_review_tests();account_history_tests();unsent_funding_tests();create_trace_tests();startup_recovery_tests();std::cout<<"PASS production profile and admission guards\n";return 0;}catch(const std::exception&e){std::cerr<<e.what()<<'\n';return 1;}}

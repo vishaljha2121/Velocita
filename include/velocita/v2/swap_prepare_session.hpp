@@ -12,10 +12,15 @@ enum class SwapPrepareInputMapping:std::uint8_t {
 };
 // Versioned identity prevents recovery under a different quantity convention.
 [[nodiscard]] Digest256 fee_inclusive_prepare_mapping_identity() noexcept;
+struct SwapPrepareRead {
+    StateReading reading{};
+    swap::State state{};
+    std::uint64_t requested_ms{},received_ms{};
+};
 class SwapPreparePort {
 public:
     virtual ~SwapPreparePort()=default;
-    [[nodiscard]] virtual transport::SwapHttpsResult create(const truemarkets::SwapRestRequest&)=0;
+    [[nodiscard]] virtual transport::SwapHttpsResult create(const truemarkets::SwapRestRequest&,const SwapPrepareRead&)=0;
 };
 struct SwapPrepareSessionConfig {
     SwapPrepareBinding binding{};
@@ -31,7 +36,7 @@ public:
     ~SwapPrepareSession();
     SwapPrepareSession(const SwapPrepareSession&)=delete;
     SwapPrepareSession& operator=(const SwapPrepareSession&)=delete;
-    [[nodiscard]] bool start(EffectId,std::int64_t minimum_commit_index,Tick now);
+    [[nodiscard]] bool start(EffectId,std::int64_t minimum_commit_index,Tick now,std::uint64_t event_time);
     [[nodiscard]] SwapPrepareSessionStatus poll(Tick now,std::uint64_t event_time);
     [[nodiscard]] SwapPrepareSessionStatus status()const noexcept{return status_;}
     [[nodiscard]] const truemarkets::SwapRestPrepared* prepared()const noexcept;
@@ -47,6 +52,7 @@ private:
     std::uint64_t ordinal_{};
     Digest256 checksum_{};
     Tick last_tick_{},deadline_{};
+    std::uint64_t requested_ms_{};
 };
 
 }

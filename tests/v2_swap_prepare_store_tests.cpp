@@ -102,6 +102,35 @@ void one_shot_and_prior_settlement(){
         require(store.begin(operation(5),10,digest(10))==Code::bad_transition,"unknown create cannot be replaced even with caller predecessor claim");
     }
 }
+void unsent_create_release(){
+    {
+        Scratch s;seed(s,true);SwapPrepareStore store(s.path(),binding);require(store.recover()==Code::none,"fixture unsent create");
+        const auto created=store.latest().checksum;
+        require(store.release(8,digest(12))==Code::none && store.latest().phase==SwapPreparePhase::released &&
+            store.latest().response_digest==created && store.latest().operation.effect==EffectId{4} &&
+            store.latest().committed_index==8 && store.latest().state_digest==digest(12) && store.latest().prepared.payload_size==0,
+            "unsent create is released with its own create record as evidence");
+        auto b=bytes(s.file());require(b[16]==std::byte{4},"released phase is four on disk");
+    }
+    {
+        Scratch s;seed(s,true);
+        {SwapPrepareStore store(s.path(),binding);require(store.recover()==Code::none && store.release(9,digest(12))==Code::none,"fixture released");}
+        {SwapPrepareStore store(s.path(),binding);require(store.recover()==Code::none && store.latest().phase==SwapPreparePhase::released,"released record recovers");
+        require(store.begin(operation(4),10,digest(13))==Code::bad_transition,"released effect is never prepared again");}
+        {SwapPrepareStore again(s.path(),binding);require(again.recover()==Code::none,"fixture released restart");
+        auto proof=predecessor();require(again.begin(operation(5),10,digest(13),&proof)==Code::bad_transition,"released effect has no settlement predecessor");}
+        SwapPrepareStore later(s.path(),binding);require(later.recover()==Code::none,"fixture released restart again");
+        require(later.begin(operation(5),10,digest(13))==Code::none && later.latest().phase==SwapPreparePhase::create_intent &&
+            later.latest().operation.effect==EffectId{5},"released effect permits one later create");
+    }
+    for(unsigned mode=0;mode<5;++mode){
+        Scratch s;seed(s,mode!=0,mode==1);SwapPrepareStore store(s.path(),binding);require(store.recover()==Code::none,"fixture release refusal");
+        if(mode==3)require(store.release(9,digest(12))==Code::none,"fixture already released");
+        const auto index=mode==2?7:9;const auto state=mode==4?Digest256{}:digest(12);
+        if(mode==4 || mode==2){require(store.release(index,state)!=Code::none,"stale or unproven release read refused");continue;}
+        require(store.release(10,digest(14))==Code::bad_transition,"only an unsent create may be released");
+    }
+}
 void payload_and_request_guards(){
     for(unsigned mode=0;mode<6;++mode){Scratch s;seed(s,true);SwapPrepareStore store(s.path(),binding);require(store.recover()==Code::none,"fixture active");auto p=payload();
         if(mode==0)p.payload_digest=digest(99);
@@ -163,7 +192,7 @@ void abrupt_exit_boundaries(){
 }
 int main(int argc,char** argv){
     const std::pair<const char*,void(*)()> cases[]{
-        {"owned_payload_and_recovery",owned_payload_and_recovery},{"one_shot_and_prior_settlement",one_shot_and_prior_settlement},
+        {"owned_payload_and_recovery",owned_payload_and_recovery},{"unsent_create_release",unsent_create_release},{"one_shot_and_prior_settlement",one_shot_and_prior_settlement},
         {"payload_and_request_guards",payload_and_request_guards},{"corrupt_and_missing_recovery",corrupt_and_missing_recovery},
         {"durability_and_single_writer",durability_and_single_writer},{"abrupt_exit_boundaries",abrupt_exit_boundaries}};
     unsigned ran{},failed{};for(const auto& [name,run]:cases)if(argc==1 || std::string(argv[1])==name){++ran;try{run();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){++failed;std::cout<<"FAIL "<<name<<": "<<e.what()<<'\n';}}

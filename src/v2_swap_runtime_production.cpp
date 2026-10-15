@@ -93,6 +93,40 @@ bool read_swap_reviewed_balance(SwapGatewayCredentials& credentials,SwapFinalize
         swap_reviewed_balance_matches(admission.review,credentials.binding(),admission.state,admission.barrier,
             {response.body.data(),response.body_size},start,end);
 }
+std::optional<swap::State> swap_unsent_funding_state(const swap::State& state) noexcept {
+    if(state.pending.phase==swap::Phase::none)return state;
+    if(state.pending.phase!=swap::Phase::reserved)return {};
+    auto funded=state;funded.pending={};funded.reserved_base={};funded.reserved_quote={};
+    if(!swap::valid_state(funded))return {};
+    return funded;
+}
+bool swap_startup_recovery_only(const swap::State& state,SwapPreparePhase prepared,EffectId prepared_effect,SwapSubmissionPhase submitted) noexcept {
+    const auto& pending=state.pending;
+    if(submitted!=SwapSubmissionPhase::idle || (pending.phase!=swap::Phase::none && pending.phase!=swap::Phase::reserved) ||
+        prepared==SwapPreparePhase::prepared)return true;
+    return prepared==SwapPreparePhase::create_intent && (pending.phase!=swap::Phase::reserved || pending.intent.effect!=prepared_effect);
+}
+SwapCreateTrace swap_create_trace(const transport::SwapHttpsResult& r) noexcept {
+    SwapCreateTrace t;t.stage=SwapCreateStage::exchanged;t.transport=r.status;t.exposure=r.exposure;t.http_status=r.http_status;
+    t.body_size=r.body_size;const auto body=r.body_view().substr(0,std::min(r.body_size,r.body.size()));
+    t.body_digest=sha256_digest(std::as_bytes(std::span(body.data(),body.size())));
+    if(r.http_status<200 || r.http_status>=300){t.error_size=std::min(body.size(),t.error.size());std::copy_n(body.begin(),t.error_size,t.error.begin());}
+    return t;
+}
+std::string render_swap_create_trace(const SwapCreateTrace& t){
+    return "velocita_swap_create_stage "+std::to_string(static_cast<unsigned>(t.stage))+"\nvelocita_swap_create_transport "+
+        std::to_string(static_cast<unsigned>(t.transport))+"\nvelocita_swap_create_exposure "+std::to_string(static_cast<unsigned>(t.exposure))+
+        "\nvelocita_swap_create_http_status "+std::to_string(t.http_status)+"\nvelocita_swap_create_body_bytes "+std::to_string(t.body_size)+"\n";
+}
+std::optional<SwapAccountStartupAdmission> swap_prepare_admission(const SwapAccountStartupAdmission& startup,const SwapPrepareRead& read) noexcept {
+    const auto funded=swap_unsent_funding_state(read.state);
+    if(!funded || read.reading.applied_index<0 || static_cast<std::uint64_t>(read.reading.applied_index)<startup.barrier.applied_index ||
+        read.reading.state_digest.is_zero() || !read.requested_ms || read.received_ms<read.requested_ms)return {};
+    auto admission=startup;admission.state=*funded;
+    admission.barrier={startup.barrier.incarnation,startup.barrier.clock_epoch,read.reading.state_digest,
+        static_cast<std::uint64_t>(read.reading.applied_index),read.requested_ms,read.received_ms};
+    return admission;
+}
 SwapProductionPorts::SwapProductionPorts(SwapGatewayCredentials& credentials,SwapPrepareStore& p,SwapSubmissionStore& s,SwapPrepareBinding binding,
     SwapFinalizedReadClock& clock,truemarkets::TmText org,truemarkets::TmText signer,std::uint64_t timeout,SwapAccountStartupAdmission admission,SwapFailureAccountingPolicy failure_policy)
     :credentials_(credentials),preparation_(p),submission_(s),binding_(binding),clock_(clock),organization_(org),signer_(signer),timeout_(timeout),failure_policy_(failure_policy),admission_(std::move(admission)){
@@ -106,13 +140,20 @@ std::optional<truemarkets::JupiterLookupPrefix> SwapProductionPorts::prefix(std:
     SwapRuntimeFinalizedHttps rpc(timeout_);
     return read_jupiter_lookup_prefix(rpc,rpc.provider_identity(),timeout_,1,*need);
 }
-transport::SwapHttpsResult SwapProductionPorts::create(const truemarkets::SwapRestRequest& request){
+transport::SwapHttpsResult SwapProductionPorts::create(const truemarkets::SwapRestRequest& request,const SwapPrepareRead& read){
     transport::SwapHttpsResult refused;refused.status=transport::SwapHttpsStatus::local_refusal;
+    trace_.stage=SwapCreateStage::latched;
     if(created_ || admission_.recovery_only)return refused;created_=true;
+    trace_.stage=SwapCreateStage::journal;
     if(preparation_.status()!=SwapPrepareStoreCode::none || preparation_.latest().binding!=binding_ || preparation_.latest().phase!=SwapPreparePhase::create_intent)return refused;
-    if(!read_swap_reviewed_balance(credentials_,clock_,admission_,timeout_))return refused;
+    trace_.stage=SwapCreateStage::admission;
+    const auto fresh=swap_prepare_admission(admission_,read);if(!fresh)return refused;
+    trace_.stage=SwapCreateStage::balance;
+    if(!read_swap_reviewed_balance(credentials_,clock_,*fresh,timeout_))return refused;
+    trace_.stage=SwapCreateStage::bearer;
     const auto bearer=credentials_.bearer(clock_.now_ms());if(bearer.empty())return refused;
-    SwapHttpsPreparePort port(preparation_.latest().operation.input,std::string(bearer),static_cast<long>(timeout_));return port.create(request);
+    SwapHttpsPreparePort port(preparation_.latest().operation.input,std::string(bearer),static_cast<long>(timeout_));
+    const auto result=port.create(request,read);trace_=swap_create_trace(result);return result;
 }
 void SwapProductionPorts::execute(const SwapSubmissionIdentity& id,std::span<const std::byte> bytes){
     if(admission_.recovery_only || !swap_account_history_funding(admission_.history,admission_.review,credentials_.binding(),admission_.state,clock_.now_ms()))return;

@@ -2155,7 +2155,7 @@ void swap_submission_lost_reply_leader_loss_restart() {
     } port;
     struct PreparePort final:SwapPreparePort {
         unsigned calls{};bool durable{};SwapPrepareStore* store{};
-        transport::SwapHttpsResult create(const truemarkets::SwapRestRequest& request)override{
+        transport::SwapHttpsResult create(const truemarkets::SwapRestRequest& request,const SwapPrepareRead&)override{
             ++calls;durable=store && store->latest().phase==SwapPreparePhase::create_intent &&
                 store->latest().operation.request_digest==sha256_digest(std::as_bytes(std::span(request.body.data(),request.body_size)));
             constexpr std::string_view body=R"({"order_id":"synthetic-tm-order","status":"initialized","payloads":[{"digest":"a71e361bce0c479f89741f87a0248cf21cae63ee745a5d6623d0e5760aabebcc","payload":"VELOCITA SYNTHETIC FEE INCLUSIVE SWAP\n"}],"quote":{"base_asset":"So11111111111111111111111111111111111111112","quote_asset":"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v","fee_asset":"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v","qty":"1","qty_out":"0.009191912","fee":"0.002"}})";
@@ -2180,7 +2180,7 @@ void swap_submission_lost_reply_leader_loss_restart() {
         intent.max_quote_debit=swap::QuoteAtoms{1'000'000};intent.fee_cap=swap::QuoteAtoms{2'000};
         require(c.commit(op,ApplySpotSwap{{swap::Role::strategy,100,intent}}).code==ApplyCode::applied,"fee-inclusive buy reservation replicated");
         SwapPrepareSession prepare_session(link,preparation,prepare_port,{preparation_binding,SwapPrepareInputMapping::fee_inclusive_quote_input,3000});
-        require(prepare_session.start(identity.effect,baseline.reading.applied_index,steady_ms()),"prepare coordinator requests reserved state");
+        require(prepare_session.start(identity.effect,baseline.reading.applied_index,steady_ms(),100),"prepare coordinator requests reserved state");
         c.on_round=[&]{(void)prepare_session.poll(steady_ms(),101);};
         c.run_until([&]{return prepare_session.status()!=SwapPrepareSessionStatus::reading_state;},"unsigned fixture prepared durably");c.on_round={};
         const auto* saved=prepare_session.prepared();

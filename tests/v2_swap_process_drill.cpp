@@ -79,7 +79,7 @@ struct ProcessClient final:ClientTransport {
 struct Ports final:SwapPreparePort,SwapExecutionPort,SwapGatewaySettlementPort {
     std::filesystem::path root;std::string stage;SwapPrepareStore& prepared;SwapSubmissionStore& submitted;
     Ports(std::filesystem::path r,std::string s,SwapPrepareStore& p,SwapSubmissionStore& u):root(std::move(r)),stage(std::move(s)),prepared(p),submitted(u){}
-    transport::SwapHttpsResult create(const truemarkets::SwapRestRequest&)override{
+    transport::SwapHttpsResult create(const truemarkets::SwapRestRequest&,const SwapPrepareRead&)override{
         require(prepared.latest().phase==SwapPreparePhase::create_intent,"create fenced");journal_line(root,"create");
         constexpr std::string_view body=R"({"order_id":"synthetic-tm-order","status":"initialized","payloads":[{"digest":"a71e361bce0c479f89741f87a0248cf21cae63ee745a5d6623d0e5760aabebcc","payload":"VELOCITA SYNTHETIC FEE INCLUSIVE SWAP\n"}],"quote":{"base_asset":"So11111111111111111111111111111111111111112","quote_asset":"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v","fee_asset":"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v","qty":"1","qty_out":"0.009191912","fee":"0.002"}})";
         transport::SwapHttpsResult r;r.status=transport::SwapHttpsStatus::complete;r.exposure=transport::SwapHttpsExposure::response_received;r.http_status=201;

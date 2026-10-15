@@ -21,7 +21,7 @@ struct SwapPrepareOperation {
     Digest256 intent_digest{},request_digest{};
     truemarkets::SwapRestInput input{};
 };
-enum class SwapPreparePhase:std::uint8_t { idle=1,create_intent,prepared };
+enum class SwapPreparePhase:std::uint8_t { idle=1,create_intent,prepared,released };
 struct SwapPrepareRecord {
     SwapPrepareBinding binding{};
     SwapPrepareOperation operation{};
@@ -53,6 +53,7 @@ public:
     [[nodiscard]] SwapPrepareStoreCode begin(const SwapPrepareOperation&,std::int64_t,Digest256,
                                             const CallerVerifiedPreparePredecessor* =nullptr);
     [[nodiscard]] SwapPrepareStoreCode complete(const truemarkets::SwapRestPrepared&,Digest256 response_digest);
+    [[nodiscard]] SwapPrepareStoreCode release(std::int64_t,Digest256);
     [[nodiscard]] SwapPrepareStoreCode status()const noexcept{return status_;}
     [[nodiscard]] const SwapPrepareRecord& latest()const noexcept{return latest_;}
 private:

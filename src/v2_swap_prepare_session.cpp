@@ -23,7 +23,7 @@ SwapPrepareSession::SwapPrepareSession(GatewayLink& link,SwapPrepareStore& store
     if(config_.mapping==SwapPrepareInputMapping::fixture_principal_and_base_input &&
         config_.binding.mapping_identity==fee_inclusive_prepare_mapping_identity())return;
     effect_=store_.latest().operation.effect;
-    if(store_.latest().phase==SwapPreparePhase::idle)status_=SwapPrepareSessionStatus::idle;
+    if(store_.latest().phase==SwapPreparePhase::idle || store_.latest().phase==SwapPreparePhase::released)status_=SwapPrepareSessionStatus::idle;
     if(store_.latest().phase==SwapPreparePhase::create_intent)status_=SwapPrepareSessionStatus::needs_reconciliation;
     if(store_.latest().phase==SwapPreparePhase::prepared)status_=SwapPrepareSessionStatus::prepared;
 }
@@ -37,7 +37,7 @@ const truemarkets::SwapRestPrepared* SwapPrepareSession::prepared()const noexcep
         store_.latest().operation.effect!=effect_)return nullptr;
     return &store_.latest().prepared;
 }
-bool SwapPrepareSession::start(EffectId effect,std::int64_t minimum_commit_index,Tick now){
+bool SwapPrepareSession::start(EffectId effect,std::int64_t minimum_commit_index,Tick now,std::uint64_t event_time){
     if((status_!=SwapPrepareSessionStatus::idle && status_!=SwapPrepareSessionStatus::prepared) || link_.busy())return false;
     if(store_.status()!=SwapPrepareStoreCode::none || store_.latest().binding!=config_.binding ||
         minimum_commit_index<store_.latest().committed_index || now>std::numeric_limits<Tick>::max()-config_.state_timeout){
@@ -50,7 +50,7 @@ bool SwapPrepareSession::start(EffectId effect,std::int64_t minimum_commit_index
         (void)finish(SwapPrepareSessionStatus::needs_reconciliation);return false;
     }
     effect_=effect;minimum_index_=minimum_commit_index;ordinal_=store_.latest().ordinal;checksum_=store_.latest().checksum;
-    last_tick_=now;deadline_=now+config_.state_timeout;
+    last_tick_=now;deadline_=now+config_.state_timeout;requested_ms_=event_time;
     if(!link_.request_state(now,config_.state_timeout)){(void)finish(SwapPrepareSessionStatus::refused);return false;}
     status_=SwapPrepareSessionStatus::reading_state;return true;
 }
@@ -97,7 +97,7 @@ SwapPrepareSessionStatus SwapPrepareSession::poll(Tick now,std::uint64_t event_t
     const auto durable_ordinal=store_.latest().ordinal;const auto durable_checksum=store_.latest().checksum;
     status_=SwapPrepareSessionStatus::needs_reconciliation;
     transport::SwapHttpsResult response;
-    try{response=port_.create(request);}catch(...){return status_;}
+    try{response=port_.create(request,{outcome.reading,swap,requested_ms_,event_time});}catch(...){return status_;}
     if(store_.status()!=SwapPrepareStoreCode::none)return finish(SwapPrepareSessionStatus::storage_failed);
     if(store_.latest().ordinal!=durable_ordinal || store_.latest().checksum!=durable_checksum)return finish(SwapPrepareSessionStatus::refused);
     if(response.status!=transport::SwapHttpsStatus::complete || response.exposure!=transport::SwapHttpsExposure::response_received || response.body_size>response.body.size())return status_;

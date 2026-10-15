@@ -97,9 +97,9 @@ struct Port final:SwapPreparePort {
     unsigned calls{};std::string body,path,document{reply()};unsigned http{201};bool throw_after{};
     transport::SwapHttpsStatus status{transport::SwapHttpsStatus::complete};
     transport::SwapHttpsExposure exposure{transport::SwapHttpsExposure::response_received};
-    std::function<void()> during;
-    transport::SwapHttpsResult create(const truemarkets::SwapRestRequest& request)override{
-        ++calls;body=request.body_view();path=request.path_view();if(during)during();
+    std::function<void()> during;SwapPrepareRead read{};
+    transport::SwapHttpsResult create(const truemarkets::SwapRestRequest& request,const SwapPrepareRead& committed)override{
+        ++calls;body=request.body_view();path=request.path_view();read=committed;if(during)during();
         if(throw_after)throw std::runtime_error("synthetic lost create response");
         transport::SwapHttpsResult r;r.status=status;r.exposure=exposure;r.http_status=http;r.body_size=document.size();
         std::copy(document.begin(),document.end(),r.body.begin());return r;
@@ -121,7 +121,7 @@ struct Rig {
             &shadow_catalog::truemarkets_two_row_catalog()).code==ApplyCode::applied,"fixture exact intent reserved");
         session=std::make_unique<SwapPrepareSession>(link,*store,port,config());
     }
-    bool start(std::uint64_t effect=1,std::int64_t index=10){return session->start(EffectId{effect},index,1000);}
+    bool start(std::uint64_t effect=1,std::int64_t index=10){return session->start(EffectId{effect},index,1000,104);}
     auto finish(){(void)session->poll(1000,106);return session->poll(1001,107);}
     void restart(){session.reset();store.reset();store=std::make_unique<SwapPrepareStore>(scratch.path(),config().binding,SwapPrepareStoreFaultHook{Fault::proceed,&fault});
         require(store->recover()==SwapPrepareStoreCode::none,"fixture prepare store recovers");session=std::make_unique<SwapPrepareSession>(link,*store,port,config());}
@@ -152,6 +152,13 @@ void one_post_and_durable_payload(){
     r.port.document="mutated HTTP buffer";r.restart();
     require(r.start() && r.session->status()==SwapPrepareSessionStatus::prepared && r.port.calls==1 && r.voter.requests==1 &&
         r.session->prepared()->payload_view()=="{\"activity\":\"synthetic\"}\n","local prepared replay after restart never repeats POST or rereads state");
+}
+void create_receives_fresh_committed_read(){
+    Rig r;require(r.start() && r.finish()==SwapPrepareSessionStatus::prepared,"fresh read fixture prepares");
+    const auto& read=r.port.read;
+    require(read.reading.applied_index==r.voter.index && read.reading.authority_domain==config().binding.authority_domain && !read.reading.state_digest.is_zero() &&
+        read.state.pending.phase==swap::Phase::reserved && read.state.pending.intent.effect==EffectId{1} &&
+        read.requested_ms==104 && read.received_ms==107,"create sees the committed read that admitted it and its wall-clock bounds");
 }
 void unknown_and_bad_response_never_retry(){
     for(unsigned mode=0;mode<5;++mode){Rig r;
@@ -202,7 +209,7 @@ void lifecycle_and_mapping_guards(){
 
     {Rig r;require(r.start(),"owned read starts");r.session.reset();require(!r.link.busy(),"prepare destructor abandons owned state request");}
     {Rig r;require(r.link.request_state(1,20),"fixture unrelated read");require(!r.start(),"busy unrelated read refuses prepare start");r.session.reset();require(r.link.busy(),"idle prepare destructor preserves unrelated read");r.link.abandon();}
-    {Rig r;require(!r.session->start(EffectId{1},10,UINT64_MAX-19),"prepare deadline overflow refuses");}
+    {Rig r;require(!r.session->start(EffectId{1},10,UINT64_MAX-19,104),"prepare deadline overflow refuses");}
     {Rig r;auto c=config();c.mapping=static_cast<SwapPrepareInputMapping>(99);r.session=std::make_unique<SwapPrepareSession>(r.link,*r.store,r.port,c);
         require(!r.start() && !r.port.calls,"unadmitted input mapping refuses prepare session");}
 }
@@ -324,7 +331,7 @@ void https_prepare_and_recovery(){
             if(kind==1)changed.body_size=static_cast<std::uint16_t>(changed.body.size()+1);
             if(kind==2)changed.path[1]='x';
             if(kind==3)require(truemarkets::encode_swap_rest_create({Side::buy,1'000'001},changed)==truemarkets::SwapRestCode::encoded,"changed quantity encodes");
-            require(port->create(changed).status==transport::SwapHttpsStatus::local_refusal,"invalid request refuses before HTTP");
+            require(port->create(changed,{}).status==transport::SwapHttpsStatus::local_refusal,"invalid request refuses before HTTP");
         }
         return;
     }
@@ -335,7 +342,7 @@ void https_prepare_and_recovery(){
         "HTTPS result retains prepared bytes or unresolved intent");
     require(r.store->latest().operation.input.quantity_atoms==1'000'000 && r.store->latest().committed_index==10,
         "HTTPS create follows authenticated state and gross input journal");
-    require(port->create(request).status==transport::SwapHttpsStatus::local_refusal,"HTTPS port refuses a second invocation");
+    require(port->create(request,{}).status==transport::SwapHttpsStatus::local_refusal,"HTTPS port refuses a second invocation");
     r.session.reset();r.store.reset();
     r.store=std::make_unique<SwapPrepareStore>(r.scratch.base/"https",c.binding);
     require(r.store->recover()==SwapPrepareStoreCode::none,"HTTPS journal recovers");
@@ -350,7 +357,7 @@ void https_prepare_and_recovery(){
 }
 int main(int argc,char** argv){
     const std::pair<const char*,void(*)()> cases[]{
-        {"one_post_and_durable_payload",one_post_and_durable_payload},{"unknown_and_bad_response_never_retry",unknown_and_bad_response_never_retry},
+        {"one_post_and_durable_payload",one_post_and_durable_payload},{"create_receives_fresh_committed_read",create_receives_fresh_committed_read},{"unknown_and_bad_response_never_retry",unknown_and_bad_response_never_retry},
         {"state_and_timing_fences",state_and_timing_fences},{"durable_write_failures",durable_write_failures},
         {"higher_effect_requires_prior_terminal",higher_effect_requires_prior_terminal},{"lifecycle_and_mapping_guards",lifecycle_and_mapping_guards},
         {"sell_input_and_expired_admission",sell_input_and_expired_admission},{"fee_inclusive_input_mapping",fee_inclusive_input_mapping}

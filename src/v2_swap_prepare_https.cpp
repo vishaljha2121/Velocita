@@ -24,7 +24,7 @@ SwapHttpsPreparePort::SwapHttpsPreparePort(truemarkets::SwapRestInput input,std:
 SwapHttpsPreparePort::~SwapHttpsPreparePort() {
     volatile char* p=bearer_.data(); for(std::size_t n=0;n<bearer_.size();++n)p[n]=0;
 }
-transport::SwapHttpsResult SwapHttpsPreparePort::create(const truemarkets::SwapRestRequest& request) {
+transport::SwapHttpsResult SwapHttpsPreparePort::create(const truemarkets::SwapRestRequest& request,const SwapPrepareRead&) {
     transport::SwapHttpsResult refused; refused.status=transport::SwapHttpsStatus::local_refusal;
     if(!valid_ || attempted_ || bearer_.empty() || request.path_size>request.path.size() ||
         request.body_size>request.body.size() || request.path_view()!=expected_.path_view() ||

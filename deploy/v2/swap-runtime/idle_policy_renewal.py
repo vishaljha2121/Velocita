@@ -102,7 +102,17 @@ def release_transition(old,new,witness):
     if files['velocita-v2-gateway']!=new['binary_sha256']:raise ValueError('release executable pin differs')
 
 
-def propose(old,new,before,after,journals,now,session_refresh=None,route_review=None,release_review=None):
+def reviewed_baseline(baseline,journals):
+    expected={'schema','state_digest','applied_index'}
+    if type(baseline) is not dict or set(baseline)!=expected or type(baseline['schema']) is not int or baseline['schema']!=1:raise ValueError('exact reviewed baseline required')
+    value=baseline['state_digest']
+    if not isinstance(value,str) or len(value)!=64 or any(c not in '0123456789abcdef' for c in value) or not int(value,16):raise ValueError('baseline state digest shape')
+    index=baseline['applied_index']
+    indices=[int.from_bytes(raw[16:24] if name=='results' else raw[24:32],'little') for name,raw in journals.items()]
+    if type(index) is not int or not max(indices)<=index<=2**63-1:raise ValueError('baseline must not precede any journal')
+
+
+def propose(old,new,before,after,journals,now,session_refresh=None,route_review=None,release_review=None,baseline=None):
     """Return review artifacts only. Never accepts a purported authenticated proof."""
     if type(now) is not int or not 0<now<=2**64-1:raise ValueError('bounded evaluation time')
     R.P.validate(old);R.P.validate(new)
@@ -113,7 +123,7 @@ def propose(old,new,before,after,journals,now,session_refresh=None,route_review=
         if R.digest(files['transaction.review'])!=R.L.fields(files['runtime.profile'])['transaction_review_digest']:raise ValueError('transaction pin mismatch')
     mutable_manifest=set(R.P.PENDING_ACCOUNT_PINS)
     if release_review is not None:
-        if route_review is None:raise ValueError('release transition requires reviewed route')
+        if route_review is None and before['transaction.review']!=after['transaction.review']:raise ValueError('release transition requires reviewed route')
         release_transition(old,new,release_review)
         mutable_manifest|={'source_commit','binary','binary_sha256'}
     if any(old.get(k)!=new.get(k) for k in (set(old)|set(new))-mutable_manifest):raise ValueError('immutable manifest authority')
@@ -167,10 +177,10 @@ def propose(old,new,before,after,journals,now,session_refresh=None,route_review=
     if len(old_record)!=464 or hashlib.sha256(old_record[:-32]).digest()!=old_record[-32:]:raise ValueError('original protected journal checksum')
     R.validate_idle_journals(old,before,dict(journals,**{'protected-signing':bytes(prior_check)}))
     record=bytearray(old_record)
-    struct.pack_into('<Q',record,8,ordinal+1)
-    record[72:104]=R.journal_bindings(after)[4]
-    if record[72:104]==old_record[72:104]:raise ValueError('renewal must change protected policy domain')
-    record[-32:]=hashlib.sha256(record[:-32]).digest()
+    domain=R.journal_bindings(after)[4]
+    if domain!=old_record[72:104]:
+        struct.pack_into('<Q',record,8,ordinal+1);record[72:104]=domain
+        record[-32:]=hashlib.sha256(record[:-32]).digest()
     proposed=dict(journals);proposed['protected-signing']=bytes(record)
     # Check every new domain against its corresponding document set. Only the
     # protected ordinal is advanced; normalize a COPY for the pristine validator.
@@ -187,10 +197,15 @@ def propose(old,new,before,after,journals,now,session_refresh=None,route_review=
         artifacts['route-review.json']=(json.dumps(route_review,sort_keys=True,separators=(',',':'))+'\n').encode()
     if release_review is not None:
         artifacts['release-review.json']=(json.dumps(release_review,sort_keys=True,separators=(',',':'))+'\n').encode()
+    original_index,original_state=int.from_bytes(old_record[24:32],'little'),old_record[400:432].hex()
+    if baseline is not None:
+        reviewed_baseline(baseline,journals)
+        original_index,original_state=baseline['applied_index'],baseline['state_digest']
+        artifacts['baseline.json']=(json.dumps(baseline,sort_keys=True,separators=(',',':'))+'\n').encode()
     kind='expiry-only-pristine-protected-journal-renewal-proposal' if route_review is None else 'reviewed-route-pristine-protected-journal-transition-proposal'
     report=dict(schema=1,kind=kind,applyable=False,
         authenticated_raft_proof=False,services_started=False,orders_submitted=False,
-        original_journal_index=int.from_bytes(old_record[24:32],'little'),original_state_digest=old_record[400:432].hex(),
+        original_journal_index=original_index,original_state_digest=original_state,
         blocking_requirement='native authenticated Raft proof, native digest parity and crash-safe migration helper required',
         required_proof=['fresh request-correlated caller-authenticated committed read after intent producer fenced',
                         'verified term and commit/read barrier; current index >= original journal index',
