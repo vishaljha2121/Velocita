@@ -1,4 +1,5 @@
 #pragma once
+#include <optional>
 
 #include "velocita/v2/contracts.hpp"
 
@@ -162,6 +163,10 @@ struct PaperFill {
 [[nodiscard]] Code apply(State& state, const Command& command, Role role,
                          std::uint64_t event_time) noexcept;
 [[nodiscard]] Role required_role(const Command& command) noexcept;
+[[nodiscard]] std::optional<Intent> strategy_buy(const Binding&,EffectId,QuoteAtoms total_debit,BaseAtoms min_base_receive,
+    std::uint64_t source_time,std::uint64_t sign_by,std::uint64_t kill_epoch,std::uint64_t executor_generation) noexcept;
+[[nodiscard]] std::optional<Intent> strategy_sell(const Binding&,EffectId,BaseAtoms base_input,QuoteAtoms min_quote_receive,QuoteAtoms fee_cap,
+    std::uint64_t source_time,std::uint64_t sign_by,std::uint64_t kill_epoch,std::uint64_t executor_generation) noexcept;
 [[nodiscard]] bool valid_state(const State& state) noexcept;
 [[nodiscard]] PaperFill simulate(const State& state, PaperQuote quote,
                                   Digest256 transaction, Digest256 evidence) noexcept;

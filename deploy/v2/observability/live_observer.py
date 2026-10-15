@@ -33,8 +33,9 @@ def unique_object(pairs):
 
 def settlements(value,run,now,limit=MAX_SETTLEMENTS):
     """Only the authenticated producer's successful, finalized economic records."""
-    exact_keys(value,'schema incarnation observed_at_ms applied_index base_atoms quote_atoms fees_atoms realized_pnl_atoms settlements')
-    if type(value['schema']) is not int or value['schema']!=1 or value['incarnation']!=run:raise ValueError('settlement identity')
+    exact_keys(value,'schema incarnation observed_at_ms applied_index base_atoms quote_atoms fees_atoms realized_pnl_atoms last_effect pending_effect settlements')
+    if type(value['schema']) is not int or value['schema']!=2 or value['incarnation']!=run:raise ValueError('settlement identity')
+    integer(value['last_effect']);integer(value['pending_effect'],0,value['last_effect'])
     integer(value['observed_at_ms'],1,now);integer(value['applied_index'],1)
     for key in ('base_atoms','quote_atoms','fees_atoms'):integer(value[key])
     integer(value['realized_pnl_atoms'],-2**63,2**63-1)

@@ -50,8 +50,8 @@ class LiveObserverTests(unittest.TestCase):
 class ConfirmedSettlementsTests(unittest.TestCase):
     RUN='a'*32
     def source(self):
-        return {'schema':1,'incarnation':self.RUN,'observed_at_ms':1000000,'applied_index':8,
-                'base_atoms':9000000,'quote_atoms':24000000,'fees_atoms':2000,'realized_pnl_atoms':0,
+        return {'schema':2,'incarnation':self.RUN,'observed_at_ms':1000000,'applied_index':8,
+                'base_atoms':9000000,'quote_atoms':24000000,'fees_atoms':2000,'realized_pnl_atoms':0,'last_effect':1,'pending_effect':0,
                 'settlements':[{'effect':1,'side':'buy','base_atoms':9000000,'quote_atoms':1000000,
                                 'fee_atoms':2000,'outcome':'succeeded'}]}
     def test_hand_calculated_net_buy_and_sell_prices(self):

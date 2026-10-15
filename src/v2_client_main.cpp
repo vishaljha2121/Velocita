@@ -196,6 +196,30 @@ Arguments parse(int argc, char** argv) {
                 " min_quote_receive=" + std::to_string(intent.min_quote_receive.value()) + "\n";
         }
         a.body = ApplySpotSwap{record}; a.digest = swap_record_digest(record); a.lane = ProposeLane::normal;
+    } else if (verb == "spot-swap-intent" && i + 11 == argc) {
+        const auto original = read_swap_record(argv[i+1]);
+        const auto* opening = std::get_if<swap::Initialize>(&original.command);
+        if (!opening || original.role != swap::Role::operator_role)
+            throw Usage("strategy intent needs the operator opening record");
+        if (!have_incarnation || opening->binding.incarnation != sha256_digest(a.incarnation))
+            throw Usage("opening record is bound to another incarnation");
+        const std::string_view side = argv[i+2];
+        const EffectId effect{number(argv[i+3], "effect")};
+        const auto amount = number(argv[i+4], "amount"), receive = number(argv[i+5], "minimum receive"), fee = number(argv[i+6], "fee cap");
+        const auto source = number(argv[i+7], "source time"), sign_by = number(argv[i+8], "sign by");
+        const auto kill = number(argv[i+9], "kill epoch"), generation = number(argv[i+10], "executor generation");
+        std::optional<swap::Intent> intent;
+        if (side == "buy") {
+            intent = swap::strategy_buy(opening->binding, effect, swap::QuoteAtoms{amount}, swap::BaseAtoms{receive}, source, sign_by, kill, generation);
+            if (intent && intent->fee_cap.value() != fee) throw Usage("buy fee cap must equal 0.2% of the whole-cent debit");
+        } else if (side == "sell") {
+            intent = swap::strategy_sell(opening->binding, effect, swap::BaseAtoms{amount}, swap::QuoteAtoms{receive}, swap::QuoteAtoms{fee}, source, sign_by, kill, generation);
+        } else throw Usage("strategy intent side must be buy or sell");
+        if (!intent) throw Usage("strategy intent amounts or times refused");
+        const swap::Record record{swap::Role::strategy, source, *intent};
+        a.summary = "STRATEGY SWAP INTENT side=" + std::string(side) + " effect=" + std::to_string(effect.value()) +
+            " amount=" + std::to_string(amount) + " min_receive=" + std::to_string(receive) + " fee_cap=" + std::to_string(intent->fee_cap.value()) + "\n";
+        a.body = ApplySpotSwap{record}; a.digest = swap_record_digest(record); a.lane = ProposeLane::normal;
     } else if (verb == "kill-epoch" && i + 2 == argc) {
         a.kill_epoch = number(argv[i + 1], "kill epoch");
         a.body = AdvanceKillEpoch{KillEpoch{a.kill_epoch}};

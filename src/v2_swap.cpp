@@ -228,6 +228,21 @@ QuoteAtoms effective_buy_price(const State& s) noexcept {
     return s.buy_price_amendment.price.value()?s.buy_price_amendment.price:s.opening.limits.max_buy_price_per_sol;
 }
 
+std::optional<Intent> strategy_buy(const Binding& binding,EffectId effect,QuoteAtoms total_debit,BaseAtoms min_base_receive,
+    std::uint64_t source_time,std::uint64_t sign_by,std::uint64_t kill_epoch,std::uint64_t executor_generation) noexcept {
+    if(!effect.value() || !total_debit.value() || total_debit.value()%10'000 || !min_base_receive.value() || sign_by<=source_time)return {};
+    Intent i;i.binding=binding;i.effect=effect;i.side=Side::buy;i.max_quote_debit=total_debit;
+    i.fee_cap=QuoteAtoms{total_debit.value()/10'000*20};i.quote_input=QuoteAtoms{total_debit.value()-i.fee_cap.value()};
+    i.min_base_receive=min_base_receive;i.source_time=source_time;i.sign_by=sign_by;i.kill_epoch=kill_epoch;i.executor_generation=executor_generation;
+    return i;
+}
+std::optional<Intent> strategy_sell(const Binding& binding,EffectId effect,BaseAtoms base_input,QuoteAtoms min_quote_receive,QuoteAtoms fee_cap,
+    std::uint64_t source_time,std::uint64_t sign_by,std::uint64_t kill_epoch,std::uint64_t executor_generation) noexcept {
+    if(!effect.value() || !base_input.value() || !min_quote_receive.value() || !fee_cap.value() || sign_by<=source_time)return {};
+    Intent i;i.binding=binding;i.effect=effect;i.side=Side::sell;i.base_input=base_input;i.min_quote_receive=min_quote_receive;
+    i.fee_cap=fee_cap;i.source_time=source_time;i.sign_by=sign_by;i.kill_epoch=kill_epoch;i.executor_generation=executor_generation;
+    return i;
+}
 Role required_role(const Command& command) noexcept {
     return std::visit([](const auto& body) noexcept { return role_for<std::decay_t<decltype(body)>>(); }, command);
 }

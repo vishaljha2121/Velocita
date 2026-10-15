@@ -426,6 +426,28 @@ void settlement_window_state_is_validated() {
     Rig small;for(std::uint64_t id=1;id<=3;++id)(void)settle_failed(small,id,100+id*4);
     auto lie=small.s;lie.settled_total=4;require(!valid_state(lie),"a complete history must equal its lifetime count");
 }
+void strategy_orders_match_the_tm_route_shape() {
+    const auto b=opening().binding;
+    const auto buy=strategy_buy(b,EffectId{7},QuoteAtoms{13'200'000},BaseAtoms{110'400'000},500,510,1,1);
+    require(buy && buy->side==Side::buy && buy->effect==EffectId{7} && buy->max_quote_debit==QuoteAtoms{13'200'000} &&
+        buy->fee_cap==QuoteAtoms{26'400} && buy->quote_input==QuoteAtoms{13'173'600} && buy->min_base_receive==BaseAtoms{110'400'000} &&
+        buy->binding==b && buy->source_time==500 && buy->sign_by==510 && buy->kill_epoch==1 && buy->executor_generation==1 &&
+        !buy->base_input.value() && !buy->min_quote_receive.value() && !buy->transient_base_hold.value(),"buy is fee-inclusive whole cents");
+    require(!strategy_buy(b,EffectId{7},QuoteAtoms{13'200'001},BaseAtoms{1},500,510,1,1),"buy debit must be whole cents");
+    require(!strategy_buy(b,EffectId{7},QuoteAtoms{},BaseAtoms{1},500,510,1,1) && !strategy_buy(b,EffectId{7},QuoteAtoms{10'000},BaseAtoms{},500,510,1,1),
+        "buy needs debit and floor");
+    require(!strategy_buy(b,EffectId{},QuoteAtoms{10'000},BaseAtoms{1},500,510,1,1) && !strategy_buy(b,EffectId{7},QuoteAtoms{10'000},BaseAtoms{1},510,510,1,1),
+        "buy needs an effect and a later sign-by");
+    const auto sell=strategy_sell(b,EffectId{8},BaseAtoms{120'000'000},QuoteAtoms{12'437'500},QuoteAtoms{25'051},600,610,1,1);
+    require(sell && sell->side==Side::sell && sell->base_input==BaseAtoms{120'000'000} && sell->min_quote_receive==QuoteAtoms{12'437'500} &&
+        sell->fee_cap==QuoteAtoms{25'051} && !sell->quote_input.value() && !sell->max_quote_debit.value() && !sell->min_base_receive.value(),
+        "sell carries base input, USDC floor and fee cap only");
+    require(!strategy_sell(b,EffectId{8},BaseAtoms{},QuoteAtoms{1},QuoteAtoms{1},600,610,1,1) &&
+        !strategy_sell(b,EffectId{8},BaseAtoms{1},QuoteAtoms{},QuoteAtoms{1},600,610,1,1) &&
+        !strategy_sell(b,EffectId{8},BaseAtoms{1},QuoteAtoms{1},QuoteAtoms{},600,610,1,1),"sell needs input, floor and fee cap");
+    Rig r;auto i=*strategy_buy(r.s.opening.binding,EffectId{1},QuoteAtoms{1'000'000},BaseAtoms{9'000'000},100,120,1,1);
+    require(apply(r.s,i,Role::strategy,100)==Code::applied,"strategy buy is admitted by the reducer");
+}
 void record_codec_has_independent_golden_and_rejects_corruption() {
     Record record{Role::gateway,100,MarkUnknown{EffectId{0x0102030405060708}}};
     std::array<std::byte,max_record_bytes> bytes{};const auto encoded=encode(record,bytes);
@@ -520,7 +542,7 @@ int main(int argc,char** argv) {
         {"paper_exact_fee_mode_and_unchanged_sell",paper_exact_fee_mode_and_unchanged_sell},
         {"overflow_is_transactional",overflow_is_transactional},{"failed_transaction_cannot_hide_charges",failed_transaction_cannot_hide_charges},
         {"settlement_window_keeps_recent_and_counts_lifetime",settlement_window_keeps_recent_and_counts_lifetime},{"settlement_window_state_is_validated",settlement_window_state_is_validated},
-        {"record_codec_has_independent_golden_and_rejects_corruption",record_codec_has_independent_golden_and_rejects_corruption},
+        {"strategy_orders_match_the_tm_route_shape",strategy_orders_match_the_tm_route_shape},{"record_codec_has_independent_golden_and_rejects_corruption",record_codec_has_independent_golden_and_rejects_corruption},
         {"all_command_records_replay_exactly",all_command_records_replay_exactly},
         {"sell_fee_and_transaction_reuse_conflict",sell_fee_and_transaction_reuse_conflict},
         {"conservation_across_varied_prices",conservation_across_varied_prices}};

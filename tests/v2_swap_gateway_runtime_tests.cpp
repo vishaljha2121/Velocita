@@ -125,6 +125,8 @@ void runtime_drill(unsigned mode){
     const auto& observation=*runtime->observation();
     const auto json=render_swap_observation(observation,kIncarnation);
     require(json && json->find("\"observed_at_ms\":")!=std::string::npos,"snapshot timestamp exported");
+    require(json->find("\"schema\":2,")!=std::string::npos && json->find("\"last_effect\":1,\"pending_effect\":"+std::string(mode==0?"0":"1")+",")!=std::string::npos,
+        "snapshot exports the last and pending effect for the strategy driver");
     if(mode!=0)require(json->find("\"settlements\":[]")!=std::string::npos,"unproven orders never become fill markers");
     auto wrong=kIncarnation;wrong[0]^=std::byte{1};
     require(!render_swap_observation(observation,wrong),"snapshot rejects foreign incarnation");
