@@ -1,0 +1,426 @@
+# M3a alert rules. Delivery: Prometheus -> Alertmanager -> self-hosted ntfy ->
+# phone (docs/ALERT_DELIVERY_RUNBOOK.md). Grafana also shows them as firing/pending.
+# severity: critical is an urgent push repeated hourly; warning is a normal push
+# repeated every 4 hours.
+groups:
+  - name: velocita-v2
+    rules:
+      - alert: VelocitaVoterDown
+        expr: velocita_v2_up{strategy="stochastic"} == 0 or up{job="velocita-v2",strategy="stochastic"} == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "Voter on {{ $labels.host }} is not reporting"
+          description: "Its health page is unreadable or its exporter is unreachable. Two of three voters still commit; one more loss stops the cluster."
+      # Counted from scrape targets, not health pages, so a voter whose exporter
+      # vanished entirely still counts as missing.
+      - alert: VelocitaQuorumAtRisk
+        expr: count(up{job="velocita-v2",strategy="stochastic"} == 1 and on(instance) velocita_v2_up{strategy="stochastic"} == 1) < 3
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "Only {{ $value }} of 3 voters reporting"
+          description: "The cluster still commits with two voters, but one more loss stops it. Restore the missing voter."
+      - alert: VelocitaQuorumLost
+        expr: (count(up{job="velocita-v2",strategy="stochastic"} == 1 and on(instance) velocita_v2_up{strategy="stochastic"} == 1) or vector(0)) < 2
+        for: 30s
+        labels: {severity: critical}
+        annotations:
+          summary: "Fewer than 2 of 3 voters reporting: nothing can commit"
+          description: "A commit needs two durable copies. Nothing commits until a second voter returns."
+      - alert: VelocitaTelemetryStale
+        expr: velocita_v2_telemetry_age_seconds > 10
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "Voter {{ $labels.node }} health is {{ $value | humanizeDuration }} old"
+          description: "The owner loop stopped publishing: stalled, hung or restarting."
+      - alert: VelocitaVoterFailed
+        expr: velocita_v2_failed == 1
+        labels: {severity: critical}
+        annotations:
+          summary: "Voter {{ $labels.node }} latched a fatal failure"
+          description: "Fail-stop: it will not continue. Check its journal before restarting."
+      - alert: VelocitaNoLeader
+        expr: sum(velocita_v2_role{role="leader"}) == 0
+        for: 30s
+        labels: {severity: critical}
+        annotations:
+          summary: "No leader for 30s"
+          description: "No commits are possible. Usually a voter is down or the link is cut."
+      - alert: VelocitaElectionStorm
+        expr: increase(max(velocita_v2_term)[10m:10s]) > 3
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $value }} elections in 10 minutes"
+          description: "Repeated elections: slow disk, flaky link or a restart loop."
+      # The slow version of a storm: one election per compaction never reaches
+      # the storm's rate (finding 53: 64 elections in two days, no alert).
+      - alert: VelocitaElectionsRecurring
+        # An exact count: increase() extrapolates and would turn 3 into more than 3.
+        expr: max(velocita_v2_term) - min_over_time(max(velocita_v2_term)[6h:1m]) > 3
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $value | printf \"%.0f\" }} elections in 6 hours"
+          description: "A healthy cluster holds one term for days. Look for what repeats: compaction pauses (VelocitaCompactionPauseLong), a host that reboots, or a link that drops. Each election fences the gateway for 30 s."
+      - alert: VelocitaCommitStalled
+        expr: (velocita_v2_log_index{kind="current"} - on(host,node) velocita_v2_log_index{kind="commit"}) > 0 and on(host,node) velocita_v2_role{role="leader"} == 1
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "Leader has had uncommitted entries for 2 minutes"
+          description: "Work is waiting for quorum: the other voter is probably unreachable."
+      - alert: VelocitaAuthRefusals
+        expr: increase(velocita_v2_auth_refusals_total[5m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "Voter {{ $labels.node }} refused unauthenticated frames"
+          description: "Forged, foreign or corrupted traffic reached a voter."
+      - alert: VelocitaUnauthorizedCommand
+        expr: max(increase(velocita_v2_unauthorized_commands_total[10m])) > 0
+        labels: {severity: critical}
+        annotations:
+          summary: "A key sent {{ $value | printf \"%.0f\" }} command(s) its role does not allow"
+          description: "The command was signed by a known key, committed and refused by the kernel (ADR 0020). Either a role was not assigned in the ceremony (assign-role 21 strategy, 22 gateway), or a key is being used for something it should not do. The refusal leaves no receipt: find the command in the Raft log."
+      - alert: VelocitaIngressRateLimited
+        expr: max(increase(velocita_v2_ingress_rate_limited_total[10m])) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "A caller sent commands faster than its ingress rate allows"
+          description: "A voter answered busy to {{ $value | printf \"%.0f\" }} command(s) in 10 minutes because one caller exceeded ingress.rate_per_second. The strategy and the gateway stay far below it in normal use. Look for a client stuck in a retry loop, or a key being used by something else. Operator callers are never limited."
+      - alert: VelocitaReducingModeLeftOn
+        expr: max(velocita_v2_strategy_mode) == 4 or max(velocita_v2_strategy_mode) == 6
+        for: 30m
+        labels: {severity: warning}
+        annotations:
+          summary: "The strategy mode has been {{ if eq $value 6.0 }}flatten{{ else }}reduce_only{{ end }} for 30 minutes"
+          description: "In these modes only orders that reduce the position are sent, and flatten sells whatever is held. Decide what comes next: strategy-mode halted to stay out, or strategy-mode normal and a gateway restart to trade again (ADR 0024)."
+      - alert: VelocitaLeaderSteppedDown
+        expr: increase(velocita_v2_quorum_step_downs_total[10m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }} gave up leadership: it stopped hearing a majority"
+          description: "The leader could send but heard no replies from a majority for two election timeouts, so it stepped down to let another voter lead. Check the network path into {{ $labels.host }}."
+      # From deploy/v2/secrets-presence.sh on each voter host (names only; it
+      # never reads a secret). Secrets live in RAM, so every reboot needs a push.
+      - alert: VelocitaSecretsMissing
+        expr: velocita_secret_present == 0
+        for: 30s
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.host }} is missing secret {{ $labels.secret }}: push it from the Mac"
+          description: "Secrets live only in RAM, so a reboot empties them and voter {{ $labels.node }} cannot start. On the Mac: tools/velocita-secrets push {{ $labels.secret }} velocitas@{{ $labels.ssh_host }} {{ $labels.path }} then on {{ $labels.host }}: systemctl --user reset-failed velocita-v2-node@{{ $labels.node }} && systemctl --user start velocita-v2-node@{{ $labels.node }}"
+      - alert: VelocitaSecretsCheckBroken
+        expr: velocita_secrets_config_ok == 0 or (time() - velocita_secrets_check_timestamp_seconds) > 120
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "Secrets check on {{ $labels.host }} is not working"
+          description: "Missing secrets would go unnoticed: the voter config is unreadable or names no key files, or the check stopped (systemctl --user status velocita-v2-secrets-check.timer)."
+      - alert: VelocitaSecretReloadRefused
+        expr: increase(velocita_v2_secret_reload_failures_total[10m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "A secret reload was refused on voter {{ $labels.node }}"
+          description: "Old keys are still in use; the push was incomplete or corrupt."
+      # The retained Raft log never evicts. Compaction reclaims only entries
+      # every voter holds (the compaction floor), so the log fills only while
+      # some voter is not keeping up. A full ordinary pool refuses every normal
+      # command (the shadow edge stops); the protected pool is the operator
+      # kill reserve.
+      - alert: VelocitaRaftLogFilling
+        expr: velocita_v2_retained_log_entries{pool="ordinary"} / velocita_v2_retained_log_capacity{pool="ordinary"} > 0.75
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }} Raft log is {{ $value | humanizePercentage }} full"
+          description: "Compaction only reclaims entries every voter holds, so a filling log means a voter is not keeping up (see the compaction floor). At 100% every normal command (the shadow edge) is refused. Restore the lagging voter."
+      - alert: VelocitaRaftLogFull
+        expr: velocita_v2_retained_log_entries{pool="ordinary"} >= velocita_v2_retained_log_capacity{pool="ordinary"}
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.host }} Raft log is full: normal commands are refused"
+          description: "The shadow edge cannot record decisions. Operator kill commands still use the protected reserve. Restore the voter pinning the compaction floor, or replace the cluster."
+      # The archive keeps every compacted log entry and has a fixed budget.
+      # Ordinary commands are refused 16 MiB and 4 catalog rows before it; the
+      # operator kill path keeps that reserve. A run with no end date reaches it.
+      - alert: VelocitaArchiveFilling
+        expr: >-
+          velocita_v2_archive_bytes / (velocita_v2_archive_byte_limit - 16777216) > 0.70
+          or velocita_v2_archive_segments / (velocita_v2_archive_segment_limit - 4) > 0.70
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }} archive is {{ $value | humanizePercentage }} of the ordinary budget"
+          description: "When the archive is full every ordinary command is refused, including a strategy exit; only the operator kill path still works. See 'Days until the archive is full' on the Raft dashboard and plan a new incarnation or a larger budget before then."
+      - alert: VelocitaArchiveNearlyFull
+        expr: >-
+          velocita_v2_archive_bytes / (velocita_v2_archive_byte_limit - 16777216) > 0.90
+          or velocita_v2_archive_segments / (velocita_v2_archive_segment_limit - 4) > 0.90
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.host }} archive is {{ $value | humanizePercentage }} of the ordinary budget: act now"
+          description: "Ordinary commands stop at 100%. Flatten the position and stop the strategy while commands are still accepted, then start a new incarnation."
+      # A policy slot is taken by every policy version ever published in an
+      # incarnation and is never freed. At the limit a new strategy cannot be
+      # installed; the running one is unaffected.
+      - alert: VelocitaPolicySlotsLow
+        expr: velocita_v2_policies / velocita_v2_policy_capacity >= 0.75
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }} has used {{ $value | humanizePercentage }} of its policy slots"
+          description: "Each published policy version keeps a slot for the life of the incarnation. When none are left a new strategy version is refused (policy_capacity_exceeded); plan a new incarnation before the next strategy change."
+      # The kernel's own money ledger (ADR 0021). The limit is on realized loss
+      # since the operator last reset it; at the limit only closing orders pass.
+      - alert: VelocitaLossLimitNear
+        expr: >-
+          max by (account, instrument) (velocita_v2_account_max_window_loss_micros) > 0
+          and max by (account, instrument) (-velocita_v2_account_window_realized_pnl_micros)
+          / max by (account, instrument) (velocita_v2_account_max_window_loss_micros) >= 0.8
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "Account {{ $labels.account }} is at 80% or more of its loss limit"
+          description: "Realized loss since the last reset, against the kernel's limit. At 100% the kernel refuses every order that adds risk; orders that close the position still pass."
+      - alert: VelocitaLossLimitReached
+        expr: >-
+          max by (account, instrument) (velocita_v2_account_max_window_loss_micros) > 0
+          and max by (account, instrument) (-velocita_v2_account_window_realized_pnl_micros)
+          >= max by (account, instrument) (velocita_v2_account_max_window_loss_micros)
+        labels: {severity: critical}
+        annotations:
+          summary: "Account {{ $labels.account }} reached its loss limit: the kernel refuses new risk"
+          description: "Only an operator risk-limits command with reset_loss_window=1 clears it. Review the losses before resetting."
+      - alert: VelocitaLedgerMismatch
+        expr: abs(max(velocita_indicator_variant_fees_usd) * 1e6 - max(velocita_v2_account_fees_paid_micros)) > 1
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "The kernel's fees and the venue report's fees differ by {{ $value }} micro-dollars"
+          description: "The kernel books every fill's fee, and the observer reads the venue's. They should be equal for a session that began with its incarnation. A difference means a fill was booked by one and not the other; stop and reconcile before trading on."
+      - alert: VelocitaVoterStranded
+        expr: velocita_v2_stranded_voters > 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.host }} leads a voter it cannot catch up"
+          description: "A voter is behind this leader's snapshot (it lost its storage, or compacted history it needs). It stays a quiet follower but cannot rejoin until repaired (snapshot install is M6). The cluster runs on the others with less redundancy."
+      - alert: VelocitaCompactionPauseLong
+        expr: (velocita_v2_last_compaction_seconds > 0.5) and (increase(velocita_v2_compactions_total[15m]) > 0)
+        labels: {severity: warning}
+        annotations:
+          summary: "Compaction on {{ $labels.host }} paused Raft for {{ $value }}s"
+          description: "Raft makes no progress on a node while it compacts. On a leader, pauses near the 1-2 s election timeout can cause elections; consider a higher history.compact_at_entries or faster storage."
+      - alert: VelocitaCompactionBlocked
+        expr: (velocita_v2_retained_log_entries{pool="ordinary"} / velocita_v2_retained_log_capacity{pool="ordinary"} > 0.5) and on(host, node) (changes(velocita_v2_compaction_floor[30m]) == 0)
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }} cannot compact: the floor has not moved for 30 minutes"
+          description: "Some voter is not acknowledging the log, so no voter may reclaim it and the log keeps filling. Find the lagging voter (log positions) and restore it."
+      - alert: VelocitaKillReserveLow
+        expr: velocita_v2_retained_log_entries{pool="protected"} / velocita_v2_retained_log_capacity{pool="protected"} > 0.5
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }} operator kill reserve {{ $value | humanizePercentage }} used"
+          description: "Each kill-path command (kill epoch, executor generation, strategy mode, mass cancel) permanently uses one of 64 reserved entries until compaction exists; submitter restarts use one each."
+      - alert: VelocitaDiskAlmostFull
+        expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} < 0.15
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }} root disk below 15% free"
+          description: "The WAL and archive refuse new work before a disk fills; free space."
+      - alert: VelocitaHostHot
+        expr: max by (host) (node_thermal_zone_temp) > 75
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }} at {{ $value }}°C"
+          description: "Sustained heat causes throttling: a slower, different machine."
+      - alert: VelocitaSoakFailures
+        expr: increase(velocita_soak_commands_total{result!="ok"}[10m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "Soak bot saw failed commands"
+          description: "A soak command timed out or was refused."
+      # Phase 2 paper-trading gateway. absent() also catches a gateway that was
+      # never started or whose metrics stopped being scraped.
+      - alert: VelocitaGatewayDown
+        expr: min(velocita_live_gateway_active) == 0 or min(velocita_live_signer_active) == 0 or absent(velocita_live_gateway_active)
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "Live swap gateway or signer is not running"
+          description: "No trade can be prepared, signed or settled. On nuc1: systemctl status velocita-swap-gateway velocita-swap-signer and their journals."
+      - alert: VelocitaStrategyDriverSilent
+        expr: time() - max(velocita_strategy_bar_seconds) > 60 or absent(velocita_strategy_bar_seconds)
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "Live strategy driver has not processed a candle for a minute"
+          description: "The driver stopped, lost its feed or reached a stop. On nuc1 as velocitas: systemctl --user status velocita-strategy-driver and journalctl --user -u velocita-strategy-driver."
+      - alert: VelocitaGatewayNewRiskStopped
+        expr: velocita_gateway_new_risk_stopped == 1 unless on(job, host) velocita_gateway_stop_cause{cause="awaiting_arm"} == 1
+        labels: {severity: critical}
+        annotations:
+          summary: "Paper gateway on {{ $labels.host }} stopped new risk"
+          description: "A stop that does not re-arm by itself (unknown outcome, conflict, refused evidence, control change, reconciliation mismatch) holds new risk: the gateway sends no risk-increasing order. Check the gateway journal (STOP cause=...) for the order and the cause; restart the gateway to resume."
+      - alert: VelocitaGatewayAwaitingRearm
+        expr: velocita_gateway_stop_cause{cause="awaiting_arm"} == 1
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Paper gateway on {{ $labels.host }} has waited 10 minutes to re-arm"
+          description: "New risk is stopped only by the arming check (a fence that has not stayed quiet, an order still open, or a reconciliation that is not yet comparable). Check elections and the gateway journal."
+      - alert: VelocitaGatewayReconciliationMismatch
+        expr: velocita_gateway_reconciliation_mismatch == 1
+        labels: {severity: critical}
+        annotations:
+          summary: "Paper gateway on {{ $labels.host }}: venue book and kernel position disagree"
+          description: "At a comparable cut the paper venue's base differs from the kernel's committed position (velocita_gateway_reconciliation_position_lots by source). New risk stays stopped until a restart. Follow the break workflow (runbook 5.3); never edit paper.state or the kernel to make them agree."
+      - alert: VelocitaGatewayUnknownOutcome
+        expr: increase(velocita_gateway_unknown_outcomes_total[10m]) > 0
+        labels: {severity: critical}
+        annotations:
+          summary: "Paper gateway on {{ $labels.host }} has an order with an unknown outcome"
+          description: "The gateway could not establish whether an order reached or filled at the venue, so its position may be wrong. New risk is stopped; check the gateway journal and reconcile against the venue."
+      # The Pi 5 browned out on 2026-09-30/10-01 (4 under-voltage events; boots ended with
+      # no shutdown; M3 finding 52). The firmware raises this flag when the supply sags.
+      - alert: VelocitaPiUndervoltage
+        expr: max_over_time(node_hwmon_in_lcrit_alarm_volts{chip=~".*raspberrypi_hwmon"}[5m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }} power supply sagged below spec (under-voltage)"
+          description: "The Pi 5 needs a 5 V / 5 A USB-C supply (official 27 W). Under-voltage under load causes brownouts: silent freezes or resets. Check the supply and cable."
+      # Any reboot is worth knowing about: a watchdog or brownout reset is otherwise silent,
+      # and a rebooted voter waits for its keys (secrets live in /run).
+      - alert: VelocitaHostRebooted
+        expr: changes(node_boot_time_seconds[30m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }} rebooted in the last 30 minutes"
+          description: "Check why (journalctl -b -1) and whether its voter came back; after a reboot the keys in /run are gone, so push them again (CLEAN_RESET_RUNBOOK.md step 0)."
+      # md-stream silently recorded nothing for ~43 h (2026-09-28 20:36 .. 09-30 16:06 UTC,
+      # M3 finding 50) while its process looked alive: alert on the counter, not on up.
+      - alert: VelocitaMdStreamSilent
+        expr: increase(velocita_md_messages_total{type="reference_prices"}[10m]) == 0 or absent(velocita_md_messages_total{type="reference_prices"})
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "md-stream on nuc1 has recorded no reference prices for 15 minutes"
+          description: "The market-data recorder is hung, stopped or disconnected, so research data has a gap. On nuc1: journalctl --user -u velocita-md-stream; systemctl --user restart velocita-md-stream."
+      # Market-data archive on nuc1 (velocita-md-archive.timer; docs/MD_ARCHIVE_RUNBOOK.md).
+      # The textfile is rewritten once a night, so ages are computed here from
+      # timestamps rather than read from a value that froze at the last run.
+      - alert: VelocitaMdBackupNotAcked
+        expr: velocita_md_archive_oldest_unacked_day_end_timestamp_seconds > 0 and (time() - velocita_md_archive_oldest_unacked_day_end_timestamp_seconds) > 2 * 86400
+        labels: {severity: warning}
+        annotations:
+          summary: "Market data on {{ $labels.host }} has waited over 2 days for the Mac's backup"
+          description: "An archived day has no acknowledgement from the Mac, so its rows stay in stream.db and the database keeps growing. On the Mac: read ~/Library/Logs/velocita-md-backup.log, then run tools/md-backup-pull by hand."
+      - alert: VelocitaMdStreamDbLarge
+        expr: velocita_md_stream_db_bytes > 8e9
+        labels: {severity: warning}
+        annotations:
+          summary: "stream.db on {{ $labels.host }} is larger than 8 GB"
+          description: "Retention keeps about 5 days (~5.5 GB). Check VelocitaMdBackupNotAcked and the velocita-md-archive journal. If most of the file is free pages (velocita_md_stream_db_free_bytes), compact it with md-stream stopped (runbook)."
+      - alert: VelocitaMdArchiveFailing
+        expr: velocita_md_archive_last_run_ok == 0 or (time() - velocita_md_archive_last_run_timestamp_seconds) > 26 * 3600 or absent(velocita_md_archive_last_run_timestamp_seconds)
+        labels: {severity: warning}
+        annotations:
+          summary: "The nightly market-data archive is failing or not running"
+          description: "Nothing new is archived or pruned, so stream.db grows about 1.1 GB a day. On nuc1: systemctl --user status velocita-md-archive.timer and journalctl --user -u velocita-md-archive."
+      - alert: VelocitaMdArchiveBlocked
+        expr: velocita_md_archive_blocked_days > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "Market-data prune on {{ $labels.host }} is blocked: {{ $labels.reason }}"
+          description: "A day's rows are held in stream.db because its archive does not verify, the Mac acknowledged different bytes, or rows arrived after it was archived. Nothing is deleted until an operator resolves it (runbook)."
+      # The delivery path itself. These two cannot reach the phone when they
+      # fire for the reason they describe; Grafana shows them, and the external
+      # heartbeat (runbook) is what notices a dead nuc1.
+      - alert: VelocitaAlertmanagerDown
+        expr: up{job="alertmanager"} == 0 or absent(up{job="alertmanager"})
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "Alertmanager is down: no alert reaches the phone"
+          description: "On nuc1: systemctl --user status velocita-v2-alertmanager and journalctl --user -u velocita-v2-alertmanager. A missing ~/.config/velocita/ntfy-publish-token stops it from starting."
+      - alert: VelocitaAlertDeliveryFailing
+        expr: increase(alertmanager_notifications_failed_total[15m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "Alertmanager failed to deliver {{ $value | printf \"%.0f\" }} notification(s) in 15 minutes"
+          description: "ntfy refused or was unreachable. On nuc1: systemctl --user status velocita-ntfy; a 401/403 in the Alertmanager journal means the publish token or its access entry is wrong (runbook, First install)."
+      - alert: VelocitaHeartbeatNotSent
+        expr: time() - velocita_heartbeat_last_sent_timestamp_seconds > 300
+        labels: {severity: warning}
+        annotations:
+          summary: "No heartbeat has reached the outside monitor for {{ $value | humanizeDuration }}"
+          description: "nuc1 cannot reach the outside monitor, so the monitor is (or soon will be) reporting nuc1 as down. Check the home internet connection and journalctl --user -u velocita-heartbeat."
+      - alert: VelocitaPinnedReceiptsHigh
+        expr: velocita_v2_receipts{state="pinned"} / on(host, node) velocita_v2_receipt_capacity > 0.75
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.host }}: {{ $value | humanizePercentage }} of the receipt table cannot be reclaimed"
+          description: "Receipts stay pinned while an effect is unsettled or the gateway has not acknowledged its results. At 100 % the kernel refuses new commands (receipt_capacity_exceeded). Check that the gateway is running and acknowledging."
+      - alert: VelocitaGatewayHeartbeatStale
+        expr: time() - velocita_gateway_heartbeat_timestamp_seconds > 30
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "The gateway's loop has not run for {{ $value | humanizeDuration }}"
+          description: "The gateway writes a heartbeat twice a second. A stale one means the process is dead or hung while its metrics file still says up. No order is sent or reconciled. Check the gateway service and its journal."
+      - alert: VelocitaPaperAccountUnreconciled
+        expr: velocita_indicator_reconciled == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "The {{ $labels.strategy }} paper account does not reconcile"
+          description: "The venue report is stale, has pending reports, or does not add up. The strategy holds on every bar while this lasts: it will not buy and it CANNOT EXIT an open position. Check the gateway and ~/velocita-indicator-paper/{{ $labels.strategy }}/gateway/venue.json."
+      - alert: VelocitaPaperLedgerUnreadable
+        expr: velocita_indicator_ledger_readable == 0
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "The {{ $labels.strategy }} fill ledger cannot be read"
+          description: "The observer cannot open the edge's ledger read-only, or it belongs to another run. The edge is probably stopped. On nuc1: systemctl --user status velocita-paper-{{ $labels.strategy }}-edge."
+      - alert: VelocitaPaperLedgerBehind
+        expr: velocita_indicator_ledger_fills_behind > 0
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "The {{ $labels.strategy }} ledger is {{ $value }} fill(s) behind the venue"
+          description: "The edge records every confirmed fill within a second. A lasting gap means the edge is stopped or cannot write its ledger."
+      - alert: VelocitaPaperEdgeStalled
+        expr: velocita_indicator_price_age_seconds > 5 unless on(strategy,paper_run) (velocita_indicator_run_state == 1)
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "The {{ $labels.strategy }} edge has seen no completed bar for {{ $value | humanizeDuration }}"
+          description: "A new one-second bar should be marked each second. The edge is stopped, cannot reach the price source, or is receiving bad data. It cannot enter or EXIT while this lasts."
+      - alert: VelocitaPaperBadMarketData
+        expr: increase(velocita_shadow_messages_total{outcome=~"invalid|bar_missing"}[10m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "The edge received {{ $labels.outcome }} market data in the last 10 minutes"
+          description: "invalid: the price response did not decode or had a gap. bar_missing: the bar that just closed was not in the response. Invalid input blocks entry; a gap requires a fresh warmup."
+      - alert: VelocitaPaperBuyStop
+        expr: velocita_indicator_buy_stop == 1 unless on(strategy,paper_run) (velocita_indicator_run_state == 1)
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.strategy }} has stopped buying: {{ $labels.reason }}"
+          description: "drawdown, capacity and duration are permanent for this run and force an exit. unreconciled and insufficient_balance clear by themselves."
+      - alert: VelocitaPaperOrderCapacity
+        expr: velocita_indicator_order_count / velocita_indicator_order_capacity > 0.8
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.strategy }} has used {{ $value | humanizePercentage }} of its lifetime orders"
+          description: "The paper venue keeps every order for the life of the run. At 100 % the strategy stops buying and exits."
+
