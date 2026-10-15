@@ -141,7 +141,7 @@ Encoded encode_state(const State& s,std::span<std::byte> out) noexcept {
     w.number(static_cast<unsigned>(s.pending.phase),1);body(w,s.pending.intent);w.digest(s.pending.payload);w.digest(s.pending.handle);
     body(w,s.conflict_evidence);body(w,s.last_release);
     for(const auto& x:s.settlements)body(w,x);
-    w.number(s.settlement_count,1);
+    w.number(s.settlement_count,1);w.number(s.settled_total,4);
     if (size==max_state_bytes) {
         const auto& a=s.buy_price_amendment;w.number(1,1);w.atom(a.price);w.digest(a.evidence);
         w.number(a.kill_epoch);w.number(a.executor_generation);w.number(a.event_time);
@@ -163,7 +163,7 @@ CodecError decode_state(std::span<const std::byte> bytes,State& out) noexcept {
     s.pending.phase=static_cast<Phase>(r.number(1));s.pending.intent=std::get<Intent>(command(r,2));s.pending.payload=r.digest();s.pending.handle=r.digest();
     s.conflict_evidence=std::get<Settlement>(command(r,7));s.last_release=std::get<ReleaseUnsent>(command(r,6));
     for(auto& x:s.settlements)x=std::get<Settlement>(command(r,7));
-    s.settlement_count=static_cast<std::uint8_t>(r.number(1));
+    s.settlement_count=static_cast<std::uint8_t>(r.number(1));s.settled_total=static_cast<std::uint32_t>(r.number(4));
     if (bytes.size()==max_state_bytes) {
         if(r.number(1)!=1)return CodecError::format;
         s.buy_price_amendment={r.atom<QuoteAtoms>(),r.digest(),r.number(),r.number(),r.number()};

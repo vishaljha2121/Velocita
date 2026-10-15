@@ -32,6 +32,14 @@ bool fenced(const State& s) noexcept {
 void release(State& s) noexcept {
     s.pending = {}; s.reserved_base = {}; s.reserved_quote = {};
 }
+constexpr std::uint32_t max_settled_total = 1'000'000;
+void record(State& s, const Settlement& x) noexcept {
+    if (s.settlement_count == s.settlements.size()) {
+        std::move(s.settlements.begin() + 1, s.settlements.end(), s.settlements.begin());
+        s.settlements.back() = x;
+    } else s.settlements[s.settlement_count++] = x;
+    ++s.settled_total;
+}
 Code conflict(State& s, const Settlement& x) noexcept {
     s.conflicted = true; s.conflict_evidence = x;
     if (s.pending.phase != Phase::none) s.pending.phase = Phase::conflict;
@@ -58,7 +66,7 @@ Code reduce(State& s, const Initialize& c, std::uint64_t) noexcept {
 
 Code reduce(State& s, const Intent& i, std::uint64_t now) noexcept {
     if (s.pending.phase != Phase::none) return Code::busy;
-    if (s.settlement_count >= s.settlements.size()) return Code::capacity;
+    if (s.settled_total >= max_settled_total) return Code::capacity;
     if (!i.effect.value() || i.effect.value() <= s.last_effect) return Code::stale;
     if (i.binding != s.opening.binding) return Code::invalid;
     if (i.kill_epoch != s.kill_epoch || i.executor_generation != s.executor_generation) return Code::fenced;
@@ -143,10 +151,9 @@ Code reduce(State& s, const Settlement& x, std::uint64_t) noexcept {
     if (x.custody != s.opening.binding.custody || x.payload != s.pending.payload) return conflict(s, x);
     for (std::size_t n = 0; n < s.settlement_count; ++n)
         if (x.transaction == s.settlements[n].transaction) return conflict(s, x);
-    if (s.settlement_count >= s.settlements.size()) return conflict(s, x);
     if (x.outcome == Outcome::failed_without_charge) {
         if (x.base_debit.value() || x.base_credit.value() || x.quote_debit.value() || x.quote_credit.value() || x.fee.value()) return conflict(s, x);
-        s.settlements[s.settlement_count++] = x;
+        record(s, x);
         release(s);
         return Code::applied;
     }
@@ -184,7 +191,7 @@ Code reduce(State& s, const Settlement& x, std::uint64_t) noexcept {
         s.cost = QuoteAtoms{s.cost.value() - removed}; s.realized_pnl = static_cast<std::int64_t>(pnl);
     }
     s.fees = QuoteAtoms{static_cast<std::uint64_t>(fees)};
-    s.settlements[s.settlement_count++] = x;
+    record(s, x);
     release(s);
     return Code::applied;
 }
@@ -243,7 +250,8 @@ bool valid_state(const State& s) noexcept {
     if (!s.initialized) return s == State{};
     State baseline;
     if (apply(baseline, s.opening, Role::operator_role, 0) != Code::applied ||
-        s.settlement_count > s.settlements.size() || !mode_valid(s.mode) ||
+        s.settlement_count > s.settlements.size() || s.settled_total < s.settlement_count ||
+        (s.settled_total != s.settlement_count && s.settlement_count != s.settlements.size()) || !mode_valid(s.mode) ||
         s.kill_epoch < s.opening.kill_epoch || s.executor_generation < s.opening.executor_generation ||
         s.reserved_base.value() > s.base.value() || s.reserved_quote.value() > s.quote.value()) return false;
     const auto& a=s.buy_price_amendment;
@@ -254,16 +262,25 @@ bool valid_state(const State& s) noexcept {
             a.executor_generation<s.opening.executor_generation || a.executor_generation>s.executor_generation) return false;
         baseline.buy_price_amendment=a;
     }
+    const bool complete = s.settled_total == s.settlement_count;
+    std::uint64_t previous{};
     for (std::size_t n = 0; n < s.settlements.size(); ++n) {
         const auto& x = s.settlements[n];
         if (n >= s.settlement_count) { if (x != Settlement{}) return false; continue; }
-        if (!x.effect.value() || x.effect.value() <= baseline.last_effect || !x.finalized ||
+        if (!x.effect.value() || x.effect.value() <= previous || !x.finalized ||
             x.custody != s.opening.binding.custody || x.payload.is_zero() || x.transaction.is_zero() || x.evidence.is_zero()) return false;
+        previous = x.effect.value();
         for (std::size_t k = 0; k < n; ++k) if (x.transaction == s.settlements[k].transaction) return false;
         if (x.outcome == Outcome::failed_without_charge) {
             if (x.base_debit.value() || x.base_credit.value() || x.quote_debit.value() || x.quote_credit.value() || x.fee.value()) return false;
-            baseline.settlements[baseline.settlement_count++] = x;
-            baseline.last_effect = x.effect.value();
+            if (complete) { record(baseline, x); baseline.last_effect = x.effect.value(); }
+            continue;
+        }
+        if (x.outcome != Outcome::succeeded) return false;
+        if (!complete) {
+            const bool buy = x.base_credit.value() && x.quote_debit.value() > x.fee.value() && !x.base_debit.value() && !x.quote_credit.value();
+            const bool sell = x.base_debit.value() && !x.base_credit.value() && !x.quote_debit.value();
+            if (!buy && !sell) return false;
             continue;
         }
         Intent i; i.binding = s.opening.binding; i.effect = x.effect; i.sign_by = 1;
@@ -279,6 +296,14 @@ bool valid_state(const State& s) noexcept {
             apply(baseline, Prepare{i.effect, x.payload, x.payload, 1}, Role::gateway, 0) != Code::applied ||
             apply(baseline, Attempt{i.effect, x.payload}, Role::gateway, 0) != Code::applied ||
             apply(baseline, x, Role::gateway, 0) != Code::applied) return false;
+    }
+    if (!complete) {
+        if (s.purchases.value() > s.opening.limits.max_purchase_total.value() || s.cost.value() > max_money ||
+            s.fees.value() > max_money || s.quote.value() > max_money ||
+            (!s.base.value() && s.cost.value())) return false;
+        baseline.base = s.base; baseline.quote = s.quote; baseline.cost = s.cost; baseline.fees = s.fees;
+        baseline.purchases = s.purchases; baseline.realized_pnl = s.realized_pnl; baseline.last_effect = previous;
+        baseline.settlements = s.settlements; baseline.settlement_count = s.settlement_count; baseline.settled_total = s.settled_total;
     }
     if (s.base != baseline.base || s.quote != baseline.quote || s.cost != baseline.cost ||
         s.fees != baseline.fees || s.purchases != baseline.purchases || s.realized_pnl != baseline.realized_pnl ||

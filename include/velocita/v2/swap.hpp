@@ -138,6 +138,7 @@ struct State {
     ReleaseUnsent last_release{};
     std::array<Settlement, 16> settlements{};
     std::uint8_t settlement_count{};
+    std::uint32_t settled_total{};
     BuyPriceAmendment buy_price_amendment{};
     constexpr bool operator==(const State&) const noexcept = default;
 };

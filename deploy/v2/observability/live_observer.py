@@ -15,6 +15,7 @@ OUTPUT=Path('/home/velocitas/velocita-v2/textfile/velocita-live.prom')
 SETTLEMENT_SOURCE=Path('/var/lib/velocita-swap-gateway/metrics/settlements.json')
 SETTLEMENT_CACHE=Path('/var/lib/velocita-live-observer/settlements.json')
 MAX_SETTLEMENTS=16
+MAX_RETAINED=1024
 
 def integer(value,low=0,high=2**64-1):
     if type(value) is not int or not low<=value<=high:raise ValueError('integer range')
@@ -30,7 +31,7 @@ def unique_object(pairs):
         result[key]=value
     return result
 
-def settlements(value,run,now):
+def settlements(value,run,now,limit=MAX_SETTLEMENTS):
     """Only the authenticated producer's successful, finalized economic records."""
     exact_keys(value,'schema incarnation observed_at_ms applied_index base_atoms quote_atoms fees_atoms realized_pnl_atoms settlements')
     if type(value['schema']) is not int or value['schema']!=1 or value['incarnation']!=run:raise ValueError('settlement identity')
@@ -38,7 +39,7 @@ def settlements(value,run,now):
     for key in ('base_atoms','quote_atoms','fees_atoms'):integer(value[key])
     integer(value['realized_pnl_atoms'],-2**63,2**63-1)
     rows=value['settlements']
-    if type(rows) is not list or len(rows)>MAX_SETTLEMENTS:raise ValueError('settlement capacity')
+    if type(rows) is not list or len(rows)>limit:raise ValueError('settlement capacity')
     seen=set()
     for row in rows:
         exact_keys(row,'effect side base_atoms quote_atoms fee_atoms outcome')
@@ -58,13 +59,18 @@ def reconcile_settlements(source,previous,now):
             exact_keys(row,'effect side base_atoms quote_atoms fee_atoms outcome first_observed_ms')
             integer(row['first_observed_ms'],1,now)
             clean['settlements'].append({k:v for k,v in row.items() if k!='first_observed_ms'})
-        settlements(clean,source['incarnation'],now)
+        settlements(clean,source['incarnation'],now,MAX_RETAINED)
         if source['applied_index']<previous['applied_index'] or source['observed_at_ms']<previous['observed_at_ms']:raise ValueError('settlement regression')
+        current={r['effect'] for r in source['settlements']}
+        oldest=min(current) if current else None
         if source['applied_index']==previous['applied_index']:
-            if any(source[k]!=clean[k] for k in source if k not in ('observed_at_ms','settlements')) or sorted(source['settlements'],key=lambda r:r['effect'])!=sorted(clean['settlements'],key=lambda r:r['effect']):raise ValueError('changed committed snapshot')
+            window=[r for r in clean['settlements'] if oldest is not None and r['effect']>=oldest]
+            if any(source[k]!=clean[k] for k in source if k not in ('observed_at_ms','settlements')) or sorted(source['settlements'],key=lambda r:r['effect'])!=sorted(window,key=lambda r:r['effect']):raise ValueError('changed committed snapshot')
         prior={r['effect']:r for r in previous['settlements']}
-        if not set(prior).issubset({r['effect'] for r in source['settlements']}):raise ValueError('settlement disappeared')
-    rows=[]
+        missing=set(prior)-current
+        if missing and (len(source['settlements'])!=MAX_SETTLEMENTS or max(missing)>=oldest):raise ValueError('settlement disappeared')
+    rows=[prior[e] for e in sorted(set(prior)-{r['effect'] for r in source['settlements']})]
+    if len(rows)+len(source['settlements'])>MAX_RETAINED:raise ValueError('retained settlement capacity')
     for row in sorted(source['settlements'],key=lambda r:r['effect']):
         old=prior.get(row['effect'])
         if old is not None:

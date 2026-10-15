@@ -96,6 +96,26 @@ class ConfirmedSettlementsTests(unittest.TestCase):
         s['applied_index']=9;s['observed_at_ms']=1000200;s['settlements']=[]
         with self.assertRaisesRegex(ValueError,'settlement disappeared'):
             O.reconcile_settlements(s,first,1000200)
+    def window(self,first,last,index,observed):
+        s=self.source();s['applied_index']=index;s['observed_at_ms']=observed
+        s['settlements']=[{'effect':e,'side':'buy','base_atoms':9000000,'quote_atoms':1000000,'fee_atoms':2000,'outcome':'succeeded'} for e in range(first,last+1)]
+        return s
+    def test_full_window_may_drop_older_fills_which_the_cache_keeps(self):
+        cache=O.reconcile_settlements(self.window(1,16,20,1000000),None,1000000)
+        moved=O.reconcile_settlements(self.window(3,18,24,1000100),cache,1000100)
+        effects=[r['effect'] for r in moved['settlements']]
+        self.assertEqual(effects,list(range(1,19)),'evicted fills retained in effect order')
+        self.assertEqual(moved['settlements'][0]['first_observed_ms'],1000000,'evicted fill keeps first observation')
+        self.assertEqual(moved['settlements'][-1]['first_observed_ms'],1000100,'new fill observed now')
+        again=O.reconcile_settlements(self.window(3,18,24,1000200),json.loads(json.dumps(moved)),1000200)
+        self.assertEqual(again['settlements'],moved['settlements'],'retained cache survives restart')
+    def test_partial_window_or_newer_gap_still_refused(self):
+        cache=O.reconcile_settlements(self.window(1,16,20,1000000),None,1000000)
+        with self.assertRaisesRegex(ValueError,'settlement disappeared'):
+            O.reconcile_settlements(self.window(3,17,24,1000100),cache,1000100)
+        gap=self.window(1,17,24,1000100);del gap['settlements'][5]
+        with self.assertRaisesRegex(ValueError,'settlement disappeared'):
+            O.reconcile_settlements(gap,cache,1000100)
     def test_optional_missing_invalid_stale_and_fresh_source(self):
         scratch=Path.home()/'.cache/velocita-build/live-observer-tests';scratch.mkdir(parents=True,exist_ok=True)
         with tempfile.TemporaryDirectory(dir=scratch) as root:

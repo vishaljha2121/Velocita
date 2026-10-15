@@ -385,21 +385,46 @@ void failed_transaction_cannot_hide_charges() {
     x.base_credit={}; x.quote_debit=QuoteAtoms{1}; x.fee=QuoteAtoms{1};
     require(apply(r.s,x,Role::gateway,103)==Code::conflict && r.s.reserved_quote==QuoteAtoms{1'002'000},"unproven sponsorship cannot silently discard charged failure");
 }
-void bounded_settlement_history_never_evicts() {
-    Rig r; Settlement first;
-    for(std::uint64_t id=1;id<=16;++id) {
-        const auto now=100+id*4;auto i=r.buy(id);i.source_time=now;i.sign_by=now+20;
-        require(apply(r.s,i,Role::strategy,now)==Code::applied,"capacity reserved before send");
-        require(apply(r.s,Prepare{i.effect,digest(5),digest(6),1},Role::gateway,now+1)==Code::applied,"prepare history case");
-        require(apply(r.s,Attempt{i.effect,digest(5)},Role::gateway,now+2)==Code::applied,"attempt history case");
-        auto x=r.fill();x.outcome=Outcome::failed_without_charge;x.base_credit={};x.quote_debit={};x.fee={};x.transaction=digest(20+id);
-        require(apply(r.s,x,Role::gateway,now+3)==Code::applied,"terminal failure retained");
-        if(id==1) first=x;
-    }
+Settlement settle_failed(Rig& r,std::uint64_t id,std::uint64_t now) {
+    auto i=r.buy(id);i.source_time=now;i.sign_by=now+20;
+    require(apply(r.s,i,Role::strategy,now)==Code::applied,"window case reserved");
+    require(apply(r.s,Prepare{i.effect,digest(5),digest(6),1},Role::gateway,now+1)==Code::applied,"window case prepared");
+    require(apply(r.s,Attempt{i.effect,digest(5)},Role::gateway,now+2)==Code::applied,"window case attempted");
+    auto x=r.fill();x.outcome=Outcome::failed_without_charge;x.base_credit={};x.quote_debit={};x.fee={};
+    x.transaction=digest(0);x.transaction.bytes[1]=static_cast<std::byte>(id);x.transaction.bytes[2]=static_cast<std::byte>(id>>8);
+    require(apply(r.s,x,Role::gateway,now+3)==Code::applied,"window case settled");
+    return x;
+}
+void settlement_window_keeps_recent_and_counts_lifetime() {
+    Rig r;Settlement first,recent;
+    for(std::uint64_t id=1;id<=40;++id){const auto x=settle_failed(r,id,100+id*4);if(id==1)first=x;recent=x;}
+    require(r.s.settlement_count==16 && r.s.settled_total==40 && r.s.last_effect==40,"window holds sixteen and counts every settlement");
+    for(std::size_t n=0;n<16;++n)require(r.s.settlements[n].effect.value()==25+n,"window keeps the most recent effects in order");
+    require(valid_state(r.s),"evicted history is a valid state");
+    std::array<std::byte,max_state_bytes> bytes{};const auto saved=encode_state(r.s,bytes);State restored;
+    require(saved.error==CodecError::none && decode_state(std::span(bytes).first(saved.size),restored)==CodecError::none && restored==r.s,
+        "window and lifetime count survive the snapshot codec");
     const auto before=r.s;
-    require(apply(r.s,first,Role::gateway,200)==Code::duplicate && r.s==before,"old nonadjacent settlement is still idempotent");
-    auto i=r.buy(17);i.source_time=200;i.sign_by=220;
-    require(apply(r.s,i,Role::strategy,200)==Code::capacity && r.s==before,"full history stops before reserving or sending");
+    require(apply(r.s,recent,Role::gateway,300)==Code::duplicate && r.s==before,"latest settlement replay stays idempotent");
+    require(apply(r.s,first,Role::gateway,300)!=Code::applied && r.s==before,"evicted settlement replay changes nothing");
+    auto i=r.buy(41);i.source_time=300;i.sign_by=320;require(apply(r.s,i,Role::strategy,300)==Code::applied,"a full window never stops the next effect");
+}
+void settlement_window_state_is_validated() {
+    Rig r;for(std::uint64_t id=1;id<=20;++id)(void)settle_failed(r,id,100+id*4);
+    require(valid_state(r.s),"evicted fixture valid");
+    auto fewer=r.s;fewer.settled_total=15;require(!valid_state(fewer),"lifetime count cannot be below the window");
+    auto partial=r.s;partial.settlements[15]={};partial.settlement_count=15;require(!valid_state(partial),"an evicted history keeps a full window");
+    auto order=r.s;std::swap(order.settlements[3],order.settlements[4]);require(!valid_state(order),"window effects increase strictly");
+    auto future=r.s;future.settlements[15].effect=EffectId{21};require(!valid_state(future),"window cannot run ahead of the last effect");
+    auto repeat=r.s;repeat.settlements[2].transaction=repeat.settlements[1].transaction;require(!valid_state(repeat),"one transaction settles once in the window");
+    auto shape=r.s;shape.settlements[7].outcome=Outcome::succeeded;require(!valid_state(shape),"an evicted success must be buy- or sell-shaped");
+    auto both=r.s;auto& mixed=both.settlements[7];mixed.outcome=Outcome::succeeded;mixed.base_credit=BaseAtoms{5};mixed.quote_debit=QuoteAtoms{3'000};
+    mixed.fee=QuoteAtoms{1'000};mixed.base_debit=BaseAtoms{1};require(!valid_state(both),"an evicted success cannot both buy and sell");
+    auto good=both;good.settlements[7].base_debit={};require(valid_state(good),"an evicted buy-shaped success is valid");
+    auto empty=r.s;empty.base={};require(!valid_state(empty),"cost basis requires inventory after eviction");
+    auto spent=r.s;spent.purchases=QuoteAtoms{spent.opening.limits.max_purchase_total.value()+1};require(!valid_state(spent),"purchases stay within the opening cap");
+    Rig small;for(std::uint64_t id=1;id<=3;++id)(void)settle_failed(small,id,100+id*4);
+    auto lie=small.s;lie.settled_total=4;require(!valid_state(lie),"a complete history must equal its lifetime count");
 }
 void record_codec_has_independent_golden_and_rejects_corruption() {
     Record record{Role::gateway,100,MarkUnknown{EffectId{0x0102030405060708}}};
@@ -494,7 +519,7 @@ int main(int argc,char** argv) {
         {"paper_observed_cost_boundaries",paper_observed_cost_boundaries},
         {"paper_exact_fee_mode_and_unchanged_sell",paper_exact_fee_mode_and_unchanged_sell},
         {"overflow_is_transactional",overflow_is_transactional},{"failed_transaction_cannot_hide_charges",failed_transaction_cannot_hide_charges},
-        {"bounded_settlement_history_never_evicts",bounded_settlement_history_never_evicts},
+        {"settlement_window_keeps_recent_and_counts_lifetime",settlement_window_keeps_recent_and_counts_lifetime},{"settlement_window_state_is_validated",settlement_window_state_is_validated},
         {"record_codec_has_independent_golden_and_rejects_corruption",record_codec_has_independent_golden_and_rejects_corruption},
         {"all_command_records_replay_exactly",all_command_records_replay_exactly},
         {"sell_fee_and_transaction_reuse_conflict",sell_fee_and_transaction_reuse_conflict},
