@@ -23,6 +23,11 @@ class LiveObserverTests(unittest.TestCase):
     def test_corrupt_or_unknown_phase_refused(self):
         for b in (self.journal()[:-1]+b'X',self.journal(0),self.journal(4),b''):
             with self.subTest(size=len(b)),self.assertRaises(ValueError):O.journal(b,'submission')
+    def prepare(self,phase):
+        b=bytearray(8768);b[:8]=b'VPRP\1\0\0\0';struct.pack_into('<QQQQ',b,8,3,phase,15,1);b[-32:]=hashlib.sha256(b[:-32]).digest();return bytes(b)
+    def test_released_prepare_journal_is_observed(self):
+        self.assertEqual(O.journal(self.prepare(4),'prepare'),{'ordinal':3,'phase':4,'index':15,'effect':1})
+        with self.assertRaises(ValueError):O.journal(self.prepare(5),'prepare')
     def test_balances_keep_evidence_time_not_poll_time(self):
         h={'base_atoms':40764166,'quote_atoms':40006989,'capture_finished_ms':1000000,'stable_window':True,'blocking_orders':0,'unsupported_accounts':0,'pagination_exhausted':True}
         r={'reviewed_at_ms':'1001000','expires_at_ms':'1900000'}

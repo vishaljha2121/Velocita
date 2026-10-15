@@ -33,6 +33,7 @@ struct SwapGatewayRuntimeConfig {
     std::uint64_t first_sequence{},sequence_limit{};
     Tick timeout{},state_interval{};
     bool recovery_only{};
+    Tick settlement_retry{},settlement_window{};
 };
 enum class SwapGatewayRuntimeStatus:std::uint8_t {running,preparing,submitting,resolving,blocked,failed,complete};
 enum class SwapGatewayRuntimeCause:std::uint8_t {none,state,storage,identity,prepare_unknown,signer_refused,settlement_unproven,sequence_limit};
@@ -74,7 +75,7 @@ private:
     bool owns_link_{};
     EffectId effect_{};
     Digest256 command_digest_{};
-    std::uint64_t sequence_{};std::int64_t seen_index_{};Tick next_read_{},last_tick_{};std::uint64_t last_event_{};
+    std::uint64_t sequence_{};std::int64_t seen_index_{};Tick next_read_{},last_tick_{},unproven_since_{};std::uint64_t last_event_{};
     SwapGatewayRuntimeStatus status_{SwapGatewayRuntimeStatus::running};
     SwapGatewayRuntimeCause cause_{SwapGatewayRuntimeCause::none};
     std::optional<SwapGatewayObservation> observation_;

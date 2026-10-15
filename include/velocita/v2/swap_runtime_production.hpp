@@ -61,7 +61,8 @@ private:
     std::uint64_t timeout_{};
     SwapFailureAccountingPolicy failure_policy_{};
     SwapAccountStartupAdmission admission_;
-    bool created_{},executed_{},reconciled_{};
+    bool created_{},executed_{};
+    unsigned reconcile_attempts_{};
     SwapCreateTrace trace_{};
 };
 // Owns the concrete adapters; borrowed credentials/stores/link outlive this object.

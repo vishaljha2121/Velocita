@@ -167,7 +167,7 @@ void SwapProductionPorts::execute(const SwapSubmissionIdentity& id,std::span<con
     SwapRuntimeExecutionHttps port(credentials_,clock_,id,request,timeout_);port.execute(id,bytes);
 }
 std::optional<VerifiedSwapSettlement> SwapProductionPorts::reconcile(const swap::Pending& pending){
-    if(reconciled_)return {};reconciled_=true;
+    if(++reconcile_attempts_>64)return {};
     const auto bearer=credentials_.bearer(clock_.now_ms());if(bearer.empty())return {};
     const auto& session=credentials_.binding().account_session;
     SwapOrderSessionIdentity identity{session.account_and_assets_digest,session.session_evidence_digest};

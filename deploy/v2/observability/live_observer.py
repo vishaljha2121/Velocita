@@ -135,7 +135,7 @@ def journal(raw,kind):
     size,magic=(464,b'VSSJ\1\0\0\0') if kind=='submission' else (8768,b'VPRP\1\0\0\0')
     if len(raw)!=size or raw[:8]!=magic or hashlib.sha256(raw[:-32]).digest()!=raw[-32:]:raise ValueError('journal checksum or schema')
     ordinal,phase,index,effect=struct.unpack_from('<QQQQ',raw,8)
-    if not ordinal or not index or phase not in (1,2,3):raise ValueError('journal counters')
+    if not ordinal or not index or phase not in ((1,2,3) if kind=='submission' else (1,2,3,4)):raise ValueError('journal counters')
     return dict(ordinal=ordinal,phase=phase,index=index,effect=effect)
 
 def account(history,review,now):

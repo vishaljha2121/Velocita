@@ -150,7 +150,10 @@ void SwapGatewayRuntime::observed(const StateReading& reading,Tick now,std::uint
     if(pending.phase==swap::Phase::attempted){command(swap::MarkUnknown{effect_},now,event);return;}
     if(pending.phase==swap::Phase::unknown){
         std::optional<VerifiedSwapSettlement> verified;try{verified=settlement_.reconcile(pending);}catch(...){verified.reset();}
-        if(!verified){stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::settlement_unproven);return;}
+        if(!verified){
+            if(!unproven_since_)unproven_since_=now;
+            if(config_.settlement_retry && now-unproven_since_<config_.settlement_window){next_read_=now+config_.settlement_retry;return;}
+            stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::settlement_unproven);return;}
         const auto& settled=verified->settlement();
         if(settled.effect!=effect_ || settled.payload!=pending.payload || settled.custody!=config_.preparation.allocation.custody){
             stop(SwapGatewayRuntimeStatus::failed,SwapGatewayRuntimeCause::identity);return;}

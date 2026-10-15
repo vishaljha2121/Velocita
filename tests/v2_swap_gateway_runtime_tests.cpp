@@ -41,9 +41,9 @@ struct RuntimeExecute final:SwapExecutionPort {
     }
 };
 struct RuntimeSettlement final:SwapGatewaySettlementPort {
-    SwapSubmissionStore* store{};bool prove{};unsigned calls{};
+    SwapSubmissionStore* store{};bool prove{};unsigned calls{},unproven{};
     std::optional<VerifiedSwapSettlement> reconcile(const swap::Pending& p)override{
-        ++calls;if(!prove)return {};
+        ++calls;if(!prove || calls<=unproven)return {};
         SwapSubmissionTransaction signature{};for(std::size_t n=0;n<signature.size();++n)signature[n]=static_cast<std::byte>(n);
         require(store->observe_transaction(store->latest().identity,signature)==SwapSubmissionCode::none,"fake authenticated order lookup persists signature");
         swap::Settlement s;s.effect=p.intent.effect;s.custody=p.intent.binding.custody;s.payload=p.payload;
@@ -76,14 +76,24 @@ void runtime_drill(unsigned mode){
     require(c.commit(op,ApplySpotSwap{{swap::Role::strategy,100,intent}}).code==ApplyCode::applied,"reserve all-in one dollar");
     RuntimePrepare prepare;prepare.store=prepared.get();prepare.lose_reply=mode==2 || mode==7;
     RuntimeSigner signer;signer.store=prepared.get();signer.refuse=mode==3;signer.oversized=mode==4;
-    RuntimeExecute execute;execute.store=submission.get();RuntimeSettlement settlement;settlement.store=submission.get();settlement.prove=mode==0;
+    RuntimeExecute execute;execute.store=submission.get();RuntimeSettlement settlement;settlement.store=submission.get();settlement.prove=mode==0 || mode==8 || mode==9;
+    if(mode==8 || mode==9)settlement.unproven=mode==8?2:1000;
     SwapGatewayRuntimeConfig config{binding,CallerId{kGateway},1,10000,3000,1};
     config.recovery_only=mode==5;
+    if(mode==8 || mode==9){config.settlement_retry=20;config.settlement_window=mode==8?5000:300;}
     auto runtime=std::make_unique<SwapGatewayRuntime>(link,*recovery,*prepared,*submission,prepare,signer,execute,settlement,config);
     c.on_round=[&]{runtime->step(steady_ms(),110);};c.run_until([&]{return runtime->stopped();},"runtime reaches bounded terminal");c.on_round={};
     if(mode==5){require(prepare.calls==0 && signer.calls==0 && execute.calls==0 && runtime->status()==SwapGatewayRuntimeStatus::blocked,
         "recovery-only reserved intent cannot prepare sign or execute");return;}
     require(prepare.calls==1,"one create per effect status="+std::to_string(int(runtime->status()))+" cause="+std::to_string(int(runtime->cause())));
+    if(mode==8 || mode==9){
+        if(mode==9){require(runtime->status()==SwapGatewayRuntimeStatus::blocked && runtime->cause()==SwapGatewayRuntimeCause::settlement_unproven &&
+            settlement.calls>1 && settlement.calls<=16,"unproven settlement retries only within its bounded window then stops");return;}
+        c.run_until([&]{return std::all_of(c.nodes.begin(),c.nodes.end(),[](auto& n){return n.second->applied_state().spot_swap.settlement_count==1;});},"retried settlement replicates");
+        require(runtime->status()==SwapGatewayRuntimeStatus::complete && settlement.calls==3 && execute.calls==1 && signer.calls==1,
+            "settlement not yet final is read again without resending and then completes");
+        return;
+    }
     if(mode==7){
         require(runtime->cause()==SwapGatewayRuntimeCause::prepare_unknown,"lost create before sign_by stays unknown");
         auto next=runtime->next_sequence();runtime.reset();config.first_sequence=next;
@@ -174,4 +184,4 @@ void runtime_drill(unsigned mode){
     }
 }
 }
-int main(int argc,char** argv){try{for(unsigned mode=0;mode<8;++mode){if(argc==2 && mode!=static_cast<unsigned>(std::atoi(argv[1])))continue;runtime_drill(mode);std::cout<<"PASS runtime mode "<<mode<<'\n';}return 0;}catch(const std::exception& e){std::cerr<<"FAIL "<<e.what()<<'\n';return 1;}}
+int main(int argc,char** argv){try{for(unsigned mode=0;mode<10;++mode){if(argc==2 && mode!=static_cast<unsigned>(std::atoi(argv[1])))continue;runtime_drill(mode);std::cout<<"PASS runtime mode "<<mode<<'\n';}return 0;}catch(const std::exception& e){std::cerr<<"FAIL "<<e.what()<<'\n';return 1;}}
