@@ -1,0 +1,44 @@
+[
+  {
+    "name": "skip-preflight",
+    "tests": 8,
+    "failures": 2,
+    "errors": 0,
+    "killed": true
+  },
+  {
+    "name": "gateway-before-signer",
+    "tests": 8,
+    "failures": 1,
+    "errors": 0,
+    "killed": true
+  },
+  {
+    "name": "skip-failure-guard-restoration",
+    "tests": 8,
+    "failures": 3,
+    "errors": 0,
+    "killed": true
+  },
+  {
+    "name": "ignore-halted-mode",
+    "tests": 8,
+    "failures": 1,
+    "errors": 0,
+    "killed": true
+  },
+  {
+    "name": "ignore-observation-freshness",
+    "tests": 8,
+    "failures": 1,
+    "errors": 0,
+    "killed": true
+  },
+  {
+    "name": "overwrite-existing-guard",
+    "tests": 8,
+    "failures": 1,
+    "errors": 0,
+    "killed": true
+  }
+]

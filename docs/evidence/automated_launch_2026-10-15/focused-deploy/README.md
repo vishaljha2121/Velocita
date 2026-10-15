@@ -1,6 +1,6 @@
 # MVP deployment preparation — October 15
 
-**Executable `1f8d7b6` is qualified on NUC/Pi. Its binary payload is staged, not installed. The six-order driver is staged on NUC1, inactive with no driver/client state. Deployment tools are committed as `24ecbec`; all 37 tests pass on NUC1, and the owner source/observer payload is staged and hash-verified. Installation is pending owner sudo. No trading service has started; no venue call, signing or money movement occurred in this preparation.**
+**Executable `1f8d7b6` is qualified on NUC/Pi. Its binary payload is installed (owner-confirmed). The six-order driver is staged on NUC1, inactive with no driver/client state. Deployment tools are committed as `24ecbec`; all 37 tests pass on NUC1, and the owner source/observer payload is staged and hash-verified. Owner installation succeeded: pinned manifest/binary installed, caller keys restored create-only, start guards retained. No trading service has started; no venue call, signing or money movement occurred in this preparation.**
 
 ## Necessary corrections
 
@@ -22,7 +22,7 @@ The observer still enforced 15-minute review/capture lifetimes, whereas the runt
 
 1. Completed: owner-approved source checkpoint `24ecbec` and NUC1 qualification (13 installer + 24 observer tests).
 2. Completed: exact committed source, pinned binary and observer files staged; see [owner-stage result](OWNER_STAGE_RESULT.json) and [qualification](QUALIFICATION.md). No new C++ build.
-3. Owner runs the prepared installation command: guarded binary replacement, create-only caller restoration and read-only observer update. Trading services and driver remain stopped; share output before proceeding.
+3. Completed by owner: guarded binary replacement, create-only caller restoration and observer update. See [installation result](OWNER_INSTALL_RESULT.json). Trading services and driver remain stopped. Do not rerun installation. The observer timer is active; its collector cannot complete before first-start journals exist.
 4. Review installed pins and current authorization, verify halted authenticated Raft state, release only the exact new start guards, start signer then gateway while halted and apply the newly pinned seal. The old arm/seal script is superseded.
 5. Verify fresh observer/account/sequence state, then run the supervised six-effect strategy. Preserve its state for any separately approved extension; never re-stage or retry an ambiguous trade.
 

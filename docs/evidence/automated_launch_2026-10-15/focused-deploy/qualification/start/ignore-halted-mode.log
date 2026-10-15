@@ -1,0 +1,23 @@
+test_failure_never_retries_or_seals_and_restores_guards (start_tests_mutation.StartTests.test_failure_never_retries_or_seals_and_restores_guards) ... ok
+test_first_observation_refuses_stale_future_or_any_effect (start_tests_mutation.StartTests.test_first_observation_refuses_stale_future_or_any_effect) ... ok
+test_guard_moves_preserve_bytes_and_refuse_overwrite_or_tampering (start_tests_mutation.StartTests.test_guard_moves_preserve_bytes_and_refuse_overwrite_or_tampering) ... ok
+test_halted_health_rejects_mode_index_missing_and_duplicate (start_tests_mutation.StartTests.test_halted_health_rejects_mode_index_missing_and_duplicate) ... 
+  test_halted_health_rejects_mode_index_missing_and_duplicate (start_tests_mutation.StartTests.test_halted_health_rejects_mode_index_missing_and_duplicate) (bad='velocita_v2_up{host="nuc1",node="1"} 1\nvelocita_v2_ready{host="nuc1",node="1"} 1\nvelocita_v2_failed{host="nuc1",node="1"} 0\nvelocita_v2_strategy_mode{host="nuc1",node="1"} 0\nvelocita_v2_term{host="nuc1",node="1"} 1\nvelocita_v2_leader_id{host="nuc1",node="1"} 3\nvelocita_v2_log_index{host="nuc1",node="1",kind="commit"} 7\nvelocita_v2_log_index{host="nuc1",node="1",kind="applied"} 7') ... FAIL
+test_preflight_failure_never_releases_guards_or_starts (start_tests_mutation.StartTests.test_preflight_failure_never_releases_guards_or_starts) ... ok
+test_stop_failure_still_attempts_both_services_once (start_tests_mutation.StartTests.test_stop_failure_still_attempts_both_services_once) ... ok
+test_success_starts_in_order_and_guards_before_seal (start_tests_mutation.StartTests.test_success_starts_in_order_and_guards_before_seal) ... ok
+test_voter_disagreement_refuses_before_any_start (start_tests_mutation.StartTests.test_voter_disagreement_refuses_before_any_start) ... ok
+
+======================================================================
+FAIL: test_halted_health_rejects_mode_index_missing_and_duplicate (start_tests_mutation.StartTests.test_halted_health_rejects_mode_index_missing_and_duplicate) (bad='velocita_v2_up{host="nuc1",node="1"} 1\nvelocita_v2_ready{host="nuc1",node="1"} 1\nvelocita_v2_failed{host="nuc1",node="1"} 0\nvelocita_v2_strategy_mode{host="nuc1",node="1"} 0\nvelocita_v2_term{host="nuc1",node="1"} 1\nvelocita_v2_leader_id{host="nuc1",node="1"} 3\nvelocita_v2_log_index{host="nuc1",node="1",kind="commit"} 7\nvelocita_v2_log_index{host="nuc1",node="1",kind="applied"} 7')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/docs/evidence/automated_launch_2026-10-15/focused-deploy/test_start_first_run.py", line 28, in test_halted_health_rejects_mode_index_missing_and_duplicate
+    with self.subTest(bad=bad), self.assertRaises(ValueError): M.health_row(bad)
+                                ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.001s
+
+FAILED (failures=1)

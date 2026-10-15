@@ -3,7 +3,7 @@
 ## Focused correction batch natively qualified — 2026-10-15
 
 **Executable checkpoint `1f8d7b63c03c4ef1c0c916d833cdf8513f42a2dc` is qualified on NUC1/x86_64
-and Pi/aarch64; not installed or enabled live.** Read the
+and Pi/aarch64; now owner-installed, with trading still blocked.** Read the
 [batch report](evidence/automated_launch_2026-10-15/focused-mvp/README.md) and
 [native evidence](evidence/automated_launch_2026-10-15/focused-mvp/native/RESULTS.md).
 Each architecture passed 59 CTest targets, 383 Python/CLI checks, eight process-drill cases,
@@ -16,23 +16,25 @@ uses fresh Raft deadlines after blocking ports; `1f8d7b6` separates signer conne
 from the accepted request deadline. Failed native attempts and independently reproduced
 regressions are retained. Compiler warnings are recorded for the cleanup iteration.
 
-No production deployment, credential restoration, funding, journal change or live startup.
-Host changes are isolated offline build caches and checksummed archival of inactive Pi build
-artifacts. Fresh process inventory confirms one production voter per host, gateway inactive,
-signer failed on NUC1, PID 0. This does not replace the last owner authenticated readback of
-funded/halted `aae119b9`. Preserve the single cluster and all journals; sudo remains owner-only.
+Owner installation succeeded after the scoped `24ecbec` tool qualification: exact `1f8d7b6`
+binary/manifest installed, missing caller keys restored create-only, retired originals retained,
+observer updated. No funding/journal reset or live startup. Gateway inactive, signer retains prior
+failed state, both PID 0 and RefuseManualStart=yes; driver inactive with no sequence state.
+See [owner installation evidence](evidence/automated_launch_2026-10-15/focused-deploy/OWNER_INSTALL_RESULT.json).
+Observer timer is active; collector still exits 1 before first-start journals exist, which its
+snapshot requires. Recheck after startup rather than claiming monitoring is fully operational.
 
-Deployment preparation: the qualified binary is staged and the six-effect driver is staged
-static/inactive with no client or driver state. Do not stage it again. The owner approved
-the narrow armed-first-start installer and observer 24-hour review correction checkpoint.
-Tools are committed as `24ecbec`; all 13 installer and 24 observer tests pass on NUC1
-from that source (plus seven local named mutation kills each). Owner source/payloads are
-staged and hash-verified; installation awaits the owner command in the deployment evidence.
-See [deployment preparation](evidence/automated_launch_2026-10-15/focused-deploy/README.md).
-The owner installation retains start guards and requires sudo; trading remains stopped.
+Tools `24ecbec` passed 13 installer and 24 observer tests on NUC1. Executable remains `1f8d7b6`;
+one production cluster and all funding/history are preserved. Sudo remains owner-only.
+The six-effect driver is already staged: never stage it again or reset its sequences.
 
-Next: review/install the exact qualified runtime and driver, restore caller keys using the
-create-only helper, verify protected resources and fresh authorization, then start halted services
+Prepared [first-start/seal wrapper](evidence/automated_launch_2026-10-15/focused-deploy/START_AND_SEAL.md):
+8 new tests and 6 mutation kills; 13 installer and 19 seal-dependency checks pass.
+Fresh voter health agrees on halted mode 5, term 1, leader 3, index 7. Protected owner
+preflight and native startup admission are still pending; no services have started.
+The new helper needs its scoped committed-source checkpoint before staging/execution.
+
+Next: verify protected resources and fresh authenticated halted state/authorization, then start halted services
 and run the supervised six-effect drill. Do not repeat arm, funding or retirement; never reset
 driver sequences. Recheck recorded expiry (2026-10-16 13:48:34 UTC). The 240-effect extension
 remains separate. Current unfinished create/prepared crashes may require supervised recovery;

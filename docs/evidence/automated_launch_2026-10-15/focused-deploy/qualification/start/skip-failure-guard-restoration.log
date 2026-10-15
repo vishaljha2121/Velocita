@@ -1,0 +1,43 @@
+test_failure_never_retries_or_seals_and_restores_guards (start_tests_mutation.StartTests.test_failure_never_retries_or_seals_and_restores_guards) ... 
+  test_failure_never_retries_or_seals_and_restores_guards (start_tests_mutation.StartTests.test_failure_never_retries_or_seals_and_restores_guards) (where='release') ... FAIL
+  test_failure_never_retries_or_seals_and_restores_guards (start_tests_mutation.StartTests.test_failure_never_retries_or_seals_and_restores_guards) (where='start-signer') ... FAIL
+  test_failure_never_retries_or_seals_and_restores_guards (start_tests_mutation.StartTests.test_failure_never_retries_or_seals_and_restores_guards) (where='start-gateway') ... FAIL
+test_first_observation_refuses_stale_future_or_any_effect (start_tests_mutation.StartTests.test_first_observation_refuses_stale_future_or_any_effect) ... ok
+test_guard_moves_preserve_bytes_and_refuse_overwrite_or_tampering (start_tests_mutation.StartTests.test_guard_moves_preserve_bytes_and_refuse_overwrite_or_tampering) ... ok
+test_halted_health_rejects_mode_index_missing_and_duplicate (start_tests_mutation.StartTests.test_halted_health_rejects_mode_index_missing_and_duplicate) ... ok
+test_preflight_failure_never_releases_guards_or_starts (start_tests_mutation.StartTests.test_preflight_failure_never_releases_guards_or_starts) ... ok
+test_stop_failure_still_attempts_both_services_once (start_tests_mutation.StartTests.test_stop_failure_still_attempts_both_services_once) ... ok
+test_success_starts_in_order_and_guards_before_seal (start_tests_mutation.StartTests.test_success_starts_in_order_and_guards_before_seal) ... ok
+test_voter_disagreement_refuses_before_any_start (start_tests_mutation.StartTests.test_voter_disagreement_refuses_before_any_start) ... ok
+
+======================================================================
+FAIL: test_failure_never_retries_or_seals_and_restores_guards (start_tests_mutation.StartTests.test_failure_never_retries_or_seals_and_restores_guards) (where='release')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/docs/evidence/automated_launch_2026-10-15/focused-deploy/test_start_first_run.py", line 77, in test_failure_never_retries_or_seals_and_restores_guards
+    self.assertIn('guard',calls)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+AssertionError: 'guard' not found in ['preflight', 'begin', 'release', 'stop']
+
+======================================================================
+FAIL: test_failure_never_retries_or_seals_and_restores_guards (start_tests_mutation.StartTests.test_failure_never_retries_or_seals_and_restores_guards) (where='start-signer')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/docs/evidence/automated_launch_2026-10-15/focused-deploy/test_start_first_run.py", line 77, in test_failure_never_retries_or_seals_and_restores_guards
+    self.assertIn('guard',calls)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+AssertionError: 'guard' not found in ['preflight', 'begin', 'release', 'start-signer', 'stop']
+
+======================================================================
+FAIL: test_failure_never_retries_or_seals_and_restores_guards (start_tests_mutation.StartTests.test_failure_never_retries_or_seals_and_restores_guards) (where='start-gateway')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/aeron-raft-pi/docs/evidence/automated_launch_2026-10-15/focused-deploy/test_start_first_run.py", line 77, in test_failure_never_retries_or_seals_and_restores_guards
+    self.assertIn('guard',calls)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+AssertionError: 'guard' not found in ['preflight', 'begin', 'release', 'start-signer', 'start-gateway', 'stop']
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.001s
+
+FAILED (failures=3)

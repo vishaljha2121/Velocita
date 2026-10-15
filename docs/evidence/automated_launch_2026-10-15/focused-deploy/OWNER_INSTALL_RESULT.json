@@ -1,0 +1,27 @@
+{
+  "evidence_source": "owner terminal output supplied in chat on 2026-10-15",
+  "source_commit": "1f8d7b63c03c4ef1c0c916d833cdf8513f42a2dc",
+  "binary_sha256": "8d0fab33246d85628cac6471c3926205fd5710f96a55731106324a101cc9abcf",
+  "manifest_sha256": "bf8c44952fef8c6f5e2e01b63e1e65ebad17e0dc780802e3ec126f3ba61a797f",
+  "seal_bundle_sha256": "0ddf2b8191ba2a19337719554707d13ef7dba9a9181e3461d1c7214f690d0eab",
+  "credentials_preserved": true,
+  "recovery_roots_empty": true,
+  "start_guards_retained": true,
+  "services_started": false,
+  "launch_rearmed": false,
+  "restored_roles": [
+    "gateway",
+    "signer"
+  ],
+  "retired_sources_retained": true,
+  "observer_payload_checks_passed": true,
+  "observer_timer_active": true,
+  "subsequent_unprivileged_readback": {
+    "gateway": "inactive, PID 0, RefuseManualStart=yes",
+    "signer": "failed, PID 0, RefuseManualStart=yes",
+    "driver": "inactive, PID 0",
+    "observer_timer": "active, success",
+    "observer_collector": "failed, exit 1"
+  },
+  "observer_note": "Collector snapshot unconditionally reads recovery journals. Owner installation verified empty recovery roots; the pre-start collector cannot yet complete. No privileged traceback was read. Recheck after initialized journals exist."
+}
