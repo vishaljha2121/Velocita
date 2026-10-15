@@ -13,6 +13,7 @@ constexpr auto max_signed=static_cast<std::uint64_t>(std::numeric_limits<std::in
 constexpr SolanaAccountKey jupiter{4,121,213,91,242,49,192,110,238,116,197,110,206,104,21,7,253,177,178,222,163,244,142,81,2,177,205,162,86,188,19,143};
 constexpr SolanaAccountKey event_authority{180,63,250,39,245,215,246,74,116,192,155,31,41,88,121,222,75,9,171,54,223,201,221,81,75,50,26,167,179,140,229,232};
 constexpr SolanaAccountKey wrapped_sol{6,155,136,87,254,171,129,132,251,104,127,99,70,24,192,53,218,196,57,220,26,235,59,85,152,160,240,0,0,0,0,1};
+constexpr SolanaAccountKey usdc{198,250,122,243,190,219,173,58,61,101,243,106,171,201,116,49,177,187,228,194,210,246,224,228,124,166,2,3,69,47,93,97};
 constexpr SolanaAccountKey lookup_authority{125,14,163,66,64,83,5,59,187,216,96,247,76,50,240,75,195,220,135,42,223,154,79,78,209,112,194,78,224,244,62,211};
 constexpr SolanaAccountKey kipseli{36,116,252,210,179,53,119,156,91,10,143,10,199,77,189,139,146,186,52,103,172,51,237,99,161,80,185,53,130,139,213,137};
 constexpr SolanaAccountKey byreal{6,52,210,15,27,245,109,209,100,227,193,60,120,54,164,34,158,197,171,33,255,84,82,131,144,165,23,137,243,205,187,219};
@@ -81,13 +82,73 @@ const RouteContract* contract_for(JupiterSwapKind kind) noexcept {
     return nullptr;
 }
 }
+Digest256 swap_execution_policy_digest(const SwapExecutionPolicy& p) noexcept;
+namespace {
+bool compute_within_policy(const DecodedSolanaPayload& d,const ResolvedSolanaAccounts& r,bool priced,const SwapExecutionPolicy& p) noexcept {
+    const auto compute=small(d,r,0);
+    if(!std::holds_alternative<ComputeUnitLimit>(compute.body))return false;
+    std::uint64_t micros{};
+    if(priced){
+        const auto price=small(d,r,1);
+        if(!std::holds_alternative<ComputeUnitPrice>(price.body))return false;
+        micros=std::get<ComputeUnitPrice>(price.body).micro_lamports;
+    }
+    const auto units=std::get<ComputeUnitLimit>(compute.body).units;
+    return units && units<=p.max_compute_units && micros<=p.max_compute_price && micros<=std::numeric_limits<std::uint64_t>::max()/units;
+}
+struct SellCheck { Code code{}; SwapTransactionBounds bounds{}; std::uint64_t expires{}; };
+SellCheck verify_sell(const DecodedSolanaPayload& d,const ResolvedSolanaAccounts& r,const swap::Intent& intent,const SwapExecutionPolicy& p) noexcept {
+    const bool priced=d.instruction_count==7;
+    if(d.instruction_count!=6 && !priced)return {Code::unsupported_topology};
+    const std::size_t ata=priced?2:1,wrap=ata+1,sync=ata+2,route_index=ata+3,close=ata+4;
+    if(program_of(d,r,0)!=kSolanaComputeBudgetProgram || (priced && program_of(d,r,1)!=kSolanaComputeBudgetProgram) ||
+        program_of(d,r,ata)!=kSolanaAssociatedTokenProgram || program_of(d,r,wrap)!=kSolanaSystemProgram ||
+        program_of(d,r,sync)!=kSolanaClassicTokenProgram || program_of(d,r,route_index)!=jupiter ||
+        program_of(d,r,close)!=kSolanaClassicTokenProgram)
+        return {Code::unsupported_topology};
+    const auto create=small(d,r,ata),wrapping=small(d,r,wrap),syncing=small(d,r,sync),closing=small(d,r,close);
+    if(!std::holds_alternative<CreateAssociatedTokenIdempotent>(create.body) || !std::holds_alternative<TransferLamports>(wrapping.body) ||
+        !std::holds_alternative<SyncNativeToken>(syncing.body) || !std::holds_alternative<CloseTokenAccount>(closing.body))
+        return {Code::invalid_instruction};
+    const auto& made=std::get<CreateAssociatedTokenIdempotent>(create.body);
+    const auto& wrapped=std::get<TransferLamports>(wrapping.body);
+    const auto& closed=std::get<CloseTokenAccount>(closing.body);
+    if(made.funder.key!=p.sponsor || made.associated_account.key!=p.owner_wsol || made.wallet.key!=p.owner || made.mint.key!=wrapped_sol ||
+        wrapped.source.key!=p.owner || wrapped.destination.key!=p.owner_wsol || wrapped.lamports!=intent.base_input.value() ||
+        std::get<SyncNativeToken>(syncing.body).account.key!=p.owner_wsol ||
+        closed.account.key!=p.owner_wsol || closed.destination.key!=p.sponsor || closed.authority.key!=p.owner)
+        return {Code::unsupported_topology};
+    if(!compute_within_policy(d,r,priced,p))return {Code::invalid_instruction};
+    const auto& ix=d.instructions[route_index];
+    const std::array<SolanaAccountKey,9> fixed{kSolanaClassicTokenProgram,p.owner,p.owner_wsol,p.owner_usdc,jupiter,
+        usdc,p.platform_fee,event_authority,jupiter};
+    if(ix.accounts_count<=fixed.size())return {Code::unsupported_topology};
+    for(std::size_t i=0;i<fixed.size();++i)if(account_of(d,r,route_index,i)!=fixed[i])return {Code::unsupported_topology};
+    const auto decoded=decode_jupiter_direct_route_data(std::span(d.transaction).subspan(ix.data_offset,ix.data_size));
+    const auto& route=decoded.data;
+    const auto* contract=decoded.status==JupiterRouteStatus::decoded_data_only && route.step_count==1?contract_for(route.steps[0].kind):nullptr;
+    bool program_present{};
+    for(std::size_t i=fixed.size();contract && i<ix.accounts_count;++i)program_present|=account_of(d,r,route_index,i)==contract->program;
+    if(!contract || !program_present || route.steps[0].percent!=100 || route.steps[0].input_index!=0 || route.steps[0].output_index!=1 ||
+        !route.quoted_output_atoms || route.quoted_output_atoms>max_signed || route.slippage_bps>p.max_slippage_bps)
+        return {Code::unsupported_route};
+    if(route.platform_fee_bps!=20 || route.input_atoms!=intent.base_input.value())return {Code::debit_mismatch};
+    const auto fee=route.quoted_output_atoms/499+(route.quoted_output_atoms%499?1:0);
+    if(fee>intent.fee_cap.value())return {Code::debit_mismatch};
+    const auto factor=10'000-route.slippage_bps;
+    const auto floor=(route.quoted_output_atoms/10'000)*factor+((route.quoted_output_atoms%10'000)*factor)/10'000;
+    SwapTransactionBounds bounds{0,fee,0,0,0,route.input_atoms,floor};
+    if(floor<intent.min_quote_receive.value())return {Code::minimum_shortfall,bounds};
+    return {Code::verified_under_program_contract,bounds,std::min(intent.sign_by,static_cast<std::uint64_t>(d.timestamp_ms)+p.max_envelope_age_ms)};
+}
+}
 Digest256 swap_execution_policy_digest(const SwapExecutionPolicy& p) noexcept {
     if(!valid_policy(p))return {};
-    Sha256 h;label(h,"velocita-swap-execution-policy-v1");binding(h,p.binding);
+    Sha256 h;label(h,"velocita-swap-execution-policy-v2");binding(h,p.binding);
     for(const auto& k:owner_side(p))account(h,k);
     number(h,p.max_envelope_age_ms);number(h,p.max_compute_price);number(h,p.max_compute_units);
     number(h,p.max_slippage_bps);number(h,p.accepted_costs.max_output_deduction.value());
-    account(h,jupiter);account(h,event_authority);account(h,wrapped_sol);account(h,lookup_authority);
+    account(h,jupiter);account(h,event_authority);account(h,wrapped_sol);account(h,lookup_authority);account(h,usdc);
     for(const auto& c:contracts){number(h,static_cast<std::uint8_t>(c.kind));account(h,c.program);}
     return h.finish();
 }
@@ -140,10 +201,15 @@ SwapTransactionVerification verify_swap_transaction(std::string_view envelope,st
     const auto policy_digest=swap_execution_policy_digest(p);
     if(policy_digest.is_zero() || !now || organization.empty() || signer.empty())return {};
     const auto& intent=pending.intent;
+    const bool selling=intent.side==Side::sell;
+    const bool buy_shape=intent.side==Side::buy && intent.quote_input.value() && intent.max_quote_debit.value() &&
+        intent.max_quote_debit.value()<=max_signed && intent.min_base_receive.value() && intent.min_base_receive.value()<=max_signed &&
+        !intent.base_input.value() && !intent.min_quote_receive.value();
+    const bool sell_shape=selling && intent.base_input.value() && intent.base_input.value()<=max_signed &&
+        intent.min_quote_receive.value() && intent.min_quote_receive.value()<=max_signed &&
+        !intent.quote_input.value() && !intent.max_quote_debit.value() && !intent.min_base_receive.value();
     if(pending.phase!=swap::Phase::prepared || pending.handle.is_zero() || intent.binding!=p.binding || !intent.effect.value() ||
-        intent.side!=Side::buy || !intent.quote_input.value() || !intent.max_quote_debit.value() ||
-        intent.max_quote_debit.value()>max_signed || !intent.min_base_receive.value() || intent.min_base_receive.value()>max_signed ||
-        intent.base_input.value() || intent.min_quote_receive.value() || intent.transient_base_hold.value() ||
+        (!buy_shape && !sell_shape) || intent.transient_base_hold.value() ||
         !intent.source_time || now<intent.source_time || now>=intent.sign_by || !intent.kill_epoch || !intent.executor_generation)
         return {Code::invalid_intent,{},{}};
     const auto payload_digest=sha256_digest(std::as_bytes(std::span(envelope)));
@@ -163,6 +229,11 @@ SwapTransactionVerification verify_swap_transaction(std::string_view envelope,st
         r.accounts[0]!=ResolvedSolanaAccount{p.sponsor,true,true} || r.accounts[1]!=ResolvedSolanaAccount{p.owner,true,true} ||
         !static_writable(d,r,p.owner_usdc) || !static_writable(d,r,p.owner_wsol) || !static_writable(d,r,p.platform_fee))
         return {Code::account_mismatch,{},{}};
+    if(selling){
+        const auto sold=verify_sell(d,r,intent,p);
+        if(sold.code!=Code::verified_under_program_contract)return {sold.code,sold.bounds,{}};
+        return {sold.code,sold.bounds,VerifiedSwapTransaction{payload_digest,verified_swap_intent_digest(intent),policy_digest,lookup_digest,sold.bounds,sold.expires}};
+    }
     const bool priced=d.instruction_count==6;
     if(d.instruction_count!=5 && !priced)return {Code::unsupported_topology,{},{}};
     const std::size_t ata=priced?2:1,route_index=ata+1,close=ata+2,pay=ata+3;

@@ -168,6 +168,20 @@ void privileges_and_fixed_programs() {
     t = transfer_accounts(); t[1].writable = false;
     refusal(decode_solana_instruction(kSolanaSystemProgram, rent_bytes, t), Status::invalid, "transfer_destination_writable_required");
 }
+void sync_native_wraps_one_writable_account() {
+    const std::array<std::uint8_t, 1> sync{17};
+    const std::array<Account, 1> wsol{account(7, false, true)};
+    auto r = decode_solana_instruction(kSolanaClassicTokenProgram, sync, wsol);
+    require(r.status == Status::decoded && std::get_if<SyncNativeToken>(&r.body) &&
+            std::get<SyncNativeToken>(r.body) == SyncNativeToken{wsol[0]}, "sync_native_decodes_its_account");
+    const std::array<std::uint8_t, 2> longer{17,0};
+    refusal(decode_solana_instruction(kSolanaClassicTokenProgram, longer, wsol), Status::invalid, "sync_native_extra_data_refused");
+    const std::array<Account, 1> readonly{account(7, false, false)};
+    refusal(decode_solana_instruction(kSolanaClassicTokenProgram, sync, readonly), Status::invalid, "sync_native_needs_writable_account");
+    const std::array<Account, 2> two{account(7, false, true), account(8, false, true)};
+    refusal(decode_solana_instruction(kSolanaClassicTokenProgram, sync, two), Status::invalid, "sync_native_takes_one_account");
+    refusal(decode_solana_instruction(kSolanaClassicTokenProgram, sync, std::span<const Account>{}), Status::invalid, "sync_native_needs_an_account");
+}
 void unsupported_never_returns_a_body() {
     const std::array<std::uint8_t, 1> close{9}, authority{6}, create{0};
     const auto c = close_accounts(); const auto a = ata_accounts();
@@ -192,6 +206,7 @@ int main(int argc, char** argv) {
         std::pair{"typed_roles_and_ownership",typed_roles_and_ownership},
         std::pair{"exact_shapes",exact_shapes},
         std::pair{"privileges_and_fixed_programs",privileges_and_fixed_programs},
+        std::pair{"sync_native_wraps_one_writable_account",sync_native_wraps_one_writable_account},
         std::pair{"unsupported_never_returns_a_body",unsupported_never_returns_a_body}};
     try {
         bool selected = false;

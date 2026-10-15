@@ -28,7 +28,7 @@ void valid(){
     require(r->policy.owner==f.tx.policy.owner && r->policy.binding==f.binding.allocation &&
         r->policy.accepted_costs.max_output_deduction.value()==2'039'280,"review_uses_runtime_owner_allocation_and_cost");
     require(r->organization.view()=="verifier-fixture" && r->signer.view()==std::string(31,'1')+'3',"review_runtime_tm_identity");
-    require(to_hex(swap_signer_verification_digest(*r))=="44708fffdcd7e0b69314f2de4320f80a918d3352e14236debe2e702c41c76282",
+    require(to_hex(swap_signer_verification_digest(*r))=="2c1f489a77fe5f13e9b5a5a28d455f28ea96c4d17111e35559e174950462c070",
         "verification_digest_python_parity_golden");
 }
 void identities(){

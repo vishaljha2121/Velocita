@@ -113,7 +113,8 @@ STABLE_FIELDS={'schema','sponsor','owner_usdc','owner_wsol','platform_fee',
 STABLE_CONSTANTS=('0479d55bf231c06eee74c56ece681507fdb1b2dea3f48e5102b1cda256bc138f',
                   'b43ffa27f5d7f64a74c09b1f295879de4b09ab36dfc9dd514b321aa7b38ce5e8',
                   '069b8857feab8184fb687f634618c035dac439dc1aeb3b5598a0f00000000001',
-                  '7d0ea3424053053bbbd860f74c32f04bc3dc872adf9a4f4ed170c24ee0f43ed3')
+                  '7d0ea3424053053bbbd860f74c32f04bc3dc872adf9a4f4ed170c24ee0f43ed3',
+                  'c6fa7af3bedbad3a3d65f36aabc97431b1bbe4c2d2f6e0e47ca60203452f5d61')
 STABLE_CONTRACTS=((18,'fc39066f804ec84d465acc0cafceb1debdfb9e4751e3c99ecb5463ac63cd89c9'),
                   (109,'f06b836245fa463674a002608d8edcd4e84affb0a4bc9271d2e4991bc0108aab'),
                   (156,'0634d20f1bf56dd164e3c13c7836a4229ec5ab21ff54528390a51789f3cdbbdb'),
@@ -141,7 +142,7 @@ def verification_digest(p,tx):
         age,price,units,slippage,deduction=(L.unsigned(v) for v in (tx['max_envelope_age_ms'],tx['max_compute_price'],tx['max_compute_units'],
                                                                      tx['max_slippage_bps'],p.get('max_buy_output_deduction_lamports','0')))
         if not 0<age<=30000 or not 0<units<=1400000 or slippage>10000 or price>(2**64-1)//units or deduction>2**63-1:raise ValueError('stable execution limits')
-        policy=h(b'velocita-swap-execution-policy-v1'+inc+cat+cust+allocation+b''.join(keys)+
+        policy=h(b'velocita-swap-execution-policy-v2'+inc+cat+cust+allocation+b''.join(keys)+
                  b''.join(struct.pack('<Q',v) for v in (age,price,units,slippage,deduction))+
                  b''.join(bytes.fromhex(k) for k in STABLE_CONSTANTS)+
                  b''.join(struct.pack('<Q',kind)+bytes.fromhex(program) for kind,program in STABLE_CONTRACTS))

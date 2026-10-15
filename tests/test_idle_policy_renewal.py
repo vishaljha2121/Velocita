@@ -307,7 +307,7 @@ class RenewalTests(unittest.TestCase):
                      organization='verifier-fixture',signer_id='1'*31+'3')
         tx=dict(schema='6',sponsor='00'*31+'01',owner_usdc='00'*31+'03',owner_wsol='00'*31+'04',platform_fee='00'*31+'05',
                 max_envelope_age_ms='100',max_compute_price='71428',max_compute_units='1400000',max_slippage_bps='500')
-        self.assertEqual(T.R.verification_digest(profile,tx).hex(),'44708fffdcd7e0b69314f2de4320f80a918d3352e14236debe2e702c41c76282',
+        self.assertEqual(T.R.verification_digest(profile,tx).hex(),'2c1f489a77fe5f13e9b5a5a28d455f28ea96c4d17111e35559e174950462c070',
                          'stable_verification_digest_native_golden')
         for field,value in (('owner_usdc','00'*31+'02'),('platform_fee','00'*32),('max_compute_units','0'),('max_envelope_age_ms','30001'),
                             ('max_slippage_bps','10001'),('lookup_table','00'*32)):

@@ -48,7 +48,7 @@ enum class SwapTransactionVerificationCode : std::uint8_t {
 };
 struct SwapTransactionBounds {
     std::uint64_t total_usdc_debit{}, explicit_usdc_fee{}, gross_sol_floor{},
-        maximum_sol_deduction{}, net_sol_floor{};
+        maximum_sol_deduction{}, net_sol_floor{}, base_input{}, usdc_floor{};
 };
 struct SwapTransactionVerification;
 class VerifiedSwapTransaction final {

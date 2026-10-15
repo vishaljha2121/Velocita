@@ -28,6 +28,39 @@ void oracle(){
     require(early.verified && early.verified->expires_at_ms()==1080,"expiry_is_earliest_of_intent_and_envelope_age");
     f.pending.intent.min_base_receive=swap::BaseAtoms{7'324'290};refusal(f,Code::minimum_shortfall,"rounded_up_floor_refused");
 }
+Fixture sell(){Fixture f;f.make_sell();return f;}
+void sell_oracle(){
+    auto f=sell();const auto r=f.run();require(r.code==Code::verified_under_program_contract && r.verified.has_value(),"supported_sell_verified");
+    require(r.bounds.total_usdc_debit==0 && r.bounds.explicit_usdc_fee==25'051 && r.bounds.gross_sol_floor==0 &&
+        r.bounds.maximum_sol_deduction==0 && r.bounds.net_sol_floor==0 && r.bounds.base_input==120'000'000 &&
+        r.bounds.usdc_floor==12'437'500,"sell_bounds_oracle");
+    require(r.verified->intent_digest()==verified_swap_intent_digest(f.pending.intent) && r.verified->expires_at_ms()==1100,"sell_proof_bindings");
+    f.pending.intent.min_quote_receive=swap::QuoteAtoms{12'437'501};refusal(f,Code::minimum_shortfall,"sell_floor_shortfall_refused");
+    f=sell();f.pending.intent.fee_cap=swap::QuoteAtoms{25'050};refusal(f,Code::debit_mismatch,"sell_fee_above_cap_refused");
+    f=sell();f.with_price=false;require(f.run().verified.has_value(),"sell_without_price_verified");
+}
+void sell_refusals(){
+    auto f=sell();f.wrap=119'999'999;refusal(f,Code::unsupported_topology,"wrap_differs_from_base_input_refused");
+    f=sell();f.wrap_accounts={0,3};refusal(f,Code::unsupported_topology,"sponsor_funded_wrap_refused");
+    f=sell();f.wrap_accounts={1,2};refusal(f,Code::unsupported_topology,"wrap_into_usdc_refused");
+    f=sell();f.sync_accounts={2};refusal(f,Code::unsupported_topology,"sync_of_other_account_refused");
+    f=sell();f.close_accounts={3,1,1};refusal(f,Code::unsupported_topology,"sell_rent_must_return_to_sponsor");
+    f=sell();f.close_accounts={3,0,0};refusal(f,Code::unsupported_topology,"sell_close_authority_refused");
+    f=sell();f.route_fixed={8,1,2,3,7,16,4,10,7};refusal(f,Code::unsupported_topology,"buy_oriented_route_refused");
+    f=sell();f.route_fixed={8,1,3,2,7,14,4,10,7};refusal(f,Code::unsupported_topology,"sell_into_sol_mint_refused");
+    f=sell();f.input=119'000'000;refusal(f,Code::debit_mismatch,"route_input_differs_from_base_input_refused");
+    f=sell();f.fee=0;refusal(f,Code::debit_mismatch,"sell_platform_fee_refused");
+    f=sell();f.slippage=501;refusal(f,Code::unsupported_route,"sell_slippage_above_policy_refused");
+    f=sell();f.extra=1;refusal(f,Code::unsupported_topology,"sell_extra_instruction_refused");
+    f=sell();f.program_order={6,6,9,8,5,7,8};refusal(f,Code::unsupported_topology,"sync_before_wrap_refused");
+    f=sell();f.units=1'400'001;refusal(f,Code::invalid_instruction,"sell_compute_units_above_policy_refused");
+    f=sell();f.price=71'429;refusal(f,Code::invalid_instruction,"sell_compute_price_above_policy_refused");
+    f=sell();f.program_order={6,6,9,8,8,7,8};refusal(f,Code::unsupported_topology,"sell_wrap_slot_program_refused");
+    f=sell();f.pending.intent.quote_input=swap::QuoteAtoms{1};refusal(f,Code::invalid_intent,"sell_with_quote_input_refused");
+    f=sell();f.pending.intent.min_quote_receive={};refusal(f,Code::invalid_intent,"sell_without_floor_refused");
+    f=sell();f.pending.intent.side=Side::buy;refusal(f,Code::invalid_intent,"sell_envelope_for_buy_intent_refused");
+    Fixture buy;buy.pending.intent=sell().pending.intent;refusal(buy,Code::unsupported_topology,"buy_envelope_for_sell_intent_refused");
+}
 void variants(){
     for(std::uint8_t variant:{18,109,156,177,181}){Fixture f;f.variant=variant;f.direction=0;
         require(f.run().verified.has_value(),"reviewed_variant_verified");}
@@ -166,7 +199,7 @@ static_assert(!std::is_aggregate_v<VerifiedSwapTransaction>);
 }
 int main(int argc,char** argv){
     unsigned count{},failed{};
-    const std::pair<const char*,void(*)()> tests[]={{"oracle",oracle},{"variants",variants},{"pools",pools},{"roles",roles},
+    const std::pair<const char*,void(*)()> tests[]={{"oracle",oracle},{"sell_oracle",sell_oracle},{"sell_refusals",sell_refusals},{"variants",variants},{"pools",pools},{"roles",roles},
         {"instructions",instructions},{"lookups",lookups},{"economics",economics},{"freshness",freshness},{"policy",policy},
         {"lookup_reading",lookup_reading}};
     for(auto [name,fn]:tests){if(argc==2 && std::string_view(argv[1])!=name)continue;++count;

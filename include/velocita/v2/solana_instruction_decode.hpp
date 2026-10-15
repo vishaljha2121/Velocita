@@ -49,6 +49,11 @@ struct CloseTokenAccount {
     bool operator==(const CloseTokenAccount&) const = default;
 };
 
+struct SyncNativeToken {
+    SolanaInstructionAccount account{};
+    bool operator==(const SyncNativeToken&) const = default;
+};
+
 struct TransferLamports {
     SolanaInstructionAccount source{}, destination{};
     std::uint64_t lamports{};
@@ -57,7 +62,7 @@ struct TransferLamports {
 
 enum class SolanaInstructionDecodeStatus : std::uint8_t { unsupported, invalid, decoded };
 using SolanaInstructionBody = std::variant<std::monostate, ComputeUnitLimit, ComputeUnitPrice,
-    CreateAssociatedTokenIdempotent, CloseTokenAccount, TransferLamports>;
+    CreateAssociatedTokenIdempotent, CloseTokenAccount, TransferLamports, SyncNativeToken>;
 
 struct SolanaInstructionDecodeResult {
     SolanaInstructionDecodeStatus status{SolanaInstructionDecodeStatus::unsupported};

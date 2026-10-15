@@ -23,6 +23,7 @@ inline const SolanaAccountKey kJupiter=from58("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZo
 inline const SolanaAccountKey kEventAuthority=from58("D8cy77BBepLMngZx6ZukaTff5hCt1HrWyKk3Hnd9oitf");
 inline const SolanaAccountKey kWrappedSol=from58("So11111111111111111111111111111111111111112");
 inline const SolanaAccountKey kLookupAuthority=from58("9RAufBfjGQjDfrwxeyKmZWPADHSb8HcoqCdrmpqvCr1g");
+inline const SolanaAccountKey kUsdcMint=from58("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 inline SolanaAccountKey dex_program(std::uint8_t variant){
     switch(variant){
     case 18:return from58("HyaB3W9q6XdA5xwpU4XnSZV94htfmbmqJXZcEbRaJutt");
@@ -46,7 +47,9 @@ struct RouteFixture {
     std::uint64_t payment{2'039'280},quoted{9'410'623},input{1'000'000},timestamp{1000},units{1'400'000},price{71'428};
     std::uint8_t variant{181},direction{1},percent{100},input_index{0},output_index{1},fee{20},required_signatures{2},readonly_signed{0},readonly_unsigned{6};
     std::uint16_t slippage{50};
-    bool with_price{true},signed_payload{};
+    bool with_price{true},signed_payload{},sell{};
+    std::uint64_t wrap{};
+    std::vector<std::uint8_t> wrap_accounts{1,3},sync_accounts{3};
     unsigned extra{};
     std::vector<std::uint8_t> ata_accounts{0,3,1,14,5,8},close_accounts{3,1,1},pay_accounts{1,0};
     std::vector<std::uint8_t> route_fixed{8,1,2,3,7,14,4,10,7};
@@ -71,6 +74,14 @@ struct RouteFixture {
         i.quote_input=swap::QuoteAtoms{998'000};i.max_quote_debit=swap::QuoteAtoms{1'000'000};i.fee_cap=swap::QuoteAtoms{2'000};
         i.min_base_receive=swap::BaseAtoms{6'819'647};i.source_time=990;i.sign_by=1100;i.kill_epoch=1;i.executor_generation=1;
     }
+    void make_sell(){
+        sell=true;input=120'000'000;wrap=input;quoted=12'500'000;
+        auto& i=pending.intent;i.side=Side::sell;i.quote_input={};i.max_quote_debit={};i.min_base_receive={};
+        i.base_input=swap::BaseAtoms{input};i.min_quote_receive=swap::QuoteAtoms{12'437'500};i.fee_cap=swap::QuoteAtoms{25'051};
+        readonly_lookup={0,7,1};table_entries[1]=kUsdcMint;
+        route_fixed={8,1,3,2,7,16,4,10,7};route_tail={15,1,11,12,13,3,2,8};
+        close_accounts={3,0,1};program_order={6,6,9,5,8,7,8};
+    }
     void place_dex(){table_entries[readonly_lookup[1]]=dex_program(variant);}
     JupiterLookupPrefix prefix()const{
         JupiterLookupPrefix result;result.table=table;
@@ -92,6 +103,10 @@ struct RouteFixture {
         std::vector<std::uint8_t> limit{2};le(limit,units,4);ix(program_order[order++],{},limit);
         if(with_price){std::vector<std::uint8_t> cu{3};le(cu,price,8);ix(program_order[order++],{},cu);}else ++order;
         ix(program_order[order++],ata_accounts,{1});
+        if(sell){
+            std::vector<std::uint8_t> wrapping{2,0,0,0};le(wrapping,wrap,8);ix(program_order[order++],wrap_accounts,wrapping);
+            ix(program_order[order++],sync_accounts,{17});
+        }
         std::vector<std::uint8_t> route{0xe5,0x17,0xcb,0x97,0x7a,0xe3,0xad,0x2a,1,0,0,0,variant};
         if(variant_has_direction(variant))route.push_back(direction);
         route.insert(route.end(),{percent,input_index,output_index});
@@ -99,7 +114,7 @@ struct RouteFixture {
         std::vector<std::uint8_t> accounts=route_fixed;accounts.insert(accounts.end(),route_tail.begin(),route_tail.end());
         ix(program_order[order++],accounts,route);
         ix(program_order[order++],close_accounts,{9});
-        std::vector<std::uint8_t> transfer{2,0,0,0};le(transfer,payment,8);ix(program_order[order++],pay_accounts,transfer);
+        std::vector<std::uint8_t> transfer{2,0,0,0};le(transfer,payment,8);if(!sell)ix(program_order[order++],pay_accounts,transfer);
         for(unsigned n=0;n<extra;++n)ix(5,pay_accounts,transfer);
         b.push_back(static_cast<std::uint8_t>(ixs.size()));
         for(const auto& x:ixs)b.insert(b.end(),x.begin(),x.end());

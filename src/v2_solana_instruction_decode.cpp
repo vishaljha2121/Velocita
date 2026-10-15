@@ -49,6 +49,10 @@ SolanaInstructionDecodeResult decode_solana_instruction(
     }
     if (program == kSolanaClassicTokenProgram) {
         if (data.empty()) return invalid();
+        if (data[0] == 17) {
+            if (data.size() != 1 || accounts.size() != 1 || !accounts[0].writable) return invalid();
+            return {Status::decoded, SyncNativeToken{accounts[0]}};
+        }
         if (data[0] != 9) return {};
         if (data.size() != 1 || accounts.size() != 3) return invalid();
         if (!consistent(accounts) || !accounts[0].writable || !accounts[1].writable ||
