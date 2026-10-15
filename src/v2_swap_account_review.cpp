@@ -56,7 +56,7 @@ std::optional<SwapAccountReview> decode_swap_account_review(std::string_view doc
         for(unsigned i=0;i<count;++i){const auto prefix="activity_"+std::to_string(i)+"_";
             digest(prefix+"evidence",r.activity[i].evidence);number(prefix+"base_delta",r.activity[i].base_delta);number(prefix+"quote_delta",r.activity[i].quote_delta);}
         if(!fields.empty() || !r.reviewed_at_ms || r.expires_at_ms<=r.reviewed_at_ms ||
-           r.expires_at_ms-r.reviewed_at_ms>900'000 || !reviewed_outside_balance(r))return {};
+           r.expires_at_ms-r.reviewed_at_ms>kSwapReviewLifetimeMs || !reviewed_outside_balance(r))return {};
         return r;
     }catch(...){return {};}
 }
@@ -68,7 +68,7 @@ bool swap_account_review_matches(const SwapAccountReview& r,const SwapRuntimeBin
 }
 bool swap_account_review_current(const SwapAccountReview& r,std::uint64_t now) noexcept {
     return r.reviewed_at_ms && r.reviewed_at_ms<=now && now<r.expires_at_ms &&
-        r.expires_at_ms-r.reviewed_at_ms<=900'000;
+        r.expires_at_ms-r.reviewed_at_ms<=kSwapReviewLifetimeMs;
 }
 bool swap_reviewed_balance_matches(const SwapAccountReview& r,const SwapRuntimeBinding& b,const swap::State& state,const CommittedBalanceReadBarrier& barrier,
     std::string_view response,std::uint64_t started,std::uint64_t received) noexcept {

@@ -8,6 +8,9 @@ void put(std::span<std::byte> out,std::uint64_t v,unsigned count)noexcept{for(un
 std::uint64_t get(std::span<const std::byte> in,unsigned count)noexcept{std::uint64_t v{};for(unsigned n=0;n<count;++n)v|=std::uint64_t(std::to_integer<unsigned>(in[n]))<<(8*n);return v;}
 bool zeros(std::span<const std::byte> b)noexcept{return std::all_of(b.begin(),b.end(),[](auto v){return v==std::byte{};});}
 bool valid(const Request&r)noexcept{
+    if(r.operation==Operation::authenticate)
+        return !r.effect.value() && !r.sequence && !r.sign_by_ms && !r.minimum_index && !r.handle_size && r.payload_size && r.payload_size<=64 &&
+            !r.lookup.count && r.lookup.table==truemarkets::SolanaAccountKey{};
     return (r.operation==Operation::sign || r.operation==Operation::retrieve) && r.effect.value() && r.sequence && r.sign_by_ms && r.minimum_index>0 &&
         r.handle_size && r.handle_size<=r.handle.size() && r.payload_size && r.payload_size<=r.payload.size() &&
         std::all_of(r.handle.begin(),r.handle.begin()+r.handle_size,[](unsigned char c){return(c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='-'||c=='_';}) &&
@@ -53,8 +56,8 @@ bool decode_request(std::span<const std::byte> b,Request&out)noexcept{
     if(!valid(r))return false;out=r;return true;
 }
 std::size_t encode_reply(const Reply&r,std::span<std::byte>out)noexcept{
-    const bool signed_result=r.code==ReplyCode::signed_once || r.code==ReplyCode::retrieved;
-    if(r.request_digest.is_zero() || static_cast<unsigned>(r.code)>3 || r.der_size>72)return 0;
+    const bool signed_result=r.code==ReplyCode::signed_once || r.code==ReplyCode::retrieved || r.code==ReplyCode::authenticated;
+    if(r.request_digest.is_zero() || static_cast<unsigned>(r.code)>4 || r.der_size>72)return 0;
     swap_signing::ApiKeyStamp stamp;
     if(signed_result){if(swap_signing::encode_api_key_stamp(r.public_key,std::span(r.der).first(r.der_size),stamp)!=swap_signing::StampCode::encoded)return 0;}
     else if(r.der_size || !zeros(r.public_key) || !zeros(r.der))return 0;
@@ -67,8 +70,8 @@ std::size_t encode_reply(const Reply&r,std::span<std::byte>out)noexcept{
 bool decode_reply(std::span<const std::byte>b,Reply&out)noexcept{
     out={};if(!envelope(b,"VSR2") || !zeros(b.subspan(9,7)) || !zeros(b.subspan(50,6)))return false;
     Reply r;r.code=static_cast<ReplyCode>(b[8]);std::copy_n(b.begin()+16,32,r.request_digest.bytes.begin());r.der_size=static_cast<std::uint16_t>(get(b.subspan(48),2));
-    if(r.request_digest.is_zero() || static_cast<unsigned>(r.code)>3 || r.der_size>72)return false;
-    const bool signed_result=r.code==ReplyCode::signed_once || r.code==ReplyCode::retrieved;
+    if(r.request_digest.is_zero() || static_cast<unsigned>(r.code)>4 || r.der_size>72)return false;
+    const bool signed_result=r.code==ReplyCode::signed_once || r.code==ReplyCode::retrieved || r.code==ReplyCode::authenticated;
     if(b.size()!=std::size_t{88}+(signed_result?33+r.der_size:0) || (!signed_result && r.der_size))return false;
     if(signed_result){std::copy_n(b.begin()+56,33,r.public_key.begin());std::copy_n(b.begin()+89,r.der_size,r.der.begin());
         if(swap_signing::encode_api_key_stamp(r.public_key,std::span(r.der).first(r.der_size),r.stamp)!=swap_signing::StampCode::encoded)return false;}

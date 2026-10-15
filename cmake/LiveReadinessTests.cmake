@@ -481,6 +481,7 @@ if(TARGET v2-swap-signing-connection-tests)
 add_executable(v2-swap-runtime-config-tests
     "${velocita_readiness_root}/tests/v2_swap_runtime_config_tests.cpp"
     "${velocita_readiness_root}/src/v2_swap_runtime_config.cpp"
+    "${velocita_readiness_root}/src/v2_truemarkets_wire.cpp"
     "${velocita_readiness_root}/src/v2_swap_signer_protocol.cpp"
     "${velocita_readiness_root}/src/v2_swap_signer_service.cpp"
     "${velocita_readiness_root}/src/v2_swap_signer_session.cpp"

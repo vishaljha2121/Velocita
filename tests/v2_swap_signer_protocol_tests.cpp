@@ -71,6 +71,23 @@ void reply_codec(){
     require(m==88 && decode_reply(std::span(bytes).first(m),out) && out.stamp.empty(),"refusal is explicit and contains no stamp");
     bytes[16]=std::byte{};reseal(std::span(bytes).first(m));require(!decode_reply(std::span(bytes).first(m),out),"reply requires request correlation");
 }
+void authenticate_codec(){
+    constexpr std::string_view message="0b9e3a52-6f2c-4d6e-9a1b-2c3d4e5f6a7b.1791993300";
+    Request r;r.operation=Operation::authenticate;r.payload_size=message.size();std::copy(message.begin(),message.end(),reinterpret_cast<char*>(r.payload.data()));
+    std::array<std::byte,kRequestBytes> bytes{};const auto n=encode_request(r,bytes);Request out;
+    require(n==88+message.size() && bytes[8]==std::byte{3} && decode_request(std::span(bytes).first(n),out) && out.operation==Operation::authenticate &&
+        std::equal(out.payload_view().begin(),out.payload_view().end(),r.payload_view().begin()),"authenticate request carries only the message");
+    for(unsigned mode=0;mode<7;++mode){auto x=r;if(mode==0)x.effect=EffectId{1};if(mode==1)x.sequence=1;if(mode==2)x.sign_by_ms=1;if(mode==3)x.minimum_index=1;
+        if(mode==4){x.handle[0]='a';x.handle_size=1;}if(mode==5)x.payload_size=0;if(mode==6)x.payload_size=65;
+        require(!encode_request(x,bytes),"authenticate request refuses signing fields and unbounded messages");}
+    auto lookup=r;lookup.lookup.count=1;lookup.lookup.table[0]=1;require(!encode_request(lookup,bytes),"authenticate request refuses lookup tables");
+    lookup.lookup.table[0]=0;require(!encode_request(lookup,bytes),"authenticate request refuses a lookup count");
+    auto reply=signature_reply();reply.code=ReplyCode::authenticated;std::array<std::byte,kReplyBytes> frame{};const auto m=encode_reply(reply,frame);Reply decoded;
+    require(m==193 && decode_reply(std::span(frame).first(m),decoded) && decoded.code==ReplyCode::authenticated && !decoded.stamp.empty(),"authenticated reply carries the signature");
+    Reply unknown;unknown.request_digest=reply.request_digest;unknown.code=static_cast<ReplyCode>(5);require(!encode_reply(unknown,frame),"unknown reply code refused");
+    unknown.code=ReplyCode::refused;const auto k=encode_reply(unknown,frame);frame[8]=std::byte{5};reseal(std::span(frame).first(k));
+    require(k==88 && !decode_reply(std::span(frame).first(k),decoded),"unknown reply code not decoded");
 }
-int main(int argc,char**argv){const std::pair<const char*,void(*)()> cases[]{{"request",request_codec},{"malformed",malformed_request},{"reply",reply_codec},{"lookup",lookup_codec},{"malformed_lookup",malformed_lookup}};
+}
+int main(int argc,char**argv){const std::pair<const char*,void(*)()> cases[]{{"request",request_codec},{"malformed",malformed_request},{"reply",reply_codec},{"lookup",lookup_codec},{"malformed_lookup",malformed_lookup},{"authenticate",authenticate_codec}};
     unsigned ran{},failed{};for(auto[name,fn]:cases){if(argc==2&&std::string_view(argv[1])!=name)continue;++ran;try{fn();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception&e){++failed;std::cout<<"FAIL "<<name<<": "<<e.what()<<'\n';}}return ran&&!failed?0:1;}

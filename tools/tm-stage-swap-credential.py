@@ -19,17 +19,24 @@ SESSION=load('stage_session',ROOT/'tools/tm-account-session.py')
 HISTORY=load('stage_history',ROOT/'tools/tm-account-history-check.py')
 
 
+def api_key_id(document):
+    jwk=document.get('private_key',{})
+    if document.get('algorithm')!='ES256' or not isinstance(jwk,dict) or jwk.get('kty')!='EC' or jwk.get('crv')!='P-256': raise ValueError('P-256 API key required')
+    key_id=document.get('key_id')
+    if not isinstance(key_id,str) or re.fullmatch('[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}',key_id) is None: raise ValueError('API key identifier malformed')
+    return key_id
+
+
 def material(role,path,profile):
     document=SESSION.read_private(path)
-    if role=='gateway':
+    if role=='gateway' and 'key_id' in document:
+        raw=api_key_id(document).encode('ascii')
+    elif role=='gateway':
         pair,expiry=SESSION.token_pair(document)
         if int(expiry*1000)<H.LAUNCH.unsigned(profile['expires_at_ms']): raise ValueError('profile outlives session')
         raw=pair['access_token'].encode('ascii')
     else:
-        jwk=document.get('private_key',{})
-        if document.get('algorithm')!='ES256' or jwk.get('kty')!='EC' or jwk.get('crv')!='P-256': raise ValueError('P-256 API key required')
-        key_id=document.get('key_id')
-        if not isinstance(key_id,str) or re.fullmatch('[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}',key_id) is None: raise ValueError('API key identifier malformed')
+        api_key_id(document);jwk=document['private_key']
         if HISTORY.key_bytes(profile.get('signer_id')).hex()!=profile.get('owner_wallet'): raise ValueError('signer wallet mismatch')
         raw=SESSION.MINT.jwk_to_pem(jwk)
     H.validate_secret(role,raw,profile,time.time_ns()//1000000)

@@ -193,10 +193,30 @@ void payload_and_economics(){
             "inclusive_fixture_retrieval_never_signs_again");
     }
 }
+void authenticate_message(){
+    Rig r;constexpr std::uint64_t now=1791993300000;r.clock.event=now;std::array<std::byte,72> der{};std::size_t size{};
+    const auto bytes=[](std::string_view text){return std::as_bytes(std::span(text.data(),text.size()));};
+    constexpr std::string_view message="0b9e3a52-6f2c-4d6e-9a1b-2c3d4e5f6a7b.1791993300";
+    require(r.session->authenticate(bytes(message),der,size) && r.key.verifies(bytes(message),std::span(der).first(size)),"api key message signed by the protected key");
+    require(r.session->status()==SwapSignerStatus::idle && r.store->latest().phase==SwapSubmissionPhase::idle,"authentication leaves signing state untouched");
+    for(auto edge:{"0b9e3a52-6f2c-4d6e-9a1b-2c3d4e5f6a7b.1791993240","0b9e3a52-6f2c-4d6e-9a1b-2c3d4e5f6a7b.1791993360"})
+        require(r.session->authenticate(bytes(edge),der,size),"sixty seconds either side accepted");
+    const auto attempts=r.key.protected_key->signature_attempts();
+    for(auto bad:{"0b9e3a52-6f2c-4d6e-9a1b-2c3d4e5f6a7b.1791993239","0b9e3a52-6f2c-4d6e-9a1b-2c3d4e5f6a7b.1791993361","0b9e3a52-6f2c-4d6e-9a1b-2c3d4e5f6a7b.179199330",
+        "0b9e3a52-6f2c-4d6e-9a1b-2c3d4e5f6a7b.17919933000","0b9e3a52x6f2c-4d6e-9a1b-2c3d4e5f6a7b.1791993300","0b9e3a52-6f2c-4d6e-9a1b-2c3d4e5f6a7g.1791993300",
+        "0b9e3a52-6f2c-4d6e-9a1b-2c3d4e5f6a7b:1791993300","0b9e3a52-6f2c-4d6e-9a1b-2c3d4e5f6a7b.179199330x","0b9e3a52-6f2c-4d6e-9a1b-2c3d4e5f6a7b.179199330:"})
+        require(!r.session->authenticate(bytes(bad),der,size) && size==0,"stale future or malformed message refused");
+    r.clock.event=0;require(!r.session->authenticate(bytes("0b9e3a52-6f2c-4d6e-9a1b-2c3d4e5f6a7b.0000000000"),der,size),"no authentication without a clock");r.clock.event=now;
+    auto bounded=config();bounded.account_review_expires_at_ms=now;
+    SwapSignerSession expired(r.link,*r.store,*r.key.protected_key,bounded,r.clock.interface());
+    require(!expired.authenticate(bytes(message),der,size),"no authentication once the review window ends");
+    bounded.account_review_expires_at_ms=now+1;SwapSignerSession open(r.link,*r.store,*r.key.protected_key,bounded,r.clock.interface());
+    require(open.authenticate(bytes(message),der,size) && r.key.protected_key->signature_attempts()==attempts+1,"authentication inside the review window");
+}
 }
 int main(int argc,char**argv){
     const std::pair<const char*,void(*)()> cases[]{{"lost_response_retrieval",lost_response_retrieval},{"authority_fences",authority_fences},{"durable_result",durable_result_and_verification},{"exact_signature",exact_signature},{"restart_replay",restart_replay},
-        {"state_fences",state_fences},{"clock_and_storage",clock_and_storage},{"remaining_admission_fences",remaining_admission_fences},{"production_gate",production_gate},{"crash_recovery",crash_recovery},{"key_and_domain",key_and_domain},{"payload_and_economics",payload_and_economics}};
+        {"state_fences",state_fences},{"clock_and_storage",clock_and_storage},{"remaining_admission_fences",remaining_admission_fences},{"production_gate",production_gate},{"crash_recovery",crash_recovery},{"key_and_domain",key_and_domain},{"payload_and_economics",payload_and_economics},{"authenticate",authenticate_message}};
     unsigned ran{},failed{};for(const auto&[name,fn]:cases){if(argc==1 && std::string_view(name)=="production_gate")continue;if(argc==2 && std::string_view(argv[1])!=name)continue;++ran;
         try{fn();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception&e){++failed;std::cout<<"FAIL "<<name<<": "<<e.what()<<'\n';}}
     return ran&&!failed?0:1;

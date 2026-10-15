@@ -22,6 +22,8 @@ import fd_handoff as FD
 import service_profile as PROFILE
 
 
+REVIEW_LIFETIME_MS = 86_400_000
+
 def strict_json(raw):
     def pairs(items):
         result = {}
@@ -78,9 +80,9 @@ def check_bindings(manifest, profile_raw, review_raw, history_raw, now_ms, role)
         raise FD.Refused('history account identity mismatch')
     start, end = unsigned(review['reviewed_at_ms']), unsigned(review['expires_at_ms'])
     captured = history.get('capture_finished_ms')
-    if not 0 < start < end or end-start > 900000 or type(captured) is not int or not 0 < captured <= start or start-captured > 900000:
+    if not 0 < start < end or end-start > REVIEW_LIFETIME_MS or type(captured) is not int or not 0 < captured <= start or start-captured > REVIEW_LIFETIME_MS:
         raise FD.Refused('review/capture time bounds')
-    review_current = start <= now_ms < end and captured <= now_ms <= captured+900000
+    review_current = start <= now_ms < end and captured <= now_ms <= captured+REVIEW_LIFETIME_MS
     if role == 'signer' and not review_current:
         raise FD.Refused('signer account review expired')
     if role == 'gateway' and not now_ms < unsigned(profile['expires_at_ms']):

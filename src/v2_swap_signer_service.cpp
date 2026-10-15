@@ -116,7 +116,9 @@ bool Server::serve_once(SwapSignerSession&session,int timeout){
     std::array<std::byte,kRequestBytes> bytes{};const auto n=read_frame(client.fd,bytes,deadline);Request req;
     if(!n || !decode_request(std::span(bytes).first(n),req))return false;
     Reply reply;reply.request_digest=sha256_digest(std::span(bytes).first(n));
-    if(req.operation==Operation::retrieve){
+    if(req.operation==Operation::authenticate){
+        std::size_t size{};if(session.authenticate(req.payload_view(),reply.der,size)){reply.code=ReplyCode::authenticated;reply.public_key=session.public_key();reply.der_size=static_cast<std::uint16_t>(size);}
+    }else if(req.operation==Operation::retrieve){
         if(session.retrieve(req.effect,req.sequence,req.handle_view(),req.payload_view(),req.minimum_index,req.sign_by_ms))reply.code=ReplyCode::retrieved;
     }else if(session.start(req.effect,req.sequence,req.handle_view(),req.payload_view(),req.minimum_index,req.sign_by_ms,req.lookup)){
         while(now()<deadline && (session.status()==SwapSignerStatus::reading_state || session.status()==SwapSignerStatus::reading_authority)){(void)session.poll();if((session.status()==SwapSignerStatus::reading_state || session.status()==SwapSignerStatus::reading_authority))::usleep(1000);}
@@ -142,7 +144,7 @@ Reply Client::request(const Request&req){
     if(!transfer(fd.fd,std::span(bytes).first(size),true,deadline))return denied;
     std::array<std::byte,kReplyBytes> response{};const auto n=read_frame(fd.fd,response,deadline);Reply result;
     if(!n || !decode_reply(std::span(response).first(n),result) || result.request_digest!=sha256_digest(std::span(bytes).first(size)))return denied;
-    if(result.code==ReplyCode::signed_once || result.code==ReplyCode::retrieved){
+    if(result.code==ReplyCode::signed_once || result.code==ReplyCode::retrieved || result.code==ReplyCode::authenticated){
         if(result.public_key!=public_key_ || !verify_public(result,req.payload_view()))return denied;
     }
     return result;

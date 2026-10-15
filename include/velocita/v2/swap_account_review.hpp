@@ -4,6 +4,7 @@
 #include "velocita/v2/swap_reconcile.hpp"
 
 namespace velocita::v2 {
+inline constexpr std::uint64_t kSwapReviewLifetimeMs=86'400'000;
 struct SwapOutsideActivity {
     Digest256 evidence{};
     std::int64_t base_delta{}, quote_delta{};

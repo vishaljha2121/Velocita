@@ -18,15 +18,17 @@ struct SwapRuntimeProfile {
 // Public configuration only: exact bounded key=value schema, no secret material.
 [[nodiscard]] std::optional<SwapRuntimeProfile> decode_swap_runtime_profile(std::string_view) noexcept;
 [[nodiscard]] bool swap_runtime_live_contract_admitted(const SwapRuntimeProfile&,std::uint64_t now_ms) noexcept;
+[[nodiscard]] std::unique_ptr<SwapTokenPort> make_swap_token_port(long timeout_ms);
 [[nodiscard]] SwapAccountSetupResult read_swap_account_setup(SwapGatewayCredentials&,
     SwapFinalizedReadClock&,std::string_view expected_user,std::uint64_t timeout_ms);
 struct SwapAccountStartupAdmission {
     SwapAccountReview review{};
     SwapAccountHistoryCut history{};
-    swap::State state{};
+    swap::State state{},funding_state{};
     CommittedBalanceReadBarrier barrier{};
     bool recovery_only{};
 };
+[[nodiscard]] bool swap_admission_funded(const SwapAccountStartupAdmission&,const SwapRuntimeBinding&,std::uint64_t now_ms) noexcept;
 [[nodiscard]] bool read_swap_reviewed_balance(SwapGatewayCredentials&, SwapFinalizedReadClock&,
     const SwapAccountStartupAdmission&, std::uint64_t timeout_ms);
 [[nodiscard]] std::optional<swap::State> swap_unsent_funding_state(const swap::State&) noexcept;

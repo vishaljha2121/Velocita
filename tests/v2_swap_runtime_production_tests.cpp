@@ -2,6 +2,9 @@
 #include "velocita/v2/swap_runtime_production.hpp"
 #include "v2_swap_signer_test_support.hpp"
 #include <sstream>
+#include <openssl/core_names.h>
+#include <openssl/ecdsa.h>
+#include <openssl/evp.h>
 #include "velocita/v2/swap_account_review.hpp"
 namespace {
 using namespace swap_signer_test;
@@ -74,12 +77,13 @@ void account_review_tests(){
     require(swap_account_review_matches(*r,p.gateway.binding,p.user_id.view(),state),"review binds actual opening and account");
     require(!decode_swap_account_review(source,digest(99)),"unreviewed document digest refuses");
     require(!decode(source+"extra=1\n") && !decode(source+"schema=1\n"),"unknown and duplicate review fields refuse");
-    for(auto [from,to]:{std::pair{"activity_count=2","activity_count=17"},{"expires_at_ms=2000","expires_at_ms=901001"},
+    for(auto [from,to]:{std::pair{"activity_count=2","activity_count=17"},{"expires_at_ms=2000","expires_at_ms=86401001"},
         {"outside_base=30","outside_base=-1"},{"activity_0_quote_delta=-20","activity_0_quote_delta=-51"},
         {"activity_0_base_delta=7","activity_0_base_delta=9223372036854775807"},
         {"activity_0_base_delta=7","activity_0_base_delta=-9223372036854775808"}}){
         auto bad=source;bad.replace(bad.find(from),std::strlen(from),to);require(!decode(bad),"invalid attributed arithmetic or bounds refuses");
     }
+    auto day=source;day.replace(day.find("expires_at_ms=2000"),18,"expires_at_ms=86401000");require(decode(day).has_value(),"review of exactly one day decodes");
     auto duplicate=source;auto at=duplicate.find("activity_1_evidence=")+std::strlen("activity_1_evidence=");duplicate.replace(at,64,hex(digest(9).bytes));
     require(!decode(duplicate),"duplicate activity evidence refuses");
     require(swap_account_review_current(*r,1000) && swap_account_review_current(*r,1999) &&
@@ -106,7 +110,7 @@ void account_history_tests(){
     auto p=*decode_swap_runtime_profile(profile(key.public_key));auto opening=swap_test::opening();p.gateway.binding.allocation=opening.binding;
     swap::State state;require(swap::apply(state,opening,swap::Role::operator_role,100)==swap::Code::applied,"history initialized");
     SwapAccountReview review;review.document_digest=digest(77);review.runtime_identity=swap_runtime_identity_digest(p.gateway.binding);
-    review.opening_digest=swap_opening_review_digest(opening);review.user_id=p.user_id;review.reviewed_at_ms=1100;review.expires_at_ms=901000;
+    review.opening_digest=swap_opening_review_digest(opening);review.user_id=p.user_id;review.reviewed_at_ms=1100;review.expires_at_ms=1100+kSwapReviewLifetimeMs;
     review.outside_base=35;review.outside_quote=33;
     const auto source="{\"schema\":1,\"scope\":\"sol-usdc-current-accounts\",\"owner_sha256\":\""+hex(sha256_digest(p.gateway.binding.owner_wallet).bytes)+
         "\",\"user_id_sha256\":\""+hex(sha256_digest(std::as_bytes(std::span(p.user_id.view()))).bytes)+
@@ -133,9 +137,20 @@ void account_history_tests(){
     altered=*cut;altered.user=digest(55);require(!swap_account_history_identity(altered,review,p.gateway.binding),"history for another user refused");
     altered=*cut;altered.document=digest(55);require(!swap_account_history_identity(altered,review,p.gateway.binding),"different history evidence refused");
     altered=*cut;++altered.quote_atoms;require(!swap_account_history_funding(altered,review,p.gateway.binding,state,1200),"one unassigned history atom refused");
-    auto later=review;later.reviewed_at_ms=2000;later.expires_at_ms=902000;
-    require(!swap_account_history_funding(*cut,later,p.gateway.binding,state,901051),"new review cannot revive stale history");
+    require(swap_account_history_funding(*cut,review,p.gateway.binding,state,1050+kSwapReviewLifetimeMs),"history funds for a full day");
+    auto later=review;later.reviewed_at_ms=2000;later.expires_at_ms=2000+kSwapReviewLifetimeMs;
+    require(!swap_account_history_funding(*cut,later,p.gateway.binding,state,1051+kSwapReviewLifetimeMs),"new review cannot revive day-old history");
+    require(swap_account_review_current(review,1099+kSwapReviewLifetimeMs) && !swap_account_review_current(review,1100+kSwapReviewLifetimeMs),
+        "review lasts exactly one day");
+    auto longer=review;longer.expires_at_ms=1101+kSwapReviewLifetimeMs;require(!swap_account_review_current(longer,1200),"review longer than a day refused");
     require(!swap_account_history_funding(*cut,review,p.gateway.binding,state,1049),"future history cut refused");
+    auto edge=review;edge.reviewed_at_ms=1050+kSwapReviewLifetimeMs;edge.expires_at_ms=edge.reviewed_at_ms+1;
+    require(swap_account_history_identity(*cut,edge,p.gateway.binding),"review exactly one day after the history cut");
+    ++edge.reviewed_at_ms;require(!swap_account_history_identity(*cut,edge,p.gateway.binding),"review more than one day after the history cut refused");
+    SwapAccountStartupAdmission admission{review,*cut,swap::State{},state,{},false};
+    require(swap_admission_funded(admission,p.gateway.binding,1200),"admission funds from its startup state whatever the current state");
+    admission.state=state;admission.funding_state=swap::State{};
+    require(!swap_admission_funded(admission,p.gateway.binding,1200),"admission never funds from the current state");
 }
 
 }
@@ -152,8 +167,9 @@ void unsent_funding_tests(){
     require(!swap_unsent_funding_state(prepared),"prepared effect may be on chain and has no unsent funding state");
     SwapAccountStartupAdmission startup;startup.state=idle;startup.barrier={digest(1),digest(2),digest(3),40,1000,1010};
     SwapPrepareRead read{{1,1,3,41,digest(4),digest(5)},reserved,2000,2010};
+    startup.funding_state=idle;
     const auto fresh=swap_prepare_admission(startup,read);
-    require(fresh && fresh->state==*funded && fresh->barrier.incarnation==digest(1) && fresh->barrier.clock_epoch==digest(2) &&
+    require(fresh && fresh->funding_state==idle && fresh->state==*funded && fresh->barrier.incarnation==digest(1) && fresh->barrier.clock_epoch==digest(2) &&
         fresh->barrier.read_evidence_digest==digest(5) && fresh->barrier.applied_index==41 && fresh->barrier.request_started_ms==2000 &&
         fresh->barrier.received_at_ms==2010,"create admission uses the fresh committed read as its balance barrier");
     for(unsigned mode=0;mode<5;++mode){auto bad=read;
@@ -190,4 +206,111 @@ void startup_recovery_tests(){
         swap_startup_recovery_only(reserved,P::prepared,EffectId{1},S::idle) && swap_startup_recovery_only(prepared,P::prepared,EffectId{1},S::idle) &&
         swap_startup_recovery_only(reserved,P::idle,EffectId{0},S::execute_intent),"foreign create, prepared bytes or sent request recover only");
 }
-int main(){try{profile_tests();account_review_tests();account_history_tests();unsent_funding_tests();create_trace_tests();startup_recovery_tests();std::cout<<"PASS production profile and admission guards\n";return 0;}catch(const std::exception&e){std::cerr<<e.what()<<'\n';return 1;}}
+std::string b64url(std::span<const std::uint8_t> bytes){
+    constexpr char a[]="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";std::string out;std::uint32_t acc{};int bits{};
+    for(auto b:bytes){acc=(acc<<8)|b;bits+=8;while(bits>=6){bits-=6;out+=a[(acc>>bits)&63];}}
+    if(bits)out+=a[(acc<<(6-bits))&63];return out;
+}
+struct TestApiKey {
+    EVP_PKEY* key{EVP_PKEY_Q_keygen(nullptr,nullptr,"EC","P-256")};
+    std::array<std::uint8_t,32> d{},x{},y{};
+    TestApiKey(){
+        require(key!=nullptr,"test api key generated");BIGNUM* priv{};
+        require(EVP_PKEY_get_bn_param(key,OSSL_PKEY_PARAM_PRIV_KEY,&priv)==1 && BN_bn2binpad(priv,d.data(),32)==32,"test private scalar");BN_free(priv);
+        std::array<std::uint8_t,65> pub{};std::size_t n{};
+        require(EVP_PKEY_get_octet_string_param(key,OSSL_PKEY_PARAM_PUB_KEY,pub.data(),pub.size(),&n)==1 && n==65 && pub[0]==4,"test public point");
+        std::copy_n(pub.begin()+1,32,x.begin());std::copy_n(pub.begin()+33,32,y.begin());
+    }
+    ~TestApiKey(){EVP_PKEY_free(key);}
+    std::optional<std::array<std::uint8_t,64>> raw(std::string_view message)const{
+        EVP_MD_CTX* ctx=EVP_MD_CTX_new();std::array<unsigned char,80> der{};std::size_t size=der.size();
+        const bool ok=EVP_DigestSignInit(ctx,nullptr,EVP_sha256(),nullptr,key)==1 &&
+            EVP_DigestSign(ctx,der.data(),&size,reinterpret_cast<const unsigned char*>(message.data()),message.size())==1;
+        EVP_MD_CTX_free(ctx);if(!ok)return {};
+        const unsigned char* cursor=der.data();ECDSA_SIG* sig=d2i_ECDSA_SIG(nullptr,&cursor,static_cast<long>(size));std::array<std::uint8_t,64> out{};
+        BN_bn2binpad(ECDSA_SIG_get0_r(sig),out.data(),32);BN_bn2binpad(ECDSA_SIG_get0_s(sig),out.data()+32,32);ECDSA_SIG_free(sig);return out;
+    }
+    bool verifies(std::string_view message,std::string_view raw_signature)const{
+        std::array<std::uint8_t,64> raw{};std::size_t at{};std::uint32_t acc{};int bits{};
+        constexpr std::string_view a="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        for(char c:raw_signature){const auto v=a.find(c);if(v==std::string_view::npos || at>=64)return false;acc=(acc<<6)|static_cast<std::uint32_t>(v);bits+=6;
+            if(bits>=8){bits-=8;raw[at++]=static_cast<std::uint8_t>(acc>>bits);}}
+        if(at!=64)return false;
+        ECDSA_SIG* sig=ECDSA_SIG_new();ECDSA_SIG_set0(sig,BN_bin2bn(raw.data(),32,nullptr),BN_bin2bn(raw.data()+32,32,nullptr));
+        unsigned char* der{};const int len=i2d_ECDSA_SIG(sig,&der);ECDSA_SIG_free(sig);
+        EVP_MD_CTX* ctx=EVP_MD_CTX_new();
+        const bool ok=EVP_DigestVerifyInit(ctx,nullptr,EVP_sha256(),nullptr,key)==1 &&
+            EVP_DigestVerify(ctx,der,static_cast<std::size_t>(len),reinterpret_cast<const unsigned char*>(message.data()),message.size())==1;
+        EVP_MD_CTX_free(ctx);OPENSSL_free(der);return ok;
+    }
+};
+struct FakeSigner final:SwapTokenSigner {
+    const TestApiKey& key;std::vector<std::string> messages;bool refuse{};
+    explicit FakeSigner(const TestApiKey& k):key(k){}
+    std::optional<std::array<std::uint8_t,64>> sign(std::string_view message)override{messages.emplace_back(message);if(refuse)return {};return key.raw(message);}
+};
+struct FakeTokenPort final:SwapTokenPort {
+    std::vector<std::string> bodies;unsigned status{200};std::string reply;transport::SwapHttpsStatus outcome{transport::SwapHttpsStatus::complete};
+    transport::SwapHttpsResult post(std::string_view body)override{
+        bodies.emplace_back(body);transport::SwapHttpsResult r;r.status=outcome;
+        r.exposure=transport::SwapHttpsExposure::response_received;r.http_status=status;r.body_size=reply.size();
+        std::copy(reply.begin(),reply.end(),r.body.begin());return r;
+    }
+};
+std::string token_reply(std::string_view token,std::string_view expiry){
+    return "{\"access_token\":\""+std::string(token)+"\",\"refresh_token\":\"r.r.r\",\"expires_in\":\""+std::string(expiry)+"\",\"token_type\":\"Bearer\"}";
+}
+void api_key_tests(){
+    constexpr std::string_view id="0b9e3a52-6f2c-4d6e-9a1b-2c3d4e5f6a7b";TestApiKey key;FakeSigner signer(key);
+    const auto body=swap_api_key_request(id,1791993300,signer);
+    require(body.has_value() && signer.messages==std::vector<std::string>{"0b9e3a52-6f2c-4d6e-9a1b-2c3d4e5f6a7b.1791993300"},"signer asked for id.seconds only");
+    using namespace truemarkets;
+    const auto key_id=json_member_string(*body,"key_id");const auto stamp=json_member_raw(*body,"timestamp");const auto signature=json_member_string(*body,"signature");
+    require(validate_json_object(*body)==JsonError::none && key_id && *key_id==id && stamp && *stamp=="1791993300" && signature &&
+        key.verifies("0b9e3a52-6f2c-4d6e-9a1b-2c3d4e5f6a7b.1791993300",*signature),"request carries key id, seconds and an ES256 signature over id.seconds");
+    require(!key.verifies("0b9e3a52-6f2c-4d6e-9a1b-2c3d4e5f6a7b.1791993301",*signature),"signature binds the timestamp");
+    require(!swap_api_key_request("not a uuid",1791993300,signer) && !swap_api_key_request("0b9e3a52-6f2c-4d6e-9a1b-2c3d4e5f6a7",1791993300,signer) &&
+        !swap_api_key_request("0b9e3a52x6f2c-4d6e-9a1b-2c3d4e5f6a7b",1791993300,signer) && !swap_api_key_request("0b9e3a52-6f2c-4d6e-9a1b-2c3d4e5f6a7g",1791993300,signer) &&
+        signer.messages.size()==1,"malformed key id refused before signing");
+    require(swap_api_key_id_valid("0B9E3A52-6F2C-4D6E-9A1B-2C3D4E5F6A7B") && !swap_api_key_id_valid("0b9e3a52-6f2c-4d6e-9a1b-2c3d4e5f6a7b0"),"key id shape");
+    signer.refuse=true;require(!swap_api_key_request(id,1791993300,signer),"signer refusal builds no request");signer.refuse=false;
+    const auto minted=parse_swap_minted_token(200,token_reply("aa.bb.cc","2026-10-14T15:55:24.456143667Z"));
+    require(minted && minted->token=="aa.bb.cc" && minted->expires_ms==1791993324456,"token and fractional ISO expiry");
+    require(parse_swap_minted_token(200,token_reply("aa.bb.cc","2026-10-14T15:55:24Z"))->expires_ms==1791993324000 &&
+        parse_swap_minted_token(200,token_reply("aa.bb.cc","2000-02-29T00:00:00.5Z"))->expires_ms==951782400500,"whole-second and leap-day expiry");
+    require(!parse_swap_minted_token(401,token_reply("aa.bb.cc","2026-10-14T15:55:24Z")) && !parse_swap_minted_token(200,token_reply("aa bb","2026-10-14T15:55:24Z")) &&
+        !parse_swap_minted_token(200,token_reply("aa.bb.cc","2026-10-14 15:55:24Z")) && !parse_swap_minted_token(200,token_reply("aa.bb.cc","2026-02-30T00:00:00Z")),
+        "refused status, unsafe token or malformed expiry");
+    for(auto token:{"aa.bb","aa.bb.cc.dd","aa..cc",".bb.cc","aa.bb.","aa.b+b.cc"})require(!parse_swap_minted_token(200,token_reply(token,"2026-10-14T15:55:24Z")),"three nonempty base64url parts");
+    for(auto expiry:{"2026-10-14T24:00:00Z","2026-10-14T15:60:00Z","2026-10-14T15:55:60Z","2026-13-14T15:55:24Z","2026-00-14T15:55:24Z","2026-10-00T15:55:24Z",
+        "2026-10-32T15:55:24Z","2025-02-29T00:00:00Z","1969-12-31T23:59:59Z","2026-10-14T15:55:24.Z","2026-10-14T15:55:24.1234567891Z","2026-10-14T15:55:24",
+        "2026-10-14T15:55:24.5","2026/10/14T15:55:24Z","2026-10-14X15:55:24Z","2100-02-29T00:00:00Z","2024-01-32T00:00:00Z","2026-10-14T15-55:24Z","2026-10-14T15:55-24Z","2026-1a-14T15:55:24Z","2026-10-14T15:55:24+00:00"})
+        require(!parse_swap_minted_token(200,token_reply("aa.bb.cc",expiry)),"strict UTC ISO-8601 expiry");
+    require(parse_swap_minted_token(200,token_reply("aa.bb.cc","2024-02-29T23:59:59.999999999Z"))->expires_ms==1709251199999 &&
+        parse_swap_minted_token(200,token_reply("aa.bb.cc","1970-01-01T00:00:00.05Z"))->expires_ms==50,"leap year end of day and epoch fractions");
+    const std::string longest="a."+std::string(4092,'b')+".c";
+    require(parse_swap_minted_token(200,token_reply(longest,"2026-10-14T15:55:24Z"))->token==longest && !parse_swap_minted_token(200,token_reply(longest+"c","2026-10-14T15:55:24Z")),
+        "token fits the 4096-byte cache exactly");
+    auto basic=token_reply("aa.bb.cc","2026-10-14T15:55:24Z");basic.replace(basic.find("Bearer"),6,"Basic ");require(!parse_swap_minted_token(200,basic),"bearer tokens only");
+    FakeTokenPort port;port.reply=token_reply("t1.t1.t1","2026-10-14T16:00:00Z");
+    SwapBearerCache cache(id,signer,port,1791996000000);
+    require(cache.bearer(1791993300000)=="t1.t1.t1" && port.bodies.size()==1 && json_member_raw(port.bodies[0],"timestamp")=="1791993300","first use mints once at the current second");
+    require(cache.bearer(1791993479999)=="t1.t1.t1" && port.bodies.size()==1,"cached until two minutes before expiry");
+    port.reply=token_reply("t2.t2.t2","2026-10-14T17:00:00Z");
+    require(cache.bearer(1791993480000)=="t2.t2.t2" && port.bodies.size()==2,"re-minted inside the last two minutes");
+    require(cache.bearer(1791996000000).empty() && port.bodies.size()==2,"never past the reviewed window");
+    FakeTokenPort refused;refused.status=500;SwapBearerCache failing(id,signer,refused,1791996600000);
+    require(failing.bearer(1791993300000).empty() && failing.bearer(1791993300001).empty() && refused.bodies.size()==2,"failed mint returns no bearer");
+    FakeTokenPort unused;unused.reply=token_reply("u.u.u","2026-10-14T17:00:00Z");signer.refuse=true;SwapBearerCache unsigned_cache(id,signer,unused,1791996600000);
+    require(unsigned_cache.bearer(1791993300000).empty() && unused.bodies.empty(),"signer refusal posts nothing");signer.refuse=false;
+    FakeTokenPort clockless;clockless.reply=token_reply("z.z.z","2026-10-14T17:00:00Z");SwapBearerCache zero(id,signer,clockless,1791996600000);
+    require(zero.bearer(0).empty() && clockless.bodies.empty(),"zero clock mints nothing");
+    FakeTokenPort broken;broken.reply=token_reply("b.b.b","2026-10-14T17:00:00Z");broken.outcome=transport::SwapHttpsStatus::transport_failure;
+    SwapBearerCache failed_transport(id,signer,broken,1791996600000);require(failed_transport.bearer(1791993300000).empty() && broken.bodies.size()==1,"incomplete exchange gives no bearer");
+    FakeTokenPort edge;edge.reply=token_reply("e.e.e","2026-10-14T15:57:00Z");SwapBearerCache boundary(id,signer,edge,1791996600000);
+    require(boundary.bearer(1791993300000).empty(),"token with exactly two minutes left is refused");
+    edge.reply=token_reply("e.e.e","2026-10-14T15:57:00.001Z");require(boundary.bearer(1791993300000)=="e.e.e","token with just over two minutes is used");
+    FakeTokenPort short_lived;short_lived.reply=token_reply("s.s.s","2026-10-14T15:56:00Z");SwapBearerCache brief(id,signer,short_lived,1791996600000);
+    require(brief.bearer(1791993300000).empty(),"token expiring within two minutes is refused");
+}
+int main(){try{profile_tests();account_review_tests();account_history_tests();unsent_funding_tests();create_trace_tests();startup_recovery_tests();api_key_tests();std::cout<<"PASS production profile and admission guards\n";return 0;}catch(const std::exception&e){std::cerr<<e.what()<<'\n';return 1;}}

@@ -1,5 +1,6 @@
 #include "velocita/v2/swap_runtime_config.hpp"
 #include "velocita/v2/digest.hpp"
+#include "velocita/v2/truemarkets_wire.hpp"
 #include <algorithm>
 #include <cerrno>
 #include <fcntl.h>
@@ -8,6 +9,7 @@
 #include <unistd.h>
 #include <openssl/core_names.h>
 #include <openssl/crypto.h>
+#include <openssl/ecdsa.h>
 #include <openssl/evp.h>
 #include <openssl/params.h>
 namespace velocita::v2 {
@@ -41,6 +43,49 @@ bool safe_fd(int fd,std::uint32_t owner,struct stat&st)noexcept{
 }
 bool token_char(unsigned char c)noexcept{
     return (c>='a'&&c<='z') || (c>='A'&&c<='Z') || (c>='0'&&c<='9') || c=='-' || c=='_' || c=='.' || c=='~' || c=='+' || c=='/' || c=='=';
+}
+constexpr std::string_view kBase64Url="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+constexpr std::uint64_t kRemintMarginMs=120'000;
+std::string encode(std::span<const std::uint8_t> bytes){
+    std::string out;std::uint32_t acc{};int bits{};
+    for(auto b:bytes){acc=(acc<<8)|b;bits+=8;while(bits>=6){bits-=6;out+=kBase64Url[(acc>>bits)&63];}}
+    if(bits)out+=kBase64Url[(acc<<(6-bits))&63];
+    return out;
+}
+bool key_id_shape(std::string_view id)noexcept{
+    if(id.size()!=36)return false;
+    for(std::size_t n=0;n<id.size();++n){const auto c=id[n];
+        if(n==8||n==13||n==18||n==23){if(c!='-')return false;}
+        else if(!((c>='0'&&c<='9')||(c>='a'&&c<='f')||(c>='A'&&c<='F')))return false;}
+    return true;
+}
+bool digits(std::string_view text,std::size_t at,std::size_t count,unsigned&out)noexcept{
+    out=0;for(std::size_t n=at;n<at+count;++n){if(text[n]<'0'||text[n]>'9')return false;out=out*10+static_cast<unsigned>(text[n]-'0');}
+    return true;
+}
+std::optional<std::uint64_t> iso_ms(std::string_view t)noexcept{
+    if(t.size()<20 || t[4]!='-' || t[7]!='-' || t[10]!='T' || t[13]!=':' || t[16]!=':' || t.back()!='Z')return {};
+    unsigned year{},month{},day{},hour{},minute{},second{};
+    if(!digits(t,0,4,year) || !digits(t,5,2,month) || !digits(t,8,2,day) || !digits(t,11,2,hour) || !digits(t,14,2,minute) ||
+       !digits(t,17,2,second) || year<1970 || month<1 || month>12 || hour>23 || minute>59 || second>59)return {};
+    const bool leap=year%4==0 && (year%100!=0 || year%400==0);
+    constexpr unsigned lengths[]{31,28,31,30,31,30,31,31,30,31,30,31};
+    if(day<1 || day>lengths[month-1]+(month==2 && leap))return {};
+    unsigned fraction{};
+    if(t.size()>20){
+        const auto count=t.size()-21;unsigned all{};
+        if(t[19]!='.' || count<1 || count>9 || !digits(t,20,count,all))return {};
+        const std::size_t kept=count<3?count:3;digits(t,20,kept,fraction);for(auto n=kept;n<3;++n)fraction*=10;
+    }
+    const int y=static_cast<int>(year)-(month<=2);const int era=y/400;const unsigned yoe=static_cast<unsigned>(y-era*400);
+    const unsigned doy=(153*(month+(month>2?-3:9))+2)/5+day-1;const unsigned doe=yoe*365+yoe/4-yoe/100+doy;
+    const auto days=static_cast<std::uint64_t>(era*146097+static_cast<int>(doe)-719468);
+    return ((days*24+hour)*60+minute)*60'000+second*1000ull+fraction;
+}
+bool jwt_valid(std::string_view token)noexcept{
+    std::size_t parts=1,run=0;
+    for(char c:token){if(c=='.'){if(!run)return false;++parts;run=0;}else if(kBase64Url.find(c)==std::string_view::npos)return false;else ++run;}
+    return parts==3 && run;
 }
 }
 SwapRuntimeCode validate_swap_runtime_binding(const SwapRuntimeBinding&b)noexcept{
@@ -90,10 +135,57 @@ Digest256 swap_runtime_identity_digest(const SwapRuntimeBinding&b)noexcept{
     }
     return h.finish();
 }
+bool swap_api_key_id_valid(std::string_view id)noexcept{return key_id_shape(id);}
+std::optional<std::array<std::uint8_t,64>> SwapSignerTokenSigner::sign(std::string_view message){
+    swap_signer::Request request;request.operation=swap_signer::Operation::authenticate;
+    if(!client_ || message.empty() || message.size()>64)return {};
+    request.payload_size=static_cast<std::uint16_t>(message.size());
+    std::copy(message.begin(),message.end(),reinterpret_cast<char*>(request.payload.data()));
+    const auto reply=client_->request(request);if(reply.code!=swap_signer::ReplyCode::authenticated)return {};
+    const auto* cursor=reinterpret_cast<const unsigned char*>(reply.der.data());
+    ECDSA_SIG* sig=d2i_ECDSA_SIG(nullptr,&cursor,reply.der_size);std::array<std::uint8_t,64> raw{};
+    const bool split=sig && BN_bn2binpad(ECDSA_SIG_get0_r(sig),raw.data(),32)==32 && BN_bn2binpad(ECDSA_SIG_get0_s(sig),raw.data()+32,32)==32;
+    ECDSA_SIG_free(sig);if(!split)return {};
+    return raw;
+}
+std::optional<std::string> swap_api_key_request(std::string_view key_id,std::uint64_t timestamp,SwapTokenSigner& signer){
+    if(!key_id_shape(key_id))return {};
+    const auto message=std::string(key_id)+"."+std::to_string(timestamp);
+    const auto raw=signer.sign(message);if(!raw)return {};
+    return "{\"key_id\":\""+std::string(key_id)+"\",\"timestamp\":"+std::to_string(timestamp)+",\"signature\":\""+encode(*raw)+"\"}";
+}
+std::optional<SwapMintedToken> parse_swap_minted_token(unsigned status,std::string_view body){
+    if(status!=200 || truemarkets::validate_json_object(body)!=truemarkets::JsonError::none ||
+       truemarkets::json_member_string(body,"token_type")!="Bearer")return {};
+    const auto token=truemarkets::json_member_string(body,"access_token");const auto expiry=truemarkets::json_member_string(body,"expires_in");
+    if(!token || token->size()>4096 || !jwt_valid(*token) || !expiry)return {};
+    const auto ms=iso_ms(*expiry);if(!ms)return {};
+    return SwapMintedToken{std::string(*token),*ms};
+}
+SwapBearerCache::~SwapBearerCache(){clear();}
+void SwapBearerCache::clear()noexcept{OPENSSL_cleanse(token_.data(),token_.size());size_=0;expires_=0;}
+std::string_view SwapBearerCache::bearer(std::uint64_t now)noexcept{
+    if(!now || now>=window_end_){clear();return {};}
+    if(expires_>now && expires_-now>kRemintMarginMs)return {token_.data(),size_};
+    clear();
+    try{
+        const auto body=swap_api_key_request(key_id_,now/1000,signer_);if(!body)return {};
+        auto reply=port_.post(*body);
+        auto minted=reply.status==transport::SwapHttpsStatus::complete && reply.body_size<=reply.body.size()?
+            parse_swap_minted_token(reply.http_status,{reply.body.data(),reply.body_size}):std::nullopt;
+        OPENSSL_cleanse(reply.body.data(),reply.body.size());
+        if(!minted)return {};
+        if(minted->expires_ms>now && minted->expires_ms-now>kRemintMarginMs){
+            std::copy(minted->token.begin(),minted->token.end(),token_.begin());size_=static_cast<std::uint16_t>(minted->token.size());expires_=minted->expires_ms;}
+        OPENSSL_cleanse(minted->token.data(),minted->token.size());
+    }catch(...){clear();}
+    return {token_.data(),size_};
+}
 SwapInheritedSecretFd::~SwapInheritedSecretFd(){if(fd_>=3)::close(fd_);}
 SwapInheritedSecretFd::SwapInheritedSecretFd(SwapInheritedSecretFd&&o)noexcept:fd_(o.fd_){o.fd_=-1;}
 SwapGatewayCredentials::~SwapGatewayCredentials(){OPENSSL_cleanse(bearer_.data(),bearer_.size());}
-std::unique_ptr<SwapGatewayCredentials> SwapGatewayCredentials::load(SwapGatewayStartupConfig c,SwapInheritedSecretFd fd,std::uint64_t now,SwapRuntimeCode&code){
+std::unique_ptr<SwapGatewayCredentials> SwapGatewayCredentials::load(SwapGatewayStartupConfig c,SwapInheritedSecretFd fd,std::uint64_t now,SwapRuntimeCode&code,
+    std::unique_ptr<SwapTokenPort> mint,std::unique_ptr<SwapTokenSigner> signer){
     code=validate_swap_gateway_startup(c,now);if(code!=SwapRuntimeCode::valid)return {};
     if(fd.get()<3){code=SwapRuntimeCode::invalid_descriptor;return {};}
     struct stat st{};if(::geteuid()!=c.binding.gateway_uid || ::getuid()!=::geteuid() || !safe_fd(fd.get(),c.binding.gateway_uid,st)){
@@ -106,11 +198,17 @@ std::unique_ptr<SwapGatewayCredentials> SwapGatewayCredentials::load(SwapGateway
     struct stat after{};if(::fstat(fd.get(),&after)!=0 || after.st_size!=st.st_size || after.st_nlink!=1 || after.st_uid!=st.st_uid || after.st_mode!=st.st_mode){code=SwapRuntimeCode::unsafe_descriptor;return {};}
     if(!std::all_of(result->bearer_.begin(),result->bearer_.begin()+size,[](unsigned char ch){return token_char(ch);})){code=SwapRuntimeCode::invalid_bearer;return {};}
     if(sha256_digest(std::as_bytes(std::span(result->bearer_.data(),size)))!=c.bearer_digest){code=SwapRuntimeCode::session_digest_mismatch;return {};}
-    result->bearer_size_=size;result->last_time_=now;code=SwapRuntimeCode::valid;return result;
+    if(const std::string_view id(result->bearer_.data(),size);key_id_shape(id)){
+        if(!mint){code=SwapRuntimeCode::invalid_bearer;return {};}
+        result->mint_=std::move(mint);result->signer_=signer?std::move(signer):std::make_unique<SwapSignerTokenSigner>(result->signer_client());
+        result->minted_=std::make_unique<SwapBearerCache>(id,*result->signer_,*result->mint_,c.expires_at_ms);
+    }else result->bearer_size_=size;
+    result->last_time_=now;code=SwapRuntimeCode::valid;return result;
 }
 std::string_view SwapGatewayCredentials::bearer(std::uint64_t now)noexcept{
-    if(now<last_time_ || now>=config_.expires_at_ms){OPENSSL_cleanse(bearer_.data(),bearer_.size());bearer_size_=0;return {};}
-    last_time_=now;return {bearer_.data(),bearer_size_};
+    if(now<last_time_ || now>=config_.expires_at_ms){OPENSSL_cleanse(bearer_.data(),bearer_.size());bearer_size_=0;minted_.reset();return {};}
+    last_time_=now;if(minted_)return minted_->bearer(now);
+    return {bearer_.data(),bearer_size_};
 }
 std::unique_ptr<swap_signer::Client> SwapGatewayCredentials::signer_client()const{
     const auto&b=config_.binding;return std::make_unique<swap_signer::Client>(std::string(b.socket_view()),b.signer_uid,b.signer_public_key,b.ipc_timeout_ms);

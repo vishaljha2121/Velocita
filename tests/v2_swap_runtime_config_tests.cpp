@@ -2,6 +2,8 @@
 #include <cstring>
 #include "v2_swap_signer_test_support.hpp"
 #include <sys/resource.h>
+#include <sys/wait.h>
+#include <openssl/ecdsa.h>
 namespace {
 using namespace swap_signer_test;
 SwapRuntimeBinding binding(TestKey&key,const Scratch&s){
@@ -55,6 +57,54 @@ void gateway_session(){Scratch s;TestKey key(s.base/"key");auto b=binding(key,s)
     c.bearer_digest=hash(raw);session=SwapGatewayCredentials::load(c,SwapInheritedSecretFd(-1),200,code);
     require(!session && code==SwapRuntimeCode::expired_session,"expired configuration refuses before descriptor IO");
 }
+struct MintPort final:SwapTokenPort {
+    unsigned posts{};
+    transport::SwapHttpsResult post(std::string_view)override{
+        ++posts;constexpr std::string_view reply=R"({"access_token":"m.m.m","refresh_token":"r.r.r","expires_in":"2026-10-14T17:00:00Z","token_type":"Bearer"})";
+        transport::SwapHttpsResult r;r.status=transport::SwapHttpsStatus::complete;r.exposure=transport::SwapHttpsExposure::response_received;
+        r.http_status=200;r.body_size=reply.size();std::copy(reply.begin(),reply.end(),r.body.begin());return r;
+    }
+};
+struct FixedSigner final:SwapTokenSigner {
+    unsigned signs{};
+    std::optional<std::array<std::uint8_t,64>> sign(std::string_view)override{++signs;return std::array<std::uint8_t,64>{};}
+};
+void api_key_session(){Scratch s;TestKey key(s.base/"key");auto b=binding(key,s);SwapRuntimeCode code{};
+    constexpr std::string_view id="0b9e3a52-6f2c-4d6e-9a1b-2c3d4e5f6a7b";
+    constexpr std::uint64_t now=1791993300000,end=1791996000000;SwapGatewayStartupConfig c{b,hash(id),end};
+    auto session=SwapGatewayCredentials::load(c,SwapInheritedSecretFd(token(s,id)),now,code);
+    require(!session && code==SwapRuntimeCode::invalid_bearer,"api key id without a token port refuses");
+    auto port=std::make_unique<MintPort>();auto* mint=port.get();auto signer=std::make_unique<FixedSigner>();auto* signs=signer.get();
+    session=SwapGatewayCredentials::load(c,SwapInheritedSecretFd(token(s,id)),now,code,std::move(port),std::move(signer));
+    require(session && code==SwapRuntimeCode::valid && mint->posts==0 && signs->signs==0,"pinned api key id loads without minting");
+    require(session->bearer(now)=="m.m.m" && session->bearer(now+1)=="m.m.m" && mint->posts==1 && signs->signs==1,"bearer minted once then cached");
+    require(session->bearer(end).empty() && session->bearer(now+2).empty() && mint->posts==1,"review window end permanently erases the minted bearer");
+    session=SwapGatewayCredentials::load(c,SwapInheritedSecretFd(token(s,id)),now,code,std::make_unique<MintPort>(),std::make_unique<FixedSigner>());
+    require(session && session->bearer(now-1).empty() && session->bearer(now).empty(),"clock rollback permanently erases the minted bearer");
+    c.bearer_digest=hash("other");session=SwapGatewayCredentials::load(c,SwapInheritedSecretFd(token(s,id)),now,code,std::make_unique<MintPort>(),std::make_unique<FixedSigner>());
+    require(!session && code==SwapRuntimeCode::session_digest_mismatch,"substituted api key id refuses");
+    constexpr std::string_view raw="abc.def-123_xyz";c.bearer_digest=hash(raw);
+    session=SwapGatewayCredentials::load(c,SwapInheritedSecretFd(token(s,raw)),now,code,std::make_unique<MintPort>(),std::make_unique<FixedSigner>());
+    require(session && session->bearer(now)==raw,"a pinned bearer stays a bearer even when minting is available");
+}
+void signer_token_ipc(){
+    constexpr std::string_view message="0b9e3a52-6f2c-4d6e-9a1b-2c3d4e5f6a7b.1791993300";
+    for(unsigned mode=0;mode<3;++mode){
+        Rig r;r.clock.event=mode==1?1791993361000:1791993300000;swap_signer::Server server;const auto path=r.scratch.base/"auth.sock";
+        require(server.listen(path,::geteuid()),"authentication signer listens");
+        const auto child=::fork();require(child>=0,"authentication signer child");
+        if(child==0){const bool ok=server.serve_once(*r.session,2000);::_exit(ok?0:1);}
+        auto pinned=r.key.public_key;if(mode==2)pinned.back()^=std::byte{1};
+        SwapSignerTokenSigner signer(std::make_unique<swap_signer::Client>(path,::geteuid(),pinned,2000));const auto raw=signer.sign(message);
+        int status{};require(::waitpid(child,&status,0)==child && WIFEXITED(status) && WEXITSTATUS(status)==0,"signer served one request");
+        if(mode){require(!raw,mode==1?"signer refuses a stale timestamp":"gateway refuses a signature from an unpinned key");continue;}
+        require(raw.has_value(),"signer returns an authentication signature");
+        ECDSA_SIG* sig=ECDSA_SIG_new();ECDSA_SIG_set0(sig,BN_bin2bn(raw->data(),32,nullptr),BN_bin2bn(raw->data()+32,32,nullptr));
+        unsigned char* der{};const int len=i2d_ECDSA_SIG(sig,&der);ECDSA_SIG_free(sig);
+        const bool verified=len>0 && r.key.verifies(std::as_bytes(std::span(message.data(),message.size())),std::as_bytes(std::span(der,static_cast<std::size_t>(len))));
+        OPENSSL_free(der);require(verified,"raw r||s verifies against the protected key");
+    }
+}
 void descriptor_bounds(){Scratch s;TestKey key(s.base/"key");auto b=binding(key,s);SwapRuntimeCode code{};std::string maximum(4096,'A');SwapGatewayStartupConfig c{b,hash(maximum),200};
     auto loaded=SwapGatewayCredentials::load(c,SwapInheritedSecretFd(token(s,maximum)),100,code);
     require(loaded && loaded->bearer(100)==maximum,"maximum bounded session fits without truncation");
@@ -95,4 +145,4 @@ void refusal_order(){Scratch s;TestKey key(s.base/"key");auto b=binding(key,s);S
     require(!startup && code==SwapRuntimeCode::invalid_principals,"invalid config refuses before inherited FD access");
 }
 }
-int main(int argc,char**argv){const std::pair<const char*,void(*)()> cases[]={{"valid",valid_config},{"invalid",invalid_config},{"identity",identity_binding},{"session",gateway_session},{"descriptors",descriptor_bounds},{"startup",protected_startup},{"order",refusal_order}};for(auto [name,run]:cases){if(argc>1 && std::string_view(argv[1])!=name)continue;try{run();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception&e){std::cerr<<name<<": "<<e.what()<<'\n';return 1;}}}
+int main(int argc,char**argv){const std::pair<const char*,void(*)()> cases[]={{"valid",valid_config},{"invalid",invalid_config},{"identity",identity_binding},{"session",gateway_session},{"api-key",api_key_session},{"token-ipc",signer_token_ipc},{"descriptors",descriptor_bounds},{"startup",protected_startup},{"order",refusal_order}};for(auto [name,run]:cases){if(argc>1 && std::string_view(argv[1])!=name)continue;try{run();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception&e){std::cerr<<name<<": "<<e.what()<<'\n';return 1;}}}

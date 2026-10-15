@@ -31,12 +31,12 @@ std::optional<SwapAccountHistoryCut> decode_swap_account_history_cut(std::string
 bool swap_account_history_identity(const SwapAccountHistoryCut& cut,const SwapAccountReview& review,const SwapRuntimeBinding& binding) noexcept {
     return !cut.document.is_zero() && cut.document==review.history_evidence &&
         cut.owner==sha256_digest(binding.owner_wallet) && cut.user==sha256_digest(std::as_bytes(std::span(review.user_id.view()))) &&
-        cut.finished_ms<=review.reviewed_at_ms && review.reviewed_at_ms-cut.finished_ms<=900'000;
+        cut.finished_ms<=review.reviewed_at_ms && review.reviewed_at_ms-cut.finished_ms<=kSwapReviewLifetimeMs;
 }
 bool swap_account_history_funding(const SwapAccountHistoryCut& cut,const SwapAccountReview& review,const SwapRuntimeBinding& binding,
     const swap::State& state,std::uint64_t now) noexcept {
     if(!swap_account_history_identity(cut,review,binding) || !swap_account_review_matches(review,binding,review.user_id.view(),state) ||
-       !swap_account_review_current(review,now) || now<cut.finished_ms || now-cut.finished_ms>900'000 ||
+       !swap_account_review_current(review,now) || now<cut.finished_ms || now-cut.finished_ms>kSwapReviewLifetimeMs ||
        state.pending.phase!=swap::Phase::none)return false;
     const auto outside=reviewed_outside_balance(review);if(!outside)return false;
     if(state.base.value()>cut.base_atoms || state.quote.value()>cut.quote_atoms)return false;

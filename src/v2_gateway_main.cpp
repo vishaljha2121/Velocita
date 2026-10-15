@@ -559,7 +559,7 @@ int run(const Arguments& a) {
             auto startup=SwapProtectedSignerStartup::open(profile->signer,SwapInheritedSecretFd(a.swap_secret_fd),code);
             if(!startup)throw Usage("protected signer startup refused");
             auto config=startup->session_config();
-            config.account_review_expires_at_ms=std::min(review->expires_at_ms,history->finished_ms>UINT64_MAX-900000?UINT64_MAX:history->finished_ms+900000);
+            config.account_review_expires_at_ms=std::min(review->expires_at_ms,history->finished_ms>UINT64_MAX-kSwapReviewLifetimeMs?UINT64_MAX:history->finished_ms+kSwapReviewLifetimeMs);
             config.transaction_policy_digest=swap_signer_verification_digest(*transaction_review);
             if(config.transaction_policy_digest.is_zero())throw Usage("transaction verification context refused");
             const auto binding=swap_signer_journal_binding(config,startup->key().public_key());
@@ -570,7 +570,8 @@ int run(const Arguments& a) {
             while(!g_stop.load(std::memory_order_relaxed) && swap_account_review_current(*review,clock.now_ms()) && clock.now_ms()<config.account_review_expires_at_ms) (void)startup->server().serve_once(session,b.ipc_timeout_ms);
             return 0;
         }
-        auto credentials=SwapGatewayCredentials::load(profile->gateway,SwapInheritedSecretFd(a.swap_secret_fd),clock.now_ms(),code);
+        auto credentials=SwapGatewayCredentials::load(profile->gateway,SwapInheritedSecretFd(a.swap_secret_fd),clock.now_ms(),code,
+            make_swap_token_port(static_cast<long>(a.timeout_ms)));
         if(!credentials)throw Usage("runtime session credentials refused");
         if(read_swap_account_setup(*credentials,clock,profile->user_id.view(),a.timeout_ms).code!=SwapAccountSetupCode::matching_setup_only)
             throw Usage("authenticated TM account/main-wallet setup refused");
@@ -607,7 +608,7 @@ int run(const Arguments& a) {
         const auto funded=swap_unsent_funding_state(link.state().spot_swap);
         const bool recovery_only=a.swap_recovery_only || !funded || swap_startup_recovery_only(link.state().spot_swap,prepared.latest().phase,
             prepared.latest().operation.effect,submitted.latest().phase);
-        SwapAccountStartupAdmission admission{*review,*history,funded?*funded:link.state().spot_swap,
+        SwapAccountStartupAdmission admission{*review,*history,funded?*funded:link.state().spot_swap,funded?*funded:link.state().spot_swap,
             {b.allocation.incarnation,review->document_digest,admission_read->reading.state_digest,
              static_cast<std::uint64_t>(admission_read->reading.applied_index),read_started,read_received},recovery_only};
         if(!recovery_only && !read_swap_reviewed_balance(*credentials,clock,admission,a.timeout_ms))

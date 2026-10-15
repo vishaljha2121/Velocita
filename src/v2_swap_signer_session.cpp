@@ -89,6 +89,19 @@ bool SwapSignerKey::sign(std::span<const std::byte> bytes,std::span<std::byte> d
             reinterpret_cast<const unsigned char*>(bytes.data()),bytes.size())==1;
     EVP_MD_CTX_free(context);if(!ok)size=0;return ok;
 }
+bool SwapSignerSession::authenticate(std::span<const std::byte> message,std::span<std::byte> der,std::size_t& size)noexcept{
+    size=0;const std::string_view text(reinterpret_cast<const char*>(message.data()),message.size());
+    if(text.size()!=47 || text[36]!='.')return false;
+    for(std::size_t n=0;n<36;++n){const auto c=text[n];
+        if(n==8||n==13||n==18||n==23){if(c!='-')return false;}
+        else if(!((c>='0'&&c<='9')||(c>='a'&&c<='f')||(c>='A'&&c<='F')))return false;}
+    std::uint64_t seconds{};
+    for(std::size_t n=37;n<47;++n){if(text[n]<'0'||text[n]>'9')return false;seconds=seconds*10+static_cast<std::uint64_t>(text[n]-'0');}
+    const auto event=clock_.event(clock_.context);const auto stamp=seconds*1000;
+    if(!event || (config_.account_review_expires_at_ms && event>=config_.account_review_expires_at_ms) ||
+       (stamp>event?stamp-event:event-stamp)>60'000)return false;
+    return key_.sign(message,der,size);
+}
 bool SwapSignerKey::verify(std::span<const std::byte> bytes,std::span<const std::byte> signature)noexcept{
     EVP_MD_CTX* context=EVP_MD_CTX_new();if(!context)return false;
     const bool valid=EVP_DigestVerifyInit(context,nullptr,EVP_sha256(),nullptr,static_cast<EVP_PKEY*>(key_))==1 &&

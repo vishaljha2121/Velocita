@@ -87,6 +87,22 @@ class LauncherTests(unittest.TestCase):
             h['capture_finished_ms'] = changed
             with self.assertRaises(ValueError): L.check_bindings(m,encode(p),encode(r),json.dumps(h).encode(),1001000,'gateway')
 
+    def test_review_and_capture_may_last_one_day(self):
+        def bound(review_end, captured):
+            m,p,r,h,encode = documents()
+            start = 100_000_001
+            h['capture_finished_ms'] = captured
+            history = json.dumps(h).encode()
+            m['account_history_sha256'] = hashlib.sha256(history).hexdigest()
+            r.update(history_evidence=m['account_history_sha256'], reviewed_at_ms=str(start), expires_at_ms=str(review_end))
+            m['account_review_sha256'] = p['account_review_digest'] = hashlib.sha256(encode(r)).hexdigest()
+            p['expires_at_ms'] = str(review_end)
+            return L.check_bindings(m,encode(p),encode(r),history,start,'signer')
+        self.assertTrue(bound(100_000_001 + 86_400_000, 100_000_001 - 86_400_000)['review_current'], 'day-long review over a day-old capture')
+        for review_end, captured in ((100_000_001 + 86_400_001, 100_000_001 - 86_400_000), (100_000_001 + 86_400_000, 100_000_001 - 86_400_001)):
+            with self.subTest(review_end=review_end, captured=captured), self.assertRaises(ValueError):
+                bound(review_end, captured)
+
     def test_duplicate_and_ambiguous_input_refuses(self):
         for raw in (b'a=1\na=2\n',b'a=1\n\n',b'a=\n',b'a=1\x00\n'):
             with self.assertRaises(ValueError): L.fields(raw)

@@ -60,6 +60,7 @@ public:
         const truemarkets::JupiterLookupPrefix& lookup={});
     [[nodiscard]] bool retrieve(EffectId,std::uint64_t sequence,std::string_view handle,
         std::span<const std::byte> payload,std::int64_t minimum_index,std::uint64_t expected_sign_by_ms);
+    [[nodiscard]] bool authenticate(std::span<const std::byte> message,std::span<std::byte> der,std::size_t& size) noexcept;
     void cancel_pending() noexcept;
     [[nodiscard]] SwapSignerStatus poll();
     [[nodiscard]] SwapSignerStatus status() const noexcept { return status_; }

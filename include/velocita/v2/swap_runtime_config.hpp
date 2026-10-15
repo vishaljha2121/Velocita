@@ -1,6 +1,9 @@
 #pragma once
 #include "velocita/v2/swap_reconcile_session.hpp"
 #include "velocita/v2/swap_signer_service.hpp"
+#include "velocita/v2/swap_https.hpp"
+#include <optional>
+#include <string>
 
 namespace velocita::v2 {
 inline constexpr std::size_t kSwapRuntimeSocketBytes=104;
@@ -50,13 +53,56 @@ public:
     [[nodiscard]] int get()const noexcept{return fd_;}
 private:int fd_{-1};
 };
+struct SwapMintedToken {
+    std::string token;
+    std::uint64_t expires_ms{};
+};
+class SwapTokenSigner {
+public:
+    virtual ~SwapTokenSigner()=default;
+    virtual std::optional<std::array<std::uint8_t,64>> sign(std::string_view message)=0;
+};
+class SwapSignerTokenSigner final:public SwapTokenSigner {
+public:
+    explicit SwapSignerTokenSigner(std::unique_ptr<swap_signer::Client> client):client_(std::move(client)){}
+    std::optional<std::array<std::uint8_t,64>> sign(std::string_view message)override;
+private:
+    std::unique_ptr<swap_signer::Client> client_;
+};
+class SwapTokenPort {
+public:
+    virtual ~SwapTokenPort()=default;
+    virtual transport::SwapHttpsResult post(std::string_view body)=0;
+};
+[[nodiscard]] bool swap_api_key_id_valid(std::string_view)noexcept;
+[[nodiscard]] std::optional<std::string> swap_api_key_request(std::string_view key_id,std::uint64_t timestamp_s,SwapTokenSigner&);
+[[nodiscard]] std::optional<SwapMintedToken> parse_swap_minted_token(unsigned http_status,std::string_view body);
+class SwapBearerCache final {
+public:
+    SwapBearerCache(std::string_view key_id,SwapTokenSigner& signer,SwapTokenPort& port,std::uint64_t window_end_ms)
+        :key_id_(key_id),signer_(signer),port_(port),window_end_(window_end_ms){}
+    ~SwapBearerCache();
+    SwapBearerCache(const SwapBearerCache&)=delete;
+    SwapBearerCache&operator=(const SwapBearerCache&)=delete;
+    [[nodiscard]] std::string_view bearer(std::uint64_t now_ms)noexcept;
+private:
+    void clear()noexcept;
+    std::string key_id_;
+    SwapTokenSigner& signer_;
+    SwapTokenPort& port_;
+    std::uint64_t window_end_{};
+    std::array<char,4096> token_{};
+    std::uint16_t size_{};
+    std::uint64_t expires_{};
+};
 class SwapGatewayCredentials final {
 public:
     ~SwapGatewayCredentials();
     SwapGatewayCredentials(const SwapGatewayCredentials&)=delete;
     SwapGatewayCredentials&operator=(const SwapGatewayCredentials&)=delete;
     [[nodiscard]] static std::unique_ptr<SwapGatewayCredentials> load(SwapGatewayStartupConfig,
-        SwapInheritedSecretFd,std::uint64_t now_ms,SwapRuntimeCode&);
+        SwapInheritedSecretFd,std::uint64_t now_ms,SwapRuntimeCode&,std::unique_ptr<SwapTokenPort> mint={},
+        std::unique_ptr<SwapTokenSigner> signer={});
     [[nodiscard]] std::string_view bearer(std::uint64_t now_ms)noexcept;
     [[nodiscard]] const SwapRuntimeBinding& binding()const noexcept{return config_.binding;}
     [[nodiscard]] std::unique_ptr<swap_signer::Client> signer_client()const;
@@ -66,6 +112,9 @@ private:
     std::array<char,4096> bearer_{};
     std::uint16_t bearer_size_{};
     std::uint64_t last_time_{};
+    std::unique_ptr<SwapTokenPort> mint_{};
+    std::unique_ptr<SwapTokenSigner> signer_{};
+    std::unique_ptr<SwapBearerCache> minted_{};
 };
 class SwapProtectedSignerStartup final {
 public:

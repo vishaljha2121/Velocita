@@ -57,10 +57,26 @@ bool swap_runtime_live_contract_admitted(const SwapRuntimeProfile& profile,std::
         !b.transaction_review_digest.is_zero() && b.max_buy_output_deduction_lamports<=2'039'280 &&
         !profile.account_review_digest.is_zero();
 }
+namespace {
+class SwapHttpsTokenPort final:public SwapTokenPort {
+public:
+    explicit SwapHttpsTokenPort(long timeout):timeout_(timeout){}
+    transport::SwapHttpsResult post(std::string_view body)override{
+        transport::SwapHttpsConfig cfg;cfg.origin="https://api.truemarkets.co";
+        cfg.timeout_ms=timeout_;cfg.max_response_bytes=truemarkets::kMaxTmResponseBytes;
+        cfg.routes[0]={transport::SwapHttpsMethod::post,"/v1/auth/api-key/token"};cfg.route_count=1;
+        transport::SwapHttpsClient client(cfg);
+        return client.exchange({transport::SwapHttpsMethod::post,"/v1/auth/api-key/token",{},body});
+    }
+private:
+    long timeout_{};
+};
+}
+std::unique_ptr<SwapTokenPort> make_swap_token_port(long timeout_ms){return std::make_unique<SwapHttpsTokenPort>(timeout_ms);}
 SwapAccountSetupResult read_swap_account_setup(SwapGatewayCredentials& credentials,
     SwapFinalizedReadClock& clock,std::string_view user,std::uint64_t timeout){
     if(!swap_account_user_id_valid(user) || !timeout || timeout>30'000)return {};
-    const auto start=clock.now_ms();const auto bearer=credentials.bearer(start);
+    const auto bearer=credentials.bearer(clock.now_ms());const auto start=clock.now_ms();
     if(!start || bearer.empty())return {};
     transport::SwapHttpsConfig cfg;cfg.origin="https://api.truemarkets.co";
     cfg.timeout_ms=static_cast<long>(timeout);cfg.max_response_bytes=truemarkets::kMaxTmResponseBytes;
@@ -75,11 +91,14 @@ SwapAccountSetupResult read_swap_account_setup(SwapGatewayCredentials& credentia
     for(std::size_t i=0;i<owner.size();++i)owner[i]=std::to_integer<std::uint8_t>(credentials.binding().owner_wallet[i]);
     return verify_swap_account_setup({response.body.data(),response.body_size},user,owner);
 }
+bool swap_admission_funded(const SwapAccountStartupAdmission& admission,const SwapRuntimeBinding& binding,std::uint64_t now) noexcept {
+    return swap_account_history_funding(admission.history,admission.review,binding,admission.funding_state,now);
+}
 bool read_swap_reviewed_balance(SwapGatewayCredentials& credentials,SwapFinalizedReadClock& clock,
     const SwapAccountStartupAdmission& admission,std::uint64_t timeout){
     if(admission.recovery_only || !timeout || timeout>30'000)return false;
-    const auto start=clock.now_ms();const auto bearer=credentials.bearer(start);
-    if(bearer.empty() || !swap_account_history_funding(admission.history,admission.review,credentials.binding(),admission.state,start))return false;
+    const auto bearer=credentials.bearer(clock.now_ms());const auto start=clock.now_ms();
+    if(bearer.empty() || !swap_admission_funded(admission,credentials.binding(),start))return false;
     transport::SwapHttpsConfig cfg;cfg.origin="https://api.truemarkets.co";
     cfg.timeout_ms=static_cast<long>(timeout);cfg.max_response_bytes=truemarkets::kMaxTmResponseBytes;
     cfg.routes[0]={transport::SwapHttpsMethod::get,"/v1/gateway/balances"};cfg.route_count=1;
@@ -87,7 +106,7 @@ bool read_swap_reviewed_balance(SwapGatewayCredentials& credentials,SwapFinalize
     try{response=client.exchange({transport::SwapHttpsMethod::get,"/v1/gateway/balances",bearer,{}});}catch(...){return false;}
     const auto end=clock.now_ms();
     return end>=start && end-start<=timeout && !credentials.bearer(end).empty() &&
-        swap_account_history_funding(admission.history,admission.review,credentials.binding(),admission.state,end) &&
+        swap_admission_funded(admission,credentials.binding(),end) &&
         response.status==transport::SwapHttpsStatus::complete && response.exposure==transport::SwapHttpsExposure::response_received &&
         response.http_status==200 && response.body_size<=response.body.size() &&
         swap_reviewed_balance_matches(admission.review,credentials.binding(),admission.state,admission.barrier,
@@ -156,7 +175,7 @@ transport::SwapHttpsResult SwapProductionPorts::create(const truemarkets::SwapRe
     const auto result=port.create(request,read);trace_=swap_create_trace(result);return result;
 }
 void SwapProductionPorts::execute(const SwapSubmissionIdentity& id,std::span<const std::byte> bytes){
-    if(admission_.recovery_only || !swap_account_history_funding(admission_.history,admission_.review,credentials_.binding(),admission_.state,clock_.now_ms()))return;
+    if(admission_.recovery_only || !swap_admission_funded(admission_,credentials_.binding(),clock_.now_ms()))return;
     if(executed_)return;executed_=true;
     if(submission_.status()!=SwapSubmissionCode::none || submission_.latest().phase!=SwapSubmissionPhase::execute_intent || submission_.latest().identity!=id ||
         preparation_.status()!=SwapPrepareStoreCode::none || preparation_.latest().binding!=binding_ || preparation_.latest().phase!=SwapPreparePhase::prepared ||

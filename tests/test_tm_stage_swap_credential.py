@@ -54,4 +54,17 @@ class StageTests(unittest.TestCase):
     def test_token_cannot_outlive_session(self):
         with patch.object(S.SESSION,'read_private',return_value={}),patch.object(S.SESSION,'token_pair',return_value=({'access_token':'token'},100)):
             with self.assertRaisesRegex(ValueError,'outlives',msg='profile_bounded_by_session'):S.material('gateway',Path('unused'),dict(expires_at_ms='100001'))
+    def test_gateway_stages_only_the_api_key_identifier(self):
+        doc=dict(algorithm='ES256',private_key=dict(kty='EC',crv='P-256',d='secret-fixture'),key_id='11111111-1111-4111-8111-111111111111')
+        with patch.object(S.SESSION,'read_private',return_value=doc),patch.object(S.SESSION,'token_pair') as pair,patch.object(S.H,'validate_secret') as verify:
+            self.assertEqual(S.material('gateway',Path('unused'),{}),b'11111111-1111-4111-8111-111111111111','gateway_receives_no_private_key')
+            pair.assert_not_called();self.assertEqual(verify.call_args.args[:2],('gateway',b'11111111-1111-4111-8111-111111111111'))
+    def test_api_key_document_validated_for_both_roles(self):
+        for role in ('gateway','signer'):
+            for change,reason in ((dict(algorithm='ES384'),'P-256'),(dict(private_key=dict(kty='RSA',crv='P-256')),'P-256'),(dict(private_key=dict(kty='EC',crv='P-384')),'P-256'),
+                                  (dict(private_key='jwk'),'P-256'),(dict(key_id='not-a-uuid'),'identifier'),(dict(key_id=7),'identifier')):
+                doc=dict(dict(algorithm='ES256',private_key=dict(kty='EC',crv='P-256'),key_id='11111111-1111-4111-8111-111111111111'),**change)
+                with self.subTest(role=role,change=change),patch.object(S.SESSION,'read_private',return_value=doc),patch.object(S.H,'validate_secret'),\
+                        patch.object(S.SESSION.MINT,'jwk_to_pem',return_value=b'pem'),patch.object(S.HISTORY,'key_bytes',return_value=bytes(32)),self.assertRaisesRegex(ValueError,reason):
+                    S.material(role,Path('unused'),dict(owner_wallet='00'*32))
 if __name__=='__main__':unittest.main()
