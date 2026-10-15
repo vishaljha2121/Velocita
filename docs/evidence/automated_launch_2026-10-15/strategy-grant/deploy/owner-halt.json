@@ -1,0 +1,24 @@
+{
+  "owner_result": "COMMITTED sequence=10 index=16 term=5 code=0 code_name=applied state_version=10 kill_epoch=1 executor_generation=1 strategy_mode=5 from=2 latency_ms=618",
+  "next_operator_sequence": 11,
+  "incarnation": "aae119b95ddcea5a206f03ab5ca12c15",
+  "readback": {
+    "all_three_voters_up_ready": true,
+    "failed": 0,
+    "mode": 5,
+    "term": 5,
+    "leader": 2,
+    "commit": 16,
+    "applied": 16,
+    "driver_active": false,
+    "driver_sequence": 2,
+    "pending_effect": 0,
+    "last_effect": 0,
+    "quote_atoms": 25000000,
+    "base_atoms": 0,
+    "fees_atoms": 0,
+    "observed_at_ms": 1792104660199
+  },
+  "independent_wallet_read": false,
+  "upgrade_installed": false
+}

@@ -1,5 +1,20 @@
 # Promoting the stochastic paper strategy to live: plan and status
 
+## Cluster upgrade checkpoint approved; owner halt verified — 2026-10-15
+
+Owner halt committed: sequence10, index16, term5, mode5. All three voters confirmed
+halted/applied16; driver inactive at sequence2/next3, account flat$25/no effects.
+**Next operator sequence11. Do not rerun halt10.** Owner approved the scoped upgrade-tool
+checkpoint; committed-source staging and owner preflight are next. Nothing installed yet.
+
+Qualified `ba299ff` images are packaged and verified on NUC1, Pi and NUC2. The runtime
+payload is staged on NUC1 with all four hashes checked. The halted-only upgrade wrapper
+passes eight tests and three mutation checks; the three previous installer tests also pass.
+[Upgrade procedure and evidence](evidence/automated_launch_2026-10-15/strategy-grant/deploy/README.md).
+After owner runtime upgrade: rolling voter/exporter pairs, then replace only the stopped
+strategy driver's client image. Preserve incarnation, WAL, journals, funding and sequences.
+No grant or driver restart yet. Review drains October16 13:41:34UTC; expiry13:48:34UTC.
+
 ## Strategy grant qualified on both architectures — 2026-10-15 22:35 UTC
 
 Executable source `ba299ff6c89392177cfd4702fda11dabb7ee1719` is qualified on NUC1 and Pi.

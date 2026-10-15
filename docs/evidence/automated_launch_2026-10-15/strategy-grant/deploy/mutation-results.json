@@ -1,0 +1,23 @@
+[
+  {
+    "mutant": "skip_halted_check",
+    "compiled_source_sha256": "3bd1b01dd36507823914112d7fb1bf8288afd924387ebb95b272eb90e0dc46aa",
+    "test": "test_any_normal_voter_refuses",
+    "killed": true,
+    "output": "FFF\n======================================================================\nFAIL: test_any_normal_voter_refuses (grant_tests.Upgrade.test_any_normal_voter_refuses) (index=0)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/vishaljha/aeron-raft-pi/docs/evidence/automated_launch_2026-10-15/strategy-grant/deploy/test_owner_upgrade.py\", line 58, in test_any_normal_voter_refuses\n    with self.subTest(index=index), patch.object(W, 'base_health', return_value=rows), self.assertRaisesRegex(ValueError, 'owner-halted'):\n                                                                                       ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_any_normal_voter_refuses (grant_tests.Upgrade.test_any_normal_voter_refuses) (index=1)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/vishaljha/aeron-raft-pi/docs/evidence/automated_launch_2026-10-15/strategy-grant/deploy/test_owner_upgrade.py\", line 58, in test_any_normal_voter_refuses\n    with self.subTest(index=index), patch.object(W, 'base_health', return_value=rows), self.assertRaisesRegex(ValueError, 'owner-halted'):\n                                                                                       ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: ValueError not raised\n\n======================================================================\nFAIL: test_any_normal_voter_refuses (grant_tests.Upgrade.test_any_normal_voter_refuses) (index=2)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/vishaljha/aeron-raft-pi/docs/evidence/automated_launch_2026-10-15/strategy-grant/deploy/test_owner_upgrade.py\", line 58, in test_any_normal_voter_refuses\n    with self.subTest(index=index), patch.object(W, 'base_health', return_value=rows), self.assertRaisesRegex(ValueError, 'owner-halted'):\n                                                                                       ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: ValueError not raised\n\n----------------------------------------------------------------------\nRan 1 test in 0.001s\n\nFAILED (failures=3)\n"
+  },
+  {
+    "mutant": "skip_binary_pin",
+    "compiled_source_sha256": "6da711d925c544ba28fe886a13f321c26565106a086f7902a6fd64c7ba35806b",
+    "test": "test_other_binary_refuses",
+    "killed": true,
+    "output": "F\n======================================================================\nFAIL: test_other_binary_refuses (grant_tests.Upgrade.test_other_binary_refuses)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/vishaljha/aeron-raft-pi/docs/evidence/automated_launch_2026-10-15/strategy-grant/deploy/test_owner_upgrade.py\", line 46, in test_other_binary_refuses\n    with self.assertRaisesRegex(ValueError, 'native-qualified'):\n         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: ValueError not raised\n\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nFAILED (failures=1)\n"
+  },
+  {
+    "mutant": "allow_missing_voter",
+    "compiled_source_sha256": "a70e14a1298045f12ac31ec0d400c7282e4d64f059c71d93bea696ef5366900e",
+    "test": "test_missing_voter_refuses",
+    "killed": true,
+    "output": "F\n======================================================================\nFAIL: test_missing_voter_refuses (grant_tests.Upgrade.test_missing_voter_refuses)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/vishaljha/aeron-raft-pi/docs/evidence/automated_launch_2026-10-15/strategy-grant/deploy/test_owner_upgrade.py\", line 62, in test_missing_voter_refuses\n    with patch.object(W, 'base_health', return_value=[dict(strategy_mode=5)]*2), self.assertRaises(ValueError):\n                                                                                 ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^\nAssertionError: ValueError not raised\n\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nFAILED (failures=1)\n"
+  }
+]

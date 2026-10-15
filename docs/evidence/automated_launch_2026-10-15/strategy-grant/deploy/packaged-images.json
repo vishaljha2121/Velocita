@@ -1,0 +1,50 @@
+{
+  "nuc1": {
+    "base_image": "2b5b016d1cbc793aa36aab3505a4651de95f3a5737ab33457e6e71795ebb0675",
+    "binary_sha256": {
+      "velocita-v2-client": "38081991559fbd013b958df4505358801798d26c6589757463d6e303c1822f3a",
+      "velocita-v2-exporter": "b57dc4943f92c551e06899963b0727a3b5b15e5293f4ba862bfe8e8ac2162408",
+      "velocita-v2-node": "589d24eac6b87d92ab89f4702cf3aa4cec2d81ff11043be14c02c27dc5a7a8b1"
+    },
+    "compiled": false,
+    "image": "localhost/velocita-v2:qualified-ba299ff",
+    "image_id": "1fec68b044b8b3d9778d3df2117df7c3ee762afbc0f6562fcd5c7a2d565b7ff4",
+    "source_commit": "ba299ff6c89392177cfd4702fda11dabb7ee1719",
+    "container_hashes_verified": true,
+    "shared_libraries_resolved": true,
+    "runtime_check": "589d24eac6b87d92ab89f4702cf3aa4cec2d81ff11043be14c02c27dc5a7a8b1  /usr/local/bin/velocita-v2-node\nb57dc4943f92c551e06899963b0727a3b5b15e5293f4ba862bfe8e8ac2162408  /usr/local/bin/velocita-v2-exporter\n38081991559fbd013b958df4505358801798d26c6589757463d6e303c1822f3a  /usr/local/bin/velocita-v2-client\n\tlinux-vdso.so.1 (0x00007ffde81f6000)\n\tlibbsd.so.0 => /usr/lib/x86_64-linux-gnu/libbsd.so.0 (0x00007d60bd15b000)\n\tlibuuid.so.1 => /usr/lib/x86_64-linux-gnu/libuuid.so.1 (0x00007d60bd151000)\n\tlibstdc++.so.6 => /usr/lib/x86_64-linux-gnu/libstdc++.so.6 (0x00007d60bceb1000)\n\tlibm.so.6 => /usr/lib/x86_64-linux-gnu/libm.so.6 (0x00007d60bcd8b000)\n\tlibgcc_s.so.1 => /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 (0x00007d60bcd5d000)\n\tlibc.so.6 => /usr/lib/x86_64-linux-gnu/libc.so.6 (0x00007d60bcb3a000)\n\tlibmd.so.0 => /usr/lib/x86_64-linux-gnu/libmd.so.0 (0x00007d60bcb2b000)\n\t/lib64/ld-linux-x86-64.so.2 (0x00007d60bd33b000)\n\tlinux-vdso.so.1 (0x00007ffcc4efc000)\n\tlibstdc++.so.6 => /usr/lib/x86_64-linux-gnu/libstdc++.so.6 (0x00007e791995f000)\n\tlibgcc_s.so.1 => /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 (0x00007e7919931000)\n\tlibc.so.6 => /usr/lib/x86_64-linux-gnu/libc.so.6 (0x00007e7919710000)\n\tlibm.so.6 => /usr/lib/x86_64-linux-gnu/libm.so.6 (0x00007e79195ea000)\n\t/lib64/ld-linux-x86-64.so.2 (0x00007e7919c16000)\n\tlinux-vdso.so.1 (0x00007ffcbb1d7000)\n\tlibbsd.so.0 => /usr/lib/x86_64-linux-gnu/libbsd.so.0 (0x000070d3eb60b000)\n\tlibuuid.so.1 => /usr/lib/x86_64-linux-gnu/libuuid.so.1 (0x000070d3eb601000)\n\tlibstdc++.so.6 => /usr/lib/x86_64-linux-gnu/libstdc++.so.6 (0x000070d3eb361000)\n\tlibm.so.6 => /usr/lib/x86_64-linux-gnu/libm.so.6 (0x000070d3eb23b000)\n\tlibgcc_s.so.1 => /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 (0x000070d3eb20d000)\n\tlibc.so.6 => /usr/lib/x86_64-linux-gnu/libc.so.6 (0x000070d3eafea000)\n\tlibmd.so.0 => /usr/lib/x86_64-linux-gnu/libmd.so.0 (0x000070d3eafdb000)\n\t/lib64/ld-linux-x86-64.so.2 (0x000070d3eb75f000)\n",
+    "services_changed": false
+  },
+  "pi": {
+    "base_image": "46d634ca806f7524758e85ae1171783520e14b123152d31a4f807405fa843903",
+    "binary_sha256": {
+      "velocita-v2-client": "5226915a047d8eedeb8353223c1a26072f5770250997d970d8905633a11ace73",
+      "velocita-v2-exporter": "0a8f4063f8635db36cee7f9be1a71a6687993d31346f55258f0aa9a757056cbf",
+      "velocita-v2-node": "3c43b3dd09ab7bd4bde63d5eaf7e79579c9abe071118b8e6e5e35dc10f7d258a"
+    },
+    "compiled": false,
+    "image": "localhost/velocita-v2:qualified-ba299ff",
+    "image_id": "e5c41c8c638b3bfbf0e34be9c7242ba888fa31124337bea09d697e704a52cfc4",
+    "source_commit": "ba299ff6c89392177cfd4702fda11dabb7ee1719",
+    "container_hashes_verified": true,
+    "shared_libraries_resolved": true,
+    "runtime_check": "3c43b3dd09ab7bd4bde63d5eaf7e79579c9abe071118b8e6e5e35dc10f7d258a  /usr/local/bin/velocita-v2-node\n0a8f4063f8635db36cee7f9be1a71a6687993d31346f55258f0aa9a757056cbf  /usr/local/bin/velocita-v2-exporter\n5226915a047d8eedeb8353223c1a26072f5770250997d970d8905633a11ace73  /usr/local/bin/velocita-v2-client\n\tlinux-vdso.so.1 (0x0000ffff8e799000)\n\tlibbsd.so.0 => /usr/lib/aarch64-linux-gnu/libbsd.so.0 (0x0000ffff8e540000)\n\tlibuuid.so.1 => /usr/lib/aarch64-linux-gnu/libuuid.so.1 (0x0000ffff8e510000)\n\tlibstdc++.so.6 => /usr/lib/aarch64-linux-gnu/libstdc++.so.6 (0x0000ffff8e270000)\n\tlibm.so.6 => /usr/lib/aarch64-linux-gnu/libm.so.6 (0x0000ffff8e1a0000)\n\tlibgcc_s.so.1 => /usr/lib/aarch64-linux-gnu/libgcc_s.so.1 (0x0000ffff8e160000)\n\tlibc.so.6 => /usr/lib/aarch64-linux-gnu/libc.so.6 (0x0000ffff8df90000)\n\t/lib/ld-linux-aarch64.so.1 (0x0000ffff8e750000)\n\tlibmd.so.0 => /usr/lib/aarch64-linux-gnu/libmd.so.0 (0x0000ffff8df60000)\n\tlinux-vdso.so.1 (0x0000ffffb9da8000)\n\tlibstdc++.so.6 => /usr/lib/aarch64-linux-gnu/libstdc++.so.6 (0x0000ffffb9a90000)\n\tlibgcc_s.so.1 => /usr/lib/aarch64-linux-gnu/libgcc_s.so.1 (0x0000ffffb9a50000)\n\tlibc.so.6 => /usr/lib/aarch64-linux-gnu/libc.so.6 (0x0000ffffb9880000)\n\t/lib/ld-linux-aarch64.so.1 (0x0000ffffb9d60000)\n\tlibm.so.6 => /usr/lib/aarch64-linux-gnu/libm.so.6 (0x0000ffffb97b0000)\n\tlinux-vdso.so.1 (0x0000ffff8c7cc000)\n\tlibbsd.so.0 => /usr/lib/aarch64-linux-gnu/libbsd.so.0 (0x0000ffff8c5f0000)\n\tlibuuid.so.1 => /usr/lib/aarch64-linux-gnu/libuuid.so.1 (0x0000ffff8c5c0000)\n\tlibstdc++.so.6 => /usr/lib/aarch64-linux-gnu/libstdc++.so.6 (0x0000ffff8c320000)\n\tlibm.so.6 => /usr/lib/aarch64-linux-gnu/libm.so.6 (0x0000ffff8c250000)\n\tlibgcc_s.so.1 => /usr/lib/aarch64-linux-gnu/libgcc_s.so.1 (0x0000ffff8c210000)\n\tlibc.so.6 => /usr/lib/aarch64-linux-gnu/libc.so.6 (0x0000ffff8c040000)\n\t/lib/ld-linux-aarch64.so.1 (0x0000ffff8c780000)\n\tlibmd.so.0 => /usr/lib/aarch64-linux-gnu/libmd.so.0 (0x0000ffff8c010000)\n",
+    "services_changed": false
+  },
+  "nuc2": {
+    "base_image": "edb7f88f4aa057298a0c4f1276ff343da392ebfe91c65bf88790b58b45dc8a33",
+    "binary_sha256": {
+      "velocita-v2-client": "38081991559fbd013b958df4505358801798d26c6589757463d6e303c1822f3a",
+      "velocita-v2-exporter": "b57dc4943f92c551e06899963b0727a3b5b15e5293f4ba862bfe8e8ac2162408",
+      "velocita-v2-node": "589d24eac6b87d92ab89f4702cf3aa4cec2d81ff11043be14c02c27dc5a7a8b1"
+    },
+    "compiled": false,
+    "image": "localhost/velocita-v2:qualified-ba299ff",
+    "image_id": "2c5bf8199f9185e603a80bceaadc2c126ea04a3e9eae4b356dfa576c1b7b4bb6",
+    "source_commit": "ba299ff6c89392177cfd4702fda11dabb7ee1719",
+    "container_hashes_verified": true,
+    "shared_libraries_resolved": true,
+    "runtime_check": "589d24eac6b87d92ab89f4702cf3aa4cec2d81ff11043be14c02c27dc5a7a8b1  /usr/local/bin/velocita-v2-node\nb57dc4943f92c551e06899963b0727a3b5b15e5293f4ba862bfe8e8ac2162408  /usr/local/bin/velocita-v2-exporter\n38081991559fbd013b958df4505358801798d26c6589757463d6e303c1822f3a  /usr/local/bin/velocita-v2-client\n\tlinux-vdso.so.1 (0x00007ffc07cf6000)\n\tlibbsd.so.0 => /usr/lib/x86_64-linux-gnu/libbsd.so.0 (0x00007d2a80db2000)\n\tlibuuid.so.1 => /usr/lib/x86_64-linux-gnu/libuuid.so.1 (0x00007d2a80da8000)\n\tlibstdc++.so.6 => /usr/lib/x86_64-linux-gnu/libstdc++.so.6 (0x00007d2a80b08000)\n\tlibm.so.6 => /usr/lib/x86_64-linux-gnu/libm.so.6 (0x00007d2a809e2000)\n\tlibgcc_s.so.1 => /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 (0x00007d2a809b4000)\n\tlibc.so.6 => /usr/lib/x86_64-linux-gnu/libc.so.6 (0x00007d2a80791000)\n\tlibmd.so.0 => /usr/lib/x86_64-linux-gnu/libmd.so.0 (0x00007d2a80782000)\n\t/lib64/ld-linux-x86-64.so.2 (0x00007d2a80f92000)\n\tlinux-vdso.so.1 (0x00007ffefcddb000)\n\tlibstdc++.so.6 => /usr/lib/x86_64-linux-gnu/libstdc++.so.6 (0x00007f5c5bfc9000)\n\tlibgcc_s.so.1 => /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 (0x00007f5c5bf9b000)\n\tlibc.so.6 => /usr/lib/x86_64-linux-gnu/libc.so.6 (0x00007f5c5bd7a000)\n\tlibm.so.6 => /usr/lib/x86_64-linux-gnu/libm.so.6 (0x00007f5c5bc54000)\n\t/lib64/ld-linux-x86-64.so.2 (0x00007f5c5c280000)\n\tlinux-vdso.so.1 (0x00007ffc469de000)\n\tlibbsd.so.0 => /usr/lib/x86_64-linux-gnu/libbsd.so.0 (0x000071598cd65000)\n\tlibuuid.so.1 => /usr/lib/x86_64-linux-gnu/libuuid.so.1 (0x000071598cd5b000)\n\tlibstdc++.so.6 => /usr/lib/x86_64-linux-gnu/libstdc++.so.6 (0x000071598cabb000)\n\tlibm.so.6 => /usr/lib/x86_64-linux-gnu/libm.so.6 (0x000071598c995000)\n\tlibgcc_s.so.1 => /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 (0x000071598c967000)\n\tlibc.so.6 => /usr/lib/x86_64-linux-gnu/libc.so.6 (0x000071598c744000)\n\tlibmd.so.0 => /usr/lib/x86_64-linux-gnu/libmd.so.0 (0x000071598c735000)\n\t/lib64/ld-linux-x86-64.so.2 (0x000071598ceb9000)\n",
+    "services_changed": false
+  }
+}

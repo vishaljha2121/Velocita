@@ -1,0 +1,15 @@
+{
+  "source_commit": "ba299ff6c89392177cfd4702fda11dabb7ee1719",
+  "host": "100.72.127.102",
+  "path": "/home/vishal/.cache/velocita-build/strategy-grant-upgrade-ba299ff/payload",
+  "sha256": {
+    "service_launcher.py": "5f1123d9093cd75c69cfe57b1c19239e05d4420d7f787a6d383ccaa84a49fe38",
+    "service_profile.py": "c03c0ee6e1fbea24d8c6a03bf9d4756c04155889bfd89da2fc710377be03841c",
+    "fd_handoff.py": "a8ffbfc1aa25830a0a439d282898725b3ba58936a9d7b5bf68fce57f5a78712c",
+    "velocita-v2-gateway": "9aa06eb11b23f30db37f8c628a2ca4efac7ea32d9b08c21f08a1a95df7942023"
+  },
+  "all_four_remote_hashes_verified": true,
+  "installed": false,
+  "helper_source_staged": false,
+  "services_changed": false
+}
