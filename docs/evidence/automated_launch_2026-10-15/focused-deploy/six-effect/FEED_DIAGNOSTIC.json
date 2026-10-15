@@ -1,0 +1,39 @@
+{
+  "open_seconds": 0.7569436590420082,
+  "bootstrap_seconds": 4.413633325952105,
+  "rows": [
+    {
+      "stamp": 1792085773,
+      "bootstrap_last": 1792085772,
+      "age_ms": 3615,
+      "duplicate": false,
+      "gap": false,
+      "would_refuse_age": true
+    },
+    {
+      "stamp": 1792085774,
+      "bootstrap_last": 1792085772,
+      "age_ms": 2615,
+      "duplicate": false,
+      "gap": true,
+      "would_refuse_age": true
+    },
+    {
+      "stamp": 1792085775,
+      "bootstrap_last": 1792085772,
+      "age_ms": 1615,
+      "duplicate": false,
+      "gap": true,
+      "would_refuse_age": false
+    },
+    {
+      "stamp": 1792085776,
+      "bootstrap_last": 1792085772,
+      "age_ms": 615,
+      "duplicate": false,
+      "gap": true,
+      "would_refuse_age": false
+    }
+  ],
+  "submitter_constructed": false
+}

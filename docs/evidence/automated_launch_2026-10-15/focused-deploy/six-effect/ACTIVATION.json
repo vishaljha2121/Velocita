@@ -1,0 +1,29 @@
+{
+  "owner_mode_change": {
+    "sequence": 7,
+    "index": 8,
+    "term": 1,
+    "code_name": "applied",
+    "state_version": 7,
+    "kill_epoch": 1,
+    "executor_generation": 1,
+    "strategy_mode": 1
+  },
+  "driver_start": {
+    "timestamp": "2026-10-15 13:34:03 EDT",
+    "pid": 470897,
+    "max_orders": 6,
+    "start_requests_sent": 1
+  },
+  "pre_start": {
+    "observation_index": 8,
+    "managed_base_atoms": 0,
+    "managed_quote_atoms": 25000000,
+    "last_effect": 0,
+    "pending_effect": 0,
+    "driver_state_files": [],
+    "client_state_files": []
+  },
+  "supervision_directory": "/home/velocitas/.cache/velocita-build/six-effect-supervision-20261015",
+  "status": "running; no fill observed at initial sample"
+}

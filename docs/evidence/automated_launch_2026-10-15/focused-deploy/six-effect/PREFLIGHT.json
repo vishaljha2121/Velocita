@@ -1,0 +1,33 @@
+{
+  "incarnation": "aae119b95ddcea5a206f03ab5ca12c15",
+  "max_orders": 6,
+  "review_expires_ms": 1792158514459,
+  "kill_epoch": 1,
+  "executor_generation": 1,
+  "opening_sha256": "2f329e441584fbda843187ffd251f8ac000ea383506b0ba4623586ef604d9b95",
+  "client_image_id": "ddf59cea34198ca4a130dbdbd31b7eee5aeec5ccb499c86cc831a8dfb6a263f6",
+  "driver_active": false,
+  "driver_state_files": [],
+  "client_state_files": [],
+  "model_files_verified": 76,
+  "bootstrap_bars": 3000,
+  "websocket_closed_bar_age_ms": [
+    181,
+    171,
+    175
+  ],
+  "websocket_consecutive_bars": 3,
+  "producer": {
+    "observed_at_ms": 1792083365564,
+    "applied_index": 7,
+    "base_atoms": 0,
+    "quote_atoms": 25000000,
+    "last_effect": 0,
+    "pending_effect": 0
+  },
+  "operator_next_sequence": 7,
+  "strategy_next_sequence": 1,
+  "operator_command_dry_run": "STRATEGY-MODE normal expected kill epoch 1, executor generation 1; DRY-RUN not sent",
+  "mode_change_sent": false,
+  "driver_started": false
+}

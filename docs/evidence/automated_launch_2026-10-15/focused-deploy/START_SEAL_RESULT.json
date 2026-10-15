@@ -1,0 +1,58 @@
+{
+  "evidence_source": "Owner startup output in chat, followed by unprivileged NUC1 readback",
+  "source_commit": "1f8d7b63c03c4ef1c0c916d833cdf8513f42a2dc",
+  "startup_tool_commit": "f30e6ccbba0735f60ebacf3ed2dcf637656662bd",
+  "sealed_manifest_sha256": "f3df32529bc2e3bfd08cb4a82ddecd8fe9b128160b2417ecb7850252cd0668c4",
+  "incarnation": "aae119b95ddcea5a206f03ab5ca12c15",
+  "review_expires_at_ms": 1792158514459,
+  "initialized_journals": [
+    "prepared",
+    "protected-signing",
+    "results",
+    "signing-requests",
+    "submitted"
+  ],
+  "services_started": true,
+  "start_guards_retained": true,
+  "trading_mode": "halted",
+  "driver_started": false,
+  "orders_submitted": false,
+  "readback": {
+    "gateway": {
+      "active": true,
+      "pid": 467333,
+      "refuse_manual_start": true
+    },
+    "signer": {
+      "active": true,
+      "pid": 467321,
+      "refuse_manual_start": true
+    },
+    "driver": {
+      "active": false,
+      "pid": 0
+    },
+    "observer": {
+      "timer_active": true,
+      "last_result": "success",
+      "exit_status": 0,
+      "up": 1,
+      "review_current": 1,
+      "settlement_feed_ready": 1,
+      "observed_at_ms": 1792083266561
+    }
+  },
+  "producer_observation": {
+    "schema": 2,
+    "incarnation": "aae119b95ddcea5a206f03ab5ca12c15",
+    "observed_at_ms": 1792083266324,
+    "applied_index": 7,
+    "base_atoms": 0,
+    "quote_atoms": 25000000,
+    "fees_atoms": 0,
+    "realized_pnl_atoms": 0,
+    "last_effect": 0,
+    "pending_effect": 0,
+    "settlements": []
+  }
+}

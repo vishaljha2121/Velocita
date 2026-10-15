@@ -1,5 +1,10 @@
 # Handoff — automated stochastic swap run, 2026-10-15 ~14:05 UTC
 
+**Latest continuation:** read [Codex's completed-work and feed-blocker handoff](CODEX_TO_CLAUDE_MVP_2026-10-15.md).
+The corrected runtime is installed, started and sealed. Driver is now stopped and cluster halted
+at index9 after a zero-order feed-bootstrap failure. Earlier startup and sequence commands below
+are historical and must not be rerun. Next is a Python catch-up fix, not initial deployment.
+
 **Superseded continuation, October 15 (Codex):** the missing caller keys were confirmed, and
 review found additional consecutive-effect, freshness, order-cap and expiry defects. Start with
 [the focused correction report](../evidence/automated_launch_2026-10-15/focused-mvp/README.md)

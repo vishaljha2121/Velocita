@@ -1,3 +1,5 @@
+**Completed by owner; do not rerun.** [Result and subsequent observer/service readback](START_SEAL_RESULT.json). Both services run with trading halted and driver stopped. The procedure below is retained as executed evidence.
+
 # Guarded first start and seal
 
 Requested by owner after successful guarded installation. Source is committed as `f30e6ccbba0735f60ebacf3ed2dcf637656662bd`, qualified on NUC1 and staged for the owner. Startup has not run; sudo stays with the owner. No new C++ build is required. Qualified binary remains `1f8d7b6`.

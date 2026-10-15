@@ -1,0 +1,68 @@
+{
+  "wal_sha256": "e90ac092b912e1ea8ea5e191f5de7cdcb248ed132c85fd5d4b5ae3e15e11c02c",
+  "block_checksums_verified": true,
+  "bound_frame_digests_verified": true,
+  "command_digests_verified": true,
+  "identical_duplicate_sequence": 2,
+  "rows": [
+    {
+      "index": 1,
+      "term": 1,
+      "entry_type": 0,
+      "kind": 6,
+      "caller": 7,
+      "sequence": 1
+    },
+    {
+      "index": 2,
+      "term": 1,
+      "entry_type": 0,
+      "kind": 7,
+      "caller": 7,
+      "sequence": 2
+    },
+    {
+      "index": 3,
+      "term": 1,
+      "entry_type": 0,
+      "kind": 7,
+      "caller": 7,
+      "sequence": 2
+    },
+    {
+      "index": 4,
+      "term": 1,
+      "entry_type": 0,
+      "kind": 20,
+      "caller": 7,
+      "sequence": 3
+    },
+    {
+      "index": 5,
+      "term": 1,
+      "entry_type": 0,
+      "kind": 21,
+      "caller": 7,
+      "sequence": 4
+    },
+    {
+      "index": 6,
+      "term": 1,
+      "entry_type": 0,
+      "kind": 21,
+      "caller": 7,
+      "sequence": 5
+    },
+    {
+      "index": 7,
+      "term": 1,
+      "entry_type": 0,
+      "kind": 23,
+      "caller": 7,
+      "sequence": 6
+    }
+  ],
+  "operator_next_sequence": 7,
+  "strategy_next_sequence": 1,
+  "scope": "Read-only current-generation WAL audit, corroborated by producer and voter applied index 7; not an authenticated remote read proof"
+}
