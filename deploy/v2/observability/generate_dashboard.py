@@ -818,7 +818,8 @@ def live():
     row('Account snapshot — last verified venue balances, not a live wallet poll')
     stat('Last reviewed USDC',q('reviewed_usdc'),0,8,unit='suffix: USDC',decimals=6)
     stat('Last reviewed SOL',q('reviewed_sol'),8,8,unit='suffix: SOL',decimals=9)
-    stat('Account evidence age','time() - velocita_live_account_observed_seconds{run="$live_run"}'+fresh,16,8,unit='s',steps=(("green",None),("orange",60),("red",900)))
+    stat('Account evidence age','time() - velocita_live_account_observed_seconds{run="$live_run"}'+fresh,16,8,unit='s',steps=(("green",None),("orange",72000),("red",82800)),
+         description='Age of the account snapshot this run was approved against. It is fixed for the run; the review lasts 24 hours from it. Live balances are re-read before every trade.')
     advance(4)
     series('Reviewed USDC snapshots',[(q('reviewed_usdc'),'Verified snapshot')],0,12,unit='suffix: USDC',description='Only changes when reviewed account history is replaced. Sampling this observer does not refresh the wallet evidence.')
     series('Reviewed SOL snapshots',[(q('reviewed_sol'),'Verified snapshot')],12,12,unit='suffix: SOL',description='No inferred fill amounts, proxy marks or paper balance. See account evidence age.')

@@ -673,7 +673,7 @@
     "type": "prometheus",
     "uid": "velocita-v2-prometheus"
    },
-   "description": "",
+   "description": "Age of the account snapshot this run was approved against. It is fixed for the run; the review lasts 24 hours from it. Live balances are re-read before every trade.",
    "gridPos": {
     "h": 4,
     "w": 8,
@@ -700,11 +700,11 @@
        },
        {
         "color": "orange",
-        "value": 60
+        "value": 72000
        },
        {
         "color": "red",
-        "value": 900
+        "value": 82800
        }
       ]
      },
