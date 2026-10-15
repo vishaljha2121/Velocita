@@ -1,0 +1,7 @@
+{
+  "commit": "c19a6755c0135286843c7e06f41cb753a4cbf252",
+  "arch": "aarch64",
+  "qualified": false,
+  "stage": "failed",
+  "error": "signer-isolation exit=1"
+}

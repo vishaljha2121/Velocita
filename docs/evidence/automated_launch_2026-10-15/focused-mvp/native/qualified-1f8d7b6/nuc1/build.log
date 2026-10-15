@@ -1,0 +1,301 @@
+[1/614] Generating CXX dyndep file CMakeFiles/velocita_v2_contracts.dir/CXX.dd
+[2/605] Generating CXX dyndep file CMakeFiles/velocita_v2_evaluator.dir/CXX.dd
+[3/602] Generating CXX dyndep file CMakeFiles/velocita_core.dir/CXX.dd
+[4/594] Generating CXX dyndep file CMakeFiles/velocita_v2_kernel.dir/CXX.dd
+[5/581] Generating CXX dyndep file CMakeFiles/velocita_v2_replication.dir/CXX.dd
+[6/561] Generating CXX dyndep file CMakeFiles/velocita_v2_venue_simulator.dir/CXX.dd
+[7/557] Generating CXX dyndep file CMakeFiles/velocita_v2_node.dir/CXX.dd
+[8/543] Generating CXX dyndep file CMakeFiles/velocita_aeron.dir/CXX.dd
+[9/540] Generating CXX dyndep file CMakeFiles/velocita_v2_truemarkets_venue.dir/CXX.dd
+[10/536] Generating CXX dyndep file CMakeFiles/velocita_v2_swap_recovery.dir/CXX.dd
+[11/533] Generating CXX dyndep file CMakeFiles/velocita_v2_gateway_loop.dir/CXX.dd
+[12/531] Generating CXX dyndep file CMakeFiles/velocita_v2_swap_transaction_verifier.dir/CXX.dd
+[13/521] Scanning /source/src/v2_swap_signer_service.cpp for CXX dependencies
+[14/521] Generating CXX dyndep file CMakeFiles/velocita_v2_paper_venue.dir/CXX.dd
+[15/518] Generating CXX dyndep file CMakeFiles/velocita_v2_truemarkets_transport.dir/CXX.dd
+[16/516] Generating CXX dyndep file CMakeFiles/velocita_v2_signer.dir/CXX.dd
+[17/513] Generating CXX dyndep file CMakeFiles/velocita_v2_swap_paper_gateway.dir/CXX.dd
+[18/510] Generating CXX dyndep file CMakeFiles/velocita_v2_node_aeron.dir/CXX.dd
+[19/508] Generating CXX dyndep file CMakeFiles/velocita_v2_swap_runtime.dir/CXX.dd
+[20/473] Scanning /source/tests/v2_swap_signer_service_tests.cpp for CXX dependencies
+[21/473] Scanning /source/src/v2_swap_signer_service.cpp for CXX dependencies
+[22/473] Scanning /source/src/v2_swap_signer_service.cpp for CXX dependencies
+[23/473] Scanning /source/src/v2_swap_signer_service.cpp for CXX dependencies
+[24/473] Scanning /source/src/v2_swap_signer_service.cpp for CXX dependencies
+[25/473] Scanning /source/src/v2_swap_signer_service.cpp for CXX dependencies
+[26/473] Scanning /source/src/v2_swap_signer_service.cpp for CXX dependencies
+[27/473] Scanning /source/src/v2_swap_signer_service.cpp for CXX dependencies
+[28/473] Generating CXX dyndep file CMakeFiles/velocita-v2-signer.dir/CXX.dd
+[29/471] Generating CXX dyndep file CMakeFiles/velocita-v2-gateway.dir/CXX.dd
+[30/470] Building CXX object CMakeFiles/velocita_v2_swap_runtime.dir/src/v2_swap_signer_service.cpp.o
+/source/src/v2_swap_signer_service.cpp: In function ‘bool velocita::v2::swap_signer::{anonymous}::ready(int, short int, int64_t)’:
+/source/src/v2_swap_signer_service.cpp:28:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   28 |         if(n<0)return false;if(n)return(p.revents&events)!=0;}
+      |         ^~
+/source/src/v2_swap_signer_service.cpp:28:29: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   28 |         if(n<0)return false;if(n)return(p.revents&events)!=0;}
+      |                             ^~
+/source/src/v2_swap_signer_service.cpp: In function ‘bool velocita::v2::swap_signer::{anonymous}::transfer(int, std::span<std::byte>, bool, int64_t)’:
+/source/src/v2_swap_signer_service.cpp:57:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   57 |         if(n<0&&(errno==EINTR||errno==EAGAIN||errno==EWOULDBLOCK))continue;if(n<=0)return false;b=b.subspan(static_cast<std::size_t>(n));
+      |         ^~
+/source/src/v2_swap_signer_service.cpp:57:76: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   57 |         if(n<0&&(errno==EINTR||errno==EAGAIN||errno==EWOULDBLOCK))continue;if(n<=0)return false;b=b.subspan(static_cast<std::size_t>(n));
+      |                                                                            ^~
+/source/src/v2_swap_signer_service.cpp: In function ‘std::size_t velocita::v2::swap_signer::{anonymous}::read_frame(int, std::span<std::byte>, int64_t)’:
+/source/src/v2_swap_signer_service.cpp:61:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   61 |     if(!transfer(fd,b.first(8),false,deadline))return 0;const auto n=frame_length(b.first(8));
+      |     ^~
+/source/src/v2_swap_signer_service.cpp:61:57: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   61 |     if(!transfer(fd,b.first(8),false,deadline))return 0;const auto n=frame_length(b.first(8));
+      |                                                         ^~~~~
+/source/src/v2_swap_signer_service.cpp:62:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   62 |     if(!n || n>b.size() || !transfer(fd,b.subspan(8,n-8),false,deadline))return 0;return n;
+      |     ^~
+/source/src/v2_swap_signer_service.cpp:62:83: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   62 |     if(!n || n>b.size() || !transfer(fd,b.subspan(8,n-8),false,deadline))return 0;return n;
+      |                                                                                   ^~~~~~
+/source/src/v2_swap_signer_service.cpp: In member function ‘bool velocita::v2::swap_signer::Server::serve_once(velocita::v2::SwapSignerSession&, int)’:
+/source/src/v2_swap_signer_service.cpp:113:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  113 |     if(fd_<0 || timeout<=0 || timeout>30000)return false;const auto accept_deadline=now()+timeout;
+      |     ^~
+/source/src/v2_swap_signer_service.cpp:113:58: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  113 |     if(fd_<0 || timeout<=0 || timeout>30000)return false;const auto accept_deadline=now()+timeout;
+      |                                                          ^~~~~
+/source/src/v2_swap_signer_service.cpp:114:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  114 |     if(!ready(fd_,POLLIN,accept_deadline))return false;Fd client(::accept(fd_,nullptr,nullptr));if(client.fd<0)return false;
+      |     ^~
+/source/src/v2_swap_signer_service.cpp:114:56: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  114 |     if(!ready(fd_,POLLIN,accept_deadline))return false;Fd client(::accept(fd_,nullptr,nullptr));if(client.fd<0)return false;
+      |                                                        ^~
+/source/src/v2_swap_signer_service.cpp: In member function ‘velocita::v2::swap_signer::Reply velocita::v2::swap_signer::Client::request(const velocita::v2::swap_signer::Request&)’:
+/source/src/v2_swap_signer_service.cpp:139:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  139 |     if(!size || timeout_ms_<=0 || timeout_ms_>30000 || !address(path_,addr))return denied;const auto deadline=now()+timeout_ms_;
+      |     ^~
+/source/src/v2_swap_signer_service.cpp:139:91: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  139 |     if(!size || timeout_ms_<=0 || timeout_ms_>30000 || !address(path_,addr))return denied;const auto deadline=now()+timeout_ms_;
+      |                                                                                           ^~~~~
+[31/470] Generating CXX dyndep file CMakeFiles/v2-swap-continuous-drill.dir/CXX.dd
+[32/469] Generating CXX dyndep file CMakeFiles/velocita-v2-shadow-submitter.dir/CXX.dd
+[33/467] Generating CXX dyndep file CMakeFiles/velocita-v2-node.dir/CXX.dd
+[34/465] Generating CXX dyndep file CMakeFiles/velocita-v2-client.dir/CXX.dd
+[35/463] Generating CXX dyndep file CMakeFiles/velocita-v2-status.dir/CXX.dd
+[36/461] Generating CXX dyndep file CMakeFiles/velocita-v2-exporter.dir/CXX.dd
+[37/459] Generating CXX dyndep file CMakeFiles/velocita-v2-shadow-catalog.dir/CXX.dd
+[38/457] Generating CXX dyndep file CMakeFiles/v2-swap-integration-tests.dir/CXX.dd
+[39/455] Generating CXX dyndep file CMakeFiles/v2-kernel-control-tests.dir/CXX.dd
+[40/453] Generating CXX dyndep file CMakeFiles/v2-state-snapshot-tests.dir/CXX.dd
+[41/451] Generating CXX dyndep file CMakeFiles/v2-kernel-codec-tests.dir/CXX.dd
+[42/449] Generating CXX dyndep file CMakeFiles/v2-model-replay-tests.dir/CXX.dd
+[43/447] Generating CXX dyndep file CMakeFiles/v2-truemarkets-rest-tests.dir/CXX.dd
+[44/445] Generating CXX dyndep file CMakeFiles/v2-truemarkets-wire-tests.dir/CXX.dd
+[45/443] Generating CXX dyndep file CMakeFiles/v2-truemarkets-venue-tests.dir/CXX.dd
+[46/441] Generating CXX dyndep file CMakeFiles/v2-truemarkets-transport-tests.dir/CXX.dd
+[47/439] Generating CXX dyndep file CMakeFiles/v2-swap-balance-tests.dir/CXX.dd
+[48/432] Generating CXX dyndep file CMakeFiles/v2-swap-paper-tests.dir/CXX.dd
+[49/425] Generating CXX dyndep file CMakeFiles/v2-swap-paper-drill.dir/CXX.dd
+[50/418] Generating CXX dyndep file CMakeFiles/v2-swap-reconcile-tests.dir/CXX.dd
+[51/409] Generating CXX dyndep file CMakeFiles/v2-swap-https-probe.dir/CXX.dd
+[52/406] Generating CXX dyndep file CMakeFiles/v2-jupiter-route-decode-tests.dir/CXX.dd
+[53/403] Generating CXX dyndep file CMakeFiles/v2-swap-owner-accounting-tests.dir/CXX.dd
+[54/400] Generating CXX dyndep file CMakeFiles/v2-swap-reconcile-session-tests.dir/CXX.dd
+[55/392] Generating CXX dyndep file CMakeFiles/v2-swap-gateway-tls-drill.dir/CXX.dd
+[56/384] Generating CXX dyndep file CMakeFiles/v2-swap-reconcile-store-tests.dir/CXX.dd
+[57/376] Generating CXX dyndep file CMakeFiles/v2-swap-transaction-inspection-tests.dir/CXX.dd
+[58/367] Generating CXX dyndep file CMakeFiles/v2-swap-submission-store-tests.dir/CXX.dd
+[59/363] Generating CXX dyndep file CMakeFiles/v2-swap-authority-tests.dir/CXX.dd
+[60/361] Generating CXX dyndep file CMakeFiles/v2-swap-authority-storage-tests.dir/CXX.dd
+[61/359] Generating CXX dyndep file CMakeFiles/v2-swap-submission-resolution-tests.dir/CXX.dd
+[62/355] Generating CXX dyndep file CMakeFiles/v2-swap-submission-session-tests.dir/CXX.dd
+[63/351] Generating CXX dyndep file CMakeFiles/v2-swap-submission-gateway-drill.dir/CXX.dd
+[64/338] Generating CXX dyndep file CMakeFiles/v2-swap-signing-stamp-tests.dir/CXX.dd
+[65/335] Generating CXX dyndep file CMakeFiles/v2-swap-rest-codec-tests.dir/CXX.dd
+[66/329] Generating CXX dyndep file CMakeFiles/v2-swap-prepare-store-tests.dir/CXX.dd
+[67/322] Generating CXX dyndep file CMakeFiles/v2-swap-prepare-session-tests.dir/CXX.dd
+[68/315] Generating CXX dyndep file CMakeFiles/v2-swap-signer-session-tests.dir/CXX.dd
+[69/310] Generating CXX dyndep file CMakeFiles/v2-swap-signer-production-gate.dir/CXX.dd
+[70/305] Generating CXX dyndep file CMakeFiles/v2-swap-signer-protocol-tests.dir/CXX.dd
+[71/301] Generating CXX dyndep file CMakeFiles/v2-swap-signer-service-tests.dir/CXX.dd
+[72/297] Generating CXX dyndep file CMakeFiles/v2-swap-order-status-tests.dir/CXX.dd
+[73/287] Generating CXX dyndep file CMakeFiles/v2-swap-order-https-probe.dir/CXX.dd
+[74/275] Generating CXX dyndep file CMakeFiles/v2-swap-settlement-evidence-tests.dir/CXX.dd
+[75/267] Generating CXX dyndep file CMakeFiles/v2-swap-prepare-https-tests.dir/CXX.dd
+[76/258] Generating CXX dyndep file CMakeFiles/v2-swap-signing-connection-tests.dir/CXX.dd
+[77/249] Generating CXX dyndep file CMakeFiles/v2-swap-settlement-connection-tests.dir/CXX.dd
+[78/236] Generating CXX dyndep file CMakeFiles/v2-swap-runtime-config-tests.dir/CXX.dd
+[79/229] Generating CXX dyndep file CMakeFiles/v2-swap-gateway-runtime-tests.dir/CXX.dd
+[80/216] Generating CXX dyndep file CMakeFiles/v2-swap-process-drill.dir/CXX.dd
+[81/203] Generating CXX dyndep file CMakeFiles/v2-swap-runtime-production-tests.dir/CXX.dd
+[82/202] Generating CXX dyndep file CMakeFiles/v2-swap-settlement-lifecycle-tests.dir/CXX.dd
+[83/201] Generating CXX dyndep file CMakeFiles/v2-swap-settlement-admission-tests.dir/CXX.dd
+[84/165] Generating CXX dyndep file CMakeFiles/v2-swap-runtime-https-probe.dir/CXX.dd
+[85/129] Generating CXX dyndep file CMakeFiles/v2-swap-account-setup-tests.dir/CXX.dd
+[86/128] Generating CXX dyndep file CMakeFiles/v2-swap-failed-settlement-tests.dir/CXX.dd
+[87/127] Generating CXX dyndep file CMakeFiles/v2-operational-recovery-tests.dir/CXX.dd
+[88/125] Generating CXX dyndep file CMakeFiles/v2-swap-cost-policy-tests.dir/CXX.dd
+[89/122] Generating CXX dyndep file CMakeFiles/v2-swap-transaction-review-tests.dir/CXX.dd
+[90/120] Generating CXX dyndep file CMakeFiles/v2-swap-transaction-verifier-tests.dir/CXX.dd
+[91/118] Generating CXX dyndep file CMakeFiles/v2-swap-signer-verified-tests.dir/CXX.dd
+[92/113] Linking CXX static library libvelocita_v2_swap_runtime.a
+[93/113] Building CXX object CMakeFiles/v2-swap-signer-service-tests.dir/tests/v2_swap_signer_service_tests.cpp.o
+[94/113] Building CXX object CMakeFiles/v2-swap-signer-service-tests.dir/src/v2_swap_signer_service.cpp.o
+[95/113] Building CXX object CMakeFiles/v2-swap-signing-connection-tests.dir/src/v2_swap_signer_service.cpp.o
+/source/src/v2_swap_signer_service.cpp: In function ‘bool velocita::v2::swap_signer::{anonymous}::ready(int, short int, int64_t)’:
+/source/src/v2_swap_signer_service.cpp:28:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   28 |         if(n<0)return false;if(n)return(p.revents&events)!=0;}
+      |         ^~
+/source/src/v2_swap_signer_service.cpp:28:29: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   28 |         if(n<0)return false;if(n)return(p.revents&events)!=0;}
+      |                             ^~
+/source/src/v2_swap_signer_service.cpp: In function ‘bool velocita::v2::swap_signer::{anonymous}::transfer(int, std::span<std::byte>, bool, int64_t)’:
+/source/src/v2_swap_signer_service.cpp:57:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   57 |         if(n<0&&(errno==EINTR||errno==EAGAIN||errno==EWOULDBLOCK))continue;if(n<=0)return false;b=b.subspan(static_cast<std::size_t>(n));
+      |         ^~
+/source/src/v2_swap_signer_service.cpp:57:76: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   57 |         if(n<0&&(errno==EINTR||errno==EAGAIN||errno==EWOULDBLOCK))continue;if(n<=0)return false;b=b.subspan(static_cast<std::size_t>(n));
+      |                                                                            ^~
+/source/src/v2_swap_signer_service.cpp: In function ‘std::size_t velocita::v2::swap_signer::{anonymous}::read_frame(int, std::span<std::byte>, int64_t)’:
+/source/src/v2_swap_signer_service.cpp:61:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   61 |     if(!transfer(fd,b.first(8),false,deadline))return 0;const auto n=frame_length(b.first(8));
+      |     ^~
+/source/src/v2_swap_signer_service.cpp:61:57: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   61 |     if(!transfer(fd,b.first(8),false,deadline))return 0;const auto n=frame_length(b.first(8));
+      |                                                         ^~~~~
+/source/src/v2_swap_signer_service.cpp:62:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   62 |     if(!n || n>b.size() || !transfer(fd,b.subspan(8,n-8),false,deadline))return 0;return n;
+      |     ^~
+/source/src/v2_swap_signer_service.cpp:62:83: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   62 |     if(!n || n>b.size() || !transfer(fd,b.subspan(8,n-8),false,deadline))return 0;return n;
+      |                                                                                   ^~~~~~
+/source/src/v2_swap_signer_service.cpp: In member function ‘bool velocita::v2::swap_signer::Server::serve_once(velocita::v2::SwapSignerSession&, int)’:
+/source/src/v2_swap_signer_service.cpp:113:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  113 |     if(fd_<0 || timeout<=0 || timeout>30000)return false;const auto accept_deadline=now()+timeout;
+      |     ^~
+/source/src/v2_swap_signer_service.cpp:113:58: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  113 |     if(fd_<0 || timeout<=0 || timeout>30000)return false;const auto accept_deadline=now()+timeout;
+      |                                                          ^~~~~
+/source/src/v2_swap_signer_service.cpp:114:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  114 |     if(!ready(fd_,POLLIN,accept_deadline))return false;Fd client(::accept(fd_,nullptr,nullptr));if(client.fd<0)return false;
+      |     ^~
+/source/src/v2_swap_signer_service.cpp:114:56: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  114 |     if(!ready(fd_,POLLIN,accept_deadline))return false;Fd client(::accept(fd_,nullptr,nullptr));if(client.fd<0)return false;
+      |                                                        ^~
+/source/src/v2_swap_signer_service.cpp: In member function ‘velocita::v2::swap_signer::Reply velocita::v2::swap_signer::Client::request(const velocita::v2::swap_signer::Request&)’:
+/source/src/v2_swap_signer_service.cpp:139:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  139 |     if(!size || timeout_ms_<=0 || timeout_ms_>30000 || !address(path_,addr))return denied;const auto deadline=now()+timeout_ms_;
+      |     ^~
+/source/src/v2_swap_signer_service.cpp:139:91: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  139 |     if(!size || timeout_ms_<=0 || timeout_ms_>30000 || !address(path_,addr))return denied;const auto deadline=now()+timeout_ms_;
+      |                                                                                           ^~~~~
+[96/113] Building CXX object CMakeFiles/v2-swap-runtime-config-tests.dir/src/v2_swap_signer_service.cpp.o
+[97/113] Building CXX object CMakeFiles/v2-swap-gateway-runtime-tests.dir/src/v2_swap_signer_service.cpp.o
+/source/src/v2_swap_signer_service.cpp: In function ‘bool velocita::v2::swap_signer::{anonymous}::ready(int, short int, int64_t)’:
+/source/src/v2_swap_signer_service.cpp:28:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   28 |         if(n<0)return false;if(n)return(p.revents&events)!=0;}
+      |         ^~
+/source/src/v2_swap_signer_service.cpp:28:29: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   28 |         if(n<0)return false;if(n)return(p.revents&events)!=0;}
+      |                             ^~
+/source/src/v2_swap_signer_service.cpp: In function ‘bool velocita::v2::swap_signer::{anonymous}::transfer(int, std::span<std::byte>, bool, int64_t)’:
+/source/src/v2_swap_signer_service.cpp:57:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   57 |         if(n<0&&(errno==EINTR||errno==EAGAIN||errno==EWOULDBLOCK))continue;if(n<=0)return false;b=b.subspan(static_cast<std::size_t>(n));
+      |         ^~
+/source/src/v2_swap_signer_service.cpp:57:76: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   57 |         if(n<0&&(errno==EINTR||errno==EAGAIN||errno==EWOULDBLOCK))continue;if(n<=0)return false;b=b.subspan(static_cast<std::size_t>(n));
+      |                                                                            ^~
+/source/src/v2_swap_signer_service.cpp: In function ‘std::size_t velocita::v2::swap_signer::{anonymous}::read_frame(int, std::span<std::byte>, int64_t)’:
+/source/src/v2_swap_signer_service.cpp:61:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   61 |     if(!transfer(fd,b.first(8),false,deadline))return 0;const auto n=frame_length(b.first(8));
+      |     ^~
+/source/src/v2_swap_signer_service.cpp:61:57: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   61 |     if(!transfer(fd,b.first(8),false,deadline))return 0;const auto n=frame_length(b.first(8));
+      |                                                         ^~~~~
+/source/src/v2_swap_signer_service.cpp:62:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   62 |     if(!n || n>b.size() || !transfer(fd,b.subspan(8,n-8),false,deadline))return 0;return n;
+      |     ^~
+/source/src/v2_swap_signer_service.cpp:62:83: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   62 |     if(!n || n>b.size() || !transfer(fd,b.subspan(8,n-8),false,deadline))return 0;return n;
+      |                                                                                   ^~~~~~
+/source/src/v2_swap_signer_service.cpp: In member function ‘bool velocita::v2::swap_signer::Server::serve_once(velocita::v2::SwapSignerSession&, int)’:
+/source/src/v2_swap_signer_service.cpp:113:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  113 |     if(fd_<0 || timeout<=0 || timeout>30000)return false;const auto accept_deadline=now()+timeout;
+      |     ^~
+/source/src/v2_swap_signer_service.cpp:113:58: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  113 |     if(fd_<0 || timeout<=0 || timeout>30000)return false;const auto accept_deadline=now()+timeout;
+      |                                                          ^~~~~
+/source/src/v2_swap_signer_service.cpp:114:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  114 |     if(!ready(fd_,POLLIN,accept_deadline))return false;Fd client(::accept(fd_,nullptr,nullptr));if(client.fd<0)return false;
+      |     ^~
+/source/src/v2_swap_signer_service.cpp:114:56: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  114 |     if(!ready(fd_,POLLIN,accept_deadline))return false;Fd client(::accept(fd_,nullptr,nullptr));if(client.fd<0)return false;
+      |                                                        ^~
+/source/src/v2_swap_signer_service.cpp: In member function ‘velocita::v2::swap_signer::Reply velocita::v2::swap_signer::Client::request(const velocita::v2::swap_signer::Request&)’:
+/source/src/v2_swap_signer_service.cpp:139:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  139 |     if(!size || timeout_ms_<=0 || timeout_ms_>30000 || !address(path_,addr))return denied;const auto deadline=now()+timeout_ms_;
+      |     ^~
+/source/src/v2_swap_signer_service.cpp:139:91: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  139 |     if(!size || timeout_ms_<=0 || timeout_ms_>30000 || !address(path_,addr))return denied;const auto deadline=now()+timeout_ms_;
+      |                                                                                           ^~~~~
+[98/113] Building CXX object CMakeFiles/v2-swap-process-drill.dir/src/v2_swap_signer_service.cpp.o
+/source/src/v2_swap_signer_service.cpp: In function ‘bool velocita::v2::swap_signer::{anonymous}::ready(int, short int, int64_t)’:
+/source/src/v2_swap_signer_service.cpp:28:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   28 |         if(n<0)return false;if(n)return(p.revents&events)!=0;}
+      |         ^~
+/source/src/v2_swap_signer_service.cpp:28:29: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   28 |         if(n<0)return false;if(n)return(p.revents&events)!=0;}
+      |                             ^~
+/source/src/v2_swap_signer_service.cpp: In function ‘bool velocita::v2::swap_signer::{anonymous}::transfer(int, std::span<std::byte>, bool, int64_t)’:
+/source/src/v2_swap_signer_service.cpp:57:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   57 |         if(n<0&&(errno==EINTR||errno==EAGAIN||errno==EWOULDBLOCK))continue;if(n<=0)return false;b=b.subspan(static_cast<std::size_t>(n));
+      |         ^~
+/source/src/v2_swap_signer_service.cpp:57:76: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   57 |         if(n<0&&(errno==EINTR||errno==EAGAIN||errno==EWOULDBLOCK))continue;if(n<=0)return false;b=b.subspan(static_cast<std::size_t>(n));
+      |                                                                            ^~
+/source/src/v2_swap_signer_service.cpp: In function ‘std::size_t velocita::v2::swap_signer::{anonymous}::read_frame(int, std::span<std::byte>, int64_t)’:
+/source/src/v2_swap_signer_service.cpp:61:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   61 |     if(!transfer(fd,b.first(8),false,deadline))return 0;const auto n=frame_length(b.first(8));
+      |     ^~
+/source/src/v2_swap_signer_service.cpp:61:57: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   61 |     if(!transfer(fd,b.first(8),false,deadline))return 0;const auto n=frame_length(b.first(8));
+      |                                                         ^~~~~
+/source/src/v2_swap_signer_service.cpp:62:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   62 |     if(!n || n>b.size() || !transfer(fd,b.subspan(8,n-8),false,deadline))return 0;return n;
+      |     ^~
+/source/src/v2_swap_signer_service.cpp:62:83: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   62 |     if(!n || n>b.size() || !transfer(fd,b.subspan(8,n-8),false,deadline))return 0;return n;
+      |                                                                                   ^~~~~~
+/source/src/v2_swap_signer_service.cpp: In member function ‘bool velocita::v2::swap_signer::Server::serve_once(velocita::v2::SwapSignerSession&, int)’:
+/source/src/v2_swap_signer_service.cpp:113:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  113 |     if(fd_<0 || timeout<=0 || timeout>30000)return false;const auto accept_deadline=now()+timeout;
+      |     ^~
+/source/src/v2_swap_signer_service.cpp:113:58: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  113 |     if(fd_<0 || timeout<=0 || timeout>30000)return false;const auto accept_deadline=now()+timeout;
+      |                                                          ^~~~~
+/source/src/v2_swap_signer_service.cpp:114:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  114 |     if(!ready(fd_,POLLIN,accept_deadline))return false;Fd client(::accept(fd_,nullptr,nullptr));if(client.fd<0)return false;
+      |     ^~
+/source/src/v2_swap_signer_service.cpp:114:56: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  114 |     if(!ready(fd_,POLLIN,accept_deadline))return false;Fd client(::accept(fd_,nullptr,nullptr));if(client.fd<0)return false;
+      |                                                        ^~
+/source/src/v2_swap_signer_service.cpp: In member function ‘velocita::v2::swap_signer::Reply velocita::v2::swap_signer::Client::request(const velocita::v2::swap_signer::Request&)’:
+/source/src/v2_swap_signer_service.cpp:139:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  139 |     if(!size || timeout_ms_<=0 || timeout_ms_>30000 || !address(path_,addr))return denied;const auto deadline=now()+timeout_ms_;
+      |     ^~
+/source/src/v2_swap_signer_service.cpp:139:91: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  139 |     if(!size || timeout_ms_<=0 || timeout_ms_>30000 || !address(path_,addr))return denied;const auto deadline=now()+timeout_ms_;
+      |                                                                                           ^~~~~
+[99/113] Building CXX object CMakeFiles/v2-swap-settlement-admission-tests.dir/src/v2_swap_signer_service.cpp.o
+[100/113] Building CXX object CMakeFiles/v2-swap-runtime-https-probe.dir/src/v2_swap_signer_service.cpp.o
+[101/113] Linking CXX executable velocita-v2-gateway
+[102/113] Linking CXX executable v2-swap-continuous-drill
+[103/113] Linking CXX executable v2-swap-signer-service-tests
+[104/113] Linking CXX executable v2-swap-signing-connection-tests
+[105/113] Linking CXX executable v2-swap-runtime-config-tests
+[106/113] Linking CXX executable v2-swap-gateway-runtime-tests
+[107/113] Linking CXX executable v2-swap-process-drill
+[108/113] Linking CXX executable v2-swap-runtime-production-tests
+[109/113] Linking CXX executable v2-swap-settlement-lifecycle-tests
+[110/113] Linking CXX executable v2-swap-settlement-admission-tests
+[111/113] Linking CXX executable v2-swap-runtime-https-probe
+[112/113] Linking CXX executable v2-swap-account-setup-tests
+[113/113] Linking CXX executable v2-swap-failed-settlement-tests

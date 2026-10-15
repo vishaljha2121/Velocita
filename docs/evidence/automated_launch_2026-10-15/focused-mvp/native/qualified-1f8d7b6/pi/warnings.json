@@ -1,0 +1,11 @@
+{
+  "unique_warning_lines": [
+    "/source/src/v2_swap_signer_service.cpp:113:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]",
+    "/source/src/v2_swap_signer_service.cpp:114:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]",
+    "/source/src/v2_swap_signer_service.cpp:139:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]",
+    "/source/src/v2_swap_signer_service.cpp:28:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]",
+    "/source/src/v2_swap_signer_service.cpp:57:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]",
+    "/source/src/v2_swap_signer_service.cpp:61:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]",
+    "/source/src/v2_swap_signer_service.cpp:62:5: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]"
+  ]
+}

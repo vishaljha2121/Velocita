@@ -1,0 +1,4 @@
+FAIL CMake target v2-swap-continuous-drill links the local swap paper harness
+FAIL CMake target v2-swap-continuous-drill links unqualified signer crypto
+FAIL CMake target v2-swap-continuous-drill links swap runtime outside gateway
+3 failure(s)

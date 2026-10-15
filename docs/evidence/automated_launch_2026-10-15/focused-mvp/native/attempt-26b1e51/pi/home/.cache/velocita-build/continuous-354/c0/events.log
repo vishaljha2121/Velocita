@@ -1,0 +1,9 @@
+startup normal 1
+create 1
+signature 1
+execute 1
+receipt 1
+ready 1
+create 2
+signature 2
+gateway-exit 1 signal=0 code=1

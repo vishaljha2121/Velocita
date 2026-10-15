@@ -1,0 +1,5 @@
+{"stage":"accepted","epoch":1,"elapsed_ms":1985,"voter_turns":3555}
+{"stage":"unknown","epoch":2,"elapsed_ms":1986,"voter_turns":3558}
+{"stage":"success","epoch":3,"elapsed_ms":1988,"voter_turns":3562}
+{"stage":"success","epoch":4,"elapsed_ms":1994,"voter_turns":3577}
+{"stage":"success","epoch":5,"elapsed_ms":1997,"voter_turns":3579}

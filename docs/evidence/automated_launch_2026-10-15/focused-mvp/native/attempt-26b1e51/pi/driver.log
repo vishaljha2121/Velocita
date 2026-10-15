@@ -1,0 +1,13 @@
+2026-10-15T15:48:43Z configure
+2026-10-15T15:48:47Z build
+2026-10-15T15:50:52Z test-inventory
+2026-10-15T15:50:54Z tests
+Traceback (most recent call last):
+  File "/evidence/native-focused.py", line 99, in <module>
+    run(['ctest', '--test-dir', '/work/build', '--output-on-failure', '--stop-on-failure',
+    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+         '--parallel', '1', '-R', selection, '--output-junit', '/evidence/ctest.xml'], 'tests', 1800)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/evidence/native-focused.py", line 46, in run
+    raise RuntimeError(name+' exit='+str(process.returncode))
+RuntimeError: tests exit=8

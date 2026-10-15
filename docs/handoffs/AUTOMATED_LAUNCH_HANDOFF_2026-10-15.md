@@ -1,5 +1,13 @@
 # Handoff — automated stochastic swap run, 2026-10-15 ~14:05 UTC
 
+**Superseded continuation, October 15 (Codex):** the missing caller keys were confirmed, and
+review found additional consecutive-effect, freshness, order-cap and expiry defects. Start with
+[the focused correction report](../evidence/automated_launch_2026-10-15/focused-mvp/README.md)
+and the current tracker before using the historical commands below. The tested restoration helper
+creates missing active keys while retaining the retired originals; do not run the old `mv` advice.
+The corrected executable must be qualified and installed before the supervised run. Do not repeat
+arm, funding or retirement. This handoff's original observations remain historical evidence.
+
 Read this first. Runbook: `docs/evidence/automated_launch_2026-10-15/RUNBOOK.md`.
 Branch `v2/phase-5-corrections`, head `cd36dcd`. The shared working tree has other sessions' uncommitted
 edits; commit only explicit owned paths, never whole shared dirty files (see `velocita-shared-tree-commit-method`).

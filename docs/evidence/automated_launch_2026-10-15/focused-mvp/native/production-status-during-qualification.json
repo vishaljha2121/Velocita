@@ -1,0 +1,24 @@
+{
+  "checked_at": "2026-10-15T15:58:40.331757+00:00",
+  "scope": "read-only container and unit status; no authenticated Raft state read",
+  "hosts": {
+    "nuc1": {
+      "ip": "100.72.127.102",
+      "exit": 0,
+      "stdout": "bulbazar-NUC\nx86_64\nvelocita-v2-alertmanager|docker.io/prom/alertmanager:v0.34.1|Up 5 days ago\nvelocita-ntfy|docker.io/binwiederhier/ntfy:v2.25.0|Up 5 days ago\nvelocita-v2-node-exporter|docker.io/prom/node-exporter:v1.10.2|Up 5 days ago\nvelocita-md-stream|docker.io/library/python:3.12-slim|Up 4 days ago\nvelocita-v2-prometheus|docker.io/prom/prometheus:v3.13.2|Up 2 days ago\nvelocita-v2-grafana|docker.io/grafana/grafana:13.1.3|Up 2 days ago\nvelocita-paper-stochastic-exporter|localhost/velocita-v2:qualified-54a5fcb|Up 3 hours ago\nvelocita-paper-stochastic-node|localhost/velocita-v2:qualified-54a5fcb|Up 3 hours ago\nvelocita-bounded-qualification-1f8d7b63c03c|localhost/velocita-readiness-tls:candidate-5131340-amd64|Up 50 seconds ago\nMainPID=0\nId=velocita-swap-gateway.service\nActiveState=inactive\nSubState=dead\n\nMainPID=0\nId=velocita-swap-signer.service\nActiveState=failed\nSubState=failed\n",
+      "stderr": ""
+    },
+    "pi": {
+      "ip": "100.84.151.116",
+      "exit": 0,
+      "stdout": "vishalkapi\naarch64\nvelocita-v2-node-exporter|docker.io/prom/node-exporter:v1.10.2|Up 2 months\nvelocita-paper-stochastic-node|localhost/velocita-v2:qualified-54a5fcb|Up 3 hours\nvelocita-paper-stochastic-exporter|localhost/velocita-v2:qualified-54a5fcb|Up 3 hours\nvelocita-bounded-qualification-1f8d7b63c03c|localhost/velocita-readiness-tls:candidate-4d6dc11-20261012-arm64|Up 53 seconds\nId=velocita-swap-gateway.service\nActiveState=inactive\nSubState=dead\nMainPID=0\n\nId=velocita-swap-signer.service\nActiveState=inactive\nSubState=dead\nMainPID=0\n",
+      "stderr": ""
+    },
+    "nuc2": {
+      "ip": "100.85.36.22",
+      "exit": 0,
+      "stdout": "nuc2\nx86_64\nvelocita-v2-node-exporter|docker.io/prom/node-exporter:v1.10.2|Up 2 weeks ago\nvelocita-paper-stochastic-node|localhost/velocita-v2:qualified-54a5fcb|Up 3 hours ago\nvelocita-paper-stochastic-exporter|localhost/velocita-v2:qualified-54a5fcb|Up 3 hours ago\nMainPID=0\nId=velocita-swap-gateway.service\nActiveState=inactive\nSubState=dead\n\nMainPID=0\nId=velocita-swap-signer.service\nActiveState=inactive\nSubState=dead\n",
+      "stderr": ""
+    }
+  }
+}

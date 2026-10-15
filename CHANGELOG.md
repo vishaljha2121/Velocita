@@ -13,7 +13,7 @@ release-engineering work.
 
 ## [V2] - In development
 
-### Automated launch correctness batch — 2026-10-15 (local, not deployed)
+### Automated launch correctness batch — 2026-10-15 (natively qualified, not deployed)
 
 - Allow consecutive gateway/signer effects only after authenticated predecessor settlement;
   preserve durable per-effect create/sign/execute fences and independent signing authority.
@@ -24,6 +24,11 @@ release-engineering work.
   drain before the unchanged review cutoff with explicit unresolved-exposure stops.
 - Qualify with six-effect lifecycle tests and a production-adapter fake-HTTPS drill; exact
   results and deployment status live in `docs/evidence/automated_launch_2026-10-15/focused-mvp/`.
+- Fix fresh Raft deadlines after blocking calls and separate accepted signer request deadlines
+  from idle connection waits; retain failing regression evidence and prior native attempts.
+- Qualify executable commit `1f8d7b6` on NUC/Pi: 59 CTest targets, 383 Python/CLI checks,
+  eight process cases and 54 continuous fixture effects per architecture. No production install.
+
 
 
 ### Stochastic paper strategy, with the independent review's fixes — 2026-10-07 (CP-082)

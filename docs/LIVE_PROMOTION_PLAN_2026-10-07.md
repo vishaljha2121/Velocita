@@ -1,24 +1,34 @@
 # Promoting the stochastic paper strategy to live: plan and status
 
-## Focused correction batch locally qualified — 2026-10-15
+## Focused correction batch natively qualified — 2026-10-15
 
-Owner-authorized F1–F5 corrections are implemented and qualified locally. Start with the
+**Executable checkpoint `1f8d7b63c03c4ef1c0c916d833cdf8513f42a2dc` is qualified on NUC1/x86_64
+and Pi/aarch64; not installed or enabled live.** Read the
 [batch report](evidence/automated_launch_2026-10-15/focused-mvp/README.md) and
-[exact source/results manifest](evidence/automated_launch_2026-10-15/focused-mvp/QUALIFICATION.json).
-104 Python tests, 12 CTest targets and 33 named mutation checks pass. Three production-path
-fake-venue cases each complete six alternating effects, including process crashes before/after
-journal retirement and after venue acceptance. No duplicated execution POSTs; no reset of journals.
-The production gateway executable builds from HEAD plus the isolated scoped overlay.
+[native evidence](evidence/automated_launch_2026-10-15/focused-mvp/native/RESULTS.md).
+Each architecture passed 59 CTest targets, 383 Python/CLI checks, eight process-drill cases,
+and three fixed repetitions of three six-effect continuous cases: 54 fixture trades, exactly
+one create/sign/execute/settlement per effect. All 151 retained artifact hashes per host verified.
+Local 33 named mutation kills remain recorded separately. Fake economics do not show alpha.
 
-Not committed, NUC/Pi-qualified, installed or started live. No host, funding, credential or venue
-actions in this batch; last owner readback still describes a funded/halted cluster with absent
-active caller keys and a failed signer. Next: scoped commit under the owner's commit-only-when-asked
-rule, exact-checkpoint NUC/Pi qualification, then installation and owner caller-key restoration.
-`src/v2_gateway_main.cpp` has unrelated dirty changes: stage only the one-line continuous-mode
-change using the recorded scoped patch. Do not stage shared dirty files whole. Preserve one cluster,
-funding and journals. Recheck the recorded review expiry (2026-10-16 13:48:34 UTC) before launch.
-Current unfinished create/prepared crashes may require supervised recovery; the qualified automatic
-continuation boundary is completed settlement. Prior review below describes the unfixed baseline.
+Commits: `c19a675` fixes F1–F5; `887d6f5` corrects the test packaging boundary; `26b1e51`
+uses fresh Raft deadlines after blocking ports; `1f8d7b6` separates signer connection wait
+from the accepted request deadline. Failed native attempts and independently reproduced
+regressions are retained. Compiler warnings are recorded for the cleanup iteration.
+
+No production deployment, credential restoration, funding, journal change or live startup.
+Host changes are isolated offline build caches and checksummed archival of inactive Pi build
+artifacts. Fresh process inventory confirms one production voter per host, gateway inactive,
+signer failed on NUC1, PID 0. This does not replace the last owner authenticated readback of
+funded/halted `aae119b9`. Preserve the single cluster and all journals; sudo remains owner-only.
+
+Next: review/install the exact qualified runtime and driver, restore caller keys using the
+create-only helper, verify protected resources and fresh authorization, then start halted services
+and run the supervised six-effect drill. Do not repeat arm, funding or retirement; never reset
+driver sequences. Recheck recorded expiry (2026-10-16 13:48:34 UTC). The 240-effect extension
+remains separate. Current unfinished create/prepared crashes may require supervised recovery;
+automatic continuation is qualified at completed settlements, not every partial prepare.
+Earlier review sections below describe historical states, not current deployment instructions.
 
 ## Post-Claude review — 2026-10-15
 

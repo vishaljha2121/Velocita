@@ -1,0 +1,55 @@
+{
+  "qualified_commit": "1f8d7b63c03c4ef1c0c916d833cdf8513f42a2dc",
+  "qualified": true,
+  "installed": false,
+  "live_admitted": false,
+  "hosts": {
+    "nuc1": {
+      "arch": "x86_64",
+      "ctest_passed": 59,
+      "python_cli_tests": 383,
+      "prior_process_cases": 8,
+      "continuous_cases": 9,
+      "continuous_fixture_effects": 54,
+      "continuous_repetitions": 3,
+      "artifact_files_verified": 151,
+      "incremental_warning_lines": 7,
+      "status_sha256": "4bbcb3a975a7f6a9f32c484d0580cf9789889d8a8e50e6f8808179ad4b7d0658",
+      "binary_sha256": {
+        "velocita-v2-node": "2be0ce3a173ffb402188097c9dd481e19d7b51ae8ae32a068b5f339a7a95731d",
+        "velocita-v2-gateway": "8d0fab33246d85628cac6471c3926205fd5710f96a55731106324a101cc9abcf",
+        "velocita-v2-signer": "bab9f37523472d81132b655547d4193c1808e2d45ce1950ce56af54859cbc239",
+        "velocita-v2-client": "9ca83f11b1e3551f09012c4e7c8c42b498d7698a078dac4b82bfd935bcb34062",
+        "v2-swap-process-drill": "b22044f974a2f31d139c51ede0cbee80d83c885ed808216876dc342c55d01258",
+        "v2-swap-continuous-drill": "1ffcf14d1d9c18c2ad134525146b2e4a492a00ee8093b5e797b84285457fd48f"
+      }
+    },
+    "pi": {
+      "arch": "aarch64",
+      "ctest_passed": 59,
+      "python_cli_tests": 383,
+      "prior_process_cases": 8,
+      "continuous_cases": 9,
+      "continuous_fixture_effects": 54,
+      "continuous_repetitions": 3,
+      "artifact_files_verified": 151,
+      "incremental_warning_lines": 7,
+      "status_sha256": "9a49f6c81622e4498761d670983a04d55ca8e2e196590a1c5a7ddd54f1713611",
+      "binary_sha256": {
+        "velocita-v2-node": "dadc72dff79eaa3fe043b6036051bc3c8c4be98e651c032532ec2a8256e41b33",
+        "velocita-v2-gateway": "002af5352746217634324ab7978a9dc8e67c47b60976fb1894ba95416889dcb0",
+        "velocita-v2-signer": "ac1371a00ce7bb5068cd2b7fbb4ba71e92ca712b59ac6bc867dcda124774d463",
+        "velocita-v2-client": "c438799c2b666fb631cb1784e5d3a768349d2e8f204cdff2c4af395a6683dfd4",
+        "v2-swap-process-drill": "5b9c3895d1c8e50a7b8084952ad6e171261960b86a2f87c7edeec512729dfbcf",
+        "v2-swap-continuous-drill": "8da688664473bc31e08efe33901116fb661436651f22fd653f5b966ea4c499a9"
+      }
+    }
+  },
+  "limits": [
+    "Offline qualification, not production installation or live admission",
+    "Same-UID fixture processes and substituted HTTPS leaf; not deployed UID/Aeron/external TLS qualification",
+    "Unfinished create/prepared crashes can require supervised recovery",
+    "Fixture economics do not demonstrate strategy profitability",
+    "Existing compiler warnings remain recorded"
+  ]
+}

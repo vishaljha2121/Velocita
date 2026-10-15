@@ -1,0 +1,49 @@
+{
+  "commit": "26b1e51bf422c80649a2653adf0f1318c5cf9df9",
+  "arch": "x86_64",
+  "qualified": true,
+  "live_admitted": false,
+  "scope": "production Release capability and selected swap/venue/recovery suite; eight fixture process drills and three repetitions of three six-effect continuous drills",
+  "activation": "no production manifest or service changed; build qualification is not launch authorization",
+  "python_suites": [
+    "test_tm_account*.py",
+    "test_swap_service_launcher.py",
+    "test_swap_service_profile.py",
+    "test_swap_runtime_install.py",
+    "test_swap_disabled_install.py",
+    "test_swap_service_provision.py",
+    "test_swap_runtime_gate.py",
+    "test_signer_not_shipped.py",
+    "test_swap_credential_handoff.py",
+    "test_tm_stage_swap_credential.py",
+    "test_live_observer.py",
+    "test_observability_layout.py",
+    "test_swap_review_transition.py",
+    "test_idle_policy_renewal.py",
+    "test_idle_policy_apply.py",
+    "test_readiness_build_boundary.py",
+    "focused-model",
+    "focused-stage",
+    "focused-retirement",
+    "focused-verify",
+    "focused-restore"
+  ],
+  "ctest_passed": 59,
+  "process_cases_validated": 8,
+  "continuous_repetitions": 3,
+  "continuous_cases_validated": 9,
+  "continuous_effects": 54,
+  "focused_python_tests": 104,
+  "affinity": [
+    3
+  ],
+  "uid": 1003,
+  "binary_sha256": {
+    "velocita-v2-node": "2be0ce3a173ffb402188097c9dd481e19d7b51ae8ae32a068b5f339a7a95731d",
+    "velocita-v2-gateway": "1bce327b8f26348663ca9bda8dad25bd943da5bfbae3675826b30552b61ff00f",
+    "velocita-v2-signer": "bab9f37523472d81132b655547d4193c1808e2d45ce1950ce56af54859cbc239",
+    "velocita-v2-client": "9ca83f11b1e3551f09012c4e7c8c42b498d7698a078dac4b82bfd935bcb34062",
+    "v2-swap-process-drill": "5feb3c92dcac6afd5efba6be4799979af7718adf9d9c021eb84c86e720ba0551",
+    "v2-swap-continuous-drill": "41ce2cae897647d2347f7c7088fd12afd45d9870ee63c5d88f720eed444dbc63"
+  }
+}

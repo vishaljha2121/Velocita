@@ -1,0 +1,10 @@
+[
+  "python3",
+  "-B",
+  "/source/tools/v2_schema_goldens.py",
+  "--check-literals",
+  "--schema",
+  "12",
+  "--replication-epoch",
+  "2"
+]

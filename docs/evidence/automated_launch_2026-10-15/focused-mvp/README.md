@@ -1,6 +1,6 @@
 # Focused MVP correction batch — 2026-10-15
 
-Status: implemented and qualified locally. **Not committed, NUC/Pi-qualified, staged, installed or enabled live.**
+Status: **committed and qualified on NUC1/x86_64 and Pi/aarch64 at `1f8d7b6`**. Not installed or enabled live. Each architecture passed 59 CTest targets, 383 Python/CLI checks, eight process-drill cases and nine six-effect continuous cases (54 fixture trades). See [native results](native/RESULTS.md). Local results below are retained historical evidence.
 
 This supersedes the five implementation findings in [CODEX_REVIEW.md](../CODEX_REVIEW.md), not the recorded deployment state. See [PROTOCOL.md](PROTOCOL.md) for the fixed scope and qualification limits.
 
@@ -52,4 +52,4 @@ assertion and stale-object mutation attempt were also corrected; neither counted
 
 Nothing in these tests accesses TM, real credentials, sudo, host services or the production cluster. Synthetic keys and fixture bearers stay in local test scratch. The fake-venue drill uses real production codecs, transaction verification and receipt admission; its HTTPS transport leaf is substituted at link time. It does not qualify external TLS, production service users, the Aeron network transport or live authorization refresh.
 
-Next: approve the scoped committed checkpoint, qualify that exact source on NUC/Pi, then review installation and owner caller-key restoration. Preserve the single cluster, funding and all journals. Recheck authorization expiry before any start; the current recorded window ends 2026-10-16 13:48:34 UTC.
+Next: review installation of the qualified checkpoint and owner caller-key restoration, followed by fresh authorization checks and the supervised six-effect run. Preserve the single cluster, funding and all journals. Recheck authorization expiry before any start; the current recorded window ends 2026-10-16 13:48:34 UTC.

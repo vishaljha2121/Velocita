@@ -1,0 +1,33 @@
+startup normal 1
+create 1
+signature 1
+execute 1
+receipt 1
+ready 1
+create 2
+signature 2
+execute 2
+receipt 2
+ready 2
+create 3
+signature 3
+execute 3
+receipt 3
+ready 3
+create 4
+signature 4
+execute 4
+receipt 4
+ready 4
+create 5
+signature 5
+execute 5
+receipt 5
+ready 5
+create 6
+signature 6
+execute 6
+receipt 6
+ready 6
+timing max_step_ms=18 last_sign_ms=16 last_attempt_offered=6
+gateway-exit 1 signal=0 code=0

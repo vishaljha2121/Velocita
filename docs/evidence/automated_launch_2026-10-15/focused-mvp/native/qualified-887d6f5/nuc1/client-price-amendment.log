@@ -1,0 +1,10 @@
+test_00_amendment_accepts_bound_opening (__main__.ClientAmendmentTests.test_00_amendment_accepts_bound_opening) ... ok
+test_bounded_canonical_records (__main__.ClientAmendmentTests.test_bounded_canonical_records) ... ok
+test_legacy_records (__main__.ClientAmendmentTests.test_legacy_records) ... ok
+test_opening_identity (__main__.ClientAmendmentTests.test_opening_identity) ... ok
+test_roles_and_arity (__main__.ClientAmendmentTests.test_roles_and_arity) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.072s
+
+OK

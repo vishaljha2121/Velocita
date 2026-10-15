@@ -1,0 +1,710 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="Linux-c++"
+	tests="59"
+	failures="0"
+	disabled="0"
+	skipped="0"
+	hostname="ab8e072da448"
+	time="141"
+	timestamp="2026-10-15T15:26:49"
+	>
+	<testcase name="v2-swap-continuous-drill" classname="v2-swap-continuous-drill" time="23.3951" status="run">
+		<properties/>
+		<system-out>PASS continuous case 0: six real-format verified swaps, six sends, flat inventory
+PASS continuous case 1: six real-format verified swaps, six sends, flat inventory
+PASS continuous case 2: six real-format verified swaps, six sends, flat inventory
+Evidence: "/evidence/home/.cache/velocita-build/continuous-219"
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-integration-tests" classname="v2-swap-integration-tests" time="0.0107604" status="run">
+		<properties/>
+		<system-out>PASS price_amendment_authority_and_replay
+PASS global_controls_fence_pending
+PASS funding_roles_and_exclusion
+PASS paper_restart_and_exact_receipt
+PASS unknown_kill_and_late_settlement
+PASS tampering_and_configuration_change
+</system-out>
+	</testcase>
+	<testcase name="v2-kernel-control-tests" classname="v2-kernel-control-tests" time="0.00499792" status="run">
+		<properties/>
+		<system-out>all V2 kernel control tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-state-snapshot-tests" classname="v2-state-snapshot-tests" time="0.00902651" status="run">
+		<properties/>
+		<system-out>all V2 state snapshot tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-kernel-codec-tests" classname="v2-kernel-codec-tests" time="0.00412264" status="run">
+		<properties/>
+		<system-out>all V2 kernel codec tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-model-replay-tests" classname="v2-model-replay-tests" time="1.15837" status="run">
+		<properties/>
+		<system-out>generated histories=32 commands_per_history=96 snapshot_cuts_per_history=6 schema7_projection_corpus_digest=79885aa4f0f7cbe62a3e36f4277f6b6396d3faa87ca9482f9201643a0b923e5c
+all V2 generated model/replay tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-truemarkets-rest-tests" classname="v2-truemarkets-rest-tests" time="0.00569991" status="run">
+		<properties/>
+		<system-out>PASS missing_market_class_requires_exact_catalog_binding
+PASS duplicate_read_is_not_a_new_fill
+PASS terminal_cannot_reopen_or_change_execution
+PASS cumulative_regression_requires_reconciliation
+PASS partial_then_complete_is_only_evidence
+PASS incomplete_followup_does_not_erase_evidence
+PASS quote_buy_units_and_vwap_are_independent
+PASS missing_execution_is_not_zero
+PASS complete_requires_positive_fill_and_zero_leaves
+PASS all_statuses_and_partial_cancellation
+PASS identity_and_request_must_match
+PASS no_http_error_proves_absence
+PASS invalid_amounts_never_round_or_overflow
+PASS parsing_is_transactional_and_bounded
+PASS non_defi_and_perp_are_outside_contract
+PASS base_sell_and_owned_output
+</system-out>
+	</testcase>
+	<testcase name="v2-truemarkets-wire-tests" classname="v2-truemarkets-wire-tests" time="0.00354826" status="run">
+		<properties/>
+		<system-out>PASS decimal_parse_is_exact_and_refuses_rounding
+PASS json_validation_refuses_ambiguity_and_garbage
+PASS trade_call_encodes_every_field_explicitly
+PASS execute_and_status_encoding
+PASS recorded_quotes_decode_exactly
+PASS reply_refusals
+PASS fixture_execute_and_status_decode
+7/7 truemarkets wire tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-truemarkets-venue-tests" classname="v2-truemarkets-venue-tests" time="0.00677732" status="run">
+		<properties/>
+		<system-out>PASS quote_flow_buy_signs_the_quoted_payload_and_books_once
+PASS prepare_flow_round_trip_sell_uses_the_min_credit_bound
+PASS quote_expired_before_submit_sends_nothing_and_permits_a_fresh_quote
+PASS submit_timeout_is_ambiguous_and_never_resent
+PASS submit_timeout_not_executed_is_released_and_retried_as_a_new_order
+PASS quote_flow_lost_submit_without_queryable_id_stays_unknown
+PASS quote_flow_lost_submit_adopts_when_status_accepts_the_quote_id
+PASS failed_settlement_after_acceptance_releases_through_reconciliation
+PASS partial_settlement_books_the_evidence_and_is_a_conflict
+PASS rate_limits_local_and_venue
+PASS prepare_direct_submission_is_unknown_and_adopted_by_status
+PASS prepare_lost_reply_is_unknown_not_pre_send
+PASS quote_beyond_limit_or_fee_cap_is_killed_before_signing
+PASS venue_issue_is_killed_before_signing
+PASS signer_refuses_a_payload_that_exceeds_the_authorization
+PASS quote_identity_mismatch_is_never_signed
+PASS unknown_order_query_is_silence_not_absence
+PASS cancel_is_refused_because_a_swap_cannot...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="v2-truemarkets-transport-tests" classname="v2-truemarkets-transport-tests" time="0.851361" status="run">
+		<properties/>
+		<system-out>all True Markets transport tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-balance-tests" classname="v2-swap-balance-tests" time="0.00360651" status="run">
+		<properties/>
+		<system-out>PASS residual_and_sub_lot_atoms
+PASS exact_settlement_projects_once
+PASS binding_and_state_validation
+PASS unresolved_and_conflicted_do_not_match
+PASS signed_range_boundaries
+PASS comparison_remains_independent
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-paper-tests" classname="v2-swap-paper-tests" time="0.00441101" status="run">
+		<properties/>
+		<system-out>PASS buy_price_amendment
+PASS funding_and_roles
+PASS fractional_receipt_and_fee_accounting
+PASS insufficient_cash_and_inventory
+PASS pending_unknown_keeps_holds
+PASS one_atom_bounds_conflict_without_booking
+PASS identity_and_canonical_units
+PASS freshness_and_fencing
+PASS safety_floor_and_fee_caps
+PASS deterministic_replay_of_pending_state
+PASS duplicate_and_contradictory_settlement
+PASS role_checks_and_finality
+PASS prepare_and_attempt_are_one_use
+PASS kill_blocks_new_attempt_not_settlement
+PASS sell_cost_basis_and_full_close_remainder
+PASS sales_do_not_replenish_purchase_allowance
+PASS loss_stop_allows_only_sales
+PASS transient_liquidity_is_reserved
+PASS paper_oracle_and_reject
+PASS paper_observed_cost_oracle_and_full_close
+PASS paper_observed_cost_boundaries
+PASS paper_exact_fee_mode_and_unchanged_sell
+PASS overflow_is_transactional
+PASS failed_transaction_cannot_hide_charges
+PASS settlement_window_keeps_recent_and_counts_lifetime
+PASS settlement_window_state_is_validated
+PASS strategy_orders_match_the_tm_...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-paper-process-drill" classname="v2-swap-paper-process-drill" time="0.214132" status="run">
+		<properties/>
+		<system-out>....
+----------------------------------------------------------------------
+Ran 4 tests in 0.074s
+
+OK
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-reconcile-tests" classname="v2-swap-reconcile-tests" time="0.00413974" status="run">
+		<properties/>
+		<system-out>PASS exact_partition_and_response
+PASS rows_and_exact_decimals
+PASS independent_time_and_result_barriers
+PASS external_changes_and_pinned_partition
+PASS unknown_restart_and_late_settlement
+</system-out>
+	</testcase>
+	<testcase name="v2-jupiter-idl-reader-offline" classname="v2-jupiter-idl-reader-offline" time="0.185498" status="run">
+		<properties/>
+		<system-out>......
+----------------------------------------------------------------------
+Ran 6 tests in 0.015s
+
+OK
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-https-local-fixtures" classname="v2-swap-https-local-fixtures" time="1.86667" status="run">
+		<properties/>
+		<system-out>........----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 58090)
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/socketserver.py", line 766, in __init__
+    self.handle()
+    ~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/http/server.py", line 496, in handle
+    self.handle_one_request()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/http/server.py", line 464, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/usr/lib/python3.14/socket.py", line 725, in readinto
+    return self....
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="v2-jupiter-route-decode-tests" classname="v2-jupiter-route-decode-tests" time="0.00380343" status="run">
+		<properties/>
+		<system-out>PASS captured
+PASS shapes
+PASS boundaries
+PASS orders
+PASS direct
+PASS direct_boundaries
+PASS raydium
+PASS current_variants
+PASS byreal
+PASS invariant
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-owner-accounting-tests" classname="v2-swap-owner-accounting-tests" time="0.00345668" status="run">
+		<properties/>
+		<system-out>PASS rent
+PASS bounds
+PASS external
+PASS capture
+PASS simulation
+PASS scope
+PASS overflow
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-reconcile-session-tests" classname="v2-swap-reconcile-session-tests" time="0.0214462" status="run">
+		<properties/>
+		<system-out>PASS authenticated_state_and_exact_http
+PASS unexplained_delta_is_not_complete
+PASS unseeded_and_bad_identity_never_read_http
+PASS bad_authentication_and_digest_never_read_http
+PASS watermark_during_http_and_monotonicity
+PASS http_failures_and_stale_completion
+PASS concrete_adapter_refuses_unbound_credentials
+PASS pending_state_and_late_identity_remain_closed
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-reconcile-store-tests" classname="v2-swap-reconcile-store-tests" time="0.0783513" status="run">
+		<properties/>
+		<system-out>PASS create_recover_and_exact_bytes
+PASS missing_torn_corrupt_and_binding
+PASS duplicate_monotonic_and_exhaustion
+PASS fault_boundaries_never_publish
+PASS abrupt_exit_recovery
+PASS filesystem_safety_and_single_writer
+PASS invalid_input_and_replaced_file
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-gateway-tls-drill" classname="v2-swap-gateway-tls-drill" time="5.70848" status="run">
+		<properties/>
+		<system-out>.
+----------------------------------------------------------------------
+Ran 1 test in 5.518s
+
+OK
+PASS swap_tls_unknown_restart_reconcile
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-transaction-inspection-tests" classname="v2-swap-transaction-inspection-tests" time="0.0123822" status="run">
+		<properties/>
+		<system-out>PASS oracle
+PASS profile
+PASS identity
+PASS topology
+PASS bounds
+PASS shape
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-submission-store-tests" classname="v2-swap-submission-store-tests" time="0.131096" status="run">
+		<properties/>
+		<system-out>PASS lifecycle_and_exact_bytes
+PASS no_resend_and_identity_guards
+PASS recovery_corruption_and_binding
+PASS durability_failures
+PASS abrupt_exit
+PASS filesystem_guards
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-authority-tests" classname="v2-swap-authority-tests" time="0.00445016" status="run">
+		<properties/>
+		<system-out>PASS exact
+PASS fences
+PASS current_controls_and_expiry
+PASS invalid_digests
+PASS request_wire
+PASS grant_wire
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-authority-storage-tests" classname="v2-swap-authority-storage-tests" time="0.0722349" status="run">
+		<properties/>
+		<system-out>PASS wal_roundtrip_and_refusal
+PASS peer_roundtrip_and_refusal
+PASS archive_roundtrip_and_refusal
+PASS cold_replay_never_grants
+PASS leader_wal_roundtrip_and_refusal
+PASS leader_peer_roundtrip_and_refusal
+PASS leader_archive_roundtrip_and_refusal
+PASS leader_cold_replay_never_grants
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-submission-resolution-tests" classname="v2-swap-submission-resolution-tests" time="0.124254" status="run">
+		<properties/>
+		<system-out>PASS committed_resolution_and_restart
+PASS absent_or_mismatched_settlement
+PASS authenticated_state_and_arithmetic
+PASS canonical_signature_identity_oracle
+PASS known_transaction_mapping_and_journal_change
+PASS timeout_ownership_and_limits
+PASS failed_durability_keeps_resolution_closed
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-submission-session-tests" classname="v2-swap-submission-session-tests" time="0.0701523" status="run">
+		<properties/>
+		<system-out>PASS durable_before_send_and_no_repeat
+PASS payload_copy_and_input_binding
+PASS authenticated_state_fences
+PASS exact_pending_identity
+PASS current_controls_deadline_and_phase
+PASS disk_failure_and_ambiguous_send
+PASS invalid_startup_and_backward_tick
+PASS late_queued_response_and_deadline_overflow
+PASS owned_state_request_cleanup
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-submission-gateway-drill" classname="v2-swap-submission-gateway-drill" time="4.68615" status="run">
+		<properties/>
+		<system-out>PASS swap_submission_lost_reply_leader_loss_restart
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-authority-quorum-drill" classname="v2-swap-authority-quorum-drill" time="3.58919" status="run">
+		<properties/>
+		<system-out>PASS swap_authority_without_quorum_or_after_kill
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-signing-stamp-tests" classname="v2-swap-signing-stamp-tests" time="0.0035144" status="run">
+		<properties/>
+		<system-out>PASS oracle
+PASS public_key
+PASS malformed
+PASS clearing
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-rest-codec-tests" classname="v2-swap-rest-codec-tests" time="0.00440545" status="run">
+		<properties/>
+		<system-out>PASS exact_create_requests
+PASS create_refusals_clear_output
+PASS preserve_original_payload
+PASS quote_and_payload_refusals
+PASS unsafe_handle_and_malformed_json
+PASS exact_execute_and_stamp_gate
+PASS nested_payload_ambiguity
+PASS asset_and_amount_bounds
+PASS payload_cardinality_and_capacity
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-prepare-store-tests" classname="v2-swap-prepare-store-tests" time="0.228241" status="run">
+		<properties/>
+		<system-out>PASS owned_payload_and_recovery
+PASS unsent_create_release
+PASS one_shot_and_prior_settlement
+PASS payload_and_request_guards
+PASS corrupt_and_missing_recovery
+PASS durability_and_single_writer
+PASS abrupt_exit_boundaries
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-prepare-session-tests" classname="v2-swap-prepare-session-tests" time="0.143549" status="run">
+		<properties/>
+		<system-out>PASS one_post_and_durable_payload
+PASS create_receives_fresh_committed_read
+PASS unknown_and_bad_response_never_retry
+PASS state_and_timing_fences
+PASS durable_write_failures
+PASS higher_effect_requires_prior_terminal
+PASS lifecycle_and_mapping_guards
+PASS sell_input_and_expired_admission
+PASS fee_inclusive_input_mapping
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-signer-session-tests" classname="v2-swap-signer-session-tests" time="0.145406" status="run">
+		<properties/>
+		<system-out>PASS lost_response_retrieval
+PASS authority_fences
+PASS durable_result
+PASS exact_signature
+PASS restart_replay
+PASS state_fences
+PASS clock_and_storage
+PASS remaining_admission_fences
+PASS crash_recovery
+PASS key_and_domain
+PASS payload_and_economics
+PASS authenticate
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-signer-production-gate" classname="v2-swap-signer-production-gate" time="0.0192809" status="run">
+		<properties/>
+		<system-out>PASS production_gate
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-signer-protocol-tests" classname="v2-swap-signer-protocol-tests" time="0.00485647" status="run">
+		<properties/>
+		<system-out>PASS request
+PASS malformed
+PASS reply
+PASS lookup
+PASS malformed_lookup
+PASS authenticate
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-signer-service-tests" classname="v2-swap-signer-service-tests" time="0.0815742" status="run">
+		<properties/>
+		<system-out>PASS success
+PASS lost
+PASS peer
+PASS process
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-order-status-tests" classname="v2-swap-order-status-tests" time="0.22025" status="run">
+		<properties/>
+		<system-out>PASS signature
+PASS exact
+PASS refusals
+PASS fences
+PASS conflict
+PASS prepare
+PASS prepare_changes
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-order-https-local-fixtures" classname="v2-swap-order-https-local-fixtures" time="1.14771" status="run">
+		<properties/>
+		<system-out>..----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 59494)
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/socketserver.py", line 766, in __init__
+    self.handle()
+    ~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/http/server.py", line 496, in handle
+    self.handle_one_request()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/http/server.py", line 464, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/usr/lib/python3.14/socket.py", line 725, in readinto
+    return self._sock....
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-settlement-evidence-tests" classname="v2-swap-settlement-evidence-tests" time="0.00982207" status="run">
+		<properties/>
+		<system-out>PASS finalized_request_and_ownership
+PASS read_identity_and_time
+PASS rpc_shape_and_watermark
+PASS exact_transaction_and_conservation
+PASS token_attribution_and_coverage
+PASS property_corroboration
+PASS rpc_capacity_and_base64
+PASS rent_oracle_and_owner_coverage
+PASS lookup_table_read
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-prepare-https-local-fixtures" classname="v2-swap-prepare-https-local-fixtures" time="1.3613" status="run">
+		<properties/>
+		<system-out>...----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 48964)
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/socketserver.py", line 766, in __init__
+    self.handle()
+    ~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/http/server.py", line 496, in handle
+    self.handle_one_request()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/http/server.py", line 464, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/usr/lib/python3.14/socket.py", line 725, in readinto
+    return self._sock...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-signing-connection-tests" classname="v2-swap-signing-connection-tests" time="1.1622" status="run">
+		<properties/>
+		<system-out>PASS restart
+PASS reply
+PASS crash_before_ipc
+PASS signer_storage
+PASS expired_recovery
+PASS missing_recovery
+PASS bounds
+PASS durability
+PASS lookup
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-settlement-connection-tests" classname="v2-swap-settlement-connection-tests" time="0.0809363" status="run">
+		<properties/>
+		<system-out>PASS retained_connection
+PASS finalized_request_and_ownership
+PASS read_identity_and_time
+PASS rpc_shape_and_watermark
+PASS exact_transaction_and_conservation
+PASS token_attribution_and_coverage
+PASS property_corroboration
+PASS rpc_capacity_and_base64
+PASS rent_oracle_and_owner_coverage
+PASS lookup_table_read
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-runtime-config-tests" classname="v2-swap-runtime-config-tests" time="0.038845" status="run">
+		<properties/>
+		<system-out>PASS valid
+PASS invalid
+PASS identity
+PASS session
+PASS api-key
+PASS token-ipc
+PASS descriptors
+PASS startup
+PASS order
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-gateway-runtime-tests" classname="v2-swap-gateway-runtime-tests" time="21.617" status="run">
+		<properties/>
+		<system-out>PASS runtime mode 0
+PASS runtime mode 1
+PASS runtime mode 2
+PASS runtime mode 3
+PASS runtime mode 4
+PASS runtime mode 5
+PASS runtime mode 6
+PASS runtime mode 7
+PASS runtime mode 8
+PASS runtime mode 9
+PASS runtime mode 10
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-process-drill" classname="v2-swap-process-drill" time="70.1551" status="run">
+		<properties/>
+		<system-out>PASS F06 before send: uncertain intent holds; zero sends
+PASS F06/F08 mode 1: one send; cash=4000000 base=9000000 fees=2000 purchases=1000000 hold=0 settlements=1
+PASS F06/F08 mode 2: one send; cash=4000000 base=9000000 fees=2000 purchases=1000000 hold=0 settlements=1
+PASS F06/F08 mode 3: one send; cash=4000000 base=9000000 fees=2000 purchases=1000000 hold=0 settlements=1
+PASS F03 durable signing request crash: zero signatures, zero sends, hold retained
+PASS F05 durable signature crash: no execute permission after restart, hold retained
+PASS F06/F08 mode 6: one send; cash=4000000 base=9000000 fees=2000 purchases=1000000 hold=0 settlements=1
+PASS F04 signer SIGKILL after signature: partial result quarantined, zero executes
+Evidence: "/evidence/home/.cache/velocita-build/process-drill-20261013/run-508"
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-runtime-production-tests" classname="v2-swap-runtime-production-tests" time="0.0294658" status="run">
+		<properties/>
+		<system-out>PASS production profile and admission guards
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-settlement-lifecycle-tests" classname="v2-swap-settlement-lifecycle-tests" time="0.0355885" status="run">
+		<properties/>
+		<system-out>PASS captured_shape_arithmetic
+PASS missing_or_unexplained
+PASS existing_authority_change
+PASS supported_checked_and_sync
+PASS lifetime_and_program_edges
+PASS trace_shape
+PASS net_receipt_bound
+PASS ata_identity
+PASS new_usdc_deposit_control
+PASS observed_size_request
+PASS readonly_event_leaf
+PASS cpi_account_scope
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-settlement-admission-tests" classname="v2-swap-settlement-admission-tests" time="0.310429" status="run">
+		<properties/>
+		<system-out>PASS retained_admission
+PASS fixture_ownership
+PASS bounded_buy_admission
+PASS bounded_sell_admission
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-runtime-https-fixtures" classname="v2-swap-runtime-https-fixtures" time="1.56923" status="run">
+		<properties/>
+		<system-out>.......----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 44882)
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/socketserver.py", line 766, in __init__
+    self.handle()
+    ~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/http/server.py", line 496, in handle
+    self.handle_one_request()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/http/server.py", line 464, in handle_one_request
+    self.raw_requestline = self.rfile.readline(65537)
+                           ~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/usr/lib/python3.14/socket.py", line 725, in readinto
+    return self._...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-runtime-startup-gate" classname="v2-swap-runtime-startup-gate" time="0.205442" status="run">
+		<properties/>
+		<system-out>.
+----------------------------------------------------------------------
+Ran 1 test in 0.064s
+
+OK
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-account-setup-tests" classname="v2-swap-account-setup-tests" time="0.00360935" status="run">
+		<properties/>
+		<system-out>PASS exact_owner
+PASS identity
+PASS permissions
+PASS ambiguity
+PASS malformed
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-failed-settlement-tests" classname="v2-swap-failed-settlement-tests" time="0.0455776" status="run">
+		<properties/>
+		<system-out>PASS fee_only_rollback
+PASS sponsor_policy
+PASS native_rollback
+PASS token_rollback
+PASS failure_shape
+PASS owner_payer
+PASS account_key_codec
+PASS retained_failed_admission
+</system-out>
+	</testcase>
+	<testcase name="v2-operational-recovery-tests" classname="v2-operational-recovery-tests" time="0.108784" status="run">
+		<properties/>
+		<system-out>PASS partial_tail
+PASS zero_gap
+PASS torn_block
+PASS zero_padding
+PASS archive_temporaries
+PASS archive_invalid_history
+PASS archive_unknown
+PASS archive_collision
+PASS archive_bad_file
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-cost-policy-tests" classname="v2-swap-cost-policy-tests" time="0.00347988" status="run">
+		<properties/>
+		<system-out>PASS accepted_buy_cost_policy
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-transaction-review-tests" classname="v2-swap-transaction-review-tests" time="0.00465905" status="run">
+		<properties/>
+		<system-out>PASS valid
+PASS live_scope
+PASS identities
+PASS schema
+PASS bounds
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-transaction-verifier-tests" classname="v2-swap-transaction-verifier-tests" time="0.0252016" status="run">
+		<properties/>
+		<system-out>PASS oracle
+PASS sell_oracle
+PASS sell_refusals
+PASS variants
+PASS pools
+PASS roles
+PASS instructions
+PASS lookups
+PASS economics
+PASS freshness
+PASS policy
+PASS lookup_reading
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-signer-verified-tests" classname="v2-swap-signer-verified-tests" time="0.199439" status="run">
+		<properties/>
+		<system-out>PASS predecessor_refusals
+PASS six_settled_signatures
+PASS verified_signature_and_recovery
+PASS conservative_mvp
+PASS live_scope
+PASS sell_signs_under_live_scope
+PASS economic_and_context_refusal
+PASS freshness_and_authority
+PASS second_pool_same_journal
+PASS lookup_evidence
+</system-out>
+	</testcase>
+	<testcase name="v2-truemarkets-no-network-symbols" classname="v2-truemarkets-no-network-symbols" time="0.0238633" status="run">
+		<properties/>
+		<system-out>-- no network symbols referenced by /work/build/libvelocita_v2_truemarkets_venue.a
+</system-out>
+	</testcase>
+</testsuite>

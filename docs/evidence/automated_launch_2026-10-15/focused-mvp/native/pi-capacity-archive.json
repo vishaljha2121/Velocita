@@ -1,0 +1,12 @@
+{
+  "archive": "/home/velocitas/.cache/velocita-build/pi-archive-focused-20261015-r2/inactive-artifacts.tar.gz",
+  "archive_sha256": "5b7f4104d441643d6b5a879a18c9edecfe7c5c5e63f4da49bfb1a68491fc85c3",
+  "files": 2503,
+  "original_bytes": 3543256690,
+  "archive_bytes": 129189825,
+  "free_before": 1793003520,
+  "free_after": 2696900608,
+  "verified": true,
+  "production_state_changed": false,
+  "restore": "Extract archive relative to original home only after reviewing existing paths; do not overwrite newer artifacts."
+}

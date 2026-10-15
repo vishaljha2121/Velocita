@@ -1,3 +1,5 @@
+Native follow-up: [exact committed build, host commands and qualification](native/COMMANDS.md). The local commands below predate the native corrections; use [current results](native/RESULTS.md) for deployment status.
+
 # Commands and build method used
 
 All work was local and offline. No SSH, sudo, live service, credential restoration or venue commands were executed in this batch. Local socket tests required sandbox permission; that permission did not start production services.
