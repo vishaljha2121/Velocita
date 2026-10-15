@@ -1,5 +1,32 @@
 # Promoting the stochastic paper strategy to live: plan and status
 
+## Strategy grant qualified on both architectures — 2026-10-15 22:35 UTC
+
+Executable source `ba299ff6c89392177cfd4702fda11dabb7ee1719` is qualified on NUC1 and Pi.
+Each passed 59 CTest targets, 407 Python/CLI checks, eight process cases and nine continuous
+cases /54 settlements. All308 collected artifact hashes verified. Three controlled ordinary-read
+outages per host recovered before signing effect4. No duplicate create/sign/execute in any case.
+[Final result, warnings, limitations and next deployment step](evidence/automated_launch_2026-10-15/strategy-grant/native/ba299ff/RESULTS.md).
+Original Pi failure remains preserved; its exact operation/root cause is still unproven.
+
+**Qualified only: not staged, installed or activated.** Production images and journals unchanged.
+At22:31UTC driver inactive, gateway/signer active; producer index15 flat$25, zero effects/fees/pending.
+At22:32UTC all three voters up/ready, term5/leader2, commit/applied15. No fresh TM wallet read.
+Next: prepare coordinated single-cluster voter/runtime/client upgrade while owner-halted, then
+review/commit the one-time strategy grant before resuming. Preserve driver sequence2(next3);
+verify expected operator sequence10 before any ceremony. No grant sent. Review drains
+October16 13:41:34UTC and expires13:48:34UTC. Gateway-only upgrade remains insufficient.
+
+## Read-recovery drill checkpoint committed — 2026-10-15 22:24 UTC
+
+Approved scoped checkpoint `ba299ff6c89392177cfd4702fda11dabb7ee1719` is committed.
+Only tests and evidence changed; production source is byte-identical to `b490d68`.
+Exact-build NUC1/Pi qualification is running concurrently from preserved caches with fixed
+stop-on-failure suites. [Progress commands](evidence/automated_launch_2026-10-15/strategy-grant/native/ba299ff/COMMANDS.md).
+Not qualified, staged or installed yet. Original Pi failure and the test mismatch investigation
+remain preserved. No driver restart, operator grant, deployment or funds movement is authorized
+by this qualification step. Production readback remains the historical22:06UTC observation below.
+
 ## Strategy grant native status — 2026-10-15 22:06 UTC
 
 Checkpoint `b490d68` is committed. NUC1 passed 59 CTest targets, 407 Python/CLI tests and

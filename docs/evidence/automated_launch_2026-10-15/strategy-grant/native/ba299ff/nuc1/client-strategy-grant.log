@@ -1,0 +1,8 @@
+test_grant_summary (__main__.GrantTests.test_grant_summary) ... ok
+test_identity_and_role (__main__.GrantTests.test_identity_and_role) ... ok
+test_values_and_canonical_bytes (__main__.GrantTests.test_values_and_canonical_bytes) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.070s
+
+OK

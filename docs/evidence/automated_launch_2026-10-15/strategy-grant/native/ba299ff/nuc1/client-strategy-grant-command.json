@@ -1,0 +1,9 @@
+[
+  "python3",
+  "-B",
+  "/source/tests/client_strategy_grant_tests.py",
+  "--client",
+  "/work/build/velocita-v2-client",
+  "--output",
+  "/evidence/client-strategy-grant"
+]

@@ -1,0 +1,35 @@
+[
+  {
+    "host": "100.72.127.102",
+    "status": "fulfilled",
+    "value": {
+      "chunk_id": "ae2d6b",
+      "wall_time_seconds": 0.530343916,
+      "exit_code": 0,
+      "original_token_count": 158,
+      "output": "{\"checked_at\": \"2026-10-15T22:32:46.117216+00:00\", \"endpoint\": \"100.72.127.102:11410\", \"metrics\": [\"velocita_v2_up{host=\\\"nuc1\\\",node=\\\"1\\\"} 1\", \"velocita_v2_ready{host=\\\"nuc1\\\",node=\\\"1\\\"} 1\", \"velocita_v2_failed{host=\\\"nuc1\\\",node=\\\"1\\\"} 0\", \"velocita_v2_term{host=\\\"nuc1\\\",node=\\\"1\\\"} 5\", \"velocita_v2_leader_id{host=\\\"nuc1\\\",node=\\\"1\\\"} 2\", \"velocita_v2_log_index{host=\\\"nuc1\\\",node=\\\"1\\\",kind=\\\"current\\\"} 15\", \"velocita_v2_log_index{host=\\\"nuc1\\\",node=\\\"1\\\",kind=\\\"commit\\\"} 15\", \"velocita_v2_log_index{host=\\\"nuc1\\\",node=\\\"1\\\",kind=\\\"applied\\\"} 15\", \"velocita_v2_log_index{host=\\\"nuc1\\\",node=\\\"1\\\",kind=\\\"durable\\\"} 15\"]}\n"
+    }
+  },
+  {
+    "host": "100.84.151.116",
+    "status": "fulfilled",
+    "value": {
+      "chunk_id": "0ad49b",
+      "wall_time_seconds": 0.987307625,
+      "exit_code": 0,
+      "original_token_count": 153,
+      "output": "{\"checked_at\": \"2026-10-15T22:32:45.248976+00:00\", \"endpoint\": \"100.84.151.116:11410\", \"metrics\": [\"velocita_v2_up{host=\\\"pi\\\",node=\\\"2\\\"} 1\", \"velocita_v2_ready{host=\\\"pi\\\",node=\\\"2\\\"} 1\", \"velocita_v2_failed{host=\\\"pi\\\",node=\\\"2\\\"} 0\", \"velocita_v2_term{host=\\\"pi\\\",node=\\\"2\\\"} 5\", \"velocita_v2_leader_id{host=\\\"pi\\\",node=\\\"2\\\"} 2\", \"velocita_v2_log_index{host=\\\"pi\\\",node=\\\"2\\\",kind=\\\"current\\\"} 15\", \"velocita_v2_log_index{host=\\\"pi\\\",node=\\\"2\\\",kind=\\\"commit\\\"} 15\", \"velocita_v2_log_index{host=\\\"pi\\\",node=\\\"2\\\",kind=\\\"applied\\\"} 15\", \"velocita_v2_log_index{host=\\\"pi\\\",node=\\\"2\\\",kind=\\\"durable\\\"} 15\"]}\n"
+    }
+  },
+  {
+    "host": "100.85.36.22",
+    "status": "fulfilled",
+    "value": {
+      "chunk_id": "71cf03",
+      "wall_time_seconds": 0.495078667,
+      "exit_code": 0,
+      "original_token_count": 157,
+      "output": "{\"checked_at\": \"2026-10-15T22:32:47.177283+00:00\", \"endpoint\": \"100.85.36.22:11410\", \"metrics\": [\"velocita_v2_up{host=\\\"nuc2\\\",node=\\\"3\\\"} 1\", \"velocita_v2_ready{host=\\\"nuc2\\\",node=\\\"3\\\"} 1\", \"velocita_v2_failed{host=\\\"nuc2\\\",node=\\\"3\\\"} 0\", \"velocita_v2_term{host=\\\"nuc2\\\",node=\\\"3\\\"} 5\", \"velocita_v2_leader_id{host=\\\"nuc2\\\",node=\\\"3\\\"} 2\", \"velocita_v2_log_index{host=\\\"nuc2\\\",node=\\\"3\\\",kind=\\\"current\\\"} 15\", \"velocita_v2_log_index{host=\\\"nuc2\\\",node=\\\"3\\\",kind=\\\"commit\\\"} 15\", \"velocita_v2_log_index{host=\\\"nuc2\\\",node=\\\"3\\\",kind=\\\"applied\\\"} 15\", \"velocita_v2_log_index{host=\\\"nuc2\\\",node=\\\"3\\\",kind=\\\"durable\\\"} 15\"]}\n"
+    }
+  }
+]

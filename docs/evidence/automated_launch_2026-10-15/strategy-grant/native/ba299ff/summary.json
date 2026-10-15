@@ -1,0 +1,51 @@
+{
+  "commit": "ba299ff6c89392177cfd4702fda11dabb7ee1719",
+  "verified_at": "2026-10-15T22:34:57.560002+00:00",
+  "qualified": true,
+  "deployed": false,
+  "live_admitted": false,
+  "original_pi_failure_root_cause_proven": false,
+  "hosts": {
+    "nuc1": {
+      "architecture": "x86_64",
+      "verified_artifacts": 154,
+      "ctest_passed": 59,
+      "python_cli_tests": 407,
+      "process_cases": 8,
+      "continuous_cases": 9,
+      "settlements": 54,
+      "controlled_read_outages": 3,
+      "exactly_once_events_verified": true,
+      "incremental_warning_lines": 6,
+      "binary_sha256": {
+        "velocita-v2-node": "589d24eac6b87d92ab89f4702cf3aa4cec2d81ff11043be14c02c27dc5a7a8b1",
+        "velocita-v2-gateway": "9aa06eb11b23f30db37f8c628a2ca4efac7ea32d9b08c21f08a1a95df7942023",
+        "velocita-v2-signer": "bab9f37523472d81132b655547d4193c1808e2d45ce1950ce56af54859cbc239",
+        "velocita-v2-client": "38081991559fbd013b958df4505358801798d26c6589757463d6e303c1822f3a",
+        "v2-swap-process-drill": "9120fcfd79ba96831cacd000f6d217014655e5bfc23db0a17a3c4347cc6e7b1e",
+        "v2-swap-continuous-drill": "781f72fbc987605fbb1af78d74ebb662182b26439140d3f44606ba3992b39887"
+      }
+    },
+    "pi": {
+      "architecture": "aarch64",
+      "verified_artifacts": 154,
+      "ctest_passed": 59,
+      "python_cli_tests": 407,
+      "process_cases": 8,
+      "continuous_cases": 9,
+      "settlements": 54,
+      "controlled_read_outages": 3,
+      "exactly_once_events_verified": true,
+      "incremental_warning_lines": 6,
+      "binary_sha256": {
+        "velocita-v2-node": "3c43b3dd09ab7bd4bde63d5eaf7e79579c9abe071118b8e6e5e35dc10f7d258a",
+        "velocita-v2-gateway": "c0833143aa3b7d9d56d62a1ca4e42afac8327a0b79bf0705cffea39dc81dafec",
+        "velocita-v2-signer": "ac1371a00ce7bb5068cd2b7fbb4ba71e92ca712b59ac6bc867dcda124774d463",
+        "velocita-v2-client": "5226915a047d8eedeb8353223c1a26072f5770250997d970d8905633a11ace73",
+        "v2-swap-process-drill": "6e895f3e77650a71fc1570819bf979364a5b1177bd34a3730796cf38fa56f777",
+        "v2-swap-continuous-drill": "f12aac21cba4d4f56442659de178dcd22b43c3ef62c124e2baf929062b4e1a4b"
+      }
+    }
+  },
+  "nuc_production_binaries_identical_to_b490d68": true
+}

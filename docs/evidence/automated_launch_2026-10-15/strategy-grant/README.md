@@ -1,10 +1,9 @@
 # Explicit strategy intent grant — 2026-10-15
 
-Status: committed as `b490d68`; NUC1 qualified; Pi qualification failed and is under investigation.
-Not staged, installed or activated. A test-only read-recovery correction now passes locally
-(three cases, 18 settlements; two freshly compiled mutation kills), awaiting a scoped checkpoint
-and new native qualification. [Native results](native/RESULTS.md).
-The owner approved implementation/testing; deployment and activation follow qualified review.
+Status: grant source `b490d68` plus test correction `ba299ff` is now natively qualified on NUC1
+and Pi. Not staged, installed or activated. [Final native qualification](native/ba299ff/RESULTS.md).
+Both architectures passed 59 CTest targets, 407 Python/CLI checks and 54 continuous fixture
+settlements. The earlier Pi failure remains preserved and its exact failed operation is unknown.
 
 ## Problem and correction
 
@@ -26,7 +25,8 @@ the kernel. [ADR 0016 amendment](../../../adr/0016-strategy-and-operator-callers
 
 Final local result: 11 CTest targets passed, eight CLI tests passed, 15 fresh-compiled mutants
 killed at the named assertions, and three six-trade process scenarios passed (18 settlements).
-NUC1 passed native qualification. Pi compiled but failed the initial continuous drill; see the native report.
+The first Pi run failed; corrected checkpoint `ba299ff` subsequently qualified on both architectures.
+See the final native report and preserved investigation.
 
 - New test first failed at `grant_operator_commits` with a refusal stub, before implementation.
 - Kernel integration includes pre-grant refusals, caller and sequence binding, owner-only authority,

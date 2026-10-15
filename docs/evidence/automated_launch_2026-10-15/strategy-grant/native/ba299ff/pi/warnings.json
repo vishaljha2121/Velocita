@@ -1,0 +1,10 @@
+{
+  "unique_warning_lines": [
+    "/source/tests/v2_gateway_node_tests.cpp:688:11: warning: missing initializer for member \u2018{anonymous}::CountingVenue::injected\u2019 [-Wmissing-field-initializers]",
+    "/source/tests/v2_swap_continuous_drill.cpp:80:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]",
+    "/source/tests/v2_swap_continuous_drill.cpp:82:9: warning: this \u2018if\u2019 clause does not guard... [-Wmisleading-indentation]",
+    "/usr/include/c++/15/bits/stl_algobase.h:951:25: warning: \u2018void* __builtin_memset(void*, int, long unsigned int)\u2019 offset 2 is out of the bounds [0, 1] [-Warray-bounds=]",
+    "/usr/include/c++/15/bits/stl_construct.h:110:16: warning: writing 1 byte into a region of size 0 [-Wstringop-overflow=]",
+    "/usr/include/c++/15/bits/stl_construct.h:133:7: warning: array subscript 1 is outside array bounds of \u2018unsigned char [1]\u2019 [-Warray-bounds=]"
+  ]
+}

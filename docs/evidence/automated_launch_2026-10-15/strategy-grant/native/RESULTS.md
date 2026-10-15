@@ -1,5 +1,8 @@
 # Native qualification and Pi investigation — 2026-10-15
 
+Later result: **`ba299ff` qualified on both architectures**. See [final qualification](ba299ff/RESULTS.md).
+The failed `b490d68` attempt and investigation below remain historical evidence.
+
 Checkpoint: `b490d6843b53d114a49678304089541bfe192c7a`.
 Status: NUC1 qualified; Pi build passed but qualification failed. Not installed or activated.
 

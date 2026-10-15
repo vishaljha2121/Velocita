@@ -1,0 +1,2063 @@
+{
+  "backtraceGraph" : 
+  {
+    "commands" : 
+    [
+      "add_test",
+      "include"
+    ],
+    "files" : 
+    [
+      "/source/cmake/SwapContinuousTests.cmake",
+      "/source/cmake/SwapRuntime.cmake",
+      "/source/CMakeLists.txt",
+      "/source/cmake/LiveReadinessTests.cmake",
+      "/source/cmake/SwapTransactionVerifierTests.cmake"
+    ],
+    "nodes" : 
+    [
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 423,
+        "parent" : 0
+      },
+      {
+        "file" : 1,
+        "parent" : 1
+      },
+      {
+        "command" : 1,
+        "file" : 1,
+        "line" : 51,
+        "parent" : 2
+      },
+      {
+        "file" : 0,
+        "parent" : 3
+      },
+      {
+        "command" : 0,
+        "file" : 0,
+        "line" : 10,
+        "parent" : 4
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 0,
+        "file" : 2,
+        "line" : 540,
+        "parent" : 6
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 0,
+        "file" : 2,
+        "line" : 545,
+        "parent" : 8
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 0,
+        "file" : 2,
+        "line" : 555,
+        "parent" : 10
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 0,
+        "file" : 2,
+        "line" : 560,
+        "parent" : 12
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 0,
+        "file" : 2,
+        "line" : 570,
+        "parent" : 14
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 0,
+        "file" : 2,
+        "line" : 1052,
+        "parent" : 16
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 0,
+        "file" : 2,
+        "line" : 1057,
+        "parent" : 18
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 0,
+        "file" : 2,
+        "line" : 1068,
+        "parent" : 20
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 0,
+        "file" : 2,
+        "line" : 1079,
+        "parent" : 22
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 24
+      },
+      {
+        "file" : 3,
+        "parent" : 25
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 48,
+        "parent" : 26
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 28
+      },
+      {
+        "file" : 3,
+        "parent" : 29
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 69,
+        "parent" : 30
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 32
+      },
+      {
+        "file" : 3,
+        "parent" : 33
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 72,
+        "parent" : 34
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 36
+      },
+      {
+        "file" : 3,
+        "parent" : 37
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 115,
+        "parent" : 38
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 40
+      },
+      {
+        "file" : 3,
+        "parent" : 41
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 116,
+        "parent" : 42
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 44
+      },
+      {
+        "file" : 3,
+        "parent" : 45
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 131,
+        "parent" : 46
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 48
+      },
+      {
+        "file" : 3,
+        "parent" : 49
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 145,
+        "parent" : 50
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 52
+      },
+      {
+        "file" : 3,
+        "parent" : 53
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 154,
+        "parent" : 54
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 56
+      },
+      {
+        "file" : 3,
+        "parent" : 57
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 186,
+        "parent" : 58
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 60
+      },
+      {
+        "file" : 3,
+        "parent" : 61
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 187,
+        "parent" : 62
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 64
+      },
+      {
+        "file" : 3,
+        "parent" : 65
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 188,
+        "parent" : 66
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 68
+      },
+      {
+        "file" : 3,
+        "parent" : 69
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 208,
+        "parent" : 70
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 72
+      },
+      {
+        "file" : 3,
+        "parent" : 73
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 218,
+        "parent" : 74
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 76
+      },
+      {
+        "file" : 3,
+        "parent" : 77
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 223,
+        "parent" : 78
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 80
+      },
+      {
+        "file" : 3,
+        "parent" : 81
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 226,
+        "parent" : 82
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 84
+      },
+      {
+        "file" : 3,
+        "parent" : 85
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 234,
+        "parent" : 86
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 88
+      },
+      {
+        "file" : 3,
+        "parent" : 89
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 242,
+        "parent" : 90
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 92
+      },
+      {
+        "file" : 3,
+        "parent" : 93
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 261,
+        "parent" : 94
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 96
+      },
+      {
+        "file" : 3,
+        "parent" : 97
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 264,
+        "parent" : 98
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 100
+      },
+      {
+        "file" : 3,
+        "parent" : 101
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 275,
+        "parent" : 102
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 104
+      },
+      {
+        "file" : 3,
+        "parent" : 105
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 287,
+        "parent" : 106
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 108
+      },
+      {
+        "file" : 3,
+        "parent" : 109
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 300,
+        "parent" : 110
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 112
+      },
+      {
+        "file" : 3,
+        "parent" : 113
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 315,
+        "parent" : 114
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 116
+      },
+      {
+        "file" : 3,
+        "parent" : 117
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 332,
+        "parent" : 118
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 120
+      },
+      {
+        "file" : 3,
+        "parent" : 121
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 343,
+        "parent" : 122
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 124
+      },
+      {
+        "file" : 3,
+        "parent" : 125
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 349,
+        "parent" : 126
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 128
+      },
+      {
+        "file" : 3,
+        "parent" : 129
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 359,
+        "parent" : 130
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 132
+      },
+      {
+        "file" : 3,
+        "parent" : 133
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 377,
+        "parent" : 134
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 136
+      },
+      {
+        "file" : 3,
+        "parent" : 137
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 397,
+        "parent" : 138
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 140
+      },
+      {
+        "file" : 3,
+        "parent" : 141
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 417,
+        "parent" : 142
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 144
+      },
+      {
+        "file" : 3,
+        "parent" : 145
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 435,
+        "parent" : 146
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 148
+      },
+      {
+        "file" : 3,
+        "parent" : 149
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 457,
+        "parent" : 150
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 152
+      },
+      {
+        "file" : 3,
+        "parent" : 153
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 478,
+        "parent" : 154
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 156
+      },
+      {
+        "file" : 3,
+        "parent" : 157
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 491,
+        "parent" : 158
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 160
+      },
+      {
+        "file" : 3,
+        "parent" : 161
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 516,
+        "parent" : 162
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 164
+      },
+      {
+        "file" : 3,
+        "parent" : 165
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 540,
+        "parent" : 166
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 168
+      },
+      {
+        "file" : 3,
+        "parent" : 169
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 548,
+        "parent" : 170
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 172
+      },
+      {
+        "file" : 3,
+        "parent" : 173
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 554,
+        "parent" : 174
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 176
+      },
+      {
+        "file" : 3,
+        "parent" : 177
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 562,
+        "parent" : 178
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 180
+      },
+      {
+        "file" : 3,
+        "parent" : 181
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 567,
+        "parent" : 182
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 184
+      },
+      {
+        "file" : 3,
+        "parent" : 185
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 574,
+        "parent" : 186
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 188
+      },
+      {
+        "file" : 3,
+        "parent" : 189
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 582,
+        "parent" : 190
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 192
+      },
+      {
+        "file" : 3,
+        "parent" : 193
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 588,
+        "parent" : 194
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 196
+      },
+      {
+        "file" : 3,
+        "parent" : 197
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 593,
+        "parent" : 198
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1083,
+        "parent" : 200
+      },
+      {
+        "file" : 3,
+        "parent" : 201
+      },
+      {
+        "command" : 0,
+        "file" : 3,
+        "line" : 605,
+        "parent" : 202
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1084,
+        "parent" : 204
+      },
+      {
+        "file" : 4,
+        "parent" : 205
+      },
+      {
+        "command" : 0,
+        "file" : 4,
+        "line" : 3,
+        "parent" : 206
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1084,
+        "parent" : 208
+      },
+      {
+        "file" : 4,
+        "parent" : 209
+      },
+      {
+        "command" : 0,
+        "file" : 4,
+        "line" : 6,
+        "parent" : 210
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 1,
+        "file" : 2,
+        "line" : 1084,
+        "parent" : 212
+      },
+      {
+        "file" : 4,
+        "parent" : 213
+      },
+      {
+        "command" : 0,
+        "file" : 4,
+        "line" : 14,
+        "parent" : 214
+      },
+      {
+        "file" : 2
+      },
+      {
+        "command" : 0,
+        "file" : 2,
+        "line" : 1088,
+        "parent" : 216
+      }
+    ]
+  },
+  "kind" : "ctestInfo",
+  "tests" : 
+  [
+    {
+      "backtrace" : 5,
+      "command" : 
+      [
+        "/work/build/v2-swap-continuous-drill"
+      ],
+      "name" : "v2-swap-continuous-drill",
+      "properties" : 
+      [
+        {
+          "name" : "TIMEOUT",
+          "value" : 240.0
+        },
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 7,
+      "command" : 
+      [
+        "/work/build/v2-swap-integration-tests"
+      ],
+      "name" : "v2-swap-integration-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 9,
+      "command" : 
+      [
+        "/work/build/v2-kernel-control-tests"
+      ],
+      "name" : "v2-kernel-control-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 11,
+      "command" : 
+      [
+        "/work/build/v2-state-snapshot-tests"
+      ],
+      "name" : "v2-state-snapshot-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 13,
+      "command" : 
+      [
+        "/work/build/v2-kernel-codec-tests"
+      ],
+      "name" : "v2-kernel-codec-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 15,
+      "command" : 
+      [
+        "/work/build/v2-model-replay-tests"
+      ],
+      "name" : "v2-model-replay-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 17,
+      "command" : 
+      [
+        "/work/build/v2-truemarkets-rest-tests"
+      ],
+      "name" : "v2-truemarkets-rest-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 19,
+      "command" : 
+      [
+        "/work/build/v2-truemarkets-wire-tests"
+      ],
+      "name" : "v2-truemarkets-wire-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 21,
+      "command" : 
+      [
+        "/work/build/v2-truemarkets-venue-tests"
+      ],
+      "name" : "v2-truemarkets-venue-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 23,
+      "command" : 
+      [
+        "/work/build/v2-truemarkets-transport-tests"
+      ],
+      "name" : "v2-truemarkets-transport-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 27,
+      "command" : 
+      [
+        "/work/build/v2-swap-balance-tests"
+      ],
+      "name" : "v2-swap-balance-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 31,
+      "command" : 
+      [
+        "/work/build/v2-swap-paper-tests"
+      ],
+      "name" : "v2-swap-paper-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 35,
+      "command" : 
+      [
+        "/usr/bin/cmake",
+        "-E",
+        "env",
+        "VELOCITA_SWAP_PAPER_DRILL=/work/build/v2-swap-paper-drill",
+        "/usr/bin/python3",
+        "-B",
+        "/source/cmake/../tests/test_swap_paper_drill.py"
+      ],
+      "name" : "v2-swap-paper-process-drill",
+      "properties" : 
+      [
+        {
+          "name" : "TIMEOUT",
+          "value" : 30.0
+        },
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 39,
+      "command" : 
+      [
+        "/work/build/v2-swap-reconcile-tests"
+      ],
+      "name" : "v2-swap-reconcile-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 43,
+      "command" : 
+      [
+        "/usr/bin/python3",
+        "-B",
+        "/source/cmake/../tests/test_read_jupiter_idl.py"
+      ],
+      "name" : "v2-jupiter-idl-reader-offline",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 47,
+      "command" : 
+      [
+        "/usr/bin/cmake",
+        "-E",
+        "env",
+        "VELOCITA_SWAP_HTTPS_PROBE=/work/build/v2-swap-https-probe",
+        "VELOCITA_TEST_OPENSSL=/usr/bin/openssl",
+        "/usr/bin/python3",
+        "-B",
+        "/source/cmake/../tests/test_swap_https.py"
+      ],
+      "name" : "v2-swap-https-local-fixtures",
+      "properties" : 
+      [
+        {
+          "name" : "TIMEOUT",
+          "value" : 60.0
+        },
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 51,
+      "command" : 
+      [
+        "/work/build/v2-jupiter-route-decode-tests"
+      ],
+      "name" : "v2-jupiter-route-decode-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 55,
+      "command" : 
+      [
+        "/work/build/v2-swap-owner-accounting-tests"
+      ],
+      "name" : "v2-swap-owner-accounting-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 59,
+      "command" : 
+      [
+        "/work/build/v2-swap-reconcile-session-tests"
+      ],
+      "name" : "v2-swap-reconcile-session-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 63,
+      "command" : 
+      [
+        "/work/build/v2-swap-reconcile-store-tests"
+      ],
+      "name" : "v2-swap-reconcile-store-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 67,
+      "command" : 
+      [
+        "/usr/bin/cmake",
+        "-E",
+        "env",
+        "VELOCITA_SWAP_GATEWAY_TLS_DRILL=/work/build/v2-swap-gateway-tls-drill",
+        "VELOCITA_TEST_OPENSSL=/usr/bin/openssl",
+        "/usr/bin/python3",
+        "-B",
+        "/source/cmake/../tests/test_swap_gateway_tls_drill.py"
+      ],
+      "name" : "v2-swap-gateway-tls-drill",
+      "properties" : 
+      [
+        {
+          "name" : "TIMEOUT",
+          "value" : 75.0
+        },
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 71,
+      "command" : 
+      [
+        "/work/build/v2-swap-transaction-inspection-tests"
+      ],
+      "name" : "v2-swap-transaction-inspection-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 75,
+      "command" : 
+      [
+        "/work/build/v2-swap-submission-store-tests"
+      ],
+      "name" : "v2-swap-submission-store-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 79,
+      "command" : 
+      [
+        "/work/build/v2-swap-authority-tests"
+      ],
+      "name" : "v2-swap-authority-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 83,
+      "command" : 
+      [
+        "/work/build/v2-swap-authority-storage-tests"
+      ],
+      "name" : "v2-swap-authority-storage-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 87,
+      "command" : 
+      [
+        "/work/build/v2-swap-submission-resolution-tests"
+      ],
+      "name" : "v2-swap-submission-resolution-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 91,
+      "command" : 
+      [
+        "/work/build/v2-swap-submission-session-tests"
+      ],
+      "name" : "v2-swap-submission-session-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 95,
+      "command" : 
+      [
+        "/usr/bin/cmake",
+        "-E",
+        "env",
+        "GATEWAY_TEST=swap_submission_lost_reply_leader_loss_restart",
+        "/work/build/v2-swap-submission-gateway-drill"
+      ],
+      "name" : "v2-swap-submission-gateway-drill",
+      "properties" : 
+      [
+        {
+          "name" : "TIMEOUT",
+          "value" : 60.0
+        },
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 99,
+      "command" : 
+      [
+        "/usr/bin/cmake",
+        "-E",
+        "env",
+        "GATEWAY_TEST=swap_authority_without_quorum_or_after_kill",
+        "/work/build/v2-swap-submission-gateway-drill"
+      ],
+      "name" : "v2-swap-authority-quorum-drill",
+      "properties" : 
+      [
+        {
+          "name" : "TIMEOUT",
+          "value" : 30.0
+        },
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 103,
+      "command" : 
+      [
+        "/work/build/v2-swap-signing-stamp-tests"
+      ],
+      "name" : "v2-swap-signing-stamp-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 107,
+      "command" : 
+      [
+        "/work/build/v2-swap-rest-codec-tests"
+      ],
+      "name" : "v2-swap-rest-codec-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 111,
+      "command" : 
+      [
+        "/work/build/v2-swap-prepare-store-tests"
+      ],
+      "name" : "v2-swap-prepare-store-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 115,
+      "command" : 
+      [
+        "/work/build/v2-swap-prepare-session-tests"
+      ],
+      "name" : "v2-swap-prepare-session-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 119,
+      "command" : 
+      [
+        "/work/build/v2-swap-signer-session-tests"
+      ],
+      "name" : "v2-swap-signer-session-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 123,
+      "command" : 
+      [
+        "/work/build/v2-swap-signer-production-gate",
+        "production_gate"
+      ],
+      "name" : "v2-swap-signer-production-gate",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 127,
+      "command" : 
+      [
+        "/work/build/v2-swap-signer-protocol-tests"
+      ],
+      "name" : "v2-swap-signer-protocol-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 131,
+      "command" : 
+      [
+        "/work/build/v2-swap-signer-service-tests"
+      ],
+      "name" : "v2-swap-signer-service-tests",
+      "properties" : 
+      [
+        {
+          "name" : "TIMEOUT",
+          "value" : 30.0
+        },
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 135,
+      "command" : 
+      [
+        "/work/build/v2-swap-order-status-tests"
+      ],
+      "name" : "v2-swap-order-status-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 139,
+      "command" : 
+      [
+        "/usr/bin/cmake",
+        "-E",
+        "env",
+        "VELOCITA_SWAP_ORDER_HTTPS_PROBE=/work/build/v2-swap-order-https-probe",
+        "VELOCITA_TEST_OPENSSL=/usr/bin/openssl",
+        "/usr/bin/python3",
+        "-B",
+        "/source/cmake/../tests/test_swap_order_https.py"
+      ],
+      "name" : "v2-swap-order-https-local-fixtures",
+      "properties" : 
+      [
+        {
+          "name" : "TIMEOUT",
+          "value" : 45.0
+        },
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 143,
+      "command" : 
+      [
+        "/work/build/v2-swap-settlement-evidence-tests"
+      ],
+      "name" : "v2-swap-settlement-evidence-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 147,
+      "command" : 
+      [
+        "/usr/bin/cmake",
+        "-E",
+        "env",
+        "VELOCITA_SWAP_PREPARE_HTTPS_TESTS=/work/build/v2-swap-prepare-https-tests",
+        "VELOCITA_TEST_OPENSSL=/usr/bin/openssl",
+        "/usr/bin/python3",
+        "-B",
+        "/source/cmake/../tests/test_swap_prepare_https.py"
+      ],
+      "name" : "v2-swap-prepare-https-local-fixtures",
+      "properties" : 
+      [
+        {
+          "name" : "TIMEOUT",
+          "value" : 60.0
+        },
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 151,
+      "command" : 
+      [
+        "/work/build/v2-swap-signing-connection-tests"
+      ],
+      "name" : "v2-swap-signing-connection-tests",
+      "properties" : 
+      [
+        {
+          "name" : "TIMEOUT",
+          "value" : 30.0
+        },
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 155,
+      "command" : 
+      [
+        "/work/build/v2-swap-settlement-connection-tests"
+      ],
+      "name" : "v2-swap-settlement-connection-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 159,
+      "command" : 
+      [
+        "/work/build/v2-swap-runtime-config-tests"
+      ],
+      "name" : "v2-swap-runtime-config-tests",
+      "properties" : 
+      [
+        {
+          "name" : "TIMEOUT",
+          "value" : 30.0
+        },
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 163,
+      "command" : 
+      [
+        "/work/build/v2-swap-gateway-runtime-tests"
+      ],
+      "name" : "v2-swap-gateway-runtime-tests",
+      "properties" : 
+      [
+        {
+          "name" : "TIMEOUT",
+          "value" : 120.0
+        },
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 167,
+      "command" : 
+      [
+        "/work/build/v2-swap-process-drill"
+      ],
+      "name" : "v2-swap-process-drill",
+      "properties" : 
+      [
+        {
+          "name" : "TIMEOUT",
+          "value" : 120.0
+        },
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 171,
+      "command" : 
+      [
+        "/work/build/v2-swap-runtime-production-tests"
+      ],
+      "name" : "v2-swap-runtime-production-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 175,
+      "command" : 
+      [
+        "/work/build/v2-swap-settlement-lifecycle-tests"
+      ],
+      "name" : "v2-swap-settlement-lifecycle-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 179,
+      "command" : 
+      [
+        "/work/build/v2-swap-settlement-admission-tests"
+      ],
+      "name" : "v2-swap-settlement-admission-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 183,
+      "command" : 
+      [
+        "/usr/bin/cmake",
+        "-E",
+        "env",
+        "VELOCITA_SWAP_RUNTIME_HTTPS_PROBE=/work/build/v2-swap-runtime-https-probe",
+        "VELOCITA_TEST_OPENSSL=/usr/bin/openssl",
+        "/usr/bin/python3",
+        "-B",
+        "/source/cmake/../tests/test_swap_runtime_https.py"
+      ],
+      "name" : "v2-swap-runtime-https-fixtures",
+      "properties" : 
+      [
+        {
+          "name" : "TIMEOUT",
+          "value" : 60.0
+        },
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 187,
+      "command" : 
+      [
+        "/usr/bin/cmake",
+        "-E",
+        "env",
+        "VELOCITA_SWAP_RUNTIME_GATEWAY=/work/build/velocita-v2-gateway",
+        "/usr/bin/python3",
+        "-B",
+        "/source/cmake/../tests/test_swap_runtime_gate.py"
+      ],
+      "name" : "v2-swap-runtime-startup-gate",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 191,
+      "command" : 
+      [
+        "/work/build/v2-swap-account-setup-tests"
+      ],
+      "name" : "v2-swap-account-setup-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 195,
+      "command" : 
+      [
+        "/work/build/v2-swap-failed-settlement-tests"
+      ],
+      "name" : "v2-swap-failed-settlement-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 199,
+      "command" : 
+      [
+        "/work/build/v2-operational-recovery-tests"
+      ],
+      "name" : "v2-operational-recovery-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 203,
+      "command" : 
+      [
+        "/work/build/v2-swap-cost-policy-tests"
+      ],
+      "name" : "v2-swap-cost-policy-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 207,
+      "command" : 
+      [
+        "/work/build/v2-swap-transaction-review-tests"
+      ],
+      "name" : "v2-swap-transaction-review-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 211,
+      "command" : 
+      [
+        "/work/build/v2-swap-transaction-verifier-tests"
+      ],
+      "name" : "v2-swap-transaction-verifier-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 215,
+      "command" : 
+      [
+        "/work/build/v2-swap-signer-verified-tests"
+      ],
+      "name" : "v2-swap-signer-verified-tests",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    },
+    {
+      "backtrace" : 217,
+      "command" : 
+      [
+        "/usr/bin/cmake",
+        "-DLIBRARY=/work/build/libvelocita_v2_truemarkets_venue.a",
+        "-P",
+        "/source/cmake/check_no_network_symbols.cmake"
+      ],
+      "name" : "v2-truemarkets-no-network-symbols",
+      "properties" : 
+      [
+        {
+          "name" : "WORKING_DIRECTORY",
+          "value" : "/work/build"
+        }
+      ]
+    }
+  ],
+  "version" : 
+  {
+    "major" : 1,
+    "minor" : 0
+  }
+}

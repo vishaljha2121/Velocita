@@ -1,0 +1,9 @@
+[
+  "python3",
+  "-B",
+  "/source/docs/evidence/bounded_launch_review_2026-10-13/bison/client_amendment_tests.py",
+  "--client",
+  "/work/build/velocita-v2-client",
+  "--output",
+  "/evidence/client-price-amendment"
+]
