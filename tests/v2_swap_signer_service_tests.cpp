@@ -30,6 +30,56 @@ void lost_socket_response(){
     reopen(r);require(r.session->retrieve(EffectId{1},1,handle,body_bytes(),10,20100) && r.key.protected_key->signature_attempts()==0,
         "lost socket reply recovers durable stamp without repeat crypto");
 }
+void late_connection_budget(){
+    Rig r;Server server;const auto path=r.scratch.base/"late.sock";
+    require(server.listen(path,::geteuid()),"late client listener");
+    int ready_pipe[2];require(::pipe(ready_pipe)==0,"server readiness pipe");
+    const auto child=::fork();require(child>=0,"late client signer child");
+    if(child==0){::close(ready_pipe[0]);const char ready='r';
+        if(::write(ready_pipe[1],&ready,1)!=1)::_exit(2);::close(ready_pipe[1]);
+        const bool ok=server.serve_once(*r.session,2000);
+        ::_exit(ok && r.key.protected_key->signature_attempts()==1?0:1);}
+    ::close(ready_pipe[1]);char ready{};require(::read(ready_pipe[0],&ready,1)==1,"server ready to enter accept window");::close(ready_pipe[0]);
+    ::usleep(1'250'000);
+    const int fd=::socket(AF_UNIX,SOCK_STREAM,0);require(fd>=0,"late client socket");
+#ifdef SO_NOSIGPIPE
+    const int one=1;require(::setsockopt(fd,SOL_SOCKET,SO_NOSIGPIPE,&one,sizeof(one))==0,"late socket ignores SIGPIPE");
+#endif
+#ifdef MSG_NOSIGNAL
+    constexpr int flags=MSG_NOSIGNAL;
+#else
+    constexpr int flags=0;
+#endif
+    sockaddr_un address{};address.sun_family=AF_UNIX;const auto name=path.string();
+    require(name.size()<sizeof(address.sun_path),"late socket path fits");std::memcpy(address.sun_path,name.c_str(),name.size()+1);
+    require(::connect(fd,reinterpret_cast<sockaddr*>(&address),sizeof(address))==0,"late client connects");
+    std::array<std::byte,kRequestBytes> frame{};const auto n=encode_request(request(),frame);
+    require(::send(fd,frame.data(),8,flags)==8,"late request header sent");
+    ::usleep(1'100'000);
+    const auto sent=::send(fd,frame.data()+8,n-8,flags);
+    int status{};require(::waitpid(child,&status,0)==child,"late signer reaped");
+    std::array<std::byte,kReplyBytes> bytes{};std::size_t total{};
+    for(;;){const auto got=::read(fd,bytes.data()+total,bytes.size()-total);if(got<=0)break;total+=static_cast<std::size_t>(got);if(total==bytes.size())break;}
+    ::close(fd);Reply reply;
+    require(sent==static_cast<ssize_t>(n-8) && WIFEXITED(status) && WEXITSTATUS(status)==0 &&
+        decode_reply(std::span(bytes).first(total),reply) && reply.code==ReplyCode::signed_once &&
+        reply.request_digest==sha256_digest(std::span(frame).first(n)) && reply.public_key==r.key.public_key &&
+        r.key.verifies(body_bytes(),std::span(reply.der).first(reply.der_size)),
+        "late accepted request keeps full bounded processing budget and returns one verified signature");
+}
+void incomplete_request_timeout(){
+    Rig r;Server server;const auto path=r.scratch.base/"timeout.sock";
+    require(server.listen(path,::geteuid()),"incomplete request listener");
+    const auto child=::fork();require(child>=0,"incomplete request child");
+    if(child==0){const bool ok=server.serve_once(*r.session,500);::_exit(!ok && r.key.protected_key->signature_attempts()==0?0:1);}
+    const int fd=::socket(AF_UNIX,SOCK_STREAM,0);require(fd>=0,"incomplete socket");
+    sockaddr_un address{};address.sun_family=AF_UNIX;const auto name=path.string();
+    require(name.size()<sizeof(address.sun_path),"incomplete path fits");std::memcpy(address.sun_path,name.c_str(),name.size()+1);
+    require(::connect(fd,reinterpret_cast<sockaddr*>(&address),sizeof(address))==0,"incomplete client connects");
+    std::array<std::byte,kRequestBytes> frame{};const auto n=encode_request(request(),frame);
+    require(n>8 && ::write(fd,frame.data(),8)==8,"incomplete header sent without body");
+    child_result(child);char byte{};require(::read(fd,&byte,1)==0,"incomplete request closes without signing");::close(fd);
+}
 void process_policy(){
     const auto child=::fork();require(child>=0,"process boundary child");if(child==0){
         if(restrict_process(::geteuid(),::geteuid()) || restrict_process(static_cast<std::uint32_t>(::geteuid()+1),::geteuid()))::_exit(1);
@@ -53,5 +103,5 @@ void peer_and_path_refusals(){
     {Rig r;Server server;require(!server.listen(r.scratch.base/"key.pem",::geteuid()) && std::filesystem::is_regular_file(r.scratch.base/"key.pem"),"existing file is never unlinked or replaced for socket");}
 }
 }
-int main(int argc,char**argv){const std::pair<const char*,void(*)()> cases[]{{"success",successful_ipc_and_retrieval},{"lost",lost_socket_response},{"peer",peer_and_path_refusals},{"process",process_policy}};
+int main(int argc,char**argv){const std::pair<const char*,void(*)()> cases[]{{"late",late_connection_budget},{"incomplete",incomplete_request_timeout},{"success",successful_ipc_and_retrieval},{"lost",lost_socket_response},{"peer",peer_and_path_refusals},{"process",process_policy}};
     unsigned ran{},failed{};for(auto[name,fn]:cases){if(argc==2&&std::string_view(argv[1])!=name)continue;++ran;try{fn();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception&e){++failed;std::cout<<"FAIL "<<name<<": "<<e.what()<<'\n';}}return ran&&!failed?0:1;}

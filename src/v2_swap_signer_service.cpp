@@ -110,8 +110,10 @@ bool Server::listen(const std::filesystem::path&path,std::uint32_t allowed)noexc
     }catch(...){return false;}
 }
 bool Server::serve_once(SwapSignerSession&session,int timeout){
-    if(fd_<0 || timeout<=0 || timeout>30000)return false;const auto deadline=now()+timeout;
-    if(!ready(fd_,POLLIN,deadline))return false;Fd client(::accept(fd_,nullptr,nullptr));if(client.fd<0 || !prepare(client.fd))return false;
+    if(fd_<0 || timeout<=0 || timeout>30000)return false;const auto accept_deadline=now()+timeout;
+    if(!ready(fd_,POLLIN,accept_deadline))return false;Fd client(::accept(fd_,nullptr,nullptr));if(client.fd<0)return false;
+    const auto deadline=now()+timeout;
+    if(!prepare(client.fd))return false;
     const auto uid=peer(client.fd);if(!uid || *uid!=client_uid_){++peer_refusals_;return false;}
     std::array<std::byte,kRequestBytes> bytes{};const auto n=read_frame(client.fd,bytes,deadline);Request req;
     if(!n || !decode_request(std::span(bytes).first(n),req))return false;

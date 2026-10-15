@@ -1,0 +1,11 @@
+Test project /Users/vishaljha/.cache/velocita-build/focused-mvp-20261015/cpp-make
+    Start   1: v2-swap-continuous-drill
+1/3 Test   #1: v2-swap-continuous-drill ...........   Passed   24.40 sec
+    Start 152: v2-swap-signer-service-tests
+2/3 Test #152: v2-swap-signer-service-tests .......   Passed    3.08 sec
+    Start 157: v2-swap-signing-connection-tests
+3/3 Test #157: v2-swap-signing-connection-tests ...   Passed    1.23 sec
+
+100% tests passed out of 3
+
+Total Test time (real) =  28.71 sec
