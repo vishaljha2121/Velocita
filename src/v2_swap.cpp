@@ -210,6 +210,19 @@ Code reduce(State& s, const AmendBuyPrice& c, std::uint64_t now) noexcept {
     return Code::applied;
 }
 
+Code reduce(State& s, const GrantStrategy& c, std::uint64_t now) noexcept {
+    if (s.strategy_grant != StrategyGrant{}) return Code::stale;
+    if (s.mode != Mode::halted) return Code::stopped;
+    if (s.pending != Pending{} || s.last_effect || s.settled_total || s.last_release != ReleaseUnsent{} ||
+        s.reserved_base.value() || s.reserved_quote.value() || s.purchases.value() || s.fees.value() || s.realized_pnl ||
+        s.base != s.opening.base || s.quote != s.opening.quote || s.cost != s.opening.base_cost) return Code::busy;
+    if (c.kill_epoch != s.kill_epoch || c.executor_generation != s.executor_generation) return Code::fenced;
+    if (!now || c.opening_digest != opening_digest(s.opening) || c.review_evidence.is_zero() ||
+        !c.caller.value() || !c.first_sequence.value()) return Code::invalid;
+    s.strategy_grant={c.caller,c.first_sequence,c.review_evidence,c.kill_epoch,c.executor_generation,now};
+    return Code::applied;
+}
+
 Code reduce(State& s, const Control& c, std::uint64_t) noexcept {
     if (!mode_valid(c.mode) || c.kill_epoch < s.kill_epoch || c.executor_generation < s.executor_generation) return Code::invalid;
     if (c.kill_epoch == s.kill_epoch && c.executor_generation == s.executor_generation) return Code::invalid;
@@ -218,7 +231,7 @@ Code reduce(State& s, const Control& c, std::uint64_t) noexcept {
 }
 
 template<typename T> constexpr Role role_for() noexcept {
-    if constexpr (std::is_same_v<T,Initialize> || std::is_same_v<T,Control> || std::is_same_v<T,AmendBuyPrice>) return Role::operator_role;
+    if constexpr (std::is_same_v<T,Initialize> || std::is_same_v<T,Control> || std::is_same_v<T,AmendBuyPrice> || std::is_same_v<T,GrantStrategy>) return Role::operator_role;
     if constexpr (std::is_same_v<T,Intent>) return Role::strategy;
     return Role::gateway;
 }
@@ -276,6 +289,12 @@ bool valid_state(const State& s) noexcept {
             a.kill_epoch<s.opening.kill_epoch || a.kill_epoch>s.kill_epoch ||
             a.executor_generation<s.opening.executor_generation || a.executor_generation>s.executor_generation) return false;
         baseline.buy_price_amendment=a;
+    }
+    const auto& g=s.strategy_grant;
+    if (g != StrategyGrant{}) {
+        if (!g.caller.value() || !g.first_sequence.value() || g.evidence.is_zero() || !g.event_time || g.event_time>s.event_time ||
+            g.kill_epoch<s.opening.kill_epoch || g.kill_epoch>s.kill_epoch ||
+            g.executor_generation<s.opening.executor_generation || g.executor_generation>s.executor_generation) return false;
     }
     const bool complete = s.settled_total == s.settlement_count;
     std::uint64_t previous{};

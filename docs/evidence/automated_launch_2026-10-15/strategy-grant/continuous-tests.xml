@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="Darwin-c++"
+	tests="1"
+	failures="0"
+	disabled="0"
+	skipped="0"
+	hostname="Vishals-MacBook-Pro.local"
+	time="23"
+	timestamp="2026-10-15T17:05:18"
+	>
+	<testcase name="v2-swap-continuous-drill" classname="v2-swap-continuous-drill" time="23.6011" status="run">
+		<properties/>
+		<system-out>PASS continuous case 0: six real-format verified swaps, six sends, flat inventory
+PASS continuous case 1: six real-format verified swaps, six sends, flat inventory
+PASS continuous case 2: six real-format verified swaps, six sends, flat inventory
+Evidence: "/Users/vishaljha/.cache/velocita-build/continuous-36292"
+</system-out>
+	</testcase>
+</testsuite>

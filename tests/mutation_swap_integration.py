@@ -24,7 +24,7 @@ MUTANTS = [
      'legacy path cannot double fund swap balance'),
     ('strategy_bypass', 'src/v2_kernel.cpp', 'std::holds_alternative<swap::AmendBuyPrice>(value.record.command)) return kOperatorRole;',
      'std::holds_alternative<swap::AmendBuyPrice>(value.record.command)) return kOperatorRole | kStrategyRole;',
-     'strategy_cannot_amend_price'),
+     'grant_strategy_cannot_self_grant'),
     ('catalog_admission', 'src/v2_swap_kernel.cpp', 'if (!swap_catalog_matches(opening->binding, *catalog))', 'if (false)',
      'SOL atomic denomination cannot bind BTC row'),
     ('prepared_economics', 'src/v2_swap_paper_gateway.cpp', 'if (payload != p.payload || payload != p.handle) return {};',

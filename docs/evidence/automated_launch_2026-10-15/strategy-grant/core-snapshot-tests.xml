@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="Darwin-c++"
+	tests="6"
+	failures="0"
+	disabled="0"
+	skipped="0"
+	hostname="Vishals-MacBook-Pro.local"
+	time="1"
+	timestamp="2026-10-15T17:02:05"
+	>
+	<testcase name="v2-swap-integration-tests" classname="v2-swap-integration-tests" time="0.214516" status="run">
+		<properties/>
+		<system-out>PASS strategy_grant_replay_and_limits
+PASS strategy_grant_validation
+PASS strategy_grant_codec_oracles
+PASS strategy_grant_legacy_snapshot_oracle
+PASS price_amendment_authority_and_replay
+PASS global_controls_fence_pending
+PASS funding_roles_and_exclusion
+PASS paper_restart_and_exact_receipt
+PASS unknown_kill_and_late_settlement
+PASS tampering_and_configuration_change
+</system-out>
+	</testcase>
+	<testcase name="v2-state-snapshot-tests" classname="v2-state-snapshot-tests" time="0.175312" status="run">
+		<properties/>
+		<system-out>all V2 state snapshot tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-kernel-codec-tests" classname="v2-kernel-codec-tests" time="0.143726" status="run">
+		<properties/>
+		<system-out>all V2 kernel codec tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-model-replay-tests" classname="v2-model-replay-tests" time="0.398022" status="run">
+		<properties/>
+		<system-out>generated histories=32 commands_per_history=96 snapshot_cuts_per_history=6 schema7_projection_corpus_digest=79885aa4f0f7cbe62a3e36f4277f6b6396d3faa87ca9482f9201643a0b923e5c
+all V2 generated model/replay tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-layout-tests" classname="v2-layout-tests" time="0.175371" status="run">
+		<properties/>
+		<system-out>all V2 layout tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-swap-paper-tests" classname="v2-swap-paper-tests" time="0.0039005" status="run">
+		<properties/>
+		<system-out>PASS buy_price_amendment
+PASS funding_and_roles
+PASS fractional_receipt_and_fee_accounting
+PASS insufficient_cash_and_inventory
+PASS pending_unknown_keeps_holds
+PASS one_atom_bounds_conflict_without_booking
+PASS identity_and_canonical_units
+PASS freshness_and_fencing
+PASS safety_floor_and_fee_caps
+PASS deterministic_replay_of_pending_state
+PASS duplicate_and_contradictory_settlement
+PASS role_checks_and_finality
+PASS prepare_and_attempt_are_one_use
+PASS kill_blocks_new_attempt_not_settlement
+PASS sell_cost_basis_and_full_close_remainder
+PASS sales_do_not_replenish_purchase_allowance
+PASS loss_stop_allows_only_sales
+PASS transient_liquidity_is_reserved
+PASS paper_oracle_and_reject
+PASS paper_observed_cost_oracle_and_full_close
+PASS paper_observed_cost_boundaries
+PASS paper_exact_fee_mode_and_unchanged_sell
+PASS overflow_is_transactional
+PASS failed_transaction_cannot_hide_charges
+PASS settlement_window_keeps_recent_and_counts_lifetime
+PASS settlement_window_state_is_validated
+PASS strategy_orders_match_the_tm_...
+[This part of the test output was removed since it exceeds the threshold of 1024 bytes.]
+</system-out>
+	</testcase>
+</testsuite>

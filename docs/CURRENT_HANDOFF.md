@@ -1,5 +1,26 @@
 # Current development handoff
 
+## Strategy permission correction implemented locally — 2026-10-15 21:06 UTC
+
+The approved explicit operator grant is implemented and tested; it is not committed, native-qualified
+or deployed. [Evidence and deployment proposal](evidence/automated_launch_2026-10-15/strategy-grant/README.md).
+The grant binds the opening, strategy caller, minimum sequence and control epochs; default absence
+preserves old refusals and snapshot bytes. It changes only direct swap-intent admission, retaining
+the existing risk and protected-signing checks. ADR0016 records this direct-intent exception.
+
+Eleven CTest targets and eight CLI tests pass; 15 freshly compiled mutants fail at their named
+assertions. Three six-trade fake-venue cases now use authenticated strategy caller21, including
+crash recovery. An old/new fixture replay has identical code71 and snapshot hash for requests1/2.
+The grant adds 72 fixed state bytes; the full state stays within its unchanged 80KiB budget.
+
+Fresh readback21:02:26UTC: driver inactive, gateway/signer active, account index14 flat$25,
+zero effects/pending/fees. No venue wallet read or live changes during this implementation.
+Next: scoped checkpoint, exact-build NUC/Pi qualification, then coordinated single-cluster upgrade
+while halted before owner grant/resume. Preserve strategy sequence2(next3), funding/WAL/journals.
+Expected owner sequence10 must be reverified. Old readers cannot process a granted state;
+no gateway-only upgrade or rollback to old readers after activation. Epoch advancement invalidates
+this one-time grant; renewal is not implemented. Review drains October16 13:41:34UTC.
+
 ## Focused correction batch natively qualified — 2026-10-15
 
 **Executable checkpoint `1f8d7b63c03c4ef1c0c916d833cdf8513f42a2dc` is qualified on NUC1/x86_64

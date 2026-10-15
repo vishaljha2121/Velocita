@@ -1,0 +1,1 @@
+swap_state=4160 trading_state=78512 state_budget=81920 grant=72 command=296

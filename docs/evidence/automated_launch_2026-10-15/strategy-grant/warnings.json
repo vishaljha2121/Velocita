@@ -1,0 +1,15 @@
+{
+  "unique_warnings": [
+    "build/_deps/aeron-src/aeron-client/src/main/cpp_wrapper/FragmentAssembler.h:53:57: warning: unused parameter 'initialBufferLength' [-Wunused-parameter]",
+    "build/_deps/aeron-src/aeron-client/src/main/cpp_wrapper/FragmentAssembler.h:89:43: warning: unused parameter 'sessionId' [-Wunused-parameter]",
+    "build/_deps/aeron-src/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:114:119: warning: unused parameter 'label' [-Wunused-parameter]",
+    "build/_deps/aeron-src/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:114:89: warning: unused parameter 'keyBuffer' [-Wunused-parameter]",
+    "build/_deps/aeron-src/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:119: warning: unused parameter 'label' [-Wunused-parameter]",
+    "build/_deps/aeron-src/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:54: warning: unused parameter 'counterTypeId' [-Wunused-parameter]",
+    "build/_deps/aeron-src/aeron-client/src/main/cpp_wrapper/concurrent/CountersReader.h:130:89: warning: unused parameter 'keyBuffer' [-Wunused-parameter]",
+    "src/v2_node_client.cpp:96:13: warning: enumeration value 'swap_authority_granted' not handled in switch [-Wswitch]",
+    "tests/v2_gateway_node_tests.cpp:688:36: warning: missing field 'injected' initializer [-Wmissing-field-initializers]"
+  ],
+  "new_grant_source_warnings": false,
+  "notes": "Existing node-client enum switch, gateway test initializer and upstream Aeron unused parameters; not suppressed."
+}

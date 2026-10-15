@@ -114,11 +114,11 @@ void buy_price_amendment() {
         require(!valid_state(corrupt),"price_invalid_amendment_state_refused");
     }
     std::array<std::byte,max_state_bytes> extended{};auto encoded_state=encode_state(amended,extended);State restored_state;
-    require(encoded_state.error==CodecError::none && encoded_state.size==max_state_bytes,"price_extension_exact_size");
-    extended[legacy_state_bytes]=std::byte{2};
-    require(decode_state(extended,restored_state)==CodecError::format,"price_unknown_extension_tag_refused");
+    require(encoded_state.error==CodecError::none && encoded_state.size==price_amended_state_bytes,"price_extension_exact_size");
+    extended[legacy_state_bytes]=std::byte{3};
+    require(decode_state(std::span(extended).first(encoded_state.size),restored_state)==CodecError::format,"price_unknown_extension_tag_refused");
     extended[legacy_state_bytes]=std::byte{1};
-    require(decode_state(std::span(extended).first(extended.size()-1),restored_state)==CodecError::format,"price_partial_extension_refused");
+    require(decode_state(std::span(extended).first(encoded_state.size-1),restored_state)==CodecError::format,"price_partial_extension_refused");
     std::array<std::byte,max_record_bytes> bytes{};const Record record{Role::operator_role,101,amendment};
     const auto encoded=encode(record,bytes);Record restored;
     require(encoded.error==CodecError::none && decode(std::span(bytes).first(encoded.size),restored)==CodecError::none && restored==record,"price_command_roundtrip");

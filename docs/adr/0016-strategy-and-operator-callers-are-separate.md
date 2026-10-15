@@ -130,3 +130,48 @@ voter's secrets directory"; this run is the first time that was used.
 - This is a rule the tooling follows, not one the kernel enforces: every voter still holds the
   operator key, because verifying a symmetric key needs the same bytes as signing with it.
 
+
+
+## Amendment 2026-10-15: explicitly granted direct spot-swap intents
+
+Status: owner approved implementation and testing; implemented locally, deployment and activation
+pending committed native qualification and review. This applies to the ADR 0025 swap path, not
+the legacy DecisionFrame rule program.
+
+The live driver uses strategy caller 21/key 12, but the outer kernel allowed `swap::Intent` only
+from operators. Its first two requests were committed refusals at indices 13/14. The old
+continuous drill used an operator outer identity, hiding that mismatch. Granting every strategy
+caller permission through a code-only whitelist change would change those historical replay
+results. Giving the driver an operator key would violate this ADR.
+
+The operator can instead commit one `swap::GrantStrategy` while the initialized account is halted
+and has no effect history or pending exposure. It names an already assigned strategy caller,
+minimum request sequence, original opening digest, review-evidence digest, kill epoch and executor
+generation. Absence of a grant preserves the old permission checks and encoded snapshot bytes.
+Only that caller at or above the sequence floor, with the current grant epochs, gains permission
+to propose direct swap intents. For the stopped live driver the proposed floor is 3; requests 1/2
+must not be reissued. The operator must verify the persisted driver sequence before choosing the
+floor because unauthorized refusals do not advance the caller receipt cursor.
+
+Funding, price amendments, controls, catalog changes and gateway evidence remain unavailable to
+the strategy. Existing swap amount, balance, source-age, deadline, mode and loss checks still run;
+the signer independently verifies each transaction. The Python driver decides the signal: this
+permission does not prove its stochastic calculation or replicate that calculation in the kernel.
+Existing gateway authority proofs authorize execution stages; they do not grant strategy intent
+admission and are unchanged by this amendment.
+
+A kill-epoch or executor-generation advance invalidates the grant. This first-launch grant is
+one-time; no renewal, replacement or cross-account authority is introduced. A later restart that
+requires new epochs must remain stopped until an explicitly designed renewal exists. Ordinary
+halt/normal mode changes do not replace the grant. Recovery can still settle an already admitted
+order under the existing reconciliation rules.
+
+The swap command adds kind 10 and the snapshot adds ordered optional extension tag 2 (73 bytes).
+Old records and states with no grant retain their bytes. Old readers cannot consume a granted
+state: upgrade all three voters and the gateway/signer/client before committing it, while halted
+and preserving WAL, funding and journals. Do not roll back to an old reader after activation.
+`swap::State` grows from 4088 to 4160 bytes; its local assertion is adjusted accordingly. Total
+`TradingState` is 78512 bytes on the qualified-local Mac layout, within the unchanged 81920-byte
+budget. The reducer remains fixed-capacity; target-role validation scans at most eight callers.
+
+[Implementation, evidence and next steps](../evidence/automated_launch_2026-10-15/strategy-grant/README.md).

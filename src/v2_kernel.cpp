@@ -3538,12 +3538,19 @@ bool submit_permitted(const TradingState& state, const DecisionId decision_id) n
 
 namespace {
 
-[[nodiscard]] unsigned roles_allowed(const CommandBody& body) noexcept {
-    return std::visit([](const auto& value) noexcept -> unsigned {
+[[nodiscard]] unsigned roles_allowed(const TradingState& state, const Command& command) noexcept {
+    return std::visit([&](const auto& value) noexcept -> unsigned {
         using T = std::decay_t<decltype(value)>;
         if constexpr (std::is_same_v<T, ApplySpotSwap>) {
-            if (std::holds_alternative<swap::Initialize>(value.record.command) ||
-                std::holds_alternative<swap::Intent>(value.record.command) ||
+            if (std::holds_alternative<swap::Intent>(value.record.command)) {
+                const auto& grant=state.spot_swap.strategy_grant;
+                const bool permitted=grant.caller==command.identity.caller_id && grant.first_sequence.value()!=0 &&
+                    command.identity.request_sequence>=grant.first_sequence &&
+                    grant.kill_epoch==state.kill_epoch.value() && grant.executor_generation==state.executor_generation.value();
+                return kOperatorRole | (permitted ? kStrategyRole : 0);
+            }
+            if (std::holds_alternative<swap::GrantStrategy>(value.record.command) ||
+                std::holds_alternative<swap::Initialize>(value.record.command) ||
                 std::holds_alternative<swap::AmendBuyPrice>(value.record.command)) return kOperatorRole;
             return swap::required_role(value.record.command) == swap::Role::gateway ? kGatewayRole : 0;
         } else if constexpr (is_one_of<T, AdvanceKillEpoch, SetExecutorGeneration, SetStrategyMode,
@@ -3561,7 +3568,7 @@ namespace {
                           "decide which caller roles may send this command");
             return kOperatorRole | kGatewayRole;
         }
-    }, body);
+    }, command.body);
 }
 
 [[nodiscard]] unsigned role_of(const TradingState& state, const CallerId caller) noexcept {
@@ -3603,7 +3610,7 @@ ApplyResult apply(TradingState& state,
             return result(state, ApplyCode::unauthorized_control, state.state_version);
         }
     }
-    if ((roles_allowed(command.body) & role_of(state, command.identity.caller_id)) == 0) {
+    if ((roles_allowed(state, command) & role_of(state, command.identity.caller_id)) == 0) {
         return result(state, ApplyCode::unauthorized_command, state.state_version);
     }
 

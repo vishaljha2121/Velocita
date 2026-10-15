@@ -1,0 +1,21 @@
+{
+  "base_commit": "968f18f43ae43370db89255de29ac8b2a58e3a38",
+  "files": {
+    "include/velocita/v2/swap.hpp": "91779f7659f20df7467012d41e6fb7024f22b079e1484c6361fa2f0672720111",
+    "include/velocita/v2/swap_codec.hpp": "8374b1db062561347d666f39e16aa788eafba0330b0eaba96418a35abdf6343a",
+    "src/v2_client_main.cpp": "5c586dcc394c222cc8d8865bc07863af237ab75f6bf844ca549848008ff41095",
+    "src/v2_kernel.cpp": "9ff948d33be16f655344344efd27fe172e1b1044f3f98c6646f6ef64aafe8adc",
+    "src/v2_swap.cpp": "abb7a2e9507382ed08740cad9c7e3051c0dd2dadca304d0b19458ad9229ea4ec",
+    "src/v2_swap_codec.cpp": "20c11d99821c553a9c5093d9df0381a9dd2715f318146b0b8361594729d4752f",
+    "src/v2_swap_kernel.cpp": "7ac0ac93f32638debb44e3dc99f7782a131f57eb23be719bb3d90f8857a1b03c",
+    "tests/v2_swap_continuous_drill.cpp": "ec13d251571c5dec8e0fcdbd94c91a97ae5064187b1df319decb7b34a2c63d2b",
+    "tests/v2_swap_integration_tests.cpp": "d408f9b2fe839a3bb17375cf968ee8ed82434d1a983ba3ca00902ec7115388fd",
+    "tests/v2_swap_paper_tests.cpp": "f587d8ac21529e16d64967acd8f49317aca28c646ffa1a9a3fc02874acc80c0d",
+    "tests/v2_swap_grant_legacy_replay.cpp": "9fe16927af6c7c4960b8a1783926a5f68a9605bf9c5440ecd23f69878f12b575",
+    "tests/client_strategy_grant_tests.py": "6583e13c301f98f6e71a296dce3e9072a2385b5be192f70b097d57ee5b728a3b",
+    "tests/mutation_swap_strategy_grant.py": "98809e2928c796ba87a002aebda553dd34bf3ee9d438d4edf97be69cbed99df6",
+    "docs/evidence/automated_launch_2026-10-15/focused-mvp/native/native-focused.py": "574a19cd856844213b2f44d1678139aa41b97d7674fab39ecfdcbb2b99e56a7c",
+    "docs/adr/0016-strategy-and-operator-callers-are-separate.md": "2167232fba8f91c4f925f0dfc715f518a1292ccdd35e22d27bd012de5139750f",
+    "tests/mutation_swap_integration.py": "64c17be6c6241c7691e923997f398b0c093c0ce000066efd1edf6ea4da76aab0"
+  }
+}

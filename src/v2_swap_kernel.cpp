@@ -15,6 +15,12 @@ bool exclusive(const TradingState& s) noexcept {
         s.outbox_effect_count == 0 && s.policy_count == 0 && s.decision_count == 0 &&
         !s.active_executable_policy.present && !s.staged_executable_policy.present;
 }
+bool strategy_caller(const TradingState& s, CallerId caller) noexcept {
+    if (is_operator_caller(caller)) return false;
+    for (std::size_t n=0;n<s.caller_cursor_count;++n)
+        if (s.caller_cursors[n].caller_id==caller) return s.caller_cursors[n].role==CallerRole::strategy;
+    return false;
+}
 bool text_is(const CatalogText& text, std::string_view value) noexcept {
     return text.length == value.size() && std::string_view(text.bytes.data(), text.length) == value;
 }
@@ -54,6 +60,7 @@ bool swap_catalog_matches(const swap::Binding& binding, const VerifiedExecutionC
 bool swap_state_bindings_valid(const TradingState& s) noexcept {
     if (!swap::valid_state(s.spot_swap)) return false;
     if (!s.spot_swap.initialized) return true;
+    if (s.spot_swap.strategy_grant != swap::StrategyGrant{} && !strategy_caller(s,s.spot_swap.strategy_grant.caller)) return false;
     return exclusive(s) && s.spot_swap.opening.binding.catalog == s.execution_catalog_root &&
         !s.execution_catalog_root.is_zero() && s.spot_swap.kill_epoch == s.kill_epoch.value() &&
         s.spot_swap.executor_generation == s.executor_generation.value() &&
@@ -74,6 +81,12 @@ ApplyCode apply_spot_swap(TradingState& s, const swap::Record& r, const Verified
         if (!swap_catalog_matches(opening->binding, *catalog)) return ApplyCode::catalog_binding_mismatch;
         if (opening->kill_epoch != s.kill_epoch.value() || opening->executor_generation != s.executor_generation.value())
             return ApplyCode::stale_control_generation;
+    }
+    if (const auto* grant=std::get_if<swap::GrantStrategy>(&r.command)) {
+        if (!strategy_caller(s,grant->caller) || !grant->first_sequence.value()) return ApplyCode::invalid_command;
+        for (std::size_t n=0;n<s.caller_cursor_count;++n)
+            if (s.caller_cursors[n].caller_id==grant->caller && grant->first_sequence<=s.caller_cursors[n].expired_below)
+                return ApplyCode::request_expired;
     }
     return translate(swap::apply(s.spot_swap, r.command, r.role, r.event_time));
 }

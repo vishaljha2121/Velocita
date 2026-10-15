@@ -1,0 +1,15 @@
+{
+  "equal": true,
+  "runs": [
+    {
+      "label": "before",
+      "output": "sequence=0 bytes=4261 sha256=1c54cf2eb7c87f4449dc69d34b851ca523dd55cd4497df5c9fd3f735c61fdb6c\ncode=71 sequence=1 bytes=4261 sha256=1c54cf2eb7c87f4449dc69d34b851ca523dd55cd4497df5c9fd3f735c61fdb6c\ncode=71 sequence=2 bytes=4261 sha256=1c54cf2eb7c87f4449dc69d34b851ca523dd55cd4497df5c9fd3f735c61fdb6c\n",
+      "binary_sha256": "64b6c3cb0fb235b396ce293e9f60e44880f0af3fdc2b02260bf5b00c2fbb6021"
+    },
+    {
+      "label": "after",
+      "output": "sequence=0 bytes=4261 sha256=1c54cf2eb7c87f4449dc69d34b851ca523dd55cd4497df5c9fd3f735c61fdb6c\ncode=71 sequence=1 bytes=4261 sha256=1c54cf2eb7c87f4449dc69d34b851ca523dd55cd4497df5c9fd3f735c61fdb6c\ncode=71 sequence=2 bytes=4261 sha256=1c54cf2eb7c87f4449dc69d34b851ca523dd55cd4497df5c9fd3f735c61fdb6c\n",
+      "binary_sha256": "726d5af5d144393be1a919165f72dad66bdaf43bde68d269f294bf0a6314eb7a"
+    }
+  ]
+}

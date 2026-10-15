@@ -73,6 +73,122 @@ void price_amendment_authority_and_replay() {
     Rig competing;competing.fund();require(competing.mode(StrategyMode::normal).code==ApplyCode::applied,"price_unhalt_first");
     require(competing.swap(amendment,9,101).code==ApplyCode::decision_not_authorizable,"price_amendment_after_unhalt_refused");
 }
+swap::GrantStrategy grant(const Rig& r) {
+    return {swap::opening_digest(r.s.spot_swap.opening),swap_test::digest(97),CallerId{21},RequestSequence{3},1,1};
+}
+void strategy_grant_replay_and_limits() {
+    Rig r;r.fund();catalog_test::grant(r.s,21,CallerRole::strategy);
+    require(r.mode(StrategyMode::normal).code==ApplyCode::applied,"grant_initial_normal");
+    const auto old=r.s.spot_swap;const auto version=r.s.state_version;
+    for(unsigned seq:{1,2}) require(r.send(swap_test::command(21,seq,swap_test::buy(old.opening))).code==ApplyCode::unauthorized_command,
+        "grant_old_requests_still_refused");
+    require(r.s.spot_swap==old && r.s.state_version==version,"grant_refusals_preserve_state");
+    const auto g=grant(r);
+    require(r.swap(g,9,101).code==ApplyCode::decision_not_authorizable,"grant_requires_halted");
+    require(r.mode(StrategyMode::halted).code==ApplyCode::applied,"grant_halt");
+    require(r.swap(g,21,101).code==ApplyCode::unauthorized_command,"grant_strategy_cannot_self_grant");
+    require(r.swap(g,22,101).code==ApplyCode::unauthorized_command,"grant_gateway_cannot_grant");
+    require(r.swap(g,9,101).code==ApplyCode::applied,"grant_operator_commits");r.snapshot();
+    require(r.swap(g,9,102).code==ApplyCode::request_expired,"grant_is_one_time");
+    require(r.mode(StrategyMode::normal).code==ApplyCode::applied,"grant_resume");
+    for(unsigned seq:{1,2}) require(r.send(swap_test::command(21,seq,swap_test::buy(old.opening),102)).code==ApplyCode::unauthorized_command,
+        "grant_cannot_reissue_old_sequences");
+    catalog_test::grant(r.s,24,CallerRole::strategy);
+    require(r.swap(swap_test::buy(old.opening),24,102).code==ApplyCode::unauthorized_command,"grant_other_strategy_refused");
+    require(r.swap(swap_test::buy(old.opening),22,102).code==ApplyCode::unauthorized_command,"grant_gateway_still_refused");
+    require(r.swap(old.opening,21,102).code==ApplyCode::unauthorized_command,"grant_strategy_cannot_fund");
+    require(r.swap(swap::Prepare{},21,102).code==ApplyCode::unauthorized_command,"grant_strategy_cannot_forge_evidence");
+    require(r.send({{CallerId{21},RequestSequence{99},swap_test::digest(98)},SetStrategyMode{StrategyMode::normal,KillEpoch{1},ExecutorGeneration{1}}}).code==ApplyCode::unauthorized_control,"grant_strategy_cannot_control");
+    auto bad=swap_test::buy(old.opening);bad.min_base_receive=swap::BaseAtoms{1};
+    require(r.send(swap_test::command(21,3,bad,102)).code==ApplyCode::insufficient_risk_capacity,"grant_price_bound_remains");
+    bad=swap_test::buy(old.opening);bad.binding.custody=swap_test::digest(98);
+    require(r.send(swap_test::command(21,4,bad,102)).code==ApplyCode::invalid_command,"grant_binding_remains");
+    const auto buy=swap_test::command(21,5,swap_test::buy(old.opening),102);
+    require(r.send(buy).code==ApplyCode::applied,"grant_strategy_buy_admitted");r.snapshot();
+    const auto once=r.s.spot_swap;
+    require(r.send(buy).code==ApplyCode::applied && r.s.spot_swap==once,"grant_request_deduplicated");
+    for(int n=0;n<3;++n){auto step=plan_swap_paper_step(r.s,{swap::QuoteAtoms{108'000'000},2000},103+n);
+        require(step.record.has_value() && r.swap(step.record->command,22,103+n).code==ApplyCode::applied,"grant_buy_gateway_settles");}
+    swap::Intent sell; sell.binding=old.opening.binding;sell.effect=EffectId{2};sell.side=Side::sell;
+    sell.base_input=r.s.spot_swap.base;sell.min_quote_receive=swap::QuoteAtoms{900'000};sell.fee_cap=swap::QuoteAtoms{2000};
+    sell.source_time=106;sell.sign_by=20106;sell.kill_epoch=1;sell.executor_generation=1;
+    require(r.send(swap_test::command(21,6,sell,106)).code==ApplyCode::applied,"grant_strategy_sell_admitted");r.snapshot();
+    for(int n=0;n<3;++n){auto step=plan_swap_paper_step(r.s,{swap::QuoteAtoms{108'000'000},2000},107+n);
+        require(step.record.has_value() && r.swap(step.record->command,22,107+n).code==ApplyCode::applied,"grant_sell_gateway_settles");}
+    require(r.s.spot_swap.base.value()==0 && r.s.spot_swap.quote.value()==4'995'999 && r.s.spot_swap.fees.value()==4000,
+        "grant_roundtrip_exact_oracle");r.snapshot();
+    require(r.mode(StrategyMode::halted).code==ApplyCode::applied,"grant_halt_after_trade");
+    require(r.send(swap_test::command(21,7,swap_test::buy(old.opening,3),110)).code==ApplyCode::decision_not_authorizable,"grant_halt_still_enforced");
+    require(r.send({{CallerId{9},RequestSequence{r.seq++},swap_test::digest(96)},AdvanceKillEpoch{KillEpoch{2}}}).code==ApplyCode::applied,"grant_kill_advance");
+    r.snapshot();require(r.mode(StrategyMode::normal).code==ApplyCode::applied,"grant_resume_after_kill");
+    bad=swap_test::buy(old.opening,3);bad.kill_epoch=2;
+    require(r.send(swap_test::command(21,8,bad,111)).code==ApplyCode::unauthorized_command,"grant_epoch_change_revokes_authority");
+}
+void strategy_grant_legacy_snapshot_oracle() {
+    Rig r;catalog_test::grant(r.s,21,CallerRole::strategy);r.fund();
+    require(r.mode(StrategyMode::normal).code==ApplyCode::applied,"grant_legacy_normal");
+    for(unsigned seq=0;seq<=2;++seq){
+        if(seq)require(r.send(swap_test::command(21,seq,swap_test::buy(r.s.spot_swap.opening))).code==ApplyCode::unauthorized_command,"grant_legacy_refusal_code");
+        std::array<std::byte,kMaxStateSnapshotBytes> bytes{};const auto encoded=encode_state_snapshot(r.s,bytes);
+        require(encoded.error==StateSnapshotError::none && encoded.bytes_written==4261,"grant_legacy_snapshot_byte_count");
+        const auto digest=sha256_digest(std::span(bytes).first(encoded.bytes_written));
+        std::string hex;for(auto b:digest.bytes){const auto v=std::to_integer<unsigned>(b);hex+="0123456789abcdef"[v>>4];hex+="0123456789abcdef"[v&15];}
+        require(hex=="1c54cf2eb7c87f4449dc69d34b851ca523dd55cd4497df5c9fd3f735c61fdb6c","grant_legacy_snapshot_digest");
+    }
+}
+void strategy_grant_codec_oracles() {
+    Rig r;r.fund();catalog_test::grant(r.s,21,CallerRole::strategy);
+    for(bool amendment:{false,true}) {
+        auto state=r.s.spot_swap;
+        if(amendment){const swap::AmendBuyPrice a{swap::opening_digest(state.opening),swap_test::digest(99),state.opening.limits.max_buy_price_per_sol,swap::QuoteAtoms{147'537'213},0,1,1};
+            require(swap::apply(state,a,swap::Role::operator_role,101)==swap::Code::applied,"grant_combined_price_setup");}
+        std::array<std::byte,swap::max_state_bytes> original{},bytes{};
+        const auto old=swap::encode_state(state,original);
+        require(old.error==swap::CodecError::none && old.size==(amendment?3821:3756),"grant_legacy_state_size_unchanged");
+        require(swap::apply(state,grant(r),swap::Role::operator_role,102)==swap::Code::applied,"grant_codec_setup");
+        const auto encoded=swap::encode_state(state,bytes);swap::State restored;
+        require(encoded.error==swap::CodecError::none && encoded.size==(amendment?3894:3829),"grant_extension_size_oracle");
+        require(bytes[old.size]==std::byte{2} && bytes[old.size+1]==std::byte{21} && bytes[old.size+9]==std::byte{3} &&
+            bytes[old.size+17]==std::byte{97} && bytes[old.size+49]==std::byte{1} && bytes[old.size+57]==std::byte{1} &&
+            bytes[old.size+65]==std::byte{102},"grant_extension_offsets_oracle");
+        require(swap::decode_state(std::span(bytes).first(encoded.size),restored)==swap::CodecError::none && restored==state,"grant_both_extensions_roundtrip");
+        bytes[old.size]=std::byte{3};
+        require(swap::decode_state(std::span(bytes).first(encoded.size),restored)==swap::CodecError::format,"grant_unknown_tag_refused");
+        bytes[old.size]=std::byte{2};
+        require(swap::decode_state(std::span(bytes).first(encoded.size-1),restored)==swap::CodecError::format,"grant_truncated_extension_refused");
+        require(swap::decode_state(std::span(original).first(old.size),restored)==swap::CodecError::none && restored.strategy_grant==swap::StrategyGrant{},"grant_old_snapshot_defaults_absent");
+    }
+    std::array<std::byte,swap::max_record_bytes> record{};
+    const auto encoded=swap::encode({swap::Role::operator_role,101,grant(r)},record);
+    require(encoded.error==swap::CodecError::none && encoded.size==148 && record[6]==std::byte{10} && record[7]==std::byte{1} &&
+        record[84]==std::byte{21} && record[92]==std::byte{3},"grant_command_wire_oracle");
+}
+void strategy_grant_validation() {
+    for(unsigned variant=0;variant<8;++variant){Rig r;r.fund();catalog_test::grant(r.s,21,CallerRole::strategy);auto g=grant(r);
+        if(variant==0)g.opening_digest={};if(variant==1)g.review_evidence={};if(variant==2)g.caller=CallerId{9};
+        if(variant==3)g.caller=CallerId{22};if(variant==4)g.caller=CallerId{99};if(variant==5)g.first_sequence={};
+        if(variant==6)g.kill_epoch=2;if(variant==7)g.executor_generation=2;
+        const auto before=r.s.spot_swap;const auto expected=variant>=6?ApplyCode::stale_control_generation:ApplyCode::invalid_command;
+        require(r.swap(g,9,101).code==expected && r.s.spot_swap==before,"grant_invalid_binding_target_or_epoch_refused");}
+    Rig used;used.reserve();catalog_test::grant(used.s,21,CallerRole::strategy);
+    require(used.swap(swap::ReleaseUnsent{EffectId{1},swap_test::digest(98)},22,101).code==ApplyCode::applied,"grant_used_account_release");
+    require(used.mode(StrategyMode::halted).code==ApplyCode::applied,"grant_used_account_halt");
+    require(used.swap(grant(used),9,102).code==ApplyCode::order_slot_occupied,"grant_requires_pristine_account");
+    Rig expired;expired.fund();catalog_test::grant(expired.s,21,CallerRole::strategy);
+    for(auto& cursor:expired.s.caller_cursors)if(cursor.caller_id==CallerId{21})cursor.expired_below=RequestSequence{3};
+    require(expired.swap(grant(expired),9,101).code==ApplyCode::request_expired,"grant_floor_must_exceed_expired_cursor");
+    Rig r;r.fund();catalog_test::grant(r.s,21,CallerRole::strategy);require(r.swap(grant(r),9,101).code==ApplyCode::applied,"grant_snapshot_setup");
+    auto corrupt=r.s;corrupt.spot_swap.strategy_grant.caller=CallerId{22};std::array<std::byte,kMaxStateSnapshotBytes>b{};
+    require(encode_state_snapshot(corrupt,b).error==StateSnapshotError::invalid_state,"grant_snapshot_role_corruption_refused");
+    Rig executor;executor.fund();catalog_test::grant(executor.s,21,CallerRole::strategy);
+    require(executor.swap(grant(executor),9,101).code==ApplyCode::applied,"grant_executor_setup");
+    require(executor.send({{CallerId{9},RequestSequence{executor.seq++},swap_test::digest(95)},SetExecutorGeneration{ExecutorGeneration{2}}}).code==ApplyCode::applied,"grant_executor_advance");
+    executor.snapshot();require(executor.mode(StrategyMode::normal).code==ApplyCode::applied,"grant_executor_resume");
+    auto intent=swap_test::buy(executor.s.spot_swap.opening);intent.executor_generation=2;
+    require(executor.send(swap_test::command(21,3,intent,102)).code==ApplyCode::unauthorized_command,"grant_executor_change_revokes_authority");
+    corrupt=r.s;corrupt.spot_swap.strategy_grant.evidence={};
+    require(encode_state_snapshot(corrupt,b).error==StateSnapshotError::invalid_state,"grant_snapshot_empty_evidence_refused");
+}
 void paper_restart_and_exact_receipt() {
     Rig r;r.reserve();
     const swap::PaperQuote q{swap::QuoteAtoms{108'000'000},2000};
@@ -130,7 +246,11 @@ void tampering_and_configuration_change() {
 }
 }
 int main() {
-    for(const auto& [name,fn]:std::array<std::pair<const char*,void(*)()>,6>{{
+    for(const auto& [name,fn]:std::array<std::pair<const char*,void(*)()>,10>{{
+        {"strategy_grant_replay_and_limits",strategy_grant_replay_and_limits},
+        {"strategy_grant_validation",strategy_grant_validation},
+        {"strategy_grant_codec_oracles",strategy_grant_codec_oracles},
+        {"strategy_grant_legacy_snapshot_oracle",strategy_grant_legacy_snapshot_oracle},
         {"price_amendment_authority_and_replay",price_amendment_authority_and_replay},
         {"global_controls_fence_pending",global_controls_fence_pending},
         {"funding_roles_and_exclusion",funding_roles_and_exclusion},{"paper_restart_and_exact_receipt",paper_restart_and_exact_receipt},

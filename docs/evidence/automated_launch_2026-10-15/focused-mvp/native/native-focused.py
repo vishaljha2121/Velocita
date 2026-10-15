@@ -123,6 +123,9 @@ try:
     run(['python3', '-B', '/source/docs/evidence/bounded_launch_review_2026-10-13/bison/client_amendment_tests.py',
          '--client', '/work/build/velocita-v2-client', '--output', '/evidence/client-price-amendment'],
         'client-price-amendment', 60)
+    run(['python3', '-B', '/source/tests/client_strategy_grant_tests.py',
+         '--client', '/work/build/velocita-v2-client', '--output', '/evidence/client-strategy-grant'],
+        'client-strategy-grant', 60)
     run(['python3', '-B', '/source/tools/v2_schema_goldens.py', '--check'], 'golden-oracle', 30)
     run(['python3', '-B', '/source/tools/v2_schema_goldens.py', '--check-literals', '--schema', '12',
          '--replication-epoch', '2'], 'golden-literals', 30)
@@ -150,6 +153,7 @@ try:
             assert row['cash_atoms'] == 25_000_000 and row['base_atoms'] == 0
             assert row['fees_atoms'] == 12_000 and row['purchase_atoms'] == 3_000_000
             assert row['real_transaction_verifier'] and row['real_finalized_receipt_parser']
+            assert row['strategy_caller'] == 21 and row['operator_granted_intents'] is True
             continuous_cases.append(row)
     (evidence/'continuous-results.json').write_text(json.dumps(continuous_cases, indent=2)+'\n')
     assert git('rev-parse', 'HEAD') == commit and not git('status', '--porcelain=v1', '--untracked-files=all')

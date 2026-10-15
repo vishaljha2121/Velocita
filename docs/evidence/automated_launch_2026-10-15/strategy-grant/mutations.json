@@ -1,0 +1,317 @@
+[
+  {
+    "name": "pregrant_bypass",
+    "killed": true,
+    "assertion": "grant_old_requests_still_refused",
+    "output": "FAIL strategy_grant_replay_and_limits: grant_old_requests_still_refused\n",
+    "compile_command": [
+      "/usr/bin/c++",
+      "-std=c++20",
+      "-DVELOCITA_TARGET_CACHE_LINE_SIZE=128",
+      "-I/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/include",
+      "-I/Users/vishaljha/.cache/velocita-deps/willemt-raft-cp076/include",
+      "-c",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/pregrant_bypass-dfemk08l/mutant.cpp",
+      "-o",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/pregrant_bypass-dfemk08l/mutant.o"
+    ],
+    "original_sha256": "9ff948d33be16f655344344efd27fe172e1b1044f3f98c6646f6ef64aafe8adc",
+    "mutant_sha256": "6e51995c288806132766248c3cc9a966c50c354468eb08925b9f9cf6a9f7e46e",
+    "object_sha256": "9298bbefd090412351e68cb4bfed3ae766277f9fbd0eafa215d0bc849427f233",
+    "binary_sha256": "1d04ba149c18bc5d310a24d862b5d1ece7b0bb679b5527e7bc3606c78a56f547"
+  },
+  {
+    "name": "sequence_floor",
+    "killed": true,
+    "assertion": "grant_cannot_reissue_old_sequences",
+    "output": "FAIL strategy_grant_replay_and_limits: grant_cannot_reissue_old_sequences\n",
+    "compile_command": [
+      "/usr/bin/c++",
+      "-std=c++20",
+      "-DVELOCITA_TARGET_CACHE_LINE_SIZE=128",
+      "-I/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/include",
+      "-I/Users/vishaljha/.cache/velocita-deps/willemt-raft-cp076/include",
+      "-c",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/sequence_floor-6vs5nhmw/mutant.cpp",
+      "-o",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/sequence_floor-6vs5nhmw/mutant.o"
+    ],
+    "original_sha256": "9ff948d33be16f655344344efd27fe172e1b1044f3f98c6646f6ef64aafe8adc",
+    "mutant_sha256": "46d261c23358ee95a93dda34feeff6e686a51beefa683623e6cc2e68656d77f0",
+    "object_sha256": "23dedd13c23cb1f57ea77aefc5ad6c65ea597b71b8049f1f65522803e2c7fe2e",
+    "binary_sha256": "d84fa856a1d71de97bdbc6e18c52d09c88c7329abcc000b36b9ea804333dcc0d"
+  },
+  {
+    "name": "caller_binding",
+    "killed": true,
+    "assertion": "grant_other_strategy_refused",
+    "output": "FAIL strategy_grant_replay_and_limits: grant_other_strategy_refused\n",
+    "compile_command": [
+      "/usr/bin/c++",
+      "-std=c++20",
+      "-DVELOCITA_TARGET_CACHE_LINE_SIZE=128",
+      "-I/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/include",
+      "-I/Users/vishaljha/.cache/velocita-deps/willemt-raft-cp076/include",
+      "-c",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/caller_binding-5nh_uujt/mutant.cpp",
+      "-o",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/caller_binding-5nh_uujt/mutant.o"
+    ],
+    "original_sha256": "9ff948d33be16f655344344efd27fe172e1b1044f3f98c6646f6ef64aafe8adc",
+    "mutant_sha256": "5348652f4f229fd3d73e0a0501639c6f4edeb7ee19d8286f658a8e56206f2ce9",
+    "object_sha256": "6807aef9254b95b20ce465437f6de007509bd43a949d8469718fbc4d1471e3ef",
+    "binary_sha256": "60c8e7270851f118c4783094f9c92970da9361800f4fe698da6eb583c34d8dd6"
+  },
+  {
+    "name": "kill_fence",
+    "killed": true,
+    "assertion": "grant_epoch_change_revokes_authority",
+    "output": "FAIL strategy_grant_replay_and_limits: grant_epoch_change_revokes_authority\n",
+    "compile_command": [
+      "/usr/bin/c++",
+      "-std=c++20",
+      "-DVELOCITA_TARGET_CACHE_LINE_SIZE=128",
+      "-I/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/include",
+      "-I/Users/vishaljha/.cache/velocita-deps/willemt-raft-cp076/include",
+      "-c",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/kill_fence-35dhxk0s/mutant.cpp",
+      "-o",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/kill_fence-35dhxk0s/mutant.o"
+    ],
+    "original_sha256": "9ff948d33be16f655344344efd27fe172e1b1044f3f98c6646f6ef64aafe8adc",
+    "mutant_sha256": "45ec7b98bdbe224cd127747d26980d98d8564d619ce4cb5dd1b470333fcf1f64",
+    "object_sha256": "42d08d91e3697b58995d61fb722e9d3d6131fb3cfedd0822549837e894fa176c",
+    "binary_sha256": "8bb358c3bd640202377aa7a700141fd5f0ca42da90ca7d5c064213a6bee3d438"
+  },
+  {
+    "name": "executor_fence",
+    "killed": true,
+    "assertion": "grant_executor_change_revokes_authority",
+    "output": "PASS strategy_grant_replay_and_limits\nFAIL strategy_grant_validation: grant_executor_change_revokes_authority\n",
+    "compile_command": [
+      "/usr/bin/c++",
+      "-std=c++20",
+      "-DVELOCITA_TARGET_CACHE_LINE_SIZE=128",
+      "-I/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/include",
+      "-I/Users/vishaljha/.cache/velocita-deps/willemt-raft-cp076/include",
+      "-c",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/executor_fence-y57_gklm/mutant.cpp",
+      "-o",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/executor_fence-y57_gklm/mutant.o"
+    ],
+    "original_sha256": "9ff948d33be16f655344344efd27fe172e1b1044f3f98c6646f6ef64aafe8adc",
+    "mutant_sha256": "1233558fd16389d17cff567dbb7f18c513c487a6abd76b7130dead0e42b2ba26",
+    "object_sha256": "79160b445e9281381e2fef20318e1219777396a98473b5683fe25e1012ba6a3c",
+    "binary_sha256": "204cbad0afa33473eb6d228369383901f561ac9c5a1880191eff356bad009939"
+  },
+  {
+    "name": "operator_only",
+    "killed": true,
+    "assertion": "grant_strategy_cannot_self_grant",
+    "output": "FAIL strategy_grant_replay_and_limits: grant_strategy_cannot_self_grant\n",
+    "compile_command": [
+      "/usr/bin/c++",
+      "-std=c++20",
+      "-DVELOCITA_TARGET_CACHE_LINE_SIZE=128",
+      "-I/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/include",
+      "-I/Users/vishaljha/.cache/velocita-deps/willemt-raft-cp076/include",
+      "-c",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/operator_only-qd99chsn/mutant.cpp",
+      "-o",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/operator_only-qd99chsn/mutant.o"
+    ],
+    "original_sha256": "9ff948d33be16f655344344efd27fe172e1b1044f3f98c6646f6ef64aafe8adc",
+    "mutant_sha256": "b5add9b4a4e834286bb52008ce1ebfdcd4d7ac7f770474964922dc0806be9ee8",
+    "object_sha256": "9b32a9cb05e22403aec334e21cb899882f03afce55898f06f4209f72bc5b2caf",
+    "binary_sha256": "8d554aea7c03bb55d4783c5d30280d3b24e72879fa704d009ac815bfed08137b"
+  },
+  {
+    "name": "one_time",
+    "killed": true,
+    "assertion": "grant_is_one_time",
+    "output": "FAIL strategy_grant_replay_and_limits: grant_is_one_time\n",
+    "compile_command": [
+      "/usr/bin/c++",
+      "-std=c++20",
+      "-DVELOCITA_TARGET_CACHE_LINE_SIZE=128",
+      "-I/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/include",
+      "-I/Users/vishaljha/.cache/velocita-deps/willemt-raft-cp076/include",
+      "-c",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/one_time-7211qbh1/mutant.cpp",
+      "-o",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/one_time-7211qbh1/mutant.o"
+    ],
+    "original_sha256": "abb7a2e9507382ed08740cad9c7e3051c0dd2dadca304d0b19458ad9229ea4ec",
+    "mutant_sha256": "2e2226ed87e468783e4466d1aa73606241af003be0a5a730909c3e789523b37a",
+    "object_sha256": "38f535a834d1a6fc1d3009cf8b111e1e7a8e260b325b886ad601a65c4c4d4ec4",
+    "binary_sha256": "80bd9a94888fd121cd75e87e805524abb2940ca03bbcea40ad5569b26c1cc8d3"
+  },
+  {
+    "name": "halted_grant",
+    "killed": true,
+    "assertion": "grant_requires_halted",
+    "output": "FAIL strategy_grant_replay_and_limits: grant_requires_halted\n",
+    "compile_command": [
+      "/usr/bin/c++",
+      "-std=c++20",
+      "-DVELOCITA_TARGET_CACHE_LINE_SIZE=128",
+      "-I/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/include",
+      "-I/Users/vishaljha/.cache/velocita-deps/willemt-raft-cp076/include",
+      "-c",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/halted_grant-gyuz5xv2/mutant.cpp",
+      "-o",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/halted_grant-gyuz5xv2/mutant.o"
+    ],
+    "original_sha256": "abb7a2e9507382ed08740cad9c7e3051c0dd2dadca304d0b19458ad9229ea4ec",
+    "mutant_sha256": "c5b7d137dc1d9b82736b44c4dcdbbd4d735a4b69960112f2ef9d06633d43c8fe",
+    "object_sha256": "425f72528798f1a89804007af6a47154e1d21e9acc1d323ce209e7503ef3f011",
+    "binary_sha256": "b051e08f85454af2847f7601996c40e9f2884430e4aeec5221444252b4f51399"
+  },
+  {
+    "name": "opening_binding",
+    "killed": true,
+    "assertion": "grant_invalid_binding_target_or_epoch_refused",
+    "output": "PASS strategy_grant_replay_and_limits\nFAIL strategy_grant_validation: grant_invalid_binding_target_or_epoch_refused\n",
+    "compile_command": [
+      "/usr/bin/c++",
+      "-std=c++20",
+      "-DVELOCITA_TARGET_CACHE_LINE_SIZE=128",
+      "-I/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/include",
+      "-I/Users/vishaljha/.cache/velocita-deps/willemt-raft-cp076/include",
+      "-c",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/opening_binding-8s84mka_/mutant.cpp",
+      "-o",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/opening_binding-8s84mka_/mutant.o"
+    ],
+    "original_sha256": "abb7a2e9507382ed08740cad9c7e3051c0dd2dadca304d0b19458ad9229ea4ec",
+    "mutant_sha256": "65a39fab6969bad115559cacae075aa8c47f8cb172de79aa4fc281934af3797d",
+    "object_sha256": "a363a4a79b6b3732507e89b63a6b866ca62c838586e5d376d0ae1fc22bb39eb9",
+    "binary_sha256": "a6642246c7c0e985fe227396bf7b54c3a0c7d73a2e90f42a8983062ab6f44a90"
+  },
+  {
+    "name": "target_role",
+    "killed": true,
+    "assertion": "grant_invalid_binding_target_or_epoch_refused",
+    "output": "PASS strategy_grant_replay_and_limits\nFAIL strategy_grant_validation: grant_invalid_binding_target_or_epoch_refused\n",
+    "compile_command": [
+      "/usr/bin/c++",
+      "-std=c++20",
+      "-DVELOCITA_TARGET_CACHE_LINE_SIZE=128",
+      "-I/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/include",
+      "-I/Users/vishaljha/.cache/velocita-deps/willemt-raft-cp076/include",
+      "-c",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/target_role-s_xjbv4a/mutant.cpp",
+      "-o",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/target_role-s_xjbv4a/mutant.o"
+    ],
+    "original_sha256": "7ac0ac93f32638debb44e3dc99f7782a131f57eb23be719bb3d90f8857a1b03c",
+    "mutant_sha256": "bb4def3facfdb70e9acfd146a2f319ed06fd28acc5e8f84c58579f6253a308a5",
+    "object_sha256": "80f01c8993a51c47a0ff641d0920c2ea96b8c1e6a70f1f3c868731d527e0bcfc",
+    "binary_sha256": "1c741c26440db396533480d78ad9db942d88dffc742da4d5e2e959d69a4bef0e"
+  },
+  {
+    "name": "snapshot_role",
+    "killed": true,
+    "assertion": "grant_snapshot_role_corruption_refused",
+    "output": "PASS strategy_grant_replay_and_limits\nFAIL strategy_grant_validation: grant_snapshot_role_corruption_refused\n",
+    "compile_command": [
+      "/usr/bin/c++",
+      "-std=c++20",
+      "-DVELOCITA_TARGET_CACHE_LINE_SIZE=128",
+      "-I/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/include",
+      "-I/Users/vishaljha/.cache/velocita-deps/willemt-raft-cp076/include",
+      "-c",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/snapshot_role-anxozbez/mutant.cpp",
+      "-o",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/snapshot_role-anxozbez/mutant.o"
+    ],
+    "original_sha256": "7ac0ac93f32638debb44e3dc99f7782a131f57eb23be719bb3d90f8857a1b03c",
+    "mutant_sha256": "4e6f90203b5b58bc57f0ed02fba171087da29a62505b88b46314e86ce29b75fd",
+    "object_sha256": "08cd91f8d6660d9fd961b698391abb7b83e4e2183ac60b024afd31ae7bfa85e1",
+    "binary_sha256": "a9a640d9c199e31cc82bf1a6d189511a792e81217f0b8886c5add018d0fef185"
+  },
+  {
+    "name": "snapshot_evidence",
+    "killed": true,
+    "assertion": "grant_snapshot_empty_evidence_refused",
+    "output": "PASS strategy_grant_replay_and_limits\nFAIL strategy_grant_validation: grant_snapshot_empty_evidence_refused\n",
+    "compile_command": [
+      "/usr/bin/c++",
+      "-std=c++20",
+      "-DVELOCITA_TARGET_CACHE_LINE_SIZE=128",
+      "-I/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/include",
+      "-I/Users/vishaljha/.cache/velocita-deps/willemt-raft-cp076/include",
+      "-c",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/snapshot_evidence-m9nwt16m/mutant.cpp",
+      "-o",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/snapshot_evidence-m9nwt16m/mutant.o"
+    ],
+    "original_sha256": "abb7a2e9507382ed08740cad9c7e3051c0dd2dadca304d0b19458ad9229ea4ec",
+    "mutant_sha256": "b3c4f71dd42ca8d1561e9ca09bee3dcb2150c56143df9768cc59edf10e2c49cc",
+    "object_sha256": "29e07c985035587d42f603893727641bc36b604e2a1349af7f14e242b29b07c7",
+    "binary_sha256": "3a5525ac29a7c0020ac687a997e9afa08315d1cc9dfdbc7a703b046e72517db5"
+  },
+  {
+    "name": "pristine_account",
+    "killed": true,
+    "assertion": "grant_requires_pristine_account",
+    "output": "PASS strategy_grant_replay_and_limits\nFAIL strategy_grant_validation: grant_requires_pristine_account\n",
+    "compile_command": [
+      "/usr/bin/c++",
+      "-std=c++20",
+      "-DVELOCITA_TARGET_CACHE_LINE_SIZE=128",
+      "-I/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/include",
+      "-I/Users/vishaljha/.cache/velocita-deps/willemt-raft-cp076/include",
+      "-c",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/pristine_account-w049adlz/mutant.cpp",
+      "-o",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/pristine_account-w049adlz/mutant.o"
+    ],
+    "original_sha256": "abb7a2e9507382ed08740cad9c7e3051c0dd2dadca304d0b19458ad9229ea4ec",
+    "mutant_sha256": "111fcd40b02790547ddb79e1dc7ac280a8fa4ddf88cd29bdc5947fe1a8c3fe41",
+    "object_sha256": "4482225160204413f946949ec64bdeb588e66760ec692ee53d5fcf602009a8a8",
+    "binary_sha256": "231f9aa907164b67e1e5f81b53c03eeeb5e741bf8b804b3645967b6447b3155d"
+  },
+  {
+    "name": "expired_floor",
+    "killed": true,
+    "assertion": "grant_floor_must_exceed_expired_cursor",
+    "output": "PASS strategy_grant_replay_and_limits\nFAIL strategy_grant_validation: grant_floor_must_exceed_expired_cursor\n",
+    "compile_command": [
+      "/usr/bin/c++",
+      "-std=c++20",
+      "-DVELOCITA_TARGET_CACHE_LINE_SIZE=128",
+      "-I/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/include",
+      "-I/Users/vishaljha/.cache/velocita-deps/willemt-raft-cp076/include",
+      "-c",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/expired_floor-vbqikxyu/mutant.cpp",
+      "-o",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/expired_floor-vbqikxyu/mutant.o"
+    ],
+    "original_sha256": "7ac0ac93f32638debb44e3dc99f7782a131f57eb23be719bb3d90f8857a1b03c",
+    "mutant_sha256": "b4b6c2b79df8449b3def4e18373db621b223754216b9fc4091f6533e9178713f",
+    "object_sha256": "e098ac03152a222a3f37f6273b51477d7f5ae55ad760aa774a439408604de820",
+    "binary_sha256": "dfde618579c802b0721815d48b18eac803d33ae99ab0ec19c14579aab9928a1c"
+  },
+  {
+    "name": "grant_codec_sequence",
+    "killed": true,
+    "assertion": "snapshot preserves exact balances and holds",
+    "output": "FAIL strategy_grant_replay_and_limits: snapshot preserves exact balances and holds\n",
+    "compile_command": [
+      "/usr/bin/c++",
+      "-std=c++20",
+      "-DVELOCITA_TARGET_CACHE_LINE_SIZE=128",
+      "-I/Users/vishaljha/.cache/velocita-work/strategy-grant-20261015/include",
+      "-I/Users/vishaljha/.cache/velocita-deps/willemt-raft-cp076/include",
+      "-c",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/grant_codec_sequence-d4u3fe6g/mutant.cpp",
+      "-o",
+      "/Users/vishaljha/.cache/velocita-build/grant-mutations/grant_codec_sequence-d4u3fe6g/mutant.o"
+    ],
+    "original_sha256": "20c11d99821c553a9c5093d9df0381a9dd2715f318146b0b8361594729d4752f",
+    "mutant_sha256": "28362ec611cedcc5e094f8b0f3de403dc2dbc572b0273bc3a65ba0b3f1b5c31d",
+    "object_sha256": "84bace8594cc824379bba5ff9195c0331c8f0d40ab30412728d571dd20238054",
+    "binary_sha256": "4556a86a496e100d6bc23e2355b84f3ec01b25d4ec7c0a275a0e7d22f02baaca"
+  }
+]

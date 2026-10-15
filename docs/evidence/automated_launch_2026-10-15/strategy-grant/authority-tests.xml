@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="Darwin-c++"
+	tests="4"
+	failures="0"
+	disabled="0"
+	skipped="0"
+	hostname="Vishals-MacBook-Pro.local"
+	time="0"
+	timestamp="2026-10-15T17:03:06"
+	>
+	<testcase name="v2-kernel-policy-tests" classname="v2-kernel-policy-tests" time="0.196593" status="run">
+		<properties/>
+		<system-out>all V2 kernel policy tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-pinned-receipts-tests" classname="v2-pinned-receipts-tests" time="0.11599" status="run">
+		<properties/>
+		<system-out></system-out>
+	</testcase>
+	<testcase name="v2-kernel-control-tests" classname="v2-kernel-control-tests" time="0.116183" status="run">
+		<properties/>
+		<system-out>all V2 kernel control tests passed
+</system-out>
+	</testcase>
+	<testcase name="v2-executable-policy-kernel-tests" classname="v2-executable-policy-kernel-tests" time="0.116054" status="run">
+		<properties/>
+		<system-out>all V2 executable-policy kernel tests passed
+</system-out>
+	</testcase>
+</testsuite>

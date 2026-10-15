@@ -1,0 +1,24 @@
+{
+  "observed_at_ms": 1792098146576,
+  "driver": "inactive",
+  "gateway": {
+    "active": true,
+    "pid": 492641
+  },
+  "signer": {
+    "active": true,
+    "pid": 492629
+  },
+  "producer": {
+    "incarnation": "aae119b95ddcea5a206f03ab5ca12c15",
+    "applied_index": 14,
+    "last_effect": 0,
+    "pending_effect": 0,
+    "base_atoms": 0,
+    "quote_atoms": 25000000,
+    "fees_atoms": 0,
+    "realized_pnl_atoms": 0,
+    "settlements": []
+  },
+  "venue_wallet_read": false
+}

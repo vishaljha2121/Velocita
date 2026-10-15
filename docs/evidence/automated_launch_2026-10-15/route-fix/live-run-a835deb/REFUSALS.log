@@ -1,0 +1,8 @@
+STRATEGY SWAP INTENT side=buy effect=1 amount=12760000 min_receive=110400000 fee_cap=25520
+COMMITTED sequence=1 index=13 term=3 code=71 code_name=unauthorized_command state_version=9 kill_epoch=1 executor_generation=1 strategy_mode=1 from=2 latency_ms=162
+refused
+STRATEGY SWAP INTENT side=buy effect=1 amount=12760000 min_receive=110400000 fee_cap=25520
+COMMITTED sequence=2 index=14 term=3 code=71 code_name=unauthorized_command state_version=9 kill_epoch=1 executor_generation=1 strategy_mode=1 from=2 latency_ms=621
+refused
+Stopping Velocita stochastic swap driver for incarnation aae119b95ddcea5a206f03ab5ca12c15...
+Stopped Velocita stochastic swap driver for incarnation aae119b95ddcea5a206f03ab5ca12c15.

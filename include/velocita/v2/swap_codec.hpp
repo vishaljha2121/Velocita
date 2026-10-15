@@ -8,9 +8,12 @@
 namespace velocita::v2::swap {
 inline constexpr std::size_t max_record_bytes = 512;
 inline constexpr std::size_t legacy_state_bytes = 3756;
-inline constexpr std::size_t max_state_bytes = legacy_state_bytes + 65;
+inline constexpr std::size_t price_amended_state_bytes = legacy_state_bytes + 65;
+inline constexpr std::size_t max_state_bytes = price_amended_state_bytes + 73;
 [[nodiscard]] constexpr std::size_t encoded_state_size(const State& s) noexcept {
-    return !s.initialized?1:s.buy_price_amendment==BuyPriceAmendment{}?legacy_state_bytes:max_state_bytes;
+    return !s.initialized ? 1 : legacy_state_bytes +
+        (s.buy_price_amendment == BuyPriceAmendment{} ? 0 : 65) +
+        (s.strategy_grant == StrategyGrant{} ? 0 : 73);
 }
 struct Record {
     Role role{};

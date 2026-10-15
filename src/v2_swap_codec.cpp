@@ -75,6 +75,10 @@ void body(Writer& w,const AmendBuyPrice& c) noexcept {
     w.digest(c.opening_digest);w.digest(c.review_evidence);w.atom(c.expected_price);w.atom(c.replacement_price);
     w.number(c.expected_revision);w.number(c.kill_epoch);w.number(c.executor_generation);
 }
+void body(Writer& w,const GrantStrategy& c) noexcept {
+    w.digest(c.opening_digest);w.digest(c.review_evidence);w.atom(c.caller);w.atom(c.first_sequence);
+    w.number(c.kill_epoch);w.number(c.executor_generation);
+}
 void body(Writer& w,const Control& c) noexcept { w.number(static_cast<unsigned>(c.mode),1);w.number(c.kill_epoch);w.number(c.executor_generation); }
 Command command(Reader& r,unsigned kind) noexcept {
     switch(kind) {
@@ -97,6 +101,7 @@ Command command(Reader& r,unsigned kind) noexcept {
         }
         case 8: return Control{static_cast<Mode>(r.number(1)),r.number(),r.number()};
         case 9: return AmendBuyPrice{r.digest(),r.digest(),r.atom<QuoteAtoms>(),r.atom<QuoteAtoms>(),r.number(),r.number(),r.number()};
+        case 10: return GrantStrategy{r.digest(),r.digest(),r.atom<CallerId>(),r.atom<RequestSequence>(),r.number(),r.number()};
         default:r.good=false;return Initialize{};
     }
 }
@@ -120,7 +125,7 @@ CodecError decode(std::span<const std::byte> bytes,Record& out) noexcept {
     Reader r{bytes.first(bytes.size()-32)};
     if(r.number(4)!=0x31505356 || r.number(2)!=1) return CodecError::format;
     const auto kind=static_cast<unsigned>(r.number(1));const auto role=static_cast<Role>(r.number(1));
-    if(r.number(4)!=bytes.size() || kind<1 || kind>9) return CodecError::format;
+    if(r.number(4)!=bytes.size() || kind<1 || kind>10) return CodecError::format;
     if(role!=Role::operator_role && role!=Role::strategy && role!=Role::gateway) return CodecError::invalid_value;
     const auto hash=sha256_digest(bytes.first(bytes.size()-32));
     if(!std::equal(hash.bytes.begin(),hash.bytes.end(),bytes.end()-32)) return CodecError::checksum;
@@ -142,9 +147,13 @@ Encoded encode_state(const State& s,std::span<std::byte> out) noexcept {
     body(w,s.conflict_evidence);body(w,s.last_release);
     for(const auto& x:s.settlements)body(w,x);
     w.number(s.settlement_count,1);w.number(s.settled_total,4);
-    if (size==max_state_bytes) {
+    if (s.buy_price_amendment != BuyPriceAmendment{}) {
         const auto& a=s.buy_price_amendment;w.number(1,1);w.atom(a.price);w.digest(a.evidence);
         w.number(a.kill_epoch);w.number(a.executor_generation);w.number(a.event_time);
+    }
+    if (s.strategy_grant != StrategyGrant{}) {
+        const auto& g=s.strategy_grant;w.number(2,1);w.atom(g.caller);w.atom(g.first_sequence);w.digest(g.evidence);
+        w.number(g.kill_epoch);w.number(g.executor_generation);w.number(g.event_time);
     }
     return w.good && w.at==size ? Encoded{CodecError::none,w.at} : Encoded{CodecError::format,0};
 }
@@ -153,7 +162,8 @@ CodecError decode_state(std::span<const std::byte> bytes,State& out) noexcept {
     Reader r{bytes};State s;const auto initialized=r.number(1);
     if(initialized>1)return CodecError::invalid_value;
     if(initialized==0) {if(bytes.size()!=1)return CodecError::format;out=s;return CodecError::none;}
-    if(bytes.size()!=legacy_state_bytes && bytes.size()!=max_state_bytes)return CodecError::format;
+    if(bytes.size()!=legacy_state_bytes && bytes.size()!=price_amended_state_bytes &&
+        bytes.size()!=legacy_state_bytes+73 && bytes.size()!=max_state_bytes)return CodecError::format;
     s.initialized=true;const auto conflicted=r.number(1);if(conflicted>1)return CodecError::invalid_value;s.conflicted=conflicted==1;
     s.opening=std::get<Initialize>(command(r,1));
     s.base=r.atom<BaseAtoms>();s.reserved_base=r.atom<BaseAtoms>();s.quote=r.atom<QuoteAtoms>();s.reserved_quote=r.atom<QuoteAtoms>();
@@ -164,10 +174,18 @@ CodecError decode_state(std::span<const std::byte> bytes,State& out) noexcept {
     s.conflict_evidence=std::get<Settlement>(command(r,7));s.last_release=std::get<ReleaseUnsent>(command(r,6));
     for(auto& x:s.settlements)x=std::get<Settlement>(command(r,7));
     s.settlement_count=static_cast<std::uint8_t>(r.number(1));s.settled_total=static_cast<std::uint32_t>(r.number(4));
-    if (bytes.size()==max_state_bytes) {
-        if(r.number(1)!=1)return CodecError::format;
-        s.buy_price_amendment={r.atom<QuoteAtoms>(),r.digest(),r.number(),r.number(),r.number()};
-        if(s.buy_price_amendment==BuyPriceAmendment{})return CodecError::invalid_value;
+    unsigned previous_tag=0;
+    while(r.good && r.at<bytes.size()) {
+        const auto tag=r.number(1);
+        if(tag<=previous_tag || tag>2)return CodecError::format;
+        previous_tag=static_cast<unsigned>(tag);
+        if(tag==1){
+            s.buy_price_amendment={r.atom<QuoteAtoms>(),r.digest(),r.number(),r.number(),r.number()};
+            if(s.buy_price_amendment==BuyPriceAmendment{})return CodecError::invalid_value;
+        }else{
+            s.strategy_grant={r.atom<CallerId>(),r.atom<RequestSequence>(),r.digest(),r.number(),r.number(),r.number()};
+            if(s.strategy_grant==StrategyGrant{})return CodecError::invalid_value;
+        }
     }
     if(!r.good || r.at!=bytes.size() || !valid_state(s))return CodecError::invalid_value;
     out=s;return CodecError::none;

@@ -1,0 +1,30 @@
+{
+  "status": "implemented_locally_tested_not_committed_or_deployed",
+  "base_commit": "968f18f43ae43370db89255de29ac8b2a58e3a38",
+  "ctest_passed": [
+    "v2-swap-integration-tests",
+    "v2-state-snapshot-tests",
+    "v2-kernel-codec-tests",
+    "v2-model-replay-tests",
+    "v2-layout-tests",
+    "v2-swap-paper-tests",
+    "v2-kernel-policy-tests",
+    "v2-pinned-receipts-tests",
+    "v2-kernel-control-tests",
+    "v2-executable-policy-kernel-tests",
+    "v2-swap-continuous-drill"
+  ],
+  "cli_tests_passed": 8,
+  "mutation_count": 15,
+  "mutants_killed": 15,
+  "continuous_cases": 3,
+  "continuous_settlements": 18,
+  "legacy_fixture_snapshot_bytes": 4261,
+  "legacy_fixture_sha256": "1c54cf2eb7c87f4449dc69d34b851ca523dd55cd4497df5c9fd3f735c61fdb6c",
+  "native_qualified": false,
+  "staged": false,
+  "installed": false,
+  "grant_committed": false,
+  "live_services_changed": false,
+  "funds_moved": false
+}

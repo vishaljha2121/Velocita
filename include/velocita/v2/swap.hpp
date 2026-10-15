@@ -116,8 +116,24 @@ struct BuyPriceAmendment {
     constexpr bool operator==(const BuyPriceAmendment&) const noexcept = default;
 };
 
+struct GrantStrategy {
+    Digest256 opening_digest{}, review_evidence{};
+    CallerId caller{};
+    RequestSequence first_sequence{};
+    std::uint64_t kill_epoch{}, executor_generation{};
+    constexpr bool operator==(const GrantStrategy&) const noexcept = default;
+};
+
+struct StrategyGrant {
+    CallerId caller{};
+    RequestSequence first_sequence{};
+    Digest256 evidence{};
+    std::uint64_t kill_epoch{}, executor_generation{}, event_time{};
+    constexpr bool operator==(const StrategyGrant&) const noexcept = default;
+};
+
 using Command = std::variant<Initialize, Intent, Prepare, Attempt, MarkUnknown,
-                             ReleaseUnsent, Settlement, Control, AmendBuyPrice>;
+                             ReleaseUnsent, Settlement, Control, AmendBuyPrice, GrantStrategy>;
 
 struct Pending {
     Phase phase{};
@@ -141,6 +157,7 @@ struct State {
     std::uint8_t settlement_count{};
     std::uint32_t settled_total{};
     BuyPriceAmendment buy_price_amendment{};
+    StrategyGrant strategy_grant{};
     constexpr bool operator==(const State&) const noexcept = default;
 };
 
@@ -172,7 +189,7 @@ struct PaperFill {
                                   Digest256 transaction, Digest256 evidence) noexcept;
 
 static_assert(std::is_trivially_copyable_v<State>);
-static_assert(sizeof(State) <= 4096);
+static_assert(sizeof(State) <= 4160);
 static_assert(sizeof(Command) <= 512);
 
 }

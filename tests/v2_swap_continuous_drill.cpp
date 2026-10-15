@@ -362,7 +362,7 @@ int gateway_worker(unsigned epoch,int fd,std::string_view crash){
     throw std::runtime_error("gateway continuous lifecycle stopped status="+std::to_string(int(runtime.status()))+" cause="+std::to_string(int(runtime.cause()))+" trace="+std::to_string(int(ports.create_trace().stage))+" last_sign_ms="+std::to_string(guarded.last_sign_ms)+" max_step_ms="+std::to_string(max_step_ms)+" last_attempt_offered="+std::to_string(transport.last_attempt_offered));
 }
 struct ChildGuard{pid_t pid;~ChildGuard(){if(pid>0){::kill(pid,SIGKILL);::waitpid(pid,nullptr,0);}}};
-int run_workers(Cluster& cluster,Caller& op,const std::filesystem::path& exe,unsigned epoch,std::string_view crash,unsigned& next){
+int run_workers(Cluster& cluster,Caller& strategy,const std::filesystem::path& exe,unsigned epoch,std::string_view crash,unsigned& next){
     int signer_pair[2],gateway_pair[2];require(::socketpair(AF_UNIX,SOCK_STREAM,0,signer_pair)==0 && ::socketpair(AF_UNIX,SOCK_STREAM,0,gateway_pair)==0,"worker frame bridges");
     const auto epoch_text=std::to_string(epoch),sfd=std::to_string(signer_pair[1]),gfd=std::to_string(gateway_pair[1]);
     const auto signer_pid=::fork();require(signer_pid>=0,"signer fork");
@@ -382,7 +382,7 @@ int run_workers(Cluster& cluster,Caller& op,const std::filesystem::path& exe,uns
         if(next<=6 && count("ready "+std::to_string(next-1))){
             const auto& state=cluster.state_of(cluster.elect()).spot_swap;
             require(state.pending.phase==swap::Phase::none && state.last_effect==next-1,"next effect only after previous Raft settlement");
-            require(cluster.commit(op,ApplySpotSwap{{swap::Role::strategy,event_ms,intent(next)}}).code==ApplyCode::applied,"next alternating strategy intent commits");++next;
+            require(cluster.commit(strategy,ApplySpotSwap{{swap::Role::strategy,event_ms,intent(next)}}).code==ApplyCode::applied,"next alternating strategy intent commits");++next;
         }
     }
     {std::ofstream stop(evidence/("stop-signer-"+std::to_string(epoch)));stop<<"stop";}
@@ -413,12 +413,15 @@ void scenario(const std::filesystem::path& exe,unsigned mode){
     {swap_signer_test::TestKey key(evidence/"fixture-key.pem");std::ofstream f(evidence/"public-key",std::ios::binary);f.write(reinterpret_cast<const char*>(key.public_key.data()),key.public_key.size());}
     {const int fd=::open((evidence/"fixture-bearer").c_str(),O_WRONLY|O_CREAT|O_EXCL,0600);constexpr char token[]="fixture-bearer";
         require(fd>=0 && ::write(fd,token,sizeof(token)-1)==sizeof(token)-1,"fixture-only bearer created");::close(fd);}
-    Cluster c(evidence/"voters",{1,2,3});Caller op(kOperatorKey,kOperator);c.elect();
+    Cluster c(evidence/"voters",{1,2,3});Caller op(kOperatorKey,kOperator),strategy(kStrategyKey,kStrategy);c.elect();
     require(c.commit(op,AdvanceKillEpoch{KillEpoch{1}},ProposeLane::control).code==ApplyCode::applied,"kill epoch initialized");
     require(c.commit(op,SetExecutorGeneration{ExecutorGeneration{1}},ProposeLane::control).code==ApplyCode::applied,"executor initialized");
     require(c.commit(op,InstallExecutionCatalog{fixture_catalog().root(),KillEpoch{1},ExecutorGeneration{1}}).code==ApplyCode::applied,"real SOL catalog installed");
     require(c.commit(op,AssignCallerRole{CallerId{kGateway},CallerRole::gateway}).code==ApplyCode::applied,"gateway caller role installed");
     require(c.commit(op,ApplySpotSwap{{swap::Role::operator_role,100,opening()}}).code==ApplyCode::applied,"25 dollar virtual funding committed");
+    require(c.commit(op,AssignCallerRole{CallerId{kStrategy},CallerRole::strategy}).code==ApplyCode::applied,"strategy caller role installed");
+    const swap::GrantStrategy grant{swap::opening_digest(opening()),swap_test::digest(97),CallerId{kStrategy},RequestSequence{1},1,1};
+    require(c.commit(op,ApplySpotSwap{{swap::Role::operator_role,101,grant}}).code==ApplyCode::applied,"operator grants only strategy intent authority");
     require(c.commit(op,SetStrategyMode{StrategyMode::normal,KillEpoch{1},ExecutorGeneration{1}},ProposeLane::control).code==ApplyCode::applied,"normal mode committed");
     {
         GatewayClient wire;wire.network=&c.network;GatewayLink link(1,process_incarnation(0x80),gateway_routes(c.voters,caller_seed(kGatewayKey)),wire);
@@ -430,24 +433,24 @@ void scenario(const std::filesystem::path& exe,unsigned mode){
         require(submitted.create({{allocation.incarnation,binding.authority_domain},out.reading.applied_index,out.reading.state_digest,EffectId{0}})==SwapSubmissionCode::none,"submission initialized once");
         require(recovery.create({{allocation.incarnation,binding.authority_domain},out.reading.applied_index,out.reading.state_digest})==SwapReconcileStoreCode::none,"reconciliation initialized once");
     }
-    require(c.commit(op,ApplySpotSwap{{swap::Role::strategy,event_ms,intent(1)}}).code==ApplyCode::applied,"first buy reserved");
+    require(c.commit(strategy,ApplySpotSwap{{swap::Role::strategy,event_ms,intent(1)}}).code==ApplyCode::applied,"first buy reserved");
     unsigned next=2,epoch=1;
     const auto success=[](int s){require(WIFEXITED(s) && WEXITSTATUS(s)==0,"worker exits successfully");};
     const auto killed=[](int s){require(WIFSIGNALED(s) && WTERMSIG(s)==SIGKILL,"actual gateway SIGKILL observed");};
-    if(mode==1){killed(run_workers(c,op,exe,epoch++,"before-advance",next));killed(run_workers(c,op,exe,epoch++,"after-advance",next));}
-    if(mode==2){killed(run_workers(c,op,exe,epoch++,"accepted",next));
+    if(mode==1){killed(run_workers(c,strategy,exe,epoch++,"before-advance",next));killed(run_workers(c,strategy,exe,epoch++,"after-advance",next));}
+    if(mode==2){killed(run_workers(c,strategy,exe,epoch++,"accepted",next));
         const auto& s=c.state_of(c.elect()).spot_swap;
         require(s.settlement_count==2 && s.reserved_quote.value()==1'000'000 && count("execute ")==3,"accepted unconfirmed buy keeps reservation");
-        success(run_workers(c,op,exe,epoch++,"none",next));
+        success(run_workers(c,strategy,exe,epoch++,"none",next));
         require(count("recovery-complete")==1 && count("execute ")==3,"recovery-only resolves without another POST");
     }
-    success(run_workers(c,op,exe,epoch++,"none",next));
+    success(run_workers(c,strategy,exe,epoch++,"none",next));
     c.run_until([&]{return std::all_of(c.nodes.begin(),c.nodes.end(),[](auto& node){return node.second->applied_state().spot_swap.settlement_count==6;});},"six settlements replicated on all voters");
     for(auto& [id,node]:c.nodes){const auto& s=node->applied_state().spot_swap;
         require(s.quote.value()==25'000'000 && s.base.value()==0 && s.cost.value()==0 && s.reserved_quote.value()==0 && s.reserved_base.value()==0 &&
             s.pending.phase==swap::Phase::none && s.settlement_count==6 && s.fees.value()==12'000 && s.purchases.value()==3'000'000,"all replicas exact six-effect economics and flat inventory");}
     require(count("create ")==6 && count("signature ")==6 && count("execute ")==6,"six unique creates signatures and sends despite lost responses and process restarts");
-    std::ofstream result(evidence/"result.json");result<<"{\"case\":"<<mode<<",\"passed\":true,\"production_ports\":true,\"real_transaction_verifier\":true,\"real_finalized_receipt_parser\":true,\"synthetic_verified_settlement_factory\":false,\"tls_qualified\":false,\"production_uid_isolation_qualified\":false,\"voters\":3,\"settlements\":6,\"creates\":6,\"signatures\":6,\"executes\":6,\"cash_atoms\":25000000,\"base_atoms\":0,\"fees_atoms\":12000,\"purchase_atoms\":3000000,\"gateway_processes\":"<<epoch-1<<"}\n";
+    std::ofstream result(evidence/"result.json");result<<"{\"case\":"<<mode<<",\"passed\":true,\"production_ports\":true,\"strategy_caller\":21,\"operator_granted_intents\":true,\"real_transaction_verifier\":true,\"real_finalized_receipt_parser\":true,\"synthetic_verified_settlement_factory\":false,\"tls_qualified\":false,\"production_uid_isolation_qualified\":false,\"voters\":3,\"settlements\":6,\"creates\":6,\"signatures\":6,\"executes\":6,\"cash_atoms\":25000000,\"base_atoms\":0,\"fees_atoms\":12000,\"purchase_atoms\":3000000,\"gateway_processes\":"<<epoch-1<<"}\n";
     std::cout<<"PASS continuous case "<<mode<<": six real-format verified swaps, six sends, flat inventory\n";
 }
 }

@@ -156,8 +156,8 @@ Arguments parse(int argc, char** argv) {
     if (verb == "spot-swap-record" && (i + 2 == argc || i + 3 == argc)) {
         const auto record = read_swap_record(argv[i+1]);
         if ((!std::holds_alternative<swap::Initialize>(record.command) && !std::holds_alternative<swap::Intent>(record.command) &&
-             !std::holds_alternative<swap::AmendBuyPrice>(record.command)) || record.role != swap::required_role(record.command))
-            throw Usage("owner swap record must initialize funding, admit an explicit intent or amend the reviewed buy price with its required role");
+             !std::holds_alternative<swap::AmendBuyPrice>(record.command) && !std::holds_alternative<swap::GrantStrategy>(record.command)) || record.role != swap::required_role(record.command))
+            throw Usage("owner swap record must initialize funding, admit an explicit intent, amend the buy price or grant strategy authority with its required role");
         auto binding = std::visit([](const auto& value) -> swap::Binding {
             using T = std::decay_t<decltype(value)>;
             if constexpr (std::is_same_v<T,swap::Initialize> || std::is_same_v<T,swap::Intent>) return value.binding;
@@ -177,6 +177,20 @@ Arguments parse(int argc, char** argv) {
                 " replacement_price=" + std::to_string(amendment->replacement_price.value()) +
                 " opening_digest=" + to_hex(amendment->opening_digest) + " review_evidence=" + to_hex(amendment->review_evidence) +
                 " expected_revision=" + std::to_string(amendment->expected_revision) + "\n";
+        } else if (const auto* grant = std::get_if<swap::GrantStrategy>(&record.command)) {
+            if (i + 3 != argc) throw Usage("strategy grant requires its original opening record");
+            const auto original=read_swap_record(argv[i+2]);
+            const auto* opening=std::get_if<swap::Initialize>(&original.command);
+            if (!opening || original.role!=swap::Role::operator_role || grant->opening_digest!=swap::opening_digest(*opening))
+                throw Usage("strategy grant differs from supplied original opening");
+            if (grant->caller.value()<=kMaxOperatorCallerId || !grant->first_sequence.value() || grant->review_evidence.is_zero() ||
+                !grant->kill_epoch || !grant->executor_generation || !record.event_time)
+                throw Usage("strategy grant needs a strategy caller, sequence floor, evidence, epochs and event time");
+            binding=opening->binding;
+            a.summary="SWAP STRATEGY GRANT caller="+std::to_string(grant->caller.value())+
+                " first_sequence="+std::to_string(grant->first_sequence.value())+
+                " kill_epoch="+std::to_string(grant->kill_epoch)+" executor_generation="+std::to_string(grant->executor_generation)+
+                " opening_digest="+to_hex(grant->opening_digest)+" review_evidence="+to_hex(grant->review_evidence)+"\n";
         } else if (i + 2 != argc) {
             throw Usage("Initialize and Intent records do not take an opening argument");
         }
