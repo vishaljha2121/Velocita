@@ -42,6 +42,8 @@ completion_targets['gateway_runtime'].add('v2-swap-process-drill')
 for component in ('signer_session', 'signer_protocol', 'signer_service'):
     completion_targets[component].add('v2-swap-runtime-config-tests')
 completion_targets['signer_session'].add('v2-swap-signer-verified-tests')
+# Exact test target only: real verifier/receipt admission with a fake HTTPS leaf.
+completion_targets['signer_session'].add('v2-swap-continuous-drill')
 
 for path in sorted((root / "deploy").rglob("*")):
     if not path.is_file() or path.suffix in {".pyc", ".tar", ".gz", ".bin", ".png"}:
@@ -50,6 +52,8 @@ for path in sorted((root / "deploy").rglob("*")):
         text = path.read_text()
     except UnicodeDecodeError:
         continue
+    if "v2-swap-continuous-drill" in text or "v2_swap_continuous_drill" in text:
+        failures.append(f"{path.relative_to(root)} mentions the test-only continuous drill")
     for component in completion_targets:
         if f'swap_{component}' in text or f'v2-swap-{component.replace("_", "-")}' in text:
             failures.append(f'{path.relative_to(root)} mentions unqualified {component}')
@@ -79,8 +83,10 @@ swap_tls_tests = {"v2-swap-reconcile-session-tests", "v2-swap-gateway-tls-drill"
 links = re.findall(r"target_link_libraries\(\s*([^\s)]+)([^)]*)\)", cmake)
 allowed = {"velocita-v2-signer", "v2-signer-tests", "v2-truemarkets-transport-tests"}
 for target, libraries in links:
+    if "v2-swap-continuous-drill" in libraries.split():
+        failures.append(f"CMake target {target} links the test-only continuous drill")
     if re.search(r"swap_paper|v2-swap-paper", libraries) and not (
-            target in {"velocita-v2-gateway", "v2-swap-integration-tests", "v2-gateway-node-tests", "v2-gateway-startup-tests", "v2-swap-submission-gateway-drill", "v2-swap-gateway-runtime-tests", "v2-swap-process-drill"}.union(swap_tls_tests) and
+            target in {"velocita-v2-gateway", "v2-swap-integration-tests", "v2-gateway-node-tests", "v2-gateway-startup-tests", "v2-swap-submission-gateway-drill", "v2-swap-gateway-runtime-tests", "v2-swap-process-drill", "v2-swap-continuous-drill"}.union(swap_tls_tests) and
             "velocita_v2_swap_paper_gateway" in libraries.split() and
             not re.search(r"v2-swap-paper|velocita_v2_swap_paper_gateway\S", libraries)):
         failures.append(f"CMake target {target} links the local swap paper harness")
@@ -95,7 +101,7 @@ for target, libraries in links:
     if 'OpenSSL::Crypto' in libraries and target not in completion_targets['signer_session'].union({'v2-swap-settlement-admission-tests', 'v2-swap-runtime-https-probe'}):
         failures.append(f'CMake target {target} links unqualified signer crypto')
 for target, libraries in links:
-    if runtime_target in libraries.split() and target not in {'velocita-v2-gateway', 'v2-swap-runtime-production-tests', 'v2-swap-settlement-lifecycle-tests', 'v2-swap-account-setup-tests', 'v2-swap-failed-settlement-tests'}:
+    if runtime_target in libraries.split() and target not in {'velocita-v2-gateway', 'v2-swap-runtime-production-tests', 'v2-swap-settlement-lifecycle-tests', 'v2-swap-account-setup-tests', 'v2-swap-failed-settlement-tests', 'v2-swap-continuous-drill'}:
         failures.append(f'CMake target {target} links swap runtime outside gateway')
 for definitions in re.findall(r'add_compile_definitions\(([^)]*)\)', cmake):
     if 'VELOCITA_SWAP_SIGNER_SYNTHETIC_FIXTURE' in definitions or 'VELOCITA_SWAP_SETTLEMENT_SYNTHETIC_FIXTURE' in definitions:
@@ -106,6 +112,8 @@ for target, definitions in re.findall(r'target_compile_definitions\(\s*([^\s)]+)
     if 'VELOCITA_SWAP_SIGNER_SYNTHETIC_FIXTURE' in definitions and target not in {'v2-swap-signing-connection-tests', 'v2-swap-signer-session-tests', 'v2-swap-signer-service-tests', 'v2-swap-submission-gateway-drill', 'v2-swap-process-drill'}:
         failures.append(f'CMake target {target} enables synthetic signing outside its fixture')
 for target, sources in re.findall(r"(?:add_executable|add_library|target_sources)\(\s*([^\s)]+)([^)]*)\)", cmake):
+    if "v2_swap_continuous_drill.cpp" in sources and target != "v2-swap-continuous-drill":
+        failures.append(f"CMake target {target} includes the test-only continuous drill")
     for component, targets in completion_targets.items():
         if f'v2_swap_{component}.cpp' in sources and target not in targets:
             failures.append(f'CMake target {target} includes unqualified {component}')

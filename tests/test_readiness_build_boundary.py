@@ -39,6 +39,31 @@ class ReadinessBuildBoundaryTests(unittest.TestCase):
         result = self.check_guard()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_continuous_drill_cannot_be_shipped(self):
+        self.append('deploy/Containerfile.fixture', 'COPY v2-swap-continuous-drill /usr/local/bin/')
+        result = self.check_guard()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('mentions the test-only continuous drill', result.stdout)
+
+    def test_continuous_drill_source_cannot_join_production(self):
+        self.append('CMakeLists.txt', 'target_sources(velocita_v2_swap_runtime PRIVATE tests/v2_swap_continuous_drill.cpp)')
+        result = self.check_guard()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('includes the test-only continuous drill', result.stdout)
+
+    def test_continuous_drill_cannot_link_into_production(self):
+        self.append('CMakeLists.txt', 'target_link_libraries(velocita-v2-gateway PRIVATE v2-swap-continuous-drill)')
+        result = self.check_guard()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('links the test-only continuous drill', result.stdout)
+
+    def test_continuous_drill_must_keep_real_verification(self):
+        self.append('CMakeLists.txt', 'target_compile_definitions(v2-swap-continuous-drill PRIVATE VELOCITA_SWAP_SETTLEMENT_SYNTHETIC_FIXTURE=1 VELOCITA_SWAP_SIGNER_SYNTHETIC_FIXTURE=1)')
+        result = self.check_guard()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('enables synthetic settlement outside its fixture', result.stdout)
+        self.assertIn('enables synthetic signing outside its fixture', result.stdout)
+
     def test_new_completion_components_cannot_ship_or_link(self):
         for component in ('settlement_connection', 'signing_connection', 'prepare_https', 'prepare_store', 'prepare_session', 'signer_session', 'signer_protocol', 'signer_service', 'settlement_evidence', 'order_status', 'order_https'):
             self.append('CMakeLists.txt', f'target_sources(velocita-v2-gateway PRIVATE src/v2_swap_{component}.cpp)')

@@ -1,0 +1,45 @@
+FF.FF...................
+======================================================================
+FAIL: test_continuous_drill_cannot_be_shipped (test_readiness_build_boundary.ReadinessBuildBoundaryTests.test_continuous_drill_cannot_be_shipped)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/.cache/velocita-work/focused-isolation-c19a675/tests/test_readiness_build_boundary.py", line 46, in test_continuous_drill_cannot_be_shipped
+    self.assertIn('mentions the test-only continuous drill', result.stdout)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'mentions the test-only continuous drill' not found in 'FAIL CMake target v2-swap-continuous-drill links the local swap paper harness\nFAIL CMake target v2-swap-continuous-drill links unqualified signer crypto\nFAIL CMake target v2-swap-continuous-drill links swap runtime outside gateway\n3 failure(s)\n'
+
+======================================================================
+FAIL: test_continuous_drill_cannot_link_into_production (test_readiness_build_boundary.ReadinessBuildBoundaryTests.test_continuous_drill_cannot_link_into_production)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/.cache/velocita-work/focused-isolation-c19a675/tests/test_readiness_build_boundary.py", line 58, in test_continuous_drill_cannot_link_into_production
+    self.assertIn('links the test-only continuous drill', result.stdout)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'links the test-only continuous drill' not found in 'FAIL CMake target v2-swap-continuous-drill links the local swap paper harness\nFAIL CMake target v2-swap-continuous-drill links unqualified signer crypto\nFAIL CMake target v2-swap-continuous-drill links swap runtime outside gateway\n3 failure(s)\n'
+
+======================================================================
+FAIL: test_continuous_drill_source_cannot_join_production (test_readiness_build_boundary.ReadinessBuildBoundaryTests.test_continuous_drill_source_cannot_join_production)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/.cache/velocita-work/focused-isolation-c19a675/tests/test_readiness_build_boundary.py", line 52, in test_continuous_drill_source_cannot_join_production
+    self.assertIn('includes the test-only continuous drill', result.stdout)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'includes the test-only continuous drill' not found in 'FAIL CMake target v2-swap-continuous-drill links the local swap paper harness\nFAIL CMake target v2-swap-continuous-drill links unqualified signer crypto\nFAIL CMake target v2-swap-continuous-drill links swap runtime outside gateway\n3 failure(s)\n'
+
+======================================================================
+FAIL: test_current_tree_is_allowed (test_readiness_build_boundary.ReadinessBuildBoundaryTests.test_current_tree_is_allowed)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/vishaljha/.cache/velocita-work/focused-isolation-c19a675/tests/test_readiness_build_boundary.py", line 40, in test_current_tree_is_allowed
+    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0 : FAIL CMake target v2-swap-continuous-drill links the local swap paper harness
+FAIL CMake target v2-swap-continuous-drill links unqualified signer crypto
+FAIL CMake target v2-swap-continuous-drill links swap runtime outside gateway
+3 failure(s)
+
+
+----------------------------------------------------------------------
+Ran 24 tests in 1.046s
+
+FAILED (failures=4)

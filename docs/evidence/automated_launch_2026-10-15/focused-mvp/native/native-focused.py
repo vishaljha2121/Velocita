@@ -108,7 +108,7 @@ try:
                   'test_swap_service_provision.py', 'test_swap_credential_handoff.py',
                   'test_tm_stage_swap_credential.py', 'test_live_observer.py',
                   'test_observability_layout.py', 'test_swap_review_transition.py',
-                  'test_idle_policy_renewal.py', 'test_idle_policy_apply.py'):
+                  'test_idle_policy_renewal.py', 'test_idle_policy_apply.py', 'test_readiness_build_boundary.py'):
         run(['python3', '-B', '-m', 'unittest', 'discover', '-s', '/source/tests', '-p',
              suite], suite.removesuffix('.py'), 120)
     run(['python3', '-B', '/source/tests/test_signer_not_shipped.py', '/source'], 'signer-isolation', 60)
