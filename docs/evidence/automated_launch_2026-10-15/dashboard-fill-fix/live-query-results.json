@@ -1,0 +1,57 @@
+{
+  "Entry": {
+    "status": "success",
+    "data": {
+      "resultType": "vector",
+      "result": [
+        {
+          "metric": {
+            "effect": "1",
+            "first_observed_ms": "1792108404573",
+            "side": "buy"
+          },
+          "value": [
+            1792109045.117,
+            "106.18600948867805"
+          ]
+        }
+      ]
+    }
+  },
+  "Exit": {
+    "status": "success",
+    "data": {
+      "resultType": "vector",
+      "result": [
+        {
+          "metric": {
+            "effect": "3",
+            "first_observed_ms": "1792109028572",
+            "side": "sell"
+          },
+          "value": [
+            1792109045.119,
+            "105.07891365168759"
+          ]
+        }
+      ]
+    }
+  },
+  "signing": {
+    "status": "success",
+    "data": {
+      "resultType": "vector",
+      "result": [
+        {
+          "metric": {
+            "run": "aae119b95ddcea5a206f03ab5ca12c15"
+          },
+          "value": [
+            1792109045.121,
+            "4"
+          ]
+        }
+      ]
+    }
+  }
+}

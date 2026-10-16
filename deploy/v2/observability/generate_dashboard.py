@@ -828,12 +828,28 @@ def live():
     run='{run="$live_run"}'
     series('Live SOL price with confirmed entries / exits',[
         ('velocita_strategy_price_usd'+run,'SOL close (Binance 1 s)'),
-        ('max_over_time(velocita_strategy_fill_marker_usd{run="$live_run",side="buy"}[$__interval])','Entry'),
-        ('max_over_time(velocita_strategy_fill_marker_usd{run="$live_run",side="sell"}[$__interval])','Exit'),
+        ('max by (effect, side, first_observed_ms) (velocita_live_fill_effective_price_usdc_per_sol{run="$live_run",side="buy"}'+fresh+')','Entry'),
+        ('max by (effect, side, first_observed_ms) (velocita_live_fill_effective_price_usdc_per_sol{run="$live_run",side="sell"}'+fresh+')','Exit'),
         ('velocita_strategy_ema_usd{run="$live_run",span="300"}','EMA 300 s'),
         ('velocita_strategy_ema_usd{run="$live_run",span="1200"}','EMA 1200 s')],
         0,24,unit='currencyUSD',min0=False,
-        description='The one-second Binance SOLUSDT candles the driver trades on. Green / red points are settled fills at their effective price, shown for 30 seconds from when the driver first sees the settlement.')
+        description='Binance SOLUSDT proxy close and EMAs. Each green/red point is one confirmed effect at its effective price and persisted first-confirmed observation time, not chain execution time. Repeated scrapes do not create additional entries or exits.')
+    chart=panels[-1]
+    chart['fieldConfig']['defaults']['decimals']=3
+    chart['transformations']=[]
+    for ref,name in (('B','Entry'),('C','Exit')):
+        target=next(t for t in chart['targets'] if t['refId']==ref)
+        target.update(instant=True,range=False,format='table')
+        selector={'id':'byRefId','options':ref}
+        chart['transformations'].extend([
+            {'id':'organize','filter':selector,'options':{
+                'excludeByName':{k:True for k in ('Time','effect','side','__name__')},
+                'indexByName':{'first_observed_ms':0,'Value':1,'Value #'+ref:1},
+                'renameByName':{'first_observed_ms':'Fill time','Value':name,'Value #'+ref:name}}},
+            {'id':'convertFieldType','filter':selector,'options':{'conversions':[{'targetField':'Fill time','destinationType':'number'}]}},
+            {'id':'convertFieldType','filter':selector,'options':{'conversions':[{'targetField':'Fill time','destinationType':'time'}]}},
+            {'id':'sortBy','filter':selector,'options':{'sort':[{'field':'Fill time'}]}}
+        ])
     for name,color in (('Entry','green'),('Exit','red')):
         panels[-1]['fieldConfig']['overrides'].append({'matcher':{'id':'byName','options':name},
             'properties':[{'id':'custom.drawStyle','value':'points'},{'id':'custom.showPoints','value':'always'},
@@ -904,6 +920,15 @@ def live():
     row('Order lifecycle — durable journal evidence')
     for i,(key,title) in enumerate([('prepare','Quote preparation'),('protected_signing','Protected signing'),('submission','Venue submission')]):
         stat(title,q(key+'_phase'),i*8,8,mappings=phase_map,description='1 idle; 2 started; 3 recorded result. A prepared quote, signature or submission result is not proof of a settled fill.')
+        if key=='protected_signing':
+            matched='max by (run) (count_values by (run) ("effect", velocita_live_protected_signing_effect{run="$live_run"}) and on (run, effect) (velocita_live_fill_effective_price_usdc_per_sol{run="$live_run"} and on (run) (velocita_live_settlement_feed_status{run="$live_run"} == 1)))'
+            panels[-1]['targets'][0]['expr']='((4 * '+matched+') or on (run) velocita_live_protected_signing_phase{run="$live_run"})'+fresh
+            panels[-1]['fieldConfig']['defaults']['mappings']=[{'type':'value','options':{
+                '1':{'text':'IDLE','color':'blue'},
+                '2':{'text':'SIGNING RECORD RETAINED','color':'orange'},
+                '3':{'text':'JOURNAL RESOLVED','color':'blue'},
+                '4':{'text':'TRADE SETTLED','color':'green'}}}]
+            panels[-1]['description']='TRADE SETTLED requires fresh successful settlement evidence for the same run and effect as the retained signing record. Otherwise this shows the raw journal phase; a retained record alone does not prove signing succeeded or the trade failed. The signer resolves its predecessor when authorizing a subsequent effect. Raw phases remain below for recovery diagnostics.'
     advance(4)
     stat('Latest effect ID',q('submission_effect'),0,6,decimals=0)
     stat('Submission journal committed index',q('submission_index'),6,6,decimals=0)
