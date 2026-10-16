@@ -1,0 +1,26 @@
+[
+  {
+    "mutant": "buy_sell_sign",
+    "recompiled": true,
+    "killed": true,
+    "output": "F\n======================================================================\nFAIL: test_decision_difference_buy_and_sell_oracles_and_missing (observer_tests.ConfirmedSettlementsTests.test_decision_difference_buy_and_sell_oracles_and_missing)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/vishaljha/aeron-raft-pi/tests/test_live_observer.py\", line 135, in test_decision_difference_buy_and_sell_oracles_and_missing\n    self.assertAlmostEqual(float(line.rsplit(' ',1)[1]),expected)\n    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: -100.00000000000009 != 100 within 7 places (200.00000000000009 difference)\n\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nFAILED (failures=1)\n"
+  },
+  {
+    "mutant": "wrong_effect",
+    "recompiled": true,
+    "killed": true,
+    "output": "F\n======================================================================\nFAIL: test_reference_joins_only_same_effect_side_and_preconfirmation_time (observer_tests.ConfirmedSettlementsTests.test_reference_joins_only_same_effect_side_and_preconfirmation_time)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/vishaljha/aeron-raft-pi/tests/test_live_observer.py\", line 158, in test_reference_joins_only_same_effect_side_and_preconfirmation_time\n    self.assertEqual('decision_price' in data['settlement_events'][0],matched)\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: True != False\n\n----------------------------------------------------------------------\nRan 1 test in 0.001s\n\nFAILED (failures=1)\n"
+  },
+  {
+    "mutant": "wrong_side",
+    "recompiled": true,
+    "killed": true,
+    "output": "F\n======================================================================\nFAIL: test_reference_joins_only_same_effect_side_and_preconfirmation_time (observer_tests.ConfirmedSettlementsTests.test_reference_joins_only_same_effect_side_and_preconfirmation_time)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/vishaljha/aeron-raft-pi/tests/test_live_observer.py\", line 158, in test_reference_joins_only_same_effect_side_and_preconfirmation_time\n    self.assertEqual('decision_price' in data['settlement_events'][0],matched)\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: True != False\n\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nFAILED (failures=1)\n"
+  },
+  {
+    "mutant": "conflicting_reference",
+    "recompiled": true,
+    "killed": true,
+    "output": "F\n======================================================================\nFAIL: test_reference_identity_conflicts_invalid_and_missing (observer_tests.ConfirmedSettlementsTests.test_reference_identity_conflicts_invalid_and_missing) (rows=[{'run': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'effect': 1, 'side': 'buy', 'sequence': 3, 'source_ms': 999000, 'decision_ms': 999100, 'price': 100}, {'run': 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'effect': 1, 'side': 'buy', 'sequence': 3, 'source_ms': 999000, 'decision_ms': 999100, 'price': 101}])\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/vishaljha/aeron-raft-pi/tests/test_live_observer.py\", line 147, in test_reference_identity_conflicts_invalid_and_missing\n    self.assertEqual(len(O.decision_references(self.RUN,1000100)),count)\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 1 != 0\n\n----------------------------------------------------------------------\nRan 1 test in 0.001s\n\nFAILED (failures=1)\n"
+  }
+]

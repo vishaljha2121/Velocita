@@ -125,6 +125,37 @@ class ReviewWindowTests(unittest.TestCase):
 
 class ConfirmedSettlementsTests(unittest.TestCase):
     RUN='a'*32
+    def reference(self,**changes):
+        return dict(dict(run=self.RUN,effect=1,side='buy',sequence=3,source_ms=999000,decision_ms=999100,price=100),**changes)
+    def test_decision_difference_buy_and_sell_oracles_and_missing(self):
+        for side,quote,expected in [('buy',1010000,100),('sell',990000,100),('sell',1010000,-100)]:
+            event=dict(effect=1,side=side,base_atoms=10000000,quote_atoms=quote,fee_atoms=2000,first_observed_ms=1000100,decision_price=100)
+            text=O.render(dict(run=self.RUN,settlement_events=[event]),1001)
+            line=next(r for r in text.splitlines() if r.startswith('velocita_live_fill_decision_difference_bps'))
+            self.assertAlmostEqual(float(line.rsplit(' ',1)[1]),expected)
+            self.assertIn(f'decision_difference_bp="{expected:.2f}"',text)
+            del event['decision_price']
+            text=O.render(dict(run=self.RUN,settlement_events=[event]),1001)
+            self.assertNotIn('velocita_live_fill_decision_difference_bps',text)
+            self.assertIn('decision_difference_bp="N/A"',text)
+    def test_reference_identity_conflicts_invalid_and_missing(self):
+        cases=[([self.reference()],1),([self.reference(run='b'*32)],0),
+               ([self.reference(),self.reference(price=101)],0),([self.reference(price=0)],0),
+               ([self.reference(price=float('nan'))],0),([self.reference(decision_ms=1000101)],0)]
+        for rows,count in cases:
+            with self.subTest(rows=rows),patch.object(O,'read',return_value='\n'.join(json.dumps(r) for r in rows).encode()):
+                self.assertEqual(len(O.decision_references(self.RUN,1000100)),count)
+        with patch.object(O,'read',side_effect=FileNotFoundError):
+            self.assertEqual(O.decision_references(self.RUN,1000100),{})
+    def test_reference_joins_only_same_effect_side_and_preconfirmation_time(self):
+        for changes,matched in [({},True),({'effect':2},False),({'side':'sell'},False),({'decision_ms':1000101},False)]:
+            def reader(path,*args):
+                if path==O.SETTLEMENT_SOURCE:return json.dumps(self.source()).encode()
+                if path==O.SETTLEMENT_CACHE:raise FileNotFoundError
+                return json.dumps(self.reference(**changes)).encode()
+            with self.subTest(changes=changes),patch.object(O,'read',side_effect=reader):
+                data=O.settlement_snapshot(self.RUN,1000100,False)
+            self.assertEqual('decision_price' in data['settlement_events'][0],matched)
     def source(self):
         return {'schema':2,'incarnation':self.RUN,'observed_at_ms':1000000,'applied_index':8,
                 'base_atoms':9000000,'quote_atoms':24000000,'fees_atoms':2000,'realized_pnl_atoms':0,'last_effect':1,'pending_effect':0,
@@ -140,6 +171,21 @@ class ConfirmedSettlementsTests(unittest.TestCase):
         self.assertIn('111.11111111111111',text);self.assertIn(' 120.0\n',text)
         self.assertIn('first_observed_ms="1000100"',text)
         self.assertIn('fee_usdc="0.002"',text)
+    def test_marker_timestamp_is_persisted_not_scrape_time(self):
+        state=O.reconcile_settlements(self.source(),None,1000100)
+        for now in (1000.1,2000.0):
+            text=O.render({'run':self.RUN,'settlement_events':state['settlements']},now)
+            rows=[r for r in text.splitlines() if r.startswith('velocita_live_fill_first_observed_seconds{')]
+            self.assertEqual(len(rows),1)
+            self.assertEqual(rows[0].rsplit(' ',1)[1],'1000.1')
+    def test_volume_counts_gross_buy_and_sell_once(self):
+        source=self.source()
+        source['settlements'].append(dict(effect=3,side='sell',base_atoms=5000000,quote_atoms=600000,fee_atoms=1200,outcome='succeeded'))
+        with patch.object(O,'read',side_effect=lambda p: json.dumps(source).encode() if p==O.SETTLEMENT_SOURCE else (_ for _ in ()).throw(FileNotFoundError())):
+            result=O.settlement_snapshot(self.RUN,1000100,False)
+            again=O.settlement_snapshot(self.RUN,1000100,False)
+        self.assertEqual(result['executed_volume_usdc'],1.5992)
+        self.assertEqual(again['executed_volume_usdc'],1.5992)
     def test_quote_pending_failed_duplicates_and_unknown_fields_rejected(self):
         for field,value in [('outcome','initialized'),('outcome','failed'),('base_atoms',0),
                             ('quote_atoms',-1),('effect',True),('side','deposit')]:

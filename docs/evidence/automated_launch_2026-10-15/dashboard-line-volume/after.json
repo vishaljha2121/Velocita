@@ -1,0 +1,2784 @@
+{
+ "uid": "velocita-v2-live",
+ "title": "Velocita \u2014 Live account & execution",
+ "description": "Supervised live swap. Read-only service status, reviewed account snapshots, durable order progress and cost boundaries.",
+ "schemaVersion": 41,
+ "version": 1,
+ "editable": false,
+ "refresh": "10s",
+ "time": {
+  "from": "now-3h",
+  "to": "now"
+ },
+ "tags": [
+  "velocita",
+  "v2",
+  "live",
+  "account",
+  "execution"
+ ],
+ "timezone": "browser",
+ "links": [
+  {
+   "type": "link",
+   "title": "Overview",
+   "url": "/d/velocita-v2-cluster",
+   "icon": "dashboard",
+   "tooltip": "Velocita \u2014 Overview",
+   "targetBlank": false,
+   "keepTime": true,
+   "includeVars": false,
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "type": "link",
+   "title": "Raft & storage",
+   "url": "/d/velocita-v2-raft",
+   "icon": "dashboard",
+   "tooltip": "Velocita \u2014 Raft & storage",
+   "targetBlank": false,
+   "keepTime": true,
+   "includeVars": false,
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "type": "link",
+   "title": "Strategy edge",
+   "url": "/d/velocita-v2-strategy",
+   "icon": "dashboard",
+   "tooltip": "Velocita \u2014 Strategy edge",
+   "targetBlank": false,
+   "keepTime": true,
+   "includeVars": false,
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "type": "link",
+   "title": "Paper trading",
+   "url": "/d/velocita-v2-paper",
+   "icon": "dashboard",
+   "tooltip": "Velocita \u2014 Paper trading",
+   "targetBlank": false,
+   "keepTime": true,
+   "includeVars": false,
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "type": "link",
+   "title": "Live trading",
+   "url": "/d/velocita-v2-live",
+   "icon": "dashboard",
+   "tooltip": "Velocita \u2014 Live account & execution",
+   "targetBlank": false,
+   "keepTime": true,
+   "includeVars": false,
+   "asDropdown": false,
+   "tags": []
+  },
+  {
+   "type": "link",
+   "title": "Hosts",
+   "url": "/d/velocita-v2-hosts",
+   "icon": "dashboard",
+   "tooltip": "Velocita \u2014 Hosts",
+   "targetBlank": false,
+   "keepTime": true,
+   "includeVars": false,
+   "asDropdown": false,
+   "tags": []
+  }
+ ],
+ "panels": [
+  {
+   "type": "row",
+   "title": "Live operation \u2014 service readiness is not trading authorization",
+   "id": 1,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 0
+   },
+   "panels": []
+  },
+  {
+   "type": "stat",
+   "title": "Observer healthy",
+   "id": 2,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 0,
+    "y": 1
+   },
+   "targets": [
+    {
+     "expr": "velocita_live_observer_up and (time() - velocita_live_observer_observed_seconds < 45)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": 1
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Gateway",
+   "id": 3,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 4,
+    "y": 1
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_gateway_active{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [
+      {
+       "type": "value",
+       "options": {
+        "0": {
+         "text": "STOPPED",
+         "color": "orange"
+        },
+        "1": {
+         "text": "RUNNING",
+         "color": "green"
+        }
+       }
+      }
+     ],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Protected signer",
+   "id": 4,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 8,
+    "y": 1
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_signer_active{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [
+      {
+       "type": "value",
+       "options": {
+        "0": {
+         "text": "STOPPED",
+         "color": "orange"
+        },
+        "1": {
+         "text": "RUNNING",
+         "color": "green"
+        }
+       }
+      }
+     ],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Review current",
+   "id": 5,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 12,
+    "y": 1
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_review_current{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [
+      {
+       "type": "value",
+       "options": {
+        "0": {
+         "text": "EXPIRED",
+         "color": "orange"
+        },
+        "1": {
+         "text": "CURRENT",
+         "color": "green"
+        }
+       }
+      }
+     ],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Review time remaining",
+   "id": 6,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 16,
+    "y": 1
+   },
+   "targets": [
+    {
+     "expr": "clamp_min(velocita_live_review_expires_seconds{run=\"$live_run\"} - time(), 0) and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Cluster trading mode",
+   "id": 7,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 20,
+    "y": 1
+   },
+   "targets": [
+    {
+     "expr": "max(velocita_v2_strategy_mode{paper_run=~\"${live_run}.*\"})",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [
+      {
+       "type": "value",
+       "options": {
+        "1": {
+         "text": "NORMAL",
+         "color": "orange"
+        },
+        "2": {
+         "text": "NO NEW RISK"
+        },
+        "3": {
+         "text": "CANCEL ONLY"
+        },
+        "4": {
+         "text": "REDUCE ONLY"
+        },
+        "5": {
+         "text": "HALTED",
+         "color": "blue"
+        },
+        "6": {
+         "text": "FLATTEN"
+        }
+       }
+      }
+     ],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "row",
+   "title": "Account snapshot \u2014 last verified venue balances, not a live wallet poll",
+   "id": 8,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 5
+   },
+   "panels": []
+  },
+  {
+   "type": "stat",
+   "title": "Last reviewed USDC",
+   "id": 9,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 8,
+    "x": 0,
+    "y": 6
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_reviewed_usdc{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix: USDC",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 6
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Last reviewed SOL",
+   "id": 10,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 8,
+    "x": 8,
+    "y": 6
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_reviewed_sol{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix: SOL",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 9
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Account evidence age",
+   "id": 11,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Age of the account snapshot this run was approved against. It is fixed for the run; the review lasts 24 hours from it. Live balances are re-read before every trade.",
+   "gridPos": {
+    "h": 4,
+    "w": 8,
+    "x": 16,
+    "y": 6
+   },
+   "targets": [
+    {
+     "expr": "time() - velocita_live_account_observed_seconds{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 72000
+       },
+       {
+        "color": "red",
+        "value": 82800
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Reviewed USDC snapshots",
+   "id": 12,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Only changes when reviewed account history is replaced. Sampling this observer does not refresh the wallet evidence.",
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 10
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_reviewed_usdc{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "Verified snapshot",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix: USDC",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Reviewed SOL snapshots",
+   "id": 13,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "No inferred fill amounts, proxy marks or paper balance. See account evidence age.",
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 10
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_reviewed_sol{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "Verified snapshot",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix: SOL",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "row",
+   "title": "Live SOL price and signal \u2014 strategy driver",
+   "id": 14,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 18
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "Live SOL price with confirmed entries / exits",
+   "id": 15,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Confirmed entries/exits are anchored to the Binance proxy line at the first chart sample on or after their persisted confirmation-observation time. Marker height is a visual reference, not the actual execution price. Exact effective prices and quantities remain in the confirmed-fill table. One marker per effect; no quotes or attempts.",
+   "gridPos": {
+    "h": 8,
+    "w": 24,
+    "x": 0,
+    "y": 19
+   },
+   "targets": [
+    {
+     "expr": "max by (run) (velocita_strategy_price_usd{run=\"$live_run\"})",
+     "legendFormat": "SOL close (Binance 1 s)",
+     "refId": "A",
+     "interval": "$__interval"
+    },
+    {
+     "expr": "max by (run) (velocita_strategy_price_usd{run=\"$live_run\"}) * on (run) group_right () (((velocita_live_fill_first_observed_seconds{run=\"$live_run\",side=\"buy\"} @ end() <= time()) and (velocita_live_fill_first_observed_seconds{run=\"$live_run\",side=\"buy\"} @ end() > time() - ($__interval_ms / 1000))) > bool 0)",
+     "legendFormat": "Entry",
+     "refId": "B",
+     "interval": "$__interval"
+    },
+    {
+     "expr": "max by (run) (velocita_strategy_price_usd{run=\"$live_run\"}) * on (run) group_right () (((velocita_live_fill_first_observed_seconds{run=\"$live_run\",side=\"sell\"} @ end() <= time()) and (velocita_live_fill_first_observed_seconds{run=\"$live_run\",side=\"sell\"} @ end() > time() - ($__interval_ms / 1000))) > bool 0)",
+     "legendFormat": "Exit",
+     "refId": "C",
+     "interval": "$__interval"
+    },
+    {
+     "expr": "velocita_strategy_ema_usd{run=\"$live_run\",span=\"300\"}",
+     "legendFormat": "EMA 300 s",
+     "refId": "D",
+     "interval": "$__interval"
+    },
+    {
+     "expr": "velocita_strategy_ema_usd{run=\"$live_run\",span=\"1200\"}",
+     "legendFormat": "EMA 1200 s",
+     "refId": "E",
+     "interval": "$__interval"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "min": null,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     },
+     "decimals": 3
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Entry"
+      },
+      "properties": [
+       {
+        "id": "custom.drawStyle",
+        "value": "points"
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "always"
+       },
+       {
+        "id": "custom.pointSize",
+        "value": 9
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 0
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Exit"
+      },
+      "properties": [
+       {
+        "id": "custom.drawStyle",
+        "value": "points"
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "always"
+       },
+       {
+        "id": "custom.pointSize",
+        "value": 9
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 0
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "interval": "15s"
+  },
+  {
+   "type": "timeseries",
+   "title": "Live stochastic K and D",
+   "id": 16,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Entry: K crosses above D with K at 60 or more while EMA 300 s is above EMA 1200 s, held 3 seconds. Exit: K below D with K at 40 or less, held 3 seconds.",
+   "gridPos": {
+    "h": 8,
+    "w": 24,
+    "x": 0,
+    "y": 27
+   },
+   "targets": [
+    {
+     "expr": "velocita_strategy_stochastic{run=\"$live_run\",line=\"k\"}",
+     "legendFormat": "K",
+     "refId": "A"
+    },
+    {
+     "expr": "velocita_strategy_stochastic{run=\"$live_run\",line=\"d\"}",
+     "legendFormat": "D",
+     "refId": "B"
+    },
+    {
+     "expr": "vector(60)",
+     "legendFormat": "60: entry needs K at or above",
+     "refId": "C"
+    },
+    {
+     "expr": "vector(40)",
+     "legendFormat": "40: exit needs K at or below",
+     "refId": "D"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "min": null,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "row",
+   "title": "Live entries / exits \u2014 authenticated Raft settlement records",
+   "id": 17,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 35
+   },
+   "panels": []
+  },
+  {
+   "type": "stat",
+   "title": "Confirmed-fill telemetry",
+   "id": 18,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Optional authenticated settlement snapshot. Missing or invalid data never means zero trades or zero balances.",
+   "gridPos": {
+    "h": 4,
+    "w": 8,
+    "x": 0,
+    "y": 36
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_settlement_feed_status{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [
+      {
+       "type": "value",
+       "options": {
+        "0": {
+         "text": "NOT CONNECTED",
+         "color": "orange"
+        },
+        "1": {
+         "text": "CURRENT",
+         "color": "green"
+        },
+        "2": {
+         "text": "STALE SNAPSHOT",
+         "color": "orange"
+        },
+        "3": {
+         "text": "INVALID / CONFLICT",
+         "color": "red"
+        }
+       }
+      }
+     ],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Settlement snapshot age",
+   "id": 19,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 8,
+    "x": 8,
+    "y": 36
+   },
+   "targets": [
+    {
+     "expr": "time() - velocita_live_settlement_observed_seconds{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 45
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Settlement committed index",
+   "id": 20,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 8,
+    "x": 16,
+    "y": 36
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_settlement_applied_index{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Live SOL entries / exits \u2014 effective settled price",
+   "id": 21,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Bounded run history: at most 16 finalized successful effects; the kernel stops at capacity. Green buy / red sell; a sell may only reduce a position. X-axis is FIRST CONFIRMED OBSERVATION by this collector, persisted across restarts, not chain execution time. One instant-table row per effect prevents repeated scrape markers. Buy = total USDC debit / net SOL credit; sell = net USDC credit / SOL debit. No quote, pending order or deposit is a fill. Source age is shown above; these are ledger balances, not continuous wallet polls.",
+   "gridPos": {
+    "h": 8,
+    "w": 24,
+    "x": 0,
+    "y": 40
+   },
+   "targets": [
+    {
+     "expr": "max by (effect, side, first_observed_ms, quantity_sol, quote_usdc, fee_usdc) (velocita_live_fill_effective_price_usdc_per_sol{run=\"$live_run\",side=\"buy\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "Entry / buy",
+     "refId": "A",
+     "instant": true,
+     "range": false,
+     "format": "table"
+    },
+    {
+     "expr": "max by (effect, side, first_observed_ms, quantity_sol, quote_usdc, fee_usdc) (velocita_live_fill_effective_price_usdc_per_sol{run=\"$live_run\",side=\"sell\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "Exit / sell",
+     "refId": "B",
+     "instant": true,
+     "range": false,
+     "format": "table"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix: USDC/SOL",
+     "min": null,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Entry / buy"
+      },
+      "properties": [
+       {
+        "id": "custom.drawStyle",
+        "value": "points"
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "always"
+       },
+       {
+        "id": "custom.pointSize",
+        "value": 9
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 0
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Exit / sell"
+      },
+      "properties": [
+       {
+        "id": "custom.drawStyle",
+        "value": "points"
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "always"
+       },
+       {
+        "id": "custom.pointSize",
+        "value": 9
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 0
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "transformations": [
+    {
+     "id": "organize",
+     "filter": {
+      "id": "byRefId",
+      "options": "A"
+     },
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "effect": true,
+       "side": true,
+       "quantity_sol": true,
+       "quote_usdc": true,
+       "fee_usdc": true,
+       "__name__": true
+      },
+      "indexByName": {
+       "first_observed_ms": 0,
+       "Value": 1,
+       "Value #A": 1
+      },
+      "renameByName": {
+       "first_observed_ms": "First confirmed observation",
+       "Value": "Entry / buy",
+       "Value #A": "Entry / buy"
+      }
+     }
+    },
+    {
+     "id": "organize",
+     "filter": {
+      "id": "byRefId",
+      "options": "B"
+     },
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "effect": true,
+       "side": true,
+       "quantity_sol": true,
+       "quote_usdc": true,
+       "fee_usdc": true,
+       "__name__": true
+      },
+      "indexByName": {
+       "first_observed_ms": 0,
+       "Value": 1,
+       "Value #B": 1
+      },
+      "renameByName": {
+       "first_observed_ms": "First confirmed observation",
+       "Value": "Exit / sell",
+       "Value #B": "Exit / sell"
+      }
+     }
+    },
+    {
+     "id": "convertFieldType",
+     "options": {
+      "conversions": [
+       {
+        "targetField": "first_observed_ms",
+        "destinationType": "number"
+       }
+      ]
+     }
+    },
+    {
+     "id": "convertFieldType",
+     "options": {
+      "conversions": [
+       {
+        "targetField": "first_observed_ms",
+        "destinationType": "time"
+       }
+      ]
+     }
+    },
+    {
+     "id": "sortBy",
+     "options": {
+      "sort": [
+       {
+        "field": "First confirmed observation"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": 22,
+   "type": "table",
+   "title": "Retained confirmed fills \u2014 first-observed time, quantities and explicit fees",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 48,
+    "w": 24,
+    "h": 7
+   },
+   "description": "Successful effects retained by the observer. Decision difference compares the fee-inclusive effective price with the Binance close used to decide: positive bp means worse execution, negative means better. It includes fees and execution-time movement. N/A means no captured decision reference; historical values are not inferred. Effective price already incorporates actual net debit/credit; explicit USDC fee is informational and must not be added twice. Initial and externally deposited holdings are not trade entries.",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max by (effect, side, first_observed_ms, quantity_sol, quote_usdc, fee_usdc, decision_difference_bp) (velocita_live_fill_effective_price_usdc_per_sol{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "instant": true,
+     "range": false,
+     "format": "table"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "__name__": true
+      },
+      "indexByName": {
+       "first_observed_ms": 0,
+       "effect": 1,
+       "side": 2,
+       "quantity_sol": 3,
+       "quote_usdc": 4,
+       "fee_usdc": 5,
+       "Value": 6,
+       "decision_difference_bp": 7
+      },
+      "renameByName": {
+       "first_observed_ms": "First confirmed observation",
+       "effect": "Effect",
+       "side": "Side",
+       "quantity_sol": "Net SOL quantity",
+       "quote_usdc": "USDC debit / receipt",
+       "fee_usdc": "Explicit fee USDC",
+       "Value": "Effective USDC/SOL",
+       "decision_difference_bp": "Decision difference (bp, all-in)"
+      }
+     }
+    },
+    {
+     "id": "convertFieldType",
+     "options": {
+      "conversions": [
+       {
+        "targetField": "first_observed_ms",
+        "destinationType": "number"
+       },
+       {
+        "targetField": "quantity_sol",
+        "destinationType": "number"
+       },
+       {
+        "targetField": "quote_usdc",
+        "destinationType": "number"
+       },
+       {
+        "targetField": "fee_usdc",
+        "destinationType": "number"
+       }
+      ]
+     }
+    },
+    {
+     "id": "convertFieldType",
+     "options": {
+      "conversions": [
+       {
+        "targetField": "first_observed_ms",
+        "destinationType": "time"
+       }
+      ]
+     }
+    },
+    {
+     "id": "sortBy",
+     "options": {
+      "sort": [
+       {
+        "field": "First confirmed observation",
+        "desc": true
+       }
+      ]
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "decimals": 9
+    },
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Raft ledger USDC",
+   "id": 23,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 0,
+    "y": 55
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_settled_usdc{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix: USDC",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 6
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Raft ledger SOL",
+   "id": 24,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 6,
+    "y": 55
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_settled_sol{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix: SOL",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 9
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Ledger explicit fees",
+   "id": 25,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 12,
+    "y": 55
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_settled_fees_usdc{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix: USDC",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 6
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Ledger realized P&L",
+   "id": 26,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Realized only, from the authenticated ledger and its reviewed opening cost basis. Not marked-to-market equity; does not value open SOL.",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 18,
+    "y": 55
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_settled_realized_pnl_usdc{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix: USDC",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 6
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "SOL position \u2014 authenticated ledger snapshots",
+   "id": 27,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Last observed authenticated Raft balance. Snapshot age above distinguishes held stale state from fresh accounting. External deposits require reconciliation; collector does not poll TM.",
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 59
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_settled_sol{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "Ledger SOL",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix: SOL",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "USDC balance \u2014 authenticated ledger snapshots",
+   "id": 28,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Last observed ledger quote balance, not a continuously polled venue wallet.",
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 59
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_settled_usdc{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "Ledger USDC",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix: USDC",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "row",
+   "title": "Order lifecycle \u2014 durable journal evidence",
+   "id": 29,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 67
+   },
+   "panels": []
+  },
+  {
+   "type": "stat",
+   "title": "Quote preparation",
+   "id": 30,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "1 idle; 2 started; 3 recorded result. A prepared quote, signature or submission result is not proof of a settled fill.",
+   "gridPos": {
+    "h": 4,
+    "w": 8,
+    "x": 0,
+    "y": 68
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_prepare_phase{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [
+      {
+       "type": "value",
+       "options": {
+        "1": {
+         "text": "IDLE",
+         "color": "blue"
+        },
+        "2": {
+         "text": "STARTED / UNRESOLVED",
+         "color": "orange"
+        },
+        "3": {
+         "text": "RECORDED RESULT",
+         "color": "blue"
+        }
+       }
+      }
+     ],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Protected signing",
+   "id": 31,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "TRADE SETTLED requires fresh successful settlement evidence for the same run and effect as the retained signing record. Otherwise this shows the raw journal phase; a retained record alone does not prove signing succeeded or the trade failed. The signer resolves its predecessor when authorizing a subsequent effect. Raw phases remain below for recovery diagnostics.",
+   "gridPos": {
+    "h": 4,
+    "w": 8,
+    "x": 8,
+    "y": 68
+   },
+   "targets": [
+    {
+     "expr": "((4 * max by (run) (count_values by (run) (\"effect\", velocita_live_protected_signing_effect{run=\"$live_run\"}) and on (run, effect) (velocita_live_fill_effective_price_usdc_per_sol{run=\"$live_run\"} and on (run) (velocita_live_settlement_feed_status{run=\"$live_run\"} == 1)))) or on (run) velocita_live_protected_signing_phase{run=\"$live_run\"}) and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [
+      {
+       "type": "value",
+       "options": {
+        "1": {
+         "text": "IDLE",
+         "color": "blue"
+        },
+        "2": {
+         "text": "SIGNING RECORD RETAINED",
+         "color": "orange"
+        },
+        "3": {
+         "text": "JOURNAL RESOLVED",
+         "color": "blue"
+        },
+        "4": {
+         "text": "TRADE SETTLED",
+         "color": "green"
+        }
+       }
+      }
+     ],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Venue submission",
+   "id": 32,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "1 idle; 2 started; 3 recorded result. A prepared quote, signature or submission result is not proof of a settled fill.",
+   "gridPos": {
+    "h": 4,
+    "w": 8,
+    "x": 16,
+    "y": 68
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_submission_phase{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [
+      {
+       "type": "value",
+       "options": {
+        "1": {
+         "text": "IDLE",
+         "color": "blue"
+        },
+        "2": {
+         "text": "STARTED / UNRESOLVED",
+         "color": "orange"
+        },
+        "3": {
+         "text": "RECORDED RESULT",
+         "color": "blue"
+        }
+       }
+      }
+     ],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Latest effect ID",
+   "id": 33,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 0,
+    "y": 72
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_submission_effect{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Submission journal committed index",
+   "id": 34,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 6,
+    "y": 72
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_submission_index{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Gateway exit status",
+   "id": 35,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 12,
+    "y": 72
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_gateway_exit_status{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 1
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Signer exit status",
+   "id": 36,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 6,
+    "x": 18,
+    "y": 72
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_signer_exit_status{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 1
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Durable lifecycle phases",
+   "id": 37,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 8,
+    "w": 16,
+    "x": 0,
+    "y": 76
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_prepare_phase{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "Quote",
+     "refId": "A"
+    },
+    {
+     "expr": "(velocita_live_signing_request_phase{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "Signing request",
+     "refId": "B"
+    },
+    {
+     "expr": "(velocita_live_protected_signing_phase{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "Protected signer",
+     "refId": "C"
+    },
+    {
+     "expr": "(velocita_live_submission_phase{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "Submission",
+     "refId": "D"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Automatic service restarts",
+   "id": 38,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Services currently use Restart=no. A stopped service does not imply a failed trade.",
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 16,
+    "y": 76
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_gateway_restarts{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "Gateway",
+     "refId": "A"
+    },
+    {
+     "expr": "(velocita_live_signer_restarts{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "Signer",
+     "refId": "B"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "none",
+     "min": 0,
+     "custom": {
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "showPoints": "never",
+      "spanNulls": false,
+      "stacking": {
+       "mode": "none"
+      }
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "row",
+   "title": "Costs, limits and settlement interpretation",
+   "id": 39,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 84
+   },
+   "panels": []
+  },
+  {
+   "type": "stat",
+   "title": "Configured maximum buy output deduction",
+   "id": 40,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Conservative signer allowance. It is not an observed fee or expected cost.",
+   "gridPos": {
+    "h": 4,
+    "w": 12,
+    "x": 0,
+    "y": 85
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_repayment_cap_sol{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix: SOL",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 9
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Last account evidence time",
+   "id": 41,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "",
+   "gridPos": {
+    "h": 4,
+    "w": 12,
+    "x": 12,
+    "y": 85
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_account_observed_seconds{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1)) * 1000",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "dateTimeAsIso",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown"
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  },
+  {
+   "id": 42,
+   "type": "text",
+   "title": "How to read this supervised MVP",
+   "gridPos": {
+    "x": 0,
+    "y": 89,
+    "w": 24,
+    "h": 9
+   },
+   "options": {
+    "mode": "markdown",
+    "content": "**Scope:** one separately authorized $1 total-debit SOL buy; $0.002 explicit fee cap; $0.50 realized-loss limit. No automatic strategy, retries, second trade or sell. The loss limit is not a guaranteed market stop-loss.\n\n**Cost evidence:** 20 bp explicit fee plus an observed 0.000550840 SOL buy-output deduction on the prior owner trade. The configured 0.002039280 SOL maximum is a conservative allowance with zero assumed sponsor credit. These are different quantities; neither establishes future route costs.\n\n**Balances:** last reviewed TM/on-chain account snapshot. The age above advances even while the observer is healthy. Deposits or trades after that timestamp are not reflected until reconciliation refreshes the evidence.\n\n**Settlement:** finalized successful authenticated Raft records supply net quantities, effective prices and realized ledger P&L. Markers use the collector\u2019s first confirmed observation time, not the exact execution time, and retain all effects for this bounded run (capacity 16). Missing or stale settlement telemetry is explicit. No quote or submission creates a marker.\n\n**Expiry:** account review expiry stops this supervised runtime. Preserve all recovery journals; never initialize again to restart. Paper metrics remain on the separate Paper trading tab."
+   }
+  },
+  {
+   "type": "row",
+   "title": "Executed volume",
+   "id": 43,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 98
+   },
+   "panels": []
+  },
+  {
+   "type": "stat",
+   "title": "Executed volume \u2014 buys + sells",
+   "id": 44,
+   "datasource": {
+    "type": "prometheus",
+    "uid": "velocita-v2-prometheus"
+   },
+   "description": "Cumulative confirmed buy and sell notional retained for this run, excluding explicit USDC fees: buy total debit minus fee; sell net receipt plus fee. Counts each successful effect once. No quotes, refused/released attempts, deposits or pending orders. This is our ledger measure, not verified TM leaderboard credit. Unknown if settlement telemetry is missing or stale.",
+   "gridPos": {
+    "h": 4,
+    "w": 24,
+    "x": 0,
+    "y": 99
+   },
+   "targets": [
+    {
+     "expr": "(velocita_live_executed_volume_usdc{run=\"$live_run\"} and on() (time() - velocita_live_observer_observed_seconds < 45) and on() (velocita_live_observer_up == 1)) and on(run) (velocita_live_settlement_feed_status{run=\"$live_run\"} == 1)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix: USDC",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "color": {
+      "mode": "thresholds"
+     },
+     "mappings": [],
+     "noValue": "unknown",
+     "decimals": 6
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "center",
+    "textMode": "value",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "orientation": "horizontal",
+    "wideLayout": true
+   }
+  }
+ ],
+ "templating": {
+  "list": [
+   {
+    "name": "live_run",
+    "label": "Live incarnation",
+    "type": "query",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "velocita-v2-prometheus"
+    },
+    "query": "label_values(velocita_live_reviewed_usdc, run)",
+    "refresh": 1,
+    "multi": false,
+    "includeAll": false,
+    "current": {
+     "text": "aae119b95ddcea5a206f03ab5ca12c15",
+     "value": "aae119b95ddcea5a206f03ab5ca12c15"
+    }
+   }
+  ]
+ },
+ "annotations": {
+  "list": []
+ }
+}

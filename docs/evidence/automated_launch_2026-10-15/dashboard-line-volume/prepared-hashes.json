@@ -1,0 +1,8 @@
+{
+  "deploy/v2/observability/live_observer.py": "bf5dca9f97425e90293735cd943b73b62d2415336fd65287cfa116c2069453b0",
+  "deploy/v2/observability/generate_dashboard.py": "9da471d6a50d56037791344740ef03c701f033c1398df28bf3d053afb36e00eb",
+  "deploy/v2/observability/grafana/dashboards/velocita-v2-live.json": "fcef6125044a7f7a12bd357002d99f7e5d3057606f49720c0303d923d2c52049",
+  "tests/test_live_observer.py": "08cdad569d9b5a5688a2238dcf0d73bebab0a4661103d2fba7428c1a9566ab64",
+  "docs/evidence/automated_launch_2026-10-15/dashboard-line-volume/after.json": "a707dd033cc441865d829f3bacc4dbaaf367c23df94b0bc84ef4cae149428e53",
+  "docs/evidence/automated_launch_2026-10-15/dashboard-line-volume/owner_install.py": "7949b56fbf93e4fc6affbc736ec588fa7ba6efae32c5e4e7481cf571f0e67358"
+}

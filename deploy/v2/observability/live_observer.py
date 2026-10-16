@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -18,6 +19,24 @@ SETTLEMENT_PUBLISH=Path('/home/velocitas/velocita-v2/textfile/strategy-settlemen
 MAX_SETTLEMENTS=16
 MAX_RETAINED=1024
 REVIEW_LIFETIME_MS=86_400_000
+
+def decision_references(run,now):
+    try:
+        raw=read(SETTLEMENT_PUBLISH.with_name('strategy-decision-references.jsonl'),524288)
+        rows=raw.splitlines()
+        if len(rows)>MAX_RETAINED:raise ValueError('reference capacity')
+        result={}
+        for line in rows:
+            row=json.loads(line,object_pairs_hook=unique_object)
+            exact_keys(row,'run effect side sequence source_ms decision_ms price')
+            if row['run']!=run:continue
+            integer(row['effect'],1);integer(row['sequence'],1)
+            integer(row['source_ms'],1,now);integer(row['decision_ms'],row['source_ms'],now)
+            if row['side'] not in ('buy','sell') or type(row['price']) not in (int,float) or not math.isfinite(row['price']) or row['price']<=0:raise ValueError('reference price or side')
+            if row['effect'] in result and result[row['effect']]!=row:raise ValueError('conflicting reference')
+            result[row['effect']]=row
+        return result
+    except (OSError,ValueError,TypeError,KeyError):return {}
 
 def integer(value,low=0,high=2**64-1):
     if type(value) is not int or not low<=value<=high:raise ValueError('integer range')
@@ -105,12 +124,20 @@ def settlement_snapshot(run,now,persist):
         state=reconcile_settlements(source,previous,now)
         if persist and state!=previous:write_file(SETTLEMENT_CACHE,json.dumps(state,sort_keys=True)+'\n',0o600)
         fresh=now-source['observed_at_ms']<45000
+        references=decision_references(run,now)
+        events=[]
+        for event in state['settlements']:
+            ref=references.get(event['effect'])
+            if ref is not None and ref['side']==event['side'] and ref['decision_ms']<=event['first_observed_ms']:
+                event=dict(event,decision_price=ref['price'])
+            events.append(event)
         return dict(settlement_feed_ready=int(fresh),settlement_feed_status=1 if fresh else 2,
                     settlement_observed_seconds=source['observed_at_ms']/1000,
                     settlement_applied_index=source['applied_index'],settled_sol=source['base_atoms']/1e9,
                     settled_usdc=source['quote_atoms']/1e6,settled_fees_usdc=source['fees_atoms']/1e6,
                     settled_realized_pnl_usdc=source['realized_pnl_atoms']/1e6,
-                    settlement_events=state['settlements'])
+                    executed_volume_usdc=sum(r['quote_atoms']+(-r['fee_atoms'] if r['side']=='buy' else r['fee_atoms']) for r in state['settlements'])/1e6,
+                    settlement_events=events)
     except Exception:return dict(settlement_feed_ready=0,settlement_feed_status=3)
 
 def parent_fd(path):
@@ -199,7 +226,15 @@ def render(data,now):
                     # per effect. Grafana uses this persisted time, never scrape time.
                     labels=f'run="{run}",effect="{event["effect"]}",side="{event["side"]}",first_observed_ms="{event["first_observed_ms"]}",quantity_sol="{event["base_atoms"]/1e9}",quote_usdc="{event["quote_atoms"]/1e6}",fee_usdc="{event["fee_atoms"]/1e6}"'
                     price=event['quote_atoms']*1000/event['base_atoms']
+                    difference=None
+                    if 'decision_price' in event:
+                        difference=(price/event['decision_price']-1)*10000*(1 if event['side']=='buy' else -1)
+                    display='N/A' if difference is None else f'{difference:.2f}'
+                    labels+=f',decision_difference_bp="{display}"'
                     lines.append(f'velocita_live_fill_effective_price_usdc_per_sol{{{labels}}} {price}')
+                    lines.append(f'velocita_live_fill_first_observed_seconds{{{labels}}} {event["first_observed_ms"]/1000}')
+                    if difference is not None:
+                        lines.append(f'velocita_live_fill_decision_difference_bps{{{labels}}} {difference}')
                 continue
             if not re.fullmatch('[a-z_]+',key) or type(value) not in (int,float):raise ValueError('scalar metrics only')
             lines.append(f'velocita_live_{key}{{run="{run}"}} {value}')

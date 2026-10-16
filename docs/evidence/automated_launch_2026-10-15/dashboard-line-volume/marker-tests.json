@@ -1,0 +1,120 @@
+{
+  "evaluation_interval": "15s",
+  "tests": [
+    {
+      "name": "before",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "velocita_strategy_price_usd{run=\"test\"}",
+          "values": "100 101 102 103"
+        },
+        {
+          "series": "velocita_live_fill_first_observed_seconds{run=\"test\",effect=\"1\",side=\"buy\"}",
+          "values": "20 20 20 20"
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "max by (run) (velocita_strategy_price_usd{run=\"test\"}) * on (run) group_right () (((velocita_live_fill_first_observed_seconds{run=\"test\",side=\"buy\"} @ end() <= time()) and (velocita_live_fill_first_observed_seconds{run=\"test\",side=\"buy\"} @ end() > time() - (15000 / 1000))) > bool 0)",
+          "eval_time": "15s",
+          "exp_samples": []
+        }
+      ]
+    },
+    {
+      "name": "at_bucket",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "velocita_strategy_price_usd{run=\"test\"}",
+          "values": "100 101 102 103"
+        },
+        {
+          "series": "velocita_live_fill_first_observed_seconds{run=\"test\",effect=\"1\",side=\"buy\"}",
+          "values": "20 20 20 20"
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "max by (run) (velocita_strategy_price_usd{run=\"test\"}) * on (run) group_right () (((velocita_live_fill_first_observed_seconds{run=\"test\",side=\"buy\"} @ end() <= time()) and (velocita_live_fill_first_observed_seconds{run=\"test\",side=\"buy\"} @ end() > time() - (15000 / 1000))) > bool 0)",
+          "eval_time": "30s",
+          "exp_samples": [
+            {
+              "labels": "{run=\"test\",effect=\"1\",side=\"buy\"}",
+              "value": 102
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "no_repeat",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "velocita_strategy_price_usd{run=\"test\"}",
+          "values": "100 101 102 103"
+        },
+        {
+          "series": "velocita_live_fill_first_observed_seconds{run=\"test\",effect=\"1\",side=\"buy\"}",
+          "values": "20 20 20 20"
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "max by (run) (velocita_strategy_price_usd{run=\"test\"}) * on (run) group_right () (((velocita_live_fill_first_observed_seconds{run=\"test\",side=\"buy\"} @ end() <= time()) and (velocita_live_fill_first_observed_seconds{run=\"test\",side=\"buy\"} @ end() > time() - (15000 / 1000))) > bool 0)",
+          "eval_time": "45s",
+          "exp_samples": []
+        }
+      ]
+    },
+    {
+      "name": "exact_boundary",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "velocita_strategy_price_usd{run=\"test\"}",
+          "values": "100 101 102 103"
+        },
+        {
+          "series": "velocita_live_fill_first_observed_seconds{run=\"test\",effect=\"1\",side=\"buy\"}",
+          "values": "30 30 30 30"
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "max by (run) (velocita_strategy_price_usd{run=\"test\"}) * on (run) group_right () (((velocita_live_fill_first_observed_seconds{run=\"test\",side=\"buy\"} @ end() <= time()) and (velocita_live_fill_first_observed_seconds{run=\"test\",side=\"buy\"} @ end() > time() - (15000 / 1000))) > bool 0)",
+          "eval_time": "30s",
+          "exp_samples": [
+            {
+              "labels": "{run=\"test\",effect=\"1\",side=\"buy\"}",
+              "value": 102
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "no_boundary_repeat",
+      "interval": "15s",
+      "input_series": [
+        {
+          "series": "velocita_strategy_price_usd{run=\"test\"}",
+          "values": "100 101 102 103"
+        },
+        {
+          "series": "velocita_live_fill_first_observed_seconds{run=\"test\",effect=\"1\",side=\"buy\"}",
+          "values": "30 30 30 30"
+        }
+      ],
+      "promql_expr_test": [
+        {
+          "expr": "max by (run) (velocita_strategy_price_usd{run=\"test\"}) * on (run) group_right () (((velocita_live_fill_first_observed_seconds{run=\"test\",side=\"buy\"} @ end() <= time()) and (velocita_live_fill_first_observed_seconds{run=\"test\",side=\"buy\"} @ end() > time() - (15000 / 1000))) > bool 0)",
+          "eval_time": "45s",
+          "exp_samples": []
+        }
+      ]
+    }
+  ]
+}

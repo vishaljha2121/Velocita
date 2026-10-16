@@ -826,30 +826,21 @@ def live():
     advance(8)
     row('Live SOL price and signal — strategy driver')
     run='{run="$live_run"}'
+    def line_marker(side):
+        stamp='velocita_live_fill_first_observed_seconds{run="$live_run",side="'+side+'"} @ end()'
+        bucket='(('+stamp+' <= time()) and ('+stamp+' > time() - ($__interval_ms / 1000))) > bool 0'
+        return 'max by (run) (velocita_strategy_price_usd'+run+') * on (run) group_right () ('+bucket+')'
     series('Live SOL price with confirmed entries / exits',[
-        ('velocita_strategy_price_usd'+run,'SOL close (Binance 1 s)'),
-        ('max by (effect, side, first_observed_ms) (velocita_live_fill_effective_price_usdc_per_sol{run="$live_run",side="buy"}'+fresh+')','Entry'),
-        ('max by (effect, side, first_observed_ms) (velocita_live_fill_effective_price_usdc_per_sol{run="$live_run",side="sell"}'+fresh+')','Exit'),
+        ('max by (run) (velocita_strategy_price_usd'+run+')','SOL close (Binance 1 s)'),
+        (line_marker('buy'),'Entry'),(line_marker('sell'),'Exit'),
         ('velocita_strategy_ema_usd{run="$live_run",span="300"}','EMA 300 s'),
         ('velocita_strategy_ema_usd{run="$live_run",span="1200"}','EMA 1200 s')],
         0,24,unit='currencyUSD',min0=False,
-        description='Binance SOLUSDT proxy close and EMAs. Each green/red point is one confirmed effect at its effective price and persisted first-confirmed observation time, not chain execution time. Repeated scrapes do not create additional entries or exits.')
+        description='Confirmed entries/exits are anchored to the Binance proxy line at the first chart sample on or after their persisted confirmation-observation time. Marker height is a visual reference, not the actual execution price. Exact effective prices and quantities remain in the confirmed-fill table. One marker per effect; no quotes or attempts.')
     chart=panels[-1]
     chart['fieldConfig']['defaults']['decimals']=3
-    chart['transformations']=[]
-    for ref,name in (('B','Entry'),('C','Exit')):
-        target=next(t for t in chart['targets'] if t['refId']==ref)
-        target.update(instant=True,range=False,format='table')
-        selector={'id':'byRefId','options':ref}
-        chart['transformations'].extend([
-            {'id':'organize','filter':selector,'options':{
-                'excludeByName':{k:True for k in ('Time','effect','side','__name__')},
-                'indexByName':{'first_observed_ms':0,'Value':1,'Value #'+ref:1},
-                'renameByName':{'first_observed_ms':'Fill time','Value':name,'Value #'+ref:name}}},
-            {'id':'convertFieldType','filter':selector,'options':{'conversions':[{'targetField':'Fill time','destinationType':'number'}]}},
-            {'id':'convertFieldType','filter':selector,'options':{'conversions':[{'targetField':'Fill time','destinationType':'time'}]}},
-            {'id':'sortBy','filter':selector,'options':{'sort':[{'field':'Fill time'}]}}
-        ])
+    chart['interval']='15s'
+    for target in chart['targets']:target['interval']='$__interval'
     for name,color in (('Entry','green'),('Exit','red')):
         panels[-1]['fieldConfig']['overrides'].append({'matcher':{'id':'byName','options':name},
             'properties':[{'id':'custom.drawStyle','value':'points'},{'id':'custom.showPoints','value':'always'},
@@ -897,13 +888,13 @@ def live():
     advance(8)
     panels.append({'id':_id(),'type':'table','title':'Retained confirmed fills — first-observed time, quantities and explicit fees',
         'datasource':DS,'gridPos':{'x':0,'y':_y,'w':24,'h':7},
-        'description':'All successful effects retained for this bounded run, at most 16; no eviction. Effective price already incorporates actual net debit/credit; explicit USDC fee is informational and must not be added twice. Initial and externally deposited holdings are not trade entries.',
-        'targets':[{'refId':'A','expr':'max by (effect, side, first_observed_ms, quantity_sol, quote_usdc, fee_usdc) ('+event+'{run="$live_run"}'+fresh+')','instant':True,'range':False,'format':'table'}],
+        'description':'Successful effects retained by the observer. Decision difference compares the fee-inclusive effective price with the Binance close used to decide: positive bp means worse execution, negative means better. It includes fees and execution-time movement. N/A means no captured decision reference; historical values are not inferred. Effective price already incorporates actual net debit/credit; explicit USDC fee is informational and must not be added twice. Initial and externally deposited holdings are not trade entries.',
+        'targets':[{'refId':'A','expr':'max by (effect, side, first_observed_ms, quantity_sol, quote_usdc, fee_usdc, decision_difference_bp) ('+event+'{run="$live_run"}'+fresh+')','instant':True,'range':False,'format':'table'}],
         'transformations':[
             {'id':'convertFieldType','options':{'conversions':[{'targetField':k,'destinationType':'number'} for k in ('first_observed_ms','quantity_sol','quote_usdc','fee_usdc')]}},
             {'id':'convertFieldType','options':{'conversions':[{'targetField':'first_observed_ms','destinationType':'time'}]}},
-            {'id':'organize','options':{'excludeByName':{'Time':True,'__name__':True},'indexByName':{'first_observed_ms':0,'effect':1,'side':2,'quantity_sol':3,'quote_usdc':4,'fee_usdc':5,'Value':6},
-                'renameByName':{'first_observed_ms':'First confirmed observation','effect':'Effect','side':'Side','quantity_sol':'Net SOL quantity','quote_usdc':'USDC debit / receipt','fee_usdc':'Explicit fee USDC','Value':'Effective USDC/SOL'}}},
+            {'id':'organize','options':{'excludeByName':{'Time':True,'__name__':True},'indexByName':{'first_observed_ms':0,'effect':1,'side':2,'quantity_sol':3,'quote_usdc':4,'fee_usdc':5,'Value':6,'decision_difference_bp':7},
+                'renameByName':{'first_observed_ms':'First confirmed observation','effect':'Effect','side':'Side','quantity_sol':'Net SOL quantity','quote_usdc':'USDC debit / receipt','fee_usdc':'Explicit fee USDC','Value':'Effective USDC/SOL','decision_difference_bp':'Decision difference (bp, all-in)'}}},
             {'id':'sortBy','options':{'sort':[{'field':'First confirmed observation','desc':True}]}}],
         'fieldConfig':{'defaults':{'decimals':9},'overrides':[]},'options':{'showHeader':True}})
     panels[-1]['transformations']=[panels[-1]['transformations'][2],*panels[-1]['transformations'][:2],panels[-1]['transformations'][3]]
@@ -938,6 +929,10 @@ def live():
     series('Durable lifecycle phases',[(q(k+'_phase'),v) for k,v in [('prepare','Quote'),('signing_request','Signing request'),('protected_signing','Protected signer'),('submission','Submission')]],0,16)
     series('Automatic service restarts',[(q('gateway_restarts'),'Gateway'),(q('signer_restarts'),'Signer')],16,8,description='Services currently use Restart=no. A stopped service does not imply a failed trade.')
     advance(8)
+    row('Executed volume')
+    stat('Executed volume — buys + sells',q('executed_volume_usdc')+' and on(run) (velocita_live_settlement_feed_status{run="$live_run"} == 1)',0,24,unit='suffix: USDC',decimals=6,
+         description='Cumulative confirmed buy and sell notional retained for this run, excluding explicit USDC fees: buy total debit minus fee; sell net receipt plus fee. Counts each successful effect once. No quotes, refused/released attempts, deposits or pending orders. This is our ledger measure, not verified TM leaderboard credit. Unknown if settlement telemetry is missing or stale.')
+    advance(4)
     row('Costs, limits and settlement interpretation')
     stat('Configured maximum buy output deduction',q('repayment_cap_sol'),0,12,unit='suffix: SOL',decimals=9,description='Conservative signer allowance. It is not an observed fee or expected cost.')
     stat('Last account evidence time',q('account_observed_seconds')+' * 1000',12,12,unit='dateTimeAsIso')

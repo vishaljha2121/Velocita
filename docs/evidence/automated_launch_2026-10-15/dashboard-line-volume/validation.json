@@ -1,0 +1,19 @@
+{
+  "observer_tests": 29,
+  "layout_tests": 21,
+  "marker_promtool": "SUCCESS",
+  "reference_mutants_killed": 4,
+  "earlier_marker_volume_mutants_killed": 2,
+  "changed_panels": [
+    "Live SOL price with confirmed entries / exits",
+    "Retained confirmed fills \u2014 first-observed time, quantities and explicit fees"
+  ],
+  "added_panels": [
+    "Executed volume",
+    "Executed volume \u2014 buys + sells"
+  ],
+  "deployed": false,
+  "committed": false,
+  "driver_update": "deferred by owner; excluded from checkpoint and deployment",
+  "owner_installer_fixture": "PASS: preview preservation, stale hash refusal before writes, backups and service identity"
+}

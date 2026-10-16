@@ -1,0 +1,12 @@
+[
+  {
+    "mutant": "scrape_time",
+    "killed": true,
+    "output": "F\n======================================================================\nFAIL: test_marker_timestamp_is_persisted_not_scrape_time (observer_tests.ConfirmedSettlementsTests.test_marker_timestamp_is_persisted_not_scrape_time)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/vishaljha/aeron-raft-pi/tests/test_live_observer.py\", line 149, in test_marker_timestamp_is_persisted_not_scrape_time\n    self.assertEqual(rows[0].rsplit(' ',1)[1],'1000.1')\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: '2000.0' != '1000.1'\n- 2000.0\n+ 1000.1\n\n\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nFAILED (failures=1)\n"
+  },
+  {
+    "mutant": "fees_added_to_buy",
+    "killed": true,
+    "output": "F\n======================================================================\nFAIL: test_volume_counts_gross_buy_and_sell_once (observer_tests.ConfirmedSettlementsTests.test_volume_counts_gross_buy_and_sell_once)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/Users/vishaljha/aeron-raft-pi/tests/test_live_observer.py\", line 156, in test_volume_counts_gross_buy_and_sell_once\n    self.assertEqual(result['executed_volume_usdc'],1.5992)\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 1.6032 != 1.5992\n\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nFAILED (failures=1)\n"
+  }
+]
