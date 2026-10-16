@@ -68,9 +68,10 @@ SwapSubmissionResolutionStatus SwapSubmissionResolutionSession::poll(Tick now){
     for(std::size_t n=0;n<swap.settlement_count;++n){
         const auto& candidate=swap.settlements[n];
         if(candidate.effect!=captured_.identity.effect)continue;
+        const bool expired=candidate.outcome==swap::Outcome::expired_unexecuted;
         if(found || candidate.payload!=captured_.identity.payload || candidate.custody!=config_.binding.custody ||
-            !candidate.finalized || candidate.transaction.is_zero() || candidate.evidence.is_zero() ||
-            (known_transaction && candidate.transaction!=*known_transaction))
+            !candidate.finalized || candidate.transaction.is_zero()!=expired || candidate.evidence.is_zero() ||
+            (expired && known_transaction) || (known_transaction && candidate.transaction!=*known_transaction))
             return finish(SwapSubmissionResolutionStatus::refused);
         found=&candidate;
     }

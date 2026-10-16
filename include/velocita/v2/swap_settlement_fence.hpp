@@ -12,7 +12,8 @@ namespace velocita::v2 {
         const auto& settlement=state.settlements[n];
         if(settlement.effect!=record.identity.effect)continue;
         if(found || settlement.payload!=record.identity.payload || settlement.custody!=custody ||
-            !settlement.finalized || settlement.transaction.is_zero() || settlement.evidence.is_zero())return false;
+            !settlement.finalized || settlement.evidence.is_zero() ||
+            settlement.transaction.is_zero()!=(settlement.outcome==swap::Outcome::expired_unexecuted))return false;
         found=true;
     }
     return found;

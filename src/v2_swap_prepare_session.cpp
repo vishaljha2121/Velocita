@@ -76,7 +76,8 @@ SwapPrepareSessionStatus SwapPrepareSession::poll(Tick now,std::uint64_t event_t
         for(std::size_t n=0;n<swap.settlement_count;++n){const auto& settled=swap.settlements[n];
             if(settled.effect!=store_.latest().operation.effect)continue;
             if(prior || settled.payload!=store_.latest().prepared.payload_digest || settled.custody!=config_.binding.allocation.custody ||
-                !settled.finalized || settled.transaction.is_zero() || settled.evidence.is_zero())return finish(SwapPrepareSessionStatus::needs_reconciliation);
+                !settled.finalized || settled.evidence.is_zero() ||
+                settled.transaction.is_zero()!=(settled.outcome==swap::Outcome::expired_unexecuted))return finish(SwapPrepareSessionStatus::needs_reconciliation);
             predecessor={settled,outcome.reading.applied_index,outcome.reading.state_digest};prior=&predecessor;
         }
         if(!prior)return finish(SwapPrepareSessionStatus::needs_reconciliation);

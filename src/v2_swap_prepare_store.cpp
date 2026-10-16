@@ -251,7 +251,8 @@ SwapPrepareStoreCode SwapPrepareStore::begin(const SwapPrepareOperation& operati
         if(!prior || prior->committed_index!=index || prior->state_digest!=state_digest ||
             prior->settlement.effect!=latest_.operation.effect || prior->settlement.payload!=latest_.prepared.payload_digest ||
             prior->settlement.custody!=binding_.allocation.custody || !prior->settlement.finalized ||
-            prior->settlement.transaction.is_zero() || prior->settlement.evidence.is_zero())return fail(Code::bad_transition);
+            prior->settlement.evidence.is_zero() ||
+            prior->settlement.transaction.is_zero()!=(prior->settlement.outcome==swap::Outcome::expired_unexecuted))return fail(Code::bad_transition);
     }else if(prior)return fail(Code::bad_transition);
     SwapPrepareRecord next;next.binding=binding_;next.operation=operation;next.phase=SwapPreparePhase::create_intent;
     next.committed_index=index;next.state_digest=state_digest;return replace(next);

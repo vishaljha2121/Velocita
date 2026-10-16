@@ -132,11 +132,16 @@ bool swap_startup_recovery_only(const swap::State& state,SwapPreparePhase prepar
     bool settled=false;
     if(prepared_effect.value())for(std::size_t n=0;n<state.settlement_count;++n){
         const auto& prior=state.settlements[n];
-        if(prior.effect==prepared_effect && prior.finalized && !prior.transaction.is_zero() && !prior.evidence.is_zero() &&
+        if(prior.effect==prepared_effect && prior.finalized && !prior.evidence.is_zero() &&
+            prior.transaction.is_zero()==(prior.outcome==swap::Outcome::expired_unexecuted) &&
             prior.custody==state.opening.binding.custody)settled=true;
     }
     if((submitted!=SwapSubmissionPhase::idle || prepared==SwapPreparePhase::prepared) && !settled)return true;
     return prepared==SwapPreparePhase::create_intent && (pending.phase!=swap::Phase::reserved || pending.intent.effect!=prepared_effect);
+}
+SwapVenueFailedOrder swap_venue_failed_order(const SwapOrderReadResult& read) noexcept {
+    return {read.status==SwapOrderReadStatus::terminal_needs_finality,read.detail.status==truemarkets::RestOrderStatus::failed,!read.detail.tx_hash.empty(),
+        read.detail.executed_base_atoms,read.detail.leaves_base_atoms,read.detail.fee_quote_atoms,read.response_digest};
 }
 SwapCreateTrace swap_create_trace(const transport::SwapHttpsResult& r) noexcept {
     SwapCreateTrace t;t.stage=SwapCreateStage::exchanged;t.transport=r.status;t.exposure=r.exposure;t.http_status=r.http_status;
@@ -212,25 +217,43 @@ void SwapProductionPorts::execute(const SwapSubmissionIdentity& id,std::span<con
     request.body_size=bytes.size();std::copy(bytes.begin(),bytes.end(),reinterpret_cast<std::byte*>(request.body.data()));
     SwapRuntimeExecutionHttps port(credentials_,clock_,id,request,timeout_);port.execute(id,bytes);
 }
+void SwapProductionPorts::report_reconcile(EffectId effect,unsigned stage,unsigned code){
+    if(stage==reported_stage_ && code==reported_code_)return;
+    reported_stage_=stage;reported_code_=code;
+    std::cerr<<"WARNING settlement unresolved stage="<<stage<<" code="<<code<<"; effect "<<effect.value()<<" kept reserved"<<std::endl;
+}
 std::optional<VerifiedSwapSettlement> SwapProductionPorts::reconcile(const swap::Pending& pending){
     if(!pending.intent.effect.value() || pending.intent.effect.value()<reconciling_.value())return {};
-    if(pending.intent.effect!=reconciling_){reconciling_=pending.intent.effect;reconcile_attempts_=0;}
-    if(++reconcile_attempts_>64)return {};
-    const auto bearer=credentials_.bearer(clock_.now_ms());if(bearer.empty())return {};
+    if(pending.intent.effect!=reconciling_){reconciling_=pending.intent.effect;reconcile_attempts_=0;reported_stage_=0;reported_code_=0;}
+    const auto effect=pending.intent.effect;
+    if(++reconcile_attempts_>64){report_reconcile(effect,1,0);return {};}
+    const auto bearer=credentials_.bearer(clock_.now_ms());if(bearer.empty()){report_reconcile(effect,2,0);return {};}
     const auto& session=credentials_.binding().account_session;
     SwapOrderSessionIdentity identity{session.account_and_assets_digest,session.session_evidence_digest};
     SwapHttpsOrderGet get(identity,std::string(bearer),preparation_.latest().prepared.handle,timeout_);
     struct Clock final:SwapOrderReadClock{SwapFinalizedReadClock& source;explicit Clock(SwapFinalizedReadClock&s):source(s){}std::uint64_t now_ms()noexcept override{return source.now_ms();}} clock(clock_);
     SwapOrderStatusReader order(submission_,preparation_,get,clock,{binding_,identity,timeout_});
-    if(order.read().status!=SwapOrderReadStatus::terminal_needs_finality)return {};
+    const auto& read=order.read();
+    if(read.status!=SwapOrderReadStatus::terminal_needs_finality){report_reconcile(effect,3,static_cast<unsigned>(read.status));return {};}
+    truemarkets::SolanaAccountKey owner{};
+    for(std::size_t n=0;n<owner.size();++n)owner[n]=std::to_integer<std::uint8_t>(credentials_.binding().owner_wallet[n]);
+    if(read.transaction==SwapSubmissionTransaction{}){
+        SwapRuntimeFinalizedHttps rpc(timeout_);
+        const auto venue=swap_venue_failed_order(read);
+        auto expired=admit_expired_unexecuted_settlement(preparation_,submission_,binding_,pending.intent,venue,rpc,rpc.provider_identity(),
+            timeout_,1,organization_.view(),signer_.view(),owner);
+        if(!expired.verified)report_reconcile(effect,4,static_cast<unsigned>(expired.code));
+        return expired.verified;
+    }
     const auto payload=preparation_.latest().prepared.payload_view();
-    const auto lookup=prefix(std::as_bytes(std::span(payload.data(),payload.size())));if(!lookup)return {};
+    const auto lookup=prefix(std::as_bytes(std::span(payload.data(),payload.size())));if(!lookup){report_reconcile(effect,5,0);return {};}
     const auto evidence=truemarkets::jupiter_lookup_evidence(*lookup);
     SwapRuntimeFinalizedHttps rpc(timeout_);SwapFinalizedReader reader(rpc,clock_,rpc.provider_identity(),timeout_);
-    return admit_retained_swap_settlement(preparation_,submission_,binding_,pending.intent,reader,1,1,
-        organization_.view(),signer_.view(),std::span(&evidence,1),[&]{truemarkets::SolanaAccountKey owner{};
-            for(std::size_t n=0;n<owner.size();++n)owner[n]=std::to_integer<std::uint8_t>(credentials_.binding().owner_wallet[n]);return owner;}(),failure_policy_,
-            {swap::BaseAtoms{credentials_.binding().max_buy_output_deduction_lamports}}).verified;
+    auto settled=admit_retained_swap_settlement(preparation_,submission_,binding_,pending.intent,reader,1,1,
+        organization_.view(),signer_.view(),std::span(&evidence,1),owner,failure_policy_,
+            {swap::BaseAtoms{credentials_.binding().max_buy_output_deduction_lamports}});
+    if(!settled.verified)report_reconcile(effect,6,static_cast<unsigned>(settled.code));
+    return settled.verified;
 }
 SwapProductionGateway::SwapProductionGateway(GatewayLink& link,SwapReconcileStore& recovery,SwapPrepareStore& prepared,SwapSubmissionStore& submitted,
     SwapSubmissionStore& signing_requests,SwapGatewayCredentials& credentials,SwapFinalizedReadClock& clock,const SwapRuntimeProfile& profile,

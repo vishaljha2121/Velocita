@@ -1,0 +1,498 @@
+[
+  {
+    "name": "reducer_zero_transaction",
+    "file": "src/v2_swap.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "expired_reducer"
+    ],
+    "assertion": "expired with a transaction refused",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "9c49b578217881e11ecc26739ec3663884b7d6a89b9e82d05603c11634302d0c",
+    "binary_sha256": "a50c5eefa6a48f218b533220d4af1c32b3bcf4be319d5261ad10e7fda7dc2073",
+    "building_lines": 1
+  },
+  {
+    "name": "reducer_expired_branch",
+    "file": "src/v2_swap.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "expired_admission"
+    ],
+    "assertion": "kernel accepts expired settlement from unknown",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "0acc716b250aa415dd9b53964560e496b726b3425c3b61e315793289300d1da9",
+    "binary_sha256": "48db4be42842ad3f971a8d20632b613c9fda112517d9efb8a18fe4c9e1808299",
+    "building_lines": 1
+  },
+  {
+    "name": "reducer_zero_dedupe",
+    "file": "src/v2_swap.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "expired_reducer"
+    ],
+    "assertion": "window settlement",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "30694e65e314e3d0b745254ef7bf1a8a84f0452f9f51d99b9dfae6ea42a2458e",
+    "binary_sha256": "46ac52d4f81f18686fb35fa47a7675e293328cca3e7aaee060fb9ee13b82031a",
+    "building_lines": 1
+  },
+  {
+    "name": "snapshot_zero_transaction",
+    "file": "src/v2_swap.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "expired_reducer"
+    ],
+    "assertion": "snapshot with expired and a transaction refused",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "123111edd49b2216d667374ddac2579ad724e6678da09faa28c4fd7d2b35d2b6",
+    "binary_sha256": "2b4e9a144cb640e3a5846df29c72ee7f4c1c5d06e17b3ec36e2a8067e65ec15b",
+    "building_lines": 1
+  },
+  {
+    "name": "snapshot_zero_dedupe",
+    "file": "src/v2_swap.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "expired_reducer"
+    ],
+    "assertion": "evicted history with several expired entries revalidates",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "d1c64708762cde2ef2e6180d63e646aea06379bbf30e98485ae3be1018764693",
+    "binary_sha256": "f13b6bca3b8a984af1a5648ead924668d82e36440e434edb416c2b50f03c7ea7",
+    "building_lines": 1
+  },
+  {
+    "name": "snapshot_expired_replay",
+    "file": "src/v2_swap.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "expired_admission"
+    ],
+    "assertion": "only the reservation is released and the snapshot revalidates",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "2afdfdb01833491eb81aefc0a4b94a8ede6c3c747181ec1730a784d1417aa28f",
+    "binary_sha256": "95fd01ff79691b484e6e0bbcf1b235e1828a11d7ed64c682911a8dc0e80ac7ba",
+    "building_lines": 1
+  },
+  {
+    "name": "fence_old_rule",
+    "file": "include/velocita/v2/swap_settlement_fence.hpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "expired_admission"
+    ],
+    "assertion": "gateway and signer predecessor fence accepts the expired settlement",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "c3958692d410f39287a8b715685bd1689e97d27b2fe86c0b3509cfb278988d97",
+    "binary_sha256": "eb5c271bb4ba250526bb2c30f148141a53b02357cd8c09cf51a49f470eb33ec0",
+    "building_lines": 4
+  },
+  {
+    "name": "fence_any_zero",
+    "file": "include/velocita/v2/swap_settlement_fence.hpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "expired_admission"
+    ],
+    "assertion": "fence refuses a success without a transaction",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "26086b801da8908a7c72e30a53cef4126d5ce0e385f0187c7a4614fc7bc1d427",
+    "binary_sha256": "fcc3ad7695369b134e37cf50d722acc5e33c2b3229d66324b7cc9b63d4448884",
+    "building_lines": 3
+  },
+  {
+    "name": "resolution_old_rule",
+    "file": "src/v2_swap_submission_resolution.cpp",
+    "target": "v2-swap-gateway-runtime-tests",
+    "argv": [
+      "19"
+    ],
+    "assertion": "FAIL",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "2c9005d87fd3225c1bf8c948d747ca8a8f6d922cd3fb78fc03e21af28b1bd2fb",
+    "binary_sha256": "3d3be0b08332d9832a1f93cc3a16936382fe2c7412c08854a00c661fc417e07c",
+    "building_lines": 3
+  },
+  {
+    "name": "prepare_predecessor_old_rule",
+    "file": "src/v2_swap_prepare_session.cpp",
+    "target": "v2-swap-gateway-runtime-tests",
+    "argv": [
+      "18"
+    ],
+    "assertion": "FAIL",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "7f46a63846084b4e58c2b542de437d67eb711ecd99598e85a494112a5c982f64",
+    "binary_sha256": "5b6ffa65339c45e219054134cf55548096a21671a142bddca1442d76335ed83c",
+    "building_lines": 2
+  },
+  {
+    "name": "prepare_store_old_rule",
+    "file": "src/v2_swap_prepare_store.cpp",
+    "target": "v2-swap-gateway-runtime-tests",
+    "argv": [
+      "18"
+    ],
+    "assertion": "FAIL",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "11150a75674d1f083490199c8d4752d753ce7ee82e55ac379046b05d6afb2d16",
+    "binary_sha256": "e5167e402f90ce88e1eccb8c04b92e70415ae703dc433decd7ef8bde08f00f48",
+    "building_lines": 2
+  },
+  {
+    "name": "startup_old_rule",
+    "file": "src/v2_swap_runtime_production.cpp",
+    "target": "v2-swap-runtime-production-tests",
+    "argv": [],
+    "assertion": "an expired unexecuted predecessor restarts normally",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "05566e51a1af6cd5f3188a7d374c53acac251fee8d144672c5a120cb398ad672",
+    "binary_sha256": "65095482be587412fe525554d2273684ec1166d9852dff325fab29c310e8586a",
+    "building_lines": 6
+  },
+  {
+    "name": "startup_any_zero",
+    "file": "src/v2_swap_runtime_production.cpp",
+    "target": "v2-swap-runtime-production-tests",
+    "argv": [],
+    "assertion": "a succeeded settlement without a transaction never counts as settled",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "6b921d135cfdf8c7ec123b086237060ed9948559974b9e8b58d796412af6e91e",
+    "binary_sha256": "f8033c420162c4f61c44d30a7c9d0346e93cc0afea492cba90edec08ff51a5e5",
+    "building_lines": 1
+  },
+  {
+    "name": "venue_map_failed",
+    "file": "src/v2_swap_runtime_production.cpp",
+    "target": "v2-swap-runtime-production-tests",
+    "argv": [],
+    "assertion": "canceled is not failed",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "10e80db6e1cc2c022606fe00a0a2a06b4b3934cc86eb53a6a104b6586360d531",
+    "binary_sha256": "cea9fdfeae9df9e49ad5a25e823282454a04864266bd333c89c700209fbd2a78",
+    "building_lines": 1
+  },
+  {
+    "name": "venue_map_hash",
+    "file": "src/v2_swap_runtime_production.cpp",
+    "target": "v2-swap-runtime-production-tests",
+    "argv": [],
+    "assertion": "reported hash is never ignored",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "c82f359e423fd0d2678b378f5f807f5f418571c9442a8447c70a0da06abd4c0d",
+    "binary_sha256": "f0af08e244d90ec6561f8fb8ffaa4883944c5b6ca56aeb2f30c2b7995813bead",
+    "building_lines": 1
+  },
+  {
+    "name": "admit_failed",
+    "file": "src/v2_swap_settlement_admission.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "expired_admission"
+    ],
+    "assertion": "keeps the reservation",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "101ed6e93b6a5b8a735969a198f69133f55afcd27aa6a00e1eba96aa3a37a3df",
+    "binary_sha256": "adfa1b55a1d08e86d6ddbd1882cbc668bdced08961db186e3fe51132e8deb2b0",
+    "building_lines": 3
+  },
+  {
+    "name": "admit_executed",
+    "file": "src/v2_swap_settlement_admission.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "expired_admission"
+    ],
+    "assertion": "keeps the reservation",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "5893a5d577965920a09da0f8a7084025b02757829b40e67ccfb5507ae2536b88",
+    "binary_sha256": "134cb014d45b0ce776ce6c6ace674ff925bc5a852b96b9deb6f3a54a18c4a8e7",
+    "building_lines": 1
+  },
+  {
+    "name": "admit_fee",
+    "file": "src/v2_swap_settlement_admission.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "expired_admission"
+    ],
+    "assertion": "keeps the reservation",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "0c7c48d1b9ad1179367730096c21aa86ff90e65cf2ae4d983d59c0edf005aabd",
+    "binary_sha256": "a15644b89f91ec696d09563e9eed744b1a8d6a31bf9ed2f35a13a21ee0bd6acb",
+    "building_lines": 1
+  },
+  {
+    "name": "admit_hash",
+    "file": "src/v2_swap_settlement_admission.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "expired_admission"
+    ],
+    "assertion": "keeps the reservation",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "54333d02b64700a3993e98f192abcac05a13b2a0f1034294fa0deb0c99e23fc5",
+    "binary_sha256": "dc59ee6a5811ca86f619ae74f9be641bda3659bf2b99e12893cf7840de2408de",
+    "building_lines": 1
+  },
+  {
+    "name": "admit_leaves",
+    "file": "src/v2_swap_settlement_admission.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "expired_admission"
+    ],
+    "assertion": "keeps the reservation",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "864442310f4e96e72234e0addf19bb1afbc3b0f70944ab10b6aebf0969f43a01",
+    "binary_sha256": "b5c0d2b368772f7875de329d8db99f67dff0f8e9a78d988d63dbe3efacf62280",
+    "building_lines": 1
+  },
+  {
+    "name": "admit_attested",
+    "file": "src/v2_swap_settlement_admission.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "expired_admission"
+    ],
+    "assertion": "keeps the reservation",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "8baaef318273c9197bdcf78c6b4b9989cef97e3414c6dda0873227476f662265",
+    "binary_sha256": "db6f91432256491e85d0c7a297895d3dd548a5e299dfd1ca758aa4ef8831c21e",
+    "building_lines": 1
+  },
+  {
+    "name": "admit_terminal",
+    "file": "src/v2_swap_settlement_admission.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "expired_admission"
+    ],
+    "assertion": "keeps the reservation",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "e4ef4f919e1325dd14a023d884d2a1861624723ba60dfadb0b71fbde2c694b67",
+    "binary_sha256": "75caebb3ad42f02fadcffe320068bb67ccd8d45363332147bb76051f16586cfe",
+    "building_lines": 1
+  },
+  {
+    "name": "admit_known_transaction",
+    "file": "src/v2_swap_settlement_admission.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "expired_admission"
+    ],
+    "assertion": "a known venue transaction must use finalized settlement",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "c02c50f744899ff858292e5b701555ec11758c09eeced88833a69479ed150c99",
+    "binary_sha256": "4f57ef7bc20251ad5cb31ae654d4161f3ea48876fd7c72714f12d9388952c4e4",
+    "building_lines": 1
+  },
+  {
+    "name": "admit_chain_required",
+    "file": "src/v2_swap_settlement_admission.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "expired_admission"
+    ],
+    "assertion": "venue failure alone never releases",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "36f7675c24d1e08931497d20f50afea8b1555dfaf7fcd1dd0c14f90b9938bbad",
+    "binary_sha256": "8e253fdfacc326cef2f6612667fcb6dee5db2437746771042ede2fa3b06f6d44",
+    "building_lines": 1
+  },
+  {
+    "name": "chain_blockhash_valid",
+    "file": "src/v2_swap_settlement_evidence.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "chain_refusals"
+    ],
+    "assertion": "valid_blockhash_never_resolves",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "dc909a22c4be9c7713c8dba485e0e45f3b69fea22602315d49d544a1b6375108",
+    "binary_sha256": "21dcc84db3f28754d2a0a8ab8ffde3347490e31f6a63fcc19c3328c1b3eb03cb",
+    "building_lines": 2
+  },
+  {
+    "name": "chain_margin",
+    "file": "src/v2_swap_settlement_evidence.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "chain_refusals"
+    ],
+    "assertion": "finalized_view_too_close_to_creation_refused",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "a9c17fc7faf305fe417e19f37d93a077b7ee721804c343efc510dc55d7f92181",
+    "binary_sha256": "12bc6251697b8f7670080e7c4a50f8408e56772dd9e0df4d6b99f597c46f4914",
+    "building_lines": 1
+  },
+  {
+    "name": "chain_landed",
+    "file": "src/v2_swap_settlement_evidence.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "chain_refusals"
+    ],
+    "assertion": "matching_landed_message_refused",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "4348d43da8e12cf2ae78b2ad957c3503f7d45a4cbbf444e4af45ea1c4681f7fe",
+    "binary_sha256": "51c7d8502ffe9e1a72b5665101667b185c87761668c69302200cce499f1f491f",
+    "building_lines": 1
+  },
+  {
+    "name": "chain_incomplete",
+    "file": "src/v2_swap_settlement_evidence.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "chain_refusals"
+    ],
+    "assertion": "eight_full_pages_without_reaching_creation_refused",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "bf697b203398f969dbcbc2947dd205d6b9810175014828df471b0ba8c061c33a",
+    "binary_sha256": "3a19bef8c59a72d44ff4da6cd908a9beb4993e8db8da05a115d072cc27792f58",
+    "building_lines": 1
+  },
+  {
+    "name": "chain_skip_after_expiry",
+    "file": "src/v2_swap_settlement_evidence.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "chain_proven"
+    ],
+    "assertion": "expired_blockhash_and_no_matching_history_proven",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "923f4e379f9cbe3f83772af656093365aa3270371a28ef38d4d64c19669c0922",
+    "binary_sha256": "148cd359c79947ff527031e8cc03d1c4e46ca503aa09bd1d0b750b86bec134a6",
+    "building_lines": 1
+  },
+  {
+    "name": "chain_time_completion",
+    "file": "src/v2_swap_settlement_evidence.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "chain_refusals"
+    ],
+    "assertion": "second_page_reaches_creation_and_completes",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "30dd64fb65e2a72b29ceca85509a63cb72b91c888baaa65422370f5c208cfadb",
+    "binary_sha256": "1793ca0c4cc5a681d1b73a3e2a2a213069d3590216dda8e29bac6bf256be0db6",
+    "building_lines": 1
+  },
+  {
+    "name": "chain_null_time",
+    "file": "src/v2_swap_settlement_evidence.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "chain_refusals"
+    ],
+    "assertion": "missing_block_time_refused",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "503976df1a9fd2b8e198a3c9fbf4edb82bbbf95d5fda4091b6757f295918a9c7",
+    "binary_sha256": "0412e4b0f7cd1550659870beb31023e359d4e3856f2b5faf453c202842e79fbe",
+    "building_lines": 1
+  },
+  {
+    "name": "chain_provider",
+    "file": "src/v2_swap_settlement_evidence.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "chain_refusals"
+    ],
+    "assertion": "provider_change_during_proof_refused",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "d73d6e4ba2107aceb9ebc2bb039c9b5b031e13d457e27d11a4e4393d478099cd",
+    "binary_sha256": "5ed8f14dce1a9916ad07e09b5bd3e13316c3c70ef2cd4804b1e9868691945832",
+    "building_lines": 1
+  },
+  {
+    "name": "chain_rpc_error",
+    "file": "src/v2_swap_settlement_evidence.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "chain_refusals"
+    ],
+    "assertion": "rpc_error_refused",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "460be0c0edbc05cfb324ab54a19e3935dc865f6286074351d528a606b0d88d36",
+    "binary_sha256": "aef957596d11099cead17b8fc299565622354ae6d5771da143b291af955fd066",
+    "building_lines": 1
+  },
+  {
+    "name": "chain_min_context",
+    "file": "src/v2_swap_settlement_evidence.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "chain_proven"
+    ],
+    "assertion": "expired_blockhash_and_no_matching_history_proven",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "3632731cb8bc512d1929711c0637c2d2e4bbe713d03d77446b8e1a1de0bc3f51",
+    "binary_sha256": "e1457653c7710a9fa478c3807dda646543602099d6d6cedd7a50c4e83d11ba5d",
+    "building_lines": 1
+  },
+  {
+    "name": "template_finalized",
+    "file": "src/v2_swap_runtime_https.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "rpc_templates"
+    ],
+    "assertion": "blockhash template",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "3bd4d69d2b9c791557f102c23eb37c74c44caee567f179a68f8d57112a13bfe7",
+    "binary_sha256": "02c9ceaa92c86edf4127816051bf059ba43e8abb9516fd67e5ea9efbcbe76935",
+    "building_lines": 2
+  },
+  {
+    "name": "template_history_bound",
+    "file": "src/v2_swap_runtime_https.cpp",
+    "target": "v2-swap-failed-settlement-tests",
+    "argv": [
+      "rpc_templates"
+    ],
+    "assertion": "history template",
+    "killed": true,
+    "returncode": 1,
+    "mutant_sha256": "a1a867b5cc8a2ffd5cdb6b976333c41451bdcc0232c757c999a65e21fcb493b5",
+    "binary_sha256": "cd7ef9e99556a23431574910ea7b8b70beaf5440988f40052553d80f03529ece",
+    "building_lines": 1
+  }
+]

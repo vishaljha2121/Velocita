@@ -107,4 +107,43 @@ SwapSettlementAdmissionResult admit_retained_swap_settlement(
     result.observation=std::move(observed);
     return result;
 }
+SwapSettlementAdmissionResult admit_expired_unexecuted_settlement(
+    const SwapPrepareStore& preparation, const SwapSubmissionStore& submission, const SwapPrepareBinding& binding,
+    const swap::Intent& intent, const SwapVenueFailedOrder& order, SwapFinalizedRpcPort& rpc, const Digest256& provider,
+    std::uint64_t timeout, std::uint64_t request_id, std::string_view organization, std::string_view signer,
+    const truemarkets::SolanaAccountKey& owner) {
+    SwapSettlementAdmissionResult result;
+    std::array<std::byte,swap::max_record_bytes> bytes{};
+    const auto encoded=swap::encode({swap::Role::strategy,intent.source_time,intent},bytes);
+    if(encoded.error!=swap::CodecError::none || intent.binding!=binding.allocation ||
+        preparation.status()!=SwapPrepareStoreCode::none || submission.status()!=SwapSubmissionCode::none ||
+        preparation.latest().phase!=SwapPreparePhase::prepared || preparation.latest().binding!=binding ||
+        intent.effect!=preparation.latest().operation.effect ||
+        preparation.latest().operation.intent_digest!=sha256_digest(std::span(bytes).first(encoded.size)))return result;
+    const auto retained=preparation.latest();const auto sent=submission.latest();const auto& p=retained.prepared;
+    result.code=SwapSettlementAdmissionCode::retained_identity_refused;
+    if(sent.phase!=SwapSubmissionPhase::execute_intent ||
+        sent.binding!=SwapSubmissionBinding{binding.allocation.incarnation,binding.authority_domain} ||
+        sent.identity.effect!=retained.operation.effect || sent.identity.payload!=p.payload_digest ||
+        sent.transaction!=SwapSubmissionTransaction{} || !p.handle.length || p.handle.length>p.handle.bytes.size() ||
+        !p.payload_size || p.payload_size>p.payload.size() || sent.committed_index<=retained.committed_index ||
+        sent.identity.handle_size!=p.handle.length)return result;
+    const auto handle=std::as_bytes(std::span(p.handle.bytes.data(),p.handle.length));
+    if(sent.identity.handle_digest!=sha256_digest(handle) || !std::equal(handle.begin(),handle.end(),sent.identity.handle.begin()) ||
+        p.payload_digest!=sha256_digest(std::as_bytes(std::span(p.payload.data(),p.payload_size))))return result;
+    result.code=SwapSettlementAdmissionCode::venue_not_failed;
+    if(!order.terminal || !order.failed || order.transaction_reported || order.executed_base_atoms!=std::int64_t{0} ||
+        order.fee_quote_atoms!=std::int64_t{0} || !order.leaves_base_atoms || order.response_digest.is_zero())return result;
+    const auto chain=prove_unexecuted_on_chain(rpc,provider,timeout,request_id,p.payload_view(),organization,signer,owner);
+    result.code=SwapSettlementAdmissionCode::chain_unproven;
+    if(chain.code!=UnexecutedProofCode::proven || chain.evidence.is_zero() ||
+        preparation.status()!=SwapPrepareStoreCode::none || submission.status()!=SwapSubmissionCode::none ||
+        preparation.latest().checksum!=retained.checksum || submission.latest().checksum!=sent.checksum)return result;
+    Sha256 hash;constexpr std::string_view domain="velocita.swap.expired-unexecuted.v1";
+    hash.update(std::as_bytes(std::span(domain.data(),domain.size())));hash.update(order.response_digest.bytes);hash.update(chain.evidence.bytes);
+    swap::Settlement settlement;settlement.effect=intent.effect;settlement.custody=intent.binding.custody;settlement.payload=p.payload_digest;
+    settlement.evidence=hash.finish();settlement.finalized=true;settlement.outcome=swap::Outcome::expired_unexecuted;
+    result.verified=VerifiedSwapSettlement(settlement);result.code=SwapSettlementAdmissionCode::admitted;
+    return result;
+}
 }

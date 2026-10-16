@@ -260,6 +260,28 @@ void startup_recovery_tests(){
     auto next=settled;
     require(swap::apply(next,swap_test::buy(opening,2),swap::Role::strategy,104)==swap::Code::applied,"startup next effect reserves");
     require(!swap_startup_recovery_only(next,P::prepared,EffectId{1},S::resolved),"settled old preparation permits a new reserved effect");
+    auto expired=prepared;
+    require(swap::apply(expired,swap::Attempt{EffectId{1},digest(7)},swap::Role::gateway,102)==swap::Code::applied &&
+        swap::apply(expired,swap::MarkUnknown{EffectId{1}},swap::Role::gateway,103)==swap::Code::applied,"startup expired effect unknown");
+    require(swap_startup_recovery_only(expired,P::prepared,EffectId{1},S::execute_intent),"unknown venue-failed order recovers only");
+    swap::Settlement gone{};gone.effect=EffectId{1};gone.custody=opening.binding.custody;gone.payload=digest(7);gone.evidence=digest(11);
+    gone.outcome=swap::Outcome::expired_unexecuted;gone.finalized=true;
+    require(swap::apply(expired,gone,swap::Role::gateway,104)==swap::Code::applied,"startup expired effect resolved");
+    require(!swap_startup_recovery_only(expired,P::prepared,EffectId{1},S::resolved) && !swap_startup_recovery_only(expired,P::prepared,EffectId{1},S::execute_intent),
+        "an expired unexecuted predecessor restarts normally instead of staying recovery-only");
+    auto forged=expired;forged.settlements[0].outcome=swap::Outcome::succeeded;
+    require(swap_startup_recovery_only(forged,P::prepared,EffectId{1},S::resolved),"a succeeded settlement without a transaction never counts as settled");
+    forged=expired;forged.settlements[0].transaction=digest(12);
+    require(swap_startup_recovery_only(forged,P::prepared,EffectId{1},S::resolved),"an expired settlement with a transaction never counts as settled");
+    SwapOrderReadResult read;read.status=SwapOrderReadStatus::terminal_needs_finality;read.detail.status=truemarkets::RestOrderStatus::failed;
+    read.detail.executed_base_atoms=0;read.detail.leaves_base_atoms=0;read.detail.fee_quote_atoms=0;read.response_digest=digest(13);
+    auto venue=swap_venue_failed_order(read);
+    require(venue.terminal && venue.failed && !venue.transaction_reported && venue.executed_base_atoms==std::int64_t{0} && venue.fee_quote_atoms==std::int64_t{0} &&
+        venue.leaves_base_atoms==std::int64_t{0} && venue.response_digest==digest(13),"TM failed order maps to venue evidence exactly");
+    read.detail.tx_hash=*truemarkets::tm_text("5x");require(swap_venue_failed_order(read).transaction_reported,"reported hash is never ignored");
+    read.detail.tx_hash={};read.detail.status=truemarkets::RestOrderStatus::canceled;require(!swap_venue_failed_order(read).failed,"canceled is not failed");
+    read.detail.status=truemarkets::RestOrderStatus::failed;read.status=SwapOrderReadStatus::observed_working;require(!swap_venue_failed_order(read).terminal,"working read is not terminal");
+    read.status=SwapOrderReadStatus::terminal_needs_finality;read.detail.executed_base_atoms=5;require(swap_venue_failed_order(read).executed_base_atoms==std::int64_t{5},"executed quantity carried");
     require(swap_startup_recovery_only(next,P::prepared,EffectId{2},S::resolved),"current prepared bytes without settlement stay recovery only");
     require(swap::apply(next,swap::Prepare{EffectId{2},digest(11),digest(12),1},swap::Role::gateway,105)==swap::Code::applied,"startup current effect prepares");
     require(swap_startup_recovery_only(next,P::prepared,EffectId{2},S::resolved),"current prepared Raft effect requires supervised recovery after restart");

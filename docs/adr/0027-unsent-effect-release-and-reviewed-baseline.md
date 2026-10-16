@@ -47,3 +47,45 @@ correctly stopped as `blocked / prepare_unknown`, but it kept no record of why.
 No kernel or Raft change; the voters stay on `1a46fd8`. No new venue, program or money authority.
 Funding, the opening, the purchase cap, the fee and loss caps, and the signer's verification policy
 are unchanged.
+
+## Amendment 2026-10-16: a venue-failed order that can never land
+
+**Problem.** Effect 25 was signed and executed, then True Markets answered `failed`, "Venue
+temporarily unavailable", 0 executed, 0 fee, no `tx_hash`. The effect is `unknown` in Raft.
+`ReleaseUnsent` is valid only from `reserved` (a signature exists), and `Settlement` needs a
+finalized transaction identity that does not exist. The gateway blocked with
+`settlement_unproven`, and a restart repeated the block. The account could never trade again.
+
+**Decision.** One new settlement outcome, `expired_unexecuted`, authored by the gateway:
+
+- Valid only from `attempted` or `unknown`; all five amounts zero; `transaction` zero (and zero
+  only for this outcome); `finalized` true; evidence non-zero. It releases the reservation and
+  enters the rolling history and `settled_total` like any settlement. A different later settlement
+  for the same effect is a conflict.
+- The gateway proposes it only with three facts:
+  1. **The venue says nothing executed.** The authenticated order read for the exact handle is
+     terminal `failed` with executed 0, fee 0, leaves present and no `tx_hash`. A known
+     `tx_hash` always takes the existing finalized-settlement path instead.
+  2. **The signed message can never land.** The verifier only admits transactions whose first
+     instructions are compute budget, so no durable nonce is possible. A Solana transaction is
+     valid only while its recent blockhash is. `isBlockhashValid` at `finalized` commitment
+     returns false at context slot S, and `getBlockTime(S)` is at least 60 s after the envelope
+     timestamp (so the node had seen the blockhash). Expiry is monotone in block height, so
+     nothing can include this message after S.
+  3. **It did not land before expiry.** `getSignaturesForAddress(owner, finalized,
+     minContextSlot = S)` is paged (64 per page, at most 8 pages) back to 60 s before the
+     envelope timestamp. Every entry at or before S is fetched with `getTransaction` and its
+     message bytes compared with the retained unsigned payload; none may match. More than 32
+     candidates, a missing block time, an RPC error or a provider change keeps the effect unresolved.
+- Evidence is SHA-256 over a domain label, the TM response digest and the digest of every RPC
+  response in order. The kernel cannot check chain facts; it trusts gateway-role evidence exactly
+  as it already does for finalized settlements.
+- Consumers that required a non-zero transaction (predecessor fence for gateway and signer,
+  submission resolution, prepare session and store predecessor, startup recovery-only check)
+  accept a zero transaction exactly when the outcome is `expired_unexecuted`.
+- Reconciliation stops now log `WARNING settlement unresolved stage=S code=C` once per change.
+
+**Cost.** Old readers decode the outcome byte but refuse it in `valid_state` and in the reducer,
+so every voter, the gateway, the signer and the client must run the new build before the first
+such settlement commits; never roll back after. No format size, budget or authority changes.
+Four new read-only RPC request templates are admitted by the HTTPS allowlist.

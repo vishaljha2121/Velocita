@@ -147,11 +147,11 @@ Code reduce(State& s, const Settlement& x, std::uint64_t) noexcept {
     }
     if (s.pending.phase == Phase::none || x.effect != s.pending.intent.effect) return Code::wrong_effect;
     if (s.pending.phase != Phase::attempted && s.pending.phase != Phase::unknown) return Code::bad_transition;
-    if (!x.finalized || x.transaction.is_zero() || x.evidence.is_zero()) return Code::invalid;
+    if (!x.finalized || x.evidence.is_zero() || x.transaction.is_zero() != (x.outcome == Outcome::expired_unexecuted)) return Code::invalid;
     if (x.custody != s.opening.binding.custody || x.payload != s.pending.payload) return conflict(s, x);
     for (std::size_t n = 0; n < s.settlement_count; ++n)
-        if (x.transaction == s.settlements[n].transaction) return conflict(s, x);
-    if (x.outcome == Outcome::failed_without_charge) {
+        if (!x.transaction.is_zero() && x.transaction == s.settlements[n].transaction) return conflict(s, x);
+    if (x.outcome == Outcome::failed_without_charge || x.outcome == Outcome::expired_unexecuted) {
         if (x.base_debit.value() || x.base_credit.value() || x.quote_debit.value() || x.quote_credit.value() || x.fee.value()) return conflict(s, x);
         record(s, x);
         release(s);
@@ -302,10 +302,11 @@ bool valid_state(const State& s) noexcept {
         const auto& x = s.settlements[n];
         if (n >= s.settlement_count) { if (x != Settlement{}) return false; continue; }
         if (!x.effect.value() || x.effect.value() <= previous || !x.finalized ||
-            x.custody != s.opening.binding.custody || x.payload.is_zero() || x.transaction.is_zero() || x.evidence.is_zero()) return false;
+            x.custody != s.opening.binding.custody || x.payload.is_zero() || x.evidence.is_zero() ||
+            x.transaction.is_zero() != (x.outcome == Outcome::expired_unexecuted)) return false;
         previous = x.effect.value();
-        for (std::size_t k = 0; k < n; ++k) if (x.transaction == s.settlements[k].transaction) return false;
-        if (x.outcome == Outcome::failed_without_charge) {
+        for (std::size_t k = 0; k < n; ++k) if (!x.transaction.is_zero() && x.transaction == s.settlements[k].transaction) return false;
+        if (x.outcome == Outcome::failed_without_charge || x.outcome == Outcome::expired_unexecuted) {
             if (x.base_debit.value() || x.base_credit.value() || x.quote_debit.value() || x.quote_credit.value() || x.fee.value()) return false;
             if (complete) { record(baseline, x); baseline.last_effect = x.effect.value(); }
             continue;

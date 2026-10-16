@@ -119,6 +119,97 @@ std::optional<JupiterLookupPrefix> read_jupiter_lookup_prefix(SwapFinalizedRpcPo
     if(!base64_bytes(items[0].substr(1,items[0].size()-2),raw,size))return {};
     return jupiter_lookup_prefix_from_account(need,std::span(raw).first(size));
 }
+namespace {
+std::optional<SwapSubmissionTransaction> signature_from_text(std::string_view text)noexcept{
+    if(text.empty() || text.size()>88)return {};SwapSubmissionTransaction out{};std::size_t zeroes{};
+    while(zeroes<text.size() && text[zeroes]=='1')++zeroes;
+    for(char c:text){const auto n=base58_chars.find(c);if(n==std::string_view::npos)return {};unsigned carry=static_cast<unsigned>(n);
+        for(std::size_t i=out.size();i-->0;){carry+=std::to_integer<unsigned>(out[i])*58U;out[i]=static_cast<std::byte>(carry&255U);carry>>=8;}if(carry)return {};}
+    std::size_t first{};while(first<out.size() && out[first]==std::byte{})++first;
+    if(first==out.size() || first!=zeroes)return {};return out;
+}
+struct RpcDocument{SettlementRpcResponse response{};std::string_view document{};std::string_view result{};};
+bool rpc_call(SwapFinalizedRpcPort& port,const Digest256& provider,std::uint64_t timeout,std::uint64_t id,const std::string& body,RpcDocument& out,Sha256& transcript)noexcept{
+    try{out.response=port.request(body,timeout);}catch(...){return false;}
+    if(port.provider_identity()!=provider || !out.response.transport_complete || out.response.http_status!=200 || out.response.size>out.response.body.size())return false;
+    out.document=std::string_view(out.response.body.data(),out.response.size);
+    if(validate_json_object(out.document)!=JsonError::none || json_member_string(out.document,"jsonrpc")!="2.0" ||
+        number(out.document,"id")!=id || json_member_raw(out.document,"error"))return false;
+    const auto result=json_member_raw(out.document,"result");if(!result)return false;out.result=*result;
+    const auto digest=sha256_digest(std::as_bytes(std::span(out.document.data(),out.document.size())));transcript.update(digest.bytes);return true;
+}
+std::string rpc_head(std::uint64_t id,std::string_view method){return std::string("{\"jsonrpc\":\"2.0\",\"id\":")+std::to_string(id)+",\"method\":\""+std::string(method)+"\",\"params\":[";}
+}
+UnexecutedChainProof prove_unexecuted_on_chain(SwapFinalizedRpcPort& port,const Digest256& provider,std::uint64_t timeout,
+    std::uint64_t id,std::string_view original,std::string_view organization,std::string_view signer,const SolanaAccountKey& owner){
+    UnexecutedChainProof out;using Code=UnexecutedProofCode;
+    const auto finish=[&](Code code){UnexecutedChainProof r;r.code=code;r.slot=out.slot;r.block_time_s=out.block_time_s;r.checked_transactions=out.checked_transactions;return r;};
+    if(provider.is_zero() || !timeout || !id || id>maximum-64 || owner==SolanaAccountKey{} || port.provider_identity()!=provider)return out;
+    DecodedSolanaPayload d;
+    if(decode_solana_signing_envelope(original,organization,signer,d)!=SolanaParseError::none || !d.version_zero || d.nonzero_signatures ||
+        d.timestamp_ms<=0 || !d.signature_count || 1U+64U*d.signature_count>=d.transaction_size)return finish(Code::envelope_refused);
+    const auto stamp=static_cast<std::uint64_t>(d.timestamp_ms);
+    const auto message=1U+64U*static_cast<std::size_t>(d.signature_count);
+    const auto blockhash=base58_text(std::as_bytes(std::span(d.transaction).subspan(d.blockhash_offset,32)));
+    Sha256 transcript;constexpr std::string_view domain="velocita.swap.unexecuted-chain.v1";transcript.update(std::as_bytes(std::span(domain.data(),domain.size())));
+    RpcDocument valid;
+    if(!rpc_call(port,provider,timeout,id,rpc_head(id,"isBlockhashValid")+"\""+blockhash+"\",{\"commitment\":\"finalized\"}]}",valid,transcript))return finish(Code::transport_refused);
+    const auto context=json_member_raw(valid.result,"context");const auto value=json_member_raw(valid.result,"value");
+    const auto slot=context?number(*context,"slot"):std::nullopt;
+    if(!slot || !*slot || !value || (*value!="true" && *value!="false"))return finish(Code::malformed);
+    out.slot=*slot;
+    if(*value!="false")return finish(Code::blockhash_still_valid);
+    RpcDocument time;
+    if(!rpc_call(port,provider,timeout,id+1,rpc_head(id+1,"getBlockTime")+std::to_string(*slot)+"]}",time,transcript))return finish(Code::transport_refused);
+    const auto block_time=integer(time.result);if(!block_time || *block_time>maximum/1000)return finish(Code::malformed);
+    out.block_time_s=*block_time;
+    if(stamp>maximum-kUnexecutedFinalityMarginMs || *block_time*1000<stamp+kUnexecutedFinalityMarginMs)return finish(Code::not_final_long_enough);
+    const auto earliest=stamp>kUnexecutedHistoryLeadMs?stamp-kUnexecutedHistoryLeadMs:0;
+    std::array<SwapSubmissionTransaction,kUnexecutedMaxCandidates> candidates{};std::size_t candidate_count{};
+    std::string before;bool complete=false;std::uint64_t next=id+2;
+    const auto address=base58_text(std::as_bytes(std::span(owner)));
+    for(std::size_t page=0;page<kUnexecutedHistoryPages && !complete;++page){
+        RpcDocument history;
+        auto body=rpc_head(next,"getSignaturesForAddress")+"\""+address+"\",{\"commitment\":\"finalized\",\"limit\":"+std::to_string(kUnexecutedHistoryPage)+
+            ",\"minContextSlot\":"+std::to_string(*slot);
+        if(!before.empty())body+=",\"before\":\""+before+"\"";
+        body+="}]}";
+        if(!rpc_call(port,provider,timeout,next,body,history,transcript))return finish(Code::transport_refused);
+        ++next;
+        std::array<std::string_view,kUnexecutedHistoryPage+1> rows{};const auto n=json_array_elements(history.result,rows);
+        if(!n || *n>kUnexecutedHistoryPage)return finish(Code::malformed);
+        for(std::size_t i=0;i<*n;++i){
+            const auto text=json_member_string(rows[i],"signature");const auto signature=text?signature_from_text(*text):std::nullopt;
+            const auto entry_slot=number(rows[i],"slot");const auto entry_time=number(rows[i],"blockTime");
+            if(!signature || !entry_slot || !entry_time || *entry_time>maximum/1000)return finish(Code::malformed);
+            if(*entry_time*1000<earliest){complete=true;break;}
+            if(*entry_slot>*slot)continue;
+            if(candidate_count==candidates.size())return finish(Code::history_too_large);
+            candidates[candidate_count++]=*signature;
+        }
+        if(!complete && *n<kUnexecutedHistoryPage)complete=true;
+        if(!complete){const auto last=json_member_string(rows[*n-1],"signature");if(!last)return finish(Code::malformed);before=std::string(*last);}
+    }
+    if(!complete)return finish(Code::history_incomplete);
+    for(std::size_t c=0;c<candidate_count;++c){
+        RpcDocument tx;
+        const auto body=rpc_head(next,"getTransaction")+"\""+signature_text(candidates[c])+"\",{\"encoding\":\"base64\",\"commitment\":\"finalized\",\"maxSupportedTransactionVersion\":0}]}";
+        if(!rpc_call(port,provider,timeout,next,body,tx,transcript))return finish(Code::transport_refused);
+        ++next;
+        if(tx.result=="null")return finish(Code::malformed);
+        const auto encoded=json_member_raw(tx.result,"transaction");std::array<std::string_view,2> items{};const auto count=encoded?json_array_elements(*encoded,items):std::nullopt;
+        if(!count || *count!=2 || items[1]!="\"base64\"" || items[0].size()<2 || items[0].front()!='"' || items[0].back()!='"')return finish(Code::malformed);
+        std::array<std::uint8_t,kMaxSolanaTransaction> raw{};std::size_t size{};
+        if(!base64_bytes(items[0].substr(1,items[0].size()-2),raw,size))return finish(Code::malformed);
+        out.checked_transactions=c+1;
+        if(size>=1 && raw[0]==d.signature_count && size==d.transaction_size &&
+            std::equal(raw.begin()+static_cast<std::ptrdiff_t>(message),raw.begin()+static_cast<std::ptrdiff_t>(size),d.transaction.begin()+static_cast<std::ptrdiff_t>(message)))
+            return finish(Code::landed);
+    }
+    std::array<std::byte,16> tail{};for(unsigned n=0;n<8;++n){tail[n]=static_cast<std::byte>(*slot>>(8*n));tail[8+n]=static_cast<std::byte>(*block_time>>(8*n));}
+    transcript.update(tail);
+    out.evidence=transcript.finish();out.code=Code::proven;return out;
+}
 std::optional<SolanaAccountKey> decode_solana_account_key(std::string_view text) noexcept {
     SolanaAccountKey key{};if(!key_from_text(text,key) || key==SolanaAccountKey{})return {};return key;
 }

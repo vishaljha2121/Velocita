@@ -34,23 +34,48 @@ bool local(std::string_view origin)noexcept{
     return result.ec==std::errc{} && result.ptr==origin.data()+origin.size() && port>0 && port<=65535;
 }
 #endif
-bool canonical_rpc(std::string_view body)noexcept{
+bool decimal_text(std::string_view text)noexcept{
+    if(text.empty() || text.size()>19 || (text.size()>1 && text[0]=='0'))return false;
+    std::uint64_t value{};const auto read=std::from_chars(text.data(),text.data()+text.size(),value);
+    return read.ec==std::errc{} && read.ptr==text.data()+text.size() && value<=static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
+}
+}
+bool swap_canonical_rpc_request(std::string_view body)noexcept{
     constexpr std::string_view prefix="{\"jsonrpc\":\"2.0\",\"id\":";
     constexpr std::string_view transaction=",\"method\":\"getTransaction\",\"params\":[\"";
     constexpr std::string_view transaction_suffix="\",{\"encoding\":\"base64\",\"commitment\":\"finalized\",\"maxSupportedTransactionVersion\":0}]}";
     constexpr std::string_view account=",\"method\":\"getAccountInfo\",\"params\":[\"";
     constexpr std::string_view account_suffix="\",{\"encoding\":\"base64\",\"commitment\":\"finalized\"}]}";
+    constexpr std::string_view blockhash=",\"method\":\"isBlockhashValid\",\"params\":[\"";
+    constexpr std::string_view blockhash_suffix="\",{\"commitment\":\"finalized\"}]}";
+    constexpr std::string_view block_time=",\"method\":\"getBlockTime\",\"params\":[";
+    constexpr std::string_view block_time_suffix="]}";
+    constexpr std::string_view history=",\"method\":\"getSignaturesForAddress\",\"params\":[\"";
+    constexpr std::string_view history_options="\",{\"commitment\":\"finalized\",\"limit\":64,\"minContextSlot\":";
     if(body.size()>512 || !body.starts_with(prefix))return false;body.remove_prefix(prefix.size());
     const auto comma=body.find(',');if(comma==body.npos || comma==0 || comma>19 || body[0]=='0')return false;
     std::uint64_t id{};const auto read=std::from_chars(body.data(),body.data()+comma,id);
     if(read.ec!=std::errc{} || read.ptr!=body.data()+comma || !id || id>static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))return false;
     body.remove_prefix(comma);
-    const bool is_account=body.starts_with(account);
-    const auto middle=is_account?account:transaction;const auto suffix=is_account?account_suffix:transaction_suffix;
-    if(!body.starts_with(middle) || !body.ends_with(suffix))return false;
-    body.remove_prefix(middle.size());if(body.size()<suffix.size())return false;body.remove_suffix(suffix.size());
-    return is_account?decode_solana_account_key(body).has_value():decode_solana_signature(body).has_value();
-}
+    const auto between=[&](std::string_view middle,std::string_view suffix,std::string_view& inner){
+        if(!body.starts_with(middle) || !body.ends_with(suffix) || body.size()<middle.size()+suffix.size())return false;
+        inner=body.substr(middle.size(),body.size()-middle.size()-suffix.size());return true;};
+    std::string_view inner;
+    if(between(account,account_suffix,inner))return decode_solana_account_key(inner).has_value();
+    if(between(transaction,transaction_suffix,inner))return decode_solana_signature(inner).has_value();
+    if(between(blockhash,blockhash_suffix,inner))return decode_solana_account_key(inner).has_value();
+    if(between(block_time,block_time_suffix,inner))return decimal_text(inner);
+    if(between(history,"}]}",inner)){
+        const auto quote=inner.find('"');if(quote==inner.npos || !decode_solana_account_key(inner.substr(0,quote)))return false;
+        inner.remove_prefix(quote);if(!inner.starts_with(history_options))return false;inner.remove_prefix(history_options.size());
+        const auto separator=inner.find(',');
+        if(separator==inner.npos)return decimal_text(inner);
+        constexpr std::string_view before=",\"before\":\"";
+        if(!decimal_text(inner.substr(0,separator)))return false;inner.remove_prefix(separator);
+        if(!inner.starts_with(before) || !inner.ends_with("\"") || inner.size()<before.size()+1)return false;
+        return decode_solana_signature(inner.substr(before.size(),inner.size()-before.size()-1)).has_value();
+    }
+    return false;
 }
 SwapRuntimeExecutionHttps::SwapRuntimeExecutionHttps(SwapGatewayCredentials&c,SwapFinalizedReadClock&t,SwapSubmissionIdentity i,truemarkets::SwapRestRequest r,long timeout)
     :SwapRuntimeExecutionHttps(c,t,i,r,execute_config(i,r,timeout)){}
@@ -80,7 +105,7 @@ SwapRuntimeFinalizedHttps::SwapRuntimeFinalizedHttps(SwapHttpsConfig c,std::uint
     provider_=sha256_digest(std::as_bytes(std::span(identity.data(),identity.size())));
 }
 SettlementRpcResponse SwapRuntimeFinalizedHttps::request(std::string_view body,std::uint64_t timeout){
-    if(provider_.is_zero() || !timeout || timeout>maximum_timeout_ || !canonical_rpc(body))return {};
+    if(provider_.is_zero() || !timeout || timeout>maximum_timeout_ || !swap_canonical_rpc_request(body))return {};
     auto config=config_;config.timeout_ms=static_cast<long>(timeout);SwapHttpsClient client(std::move(config));
     const auto response=client.exchange({SwapHttpsMethod::post,"/",{},body});SettlementRpcResponse result;
     if(response.status!=SwapHttpsStatus::complete || response.exposure!=SwapHttpsExposure::response_received || response.body_size>result.body.size())return result;

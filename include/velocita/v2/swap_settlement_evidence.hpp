@@ -83,6 +83,22 @@ struct SettlementEvidence {
 [[nodiscard]] SettlementEvidence decode_settlement_evidence(const VerifiedFinalizedRead&,
     std::string_view original_envelope,std::string_view organization,std::string_view signer,
     std::span<const truemarkets::SolanaLookupEvidence>,const truemarkets::SolanaAccountKey& owner)noexcept;
+enum class UnexecutedProofCode:std::uint8_t {
+    refused,transport_refused,malformed,envelope_refused,blockhash_still_valid,not_final_long_enough,history_incomplete,history_too_large,landed,proven
+};
+struct UnexecutedChainProof {
+    UnexecutedProofCode code{UnexecutedProofCode::refused};
+    Digest256 evidence{};
+    std::uint64_t slot{},block_time_s{},checked_transactions{};
+};
+inline constexpr std::uint64_t kUnexecutedFinalityMarginMs=60'000;
+inline constexpr std::uint64_t kUnexecutedHistoryLeadMs=60'000;
+inline constexpr std::size_t kUnexecutedHistoryPage=64;
+inline constexpr std::size_t kUnexecutedHistoryPages=8;
+inline constexpr std::size_t kUnexecutedMaxCandidates=32;
+[[nodiscard]] UnexecutedChainProof prove_unexecuted_on_chain(SwapFinalizedRpcPort&,const Digest256& provider,std::uint64_t timeout_ms,
+    std::uint64_t first_request_id,std::string_view original_envelope,std::string_view organization,std::string_view signer,
+    const truemarkets::SolanaAccountKey& owner);
 enum class SettlementPropertyCode:std::uint8_t {invalid_evidence,scope_mismatch,property_mismatch,corroborated_declarations_only};
 struct SettlementPropertyResult {
     SettlementPropertyCode code{SettlementPropertyCode::invalid_evidence};

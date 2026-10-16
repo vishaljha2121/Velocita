@@ -46,9 +46,16 @@ struct RuntimeExecute final:SwapExecutionPort {
     }
 };
 struct RuntimeSettlement final:SwapGatewaySettlementPort {
-    SwapSubmissionStore* store{};bool prove{};unsigned calls{},unproven{};std::function<void()> before_return;
+    SwapSubmissionStore* store{};bool prove{};unsigned calls{},unproven{};std::function<void()> before_return;std::vector<std::uint64_t> expire;
     std::optional<VerifiedSwapSettlement> reconcile(const swap::Pending& p)override{
         ++calls;if(!prove || calls<=unproven)return {};
+        if(std::find(expire.begin(),expire.end(),p.intent.effect.value())!=expire.end()){
+            require(store->latest().transaction==SwapSubmissionTransaction{},"expired order never had a venue transaction");
+            swap::Settlement s;s.effect=p.intent.effect;s.custody=p.intent.binding.custody;s.payload=p.payload;
+            s.evidence=digest(211);s.finalized=true;s.outcome=swap::Outcome::expired_unexecuted;
+            if(before_return)before_return();
+            return settlement_test_fixture::make_verified(s);
+        }
         SwapSubmissionTransaction signature{};for(std::size_t n=0;n<signature.size();++n)signature[n]=static_cast<std::byte>(n+p.intent.effect.value());
         require(store->observe_transaction(store->latest().identity,signature)==SwapSubmissionCode::none,"fake authenticated order lookup persists signature");
         swap::Settlement s;s.effect=p.intent.effect;s.custody=p.intent.binding.custody;s.payload=p.payload;
@@ -66,7 +73,7 @@ void runtime_drill(unsigned mode){
     require(c.commit(op,InstallExecutionCatalog{fixture_catalog().root(),KillEpoch{1},ExecutorGeneration{1}}).code==ApplyCode::applied,"catalog");
     require(c.commit(op,AssignCallerRole{CallerId{kGateway},CallerRole::gateway}).code==ApplyCode::applied,"gateway role");
     auto opening=swap_test::opening();opening.binding.incarnation=sha256_digest(kIncarnation);
-    if(mode==10){opening.quote=swap::QuoteAtoms{25'000'000};opening.limits.max_purchase_total=swap::QuoteAtoms{25'000'000};}
+    if(mode==10 || mode==18){opening.quote=swap::QuoteAtoms{25'000'000};opening.limits.max_purchase_total=swap::QuoteAtoms{25'000'000};}
     require(c.commit(op,ApplySpotSwap{{swap::Role::operator_role,100,opening}}).code==ApplyCode::applied,"funded");
     require(c.commit(op,SetStrategyMode{StrategyMode::normal,KillEpoch{1},ExecutorGeneration{1}},ProposeLane::control).code==ApplyCode::applied,"normal");
     auto intent=swap_test::buy(opening);intent.quote_input=swap::QuoteAtoms{998000};intent.max_quote_debit=swap::QuoteAtoms{1000000};
@@ -87,13 +94,15 @@ void runtime_drill(unsigned mode){
     RuntimeExecute execute;execute.store=submission.get();RuntimeSettlement settlement;settlement.store=submission.get();settlement.prove=mode==0 || mode==8 || mode==9 || mode==10 || mode==11 || mode==12 || mode==13 || mode==14;
     if(mode==8 || mode==9)settlement.unproven=mode==8?2:1000;
     SwapGatewayRuntimeConfig config{binding,CallerId{kGateway},1,10000,3000,1};
-    config.recovery_only=mode==5;config.continuous=mode==10;
+    config.recovery_only=mode==5;config.continuous=mode==10 || mode==18;
+    if(mode==18){settlement.prove=true;settlement.expire={2,5};}
+    if(mode>=19){settlement.prove=mode!=19;settlement.expire={1};}
     if(mode==11)signer.before_return=[&]{blocking_time+=config.timeout+1;};
     if(mode==12)settlement.before_return=[&]{blocking_time+=config.timeout+1;};
     if(mode==14)signer.before_return=[&]{event_time=intent.sign_by+1;};
     if(mode==8 || mode==9){config.settlement_retry=20;config.settlement_window=mode==8?5000:300;}
     auto runtime=std::make_unique<SwapGatewayRuntime>(link,*recovery,*prepared,*submission,prepare,signer,execute,settlement,config);
-    if(mode==10){
+    if(mode==10 || mode==18){
         c.on_round=[&]{runtime->step(steady_ms(),110);};
         for(unsigned n=1;n<=6;++n){
             c.run_until([&]{return runtime->stopped() || (submission->latest().phase==SwapSubmissionPhase::resolved &&
@@ -115,8 +124,44 @@ void runtime_drill(unsigned mode){
             }
         }
         c.on_round={};
-        for(auto& [id,node]:c.nodes)require(node->applied_state().spot_swap.quote.value()==19'000'000 && node->applied_state().spot_swap.base.value()==60'000'000,
+        const auto quote=mode==18?21'000'000U:19'000'000U;const auto held=mode==18?40'000'000U:60'000'000U;
+        for(auto& [id,node]:c.nodes)require(node->applied_state().spot_swap.quote.value()==quote && node->applied_state().spot_swap.base.value()==held,
             "six settlement balance oracle replicated");
+        if(mode==18){
+            const auto& s=c.nodes.begin()->second->applied_state().spot_swap;
+            require(s.settled_total==6 && s.settlements[1].outcome==swap::Outcome::expired_unexecuted && s.settlements[4].outcome==swap::Outcome::expired_unexecuted &&
+                s.settlements[1].transaction.is_zero() && s.fees.value()==4*2'000 && s.purchases.value()==4'000'000 && s.reserved_quote.value()==0,
+                "expired effects release only their reservation and the run continues through every predecessor fence");
+        }
+        return;
+    }
+    if(mode==20 || mode==21){
+        config.recovery_only=false;
+        if(mode==21)settlement.before_return=[&]{blocking_time=0;};
+        c.on_round=[&]{runtime->step(steady_ms(),event_time);};
+        if(mode==20)c.run_until([&]{return runtime->stopped() || std::all_of(c.nodes.begin(),c.nodes.end(),[](auto& n){
+            return n.second->applied_state().spot_swap.settlement_count==1;});},"expired settlement committed on every voter");
+        else c.run_until([&]{return runtime->stopped() || settlement.calls==1;},"expired proof returned before its command commits");
+        c.on_round={};
+        require(execute.calls==1 && signer.calls==1,"crash cut after one execute");
+        if(mode==20)require(submission->latest().phase==SwapSubmissionPhase::execute_intent || submission->latest().phase==SwapSubmissionPhase::resolved,"journal before resolution");
+        const auto calls=settlement.calls;
+        config.first_sequence=runtime->next_sequence();runtime.reset();config.recovery_only=true;
+        prepared.reset();submission.reset();recovery.reset();watermark=std::make_unique<SwapResultWatermark>(opening.binding.incarnation);
+        prepared=std::make_unique<SwapPrepareStore>(base.path/"prepared",binding);
+        submission=std::make_unique<SwapSubmissionStore>(base.path/"submission",SwapSubmissionBinding{opening.binding.incarnation,domain});
+        recovery=std::make_unique<SwapReconcileStore>(base.path/"recovery",SwapReconcileStoreBinding{opening.binding.incarnation,domain},*watermark);
+        require(prepared->recover()==SwapPrepareStoreCode::none && submission->recover()==SwapSubmissionCode::none && recovery->recover()==SwapReconcileStoreCode::none,"crash journals recover");
+        prepare.store=prepared.get();signer.store=prepared.get();execute.store=submission.get();settlement.store=submission.get();
+        runtime=std::make_unique<SwapGatewayRuntime>(link,*recovery,*prepared,*submission,prepare,signer,execute,settlement,config);
+        c.on_round=[&]{runtime->step(steady_ms(),event_time);};c.run_until([&]{return runtime->stopped();},"recovery after crash is bounded");c.on_round={};
+        require(runtime->status()==SwapGatewayRuntimeStatus::complete && submission->latest().phase==SwapSubmissionPhase::resolved &&
+            execute.calls==1 && signer.calls==1 && prepare.calls==1,"crash recovery resolves once without resending");
+        require(settlement.calls==(mode==20?calls:calls+1),"committed resolution is not proven again; an uncommitted one is proven again");
+        c.run_until([&]{return std::all_of(c.nodes.begin(),c.nodes.end(),[](auto& n){return n.second->applied_state().spot_swap.settlement_count==1;});},"all voters apply the expired settlement");
+        for(auto& [id,node]:c.nodes){const auto& s=node->applied_state().spot_swap;
+            require(s.settlement_count==1 && s.settlements[0].outcome==swap::Outcome::expired_unexecuted && s.pending.phase==swap::Phase::none &&
+                s.quote==opening.quote && s.base==opening.base && s.fees.value()==0 && s.reserved_quote.value()==0 && s.purchases.value()==0,"exactly one expired settlement, funds restored");}
         return;
     }
     if(mode==16 || mode==17){
@@ -275,11 +320,11 @@ void runtime_drill(unsigned mode){
         c.run_until([&]{return std::all_of(c.nodes.begin(),c.nodes.end(),[](auto& n){return n.second->applied_state().spot_swap.settlement_count==1;});},"all voters settle");
         for(auto& [id,node]:c.nodes)require(node->applied_state().spot_swap.quote.value()==4000000 && node->applied_state().spot_swap.base.value()==10000000 && node->applied_state().spot_swap.reserved_quote.value()==0,"exact final economics replicated");
     }else{
-        require(execute.calls==((mode==1 || mode==6)?1u:0u),"refusal never sends extra execute");
+        require(execute.calls==((mode==1 || mode==6 || mode==19)?1u:0u),"refusal never sends extra execute");
         auto next=runtime->next_sequence();runtime.reset();config.first_sequence=next;
         const auto signing_calls=signer.calls;
-        if(mode==1 || mode==6)config.recovery_only=true;
-        if(mode==6)settlement.prove=true;
+        if(mode==1 || mode==6 || mode==19)config.recovery_only=true;
+        if(mode==6 || mode==19)settlement.prove=true;
         prepared.reset();submission.reset();recovery.reset();watermark=std::make_unique<SwapResultWatermark>(opening.binding.incarnation);
         prepared=std::make_unique<SwapPrepareStore>(base.path/"prepared",binding);
         submission=std::make_unique<SwapSubmissionStore>(base.path/"submission",SwapSubmissionBinding{opening.binding.incarnation,domain});
@@ -288,9 +333,16 @@ void runtime_drill(unsigned mode){
         prepare.store=prepared.get();signer.store=prepared.get();execute.store=submission.get();settlement.store=submission.get();
         runtime=std::make_unique<SwapGatewayRuntime>(link,*recovery,*prepared,*submission,prepare,signer,execute,settlement,config);
         c.on_round=[&]{runtime->step(steady_ms(),111);};c.run_until([&]{return runtime->stopped();},"restart remains bounded");c.on_round={};
-        require(prepare.calls==1 && execute.calls==((mode==1 || mode==6)?1u:0u),"restart never repeats ambiguous POST");
+        require(prepare.calls==1 && execute.calls==((mode==1 || mode==6 || mode==19)?1u:0u),"restart never repeats ambiguous POST");
         if(mode==1)require(signer.calls==signing_calls && runtime->cause()==SwapGatewayRuntimeCause::settlement_unproven,"restart of sent request only reconciles without signing");
         if(mode==4)require(runtime->cause()==SwapGatewayRuntimeCause::identity,"oversized signed request refused before span construction");
+        if(mode==19){
+            c.run_until([&]{return std::all_of(c.nodes.begin(),c.nodes.end(),[](auto& n){return n.second->applied_state().spot_swap.settlement_count==1;});},"all voters apply the expired settlement");
+            for(auto& [id,node]:c.nodes){const auto& s=node->applied_state().spot_swap;
+                require(s.settlement_count==1 && s.settlements[0].outcome==swap::Outcome::expired_unexecuted && s.quote==opening.quote &&
+                    s.reserved_quote.value()==0 && s.pending.phase==swap::Phase::none,"recovery-only restart resolves the venue-failed order with funds restored");}
+            require(runtime->status()==SwapGatewayRuntimeStatus::complete && signer.calls==signing_calls && execute.calls==1 &&
+                submission->latest().phase==SwapSubmissionPhase::resolved,"expired recovery resolves without signing or resubmission");return;}
         if(mode==6){
             require(runtime->observation() && runtime->observation()->state.settlement_count==1,
                 "delayed recovery exports confirmed fill without resubmission");
@@ -300,4 +352,4 @@ void runtime_drill(unsigned mode){
     }
 }
 }
-int main(int argc,char** argv){try{for(unsigned mode=0;mode<18;++mode){if(argc==2 && mode!=static_cast<unsigned>(std::atoi(argv[1])))continue;runtime_drill(mode);std::cout<<"PASS runtime mode "<<mode<<'\n';}return 0;}catch(const std::exception& e){std::cerr<<"FAIL "<<e.what()<<'\n';return 1;}}
+int main(int argc,char** argv){try{for(unsigned mode=0;mode<22;++mode){if(argc==2 && mode!=static_cast<unsigned>(std::atoi(argv[1])))continue;runtime_drill(mode);std::cout<<"PASS runtime mode "<<mode<<'\n';}return 0;}catch(const std::exception& e){std::cerr<<"FAIL "<<e.what()<<'\n';return 1;}}

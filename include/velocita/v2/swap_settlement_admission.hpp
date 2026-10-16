@@ -5,6 +5,7 @@
 namespace velocita::v2 {
 class VerifiedSwapSettlement;
 struct SwapSettlementAdmissionResult;
+struct SwapVenueFailedOrder;
 #ifdef VELOCITA_SWAP_SETTLEMENT_SYNTHETIC_FIXTURE
 namespace settlement_test_fixture {
 [[nodiscard]] VerifiedSwapSettlement make_verified(const swap::Settlement&) noexcept;
@@ -21,6 +22,10 @@ private:
         SwapFinalizedReader&,std::uint64_t,std::uint64_t,std::string_view,std::string_view,
         std::span<const truemarkets::SolanaLookupEvidence>,const truemarkets::SolanaAccountKey&,
         SwapFailureAccountingPolicy,SwapAcceptedBuyCosts);
+    friend SwapSettlementAdmissionResult admit_expired_unexecuted_settlement(
+        const SwapPrepareStore&,const SwapSubmissionStore&,const SwapPrepareBinding&,const swap::Intent&,
+        const SwapVenueFailedOrder&,SwapFinalizedRpcPort&,const Digest256&,std::uint64_t,std::uint64_t,
+        std::string_view,std::string_view,const truemarkets::SolanaAccountKey&);
     explicit VerifiedSwapSettlement(const swap::Settlement& value) noexcept : settlement_(value) {}
 #ifdef VELOCITA_SWAP_SETTLEMENT_SYNTHETIC_FIXTURE
     friend VerifiedSwapSettlement settlement_test_fixture::make_verified(const swap::Settlement&) noexcept;
@@ -34,7 +39,13 @@ inline VerifiedSwapSettlement make_verified(const swap::Settlement& value) noexc
 #endif
 
 enum class SwapSettlementAdmissionCode : std::uint8_t {
-    intent_refused, retained_identity_refused, rpc_unresolved, evidence_refused, lifecycle_unproven, economic_refused, admitted
+    intent_refused, retained_identity_refused, rpc_unresolved, evidence_refused, lifecycle_unproven, economic_refused, admitted,
+    venue_not_failed, chain_unproven
+};
+struct SwapVenueFailedOrder {
+    bool terminal{}, failed{}, transaction_reported{};
+    std::optional<std::int64_t> executed_base_atoms{}, leaves_base_atoms{}, fee_quote_atoms{};
+    Digest256 response_digest{};
 };
 enum SwapSettlementRequiredEvidence : std::uint32_t {
     complete_lifecycle_trace = 1, account_control_continuity = 2,
@@ -55,4 +66,9 @@ struct SwapSettlementAdmissionResult {
     std::string_view organization, std::string_view signer,
     std::span<const truemarkets::SolanaLookupEvidence>, const truemarkets::SolanaAccountKey& owner,
     SwapFailureAccountingPolicy failure_policy = {}, SwapAcceptedBuyCosts accepted_buy_costs = {});
+[[nodiscard]] SwapSettlementAdmissionResult admit_expired_unexecuted_settlement(
+    const SwapPrepareStore&, const SwapSubmissionStore&, const SwapPrepareBinding&, const swap::Intent&,
+    const SwapVenueFailedOrder&, SwapFinalizedRpcPort&, const Digest256& provider, std::uint64_t timeout_ms,
+    std::uint64_t first_request_id, std::string_view organization, std::string_view signer,
+    const truemarkets::SolanaAccountKey& owner);
 }

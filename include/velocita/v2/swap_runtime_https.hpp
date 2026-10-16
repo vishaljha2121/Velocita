@@ -23,6 +23,7 @@ private:
     transport::SwapHttpsClient client_;transport::SwapHttpsResult result_{};
     bool valid_{},used_{};
 };
+[[nodiscard]] bool swap_canonical_rpc_request(std::string_view body)noexcept;
 class SwapRuntimeFinalizedHttps final:public SwapFinalizedRpcPort {
 public:
     explicit SwapRuntimeFinalizedHttps(std::uint64_t maximum_timeout_ms=2000);

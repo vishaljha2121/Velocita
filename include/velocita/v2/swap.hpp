@@ -17,7 +17,7 @@ using QuoteAtoms = StrongId<QuoteAtomTag>;
 enum class Role : std::uint8_t { operator_role = 1, strategy, gateway };
 enum class Mode : std::uint8_t { normal = 1, reduce_only, halted };
 enum class Phase : std::uint8_t { none, reserved, prepared, attempted, unknown, conflict };
-enum class Outcome : std::uint8_t { succeeded = 1, failed_without_charge };
+enum class Outcome : std::uint8_t { succeeded = 1, failed_without_charge, expired_unexecuted };
 enum class Code : std::uint8_t {
     applied, duplicate, invalid, unauthorized, uninitialized, already_initialized,
     stale, expired, fenced, busy, stopped, insufficient_funds, purchase_cap,

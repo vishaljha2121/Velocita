@@ -1,6 +1,10 @@
 #include "velocita/v2/swap_settlement_admission.hpp"
 #include "velocita/v2/truemarkets_wire.hpp"
 #include "swap_settlement_test_fixture.hpp"
+#include "velocita/v2/swap_runtime_https.hpp"
+#include "velocita/v2/swap_settlement_fence.hpp"
+#include <map>
+#include <deque>
 using namespace settlement_lifecycle_fixture;
 namespace {
 Digest256 intent_hash(const swap::Intent& intent){std::array<std::byte,swap::max_record_bytes> bytes{};const auto encoded=swap::encode({swap::Role::strategy,intent.source_time,intent},bytes);require(encoded.error==swap::CodecError::none,"intent encoding");return sha256_digest(std::span(bytes).first(encoded.size));}
@@ -60,5 +64,151 @@ SwapSettlementAdmissionResult admit_failed_record(LifecycleFixture& f,SwapFailur
     return result;
 }
 void retained_failed_admission(){LifecycleFixture f;failed(f);auto result=admit_failed_record(f,{key(1)});require(result.verified.has_value(),"retained_failed_zero_owner_charge_admitted");const auto& s=result.verified->settlement();require(s.outcome==swap::Outcome::failed_without_charge && s.finalized && s.transaction==*solana_signature_transaction_digest(f.signature) && s.fee.value()==0 && s.base_debit.value()==0 && s.base_credit.value()==0 && s.quote_debit.value()==0 && s.quote_credit.value()==0,"failed_proof_exact_identity_and_zero_atoms");result=admit_failed_record(f,{});require(!result.verified,"disabled_failure_policy_keeps_exposure");replace(f.json,"29962000,10000000","29962001,9999999");result=admit_failed_record(f,{key(1)});require(!result.verified,"charged_failure_never_releases_exposure");}
+
+struct ScriptPort final:SwapFinalizedRpcPort{
+    Digest256 identity{digest(1)};std::map<std::string,std::deque<std::string>> replies;std::vector<std::string> requests;bool fail_transport{};std::size_t switch_after{};
+    Digest256 provider_identity()const noexcept override{return identity;}
+    SettlementRpcResponse request(std::string_view body,std::uint64_t)override{
+        requests.emplace_back(body);require(swap_canonical_rpc_request(body),"every proof request is an allowlisted production template");
+        const auto id_at=body.find("\"id\":")+5;const auto id=std::string(body.substr(id_at,body.find(',',id_at)-id_at));
+        const auto m_at=body.find("\"method\":\"")+10;const auto method=std::string(body.substr(m_at,body.find('"',m_at)-m_at));
+        SettlementRpcResponse r;if(fail_transport)return r;if(switch_after && requests.size()==switch_after)identity=digest(9);auto& q=replies[method];require(!q.empty(),"scripted reply exists");
+        auto text=q.front();if(q.size()>1)q.pop_front();
+        text="{\"jsonrpc\":\"2.0\",\"id\":"+id+","+text+"}";r.transport_complete=true;r.http_status=200;r.size=text.size();std::copy(text.begin(),text.end(),r.body.begin());return r;
+    }
+};
+std::string sig_text(unsigned n){std::vector<std::uint8_t> b(64,0);b[0]=static_cast<std::uint8_t>(n);b[63]=1;return b58(b);}
+std::string entry(unsigned n,std::uint64_t slot,std::uint64_t time){return "{\"signature\":\""+sig_text(n)+"\",\"slot\":"+std::to_string(slot)+",\"err\":null,\"memo\":null,\"blockTime\":"+std::to_string(time)+",\"confirmationStatus\":\"finalized\"}";}
+std::string other_tx(const LifecycleFixture& f){std::string j=f.json;const auto r=truemarkets::json_member_raw(j,"result");return "\"result\":"+std::string(*r);}
+constexpr std::uint64_t kStamp=1792118791000ULL;
+void stamped(LifecycleFixture& f){replace(f.envelope,"\"timestampMs\":\"1000\"","\"timestampMs\":\""+std::to_string(kStamp)+"\"");}
+void script(ScriptPort& p,const LifecycleFixture& f,std::string history="",std::string valid="false",std::uint64_t block_time=kStamp/1000+3600){
+    p.replies["isBlockhashValid"]={"\"result\":{\"context\":{\"apiVersion\":\"4.3.0\",\"slot\":5000},\"value\":"+valid+"}"};
+    p.replies["getBlockTime"]={"\"result\":"+std::to_string(block_time)};
+    if(history.empty())history="["+entry(1,6000,kStamp/1000+7200)+","+entry(2,4000,kStamp/1000+3000)+","+entry(3,3000,kStamp/1000+10)+","+entry(4,100,kStamp/1000-600)+"]";
+    p.replies["getSignaturesForAddress"]={"\"result\":"+history};
+    std::string tx=other_tx(f);const auto at=tx.find("\"transaction\":[\"")+16;tx[at+250]=tx[at+250]=='A'?'B':'A';
+    p.replies["getTransaction"]={tx};
 }
-int main(int argc,char** argv){const std::pair<const char*,void(*)()> tests[]={{"fee_only_rollback",fee_only_rollback},{"sponsor_policy",sponsor_policy},{"native_rollback",native_rollback},{"token_rollback",token_rollback},{"failure_shape",failure_shape},{"owner_payer",owner_payer},{"account_key_codec",account_key_codec},{"retained_failed_admission",retained_failed_admission}};for(auto [name,test]:tests){if(argc==2 && std::string_view(argv[1])!=name)continue;try{test();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){std::cout<<"FAIL "<<name<<": "<<e.what()<<'\n';return 1;}}}
+UnexecutedChainProof prove(ScriptPort& p,const LifecycleFixture& f){return prove_unexecuted_on_chain(p,digest(1),20,7,f.envelope,"org",address(2),key(2));}
+void chain_proven(){LifecycleFixture f;stamped(f);ScriptPort p;script(p,f);const auto r=prove(p,f);
+    require(r.code==UnexecutedProofCode::proven && !r.evidence.is_zero() && r.slot==5000 && r.checked_transactions==2,"expired_blockhash_and_no_matching_history_proven");
+    require(std::none_of(p.requests.begin(),p.requests.end(),[](const std::string& q){return q.find(sig_text(1))!=std::string::npos && q.find("getTransaction")!=std::string::npos;}),"history after the expiry slot is not fetched");
+    require(p.requests[0].find("\"commitment\":\"finalized\"")!=std::string::npos && p.requests[2].find("\"minContextSlot\":5000")!=std::string::npos,"finalized evaluation at or after the expiry slot");
+    ScriptPort again;script(again,f);require(prove(again,f).evidence==r.evidence,"evidence digest deterministic");}
+void chain_refusals(){
+    {LifecycleFixture f;stamped(f);ScriptPort p;script(p,f,"","true");require(prove(p,f).code==UnexecutedProofCode::blockhash_still_valid,"valid_blockhash_never_resolves");}
+    {LifecycleFixture f;stamped(f);ScriptPort p;script(p,f,"","false",kStamp/1000+59);require(prove(p,f).code==UnexecutedProofCode::not_final_long_enough,"finalized_view_too_close_to_creation_refused");}
+    {LifecycleFixture f;stamped(f);ScriptPort p;script(p,f);p.replies["getTransaction"]={other_tx(f)};
+        require(prove(p,f).code==UnexecutedProofCode::landed,"matching_landed_message_refused");}
+    {LifecycleFixture f;stamped(f);ScriptPort p;std::string page="[";for(unsigned n=0;n<64;++n){if(n)page+=',';page+=entry(10+n,9000,kStamp/1000+9000);}page+="]";
+        script(p,f,page);require(prove(p,f).code==UnexecutedProofCode::history_incomplete,"eight_full_pages_without_reaching_creation_refused");}
+    {LifecycleFixture f;stamped(f);ScriptPort p;std::string page="[";for(unsigned n=0;n<40;++n){if(n)page+=',';page+=entry(10+n,4000,kStamp/1000+100);}page+="]";
+        script(p,f,page);require(prove(p,f).code==UnexecutedProofCode::history_too_large,"too_many_candidates_refused");}
+    {LifecycleFixture f;stamped(f);ScriptPort p;script(p,f,"[{\"signature\":\""+sig_text(3)+"\",\"slot\":3000,\"err\":null,\"memo\":null,\"blockTime\":null}]");
+        require(prove(p,f).code==UnexecutedProofCode::malformed,"missing_block_time_refused");}
+    {LifecycleFixture f;stamped(f);ScriptPort p;script(p,f);p.fail_transport=true;require(prove(p,f).code==UnexecutedProofCode::transport_refused,"transport_failure_refused");}
+    {LifecycleFixture f;stamped(f);ScriptPort p;script(p,f);p.identity=digest(9);require(prove(p,f).code==UnexecutedProofCode::refused,"wrong_provider_refused");}
+    for(std::size_t at=1;at<=4;++at){LifecycleFixture f;stamped(f);ScriptPort p;script(p,f);p.switch_after=at;
+        require(prove(p,f).code==UnexecutedProofCode::transport_refused,"provider_change_during_proof_refused");}
+    {LifecycleFixture f;stamped(f);ScriptPort p;script(p,f);p.replies["isBlockhashValid"]={"\"error\":{\"code\":-32016,\"message\":\"Minimum context slot has not been reached\"},\"result\":null"};
+        require(prove(p,f).code==UnexecutedProofCode::transport_refused,"rpc_error_refused");}
+    {LifecycleFixture f;stamped(f);ScriptPort p;script(p,f);std::string page="[";for(unsigned n=0;n<64;++n){if(n)page+=',';page+=entry(10+n,9000,kStamp/1000+9000);}page+="]";
+        p.replies["getSignaturesForAddress"]={"\"result\":"+page,"\"result\":["+entry(5,3000,kStamp/1000+10)+","+entry(6,90,kStamp/1000-3600)+"]"};
+        const auto r=prove(p,f);require(r.code==UnexecutedProofCode::proven && r.checked_transactions==1,"second_page_reaches_creation_and_completes");
+        require(std::count_if(p.requests.begin(),p.requests.end(),[](const std::string& q){return q.find("\"before\":\"")!=std::string::npos;})==1,"pagination uses the last signature");}
+    {LifecycleFixture f;ScriptPort p;script(p,f);replace(f.envelope,"\"timestampMs\":\"1000\"","\"timestampMs\":\"0\"");require(prove(p,f).code==UnexecutedProofCode::envelope_refused,"untimed_envelope_refused");}
+}
+void rpc_templates(){
+    const std::string head="{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"";
+    require(swap_canonical_rpc_request(head+"isBlockhashValid\",\"params\":[\""+address(3)+"\",{\"commitment\":\"finalized\"}]}"),"blockhash template");
+    require(swap_canonical_rpc_request(head+"getBlockTime\",\"params\":[5000]}"),"block time template");
+    require(swap_canonical_rpc_request(head+"getSignaturesForAddress\",\"params\":[\""+address(3)+"\",{\"commitment\":\"finalized\",\"limit\":64,\"minContextSlot\":5000}]}"),"history template");
+    require(swap_canonical_rpc_request(head+"getSignaturesForAddress\",\"params\":[\""+address(3)+"\",{\"commitment\":\"finalized\",\"limit\":64,\"minContextSlot\":5000,\"before\":\""+sig_text(4)+"\"}]}"),"history page template");
+    for(const auto& bad:{head+"isBlockhashValid\",\"params\":[\""+address(3)+"\",{\"commitment\":\"processed\"}]}",head+"getBlockTime\",\"params\":[05000]}",
+        head+"getSignaturesForAddress\",\"params\":[\""+address(3)+"\",{\"commitment\":\"finalized\",\"limit\":1000,\"minContextSlot\":5000}]}",
+        head+"getSignaturesForAddress\",\"params\":[\""+address(3)+"\",{\"commitment\":\"finalized\",\"limit\":64}]}",
+        head+"sendTransaction\",\"params\":[\"AAAA\"]}",head+"getSignaturesForAddress\",\"params\":[\""+address(3)+"\",{\"commitment\":\"finalized\",\"limit\":64,\"minContextSlot\":5000,\"before\":\"0\"}]}"})
+        require(!swap_canonical_rpc_request(bad),"noncanonical, unfinalized, unbounded or sending request refused");
+}
+struct Retained{std::filesystem::path dir;SwapPrepareBinding binding;swap::Intent intent;std::unique_ptr<SwapPrepareStore> preparation;std::unique_ptr<SwapSubmissionStore> submission;truemarkets::SwapRestPrepared p;SwapSubmissionIdentity identity;
+    ~Retained(){std::error_code e;std::filesystem::remove_all(dir,e);}};
+std::unique_ptr<Retained> retain(const LifecycleFixture& f,bool with_transaction=false){
+    auto r=std::make_unique<Retained>();auto root=std::filesystem::path(std::getenv("HOME"))/".cache/velocita-build/failed-settlement-20261013";std::filesystem::create_directories(root);
+    auto directory=(root/"expired-XXXXXX").string();require(::mkdtemp(directory.data()),"expired scratch");r->dir=directory;
+    r->binding={{digest(1),digest(2),digest(3),AccountId{2},InstrumentId{2},PolicyId{901},PolicyVersion{1},RiskPolicyVersion{1}},digest(4),digest(5)};
+    auto& intent=r->intent;intent.binding=r->binding.allocation;intent.effect=EffectId{1};intent.side=Side::buy;intent.quote_input=swap::QuoteAtoms{998000};intent.fee_cap=swap::QuoteAtoms{2000};intent.max_quote_debit=swap::QuoteAtoms{1000000};intent.min_base_receive=swap::BaseAtoms{9000000};intent.source_time=1000;intent.sign_by=2000;intent.kill_epoch=1;intent.executor_generation=1;
+    r->preparation=std::make_unique<SwapPrepareStore>(std::filesystem::path(directory)/"prepare",r->binding);r->submission=std::make_unique<SwapSubmissionStore>(std::filesystem::path(directory)/"submit",SwapSubmissionBinding{r->binding.allocation.incarnation,r->binding.authority_domain});
+    require(r->preparation->create({r->binding,1,digest(6),EffectId{0}})==SwapPrepareStoreCode::none,"bootstrap");
+    truemarkets::SwapRestRequest request;require(truemarkets::encode_swap_rest_create({Side::buy,1000000},request)==truemarkets::SwapRestCode::encoded,"create");
+    require(r->preparation->begin({intent.effect,intent_hash(intent),sha256_digest(std::as_bytes(std::span(request.body.data(),request.body_size))),{Side::buy,1000000}},2,digest(8))==SwapPrepareStoreCode::none,"begin");
+    auto& p=r->p;p.handle=*truemarkets::tm_text("expired-order");p.payload_size=f.envelope.size();std::copy(f.envelope.begin(),f.envelope.end(),p.payload.begin());p.payload_digest=sha256_digest(std::as_bytes(std::span(f.envelope.data(),f.envelope.size())));p.quoted_input=1000000;p.quoted_output=9410957;p.quoted_fee=2000;
+    require(r->preparation->complete(p,digest(9))==SwapPrepareStoreCode::none,"prepared");require(r->submission->create({{r->binding.allocation.incarnation,r->binding.authority_domain},1,digest(10),EffectId{0}})==SwapSubmissionCode::none,"submission");
+    auto& id=r->identity;id.effect=intent.effect;id.payload=p.payload_digest;id.execution_request=digest(11);id.handle_size=p.handle.length;std::copy_n(reinterpret_cast<const std::byte*>(p.handle.bytes.data()),p.handle.length,id.handle.begin());id.handle_digest=sha256_digest(std::span(id.handle).first(id.handle_size));
+    require(r->submission->begin(id,3)==SwapSubmissionCode::none,"execute intent");if(with_transaction)require(r->submission->observe_transaction(id,f.signature)==SwapSubmissionCode::none,"transaction");
+    return r;
+}
+SwapVenueFailedOrder venue_failed(){SwapVenueFailedOrder v;v.terminal=true;v.failed=true;v.executed_base_atoms=0;v.leaves_base_atoms=0;v.fee_quote_atoms=0;v.response_digest=digest(77);return v;}
+SwapSettlementAdmissionResult admit_expired(Retained& r,const LifecycleFixture& f,ScriptPort& p,const SwapVenueFailedOrder& v){
+    return admit_expired_unexecuted_settlement(*r.preparation,*r.submission,r.binding,r.intent,v,p,digest(1),20,7,"org",address(2),key(2));}
+swap::State through_unknown(const Retained& r){swap::Initialize opening;opening.binding=r.intent.binding;
+    opening.limits={swap::QuoteAtoms{20000000},swap::QuoteAtoms{2000000},swap::QuoteAtoms{10000},swap::QuoteAtoms{500000},swap::BaseAtoms{1000000000},swap::BaseAtoms{3000000},swap::QuoteAtoms{125000000},swap::QuoteAtoms{50000000},10000,20000};
+    opening.quote=swap::QuoteAtoms{25000000};opening.funding_evidence=digest(90);opening.kill_epoch=1;opening.executor_generation=1;swap::State s;
+    require(swap::apply(s,opening,swap::Role::operator_role,1000)==swap::Code::applied && swap::apply(s,r.intent,swap::Role::strategy,1000)==swap::Code::applied,"reserved");
+    require(swap::apply(s,swap::Prepare{r.intent.effect,r.p.payload_digest,r.identity.handle_digest,1},swap::Role::gateway,1001)==swap::Code::applied &&
+        swap::apply(s,swap::Attempt{r.intent.effect,r.p.payload_digest},swap::Role::gateway,1002)==swap::Code::applied &&
+        swap::apply(s,swap::MarkUnknown{r.intent.effect},swap::Role::gateway,1003)==swap::Code::applied,"unknown");return s;}
+void expired_admission(){
+    LifecycleFixture f;stamped(f);auto r=retain(f);ScriptPort p;script(p,f);const auto checksum=r->submission->latest().checksum;
+    auto result=admit_expired(*r,f,p,venue_failed());
+    require(result.code==SwapSettlementAdmissionCode::admitted && result.verified,"venue_failed_unexecuted_order_admitted");
+    const auto& x=result.verified->settlement();
+    require(x.outcome==swap::Outcome::expired_unexecuted && x.transaction.is_zero() && x.finalized && !x.evidence.is_zero() && x.payload==r->p.payload_digest &&
+        x.custody==r->intent.binding.custody && !x.base_debit.value() && !x.base_credit.value() && !x.quote_debit.value() && !x.quote_credit.value() && !x.fee.value(),"expired settlement carries no amounts and no fabricated transaction");
+    require(r->submission->latest().checksum==checksum && r->submission->latest().phase==SwapSubmissionPhase::execute_intent,"admission never resolves journals before the kernel commits");
+    auto s=through_unknown(*r);const auto before=s;
+    require(swap::apply(s,x,swap::Role::gateway,1004)==swap::Code::applied,"kernel accepts expired settlement from unknown");
+    require(s.quote==before.quote && s.base==before.base && s.cost==before.cost && s.fees==before.fees && s.purchases.value()==0 && s.realized_pnl==0 &&
+        s.reserved_quote.value()==0 && s.pending.phase==swap::Phase::none && s.settled_total==1 && s.settlement_count==1 && swap::valid_state(s),"only the reservation is released and the snapshot revalidates");
+    require(swap::apply(s,x,swap::Role::gateway,1005)==swap::Code::duplicate,"identical retry is idempotent");
+    require(swap_settled_predecessor(s,r->submission->latest(),r->intent.binding.custody),"gateway and signer predecessor fence accepts the expired settlement");
+    {auto forged=s;forged.settlements[0].outcome=swap::Outcome::succeeded;require(!swap_settled_predecessor(forged,r->submission->latest(),r->intent.binding.custody),"fence refuses a success without a transaction");
+     forged=s;forged.settlements[0].transaction=digest(44);require(!swap_settled_predecessor(forged,r->submission->latest(),r->intent.binding.custody),"fence refuses an expired settlement with a transaction");}
+    auto late=x;late.outcome=swap::Outcome::succeeded;late.transaction=digest(55);late.base_credit=swap::BaseAtoms{9500000};late.quote_debit=swap::QuoteAtoms{1000000};late.fee=swap::QuoteAtoms{2000};
+    auto conflicted=s;require(swap::apply(conflicted,late,swap::Role::gateway,1006)==swap::Code::conflict && conflicted.conflicted,"a later conflicting success stops the account");
+    for(unsigned mode=0;mode<7;++mode){LifecycleFixture g;stamped(g);auto q=retain(g);ScriptPort port;script(port,g);auto v=venue_failed();
+        if(mode==0)v.failed=false;if(mode==1)v.executed_base_atoms=1;if(mode==2)v.fee_quote_atoms=1;if(mode==3)v.transaction_reported=true;if(mode==4)v.leaves_base_atoms.reset();if(mode==5)v.response_digest={};if(mode==6)v.terminal=false;
+        require(!admit_expired(*q,g,port,v).verified,"working, charged, executed, hashed, incomplete or unattested venue answer keeps the reservation");}
+    {LifecycleFixture g;stamped(g);auto q=retain(g,true);ScriptPort port;script(port,g);require(admit_expired(*q,g,port,venue_failed()).code==SwapSettlementAdmissionCode::retained_identity_refused,"a known venue transaction must use finalized settlement");}
+    {LifecycleFixture g;stamped(g);auto q=retain(g);ScriptPort port;script(port,g,"","true");require(admit_expired(*q,g,port,venue_failed()).code==SwapSettlementAdmissionCode::chain_unproven,"venue failure alone never releases");}
+    {LifecycleFixture g;stamped(g);auto q=retain(g);ScriptPort port;script(port,g);port.replies["getTransaction"]={other_tx(g)};require(!admit_expired(*q,g,port,venue_failed()).verified,"landed signed message never becomes expired");}
+}
+void expired_reducer(){
+    LifecycleFixture f;stamped(f);auto r=retain(f);auto s=through_unknown(*r);
+    swap::Settlement x;x.effect=r->intent.effect;x.custody=r->intent.binding.custody;x.payload=r->p.payload_digest;x.evidence=digest(66);x.finalized=true;x.outcome=swap::Outcome::expired_unexecuted;
+    {auto t=s;auto y=x;y.transaction=digest(5);require(swap::apply(t,y,swap::Role::gateway,1004)==swap::Code::invalid,"expired with a transaction refused");}
+    {auto t=s;auto y=x;y.outcome=swap::Outcome::failed_without_charge;require(swap::apply(t,y,swap::Role::gateway,1004)==swap::Code::invalid,"failed without a transaction refused");}
+    {auto t=s;auto y=x;y.outcome=swap::Outcome::succeeded;y.base_credit=swap::BaseAtoms{9500000};y.quote_debit=swap::QuoteAtoms{1000000};y.fee=swap::QuoteAtoms{2000};require(swap::apply(t,y,swap::Role::gateway,1004)==swap::Code::invalid,"success without a transaction refused");}
+    {auto t=s;auto y=x;y.quote_debit=swap::QuoteAtoms{1};require(swap::apply(t,y,swap::Role::gateway,1004)==swap::Code::conflict,"expired with any amount is a conflict");}
+    {auto t=s;auto y=x;y.finalized=false;require(swap::apply(t,y,swap::Role::gateway,1004)==swap::Code::invalid,"unfinalized expired refused");}
+    {auto t=s;auto y=x;y.evidence={};require(swap::apply(t,y,swap::Role::gateway,1004)==swap::Code::invalid,"expired without evidence refused");}
+    {auto t=s;require(swap::apply(t,x,swap::Role::strategy,1004)==swap::Code::unauthorized,"strategy cannot author settlement");}
+    {swap::State t;swap::Initialize o=s.opening;require(swap::apply(t,o,swap::Role::operator_role,1000)==swap::Code::applied && swap::apply(t,r->intent,swap::Role::strategy,1000)==swap::Code::applied,"reserved only");
+        require(swap::apply(t,x,swap::Role::gateway,1004)==swap::Code::bad_transition,"reserved effect cannot be expired; it uses ReleaseUnsent");
+        require(swap::apply(t,swap::Prepare{r->intent.effect,r->p.payload_digest,r->identity.handle_digest,1},swap::Role::gateway,1001)==swap::Code::applied &&
+            swap::apply(t,x,swap::Role::gateway,1004)==swap::Code::bad_transition,"prepared but never attempted cannot be expired");}
+    {auto t=s;require(swap::apply(t,x,swap::Role::gateway,1004)==swap::Code::applied,"expired applied");
+        auto forged=t;forged.settlements[0].transaction=digest(3);require(!swap::valid_state(forged),"snapshot with expired and a transaction refused");
+        forged=t;forged.settlements[0].quote_credit=swap::QuoteAtoms{1};require(!swap::valid_state(forged),"snapshot with expired amounts refused");}
+    {auto t=s;require(swap::apply(t,x,swap::Role::gateway,1004)==swap::Code::applied,"first expired");
+        for(std::uint64_t e=2;e<=18;++e){auto i=r->intent;i.effect=EffectId{e};i.source_time=1000+e*10;i.sign_by=i.source_time+1000;
+            require(swap::apply(t,i,swap::Role::strategy,i.source_time)==swap::Code::applied,"next intent");
+            const Digest256 pay=digest(100+e);require(swap::apply(t,swap::Prepare{i.effect,pay,digest(150+e),1},swap::Role::gateway,i.source_time+1)==swap::Code::applied &&
+                swap::apply(t,swap::Attempt{i.effect,pay},swap::Role::gateway,i.source_time+2)==swap::Code::applied,"attempt");
+            auto y=x;y.effect=i.effect;y.payload=pay;y.evidence=digest(200+e);
+            if(e%3==0){y.outcome=swap::Outcome::succeeded;y.transaction=digest(e);y.base_credit=swap::BaseAtoms{9500000};y.quote_debit=swap::QuoteAtoms{1000000};y.fee=swap::QuoteAtoms{2000};}
+            require(swap::apply(t,y,swap::Role::gateway,i.source_time+3)==swap::Code::applied,"window settlement");}
+        require(t.settled_total==18 && t.settlement_count==16 && swap::valid_state(t),"evicted history with several expired entries revalidates");}
+}
+}
+int main(int argc,char** argv){const std::pair<const char*,void(*)()> tests[]={{"fee_only_rollback",fee_only_rollback},{"sponsor_policy",sponsor_policy},{"native_rollback",native_rollback},{"token_rollback",token_rollback},{"failure_shape",failure_shape},{"owner_payer",owner_payer},{"account_key_codec",account_key_codec},{"retained_failed_admission",retained_failed_admission},{"chain_proven",chain_proven},{"chain_refusals",chain_refusals},{"rpc_templates",rpc_templates},{"expired_admission",expired_admission},{"expired_reducer",expired_reducer}};for(auto [name,test]:tests){if(argc==2 && std::string_view(argv[1])!=name)continue;try{test();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){std::cout<<"FAIL "<<name<<": "<<e.what()<<'\n';return 1;}}}

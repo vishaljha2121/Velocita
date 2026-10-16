@@ -35,6 +35,7 @@ struct SwapAccountStartupAdmission {
     const SwapAccountStartupAdmission&, std::uint64_t timeout_ms);
 [[nodiscard]] std::optional<swap::State> swap_unsent_funding_state(const swap::State&) noexcept;
 [[nodiscard]] bool swap_startup_recovery_only(const swap::State&,SwapPreparePhase,EffectId prepared_effect,SwapSubmissionPhase) noexcept;
+[[nodiscard]] SwapVenueFailedOrder swap_venue_failed_order(const SwapOrderReadResult&) noexcept;
 enum class SwapCreateStage:std::uint8_t {not_called,latched,journal,admission,balance,bearer,exchanged};
 struct SwapCreateTrace {
     SwapCreateStage stage{};
@@ -70,6 +71,8 @@ private:
     SwapAccountStartupAdmission admission_;
     EffectId created_{},executed_{},reconciling_{};
     unsigned reconcile_attempts_{};
+    unsigned reported_stage_{},reported_code_{};
+    void report_reconcile(EffectId,unsigned stage,unsigned code);
     SwapCreateTrace trace_{};
 };
 // Owns the concrete adapters; borrowed credentials/stores/link outlive this object.
