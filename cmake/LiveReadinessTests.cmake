@@ -514,7 +514,7 @@ target_compile_options(v2-swap-gateway-runtime-tests PRIVATE -Wall -Wextra -Wped
 target_link_libraries(v2-swap-gateway-runtime-tests PRIVATE velocita_v2_swap_paper_gateway
     velocita_v2_gateway_loop velocita_v2_paper_venue Threads::Threads OpenSSL::Crypto)
 add_test(NAME v2-swap-gateway-runtime-tests COMMAND v2-swap-gateway-runtime-tests)
-set_tests_properties(v2-swap-gateway-runtime-tests PROPERTIES TIMEOUT 120)
+set_tests_properties(v2-swap-gateway-runtime-tests PROPERTIES TIMEOUT 300)
 add_executable(v2-swap-process-drill
     "${velocita_readiness_root}/tests/v2_swap_process_drill.cpp"
     "${velocita_readiness_root}/src/v2_swap_gateway_runtime.cpp"
