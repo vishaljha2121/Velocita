@@ -1,0 +1,100 @@
+{
+  "nuc1": {
+    "activation": "no production manifest or service changed; build qualification is not launch authorization",
+    "affinity": [
+      3
+    ],
+    "arch": "x86_64",
+    "binary_sha256": {
+      "v2-swap-continuous-drill": "c380750cf801f461ed762aa211282c53ab94508adf972d3c7303faceda9017e0",
+      "v2-swap-process-drill": "6ae15276c4ee918698556c23e3c623f49095878a27de15a104afaddc86ecaa13",
+      "velocita-v2-client": "40f1d9e95bf3c42f59f697c9faa546603a128826287155ef38d9862821c10a4b",
+      "velocita-v2-gateway": "907656eae7cb8508ef7c3a61448d649465fa0fd9f308155119fd182dcc153e29",
+      "velocita-v2-node": "8459022c6600b0493b8ad0b7ef6482733d78545dd2d53af225dc9ece09aad104",
+      "velocita-v2-signer": "bab9f37523472d81132b655547d4193c1808e2d45ce1950ce56af54859cbc239"
+    },
+    "commit": "64e6f9f4bd499127c7584bea02f20d6fc129597b",
+    "continuous_cases_validated": 9,
+    "continuous_effects": 54,
+    "continuous_repetitions": 3,
+    "ctest_passed": 59,
+    "focused_python_tests": 104,
+    "live_admitted": false,
+    "process_cases_validated": 8,
+    "python_suites": [
+      "test_tm_account*.py",
+      "test_swap_service_launcher.py",
+      "test_swap_service_profile.py",
+      "test_swap_runtime_install.py",
+      "test_swap_disabled_install.py",
+      "test_swap_service_provision.py",
+      "test_swap_runtime_gate.py",
+      "test_signer_not_shipped.py",
+      "test_swap_credential_handoff.py",
+      "test_tm_stage_swap_credential.py",
+      "test_live_observer.py",
+      "test_observability_layout.py",
+      "test_swap_review_transition.py",
+      "test_idle_policy_renewal.py",
+      "test_idle_policy_apply.py",
+      "test_readiness_build_boundary.py",
+      "focused-model",
+      "focused-stage",
+      "focused-retirement",
+      "focused-verify",
+      "focused-restore"
+    ],
+    "qualified": true,
+    "scope": "production Release capability and selected swap/venue/recovery suite; eight fixture process drills and three repetitions of three six-effect continuous drills",
+    "uid": 1003
+  },
+  "pi": {
+    "activation": "no production manifest or service changed; build qualification is not launch authorization",
+    "affinity": [
+      3
+    ],
+    "arch": "aarch64",
+    "binary_sha256": {
+      "v2-swap-continuous-drill": "06bbb99d3e57c8a98ae1855a3ffcba2e2f298e68697f1b8f4577810954c774ec",
+      "v2-swap-process-drill": "cd57406ca6c2797eb05d105629945aeaba32936cf9235c2e4c585f8e3f69f309",
+      "velocita-v2-client": "915de1558fb0a8369043cc2097856bc86c525ee0443787617b28fbe566af635d",
+      "velocita-v2-gateway": "842ebadd5de01e4c858582f71f8f270b5d72a84a11f5e96709ecbf6faaf417a2",
+      "velocita-v2-node": "aa40ad6d802981d07851082ab4ed6e0d0d51ac8308e99aca00d26e4dd0852c47",
+      "velocita-v2-signer": "ac1371a00ce7bb5068cd2b7fbb4ba71e92ca712b59ac6bc867dcda124774d463"
+    },
+    "commit": "64e6f9f4bd499127c7584bea02f20d6fc129597b",
+    "continuous_cases_validated": 9,
+    "continuous_effects": 54,
+    "continuous_repetitions": 3,
+    "ctest_passed": 59,
+    "focused_python_tests": 104,
+    "live_admitted": false,
+    "process_cases_validated": 8,
+    "python_suites": [
+      "test_tm_account*.py",
+      "test_swap_service_launcher.py",
+      "test_swap_service_profile.py",
+      "test_swap_runtime_install.py",
+      "test_swap_disabled_install.py",
+      "test_swap_service_provision.py",
+      "test_swap_runtime_gate.py",
+      "test_signer_not_shipped.py",
+      "test_swap_credential_handoff.py",
+      "test_tm_stage_swap_credential.py",
+      "test_live_observer.py",
+      "test_observability_layout.py",
+      "test_swap_review_transition.py",
+      "test_idle_policy_renewal.py",
+      "test_idle_policy_apply.py",
+      "test_readiness_build_boundary.py",
+      "focused-model",
+      "focused-stage",
+      "focused-retirement",
+      "focused-verify",
+      "focused-restore"
+    ],
+    "qualified": true,
+    "scope": "production Release capability and selected swap/venue/recovery suite; eight fixture process drills and three repetitions of three six-effect continuous drills",
+    "uid": 1004
+  }
+}

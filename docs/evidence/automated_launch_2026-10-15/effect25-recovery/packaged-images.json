@@ -1,0 +1,62 @@
+{
+  "nuc1": {
+    "base_image": "2b5b016d1cbc793aa36aab3505a4651de95f3a5737ab33457e6e71795ebb0675",
+    "binary_sha256": {
+      "velocita-v2-client": "40f1d9e95bf3c42f59f697c9faa546603a128826287155ef38d9862821c10a4b",
+      "velocita-v2-exporter": "b57dc4943f92c551e06899963b0727a3b5b15e5293f4ba862bfe8e8ac2162408",
+      "velocita-v2-node": "8459022c6600b0493b8ad0b7ef6482733d78545dd2d53af225dc9ece09aad104"
+    },
+    "compiled": false,
+    "image": "localhost/velocita-v2:qualified-64e6f9f",
+    "image_id": "ba3c801425036ac1945e7022269884c0932bbb9ed81e35e8fe4ee02ca1a9a6b9",
+    "source_commit": "64e6f9f4bd499127c7584bea02f20d6fc129597b",
+    "userns_keep_id_check": {
+      "elapsed_seconds": 9.1,
+      "exit_code": 0,
+      "hashes_verified": true,
+      "no_network": true,
+      "no_production_mounts": true,
+      "uid": "1003"
+    }
+  },
+  "nuc2": {
+    "base_image": "edb7f88f4aa057298a0c4f1276ff343da392ebfe91c65bf88790b58b45dc8a33",
+    "binary_sha256": {
+      "velocita-v2-client": "40f1d9e95bf3c42f59f697c9faa546603a128826287155ef38d9862821c10a4b",
+      "velocita-v2-exporter": "b57dc4943f92c551e06899963b0727a3b5b15e5293f4ba862bfe8e8ac2162408",
+      "velocita-v2-node": "8459022c6600b0493b8ad0b7ef6482733d78545dd2d53af225dc9ece09aad104"
+    },
+    "compiled": false,
+    "image": "localhost/velocita-v2:qualified-64e6f9f",
+    "image_id": "0179f14c3b79032ddaccb32f959c548fdcab44930573ce1464d7f737cefd0ad9",
+    "source_commit": "64e6f9f4bd499127c7584bea02f20d6fc129597b",
+    "userns_keep_id_check": {
+      "elapsed_seconds": 4.6,
+      "exit_code": 0,
+      "hashes_verified": true,
+      "no_network": true,
+      "no_production_mounts": true,
+      "uid": "1003"
+    }
+  },
+  "pi": {
+    "base_image": "46d634ca806f7524758e85ae1171783520e14b123152d31a4f807405fa843903",
+    "binary_sha256": {
+      "velocita-v2-client": "915de1558fb0a8369043cc2097856bc86c525ee0443787617b28fbe566af635d",
+      "velocita-v2-exporter": "0a8f4063f8635db36cee7f9be1a71a6687993d31346f55258f0aa9a757056cbf",
+      "velocita-v2-node": "aa40ad6d802981d07851082ab4ed6e0d0d51ac8308e99aca00d26e4dd0852c47"
+    },
+    "compiled": false,
+    "image": "localhost/velocita-v2:qualified-64e6f9f",
+    "image_id": "3820e4099626a05d9a361b79767a7216cf90d62310f03b122488321a62fd1f92",
+    "source_commit": "64e6f9f4bd499127c7584bea02f20d6fc129597b",
+    "userns_keep_id_check": {
+      "elapsed_seconds": 455.4,
+      "exit_code": 0,
+      "hashes_verified": true,
+      "no_network": true,
+      "no_production_mounts": true,
+      "uid": "1004"
+    }
+  }
+}

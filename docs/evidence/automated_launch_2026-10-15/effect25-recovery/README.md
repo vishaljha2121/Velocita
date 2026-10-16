@@ -27,7 +27,16 @@ review window with an owner-minted TM token, a scoped commit and native qualific
   (`tests/mutation_swap_expired_settlement.py`). Two first-run survivors were a harness assertion string and a missing
   mid-proof provider-change test, both fixed and rerun.
 
+## Native qualification
+
+36de930 qualified on NUC1 (59 ctest, 54 continuous effects). On the Pi the gateway runtime suite hit its 120 s ctest
+limit (it already took 116 s at ba299ff; the new modes added the rest). Its first Pi attempt also failed once in mode 0,
+which passed 15/15 on rerun; both attempts are archived on the Pi as `bounded-native-20261013-36de930…-attempt1` and the
+timed-out run. `64e6f9f` raises only that limit to 300 s and qualified on both hosts:
+[qualification-64e6f9f.json](qualification-64e6f9f.json) (Pi runtime suite 143.9 s). NUC1 binaries are byte-identical to
+36de930. Voter images with in-container hash and keep-id checks: [packaged-images.json](packaged-images.json).
+
 ## Not yet done
 
-Native NUC/Pi qualification, the owner recovery-only profile and start, the rolling voter upgrade and renewal.
+The halt, rolling voter upgrade, owner recovery-only start and renewal: [OWNER_STEPS.md](OWNER_STEPS.md).
 All voters must run this build before an `expired_unexecuted` settlement commits.
