@@ -1,302 +1,119 @@
-# Velocita native Raft + Aeron
+# Velocita
 
-An educational, native C++20 Raft service for a Raspberry Pi 5. It supports a
-single voter or three logical voters connected through Aeron UDP. It uses:
+A replicated trading system on home hardware: a deterministic C++20 trading kernel replicated by Raft over
+Aeron UDP across three voters (two x86-64 NUC mini PCs and a Raspberry Pi 5), a separate execution gateway, a separate
+signer that holds the only venue key, and a Python strategy edge. It traded real money unattended on
+Solana through True Markets in October 2026.
 
-- `willemt/raft` for the Raft protocol engine;
-- Aeron's C media driver and C++ client wrapper for UDP messaging;
-- a versioned, checksummed append-only WAL and atomically replaced metadata file;
-- a deterministic counter state machine with replicated request deduplication; and
-- Podman for an ARM64-compatible deployment.
+The point of the project is the engineering, not the strategy: every order is a committed, replicated
+command before anything leaves the machine, every external effect is reconciled against the chain, and
+the system stops rather than guesses when the evidence is incomplete.
 
-Release scope, validated strengths, measured failures, and the planned V1.1
-acceptance gates are maintained in [`CHANGELOG.md`](CHANGELOG.md).
-The detailed V1.1 objectives, design contracts, metrics, experiments, and
-phase-by-phase acceptance gates are defined in
-[`docs/V1_1_IMPLEMENTATION_AND_VALIDATION_PLAN.md`](docs/V1_1_IMPLEMENTATION_AND_VALIDATION_PLAN.md).
-The repository is intentionally maintained with local-only Git; branching,
-tagging, safe rollback, and offline backup are documented in
-[`docs/LOCAL_GIT_WORKFLOW.md`](docs/LOCAL_GIT_WORKFLOW.md).
+## What it did
 
-V2 is currently an architecture-and-tests proposal, not implemented trading
-behavior. It preserves V1/V1.1 and evolves the project toward a replicated
-Decision/OMS cluster plus a committed outbox and single active execution
-gateway. Start with:
+On 2026-10-15/16 the cluster ran a one-second stochastic SOL/USDC rule with $25 of managed capital:
 
-- [`ADR 0001: V2 decision and execution boundary`](docs/adr/0001-v2-replicated-decision-oms-and-execution-boundary.md);
-- [`V2 architecture contracts`](docs/V2_ARCHITECTURE_CONTRACTS.md); and
-- [`V2 TDD implementation and validation plan`](docs/V2_TDD_IMPLEMENTATION_AND_VALIDATION_PLAN.md).
+| | |
+|---|---|
+| Strategy intents committed | 25 (effects 1 to 25), after a one-time operator grant |
+| Swaps settled | 16 (8 round trips), $202.13 executed volume |
+| Released before signing | 8 (venue refused the route or the route lookup failed; the driver re-sent) |
+| Realized P&L | -$0.952 including $0.405 of venue fees |
+| Intent to on-chain block | 2-3 s |
+| Raft vs chain | every settlement equals the owner wallet's on-chain SOL and USDC change to the atom |
+| Stop | effect 25: the venue reported "failed" with no transaction hash; the gateway refused to settle it without proof |
 
-The current source remains the V1/V1.1 counter laboratory until individual V2
-phases are implemented and accepted. Documentation status is not a release
-claim.
+The loss is almost entirely execution cost: buys filled about 59 bp above the Binance reference and sells
+about 33 bp below it (20 bp of each is the venue fee), while the reference itself moved about -2 bp per
+round trip. Earlier replays had already shown the rule has no edge before costs; the run measured the cost
+precisely. Effect 25 later turned out to have landed on chain and failed there, which is exactly why the
+gateway would not mark it "never executed" from the venue's word alone.
 
-There is no Java runtime in the build or final image. The code in this repository is C++20; the two pinned upstream dependencies contain their native C/C++ implementations.
-
-## Architecture and ownership
+## Architecture
 
 ```text
-raft-client
-    |  Aeron UDP: versioned Command
-    v
-embedded C media driver -> C++ owner loop -> willemt/raft
-                                           | append + fsync
-                                           v
-                                      versioned WAL
-                                           | commit
-                                           v
-                                     deterministic FSM
-    ^                                      |
-    |  Aeron UDP: versioned Response       |
-    +--------------------------------------+
+ Binance 1 s bars ──> strategy driver (Python) ── spot-swap-intent ──┐
+                                                                     v
+          ┌──────────── Raft over Aeron UDP (willemt/raft, pinned fork) ────────────┐
+          │  voter 1 (NUC1)          voter 2 (Raspberry Pi 5)        voter 3 (NUC2) │
+          │  deterministic kernel: integer accounting, caller roles, risk limits,   │
+          │  swap lifecycle Intent -> Prepare -> Attempt -> Settlement             │
+          └──────────────────────────────┬──────────────────────────────────────────┘
+                                         │ committed state reads + authority proofs
+                                         v
+                   execution gateway (C++) ── create unsigned swap ──> True Markets
+                         │       ^                                       │
+          signing request│       │signature                              v
+                         v       │                                    Solana
+                   signer (C++, holds the only API key; checks the exact transaction)
+                         │
+          finalized reads│ (getTransaction, isBlockhashValid, history)
+                         v
+                   settlement admission -> Settlement command back through Raft
 ```
 
-The split follows the Velocitas book:
+- **Kernel**: one deterministic reducer behind consensus. Cash, positions, fees and realized P&L are
+  integers in atoms; the loss limit and caller permissions are enforced on apply, identically on every voter.
+- **Raft over Aeron**: Aeron carries client, peer and response traffic; storage, snapshots and
+  compaction are owned outside the Raft library. The pinned fork counts a leader's vote only once its own
+  log bytes are durable ([ADR 0006](docs/adr/0006-asynchronous-durability-and-the-pinned-raft-fork.md)).
+- **Gateway**: a separate process that reads committed state, asks the cluster for request-correlated
+  authority before each send, and journals every step so a crash at any point recovers without a duplicate
+  order ([ADR 0013](docs/adr/0013-request-correlated-execution-authority.md),
+  [ADR 0017](docs/adr/0017-the-gateway-is-a-separate-process-reading-committed-state.md)).
+- **Signer**: the only holder of the venue key; it independently checks that the transaction it is asked
+  to sign is the committed intent ([ADR 0019](docs/adr/0019-live-execution-and-key-custody.md),
+  [ADR 0029](docs/adr/0029-the-signer-authenticates-the-gateway-for-a-day.md)).
+- **Settlement**: a swap settles only from finalized chain evidence that matches the retained payload;
+  fees, principal and the owner's net receipt are attributed exactly
+  ([ADR 0025](docs/adr/0025-bounded-swap-verification-and-policy-bound-recovery.md)).
+- **Edge**: the Python model computes indicators and proposes; it cannot author an order or a transaction.
 
-- Chapter 5, “Raft in Practice”: command identity is replicated, durability callbacks are protocol boundaries, and one thread owns Raft.
-- Chapter 6, “Aeron Transport”: this is Raft **over** Aeron, not Aeron Cluster; transport and consensus have different ownership.
-- Chapter 13, “The Cluster Runtime”: version the wire/log formats, own storage outside the C engine, expose term/index/apply evidence, and provide an offline dump tool.
-- Chapter 54, “Homelab Hardware and Network”: one authority node per physical server; multiple containers on one Pi are not high availability.
+The 29 architecture decisions are in [`docs/adr/`](docs/adr), and [`docs/README.md`](docs/README.md) maps the rest.
 
-## What v1 proves—and what it does not
+## Repository layout
 
-It proves the native toolchain, single-voter election, durable append, commit, deterministic apply, restart replay, request deduplication, Aeron UDP ingress/response, and Podman packaging.
+| Path | Contents |
+|---|---|
+| [`src/`](src), [`include/`](include) | C++20 kernel, Raft node, storage, gateway, signer, venue adapters (about 52k lines) |
+| [`tests/`](tests) | C++ unit, property, crash-injection and multi-process drills; Python tests and mutation harnesses |
+| [`model/`](model) | Python strategy research, the shadow edge and the live driver, with 478 tests |
+| [`deploy/`](deploy) | Containerfiles, systemd units, Prometheus/Grafana/Alertmanager rules, install and launch tooling |
+| [`tools/`](tools) | Operator tools: secrets, soak tests, market-data probes |
+| [`docs/`](docs) | ADRs, architecture contracts, design reviews and runbooks |
+| [`archive/`](archive) | The evidence trail: qualification runs, deployment records and session handoffs, kept as written |
 
-Three voters on one Pi tolerate one **process** stopping, but are not machine-level
-high availability: power, storage, kernel, and network-interface failures still
-affect every voter. Aeron carries client traffic plus versioned `RequestVote` and
-`AppendEntries` traffic. V1 still has no snapshot/compaction, so its WAL grows
-indefinitely. A torn final WAL record fails startup safely and currently requires
-operator repair tooling.
+## Build and test
 
-## Build and test on macOS or Linux
-
-Prerequisites are CMake 3.30+, a C/C++ compiler, Git, and Ninja or Make.
+Prerequisites: CMake 3.30+, a C++20 compiler, OpenSSL 3 and Git. Aeron and willemt/raft are fetched at pinned
+commits; the Raft patch is applied at configure time and refused if it does not apply.
 
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DAERON_HIDE_DEPRECATION_MESSAGE=ON
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
 
-Dependencies are fetched from their official repositories and pinned to exact commits in `CMakeLists.txt`.
+The swap runtime and its HTTPS and signer drills build with `-DVELOCITA_BUILD_SWAP_RUNTIME=ON` and the
+`VELOCITA_TEST_*` options; the default build runs 182 CTest targets and the full set 206. The model tests run with
+`cd model && PYTHONPATH=src python3 -m unittest discover -s tests`.
 
-## Build on the Raspberry Pi with Podman
+Releases that ran on the cluster were qualified natively on both architectures (x86_64 NUC and aarch64 Pi)
+inside pinned containers, and safety-critical changes carry mutation runs that prove each mutant was
+rebuilt and killed. Those records are under [`archive/evidence/`](archive/evidence).
 
-SSH to the Pi, copy or clone this directory, then:
+## Limits
 
-```bash
-cd aeron-raft-pi
-podman build --tag localhost/velocita-raft:v0.1 -f Containerfile .
-podman volume create velocita-raft-data
-```
+- The trading rule is a test load, not a strategy with an edge; the costs above dominate it.
+- Effect 25 is still pending: the fix that settles a landed-and-failed swap from chain evidence is designed
+  but not built.
+- One operator, home network, one venue, one pair. Two NUCs and a Pi are separate machines but share a
+  house, a router and an ISP.
+- This is a personal engineering project, not financial software, and it is not offered as such.
 
-The build runs the core tests inside the ARM64 image. The final image contains only the native executables and the runtime C++ library.
+## History
 
-## Run the node
-
-```bash
-podman run --detach \
-  --name velocita-raft \
-  --network host \
-  --shm-size 256m \
-  --volume velocita-raft-data:/var/lib/velocita-raft:U \
-  localhost/velocita-raft:v0.1
-```
-
-Why these flags:
-
-- `--network host` preserves Aeron's real UDP endpoint semantics; container NAT would add an address-mapping failure surface.
-- `--shm-size 256m` gives Aeron room for its command-and-control and term buffers.
-- the named volume keeps Raft decisions across container replacement.
-- `:U` initializes ownership of this dedicated volume for the non-root UID inside the image.
-
-Watch leadership and indexes:
-
-```bash
-podman logs --follow velocita-raft
-```
-
-Healthy output converges on `role=leader` with `current_index >= commit_index >= applied_index`. In this synchronous v1, committed and applied should normally be equal.
-
-## Send commands on the Pi
-
-The easiest first test runs a disposable native client container on the same host network:
-
-```bash
-podman run --rm --network host --shm-size 128m \
-  --entrypoint /usr/local/bin/raft-client \
-  localhost/velocita-raft:v0.1 increment 5
-
-podman run --rm --network host --shm-size 128m \
-  --entrypoint /usr/local/bin/raft-client \
-  localhost/velocita-raft:v0.1 get
-```
-
-Expected responses include `status=ok value=5` and increasing log indexes. Reads are replicated in v1. That is deliberately simple and linearizable, although a production system would use a ReadIndex/lease strategy to avoid filling the log with reads.
-
-To prove idempotency, reuse a request ID:
-
-```bash
-podman run --rm --network host --shm-size 128m \
-  --entrypoint /usr/local/bin/raft-client \
-  localhost/velocita-raft:v0.1 increment 5 --request-id 7001
-
-podman run --rm --network host --shm-size 128m \
-  --entrypoint /usr/local/bin/raft-client \
-  localhost/velocita-raft:v0.1 increment 5 --request-id 7001
-```
-
-Both calls return the same value; the second does not append or apply another increment.
-
-## Prove restart recovery
-
-```bash
-podman restart velocita-raft
-podman logs --since 30s velocita-raft
-
-podman run --rm --network host --shm-size 128m \
-  --entrypoint /usr/local/bin/raft-client \
-  localhost/velocita-raft:v0.1 get
-```
-
-The value must match the value before restart. If it does not, stop: a green process with lost committed state is not a healthy service.
-
-## Inspect the durable log offline
-
-Stop the writer before using the v1 dump tool:
-
-```bash
-podman stop velocita-raft
-podman run --rm \
-  --volume velocita-raft-data:/var/lib/velocita-raft \
-  --entrypoint /usr/local/bin/raft-dump \
-  localhost/velocita-raft:v0.1 /var/lib/velocita-raft
-podman start velocita-raft
-```
-
-The dump shows term, vote, commit index, and every versioned command. This is recovery evidence, not merely debugging output.
-
-## Run three logical voters on one Pi
-
-For the command-by-command Linux and production learning path, use
-[`docs/PI_OPERATOR_RUNBOOK.md`](docs/PI_OPERATOR_RUNBOOK.md). It explains the
-host checks, rootless Podman model, storage, ports, health invariants, debugging
-order, and failure drills behind the commands below.
-
-Build the cluster image and start three isolated nodes:
-
-```bash
-podman build --tag localhost/velocita-raft:v1 -f Containerfile .
-./deploy/start-pi-cluster.sh
-sleep 5
-podman ps --filter name=velocita-raft
-```
-
-Each node has a different node ID, client port, peer port, Aeron media driver,
-and named WAL volume. All three use the host network so their loopback UDP
-endpoints preserve Aeron's native addressing.
-
-Check the five-second status lines:
-
-```bash
-for node in 1 2 3; do
-  podman logs --tail 20 "velocita-raft-$node"
-done
-```
-
-Exactly one node should report `role=leader`; two should report `role=follower`,
-and all three should agree on the term. Send a command without manually finding
-the leader:
-
-```bash
-./deploy/cluster-client.sh increment 5
-./deploy/cluster-client.sh get
-```
-
-The helper tries each client endpoint with one stable request ID. Followers
-return `not_leader`; the leader accepts the proposal. Reusing the same ID makes
-those retries safe.
-
-Stop the processes while preserving all three WAL volumes:
-
-```bash
-./deploy/stop-pi-cluster.sh
-```
-
-## Manage the cluster with rootless systemd and Quadlet
-
-The manual `podman run` scripts are the learning/bootstrap path. For boot-time
-and crash lifecycle management, install the rootless Quadlet definitions under
-`deploy/quadlet/` and the grouping target under `deploy/systemd-user/`. Follow
-the migration and verification procedure in
-[`docs/PI_OPERATOR_RUNBOOK.md`](docs/PI_OPERATOR_RUNBOOK.md).
-
-## Book-aligned shared-memory observability
-
-Each voter publishes a versioned, fixed-layout metrics page in tmpfs. Hot-path
-updates are cache-line-separated, lock-free 64-bit atomics with relaxed memory
-ordering; status gauges use a bounded seqlock snapshot. There is no formatting,
-allocation, filesystem write, or HTTP work in the Raft owner loop.
-
-`raft-metrics-exporter` is a separate process that maps the three pages
-read-only, validates magic/version/size/node identity, formats Prometheus text,
-and serves it on `127.0.0.1:9200`. Host, process, disk, temperature, and the
-full Aeron CnC catalogue remain external collection concerns.
-
-## Local Prometheus and Grafana
-
-The host-level layer uses Ubuntu's native `prometheus-node-exporter` because it
-needs an honest view of the Pi's `/proc`, `/sys`, filesystems, disks, network,
-and thermal zones. Keep it bound to `127.0.0.1:9100`. Ubuntu's native
-`prometheus-process-exporter` reads `/proc` externally for per-voter CPU,
-resident memory, faults, context switches, and file descriptors on
-`127.0.0.1:9256`; its repository-owned matcher groups by stable node ID rather
-than PID.
-
-`deploy/install-observability.sh` installs a separate rootless Quadlet target
-containing Prometheus and Grafana. Prometheus is pinned to the 3.13.2 LTS
-release, keeps at most seven days and 1 GiB of TSDB blocks, and applies explicit
-sample/label limits. Grafana is provisioned from repository-controlled files
-with a Prometheus data source and the initial cluster/host health dashboard.
-Both web endpoints are loopback-only.
-
-The dashboard includes live state timelines for voter liveness and leadership.
-
-The separate native open-loop benchmark driver, repeated rate-sweep runner,
-exact artifact format, and Grafana benchmark dashboard are documented in
-[`docs/BENCHMARKING.md`](docs/BENCHMARKING.md). Benchmark-only stage timestamps
-are compile-time disabled in the production image.
-Liveness means that the expected metrics page is valid, its writer is active,
-and the Raft owner loop has ticked within two seconds. It does not claim quorum
-or committed progress; those remain separate panels and alerts.
-
-Run all bounded online failure drills and retain their evidence with:
-
-```bash
-./deploy/run-failure-drills.sh --yes
-```
-
-The runner restores supervised services through an exit trap and writes its
-timestamped log, summary, final metrics, alerts, and unit status under
-`~/.local/share/velocita/failure-drills/`. Physical reboot validation remains
-a separate drill because an on-host script cannot observe its own host outage.
-The first complete V1 acceptance result and its interpretation are recorded in
-[`docs/V1_FAILURE_DRILL_RESULTS.md`](docs/V1_FAILURE_DRILL_RESULTS.md).
-
-The observability target is deliberately independent of the Raft target:
-stopping dashboards must not stop consensus, and a broken dashboard is not
-proof that the cluster is broken. Follow the installation, SSH tunnel, alert
-validation, and triage procedure in
-[`docs/PI_OPERATOR_RUNBOOK.md`](docs/PI_OPERATOR_RUNBOOK.md).
-
-## Next milestone: three physical voters
-
-The next safe increment is:
-
-1. Give each Pi a stable node ID and LAN endpoint; keep Tailscale on the management plane, not the Aeron data plane.
-2. Replace the loopback peer endpoints with the three LAN addresses.
-3. Add snapshot schema, snapshot transfer, WAL compaction, and a dedup-table snapshot.
-4. Test leader loss, follower loss, packet loss, restart, and state digests across all three physical machines.
-
-Only after three independent voters and failure tests should this be described as highly available.
+The repository starts in August 2026 as V1, an educational Raft counter on a single Raspberry Pi
+([`CHANGELOG.md`](CHANGELOG.md)), and grows into V2 through the phases recorded in the ADRs and the
+archive. Development was AI-assisted: Claude and Codex sessions wrote code and documents under the
+owner's direction and review, and their handoff notes are kept in [`archive/handoffs/`](archive/handoffs).

@@ -12,3 +12,6 @@
 /benchmark-results/
 /cmake-build-*/
 CMakeUserPresets.json
+__pycache__/
+*.pyc
+/.claude/

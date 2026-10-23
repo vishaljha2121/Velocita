@@ -1,0 +1,12 @@
+{
+  "binary_commit": "64e6f9f4bd499127c7584bea02f20d6fc129597b",
+  "helper_commit": "85ffedb4648881ce2905e344eb86b6b2e6cb2291",
+  "staging": "/home/vishal/.cache/velocita-build/effect25-64e6f9f",
+  "files_verified": 2093,
+  "helper_tests_passed": 9,
+  "payload_pins_verified": true,
+  "receiver_sha256": "667ce3354e31c09a6709018875e5b6d44479a0ff79df9a9b7fe2784b8a9d2e09",
+  "installed": false,
+  "services_changed": false,
+  "driver_started": false
+}
