@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 ROOT=Path(__file__).resolve().parents[2]
-OUT=ROOT/'docs/evidence/dual_indicator_paper_2026-10-07'
+OUT=ROOT/'archive/evidence/dual_indicator_paper_2026-10-07'
 MUTANTS=(
     ('delay','signal_index=len(bars.dates)-2','signal_index=len(bars.dates)-1','test_sma_delayed_signal_and_integer_price'),
     ('journal_identity',"if row is not None and row[0]!=expected:","if False:",'test_ledgers_isolate_and_bind_on_restart'),

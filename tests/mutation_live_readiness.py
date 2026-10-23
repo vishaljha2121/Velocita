@@ -7,7 +7,7 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRATCH = Path.home() / '.cache/velocita-build/readiness-20261011/mutations'
-RESULT = ROOT / 'docs/evidence/live_readiness_2026-10-09/mutations-20261011.json'
+RESULT = ROOT / 'archive/evidence/live_readiness_2026-10-09/mutations-20261011.json'
 CASES = [
     ('rest_asset_binding', 'rest', 'value.asset_id != catalog_asset->asset_id', 'false',
      'missing_market_class_requires_exact_catalog_binding', 'catalog asset mismatch refuses and clears output'),

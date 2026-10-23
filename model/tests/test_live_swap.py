@@ -7,7 +7,7 @@ import unittest
 
 from velocita_model.shadow.live_swap import Account, LiveRule, Order, Stop, buy_order, sell_order
 
-REPLAY = Path(__file__).resolve().parents[2]/'docs/evidence/stochastic_rule_replay_2026-10-09/replay.py'
+REPLAY = Path(__file__).resolve().parents[2]/'archive/evidence/stochastic_rule_replay_2026-10-09/replay.py'
 
 
 def replay_module():

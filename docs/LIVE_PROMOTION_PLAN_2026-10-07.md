@@ -10,7 +10,7 @@ checkpoint; committed-source staging and owner preflight are next. Nothing insta
 Qualified `ba299ff` images are packaged and verified on NUC1, Pi and NUC2. The runtime
 payload is staged on NUC1 with all four hashes checked. The halted-only upgrade wrapper
 passes eight tests and three mutation checks; the three previous installer tests also pass.
-[Upgrade procedure and evidence](evidence/automated_launch_2026-10-15/strategy-grant/deploy/README.md).
+[Upgrade procedure and evidence](../archive/evidence/automated_launch_2026-10-15/strategy-grant/deploy/README.md).
 After owner runtime upgrade: rolling voter/exporter pairs, then replace only the stopped
 strategy driver's client image. Preserve incarnation, WAL, journals, funding and sequences.
 No grant or driver restart yet. Review drains October16 13:41:34UTC; expiry13:48:34UTC.
@@ -21,7 +21,7 @@ Executable source `ba299ff6c89392177cfd4702fda11dabb7ee1719` is qualified on NUC
 Each passed 59 CTest targets, 407 Python/CLI checks, eight process cases and nine continuous
 cases /54 settlements. All308 collected artifact hashes verified. Three controlled ordinary-read
 outages per host recovered before signing effect4. No duplicate create/sign/execute in any case.
-[Final result, warnings, limitations and next deployment step](evidence/automated_launch_2026-10-15/strategy-grant/native/ba299ff/RESULTS.md).
+[Final result, warnings, limitations and next deployment step](../archive/evidence/automated_launch_2026-10-15/strategy-grant/native/ba299ff/RESULTS.md).
 Original Pi failure remains preserved; its exact operation/root cause is still unproven.
 
 **Qualified only: not staged, installed or activated.** Production images and journals unchanged.
@@ -37,7 +37,7 @@ October16 13:41:34UTC and expires13:48:34UTC. Gateway-only upgrade remains insuf
 Approved scoped checkpoint `ba299ff6c89392177cfd4702fda11dabb7ee1719` is committed.
 Only tests and evidence changed; production source is byte-identical to `b490d68`.
 Exact-build NUC1/Pi qualification is running concurrently from preserved caches with fixed
-stop-on-failure suites. [Progress commands](evidence/automated_launch_2026-10-15/strategy-grant/native/ba299ff/COMMANDS.md).
+stop-on-failure suites. [Progress commands](../archive/evidence/automated_launch_2026-10-15/strategy-grant/native/ba299ff/COMMANDS.md).
 Not qualified, staged or installed yet. Original Pi failure and the test mismatch investigation
 remain preserved. No driver restart, operator grant, deployment or funds movement is authorized
 by this qualification step. Production readback remains the historical22:06UTC observation below.
@@ -49,7 +49,7 @@ Checkpoint `b490d68` is committed. NUC1 passed 59 CTest targets, 407 Python/CLI 
 three settlements, before signing effect four. Stop-on-failure evidence is preserved.
 A bounded diagnostic baseline and three-scenario set passed, but do not explain or erase
 the original failure. Pi is **not qualified** and no deployment occurred.
-[Native results and investigation](evidence/automated_launch_2026-10-15/strategy-grant/native/RESULTS.md).
+[Native results and investigation](../archive/evidence/automated_launch_2026-10-15/strategy-grant/native/RESULTS.md).
 
 A test-only correction now passes locally: production read-recovery settings plus a controlled
 ordinary-state-read outage. Three cases/18 settlements and two fresh-compiled mutant kills.
@@ -64,7 +64,7 @@ upgrade is insufficient. Review drains October16 13:41:34UTC, expires13:48:34UTC
 ## Strategy permission correction implemented locally — 2026-10-15 21:06 UTC
 
 The approved explicit operator grant is implemented and tested; it is not committed, native-qualified
-or deployed. [Evidence and deployment proposal](evidence/automated_launch_2026-10-15/strategy-grant/README.md).
+or deployed. [Evidence and deployment proposal](../archive/evidence/automated_launch_2026-10-15/strategy-grant/README.md).
 The grant binds the opening, strategy caller, minimum sequence and control epochs; default absence
 preserves old refusals and snapshot bytes. It changes only direct swap-intent admission, retaining
 the existing risk and protected-signing checks. ADR0016 records this direct-intent exception.
@@ -86,8 +86,8 @@ this one-time grant; renewal is not implemented. Review drains October16 13:41:3
 
 **Executable checkpoint `1f8d7b63c03c4ef1c0c916d833cdf8513f42a2dc` is qualified on NUC1/x86_64
 and Pi/aarch64; now owner-installed, with trading still blocked.** Read the
-[batch report](evidence/automated_launch_2026-10-15/focused-mvp/README.md) and
-[native evidence](evidence/automated_launch_2026-10-15/focused-mvp/native/RESULTS.md).
+[batch report](../archive/evidence/automated_launch_2026-10-15/focused-mvp/README.md) and
+[native evidence](../archive/evidence/automated_launch_2026-10-15/focused-mvp/native/RESULTS.md).
 Each architecture passed 59 CTest targets, 383 Python/CLI checks, eight process-drill cases,
 and three fixed repetitions of three six-effect continuous cases: 54 fixture trades, exactly
 one create/sign/execute/settlement per effect. All 151 retained artifact hashes per host verified.
@@ -102,7 +102,7 @@ Owner installation succeeded after the scoped `24ecbec` tool qualification: exac
 binary/manifest installed, missing caller keys restored create-only, retired originals retained,
 observer updated. No funding/journal reset or live startup. Gateway inactive, signer retains prior
 failed state, both PID 0 and RefuseManualStart=yes; driver inactive with no sequence state.
-See [owner installation evidence](evidence/automated_launch_2026-10-15/focused-deploy/OWNER_INSTALL_RESULT.json).
+See [owner installation evidence](../archive/evidence/automated_launch_2026-10-15/focused-deploy/OWNER_INSTALL_RESULT.json).
 Observer timer is active; collector still exits 1 before first-start journals exist, which its
 snapshot requires. Recheck after startup rather than claiming monitoring is fully operational.
 
@@ -110,7 +110,7 @@ Tools `24ecbec` passed 13 installer and 24 observer tests on NUC1. Executable re
 one production cluster and all funding/history are preserved. Sudo remains owner-only.
 The six-effect driver is already staged: never stage it again or reset its sequences.
 
-Prepared [first-start/seal wrapper](evidence/automated_launch_2026-10-15/focused-deploy/START_AND_SEAL.md):
+Prepared [first-start/seal wrapper](../archive/evidence/automated_launch_2026-10-15/focused-deploy/START_AND_SEAL.md):
 8 new tests and 6 mutation kills; 13 installer and 19 seal-dependency checks pass.
 Fresh voter health agrees on halted mode 5, term 1, leader 3, index 7. Protected owner
 preflight and native startup admission are still pending; no services have started.
@@ -127,7 +127,7 @@ Earlier review sections below describe historical states, not current deployment
 
 ## Post-Claude review — 2026-10-15
 
-The [Codex review](evidence/automated_launch_2026-10-15/CODEX_REVIEW.md) supersedes older
+The [Codex review](../archive/evidence/automated_launch_2026-10-15/CODEX_REVIEW.md) supersedes older
 next-step advice to restore keys and immediately run the automated drill. New cluster
 `aae119b9` is funded and halted; the signer failed64 and the gateway remains inactive.
 Owner readback confirms both caller keys are in the retired tmpfs directory, absent from
@@ -136,7 +136,7 @@ still completes after one settled effect. The review also reproduces stale-candl
 and an order-cap exit conflict, and identifies the missing pre-expiry drain guarantee.
 Resolve these correctness issues and qualify the multi-effect lifecycle before the live
 drill. No services, funding, credentials or production code changed in this review.
-See [Claude's handoff](handoffs/AUTOMATED_LAUNCH_HANDOFF_2026-10-15.md) for the recorded
+See [Claude's handoff](../archive/handoffs/AUTOMATED_LAUNCH_HANDOFF_2026-10-15.md) for the recorded
 owner decisions and deployment pins; its startup continuation is subject to this review.
 
 Written 2026-10-07 after the owner said the paper strategy looks good and asked for a plan to promote
@@ -188,7 +188,7 @@ accounts, all financial limits and the five-journal recovery rules. No host chan
 commit, service activation, signing or execution occurred. Next: scoped checkpoint,
 exact NUC/Pi qualification, stopped upgrade/locked route adoption and fresh launch
 review. Installed69679c0 still rejects the new route; continuous strategy trading
-is outside the bounded test. See [Byreal evidence](evidence/bounded_launch_review_2026-10-13/BYREAL_RESULT.md).
+is outside the bounded test. See [Byreal evidence](../archive/evidence/bounded_launch_review_2026-10-13/BYREAL_RESULT.md).
 
 **Confirmed-fill wiring and locked renewal (October 13, deployed):** qualified
 C++ producer 69679c0, collector and 39-panel live dashboard are installed. NUC/Pi
@@ -207,9 +207,9 @@ next bounded launch still needs a fresh positive executable receipt floor and
 reviewed removal of both inhibition layers. Continuous stochastic trading remains
 beyond the one-effect/$1 runtime and needs a reviewed signal-to-swap bridge and
 repeated-order recovery/budget controls. See
-[renewal deployment evidence](evidence/locked_review_renewal_2026-10-13/DEPLOYED.md),
-[telemetry deployment](evidence/live_fill_wiring_2026-10-13/TELEMETRY_DEPLOYMENT.md)
-and [native qualification](evidence/live_fill_wiring_2026-10-13/QUALIFICATION.md).
+[renewal deployment evidence](../archive/evidence/locked_review_renewal_2026-10-13/DEPLOYED.md),
+[telemetry deployment](../archive/evidence/live_fill_wiring_2026-10-13/TELEMETRY_DEPLOYMENT.md)
+and [native qualification](../archive/evidence/live_fill_wiring_2026-10-13/QUALIFICATION.md).
 
 **Live observability and cost review (October 13):** the supervised account review
 expired at22:17:27UTC and both services stopped as designed; journals remain idle.
@@ -222,7 +222,7 @@ trading step requires refreshing against the existing opening/journals, a fresh
 positive executable receipt floor and the separately reviewed one-$1buy. The
 strategy's fee-only results must be re-evaluated with the observed native-output
 deduction; the conservative MVP cap is not an expected fee. See
-[live observability and economics](evidence/live_observability_2026-10-13/README.md).
+[live observability and economics](../archive/evidence/live_observability_2026-10-13/README.md).
 
 **Owner-requested live entry/exit graph:** the Live tab contains a prepared
 green-buy/red-sell chart with an explicit NOT CONNECTED indicator. Finalized,
@@ -246,7 +246,7 @@ Ceremony helper checkpointd63f93d passed31local tests,9NUC tests and3named mutat
 checks. No C++ image rebuild, voter restart or journal reset. **Review expires
 22:17:27.845UTC(18:17EDT): services stop then; a later review must bind the existing
 opening/journals.** Next is a separately reviewed fresh single-$1 buy, not a
-strategy launch. [Evidence and exact command record](evidence/live_readiness_2026-10-09/funding-start-20261013/README.md).
+strategy launch. [Evidence and exact command record](../archive/evidence/live_readiness_2026-10-09/funding-start-20261013/README.md).
 
 
 **Fresh account/profile adoption completed (October 13, 17:41 EDT):**
@@ -280,7 +280,7 @@ No ledger funding, service activation, signing or fund movement occurred.
 | Replicated opening and startup ceremony | Complete: both services verified active/running, five idle journals, first-use flag removed. Trading remains halted; no Intent or order. |
 | Supervised single buy | Not started. Exactly $1 total USDC debit, effect 1, repayment ≤ 2,039,280 lamports, zero sponsor credit. Obtain a fresh positive net floor; no automatic retry, resize or second trade. |
 
-[Fresh verification, installation evidence and commands](evidence/live_readiness_2026-10-09/fresh-adoption-20261013/README.md).
+[Fresh verification, installation evidence and commands](../archive/evidence/live_readiness_2026-10-09/fresh-adoption-20261013/README.md).
 Earlier status paragraphs below are historical where superseded by this table.
 
 Last updated 2026-10-13: **single-cluster cutover and authenticated production-user
@@ -290,7 +290,7 @@ UID29001/caller22 and UID29002/caller23 verified the same state digest using
 separate keys and durable sessions. Production services are installed but inactive;
 launch authorization false. Cluster is halted, catalog-only and unfunded. The
 archived paper strategy is stopped; historical funding, role assignments and loss
-limits were not copied. See [cutover result and commands](evidence/live_readiness_2026-10-09/service-account-20261013/setup-r6/README.md).
+limits were not copied. See [cutover result and commands](../archive/evidence/live_readiness_2026-10-09/service-account-20261013/setup-r6/README.md).
 
 Historical native qualification: `86f4408` passed NUC1/Pi qualification (199
 unchanged cases retained, two corrected fixtures each passing three repetitions,
@@ -328,9 +328,9 @@ Mac and NUC1; 5 mutations fail named assertions.** The owner ran the revised pri
 independently checked: both controls succeeded, restricted voter connections
 succeeded, excluded TCP produced no controlled-listener connection, and excluded
 UDP returned EPERM. Aeron, production UIDs and live admission remain false. Actual fixed UID/custody, native Aeron/IPC and deployed isolation qualification
-remain in items 9–10. See [current wiring and owner command](evidence/live_readiness_2026-10-09/service-account-20261013/setup-r3/README.md).
+remain in items 9–10. See [current wiring and owner command](../archive/evidence/live_readiness_2026-10-09/service-account-20261013/setup-r3/README.md).
 No host services or credentials were installed; no live
-gate changed. See [service/account evidence](evidence/live_readiness_2026-10-09/service-account-20261013/README.md).
+gate changed. See [service/account evidence](../archive/evidence/live_readiness_2026-10-09/service-account-20261013/README.md).
 
 October 13 production-user follow-up: **host setup and bounded communication
 qualification passed**. Permanent nologin users 29001 (gateway) and 29002
@@ -349,7 +349,7 @@ transport drill. Production units, real custody, reviewed live account/config
 artifacts and live activation remain open; no credentials, journals or funds
 were adopted, no production binary/image was replaced, and the existing cluster
 was untouched. The service helpers and retained host evidence are checkpointed at `92abb5f`. See
-[evidence and exact commands](evidence/live_readiness_2026-10-09/service-account-20261013/setup-r4/README.md).
+[evidence and exact commands](../archive/evidence/live_readiness_2026-10-09/service-account-20261013/setup-r4/README.md).
 
 October 13 installation/read follow-up: the account/caller review found that the
 currently deployed `884816d` voters accept reads only from gateway caller 22 and
@@ -362,7 +362,7 @@ incarnation. The bounded read helper never borrows gateway identity for the
 signer. Dormant installation supports explicit null account pins only while
 launch authorization is false, and role credential binds source private tmpfs.
 Production trading and any paper-state reset remain unauthorized by this batch.
-See [installation and read review](evidence/live_readiness_2026-10-09/service-account-20261013/setup-r5/ACCOUNT_CALLER_REVIEW.md).
+See [installation and read review](../archive/evidence/live_readiness_2026-10-09/service-account-20261013/setup-r5/ACCOUNT_CALLER_REVIEW.md).
 
 October 13 dormant installation completed at **45db6a6**: both production units
 are loaded/inactive/static, manifest admission false, role tmpfs directories empty.
@@ -372,8 +372,8 @@ and NUC1**, with retained earlier failures and named mutation proof. A separate
 schema12 read helper compiled cleanly. Existing three paper voters/exporters and
 gateway remain active; edge remains previously inactive. Account opening/custody
 and authenticated deployed reads remain open. Read verification requires owner
-approval of the [single-cluster replacement scope](evidence/live_readiness_2026-10-09/service-account-20261013/setup-r5/CUTOVER_SCOPE.md).
-See [final installation evidence](evidence/live_readiness_2026-10-09/service-account-20261013/setup-r5/README.md).
+approval of the [single-cluster replacement scope](../archive/evidence/live_readiness_2026-10-09/service-account-20261013/setup-r5/CUTOVER_SCOPE.md).
+See [final installation evidence](../archive/evidence/live_readiness_2026-10-09/service-account-20261013/setup-r5/README.md).
 
 October 13 cutover authorization: owner approved archiving the current paper
 incarnation and replacing it with **one** schema12 cluster for bounded read
@@ -382,7 +382,7 @@ production C++86f4408. Replacement images package exact previously qualified
 binaries, with no C++ rebuild. No funding or strategy restart is part of this
 step. Old edge/gateway/observer will be persistently masked during qualification;
 all old state and unit bytes remain archived for rollback. See
-[approved scope](evidence/live_readiness_2026-10-09/service-account-20261013/setup-r6/APPROVAL.md).
+[approved scope](../archive/evidence/live_readiness_2026-10-09/service-account-20261013/setup-r6/APPROVAL.md).
 
 October 13 cutover completed: old state and units are hash-verified and archived
 on all three hosts; startup is now `recover`. Mac ceremony committed only kill
@@ -1259,7 +1259,7 @@ per-request linearizable reads under subsequent partition. Existing quorum-loss
 step-down, signing authority and durable result fences remain required.
 
 
-Account/process batch detail: [report](evidence/live_readiness_2026-10-09/ACCOUNT_PROCESS_BATCH_2026-10-13.md).
+Account/process batch detail: [report](../archive/evidence/live_readiness_2026-10-09/ACCOUNT_PROCESS_BATCH_2026-10-13.md).
 The actual private funding proposal now exists: 1.006989 USDC managed, zero
 managed SOL/cost basis, 0.031896934 SOL outside, token-account rent excluded.
 It is not an executable review or approved funding command. The raw observation

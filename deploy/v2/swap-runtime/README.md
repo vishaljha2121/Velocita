@@ -172,7 +172,7 @@ or silently rerun a failed capture. No sudoers changes are needed.
 
 Use the reviewed `tools/tm-stage-swap-credential.py` and
 `credential_handoff.py` path described in
-[handoff/recovery evidence](../../../docs/evidence/live_readiness_2026-10-09/handoff-recovery-20261013/README.md).
+[handoff/recovery evidence](../../../archive/evidence/live_readiness_2026-10-09/handoff-recovery-20261013/README.md).
 Credentials travel over SSH stdin into owner-only tmpfs and are adopted only
 while both services are stopped, against the hash-pinned root-owned profile.
 Initial installation is create-only; explicit old-digest-pinned rotation is

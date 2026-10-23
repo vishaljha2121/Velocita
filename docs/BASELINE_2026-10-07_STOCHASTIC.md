@@ -17,7 +17,7 @@ the strategy edge, paper gateway, observer and monitoring services.
 | Edge and observer on nuc1 | `velocita-v2-shadow:paper-cash-9a71762` | `9a717627b3e1d3971cb889a6517252a45fc45179` |
 
 Full per-host image IDs, source labels, non-secret mount paths, unit hashes and
-runtime observations are in [checkpoint/](evidence/stochastic_cash_2026-10-07/checkpoint/).
+runtime observations are in [checkpoint/](../archive/evidence/stochastic_cash_2026-10-07/checkpoint/).
 All three source commits are ancestors of this checkpoint. The checkpoint commit
 adds records; it is not the source commit of every running binary. Rebuilding
 every component from the checkpoint tip would be a new deployment.
@@ -91,14 +91,14 @@ $25. Runtime balances and counters continue changing after this checkpoint.
 The released edge build passed 140/140 native CTest targets and 25 focused tests
 against the packaged Python code. Earlier checks include 383 model tests,
 131 tooling tests and five named mutation kills. See
-[VALIDATION.md](evidence/stochastic_cash_2026-10-07/VALIDATION.md).
+[VALIDATION.md](../archive/evidence/stochastic_cash_2026-10-07/VALIDATION.md).
 These are engineering checks; neither this short run nor proxy fills establish
 profitable trading, real venue execution quality or leaderboard eligibility.
 
-- [Deployment commands and incidents](evidence/stochastic_cash_2026-10-07/DEPLOYED.md)
-- [Alert mount/ownership repair and delivery evidence](evidence/stochastic_cash_2026-10-07/ALERT_DELIVERY_REPAIR.md)
-- [Approved ongoing-session scope](evidence/stochastic_cash_2026-10-07/PROTOCOL.md)
-- [Earlier fresh-ledger reset commands](evidence/stochastic_1s_2026-10-07/RESET_COMMANDS.md)
+- [Deployment commands and incidents](../archive/evidence/stochastic_cash_2026-10-07/DEPLOYED.md)
+- [Alert mount/ownership repair and delivery evidence](../archive/evidence/stochastic_cash_2026-10-07/ALERT_DELIVERY_REPAIR.md)
+- [Approved ongoing-session scope](../archive/evidence/stochastic_cash_2026-10-07/PROTOCOL.md)
+- [Earlier fresh-ledger reset commands](../archive/evidence/stochastic_1s_2026-10-07/RESET_COMMANDS.md)
 - [Paper trading runbook](PAPER_TRADING_RUNBOOK.md)
 
 This checkpoint makes no host changes. Preserve the current ledger, gateway

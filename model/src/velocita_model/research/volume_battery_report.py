@@ -2,7 +2,7 @@
 buy-and-hold) through the battery under the live execution model.
 
 Protocol, splits, grids, seeds and the recommendation rule are fixed in
-docs/evidence/volume_battery_2026-09-30/RESEARCH_LEDGER.md, written before
+archive/evidence/volume_battery_2026-09-30/RESEARCH_LEDGER.md, written before
 any data was seen. Stage `research` uses only the research period; stage
 `holdout` runs the untouched final four weeks once, with the choices the
 research stage saved.

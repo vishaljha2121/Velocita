@@ -1962,7 +1962,7 @@ latency guarantee. Peer16-entry/32-KiB frame limits and local maxima are approve
 Therefore there are **no honest offset tables yet** for portable snapshot chunks/install transactions, archive segments/coverage records, authenticated gateway IPC grants, asynchronous hard-state continuation/completion messages, or the planned observability shared page. They need contracts before encoding. The current BlockDescriptor completion is described above; it is not the future asynchronous term/vote fence protocol.
 
 CP-025 implements the separately approved outbound/log choices. Detailed native
-measurement and library resize arithmetic: [evidence](evidence/f5_capacity_integration_2026-09-23/README.md).
+measurement and library resize arithmetic: [evidence](../archive/evidence/f5_capacity_integration_2026-09-23/README.md).
 No wire bytes or whole-process ceiling changed. The following native descriptor
 is written by the Raft owner during admission, read by callbacks/result publication,
 and released only after successful poll/pop/clear ownership transfer:

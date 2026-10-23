@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-SPEC = importlib.util.spec_from_file_location('venue_basis', Path(os.environ.get('BASIS_SCRIPT', ROOT / 'docs/evidence/venue_price_basis_2026-10-09/basis.py')))
+SPEC = importlib.util.spec_from_file_location('venue_basis', Path(os.environ.get('BASIS_SCRIPT', ROOT / 'archive/evidence/venue_price_basis_2026-10-09/basis.py')))
 basis = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(basis)
 
@@ -23,7 +23,7 @@ class BasisTimingTests(unittest.TestCase):
         self.assertNotIn(1, closes)
 
     def test_old_timestamp_cache_is_refused(self):
-        with tempfile.TemporaryDirectory(dir=ROOT / 'docs/evidence/live_promotion_review_2026-10-09') as directory:
+        with tempfile.TemporaryDirectory(dir=ROOT / 'archive/evidence/live_promotion_review_2026-10-09') as directory:
             cache = Path(directory) / 'old.json'
             cache.write_text('{"1": 11}')
             with patch.object(basis.urllib.request, 'urlopen') as network:

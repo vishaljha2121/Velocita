@@ -174,4 +174,4 @@ and preserving WAL, funding and journals. Do not roll back to an old reader afte
 `TradingState` is 78512 bytes on the qualified-local Mac layout, within the unchanged 81920-byte
 budget. The reducer remains fixed-capacity; target-role validation scans at most eight callers.
 
-[Implementation, evidence and next steps](../evidence/automated_launch_2026-10-15/strategy-grant/README.md).
+[Implementation, evidence and next steps](../../archive/evidence/automated_launch_2026-10-15/strategy-grant/README.md).

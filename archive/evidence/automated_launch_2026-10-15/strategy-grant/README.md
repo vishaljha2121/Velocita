@@ -19,7 +19,7 @@ original balances. Caller 21 can then submit future intents, subject to the unch
 The strategy cannot mint funds, change bounds or controls, grant itself authority, or forge gateway
 evidence. Advancing either epoch disables the one-time grant. No automatic grant renewal exists.
 The strategy signal is computed by the Python driver; this does not move indicator evaluation into
-the kernel. [ADR 0016 amendment](../../../adr/0016-strategy-and-operator-callers-are-separate.md).
+the kernel. [ADR 0016 amendment](../../../../docs/adr/0016-strategy-and-operator-callers-are-separate.md).
 
 ## Validation
 

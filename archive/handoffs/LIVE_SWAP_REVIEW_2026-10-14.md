@@ -6,8 +6,8 @@ Branch: `v2/phase-5-corrections`. Committed checkpoint: `2e5642a30da3c9cea7e094a
 This is a review and continuation handoff, not a new grant of trading authority.
 The owner requested a holistic C++/architecture review and further implementation,
 with the smallest necessary scope. Read the [takeover prompt](CLAUDE_TAKEOVER_PROMPT_2026-10-14.md),
-[implemented-decision record](../adr/0025-bounded-swap-verification-and-policy-bound-recovery.md)
-and [proposed separation](../adr/0026-stable-execution-policy-and-per-attempt-route-evidence.md).
+[implemented-decision record](../../docs/adr/0025-bounded-swap-verification-and-policy-bound-recovery.md)
+and [proposed separation](../../docs/adr/0026-stable-execution-policy-and-per-attempt-route-evidence.md).
 
 ## 1. Executive state and the problem to review
 

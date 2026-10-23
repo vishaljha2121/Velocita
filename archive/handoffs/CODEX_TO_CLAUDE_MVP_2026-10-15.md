@@ -7,7 +7,7 @@ Updated 2026-10-15 17:42 UTC. This supersedes startup/activation instructions in
 1. Read this file and [current status evidence](../evidence/automated_launch_2026-10-15/focused-deploy/six-effect/HALTED_HANDOFF_STATUS.json).
 2. Review [Codex findings](../evidence/automated_launch_2026-10-15/CODEX_REVIEW.md), [focused implementation](../evidence/automated_launch_2026-10-15/focused-mvp/README.md), and [native qualification](../evidence/automated_launch_2026-10-15/focused-mvp/native/RESULTS.md).
 3. Read the [startup/seal evidence](../evidence/automated_launch_2026-10-15/focused-deploy/START_SEAL_RESULT.json), then the [feed incident](../evidence/automated_launch_2026-10-15/focused-deploy/six-effect/FEED_DIAGNOSTIC.json) and unfinished tests below.
-4. Use [live tracker](../LIVE_PROMOTION_PLAN_2026-10-07.md) for remaining work. Older dated sections are historical, not instructions to repeat ceremonies.
+4. Use [live tracker](../../docs/LIVE_PROMOTION_PLAN_2026-10-07.md) for remaining work. Older dated sections are historical, not instructions to repeat ceremonies.
 
 ## Current runtime: verified, stopped driver, no strategy trades
 

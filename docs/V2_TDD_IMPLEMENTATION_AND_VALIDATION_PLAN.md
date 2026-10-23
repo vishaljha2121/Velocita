@@ -238,11 +238,11 @@ durability, and implementation order. No document calls a proposal implemented.
 
 Implementation state: accepted on macOS ARM64, native ARM64 Ubuntu, and the
 physical Raspberry Pi 5 ARM64. See
-[`V2 Phase 1 macOS candidate evidence`](evidence/V2_PHASE1_MACOS_CANDIDATE.md)
+[`V2 Phase 1 macOS candidate evidence`](../archive/evidence/V2_PHASE1_MACOS_CANDIDATE.md)
 and
-[`V2 Phase 1 ARM64 Linux container candidate evidence`](evidence/V2_PHASE1_ARM64_CONTAINER_CANDIDATE.md).
+[`V2 Phase 1 ARM64 Linux container candidate evidence`](../archive/evidence/V2_PHASE1_ARM64_CONTAINER_CANDIDATE.md).
 The target-hardware result is recorded in
-[`V2 Phase 1 Raspberry Pi acceptance evidence`](evidence/V2_PHASE1_RASPBERRY_PI_ACCEPTANCE.md).
+[`V2 Phase 1 Raspberry Pi acceptance evidence`](../archive/evidence/V2_PHASE1_RASPBERRY_PI_ACCEPTANCE.md).
 
 ### Objective
 
@@ -312,17 +312,17 @@ Its exact-root physical Raspberry Pi checkpoint passed on 2026-09-04: all
 firmware reported `throttled=0x0` before and after, and temperature moved from
 43.55 C to 48.50 C.
 See
-[`V2 Phase 2 policy-kernel experiment evidence`](evidence/V2_PHASE2_POLICY_KERNEL_EXPERIMENT.md)
+[`V2 Phase 2 policy-kernel experiment evidence`](../archive/evidence/V2_PHASE2_POLICY_KERNEL_EXPERIMENT.md)
 and
-[`V2 Phase 2 source-admission experiment evidence`](evidence/V2_PHASE2_SOURCE_ADMISSION_EXPERIMENT.md),
+[`V2 Phase 2 source-admission experiment evidence`](../archive/evidence/V2_PHASE2_SOURCE_ADMISSION_EXPERIMENT.md),
 and
-[`V2 Phase 2 state-snapshot experiment evidence`](evidence/V2_PHASE2_STATE_SNAPSHOT_EXPERIMENT.md).
+[`V2 Phase 2 state-snapshot experiment evidence`](../archive/evidence/V2_PHASE2_STATE_SNAPSHOT_EXPERIMENT.md).
 Detailed codec/replay evidence and education are in
-[`V2 Phase 2 canonical replay experiment evidence`](evidence/V2_PHASE2_CANONICAL_REPLAY_EXPERIMENT.md)
+[`V2 Phase 2 canonical replay experiment evidence`](../archive/evidence/V2_PHASE2_CANONICAL_REPLAY_EXPERIMENT.md)
 and
 [`V2 canonical codec and replay guide`](V2_CANONICAL_CODEC_REPLAY_GUIDE.md).
 Generated-model evidence is in
-[`V2 Phase 2 model replay experiment evidence`](evidence/V2_PHASE2_MODEL_REPLAY_EXPERIMENT.md).
+[`V2 Phase 2 model replay experiment evidence`](../archive/evidence/V2_PHASE2_MODEL_REPLAY_EXPERIMENT.md).
 
 ### Objective
 
@@ -377,7 +377,7 @@ byte-equivalent results and final state snapshots for the handwritten and
 generated model corpora on macOS, pinned ARM64 Linux, and the physical Pi.
 
 The acceptance record is
-[`V2 Phase 2 deterministic-kernel acceptance`](evidence/V2_PHASE2_DETERMINISTIC_KERNEL_ACCEPTANCE.md).
+[`V2 Phase 2 deterministic-kernel acceptance`](../archive/evidence/V2_PHASE2_DETERMINISTIC_KERNEL_ACCEPTANCE.md).
 
 ### Rollback
 

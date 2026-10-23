@@ -1,6 +1,6 @@
 # Effect 25: resolve a venue-failed order that can never land
 
-Contract: [ADR 0027 amendment of 2026-10-16](../../../adr/0027-unsent-effect-release-and-reviewed-baseline.md).
+Contract: [ADR 0027 amendment of 2026-10-16](../../../../docs/adr/0027-unsent-effect-release-and-reviewed-baseline.md).
 Owner approvals 2026-10-16: the automatic gateway path, a read-only recovery-only gateway start after the
 review window with an owner-minted TM token, a scoped commit and native qualification.
 

@@ -55,10 +55,10 @@ Standing constraints:
 
 | ADR | Decision | State |
 |---|---|---|
-| [0015](adr/0015-operator-only-position-bounded-risk-limits.md) | Risk limits are operator-only and bound position. Includes the book mapping and the four deviations, each with its reason. | Implemented in the `kernel` copy |
-| [0016](adr/0016-strategy-and-operator-callers-are-separate.md) | Strategy (21) and operator (9) are separate callers. Paper mode is level-triggered and re-syncs from the refusal. | Implemented in the `edge` copy |
-| [0017](adr/0017-the-gateway-is-a-separate-process-reading-committed-state.md) | The gateway is a separate process, reads the canonical snapshot and receives authenticated proofs. | Design accepted, implementation in progress |
-| [0018](adr/0018-paper-venue-fills-fill-or-kill-at-measured-costs.md) | The paper venue fills FOK at the limit price with measured costs, has fault scenarios, and surfaced five kernel findings. | Implemented in the `paper` copy |
+| [0015](../docs/adr/0015-operator-only-position-bounded-risk-limits.md) | Risk limits are operator-only and bound position. Includes the book mapping and the four deviations, each with its reason. | Implemented in the `kernel` copy |
+| [0016](../docs/adr/0016-strategy-and-operator-callers-are-separate.md) | Strategy (21) and operator (9) are separate callers. Paper mode is level-triggered and re-syncs from the refusal. | Implemented in the `edge` copy |
+| [0017](../docs/adr/0017-the-gateway-is-a-separate-process-reading-committed-state.md) | The gateway is a separate process, reads the canonical snapshot and receives authenticated proofs. | Design accepted, implementation in progress |
+| [0018](../docs/adr/0018-paper-venue-fills-fill-or-kill-at-measured-costs.md) | The paper venue fills FOK at the limit price with measured costs, has fault scenarios, and surfaced five kernel findings. | Implemented in the `paper` copy |
 
 ### Owner decisions, in the owner's words (2026-09-29)
 

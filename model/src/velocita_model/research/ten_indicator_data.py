@@ -13,7 +13,7 @@ import zipfile
 
 from .fast_trend_data import Bars,ROOT,BEGIN,TRAIN,WF,END,parse_archive,cadence_indices
 
-OUT=ROOT/'docs/evidence/ten_indicator_battery_2026-10-07'
+OUT=ROOT/'archive/evidence/ten_indicator_battery_2026-10-07'
 LEDGER_HASH='278f60c660c98678d566b6292252fd7f2203eff08d23c55b8121eb387dc0e8af'
 
 
@@ -46,7 +46,7 @@ def approval():
 
 def load_cached():
     approval()
-    source=ROOT/'docs/evidence/fast_trend_battery_2026-10-06/data_manifest.json'
+    source=ROOT/'archive/evidence/fast_trend_battery_2026-10-06/data_manifest.json'
     manifest=json.loads(source.read_text())
     if len(manifest)!=41:
         raise ValueError('expected 41 registered archives')

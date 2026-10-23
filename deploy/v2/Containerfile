@@ -25,7 +25,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /build/velocita-v2-shadow-submitter /usr/local/bin/velocita-v2-shadow-submitter
 COPY --from=builder /src/model/src /opt/velocita-model/src
-COPY --from=builder /src/docs/evidence/truemarkets_markup_2026-09-28/quotes_buy_sell_1631utc.json /opt/velocita-model/evidence/
+COPY --from=builder /src/archive/evidence/truemarkets_markup_2026-09-28/quotes_buy_sell_1631utc.json /opt/velocita-model/evidence/
 COPY --from=builder /opt/velocita-deps/aeron/LICENSE /usr/share/licenses/aeron/LICENSE
 ENV PYTHONPATH=/opt/velocita-model/src PYTHONDONTWRITEBYTECODE=1
 LABEL org.velocita.source_commit="${SOURCE_COMMIT}" org.velocita.toolchain_image_id="${TOOLCHAIN_ID}"

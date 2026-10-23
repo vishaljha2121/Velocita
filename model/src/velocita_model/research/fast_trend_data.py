@@ -20,7 +20,7 @@ WF = datetime(2024, 9, 1, tzinfo=UTC)
 END = datetime(2026, 9, 1, tzinfo=UTC)
 LEDGER_HASH = '36831661681edfa1e8c83b0338aed5a401fc8d06fd9c9b246903162847bb4ace'
 ROOT = Path(__file__).resolve().parents[4]
-OUT = ROOT / 'docs/evidence/fast_trend_battery_2026-10-06'
+OUT = ROOT / 'archive/evidence/fast_trend_battery_2026-10-06'
 
 
 @dataclass

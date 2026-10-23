@@ -2,7 +2,7 @@
 
 2026-09-23; branch `v2/phase-5-corrections`, base HEAD `d44a4a9`, dirty working
 tree. This is development evidence, not a new frozen target acceptance.
-Approved contract: [CP-038](../../F5_ARCHIVE_CATALOG_BYTE_REVIEW.md).
+Approved contract: [CP-038](../../../docs/F5_ARCHIVE_CATALOG_BYTE_REVIEW.md).
 
 ## What is actually exercised
 

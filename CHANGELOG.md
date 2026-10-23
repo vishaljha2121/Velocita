@@ -3527,9 +3527,9 @@ tests pass on macOS ARM64. The exact Phase 1 content root also passes Release,
 benchmark-instrumented, AddressSanitizer, and UndefinedBehaviorSanitizer tests
 under native ARM64 Ubuntu 26.04 with GCC 15.2. Raw commands, measurements,
 limitations, and the remaining target gate are recorded in
-[`docs/evidence/V2_PHASE1_MACOS_CANDIDATE.md`](docs/evidence/V2_PHASE1_MACOS_CANDIDATE.md)
+[`docs/evidence/V2_PHASE1_MACOS_CANDIDATE.md`](archive/evidence/V2_PHASE1_MACOS_CANDIDATE.md)
 and
-[`docs/evidence/V2_PHASE1_ARM64_CONTAINER_CANDIDATE.md`](docs/evidence/V2_PHASE1_ARM64_CONTAINER_CANDIDATE.md).
+[`docs/evidence/V2_PHASE1_ARM64_CONTAINER_CANDIDATE.md`](archive/evidence/V2_PHASE1_ARM64_CONTAINER_CANDIDATE.md).
 
 Phase 1 passed its physical Raspberry Pi ARM64 gate on 2026-09-03 as the
 unchanged contract subset of source root
@@ -3537,7 +3537,7 @@ unchanged contract subset of source root
 The combined gate ran the unchanged Phase 1 suites in Release,
 benchmark-instrumented Release, and ASan/UBSan Debug configurations. Detailed
 target evidence is recorded in
-[`docs/evidence/V2_PHASE1_RASPBERRY_PI_ACCEPTANCE.md`](docs/evidence/V2_PHASE1_RASPBERRY_PI_ACCEPTANCE.md).
+[`docs/evidence/V2_PHASE1_RASPBERRY_PI_ACCEPTANCE.md`](archive/evidence/V2_PHASE1_RASPBERRY_PI_ACCEPTANCE.md).
 
 ### Phase 2 experimental increments - policy lifecycle and control authority
 
@@ -3554,7 +3554,7 @@ ASan/UBSan V2 suites pass under ARM64 Ubuntu 26.04 with GCC 15.2 for source root
 `627b38f488aad60d3f0a65874a4bb132e196400c31c2e406f4b615e1095221d3`.
 Detailed RED/GREEN evidence, invariants, C++ design notes, and limitations are
 recorded in
-[`docs/evidence/V2_PHASE2_POLICY_KERNEL_EXPERIMENT.md`](docs/evidence/V2_PHASE2_POLICY_KERNEL_EXPERIMENT.md).
+[`docs/evidence/V2_PHASE2_POLICY_KERNEL_EXPERIMENT.md`](archive/evidence/V2_PHASE2_POLICY_KERNEL_EXPERIMENT.md).
 
 Commits `6de06ec` and `2849a52` add the next TDD increment: fail-safe strategy
 mode, monotonic kill epochs, monotonic executor generations, generation-fenced
@@ -3590,7 +3590,7 @@ when full. Reconciliation commands, snapshot/state-digest coverage, and
 randomized replay remain pending. The increment passed its physical Raspberry
 Pi checkpoint on 2026-09-03 with clean power state before and after the run.
 Detailed rationale, invariants, C++ mechanics, and limitations are recorded in
-[`docs/evidence/V2_PHASE2_SOURCE_ADMISSION_EXPERIMENT.md`](docs/evidence/V2_PHASE2_SOURCE_ADMISSION_EXPERIMENT.md).
+[`docs/evidence/V2_PHASE2_SOURCE_ADMISSION_EXPERIMENT.md`](archive/evidence/V2_PHASE2_SOURCE_ADMISSION_EXPERIMENT.md).
 
 Experimental commit `865ec08` adds a bounded canonical `TradingState`
 snapshot codec and SHA-256 state digest. The format uses explicit little-endian
@@ -3614,7 +3614,7 @@ The exact source root passed its physical Raspberry Pi checkpoint on
 2026-09-03: both wrapper and container gates passed, all three configurations
 passed, firmware reported `throttled=0x0` before and after, and temperature
 moved from 43.55 C to 48.50 C. Detailed evidence is recorded in
-[`docs/evidence/V2_PHASE2_STATE_SNAPSHOT_EXPERIMENT.md`](docs/evidence/V2_PHASE2_STATE_SNAPSHOT_EXPERIMENT.md).
+[`docs/evidence/V2_PHASE2_STATE_SNAPSHOT_EXPERIMENT.md`](archive/evidence/V2_PHASE2_STATE_SNAPSHOT_EXPERIMENT.md).
 
 Experimental commits `a04094e` and `0a20e4f` add canonical versioned kernel
 command/result frames and a byte-level replay boundary. All eight current
@@ -3638,7 +3638,7 @@ The exact source root passed its physical Raspberry Pi checkpoint on
 Generated/model-based replay, durable snapshot publication, Raft/WAL
 integration, receipt expiry, and compaction remain pending. Detailed evidence
 and C++ rationale are in
-[`docs/evidence/V2_PHASE2_CANONICAL_REPLAY_EXPERIMENT.md`](docs/evidence/V2_PHASE2_CANONICAL_REPLAY_EXPERIMENT.md)
+[`docs/evidence/V2_PHASE2_CANONICAL_REPLAY_EXPERIMENT.md`](archive/evidence/V2_PHASE2_CANONICAL_REPLAY_EXPERIMENT.md)
 and
 [`docs/V2_CANONICAL_CODEC_REPLAY_GUIDE.md`](docs/V2_CANONICAL_CODEC_REPLAY_GUIDE.md).
 
@@ -3661,7 +3661,7 @@ reported `throttled=0x0` before and after, and temperature moved from 43.55 C
 to 48.50 C. This expands semantic/replay evidence; it does not establish
 real-Raft integration, durability, capacity, or trading authority. Detailed
 evidence is in
-[`docs/evidence/V2_PHASE2_MODEL_REPLAY_EXPERIMENT.md`](docs/evidence/V2_PHASE2_MODEL_REPLAY_EXPERIMENT.md).
+[`docs/evidence/V2_PHASE2_MODEL_REPLAY_EXPERIMENT.md`](archive/evidence/V2_PHASE2_MODEL_REPLAY_EXPERIMENT.md).
 
 ### Phase 2 accepted - deterministic kernel foundation
 
@@ -3672,7 +3672,7 @@ and the transactional outbox remain exclusively Phase 4 work. This removes the
 earlier checklist overlap without pulling later behavior forward.
 
 The closure record is
-[`docs/evidence/V2_PHASE2_DETERMINISTIC_KERNEL_ACCEPTANCE.md`](docs/evidence/V2_PHASE2_DETERMINISTIC_KERNEL_ACCEPTANCE.md).
+[`docs/evidence/V2_PHASE2_DETERMINISTIC_KERNEL_ACCEPTANCE.md`](archive/evidence/V2_PHASE2_DETERMINISTIC_KERNEL_ACCEPTANCE.md).
 
 ### Phase 3 planned - authoritative decision evaluation
 
@@ -3692,7 +3692,7 @@ Release suite passed 14/14 and the V2 ASan/UBSan suite passed 11/11 on the host.
 It does not yet provide authoritative decisions, revised decision-frame bytes,
 retained decision identity, risk, orders, outbox, ARM64, Pi, or trading proof.
 Detailed evidence is in
-[`docs/evidence/V2_PHASE3_RULE_EVALUATOR_EXPERIMENT.md`](docs/evidence/V2_PHASE3_RULE_EVALUATOR_EXPERIMENT.md).
+[`docs/evidence/V2_PHASE3_RULE_EVALUATOR_EXPERIMENT.md`](archive/evidence/V2_PHASE3_RULE_EVALUATOR_EXPERIMENT.md).
 
 Experimental commit `3f65187` implements the Phase 3B decision-frame schema
 revision. Payload families now carry independent schema versions; only the
@@ -3708,7 +3708,7 @@ the bounded maximum decision frame is now 421 bytes. The complete Release suite
 passed 14/14 and the V2 ASan/UBSan suite passed 11/11 on the host. Source-state
 comparison, validity evaluation, retained decision identity, ARM64/Pi evidence,
 risk, orders, and outbox remain pending. Detailed evidence is in
-[`docs/evidence/V2_PHASE3_DECISION_FRAME_V2_EXPERIMENT.md`](docs/evidence/V2_PHASE3_DECISION_FRAME_V2_EXPERIMENT.md).
+[`docs/evidence/V2_PHASE3_DECISION_FRAME_V2_EXPERIMENT.md`](archive/evidence/V2_PHASE3_DECISION_FRAME_V2_EXPERIMENT.md).
 
 Experimental commit `e650f31` adds the required pre-3C memory-layout
 guardrails. Canonical codec sizes, resident C++ object sizes, and cache-line
@@ -3730,7 +3730,7 @@ passed its physical Raspberry Pi 5 ARM64 gate on 2026-09-04. The target's
 runtime L1 data-cache line matched the compiled 64-byte assumption, all 12 V2
 sanitizer suites passed, firmware power remained `throttled=0x0`, and host
 temperature moved from 44.10 C to 49.05 C. Detailed evidence is in
-[`docs/evidence/V2_PHASE3_LAYOUT_GUARDRAILS_EXPERIMENT.md`](docs/evidence/V2_PHASE3_LAYOUT_GUARDRAILS_EXPERIMENT.md).
+[`docs/evidence/V2_PHASE3_LAYOUT_GUARDRAILS_EXPERIMENT.md`](archive/evidence/V2_PHASE3_LAYOUT_GUARDRAILS_EXPERIMENT.md).
 
 Experimental commit `c4283f6` defines the pre-reducer Phase 3C retained
 decision layout. A 64-byte hot record holds lookup, outcome, and control fields;
@@ -3741,7 +3741,7 @@ The records are deliberately not yet members of `TradingState`: snapshot,
 digest, replay, and atomic capacity behavior must change in the same reducer
 increment. Host Release passed 15/15 and V2 ASan/UBSan passed 12/12. Detailed
 evidence is in
-[`docs/evidence/V2_PHASE3_DECISION_RECORD_LAYOUT_EXPERIMENT.md`](docs/evidence/V2_PHASE3_DECISION_RECORD_LAYOUT_EXPERIMENT.md).
+[`docs/evidence/V2_PHASE3_DECISION_RECORD_LAYOUT_EXPERIMENT.md`](archive/evidence/V2_PHASE3_DECISION_RECORD_LAYOUT_EXPERIMENT.md).
 
 The Phase 3C host candidate integrates that layout into authoritative state.
 `EvaluateDecisionFrame` has explicit wire kind 9; kernel command/result and
@@ -3767,7 +3767,7 @@ throughput claim is made. Snapshot-validator and per-command receipt-lookup
 performance concerns are explicitly deferred to the measured V2.1 scope in
 [`docs/V2_1_PERFORMANCE_OPTIMIZATION_SCOPE.md`](docs/V2_1_PERFORMANCE_OPTIMIZATION_SCOPE.md).
 Detailed Phase 3C evidence is in
-[`docs/evidence/V2_PHASE3C_AUTHORITATIVE_DECISION_EXPERIMENT.md`](docs/evidence/V2_PHASE3C_AUTHORITATIVE_DECISION_EXPERIMENT.md).
+[`docs/evidence/V2_PHASE3C_AUTHORITATIVE_DECISION_EXPERIMENT.md`](archive/evidence/V2_PHASE3C_AUTHORITATIVE_DECISION_EXPERIMENT.md).
 
 Phase 3D direction review approves bounded constant-or-feature value sources,
 logical order-slot targeting, explicit replace intent, immutable policy safety
@@ -3787,7 +3787,7 @@ post-only from GTC/IOC/FOK and prohibit executor discretion. Full contract
 tests pass 17/17; optimized Release and ASan/UBSan V2 suites pass 14/14. Pure
 resolution, authoritative instrument/capability inputs, codecs, reducer
 integration, ARM64, and Pi evidence remain pending. Detailed evidence is in
-[`docs/evidence/V2_PHASE3D_ACTION_CONTRACT_EXPERIMENT.md`](docs/evidence/V2_PHASE3D_ACTION_CONTRACT_EXPERIMENT.md).
+[`docs/evidence/V2_PHASE3D_ACTION_CONTRACT_EXPERIMENT.md`](archive/evidence/V2_PHASE3D_ACTION_CONTRACT_EXPERIMENT.md).
 
 A follow-up contract slice adds authoritative `InstrumentExecutionProfile` and
 `VenueCapabilities` inputs. They bind monetary tick-lot conversion, inclusive

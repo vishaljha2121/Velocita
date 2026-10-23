@@ -138,7 +138,7 @@ in this review. Earlier October14 and paper sections below are historical.
 
 ## Authoritative checkpoint — 2026-10-07 stochastic paper
 
-Start with [BASELINE_2026-10-07_STOCHASTIC.md](BASELINE_2026-10-07_STOCHASTIC.md)
+Start with [BASELINE_2026-10-07_STOCHASTIC.md](../docs/BASELINE_2026-10-07_STOCHASTIC.md)
 and tag `v2-paper-stochastic-2026-10-07`. This records the exact deployed component
 commits, per-host image identities, paper state and documentation starting point.
 The ongoing session is running, policy/schema 129/139, 20 bp paper fees. ntfy's

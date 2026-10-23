@@ -89,4 +89,4 @@ not a throughput or storage-durability claim.
 - Phase 2 remains experimental and cannot authorize trading.
 
 The detailed educational treatment is in
-[`V2_CANONICAL_CODEC_REPLAY_GUIDE.md`](../V2_CANONICAL_CODEC_REPLAY_GUIDE.md).
+[`V2_CANONICAL_CODEC_REPLAY_GUIDE.md`](../../docs/V2_CANONICAL_CODEC_REPLAY_GUIDE.md).

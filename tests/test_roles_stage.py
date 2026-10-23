@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = Path(os.environ.get('STAGE_SCRIPT', ROOT / 'docs/evidence/roles_incarnation_2026-10-09/stage-host.sh'))
+SCRIPT = Path(os.environ.get('STAGE_SCRIPT', ROOT / 'archive/evidence/roles_incarnation_2026-10-09/stage-host.sh'))
 OLD = 'abd1e149a26d4062ba5bbba2d90b3305'
 NAMES = ['velocita-paper-stochastic-' + name for name in ('node', 'exporter', 'edge', 'gateway')]
 NAMES.append('velocita-paper-indicator-observer')
@@ -14,7 +14,7 @@ NAMES.append('velocita-paper-indicator-observer')
 
 class StageTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(dir=ROOT / 'docs/evidence/live_promotion_review_2026-10-09')
+        self.temp = tempfile.TemporaryDirectory(dir=ROOT / 'archive/evidence/live_promotion_review_2026-10-09')
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.live = self.root / 'velocita-indicator-paper/stochastic'

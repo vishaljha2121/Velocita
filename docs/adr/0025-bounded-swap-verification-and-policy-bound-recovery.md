@@ -50,7 +50,7 @@ An optional amendment to 147,537,213 is implemented and qualified but has not be
 
 Related decisions: ADR0009 two-step send, ADR0011 swap model, ADR0013 authority,
 ADR0017 gateway, ADR0019 inspecting signer, ADR0020 caller roles and ADR0021 accounting.
-The [detailed handoff](../handoffs/LIVE_SWAP_REVIEW_2026-10-14.md) maps implementations,
+The [detailed handoff](../../archive/handoffs/LIVE_SWAP_REVIEW_2026-10-14.md) maps implementations,
 commits, tests, operational ordering and explicit limitations to retained evidence.
 
 ## Qualification and current limit

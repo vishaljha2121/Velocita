@@ -21,13 +21,13 @@
 - [`MUST_CONFIRM_BEFORE_ADAPTER_CONNECT.md`](MUST_CONFIRM_BEFORE_ADAPTER_CONNECT.md):
   venue facts that are verified, and the ones that block collection until
   confirmed.
-- [`V2 Phase 1 macOS candidate evidence`](evidence/V2_PHASE1_MACOS_CANDIDATE.md):
+- [`V2 Phase 1 macOS candidate evidence`](../archive/evidence/V2_PHASE1_MACOS_CANDIDATE.md):
   exact contract commit, tests, codec measurements, limits, and pending
   Raspberry Pi gate.
-- [`V2 Phase 1 ARM64 Linux container candidate evidence`](evidence/V2_PHASE1_ARM64_CONTAINER_CANDIDATE.md):
+- [`V2 Phase 1 ARM64 Linux container candidate evidence`](../archive/evidence/V2_PHASE1_ARM64_CONTAINER_CANDIDATE.md):
   native ARM64 Ubuntu/GCC compatibility and sanitizer evidence, with the
   hardware claims it deliberately does not make.
-- [`V2 Phase 2 policy-kernel experiment evidence`](evidence/V2_PHASE2_POLICY_KERNEL_EXPERIMENT.md):
+- [`V2 Phase 2 policy-kernel experiment evidence`](../archive/evidence/V2_PHASE2_POLICY_KERNEL_EXPERIMENT.md):
   first bounded reducer increment, TDD evidence, invariants, cross-compiler
   matrix, and incomplete-phase limits.
 

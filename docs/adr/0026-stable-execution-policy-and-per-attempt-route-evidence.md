@@ -137,7 +137,7 @@ privileges; [simulation documentation](https://solana.com/docs/rpc/http/simulate
 describes a simulation, not a transaction broadcast or future-state guarantee.
 
 See [ADR0025](0025-bounded-swap-verification-and-policy-bound-recovery.md) for implemented
-behavior and the [handoff](../handoffs/LIVE_SWAP_REVIEW_2026-10-14.md) for source/evidence pins.
+behavior and the [handoff](../../archive/handoffs/LIVE_SWAP_REVIEW_2026-10-14.md) for source/evidence pins.
 
 ## As built (2026-10-14, local, uncommitted)
 

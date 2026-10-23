@@ -56,7 +56,7 @@ lifetime.
 
 ## Implementation correction — 2026-10-15, local qualification
 
-The [focused correction protocol](../evidence/automated_launch_2026-10-15/focused-mvp/PROTOCOL.md)
+The [focused correction protocol](../../archive/evidence/automated_launch_2026-10-15/focused-mvp/PROTOCOL.md)
 closes a separate implementation gap: widening the signing envelope did not make the gateway
 and signer journals support consecutive effects. The correction advances each durable fence only
 after an authenticated Raft settlement matches its predecessor. The signer performs its own read

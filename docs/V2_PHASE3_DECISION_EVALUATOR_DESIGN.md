@@ -397,7 +397,7 @@ and venue-capability-version identities.
 Resident sizes are independently bounded and reported. No `PolicyArtifact`,
 canonical payload, kernel result, snapshot, or replay bytes change in this
 slice. Detailed evidence is in
-[`V2 Phase 3D action-contract experiment`](evidence/V2_PHASE3D_ACTION_CONTRACT_EXPERIMENT.md).
+[`V2 Phase 3D action-contract experiment`](../archive/evidence/V2_PHASE3D_ACTION_CONTRACT_EXPERIMENT.md).
 
 #### 3D.4 TDD implementation sequence
 
@@ -462,7 +462,7 @@ bundle at 2,088 bytes and active plus staged at 4,176 bytes. `TradingState` is
 remains below 64 KiB. The hot decision record remains exactly one 64-byte cache
 line; the 112-byte exact proposal lives only in the cold record. Detailed
 evidence is in
-[`V2 Phase 3D executable-policy contract experiment`](evidence/V2_PHASE3D_EXECUTABLE_POLICY_CONTRACT_EXPERIMENT.md).
+[`V2 Phase 3D executable-policy contract experiment`](../archive/evidence/V2_PHASE3D_EXECUTABLE_POLICY_CONTRACT_EXPERIMENT.md).
 
 The companion codecs now establish exact maxima of 332 bytes for a 32-feature
 schema and 1,278 bytes for an executable artifact with eight templates and 32
@@ -581,4 +581,4 @@ in Phase 3D, dynamic risk is independently checked and atomically reserved in
 Phase 4, and violations reject rather than silently clamp the proposed trade.
 
 Phase 3A evidence is recorded in
-[`V2 Phase 3A ordered-rule evaluator evidence`](evidence/V2_PHASE3_RULE_EVALUATOR_EXPERIMENT.md).
+[`V2 Phase 3A ordered-rule evaluator evidence`](../archive/evidence/V2_PHASE3_RULE_EVALUATOR_EXPERIMENT.md).
