@@ -73,7 +73,6 @@ def run(session, output, catalog_raw, send=exchange, *, buy=False):
         finally:
             os.close(parent)
         write = CONTRACT.PROBE.private_new
-        # Must be durable before renewal too: a lost refresh response is ambiguous.
         request_body = body(buy=buy)
         write(output / 'attempt.json', json.dumps(dict(request=request_body, max_refresh=1, max_create=1)).encode())
         write(output / 'catalog.json', catalog_raw)

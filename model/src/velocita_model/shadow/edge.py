@@ -12,7 +12,7 @@ shadow submitter (`velocita-v2-shadow-submitter`) -> decisions and metrics.
   catalog's USD-per-tick; the program file is generated from the same Python
   rule program, so research and cluster cannot drift.
 * Agreement: the Python rule engine's match is compared with the cluster's on
-  every decision and counted, never hidden (M3a).
+  every decision and counted, never hidden.
 * Volume strategies (`volume.py`) append one feature after the four daily ones;
   the price is always the last feature. In paper mode the paper book
   (`paper_book.py`) may add `exits_only=1` to a TICK line (the weekly loss stop).

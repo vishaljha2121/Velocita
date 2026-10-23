@@ -115,8 +115,6 @@ class ApplyTests(unittest.TestCase):
         def metadata(path):
             uid=29002 if 'velocita-swap-signer' in str(path) else 29001
             return SimpleNamespace(st_mode=0o100600,st_uid=uid,st_gid=uid,st_nlink=1)
-        # Inject privileged host metadata and service operations only. Exercise
-        # apply's sequencing, release checks, journal checks and publication gate.
         for corrupt in (None,*release['files']):
             with self.subTest(corrupt=corrupt),ExitStack() as stack:
                 checked=[]
@@ -204,7 +202,6 @@ class ApplyTests(unittest.TestCase):
         A.publish(paths,self.root/'archive',True)
         for path,(old,new) in paths.items():
             self.assertEqual(path.read_bytes(),new)
-        # Completed replay is idempotent, preserving archive and new bytes.
         A.publish(paths,self.root/'archive',True)
 
     def test_initial_apply_refuses_mixed_state_and_recovery_requires_archive(self):
@@ -267,7 +264,6 @@ class ApplyTests(unittest.TestCase):
 
     def test_inhibitor_location_can_be_stated_by_user_manager(self):
         self.assertEqual(A.SENTINEL.parent,Path('/etc'),'publicly_traversable_inhibitor_parent')
-        # A private ancestor must be rejected before any file or systemctl change.
         with mock.patch.object(A,'SENTINEL',self.root/'guard'),mock.patch.object(A,'command') as command,self.assertRaises(ValueError,msg='private_inhibitor_refused'):
             A.inhibit('ab'*32)
         command.assert_not_called()
@@ -288,7 +284,6 @@ class ApplyTests(unittest.TestCase):
         probe.assert_called_once();self.assertTrue(publish.call_args.args[-1])
 
     def test_authenticated_proof_cannot_be_supplied_as_saved_json(self):
-        # Only read_live executes the fixed helper. No API parameter accepts report bytes.
         import inspect
         self.assertEqual(list(inspect.signature(A.read_live).parameters),['manifest','files','helper_sha256','output'])
         self.assertNotIn('proof',inspect.signature(A.apply).parameters)

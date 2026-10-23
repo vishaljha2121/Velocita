@@ -91,8 +91,6 @@ def main():
         changed = output / (name + ".cpp")
         changed.write_text(original.replace(old, new, 1))
         binary = output / name
-        # Identity now lives with its journal bytes; compile that changed source
-        # instead of linking the unmodified store object. Resolution stays original.
         mutated_link = ([str(path)] + [p for p in link if p != str(output / "v2_swap_submission_store.o")]
                         if identity_mutation else link)
         built = subprocess.run(common + [str(changed)] + mutated_link + ["-o", str(binary)], capture_output=True, text=True)

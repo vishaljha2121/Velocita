@@ -117,9 +117,6 @@ common_cmake_args=(
     -DFETCHCONTENT_FULLY_DISCONNECTED=ON
 )
 
-# Derived from CMakeLists.txt by the `velocita-all-tests` aggregate target, so it
-# cannot drift as suites are added. Only the non-test binaries the gate records
-# are named individually.
 release_targets=(
     velocita-all-tests
     v2-contract-benchmark
@@ -128,9 +125,6 @@ release_targets=(
 )
 printf '%s\n' "${release_targets[@]}" >"$evidence_dir/required-targets.txt"
 
-# This is an independent acceptance inventory, not a list derived from the
-# configured tree. A newly added or accidentally omitted CTest suite therefore
-# fails review instead of silently changing what the gate means.
 v2_required_tests=(
     v2-contract-tests
     v2-value-contract-tests
@@ -315,23 +309,6 @@ cmake --build "$sanitized_build" \
     --parallel "$build_jobs"
 
 failure_step=sanitized_tests
-# LeakSanitizer is disabled EXPLICITLY rather than by accident.
-#
-# GCC's AddressSanitizer enables LSan by default on x86-64 and not on aarch64.
-# LSan needs ptrace to stop threads at exit, and this gate runs --cap-drop ALL,
-# so on x86-64 every suite died during LSan initialisation before executing a
-# single test - while the identical aarch64 run passed, because LSan was never
-# active there.
-#
-# So "Debug ASan+UBSan" has always meant something different on the two targets,
-# and the acceptance records said 26/26 for both without noting it. Pinning
-# detect_leaks=0 makes the three environments test the SAME thing and makes the
-# difference visible in this file instead of buried in a runtime default.
-#
-# Enabling leak detection uniformly - --cap-add SYS_PTRACE plus detect_leaks=1 on
-# both targets - is real added coverage and is deferred deliberately: it would
-# widen what the already-accepted ARM64 evidence asserts, so it belongs in a
-# reviewed increment rather than smuggled into a target bring-up.
 export ASAN_OPTIONS="${ASAN_OPTIONS:-}${ASAN_OPTIONS:+:}detect_leaks=0"
 export UBSAN_OPTIONS="${UBSAN_OPTIONS:-}${UBSAN_OPTIONS:+:}halt_on_error=1:print_stacktrace=1"
 printf 'asan_options=%s\n' "$ASAN_OPTIONS" >>"$evidence_dir/metadata.txt"

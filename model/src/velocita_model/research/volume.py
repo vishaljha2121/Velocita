@@ -20,16 +20,16 @@ from typing import Sequence
 class BandParams:
     target_weight: float = 0.5
     band: float = 0.02
-    cost_bps: float = 10.0        # per side on traded value; an ASSUMPTION until the markup is measured
-    start_in_cash: bool = False   # True counts the initial purchase as volume
+    cost_bps: float = 10.0
+    start_in_cash: bool = False
 
 
 @dataclass
 class VolumeResult:
     returns: list[float]
-    volume: float    # traded value / starting equity
+    volume: float
     trades: int
-    cost: float      # costs paid / starting equity
+    cost: float
 
     @property
     def volume_per_cost(self) -> float:
@@ -46,7 +46,7 @@ def band_rebalance(prices: Sequence[float], p: BandParams) -> VolumeResult:
             value *= price / prices[i - 1]
         equity = value + cash
         weight = value / equity
-        if abs(weight - p.target_weight) > p.band:  # starting in cash (weight 0) is always outside
+        if abs(weight - p.target_weight) > p.band:
             target = p.target_weight * equity
             traded = abs(target - value)
             fee = traded * cost_rate

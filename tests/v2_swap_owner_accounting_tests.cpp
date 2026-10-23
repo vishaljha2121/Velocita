@@ -97,16 +97,13 @@ void bounds_oracles() {
     require(compare_observed_swap_bounds(f.intent,f.measure())==ObservedSwapBounds::receipt_shortfall,"sell_quote_shortfall");
 }
 void current_simulation_net_receipt() {
-    // October 12 unsigned RPC observation; synthetic keys/baseline wallet.
-    // Hand arithmetic: 9,410,957 output + 1,488,440 deposit - 2,039,280
-    // reimbursement = 8,860,117 new owner lamports. No trade was executed.
     Fixture f;
     f.accounts[0].after.lamports=18'860'117;
     f.accounts[2].before={true,1'488'440,1'006'989,0,DepositControl::external};
     f.accounts[2].after={true,1'488'440,6'989,0,DepositControl::external};
     f.intent.quote_input=swap::QuoteAtoms{998'000};
     f.intent.max_quote_debit=swap::QuoteAtoms{1'000'000};
-    f.intent.min_base_receive=swap::BaseAtoms{8'896'147}; // Candidate bound, not a verified program guarantee.
+    f.intent.min_base_receive=swap::BaseAtoms{8'896'147};
     const auto r=f.measure();
     require(r.code==OwnerAccountingCode::measured_declared_scope_only &&
         r.usdc_change==-1'000'000 && r.sol_change==8'860'117 && r.deposit_change==0,

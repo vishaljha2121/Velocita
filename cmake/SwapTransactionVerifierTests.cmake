@@ -13,7 +13,6 @@ if(TARGET v2-swap-signer-production-gate)
     target_link_libraries(v2-swap-signer-verified-tests PRIVATE velocita_v2_node OpenSSL::Crypto)
     add_test(NAME v2-swap-signer-verified-tests COMMAND v2-swap-signer-verified-tests)
 endif()
-# Every test that compiles the session directly needs its pure verifier dependency.
 get_property(verifier_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
 foreach(verifier_target IN LISTS verifier_targets)
     get_target_property(verifier_sources ${verifier_target} SOURCES)

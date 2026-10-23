@@ -41,7 +41,6 @@ class DailyBars:
     symbols: tuple[str, ...]
     close: tuple[tuple[float | None, ...], ...]
     quote_volume: tuple[tuple[float | None, ...], ...] | None
-    # Point-in-time universe membership per asset and day; None means all eligible.
     eligible: tuple[tuple[bool, ...], ...] | None = None
 
     def index(self, symbol: str) -> int:
@@ -70,7 +69,6 @@ def verify_checksum(data: bytes, checksum_file_text: str) -> None:
 
 
 def _utc_day(open_time: int) -> date:
-    # Spot archives moved from milliseconds to microseconds in 2025.
     seconds = open_time / 1_000_000 if open_time >= 10**15 else open_time / 1000
     return datetime.fromtimestamp(seconds, tz=timezone.utc).date()
 
@@ -83,7 +81,7 @@ def parse_binance_kline_zip(data: bytes) -> list[tuple[date, float, float]]:
         text = archive.read(name).decode("utf-8")
     rows = []
     for fields in csv.reader(io.StringIO(text)):
-        if not fields or not fields[0].isdigit():  # some archives carry a header row
+        if not fields or not fields[0].isdigit():
             continue
         rows.append((_utc_day(int(fields[0])), float(fields[4]), float(fields[7])))
     return rows
@@ -138,7 +136,7 @@ def load_binance(symbols: Mapping[str, str], start: date, end: date, cache_dir: 
                     data = http.get(path).body
                 except urllib.error.HTTPError as error:
                     if error.code == 404 and not rows:
-                        continue  # not listed yet
+                        continue
                     raise DataError(f"{pair} {month}: HTTP {error.code}") from error
                 verify_checksum(data, http.get(path + ".CHECKSUM").body.decode("utf-8"))
                 cached.write_bytes(data)
@@ -178,7 +176,7 @@ def load_truemarkets(symbols: Sequence[str], window: str = "36M") -> DailyBars:
     return assemble(out, has_volume=False)
 
 
-BINANCE_API = "https://data-api.binance.vision"  # Binance's public market-data-only mirror
+BINANCE_API = "https://data-api.binance.vision"
 
 
 def _api_klines(http: ReadOnlyHttp, pair: str, interval: str, start: date, end: date, cache: Path) -> list[list]:
@@ -197,7 +195,7 @@ def _api_klines(http: ReadOnlyHttp, pair: str, interval: str, start: date, end: 
                                                            "startTime": begin, "endTime": stop,
                                                            "limit": 1000}).body)
         except urllib.error.HTTPError as error:
-            if error.code == 400:  # symbol unknown to the API
+            if error.code == 400:
                 break
             raise
         if not batch:

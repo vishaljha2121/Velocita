@@ -1,5 +1,4 @@
-// Real gateway processes use production coordinators/journals and authenticated
-// frames to three real V2Node replicas. Venue and settlement authority are fixtures.
+// Process drills: real gateway and signer processes against three voters, with fixture venue and settlement.
 #include <cstring>
 #define main existing_gateway_suite_main
 #include "v2_gateway_node_tests.cpp"
@@ -54,9 +53,6 @@ struct Wire {
         if(incoming.size()<8+size)return {};Bytes body(incoming.begin()+8,incoming.begin()+8+size);incoming.erase(incoming.begin(),incoming.begin()+8+size);return std::pair{node,std::move(body)};
     }
 };
-// Only the parent bridge observes child exit. A killed process can reset a Unix
-// stream with unread data before waitpid reports its exit. Keep draining complete
-// frames, then let the existing waitpid/SIGKILL/economic assertions decide success.
 void dead_peer_bridge_oracle(){
     int pair[2];require(::socketpair(AF_UNIX,SOCK_STREAM,0,pair)==0,"reset bridge fixture");
     Wire parent(pair[0],true);const char unread='x';
@@ -134,9 +130,6 @@ int signer_worker(const std::filesystem::path& root,unsigned epoch,int fd){
     SwapSignerSession session(link,store,*key,config,clock);swap_signer::Server server;
     require(server.listen(root/"signer.sock",::geteuid()),"signer protected Unix socket listens");
     while(!std::filesystem::exists(root/"stop-signer")){
-        // serve_once bounds the entire authenticated request, including Raft
-        // durability, not just the idle accept poll. Keep a finite two-second
-        // fixture budget inside the client's ten-second and worker bounds.
         const auto before=key->signature_attempts();(void)server.serve_once(session,2000);
         if(key->signature_attempts()>before)journal_line(root,"signature");
     }
@@ -211,9 +204,6 @@ int run_worker(Cluster& c,const std::filesystem::path& executable,const std::fil
     {std::ofstream stop(root/"stop-signer");stop<<"stop";}
     int signer_status{};const auto sign_start=steady_ms(),sign_end=sign_start+10000;
     unsigned shutdown_turns{};
-    // The replicas live in this parent. Waiting for the separate signer must
-    // not freeze all three voters and manufacture a quorum outage between
-    // gateway restarts. Continue the signer's authenticated bridge as well.
     while(::waitpid(signer_pid,&signer_status,WNOHANG)==0){
         require(steady_ms()<sign_end,"signer bounded shutdown");
         while(auto packet=signer_wire.receive()){

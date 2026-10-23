@@ -36,18 +36,18 @@ class Params:
     leverage_cap: float = 0.5
     caution_exposure: float = 0.50
     risk_off_exposure: float = 0.15
-    cost_bps: float = 30.0          # per side, on traded value; an ASSUMPTION until venue fees are known
+    cost_bps: float = 30.0
     lag_days: int = 1
-    rebalance_weekday: Optional[int] = 0  # Monday; None rebalances daily
+    rebalance_weekday: Optional[int] = 0
     regime_symbol: str = "BTC"
 
 
 @dataclass
 class Result:
-    returns: list[float]                       # simple return of equity, close i-1 -> close i
-    holdings: list[tuple[str | None, float]]  # target held after close i
+    returns: list[float]
+    holdings: list[tuple[str | None, float]]
     fills: int = 0
-    turnover: float = 0.0                     # traded value / equity, summed
+    turnover: float = 0.0
     exposure_days: int = 0
 
 
@@ -108,8 +108,6 @@ def backtest(bars: DailyBars, p: Params) -> Result:
     for i in range(n):
         if i > 0 and asset is not None:
             if close[asset][i] is None:
-                # Halted or delisted: sold at its last close (generous for a
-                # collapse, since the last print may not have been fillable).
                 equity = cash + value
                 cash, value = equity - value * p.cost_bps / 10_000, 0.0
                 asset, fraction = None, 0.0
@@ -121,7 +119,7 @@ def backtest(bars: DailyBars, p: Params) -> Result:
         if i in pending:
             target, target_fraction = pending.pop(i)
             if target is not None and close[target][i] is None:
-                target, target_fraction = None, 0.0  # stopped trading before the fill
+                target, target_fraction = None, 0.0
             equity = cash + value
             new_value = target_fraction * equity
             traded = abs(new_value - value) if target == asset else value + new_value

@@ -33,8 +33,6 @@ struct OwnerPropertyMeasurement {
 };
 enum class ObservedSwapBounds : std::uint8_t { unusable, debit_exceeded, receipt_shortfall, within_observed_net_bounds_only };
 
-// Local operator-reviewed cost policy, never a replicated command or signing proof.
-// A nonzero cap accepts that much reduction in buy output, not a percentage fee.
 struct SwapAcceptedBuyCosts {
     swap::BaseAtoms max_output_deduction{};
 };
@@ -45,9 +43,6 @@ struct BuyNetCostResult {
     BuyNetCostCode code{BuyNetCostCode::invalid};
     std::uint64_t maximum_deduction{}, minimum_net_receipt{};
 };
-// Inputs are execution-wide bounds, NOT balances seen in a preflight RPC read.
-// In particular idempotent account creation guarantees zero new sponsor funding
-// when the account already exists. This calculation grants no signing authority.
 [[nodiscard]] BuyNetCostResult bound_buy_net_cost(std::uint64_t gross_output_floor,
     std::uint64_t maximum_owner_payment, std::uint64_t guaranteed_new_external_funding,
     swap::BaseAtoms minimum_net_receipt, SwapAcceptedBuyCosts) noexcept;

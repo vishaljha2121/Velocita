@@ -1,4 +1,3 @@
-# Candidate-only TLS readiness toolchain; never retag the release dev image.
 ARG BASE
 FROM ${BASE}
 ARG BASE

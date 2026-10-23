@@ -1,11 +1,3 @@
-# Nightly market-data housekeeping on nuc1 (docs/MD_ARCHIVE_RUNBOOK.md), run by
-# velocita-md-archive.timer. Archives each complete UTC day of stream.db to
-# ~/velocita-md/archive/stream-YYYY-MM-DD.sqlite.gz (+ .sha256), then deletes a
-# day's rows only once the Mac has acknowledged a verified copy and the day is
-# outside the 3-day local window. Safe beside a running md-stream (WAL: one read
-# transaction, then short bounded deletes). Same image and mounts as
-# velocita-md-stream; no network, no secrets. Exit 3 = a day is blocked (see
-# the journal and velocita_md_archive_blocked_days).
 [Unit]
 Description=Velocita market-data archive and acknowledged prune (nightly)
 

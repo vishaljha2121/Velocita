@@ -1,4 +1,3 @@
-# Opt-in executable composition. This does not admit a real transaction route.
 option(VELOCITA_BUILD_SWAP_RUNTIME "Compile gated exact-input swap runtime into gateway" OFF)
 if(VELOCITA_BUILD_SWAP_RUNTIME)
     find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto)

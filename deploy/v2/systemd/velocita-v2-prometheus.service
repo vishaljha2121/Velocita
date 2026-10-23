@@ -1,11 +1,7 @@
-# nuc1 only. Scrapes all three hosts over Tailscale and sends firing alerts to
-# Alertmanager on this host; listens on 127.0.0.1 only.
-# 7 days / 1 GB retention, 512 MB memory cap.
 [Unit]
 Description=Velocita V2 Prometheus
 
 [Service]
-# (podman run creates the named volume on first use; podman 3.4 has no --ignore)
 ExecStart=/usr/bin/podman run --rm --replace --name velocita-v2-prometheus \
     --network host --memory 512m \
     -v velocita-v2-prometheus-data:/prometheus \

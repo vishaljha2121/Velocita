@@ -60,8 +60,6 @@ def identities():
         if (account.pw_uid, account.pw_gid, account.pw_shell) != (uid, uid, '/usr/sbin/nologin'):
             raise ValueError('permanent role identity differs')
         groups = set(os.getgrouplist(account.pw_name, account.pw_gid))
-        # Socket-group access is assigned only to the systemd service, never
-        # permanently to every process started under the gateway account.
         if groups != {uid}:
             raise ValueError('permanent role supplementary groups differ')
     if grp.getgrnam('velocita-swap-socket').gr_gid != 29002:
@@ -111,8 +109,6 @@ def command(role, run_id, nonce, rootfs, binary_sha256):
              'InaccessiblePaths=-/etc/velocita-swap -/var/lib/velocita-swap-gateway -/var/lib/velocita-swap-signer']
     if role == 'gateway':
         props += ['SupplementaryGroups=29002', 'BindReadOnlyPaths=' + signer_root + ':' + signer_root]
-    # Deliberately stricter than a live gateway: neither fixture role needs
-    # internet. Same voter-only BPF policy as the production signer.
     props += signer_network_properties(VOTERS)
     return ['/usr/bin/sudo', '-n', '/usr/bin/systemd-run', '--quiet', '--wait', '--pipe', '--collect',
             '--unit=velocita-comm-' + run_id + '-' + role] + [
@@ -161,8 +157,6 @@ def run(output, rootfs, binary_sha256, popen=subprocess.Popen, runner=subprocess
     try:
         deadline = time.monotonic() + 60
         children.append(popen(commands[0], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True))
-        # systemd creates the signer runtime directory before invoking the
-        # helper. The gateway needs it as its only cross-role bind mount.
         directory_deadline = time.monotonic() + 8
         signer_directory = Path('/run/velocita-comm-' + run_id + '-signer')
         while not signer_directory.is_dir():
@@ -185,7 +179,6 @@ def run(output, rootfs, binary_sha256, popen=subprocess.Popen, runner=subprocess
         report['error_type'] = type(exc).__name__
         report['error'] = str(exc)
     finally:
-        # Only this run's transient fixture units. Never production services.
         pending = ['velocita-comm-' + run_id + '-' + role + '.service'
                    for role, child in zip(('signer', 'gateway'), children) if child.poll() is None]
         report['cleanup'] = {'pending_units': pending}

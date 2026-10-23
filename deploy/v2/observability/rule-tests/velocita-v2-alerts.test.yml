@@ -1,7 +1,3 @@
-# promtool test rules deploy/v2/observability/rule-tests/velocita-v2-alerts.test.yml
-# Kept OUT of rules/: Prometheus loads every *.yml there as a rule file.
-# Hand-written series: nuc1 stays up, the Pi's exporter vanishes at 5m (target
-# down), nuc2's health page becomes unreadable at 10m (exporter up, up=0).
 rule_files:
   - ../rules/velocita-v2-alerts.yml
 evaluation_interval: 10s
@@ -21,14 +17,12 @@ tests:
       - series: 'velocita_v2_up{strategy="stochastic",job="velocita-v2",instance="100.85.36.22:9410",host="nuc2",node="3"}'
         values: '1x59 0x120'
     alert_rule_test:
-      # All three reporting: neither quorum alert.
       - eval_time: 4m
         alertname: VelocitaQuorumAtRisk
         exp_alerts: []
       - eval_time: 4m
         alertname: VelocitaQuorumLost
         exp_alerts: []
-      # Pi gone (2 of 3): at risk, not lost.
       - eval_time: 8m
         alertname: VelocitaQuorumAtRisk
         exp_alerts:
@@ -39,7 +33,6 @@ tests:
       - eval_time: 8m
         alertname: VelocitaQuorumLost
         exp_alerts: []
-      # nuc2's page unreadable too (1 of 3): lost, and still at risk.
       - eval_time: 12m
         alertname: VelocitaQuorumLost
         exp_alerts:
@@ -55,8 +48,6 @@ tests:
               summary: "Only 1 of 3 voters reporting"
               description: "The cluster still commits with two voters, but one more loss stops it. Restore the missing voter."
 
-  # Secrets presence: after a reboot the Pi's link key is missing; nuc1 has all.
-  # nuc1's check stops publishing at 5m (timer broken).
   - interval: 10s
     input_series:
       - series: 'velocita_secret_present{job="node",host="nuc1",secret="link-1-2",path="/run/user/1003/velocita-secrets/link-1-2.key",node="1",ssh_host="nuc1"}'
@@ -89,8 +80,6 @@ tests:
               summary: "Secrets check on nuc1 is not working"
               description: "Missing secrets would go unnoticed: the voter config is unreadable or names no key files, or the check stopped (systemctl --user status velocita-v2-secrets-check.timer)."
 
-  # Retained Raft log: nuc1's ordinary pool climbs from 6000 to 8128 (full at
-  # 14m); the Pi's kill reserve reaches 40 of 64 at 2m.
   - interval: 1m
     input_series:
       - series: 'velocita_v2_retained_log_entries{job="velocita-v2",host="nuc1",node="1",pool="ordinary"}'
@@ -102,11 +91,9 @@ tests:
       - series: 'velocita_v2_retained_log_capacity{job="velocita-v2",host="pi",node="2",pool="protected"}'
         values: '64x20'
     alert_rule_test:
-      # 6000/8128 = 73.8%: below the warning line.
       - eval_time: 0m
         alertname: VelocitaRaftLogFilling
         exp_alerts: []
-      # From 1m (6152 = 75.7%) above 75%; firing after 5m of that; at 7m 7064/8128.
       - eval_time: 7m
         alertname: VelocitaRaftLogFilling
         exp_alerts:
@@ -135,8 +122,6 @@ tests:
               summary: "pi operator kill reserve 62.5% used"
               description: "Each kill-path command (kill epoch, executor generation, strategy mode, mass cancel) permanently uses one of 64 reserved entries until compaction exists; submitter restarts use one each."
 
-  # Compaction: nuc2 leads a stranded voter from 2m; the Pi's last compaction
-  # paused 0.8 s; nuc1's floor stops moving at 10m with the log 60% full.
   - interval: 1m
     input_series:
       - series: 'velocita_v2_stranded_voters{job="velocita-v2",host="nuc2",node="3"}'
@@ -181,8 +166,6 @@ tests:
               summary: "nuc1 cannot compact: the floor has not moved for 30 minutes"
               description: "Some voter is not acknowledging the log, so no voter may reclaim it and the log keeps filling. Find the lagging voter (log positions) and restore it."
 
-  # Paper gateway (node-exporter textfile, host nuc1): the process stops
-  # reporting up at 6m; new risk is stopped at 8m; one unknown outcome at 10m.
   - interval: 1m
     input_series:
       - series: 'velocita_gateway_up{job="node",host="nuc1"}'
@@ -195,7 +178,6 @@ tests:
       - eval_time: 5m
         alertname: VelocitaGatewayDown
         exp_alerts: []
-      # Down since 6m: still pending at 7m (for: 2m).
       - eval_time: 7m
         alertname: VelocitaGatewayDown
         exp_alerts: []
@@ -209,7 +191,6 @@ tests:
       - eval_time: 7m
         alertname: VelocitaGatewayNewRiskStopped
         exp_alerts: []
-      # No pending period: fires on the first evaluation that sees 1.
       - eval_time: 8m
         alertname: VelocitaGatewayNewRiskStopped
         exp_alerts:
@@ -227,14 +208,10 @@ tests:
             exp_annotations:
               summary: "Paper gateway on nuc1 has an order with an unknown outcome"
               description: "The gateway could not establish whether an order reached or filled at the venue, so its position may be wrong. New risk is stopped; check the gateway journal and reconcile against the venue."
-      # Resolves once the 10m window holds no increase.
       - eval_time: 25m
         alertname: VelocitaGatewayUnknownOutcome
         exp_alerts: []
 
-  # Automatic re-arm (ADR 0019 step 2): a fence stops new risk at 2m and the
-  # gateway awaits its re-arm until 5m (re-armed at 6m); a second fence at 8m
-  # never re-arms. A reconciliation mismatch appears at 20m.
   - interval: 1m
     input_series:
       - series: 'velocita_gateway_new_risk_stopped{job="node",host="nuc1"}'
@@ -244,7 +221,6 @@ tests:
       - series: 'velocita_gateway_reconciliation_mismatch{job="node",host="nuc1"}'
         values: '0x19 1x10'
     alert_rule_test:
-      # Awaiting a re-arm is not a critical page.
       - eval_time: 3m
         alertname: VelocitaGatewayNewRiskStopped
         exp_alerts: []
@@ -254,7 +230,6 @@ tests:
       - eval_time: 17m
         alertname: VelocitaGatewayAwaitingRearm
         exp_alerts: []
-      # Awaiting since 8m: fires at 18m (for: 10m).
       - eval_time: 18m
         alertname: VelocitaGatewayAwaitingRearm
         exp_alerts:
@@ -265,7 +240,6 @@ tests:
       - eval_time: 19m
         alertname: VelocitaGatewayReconciliationMismatch
         exp_alerts: []
-      # No pending period: fires on the first evaluation that sees 1.
       - eval_time: 20m
         alertname: VelocitaGatewayReconciliationMismatch
         exp_alerts:
@@ -274,7 +248,6 @@ tests:
               summary: "Paper gateway on nuc1: venue book and kernel position disagree"
               description: "At a comparable cut the paper venue's base differs from the kernel's committed position (velocita_gateway_reconciliation_position_lots by source). New risk stays stopped until a restart. Follow the break workflow (runbook 5.3); never edit paper.state or the kernel to make them agree."
 
-  # No gateway metrics at all (never started, or not scraped): absent() fires.
   - interval: 1m
     input_series:
       - series: 'up{job="node",instance="100.72.127.102:9110",host="nuc1"}'
@@ -291,10 +264,6 @@ tests:
               summary: "Paper gateway is down or not reporting"
               description: "velocita_gateway_up is 0 or missing: no paper orders are sent and tick-to-trade is not measured. Check the gateway service and its journal."
 
-  # Market-data archive (time() starts at 0 here). The oldest unacknowledged
-  # day ended at t=3600 s, so it is 2 days old at 49h. The last run was at
-  # t=3600 s, so it is 26 h old at 27h. stream.db crosses 8 GB at 60m; a
-  # late-rows block appears at 100m.
   - interval: 1m
     input_series:
       - series: 'velocita_md_archive_oldest_unacked_day_end_timestamp_seconds{job="node",host="nuc1"}'
@@ -311,7 +280,6 @@ tests:
       - eval_time: 48h
         alertname: VelocitaMdBackupNotAcked
         exp_alerts: []
-      # 50h: 180000 - 3600 = 176400 s > 172800 s.
       - eval_time: 50h
         alertname: VelocitaMdBackupNotAcked
         exp_alerts:
@@ -332,7 +300,6 @@ tests:
       - eval_time: 26h
         alertname: VelocitaMdArchiveFailing
         exp_alerts: []
-      # 28h: 100800 - 3600 = 97200 s > 93600 s.
       - eval_time: 28h
         alertname: VelocitaMdArchiveFailing
         exp_alerts:
@@ -351,7 +318,6 @@ tests:
               summary: "Market-data prune on nuc1 is blocked: late_rows"
               description: "A day's rows are held in stream.db because its archive does not verify, the Mac acknowledged different bytes, or rows arrived after it was archived. Nothing is deleted until an operator resolves it (runbook)."
 
-  # Nothing unacknowledged (0) for days is quiet; a failed last run fires at once.
   - interval: 1h
     input_series:
       - series: 'velocita_md_archive_oldest_unacked_day_end_timestamp_seconds{job="node",host="nuc1"}'
@@ -372,7 +338,6 @@ tests:
               summary: "The nightly market-data archive is failing or not running"
               description: "Nothing new is archived or pruned, so stream.db grows about 1.1 GB a day. On nuc1: systemctl --user status velocita-md-archive.timer and journalctl --user -u velocita-md-archive."
 
-  # The archive never ran (no metrics at all): absent() fires.
   - interval: 1m
     input_series:
       - series: 'up{job="node",instance="100.72.127.102:9110",host="nuc1"}'
@@ -386,8 +351,6 @@ tests:
               summary: "The nightly market-data archive is failing or not running"
               description: "Nothing new is archived or pruned, so stream.db grows about 1.1 GB a day. On nuc1: systemctl --user status velocita-md-archive.timer and journalctl --user -u velocita-md-archive."
 
-  # md-stream records steadily for 20 minutes, then its counter stops moving:
-  # quiet while it records, fires once 10 minutes of silence have held for 5 minutes.
   - interval: 1m
     input_series:
       - series: 'velocita_md_messages_total{job="node",host="nuc1",type="reference_prices"}'
@@ -404,8 +367,6 @@ tests:
               summary: "md-stream on nuc1 has recorded no reference prices for 15 minutes"
               description: "The market-data recorder is hung, stopped or disconnected, so research data has a gap. On nuc1: journalctl --user -u velocita-md-stream; systemctl --user restart velocita-md-stream."
 
-  # A Pi whose supply sags once: fires while the sag is inside the 5-minute window,
-  # quiet before and after.
   - interval: 1m
     input_series:
       - series: 'node_hwmon_in_lcrit_alarm_volts{job="node",host="pi",chip="soc_107c000000:firmware_raspberrypi_hwmon",sensor="in0"}'
@@ -425,7 +386,6 @@ tests:
         alertname: VelocitaPiUndervoltage
         exp_alerts: []
 
-  # A host whose boot time moves (a reboot): fires for 30 minutes, then clears.
   - interval: 1m
     input_series:
       - series: 'node_boot_time_seconds{job="node",host="pi"}'
@@ -445,8 +405,6 @@ tests:
         alertname: VelocitaHostRebooted
         exp_alerts: []
 
-  # Alertmanager's scrape fails: critical after 2 minutes. (It cannot be pushed
-  # by the thing that is down; Grafana shows it.)
   - interval: 1m
     input_series:
       - series: 'up{job="alertmanager",host="nuc1",instance="127.0.0.1:9093"}'
@@ -463,8 +421,6 @@ tests:
               summary: "Alertmanager is down: no alert reaches the phone"
               description: "On nuc1: systemctl --user status velocita-v2-alertmanager and journalctl --user -u velocita-v2-alertmanager. A missing ~/.config/velocita/ntfy-publish-token stops it from starting."
 
-  # Two failed notifications: fires while they are inside the 15-minute window,
-  # and clears once they leave it.
   - interval: 1m
     input_series:
       - series: 'up{job="alertmanager",host="nuc1",instance="127.0.0.1:9093"}'
@@ -489,8 +445,6 @@ tests:
         alertname: VelocitaAlertmanagerDown
         exp_alerts: []
 
-  # One election every 30 minutes: never a storm, but recurring after the
-  # fourth. A single election in six hours is not.
   - interval: 1m
     input_series:
       - series: 'velocita_v2_term{job="velocita-v2",host="nuc1"}'
@@ -724,8 +678,6 @@ tests:
               description: "The paper venue keeps every order for the life of the run. At 100 % the strategy stops buying and exits."
 
 
-  # A completed account suppresses expected feed/duration alarms, but an expired
-  # unfinalized account and a broken final ledger still raise their alarms.
   - interval: 1m
     input_series:
       - series: 'velocita_indicator_run_state{strategy="stochastic",paper_run="completed"}'
@@ -751,9 +703,6 @@ tests:
               summary: "The stochastic fill ledger cannot be read"
               description: "The observer cannot open the edge's ledger read-only, or it belongs to another run. The edge is probably stopped. On nuc1: systemctl --user status velocita-paper-stochastic-edge."
 
-  # Archive budget: 1 GiB less the 16 MiB reserve = 1,056,964,608 bytes for
-  # ordinary commands. nuc1 goes from 68% to 71% to 92%; the Pi stays low on
-  # bytes but crosses 70% of its catalog rows (4,092 ordinary rows).
   - interval: 1m
     input_series:
       - series: 'velocita_v2_archive_bytes{job="velocita-v2",host="nuc1",node="1"}'
@@ -776,7 +725,6 @@ tests:
       - eval_time: 5m
         alertname: VelocitaArchiveFilling
         exp_alerts: []
-      # Above 70% from 6m; ten minutes of that is 16m.
       - eval_time: 15m
         alertname: VelocitaArchiveFilling
         exp_alerts: []
@@ -790,8 +738,6 @@ tests:
       - eval_time: 24m
         alertname: VelocitaArchiveNearlyFull
         exp_alerts: []
-      # nuc1 is above 90% from 26m; five minutes of that is 31m. The Pi's rows
-      # are 3069/4092 = 75% from 26m, so it warns from 36m.
       - eval_time: 32m
         alertname: VelocitaArchiveNearlyFull
         exp_alerts:
@@ -811,7 +757,6 @@ tests:
               summary: "pi archive is 75% of the ordinary budget"
               description: "When the archive is full every ordinary command is refused, including a strategy exit; only the operator kill path still works. See 'Days until the archive is full' on the Raft dashboard and plan a new incarnation or a larger budget before then."
 
-  # Policy slots: 5 of 8 is quiet; 6 of 8 (75%) warns after five minutes.
   - interval: 1m
     input_series:
       - series: 'velocita_v2_policies{job="velocita-v2",host="nuc1",node="1"}'
@@ -833,9 +778,6 @@ tests:
               summary: "nuc1 has used 75% of its policy slots"
               description: "Each published policy version keeps a slot for the life of the incarnation. When none are left a new strategy version is refused (policy_capacity_exceeded); plan a new incarnation before the next strategy change."
 
-  # Kernel loss limit of $10 (10,000,000 micros), reported by three voters.
-  # Loss goes $7.90 -> $8.00 at 2m -> $10.00 at 6m. Fees agree until 8m, then
-  # the venue report shows one fee the kernel did not book.
   - interval: 1m
     input_series:
       - series: 'velocita_v2_account_max_window_loss_micros{job="velocita-v2",host="nuc1",node="1",account="2",instrument="2"}'
@@ -888,8 +830,6 @@ tests:
               summary: "The kernel's fees and the venue report's fees differ by 48000 micro-dollars"
               description: "The kernel books every fill's fee, and the observer reads the venue's. They should be equal for a session that began with its incarnation. A difference means a fill was booked by one and not the other; stop and reconcile before trading on."
 
-  # A refused command is applied by all three voters, so it is reported once,
-  # not three times. nuc2 steps down at 5m.
   - interval: 1m
     input_series:
       - series: 'velocita_v2_unauthorized_commands_total{job="velocita-v2",host="nuc1",node="1"}'
@@ -930,8 +870,6 @@ tests:
         alertname: VelocitaLeaderSteppedDown
         exp_alerts: []
 
-  # flatten from 5m on every voter: one alert after 30 minutes, none once the
-  # mode is halted at 50m.
   - interval: 1m
     input_series:
       - series: 'velocita_v2_strategy_mode{job="velocita-v2",host="nuc1",node="1"}'
@@ -966,7 +904,6 @@ tests:
               summary: "The strategy mode has been reduce_only for 30 minutes"
               description: "In these modes only orders that reduce the position are sent, and flatten sells whatever is held. Decide what comes next: strategy-mode halted to stay out, or strategy-mode normal and a gateway restart to trade again (ADR 0024)."
 
-  # The leader refuses 40 commands as busy between 3m and 4m; followers refuse none.
   - interval: 1m
     input_series:
       - series: 'velocita_v2_ingress_rate_limited_total{job="velocita-v2",host="nuc1",node="1"}'

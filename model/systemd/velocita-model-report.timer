@@ -2,7 +2,6 @@
 Description=Daily Velocita model research report
 
 [Timer]
-# 00:15 UTC, after the UTC day boundary so a report covers a whole day.
 OnCalendar=*-*-* 00:15:00 UTC
 Persistent=yes
 RandomizedDelaySec=300

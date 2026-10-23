@@ -1,31 +1,3 @@
-# Velocita V2 paper gateway (Phase 2): claims the cluster's authorized order
-# effects and fills them against the True Markets SIMULATOR (--venue paper: FOK
-# at the reference price with the measured costs). No venue key exists on this
-# host and this unit mounts none. nuc1 only, as the `velocitas` user.
-#
-# Caller key 13 = CallerId 22, outside the operator band; the node configs name
-# it with `gateway.caller = 22`. Nodes and incarnation come from the edge's
-# ~/velocita-v2/shadow/shadow.env (VELOCITA_INCARNATION, VELOCITA_NODES).
-# Secret: %t/velocita-secrets/caller-13.key, pushed from the Mac; the single-file
-# mount pins the key it started with, so restart after rotating caller-13.
-# Arming: new risk needs BOTH --allow-new-risk and a non-zero --freshness-ms (the
-# oldest authority proof the gateway will act on). Set
-#   VELOCITA_GATEWAY_RISK_ARGS=--freshness-ms 2000 --allow-new-risk
-# in shadow.env to arm; unset, the gateway only reconciles and cancels.
-# Re-arm: after a fence (term or leader change, a timed-out state read) it
-# re-arms by itself once the cluster has been quiet for --rearm-quiet-ms
-# (default 30000, set it in VELOCITA_GATEWAY_RISK_ARGS) AND the paper venue's
-# base equals the kernel's position with no order open. Any other stop (unknown
-# outcome, conflict, refused evidence, kill epoch / generation / mode change,
-# reconciliation mismatch) holds until this unit is restarted after checking the
-# journal (STOP cause=... lines).
-# Paper state: /state/paper.state (the venue's balances, orders and owned
-# reports), rewritten durably before every answer, so a restart keeps the
-# position and cash. The unit never creates it: the FIRST start is a one-shot
-# run with --paper-state-init (or --paper-adopt-position), runbook section 5.
-# A missing, torn or corrupt file stops the unit (exit 64, no restart loop).
-# Metrics: a textfile in ~/velocita-v2/textfile, served by node-exporter (:9110)
-# like the edge's, so Prometheus needs no new target.
 [Unit]
 Description=Velocita V2 paper gateway (simulator only; never a venue)
 After=network-online.target velocita-v2-node@1.service
@@ -56,7 +28,6 @@ ExecStart=/usr/bin/podman run --rm --replace --name velocita-v2-gateway \
     --metrics-textfile /textfile/velocita-gateway.prom \
     $VELOCITA_GATEWAY_RISK_ARGS
 ExecStop=/usr/bin/podman stop -t 15 velocita-v2-gateway
-# 64 = usage/configuration refusal: restarting cannot fix it.
 RestartPreventExitStatus=64
 Restart=on-failure
 RestartSec=10

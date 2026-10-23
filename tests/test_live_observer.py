@@ -167,7 +167,6 @@ class ConfirmedSettlementsTests(unittest.TestCase):
         parsed=O.settlements(s,self.RUN,1000100)
         state=O.reconcile_settlements(parsed,None,1000100)
         text=O.render({'run':self.RUN,'settlement_events':state['settlements']},1000.1)
-        # $1 / .009 net SOL = 111.111...; $.60 / .005 SOL = 120.
         self.assertIn('111.11111111111111',text);self.assertIn(' 120.0\n',text)
         self.assertIn('first_observed_ms="1000100"',text)
         self.assertIn('fee_usdc="0.002"',text)

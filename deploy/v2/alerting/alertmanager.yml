@@ -1,18 +1,13 @@
-# Alertmanager on nuc1 (127.0.0.1:9093): groups, repeats and silences the
-# Prometheus alerts, and posts them to the self-hosted ntfy server.
-# docs/ALERT_DELIVERY_RUNBOOK.md.
 global:
   resolve_timeout: 5m
 
 route:
   receiver: phone
-  # One notification per alert name: three voters down is one push, not three.
   group_by: [alertname]
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
   routes:
-    # Critical: sooner, and repeated hourly until it is resolved or silenced.
     - matchers: ['severity="critical"']
       receiver: phone
       group_wait: 10s
@@ -20,18 +15,15 @@ route:
       repeat_interval: 1h
 
 inhibit_rules:
-  # While a host's voter is down, its lesser alerts add nothing.
   - source_matchers: ['alertname="VelocitaVoterDown"']
     target_matchers: ['severity="warning"']
     equal: [host]
-  # While the cluster has no quorum, everything else is a consequence.
   - source_matchers: ['alertname="VelocitaQuorumLost"']
     target_matchers: ['alertname!="VelocitaQuorumLost"', 'severity="warning"']
 
 receivers:
   - name: phone
     webhook_configs:
-      # nuc1's Tailscale address (the same one prometheus.yml scrapes).
       - url: "http://100.72.127.102:2586/velocita-alerts?template=velocita"
         send_resolved: true
         max_alerts: 10

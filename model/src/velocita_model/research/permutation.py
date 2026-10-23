@@ -35,7 +35,7 @@ def permute(bars: DailyBars, *, start_index: int, rng: random.Random) -> DailyBa
     for a, series in enumerate(bars.close):
         days = _return_days(series, start_index)
         valid = set(days)
-        sources = [d for d in order if d in valid]  # the shared ordering, restricted to this asset
+        sources = [d for d in order if d in valid]
         prices = list(series)
         volumes = list(bars.quote_volume[a]) if bars.quote_volume is not None else None
         for destination, source in zip(days, sources):

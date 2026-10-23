@@ -1,9 +1,3 @@
-# cmake -DBINARY=<gateway> -DARGS=a,b,c -DEXPECT=<text> -P check_gateway_refusal.cmake
-#
-# Runs the gateway with ARGS and requires the usage exit (64) with EXPECT in
-# its diagnostic. The refusal happens during argument parsing, before any key
-# file, Aeron directory or network is touched.
-
 if(NOT BINARY OR NOT EXISTS "${BINARY}")
     message(FATAL_ERROR "BINARY not found: ${BINARY}")
 endif()

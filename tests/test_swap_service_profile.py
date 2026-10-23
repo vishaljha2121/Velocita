@@ -246,8 +246,6 @@ class DescriptorHandoffTests(unittest.TestCase):
                     os.dup2(extra_fd, 100, inheritable=True)
                     os.close(extra_fd)
                     fd = self.handoff.open_secret(str(secret), os.getuid())
-                    # Force both the no-op dup2 case and a distinct source,
-                    # independently of unittest's ambient descriptor allocation.
                     if fd != source_fd:
                         os.dup2(fd, source_fd, inheritable=False)
                         os.close(fd)

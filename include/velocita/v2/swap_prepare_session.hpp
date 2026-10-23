@@ -10,7 +10,6 @@ enum class SwapPrepareInputMapping:std::uint8_t {
     fixture_principal_and_base_input=1,
     fee_inclusive_quote_input=2
 };
-// Versioned identity prevents recovery under a different quantity convention.
 [[nodiscard]] Digest256 fee_inclusive_prepare_mapping_identity() noexcept;
 struct SwapPrepareRead {
     StateReading reading{};

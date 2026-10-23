@@ -1,41 +1,16 @@
-# velocita-dev: the pinned build toolchain (book ch29 "Compile cache and hermetic
-# containers": the image is the build machine; pin it, update it in a reviewed change).
-#
-# The project images (deploy/v2/Containerfile) are built FROM this image. This
-# image is built rarely, natively on each architecture: x86-64 on nuc1, then
-# copied to nuc2 so both NUCs share one toolchain; ARM64 on the Pi. Its image ID
-# is the toolchain identity recorded in deploy/v2/TOOLCHAIN.env and stamped into
-# every release image. See docs/TOOLCHAIN.md.
-#
-#   podman build -f deploy/v2/Containerfile.dev -t localhost/velocita-dev:<DATE> .
-#
-# A rebuild of this image IS a toolchain change. Rebuild it only to change the
-# compiler, a library or a dependency pin, and review the MANIFEST diff it prints.
-
-# The Ubuntu 26.04 multi-architecture INDEX digest. The same digest resolves to
-# the amd64 image on the NUCs and the arm64 image on the Pi. A tag can move; a
-# digest names exact bytes.
 ARG BASE=docker.io/library/ubuntu@sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78
 FROM ${BASE}
-# Re-declared: an ARG from before FROM is not visible after it, and MANIFEST records it.
 ARG BASE
 
 ARG DEBIAN_FRONTEND=noninteractive
-# Must equal the pins in CMakeLists.txt. The project build verifies the checkouts
-# against those pins and refuses a mismatch.
 ARG AERON_COMMIT=5b62f21d917af027cdf5a3241aa5f355149b04fa
 ARG RAFT_COMMIT=e428eeb921a014192d1d703dd317f3f29f5916c5
 
-# Compiler and tools. The versions are whatever the archive serves on the day
-# this image is built, and are then frozen in the image. MANIFEST records them.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates ccache cmake g++ git libbsd-dev ninja-build patch pkg-config python3 uuid-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Third-party sources at their pinned commits, shallow (one commit each), with
-# .git kept so the project build can verify HEAD. willemt/raft stays PRISTINE:
-# our patch evolves with the project and is applied by the project build.
 RUN mkdir -p /opt/velocita-deps/aeron /opt/velocita-deps/willemt-raft \
     && git -C /opt/velocita-deps/aeron init -q \
     && git -C /opt/velocita-deps/aeron remote add origin https://github.com/aeron-io/aeron.git \
@@ -49,8 +24,6 @@ RUN mkdir -p /opt/velocita-deps/aeron /opt/velocita-deps/willemt-raft \
     && test "$(git -C /opt/velocita-deps/willemt-raft rev-parse HEAD)" = "${RAFT_COMMIT}" \
     && test -z "$(git -C /opt/velocita-deps/willemt-raft status --porcelain)"
 
-# MANIFEST: what this toolchain is made of, for audit and for diffing two
-# toolchains ("what changed between dev images A and B?").
 RUN mkdir -p /opt/velocita-dev \
     && { echo "base=${BASE}"; \
          echo "arch=$(dpkg --print-architecture)"; \

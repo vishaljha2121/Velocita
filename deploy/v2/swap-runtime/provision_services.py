@@ -114,8 +114,6 @@ def inspect_directory(path):
 
 
 def snapshot():
-    # NSS enumeration plus keyed lookups cover IDs/names whose provider does not
-    # enumerate all entries. No password/shadow contents are accessed.
     users = {u.pw_name: u for u in pwd.getpwall()}
     groups = {g.gr_name: g for g in grp.getgrall()}
     for expected in USERS:
@@ -130,7 +128,6 @@ def snapshot():
             except KeyError: pass
     user_rows = [dict(name=u.pw_name, uid=u.pw_uid, gid=u.pw_gid, home=u.pw_dir, shell=u.pw_shell) for u in users.values()]
     group_rows = [dict(name=g.gr_name, gid=g.gr_gid, members=list(g.gr_mem)) for g in groups.values()]
-    # initgroups may include NSS memberships omitted by group enumeration.
     for expected in USERS:
         if expected['name'] in users and set(os.getgrouplist(expected['name'], expected['gid'])) != {expected['gid']}:
             raise Refused('unexpected NSS supplementary membership: ' + expected['name'])
@@ -157,7 +154,6 @@ def create_directory(action):
     path = PurePosixPath(action['path'])
     parent = open_directory(str(path.parent))
     try:
-        # Never exist_ok/chown an existing object. Creation races stop the run.
         os.mkdir(path.name, mode=0o700, dir_fd=parent)
         fd = os.open(path.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
         try:
@@ -183,8 +179,6 @@ def apply():
     require_host_root()
     initial = plan(*snapshot())
     for action in initial['actions']:
-        # Fresh all-or-refuse preflight before each operation. A failure can leave
-        # earlier new identities/directories, but never edits/deletes old state.
         current = plan(*snapshot())
         if action not in current['actions']: raise Refused('host changed after plan; review again')
         perform(action)

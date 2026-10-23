@@ -49,8 +49,6 @@ def command(role, run_id, config):
         'LockPersonality=yes','MemoryDenyWriteExecute=yes','LimitCORE=0','CapabilityBoundingSet=',
         'AmbientCapabilities=','Restart=no','RuntimeMaxSec=60','TimeoutStopSec=2','MemoryMax=512M',
         'TasksMax=32','CPUAffinity=3','CPUQuota=100%','RootDirectory='+str(ROOTFS),'MountAPIVFS=yes',
-        # An explicit bind outranks systemd249's API-VFS /run fallback. The
-        # immutable empty parent is on disk; the role runtime child remains tmpfs.
         'BindReadOnlyPaths=/etc/velocita-swap/runtime-roots/'+role+':/run',
         'BindReadOnlyPaths=/opt/velocita/qualification/'+config['helper_sha256']+'/authenticated-read-probe:'+HELPER,
         'BindReadOnlyPaths='+CATALOG+':'+CATALOG,
@@ -104,7 +102,6 @@ def collision_check(runner):
     for prefix,unit in units:
         result=runner(prefix+['show',unit,'--property=ActiveState','--value'],capture_output=True,text=True,timeout=10,check=False)
         if result.returncode or result.stdout.strip()!='inactive': raise ValueError('production or paper caller is not inactive')
-    # Both response endpoints must be free. A shell is deliberately not involved.
     result=runner(['/usr/bin/ss','-H','-u','-a','-n','sport = :44413 or sport = :44414'],
                   capture_output=True,text=True,timeout=10,check=False)
     if result.returncode or result.stdout.strip(): raise ValueError('caller response endpoint already in use')
@@ -121,7 +118,6 @@ def inputs(config):
             if (info.st_uid,info.st_gid,stat.S_IMODE(info.st_mode))!=(0,0,0o755):
                 raise ValueError('root-owned0755 runtime namespace parent required')
         finally: os.close(directory)
-        # Metadata only. Credentials and session bytes are opened only by their role helper.
         for name in ('/run/velocita-swap-credentials/'+role+'/caller.key',
                      '/var/lib/velocita-swap-'+role+'/client.session'):
             info=Path(name).lstat()
@@ -154,7 +150,6 @@ def run(output,config,runner=subprocess.run):
     except (OSError,ValueError,subprocess.SubprocessError) as exc:
         report['error_type']=type(exc).__name__;report['error']=str(exc)
     finally:
-        # Stop only this run's two transient units; never any cluster/production unit.
         report['cleanup']=[]
         for role in ('signer','gateway'):
             unit='velocita-authread-'+run_id+'-'+role+'.service'

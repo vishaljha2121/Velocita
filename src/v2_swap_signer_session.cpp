@@ -234,7 +234,6 @@ SwapSignerStatus SwapSignerSession::poll(){
     constexpr std::string_view inclusive_fixture="VELOCITA SYNTHETIC FEE INCLUSIVE SWAP\n";
     const auto& intent=pending.intent;
     const auto text=std::string_view(reinterpret_cast<const char*>(payload_.data()),size_);
-    // Two literal non-transaction fixtures, each bound to its own exact economics.
     const bool fixture_economics=(text==fixture && intent.quote_input.value()==1'000'000 && intent.max_quote_debit.value()==1'002'000) ||
         (text==inclusive_fixture && intent.quote_input.value()==998'000 && intent.max_quote_debit.value()==1'000'000);
     if(!fixture_economics || intent.side!=Side::buy ||

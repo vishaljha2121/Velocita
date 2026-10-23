@@ -47,8 +47,6 @@ bool SwapSigningConnection::assemble(std::uint64_t sequence,std::int64_t index,s
     const auto lookup=lookups_.prefix(request.payload_view());if(!lookup)return false;request.lookup=*lookup;
     std::array<std::byte,swap_signer::kRequestBytes> frame{};const auto n=swap_signer::encode_request(request,frame);if(!n)return false;
     identity={};identity.effect=request.effect;identity.payload=p.payload_digest;identity.execution_request=sha256_digest(std::span(frame).first(n));
-    // Index is the durable record's committed_index; sequence and expiry precede
-    // the original handle. This record has a separate cryptographic domain.
     put64(identity.handle,sequence);put64(std::span(identity.handle).subspan(8),expiry);
     std::copy_n(reinterpret_cast<const std::byte*>(request.handle.data()),request.handle_size,identity.handle.begin()+16);
     identity.handle_size=16+request.handle_size;identity.handle_digest=sha256_digest(std::span(identity.handle).first(identity.handle_size));return true;

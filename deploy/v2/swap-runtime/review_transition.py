@@ -100,8 +100,6 @@ def bundle(base,pin):
     validate(spec['mode'],old,new,before,after,time.time_ns()//1000000)
     return spec['mode'],old,new,before,after
 
-# First-use journal layouts mirror the versioned C++ stores. This mode deliberately
-# refuses even completed prior trades: it is not a reconciliation/re-arming tool.
 JOURNALS={'prepared':('gateway','prepare.bin',8768,b'VPRP\1\0\0\0'),
           'submitted':('gateway','submission.bin',464,b'VSSJ\1\0\0\0'),
           'signing-requests':('gateway','submission.bin',464,b'VSSJ\1\0\0\0'),

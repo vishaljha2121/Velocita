@@ -27,11 +27,11 @@ from .bars import BINANCE_ARCHIVE, DataError, verify_checksum
 
 @dataclass(frozen=True)
 class TickSeries:
-    times: tuple[int, ...]    # unix seconds, evenly spaced
+    times: tuple[int, ...]
     prices: tuple[float, ...]
-    max_staleness_s: int      # oldest price any tick used, measured from the tick time
-    stale_ticks: int          # ticks whose price was more than 5 s old
-    sources: tuple[tuple[str, str], ...]  # (archive path, verified sha256)
+    max_staleness_s: int
+    stale_ticks: int
+    sources: tuple[tuple[str, str], ...]
 
 
 def _epoch(d: date) -> int:
@@ -107,7 +107,7 @@ def sample(bars: Iterable[tuple[int, float]], start_s: int, end_s: int, step_s: 
     for open_s, close in bars:
         if last_open is not None and open_s <= last_open:
             raise DataError(f"1 s bars out of order at {open_s}")
-        while tick < end_s and tick <= open_s:  # this bar closes after the tick
+        while tick < end_s and tick <= open_s:
             emit(tick)
             tick += step_s
         last_open, last_close = open_s, close

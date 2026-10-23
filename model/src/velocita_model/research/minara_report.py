@@ -58,7 +58,6 @@ def battery(bars: DailyBars, split: int, base: Params, *, n_is: int, n_wf: int, 
             workers: int) -> list[str]:
     """Sections 1-5 and the cost table, identical for every universe."""
     lines: list[str] = []
-    # 1. In-sample optimization
     ins = bars.slice(0, split)
     best = validation.optimize(ins, base, GRID)
     scores = [(m, metrics.profit_factor(backtest(ins, replace(base, momentum_days=m)).returns)) for m in GRID]
@@ -70,14 +69,12 @@ def battery(bars: DailyBars, split: int, base: Params, *, n_is: int, n_wf: int, 
               _row(f"strategy, {best.momentum_days}d, in-sample", backtest(ins, best.params).returns),
               _row("BTC buy & hold, in-sample", _buy_hold(bars, "BTC", 1, split)), ""]
 
-    # 2. In-sample permutation test
     t = validation.in_sample_permutation_test(ins, base, GRID, n=n_is, seed=1000, workers=workers)
     lines += ["## 2. In-sample permutation test", "",
               f"{n_is} permutations, each fully re-optimized. **p = {t.p_value:.3f}**. {_hist(t.null, t.real)}.",
               "Low p (< 0.05): the optimized in-sample score is rarely matched by an optimizer run on shuffled "
               "history. High p: the optimizer finds this much 'edge' in noise.", ""]
 
-    # 3. Walk-forward
     wf = validation.walk_forward(bars, base, GRID, train_days=1095, step_days=91)
     oos = wf.first_oos_index
     lines += ["## 3. Walk-forward (3-year train, 91-day step)", "",
@@ -92,20 +89,17 @@ def battery(bars: DailyBars, split: int, base: Params, *, n_is: int, n_wf: int, 
               _row("walk-forward", wf.returns[minara_window[0] - oos:minara_window[1] - oos]).strip("| ").replace(" | ", ", "),
               ""]
 
-    # 4. Walk-forward permutation test
     wt = validation.walk_forward_permutation_test(bars, base, GRID, train_days=1095, step_days=91, n=n_wf,
                                                   seed=5000, workers=workers)
     lines += ["## 4. Walk-forward permutation test", "",
               f"{n_wf} permutations of the data after the first training window. **p = {wt.p_value:.3f}**. "
               f"{_hist(wt.null, wt.real)}.", ""]
 
-    # 5. Random-walk null
     rw = validation.in_sample_permutation_test(ins, base, GRID, n=n_rw, seed=9000, workers=workers, kind="random_walk")
     lines += ["## 5. Random-walk test", "",
               f"{n_rw} Gaussian random-walk histories (each asset's own drift and volatility, no correlation), "
               f"fully re-optimized. **p = {rw.p_value:.3f}**. {_hist(rw.null, rw.real)}.", ""]
 
-    # Cost sensitivity (out-of-sample, walk-forward choices re-run per cost)
     lines += ["## Cost sensitivity (walk-forward, out-of-sample)", "",
               "| Cost per side | Profit factor | Total | CAGR | Max DD | Sharpe |", "|---|---|---|---|---|---|"]
     for bps in (0.0, 10.0, 30.0, 60.0):
@@ -131,21 +125,18 @@ def run(cache: Path, out: Path, *, n_is: int, n_wf: int, n_rw: int, workers: int
 
     lines += battery(bars, split, base, n_is=n_is, n_wf=n_wf, n_rw=n_rw, workers=workers)
 
-    # True Markets confirmation (fixed 90-day rule, no volume screen: TM history has no volume)
     try:
         tm = load_truemarkets(list(TM_UNIVERSE.values()))
         tm = DailyBars(tm.dates, tuple(TM_UNIVERSE), tm.close, None)
         tm_params = replace(base, min_quote_volume=0.0)
         tm_result = backtest(tm, tm_params)
-        # Compare only from the first day the True Markets run could hold anything
-        # (after its warm-up) to the last day both sources cover.
         first = next(i for i, (sym, _f) in enumerate(tm_result.holdings) if sym is not None)
         start, end = tm.dates[first], min(tm.dates[-1], bars.dates[-1])
         t0, t1 = first, tm.dates.index(end) + 1
         b0, b1 = bars.date_index(start), bars.dates.index(end) + 1
         bn_run = backtest(bars, tm_params).returns[b0:b1]
         tm_only = backtest(DailyBars(tm.dates, tm.symbols, tm.close, None),
-                           tm_params).returns  # same as tm_result; kept explicit for the 6-asset variant below
+                           tm_params).returns
         six = [s for s in tm.symbols if s in bars.symbols]
         tm6 = DailyBars(tm.dates, tuple(six), tuple(tm.close[tm.index(s)] for s in six), None)
         lines += ["## True Markets confirmation (fixed 90-day rule, no volume screen)", "",
@@ -155,7 +146,7 @@ def run(cache: Path, out: Path, *, n_is: int, n_wf: int, n_rw: int, workers: int
                   _row("TM prices, 8 assets (adds HYPE, VVV)", tm_only[t0:t1]),
                   _row("TM prices, same 6 assets as Binance", backtest(tm6, tm_params).returns[t0:t1]),
                   _row("Binance prices, 6 assets", bn_run), ""]
-    except Exception as error:  # confirmation is best-effort; the report says so
+    except Exception as error:
         lines += ["## True Markets confirmation", "", f"Not run: {type(error).__name__}: {error}", ""]
 
     lines += ["## Caveats", "",

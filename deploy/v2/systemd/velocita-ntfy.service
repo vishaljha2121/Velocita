@@ -1,6 +1,3 @@
-# nuc1 only. Self-hosted ntfy: the phone push channel for alerts, on the
-# Tailscale address, port 2586. Accounts and tokens live in the data volume
-# (docs/ALERT_DELIVERY_RUNBOOK.md, "First install").
 [Unit]
 Description=Velocita ntfy (alert push)
 

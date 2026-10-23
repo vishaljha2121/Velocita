@@ -77,9 +77,6 @@ def route_transition(before,after,witness):
     if any(prior[k]!=current[k] for k in prior if k not in mutable):raise ValueError('route transition cannot change execution limits')
     a,b=prior['account_keys'],current['account_keys']
     if len(a)!=old_count*64 or len(b)!=new_count*64 or any(c not in '0123456789abcdef' for c in a+b):raise ValueError('route account key shapes')
-    # Preserve the owner-facing roles present in both explicit account lists.
-    # Obsidian and Invariant omit the USDC mint as a separate explicit account;
-    # its source/fee identities remain pinned. Native verification owns admission.
     for old,new in roles:
         if a[old*64:(old+1)*64]!=b[new*64:(new+1)*64]:raise ValueError('route changed owner-facing account or program')
 
@@ -170,8 +167,6 @@ def propose(old,new,before,after,journals,now,session_refresh=None,route_review=
     old_record=journals['protected-signing']
     ordinal=int.from_bytes(old_record[8:16],'little')
     if not 1<=ordinal<2**64-1:raise ValueError('protected journal ordinal exhausted')
-    # Repeated expiry renewal is allowed only while every effect remains pristine.
-    # Normalize a COPY for the existing first-use validator, never installed bytes.
     prior_check=bytearray(old_record);struct.pack_into('<Q',prior_check,8,1)
     prior_check[-32:]=hashlib.sha256(prior_check[:-32]).digest()
     if len(old_record)!=464 or hashlib.sha256(old_record[:-32]).digest()!=old_record[-32:]:raise ValueError('original protected journal checksum')
@@ -182,8 +177,6 @@ def propose(old,new,before,after,journals,now,session_refresh=None,route_review=
         struct.pack_into('<Q',record,8,ordinal+1);record[72:104]=domain
         record[-32:]=hashlib.sha256(record[:-32]).digest()
     proposed=dict(journals);proposed['protected-signing']=bytes(record)
-    # Check every new domain against its corresponding document set. Only the
-    # protected ordinal is advanced; normalize a COPY for the pristine validator.
     check=bytearray(record);struct.pack_into('<Q',check,8,1);check[-32:]=hashlib.sha256(check[:-32]).digest()
     R.validate_idle_journals(new,after,dict(proposed,**{'protected-signing':bytes(check)}))
     artifacts={}

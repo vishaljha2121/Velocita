@@ -50,9 +50,9 @@ def optimize(bars: DailyBars, base: Params, grid: Sequence[int], objective: Obje
 
 @dataclass(frozen=True)
 class WalkForward:
-    returns: list[float]           # out-of-sample daily returns, stitched
+    returns: list[float]
     first_oos_index: int
-    choices: list[tuple[str, int]]  # (segment start date, chosen momentum_days)
+    choices: list[tuple[str, int]]
 
 
 def walk_forward(bars: DailyBars, base: Params, grid: Sequence[int], *, train_days: int, step_days: int,
@@ -63,13 +63,11 @@ def walk_forward(bars: DailyBars, base: Params, grid: Sequence[int], *, train_da
     for start in range(train_days, n, step_days):
         end = min(n, start + step_days)
         best = optimize(bars.slice(start - train_days, start), base, grid, objective)
-        run = backtest(bars.slice(0, end), best.params)  # full history up to END: warm-up and state carry over
+        run = backtest(bars.slice(0, end), best.params)
         returns += run.returns[start:end]
         choices.append((bars.dates[start].isoformat(), best.momentum_days))
     return WalkForward(returns, train_days, choices)
 
-
-# -- null distributions (module-level so worker processes can import them) --
 
 def _is_null(args: tuple) -> float:
     bars, base, grid, seed, kind = args

@@ -214,9 +214,6 @@ capture_node_logs() {
 }
 
 quiesce_benchmark_nodes() {
-    # raft-node prints its final role/term/index state while handling SIGTERM.
-    # Stop the disposable voters as one bounded operation before copying logs,
-    # so every repetition retains its liveness evidence.
     podman stop --time 10 \
         velocita-bench-1 velocita-bench-2 velocita-bench-3 >/dev/null 2>&1 || true
 }
@@ -229,9 +226,6 @@ prepare_benchmark_cluster() {
     reset_benchmark_volumes
     for id in 1 2 3; do start_node "$id"; done
 
-    # Node status is held in shared memory rather than printed periodically, so
-    # readiness must test the service contract: can one command reach a leader
-    # and return a matching successful response?
     sleep 3
     set +e
     probe_output="$(podman run --rm \
@@ -276,9 +270,6 @@ for rate in $rates; do
         if [[ "$cpu_placement" == "partitioned" ]]; then
             client_cpu_arguments=(--cpuset-cpus 0)
         fi
-        # The driver owns three request publications plus response images.
-        # Aeron term buffers are memory-mapped and can exceed 192 MiB when
-        # retries rise during an overloaded/leaderless interval.
         podman run --rm \
             --network host \
             --shm-size 512m \
@@ -320,7 +311,6 @@ for rate in $rates; do
             echo "Benchmark infrastructure failed; preserving evidence and stopping the sweep." >&2
             exit "$run_status"
         fi
-        # Give Prometheus one scrape interval to retain this run before latest.prom changes.
         sleep 6
     done
 done

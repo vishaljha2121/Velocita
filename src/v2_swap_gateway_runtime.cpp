@@ -189,7 +189,6 @@ void SwapGatewayRuntime::observed(const StateReading& reading,Tick now,std::uint
         if(!signed_ || signed_->identity.effect!=effect_ || signed_->identity.payload!=pending.payload || signed_->identity.handle_digest!=pending.handle){
             stop(SwapGatewayRuntimeStatus::blocked,SwapGatewayRuntimeCause::signer_refused);return;}
         if(pending.phase==swap::Phase::prepared){queued_command_=swap::Attempt{effect_,pending.payload};return;}
-        // Retrieved signing may block too; re-read with fresh time before starting submission.
         if(fresh_signature){next_read_=0;return;}
         submitting_=std::make_unique<SwapSubmissionSession>(link_,submissions_,execute_,SwapSubmissionSessionConfig{config_.preparation.allocation,config_.preparation.authority_domain,config_.timeout});
         const auto& request=signed_->request;

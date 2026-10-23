@@ -16,7 +16,6 @@ SwapSettlementConnectionResult collect_retained_swap_settlement(
         preparation.latest().phase!=SwapPreparePhase::prepared || preparation.latest().binding!=binding ||
         submission.latest().phase!=SwapSubmissionPhase::execute_intent ||
         submission.latest().binding!=SwapSubmissionBinding{binding.allocation.incarnation,binding.authority_domain})return {};
-    // Owned snapshots remain stable even while the RPC blocks.
     const auto retained=preparation.latest();const auto sent=submission.latest();const auto& p=retained.prepared;
     if(sent.identity.effect!=retained.operation.effect || sent.identity.payload!=p.payload_digest ||
         sent.transaction==SwapSubmissionTransaction{} || !p.handle.length || p.handle.length>p.handle.bytes.size() ||

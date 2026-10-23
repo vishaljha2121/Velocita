@@ -1,4 +1,4 @@
-// Reuse the real three-voter fixture without changing its existing test registry.
+// Swap gateway runtime drills on the in-process three-voter cluster fixture.
 #define main existing_gateway_suite_main
 #include "v2_gateway_node_tests.cpp"
 #undef main

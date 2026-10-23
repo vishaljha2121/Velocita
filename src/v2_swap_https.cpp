@@ -52,7 +52,7 @@ bool safe_origin(std::string_view origin) noexcept {
     return true;
 }
 bool safe_path(std::string_view path) noexcept {
-    if (path == "/") return true; // Exact allowlisted JSON-RPC root; no prefix matching.
+    if (path == "/") return true;
     return path.size() >= 2 && path.size() <= 256 && path.front() == '/' && path.back() != '/' &&
         path.find("//") == std::string_view::npos &&
         std::all_of(path.begin(), path.end(), [](unsigned char c) { return alnum(c) || c == '/' || c == '-' || c == '_'; });

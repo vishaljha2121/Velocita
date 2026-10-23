@@ -1,22 +1,9 @@
-# No --platform here, deliberately. This image is built natively on whichever
-# target is being validated: ARM64 on the Raspberry Pi, x86-64 on the NUC. Pinning
-# linux/arm64 in the FROM line made an x86-64 NUC pull an ARM64 base and run it
-# under emulation, which measures the wrong architecture and then fails the gate's
-# own dpkg-architecture check - so the NUC gate could never have passed.
-#
-# A caller that genuinely wants a non-native platform passes --platform to
-# `build` and `run` on the command line, which is what the ARM64 container gate
-# does on an x86-64 development host.
 FROM ubuntu:26.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG AERON_COMMIT=5b62f21d917af027cdf5a3241aa5f355149b04fa
 ARG RAFT_COMMIT=e428eeb921a014192d1d703dd317f3f29f5916c5
 
-# `patch` is here because the pinned Raft fork is applied at configure time, not
-# vendored. Ubuntu's minimal image plus --no-install-recommends does not carry
-# it, and its absence surfaced as a configure failure with an EMPTY message -
-# CMake reports a missing program the same way it reports a rejected hunk.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
@@ -43,18 +30,6 @@ RUN mkdir -p /opt/velocita-deps/aeron /opt/velocita-deps/willemt-raft \
     && test "$(git -C /opt/velocita-deps/aeron rev-parse HEAD)" = "${AERON_COMMIT}" \
     && test "$(git -C /opt/velocita-deps/willemt-raft rev-parse HEAD)" = "${RAFT_COMMIT}"
 
-# THE PINNED FORK IS APPLIED HERE, not at configure time, because the gate runs
-# the container with --read-only and mounts the source at /src:ro. Those are
-# deliberate properties of the gate - a run must not be able to modify what it is
-# validating - and the dependency baked above is part of the image, so it is
-# read-only too. Configure-time patching worked on a development host and could
-# never have worked here.
-#
-# The stamp written below is what CMakeLists.txt reads instead of patching. It
-# records the commit, the patch digest and the digest of both patched sources;
-# CMake then requires those to match the reviewed values it carries, so this
-# layer cannot smuggle in content the review never saw. A stale image built from
-# an older patch fails that check rather than being used.
 COPY deploy/patches/0001-raft-durable-quorum.patch /opt/velocita-deps/raft.patch
 RUN cd /opt/velocita-deps/willemt-raft \
     && patch -p1 --forward --input=/opt/velocita-deps/raft.patch \

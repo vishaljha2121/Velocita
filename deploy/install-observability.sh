@@ -77,8 +77,6 @@ systemd-analyze --user --generators=true verify \
     velocita-grafana.service \
     velocita-benchmark-metrics-exporter.service
 systemctl --user enable velocita-observability.target
-# Restart the target so an already-active installation also starts newly added
-# dependencies and reloads Prometheus/Grafana provisioning.
 systemctl --user restart velocita-observability.target
 
 echo "Installed and started the bounded local observability stack."

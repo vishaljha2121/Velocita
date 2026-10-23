@@ -31,8 +31,6 @@ struct JupiterRouteDecodeResult {
 };
 [[nodiscard]] JupiterRouteDecodeResult decode_jupiter_shared_route_data(
     std::span<const std::uint8_t> bytes) noexcept;
-// Direct `route` has no shared-account authority-id byte. Keep its result type
-// separate so callers cannot pass it off as the captured shared-account route.
 struct JupiterDirectRouteData {
     std::uint8_t step_count{};
     std::array<JupiterRouteStep, kJupiterRouteSteps> steps{};

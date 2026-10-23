@@ -1,38 +1,3 @@
-# Velocita V2 strategy edge: live True Markets BTC reference prices -> the BTC
-# trend rule (SMA 125) -> RecordSourceEvent + EvaluateDecisionFrame on the
-# cluster. Shadow (default): decisions are recorded, never authorized. Paper
-# (VELOCITA_MODE_ARGS=--mode paper): the kernel may authorize them for the paper
-# gateway, which fills against a simulator. There is no venue key anywhere on
-# this host. nuc1 only, as the `velocitas` user.
-#
-# The tick loop is a STRATEGY caller: caller key 12 = CallerId 21, outside the
-# operator band, so it cannot change strategy mode, kill epoch or controls. The
-# program is installed by the operator's one-shot velocita-v2-shadow-setup.service
-# (caller key 11); only caller-12.key is mounted here, never the operator's.
-#
-# ~/velocita-v2/shadow/shadow.env (not a secret; written once per cluster):
-#   VELOCITA_INCARNATION=<the running cluster's incarnation>
-#   VELOCITA_CATALOG_ROOT=<printed by velocita-v2-shadow-catalog --truemarkets-cbbtc>
-#   VELOCITA_NODES=--node 1=100.72.127.102:42301 --node 2=100.84.151.116:42302 --node 3=100.85.36.22:42303
-#     (every voter's ingress; unbraced $VELOCITA_NODES splits into one argument per word)
-#   VELOCITA_MODE_ARGS=               (shadow) or: --mode paper [--risk-version R --position-version P]
-#   VELOCITA_STRATEGY_ARGS=           (the trend program) or a volume strategy, e.g.
-#     --strategy churn --period-s 60 --order-quantity-lots 12 --weekly-loss-cap-usd 12
-#     (read by BOTH this unit and velocita-v2-shadow-setup.service: the program the
-#     edge names is the one setup installs; see docs/PAPER_TRADING_RUNBOOK.md §7)
-# Secret: %t/velocita-secrets/caller-12.key, pushed from the Mac with
-# velocita-secrets like the node secrets. The single-file mount pins the key
-# the edge started with: restart the edge after rotating caller-12.
-#
-# One tick per 30 s: each tick uses two retained Raft log entries (three when a
-# paper decision is sent for authorization).
-# Book: the owner's whole budget, $25 (--book-usd default), in two timings
-# (tick, daily close), filled at the reference price with the measured quote
-# costs; /state/ledger.db.
-# Order sizing is the catalog row's (v2_shadow_catalog_rows.hpp): $1 ticks,
-# 0.00001 BTC lots, 10 USDC micros per tick-lot. The clip is 25 lots =
-# 0.00025 BTC: 10 x 84,000 ticks x 25 = 21,000,000 micros = $21.00 at $84k,
-# capped at $25 notional (the cap binds at BTC $100,000).
 [Unit]
 Description=Velocita V2 strategy edge (shadow or paper; never a venue)
 After=network-online.target velocita-v2-node@1.service
@@ -65,8 +30,6 @@ ExecStart=/usr/bin/podman run --rm --replace --name velocita-v2-shadow-edge \
     $VELOCITA_NODES $VELOCITA_MODE_ARGS \
     --aeron-dir /dev/shm/velocita-shadow-aeron
 ExecStop=/usr/bin/podman stop -t 15 velocita-v2-shadow-edge
-# 64 = the edge's own usage/configuration refusal: restarting cannot fix it. (A
-# submitter refusal, such as an operator CallerId, shows as edge errors and restarts.)
 RestartPreventExitStatus=64
 Restart=on-failure
 RestartSec=10

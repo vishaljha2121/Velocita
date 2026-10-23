@@ -1,14 +1,4 @@
 #!/usr/bin/env bash
-# velocita-soak: steady low-rate authenticated commands against the shadow
-# cluster, with periodic health samples from every voter. Runs on the Mac.
-#
-#   tools/velocita-soak.sh FIRST_SEQUENCE FIRST_KILL_EPOCH COUNT INTERVAL_SECONDS
-#
-# Pass criteria (decided before the run, M3 soak):
-#   every command COMMITTED with code=0; zero elections (the term never changes);
-#   auth_refusals and fence_refusals stay 0; every voter ends with
-#   commit == applied == durable at the same index.
-# The secret goes Keychain -> pipe -> client stdin; it is never on a command line.
 set -euo pipefail
 
 first_sequence=${1:?first sequence}

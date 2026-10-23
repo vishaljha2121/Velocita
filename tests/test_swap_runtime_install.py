@@ -21,7 +21,7 @@ class RuntimeInstallTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(dir=base)
         self.addCleanup(self.temp.cleanup)
         self.base = Path(self.temp.name)
-        prior_umask = os.umask(0)  # macOS symlink mode follows umask; Linux is 0777.
+        prior_umask = os.umask(0)
         self.addCleanup(os.umask, prior_umask)
         self.source = self.base / 'source'; self.source.mkdir(mode=0o755)
         for name in ('etc', 'usr', 'usr/bin', 'usr/lib'):
@@ -157,9 +157,6 @@ class RuntimeInstallTests(unittest.TestCase):
             self.assertIn('"installed": false', output.call_args.args[0])
 
     def test_destination_creation_under_umask077_and_existing_directory_refusal(self):
-        # Exercise real mkdir/open/fchmod under a restrictive umask, redirecting
-        # only the absolute root anchor into a synthetic tree. Owner lookup/chown
-        # are simulated because this test runs unprivileged on Mac and Linux.
         fake_root = self.base / 'host'; fake_root.mkdir(mode=0o755)
         actual_open, actual_fstat = os.open, os.fstat
 
@@ -182,7 +179,6 @@ class RuntimeInstallTests(unittest.TestCase):
                              'opt/velocita/runtimes/' + P.IMAGE + '/rootfs'):
                     self.assertEqual((fake_root / path).stat().st_mode & 0o777, 0o755)
                 self.assertEqual((fake_root / 'opt/velocita/runtimes' / P.IMAGE).stat().st_mode & 0o777, 0o700)
-                # Never repair an existing directory, even if only its mode is bad.
                 (fake_root / 'opt').chmod(0o700)
                 with self.assertRaisesRegex(P.Refused, 'destination ancestor'):
                     P.open_destination()

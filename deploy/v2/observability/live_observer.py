@@ -75,7 +75,6 @@ def reconcile_settlements(source,previous,now):
     """Persist observation time once. A replay never manufactures a new fill."""
     prior={}
     if previous is not None:
-        # Cache has the producer schema, with one additional field per event.
         clean=dict(previous);clean['settlements']=[]
         for row in previous['settlements']:
             exact_keys(row,'effect side base_atoms quote_atoms fee_atoms outcome first_observed_ms')
@@ -102,8 +101,6 @@ def reconcile_settlements(source,previous,now):
             if prior and row['effect']<=max(prior):raise ValueError('unseen older effect')
             observed=now
         rows.append(dict(row,first_observed_ms=observed))
-    # The kernel retains every event in this bounded run and stops at capacity.
-    # Rows may never disappear and later acquire a second observation timestamp.
     out=dict(source);out['settlements']=rows
     return out
 
@@ -111,8 +108,6 @@ def settlement_snapshot(run,now,persist):
     """An absent or invalid optional producer cannot mask service-status metrics."""
     try:
         raw=read(SETTLEMENT_SOURCE)
-        # Production samples AFTER the read; systemctl and the producer can run
-        # concurrently. Tests inject a fixed time through the now argument.
         if now is None:now=time.time_ns()//1000000
         source=settlements(json.loads(raw,object_pairs_hook=unique_object),run,now)
         if persist:write_file(SETTLEMENT_PUBLISH,json.dumps(source,sort_keys=True)+'\n',0o644)
@@ -222,8 +217,6 @@ def render(data,now):
             if key=='run':continue
             if key=='settlement_events':
                 for event in value:
-                    # Stable low-cardinality labels give an instant table one row
-                    # per effect. Grafana uses this persisted time, never scrape time.
                     labels=f'run="{run}",effect="{event["effect"]}",side="{event["side"]}",first_observed_ms="{event["first_observed_ms"]}",quantity_sol="{event["base_atoms"]/1e9}",quote_usdc="{event["quote_atoms"]/1e6}",fee_usdc="{event["fee_atoms"]/1e6}"'
                     price=event['quote_atoms']*1000/event['base_atoms']
                     difference=None

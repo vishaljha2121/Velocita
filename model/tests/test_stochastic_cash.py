@@ -43,7 +43,6 @@ class CashTests(unittest.TestCase):
         self.assertIn('policy.feature_schema_id = 139\n',text)
 
     def test_cash_exhaustion_is_flat_cannot_afford_clip_and_fee(self):
-        # $25 cannot buy 0.12 SOL at $300 (gross $36, fee $0.072).
         with patch('time.time',return_value=100.):
             self.assertIsNone(self.source.tick(self.raw('300'),receive_ns=100*NS,tick_id=1))
         self.assertEqual(self.source.terminal_reason,'insufficient_balance')
@@ -57,7 +56,6 @@ class CashTests(unittest.TestCase):
             publish_completion(self.j.db,self.c,self.s,100.,'insufficient_balance')
 
     def test_holding_sol_does_not_stop_on_small_cash_and_can_exit(self):
-        # Buy $24 + $0.048, leaving $0.952 cash and 0.12 SOL.
         self.s.update(cash=952000,lots=12,fees=48000,buy_volume=24000000,
             orders=[dict(id=1,side=1,price=20000,lots=12,notional=24000000,fee=48000)])
         Path(self.c['venue_report']).write_text(json.dumps(self.s))

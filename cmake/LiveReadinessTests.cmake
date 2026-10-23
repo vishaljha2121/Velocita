@@ -416,7 +416,6 @@ target_compile_features(v2-swap-settlement-evidence-tests PRIVATE cxx_std_20)
 target_compile_options(v2-swap-settlement-evidence-tests PRIVATE -Wall -Wextra -Wpedantic)
 add_test(NAME v2-swap-settlement-evidence-tests COMMAND v2-swap-settlement-evidence-tests)
 
-# Unsigned create port qualification only; never linked into the release gateway.
 if(VELOCITA_TEST_SWAP_HTTPS AND TARGET velocita_v2_node)
     add_executable(v2-swap-prepare-https-tests
         "${velocita_readiness_root}/tests/v2_swap_prepare_session_tests.cpp"
@@ -552,7 +551,6 @@ if(TARGET velocita_v2_swap_runtime)
     add_executable(v2-swap-settlement-lifecycle-tests "${velocita_readiness_root}/tests/v2_swap_settlement_lifecycle_tests.cpp")
     target_link_libraries(v2-swap-settlement-lifecycle-tests PRIVATE velocita_v2_swap_runtime)
     add_test(NAME v2-swap-settlement-lifecycle-tests COMMAND v2-swap-settlement-lifecycle-tests)
-    # The proof factory exists only in this isolated copy, never in the runtime library.
     get_target_property(swap_runtime_fixture_sources velocita_v2_swap_runtime SOURCES)
     list(TRANSFORM swap_runtime_fixture_sources PREPEND "${velocita_readiness_root}/")
     add_executable(v2-swap-settlement-admission-tests
@@ -594,7 +592,6 @@ if(TARGET velocita_v2_node)
 endif()
 
 
-# Accepted output-cost arithmetic has no signing or replicated-state authority.
 add_executable(v2-swap-cost-policy-tests
     "${velocita_readiness_root}/tests/v2_swap_cost_policy_tests.cpp"
     "${velocita_readiness_root}/src/v2_swap_owner_accounting.cpp")

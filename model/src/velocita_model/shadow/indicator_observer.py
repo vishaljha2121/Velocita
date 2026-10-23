@@ -87,7 +87,6 @@ def metrics(c,now):
     try:
         if epoch and completed_path(c['ledger']).exists():
             db,final,finalized_at=open_completion(c,now)
-            # Compare even a stale report's economics; this is NOT a freshness claim.
             if Path(c['venue_report']).exists():
                 raw=Path(c['venue_report']).read_bytes()
                 if len(raw)>100000: raise ValueError('paper snapshot capacity')

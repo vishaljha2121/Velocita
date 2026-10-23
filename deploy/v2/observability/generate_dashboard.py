@@ -881,8 +881,6 @@ def live():
             'properties':[{'id':'custom.drawStyle','value':'points'},{'id':'custom.showPoints','value':'always'},
                           {'id':'custom.pointSize','value':9},{'id':'custom.lineWidth','value':0},
                           {'id':'color','value':{'mode':'fixed','fixedColor':color}}]})
-    # Remove scrape Time BEFORE converting the event timestamp: Grafana's legacy
-    # Time matcher also matches every typed time field.
     chart['transformations']=chart['transformations'][2:]+chart['transformations'][:2]
     chart['transformations'].append({'id':'sortBy','options':{'sort':[{'field':'First confirmed observation'}]}})
     advance(8)

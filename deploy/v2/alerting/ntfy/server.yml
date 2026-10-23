@@ -1,32 +1,15 @@
-# Self-hosted ntfy on nuc1: the push channel for Prometheus alerts.
-# docs/ALERT_DELIVERY_RUNBOOK.md. Open source (Apache-2.0 / GPL-2.0).
-#
-# base-url and listen-http come from the unit (NTFY_BASE_URL, NTFY_LISTEN_HTTP):
-# they are this host's Tailscale address, so the server is reachable from the
-# tailnet only. base-url must be EXACTLY what the iPhone app subscribes to; the
-# iOS wake-up below is keyed on sha256(base-url/topic).
-
 cache-file: "/var/lib/ntfy/cache.db"
-# A phone that was offline can still fetch what it missed.
 cache-duration: "72h"
 
-# Nobody reads or writes without an account. Users, the access list and the
-# publisher's token are created once with the ntfy CLI and live in this file
-# (in the velocita-ntfy-data volume), not in the repository.
 auth-file: "/var/lib/ntfy/user.db"
 auth-default-access: "deny-all"
 enable-login: true
 enable-signup: false
 enable-reservations: false
 
-# iOS cannot hold a background connection. For an instant notification the
-# server sends ntfy.sh a "poll request": the message ID and a hash of the topic
-# URL, never the alert text. The phone then fetches the text from THIS server
-# over Tailscale. Without this, iOS delivery can lag by minutes to hours.
 upstream-base-url: "https://ntfy.sh"
 
 template-dir: "/etc/ntfy/templates"
 
-# Alertmanager and the heartbeat are the only publishers; this is ample for them.
 visitor-request-limit-burst: 120
 visitor-request-limit-replenish: "5s"

@@ -29,7 +29,7 @@ transport::SwapHttpsResult SwapHttpsPreparePort::create(const truemarkets::SwapR
     if(!valid_ || attempted_ || bearer_.empty() || request.path_size>request.path.size() ||
         request.body_size>request.body.size() || request.path_view()!=expected_.path_view() ||
         request.body_view()!=expected_.body_view())return refused;
-    attempted_=true; // A timeout or lost response never permits another POST.
+    attempted_=true;
     return client_.exchange({transport::SwapHttpsMethod::post,expected_.path_view(),bearer_,expected_.body_view()});
 }
 #ifdef VELOCITA_SWAP_PREPARE_HTTPS_TEST_ONLY

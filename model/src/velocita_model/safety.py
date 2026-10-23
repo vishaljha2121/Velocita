@@ -8,16 +8,17 @@ from this file:
      consumed by the C++ execution gateway. That gateway consumes `OrderEffect`
      records produced by the Raft reducer. It does not accept input from this
      process, on any transport.
-  2. This package cannot author an `OrderEffect`. `contracts/codec.py`
-     deliberately implements no encoder for it. There is no environment
-     variable, config key, or flag that adds one.
-  3. Everything this package emits - `DecisionFrame`, `PolicyArtifact` - is
-     advisory by contract. A frame is *proposed*; the cluster performs the final
-     authoritative evaluation and may reject it. A published policy is not an
-     activated policy.
-  4. Phase 3C retains an evaluation mode on every decision, and Phase 4 must
-     refuse to build a risk-increasing effect from a shadow decision. Shadow is
-     an authority property, not a logging preference.
+  2. This package cannot author an `OrderEffect` or a signed transaction.
+     `contracts/codec.py` deliberately implements no encoder for either. There is
+     no environment variable, config key, or flag that adds one.
+  3. What this package emits is a proposal. `DecisionFrame` and `PolicyArtifact`
+     are evaluated again by the cluster, and the live driver's
+     `spot-swap-intent` is admitted only as the strategy caller, inside the
+     operator's grant, strategy mode and loss stop. The gateway executes only
+     committed intents, and the signer checks each transaction independently.
+  4. Every decision carries its evaluation mode, and the kernel records a shadow
+     decision without building any effect. Shadow is an authority property, not
+     a logging preference.
 
 So the checks below are defence in depth, not the primary control. They exist to
 catch the realistic failure - somebody pastes a wallet snippet into this repo

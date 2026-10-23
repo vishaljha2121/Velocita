@@ -25,7 +25,7 @@ class Best:
 
 def optimize(bars: DailyBars, grid: Sequence[int], run: Run) -> Best:
     scores = tuple((v, metrics.profit_factor(run(bars, v))) for v in grid)
-    value, score = max(scores, key=lambda s: s[1])  # ties: first grid value
+    value, score = max(scores, key=lambda s: s[1])
     return Best(value, score, scores)
 
 

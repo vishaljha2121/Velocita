@@ -1,4 +1,3 @@
-# Pure, bounded transaction parsing; no credentials, network or signing.
 add_library(velocita_v2_swap_transaction_verifier
     src/v2_swap_transaction_verifier.cpp
     src/v2_swap_transaction_review.cpp

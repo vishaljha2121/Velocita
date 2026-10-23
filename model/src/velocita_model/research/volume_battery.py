@@ -47,8 +47,6 @@ LT, LE, EQ, GE, GT = (PredicateOperator.less_than, PredicateOperator.less_than_o
                       PredicateOperator.greater_than_or_equal, PredicateOperator.greater_than)
 
 
-# -- price paths and features --------------------------------------------------
-
 @dataclass(frozen=True)
 class PricePath:
     """Evenly spaced ticks plus the daily closes before the first tick's UTC day
@@ -147,17 +145,12 @@ def random_walk(path: PricePath, rng: random.Random) -> PricePath:
     return PricePath(path.times, tuple(out), path.history)
 
 
-# -- candidates -----------------------------------------------------------------
-
 @dataclass(frozen=True)
 class Candidate:
     name: str
     label: str
     program: tuple[Rule, ...]
-    window: int = 0  # DEVS window in ticks; 0 when the program does not read DEVS
-    # The paper tooling's definitions (2026-09-30): PHASE = floor(t / phase_period_s) mod 2
-    # instead of a flip per decided tick; CYCLE_S = t mod cycle_s; DEVS over the last
-    # window_min completed minute closes instead of the last `window` ticks.
+    window: int = 0
     phase_period_s: int = 0
     cycle_s: int = 0
     window_min: int = 0
@@ -223,8 +216,6 @@ def buy_and_hold() -> Candidate:
     return Candidate("BH", "buy and hold", (Rule(HELD_S, GE, 0, Action.ENTER_LONG),))
 
 
-# The pre-registered grid (RESEARCH_LEDGER.md). Keys are candidate ids; values
-# are (grid label, candidate) in grid order: ties go to the first.
 GRID: dict[str, list[tuple[str, Candidate]]] = {
     "A": [("-", churn())],
     "B": [("-", gated_churn())],
@@ -236,20 +227,18 @@ GRID: dict[str, list[tuple[str, Candidate]]] = {
 }
 
 
-# -- execution --------------------------------------------------------------------
-
 @dataclass(frozen=True)
 class Execution:
     clip_lots: int
     buy_bps: float
     sell_bps: float
-    capital_usd: float | None = 25.0        # None: unlimited cash (a signal test, not a deployable book)
-    exposure_cap_usd: float | None = 25.0   # kernel max_reserved_exposure; None: no cap
-    fee_hold_bps: float = 150.0             # kernel maximum_fee_ppm 15000
+    capital_usd: float | None = 25.0
+    exposure_cap_usd: float | None = 25.0
+    fee_hold_bps: float = 150.0
     resync_ticks: int = 1
-    fill_lag_ticks: int = 0                 # fill at the price this many ticks after the decision
+    fill_lag_ticks: int = 0
     weekly_loss_cap_usd: float | None = None
-    weekly_topup: bool = True               # restore equity to capital_usd at each week start
+    weekly_topup: bool = True
 
 
 @dataclass
@@ -266,12 +255,12 @@ class Week:
     killed_capital: int = 0
     refused_exposure: int = 0
     refused_cap: int = 0
-    position_bound: int = 0   # enter_long while already long: the one-position limit refused it
-    exit_flat: int = 0        # exit while flat: nothing to sell (long-only)
+    position_bound: int = 0
+    exit_flat: int = 0
     topup: float = 0.0
-    cap_first_s: int | None = None  # seconds into the week when the loss cap first refused a buy
-    drawdown: float = 0.0     # largest fall of equity from its high within the week
-    first_kill_s: int | None = None  # seconds into the week of the first capital kill
+    cap_first_s: int | None = None
+    drawdown: float = 0.0
+    first_kill_s: int | None = None
 
     @property
     def net(self) -> float:
@@ -368,7 +357,7 @@ def simulate(path: PricePath, candidate: Candidate, ex: Execution, *, trend: Seq
             continue
         d = devs[i] if devs is not None else 0
         if d is None:
-            continue  # the edge sends no tick until every feature it computes exists
+            continue
         week.decisions += 1
         index = first_match(program, (trend[i], d, (t // phase_period) % 2 if phase_period else phase,
                                       t - bought_at if qty > 0 else 0, t % cycle if cycle else 0))
@@ -424,8 +413,6 @@ def simulate(path: PricePath, candidate: Candidate, ex: Execution, *, trend: Seq
     return Result(weeks, fills, worst)
 
 
-# -- the battery on tick paths (same definitions as battery.py) ----------------
-
 @dataclass(frozen=True)
 class Features:
     trend: list[int]
@@ -458,7 +445,7 @@ def best_index(results: Sequence[Result], weeks: range | None = None) -> int:
 @dataclass(frozen=True)
 class WalkForward:
     score_bp: float
-    choices: list[tuple[int, int]]  # (first out-of-sample week, chosen grid index)
+    choices: list[tuple[int, int]]
     oos_weeks: list[Week]
 
 

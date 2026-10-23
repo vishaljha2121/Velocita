@@ -1,14 +1,4 @@
 #!/usr/bin/env bash
-# secrets-presence: which secrets this voter's config needs, and whether each is
-# in the RAM-only secrets directory, as node-exporter textfile metrics.
-#
-#   secrets-presence.sh NODE_CONFIG SECRETS_DIR OUTPUT_PROM
-#   env: VELOCITA_NODE (node id label), VELOCITA_SSH_HOST (how the Mac reaches this host)
-#
-# After a reboot the secrets directory is empty by design; the node refuses to
-# start and the alert VelocitaSecretsMissing names the host, the secret and the
-# push command. Presence comes from the directory entry (exists, non-empty):
-# this script NEVER opens a secret, and needs no secret to run.
 set -euo pipefail
 
 config=${1:?node config}
@@ -19,7 +9,6 @@ ssh_host=${VELOCITA_SSH_HOST:-$(hostname)}
 
 names=""
 if [[ -r $config ]]; then
-    # key_file = /run/velocita-secrets/NAME.key (the path inside the node's container)
     names=$(sed -n -E 's#^[[:space:]]*(voter|caller)\.[0-9]+\.key_file[[:space:]]*=[[:space:]]*/run/velocita-secrets/([A-Za-z0-9._-]+)\.key[[:space:]]*$#\2#p' "$config")
 fi
 

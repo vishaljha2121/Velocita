@@ -181,7 +181,6 @@ def install(base, digest, previous=None, previous_digest=None):
             for key,value in (('LoadState','loaded'),('ActiveState','inactive'),('SubState','dead'),('UnitFileState','static')):
                 if command(['/usr/bin/systemctl','show',unit,'--property='+key,'--value']) != value:
                     raise ValueError('replacement requires inactive static services')
-    # Complete preflight above. No credential content is installed.
     if not os.path.lexists(release_parent): mkdir(release_parent)
     mkdir(release)
     if previous is None:

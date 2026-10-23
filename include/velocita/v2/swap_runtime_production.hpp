@@ -17,7 +17,6 @@ struct SwapRuntimeProfile {
     SwapFailureAccountingPolicy failure_policy{};
     Digest256 account_review_digest{};
 };
-// Public configuration only: exact bounded key=value schema, no secret material.
 [[nodiscard]] std::optional<SwapRuntimeProfile> decode_swap_runtime_profile(std::string_view) noexcept;
 [[nodiscard]] bool swap_runtime_live_contract_admitted(const SwapRuntimeProfile&,std::uint64_t now_ms) noexcept;
 [[nodiscard]] std::unique_ptr<SwapTokenPort> make_swap_token_port(long timeout_ms);
@@ -75,7 +74,6 @@ private:
     void report_reconcile(EffectId,unsigned stage,unsigned code);
     SwapCreateTrace trace_{};
 };
-// Owns the concrete adapters; borrowed credentials/stores/link outlive this object.
 class SwapProductionGateway final {
 public:
     SwapProductionGateway(GatewayLink&,SwapReconcileStore&,SwapPrepareStore&,SwapSubmissionStore&,

@@ -21,8 +21,6 @@ import authenticated_read_run as Q
 R=N.R
 SYSTEM_UNITS=R.A.UNITS
 USER_UNITS=tuple('velocita-paper-'+name+'-'+role+'.service' for name in ('stochastic','sma') for role in ('edge','gateway'))+('velocita-v2-shadow-edge.service','velocita-v2-gateway.service')
-# /etc is traversable by the unprivileged user manager; the private public/
-# directory is not. A negative condition must never hide permission errors.
 SENTINEL=Path('/etc/velocita-idle-renewal-active')
 DROPIN='90-idle-renewal.conf'
 USER_COMMAND=['/usr/sbin/runuser','-u','velocitas','--','/usr/bin/env','XDG_RUNTIME_DIR=/run/user/1003','DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1003/bus','/usr/bin/systemctl','--user']
@@ -48,8 +46,6 @@ def sync(path):
 
 
 def replace(path,raw):
-    # Unique pending files preserve a failed attempt without touching native store
-    # filenames. fsync replacement inode and parent before progressing.
     meta=path.lstat()
     if not stat.S_ISREG(meta.st_mode) or meta.st_nlink!=1:raise ValueError('replacement target must be single-link regular file')
     pending=path.with_name(path.name+'.idle-renewal.pending')
@@ -70,7 +66,6 @@ def directory_locks(paths,uid=None):
     descriptors=[]
     try:
         for path in paths:
-            # Component traversal must not follow a symlink even in an ancestor.
             fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY)
             try:
                 for part in Path(path).absolute().parts[1:]:
@@ -99,8 +94,6 @@ def exact_state(rows,report):
 def read_live(manifest,files,helper_sha256,output):
     profile=R.L.fields(files['runtime.profile'])
     config=Q.pins(helper_sha256,manifest['catalog_sha256'],manifest['incarnation'],profile['catalog'],profile['authority_domain'])
-    # Q.run validates root-owned native binary/catalog and directly captures fresh
-    # child results; it also cleans up timed-out transient units. Never load result.json.
     result=Q.run(output,config)
     if result.get('authenticated_voter_reads') is not True:raise ValueError('fresh protected reads failed')
     return result['results']
@@ -142,8 +135,6 @@ def publish(replacements,archive,recover):
 
 
 def checked_publish(manifest,files,helper_sha256,output,proposal,replacements,archive,recover):
-    # Invoked only inside the host's inhibitor and all five directory locks.
-    # The native reader call is mandatory even for an explicit recovery.
     exact_state(read_live(manifest,files,helper_sha256,output),proposal['report'])
     publish(replacements,archive,recover)
 
@@ -159,8 +150,6 @@ def condition_verified(raw):
 
 
 def check_condition(unit,user):
-    # systemctl v249 prints compound Conditions as [unprintable]; query its typed
-    # D-Bus property instead, verifying negation and non-trigger (AND) semantics.
     object_path='/org/freedesktop/systemd1/unit/'+''.join(c if c.isalnum() else '_'+format(ord(c),'02x') for c in unit)
     prefix=(USER_COMMAND[:-2]+['/usr/bin/busctl','--user']) if user else ['/usr/bin/busctl']
     condition_verified(command(prefix+['--json=short','get-property','org.freedesktop.systemd1',object_path,'org.freedesktop.systemd1.Unit','Conditions']))
@@ -195,9 +184,6 @@ def inhibit(pin):
                 if read(dest)!=content:raise ValueError('inhibition drop-in differs')
             else:private_new(dest,content,0o444)
         command(prefix+['daemon-reload'])
-        # Stop processes, but refuse a retained systemd failed state. The owner
-        # must preserve its evidence and explicitly clear that flag separately.
-        # Never reset recovery data or start/enable; inhibition survives loss.
         command(prefix+['stop',*units])
         for unit in units:
             if command(prefix+['show',unit,'--property=ActiveState','--value'])!='inactive':raise ValueError('producer remains active')
@@ -243,7 +229,6 @@ def apply(base,pin,recover=False):
     baseline=R.L.strict_json(proposal['artifacts']['baseline.json']) if 'baseline.json' in proposal['artifacts'] else None
     if not recover:N.propose(old,new,before,after,{n:proposal['artifacts']['before/journals/'+n] for n in R.JOURNALS},now,session_refresh=witness,route_review=route,release_review=release,baseline=baseline)
     public=Path(R.P.PUBLIC)
-    # One owner transition at a time, separate from the native journal locks.
     with directory_locks([public],0):
         inhibit(pin)
         paths={name:Path('/var/lib/velocita-swap-'+role+'/recovery')/name/leaf for name,(role,leaf,_,_) in R.JOURNALS.items()}
@@ -254,13 +239,11 @@ def apply(base,pin,recover=False):
             if not stat.S_ISREG(meta.st_mode) or meta.st_uid!=uid or meta.st_gid!=uid or stat.S_IMODE(meta.st_mode)!=0o600 or meta.st_nlink!=1:raise ValueError('journal metadata differs')
         with directory_locks([p.parent for p in paths.values()]):
             replacements={paths['protected-signing']:(proposal['artifacts']['before/journals/protected-signing'],proposal['artifacts']['after/journals/protected-signing'])}
-            # Four gateway journals must remain byte-identical, even in recovery.
             for name,path in paths.items():
                 if name!='protected-signing' and read(path)!=proposal['artifacts']['before/journals/'+name]:raise ValueError('gateway journal changed')
             replacements.update({public/n:(before[n],after[n]) for n in R.A.DOCUMENTS})
             replacements[public/'manifest.json']=(R.P.manifest_bytes(old),R.P.manifest_bytes(new))
             for unit in SYSTEM_UNITS:replacements[Path('/etc/systemd/system')/unit]=(R.P.render(old)[unit+'.review'].encode(),R.P.render(new)[unit+'.review'].encode())
-            # All file/role/binary identity validation precedes a read and write.
             for path,(previous,following) in replacements.items():
                 if read(path) not in ((previous,following) if recover else (previous,)):raise ValueError('installed generation differs')
             R.L.pinned_bytes(new['binary'],new['binary_sha256'],64*1024**2)

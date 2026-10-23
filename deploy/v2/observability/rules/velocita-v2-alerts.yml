@@ -1,7 +1,3 @@
-# M3a alert rules. Delivery: Prometheus -> Alertmanager -> self-hosted ntfy ->
-# phone (docs/ALERT_DELIVERY_RUNBOOK.md). Grafana also shows them as firing/pending.
-# severity: critical is an urgent push repeated hourly; warning is a normal push
-# repeated every 4 hours.
 groups:
   - name: velocita-v2
     rules:
@@ -12,8 +8,6 @@ groups:
         annotations:
           summary: "Voter on {{ $labels.host }} is not reporting"
           description: "Its health page is unreadable or its exporter is unreachable. Two of three voters still commit; one more loss stops the cluster."
-      # Counted from scrape targets, not health pages, so a voter whose exporter
-      # vanished entirely still counts as missing.
       - alert: VelocitaQuorumAtRisk
         expr: count(up{job="velocita-v2",strategy="stochastic"} == 1 and on(instance) velocita_v2_up{strategy="stochastic"} == 1) < 3
         for: 1m
@@ -54,10 +48,7 @@ groups:
         annotations:
           summary: "{{ $value }} elections in 10 minutes"
           description: "Repeated elections: slow disk, flaky link or a restart loop."
-      # The slow version of a storm: one election per compaction never reaches
-      # the storm's rate (finding 53: 64 elections in two days, no alert).
       - alert: VelocitaElectionsRecurring
-        # An exact count: increase() extrapolates and would turn 3 into more than 3.
         expr: max(velocita_v2_term) - min_over_time(max(velocita_v2_term)[6h:1m]) > 3
         labels: {severity: warning}
         annotations:
@@ -101,8 +92,6 @@ groups:
         annotations:
           summary: "{{ $labels.host }} gave up leadership: it stopped hearing a majority"
           description: "The leader could send but heard no replies from a majority for two election timeouts, so it stepped down to let another voter lead. Check the network path into {{ $labels.host }}."
-      # From deploy/v2/secrets-presence.sh on each voter host (names only; it
-      # never reads a secret). Secrets live in RAM, so every reboot needs a push.
       - alert: VelocitaSecretsMissing
         expr: velocita_secret_present == 0
         for: 30s
@@ -123,11 +112,6 @@ groups:
         annotations:
           summary: "A secret reload was refused on voter {{ $labels.node }}"
           description: "Old keys are still in use; the push was incomplete or corrupt."
-      # The retained Raft log never evicts. Compaction reclaims only entries
-      # every voter holds (the compaction floor), so the log fills only while
-      # some voter is not keeping up. A full ordinary pool refuses every normal
-      # command (the shadow edge stops); the protected pool is the operator
-      # kill reserve.
       - alert: VelocitaRaftLogFilling
         expr: velocita_v2_retained_log_entries{pool="ordinary"} / velocita_v2_retained_log_capacity{pool="ordinary"} > 0.75
         for: 5m
@@ -142,9 +126,6 @@ groups:
         annotations:
           summary: "{{ $labels.host }} Raft log is full: normal commands are refused"
           description: "The shadow edge cannot record decisions. Operator kill commands still use the protected reserve. Restore the voter pinning the compaction floor, or replace the cluster."
-      # The archive keeps every compacted log entry and has a fixed budget.
-      # Ordinary commands are refused 16 MiB and 4 catalog rows before it; the
-      # operator kill path keeps that reserve. A run with no end date reaches it.
       - alert: VelocitaArchiveFilling
         expr: >-
           velocita_v2_archive_bytes / (velocita_v2_archive_byte_limit - 16777216) > 0.70
@@ -163,9 +144,6 @@ groups:
         annotations:
           summary: "{{ $labels.host }} archive is {{ $value | humanizePercentage }} of the ordinary budget: act now"
           description: "Ordinary commands stop at 100%. Flatten the position and stop the strategy while commands are still accepted, then start a new incarnation."
-      # A policy slot is taken by every policy version ever published in an
-      # incarnation and is never freed. At the limit a new strategy cannot be
-      # installed; the running one is unaffected.
       - alert: VelocitaPolicySlotsLow
         expr: velocita_v2_policies / velocita_v2_policy_capacity >= 0.75
         for: 5m
@@ -173,8 +151,6 @@ groups:
         annotations:
           summary: "{{ $labels.host }} has used {{ $value | humanizePercentage }} of its policy slots"
           description: "Each published policy version keeps a slot for the life of the incarnation. When none are left a new strategy version is refused (policy_capacity_exceeded); plan a new incarnation before the next strategy change."
-      # The kernel's own money ledger (ADR 0021). The limit is on realized loss
-      # since the operator last reset it; at the limit only closing orders pass.
       - alert: VelocitaLossLimitNear
         expr: >-
           max by (account, instrument) (velocita_v2_account_max_window_loss_micros) > 0
@@ -247,8 +223,6 @@ groups:
         annotations:
           summary: "Soak bot saw failed commands"
           description: "A soak command timed out or was refused."
-      # Phase 2 paper-trading gateway. absent() also catches a gateway that was
-      # never started or whose metrics stopped being scraped.
       - alert: VelocitaGatewayDown
         expr: velocita_gateway_up == 0 or absent(velocita_gateway_up)
         for: 2m
@@ -256,10 +230,6 @@ groups:
         annotations:
           summary: "Paper gateway is down or not reporting"
           description: "velocita_gateway_up is 0 or missing: no paper orders are sent and tick-to-trade is not measured. Check the gateway service and its journal."
-      # A fence (election, state-read gap) re-arms by itself and shows as
-      # awaiting_arm; it pages only through VelocitaGatewayAwaitingRearm if it
-      # lasts. A gateway too old to export the cause still pages (unless keeps
-      # the alert when the right-hand series is absent).
       - alert: VelocitaGatewayNewRiskStopped
         expr: velocita_gateway_new_risk_stopped == 1 unless on(job, host) velocita_gateway_stop_cause{cause="awaiting_arm"} == 1
         labels: {severity: critical}
@@ -285,24 +255,18 @@ groups:
         annotations:
           summary: "Paper gateway on {{ $labels.host }} has an order with an unknown outcome"
           description: "The gateway could not establish whether an order reached or filled at the venue, so its position may be wrong. New risk is stopped; check the gateway journal and reconcile against the venue."
-      # The Pi 5 browned out on 2026-09-30/10-01 (4 under-voltage events; boots ended with
-      # no shutdown; M3 finding 52). The firmware raises this flag when the supply sags.
       - alert: VelocitaPiUndervoltage
         expr: max_over_time(node_hwmon_in_lcrit_alarm_volts{chip=~".*raspberrypi_hwmon"}[5m]) > 0
         labels: {severity: warning}
         annotations:
           summary: "{{ $labels.host }} power supply sagged below spec (under-voltage)"
           description: "The Pi 5 needs a 5 V / 5 A USB-C supply (official 27 W). Under-voltage under load causes brownouts: silent freezes or resets. Check the supply and cable."
-      # Any reboot is worth knowing about: a watchdog or brownout reset is otherwise silent,
-      # and a rebooted voter waits for its keys (secrets live in /run).
       - alert: VelocitaHostRebooted
         expr: changes(node_boot_time_seconds[30m]) > 0
         labels: {severity: warning}
         annotations:
           summary: "{{ $labels.host }} rebooted in the last 30 minutes"
           description: "Check why (journalctl -b -1) and whether its voter came back; after a reboot the keys in /run are gone, so push them again (CLEAN_RESET_RUNBOOK.md step 0)."
-      # md-stream silently recorded nothing for ~43 h (2026-09-28 20:36 .. 09-30 16:06 UTC,
-      # M3 finding 50) while its process looked alive: alert on the counter, not on up.
       - alert: VelocitaMdStreamSilent
         expr: increase(velocita_md_messages_total{type="reference_prices"}[10m]) == 0 or absent(velocita_md_messages_total{type="reference_prices"})
         for: 5m
@@ -310,9 +274,6 @@ groups:
         annotations:
           summary: "md-stream on nuc1 has recorded no reference prices for 15 minutes"
           description: "The market-data recorder is hung, stopped or disconnected, so research data has a gap. On nuc1: journalctl --user -u velocita-md-stream; systemctl --user restart velocita-md-stream."
-      # Market-data archive on nuc1 (velocita-md-archive.timer; docs/MD_ARCHIVE_RUNBOOK.md).
-      # The textfile is rewritten once a night, so ages are computed here from
-      # timestamps rather than read from a value that froze at the last run.
       - alert: VelocitaMdBackupNotAcked
         expr: velocita_md_archive_oldest_unacked_day_end_timestamp_seconds > 0 and (time() - velocita_md_archive_oldest_unacked_day_end_timestamp_seconds) > 2 * 86400
         labels: {severity: warning}
@@ -337,9 +298,6 @@ groups:
         annotations:
           summary: "Market-data prune on {{ $labels.host }} is blocked: {{ $labels.reason }}"
           description: "A day's rows are held in stream.db because its archive does not verify, the Mac acknowledged different bytes, or rows arrived after it was archived. Nothing is deleted until an operator resolves it (runbook)."
-      # The delivery path itself. These two cannot reach the phone when they
-      # fire for the reason they describe; Grafana shows them, and the external
-      # heartbeat (runbook) is what notices a dead nuc1.
       - alert: VelocitaAlertmanagerDown
         expr: up{job="alertmanager"} == 0 or absent(up{job="alertmanager"})
         for: 2m

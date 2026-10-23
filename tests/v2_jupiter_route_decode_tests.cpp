@@ -104,9 +104,6 @@ void variant_orders() {
             "reversed_variants_are_data_not_economics");
 }
 std::vector<std::uint8_t> direct_literal() {
-    // Independent byte oracle from program-owned IDL: 8 discriminator bytes,
-    // u32 count=1, enum=177, bool=false, percent=100, indices=0/1,
-    // LE u64 input=1,000,000 and quote=9,364,365, u16 slippage=500, u8 fee=20.
     return {0xe5,0x17,0xcb,0x97,0x7a,0xe3,0xad,0x2a,1,0,0,0,
         177,0,100,0,1,0x40,0x42,0x0f,0,0,0,0,0,
         0x8d,0xe3,0x8e,0,0,0,0,0,0xf4,1,20};
@@ -154,8 +151,6 @@ void direct_boundaries() {
         r.data.slippage_bps==65535 && r.data.platform_fee_bps==255,"direct_unsigned_fields_do_not_grant_admission");
 }
 void direct_raydium() {
-    // Pinned program-owned IDL: variant 26 is RaydiumClmm with NO fields.
-    // Hand-decoded fresh capture: 26,100,0,1 then LE amounts; no bool byte.
     std::vector<std::uint8_t> bytes{0xe5,0x17,0xcb,0x97,0x7a,0xe3,0xad,0x2a,1,0,0,0,
         26,100,0,1,0x40,0x42,0x0f,0,0,0,0,0,0xc3,0xa8,0x92,0,0,0,0,0,0xf4,1,20};
     const auto r=decode_jupiter_direct_route_data(bytes);
@@ -177,8 +172,6 @@ void direct_raydium() {
         "mixed_variant_offsets");
 }
 void direct_current_variants() {
-    // Hand-written Borsh oracle: Obsidian (109) has no fields; KipseliV3
-    // (181) has one bool. Suffix: 1,000,000 input, 9,410,623 quote, 500bp,20bp.
     const std::vector<std::uint8_t> obsidian{0xe5,0x17,0xcb,0x97,0x7a,0xe3,0xad,0x2a,1,0,0,0,
         109,100,0,1,0x40,0x42,0x0f,0,0,0,0,0,0x3f,0x98,0x8f,0,0,0,0,0,0xf4,1,20};
     const std::vector<std::uint8_t> kipseli{0xe5,0x17,0xcb,0x97,0x7a,0xe3,0xad,0x2a,1,0,0,0,
@@ -208,8 +201,6 @@ void direct_current_variants() {
 
 
 std::vector<std::uint8_t> invariant_literal() {
-    // Independent retained-capture Borsh oracle: enum18, bool=true, 100%,0->1;
-    // u64 input 1,000,000; u64 quote 9,420,476; u16 slippage500; u8 fee20.
     return {0xe5,0x17,0xcb,0x97,0x7a,0xe3,0xad,0x2a,1,0,0,0,
         18,1,100,0,1,0x40,0x42,0x0f,0,0,0,0,0,
         0xbc,0xbe,0x8f,0,0,0,0,0,0xf4,1,20};
@@ -244,8 +235,6 @@ void direct_invariant() {
 }
 
 void direct_byreal() {
-    // Program-owned IDL enum156 has no payload. Hand-worked little-endian
-    // oracle from the unsigned route: 1,000,000 in, 9,345,460 out, 500bp,20bp.
     std::vector<std::uint8_t> bytes{0xe5,0x17,0xcb,0x97,0x7a,0xe3,0xad,0x2a,1,0,0,0,
         156,100,0,1,0x40,0x42,0x0f,0,0,0,0,0,0xb4,0x99,0x8e,0,0,0,0,0,0xf4,1,20};
     const auto r=decode_jupiter_direct_route_data(bytes);

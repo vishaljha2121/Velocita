@@ -12,7 +12,6 @@ from .stochastic_second import CASH_VARIANT,NO_DEADLINE,pilot_program
 
 def prepare(c,ledger,now_ns):
     if c['mode']!='paper' or c['strategy']!='stochastic': raise ValueError('paper stochastic only')
-    # This migration is for the fresh 20 bp account, not mixed historical fees.
     if c['epoch']['previous_orders']: raise ValueError('mixed prior cost epochs need explicit migration')
     s=snapshot(c['venue_report'],c['incarnation'],now_ns/1e9,c['epoch'])
     db,final,_=open_completion(c,now_ns/1e9)

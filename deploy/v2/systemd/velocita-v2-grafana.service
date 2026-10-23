@@ -1,13 +1,9 @@
-# nuc1 only. Grafana on nuc1's Tailscale address, port 3000: reachable from
-# your Mac and iPhone through Tailscale, not from the local network.
-# First login: admin / admin, and Grafana forces you to set a new password.
 [Unit]
 Description=Velocita V2 Grafana
 After=velocita-v2-prometheus.service
 
 [Service]
 EnvironmentFile=%h/.config/velocita/host.env
-# (podman run creates the named volume on first use; podman 3.4 has no --ignore)
 ExecStart=/usr/bin/podman run --rm --replace --name velocita-v2-grafana \
     --network host --memory 512m \
     -v velocita-v2-grafana-data:/var/lib/grafana \

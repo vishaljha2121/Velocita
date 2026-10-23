@@ -214,9 +214,6 @@ def open_destination():
             os.close(parent); parent = child
             meta = os.fstat(parent)
             if created:
-                # mkdir observes the invoking root process's umask. Normalize
-                # only this new inode through its no-follow descriptor; existing
-                # directory modes/owners are never silently repaired.
                 if meta.st_uid != 0:
                     raise Refused('new destination ancestor replaced before ownership assignment')
                 set_owner_mode(parent, 0o755)
@@ -224,7 +221,7 @@ def open_destination():
                 meta = os.fstat(parent)
             if meta.st_uid != 0 or meta.st_gid != 0 or stat.S_IMODE(meta.st_mode) != 0o755:
                 raise Refused('destination ancestor must be root/root 0755')
-        os.mkdir(IMAGE, 0o700, dir_fd=parent)  # no overwrite or partial resume
+        os.mkdir(IMAGE, 0o700, dir_fd=parent)
         os.fsync(parent)
         release = os.open(IMAGE, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
         try:
@@ -285,8 +282,6 @@ def copy_tree(sourcefd, destinationfd, manifest):
             if source is not None: os.close(source)
             if destination is not None: os.close(destination)
             os.close(srcparent); os.close(dstparent)
-    # Symlinks last. Absolute symlinks are meaningful only inside the final
-    # RootDirectory; neither scan nor copying traverses any symlink.
     for entry in entries:
         if entry['type'] != 'symlink': continue
         parent, _, name = entry['path'].rpartition('/')
@@ -316,7 +311,6 @@ def new_file(parent, name, raw, mode=0o444):
 
 
 def complete_install(release, rootfs, manifest, digest):
-    # Caller has verified the whole destination. No marker on a failed copy.
     new_file(release, 'rootfs-manifest.json', manifest_bytes(manifest))
     etc = relative_directory(rootfs, 'etc')
     try:
@@ -326,7 +320,6 @@ def complete_install(release, rootfs, manifest, digest):
     record = dict(schema=1, image=IMAGE, manifest_sha256=digest, entries=len(manifest['entries']), complete=True)
     new_file(release, 'installation.json', manifest_bytes(record))
     os.fsync(rootfs); os.fsync(release)
-    # Pending/failed installs stay 0700 and cannot be reused automatically.
     set_owner_mode(release, 0o755); os.fsync(release)
 
 

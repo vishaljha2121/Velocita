@@ -274,7 +274,6 @@ baseline_value="$(printf '%s\n' "$baseline_output" | client_value)"
 [[ "$baseline_value" =~ ^-?[0-9]+$ ]] || die "preflight: could not parse baseline counter"
 record "preflight" "PASS" "three voters converged; counter=${baseline_value}; leader=$(current_leader)"
 
-# Drill 1: an unexpected process death must be restarted by systemd.
 leader="$(current_leader)"
 crash_node=1
 [[ "$leader" == "1" ]] && crash_node=2
@@ -302,7 +301,6 @@ wait_for_convergence 30 || die "restart-policy: cluster did not reconverge"
 client get || die "restart-policy: client failed after restart"
 record "restart-policy" "PASS" "node=${crash_node}; old_pid=${old_pid}; new_pid=${new_pid}; restarts=${old_restarts}->${new_restarts}"
 
-# Drill 2: loss of the current leader must produce a new leader with the majority.
 old_leader="$(current_leader)"
 [[ "$old_leader" =~ ^[123]$ ]] || die "leader-failover: no unique live leader before injection"
 log "Drill leader-failover: stopping leader node ${old_leader}"
@@ -317,7 +315,6 @@ wait_for_active "velocita-raft-${old_leader}.service" 30 || die "leader-failover
 wait_for_convergence 30 || die "leader-failover: restored node did not catch up"
 record "leader-failover" "PASS" "old_leader=${old_leader}; new_leader=${new_leader}; observed_election_ms=${failover_ms}"
 
-# Drill 3: one voter cannot commit; a same-ID retry resolves the unknown outcome once quorum returns.
 quorum_leader="$(current_leader)"
 [[ "$quorum_leader" =~ ^[123]$ ]] || die "quorum-loss: no unique live leader before injection"
 followers=()
@@ -364,7 +361,6 @@ systemctl --user start "velocita-raft-${followers[1]}.service"
 wait_for_convergence 45 || die "quorum-loss: all voters did not reconverge"
 record "quorum-loss" "PASS" "commit stayed ${before_commit}; alert_wait_ms=${quorum_alert_ms}; same request_id resolved once; counter=${before_value}->${retry_value}"
 
-# Drill 4: the monitoring control plane must fail independently of Raft.
 log "Drill observability-isolation: stopping the Raft metrics exporter"
 exporter_stop_ns="$(date +%s%N)"
 systemctl --user stop "$metrics_unit"

@@ -122,8 +122,6 @@ Digest256 swap_runtime_identity_digest(const SwapRuntimeBinding&b)noexcept{
     h.update(b.authority_domain.bytes);h.update(b.account_session.account_and_assets_digest.bytes);h.update(b.account_session.session_evidence_digest.bytes);
     h.update(b.owner_wallet);h.update(b.signer_public_key);add64(h,b.gateway_uid);add64(h,b.signer_uid);add64(h,b.gateway_caller.value());add64(h,b.signer_caller.value());
     add64(h,b.ipc_timeout_ms);add64(h,b.socket_size);h.update(std::as_bytes(std::span(b.socket.data(),b.socket_size)));
-    // Preserve existing zero-cost identities. Nonzero cost authority changes the
-    // reviewed identity and cannot reuse a prior zero-cost account review.
     if(b.max_buy_output_deduction_lamports){
         constexpr std::string_view costs="accepted-buy-output-deduction-v1";
         h.update(std::as_bytes(std::span(costs.data(),costs.size())));

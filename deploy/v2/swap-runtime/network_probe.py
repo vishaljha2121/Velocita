@@ -15,8 +15,6 @@ from service_profile import signer_network_properties
 VOTERS = ['100.72.127.102', '100.84.151.116', '100.85.36.22']
 EXTERNAL = '1.1.1.1'
 
-# Public/voter TCP handshakes, a nonce to our loopback listener, and inert UDP.
-# Never send Raft, HTTP or venue messages.
 CHILD = r'''
 import errno, json, os, socket, sys
 restricted = sys.argv[1] == 'restricted'

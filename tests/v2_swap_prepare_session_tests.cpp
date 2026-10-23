@@ -352,7 +352,6 @@ void https_prepare_and_recovery(){
     r.session.reset();r.store.reset();
     r.store=std::make_unique<SwapPrepareStore>(r.scratch.base/"https",c.binding);
     require(r.store->recover()==SwapPrepareStoreCode::none,"HTTPS journal recovers");
-    // A new transport instance cannot bypass the durable session's replay fence.
     port=SwapHttpsPreparePort::local_fixture({Side::buy,1'000'000},"fixture-token",origin,ca);
     r.session=std::make_unique<SwapPrepareSession>(r.link,*r.store,*port,c);
     require(success?r.start():!r.start(),"HTTPS restart recovers without creating again");

@@ -25,7 +25,7 @@ from ..simulation.rule_evaluator import _matches
 from .bars import DailyBars
 
 MICROS = 1_000_000
-TREND, RET1, VOL, DEV = 0, 1, 2, 3  # feature schema: index N means one thing forever
+TREND, RET1, VOL, DEV = 0, 1, 2, 3
 FEATURE_NAMES = ("trend: close/SMA(sma_days)-1", "ret1: 1-day return",
                  "vol: sample stdev of daily log returns over vol_days", "dev: close/SMA(dev_days)-1")
 
@@ -162,8 +162,6 @@ def backtest(bars: DailyBars, asset: int, program: Sequence[Rule], settings: Set
         result.positions[t] = position
     return result
 
-
-# -- the three demo programs --------------------------------------------------
 
 GT, GE, LE = PredicateOperator.greater_than, PredicateOperator.greater_than_or_equal, PredicateOperator.less_than_or_equal
 

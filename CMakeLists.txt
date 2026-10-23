@@ -9,8 +9,6 @@ option(VELOCITA_BENCHMARK_INSTRUMENTATION
 set(VELOCITA_TARGET_CACHE_LINE_SIZE "64" CACHE STRING
     "Target CPU cache-line size in bytes; part of the V2 arena-layout ABI")
 
-# willemt/raft is source-only and has no CMakeLists.txt; populate it so this
-# project can define the target and keep the upstream commit pinned.
 cmake_policy(SET CMP0169 OLD)
 
 set(CMAKE_C_STANDARD 11)
@@ -35,9 +33,6 @@ set(AERON_INSTALL_TARGETS OFF CACHE BOOL "" FORCE)
 set(BUILD_AERON_ARCHIVE_API OFF CACHE BOOL "" FORCE)
 set(BUILD_AERON_DRIVER ON CACHE BOOL "" FORCE)
 
-# A dependency supplied as a local copy (FETCHCONTENT_SOURCE_DIR_*: the velocita-dev
-# toolchain image, a developer cache) must be the pinned commit. Refuse anything
-# else: a stale or wrong copy would otherwise build silently.
 find_package(Git QUIET)
 function(velocita_require_pinned_checkout name dir commit)
     if(NOT GIT_FOUND OR NOT EXISTS "${dir}/.git")
@@ -69,15 +64,6 @@ if(NOT willemt_raft_POPULATED)
 endif()
 velocita_require_pinned_checkout(willemt_raft "${willemt_raft_SOURCE_DIR}" "${RAFT_COMMIT}")
 
-# PINNED FORK. Phase 7 splits "appended" from "durable", and upstream counts a
-# leader's own vote before its bytes are on disk - see
-# deploy/patches/0001-raft-durable-quorum.patch for why that cannot be corrected
-# from outside the library.
-#
-# Applied here rather than vendored so the upstream pin above stays the source of
-# truth and the delta stays reviewable as a diff. A sentinel makes reconfiguring
-# idempotent, and a failure to apply is FATAL: silently building unpatched raft
-# would silently restore the defect the patch exists to remove.
 set(VELOCITA_RAFT_PATCH ${CMAKE_CURRENT_SOURCE_DIR}/deploy/patches/0001-raft-durable-quorum.patch)
 set(VELOCITA_RAFT_PATCH_STAMP ${willemt_raft_SOURCE_DIR}/.velocita-durable-quorum-applied)
 file(SHA256 ${VELOCITA_RAFT_PATCH} VELOCITA_RAFT_PATCH_SHA256)
@@ -99,8 +85,6 @@ if(EXISTS ${VELOCITA_RAFT_PATCH_STAMP})
        VELOCITA_RAFT_H_SHA256 STREQUAL VELOCITA_RAFT_EXPECTED_H_SHA256 AND
        VELOCITA_RAFT_SERVER_SHA256 STREQUAL VELOCITA_RAFT_EXPECTED_SERVER_SHA256 AND
        VELOCITA_RAFT_STAMP_PATCH LESS 0)
-        # Migrate the pre-digest stamp only when the patched source content is
-        # exactly the content produced by this patch and pinned commit.
         file(WRITE ${VELOCITA_RAFT_PATCH_STAMP}
             "RAFT_COMMIT=${RAFT_COMMIT}\n"
             "PATCH_SHA256=${VELOCITA_RAFT_PATCH_SHA256}\n"
@@ -112,12 +96,6 @@ if(EXISTS ${VELOCITA_RAFT_PATCH_STAMP})
            NOT VELOCITA_RAFT_STAMP_SERVER_SHA256 STREQUAL VELOCITA_RAFT_SERVER_SHA256 OR
            NOT VELOCITA_RAFT_H_SHA256 STREQUAL VELOCITA_RAFT_EXPECTED_H_SHA256 OR
            NOT VELOCITA_RAFT_SERVER_SHA256 STREQUAL VELOCITA_RAFT_EXPECTED_SERVER_SHA256)
-        # The last two conditions are the ones that matter when the stamp was
-        # written somewhere else - the container image applies the patch at BUILD
-        # time, because the gate runs read-only and cannot patch anything. Without
-        # them this branch only checks the stamp against itself, so any image
-        # could declare its own content correct. The reviewed digests live here
-        # and nowhere else, so that declaration is always checked against them.
         message(FATAL_ERROR
             "stale or invalid pinned raft durability patch stamp; remove the "
             "willemt_raft dependency and reconfigure against RAFT_COMMIT=${RAFT_COMMIT}. "
@@ -126,12 +104,6 @@ if(EXISTS ${VELOCITA_RAFT_PATCH_STAMP})
             "and ${VELOCITA_RAFT_SERVER_SHA256}.")
     endif()
 elseif(NOT EXISTS ${VELOCITA_RAFT_PATCH_STAMP})
-    # Resolve the tool separately so a MISSING PATCH and a REJECTED HUNK do not
-    # produce the same message. They did: `execute_process` reports a program it
-    # cannot find through RESULT_VARIABLE and writes nothing to the output, so a
-    # container image without `patch` failed configure with a FATAL_ERROR whose
-    # body was blank - and the obvious reading of a blank patch error is that the
-    # patch did not apply, which sends you to the diff instead of the image.
     find_program(VELOCITA_PATCH_EXECUTABLE patch)
     if(NOT VELOCITA_PATCH_EXECUTABLE)
         message(FATAL_ERROR
@@ -153,17 +125,6 @@ elseif(NOT EXISTS ${VELOCITA_RAFT_PATCH_STAMP})
     endif()
     file(SHA256 ${willemt_raft_SOURCE_DIR}/include/raft.h VELOCITA_RAFT_H_SHA256)
     file(SHA256 ${willemt_raft_SOURCE_DIR}/src/raft_server.c VELOCITA_RAFT_SERVER_SHA256)
-    # CHECK THE RESULT, do not merely record it.
-    #
-    # `patch` exiting zero says the hunks were placed, not that they were placed
-    # where the review put them. Zero-context hunks are position-sensitive;
-    # verify exact resulting content against the reviewed source hashes too.
-    #
-    # This is the branch that matters: a first configure on a clean machine -
-    # every container gate, and both physical targets - takes it. Recording the
-    # digests here without comparing them made the stamp a record of whatever
-    # happened rather than a check that the right thing happened, and left the
-    # expected values guarding only the migration path they were added for.
     if(NOT VELOCITA_RAFT_H_SHA256 STREQUAL VELOCITA_RAFT_EXPECTED_H_SHA256 OR
        NOT VELOCITA_RAFT_SERVER_SHA256 STREQUAL VELOCITA_RAFT_EXPECTED_SERVER_SHA256)
         message(FATAL_ERROR
@@ -183,10 +144,6 @@ elseif(NOT EXISTS ${VELOCITA_RAFT_PATCH_STAMP})
     message(STATUS "Applied the pinned raft durability patch")
 endif()
 
-# The patch also changes raft_log.c (async suffix hook), raft_private.h
-# (pre-vote state) and raft_server_properties.c (compacted last-log term). Check
-# them against the reviewed content independently of any stamp supplied with a
-# prepatched dependency.
 foreach(VELOCITA_RAFT_PINNED
         "src/raft_log.c=8aa916dd1fbf41b800e85a7a732878bf24aa3c51506a3e7e20d530751cddb386"
         "include/raft_private.h=b14235a494d786c392bee873b7477c7cba785a28a07b8ef5adb1ee0037247c6b"
@@ -274,8 +231,6 @@ target_include_directories(velocita_v2_evaluator PUBLIC include)
 target_link_libraries(velocita_v2_evaluator PUBLIC velocita_v2_contracts)
 target_compile_options(velocita_v2_evaluator PRIVATE -Wall -Wextra -Wpedantic)
 
-# Test-only by construction: no production target links this, so a venue
-# simulator cannot reach a shipping binary by accident (architecture 9.1.6).
 add_library(velocita_v2_venue_simulator
     src/v2_venue_simulator.cpp
     src/v2_venue_transport.cpp
@@ -290,9 +245,6 @@ target_link_libraries(velocita_v2_paper_venue PUBLIC velocita_v2_contracts PRIVA
 target_compile_options(velocita_v2_paper_venue PRIVATE -Wall -Wextra -Wpedantic)
 
 
-# ADR 0019. True Markets adapter state machine and wire encoding. All venue I/O
-# and signing are injected; this library holds no network or TLS code, which
-# the v2-truemarkets-no-network-symbols test checks on its object files.
 add_library(velocita_v2_truemarkets_venue
     src/v2_truemarkets_venue.cpp
     src/v2_truemarkets_rest.cpp
@@ -301,17 +253,11 @@ target_include_directories(velocita_v2_truemarkets_venue PUBLIC include)
 target_link_libraries(velocita_v2_truemarkets_venue PUBLIC velocita_v2_contracts PRIVATE velocita_v2_venue_simulator)
 target_compile_options(velocita_v2_truemarkets_venue PRIVATE -Wall -Wextra -Wpedantic)
 
-# ADR 0019. True Markets over HTTP with the MCP envelope. The only stream it
-# provides connects to the loopback address, so it reaches a local mock and
-# nothing else. No gateway, voter or release image links it.
 add_library(velocita_v2_truemarkets_transport src/v2_truemarkets_transport.cpp)
 target_include_directories(velocita_v2_truemarkets_transport PUBLIC include)
 target_link_libraries(velocita_v2_truemarkets_transport PUBLIC velocita_v2_truemarkets_venue)
 target_compile_options(velocita_v2_truemarkets_transport PRIVATE -Wall -Wextra -Wpedantic)
 
-# ADR 0019 section 1. The inspecting signer. It is a separate process and
-# library; no gateway, voter or release image links or installs it, and it
-# accepts only a test key.
 add_library(velocita_v2_signer
     src/v2_signer_core.cpp
     src/v2_signer_socket.cpp)
@@ -352,9 +298,6 @@ target_include_directories(velocita_v2_swap_paper_gateway PUBLIC include)
 target_link_libraries(velocita_v2_swap_paper_gateway PUBLIC velocita_v2_gateway_loop velocita_v2_swap_recovery)
 target_compile_options(velocita_v2_swap_paper_gateway PRIVATE -Wall -Wextra -Wpedantic)
 
-# Phase 6. The deterministic reducer behind consensus. Links willemt_raft and
-# velocita_core's payload-generic storage/wire layers; V1's RaftNode is left
-# untouched so its accepted gates stay valid.
 add_library(velocita_v2_replication
     src/v2_generation_base.cpp
     src/v2_generation_base_files.cpp
@@ -381,8 +324,6 @@ target_link_libraries(velocita_v2_replication
     PUBLIC velocita_v2_kernel velocita_core)
 target_compile_options(velocita_v2_replication PRIVATE -Wall -Wextra -Wpedantic)
 
-# M2 node-process pieces: authenticated transport envelope, session fence,
-# configuration and the node owner loop. Never links a venue library.
 add_library(velocita_v2_node
     src/v2_auth_envelope.cpp
     src/v2_session_fence.cpp
@@ -402,14 +343,11 @@ target_include_directories(velocita_v2_node PUBLIC include)
 target_link_libraries(velocita_v2_node PUBLIC velocita_v2_replication)
 target_compile_options(velocita_v2_node PRIVATE -Wall -Wextra -Wpedantic)
 
-# M2 node binaries. The node must never link a venue library: checked below.
 add_library(velocita_v2_node_aeron src/v2_aeron_node_transport.cpp)
 target_include_directories(velocita_v2_node_aeron PUBLIC include)
 target_link_libraries(velocita_v2_node_aeron PUBLIC velocita_v2_node velocita_aeron)
 target_compile_options(velocita_v2_node_aeron PRIVATE -Wall -Wextra -Wpedantic)
 
-# Phase 2 gateway: a separate process that links the venue seam. The node
-# interlock below keeps every venue library out of the voter binaries.
 add_library(velocita_v2_gateway_loop src/v2_gateway_loop.cpp)
 target_include_directories(velocita_v2_gateway_loop PUBLIC include)
 target_link_libraries(velocita_v2_gateway_loop PUBLIC velocita_v2_node velocita_v2_venue_simulator)
@@ -442,13 +380,11 @@ add_executable(velocita-v2-exporter src/v2_exporter_main.cpp)
 target_link_libraries(velocita-v2-exporter PRIVATE velocita_v2_node)
 target_compile_options(velocita-v2-exporter PRIVATE -Wall -Wextra -Wpedantic)
 
-# Non-trading M3 shadow catalog writer (test fixture catalog; not a venue contract).
 add_executable(velocita-v2-shadow-catalog tests/v2_shadow_catalog_main.cpp)
 target_include_directories(velocita-v2-shadow-catalog PRIVATE tests)
 target_link_libraries(velocita-v2-shadow-catalog PRIVATE velocita_v2_node)
 target_compile_options(velocita-v2-shadow-catalog PRIVATE -Wall -Wextra -Wpedantic)
 
-# Structural interlock: no venue simulator/transport code may reach the node.
 foreach(velocita_node_target IN ITEMS velocita_v2_node velocita_v2_node_aeron velocita-v2-node velocita-v2-client
         velocita-v2-shadow-submitter velocita-v2-status velocita-v2-exporter velocita-v2-shadow-catalog)
     get_target_property(velocita_node_links ${velocita_node_target} LINK_LIBRARIES)
@@ -609,10 +545,6 @@ if(BUILD_TESTING)
     target_compile_options(v2-gateway-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-gateway-tests COMMAND v2-gateway-tests)
 
-    # The Phase 5 gate: the real kernel, the real guard and planner, and the
-    # adversarial venue, driven together through the G-033 fault matrix.
-    # An exhaustive inventory of the reachable order lifecycle, used to review
-    # the Phase 5 applicability predicates by enumeration rather than by reading.
     add_executable(v2-lifecycle-reachability-tests
         tests/v2_lifecycle_reachability_tests.cpp)
     target_link_libraries(v2-lifecycle-reachability-tests PRIVATE velocita_v2_kernel)
@@ -976,7 +908,6 @@ if(BUILD_TESTING)
     target_compile_options(v2-session-fence-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-session-fence-tests COMMAND v2-session-fence-tests)
 
-    # Compiles the production source itself with persistence syscalls redirected.
     add_executable(v2-session-epoch-persistence-model-tests
         tests/v2_session_epoch_persistence_model_tests.cpp)
     target_link_libraries(v2-session-epoch-persistence-model-tests PRIVATE velocita_v2_contracts)
@@ -1083,14 +1014,10 @@ if(BUILD_TESTING)
     include(cmake/LiveReadinessTests.cmake)
     include(cmake/SwapTransactionVerifierTests.cmake)
 
-    # The adapter library must contain no path to a network: no socket, name
-    # resolution or TLS symbol may be referenced by its objects.
     add_test(NAME v2-truemarkets-no-network-symbols
         COMMAND ${CMAKE_COMMAND} -DLIBRARY=$<TARGET_FILE:velocita_v2_truemarkets_venue>
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/check_no_network_symbols.cmake)
 
-    # --venue truemarkets must refuse to start: without arming, without a
-    # signer, and (in every build today) without a compiled live transport.
     foreach(velocita_refusal IN ITEMS
             "unarmed|not armed|--venue;truemarkets"
             "signer-only|not armed|--venue;truemarkets;--signer-endpoint;/run/velocita/signer.sock"
@@ -1107,8 +1034,6 @@ if(BUILD_TESTING)
                     -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/check_gateway_refusal.cmake)
     endforeach()
 
-    # Paper-state refusals: decided from the arguments and the file alone, before
-    # any key, Aeron directory or network; a refused file is never rewritten.
     set(velocita_paper_garbage "${CMAKE_CURRENT_BINARY_DIR}/paper-state-garbage.bin")
     foreach(velocita_usage IN ITEMS
             "no-state-file|--venue paper needs --paper-state-file||--venue;paper"
@@ -1165,7 +1090,6 @@ if(BUILD_TESTING)
     target_compile_options(v2-node-health-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-node-health-tests COMMAND v2-node-health-tests)
 
-    # M2 exit: real node/client/status processes over loopback UDP.
     add_executable(v2-node-process-tests tests/v2_node_process_tests.cpp)
     target_link_libraries(v2-node-process-tests PRIVATE velocita_v2_node Threads::Threads)
     target_compile_options(v2-node-process-tests PRIVATE -Wall -Wextra -Wpedantic)
@@ -1175,7 +1099,6 @@ if(BUILD_TESTING)
         $<TARGET_FILE:velocita-v2-shadow-submitter>)
     set_tests_properties(v2-node-process-tests PROPERTIES TIMEOUT 300)
 
-    # The Mac-side secrets tool (Keychain + SSH are faked; no real secret is used).
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     add_test(NAME v2-secrets-presence-tests
         COMMAND ${Python3_EXECUTABLE} -m unittest tests/test_secrets_presence.py
@@ -1185,7 +1108,6 @@ if(BUILD_TESTING)
         COMMAND ${Python3_EXECUTABLE} -m unittest tests/test_observability_layout.py
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
-    # Alert rule unit tests, only where promtool is installed (not on the Mac by default).
     find_program(VELOCITA_PROMTOOL promtool)
     if(VELOCITA_PROMTOOL)
         add_test(NAME v2-observability-rule-tests
@@ -1197,7 +1119,6 @@ if(BUILD_TESTING)
         COMMAND ${Python3_EXECUTABLE} -m unittest tests/test_secrets_tool.py
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
-    # Keeps the storage benchmark runnable: it silently rotted once (M3 finding 11).
     add_test(NAME v2-storage-benchmark-smoke-tests COMMAND v2-storage-benchmark)
     set_tests_properties(v2-storage-benchmark-smoke-tests PROPERTIES TIMEOUT 120)
 
@@ -1263,18 +1184,6 @@ if(BUILD_TESTING)
     target_link_libraries(v2-phase3-benchmark PRIVATE velocita_v2_kernel)
     target_compile_options(v2-phase3-benchmark PRIVATE -Wall -Wextra -Wpedantic)
 
-    # Aggregate targets for the acceptance gates.
-    #
-    # The gates build explicit targets rather than `all`, to keep a four-core Pi
-    # from compiling binaries no suite runs. A HAND-MAINTAINED list is the
-    # obvious way to do that and it is wrong: it drifts from this file every time
-    # a test is added, and the failure surfaces as ctest reporting "Not Run",
-    # which reads like a behavioural failure and is not. Phase 5 added four
-    # suites and lost a full physical-target run to exactly that.
-    #
-    # These are derived from the build system itself, so they cannot drift. Must
-    # stay after every add_executable above: BUILDSYSTEM_TARGETS only sees what
-    # this directory has already defined.
     get_property(velocita_defined_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
     set(velocita_all_test_targets "")
     set(velocita_v2_test_targets "")

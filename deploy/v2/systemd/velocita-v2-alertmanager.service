@@ -1,14 +1,8 @@
-# nuc1 only. Alertmanager on 127.0.0.1:9093: Prometheus sends it firing alerts;
-# it groups them and posts to ntfy. The ntfy publish token is a file on disk
-# (not in tmpfs with the cluster keys) so alerts still work after a reboot; it
-# can publish to one topic on a tailnet-only server and nothing else.
 [Unit]
 Description=Velocita V2 Alertmanager
 After=velocita-ntfy.service
 
 [Service]
-# Run as the container's root (this user, under rootless podman) so the 0600
-# token file is readable; every capability is dropped.
 ExecStart=/usr/bin/podman run --rm --replace --name velocita-v2-alertmanager \
     --network host --memory 128m --read-only --cap-drop all --security-opt no-new-privileges --user 0:0 \
     -v velocita-v2-alertmanager-data:/alertmanager \

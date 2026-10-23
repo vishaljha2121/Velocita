@@ -5,8 +5,6 @@
 
 namespace velocita::v2 {
 
-// One exact unsigned create request per instance. The session persists its intent
-// before invoking this port. It has no execute route, refresh or retry operation.
 class SwapHttpsPreparePort final : public SwapPreparePort {
 public:
     SwapHttpsPreparePort(truemarkets::SwapRestInput, std::string bearer, long timeout_ms);

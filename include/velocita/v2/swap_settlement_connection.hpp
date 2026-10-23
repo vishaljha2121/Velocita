@@ -10,8 +10,6 @@ struct SwapSettlementConnectionResult {
     SettlementEvidence evidence{};
     std::optional<VerifiedFinalizedRead> finalized_read{};
 };
-// Collects only the transaction already retained by authenticated order recovery.
-// Does not manufacture a Settlement or release the submission journal.
 [[nodiscard]] SwapSettlementConnectionResult collect_retained_swap_settlement(
     const SwapPrepareStore&,const SwapSubmissionStore&,const SwapPrepareBinding&,
     SwapFinalizedReader&,std::uint64_t request_id,std::uint64_t minimum_slot,

@@ -378,8 +378,6 @@ DirectoryImage complete_image(const std::filesystem::path& root) {
     return image;
 }
 
-// Recovery may rename only the two bounded publication temporaries. Compare
-// every byte and every other path, including refusal paths and preexisting files.
 bool preserves_crash_evidence(const DirectoryImage& before, DirectoryImage after) {
     for (const auto* name : {"v2-archive-segment.bin", "v2-archive-catalog.bin"}) {
         const auto temporary = std::string("v2-archive/") + name + ".tmp";

@@ -133,8 +133,6 @@ Tick now_ms() {
         std::chrono::steady_clock::now().time_since_epoch()).count());
 }
 
-// Sidecar lock spans epoch advance and the read. Operator must separately ensure
-// the production process is stopped; the production launcher does not take this lock.
 struct SessionLock {
     int fd{-1};
     explicit SessionLock(const std::filesystem::path& session) {
@@ -158,8 +156,6 @@ int run(const Arguments& a) {
         throw std::runtime_error("wrong production service identity");
     const auto expected_root = *parse_digest256(a.catalog_root);
     const auto expected_domain = *parse_digest256(a.authority_domain);
-    // Traverse ancestry once without symlinks, then keep the directory FDs alive.
-    // The production file helpers operate beneath those anchors, even if an ancestor moves.
     ParentDirectory catalog_path(a.catalog, 0);
     ParentDirectory key_path(a.key, a.uid());
     ParentDirectory session_path(a.session, a.uid());
@@ -169,13 +165,11 @@ int run(const Arguments& a) {
     key_path.private_leaf(a.uid());
     key_path.private_leaf(a.uid(), ".next", true);
     key_path.private_leaf(a.uid(), ".previous", true);
-    // Catalog remains canonically verified against the independently reviewed root.
     const auto catalog = load_catalog_file(catalog_path.anchored_path(), expected_root);
     if (catalog.error != NodeFileError::none) throw std::runtime_error("pinned catalog refused");
     SessionLock lock(session_path.anchored_path());
     auto secrets = load_secret_set(key_path.anchored_path());
     if (!secrets.secrets) throw std::runtime_error("private caller key refused");
-    // Never create/reset an epoch file: installation/handoff must prepare it explicitly.
     const auto epoch = advance_session_epoch_file(session_path.anchored_path());
     if (epoch.error != SessionEpochError::none) throw std::runtime_error("existing session epoch refused");
     std::array<std::byte, 16> incarnation{}, process{};
@@ -205,15 +199,11 @@ int run(const Arguments& a) {
         }
         routes.push_back(ClientRoute{id, std::move(*ingress), std::move(responses)});
     }
-    // Probe requires an absent Aeron directory and creates it only in its private parent.
-    // Refuse reusing another process's media-driver files.
     if (::mkdirat(aeron_path.fd(), aeron_path.leaf.c_str(), 0700) != 0)
         throw std::runtime_error("fresh private Aeron directory required");
     velocita::AeronRuntime aeron(aeron_path.anchored_path().string());
     AeronClientTransport transport(aeron, nodes, {"100.72.127.102", static_cast<std::uint16_t>(a.response_port)});
     GatewayLink link(epoch.epoch, process, std::move(routes), transport);
-    // One correlated read. Production link may retransmit/redirect within 12 s;
-    // there is no outer retry, authority barrier, proposal or venue connection.
     if (!link.request_state(now_ms(), 12000)) throw std::runtime_error("state request refused");
     LinkOutcome result;
     do {

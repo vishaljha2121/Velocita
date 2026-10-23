@@ -1,28 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# V2 Phase 5 gateway/simulator acceptance, ARM64 Linux container.
-#
-# The source root below pins the reviewed content: CMakeLists.txt plus the
-# bounded V2 headers, sources and tests the gate manifest selects. Gate scripts
-# and evidence narratives live outside that manifest and do not alter it, which
-# is why this file can name its own root.
-#
-# Recompute it on the development host with the same recipe the container uses:
-#
-#   { sha256sum CMakeLists.txt;
-#     find include/velocita/v2 src tests -maxdepth 1 -type f \
-#       \( -name 'v2_*' -o -name 'v2*.cpp' -o -name '*.hpp' \) -print0 |
-#       LC_ALL=C sort -z | xargs -0 sha256sum; } | sha256sum
-#
-# LC_ALL=C is required, not optional. Manifest order decides the root and
-# collation decides manifest order, so recomputing under a UTF-8 locale yields a
-# different value for identical content. On macOS use `shasum -a 256` in place of
-# `sha256sum`; the output format is the same.
-#
-# A mismatch means the tree moved, not that the gate is broken. Re-pin
-# deliberately; never edit the root to make a run pass.
-
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 export VELOCITA_V2_CONTAINER_GATE_LABEL='V2 Phase 5 gateway/simulator acceptance'

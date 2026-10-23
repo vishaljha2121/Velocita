@@ -54,7 +54,7 @@ def install_helper(source, digest):
     try:
         if stat.S_IMODE(os.fstat(parent).st_mode) != 0o755:
             raise ValueError('helper parent must be exactly0755')
-        os.mkdir(digest, 0o700, dir_fd=parent)  # Never overwrite/resume.
+        os.mkdir(digest, 0o700, dir_fd=parent)
         directory = os.open(digest, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
         try:
             RUNTIME.new_file(directory, 'communication-probe', raw, 0o555)
@@ -101,7 +101,7 @@ def run(base, output, runner=subprocess.run):
     try:
         for number, cmd in enumerate(commands(base,pins),1):
             print('Setup step '+str(number)+'/3; evidence: '+str(output/f'step-{number}.log'), flush=True)
-            bundle(base)  # Recheck supplied artifacts before each privileged call.
+            bundle(base)
             with (output/f'step-{number}.log').open('x') as log:
                 child = runner(cmd, stdout=log, stderr=subprocess.STDOUT, timeout=240, check=False)
             result['steps'].append({'number':number,'command':cmd,'returncode':child.returncode})

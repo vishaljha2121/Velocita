@@ -623,8 +623,6 @@ int run(const Arguments& a) {
         while(!g_stop.load(std::memory_order_relaxed) && !loop.stopped()) {
             if(!recovery_only && !swap_account_review_current(*review,clock.now_ms()))throw Usage("account review expired; runtime stopped");
             loop.step(monotonic_ms(nullptr),clock.now_ms());
-            // This is off the Raft path. Only publish the runtime's accepted
-            // committed read, never a quote, signing response or mutable pending state.
             const auto& observation=loop.observation();
             if(observation && (observation->reading.applied_index!=published_observation_index ||
                 observation->observed_at_ms>=published_observation_ms+1000 || loop.stopped())) {

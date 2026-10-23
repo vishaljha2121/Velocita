@@ -18,8 +18,6 @@ public:
     virtual ~SwapLookupSource()=default;
     [[nodiscard]] virtual std::optional<truemarkets::JupiterLookupPrefix> prefix(std::span<const std::byte> payload)=0;
 };
-// Gateway-side durable IPC request. This is not signing authority: the isolated
-// signer still independently checks the committed intent and current quorum.
 class SwapSigningConnection final {
 public:
     SwapSigningConnection(const SwapPrepareStore&,SwapSubmissionStore&,swap_signer::Client&,SwapSigningConnectionConfig,SwapLookupSource&);

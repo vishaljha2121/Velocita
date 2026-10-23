@@ -1,16 +1,3 @@
-# OPERATOR, one shot: installs the strategy edge's rule program in the cluster
-# (PublishPolicy, ValidatePolicy, StageExecutablePolicy, ActivateExecutablePolicy)
-# and sets strategy mode normal. Caller key 11 = CallerId 9, operator band.
-# Never enabled; run by hand:  systemctl --user start velocita-v2-shadow-setup
-#
-# The program is generated with the edge's own program arguments (kept equal to
-# velocita-v2-shadow-edge.service's by tests/test_secrets_presence.py, and both
-# read $VELOCITA_STRATEGY_ARGS from shadow.env), so the policy installed is the
-# one the edge's frames name. Run it BEFORE starting the
-# edge on a new cluster. caller-11.key is the voter's own copy in the RAM secrets
-# directory; only this one-shot container mounts it, never the tick loop.
-# Own session and state files: sharing the tick loop's would skip its source generation.
-# Output (journal): "SETUP generation=.. kill_epoch=K executor_generation=E strategy_mode=1".
 [Unit]
 Description=Velocita V2 strategy setup (operator, one shot)
 After=network-online.target

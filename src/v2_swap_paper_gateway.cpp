@@ -15,7 +15,7 @@ Digest256 paper_digest(const swap::Intent& intent, swap::PaperQuote quote, std::
     for (unsigned i = 0; i < 8; ++i) bytes[at++] = static_cast<std::byte>((quote.price_per_sol.value() >> (8*i)) & 255);
     for (unsigned i = 0; i < 4; ++i) bytes[at++] = static_cast<std::byte>((quote.fee_ppm >> (8*i)) & 255);
     if(quote.buy_base_deduction.value() || quote.exact_buy_fee.value() || quote.use_exact_buy_fee){
-        bytes[at++]=std::byte{1}; // Versioned optional cost extension, old identities preserved.
+        bytes[at++]=std::byte{1};
         for(unsigned i=0;i<8;++i)bytes[at++]=static_cast<std::byte>((quote.buy_base_deduction.value()>>(8*i))&255);
         for(unsigned i=0;i<8;++i)bytes[at++]=static_cast<std::byte>((quote.exact_buy_fee.value()>>(8*i))&255);
         bytes[at++]=static_cast<std::byte>(quote.use_exact_buy_fee);

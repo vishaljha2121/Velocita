@@ -1,24 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# V2 Phase 5 gateway/simulator acceptance on the x86-64 NUC.
-#
-# WHAT THIS GATE IS FOR. It is a LAYOUT AND CAPACITY gate more than a functional
-# one. The Pi and container gates already proved the logic on ARM64. The open
-# question is whether the bounded layout holds on the other deployment
-# architecture: `TradingState` must still fit 81,920 bytes and the canonical
-# snapshot 65,536, with x86-64 struct padding and alignment rather than ARM64's.
-#
-# That matters because architecture 10.12 derives the best-case eight unresolved
-# orders from the sixteen-record submit-plus-reserved-cancel outbox budget. If
-# the layout is tighter here, that availability bound cannot be raised safely.
-#
-# No firmware power interface exists on a NUC, so the Pi's throttled=0x0
-# precondition is disabled rather than fabricated.
-#
-# Requires podman, git, sed and uname. It does NOT require a host C++ toolchain:
-# everything is built inside the container.
-
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 export VELOCITA_V2_PI_GATE_LABEL='V2 Phase 5 gateway/simulator acceptance'

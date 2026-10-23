@@ -33,7 +33,7 @@ class SecondTests(unittest.TestCase):
             with patch('sys.argv',['runner','--config',str(config),'--mode','paper',
                     '--','submitter','--mode','paper']),patch.object(runner,'run_once',autospec=True) as run:
                 run.return_value=SimpleNamespace(reason='closed',decisions=0)
-                self.assertEqual(runner.main(),2)  # Unexpected pre-deadline return is a failure.
+                self.assertEqual(runner.main(),2)
                 self.assertEqual(run.call_args.kwargs['shadow_recorded_code'],17)
 
     def test_ema_hand_oracle(self):

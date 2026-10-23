@@ -87,8 +87,6 @@ def load_path(start: date, end: date) -> tuple[vb.PricePath, TickSeries, int]:
     return vb.PricePath(ticks.times, ticks.prices, history[-200:]), ticks, days_before
 
 
-# -- null draws (module level, run in worker processes) ------------------------
-
 _PATH: vb.PricePath | None = None
 _SETUP: Setup | None = None
 
@@ -139,8 +137,6 @@ def _map(jobs: list, path: vb.PricePath, setup: Setup, workers: int) -> list:
 def p_value(real: float, null: list[float]) -> float:
     return (1 + sum(1 for x in null if x >= real)) / (len(null) + 1)
 
-
-# -- formatting ---------------------------------------------------------------------
 
 def usd(x: float) -> str:
     return f"-${-x:,.2f}" if x < 0 else f"${x:,.2f}"
@@ -215,8 +211,6 @@ def clip_star(path: vb.PricePath, feats: vb.Features, buy_bps: float, sell_bps: 
     return 0
 
 
-# -- the research stage ---------------------------------------------------------------
-
 def research(out_dir: Path, *, workers: int, n_is: int, n_rw: int, n_wf: int) -> dict:
     started = time.time()
     path, ticks, _ = load_path(*RESEARCH)
@@ -270,8 +264,6 @@ def research(out_dir: Path, *, workers: int, n_is: int, n_rw: int, n_wf: int) ->
                 r = op_run(cid, replace(setup.operational(lots), **kw))
                 sens[(cid, lots, name)] = (r.volume / len(r.weeks), r.net / len(r.weeks), vpd(r.volume, r.net))
 
-    # Paper prediction: PaperVenue as deployed (115/120 bp, fixed $25, no top-up) plus the
-    # $12 cap, started at each research Monday and run for one week.
     n_weeks = len(real["A"][0].weeks)
     paper_pred = {}
     for cid in ALL_IDS:
@@ -453,8 +445,6 @@ def render_research(path, ticks, days, cost, setup, real, wf, battery, ops, null
     return "\n".join(L)
 
 
-# -- the holdout stage -------------------------------------------------------------------
-
 def holdout(out_dir: Path, recommended: list[tuple[str, int]]) -> str:
     saved = json.loads((out_dir / "research_results.json").read_text())
     chosen = {k: int(v) for k, v in saved["chosen"].items()}
@@ -523,8 +513,6 @@ def holdout(out_dir: Path, recommended: list[tuple[str, int]]) -> str:
     (out_dir / "HOLDOUT.md").write_text(report)
     return report
 
-
-# -- the paper tooling's definitions ------------------------------------------------------
 
 def deployed_candidates() -> list[tuple[str, vb.Candidate]]:
     """The strategies the paper tooling runs (2026-09-30), with the flags it takes."""

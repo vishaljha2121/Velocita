@@ -41,8 +41,6 @@ struct SwapGatewayRuntimeConfig {
 };
 enum class SwapGatewayRuntimeStatus:std::uint8_t {running,preparing,submitting,resolving,blocked,failed,complete};
 enum class SwapGatewayRuntimeCause:std::uint8_t {none,state,storage,identity,prepare_unknown,signer_refused,settlement_unproven,sequence_limit};
-// A copy of an authenticated committed read, never a quote or a command response.
-// The timestamp is observation time, not the chain execution timestamp.
 struct SwapGatewayObservation {
     swap::State state{};
     StateReading reading{};
@@ -74,7 +72,6 @@ private:
     std::unique_ptr<SwapSubmissionSession> submitting_;
     std::unique_ptr<SwapSubmissionResolutionSession> resolving_;
     std::optional<SwapSignedExecution> signed_;
-    // Port calls can block. Start the next Raft deadline on a fresh loop tick.
     std::optional<swap::Command> queued_command_;
     bool owns_link_{};
     EffectId effect_{};

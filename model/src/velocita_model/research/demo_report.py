@@ -51,7 +51,7 @@ def _hold(bars: DailyBars, start: int, end: int, cost: Costs) -> list[float]:
     c = bars.close[0]
     r = [0.0 if c[i - 1] is None or c[i] is None else c[i] / c[i - 1] - 1 for i in range(start, end)]
     if r:
-        r[0] = (1 + r[0]) * (1 - cost.buy_bps / 10_000) - 1  # one measured buy, never sold
+        r[0] = (1 + r[0]) * (1 - cost.buy_bps / 10_000) - 1
     return r
 
 
@@ -129,7 +129,7 @@ def run(cache: Path, out: Path, *, n_is: int, n_wf: int, n_rw: int, workers: int
                             "|---|---|---|---|---|---|---|",
                             _row("True Markets prices", tm_run[start:t1]),
                             _row("Binance prices, same dates", run_mean(bars, best.value)[b0:b0 + (t1 - start)]), ""]
-            except Exception as error:  # confirmation is reported, never silently dropped
+            except Exception as error:
                 details += [f"True Markets confirmation not run: {type(error).__name__}: {error}", ""]
     lines += summary + [""] + details + [
         "## Caveats", "",

@@ -26,16 +26,6 @@ if [[ $confirmed -ne 1 ]]; then
     [[ $answer == y || $answer == Y ]] || exit 1
 fi
 
-# Engine selection. This gate used to hardcode docker while the physical Pi gate
-# hardcodes podman - two gates attesting the same candidate through different
-# runtimes, with different security defaults, different rootless behaviour and
-# different exec semantics for a bind-mounted entrypoint. That is a difference
-# the evidence should not depend on, and it produced a gate that passed under
-# podman on the Pi and could not start under docker on the same machine.
-#
-# Podman is preferred because it is what the physical target gate already
-# requires, so the two agree by default. Override with VELOCITA_CONTAINER_ENGINE
-# when a specific runtime is the thing under test.
 container_engine=${VELOCITA_CONTAINER_ENGINE:-}
 if [[ -z $container_engine ]]; then
     for candidate in podman docker; do
@@ -51,8 +41,6 @@ if [[ -z $container_engine ]] || ! command -v "$container_engine" >/dev/null; th
 fi
 "$container_engine" info >/dev/null
 
-# Rootless podman needs no platform flag on a native ARM64 host, and passing one
-# to docker preserves this gate's previous behaviour exactly.
 platform_args=()
 if [[ $container_engine == docker ]]; then
     platform_args=(--platform linux/arm64)

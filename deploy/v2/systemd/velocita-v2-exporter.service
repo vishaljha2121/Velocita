@@ -1,5 +1,3 @@
-# Serves this host's voter health page as Prometheus metrics on the Tailscale
-# address (port 9410). Read-only: the data directory is mounted read-only.
 [Unit]
 Description=Velocita V2 metrics exporter
 

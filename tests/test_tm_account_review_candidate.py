@@ -67,8 +67,6 @@ class CandidateTests(unittest.TestCase):
         self.assertTrue(all(p.stat().st_mode & 0o777 == 0o600 for p in output.iterdir()))
 
     def owner_buy(self):
-        # Worked atom arithmetic: 40,764,166 - 8,867,232 = 31,896,934 outside;
-        # 5,000,000 purchase budget - 1,000,000 already spent = 4,000,000.
         evidence = dict(transaction_signature=F.SIG, slot=123,
             rpc_reports_success=True, production_live_admitted=False,
             net_owner_receipt_lamports=8867232, total_usdc_debit_atoms=1000000)

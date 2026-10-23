@@ -23,7 +23,6 @@ class AuthenticatedReadProbeArguments(unittest.TestCase):
                         '-DVELOCITA_AUTH_READ_ARGUMENTS_ONLY',
                         str(ROOT/'tests/v2_authenticated_read_probe.cpp'), '-o', cls.binary],
                        check=True, capture_output=True, text=True)
-        # Include the same C++ ancestry implementation; no replacement security logic.
         harness=Path(cls.temp.name)/'filesystem.cpp'
         harness.write_text('#define VELOCITA_AUTH_READ_ARGUMENTS_ONLY\n#define main unused_probe_main\n'
             '#include "'+str(ROOT/'tests/v2_authenticated_read_probe.cpp')+'"\n#undef main\n'

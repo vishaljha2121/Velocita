@@ -52,8 +52,6 @@ def validate(m):
         raise ValueError('recovery cannot initialize journals')
     for name, width in [('source_commit', 40), ('incarnation', 32)] + [(k, 64) for k in FIELDS if k.endswith('_sha256')]:
         value = m[name]
-        # Installation can precede the fresh account/custody review. Explicit
-        # nulls record that missing evidence without inventing executable pins.
         if name in PENDING_ACCOUNT_PINS and value is None and m['launch_authorized'] is False:
             continue
         if not isinstance(value, str) or re.fullmatch('[0-9a-f]{' + str(width) + '}', value) is None or not int(value, 16):
@@ -134,19 +132,13 @@ def unit(m, role, nodes):
         lines.insert(lines.index('[Service]')-1, 'BindsTo=velocita-swap-signer.service')
     lines += ['RootDirectory=/opt/velocita/runtimes/' + m['runtime_image_sha256'] + '/rootfs',
               'MountAPIVFS=yes',
-              # Explicit bind wins over systemd249's API-VFS /run fallback.
-              # RuntimeDirectory and signer socket children retain their own binds.
               'BindReadOnlyPaths=/etc/velocita-swap/runtime-roots/' + role + ':/run',
               'BindReadOnlyPaths=/opt/velocita/releases/' + m['source_commit'],
               'BindReadOnlyPaths=' + PUBLIC,
-              # Preserve existing in-unit paths, sourcing credentials only from
-              # the separately provisioned role-owned host tmpfs directory.
               'BindReadOnlyPaths=/run/velocita-swap-credentials/' + role + ':/etc/velocita-swap/' + role]
     if not signer:
         if not m.get('recovery_only',False): lines += ['BindReadOnlyPaths=/run/velocita-swap-signer']
         lines += ['BindReadOnlyPaths=/etc/resolv.conf']
-    # StateDirectory and RuntimeDirectory are automatically mounted by systemd
-    # inside RootDirectory. No other role credentials/state are exposed.
     lines += ['UMask=0077', 'NoNewPrivileges=yes', 'ProtectSystem=strict', 'ProtectHome=yes',
               'PrivateTmp=yes', 'PrivateDevices=yes', 'ProtectKernelTunables=yes',
               'ProtectKernelModules=yes', 'ProtectControlGroups=yes', 'RestrictSUIDSGID=yes',

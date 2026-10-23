@@ -1,9 +1,3 @@
-# cmake -DBINARY=<gateway> -DARGS=a,b,c -DEXPECT=<text> [-DGARBAGE_FILE=<path>] -P check_gateway_usage.cmake
-#
-# Runs the gateway with ARGS and requires the usage exit (64) with EXPECT in
-# its diagnostic, before READY. GARBAGE_FILE, when given, is first written with
-# bytes that are not a paper state file (and is left byte-identical after).
-
 if(NOT BINARY OR NOT EXISTS "${BINARY}")
     message(FATAL_ERROR "BINARY not found: ${BINARY}")
 endif()

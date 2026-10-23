@@ -123,7 +123,6 @@ def main():
         result = command(mutated_link, name + '.link')
         if result.returncode:
             raise RuntimeError(result.stderr)
-        # Short durable paths keep AF_UNIX names within the macOS 104-byte bound.
         evidence = Path.home() / '.cache/velocita-build' / ('pd-' + str(os.getpid()) + '-' + name)
         arguments = [str(binary), str(evidence)] if case is None else [str(binary), '--case', str(case), str(evidence)]
         result = command(arguments, name + '.run')

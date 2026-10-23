@@ -1,9 +1,3 @@
-# Records the True Markets public market-data WebSocket (M4, read-only, no keys)
-# into ~/velocita-md/stream.db, and publishes monitoring metrics through the
-# node-exporter textfile directory. The model source is mounted read-only; the
-# container holds no secrets and has no route to anything but its own
-# allowlisted endpoint in code. Python 3.12 image because the host's 3.10 lacks
-# tomllib. nuc1 only.
 [Unit]
 Description=Velocita market-data stream recorder (True Markets, read-only)
 After=network-online.target

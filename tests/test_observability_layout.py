@@ -91,9 +91,6 @@ def exprs(dashboard):
 
 def legacy_expression(expression):
     expression=expression.replace('strategy="stochastic",', '').replace('{strategy="stochastic"}', '')
-    # The completed-session display preserves the original readiness query as
-    # its fallback. Check that fallback for the historical no-panel-loss test;
-    # the new lifecycle wrapper is asserted independently below.
     prefix='((max(velocita_indicator_run_state) == 1) * 0 + 2) or '
     return expression[len(prefix):] if expression.startswith(prefix) else expression
 

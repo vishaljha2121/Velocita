@@ -11,10 +11,10 @@ misreading:
   * **Simulated capital floors** bound the *study*. They stop the simulator when
     hypothetical losses exceed the budget being modelled. They are study
     boundaries. They are not live-trading protection and provide no guarantee
-    whatsoever about a real account, because no real account exists.
+    whatsoever about a real account.
 
-The C++ side has a real equivalent of the second kind - replicated risk
-reservations checked atomically in Phase 4. Nothing here substitutes for it.
+The C++ kernel has the real equivalent of the second kind: replicated risk
+reservations checked atomically on apply. Nothing here substitutes for it.
 """
 
 from __future__ import annotations

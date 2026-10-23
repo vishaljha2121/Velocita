@@ -25,8 +25,6 @@ class CompletionTests(unittest.TestCase):
         self.j=Journal(self.c['ledger'],'stochastic','a'*32)
         self.addCleanup(self.j.close)
         register_epoch(self.j,self.c['epoch'])
-        # Hand oracle: buy $12 + $0.024, sell $12.12 - $0.02424.
-        # Final cash $25.07176, total fees $0.04824, volume $24.12.
         self.s=dict(version=1,incarnation='a'*32,account=2,venue=20,instrument=2,
             funding=25000000,buy_bps=20,sell_bps=20,failed=False,stamp=100.,
             capacity=256,pending_reports=0,cash=25071760,lots=0,fees=48240,

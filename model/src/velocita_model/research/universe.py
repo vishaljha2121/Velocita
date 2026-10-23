@@ -16,7 +16,7 @@ EXCLUDED_BASES = frozenset({
     "USDC", "BUSD", "TUSD", "USDP", "PAX", "DAI", "FDUSD", "USDS", "UST", "USTC", "USDE", "USD1", "XUSD",
     "BFUSD", "RLUSD", "PYUSD", "USDSB", "SUSD", "AEUR", "EURI", "EUR", "GBP", "AUD", "TRY", "BRL", "RUB",
     "UAH", "NGN", "ZAR", "BIDR", "IDRT", "BVND", "PAXG", "XAUT", "WBTC", "WBETH", "BETH",
-    "BULL", "BEAR",  # the original 3x BTC tokens, listed without a prefix
+    "BULL", "BEAR",
 })
 LEVERAGED_SUFFIXES = ("UP", "DOWN", "BULL", "BEAR")
 

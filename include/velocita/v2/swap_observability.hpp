@@ -6,8 +6,6 @@
 
 namespace velocita::v2 {
 
-// Outside Raft apply: bounded scalar JSON for the local read-only observer.
-// No wallet, handle, signature, payload or credentials are exported.
 [[nodiscard]] inline std::optional<std::string> render_swap_observation(
     const SwapGatewayObservation& value, std::span<const std::byte,16> incarnation) {
     const auto& s=value.state;
@@ -28,7 +26,6 @@ namespace velocita::v2 {
     for(std::size_t n=0;n<s.settlement_count;++n){
         const auto& fill=s.settlements[n];
         if(fill.outcome!=swap::Outcome::succeeded)continue;
-        // valid_state checks finalized/effect/evidence and replays exact accounting.
         const bool buy=fill.base_credit.value()!=0;
         if(!first)out+=',';
         first=false;

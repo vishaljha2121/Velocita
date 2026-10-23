@@ -58,8 +58,6 @@ void busy_kernel_holds_frames_instead_of_dropping_them() {
     gate.armed = true;
     cluster.network.at(leader).ingress_inbox.push_back(cluster.caller.ingress(leader, authored(1)));
     cluster.run_until([&] { return gate.parked.load(); }, "the follower worker to park");
-    // Election/startup can already have incremented this cumulative counter.
-    // Require a new hold while this particular persistence gate is parked.
     const auto holds_before = cluster.node(follower).status().counters.peer_busy_holds;
     cluster.run_until([&] { return cluster.node(follower).status().counters.peer_busy_holds > holds_before; },
                       "an authentic frame to meet the busy follower");

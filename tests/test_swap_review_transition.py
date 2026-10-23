@@ -132,8 +132,6 @@ class TransitionTests(unittest.TestCase):
 
     def idle_journals(self):
         manifest,files=self.initialized();p=R.L.fields(files['runtime.profile']);tx=R.L.fields(files['transaction.review'])
-        # Independent byte-layout fixture; golden domain digests below are fixed
-        # externally calculated vectors for this profile, never from the helper.
         inc=bytes.fromhex(p['incarnation']);authority=bytes.fromhex(p['authority_domain']);state=b'\x55'*32
         values={}
         for name,size,magic in [('prepared',8768,b'VPRP\1\0\0\0'),('submitted',464,b'VSSJ\1\0\0\0'),
@@ -208,7 +206,6 @@ class TransitionTests(unittest.TestCase):
                 folder=mapped('/var/lib/velocita-swap-'+role+'/recovery')/name
                 folder.mkdir(parents=True,exist_ok=True);(folder/leaf).write_bytes(journals[name])
             with patch.object(R,'Path',side_effect=mapped),patch.object(R.A,'stopped') as stopped,patch.object(R.L,'directory'):
-                # Reject in the directory inventory before reading any byte.
                 (mapped('/var/lib/velocita-swap-gateway/recovery')/'unexpected').mkdir()
                 with self.assertRaisesRegex(ValueError,'exact initialized',msg='unknown_directory_refused'):
                     R.state('refresh-idle',manifest,files)
@@ -216,7 +213,6 @@ class TransitionTests(unittest.TestCase):
                 (mapped('/var/lib/velocita-swap-gateway/recovery')/'unexpected').rmdir()
                 (mapped('/var/lib/velocita-swap-gateway/recovery')/'prepared'/'prepare.next').write_bytes(b'partial')
                 with patch.object(R.L.FD,'_open_components',side_effect=lambda path,uid:os.open(path,os.O_RDONLY)),patch.object(R.os,'fstat') as meta:
-                    # Mock only ownership for this host-independent root reader.
                     original_fstat=os.stat
                     def metadata(fd):
                         from types import SimpleNamespace

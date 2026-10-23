@@ -8,7 +8,6 @@ BuyNetCostResult bound_buy_net_cost(std::uint64_t gross,std::uint64_t payment,
     const auto maximum=static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
     if(!gross || !minimum.value() || gross>maximum || payment>maximum || funding>maximum ||
         minimum.value()>maximum || policy.max_output_deduction.value()>maximum)return {};
-    // Surplus external funding is not counted as trade output or profit.
     const auto deduction=payment>funding?payment-funding:0;
     BuyNetCostResult result{BuyNetCostCode::deduction_exceeded,deduction,0};
     if(deduction>policy.max_output_deduction.value())return result;

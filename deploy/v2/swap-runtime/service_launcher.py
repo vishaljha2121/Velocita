@@ -15,8 +15,6 @@ import stat
 import sys
 import time
 
-# -I ignores ambient PYTHONPATH/cwd. Only this root-owned installed bundle supplies
-# the two helpers; the system unit fixes this script's absolute release path.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fd_handoff as FD
 import service_profile as PROFILE
@@ -87,14 +85,10 @@ def check_bindings(manifest, profile_raw, review_raw, history_raw, now_ms, role)
         raise FD.Refused('signer account review expired')
     if role == 'gateway' and not now_ms < unsigned(profile['expires_at_ms']):
         raise FD.Refused('gateway bearer expired')
-    # A stale gateway review may still support read-only durable recovery. Do not
-    # replace the C++ journal/state-dependent admission decision with a blanket
-    # expiry check here. Signer admission remains strict.
     return {'review_current': review_current, 'economic_admission_checked': False}
 
 
 def directory(path, uid, gid, mode):
-    # Traverse parents with the same no-follow ownership rules as credential files.
     fd = FD._open_components(path, uid)
     try:
         meta = os.fstat(fd)
@@ -152,8 +146,6 @@ def prepare(manifest, role, read=pinned_bytes, now_ms=None):
         path = PROFILE.PUBLIC + '/transaction.review'
         read(path, transaction_digest, 32768)
         contract['public_files_sha256'][path] = transaction_digest
-    # The pinned catalog file is still checked against the authenticated Raft
-    # catalog root by the C++ executable. File SHA256 is not that canonical root.
     binary_fd = FD.open_pinned_public(manifest['binary'], manifest['binary_sha256'], True)
     try:
         if os.read(binary_fd, 4) != b'\x7fELF': raise FD.Refused('native ELF release required')
@@ -191,7 +183,6 @@ def launch(manifest, role):
             {'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'AERON_TERM_BUFFER_LENGTH': '1048576',
              'TMPDIR': '/run/velocita-swap-'+role})
     finally:
-        # exec failure may already have consumed/closed the descriptor.
         try: os.close(secret)
         except OSError: pass
 

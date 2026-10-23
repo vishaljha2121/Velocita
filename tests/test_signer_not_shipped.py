@@ -42,7 +42,6 @@ completion_targets['gateway_runtime'].add('v2-swap-process-drill')
 for component in ('signer_session', 'signer_protocol', 'signer_service'):
     completion_targets[component].add('v2-swap-runtime-config-tests')
 completion_targets['signer_session'].add('v2-swap-signer-verified-tests')
-# Exact test target only: real verifier/receipt admission with a fake HTTPS leaf.
 completion_targets['signer_session'].add('v2-swap-continuous-drill')
 
 for path in sorted((root / "deploy").rglob("*")):

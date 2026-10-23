@@ -1,15 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# V2 Phase 5 gateway/simulator acceptance on the physical Raspberry Pi 5.
-#
-# Run only after explicit source synchronization and `sudo -v`, exactly as the
-# Phase 4 gate required. Clean power evidence - throttled=0x0 before and after,
-# plus temperature - is part of the acceptance record, not a nicety: a throttled
-# run measures a different machine than the one that will trade.
-#
-# See run-v2-phase5-container-gate.sh for how to recompute the pinned root.
-
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 export VELOCITA_V2_PI_GATE_LABEL='V2 Phase 5 gateway/simulator acceptance'

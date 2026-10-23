@@ -11,7 +11,6 @@ inline constexpr std::size_t kSwapSubmissionHandleBytes = 128;
 inline constexpr std::size_t kSwapSubmissionStoreBytes = 464;
 using SwapSubmissionTransaction = std::array<std::byte,64>;
 
-// Shared by finalized settlement admission and durable journal resolution.
 [[nodiscard]] std::optional<Digest256> solana_signature_transaction_digest(const SwapSubmissionTransaction&) noexcept;
 
 struct SwapSubmissionBinding {

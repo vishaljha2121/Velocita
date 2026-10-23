@@ -34,8 +34,6 @@ swap_signer::Request request(){
     r.handle_size=handle.size();std::copy(handle.begin(),handle.end(),r.handle.begin());r.payload_size=body.size();std::copy(body_bytes().begin(),body_bytes().end(),r.payload.begin());return r;
 }
 
-// Real UDP publications, subscriptions and embedded native media drivers.
-// No node identity, authentication credential, Raft command, or venue message.
 struct Exchange {
     velocita::AeronRuntime runtime;
     std::shared_ptr<aeron::Subscription> sub;
@@ -53,8 +51,6 @@ std::string exchange(bool signer,const std::string& nonce,const std::string& own
         require(received.empty()||received==value,"Aeron payload stable");received=value;
     });
     const auto deadline=Steady::now()+std::chrono::seconds(10);
-    // Both peers acknowledge actual receive, preventing publication offer from
-    // being mistaken for a delivered roundtrip. Distinct packet kinds are used.
     bool peer_ack=false,ack_offered=false;
     aeron::FragmentAssembler messages([&](aeron::concurrent::AtomicBuffer& b,aeron::util::index_t o,aeron::util::index_t n,aeron::Header& h){
         require(n>0&&n<128,"Aeron frame bound");

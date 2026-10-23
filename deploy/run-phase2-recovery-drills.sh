@@ -238,7 +238,6 @@ wait_for_convergence 30 || die "preflight: voters are not converged"
 baseline="$(client get)" || die "preflight: client get failed"
 record preflight PASS "leader=$(current_leader); $(printf '%s' "$baseline" | tail -1)"
 
-# A majority remains available while the old leader is removed under open-loop demand.
 old_leader="$(current_leader)"
 start_driver leader-failover 15
 sleep 5
@@ -251,7 +250,6 @@ failover_result="$(finish_driver leader-failover 0 10.0)" || die "leader-failove
 wait_for_convergence 45 || die "leader-failover: cluster did not reconverge"
 record leader-failover PASS "old=${old_leader};new=${new_leader};${failover_result}"
 
-# Remove the leader and one follower so the client sees an explicit leaderless interval.
 old_leader="$(current_leader)"
 others=()
 for id in 1 2 3; do [[ "$id" == "$old_leader" ]] || others+=("$id"); done
@@ -267,7 +265,6 @@ quorum_result="$(finish_driver quorum-loss 1 25.0)" || die "quorum-loss: invalid
 wait_for_convergence 45 || die "quorum-loss: cluster did not reconverge"
 record quorum-loss PASS "restored_leader=${new_leader};${quorum_result}"
 
-# One remaining voter may append but cannot commit; the same request ID resolves once after restore.
 leader="$(current_leader)"
 followers=()
 for id in 1 2 3; do [[ "$id" == "$leader" ]] || followers+=("$id"); done
