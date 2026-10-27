@@ -1,0 +1,15 @@
+{
+  "config": {
+    "catalog.bin": "8a18bbee0363a626a158aeaebf5c23087ee2268ee67b23cc4987c70f2758ad3f",
+    "node-2.conf": "99f3c7b006befbde7a0bf595402c5f45876a85bbab644731c7838d891a18eb33"
+  },
+  "data": {
+    "node-2/health.page": "f2add9111762b34231ed15b810a7520d45dad1fdaaaba834cadcda9619a57ed5",
+    "node-2/kernel/v2-active-generation.bin": "9536ede72ad13dbee5ff8e23fee5bd6a197ac9004466b1329c860ae59d1a6838",
+    "node-2/kernel/v2-generations/g-0000000000000001/v2-base-seal.bin": "6ec183cf8d9af59228f3bbc94af976b595df189410d7b1295c1c9b1414ff2cc6",
+    "node-2/kernel/v2-generations/g-0000000000000001/v2-metadata.bin": "d3844d38a8aa347f9124621f3145ffcec9b72708605e08aae8ddec3dfad3e1ac",
+    "node-2/kernel/v2-generations/g-0000000000000001/v2-wal-blocks.bin": "487d0114fe5507f955d9b51ba2842472ed20aa86d4419ea64e17c22bf298dc55",
+    "node-2/kernel/v2-identity.bin": "8a83c5ce77c3f797612970532b584519752c70690a8214244ad53ed48a48cba1",
+    "node-2/session-epoch.bin": "f3676bf302c2009a3940a31b4c1f62a86aa27fe15d38fc816edb55a9ad025c21"
+  }
+}

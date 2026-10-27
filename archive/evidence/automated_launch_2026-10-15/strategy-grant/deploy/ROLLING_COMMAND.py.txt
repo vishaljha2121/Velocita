@@ -1,0 +1,84 @@
+from pathlib import Path
+import subprocess,json,hashlib,shutil,os,socket,stat,time,urllib.request
+homes={'bulbazar-NUC':(1,'100.72.127.102','1fec68b044b8b3d9778d3df2117df7c3ee762afbc0f6562fcd5c7a2d565b7ff4'),'vishalkapi':(2,'100.84.151.116','e5c41c8c638b3bfbf0e34be9c7242ba888fa31124337bea09d697e704a52cfc4'),'nuc2':(3,'100.85.36.22','2c5bf8199f9185e603a80bceaadc2c126ea04a3e9eae4b356dfa576c1b7b4bb6')}
+node,ip,pin=homes[socket.gethostname()]
+home=Path.home();root=home/'velocita-indicator-paper/stochastic';units=home/'.config/systemd/user'
+names=('velocita-paper-stochastic-node','velocita-paper-stochastic-exporter')
+old='localhost/velocita-v2:qualified-54a5fcb';new='localhost/velocita-v2:qualified-ba299ff'
+archive=home/'.cache/velocita-build'/('strategy-grant-backup-ba299ff-node'+str(node))
+def run(a):return subprocess.check_output(a,text=True,timeout=45).strip()
+def digest(p):return hashlib.sha256(p.read_bytes()).hexdigest()
+def tree(p):
+ out={}
+ for x in sorted(p.rglob('*')):
+  assert not x.is_symlink(),str(x)
+  if x.is_file():out[str(x.relative_to(p))]=digest(x)
+ return out
+def health(address):
+ raw=urllib.request.urlopen('http://'+address+':11410/metrics',timeout=4).read().decode()
+ def m(n,l=''):
+  rows=[x for x in raw.splitlines() if x.startswith('velocita_v2_'+n+'{') and (not l or l in x)]
+  assert len(rows)==1
+  return int(rows[0].rsplit(' ',1)[1])
+ r={n:m(n) for n in ('up','ready','failed','strategy_mode','term','leader_id')}
+ r.update(commit=m('log_index','kind="commit"'),applied=m('log_index','kind="applied"'),durable=m('log_index','kind="durable"'))
+ return r
+before_health=[health(h[1]) for h in homes.values()]
+assert all(r['up']==r['ready']==1 and r['failed']==0 and r['strategy_mode']==5 and r['commit']==r['applied']==r['durable'] for r in before_health)
+assert len({(r['term'],r['leader_id'],r['commit']) for r in before_health})==1
+assert run(['podman','image','inspect',new,'--format','{{.Id}}'])==pin
+assert not archive.exists()
+config=(root/'config'/('node-'+str(node)+'.conf')).read_bytes()
+fields=dict(x.split('=',1) for x in config.decode().splitlines() if '=' in x and not x.lstrip().startswith('#'))
+fields={k.strip():v.strip() for k,v in fields.items()}
+assert fields['startup']=='recover' and fields['cluster.incarnation']=='aae119b95ddcea5a206f03ab5ca12c15'
+old_units={n:(units/(n+'.service')).read_bytes() for n in names}
+assert all(raw.count(old.encode())==1 and new.encode() not in raw for raw in old_units.values())
+assert all(run(['systemctl','--user','is-active',n])=='active' for n in names)
+containers=json.loads(run(['podman','ps','--format','json']))
+voters=[c for c in containers if 'velocita-v2:qualified-' in (c.get('Image') or '') and 'exporter' not in str(c.get('Names'))]
+assert len(voters)==1
+archive.mkdir(mode=0o700)
+(archive/'preflight.json').write_text(json.dumps(dict(health=before_health,node=node,image_id=pin),indent=2)+'\n')
+try:
+ subprocess.run(['systemctl','--user','stop',*names],check=True,timeout=45)
+ assert all(run(['systemctl','--user','show',n,'-p','ActiveState','--value'])=='inactive' for n in names)
+ for n,raw in old_units.items():
+  assert (units/(n+'.service')).read_bytes()==raw
+  (archive/(n+'.service')).write_bytes(raw)
+ for leaf in ('config','data'):
+  shutil.copytree(root/leaf,archive/leaf)
+  assert tree(root/leaf)==tree(archive/leaf)
+ copies={leaf:tree(archive/leaf) for leaf in ('config','data')}
+ (archive/'backup-sha256.json').write_text(json.dumps(copies,indent=2)+'\n')
+ os.sync()
+ for n,raw in old_units.items():
+  p=units/(n+'.service');temporary=p.with_name(p.name+'.ba299ff-pending')
+  assert p.read_bytes()==raw
+  with temporary.open('xb') as f:
+   os.fchmod(f.fileno(),stat.S_IMODE(p.stat().st_mode));f.write(raw.replace(old.encode(),new.encode()));f.flush();os.fsync(f.fileno())
+  os.replace(temporary,p)
+ fd=os.open(units,os.O_RDONLY|os.O_DIRECTORY);os.fsync(fd);os.close(fd)
+ assert tree(root/'data')==copies['data'] and tree(root/'config')==copies['config']
+ subprocess.run(['systemctl','--user','daemon-reload'],check=True,timeout=30)
+ subprocess.run(['systemctl','--user','start',*names],check=True,timeout=45)
+ deadline=time.monotonic()+90
+ while True:
+  try:
+   row=health(ip)
+   if row['failed']:raise RuntimeError('new voter reports failure')
+   if row['up']==row['ready']==1 and row['strategy_mode']==5 and row['commit']==row['applied']==row['durable'] and row['commit']>=before_health[0]['commit']:break
+  except (OSError,ValueError,AssertionError):pass
+  if time.monotonic()>=deadline:raise TimeoutError('voter recovery not ready')
+  time.sleep(2)
+ for n in names:
+  assert run(['podman','inspect',n,'--format','{{.Image}}'])==pin
+  assert run(['systemctl','--user','is-active',n])=='active'
+ assert tree(root/'config')==copies['config']
+ result=dict(node=node,host=socket.gethostname(),source_commit='ba299ff6c89392177cfd4702fda11dabb7ee1719',image_id=pin,archive=str(archive),configuration_unchanged=True,data_unchanged_before_restart=True,backup_verified=True,health=row)
+ (archive/'result.json').write_text(json.dumps(result,indent=2)+'\n')
+ print(json.dumps(result),flush=True)
+except BaseException:
+ subprocess.run(['systemctl','--user','stop',*names],timeout=45,check=False)
+ raise
+

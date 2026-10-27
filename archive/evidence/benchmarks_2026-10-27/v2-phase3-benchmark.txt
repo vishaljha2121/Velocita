@@ -1,0 +1,9 @@
+phase3_rule_evaluation_last_match iterations=100000 min_ns=0 p50_ns=42 p99_ns=84 max_ns=7542 sink=3200000
+phase3_action_resolution iterations=100000 min_ns=0 p50_ns=42 p99_ns=42 max_ns=8250 sink=100000
+phase3_authoritative_reducer iterations=100000 min_ns=83 p50_ns=125 p99_ns=167 max_ns=10416 sink=3300000
+phase3_rules_visited_worst_case=32
+phase3_decision_capacity_high_watermark=16
+phase3_receipt_capacity_high_watermark=16
+phase3_decision_capacity_limit=16
+phase3_receipt_capacity_limit=256
+phase3_measurement_scope=in_memory_no_raft_no_wal_no_network

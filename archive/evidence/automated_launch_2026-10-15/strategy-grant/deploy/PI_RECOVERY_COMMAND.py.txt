@@ -1,0 +1,50 @@
+from pathlib import Path
+import subprocess,json,hashlib,time,urllib.request
+home=Path.home();archive=home/'.cache/velocita-build/strategy-grant-backup-ba299ff-node2'
+root=home/'velocita-indicator-paper/stochastic';names=('velocita-paper-stochastic-node','velocita-paper-stochastic-exporter')
+def run(a):return subprocess.check_output(a,text=True,timeout=30).strip()
+def tree(p):return {str(x.relative_to(p)):hashlib.sha256(x.read_bytes()).hexdigest() for x in p.rglob('*') if x.is_file()}
+def health(ip):
+ raw=urllib.request.urlopen('http://'+ip+':11410/metrics',timeout=4).read().decode()
+ def m(n,l=''):
+  a=[x for x in raw.splitlines() if x.startswith('velocita_v2_'+n+'{') and (not l or l in x)];assert len(a)==1
+  return int(a[0].rsplit(' ',1)[1])
+ r={n:m(n) for n in ('up','ready','failed','strategy_mode','term','leader_id')}
+ r.update(commit=m('log_index','kind="commit"'),applied=m('log_index','kind="applied"'),durable=m('log_index','kind="durable"'));return r
+assert json.loads((archive/'image-userns-preparation-long.json').read_text())['exit_code']==0
+log=(archive/'image-userns-preparation-long.log').read_text()
+assert log.splitlines()[0]=='1004'
+pins={'velocita-v2-node':'3c43b3dd09ab7bd4bde63d5eaf7e79579c9abe071118b8e6e5e35dc10f7d258a','velocita-v2-exporter':'0a8f4063f8635db36cee7f9be1a71a6687993d31346f55258f0aa9a757056cbf','velocita-v2-client':'5226915a047d8eedeb8353223c1a26072f5770250997d970d8905633a11ace73'}
+assert all(pin+'  /usr/local/bin/'+name in log for name,pin in pins.items())
+image='localhost/velocita-v2:qualified-ba299ff';image_id='e5c41c8c638b3bfbf0e34be9c7242ba888fa31124337bea09d697e704a52cfc4'
+assert run(['podman','image','inspect',image,'--format','{{.Id}}'])==image_id
+original=json.loads((archive/'backup-sha256.json').read_text())
+assert all(tree(root/leaf)==files for leaf,files in original.items())
+for n in names:
+ d=dict(x.split('=',1) for x in run(['systemctl','--user','show',n,'-p','ActiveState','-p','MainPID','-p','ControlPID']).splitlines())
+ assert d['ActiveState'] in ('inactive','failed') and d['MainPID']==d['ControlPID']=='0'
+ assert (home/'.config/systemd/user'/(n+'.service')).read_bytes()==(archive/(n+'.service')).read_bytes().replace(b'localhost/velocita-v2:qualified-54a5fcb',image.encode())
+rows=[health(ip) for ip in ('100.72.127.102','100.85.36.22')]
+assert all(r['up']==r['ready']==1 and not r['failed'] and r['strategy_mode']==5 and r['commit']==r['applied']==r['durable'] for r in rows)
+assert len({(r['term'],r['leader_id'],r['commit']) for r in rows})==1
+with (archive/'resume-preflight.json').open('x') as f:f.write(json.dumps(dict(quorum=rows,original_data_unchanged=True,image_preparation_passed=True),indent=2)+'\n')
+try:
+ subprocess.run(['systemctl','--user','start',*names],check=True,timeout=45)
+ deadline=time.monotonic()+120
+ while True:
+  try:
+   row=health('100.84.151.116')
+   if row['failed']:raise RuntimeError('voter reports failure')
+   if row['up']==row['ready']==1 and row['strategy_mode']==5 and row['commit']==row['applied']==row['durable'] and row['commit']>=rows[0]['commit']:break
+  except (OSError,ValueError,AssertionError):pass
+  if time.monotonic()>=deadline:raise TimeoutError('Pi recovery failed')
+  time.sleep(2)
+ assert all(run(['podman','inspect',n,'--format','{{.Image}}'])==image_id for n in names)
+ assert tree(root/'config')==original['config']
+ result=dict(node=2,source_commit='ba299ff6c89392177cfd4702fda11dabb7ee1719',image_id=image_id,archive=str(archive),configuration_unchanged=True,data_unchanged_before_restart=True,backup_verified=True,health=row,recovered_after_separate_image_preparation=True)
+ with (archive/'result.json').open('x') as f:f.write(json.dumps(result,indent=2)+'\n')
+ print(json.dumps(result))
+except BaseException:
+ subprocess.run(['systemctl','--user','stop',*names],timeout=150,check=False)
+ raise
+

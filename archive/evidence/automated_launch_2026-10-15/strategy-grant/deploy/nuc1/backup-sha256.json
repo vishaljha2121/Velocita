@@ -1,0 +1,15 @@
+{
+  "config": {
+    "catalog.bin": "8a18bbee0363a626a158aeaebf5c23087ee2268ee67b23cc4987c70f2758ad3f",
+    "node-1.conf": "e6ef8b4554f82563a47872c60d5ad27cf16c5b7103f89a02fd81fd51876c2a04"
+  },
+  "data": {
+    "node-1/health.page": "ec9af10f7e974669dbe89b2b2d101eb47f6d37e46366106c56d4904fab92e832",
+    "node-1/kernel/v2-active-generation.bin": "c2e66664132080733b427c50f5f59181a83ea8ef81dfa24f7c545855a368a206",
+    "node-1/kernel/v2-generations/g-0000000000000001/v2-base-seal.bin": "7e1bdb49b1041f4a60a4cb69b4e5a821cc10262c0b6c5002ea43c80bab1fcc16",
+    "node-1/kernel/v2-generations/g-0000000000000001/v2-metadata.bin": "752a31c81516464cc80ae9863060aca62b071b174512fb221fb01da9b594f761",
+    "node-1/kernel/v2-generations/g-0000000000000001/v2-wal-blocks.bin": "389485fefe505df9c776789ee433894655be805e86290dc39f1dc39012abee20",
+    "node-1/kernel/v2-identity.bin": "b5c096c42467af9cb3f5cd1378000f6a8ce58e151d95b2f52062fe41c32dec4e",
+    "node-1/session-epoch.bin": "f3676bf302c2009a3940a31b4c1f62a86aa27fe15d38fc816edb55a9ad025c21"
+  }
+}

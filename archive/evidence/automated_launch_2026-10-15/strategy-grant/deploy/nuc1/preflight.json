@@ -1,0 +1,39 @@
+{
+  "health": [
+    {
+      "up": 1,
+      "ready": 1,
+      "failed": 0,
+      "strategy_mode": 5,
+      "term": 5,
+      "leader_id": 2,
+      "commit": 16,
+      "applied": 16,
+      "durable": 16
+    },
+    {
+      "up": 1,
+      "ready": 1,
+      "failed": 0,
+      "strategy_mode": 5,
+      "term": 5,
+      "leader_id": 2,
+      "commit": 16,
+      "applied": 16,
+      "durable": 16
+    },
+    {
+      "up": 1,
+      "ready": 1,
+      "failed": 0,
+      "strategy_mode": 5,
+      "term": 5,
+      "leader_id": 2,
+      "commit": 16,
+      "applied": 16,
+      "durable": 16
+    }
+  ],
+  "node": 1,
+  "image_id": "1fec68b044b8b3d9778d3df2117df7c3ee762afbc0f6562fcd5c7a2d565b7ff4"
+}

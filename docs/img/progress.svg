@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 260" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif">
+<rect width="980" height="260" rx="10" fill="#f6f8fa"/>
+<text x="24.0" y="34" font-size="15" font-weight="600" fill="#1f2328">Raft thread time per log record</text>
+<text x="24.0" y="53" font-size="12" fill="#59636e">median, µs</text>
+<text x="24.0" y="78" font-size="12" fill="#59636e">fsync on the Raft thread</text>
+<rect x="24.0" y="85" width="217.4" height="24" rx="3" fill="#cf4a3a"/>
+<text x="249.4" y="102" font-size="13" font-weight="600" fill="#1f2328">20.6 µs</text>
+<text x="24.0" y="148" font-size="12" fill="#59636e">async WAL writer</text>
+<rect x="24.0" y="155" width="3.0" height="24" rx="3" fill="#2d8a4e"/>
+<text x="35.0" y="172" font-size="13" font-weight="600" fill="#1f2328">0.042 µs</text>
+<text x="24.0" y="238" font-size="13" font-weight="600" fill="#2d8a4e">490× less</text>
+<text x="350.6666666666667" y="34" font-size="15" font-weight="600" fill="#1f2328">Compaction pause</text>
+<text x="350.6666666666667" y="53" font-size="12" fill="#59636e">seconds</text>
+<text x="350.6666666666667" y="78" font-size="12" fill="#59636e">full archive re-read, after 90 compactions</text>
+<rect x="350.6666666666667" y="85" width="217.4" height="24" rx="3" fill="#cf4a3a"/>
+<text x="576.0" y="102" font-size="13" font-weight="600" fill="#1f2328">4.8 s</text>
+<text x="350.6666666666667" y="148" font-size="12" fill="#59636e">rotating two-segment scrub</text>
+<rect x="350.6666666666667" y="155" width="18.1" height="24" rx="3" fill="#2d8a4e"/>
+<text x="376.8" y="172" font-size="13" font-weight="600" fill="#1f2328">≤ 0.4 s</text>
+<text x="350.6666666666667" y="238" font-size="13" font-weight="600" fill="#2d8a4e">12× shorter, below the election timeout</text>
+<line x1="326.6666666666667" y1="20" x2="326.6666666666667" y2="240" stroke="#d1d9e0"/>
+<text x="677.3333333333334" y="34" font-size="15" font-weight="600" fill="#1f2328">Command commit latency</text>
+<text x="677.3333333333334" y="53" font-size="12" fill="#59636e">p50, ms</text>
+<text x="677.3333333333334" y="78" font-size="12" fill="#59636e">V1.1: 3 voters on one Pi SD card</text>
+<rect x="677.3333333333334" y="85" width="217.4" height="24" rx="3" fill="#cf4a3a"/>
+<text x="902.7" y="102" font-size="13" font-weight="600" fill="#1f2328">396 ms</text>
+<text x="677.3333333333334" y="148" font-size="12" fill="#59636e">V2 live: 3 machines, durable on 2 disks</text>
+<rect x="677.3333333333334" y="155" width="69.2" height="24" rx="3" fill="#2d8a4e"/>
+<text x="754.5" y="172" font-size="13" font-weight="600" fill="#1f2328">126 ms</text>
+<text x="677.3333333333334" y="238" font-size="13" font-weight="600" fill="#2d8a4e">3.1× faster</text>
+<line x1="653.3333333333334" y1="20" x2="653.3333333333334" y2="240" stroke="#d1d9e0"/>
+</svg>

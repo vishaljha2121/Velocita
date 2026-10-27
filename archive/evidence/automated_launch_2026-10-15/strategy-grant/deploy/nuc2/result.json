@@ -1,0 +1,21 @@
+{
+  "node": 3,
+  "host": "nuc2",
+  "source_commit": "ba299ff6c89392177cfd4702fda11dabb7ee1719",
+  "image_id": "2c5bf8199f9185e603a80bceaadc2c126ea04a3e9eae4b356dfa576c1b7b4bb6",
+  "archive": "/home/velocitas/.cache/velocita-build/strategy-grant-backup-ba299ff-node3",
+  "configuration_unchanged": true,
+  "data_unchanged_before_restart": true,
+  "backup_verified": true,
+  "health": {
+    "up": 1,
+    "ready": 1,
+    "failed": 0,
+    "strategy_mode": 5,
+    "term": 5,
+    "leader_id": 2,
+    "commit": 16,
+    "applied": 16,
+    "durable": 16
+  }
+}

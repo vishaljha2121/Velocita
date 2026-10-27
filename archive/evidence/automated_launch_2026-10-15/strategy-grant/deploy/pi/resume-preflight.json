@@ -1,0 +1,28 @@
+{
+  "quorum": [
+    {
+      "up": 1,
+      "ready": 1,
+      "failed": 0,
+      "strategy_mode": 5,
+      "term": 6,
+      "leader_id": 1,
+      "commit": 17,
+      "applied": 17,
+      "durable": 17
+    },
+    {
+      "up": 1,
+      "ready": 1,
+      "failed": 0,
+      "strategy_mode": 5,
+      "term": 6,
+      "leader_id": 1,
+      "commit": 17,
+      "applied": 17,
+      "durable": 17
+    }
+  ],
+  "original_data_unchanged": true,
+  "image_preparation_passed": true
+}

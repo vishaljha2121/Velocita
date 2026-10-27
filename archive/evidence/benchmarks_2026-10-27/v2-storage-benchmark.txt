@@ -1,0 +1,12 @@
+records=2000
+block_bytes=4096
+arena_blocks=64
+backpressure_waits=488361
+durable_index=2000
+owner_loop_synchronous_median_us=20.584
+owner_loop_synchronous_p99_us=111.375
+owner_loop_synchronous_max_us=1123.58
+owner_loop_offthread_median_us=0.042
+owner_loop_offthread_p99_us=160.166
+owner_loop_offthread_max_us=236.417
+median_speedup=490.095
