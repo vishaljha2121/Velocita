@@ -6,6 +6,7 @@ Start here: one page per subsystem and concern, each linking down to the code an
 
 - [Kernel](guide/kernel.md), [Gateway](guide/gateway.md), [Signer](guide/signer.md), [Edge](guide/edge.md)
 - [Secrets](guide/secrets.md), [Storage: databases and caches](guide/storage.md), [Memory: budgets and arenas](guide/memory.md)
+- [Debugging and operations tools](guide/debugging.md)
 - Fixes found by testing: [durable quorum](guide/fix-durable-quorum.md), [read-outage retry](guide/fix-read-outage-retry.md)
 
 ## Architecture

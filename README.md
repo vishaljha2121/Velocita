@@ -264,6 +264,23 @@ blocks handed to a writer thread over lock-free queues, and fixed tables scanned
 refusal, never an allocation or a stall. Details: [memory.md](docs/guide/memory.md) and the field-by-field
 [memory atlas](docs/V2_MESSAGE_MEMORY_ATLAS.md).
 
+### Debugging and operations
+
+Every component tells you why it stopped, and every answer has one place to look.
+
+| Need | Tool |
+|---|---|
+| Is the cluster healthy? | each voter's Prometheus endpoint (ready, failed, term, leader, commit), `velocita-v2-status`, and a two-minute check script |
+| What is the account right now? | the live observer publishes the gateway's validated snapshot every 5 s, as metrics and `strategy-settlements.json` |
+| What happened over time? | Grafana: price with entry and exit markers, gateway and signer phases, settlement feed, election terms |
+| Something needs attention | alert rules → Alertmanager → self-hosted ntfy push to a phone |
+| Why did it stop? | typed stop causes in the driver, gateway and signer logs (`settlement unresolved stage=… code=…`, `TM route refused code=8`) |
+| What really happened? | replay a voter's archived log through the kernel, read a finalized transaction's exact balance changes, capture the venue account history |
+| Does the outside world look as expected? | one-request, read-only probes of the venue's API, its unsigned swaps, the route program's interface and the market-data feeds |
+| Does the safety still hold? | process and continuous drills, power-cut tests, mutation harnesses that prove each mutant was rebuilt and killed |
+
+Commands, a "what healthy looks like" table and symptom → cause → action: [debugging.md](docs/guide/debugging.md).
+
 ## How it was built
 
 Nearly 400 commits over eight weeks, in small steps; read them in order with `git log --reverse`. Each V2
@@ -292,7 +309,7 @@ phase was accepted on the target hardware before the next began.
 | When | What was measured | Change | Result |
 |---|---|---|---|
 | Aug 29 | 3 voters on one Pi SD card: commit p50 396 ms, p99 828 ms at 5 cmd/s; leaderless at 20 cmd/s (~9 fsyncs per command) | V2 storage: one writer thread per voter, three machines | Raft thread median per record 20.6 µs → 0.042 µs |
-| Sep 15 | A power-cut sweep at every write offset found a commit index past the log end, and 64 KiB written per 200-byte command | Refuse instead of clamping; 4 KiB blocks | Then the benchmark refused 4 of 5 records, fixed with a 64-block arena |
+| Sep 15 | A power-cut sweep at every structurally distinct offset found a commit index past the log end, and 64 KiB written per 200-byte command | Refuse instead of clamping; 4 KiB blocks | Then the benchmark refused 4 of 5 records, fixed with a 64-block arena |
 | Sep 15 | Upstream Raft counted the leader's vote before its entry was durable | [Durable-quorum fork](docs/guide/fix-durable-quorum.md) | Committed = on 2 of 3 disks |
 | Oct 1 | Wi-Fi drops inflated terms: 49 → 191 in 6 hours | Pre-vote | A returning voter no longer deposes a healthy leader |
 | Oct 3 | Compaction pause grew 0.8 s → 4.8 s; term 1 → 65 in 48 hours | Rotating two-segment scrub | Pauses 0.1–0.4 s, below the election timeout |
