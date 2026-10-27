@@ -16,7 +16,7 @@ Source: [`src/v2_kernel.cpp`](../../src/v2_kernel.cpp), [`src/v2_swap.cpp`](../.
 | No clock reads | Time arrives inside the command; an event older than the last one is refused | Three clocks would disagree; time as data replays |
 | No floating point | Lamports (1e-9 SOL) and USDC micros (1e-6); `unsigned __int128` for products | One rounding difference between CPUs forks the replicas |
 | No heap, no hash maps | `std::array<T,N>` plus a count, linear scans | Allocator state and hash order are nondeterministic |
-| Copy, then commit | `auto next = state; reduce(next); if applied: state = next` | A refusal can never leave a half-changed state |
+| Swap accounting updates | The swap reducer validates a candidate before publishing the accounting change | A refused swap does not partially apply its economic update; the outer kernel can still record the request result |
 | Apply exactly once | `apply()` is called only from the Raft commit callback | A command that never commits has no economic effect |
 | Every outcome typed | 19 reducer codes mapped to `ApplyCode` | "Why didn't it buy?" is answerable from the log forever |
 
@@ -94,11 +94,18 @@ Fees are realized immediately, so for a flat account `cash − funding = realize
 review checked that to the micro. Any mismatch with the intent (receipt below the floor, wrong payload or
 custody, a transaction already seen) is a conflict: the account stops and keeps the evidence.
 
-## Snapshots prove themselves
+## Snapshot validation and its limit
 
-Decoding a snapshot isn't trusted. `valid_state()` re-applies the funding record to an empty state and replays
-every retained settlement through the real reducer, requiring identical totals. A checksum proves the bytes
-weren't damaged; replay proves they are a state the reducer could have produced.
+`swap::valid_state()` has two paths. While `settled_total == settlement_count`, the history is complete:
+it reconstructs the opening state and replays settlements through the reducer, requiring identical totals.
+Once the 16-entry window evicts an old settlement, the validator instead checks record shapes, ordering,
+identities, uniqueness within the window and balance bounds. It does not reconstruct lifetime totals from
+the remaining records. Those totals remain protected by replicated execution and the snapshot checksum,
+with the validation limit recorded in [ADR 0028](../adr/0028-a-recent-settlement-window-with-lifetime-count.md).
+
+The outer kernel is not a whole-state copy-and-swap wrapper. It records receipts and advances the state
+version for processed commands, including some refusals. Economic-update atomicity and request bookkeeping
+are separate guarantees; a refused command need not leave every byte of `TradingState` unchanged.
 
 ## C++ techniques
 

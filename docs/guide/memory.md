@@ -1,8 +1,11 @@
 # Memory: budgets, the atlas and arenas
 
-Every long-lived object in a voter has a fixed size decided at compile time. Nothing on the consensus path
-asks the operating system for memory after start-up, and "full" is a typed refusal, never a slowdown or an
-out-of-memory kill. The full field-by-field inventory is the
+The deterministic kernel uses fixed-size state and tables, with compile-time budgets. The retained log
+and WAL also use fixed arenas allocated at startup. A full arena causes refusal or backpressure.
+This does not make the entire voter allocation-free: `ReplicatedKernel::propose` creates a payload vector,
+peer decoding uses entry vectors, and persistence/compaction use dynamically allocated jobs. See
+[`v2_replication.cpp`](../../src/v2_replication.cpp) and [`v2_node.cpp`](../../src/v2_node.cpp).
+The full field-by-field inventory is the
 [message and memory atlas](../V2_MESSAGE_MEMORY_ATLAS.md); this page is the shape of it.
 
 Source: [`include/velocita/v2/layout.hpp`](../../include/velocita/v2/layout.hpp),
@@ -80,16 +83,23 @@ stateDiagram-v2
 
 | Decision | Why |
 |---|---|
-| A record never straddles two blocks | a torn write is always a bad block checksum, never a valid-looking short record |
+| A record never straddles two blocks | block checksums cover each complete record and detect incomplete or damaged block writes |
 | 4 KiB blocks, not 64 KiB | a quiet system flushes one block per command; 64 KiB cost 64 KiB of SD-card writes for a 200-byte command |
 | 64 blocks, not 8 | with 8, the benchmark refused 4 commands in 5 |
 | A generation counter per slot | a late completion for an earlier use of a slot must not mark new bytes durable |
 | File preallocated 32 blocks ahead | overwriting existing space avoids filesystem-metadata journaling |
 | Separate staged and durable indexes | only the durable index counts toward quorum ([the durable-quorum fix](fix-durable-quorum.md)) |
 
-Moving `fsync` off the consensus thread cut the median time per record from 21.6 µs to 0.042 µs and the
-maximum from 7.1 ms to 0.36 ms. p99 rose from 109 to 208 µs, because under sustained overload the thread now
-waits for a free block instead of a disk. An unbounded stall became a bounded queue-full.
+In the [2026-10-27 Apple M5 Pro storage microbenchmark](../../archive/evidence/benchmarks_2026-10-27/v2-storage-benchmark.txt),
+the measured owner-loop median was 20.584 µs with inline sync versus 0.042 µs with the writer off-thread.
+The corresponding p99 values were 111.375 and 160.166 µs; maxima were 1,123.58 and 236.417 µs.
+The off-thread measurement includes staging/submission and any arena backpressure, not the time until that
+record becomes durable. Its 488,361 backpressure-loop iterations show that bounded capacity can still mean
+waiting under load. The ratio of medians does not measure disk speed or end-to-end Raft commit latency.
+
+The older 21.6 µs / 0.042 µs medians and 109 / 208 µs p99 values in
+[ADR 0006](../adr/0006-asynchronous-durability-and-the-pinned-raft-fork.md) came from an earlier development-host
+run. They are retained as historical evidence, not mixed with the October 27 measurements.
 
 ## The lock-free queue between the threads
 

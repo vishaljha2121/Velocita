@@ -21,8 +21,10 @@ through True Markets on Solana mainnet. No manual intervention from the first tr
 
 **Where the money went.** Against the Binance reference one second before each block, buys filled 54–68 bp
 above (average 59.1) and sells 30–44 bp below (average 33.2); 20 bp of each is the venue fee. The reference
-itself moved −2.0 bp per round trip on average. So a round trip cost about 94 bp before the market did
-anything: about 40 bp of fees and about 52 bp of venue price over the reference.
+itself moved −2.0 bp per round trip on average. The two one-way reference differences sum to about 92 bp: roughly 40 bp of fees and 52 bp of
+remaining execution-price difference. Including the roughly 2 bp adverse reference move gives about 94 bp
+of loss per round trip. This is an approximate decomposition against a different venue, not a direct
+measurement of spread alone.
 
 | Round trip | Held | Result | Result bp | Reference move bp |
 |---|---|---|---|---|
@@ -35,15 +37,21 @@ anything: about 40 bp of fees and about 52 bp of venue price over the reference.
 | E21 → E22 | 17m 51s | −$0.1005 | −79.5 | +18.1 |
 | E23 → E24 | 11m 17s | −$0.1130 | −89.0 | +0.9 |
 
-**The stop: effect 25.** The buy committed at index 134 (03:06:29 UTC). Its transaction
-[`3gPjgF…qiqk`](https://solscan.io/tx/3gPjgFxhmeoP2MornCnoMSjymr7b5XaEJMdje4LAMNWV1Cu8EVXGjxmq81J6qLYnCauxE2GaGqbXutkGUBasqiqk)
-landed in slot 457,481,187 and failed (`InstructionError [2, Custom 5]`), moving nothing from the owner. The
-venue reported "failed, temporarily unavailable", executed 0, and **no transaction hash**. Without a
-transaction to verify, the gateway refused to settle and blocked after 180 s; without a fresh account, the
-driver refused to decide. A later recovery release ([`64e6f9f`](https://github.com/vishaljha2121/Velocita/commit/64e6f9f))
-added a "never executed" outcome that must be proven on chain. Its proof refused (`chain_unproven`; the gateway
-does not log which check failed), and the wallet's history shows why: the transaction above had landed. The reservation is still held; settling it as "failed without charge"
-from the found transaction is the remaining step.
+**The stop: effect 25.** The buy committed at index 134 (03:06:29 UTC). The venue reported
+"failed, temporarily unavailable", executed 0, and **no transaction hash**. Without an identified
+transaction to verify, the gateway blocked after 180 s; without a fresh account, the driver stopped deciding.
+A later recovery release ([`64e6f9f`](https://github.com/vishaljha2121/Velocita/commit/64e6f9f))
+added a "never executed" outcome requiring chain proof. It logged `chain_unproven`, which does not identify
+which check failed.
+
+The later wallet-history capture contains a **candidate** transaction,
+[`3gPjgF…qiqk`](https://solscan.io/tx/3gPjgFxhmeoP2MornCnoMSjymr7b5XaEJMdje4LAMNWV1Cu8EVXGjxmq81J6qLYnCauxE2GaGqbXutkGUBasqiqk),
+from the same second as the order. It landed in slot 457,481,187, failed with
+`InstructionError [2, Custom 5]`, and changed neither the owner's SOL nor USDC balance.
+The archived analysis attributed it to effect 25, but the published reduced records do not show an exact
+match to the prepared payload or establish why the recovery proof refused. Timing alone is not that proof.
+The last recorded recovery left the reservation held. The next step is to establish that linkage and,
+if verified, admit a failed-without-charge settlement through the normal recovery boundary.
 
 Other observations: two short DNS failures on NUC1 (12 s while flat, 8 min while already blocked); one
 change of Raft leader between effects 24 and 25 (term 6 → 8) with no effect on commits.
@@ -78,7 +86,8 @@ Evidence: [`stochastic_cash_2026-10-07/RESULTS.md`](archive/evidence/stochastic_
 | 30-day replay | 1,475 round trips, −0.12 bp before costs; 10 of 30 days positive |
 | Venue reference price vs Binance, 24 h | venue 9.4 bp below Binance on average, standard deviation 2.4 bp |
 
-The rule has no edge before costs; the live run was run to prove the system, and it measured the cost.
+These replay windows did not demonstrate a positive edge before costs. The live run tested execution
+and measured costs; it was not evidence of profitability.
 Evidence: [`stochastic_rule_replay_2026-10-09`](archive/evidence/stochastic_rule_replay_2026-10-09/README.md),
 [`venue_price_basis_2026-10-09`](archive/evidence/venue_price_basis_2026-10-09/README.md).
 
@@ -92,7 +101,9 @@ Evidence: [`stochastic_rule_replay_2026-10-09`](archive/evidence/stochastic_rule
 | Live preparation | A route the venue refused left an effect stuck as reserved | Release of an expired unsent effect through a committed command ([ADR 0027](docs/adr/0027-unsent-effect-release-and-reviewed-baseline.md)) |
 | V1 failure drills | Failover, quorum loss, duplicate retries, observability outages | All passed: failover in 1.5 s, no commit without quorum, a retried request applied once ([results](docs/V1_FAILURE_DRILL_RESULTS.md)) |
 
-Each release that ran on the cluster was built and tested natively on x86_64 and aarch64 inside pinned
+The reported 206 configured CTest targets and 478 model Python tests are suite counts, not counts of
+mutants or proof that every test ran on every architecture. Native qualification used selected suites.
+Releases were built and tested natively on x86_64 and aarch64 inside pinned
 containers (for example [64e6f9f](archive/evidence/automated_launch_2026-10-15/effect25-recovery/qualification-64e6f9f.json):
-59 CTest targets and 54 continuous drill effects per architecture), and safety-critical changes carry
+59 CTest targets, 104 focused Python tests and 54 continuous drill effects per architecture), and safety-critical changes carry
 mutation runs (for example 36 of 36 mutants killed for the effect 25 recovery).

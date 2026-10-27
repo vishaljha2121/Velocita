@@ -11,16 +11,17 @@ the chain to the atom. **[Results →](RESULTS.md)** · **[The story, as a blog 
 |---|---|
 | Real money, unattended | **16 swaps** settled on Solana mainnet, **0** manual interventions |
 | Ledger vs blockchain | **16 / 16** settlements equal to the wallet's on-chain change, to 10⁻⁹ SOL |
-| Intent → committed on 3 machines | **p50 126 ms · p90 218 ms** (max 556 ms), durable on 2 disks including a Raspberry Pi SD card |
+| Intent → majority commit in the 3-machine cluster | **p50 126 ms · p90 218 ms** (max 556 ms), durable on a majority of a cluster with two NUCs and a Raspberry Pi |
 | Intent → transaction in a Solana block | **p50 2 s**, max 3 s, through the venue and the signer |
-| Kernel decision | **p50 208 ns · p99 250 ns** |
-| Raft thread cost per log record | **42 ns** median: **490×** less than `fsync` on the thread |
-| One machine down | the other two keep committing; a restarted voter is back in step in **4–7 s** ([crash safety](#crash-safety)) |
+| Authoritative reducer microbenchmark (Apple M5 Pro) | **p50 125 ns · p99 167 ns**, in memory, excluding Raft, WAL and network |
+| WAL owner-loop microbenchmark (Apple M5 Pro) | **42 ns** median with the writer off-thread versus **20.584 µs** inline; excludes waiting for durable commit |
+| Voter restart | **4–7 s** to rejoin during a graceful rolling upgrade with trading halted ([scope](#crash-safety)); a surviving majority can still commit |
 | Duplicate orders, unexplained balances | **0** across 17 h of paper trading and the live run |
-| Tests | **206** C++ and **478** Python, mutation-checked, built natively on x86_64 and aarch64 |
+| Tests | **206** configured CTest targets and **478** model Python tests; targeted mutation testing and selected native qualification suites ([scope](RESULTS.md#what-testing-found)) |
 
-<sub>Commit and block latencies: the 25 live intents of 2026-10-15/16 ([data](archive/evidence/benchmarks_2026-10-27/live-commit-latency.txt)).
-Kernel and Raft-thread figures: in-memory benchmarks on an Apple M5 Pro ([data](archive/evidence/benchmarks_2026-10-27)).</sub>
+<sub>Commit latency: 25 applied live intents ([data](archive/evidence/benchmarks_2026-10-27/live-commit-latency.txt));
+block inclusion: 16 successful swaps ([data](archive/evidence/live_run_2026-10-15/trades.json)), 2026-10-15/16.
+Reducer figures: in memory; WAL figures: a storage microbenchmark on an Apple M5 Pro ([data](archive/evidence/benchmarks_2026-10-27)).</sub>
 
 ## The problem
 
@@ -113,10 +114,11 @@ sequenceDiagram
   R-->>G: authority proof (current term)
   G->>T: create unsigned swap
   T-->>G: exact transaction payload
-  G->>R: Prepare (payload digest), Attempt
+  G->>R: Prepare (payload digest)
   G->>S: sign this payload
   S->>R: is it the committed intent?
   S-->>G: signature
+  G->>R: Attempt (commit before execute)
   G->>T: execute
   T->>C: submit
   G->>R: mark unknown (sent, outcome not yet proven)
@@ -154,13 +156,12 @@ sequenceDiagram
   participant T as True Markets
   participant C as Solana
   G->>T: execute
-  T->>C: submit (lands, fails on chain)
   T-->>G: failed, executed 0, no tx hash
   G->>G: nothing to verify on chain
   Note over G,R: no Settlement command: effect 25 stays reserved
   Note over G: after 180 s: stop, settlement_unproven
   Note over D: no fresh account, so no new decisions
-  Note over R,C: later, the on-chain proof refuses "never executed",<br/>and the chain shows the transaction landed and failed
+  Note over R,C: later recovery logs chain_unproven,<br/>wallet history contains a candidate failed transaction
 ```
 
 ### Crash safety
@@ -185,20 +186,25 @@ sequenceDiagram
   Note over N1,P: 3 of 3 again, same state digest on every voter
 ```
 
-This happened for real. During the 2026-10-15 upgrade the Pi's new container took minutes to start; NUC1
+The diagram illustrates retained-log catch-up. The recorded operational checks were narrower.
+During the 2026-10-15 upgrade the Pi's new container took minutes to start; NUC1
 and NUC2 elected a leader in term 6 and converged at index 17 without it, and the Pi then recovered from its
 own data at index 17 ([record](archive/evidence/automated_launch_2026-10-15/strategy-grant/deploy/PI_STARTUP.md)).
 On 2026-10-16 every voter was stopped, backed up, upgraded and restarted in turn, Pi first and the leader
 last: each was back in step within **4–7 seconds** with its data unchanged, and stopping the leader handed
 leadership to the Pi ([record](archive/evidence/automated_launch_2026-10-15/effect25-recovery/rolling/README.md)).
+These were graceful restarts while trading was halted; no entries committed while a voter was away.
+The timings are not measurements of power-cut recovery or failover under trading load.
 The paper run crossed a 20-second loss of one voter and an election burst with no unknown outcome.
 
-What makes a restart safe: a torn WAL write is always a bad block checksum, never a valid-looking record; a
-snapshot is replayed before it is trusted; a commit index past the end of the log refuses recovery instead
+Recovery checks WAL block checksums and snapshot structure. Swap totals are replay-validated while the
+complete settlement history fits the 16-entry window; after eviction, validation checks the retained records
+and bounds, not a reconstruction of lifetime totals ([details](docs/guide/kernel.md#snapshot-validation-and-its-limit)).
+A commit index past the end of the log refuses recovery instead
 of clamping; and pre-vote stops a returning voter from deposing a healthy leader. Limits: losing NUC1 keeps
 the cluster up but stops trading, because the gateway and signer run there; and a voter that falls behind the
 leader's last compaction (2,048+ entries, days at this system's rate) needs an operator repair from another
-voter's archive, because online snapshot install is designed but not built.
+voter's archive: snapshot-install components exist, but the integrated online installer is not built.
 
 ### Atoms: money as integers
 
@@ -249,7 +255,7 @@ Why this way, and what it doesn't protect: [secrets.md](docs/guide/secrets.md).
 ### Storage: databases and caches
 
 No general-purpose database touches money. Each voter keeps a checksummed block WAL, atomically replaced Raft
-metadata, a canonical snapshot that is replayed before it is trusted, and immutable archive segments for
+metadata, a canonical snapshot with checksums and semantic validation, and immutable archive segments for
 compacted history. The gateway and signer keep small journals written *before* every external act. SQLite holds
 recorded market data and Prometheus holds metrics, both beside the money path. Every cache (the in-memory
 log, the gateway's state copy, the driver's account file) can only make the system wait when stale, never act
@@ -257,16 +263,17 @@ on old data. Details: [storage.md](docs/guide/storage.md).
 
 ### Memory: budgets, atlas and arenas
 
-Every long-lived object has a size fixed at compile time: the whole replicated state is 78,512 of an
+The deterministic kernel uses fixed-size state: the whole replicated state is 78,512 of an
 81,920-byte budget, and its canonical snapshot 61,586 of 65,536 bytes, each enforced by `static_assert`.
-Memory comes from arenas allocated once at start-up: a 16 MiB ring for the retained log, 64 × 4 KiB WAL
-blocks handed to a writer thread over lock-free queues, and fixed tables scanned linearly. Full means a typed
-refusal, never an allocation or a stall. Details: [memory.md](docs/guide/memory.md) and the field-by-field
+The retained log and WAL use arenas allocated once at start-up: a 16 MiB ring and 64 × 4 KiB WAL
+blocks handed to a writer thread over lock-free queues. Kernel tables are fixed arrays scanned linearly.
+Capacity limits cause refusal or backpressure. The surrounding node still allocates for proposals, peer
+messages and persistence jobs; this is not an allocation-free or stall-free process. Details: [memory.md](docs/guide/memory.md) and the field-by-field
 [memory atlas](docs/V2_MESSAGE_MEMORY_ATLAS.md).
 
 ### Debugging and operations
 
-Every component tells you why it stopped, and every answer has one place to look.
+Components expose stop codes and evidence, though some codes still group several possible causes.
 
 | Need | Tool |
 |---|---|
@@ -304,11 +311,15 @@ phase was accepted on the target hardware before the next began.
 
 ### Progress, stage by stage
 
-![Before and after: Raft thread time per record, compaction pause, commit latency](docs/img/progress.svg)
+![WAL microbenchmark, compaction observations and commit latency in different environments](docs/img/progress.svg)
+
+The commit latencies compare different hardware and workloads: V1.1 used three voters on one Pi at
+5 commands/s; V2 used three physical machines and 25 sparse live intents. This is historical context,
+not a controlled speedup measurement. The WAL microbenchmark is a separate Apple M5 Pro run.
 
 | When | What was measured | Change | Result |
 |---|---|---|---|
-| Aug 29 | 3 voters on one Pi SD card: commit p50 396 ms, p99 828 ms at 5 cmd/s; leaderless at 20 cmd/s (~9 fsyncs per command) | V2 storage: one writer thread per voter, three machines | Raft thread median per record 20.6 µs → 0.042 µs |
+| Aug 29 | 3 voters on one Pi SD card: commit p50 396 ms, p99 828 ms at 5 cmd/s; leaderless at 20 cmd/s (~9 fsyncs per command) | V2 moved storage work to a writer and spread voters across machines | V2 live commit p50 126 ms; different topology and workload |
 | Sep 15 | A power-cut sweep at every structurally distinct offset found a commit index past the log end, and 64 KiB written per 200-byte command | Refuse instead of clamping; 4 KiB blocks | Then the benchmark refused 4 of 5 records, fixed with a 64-block arena |
 | Sep 15 | Upstream Raft counted the leader's vote before its entry was durable | [Durable-quorum fork](docs/guide/fix-durable-quorum.md) | Committed = on 2 of 3 disks |
 | Oct 1 | Wi-Fi drops inflated terms: 49 → 191 in 6 hours | Pre-vote | A returning voter no longer deposes a healthy leader |
@@ -317,7 +328,7 @@ phase was accepted on the target hardware before the next began.
 | Oct 9 | Gateway read state one entry stale and stopped itself | [Read fence](archive/evidence/gateway_stop_2026-10-09/README.md) | Stale readings discarded |
 | Oct 15 | One failed read during an election stopped the gateway | [Bounded retry](docs/guide/fix-read-outage-retry.md) | Live run crossed term 6 → 8 without stopping |
 | Oct 15–16 | Live: 25 intents, 16 swaps | – | 16 / 16 exact; commit p50 126 ms |
-| Oct 16 | Venue reported a failure with no transaction hash | On-chain proof before "never executed" | Proof refused, and the chain shows the transaction landed and failed: the hold was right |
+| Oct 16 | Venue reported a failure with no transaction hash | On-chain proof before "never executed" | Recovery logged `chain_unproven`; a candidate failed transaction was found later, but the published evidence does not prove the payload match |
 
 Practices: test-first changes, an ADR per boundary, crash-injection and multi-process drills, mutation runs
 that prove each mutant was rebuilt and killed, and native qualification on x86_64 and aarch64 before each
@@ -336,10 +347,10 @@ live deploy.
 
 **In paper.** 17.2 hours, 29 round trips and $804 of volume through the full cluster, with every fill
 reconciled and no unknown outcome across an election burst and a lost voter. The rule was flat before fees
-(+$0.0036); replays over 7 and 30 days confirmed it has no edge before costs.
+(+$0.0036); replays over 7 and 30 days found negative aggregate returns before costs in those windows.
 
 **Live.** 25 intents, 16 swaps and $202 of volume over three hours, unattended. The ledger matched the chain
-on every settlement. It lost $0.95, almost all of it the venue's spread and fee, and stopped correctly on an
+on every settlement. It lost $0.95, with fees and execution-price differences dominating the reference-price movement, and stopped on an
 order the venue reported without a hash.
 
 **[Full results, round trips and evidence →](RESULTS.md)** · **[Read the story →](https://vishaljha2121.github.io/VishalJhaPortfolio/blog/velocita-replicated-trading-on-a-raspberry-pi/)**
@@ -367,7 +378,7 @@ cd model && PYTHONPATH=src python3 -m unittest discover -s tests    # 478 tests
 ## Limits
 
 - One operator, one venue, one pair; the three machines share a house and a network.
-- Effect 25 is still reserved: settling a landed-and-failed swap from the transaction the proof finds is designed, not built.
+- The last recorded recovery left effect 25 reserved. Exact linkage to the candidate chain transaction and an admitted settlement remain unproven in the published evidence.
 - A personal engineering project, not financial software.
 
 ## License

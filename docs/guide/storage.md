@@ -9,9 +9,9 @@ path, for market data and monitoring.
 
 | Store | Where | Format | Written by | Why this shape |
 |---|---|---|---|---|
-| Raft WAL | each voter's `data/` | 4 KiB checksummed blocks, preallocated, `fsync`ed off the consensus thread | voter WAL writer | a record never straddles blocks, so a torn write is always a bad checksum ([memory.md](memory.md#wal-blocks)) |
+| Raft WAL | each voter's `data/` | 4 KiB checksummed blocks, preallocated, `fsync`ed off the consensus thread | voter WAL writer | records stay within blocks; block checksums detect incomplete or damaged writes ([memory.md](memory.md#wal-blocks)) |
 | Raft metadata | each voter | term, vote and commit index, replaced atomically | voter | a vote must survive a crash or a node could vote twice in a term |
-| Snapshot | each voter | canonical little-endian encoding of the whole state, ≤ 61,586 B, digest-checked | compaction | identical bytes on x86_64 and aarch64; recovery replays it before trusting it ([kernel.md](kernel.md#snapshots-prove-themselves)) |
+| Snapshot | each voter | canonical little-endian encoding of the whole state, ≤ 61,586 B, digest-checked | compaction | identical bytes on x86_64 and aarch64; recovery checks structure and semantics; swap totals are replayed only with complete history ([limit](kernel.md#snapshot-validation-and-its-limit)) |
 | Archive segments + catalog | each voter | immutable segments, SHA-256 per record and per segment; catalog ≤ 4,096 rows, ≤ 1 GiB | compaction worker | compacted history stays verifiable and can repair another voter |
 | Generation selector, identity | each voter | small files naming the current base and the cluster's static identity | startup / install | a voter refuses to start against the wrong cluster or a half-installed snapshot |
 | Gateway journals | `/var/lib/velocita-swap-gateway` | prepare, submission and reconcile stores, checksummed and `fsync`ed | gateway | written *before* each external act ([gateway.md](gateway.md#journal-before-every-external-act)) |

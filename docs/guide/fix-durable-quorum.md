@@ -3,11 +3,13 @@
 ## The defect
 
 Velocita writes its Raft log asynchronously: the consensus thread stages entries into memory blocks and a
-separate writer thread `fsync`s them, so the thread that runs Raft never waits on the disk
+separate writer thread `fsync`s them, moving WAL sync work off the Raft thread
 ([memory.md](memory.md#wal-blocks)). Upstream [willemt/raft](https://github.com/willemt/raft) assumes a
 synchronous log. It counts the leader's own vote for an entry as soon as the entry is appended.
 
-Put together, that is wrong:
+Combining those assumptions can acknowledge an entry without a durable majority. The following is a
+hypothetical unsafe integration, not an observed loss in Velocita. It assumes the restarted leader is
+allowed to serve after losing its volatile suffix and the only follower with the entry is unreachable:
 
 ```mermaid
 sequenceDiagram
@@ -28,7 +30,10 @@ sequenceDiagram
 "Committed" is supposed to mean "on a majority of disks". Here it meant "on one disk and in one process's
 memory". A leader crash at the wrong moment, plus one follower being briefly unreachable, loses an entry the
 caller was told is permanent, without any disk failing. For a trading kernel that entry can be a fill or a
-settlement.
+settlement. Current Velocita also refuses recovery when its persisted commit index exceeds the recovered
+log end (`ReplicatedKernel` in [`v2_replication.cpp`](../../src/v2_replication.cpp)); that guard would stop
+the illustrated restart if the commit checkpoint had survived. The durable-quorum fix prevents counting
+volatile state in the first place, rather than relying on that later refusal.
 
 ## The fix
 
