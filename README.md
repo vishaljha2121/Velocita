@@ -1,56 +1,145 @@
 # Velocita
 
-A replicated trading system built from scratch on home hardware: a deterministic C++20 trading kernel,
-replicated by Raft over Aeron UDP across two NUC mini PCs and a Raspberry Pi 5, with a separate execution
-gateway and a separate signer that holds the only venue key. It traded real money on Solana, unattended.
+A replicated trading system built from scratch on home hardware: a deterministic C++20 trading kernel
+replicated by Raft over Aeron across two NUC mini PCs and a Raspberry Pi 5, with a separate execution gateway
+and a signer that holds the only venue key. It traded real money on Solana, unattended, and its ledger matched
+the chain to the atom. **[Results →](RESULTS.md)**
 
-Every order is a committed Raft command before it leaves the machine. Every fill is settled from finalized
-chain data. When the evidence is incomplete, the system stops instead of guessing.
+## The problem
 
-## Live run, 15–16 October 2026
+An automated strategy that touches real money has to survive things a script ignores:
 
-| | |
+- **Crashes mid-send.** A process can die after an order leaves and before it records that it did. Restarting
+  must neither lose the order nor send it twice.
+- **An unreliable outside world.** Requests time out, venues answer late or ambiguously, and "failed" does not
+  always mean "did not happen".
+- **A strategy that should not be trusted.** Bugs in signal code must not be able to drain the account.
+- **Cheap hardware.** Three small machines on a home network, any of which can stall, lose its disk or drop off.
+
+The goal: run a real strategy against a real venue with $25, where every cent can be explained afterwards from
+the record.
+
+## The intuition
+
+**Separate deciding from doing.** Money and decisions live in one deterministic state machine that three
+machines replicate with Raft. Anything that touches the outside world runs in separate processes that may act
+only on committed state, and must bring back evidence before the books change.
+
+| Decision | Why |
 |---|---|
-| Capital | $25 USDC, 0.12 SOL per trade, $10 loss stop |
-| Strategy intents | 25, all committed through Raft |
-| Swaps settled | 16 (8 round trips), $202.13 volume |
-| Intent to on-chain block | 2–3 s |
-| Ledger vs chain | 16 of 16 settlements equal to the wallet's on-chain change, to the atom |
-| Realized P&L | −$0.95, including $0.40 of venue fees |
-| Stop | The venue reported effect 25 as failed with no transaction hash. The gateway would not settle it without proof; the chain later showed it had landed and failed. |
+| Deterministic kernel behind Raft ([ADR 0005](docs/adr/0005-reducer-behind-consensus.md)) | Every voter computes the same cents from the same log; the log is the audit trail |
+| Raft over Aeron with storage outside the library, on a pinned fork ([0006](docs/adr/0006-asynchronous-durability-and-the-pinned-raft-fork.md)) | Upstream counted a leader's vote before its log was on disk; durability had to be exact |
+| Integer atoms; the kernel owns cash, P&L and the loss limit ([0021](docs/adr/0021-the-kernel-owns-cash-pnl-and-the-loss-limit.md)) | No rounding to reconcile, and no limit a strategy can bypass |
+| Callers have roles: strategy proposes, operator grants, gateway reports ([0016](docs/adr/0016-strategy-and-operator-callers-are-separate.md), [0020](docs/adr/0020-commands-are-authorized-by-caller-role.md)) | A compromised strategy can ask, never authorize |
+| The gateway is a separate process with per-send authority ([0013](docs/adr/0013-request-correlated-execution-authority.md), [0017](docs/adr/0017-the-gateway-is-a-separate-process-reading-committed-state.md)) | A stale or deposed gateway cannot send |
+| A signer holds the only key and checks the exact transaction ([0019](docs/adr/0019-live-execution-and-key-custody.md), [0029](docs/adr/0029-the-signer-authenticates-the-gateway-for-a-day.md)) | The gateway cannot sign anything the cluster did not commit |
+| "Unknown" is a state; settle only from finalized chain evidence ([0025](docs/adr/0025-bounded-swap-verification-and-policy-bound-recovery.md), [0027](docs/adr/0027-unsent-effect-release-and-reviewed-baseline.md)) | A timeout or a venue's word never moves money |
 
-The loss was execution cost: fills averaged 59 bp above the reference on buys and 33 bp below it on sells,
-while the reference itself moved −2 bp per round trip. The strategy was a test load; the system was the point.
-Evidence: [`archive/evidence/live_run_2026-10-15`](archive/evidence/live_run_2026-10-15).
+All 29 decisions are in [`docs/adr`](docs/adr).
 
-## Architecture
+### The three machines
 
-```text
-strategy driver ──intent──> Raft over Aeron: 3 voters, one deterministic kernel
-                                       │ committed state + per-send authority proof
-                                       v
-            signer <──sign request── execution gateway ──> True Markets ──> Solana
-       (only key holder,                     ^                                │
-        checks the exact tx)                 └──── finalized transaction ─────┘
-                                       │
-                                       └──Settlement command back through Raft
+```mermaid
+flowchart LR
+  subgraph NUC1["NUC1 · x86_64"]
+    V1["voter 1<br/>kernel + Raft"]
+    DRV["strategy driver"]
+    GW["execution gateway"]
+    SG["signer<br/>(only key holder)"]
+    MON["Prometheus · Grafana<br/>Alertmanager"]
+  end
+  subgraph PI["Raspberry Pi 5 · aarch64"]
+    V2["voter 2<br/>kernel + Raft"]
+  end
+  subgraph NUC2["NUC2 · x86_64"]
+    V3["voter 3<br/>kernel + Raft"]
+  end
+  V1 <-->|"Aeron UDP<br/>over Tailscale"| V2
+  V2 <-->|"Aeron UDP"| V3
+  V1 <-->|"Aeron UDP"| V3
+  DRV -->|"intents"| V1
+  GW <-->|"committed state,<br/>authority, reports"| V1
+  GW <-->|"Unix socket"| SG
+  BIN(["Binance<br/>1 s bars"]) --> DRV
+  GW <-->|"HTTPS"| TM(["True Markets"])
+  TM --> SOL(["Solana"])
+  GW -->|"finalized reads"| SOL
+  MON -.->|"scrape"| V1 & V2 & V3
 ```
 
-- **Kernel**: integer accounting, caller roles, risk limits and the swap lifecycle, applied identically on
-  every voter ([ADR 0005](docs/adr/0005-reducer-behind-consensus.md), [0021](docs/adr/0021-the-kernel-owns-cash-pnl-and-the-loss-limit.md)).
-- **Consensus**: willemt/raft on a pinned fork that counts a leader's vote only once its log is durable;
-  storage, snapshots and compaction live outside the library ([ADR 0006](docs/adr/0006-asynchronous-durability-and-the-pinned-raft-fork.md)).
-- **Gateway**: a separate process that journals every step, so a crash at any point recovers without a
-  duplicate order ([ADR 0013](docs/adr/0013-request-correlated-execution-authority.md), [0017](docs/adr/0017-the-gateway-is-a-separate-process-reading-committed-state.md)).
-- **Signer**: holds the key and signs only the transaction the cluster committed ([ADR 0019](docs/adr/0019-live-execution-and-key-custody.md), [0029](docs/adr/0029-the-signer-authenticates-the-gateway-for-a-day.md)).
-- **Settlement**: only from finalized chain evidence matching the signed payload ([ADR 0025](docs/adr/0025-bounded-swap-verification-and-policy-bound-recovery.md)).
+Any two voters form a quorum, so the cluster keeps committing if one machine fails. Every release that ran
+live was built and tested natively on both CPU architectures.
 
-All 29 decisions are in [`docs/adr`](docs/adr); [`docs/README.md`](docs/README.md) maps the rest.
+### Happy path: one swap
+
+```mermaid
+sequenceDiagram
+  participant D as Driver
+  participant R as Raft (3 voters)
+  participant G as Gateway
+  participant S as Signer
+  participant T as True Markets
+  participant C as Solana
+  D->>R: spot-swap-intent (strategy role)
+  R->>R: commit on 2 of 3, kernel reserves cash
+  G->>R: read committed intent, request send authority
+  R-->>G: authority proof (current term)
+  G->>T: create unsigned swap
+  T-->>G: exact transaction payload
+  G->>R: Prepare (payload digest), Attempt
+  G->>S: sign this payload
+  S->>R: is it the committed intent?
+  S-->>G: signature
+  G->>T: execute
+  T->>C: submit
+  G->>R: mark unknown (sent, outcome not yet proven)
+  G->>C: getTransaction (finalized)
+  C-->>G: owner SOL and USDC deltas, fee
+  G->>R: Settlement (exact atoms)
+  R->>R: commit, release reservation, book P&L
+```
+
+### Negative paths
+
+The venue refuses the route before anything is signed, so the effect is released and the signal re-sent:
+
+```mermaid
+sequenceDiagram
+  participant D as Driver
+  participant R as Raft
+  participant G as Gateway
+  participant T as True Markets
+  D->>R: intent, effect N
+  G->>T: create unsigned swap
+  T-->>G: unsupported route
+  G->>R: ReleaseUnsent(N) after its sign-by time
+  R->>R: commit, return the reserved cash
+  D->>R: next bar still signals: intent, effect N+1
+```
+
+The venue says "failed" but gives no transaction hash (effect 25 in the live run), so the money stays held:
+
+```mermaid
+sequenceDiagram
+  participant D as Driver
+  participant R as Raft
+  participant G as Gateway
+  participant T as True Markets
+  participant C as Solana
+  G->>T: execute
+  T->>C: submit (lands, fails on chain)
+  T-->>G: failed, executed 0, no tx hash
+  G->>G: nothing to verify on chain
+  Note over G,R: no Settlement command: effect 25 stays reserved
+  Note over G: after 180 s: stop, settlement_unproven
+  Note over D: no fresh account, so no new decisions
+  Note over R,C: later, a history proof finds the landed transaction<br/>and refuses "never executed": the hold was right
+```
 
 ## How it was built
 
-Nearly 400 commits over eight weeks, in small steps; read them in order with `git log --reverse`.
-Each V2 phase was accepted on the target hardware before the next began.
+Nearly 400 commits over eight weeks, in small steps; read them in order with `git log --reverse`. Each V2
+phase was accepted on the target hardware before the next began.
 
 | Date (2026) | Step | Ref |
 |---|---|---|
@@ -70,7 +159,24 @@ Each V2 phase was accepted on the target hardware before the next began.
 
 Practices: test-first changes, an ADR per boundary, crash-injection and multi-process drills, mutation runs
 that prove each mutant was rebuilt and killed, and native qualification on x86_64 and aarch64 before each
-live deploy. The records are in [`archive/`](archive).
+live deploy.
+
+## What we observed
+
+**In testing.** The tests found real defects before money did: upstream Raft could lose a committed entry on a
+leader crash (fixed with a pinned fork), a gateway could read state one entry stale from a leader whose disk
+lagged (fixed with a read fence), and a single failed read during an election could stop the gateway (fixed
+with a bounded retry). V1 drills showed failover in 1.5 s and no commit without quorum.
+
+**In paper.** 17.2 hours, 29 round trips and $804 of volume through the full cluster, with every fill
+reconciled and no unknown outcome across an election burst and a lost voter. The rule was flat before fees
+(+$0.0036); replays over 7 and 30 days confirmed it has no edge before costs.
+
+**Live.** 25 intents, 16 swaps and $202 of volume over three hours, unattended. The ledger matched the chain
+on every settlement. It lost $0.95, almost all of it the venue's spread and fee, and stopped correctly on an
+order the venue reported without a hash.
+
+**[Full results, round trips and evidence →](RESULTS.md)**
 
 ## Build
 
