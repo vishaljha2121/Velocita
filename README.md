@@ -37,6 +37,16 @@ only on committed state, and must bring back evidence before the books change.
 
 All 29 decisions are in [`docs/adr`](docs/adr).
 
+### Subsystems
+
+| Subsystem | Role | Read more |
+|---|---|---|
+| Kernel | Pure `apply(state, command)` over one fixed-size struct: integer accounting, caller roles, risk limits, the swap lifecycle. No clocks, floats, heap or hash maps, so every voter computes the same bytes | [kernel.md](docs/guide/kernel.md) |
+| Gateway | Single-threaded loop that reads committed state, journals each step, talks to the venue and the chain, and reports evidence back to Raft. Cannot sign | [gateway.md](docs/guide/gateway.md) |
+| Signer | Only holder of the venue key. Re-reads Raft, decodes and verifies the exact transaction, gets its own authority proof, journals, then signs | [signer.md](docs/guide/signer.md) |
+| Edge | Python driver: Binance 1 s bars → stochastic signals → at most one swap intent at a time, as the strategy caller | [edge.md](docs/guide/edge.md) |
+| Raft and storage | willemt/raft on a pinned fork over Aeron UDP; asynchronous WAL, snapshots, archive and compaction | [storage.md](docs/guide/storage.md), [fix-durable-quorum.md](docs/guide/fix-durable-quorum.md) |
+
 ### The three machines
 
 ```mermaid
@@ -136,6 +146,43 @@ sequenceDiagram
   Note over R,C: later, a history proof finds the landed transaction<br/>and refuses "never executed": the hold was right
 ```
 
+### Secrets and how they are shared
+
+Voters and callers authenticate every message with 32-byte HMAC keys that are created in the owner's Keychain,
+pushed over SSH into RAM-only tmpfs on each host, and mounted read-only into exactly the process that needs
+them. Keys are derived per direction and per cluster incarnation, so a captured frame can't be reflected or
+replayed into another cluster. The venue's P-256 key, which can move money, lives only in the signer, behind
+its own Unix user and a network allowlist of the three voters; the gateway gets a short-lived token through
+the signer and never sees the key.
+
+```mermaid
+flowchart LR
+  KC["Mac Keychain"] -->|"SSH stdin"| TF["host tmpfs (RAM only)"]
+  TF -->|"read-only mount"| P["voter / driver / gateway"]
+  VK["venue key"] -->|"owner install"| SG["signer only"]
+  SG -->|"signs a 47-byte auth message"| GW["gateway gets a token"]
+```
+
+Why this way, and what it doesn't protect: [secrets.md](docs/guide/secrets.md).
+
+### Storage: databases and caches
+
+No general-purpose database touches money. Each voter keeps a checksummed block WAL, atomically replaced Raft
+metadata, a canonical snapshot that is replayed before it is trusted, and immutable archive segments for
+compacted history. The gateway and signer keep small journals written *before* every external act. SQLite holds
+recorded market data and Prometheus holds metrics, both beside the money path. Every cache (the in-memory
+log, the gateway's state copy, the driver's account file) can only make the system wait when stale, never act
+on old data. Details: [storage.md](docs/guide/storage.md).
+
+### Memory: budgets, atlas and arenas
+
+Every long-lived object has a size fixed at compile time: the whole replicated state is 78,512 of an
+81,920-byte budget, and its canonical snapshot 61,586 of 65,536 bytes, each enforced by `static_assert`.
+Memory comes from arenas allocated once at start-up: a 16 MiB ring for the retained log, 64 × 4 KiB WAL
+blocks handed to a writer thread over lock-free queues, and fixed tables scanned linearly. Full means a typed
+refusal, never an allocation or a stall. Details: [memory.md](docs/guide/memory.md) and the field-by-field
+[memory atlas](docs/V2_MESSAGE_MEMORY_ATLAS.md).
+
 ## How it was built
 
 Nearly 400 commits over eight weeks, in small steps; read them in order with `git log --reverse`. Each V2
@@ -163,10 +210,14 @@ live deploy.
 
 ## What we observed
 
-**In testing.** The tests found real defects before money did: upstream Raft could lose a committed entry on a
-leader crash (fixed with a pinned fork), a gateway could read state one entry stale from a leader whose disk
-lagged (fixed with a read fence), and a single failed read during an election could stop the gateway (fixed
-with a bounded retry). V1 drills showed failover in 1.5 s and no commit without quorum.
+**In testing.** The tests found real defects before money did:
+- With an asynchronous log, upstream Raft counted the leader's vote before its entry was on disk, so a leader
+  crash could lose an acknowledged entry: [fixed with a pinned fork](docs/guide/fix-durable-quorum.md).
+- A gateway could read state one entry stale from a leader whose disk lagged:
+  [fixed with a read fence](archive/evidence/gateway_stop_2026-10-09/README.md).
+- A single failed read during a leader election stopped the gateway for good:
+  [fixed with a bounded retry](docs/guide/fix-read-outage-retry.md).
+- V1 drills showed failover in 1.5 s and no commit without quorum ([results](docs/V1_FAILURE_DRILL_RESULTS.md)).
 
 **In paper.** 17.2 hours, 29 round trips and $804 of volume through the full cluster, with every fill
 reconciled and no unknown outcome across an election burst and a lost voter. The rule was flat before fees

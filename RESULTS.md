@@ -86,9 +86,9 @@ Evidence: [`stochastic_rule_replay_2026-10-09`](archive/evidence/stochastic_rule
 
 | Found by | Problem | Fix |
 |---|---|---|
-| Durability tests | Upstream willemt/raft counts a leader's own vote before its log is on disk, so a crash can lose a committed entry | Pinned fork with a durable-index hook ([ADR 0006](docs/adr/0006-asynchronous-durability-and-the-pinned-raft-fork.md), [`tests/v2_durable_quorum_tests.cpp`](tests/v2_durable_quorum_tests.cpp)) |
+| Durability tests | With an asynchronous log, upstream willemt/raft counts a leader's own vote before its entry is on disk, so a leader crash can lose an acknowledged entry | Pinned fork with a durable-index hook ([explanation](docs/guide/fix-durable-quorum.md), [ADR 0006](docs/adr/0006-asynchronous-durability-and-the-pinned-raft-fork.md)) |
 | Paper run, 2026-10-09 | The gateway read state one entry old from a leader whose disk lagged its followers, re-reported a finished order, and stopped itself | The leader defers reads until its own apply catches up; the gateway discards reads older than results it has seen ([write-up](archive/evidence/gateway_stop_2026-10-09/README.md)) |
-| Live preparation | One failed state read during an election stopped the gateway | Bounded 120 s read-outage retry ([`a835deb`](https://github.com/vishaljha2121/Velocita/commit/a835deb)) |
+| Live preparation | One failed state read during an election stopped the gateway | Bounded 120 s read-outage retry ([explanation](docs/guide/fix-read-outage-retry.md), [`a835deb`](https://github.com/vishaljha2121/Velocita/commit/a835deb)) |
 | Live preparation | A route the venue refused left an effect stuck as reserved | Release of an expired unsent effect through a committed command ([ADR 0027](docs/adr/0027-unsent-effect-release-and-reviewed-baseline.md)) |
 | V1 failure drills | Failover, quorum loss, duplicate retries, observability outages | All passed: failover in 1.5 s, no commit without quorum, a retried request applied once ([results](docs/V1_FAILURE_DRILL_RESULTS.md)) |
 

@@ -1,5 +1,13 @@
 # Documentation map
 
+## Guide
+
+Start here: one page per subsystem and concern, each linking down to the code and the decisions.
+
+- [Kernel](guide/kernel.md), [Gateway](guide/gateway.md), [Signer](guide/signer.md), [Edge](guide/edge.md)
+- [Secrets](guide/secrets.md), [Storage: databases and caches](guide/storage.md), [Memory: budgets and arenas](guide/memory.md)
+- Fixes found by testing: [durable quorum](guide/fix-durable-quorum.md), [read-outage retry](guide/fix-read-outage-retry.md)
+
 ## Architecture
 
 - [`V2_ARCHITECTURE_CONTRACTS.md`](V2_ARCHITECTURE_CONTRACTS.md): authority, identity, message, reducer,
