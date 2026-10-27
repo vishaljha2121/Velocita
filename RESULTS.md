@@ -41,8 +41,8 @@ landed in slot 457,481,187 and failed (`InstructionError [2, Custom 5]`), moving
 venue reported "failed, temporarily unavailable", executed 0, and **no transaction hash**. Without a
 transaction to verify, the gateway refused to settle and blocked after 180 s; without a fresh account, the
 driver refused to decide. A later recovery release ([`64e6f9f`](https://github.com/vishaljha2121/Velocita/commit/64e6f9f))
-added a "never executed" outcome that must be proven on chain. Its proof searched the wallet's history, found
-the landed transaction, and refused. The reservation is still held; settling it as "failed without charge"
+added a "never executed" outcome that must be proven on chain. Its proof refused (`chain_unproven`; the gateway
+does not log which check failed), and the wallet's history shows why: the transaction above had landed. The reservation is still held; settling it as "failed without charge"
 from the found transaction is the remaining step.
 
 Other observations: two short DNS failures on NUC1 (12 s while flat, 8 min while already blocked); one

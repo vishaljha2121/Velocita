@@ -50,8 +50,8 @@ A swap settles only from a finalized `getTransaction` for the journaled signatur
 prepared payload, then replayed: the owner's SOL and USDC deltas and the route's fee event must map exactly
 onto the intent. When the venue reports a failure without a transaction id, a separate proof is required
 before the effect can be marked never executed: the blockhash has expired at a finalized slot, and no
-transaction in the owner's history matches the payload. In the live run that proof found the transaction
-and refused, which is correct. See [RESULTS.md](../../RESULTS.md#live-run-1516-october-2026).
+transaction in the owner's history matches the payload. In the live run that proof refused, and the wallet's
+history shows why: the transaction had landed and failed on chain. See [RESULTS.md](../../RESULTS.md#live-run-1516-october-2026).
 
 ## Stopping
 

@@ -160,7 +160,7 @@ sequenceDiagram
   Note over G,R: no Settlement command: effect 25 stays reserved
   Note over G: after 180 s: stop, settlement_unproven
   Note over D: no fresh account, so no new decisions
-  Note over R,C: later, a history proof finds the landed transaction<br/>and refuses "never executed": the hold was right
+  Note over R,C: later, the on-chain proof refuses "never executed",<br/>and the chain shows the transaction landed and failed
 ```
 
 ### Crash safety
@@ -273,7 +273,7 @@ phase was accepted on the target hardware before the next began.
 | Oct 9 | Gateway read state one entry stale and stopped itself | [Read fence](archive/evidence/gateway_stop_2026-10-09/README.md) | Stale readings discarded |
 | Oct 15 | One failed read during an election stopped the gateway | [Bounded retry](docs/guide/fix-read-outage-retry.md) | Live run crossed term 6 → 8 without stopping |
 | Oct 15–16 | Live: 25 intents, 16 swaps | – | 16 / 16 exact; commit p50 126 ms |
-| Oct 16 | Venue reported a failure with no transaction hash | On-chain proof before "never executed" | Proof found the landed transaction and refused: correct |
+| Oct 16 | Venue reported a failure with no transaction hash | On-chain proof before "never executed" | Proof refused, and the chain shows the transaction landed and failed: the hold was right |
 
 Practices: test-first changes, an ADR per boundary, crash-injection and multi-process drills, mutation runs
 that prove each mutant was rebuilt and killed, and native qualification on x86_64 and aarch64 before each
