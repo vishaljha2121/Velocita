@@ -3,7 +3,7 @@
 A replicated trading system built from scratch on home hardware: a deterministic C++20 trading kernel
 replicated by Raft over Aeron across two NUC mini PCs and a Raspberry Pi 5, with a separate execution gateway
 and a signer that holds the only venue key. It traded real money on Solana, unattended, and its ledger matched
-the chain to the atom. **[Results →](RESULTS.md)**
+the chain to the atom. **[Results →](RESULTS.md)** · **[The story, as a blog post →](https://vishaljha2121.github.io/VishalJhaPortfolio/blog/velocita-replicated-trading-on-a-raspberry-pi/)**
 
 ## At a glance
 
@@ -200,6 +200,33 @@ the cluster up but stops trading, because the gateway and signer run there; and 
 leader's last compaction (2,048+ entries, days at this system's rate) needs an operator repair from another
 voter's archive, because online snapshot install is designed but not built.
 
+### Atoms: money as integers
+
+Every amount in Velocita is a whole number of the asset's smallest unit, an **atom**:
+
+| Asset | Atom | One unit is | Type in the code |
+|---|---|---|---|
+| SOL (base) | lamport | 1,000,000,000 atoms | `swap::BaseAtoms` |
+| USDC (quote) | micro-USDC | 1,000,000 atoms | `swap::QuoteAtoms` |
+
+**Why.** Floating point rounds differently across compilers and CPUs, and one differing bit between the x86_64
+NUCs and the aarch64 Pi would fork the replicas. Integers are bit-identical everywhere. Solana also stores
+balances in exactly these units, so a settlement can be compared to the chain with `==` and no tolerance: that
+is how 16 of 16 settlements matched "to the atom". `BaseAtoms` and `QuoteAtoms` are distinct `StrongId` types,
+so adding lamports to USDC doesn't compile.
+
+**Where and how it's used.**
+
+| Place | In atoms |
+|---|---|
+| Strategy intent | buy debit (12,690,000 = $12.69), fee cap, minimum SOL to receive (110,400,000 lamports) |
+| Kernel state | cash, SOL held, reservations, cost basis, fees, realized P&L (signed), the −10,000,000 loss stop |
+| Signer check | fee = input ÷ 10,000 × 20 exactly, so input must be a multiple of 10,000 atoms (one cent); the driver rounds buys to whole cents |
+| Settlement | SOL and USDC debits, credits and fee, copied from the finalized transaction's balance changes |
+| Arithmetic | products such as amount × price widen to `__int128`; overflow is a refusal; cost removed on a sell rounds down, the same way on every voter |
+
+Dollars appear only at the edges: the dashboards and reports convert atoms for display.
+
 ### Secrets and how they are shared
 
 Voters and callers authenticate every message with 32-byte HMAC keys that are created in the owner's Keychain,
@@ -298,7 +325,7 @@ reconciled and no unknown outcome across an election burst and a lost voter. The
 on every settlement. It lost $0.95, almost all of it the venue's spread and fee, and stopped correctly on an
 order the venue reported without a hash.
 
-**[Full results, round trips and evidence →](RESULTS.md)**
+**[Full results, round trips and evidence →](RESULTS.md)** · **[Read the story →](https://vishaljha2121.github.io/VishalJhaPortfolio/blog/velocita-replicated-trading-on-a-raspberry-pi/)**
 
 ## Build
 
