@@ -15,7 +15,7 @@ the chain to the atom. **[Results →](RESULTS.md)**
 | Intent → transaction in a Solana block | **p50 2 s**, max 3 s, through the venue and the signer |
 | Kernel decision | **p50 208 ns · p99 250 ns** |
 | Raft thread cost per log record | **42 ns** median: **490×** less than `fsync` on the thread |
-| One machine down | the other two keep committing; it rejoins from its own log ([crash safety](#crash-safety)) |
+| One machine down | the other two keep committing; a restarted voter is back in step in **4–7 s** ([crash safety](#crash-safety)) |
 | Duplicate orders, unexplained balances | **0** across 17 h of paper trading and the live run |
 | Tests | **206** C++ and **478** Python, mutation-checked, built natively on x86_64 and aarch64 |
 
@@ -188,8 +188,9 @@ sequenceDiagram
 This happened for real. During the 2026-10-15 upgrade the Pi's new container took minutes to start; NUC1
 and NUC2 elected a leader in term 6 and converged at index 17 without it, and the Pi then recovered from its
 own data at index 17 ([record](archive/evidence/automated_launch_2026-10-15/strategy-grant/deploy/PI_STARTUP.md)).
-On 2026-10-16 every voter was stopped and upgraded in turn, Pi first and the leader last, each rejoining at
-the same index with its data unchanged ([record](archive/evidence/automated_launch_2026-10-15/effect25-recovery/RUN_2026-10-16.md)).
+On 2026-10-16 every voter was stopped, backed up, upgraded and restarted in turn, Pi first and the leader
+last: each was back in step within **4–7 seconds** with its data unchanged, and stopping the leader handed
+leadership to the Pi ([record](archive/evidence/automated_launch_2026-10-15/effect25-recovery/rolling/README.md)).
 The paper run crossed a 20-second loss of one voter and an election burst with no unknown outcome.
 
 What makes a restart safe: a torn WAL write is always a bad block checksum, never a valid-looking record; a

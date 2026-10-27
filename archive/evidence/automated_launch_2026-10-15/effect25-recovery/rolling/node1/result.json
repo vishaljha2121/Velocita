@@ -1,0 +1,21 @@
+{
+  "node": 1,
+  "host": "bulbazar-NUC",
+  "source_commit": "64e6f9f4bd499127c7584bea02f20d6fc129597b",
+  "image_id": "ba3c801425036ac1945e7022269884c0932bbb9ed81e35e8fe4ee02ca1a9a6b9",
+  "archive": "/home/velocitas/.cache/velocita-build/effect25-backup-64e6f9f-node1",
+  "configuration_unchanged": true,
+  "data_unchanged_before_restart": true,
+  "backup_verified": true,
+  "health": {
+    "up": 1,
+    "ready": 1,
+    "failed": 0,
+    "strategy_mode": 5,
+    "term": 15,
+    "leader_id": 2,
+    "commit": 139,
+    "applied": 139,
+    "durable": 139
+  }
+}

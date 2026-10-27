@@ -1,0 +1,21 @@
+{
+  "node": 3,
+  "host": "nuc2",
+  "source_commit": "64e6f9f4bd499127c7584bea02f20d6fc129597b",
+  "image_id": "0179f14c3b79032ddaccb32f959c548fdcab44930573ce1464d7f737cefd0ad9",
+  "archive": "/home/velocitas/.cache/velocita-build/effect25-backup-64e6f9f-node3",
+  "configuration_unchanged": true,
+  "data_unchanged_before_restart": true,
+  "backup_verified": true,
+  "health": {
+    "up": 1,
+    "ready": 1,
+    "failed": 0,
+    "strategy_mode": 5,
+    "term": 14,
+    "leader_id": 1,
+    "commit": 139,
+    "applied": 139,
+    "durable": 139
+  }
+}
