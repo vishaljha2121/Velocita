@@ -1,2 +1,0 @@
-node protocol tests failed: valid response refused
-exit=1

@@ -1,1 +1,0 @@
-v2 static identity test failure: corrupt shared byte accepted

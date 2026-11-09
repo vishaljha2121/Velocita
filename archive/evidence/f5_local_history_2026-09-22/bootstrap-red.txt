@@ -1,1 +1,0 @@
-identity startup tests failed: bootstrap published identity without bound zero hard state

@@ -62,4 +62,4 @@ skip a number, which is harmless.
 The driver never reads Raft. It reads `strategy-settlements.json`, which the live observer publishes every
 5 s from the gateway's validated snapshot, and accepts it only with the right schema and incarnation and an
 age of at most 12 s. Otherwise a bar only warms the indicators. This is why the driver stopped deciding while
-the gateway was blocked on effect 25 ([RESULTS.md](../../RESULTS.md)).
+the gateway was blocked on effect 25 ([RESULTS.md](https://github.com/vishaljha2121/Velocita/blob/main/RESULTS.md)).

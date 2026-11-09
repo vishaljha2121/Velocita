@@ -1,11 +1,9 @@
 cmake_minimum_required(VERSION 3.30)
 
-project(velocita_raft VERSION 0.1.0 LANGUAGES C CXX)
+project(velocita VERSION 0.2.0 LANGUAGES C CXX)
 
 find_package(Threads REQUIRED)
 
-option(VELOCITA_BENCHMARK_INSTRUMENTATION
-       "Compile benchmark-only Raft stage timestamps into the node and response wire format" OFF)
 set(VELOCITA_TARGET_CACHE_LINE_SIZE "64" CACHE STRING
     "Target CPU cache-line size in bytes; part of the V2 arena-layout ABI")
 
@@ -168,45 +166,21 @@ target_include_directories(willemt_raft PUBLIC ${willemt_raft_SOURCE_DIR}/includ
 target_compile_options(willemt_raft PRIVATE -UNDEBUG)
 
 add_library(velocita_core
-    src/benchmark_timing.cpp
-    src/client_recovery.cpp
-    src/client_routing.cpp
-    src/counter_fsm.cpp
-    src/raft_node.cpp
+    src/peer_wire.cpp
     src/storage.cpp
-    src/wire.cpp
 )
 target_include_directories(velocita_core PUBLIC include)
 target_link_libraries(velocita_core PUBLIC willemt_raft)
 target_compile_options(velocita_core PRIVATE -Wall -Wextra -Wpedantic)
-if(VELOCITA_BENCHMARK_INSTRUMENTATION)
-    target_compile_definitions(velocita_core PUBLIC VELOCITA_BENCHMARK_INSTRUMENTATION=1)
-endif()
-
-add_library(velocita_benchmark
-    src/benchmark.cpp
-)
-target_include_directories(velocita_benchmark PUBLIC include)
-target_compile_options(velocita_benchmark PRIVATE -Wall -Wextra -Wpedantic)
-
 add_library(velocita_aeron
     src/aeron_runtime.cpp
-    src/client_session.cpp
 )
 target_include_directories(velocita_aeron PUBLIC include)
 target_link_libraries(velocita_aeron PUBLIC
-    velocita_core
     aeron_client_wrapper
     aeron::aeron_driver_static
 )
 target_compile_options(velocita_aeron PRIVATE -Wall -Wextra -Wpedantic)
-
-add_library(velocita_metrics
-    src/shared_metrics.cpp
-)
-target_include_directories(velocita_metrics PUBLIC include)
-target_link_libraries(velocita_metrics PUBLIC velocita_core)
-target_compile_options(velocita_metrics PRIVATE -Wall -Wextra -Wpedantic)
 
 add_library(velocita_v2_contracts
     src/v2_local_generation.cpp
@@ -395,46 +369,15 @@ foreach(velocita_node_target IN ITEMS velocita_v2_node velocita_v2_node_aeron ve
     endforeach()
 endforeach()
 
+add_executable(v2-replay-log tools/replay-log.cpp)
+target_link_libraries(v2-replay-log PRIVATE velocita_v2_kernel)
+target_compile_options(v2-replay-log PRIVATE -Wall -Wextra -Wpedantic)
+
 add_executable(v2-storage-benchmark src/v2_storage_benchmark.cpp)
 target_link_libraries(v2-storage-benchmark PRIVATE velocita_v2_replication Threads::Threads)
 target_compile_options(v2-storage-benchmark PRIVATE -Wall -Wextra -Wpedantic)
 
-add_executable(raft-node src/node_main.cpp)
-target_link_libraries(raft-node PRIVATE velocita_aeron velocita_metrics)
-
-add_executable(raft-metrics-exporter src/metrics_exporter_main.cpp)
-target_link_libraries(raft-metrics-exporter PRIVATE velocita_metrics)
-
-add_executable(benchmark-metrics-exporter src/benchmark_metrics_exporter_main.cpp)
-target_compile_options(benchmark-metrics-exporter PRIVATE -Wall -Wextra -Wpedantic)
-
-add_executable(raft-client src/client_main.cpp)
-target_link_libraries(raft-client PRIVATE velocita_aeron)
-
-add_executable(raft-bench src/benchmark_main.cpp)
-target_link_libraries(raft-bench PRIVATE velocita_aeron velocita_benchmark)
-target_compile_options(raft-bench PRIVATE -Wall -Wextra -Wpedantic)
-
-add_executable(raft-bench-merge src/benchmark_merge_main.cpp)
-target_link_libraries(raft-bench-merge PRIVATE velocita_benchmark)
-target_compile_options(raft-bench-merge PRIVATE -Wall -Wextra -Wpedantic)
-
-add_executable(raft-dump src/dump_main.cpp)
-target_link_libraries(raft-dump PRIVATE velocita_core)
-
 if(BUILD_TESTING)
-    add_executable(core-tests tests/core_tests.cpp)
-    target_link_libraries(core-tests PRIVATE velocita_core)
-    add_test(NAME core-tests COMMAND core-tests)
-
-    add_executable(metrics-tests tests/metrics_tests.cpp)
-    target_link_libraries(metrics-tests PRIVATE velocita_metrics)
-    add_test(NAME metrics-tests COMMAND metrics-tests)
-
-    add_executable(benchmark-tests tests/benchmark_tests.cpp)
-    target_link_libraries(benchmark-tests PRIVATE velocita_benchmark velocita_core)
-    add_test(NAME benchmark-tests COMMAND benchmark-tests)
-
     add_executable(v2-contract-tests tests/v2_contract_tests.cpp)
     target_link_libraries(v2-contract-tests PRIVATE velocita_v2_contracts)
     target_compile_options(v2-contract-tests PRIVATE -Wall -Wextra -Wpedantic)
@@ -565,10 +508,10 @@ if(BUILD_TESTING)
     target_compile_options(v2-metrics-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-metrics-tests COMMAND v2-metrics-tests)
 
-    add_executable(v2-phase4-property-tests tests/v2_phase4_property_tests.cpp)
-    target_link_libraries(v2-phase4-property-tests PRIVATE velocita_v2_kernel)
-    target_compile_options(v2-phase4-property-tests PRIVATE -Wall -Wextra -Wpedantic)
-    add_test(NAME v2-phase4-property-tests COMMAND v2-phase4-property-tests)
+    add_executable(v2-order-property-tests tests/v2_order_property_tests.cpp)
+    target_link_libraries(v2-order-property-tests PRIVATE velocita_v2_kernel)
+    target_compile_options(v2-order-property-tests PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME v2-order-property-tests COMMAND v2-order-property-tests)
 
     add_executable(v2-rule-evaluator-tests tests/v2_rule_evaluator_tests.cpp)
     target_link_libraries(v2-rule-evaluator-tests PRIVATE velocita_v2_evaluator)
@@ -716,7 +659,7 @@ if(BUILD_TESTING)
     target_compile_options(v2-result-ledger-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-result-ledger-tests COMMAND v2-result-ledger-tests)
 
-    add_executable(v2-result-admission-tests tests/v2_result_admission_red.cpp)
+    add_executable(v2-result-admission-tests tests/v2_result_admission_tests.cpp)
     target_link_libraries(v2-result-admission-tests PRIVATE velocita_v2_replication)
     target_compile_options(v2-result-admission-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-result-admission-tests COMMAND v2-result-admission-tests)
@@ -731,7 +674,7 @@ if(BUILD_TESTING)
     target_compile_options(v2-outbound-mailbox-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-outbound-mailbox-tests COMMAND v2-outbound-mailbox-tests)
 
-    add_executable(v2-outbound-saturation-tests tests/v2_outbound_log_capacity_red.cpp)
+    add_executable(v2-outbound-saturation-tests tests/v2_outbound_saturation_tests.cpp)
     target_link_libraries(v2-outbound-saturation-tests PRIVATE velocita_v2_replication)
     target_compile_options(v2-outbound-saturation-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-outbound-saturation-tests COMMAND v2-outbound-saturation-tests)
@@ -1180,9 +1123,9 @@ if(BUILD_TESTING)
     target_link_libraries(v2-contract-benchmark PRIVATE velocita_v2_contracts)
     target_compile_options(v2-contract-benchmark PRIVATE -Wall -Wextra -Wpedantic)
 
-    add_executable(v2-phase3-benchmark src/v2_phase3_benchmark.cpp)
-    target_link_libraries(v2-phase3-benchmark PRIVATE velocita_v2_kernel)
-    target_compile_options(v2-phase3-benchmark PRIVATE -Wall -Wextra -Wpedantic)
+    add_executable(v2-decision-benchmark src/v2_decision_benchmark.cpp)
+    target_link_libraries(v2-decision-benchmark PRIVATE velocita_v2_kernel)
+    target_compile_options(v2-decision-benchmark PRIVATE -Wall -Wextra -Wpedantic)
 
     get_property(velocita_defined_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
     set(velocita_all_test_targets "")

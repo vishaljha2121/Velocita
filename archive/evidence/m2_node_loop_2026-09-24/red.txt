@@ -1,2 +1,0 @@
-node tests failed: timed out waiting for a ready leader
-exit=1

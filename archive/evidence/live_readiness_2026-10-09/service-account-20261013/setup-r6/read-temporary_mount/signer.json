@@ -1,5 +1,0 @@
-{
-  "returncode": 1,
-  "stdout": "",
-  "stderr": "AUTHENTICATED_READ_REFUSED foreign or writable ancestor refused\n"
-}

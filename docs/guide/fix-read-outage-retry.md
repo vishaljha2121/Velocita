@@ -55,4 +55,4 @@ The live run then crossed a leader change (term 6 → 8) without stopping.
 A different read problem was found in paper trading on 2026-10-09. The gateway read state one entry old from
 a leader whose disk lagged its followers, re-reported a finished order, and stopped. The fix: the leader
 defers reads until its own apply catches up, and the gateway discards any reading older than results it has
-already seen. Write-up: [`gateway_stop_2026-10-09`](../../archive/evidence/gateway_stop_2026-10-09/README.md).
+already seen. Write-up: [`gateway_stop_2026-10-09`](https://github.com/vishaljha2121/Velocita/blob/main/archive/evidence/gateway_stop_2026-10-09/README.md).

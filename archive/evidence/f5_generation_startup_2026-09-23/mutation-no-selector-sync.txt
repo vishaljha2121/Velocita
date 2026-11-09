@@ -1,1 +1,0 @@
-startup returned before selector namespace was durable

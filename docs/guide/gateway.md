@@ -52,7 +52,7 @@ onto the intent. When the venue reports a failure without a transaction id, a se
 before the effect can be marked never executed: the blockhash has expired at a finalized slot, and no
 transaction in the owner's history matches the payload. In the recorded recovery that proof returned `chain_unproven`, without naming the failed check.
 Later wallet history showed a candidate failed transaction, but the published records do not establish
-its exact prepared-payload match or the cause of the refusal. See [RESULTS.md](../../RESULTS.md#live-run-1516-october-2026).
+its exact prepared-payload match or the cause of the refusal. See [RESULTS.md](https://github.com/vishaljha2121/Velocita/blob/main/RESULTS.md#live-run-1516-october-2026).
 
 ## Stopping
 

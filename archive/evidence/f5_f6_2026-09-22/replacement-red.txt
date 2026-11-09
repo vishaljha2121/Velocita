@@ -1,2 +1,0 @@
-replacement_catchup included=12 replacement_applied=0
-RED F5/A08: a fresh configured voter cannot fetch the compacted prefix

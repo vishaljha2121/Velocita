@@ -2,7 +2,7 @@
 #pragma once
 
 #include "velocita/v2/bound_frame.hpp"
-#include "velocita/wire.hpp"
+#include "velocita/peer_wire.hpp"
 
 #include <variant>
 

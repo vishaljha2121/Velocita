@@ -1,1 +1,0 @@
-archive adversarial tests failed: resealed second-record index gap accepted

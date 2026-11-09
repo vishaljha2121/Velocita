@@ -1,2 +1,0 @@
-file=short expected=10 actual=0
-unexpected typed file error

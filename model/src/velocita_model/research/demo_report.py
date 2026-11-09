@@ -64,7 +64,7 @@ def _trades(bars: DailyBars, strategy: str, value: int, cost: Costs, start: int,
 def run(cache: Path, out: Path, *, n_is: int, n_wf: int, n_rw: int, workers: int, end: date) -> str:
     started = time.time()
     lines = [f"# Demo rule strategies — full battery with measured True Markets costs ({date.today()})", "",
-             "Costs per side (bp) from `truemarkets_markup_2026-09-28/quotes_buy_sell_1631utc.json`:"]
+             "Costs per side (bp) from `model/data/quotes_buy_sell_1631utc.json` (True Markets quotes, 2026-09-28):"]
     cost_models = {}
     for asset, (_pair, tm_symbol) in ASSETS.items():
         mean, worst = costs.model(costs.EVIDENCE, tm_symbol, "mean"), costs.model(costs.EVIDENCE, tm_symbol, "worst")

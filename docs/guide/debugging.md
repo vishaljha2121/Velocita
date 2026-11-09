@@ -59,12 +59,11 @@ Gateway and signer logs carry codes and digests, never secrets. Read them filter
 
 | Tool | Use |
 |---|---|
-| Log replay ([`replay_log.cpp`](../../archive/evidence/gateway_stop_2026-10-09/replay_log.cpp)) | replays a voter's archived log through the kernel of the deployed commit; found the one refused report among 8,107 commands in the 2026-10-09 gateway stop |
+| Log replay ([`tools/replay-log.cpp`](../../tools/replay-log.cpp), target `v2-replay-log`) | replays a voter's archived log through the kernel of the deployed commit; found the one refused report among 8,107 commands in the 2026-10-09 gateway stop |
 | [`tools/read-owner-settlement.py`](../../tools/read-owner-settlement.py) | one finalized transaction read: the owner wallet's exact balance changes, to compare with a settlement |
 | [`tools/tm-account-history-check.py`](../../tools/tm-account-history-check.py) | bounded, read-only capture of the venue account's history |
 | [`tools/roundtrip-cost.py`](../../tools/roundtrip-cost.py), [`measure-markup.py`](../../tools/measure-markup.py) | what a swap round trip costs at the venue |
 | `v2-layout-report` | prints every object size and budget from the build ([memory.md](memory.md)) |
-| `raft-dump` | prints a V1 log |
 
 ## Probes (read-only, one request each)
 

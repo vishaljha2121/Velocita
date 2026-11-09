@@ -15,8 +15,7 @@ from pathlib import Path
 
 from .rules import Costs
 
-EVIDENCE = (Path(__file__).resolve().parents[4] / "docs" / "evidence" / "truemarkets_markup_2026-09-28"
-            / "quotes_buy_sell_1631utc.json")
+EVIDENCE = Path(__file__).resolve().parents[3] / "data" / "quotes_buy_sell_1631utc.json"
 
 
 def measured(path: Path | str = EVIDENCE) -> dict[str, dict[str, list[float]]]:

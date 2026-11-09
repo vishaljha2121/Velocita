@@ -1,2 +1,0 @@
-node config tests failed: valid config refused
-exit=1

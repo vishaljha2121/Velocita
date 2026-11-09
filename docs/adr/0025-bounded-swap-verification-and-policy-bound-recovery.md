@@ -50,7 +50,7 @@ An optional amendment to 147,537,213 is implemented and qualified but has not be
 
 Related decisions: ADR0009 two-step send, ADR0011 swap model, ADR0013 authority,
 ADR0017 gateway, ADR0019 inspecting signer, ADR0020 caller roles and ADR0021 accounting.
-The [detailed handoff](../../archive/handoffs/LIVE_SWAP_REVIEW_2026-10-14.md) maps implementations,
+The [detailed handoff](https://github.com/vishaljha2121/Velocita/blob/main/archive/handoffs/LIVE_SWAP_REVIEW_2026-10-14.md) maps implementations,
 commits, tests, operational ordering and explicit limitations to retained evidence.
 
 ## Qualification and current limit
@@ -59,7 +59,7 @@ At `2e5642a`, both NUC and Pi passed 58 selected CTest targets, 241 packaged Pyt
 checks and eight combined process-drill cases. Local route changes also have oracle,
 mutation and sanitizer evidence. These are scoped qualification results, not a claim
 that all project tests or a real-money integrated trade passed. See
-[qualification](../evidence/bounded_launch_review_2026-10-13/invariant/qualification/).
+[qualification](https://github.com/vishaljha2121/Velocita/tree/main/archive/evidence/bounded_launch_review_2026-10-13/invariant).
 
 The captured Invariant layout passed the native verifier with a conditional net floor
 of 6,910,173 lamports. Later fresh TM quotes selected Meteora38 and then Deriverse161;

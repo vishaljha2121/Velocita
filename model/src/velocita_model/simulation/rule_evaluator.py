@@ -8,7 +8,7 @@ the deployed system would have done, which is the only number worth acting on.
 
 Mirrored from:
   * `src/v2_rule_evaluator.cpp` (evaluation, validation order, visit counting)
-  * `docs/V2_PHASE3_DECISION_EVALUATOR_DESIGN.md` section 3.4 (control authority)
+  * `docs/V2_DECISION_EVALUATOR_DESIGN.md` section 3.4 (control authority)
 
 Divergence between this file and the C++ evaluator is a defect in this file.
 `tests/test_rule_evaluator_parity.py` pins the behaviour that is cheap to pin

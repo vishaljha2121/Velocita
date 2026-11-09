@@ -8,7 +8,7 @@ Architecture decision:
 [`ADR 0001`](adr/0001-v2-replicated-decision-oms-and-execution-boundary.md)
 
 Execution plan:
-[`V2 TDD implementation and validation plan`](V2_TDD_IMPLEMENTATION_AND_VALIDATION_PLAN.md)
+[`V2 TDD implementation and validation plan`](https://github.com/vishaljha2121/Velocita/blob/main/docs/V2_TDD_IMPLEMENTATION_AND_VALIDATION_PLAN.md)
 
 ## 1. Purpose
 

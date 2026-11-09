@@ -1,6 +1,0 @@
-[
-  "python3",
-  "-B",
-  "/source/tests/test_signer_not_shipped.py",
-  "/source"
-]

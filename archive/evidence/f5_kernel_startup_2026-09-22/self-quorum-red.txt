@@ -1,1 +1,0 @@
-kernel startup test failed: verified three-voter membership collapsed into self quorum

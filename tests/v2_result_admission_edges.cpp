@@ -1,5 +1,5 @@
 #define VELOCITA_RESULT_ADMISSION_FIXTURES_ONLY
-#include "v2_result_admission_red.cpp"
+#include "v2_result_admission_tests.cpp"
 
 namespace {
 

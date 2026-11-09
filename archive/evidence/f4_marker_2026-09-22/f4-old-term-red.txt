@@ -1,1 +1,0 @@
-V2 replication test failed: old-term marker setup failed

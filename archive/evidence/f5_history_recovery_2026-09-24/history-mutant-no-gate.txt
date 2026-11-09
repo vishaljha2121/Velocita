@@ -1,1 +1,0 @@
-history recovery tests (successful recovery): oversized valid bridge did not enter history recovery gate

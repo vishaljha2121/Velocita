@@ -1,1 +1,0 @@
-snapshot install ACK contract failed: install ACK committed/applied unverified retained suffix: commit=20 applied=20

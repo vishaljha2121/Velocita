@@ -1,3 +1,0 @@
-history completion mutation case=generation
-history completion mutation case=sequence
-persistence completion test failed: corrupted history completion did not latch storage failure

@@ -225,7 +225,6 @@ GOLDEN_TEST_PATHS = (
     "v2_archive_file_tests.cpp",
     "v2_archive_persistence_model_tests.cpp",
     "v2_archive_publication_fault_tests.cpp",
-    "v2_archive_reclamation_red.cpp",
     "v2_archive_scrub_tests.cpp",
     "v2_archive_segment_adversarial_tests.cpp",
     "v2_archive_segment_tests.cpp",

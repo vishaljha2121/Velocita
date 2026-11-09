@@ -282,12 +282,8 @@ the Pi checkout has no usable Git metadata.
 ### 5.5 What the ARM64 container does not prove
 
 It does not prove Raspberry Pi thermals, power integrity, SD-card behavior,
-kernel scheduling, or physical-machine performance. Those require the pinned
-Pi gate:
-
-```bash
-BUILD_JOBS=2 ./deploy/run-v2-canonical-replay-pi-gate.sh --yes
-```
+kernel scheduling, or physical-machine performance. Those require a native build
+on the Pi in the pinned toolchain image ([`TOOLCHAIN.md`](TOOLCHAIN.md)).
 
 ## 6. TDD chronology
 

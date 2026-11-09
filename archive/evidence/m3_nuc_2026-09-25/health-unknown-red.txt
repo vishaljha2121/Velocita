@@ -1,2 +1,0 @@
-node health tests failed: never-published page read as an all-zero status
-exit=1

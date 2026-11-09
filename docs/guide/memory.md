@@ -90,7 +90,7 @@ stateDiagram-v2
 | File preallocated 32 blocks ahead | overwriting existing space avoids filesystem-metadata journaling |
 | Separate staged and durable indexes | only the durable index counts toward quorum ([the durable-quorum fix](fix-durable-quorum.md)) |
 
-In the [2026-10-27 Apple M5 Pro storage microbenchmark](../../archive/evidence/benchmarks_2026-10-27/v2-storage-benchmark.txt),
+In the [2026-10-27 Apple M5 Pro storage microbenchmark](https://github.com/vishaljha2121/Velocita/blob/main/archive/evidence/benchmarks_2026-10-27/v2-storage-benchmark.txt),
 the measured owner-loop median was 20.584 µs with inline sync versus 0.042 µs with the writer off-thread.
 The corresponding p99 values were 111.375 and 160.166 µs; maxima were 1,123.58 and 236.417 µs.
 The off-thread measurement includes staging/submission and any arena backpressure, not the time until that

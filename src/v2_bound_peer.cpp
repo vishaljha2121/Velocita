@@ -182,8 +182,8 @@ BoundFrameError decode_bound_peer(std::span<const std::byte> input,
                       (std::to_integer<unsigned>(view.payload[7]) << 8);
     const std::size_t trailer = kind == 3 ? 8 : (kind == 1 || kind == 2) ? 1 : 0;
     std::vector<std::byte> body(view.payload.begin(), view.payload.end() - static_cast<std::ptrdiff_t>(trailer));
-    body[4] = std::byte{kWireVersion & 0xFFU};
-    body[5] = std::byte{kWireVersion >> 8U};
+    body[4] = std::byte{kPeerWireVersion & 0xFFU};
+    body[5] = std::byte{kPeerWireVersion >> 8U};
     PeerMessage candidate;
     try {
         candidate = decode_peer_message(body);

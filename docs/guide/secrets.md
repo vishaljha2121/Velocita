@@ -3,11 +3,11 @@
 Source: [`tools/velocita-secrets`](../../tools/velocita-secrets),
 [`src/v2_auth_envelope.cpp`](../../src/v2_auth_envelope.cpp),
 [`src/v2_session_fence.cpp`](../../src/v2_session_fence.cpp),
-[`deploy/v2/swap-runtime/credential_handoff.py`](../../deploy/v2/swap-runtime/credential_handoff.py),
-[`fd_handoff.py`](../../deploy/v2/swap-runtime/fd_handoff.py). Decisions:
+[`deploy/v2/swap-runtime/credential_handoff.py`](https://github.com/vishaljha2121/Velocita/blob/main/deploy/v2/swap-runtime/credential_handoff.py),
+[`fd_handoff.py`](https://github.com/vishaljha2121/Velocita/blob/main/deploy/v2/swap-runtime/fd_handoff.py). Decisions:
 [ADR 0010](../adr/0010-the-operator-holds-the-key-collectors-hold-tokens.md),
 [0019](../adr/0019-live-execution-and-key-custody.md), [0029](../adr/0029-the-signer-authenticates-the-gateway-for-a-day.md),
-[secrets rotation review](../M2_SECRETS_ROTATION_REVIEW.md).
+[secrets rotation review](https://github.com/vishaljha2121/Velocita/blob/main/docs/M2_SECRETS_ROTATION_REVIEW.md).
 
 ## Inventory
 

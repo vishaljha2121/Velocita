@@ -7,7 +7,7 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRATCH = Path.home() / '.cache/velocita-build/readiness-20261011/mutations'
-RESULT = ROOT / 'archive/evidence/live_readiness_2026-10-09/mutations-20261011.json'
+RESULT = ROOT / 'build/mutations/live_readiness.json'
 CASES = [
     ('rest_asset_binding', 'rest', 'value.asset_id != catalog_asset->asset_id', 'false',
      'missing_market_class_requires_exact_catalog_binding', 'catalog asset mismatch refuses and clears output'),
@@ -66,6 +66,7 @@ def main():
         print(name, 'CAUGHT' if caught else 'MISSED', flush=True)
     for key, original in originals.items():
         assert (ROOT / 'src' / f'{sources[key]}.cpp').read_bytes() == original
+    RESULT.parent.mkdir(parents=True, exist_ok=True)
     RESULT.write_text(json.dumps({'source_sha256': {k: hashlib.sha256(v).hexdigest() for k, v in originals.items()},
                                  'results': results}, indent=2) + '\n')
     return 0 if all(row['caught'] for row in results) else 1

@@ -2,7 +2,7 @@
 #pragma once
 
 #include "velocita/storage.hpp"
-#include "velocita/wire.hpp"
+#include "velocita/peer_wire.hpp"
 #include "velocita/v2/kernel.hpp"
 #include "velocita/v2/committed_result.hpp"
 #include "velocita/v2/result_ledger.hpp"

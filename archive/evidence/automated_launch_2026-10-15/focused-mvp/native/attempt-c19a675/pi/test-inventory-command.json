@@ -1,8 +1,0 @@
-[
-  "ctest",
-  "--test-dir",
-  "/work/build",
-  "--show-only=json-v1",
-  "-R",
-  "^v2-(swap-|truemarkets-|jupiter-|operational-recovery-tests$|state-snapshot-tests$|kernel-codec-tests$|kernel-control-tests$|model-replay-tests$)"
-]

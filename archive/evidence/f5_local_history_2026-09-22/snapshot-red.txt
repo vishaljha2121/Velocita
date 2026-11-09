@@ -1,2 +1,0 @@
-foreign_snapshot accepted=1 recovered_kill=9 unchanged_tree=1
-RED F5: foreign snapshot accepted under matching local sidecar

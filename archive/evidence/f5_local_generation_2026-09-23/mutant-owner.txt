@@ -1,1 +1,0 @@
-local generation adversarial: other configured voter accepted

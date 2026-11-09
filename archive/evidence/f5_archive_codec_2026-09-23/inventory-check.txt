@@ -1,1 +1,0 @@
-independent gate inventory: 63 host / 60 V2

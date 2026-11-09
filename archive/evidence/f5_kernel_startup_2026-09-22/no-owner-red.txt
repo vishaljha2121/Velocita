@@ -1,1 +1,0 @@
-kernel startup test failed: stale token opened writable storage in replacement directory

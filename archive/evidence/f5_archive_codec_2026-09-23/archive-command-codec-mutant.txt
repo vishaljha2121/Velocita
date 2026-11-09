@@ -1,1 +1,0 @@
-archive adversarial tests failed: resealed unsupported command schema accepted

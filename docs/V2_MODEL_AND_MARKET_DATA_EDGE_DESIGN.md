@@ -8,7 +8,7 @@ Authority:
 
 - [`ADR 0001`](adr/0001-v2-replicated-decision-oms-and-execution-boundary.md)
 - [`V2 architecture contracts`](V2_ARCHITECTURE_CONTRACTS.md)
-- [`V2 Phase 3 decision-evaluator design`](V2_PHASE3_DECISION_EVALUATOR_DESIGN.md)
+- [`V2 Phase 3 decision-evaluator design`](V2_DECISION_EVALUATOR_DESIGN.md)
 
 Implementation: [`model/`](../model)
 
