@@ -26,7 +26,7 @@ class ReadinessBuildBoundaryTests(unittest.TestCase):
         (self.root / 'deploy').mkdir()
 
     def check_guard(self):
-        return subprocess.run([sys.executable, '-B', str(ROOT / 'tests/test_signer_not_shipped.py'),
+        return subprocess.run([sys.executable, '-B', str(ROOT / 'tests/check_signer_not_shipped.py'),
                                str(self.root)], capture_output=True, text=True, check=False)
 
     def append(self, relative, value):

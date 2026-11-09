@@ -6,6 +6,7 @@ import tempfile
 import unittest
 
 
+@unittest.skipUnless(os.environ.get('VELOCITA_SWAP_PAPER_DRILL'), 'requires the swap paper drill executable')
 class SwapPaperDrillTests(unittest.TestCase):
     def setUp(self):
         self.binary = os.environ['VELOCITA_SWAP_PAPER_DRILL']

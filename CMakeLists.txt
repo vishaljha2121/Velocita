@@ -1009,7 +1009,7 @@ if(BUILD_TESTING)
     target_compile_options(v2-truemarkets-transport-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME v2-truemarkets-transport-tests COMMAND v2-truemarkets-transport-tests)
     add_test(NAME v2-signer-not-in-release-images
-        COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_signer_not_shipped.py ${CMAKE_CURRENT_SOURCE_DIR})
+        COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_signer_not_shipped.py ${CMAKE_CURRENT_SOURCE_DIR})
 
     include(cmake/LiveReadinessTests.cmake)
     include(cmake/SwapTransactionVerifierTests.cmake)

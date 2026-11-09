@@ -175,7 +175,8 @@ class TokenToolTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             base = pathlib.Path(d)
             public = base / "public"
-            public.mkdir(mode=0o755)
+            public.mkdir()
+            public.chmod(0o755)
             with self.assertRaises(RuntimeError):
                 MINT._atomic_write_token(public / "token", TOKEN)
             previous = os.getcwd()

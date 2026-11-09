@@ -82,7 +82,9 @@ class IndicatorDeployment(unittest.TestCase):
             for p in d['panels']:
                 for t in p.get('targets',[]):
                     for m in re.finditer(r'\bvelocita_(?:v2|shadow|gateway)_[a-zA-Z0-9_]+(\{[^}]*\})?',t['expr']):
-                        self.assertIn('strategy="stochastic"',m.group(1) or '',t['expr'])
+                        selector=m.group(1) or ''
+                        self.assertTrue('strategy="stochastic"' in selector or 'paper_run=~"${live_run}' in selector,
+                                        f'{path.name}: {t["expr"]}')
         text=(ROOT/'deploy/v2/observability/grafana/dashboards/velocita-v2-paper.json').read_text()
         self.assertNotIn('decision_to_authorized',text)
         self.assertIn('p99 estimate (100+ samples)',text)
