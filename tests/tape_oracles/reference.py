@@ -1,5 +1,8 @@
 """Reference tape: an independent re-implementation of ADR 0030's attestation and book rules, used as the test oracle.
 
+A snapshot is a reply to one subscription, so every snapshot message has its own verdict (DECISIONS D-25, D-26);
+updates are broadcast and keyed across recorders.
+
 Written from ADR 0030, GUARANTEES.md and DECISIONS.md, not from the C++ reducer. It returns, per log index, the
 apply outcome, the affected stream, the symbol's DEPTH book state and hash, and every verdict close.
 """
@@ -13,6 +16,11 @@ CHANNEL_CODE = {1: "INSTRUMENT", 2: "EBBO", 3: "DEPTH", 4: "TRADE", 5: "HEARTBEA
 KIND_CODE = {1: "SNAPSHOT", 2: "UPDATE", 3: "SNAPSHOT_COMPLETE", 4: "HEARTBEAT", 5: "CONTROL", 6: "UNPARSED"}
 APPLIED, DUPLICATE, OUT_OF_ORDER, UNKNOWN_RECORDER, MALFORMED, MISMATCH, PART_STORED, PART_REFUSED, \
     TICK_REFUSED, HEAD_REFUSED, SYMBOL_CAPACITY = range(11)
+
+
+def reply_owner(recorder, session, request):
+    tag = (session ^ ((request * 0x9E3779B97F4A7C15) % 2**64) ^ (recorder << 56)) % 2**64
+    return tag or 1
 
 
 def atoms(text):
@@ -72,7 +80,7 @@ class ReferenceTape:
         distinct = len(set(hashes))
         outcome = "divergent" if distinct > 1 else {3: "3/3", 2: "2/3", 1: "1/3"}[len(hashes)]
         mask = sum(1 << (r - 1) for r in v["copies"])
-        closes.append({"stream": key[0], "kind": key[1], "seqnum": key[2], "outcome": outcome, "reason": reason,
+        closes.append({"stream": key[0], "kind": key[1], "seqnum": key[2], "owner": key[3], "outcome": outcome, "reason": reason,
                        "mask": mask, "distinct": distinct, "first_index": v["first_index"], "close_index": index})
         self.closed.append((key, v["applied"]))
         if len(self.closed) > self.R:
@@ -217,7 +225,8 @@ class ReferenceTape:
             self.symbols.append(o["symbol"])
             self.books[o["symbol"]] = Book()
         stream = CHANNELS.index(o["channel"]) * 16 + self.symbols.index(o["symbol"])
-        key = (stream, o["kind"], o["seqnum"])
+        owner = 0 if o["kind"] == "UPDATE" else reply_owner(o["recorder"], o["session"], o["request"])
+        key = (stream, o["kind"], o["seqnum"], owner)
         h = o["hash"]
         if key in self.open:
             v = self.open[key]

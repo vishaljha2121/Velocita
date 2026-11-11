@@ -15,7 +15,7 @@ using namespace velocita::tape;
 namespace {
 
 void on_close(void*, const VerdictClose& v) {
-    std::cout << R"({"close":true,"stream":)" << int(v.stream) << R"(,"kind":")" << to_string(v.kind)
+    std::cout << R"({"close":true,"owner":)" << static_cast<unsigned long long>(v.owner) << R"(,"stream":)" << int(v.stream) << R"(,"kind":")" << to_string(v.kind)
               << R"(","seqnum":)" << v.seqnum << R"(,"outcome":")" << to_string(v.outcome) << R"(","reason":")"
               << to_string(v.reason) << R"(","mask":)" << int(v.reported_mask) << R"(,"distinct":)" << int(v.distinct)
               << R"(,"first_index":)" << v.first_index << R"(,"close_index":)" << v.close_index << "}\n";

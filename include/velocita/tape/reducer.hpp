@@ -58,6 +58,10 @@ struct Book {
     bool ebbo_mismatch{};
     bool ebbo_flagged{};
     std::uint64_t ebbo_mismatch_tick{};
+    bool compare_pending{};
+    std::uint64_t compare_seqnum{};
+    Side compare_bids;
+    Side compare_asks;
 };
 
 struct Best {
@@ -78,6 +82,7 @@ struct Copy {
 
 struct OpenVerdict {
     bool used{};
+    std::uint64_t owner{};
     std::uint8_t stream{};
     UpdateKind kind{UpdateKind::none};
     std::uint64_t seqnum{};
@@ -89,6 +94,7 @@ struct OpenVerdict {
 
 struct ClosedRef {
     bool used{};
+    std::uint64_t owner{};
     std::uint8_t stream{};
     UpdateKind kind{UpdateKind::none};
     std::uint64_t seqnum{};
@@ -165,6 +171,7 @@ struct TapeState {
 };
 
 struct VerdictClose {
+    std::uint64_t owner{};
     std::uint8_t stream{};
     UpdateKind kind{UpdateKind::none};
     std::uint64_t seqnum{};
@@ -200,6 +207,7 @@ ApplyResult apply_entry(TapeState& state, const Config& config, std::uint64_t in
                         void* observer_context = nullptr) noexcept;
 
 [[nodiscard]] Digest book_hash(const Symbol& symbol, const Book& book) noexcept;
+[[nodiscard]] std::uint64_t reply_owner(const RecorderHeader& header) noexcept;
 [[nodiscard]] std::uint8_t stream_id(Channel channel, std::uint8_t symbol_index) noexcept;
 [[nodiscard]] Channel stream_channel(std::uint8_t stream) noexcept;
 [[nodiscard]] std::uint8_t stream_symbol(std::uint8_t stream) noexcept;

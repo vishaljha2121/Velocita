@@ -56,6 +56,7 @@ void set_unknown(TapeState& s, Book& book, Reason reason) noexcept {
     book.held_count = 0;
     book.hold_tick = 0;
     book.hash = Digest{};
+    book.compare_pending = false;
 }
 
 Reason reason_of(DecimalStatus status) noexcept {
@@ -167,7 +168,29 @@ bool apply_changes(Book& book, const HeldUpdate& update) noexcept {
     return true;
 }
 
-void drain_held(TapeState& s, std::uint8_t sym, Book& book) noexcept {
+std::uint16_t compare_sides(const Side& a, const Side& b) noexcept {
+    std::uint16_t diff = 0;
+    std::size_t i = 0, j = 0;
+    while (i < a.size || j < b.size) {
+        if (i < a.size && j < b.size && a.levels[i].price == b.levels[j].price) {
+            if (a.levels[i].qty != b.levels[j].qty || a.levels[i].count != b.levels[j].count) ++diff;
+            ++i;
+            ++j;
+        } else {
+            ++diff;
+            if (i < a.size && (j >= b.size || a.levels[i].price != b.levels[j].price)) ++i;
+            else ++j;
+        }
+    }
+    return diff;
+}
+
+[[nodiscard]] bool finish_compare(Book& book) noexcept {
+    book.compare_pending = false;
+    return compare_sides(book.bids, book.compare_bids) + compare_sides(book.asks, book.compare_asks) > 0;
+}
+
+void drain_held(TapeState& s, std::uint8_t sym, Book& book, std::uint16_t& flags) noexcept {
     bool progressed = true;
     while (progressed && book.held_count > 0) {
         progressed = false;
@@ -186,6 +209,13 @@ void drain_held(TapeState& s, std::uint8_t sym, Book& book) noexcept {
                 if (!apply_changes(book, copy)) {
                     set_unknown(s, book, Reason::capacity);
                     return;
+                }
+                if (book.compare_pending && copy.seqnum == book.compare_seqnum) {
+                    for (std::size_t k = 0; k < copy.change_count; ++k) {
+                        const auto& ch = copy.changes[k];
+                        (void)set_level(ch.bid ? book.compare_bids : book.compare_asks, ch.bid, ch);
+                    }
+                    if (finish_compare(book)) flags |= kFlagSnapshotDiffers;
                 }
                 ++book.position;
                 progressed = true;
@@ -225,23 +255,6 @@ bool hold_update(TapeState& s, Book& book, std::uint64_t seqnum, std::uint64_t i
     return true;
 }
 
-std::uint16_t compare_sides(const Side& a, const Side& b) noexcept {
-    std::uint16_t diff = 0;
-    std::size_t i = 0, j = 0;
-    while (i < a.size || j < b.size) {
-        if (i < a.size && j < b.size && a.levels[i].price == b.levels[j].price) {
-            if (a.levels[i].qty != b.levels[j].qty || a.levels[i].count != b.levels[j].count) ++diff;
-            ++i;
-            ++j;
-        } else {
-            ++diff;
-            if (i < a.size && (j >= b.size || a.levels[i].price != b.levels[j].price)) ++i;
-            else ++j;
-        }
-    }
-    return diff;
-}
-
 void depth_first_copy(Context& c, std::uint8_t sym, UpdateKind kind, std::uint64_t seqnum,
                       std::span<const std::byte> payload) noexcept {
     auto& s = c.state;
@@ -275,9 +288,11 @@ void depth_first_copy(Context& c, std::uint8_t sym, UpdateKind kind, std::uint64
                 if (book.has_position && seqnum < book.position) c.flags |= kFlagStaleSnapshot;
                 return;
             }
-            if (book.staging_compare && c.config.integrity_checks) {
-                const auto diff = compare_sides(book.bids, book.staged_bids) + compare_sides(book.asks, book.staged_asks);
-                if (diff > 0) c.flags |= kFlagSnapshotDiffers;
+            book.compare_pending = book.staging_compare && c.config.integrity_checks;
+            if (book.compare_pending) {
+                book.compare_seqnum = seqnum;
+                book.compare_bids = book.bids;
+                book.compare_asks = book.asks;
             }
             book.bids = book.staged_bids;
             book.asks = book.staged_asks;
@@ -287,7 +302,7 @@ void depth_first_copy(Context& c, std::uint8_t sym, UpdateKind kind, std::uint64
             book.position = seqnum;
             book.state = BookState::valid;
             book.reason = Reason::none;
-            drain_held(s, sym, book);
+            drain_held(s, sym, book, c.flags);
             rehash(s, sym, book);
             return;
         }
@@ -312,8 +327,13 @@ void depth_first_copy(Context& c, std::uint8_t sym, UpdateKind kind, std::uint64
                 set_unknown(s, book, p.bad ? p.reason : Reason::malformed);
                 return;
             }
+            if (book.compare_pending && seqnum == book.compare_seqnum) {
+                ParseInto q{&book.compare_bids, &book.compare_asks, nullptr};
+                (void)for_each_level(raw, visit_level, &q);
+                if (finish_compare(book)) c.flags |= kFlagSnapshotDiffers;
+            }
             ++book.position;
-            drain_held(s, sym, book);
+            drain_held(s, sym, book, c.flags);
             rehash(s, sym, book);
             return;
         }
@@ -418,6 +438,7 @@ std::size_t skew_bucket(std::uint64_t ns) noexcept {
 void close_verdict(Context& c, OpenVerdict& v, CloseReason reason) noexcept {
     auto& s = c.state;
     VerdictClose out;
+    out.owner = v.owner;
     out.stream = v.stream;
     out.kind = v.kind;
     out.seqnum = v.seqnum;
@@ -457,6 +478,7 @@ void close_verdict(Context& c, OpenVerdict& v, CloseReason reason) noexcept {
     ++s.counters.close_reasons[static_cast<std::size_t>(reason)];
 
     put_u8(c.leaf, 0xC1);
+    put_u64(c.leaf, out.owner);
     put_u8(c.leaf, out.stream);
     put_u8(c.leaf, static_cast<std::uint8_t>(out.kind));
     put_u64(c.leaf, out.seqnum);
@@ -476,6 +498,7 @@ void close_verdict(Context& c, OpenVerdict& v, CloseReason reason) noexcept {
 
     auto& ref = s.closed[s.closed_next];
     ref.used = true;
+    ref.owner = v.owner;
     ref.stream = v.stream;
     ref.kind = v.kind;
     ref.seqnum = v.seqnum;
@@ -484,15 +507,17 @@ void close_verdict(Context& c, OpenVerdict& v, CloseReason reason) noexcept {
     v = OpenVerdict{};
 }
 
-OpenVerdict* find_open(TapeState& s, std::uint8_t stream, UpdateKind kind, std::uint64_t seqnum) noexcept {
+OpenVerdict* find_open(TapeState& s, std::uint64_t owner, std::uint8_t stream, UpdateKind kind,
+                       std::uint64_t seqnum) noexcept {
     for (auto& v : s.verdicts)
-        if (v.used && v.stream == stream && v.kind == kind && v.seqnum == seqnum) return &v;
+        if (v.used && v.owner == owner && v.stream == stream && v.kind == kind && v.seqnum == seqnum) return &v;
     return nullptr;
 }
 
-const ClosedRef* find_closed(const TapeState& s, std::uint8_t stream, UpdateKind kind, std::uint64_t seqnum) noexcept {
+const ClosedRef* find_closed(const TapeState& s, std::uint64_t owner, std::uint8_t stream, UpdateKind kind,
+                             std::uint64_t seqnum) noexcept {
     for (const auto& v : s.closed)
-        if (v.used && v.stream == stream && v.kind == kind && v.seqnum == seqnum) return &v;
+        if (v.used && v.owner == owner && v.stream == stream && v.kind == kind && v.seqnum == seqnum) return &v;
     return nullptr;
 }
 
@@ -554,8 +579,9 @@ ApplyCode process_observation(Context& c, const Observation& o, std::uint8_t& st
     const auto r = static_cast<std::size_t>(o.header.recorder - 1);
     const Copy copy{true, o.payload_hash, o.utc_recv_ns, c.index};
     const bool divergence_matters = o.channel == Channel::depth;
+    const std::uint64_t owner = o.kind == UpdateKind::update ? 0 : reply_owner(o.header);
 
-    if (auto* v = find_open(s, stream, o.kind, o.seqnum)) {
+    if (auto* v = find_open(s, owner, stream, o.kind, o.seqnum)) {
         if (v->copies[r].present) {
             ++s.counters.duplicate_copies;
             return ApplyCode::applied;
@@ -567,7 +593,7 @@ ApplyCode process_observation(Context& c, const Observation& o, std::uint8_t& st
         if (reported == kRecorders) close_verdict(c, *v, CloseReason::all_reported);
         return ApplyCode::applied;
     }
-    if (const auto* closed = find_closed(s, stream, o.kind, o.seqnum)) {
+    if (const auto* closed = find_closed(s, owner, stream, o.kind, o.seqnum)) {
         ++s.counters.late_copies;
         c.flags |= kFlagLateCopy;
         if (closed->applied_hash != copy.hash) {
@@ -579,6 +605,7 @@ ApplyCode process_observation(Context& c, const Observation& o, std::uint8_t& st
     }
     auto& v = open_slot(c);
     v.used = true;
+    v.owner = owner;
     v.stream = stream;
     v.kind = o.kind;
     v.seqnum = o.seqnum;
@@ -660,6 +687,12 @@ void on_tick(Context& c) noexcept {
 }
 
 std::unique_ptr<TapeState> make_tape_state() { return std::make_unique<TapeState>(); }
+
+std::uint64_t reply_owner(const RecorderHeader& header) noexcept {
+    const auto tag = header.session ^ (header.request_seq * 0x9E3779B97F4A7C15ull) ^
+                     (static_cast<std::uint64_t>(header.recorder) << 56);
+    return tag == 0 ? 1 : tag;
+}
 
 std::uint8_t stream_id(Channel channel, std::uint8_t symbol) noexcept {
     return static_cast<std::uint8_t>(channel_slot(channel) * kMaxSymbols + symbol);

@@ -37,6 +37,13 @@ add_executable(velocita-tape-recorder src/tape_recorder_main.cpp)
 target_link_libraries(velocita-tape-recorder PRIVATE velocita_tape_recorder velocita_tape_link)
 target_compile_options(velocita-tape-recorder PRIVATE -Wall -Wextra -Wpedantic)
 
+add_executable(velocita-tape-exporter src/tape_exporter_main.cpp)
+target_compile_options(velocita-tape-exporter PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(velocita-tape-verify src/tape_verify_main.cpp)
+target_link_libraries(velocita-tape-verify PRIVATE velocita_tape_voter)
+target_compile_options(velocita-tape-verify PRIVATE -Wall -Wextra -Wpedantic)
+
 add_executable(velocita-tape-keys src/tape_keys_main.cpp)
 target_link_libraries(velocita-tape-keys PRIVATE velocita_tape_voter)
 target_compile_options(velocita-tape-keys PRIVATE -Wall -Wextra -Wpedantic)

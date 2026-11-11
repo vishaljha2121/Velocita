@@ -299,6 +299,70 @@ void Voter::write_state_page(std::int64_t utc_ns) const {
     }
     j << "]}\n";
     atomic_write(config_.replica.data_dir / "state.json", j.str());
+
+    std::ostringstream m;
+    const auto node = std::to_string(st.node_id);
+    const auto local = "node=\"" + node + "\",source=\"local\"";
+    const auto log = "node=\"" + node + "\",source=\"log\"";
+    m << "velocita_tape_info{" << local << ",incarnation=\"" << config_.incarnation << "\"} 1\n"
+      << "velocita_tape_raft_term{" << local << "} " << st.term << "\n"
+      << "velocita_tape_raft_is_leader{" << local << "} " << (st.leader ? 1 : 0) << "\n"
+      << "velocita_tape_raft_leader_id{" << local << "} " << st.leader_id << "\n"
+      << "velocita_tape_raft_commit_index{" << local << "} " << st.commit_index << "\n"
+      << "velocita_tape_raft_applied_index{" << local << "} " << st.applied_index << "\n"
+      << "velocita_tape_raft_synced_index{" << local << "} " << st.synced_index << "\n"
+      << "velocita_tape_wal_bytes{" << local << "} " << st.wal_bytes << "\n"
+      << "velocita_tape_published_heads{" << local << "} " << published_.size() << "\n"
+      << "velocita_tape_last_published_tick{" << local << "} " << (published_.empty() ? 0 : published_.back().tick) << "\n"
+      << "velocita_tape_rejected_frames_total{" << local << "} " << rejected_ << "\n"
+      << "velocita_tape_refused_submissions_total{" << local << "} " << refused_ << "\n"
+      << "velocita_tape_state_page_utc_seconds{" << local << "} " << utc_ns / 1'000'000'000 << "\n"
+      << "velocita_tape_last_tick{" << log << "} " << s.last_tick << "\n"
+      << "velocita_tape_tree_size{" << log << "} " << s.frontier.size << "\n"
+      << "velocita_tape_entries_total{" << log << "} " << c.entries << "\n"
+      << "velocita_tape_late_copies_total{" << log << "} " << c.late_copies << "\n"
+      << "velocita_tape_late_divergences_total{" << log << "} " << c.late_divergences << "\n"
+      << "velocita_tape_duplicate_copies_total{" << log << "} " << c.duplicate_copies << "\n"
+      << "velocita_tape_heartbeats_total{" << log << "} " << c.heartbeats << "\n";
+    for (int i = 1; i <= 4; ++i) {
+        m << "velocita_tape_verdicts_total{" << log << ",kind=\"update\",outcome=\"" << outcomes[i] << "\"} "
+          << c.update_outcomes[i] << "\n";
+        m << "velocita_tape_verdicts_total{" << log << ",kind=\"all\",outcome=\"" << outcomes[i] << "\"} "
+          << c.all_outcomes[i] << "\n";
+    }
+    const char* reasons[] = {"", "all_reported", "n_ticks", "capacity"};
+    for (int i = 1; i <= 3; ++i)
+        m << "velocita_tape_verdict_closes_total{" << log << ",reason=\"" << reasons[i] << "\"} " << c.close_reasons[i] << "\n";
+    const char* bounds[] = {"0.0001", "0.001", "0.005", "0.01", "0.05", "0.1", "0.5", "1", "+Inf"};
+    std::uint64_t cumulative = 0;
+    for (std::size_t i = 0; i < c.skew_buckets.size(); ++i) {
+        cumulative += c.skew_buckets[i];
+        m << "velocita_tape_vantage_skew_seconds_bucket{" << log << ",le=\"" << bounds[i] << "\"} " << cumulative << "\n";
+    }
+    m << "velocita_tape_vantage_skew_seconds_count{" << log << "} " << c.skew_samples << "\n"
+      << "velocita_tape_vantage_skew_max_seconds{" << log << "} " << static_cast<double>(c.skew_max_ns) / 1e9 << "\n";
+    const char* flag_names[] = {"crossed", "locked", "ebbo_mismatch", "trade_outside_book", "trade_outside_band",
+                                "snapshot_differs", "late_copy", "late_divergence", "stale_snapshot"};
+    for (std::size_t i = 0; i < 9; ++i)
+        m << "velocita_tape_integrity_flags_total{" << log << ",flag=\"" << flag_names[i] << "\"} " << c.flags[i] << "\n";
+    for (std::size_t i = 1; i <= 8; ++i)
+        m << "velocita_tape_book_unknown_total{" << log << ",reason=\"" << to_string(static_cast<Reason>(i)) << "\"} "
+          << c.unknown_reasons[i] << "\n";
+    for (std::size_t r = 0; r < kRecorders; ++r)
+        for (std::size_t k = 1; k <= 8; ++k)
+            m << "velocita_tape_recorder_events_total{" << log << ",recorder=\"" << (r + 1) << "\",event=\""
+              << to_string(static_cast<EventKind>(k)) << "\"} " << c.events[r][k] << "\n";
+    for (std::uint8_t i = 0; i < s.symbol_count; ++i) {
+        const auto& b = s.books[i];
+        const auto sym = std::string(s.symbols[i].view());
+        for (const auto state : {BookState::valid, BookState::building, BookState::unknown})
+            m << "velocita_tape_book_state{" << log << ",symbol=\"" << sym << "\",state=\"" << to_string(state) << "\"} "
+              << (b.state == state ? 1 : 0) << "\n";
+        m << "velocita_tape_book_max_silence_seconds{" << log << ",symbol=\"" << sym << "\"} "
+          << static_cast<double>(s.max_silence_ns[stream_id(Channel::depth, i)]) / 1e9 << "\n";
+        m << "velocita_tape_book_position{" << log << ",symbol=\"" << sym << "\"} " << b.position << "\n";
+    }
+    atomic_write(config_.replica.data_dir / "metrics.prom", m.str());
 }
 
 void Voter::step(std::uint64_t now_ms, std::int64_t utc_ns) {

@@ -41,7 +41,7 @@ def expected(entries, **kw):
 
 
 def key(c):
-    return (c["stream"], c["kind"], c["seqnum"], c["outcome"], c["reason"], c["mask"], c["first_index"])
+    return (c["stream"], c["kind"], c["seqnum"], c["owner"], c["outcome"], c["reason"], c["mask"], c["first_index"])
 
 
 class Recorders:
@@ -189,6 +189,36 @@ class ReducerAgainstReference(unittest.TestCase):
         update = [c for c in closes[rows[-1]["index"]] if c["kind"] == "UPDATE"][0]
         self.assertEqual((update["outcome"], update["distinct"]), ("divergent", 2))
         self.assertEqual(rows[-1]["state"], "unknown")
+
+    def test_snapshots_from_different_subscriptions_are_not_copies(self):
+        rec = Recorders()
+        rec.snapshot(1, 50, [("10.0", "1", "1"), ("9.0", "1", "1")], [("11.0", "1", "1")])
+        rec.snapshot(2, 50, [("10.0", "1", "1"), ("9.5", "2", "1")], [("11.0", "1", "1")])
+        rec.depth(1, "UPDATE", 50, [("9.0", "0", "0"), ("9.5", "2", "1")])
+        for _ in range(6):
+            rec.tick()
+        rows, closes = self.compare(rec.entries)
+        self.assertEqual([r for r in rows if r["stream"] != 255][-1]["state"], "valid")
+        snapshot_closes = [c for cs in closes.values() for c in cs if c["kind"] == "SNAPSHOT"]
+        self.assertEqual([c["outcome"] for c in snapshot_closes], ["1/3", "1/3"])
+        self.assertEqual(len({c["owner"] for c in snapshot_closes}), 2)
+        self.assertFalse(any(r["flags"] & 0x20 for r in rows), "a mid-batch snapshot is not a disagreement")
+
+    def test_a_recorders_own_resubscription_snapshot_is_not_a_copy(self):
+        rec = Recorders()
+        rec.snapshot(1, 50, [("10.0", "1", "1"), ("9.0", "1", "1")], [("11.0", "1", "1")])
+        rec.snapshot(1, 50, [("10.0", "1", "1"), ("9.5", "2", "1")], [("11.0", "1", "1")])
+        rec.depth(1, "UPDATE", 50, [("9.0", "0", "0"), ("9.5", "2", "1")])
+        rows, _ = self.compare(rec.entries)
+        self.assertEqual([r for r in rows if r["stream"] != 255][-1]["state"], "valid")
+
+    def test_snapshot_still_wrong_after_the_next_update_is_flagged(self):
+        rec = Recorders()
+        rec.snapshot(1, 50, [("10.0", "1", "1")], [("11.0", "1", "1")])
+        rec.snapshot(2, 50, [("10.0", "1", "1"), ("8.0", "4", "1")], [("11.0", "1", "1")])
+        rec.depth(1, "UPDATE", 50, [("10.0", "2", "1")])
+        rows, _ = self.compare(rec.entries)
+        self.assertTrue(rows[-1]["flags"] & 0x20)
 
     def test_capacity_closes_the_oldest(self):
         rec = Recorders()

@@ -160,3 +160,33 @@ wrong offset. Against the live feed it looked like the venue closing the connect
 which caused a resubscription storm (132 snapshots per channel in 20 seconds). The scripted fixture
 (`tests/tape_oracles/fixture_ws.py`) reproduced it over plain `ws://` with a frame trace, the restore was
 removed, and both the fixture (400 frames from 10 bytes to 70 KB) and a 30-second live run are now clean.
+
+**D-24. The exporter serves a metrics file the voter writes.** Every second the voter writes `metrics.prom`
+beside `state.json`, each metric labelled `source="log"` (recomputable from the log) or `source="local"`
+(MET-2). `velocita-tape-exporter` is a small HTTP server that serves that file and links no tape code, so it
+cannot write to the cluster (MET-1).
+
+**D-25. A snapshot is a reply to one subscription, so its verdict is keyed per recorder. Extends proposed
+amendment 2.** The first live three-recorder run showed two DEPTH snapshots of SNDKC, taken 49 ms apart by
+different recorders, with the same `seqnum` (112266) but different levels: the later one already included
+changes that the next published update (also 112266) then restated. So D-15 needs a correction: a snapshot is
+the engine's live state at subscription time, labelled with the next update's number, not a fixed version.
+Because update levels are absolute, applying that update to either snapshot gives the same book. Comparing
+snapshots across recorders reported false divergence and made 2 of 12 books unknown within 90 seconds.
+Fix, keeping BOOK-4 and BOOK-6 exactly as locked: snapshot verdicts are keyed (stream, kind, `seqnum`,
+recorder), so two subscriptions' replies are never copies of each other; updates, which are broadcast, are
+still compared across all three. The "snapshot agrees with updates" integrity rule now compares the old
+book and the new snapshot after the next update has been applied to both, so it fires only on a real
+reconstruction error. Both behaviours have tests (`test_snapshots_from_different_subscriptions_are_not_copies`,
+`test_snapshot_still_wrong_after_the_next_update_is_flagged`), and the reference implements the same key.
+
+**D-26. Every snapshot message is its own verdict.** The unplug drill showed D-25 was not enough: recorder 2
+restarted (new session, same recorder number), and its new subscription returned an MSTRC snapshot with the
+same `seqnum` as its first one, because MSTRC had published no update for a minute, but different levels.
+Keyed by recorder, the two replies counted as copies and the book went unknown. A staggered snapshot refresh
+on a quiet book would do the same. So a snapshot's verdict key now includes a tag derived from the
+recorder, session and request number (`reply_owner`), which makes every snapshot reply its own verdict:
+snapshots are never compared across copies, only placed by the book engine (BOOK-6) and checked against the
+next update (D-25). Updates are still compared across recorders. Covered by
+`test_a_recorders_own_resubscription_snapshot_is_not_a_copy`; amendment 2's proposed wording is updated to
+match.

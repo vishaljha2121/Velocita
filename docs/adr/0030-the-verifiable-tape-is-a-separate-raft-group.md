@@ -260,6 +260,11 @@ feed gives a snapshot the same `seqnum` as the update that follows it, so a key 
 compare a snapshot with an update and report false divergence. Proposed wording for ATT-1: "Every (stream,
 update kind, `seqnum`) reported by any recorder gets exactly one final verdict". Implemented in the reducer
 because the current wording cannot be implemented correctly; see `docs/tape/DECISIONS.md` D-13.
+Extended the same day after the first live run (D-25): a snapshot is a reply to one recorder's subscription,
+so a snapshot's verdict key also includes the recorder. Proposed wording, revised after the unplug drill (D-26): "Every
+(stream, `seqnum`) UPDATE reported by any recorder gets exactly one final verdict across recorders; every
+snapshot message, being one subscription's reply, gets a verdict of its own." Updates are still compared
+across all three recorders.
 
 ## Test cases
 
