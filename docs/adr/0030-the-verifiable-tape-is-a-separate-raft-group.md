@@ -54,6 +54,11 @@ when recorders disagree about the bytes of one message.
 - Whether a DEPTH UPDATE carries changes or full replacement levels.
 - The largest DEPTH snapshot message, which sets the entry size limit and the split rule.
 
+Answered 2026-11-11 from a 15-minute capture of all twelve books (details in `docs/tape/DECISIONS.md`
+D-02, D-03, D-15): `seqnum` is one counter per (channel, symbol), shared by every subscriber; a snapshot
+carries the `seqnum` of the next update; consecutive updates step by exactly one; a DEPTH update carries only
+the changed levels, each with its new total; the largest frame was 1,601 bytes. All four assumptions hold.
+
 ## Data flow
 
 Recorded 2026-11-11. Names the data at each stage and who may change it.
@@ -249,6 +254,12 @@ wording: "Per recorder session, observation numbers in the log are contiguous ex
 gaps. A restart starts a new session at number 1; a session that ends without a close event may have lost
 the observations it had not yet submitted." Test ING-3.1 gains a case that kills the recorder mid-run
 and checks contiguity within each session.
+
+**Amendment 2 (proposed 2026-11-11, not yet approved): a verdict's key includes the update kind.** The live
+feed gives a snapshot the same `seqnum` as the update that follows it, so a key of (stream, `seqnum`) would
+compare a snapshot with an update and report false divergence. Proposed wording for ATT-1: "Every (stream,
+update kind, `seqnum`) reported by any recorder gets exactly one final verdict". Implemented in the reducer
+because the current wording cannot be implemented correctly; see `docs/tape/DECISIONS.md` D-13.
 
 ## Test cases
 

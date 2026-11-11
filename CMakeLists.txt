@@ -333,6 +333,7 @@ target_link_libraries(velocita-v2-gateway PRIVATE velocita_v2_swap_paper_gateway
 target_compile_options(velocita-v2-gateway PRIVATE -Wall -Wextra -Wpedantic)
 include(cmake/SwapTransactionVerifier.cmake)
 include(cmake/SwapRuntime.cmake)
+include(cmake/Tape.cmake)
 
 add_executable(velocita-v2-shadow-submitter src/v2_shadow_submitter_main.cpp)
 target_link_libraries(velocita-v2-shadow-submitter PRIVATE velocita_v2_node_aeron Threads::Threads)
