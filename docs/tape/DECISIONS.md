@@ -117,3 +117,24 @@ verification for the venue.
 it needs (`seqnum`, `channel`, `update`, `item`, the symbol, levels, best bid and offer, trade price,
 `price_bands_percent`) from a `string_view`, so the reducer stays pure and bounded (ATT-6, BOOK-8). It
 re-checks the recorder's classification against the payload; a mismatch is treated as a malformed frame.
+
+**D-17. One tape master secret; a key per direction derived from it.** Every tape process holds one 32-byte
+master secret, and each direction gets its own HMAC key, derived under D-09's label. Cost: a host that leaks
+the secret can impersonate any tape process. Rejected for now: a separate secret per pair, which multiplies
+the owner's key ceremony. The secret never leaves RAM-only tmpfs on the hosts.
+
+**D-18. Replay protection by boot nonce and counter.** Each process picks a random boot nonce at start and
+numbers its frames. A receiver refuses a frame whose counter is not above the last one seen for that sender
+and nonce. After the receiver restarts, an old session's frames could be replayed once; Raft and the
+reducer already refuse stale terms, duplicate requests and out-of-order ticks, so this is accepted.
+ING-2.2 (replay after restart) stays deferred.
+
+**D-19. An append message carries at most 64 entries and 256 KB.** willemt/raft sends everything a lagging
+follower is missing in one message. Sending fewer entries is valid Raft: the follower reports how far it got
+and the leader continues from there.
+
+**D-20. The tape has its own peer message codec.** The V1 peer encoding (`peer_wire`) has no pre-vote flag,
+so a granted pre-vote arrived as a real vote and no election ever completed. The voter test caught it before
+any hardware ran. Velocita's V2 node carries the flag in its own bound-peer encoding, which builds on
+`peer_wire`, so `peer_wire` is left unchanged and the tape encodes peer messages itself
+(`src/tape_peer_codec.cpp`).
