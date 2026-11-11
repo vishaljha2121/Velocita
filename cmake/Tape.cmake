@@ -55,6 +55,12 @@ if(BUILD_TESTING)
     target_compile_options(tape-replica-tests PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME tape-replica-tests COMMAND tape-replica-tests)
     set_tests_properties(tape-replica-tests PROPERTIES TIMEOUT 300)
+    set(VELOCITA_TAPE_FIXTURE_PYTHON "${Python3_EXECUTABLE}" CACHE FILEPATH "Python with the websockets library, for recorder tests")
+    add_test(NAME tape-recorder-tests
+        COMMAND ${CMAKE_COMMAND} -E env TAPE_RECORDER=$<TARGET_FILE:velocita-tape-recorder>
+            TAPE_FIXTURE_PYTHON=${VELOCITA_TAPE_FIXTURE_PYTHON}
+            ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_tape_recorder.py)
+    set_tests_properties(tape-recorder-tests PROPERTIES TIMEOUT 300)
     add_executable(tape-voter-tests tests/tape_voter_tests.cpp)
     target_link_libraries(tape-voter-tests PRIVATE velocita_tape_voter)
     target_compile_options(tape-voter-tests PRIVATE -Wall -Wextra -Wpedantic)
