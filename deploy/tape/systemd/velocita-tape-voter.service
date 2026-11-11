@@ -1,0 +1,24 @@
+[Unit]
+Description=Velocita verifiable tape voter
+After=network-online.target
+AssertPathExists=%t/velocita-tape-secrets/master.key
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/podman run --rm --replace --name velocita-tape-voter \
+    --network host --userns=keep-id \
+    --read-only --security-opt no-new-privileges --cap-drop all \
+    --pids-limit 128 --memory 1g --log-driver journald \
+    --shm-size 256m -e AERON_TERM_BUFFER_LENGTH=1048576 \
+    -v %h/velocita-tape/config:/etc/velocita-tape:ro \
+    -v %h/velocita-tape/data:/var/lib/velocita-tape \
+    -v %t/velocita-tape-secrets:/run/velocita-tape-secrets:ro \
+    localhost/velocita-tape:current velocita-tape-voter --config /etc/velocita-tape/voter.conf
+ExecStop=/usr/bin/podman stop -t 15 velocita-tape-voter
+RestartPreventExitStatus=64
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

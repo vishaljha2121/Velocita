@@ -1,0 +1,40 @@
+ARG BASE=docker.io/library/ubuntu@sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78
+ARG DEV_IMAGE=localhost/velocita-dev:current
+
+FROM ${DEV_IMAGE} AS builder
+ARG BUILD_JOBS=3
+ARG OPENSSL_VERSION
+ARG DEBIAN_FRONTEND=noninteractive
+ENV CCACHE_DIR=/ccache CCACHE_BASEDIR=/ CCACHE_COMPILERCHECK=content CCACHE_MAXSIZE=5G
+RUN test -n "${OPENSSL_VERSION}" \
+    && test "$(dpkg-query -W -f='${Version}' libssl3t64)" = "${OPENSSL_VERSION}" \
+    && apt-get update && apt-get install -y --no-install-recommends "libssl-dev=${OPENSSL_VERSION}" \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+COPY . .
+RUN mkdir -p /ccache && ccache --zero-stats \
+    && cmake -S . -B /build -G Ninja -DCMAKE_BUILD_TYPE=Release -DAERON_HIDE_DEPRECATION_MESSAGE=ON \
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+        -DFETCHCONTENT_FULLY_DISCONNECTED=ON \
+        -DFETCHCONTENT_SOURCE_DIR_AERON=/opt/velocita-deps/aeron \
+        -DFETCHCONTENT_SOURCE_DIR_WILLEMT_RAFT=/opt/velocita-deps/willemt-raft \
+        -DVELOCITA_BUILD_TAPE=ON \
+    && cmake --build /build --parallel "${BUILD_JOBS}" --target velocita-tape-voter velocita-tape-recorder \
+        velocita-tape-exporter velocita-tape-verify velocita-tape-keys tape-log-apply tape-replica-tests tape-voter-tests \
+    && ccache --show-stats \
+    && ctest --test-dir /build -R '^tape-' --output-on-failure --parallel "${BUILD_JOBS}"
+
+FROM ${BASE}
+ARG SOURCE_COMMIT=unknown
+ARG TOOLCHAIN_ID=unknown
+ARG OPENSSL_VERSION
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates libstdc++6 libbsd0 libuuid1 "libssl3t64=${OPENSSL_VERSION}" \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /build/velocita-tape-voter /build/velocita-tape-recorder /build/velocita-tape-exporter \
+    /build/velocita-tape-verify /build/velocita-tape-keys /usr/local/bin/
+COPY --from=builder /opt/velocita-deps/aeron/LICENSE /usr/share/licenses/aeron/LICENSE
+COPY --from=builder /opt/velocita-deps/willemt-raft/LICENSE /usr/share/licenses/willemt-raft/LICENSE
+LABEL org.velocita.source_commit="${SOURCE_COMMIT}" org.velocita.toolchain_image_id="${TOOLCHAIN_ID}" \
+      org.velocita.openssl="${OPENSSL_VERSION}" org.velocita.component="tape"

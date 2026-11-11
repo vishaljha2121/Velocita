@@ -4,8 +4,9 @@
 #include <openssl/pem.h>
 
 #include <cstdio>
+#include <fcntl.h>
 #include <stdexcept>
-#include <sys/stat.h>
+#include <unistd.h>
 
 namespace velocita::tape {
 namespace {
@@ -16,6 +17,23 @@ std::FILE* open_file(const std::filesystem::path& path, const char* mode) {
     std::FILE* f = std::fopen(path.c_str(), mode);
     if (!f) throw std::runtime_error("cannot open key file " + path.string());
     return f;
+}
+
+std::FILE* create_file(const std::filesystem::path& path, mode_t mode) {
+    const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, mode);
+    if (fd < 0) throw std::runtime_error("cannot create key file " + path.string());
+    std::FILE* f = ::fdopen(fd, "wb");
+    if (!f) {
+        ::close(fd);
+        throw std::runtime_error("cannot create key file " + path.string());
+    }
+    return f;
+}
+
+void finish(std::FILE* f, bool ok, const char* what) {
+    ok = ok && std::fflush(f) == 0 && ::fsync(::fileno(f)) == 0;
+    ok = std::fclose(f) == 0 && ok;
+    if (!ok) throw std::runtime_error(what);
 }
 
 }
@@ -58,18 +76,13 @@ std::array<std::byte, kSignatureBytes> SigningKey::sign(std::span<const std::byt
 }
 
 void SigningKey::save_private(const std::filesystem::path& pem) const {
-    std::FILE* f = open_file(pem, "wb");
-    ::chmod(pem.c_str(), 0600);
-    const bool ok = PEM_write_PrivateKey(f, as_key(key_), nullptr, nullptr, 0, nullptr, nullptr) == 1;
-    std::fclose(f);
-    if (!ok) throw std::runtime_error("cannot write private key");
+    std::FILE* f = create_file(pem, 0600);
+    finish(f, PEM_write_PrivateKey(f, as_key(key_), nullptr, nullptr, 0, nullptr, nullptr) == 1, "cannot write private key");
 }
 
 void SigningKey::save_public(const std::filesystem::path& pem) const {
-    std::FILE* f = open_file(pem, "wb");
-    const bool ok = PEM_write_PUBKEY(f, as_key(key_)) == 1;
-    std::fclose(f);
-    if (!ok) throw std::runtime_error("cannot write public key");
+    std::FILE* f = create_file(pem, 0644);
+    finish(f, PEM_write_PUBKEY(f, as_key(key_)) == 1, "cannot write public key");
 }
 
 VerifyKey VerifyKey::load(const std::filesystem::path& pem) {

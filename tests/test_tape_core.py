@@ -306,9 +306,40 @@ class ReducerAgainstReference(unittest.TestCase):
 
     def test_level_capacity_makes_the_book_unknown(self):
         rec = Recorders()
-        rec.snapshot(1, 5, [(f"{i}.0", "1", "1") for i in range(1, 70)], [("100.0", "1", "1")])
+        rec.depth(1, "SNAPSHOT", 5, [(f"{i}.0", "1", "1") for i in range(1, 34)], [("100.0", "1", "1")])
+        rows, _ = self.compare(rec.entries)
+        self.assertEqual(rows[-1]["state"], "building", "the first half of the snapshot is within capacity")
+        rec.depth(1, "SNAPSHOT", 5, [(f"{i}.0", "1", "1") for i in range(34, 67)], [])
+        rec.depth(1, "SNAPSHOT_COMPLETE", 5)
         rows, _ = self.compare(rec.entries)
         self.assertEqual(rows[-1]["state"], "unknown")
+
+    def test_snapshot_at_exactly_capacity_is_valid(self):
+        rec = Recorders()
+        rec.depth(1, "SNAPSHOT", 5, [(f"{i}.0", "1", "1") for i in range(1, 33)], [("100.0", "1", "1")])
+        rec.depth(1, "SNAPSHOT", 5, [(f"{i}.0", "1", "1") for i in range(33, 65)], [])
+        rec.depth(1, "SNAPSHOT_COMPLETE", 5)
+        rows, _ = self.compare(rec.entries)
+        self.assertEqual(rows[-1]["state"], "valid")
+
+    def test_capacity_while_draining_leaves_no_hash(self):
+        rec = Recorders()
+        rec.depth(1, "SNAPSHOT", 5, [(f"{i}.0", "1", "1") for i in range(1, 33)], [("100.0", "1", "1")])
+        rec.depth(1, "SNAPSHOT", 5, [(f"{i}.0", "1", "1") for i in range(33, 64)], [])
+        rec.depth(1, "SNAPSHOT_COMPLETE", 5)
+        rec.depth(1, "UPDATE", 6, [("70.0", "1", "1"), ("71.0", "1", "1")])
+        rec.depth(1, "UPDATE", 5, [("69.0", "1", "1")])
+        rows, _ = self.compare(rec.entries)
+        self.assertEqual((rows[-1]["state"], rows[-1]["hash"]), ("unknown", ""))
+
+    def test_a_recorders_second_copy_is_ignored(self):
+        rec = Recorders()
+        rec.snapshot(1, 5, [("1.0", "1", "1")], [("2.0", "1", "1")])
+        rec.depth(1, "UPDATE", 5, [("1.5", "1", "1")])
+        rec.depth(1, "UPDATE", 5, [("1.5", "9", "1")])
+        rec.depth(2, "UPDATE", 5, [("1.5", "1", "1")])
+        rows, _ = self.compare(rec.entries)
+        self.assertEqual(rows[-1]["state"], "valid")
 
     def test_split_observation_matches_a_whole_one(self):
         rec = Recorders()
@@ -322,6 +353,12 @@ class ReducerAgainstReference(unittest.TestCase):
         self.assertEqual(rows[-1]["state"], "valid")
         dropped = rec.entries[:4] + rec.entries[5:]
         self.compare(dropped)
+        corrupted = list(rec.entries)
+        part = bytearray(corrupted[5])
+        part[-10] ^= 0x01
+        corrupted[5] = bytes(part)
+        rows, _ = self.compare(corrupted)
+        self.assertNotEqual(rows[-1]["state"], "valid")
 
     def test_integrity_checks_never_change_books(self):
         rec = Recorders()
@@ -346,6 +383,10 @@ class MerkleAgainstReference(unittest.TestCase):
         roots = M.VECTOR_ROOTS
         for n in range(1, 9):
             self.assertEqual(M.root([M.leaf(x) for x in leaves[:n]]).hex(), roots[n - 1], n)
+
+    def test_cpp_merkle_matches_rfc_vectors(self):
+        out = subprocess.run([BINARY, "--merkle-vectors"], capture_output=True, text=True, check=True).stdout.split()
+        self.assertEqual(out, M.VECTOR_ROOTS)
 
     def test_cluster_root_equals_reference_root_and_proofs_verify(self):
         rec = Recorders()

@@ -68,6 +68,19 @@ if(BUILD_TESTING)
             TAPE_FIXTURE_PYTHON=${VELOCITA_TAPE_FIXTURE_PYTHON}
             ${Python3_EXECUTABLE} -B ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_tape_recorder.py)
     set_tests_properties(tape-recorder-tests PROPERTIES TIMEOUT 300)
+    add_test(NAME tape-reducer-is-pure
+        COMMAND ${CMAKE_COMMAND} -DTARGET_FILE=$<TARGET_FILE:velocita_tape_core> -DUNDEFINED_ONLY=ON
+            -DCHECK=ATT-6 "-DFORBIDDEN=^(clock_gettime|gettimeofday|time|mach_absolute_time|open|openat|fopen|read|write|close|socket|connect|recv|send|pthread_.*|getentropy|rand|srand|.*chrono.*clock.*now.*)$"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/check_tape_symbols.cmake)
+    foreach(tape_binary IN ITEMS velocita-tape-voter velocita-tape-recorder velocita-tape-verify velocita-tape-keys)
+        add_test(NAME tape-never-trades-${tape_binary}
+            COMMAND ${CMAKE_COMMAND} -DTARGET_FILE=$<TARGET_FILE:${tape_binary}> -DCHECK=X-1
+                "-DFORBIDDEN=(N8velocita2v2[0-9]+(swap|truemarkets|gateway|signer|paper|venue|kernel|Swap|TrueMarkets|Gateway|Signer|Paper|Venue|Kernel)|^curl_)"
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/check_tape_symbols.cmake)
+    endforeach()
+    add_test(NAME tape-exporter-links-no-tape-code
+        COMMAND ${CMAKE_COMMAND} -DTARGET_FILE=$<TARGET_FILE:velocita-tape-exporter> -DCHECK=MET-1
+            "-DFORBIDDEN=velocita" -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/check_tape_symbols.cmake)
     add_executable(tape-voter-tests tests/tape_voter_tests.cpp)
     target_link_libraries(tape-voter-tests PRIVATE velocita_tape_voter)
     target_compile_options(tape-voter-tests PRIVATE -Wall -Wextra -Wpedantic)

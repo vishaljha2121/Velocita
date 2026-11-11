@@ -108,3 +108,22 @@ loss, corruption and cross-architecture determinism.
 | The Pi can't keep up as a full recorder | Fewer copies per message | It votes and archives while the NUCs record (ADR 0030 day-one risk) |
 | The Mac sleeps during long process tests | False timeouts | Check the `pmset` log before calling it a regression |
 | Raw data leaks into the repo | Breaks the rules of engagement | Captures live outside the repo, referred to by hash; X-3.1 follows in the deferred list |
+
+## Status at gate G2 (2026-11-11)
+
+Built and verified on the Mac: scanner, codec, Merkle log, reducer, WAL, replica, voter, recorder (own RFC 6455
+client), exporter, offline verifier, key tool. Results:
+
+| Check | Result |
+|---|---|
+| Tape test suites (`ctest -R '^tape-'`) | 10 of 10, including the reducer-purity and never-trades symbol checks |
+| Reducer against the Python reference | 29 tests, including the real two-connection capture replayed at every index |
+| Recorder against the scripted WebSocket fixture | 8 of 8 |
+| End-to-end, three voters and three recorders on the live public feed | 4 of 4; 120 s with machine 2 unplugged for 20 s: 12 books valid, identical roots, every signed head verified |
+| Mutation run (`tests/mutation_tape.py`) | 27 of 27 killed (DECISIONS.md D-27) |
+| Tape image on Linux arm64 (local Docker) | builds; 10 of 10 tests inside the builder; live 10 s recorder smoke run, 155 frames, 0 lost (D-35) |
+
+Cut line used: the replica is new and compact (D-05), compaction is deferred (D-07, which also defers
+RAFT-5.1's snapshot half), and hardware is a release bundle plus owner commands (D-33), because NUC1's disk
+is full and the Pi is under the build floor. Amendment 2 to ADR 0030 (verdict keys, D-13/D-25/D-26) is
+implemented and awaits owner approval. Next: `RUNBOOK.md` steps 0 to 3.

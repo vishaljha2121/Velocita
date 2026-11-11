@@ -1,0 +1,19 @@
+# Tape voter 1 on nuc1. Paths are as seen inside the container (velocita-tape-voter.service).
+node_id=1
+incarnation=@INCARNATION@
+data_dir=/var/lib/velocita-tape/voter
+aeron_dir=/dev/shm/velocita-tape-voter
+listen=100.72.127.102:45101
+master_key_file=/run/velocita-tape-secrets/master.key
+signing_key_file=/etc/velocita-tape/head-1.pem
+tick_ms=1000
+verdict_ticks=5
+head_every_ticks=60
+peer.2=100.84.151.116:45102
+peer.3=100.85.36.22:45103
+recorder.1=100.72.127.102:45201
+recorder.2=100.84.151.116:45202
+recorder.3=100.85.36.22:45203
+public_key.1=/etc/velocita-tape/public/head-1.pub.pem
+public_key.2=/etc/velocita-tape/public/head-2.pub.pem
+public_key.3=/etc/velocita-tape/public/head-3.pub.pem

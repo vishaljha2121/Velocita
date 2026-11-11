@@ -1,0 +1,5 @@
+# Scrape job for the tape exporters; add under scrape_configs on the Prometheus host (NUC1).
+- job_name: velocita-tape
+  scrape_interval: 15s
+  static_configs:
+    - targets: ['100.72.127.102:45301', '100.84.151.116:45301', '100.85.36.22:45301']

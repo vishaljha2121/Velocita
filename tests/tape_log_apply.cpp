@@ -24,6 +24,18 @@ void on_close(void*, const VerdictClose& v) {
 }
 
 int main(int argc, char** argv) {
+    if (argc == 2 && std::string(argv[1]) == "--merkle-vectors") {
+        const std::vector<std::vector<unsigned char>> leaves{
+            {}, {0x00}, {0x10}, {0x20, 0x21}, {0x30, 0x31}, {0x40, 0x41, 0x42, 0x43},
+            {0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57},
+            {0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6a, 0x6b, 0x6c, 0x6d, 0x6e, 0x6f}};
+        MerkleFrontier frontier;
+        for (const auto& leaf : leaves) {
+            frontier.append(merkle_leaf_hash(std::as_bytes(std::span(leaf.data(), leaf.size()))));
+            std::cout << velocita::v2::to_hex(frontier.root()) << "\n";
+        }
+        return 0;
+    }
     if (argc < 2) {
         std::cerr << "usage: tape-log-apply LOG [--no-integrity] [--verdict-ticks N] [--head-every K]\n";
         return 64;

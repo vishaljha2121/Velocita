@@ -2,6 +2,7 @@
 #include "velocita/tape/voter.hpp"
 #include "velocita/v2/digest.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>

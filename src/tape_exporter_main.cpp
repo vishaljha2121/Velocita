@@ -1,6 +1,7 @@
 // velocita-tape-exporter: serves a voter's metrics file over HTTP for Prometheus. Reads only; links no tape code.
 #include <arpa/inet.h>
 #include <csignal>
+#include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <iostream>

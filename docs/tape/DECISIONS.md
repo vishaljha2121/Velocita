@@ -190,3 +190,67 @@ snapshots are never compared across copies, only placed by the book engine (BOOK
 next update (D-25). Updates are still compared across recorders. Covered by
 `test_a_recorders_own_resubscription_snapshot_is_not_a_copy`; amendment 2's proposed wording is updated to
 match.
+
+## Verification and hand-off
+
+**D-27. Mutation bar: 27 targeted mutants, all killed.** `tests/mutation_tape.py` compiles each mutant
+directly with `c++` in a scratch copy (no CMake, so no stale binary can answer) and checks that one named
+test fails, after first checking that the same test passes unmutated. The first run killed 20 of 27; each
+survivor was a missing or vacuous test (a capacity test whose frame never reached capacity, a duplicate-copy
+path no test sent, a Merkle prefix only the reference checked) or an equivalent mutant, which was replaced
+by one that changes behaviour. The rerun killed 27 of 27.
+
+**D-28. The tape is opt-in at build time.** `VELOCITA_BUILD_TAPE` defaults to OFF so the pinned trading
+image builds, which have no OpenSSL headers, are byte-for-byte unaffected. The tape image turns it on.
+
+**D-29. The tape image builds from the recorded `velocita-dev` toolchain plus `libssl-dev` at the toolchain's
+own OpenSSL version.** The readiness-TLS image has OpenSSL headers but exists only on the Pi; the dev image
+exists on all three hosts with recorded IDs (`deploy/v2/TOOLCHAIN.env`) and ships `libssl3t64`
+3.5.5-1ubuntu3.7. The builder installs `libssl-dev` at exactly that version and the runtime installs
+`libssl3t64` at the same version, so the build fails loudly instead of drifting if the archive moves on.
+`build-image.sh` refuses an unrecorded toolchain, as the trading build does. The runtime adds
+`ca-certificates`, which the recorder needs for TLS peer verification.
+
+**D-30. Units mirror the trading voter unit, with their own names, ports, directories and tmpfs.** Same
+hardening (`--read-only`, `--cap-drop all`, `no-new-privileges`, journald, 1 GiB, 1 MiB Aeron terms so
+shared memory stays far under the 256 MiB limit). Names are `velocita-tape-*`, data lives under
+`~/velocita-tape`, secrets under `%t/velocita-tape-secrets`, and ports 45101–45103 (voters), 45201–45203
+(recorders) and 45301 (exporter) are absent from every trading config. No one-cluster guard: the tape is
+not a trading cluster, holds no trading secret and links no trading code (X-1 symbol check).
+
+**D-31. The master secret goes through `velocita-secrets` (Keychain account `tape-master`); head keys are
+born on their own hosts.** The HMAC master secret follows the trading secret path exactly: Keychain on the
+Mac, pushed into a 0700 tmpfs, never on host disk. A head-signing key is the evidence that a voter vouched
+for a tree head, so its private half is generated on that voter's host and never leaves it; only public
+keys are collected (`~/.config/velocita-tape/public`) and copied to the other hosts, with SHA-256
+fingerprints printed for the record. The private key sits in `~/velocita-tape/config` (mode 0700 directory,
+0600 file) because the voter must sign after a reboot without a push.
+
+**D-32. Key files are created 0600 atomically.** `save_private` opened the file under the process umask and
+chmodded it afterwards, so another local user could open it in between and read the key once written. It
+now uses `open(O_CREAT | O_EXCL, 0600)` and fsyncs, and never overwrites an existing key.
+
+**D-33. Images are not built on the hosts yet.** Read-only checks on 2026-11-11 found: NUC1's root
+filesystem is 100% full (0 bytes free; `~/velocita-md` holds 60 GB) while its Prometheus, Grafana and
+Alertmanager are running; the Pi has 3.1 GB free, below the 4,000,000 KiB floor the earlier release builds
+used; NUC2 runs `velocita-paper-stochastic-node`, and its user cgroup does not enforce CPU quotas. The
+2026-10-09 build incident (lost leadership and scrape timeouts during host builds) argues against building
+next to running services without the owner present. Freeing disk is the owner's call, so the hand-off is a
+release bundle plus exact commands, which the plan allows. `run-build-guarded.sh` refuses to start below
+4,000,000 KiB and stops the build below 3,000,000 KiB.
+
+**D-34. A demo run is capped at 72 hours.** The 120-second live run wrote 481 KB of WAL per voter, about
+3.5 KB/s or 300 MB a day. With compaction deferred (D-07), 72 hours is about 0.9 GB, which fits the Pi with
+margin once the build floor is met, and is long enough to show an unplug drill and a few thousand signed
+tree heads.
+
+**D-35. The tape image was proven on Linux before any host sees it.** Docker on the Mac rebuilt the dev
+toolchain from `Containerfile.dev` (same base digest, Aeron and Raft commits; arm64, OpenSSL
+3.5.5-1ubuntu3.7, the version recorded on the hosts) and then the tape image from a clean `git archive`
+export. That caught two Linux-only compile errors that macOS headers had hidden (`<cstdint>` in the
+exporter, `<algorithm>` in the voter tests), and a full `ninja -k 0` build found no others. Inside the
+builder all 10 `tape-` tests pass, the symbol checks included; the recorder fixture tests skip there because
+the toolchain has no `websockets` module (they run on the Mac). The runtime image has no missing shared
+libraries, writes keys 0600, and its recorder, run read-only in sink mode against the live public feed for
+10 s, received 155 frames with none lost over verified TLS. The x86_64 build on NUC2 and NUC1 is still
+unproven until step 1 of the runbook.

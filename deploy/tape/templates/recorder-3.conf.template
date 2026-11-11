@@ -1,0 +1,13 @@
+# Tape recorder 3 on nuc2. Reads only documented no-login channels of the public feed.
+recorder_id=3
+incarnation=@INCARNATION@
+url=wss://api.truemarkets.co/v1/cefi/market
+symbols=NVDAC-USDC,TSLAC-USDC,AAPLC-USDC,MSFTC-USDC,AMZNC-USDC,GOOGLC-USDC,METAC-USDC,PLTRC-USDC,MSTRC-USDC,MUC-USDC,SNDKC-USDC,SPCXC-USDC
+aeron_dir=/dev/shm/velocita-tape-recorder
+listen=100.85.36.22:45203
+master_key_file=/run/velocita-tape-secrets/master.key
+refresh_ms=900000
+dead_after_ms=30000
+voter.1=100.72.127.102:45101
+voter.2=100.84.151.116:45102
+voter.3=100.85.36.22:45103
