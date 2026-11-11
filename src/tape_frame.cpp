@@ -184,6 +184,8 @@ bool with_data(std::string_view raw, OnData&& on_data) noexcept {
 
 }
 
+Channel parse_channel(std::string_view name) noexcept { return channel_of(name); }
+
 std::optional<FrameHeader> classify_frame(std::string_view raw) noexcept {
     FrameHeader header;
     std::string_view channel, update, seqnum, item, data_symbol, info_symbol;

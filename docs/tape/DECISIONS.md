@@ -138,3 +138,25 @@ so a granted pre-vote arrived as a real vote and no election ever completed. The
 any hardware ran. Velocita's V2 node carries the flag in its own bound-peer encoding, which builds on
 `peer_wire`, so `peer_wire` is left unchanged and the tape encodes peer messages itself
 (`src/tape_peer_codec.cpp`).
+
+**D-21. Clock error comes from the kernel's NTP state.** On Linux the recorder reads `ntp_adjtime`'s
+estimated error and reports "unknown" when the clock is unsynchronised; elsewhere it reports "unknown".
+Shelling out to `chronyc` per frame was rejected as too slow. Skew metrics treat unknown as "below
+resolution" (MET-3).
+
+**D-22. The recorder reads on its own thread into a fixed ring.** The reader thread owns the WebSocket,
+tracks each stream's expected `seqnum`, applies the 30-second silence rule and the staggered snapshot
+refresh, and never waits for the cluster. When the ring is full it keeps reading, counts what it drops
+and, once the ring has room again, records one overflow event per stream with the exact `seqnum` range
+and resubscribes those streams (REC-5, H-2). Request numbers are assigned by the submitter when it takes
+an item from the ring, so dropped frames never consume a number and ING-3's contiguity holds.
+
+**D-23. The recorder has a sink mode for tests.** `--sink FILE` writes entries to a file and acknowledges
+them at once, with an optional stall, so recorder behaviour is tested without a cluster.
+
+**Finding: a framing bug caught by the fixture.** The first WebSocket reader restored a stale buffer
+position after a read timeout that had already compacted the buffer, so the next frame was read from the
+wrong offset. Against the live feed it looked like the venue closing the connection every few seconds,
+which caused a resubscription storm (132 snapshots per channel in 20 seconds). The scripted fixture
+(`tests/tape_oracles/fixture_ws.py`) reproduced it over plain `ws://` with a frame trace, the restore was
+removed, and both the fixture (400 frames from 10 bytes to 70 KB) and a 30-second live run are now clean.

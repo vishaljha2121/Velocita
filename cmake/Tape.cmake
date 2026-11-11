@@ -28,6 +28,15 @@ add_executable(velocita-tape-voter src/tape_voter_main.cpp)
 target_link_libraries(velocita-tape-voter PRIVATE velocita_tape_link Threads::Threads)
 target_compile_options(velocita-tape-voter PRIVATE -Wall -Wextra -Wpedantic)
 
+add_library(velocita_tape_recorder src/tape_websocket.cpp src/tape_recorder.cpp)
+target_include_directories(velocita_tape_recorder PUBLIC include)
+target_link_libraries(velocita_tape_recorder PUBLIC velocita_tape_core OpenSSL::SSL OpenSSL::Crypto Threads::Threads)
+target_compile_options(velocita_tape_recorder PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(velocita-tape-recorder src/tape_recorder_main.cpp)
+target_link_libraries(velocita-tape-recorder PRIVATE velocita_tape_recorder velocita_tape_link)
+target_compile_options(velocita-tape-recorder PRIVATE -Wall -Wextra -Wpedantic)
+
 add_executable(velocita-tape-keys src/tape_keys_main.cpp)
 target_link_libraries(velocita-tape-keys PRIVATE velocita_tape_voter)
 target_compile_options(velocita-tape-keys PRIVATE -Wall -Wextra -Wpedantic)

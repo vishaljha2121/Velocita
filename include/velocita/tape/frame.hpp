@@ -18,6 +18,7 @@ struct FrameHeader {
 };
 
 [[nodiscard]] std::optional<FrameHeader> classify_frame(std::string_view raw) noexcept;
+[[nodiscard]] Channel parse_channel(std::string_view name) noexcept;
 
 enum class DecimalStatus : std::uint8_t { ok = 0, malformed = 1, precision = 2, overflow = 3 };
 
