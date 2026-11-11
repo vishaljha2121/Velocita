@@ -54,6 +54,202 @@ when recorders disagree about the bytes of one message.
 - Whether a DEPTH UPDATE carries changes or full replacement levels.
 - The largest DEPTH snapshot message, which sets the entry size limit and the split rule.
 
+## Data flow
+
+Recorded 2026-11-11. Names the data at each stage and who may change it.
+
+```mermaid
+flowchart LR
+  V(["True Markets public CeFi WebSocket"]) -->|"text frames"| R1["Recorder NUC1"] & R2["Recorder NUC2"] & R3["Recorder Pi"]
+  R1 & R2 & R3 -->|"signed observations"| L["Tape leader (ingress)"]
+  L -->|"Raft entries"| W[("WAL on each voter")]
+  W -->|"committed, same order"| A["Tape reducer on each voter:<br/>attestation, book, Merkle frontier"]
+  A -->|"state page"| E["Metrics exporter"] --> P["Prometheus, Grafana, alerts"]
+  A -->|"head to sign"| S["Head signer on each voter"] -->|"signature entry"| L
+  W -->|"segments"| AR[("Archive")] --> VF["Offline verifier"]
+  S -.->|"2 of 3 signatures"| H["Published tree heads"] --> VF
+```
+
+| Stage | Data | Who may change it |
+|---|---|---|
+| Venue to recorder | WebSocket text frames on DEPTH, EBBO, TRADE, INSTRUMENT and HEARTBEAT | Nobody. The recorder reads only enough of each frame to find its stream, `seqnum` and update kind |
+| Recorder | An observation: recorder id, session id, observation number, stream, `seqnum`, update kind, the frame's exact bytes, SHA-256, UTC and monotonic receive times, clock error. Held in a fixed-size ring | The recorder creates it; nothing edits it afterwards |
+| Recorder to leader | An authenticated client request (HMAC, caller id, request sequence) carrying one observation, or one numbered part of an oversize one | Refused or committed; never altered |
+| Raft log | Five entry types: `Observation`, `ObservationPart`, `RecorderEvent` (session start, gap, regression, overflow, dead connection, reconnect, resubscribe), `Tick`, `HeadSignature` | Append-only. Durable on two of three disks before it counts |
+| Tape reducer | Per stream: book levels, state (valid, building, unknown), reorder buffer. Open verdicts table. Last tick number. The Merkle frontier: at most 64 node hashes, enough to append and compute the root without holding the whole tree | Only by applying committed entries, in log order, on every voter |
+| Reducer outputs | One leaf per committed entry: log index, entry digest, the affected stream's resulting state and book hash, verdicts closed at this index, integrity flags, capacity events | Derived; recomputable by anyone from the log |
+| Tree heads | At every K-th tick, each voter computes the head (tree size, root) from its frontier, signs it, and submits a `HeadSignature`. The head publisher verifies committed signatures and publishes a head once two are valid | Signatures are added, never removed |
+| Exporter | Reads the reducer's state page; publishes metrics labelled `source="log"` or `source="local"` | Read-only |
+| Archive and verifier | Archived log segments, published heads and the voters' public keys | Read-only |
+
+## Happy paths
+
+### HP-1. Start of recording
+
+1. Each recorder starts a session, records a `RecorderEvent` (session start), connects, and subscribes to
+   the twelve books with `SUBSCRIBE_NO_AUTH`, including HEARTBEAT.
+2. For each stream the venue sends SNAPSHOT messages and then SNAPSHOT_COMPLETE. Each recorder proposes an
+   observation for every frame.
+3. The reducer applies the first committed copy of each snapshot message. The book is `building` and has no
+   hash until SNAPSHOT_COMPLETE, then becomes `valid` with its first hash (BOOK-6, BOOK-7).
+4. The other recorders' copies commit. Each verdict closes at the third copy as 3/3 (ATT-2).
+
+### HP-2. One update, all three agree
+
+```mermaid
+sequenceDiagram
+  participant V as Venue
+  participant R1 as Recorder NUC1
+  participant R2 as Recorder NUC2
+  participant R3 as Recorder Pi
+  participant L as Tape leader
+  participant B as Reducer (every voter)
+  V->>R1: DEPTH seqnum 90414
+  V->>R2: DEPTH seqnum 90414
+  V->>R3: DEPTH seqnum 90414
+  R1->>L: observation (bytes, hash h)
+  L->>B: commit copy 1
+  Note over B: book applies the first copy and gets a new hash, and the verdict opens
+  R2->>L: observation (hash h)
+  L->>B: commit copy 2 (matches, book unchanged)
+  R3->>L: observation (hash h)
+  L->>B: commit copy 3
+  Note over B: all three reported: verdict closes 3/3
+```
+
+### HP-3. A quiet book
+
+No messages arrive for a stream. Each recorder receives a heartbeat after 10 s of silence and records it as
+an observation, since every received frame is recorded (REC-2). Ticks keep committing. The book stays `valid`
+with an unchanged hash, no verdict is open, and the silence metric grows.
+
+### HP-4. Ticks and tree heads
+
+The leader commits tick k every T. At each K-th tick, every voter computes the tree head over all leaves up
+to that tick's index, signs it with its tape key, and submits a `HeadSignature`. The head publisher sees two
+valid signatures and publishes the head; the third signature is added when it commits (PROOF-2, PROOF-3).
+
+### HP-5. Offline verification
+
+Someone with the archive, the published heads and the public keys runs the verifier on a laptop with no
+network. It rebuilds every book, verdict and leaf, checks every head's signatures and consistency, and
+exits zero (VER-1, VER-2).
+
+## Failure paths
+
+### FP-1. One recorder misses a message
+
+```mermaid
+sequenceDiagram
+  participant R1 as Recorder NUC1
+  participant R2 as Recorder NUC2
+  participant R3 as Recorder Pi
+  participant B as Reducer
+  R1->>B: 90414, 90415, 90416
+  R2->>B: 90414, 90415, 90416
+  Note over R3: 90415 lost on the Pi's link
+  R3->>B: 90414, gap event (expected 90415, got 90416), 90416
+  Note over B: the book already applied 90415 from NUC1, so nothing changes
+  Note over B: verdict 90415 closes after N ticks as 2/3
+  R3->>B: resubscribe event, new snapshot at 90420
+  Note over B: snapshot at or after the book's position replaces the book and is checked against the updates
+```
+
+The book is never affected, because another recorder supplied the message. The tape records the Pi's gap,
+its resync and a 2/3 verdict, which is what the gap-rate and vantage metrics count.
+
+### FP-2. All three miss a message (a feed-side gap)
+
+No copy of 90415 commits, but 90416 does. The reducer holds 90416 and later messages for up to N ticks
+(BOOK-5). Nobody supplies 90415, so the book becomes `unknown`. All three recorders saw the gap and
+resubscribe (REC-3), and the first complete snapshot makes the book `valid` again. The unknown period is
+recorded with its start and end indexes.
+
+### FP-3. Recorders disagree about the bytes
+
+NUC1's copy of 90415 is applied, then the Pi's copy commits with different bytes. The verdict is divergent
+and both versions stay in the log (ATT-4). The book becomes `unknown` from the Pi's copy until a complete
+snapshot that starts after it (BOOK-4). No recorder saw a gap, so recovery comes from the snapshot refresh
+below (H-1).
+
+### FP-4. A machine goes down, or the leader fails
+
+1. The machine's voter and recorder stop together. The other two keep committing (RAFT-4).
+2. If it was the leader, an election follows. No ticks commit during it, so open verdicts wait longer in
+   wall time but not in ticks. Observations in flight are retried and commit once (ING-2). Tick numbering
+   continues from the last committed tick (TICK-1).
+3. Verdicts close after N ticks as 2/3. Tree heads still get two signatures.
+4. On return, the voter catches up from the leader's retained log. Its recorder starts a new session and
+   subscribes. Its book state equals the others', since it is rebuilt from the same log.
+
+### FP-5. Two machines down, or a partition that leaves no majority
+
+Nothing commits. Each surviving recorder keeps reading the socket and fills its ring (REC-5). When a
+majority returns, each recorder records an overflow gap with the exact `seqnum` range it could not keep,
+then resubscribes, because an overflow is a gap. The book reaches `unknown` through BOOK-5 and recovers at
+the new snapshots. Ticks resume where they stopped.
+
+### FP-6. The venue drops every connection
+
+All three recorders hit the 30 s rule, record a dead-connection event and reconnect with backoff (REC-4).
+The book stays `valid` as of its last `seqnum`. It is a record of what was published, not a live quote, and
+the silence metric shows the outage. On reconnect, the new snapshots replace the books (BOOK-6).
+
+## Error handling
+
+Severity: **page** goes to the phone through the existing ntfy route; **ticket** appears on the dashboard
+and in the daily summary.
+
+| Error | Detected by | Immediate response | Recorded on the tape as | Alert | Recovery | Guarantees |
+|---|---|---|---|---|---|---|
+| One recorder's `seqnum` gap | Recorder | Resubscribe that stream | Gap event, resubscribe event | Ticket if above the gap-rate threshold | Automatic | REC-3, BOOK-6 |
+| Feed-side gap (all recorders) | Reducer (BOOK-5) and every recorder | Hold up to N ticks, then `unknown`; all recorders resubscribe | Three gap events; unknown period | Ticket | Automatic, at the next snapshot | BOOK-5, REC-3 |
+| Duplicate or lower `seqnum` | Recorder; reducer ignores later copies | None | Regression event; late or duplicate copies | None | None needed | REC-3, BOOK-3 |
+| Divergent bytes | Reducer | Book `unknown` | Divergent verdict, both payloads | Page | Automatic at the next snapshot refresh (H-1); review the payloads | ATT-4, BOOK-4 |
+| Malformed frame or unknown schema | Recorder records it; reducer can't parse it | Book `unknown`, reason malformed | Unparsed observation | Page if it repeats, since that suggests a venue schema change | A new parser release; the recorded bytes allow replay with it | REC-2, BOOK-2 |
+| Value with too many decimals or out of range | Reducer | Book `unknown`, reason precision or overflow | State change with reason | Page | Review the instrument's scale; a new snapshot restores the book | BOOK-2 |
+| Dead connection (30 s silence) | Recorder | Reconnect with backoff | Dead and reconnect events | Ticket; page if all three are down for 5 minutes | Automatic | REC-4 |
+| Venue refuses connections | Recorder | Exponential backoff to its cap | Reconnect attempts | Page after 15 minutes | Automatic when the venue returns | REC-4, REC-6 |
+| Recorder ring full | Recorder | Keep reading, count lost frames | Overflow gap with exact range, then resubscribe | Ticket | Automatic | REC-5 |
+| Recorder crash | systemd restarts it | New session | Session start; the old session ends without a close event | Ticket | Automatic. See proposed amendment 1 | ING-3 |
+| Observation refused (not leader, queue full) | Recorder | Keep it in the ring and retry | Nothing until it commits | Ticket if retries persist | Automatic | ING-3 |
+| Authentication failure | Ingress | Refuse | Nothing (refused requests never reach the log) | Page | Check keys and incarnation | ING-1, X-2 |
+| Oversize frame | Recorder | Split into parts | Observation parts | None | None needed | ING-4 |
+| A part never arrives | Reducer | Treat the message as missing | Missing copy in the verdict | None | As a gap | ING-4, BOOK-5 |
+| Voter down | Raft and the exporter | Two voters continue | Verdicts close as 2/3 | Page | Restart; catch up from the log | RAFT-4 |
+| No majority | Recorders (commit refused) | Rings fill | Overflow gaps when it returns | Page | Restore a second voter | REC-5, RAFT-4 |
+| Corrupt WAL, snapshot or archive | Voter at recovery | Refuse to start | Nothing on the others' tape | Page | Repair from another voter's archive | RAFT-3 |
+| Disk full | Voter's writer | Stop the voter, as for corruption | Nothing on the others' tape | Page at 80% full | Free space or expand; the voter rejoins | RAFT-1, RAFT-3 |
+| Tick out of sequence | Reducer | Refuse it | Refused tick | Ticket | None needed | TICK-1 |
+| Tick spacing too short or too long | Offline verifier | None in the cluster | Ticks carry their UTC | Ticket | Investigate the leader's clock | TICK-3 |
+| Clock unsynchronised | Recorder (from chrony) | Keep recording | Clock error unknown or large | Ticket | Fix chrony; skew metrics show the period as below resolution | REC-7, MET-3 |
+| Capacity exceeded (books, levels, reorder buffer, verdicts) | Reducer | Book `unknown`, or verdict closed by capacity | Capacity event | Page | Raise the limit in a new release | ATT-5, BOOK-8 |
+| Invalid head signature | Head publisher | Don't count it | Signature entry stays in the log | Page | Check that voter's key; the head publishes when two are valid | PROOF-3 |
+| Exporter crash | systemd | Restart | Nothing | Ticket | Automatic | MET-4 |
+| Verifier mismatch | Verifier | Stop at the first mismatch | Not applicable | Page | Investigate the named index | VER-3 |
+
+### Handling decisions that add no guarantee
+
+- **H-1. Snapshot refresh.** Each recorder resubscribes to each stream every R minutes (start: R = 15),
+  staggered so the three recorders refresh at different times. This bounds how long a book stays `unknown`
+  after a divergence, gives the "snapshots agree with updates" integrity rule regular checkpoints, and stays
+  within REC-6 because it uses only `SUBSCRIBE_NO_AUTH`.
+- **H-2. Overflow is a gap.** After recording an overflow gap, a recorder resubscribes the affected streams,
+  as for any gap.
+- **H-3. Tree-head cadence.** Heads are computed at every K-th tick (start: K = 60, one head a minute).
+- **H-4. A down voter's recorder is down too.** They run on the same machine. A recorder whose own voter is
+  unreachable keeps submitting to the other voters through the client protocol, which already routes to the
+  leader.
+
+## Proposed amendments (not approved)
+
+**Amendment 1: ING-3 contiguity is per recorder session.** A recorder crash loses the observations still in
+its ring, so its numbering has a hole that no overflow gap explains, which breaks ING-3 as written. Proposed
+wording: "Per recorder session, observation numbers in the log are contiguous except for recorded overflow
+gaps. A restart starts a new session at number 1; a session that ends without a close event may have lost
+the observations it had not yet submitted." Test ING-3.1 would gain a case that kills the recorder mid-run
+and checks contiguity within each session. Needs the owner's approval before it replaces ING-3.
+
 ## Test cases
 
 Recorded 2026-11-11 against the locked guarantees. Each case names the guarantee it proves, what the test
