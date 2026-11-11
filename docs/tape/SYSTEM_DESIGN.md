@@ -1,6 +1,7 @@
 # Verifiable tape: system design
 
-UML views of the tape for review before any code is written. Status: **draft for review, 2026-11-11**.
+UML views of the tape, reviewed before any code was written. Status: **locked 2026-11-11**. Changes need an
+ADR 0030 amendment.
 Decisions and paths are in [ADR 0030](../adr/0030-the-verifiable-tape-is-a-separate-raft-group.md); the
 locked guarantees are in [GUARANTEES.md](GUARANTEES.md). Where a diagram shows behaviour, the guarantee
 that requires it is named.
@@ -546,9 +547,9 @@ The ADR has sequence diagrams for an agreed update (HP-2) and for one recorder m
 | Exporter | MET-1 to MET-4 |
 | Offline verifier | VER-1 to VER-3 |
 
-## 9. Points for review
+## 9. Review points, accepted
 
-These came up while drawing the diagrams. None changes a locked guarantee.
+These came up while drawing the diagrams and were accepted with the design.
 
 1. **A held message stores parsed level changes.** The reducer can't read the log, so the reorder buffer
    keeps each held message's parsed changes, bounded by C per message.
@@ -560,4 +561,4 @@ These came up while drawing the diagrams. None changes a locked guarantee.
    recorded and still produce leaves.
 5. **Recorders submit through their local voter**, which routes to the leader, so the deployment has no
    separate ingress process.
-6. **Proposed amendment 1** (ING-3 contiguity per recorder session) is still awaiting approval.
+6. **Amendment 1** (ING-3 contiguity per recorder session) was approved and applied on 2026-11-11.

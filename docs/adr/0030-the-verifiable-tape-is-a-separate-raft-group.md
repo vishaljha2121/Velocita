@@ -241,14 +241,14 @@ and in the daily summary.
   unreachable keeps submitting to the other voters through the client protocol, which already routes to the
   leader.
 
-## Proposed amendments (not approved)
+## Amendments
 
-**Amendment 1: ING-3 contiguity is per recorder session.** A recorder crash loses the observations still in
+**Amendment 1: ING-3 contiguity is per recorder session. Approved by the owner 2026-11-11 and applied to GUARANTEES.md.** A recorder crash loses the observations still in
 its ring, so its numbering has a hole that no overflow gap explains, which breaks ING-3 as written. Proposed
 wording: "Per recorder session, observation numbers in the log are contiguous except for recorded overflow
 gaps. A restart starts a new session at number 1; a session that ends without a close event may have lost
-the observations it had not yet submitted." Test ING-3.1 would gain a case that kills the recorder mid-run
-and checks contiguity within each session. Needs the owner's approval before it replaces ING-3.
+the observations it had not yet submitted." Test ING-3.1 gains a case that kills the recorder mid-run
+and checks contiguity within each session.
 
 ## Test cases
 
